@@ -54,18 +54,20 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body className="font-sans antialiased wrap-anywhere selection:bg-[rgba(65,105,225,0.24)]">
         <TanStackQueryProvider>
           {children}
-          <TanStackDevtools
-            config={{
-              position: 'bottom-right',
-            }}
-            plugins={[
-              {
-                name: 'Tanstack Router',
-                render: <TanStackRouterDevtoolsPanel />,
-              },
-              TanStackQueryDevtools,
-            ]}
-          />
+          {import.meta.env.DEV && (
+            <TanStackDevtools
+              config={{
+                position: 'bottom-right',
+              }}
+              plugins={[
+                {
+                  name: 'Tanstack Router',
+                  render: <TanStackRouterDevtoolsPanel />,
+                },
+                TanStackQueryDevtools,
+              ]}
+            />
+          )}
         </TanStackQueryProvider>
         <Scripts />
       </body>
