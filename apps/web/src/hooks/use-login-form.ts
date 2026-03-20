@@ -15,7 +15,8 @@ export function useLoginForm() {
     },
     onSubmit: async ({ value }) => {
       // Demo-only: no auth action yet.
-      console.info('Login form submitted:', value)
+      const { password, ...rest } = value
+      console.info('Login form submitted:', { ...rest, password: '***redacted***' })
     },
   })
 }
