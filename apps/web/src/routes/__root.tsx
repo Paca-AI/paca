@@ -28,7 +28,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "Paca Web",
+				title: "Paca",
 			},
 		],
 		links: [
@@ -48,7 +48,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<script>{THEME_INIT_SCRIPT}</script>
 				<HeadContent />
 			</head>
-			<body className="font-sans antialiased wrap-anywhere selection:bg-[rgba(65,105,225,0.24)]">
+			<body className="font-sans antialiased wrap-anywhere selection:bg-[rgba(49,95,133,0.24)]">
 				<TanStackQueryProvider>
 					{children}
 					{import.meta.env.DEV && (

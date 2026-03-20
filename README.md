@@ -1,9 +1,25 @@
-# Paca: The Open-Source Collaborative Task Management Engine
+<p align="center">
+	<img src="docs/assets/paca-logo.svg" alt="Paca logo" width="414" />
+</p>
 
-> The open-source collaborative task management engine.
-> Seamlessly orchestrate workflows between Human Intelligence and AI Agents.
-> Built on BDD and Scrumban, Paca empowers teams to assign tasks to the best mind for the job, whether human or AI.
-> Forever free, open-source, and teammate-first.
+<h1 align="center">Paca</h1>
+
+<p align="center"><strong>The open-source collaborative task management engine</strong></p>
+
+<p align="center">
+	Seamlessly orchestrate workflows between human intelligence and AI agents.<br />
+	Built on BDD and Scrumban so teams can assign work to the best mind for the job, whether human or AI.
+</p>
+
+<p align="center">
+	<a href="docs/guides/getting-started.md">Getting Started</a>
+	·
+	<a href="docs/architecture/overview.md">Architecture</a>
+	·
+	<a href="CONTRIBUTING.md">Contributing</a>
+	·
+	<a href="ROADMAP.md">Roadmap</a>
+</p>
 
 Paca is a next-generation task management platform where human creativity and AI efficiency merge into a unified workflow. Built on the core cycle of **Plan - Act - Check - Adapt**, Paca dissolves traditional role boundaries, allowing humans and AI Agents to work as true teammates on a shared Scrumban board.
 

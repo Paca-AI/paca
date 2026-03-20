@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import ThemeToggle from "#/components/ThemeToggle";
 import { Button } from "#/components/ui/button";
@@ -15,6 +15,30 @@ export const Route = createFileRoute("/")({ component: App });
 function App() {
 	const form = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
+	const [logoSrc, setLogoSrc] = useState("/paca-logo.svg");
+
+	useEffect(() => {
+		const root = document.documentElement;
+		const syncLogo = () => {
+			setLogoSrc(
+				root.classList.contains("dark")
+					? "/paca-logo-dark.svg"
+					: "/paca-logo.svg",
+			);
+		};
+
+		syncLogo();
+
+		const observer = new MutationObserver(syncLogo);
+		observer.observe(root, {
+			attributes: true,
+			attributeFilter: ["class"],
+		});
+
+		return () => {
+			observer.disconnect();
+		};
+	}, []);
 
 	return (
 		<main className="page-wrap px-4 py-10 sm:py-14">
@@ -23,11 +47,19 @@ function App() {
 			</div>
 
 			<section className="island-shell rise-in relative mx-auto w-full max-w-md overflow-hidden rounded-3xl p-7 sm:p-8">
-				<div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(65,105,225,0.3),transparent_65%)]" />
+				<div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(49,95,133,0.26),transparent_65%)]" />
 				<div className="pointer-events-none absolute -bottom-16 -right-16 h-40 w-40 rounded-full bg-[radial-gradient(circle,rgba(50,205,50,0.25),transparent_65%)]" />
 
 				<div className="relative">
-					<p className="island-kicker mb-2">Paca</p>
+					<div className="mb-5 flex justify-start">
+						<img
+							src={logoSrc}
+							alt="Paca logo"
+							width={127}
+							height={175}
+							className="h-auto w-12"
+						/>
+					</div>
 					<h1 className="display-title mb-2 text-4xl font-bold text-(--sea-ink)">
 						Welcome back
 					</h1>
