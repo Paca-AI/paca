@@ -60,6 +60,14 @@ The operational flow of Paca revolves around four stages of continuous improveme
 
 Paca is committed to remaining open-source and forever free. We believe the infrastructure for human-AI collaboration should be accessible to every team, everywhere, without financial barriers.
 
+## The "Paca" Backstory (A Little Secret)
+
+Why the name Paca? Well, beyond the alpaca mascot, it is a playful nod to the Japanese word "Baka" (ばか), meaning "silly" or "foolish."
+
+In our team, we often jokingly call our AI assistants "silly" when they hallucinate. But truth be told, the creator feels like a bit of a baka too, building a massive, high-end platform with no profit motive, driven purely by the love for open-source and human-AI synergy.
+
+We believe there is a certain wisdom in being "foolish" enough to chase a vision where collaboration matters more than the bottom line. 🦙✨
+
 ## Documentation Map
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to contribute to Paca.
