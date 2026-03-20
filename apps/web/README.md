@@ -1,16 +1,36 @@
-# Web App
+# Paca Web App
 
-This directory is reserved for the main Paca frontend.
+This package contains the Paca web frontend built with TanStack Start, TanStack Router, and ShadCN UI components.
 
-## Planned Stack
+## Run Locally
 
-- React
-- shadcn/ui
+```bash
+bun install
+bun --bun run dev
+```
 
-## Planned Responsibilities
+## Build
 
-- authentication and session-based UI;
-- boards, tasks, and activity views;
-- collaboration interfaces for humans and AI agents.
+```bash
+bun --bun run build
+```
 
-Detailed frontend structure should be added when scaffolding begins.
+## Test
+
+```bash
+bun --bun run test
+```
+
+## Lint and Format
+
+```bash
+bun --bun run lint
+bun --bun run format
+bun --bun run check
+```
+
+## Project Notes
+
+- Routing uses TanStack file-based routes in `src/routes`.
+- Shared app shell is defined in `src/routes/__root.tsx`.
+- ShadCN primitives are in `src/components/ui`.
