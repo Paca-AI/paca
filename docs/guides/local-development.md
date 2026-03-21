@@ -6,6 +6,7 @@ This document describes the intended local development shape for Paca.
 
 - `apps/web`: React + shadcn/ui
 - `services/api`: Go + Gin
+- `services/realtime`: Socket.IO
 - `services/ai-agent`: FastAPI + LangGraph
 - PostgreSQL
 - Redis
@@ -19,6 +20,7 @@ The early preference is:
 
 - application code lives in `apps` and `services`;
 - runtime support assets live in `deploy`;
+- RabbitMQ bridges internal asynchronous events between `services/api` and `services/realtime`;
 - environment-specific detail stays out of the root README.
 
 ## Not Documented Yet

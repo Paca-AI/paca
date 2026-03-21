@@ -1,6 +1,6 @@
 # Service Boundaries
 
-Paca is planned around one frontend application and two backend services.
+Paca is planned around one frontend application and three backend services.
 
 ## apps/web
 
@@ -22,7 +22,20 @@ Planned concerns:
 - business workflows;
 - task, board, and activity APIs;
 - persistence coordination with PostgreSQL and Redis;
-- publication and consumption of asynchronous events where needed.
+- publication of domain events to RabbitMQ for downstream consumers, including the real-time service;
+- consumption of asynchronous events where API-owned workflows require it.
+
+## services/realtime
+
+Responsible for real-time delivery to connected clients.
+
+Planned concerns:
+
+- maintain Socket.IO namespaces, rooms, and client connection lifecycle;
+- authenticate and authorize socket connections using contracts owned by the core backend;
+- consume RabbitMQ messages emitted by `services/api`;
+- transform internal domain events into client-safe real-time payloads;
+- broadcast updates for boards, tasks, comments, and presence-like collaboration signals.
 
 ## services/ai-agent
 
@@ -37,4 +50,4 @@ Planned concerns:
 
 ## Boundary Rule
 
-Keep ownership clear. Shared code should stay inside the owning runtime until duplication is real.
+Keep ownership clear. `services/api` owns business rules and durable state transitions, while `services/realtime` only delivers live updates derived from API-owned events. Shared code should stay inside the owning runtime until duplication is real.
