@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -11,7 +12,8 @@ import (
 )
 
 // Load reads .env (if present) then environment variables and returns a
-// validated Config.  Missing required keys cause a non-nil error.
+// validated Config.  Missing required keys cause a non-nil error that names
+// every absent variable so operators see all gaps at once.
 func Load() (*Config, error) {
 	// .env is optional; ignore "file not found" error.
 	_ = godotenv.Load()
@@ -25,9 +27,32 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: JWT_REFRESH_TTL: %w", err)
 	}
 
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return nil, fmt.Errorf("config: JWT_SECRET must be set")
+	// Collect all missing required keys before returning so the caller sees
+	// every problem in a single error rather than one failure at a time.
+	var errs []error
+
+	secret, err := requireEnv("JWT_SECRET")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	dsn, err := requireEnv("DATABASE_URL")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	redisURL, err := requireEnv("REDIS_URL")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	rabbitURL, err := requireEnv("RABBITMQ_URL")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 
 	return &Config{
@@ -36,13 +61,13 @@ func Load() (*Config, error) {
 			Port: env("PORT", "8080"),
 		},
 		Database: DatabaseConfig{
-			DSN: requireEnv("DATABASE_URL"),
+			DSN: dsn,
 		},
 		Redis: RedisConfig{
-			URL: requireEnv("REDIS_URL"),
+			URL: redisURL,
 		},
 		RabbitMQ: RabbitMQConfig{
-			URL: requireEnv("RABBITMQ_URL"),
+			URL: rabbitURL,
 		},
 		JWT: JWTConfig{
 			Secret:     secret,
@@ -60,10 +85,13 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-// requireEnv returns the environment variable value or returns an empty string.
-// Callers that truly require the value should validate after Load returns.
-func requireEnv(key string) string {
-	return os.Getenv(key)
+// requireEnv returns the value of the named environment variable, or an error
+// if the variable is unset or empty.
+func requireEnv(key string) (string, error) {
+	if v := os.Getenv(key); v != "" {
+		return v, nil
+	}
+	return "", fmt.Errorf("config: %s must be set", key)
 }
 
 func parseDuration(s string) (time.Duration, error) {
