@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -42,12 +42,11 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: services/api/go.sum
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          working-directory: services/api
-          args: --timeout=5m
+        run: golangci-lint run --path-prefix=services/api --timeout=5m
 
   # ---------------------------------------------------------------------------
   # 2. Build — verify the binary compiles
