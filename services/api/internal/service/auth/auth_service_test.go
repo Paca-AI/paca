@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	domainauth "github.com/paca/api/internal/domain/auth"
-	"github.com/paca/api/internal/domain/user"
-	"github.com/paca/api/internal/platform/token"
+	userdom "github.com/paca/api/internal/domain/user"
+	jwttoken "github.com/paca/api/internal/platform/token"
 	authsvc "github.com/paca/api/internal/service/auth"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -19,21 +19,21 @@ import (
 // ---------------------------------------------------------------------------
 
 type stubUserRepo struct {
-	findByEmail func(ctx context.Context, email string) (*user.User, error)
+	findByEmail func(ctx context.Context, email string) (*userdom.User, error)
 }
 
-func (r *stubUserRepo) FindByID(_ context.Context, _ uuid.UUID) (*user.User, error) {
-	return nil, user.ErrNotFound
+func (r *stubUserRepo) FindByID(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+	return nil, userdom.ErrNotFound
 }
-func (r *stubUserRepo) FindByEmail(ctx context.Context, email string) (*user.User, error) {
+func (r *stubUserRepo) FindByEmail(ctx context.Context, email string) (*userdom.User, error) {
 	if r.findByEmail != nil {
 		return r.findByEmail(ctx, email)
 	}
-	return nil, user.ErrNotFound
+	return nil, userdom.ErrNotFound
 }
-func (r *stubUserRepo) Create(_ context.Context, _ *user.User) error { return nil }
-func (r *stubUserRepo) Update(_ context.Context, _ *user.User) error { return nil }
-func (r *stubUserRepo) Delete(_ context.Context, _ uuid.UUID) error  { return nil }
+func (r *stubUserRepo) Create(_ context.Context, _ *userdom.User) error { return nil }
+func (r *stubUserRepo) Update(_ context.Context, _ *userdom.User) error { return nil }
+func (r *stubUserRepo) Delete(_ context.Context, _ uuid.UUID) error     { return nil }
 
 type stubBlacklist struct {
 	revoke    func(ctx context.Context, jti string, ttl time.Duration) error
@@ -67,7 +67,7 @@ func hashedPassword(t *testing.T, plain string) string {
 }
 
 func newAuthSvc(repo *stubUserRepo, bl *stubBlacklist) *authsvc.Service {
-	tm := token.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	return authsvc.New(repo, tm, bl, 7*24*time.Hour)
 }
 
@@ -79,14 +79,14 @@ var _ domainauth.Service = (*authsvc.Service)(nil)
 // ---------------------------------------------------------------------------
 
 func TestLogin_Success(t *testing.T) {
-	u := &user.User{
+	u := &userdom.User{
 		ID:           uuid.New(),
 		Email:        "alice@example.com",
-		Role:         user.RoleUser,
+		Role:         userdom.RoleUser,
 		PasswordHash: hashedPassword(t, "secret123"),
 	}
 	svc := newAuthSvc(&stubUserRepo{
-		findByEmail: func(_ context.Context, _ string) (*user.User, error) { return u, nil },
+		findByEmail: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubBlacklist{})
 
 	pair, err := svc.Login(context.Background(), "alice@example.com", "secret123")
@@ -107,14 +107,14 @@ func TestLogin_UserNotFound(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	u := &user.User{
+	u := &userdom.User{
 		ID:           uuid.New(),
 		Email:        "alice@example.com",
-		Role:         user.RoleUser,
+		Role:         userdom.RoleUser,
 		PasswordHash: hashedPassword(t, "correct12"),
 	}
 	svc := newAuthSvc(&stubUserRepo{
-		findByEmail: func(_ context.Context, _ string) (*user.User, error) { return u, nil },
+		findByEmail: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubBlacklist{})
 
 	_, err := svc.Login(context.Background(), "alice@example.com", "wrongpass")
@@ -126,7 +126,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 func TestLogin_RepoError(t *testing.T) {
 	repoErr := errors.New("db down")
 	svc := newAuthSvc(&stubUserRepo{
-		findByEmail: func(_ context.Context, _ string) (*user.User, error) { return nil, repoErr },
+		findByEmail: func(_ context.Context, _ string) (*userdom.User, error) { return nil, repoErr },
 	}, &stubBlacklist{})
 
 	_, err := svc.Login(context.Background(), "a@b.com", "pass1234")
@@ -140,10 +140,10 @@ func TestLogin_RepoError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRefresh_Success(t *testing.T) {
-	tm := token.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	svc := authsvc.New(&stubUserRepo{}, tm, &stubBlacklist{}, 7*24*time.Hour)
 
-	refresh, err := tm.IssueRefresh("sub123", "a@b.com", user.RoleUser)
+	refresh, err := tm.IssueRefresh("sub123", "a@b.com", userdom.RoleUser)
 	if err != nil {
 		t.Fatalf("IssueRefresh: %v", err)
 	}
@@ -158,11 +158,11 @@ func TestRefresh_Success(t *testing.T) {
 }
 
 func TestRefresh_WrongKind(t *testing.T) {
-	tm := token.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	svc := authsvc.New(&stubUserRepo{}, tm, &stubBlacklist{}, 7*24*time.Hour)
 
 	// Pass an access token where a refresh token is expected.
-	access, _ := tm.IssueAccess("sub", "a@b.com", user.RoleUser)
+	access, _ := tm.IssueAccess("sub", "a@b.com", userdom.RoleUser)
 	_, err := svc.Refresh(context.Background(), access)
 	if err == nil {
 		t.Fatal("expected error for access token used as refresh, got nil")
@@ -170,13 +170,13 @@ func TestRefresh_WrongKind(t *testing.T) {
 }
 
 func TestRefresh_Revoked(t *testing.T) {
-	tm := token.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	bl := &stubBlacklist{
 		isRevoked: func(_ context.Context, _ string) (bool, error) { return true, nil },
 	}
 	svc := authsvc.New(&stubUserRepo{}, tm, bl, 7*24*time.Hour)
 
-	refresh, _ := tm.IssueRefresh("sub", "a@b.com", user.RoleUser)
+	refresh, _ := tm.IssueRefresh("sub", "a@b.com", userdom.RoleUser)
 	_, err := svc.Refresh(context.Background(), refresh)
 	if err == nil {
 		t.Fatal("expected error for revoked token, got nil")
@@ -195,7 +195,7 @@ func TestLogout_CallsRevoke(t *testing.T) {
 			return nil
 		},
 	}
-	tm := token.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	svc := authsvc.New(&stubUserRepo{}, tm, bl, 7*24*time.Hour)
 
 	if err := svc.Logout(context.Background(), "some-jti"); err != nil {

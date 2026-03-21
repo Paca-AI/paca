@@ -8,8 +8,8 @@ import (
 	"time"
 
 	domainauth "github.com/paca/api/internal/domain/auth"
-	"github.com/paca/api/internal/domain/user"
-	"github.com/paca/api/internal/platform/token"
+	userdom "github.com/paca/api/internal/domain/user"
+	jwttoken "github.com/paca/api/internal/platform/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -21,14 +21,14 @@ type Blacklist interface {
 
 // Service is the concrete implementation of domain/auth.Service.
 type Service struct {
-	users      user.Repository
-	tokens     *token.Manager
+	users      userdom.Repository
+	tokens     *jwttoken.Manager
 	blacklist  Blacklist
 	refreshTTL time.Duration
 }
 
 // New returns a configured auth Service.
-func New(users user.Repository, tokens *token.Manager, bl Blacklist, refreshTTL time.Duration) *Service {
+func New(users userdom.Repository, tokens *jwttoken.Manager, bl Blacklist, refreshTTL time.Duration) *Service {
 	return &Service{
 		users:      users,
 		tokens:     tokens,
@@ -41,7 +41,7 @@ func New(users user.Repository, tokens *token.Manager, bl Blacklist, refreshTTL 
 func (s *Service) Login(ctx context.Context, email, password string) (*domainauth.TokenPair, error) {
 	u, err := s.users.FindByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, user.ErrNotFound) {
+		if errors.Is(err, userdom.ErrNotFound) {
 			return nil, fmt.Errorf("auth: invalid credentials")
 		}
 		return nil, err

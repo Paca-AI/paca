@@ -1,5 +1,5 @@
-// Package user holds the user aggregate and its domain contracts.
-package user
+// Package userdom holds the user aggregate and its domain contracts.
+package userdom
 
 import (
 	"time"

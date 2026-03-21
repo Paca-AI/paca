@@ -1,5 +1,5 @@
-// Package token signs and verifies HS256 JWTs using golang-jwt/jwt.
-package token
+// Package jwttoken signs and verifies HS256 JWTs using golang-jwt/jwt.
+package jwttoken
 
 import (
 	"fmt"

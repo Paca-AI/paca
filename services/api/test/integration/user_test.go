@@ -13,9 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/paca/api/internal/domain/user"
+	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
-	"github.com/paca/api/internal/platform/token"
+	jwttoken "github.com/paca/api/internal/platform/token"
 	authsvc "github.com/paca/api/internal/service/auth"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
@@ -24,7 +24,7 @@ import (
 
 func buildUserTestRouter(repo *fakeUserRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	tm := token.New(testSecret, 15*time.Minute, 168*time.Hour)
+	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	bl := newFakeBlacklist()
 	authService := authsvc.New(repo, tm, bl, 168*time.Hour)
 	userService := usersvc.New(repo)
@@ -62,7 +62,7 @@ func TestCreateUser(t *testing.T) {
 
 func TestCreateUserDuplicateEmail(t *testing.T) {
 	repo := newFakeUserRepo()
-	existing := &user.User{ID: uuid.New(), Email: "dup@example.com", Role: user.RoleUser}
+	existing := &userdom.User{ID: uuid.New(), Email: "dup@example.com", Role: userdom.RoleUser}
 	_ = repo.Create(context.Background(), existing)
 
 	r := buildUserTestRouter(repo)

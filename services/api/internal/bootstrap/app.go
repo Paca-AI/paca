@@ -16,7 +16,7 @@ import (
 	"github.com/paca/api/internal/platform/database"
 	"github.com/paca/api/internal/platform/logger"
 	"github.com/paca/api/internal/platform/messaging"
-	"github.com/paca/api/internal/platform/token"
+	jwttoken "github.com/paca/api/internal/platform/token"
 	pgRepo "github.com/paca/api/internal/repository/postgres"
 	redisRepo "github.com/paca/api/internal/repository/redis"
 	authsvc "github.com/paca/api/internal/service/auth"
@@ -56,7 +56,7 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
 
-	tokenManager := token.New(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
+	tokenManager := jwttoken.New(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
 	policy := authz.NewPolicy()
 
 	// --- Repositories -------------------------------------------------------

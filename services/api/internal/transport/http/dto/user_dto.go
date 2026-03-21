@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/paca/api/internal/domain/user"
+	userdom "github.com/paca/api/internal/domain/user"
 )
 
 // CreateUserRequest is the body for POST /users.
@@ -30,7 +30,7 @@ type UserResponse struct {
 }
 
 // UserFromEntity maps a domain user to a transport response.
-func UserFromEntity(u *user.User) UserResponse {
+func UserFromEntity(u *userdom.User) UserResponse {
 	return UserResponse{
 		ID:        u.ID,
 		Email:     u.Email,

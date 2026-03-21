@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/paca/api/internal/domain/user"
+	userdom "github.com/paca/api/internal/domain/user"
 	"gorm.io/gorm"
 )
 
@@ -37,11 +37,12 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*user.User, error) {
+// FindByID returns the user with the given primary key, or userdom.ErrNotFound.
+func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
 	var rec userRecord
 	result := r.db.WithContext(ctx).First(&rec, "id = ?", id.String())
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, user.ErrNotFound
+		return nil, userdom.ErrNotFound
 	}
 	if result.Error != nil {
 		return nil, fmt.Errorf("user repo: find by id: %w", result.Error)
@@ -49,11 +50,12 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*user.User
 	return toEntity(&rec), nil
 }
 
-func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.User, error) {
+// FindByEmail returns the user with the given email, or userdom.ErrNotFound.
+func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*userdom.User, error) {
 	var rec userRecord
 	result := r.db.WithContext(ctx).First(&rec, "email = ?", email)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return nil, user.ErrNotFound
+		return nil, userdom.ErrNotFound
 	}
 	if result.Error != nil {
 		return nil, fmt.Errorf("user repo: find by email: %w", result.Error)
@@ -61,7 +63,8 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.U
 	return toEntity(&rec), nil
 }
 
-func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
+// Create persists a new user record.
+func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 	rec := fromEntity(u)
 	if err := r.db.WithContext(ctx).Create(rec).Error; err != nil {
 		return fmt.Errorf("user repo: create: %w", err)
@@ -69,7 +72,8 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	return nil
 }
 
-func (r *UserRepository) Update(ctx context.Context, u *user.User) error {
+// Update saves changes to an existing user record.
+func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	rec := fromEntity(u)
 	if err := r.db.WithContext(ctx).Save(rec).Error; err != nil {
 		return fmt.Errorf("user repo: update: %w", err)
@@ -77,6 +81,7 @@ func (r *UserRepository) Update(ctx context.Context, u *user.User) error {
 	return nil
 }
 
+// Delete soft-deletes the user by setting deleted_at.
 func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	now := time.Now()
 	result := r.db.WithContext(ctx).
@@ -91,9 +96,9 @@ func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 // -- mapping helpers ---------------------------------------------------------
 
-func toEntity(r *userRecord) *user.User {
+func toEntity(r *userRecord) *userdom.User {
 	id, _ := uuid.Parse(r.ID)
-	return &user.User{
+	return &userdom.User{
 		ID:           id,
 		Email:        r.Email,
 		PasswordHash: r.PasswordHash,
@@ -105,7 +110,7 @@ func toEntity(r *userRecord) *user.User {
 	}
 }
 
-func fromEntity(u *user.User) *userRecord {
+func fromEntity(u *userdom.User) *userRecord {
 	return &userRecord{
 		ID:           u.ID.String(),
 		Email:        u.Email,

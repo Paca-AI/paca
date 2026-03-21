@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/paca/api/internal/domain/user"
+	userdom "github.com/paca/api/internal/domain/user"
 )
 
 // envelope is the standard JSON wrapper for every response.
@@ -50,11 +50,11 @@ func Error(c *gin.Context, err error) {
 // statusFor derives an HTTP status code from a known domain error.
 func statusFor(err error) int {
 	switch {
-	case errors.Is(err, user.ErrNotFound):
+	case errors.Is(err, userdom.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, user.ErrEmailTaken):
+	case errors.Is(err, userdom.ErrEmailTaken):
 		return http.StatusConflict
-	case errors.Is(err, user.ErrForbidden):
+	case errors.Is(err, userdom.ErrForbidden):
 		return http.StatusForbidden
 	default:
 		return http.StatusInternalServerError

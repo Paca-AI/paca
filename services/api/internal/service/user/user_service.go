@@ -1,5 +1,5 @@
-// Package user implements the user use-case service.
-package user
+// Package usersvc implements the user use-case service.
+package usersvc
 
 import (
 	"context"
@@ -8,32 +8,32 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/paca/api/internal/domain/user"
+	userdom "github.com/paca/api/internal/domain/user"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Service is the concrete implementation of domain/user.Service.
 type Service struct {
-	repo user.Repository
+	repo userdom.Repository
 }
 
 // New returns a configured user Service.
-func New(repo user.Repository) *Service {
+func New(repo userdom.Repository) *Service {
 	return &Service{repo: repo}
 }
 
 // GetByID returns a user by primary key.
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*user.User, error) {
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
 // Create registers a new user with a hashed password.
-func (s *Service) Create(ctx context.Context, in user.CreateInput) (*user.User, error) {
+func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.User, error) {
 	_, err := s.repo.FindByEmail(ctx, in.Email)
 	if err == nil {
-		return nil, user.ErrEmailTaken
+		return nil, userdom.ErrEmailTaken
 	}
-	if !errors.Is(err, user.ErrNotFound) {
+	if !errors.Is(err, userdom.ErrNotFound) {
 		return nil, err
 	}
 
@@ -43,12 +43,12 @@ func (s *Service) Create(ctx context.Context, in user.CreateInput) (*user.User, 
 	}
 
 	now := time.Now()
-	u := &user.User{
+	u := &userdom.User{
 		ID:           uuid.New(),
 		Email:        in.Email,
 		PasswordHash: string(hash),
 		Name:         in.Name,
-		Role:         user.RoleUser,
+		Role:         userdom.RoleUser,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -60,7 +60,7 @@ func (s *Service) Create(ctx context.Context, in user.CreateInput) (*user.User, 
 }
 
 // Update applies mutable profile changes to an existing user.
-func (s *Service) Update(ctx context.Context, id uuid.UUID, in user.UpdateInput) (*user.User, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, in userdom.UpdateInput) (*userdom.User, error) {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err

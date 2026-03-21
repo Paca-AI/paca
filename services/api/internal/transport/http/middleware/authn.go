@@ -8,14 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	domainauth "github.com/paca/api/internal/domain/auth"
-	"github.com/paca/api/internal/platform/token"
+	jwttoken "github.com/paca/api/internal/platform/token"
 )
 
 const claimsKey = "claims"
 
 // Authn validates the Bearer JWT in the Authorization header and stores the
 // parsed claims in the context for downstream handlers.
-func Authn(tm *token.Manager) gin.HandlerFunc {
+func Authn(tm *jwttoken.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" {

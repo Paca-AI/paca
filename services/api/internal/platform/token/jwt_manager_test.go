@@ -1,15 +1,15 @@
-package token_test
+package jwttoken_test
 
 import (
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/paca/api/internal/platform/token"
+	jwttoken "github.com/paca/api/internal/platform/token"
 )
 
-func newTestManager() *token.Manager {
-	return token.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+func newTestManager() *jwttoken.Manager {
+	return jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 }
 
 func TestIssueAccess_ReturnsToken(t *testing.T) {
@@ -66,7 +66,7 @@ func TestVerify_RefreshToken_ValidClaims(t *testing.T) {
 
 func TestVerify_WrongSecret_ReturnsError(t *testing.T) {
 	m1 := newTestManager()
-	m2 := token.New("other-secret", 15*time.Minute, 7*24*time.Hour)
+	m2 := jwttoken.New("other-secret", 15*time.Minute, 7*24*time.Hour)
 	tok, _ := m1.IssueAccess("sub", "a@b.com", "USER")
 	if _, err := m2.Verify(tok); err == nil {
 		t.Fatal("expected error for wrong secret, got nil")
@@ -74,7 +74,7 @@ func TestVerify_WrongSecret_ReturnsError(t *testing.T) {
 }
 
 func TestVerify_ExpiredToken_ReturnsError(t *testing.T) {
-	m := token.New("test-secret", -1*time.Second, 7*24*time.Hour)
+	m := jwttoken.New("test-secret", -1*time.Second, 7*24*time.Hour)
 	tok, _ := m.IssueAccess("sub", "a@b.com", "USER")
 	if _, err := m.Verify(tok); err == nil {
 		t.Fatal("expected error for expired token, got nil")

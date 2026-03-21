@@ -10,14 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/paca/api/internal/platform/authz"
-	"github.com/paca/api/internal/platform/token"
+	jwttoken "github.com/paca/api/internal/platform/token"
 	"github.com/paca/api/internal/transport/http/handler"
 	httpmw "github.com/paca/api/internal/transport/http/middleware"
 )
 
 // Deps holds all handler and middleware dependencies.
 type Deps struct {
-	TokenManager *token.Manager
+	TokenManager *jwttoken.Manager
 	AuthzPolicy  *authz.Policy
 	Health       *handler.HealthHandler
 	Auth         *handler.AuthHandler

@@ -15,7 +15,7 @@ test:
 	go test ./... -race -timeout 60s
 
 lint:
-	golangci-lint run ./...
+	golangci-lint run --timeout=5m ./...
 
 tidy:
 	go mod tidy

@@ -43,9 +43,10 @@ func main() {
 	case sig := <-quit:
 		log.Printf("received signal %s — shutting down", sig)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := app.Shutdown(ctx); err != nil {
-			log.Fatalf("shutdown error: %v", err)
+		shutdownErr := app.Shutdown(ctx)
+		cancel()
+		if shutdownErr != nil {
+			log.Fatalf("shutdown error: %v", shutdownErr)
 		}
 	}
 }

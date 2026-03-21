@@ -13,9 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/paca/api/internal/domain/user"
+	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
-	"github.com/paca/api/internal/platform/token"
+	jwttoken "github.com/paca/api/internal/platform/token"
 	authsvc "github.com/paca/api/internal/service/auth"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
@@ -25,40 +25,40 @@ import (
 // -- fakes -------------------------------------------------------------------
 
 type fakeUserRepo struct {
-	byEmail map[string]*user.User
-	byID    map[uuid.UUID]*user.User
+	byEmail map[string]*userdom.User
+	byID    map[uuid.UUID]*userdom.User
 }
 
 func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{
-		byEmail: make(map[string]*user.User),
-		byID:    make(map[uuid.UUID]*user.User),
+		byEmail: make(map[string]*userdom.User),
+		byID:    make(map[uuid.UUID]*userdom.User),
 	}
 }
 
-func (r *fakeUserRepo) FindByID(_ context.Context, id uuid.UUID) (*user.User, error) {
+func (r *fakeUserRepo) FindByID(_ context.Context, id uuid.UUID) (*userdom.User, error) {
 	u, ok := r.byID[id]
 	if !ok {
-		return nil, user.ErrNotFound
+		return nil, userdom.ErrNotFound
 	}
 	return u, nil
 }
 
-func (r *fakeUserRepo) FindByEmail(_ context.Context, email string) (*user.User, error) {
+func (r *fakeUserRepo) FindByEmail(_ context.Context, email string) (*userdom.User, error) {
 	u, ok := r.byEmail[email]
 	if !ok {
-		return nil, user.ErrNotFound
+		return nil, userdom.ErrNotFound
 	}
 	return u, nil
 }
 
-func (r *fakeUserRepo) Create(_ context.Context, u *user.User) error {
+func (r *fakeUserRepo) Create(_ context.Context, u *userdom.User) error {
 	r.byEmail[u.Email] = u
 	r.byID[u.ID] = u
 	return nil
 }
 
-func (r *fakeUserRepo) Update(_ context.Context, u *user.User) error {
+func (r *fakeUserRepo) Update(_ context.Context, u *userdom.User) error {
 	r.byEmail[u.Email] = u
 	r.byID[u.ID] = u
 	return nil
@@ -91,7 +91,7 @@ const testSecret = "test-secret-that-is-at-least-32-chars"
 
 func buildTestRouter(repo *fakeUserRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	tm := token.New(testSecret, 15*time.Minute, 168*time.Hour)
+	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	bl := newFakeBlacklist()
 	authService := authsvc.New(repo, tm, bl, 168*time.Hour)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -112,7 +112,7 @@ func TestLoginSuccess(t *testing.T) {
 	repo := newFakeUserRepo()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
-	u := &user.User{ID: uuid.New(), Email: "test@example.com", PasswordHash: string(hash), Role: user.RoleUser}
+	u := &userdom.User{ID: uuid.New(), Email: "test@example.com", PasswordHash: string(hash), Role: userdom.RoleUser}
 	_ = repo.Create(context.Background(), u)
 
 	r := buildTestRouter(repo)
@@ -132,7 +132,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	repo := newFakeUserRepo()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
-	u := &user.User{ID: uuid.New(), Email: "test@example.com", PasswordHash: string(hash), Role: user.RoleUser}
+	u := &userdom.User{ID: uuid.New(), Email: "test@example.com", PasswordHash: string(hash), Role: userdom.RoleUser}
 	_ = repo.Create(context.Background(), u)
 
 	r := buildTestRouter(repo)
