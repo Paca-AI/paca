@@ -1,0 +1,189 @@
+name: api-pr-ci
+
+on:
+  pull_request:
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api-pr-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Lint — fast feedback, no services needed
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: services/api
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/api/go.sum
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: services/api
+          args: --timeout=5m
+
+  # ---------------------------------------------------------------------------
+  # 2. Build — verify the binary compiles
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: services/api
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/api/go.sum
+
+      - name: Build binary
+        run: make build
+
+  # ---------------------------------------------------------------------------
+  # 3. Unit / integration tests — fast, in-memory fakes, no external services
+  # ---------------------------------------------------------------------------
+  test-unit:
+    name: Unit & integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: services/api
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/api/go.sum
+
+      - name: Run tests (race detector)
+        run: go test -race -timeout 60s -coverprofile=coverage.out ./...
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: services/api/coverage.out
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. Service integration tests — Postgres + Redis + RabbitMQ via Docker
+  # ---------------------------------------------------------------------------
+  test-services:
+    name: Service integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: services/api
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: paca
+          POSTGRES_PASSWORD: paca
+          POSTGRES_DB: paca_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paca"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      rabbitmq:
+        image: rabbitmq:4-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://paca:paca@localhost:5432/paca_test?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+      JWT_SECRET: ci-test-secret-that-is-at-least-32-chars
+      ENV: test
+      PACA_E2E: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/api/go.sum
+
+      - name: Run database migrations
+        run: psql "$DATABASE_URL" -f migrations/000001_init.sql
+        env:
+          PGPASSWORD: paca
+
+      - name: Run full test suite
+        run: go test -race -timeout 120s -tags integration ./...
