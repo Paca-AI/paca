@@ -68,10 +68,10 @@ func do(t *testing.T, engine *gin.Engine, method, path string, body *bytes.Buffe
 	t.Helper()
 	var req *http.Request
 	if body != nil {
-		req = httptest.NewRequest(method, path, body)
+		req = httptest.NewRequestWithContext(t.Context(), method, path, body)
 		req.Header.Set("Content-Type", "application/json")
 	} else {
-		req = httptest.NewRequest(method, path, nil)
+		req = httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	}
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
