@@ -1,9 +1,25 @@
-# Paca: The Open-Source Collaborative Task Management Engine
+<p align="center">
+	<img src="docs/assets/paca-logo.svg" alt="Paca logo" width="414" />
+</p>
 
-> The open-source collaborative task management engine.
-> Seamlessly orchestrate workflows between Human Intelligence and AI Agents.
-> Built on BDD and Scrumban, Paca empowers teams to assign tasks to the best mind for the job, whether human or AI.
-> Forever free, open-source, and teammate-first.
+<h1 align="center">Paca</h1>
+
+<p align="center"><strong>The open-source collaborative task management engine</strong></p>
+
+<p align="center">
+	Seamlessly orchestrate workflows between human intelligence and AI agents.<br />
+	Built on BDD and Scrumban so teams can assign work to the best mind for the job, whether human or AI.
+</p>
+
+<p align="center">
+	<a href="docs/guides/getting-started.md">Getting Started</a>
+	·
+	<a href="docs/architecture/overview.md">Architecture</a>
+	·
+	<a href="CONTRIBUTING.md">Contributing</a>
+	·
+	<a href="ROADMAP.md">Roadmap</a>
+</p>
 
 Paca is a next-generation task management platform where human creativity and AI efficiency merge into a unified workflow. Built on the core cycle of **Plan - Act - Check - Adapt**, Paca dissolves traditional role boundaries, allowing humans and AI Agents to work as true teammates on a shared Scrumban board.
 
@@ -43,6 +59,14 @@ The operational flow of Paca revolves around four stages of continuous improveme
 ## Open Source and Forever Free
 
 Paca is committed to remaining open-source and forever free. We believe the infrastructure for human-AI collaboration should be accessible to every team, everywhere, without financial barriers.
+
+## The "Paca" Backstory (A Little Secret)
+
+Why the name Paca? Well, beyond the alpaca mascot, it is a playful nod to the Japanese word "Baka" (ばか), meaning "silly" or "foolish."
+
+In our team, we often jokingly call our AI assistants "silly" when they hallucinate. But truth be told, the creator feels like a bit of a baka too, building a massive, high-end platform with no profit motive, driven purely by the love for open-source and human-AI synergy.
+
+We believe there is a certain wisdom in being "foolish" enough to chase a vision where collaboration matters more than the bottom line. 🦙✨
 
 ## Documentation Map
 

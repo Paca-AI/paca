@@ -5,8 +5,9 @@ This section will describe the external contracts of Paca.
 ## Planned Coverage
 
 - HTTP APIs exposed by `services/api`.
+- Socket.IO connection and event contracts exposed by `services/realtime`.
 - AI-related endpoints exposed by `services/ai-agent`.
-- Event boundaries relevant to asynchronous workflows.
+- Event boundaries relevant to asynchronous workflows, including RabbitMQ messages from `services/api` to `services/realtime`.
 - Cross-service contract conventions once they are stable.
 
 The first version should stay high level until concrete endpoints and events exist.

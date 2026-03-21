@@ -1,0 +1,50 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck       # unchecked errors
+    - govet          # go vet checks
+    - ineffassign    # assignments that are never used
+    - staticcheck    # staticcheck suite (includes gosimple + unused)
+    - misspell       # common spelling mistakes
+    - revive         # drop-in replacement for golint
+    - bodyclose      # http response body close
+    - noctx          # http requests without context
+    - exhaustive     # missing switch cases on enums
+    - gocritic       # code style and performance suggestions
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+formatters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/paca/api
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+      - name: var-naming
+        severity: warning
+  exhaustive:
+    default-signifies-exhaustive: true
+
+issues:
+  exclude-rules:
+    # Test files: relax some rules
+    - path: "_test\\.go$"
+      linters:
+        - errcheck
+        - gocritic
+    # Migration runner reads entire files — SA1019 false positive
+    - path: "internal/platform/database/migrations\\.go"
+      linters:
+        - gosec
+  max-issues-per-linter: 50
+  max-same-issues: 10
