@@ -1,0 +1,55 @@
+#:schema https://json.schemastore.org/air.json
+
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  args_bin = []
+  bin = "./tmp/main"
+  # -p=1 limits parallel package compilation to avoid OOM kills in constrained VMs.
+  cmd = "go build -p=1 -o ./tmp/main ./cmd/api"
+  delay = 1000
+  exclude_dir = ["tmp", "vendor", "test"]
+  exclude_file = []
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = ""
+  include_dir = []
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  include_file = []
+  kill_delay = "0s"
+  log = "build-errors.log"
+  # Docker Desktop on macOS does not forward inotify events across the VM
+  # boundary; polling is required for bind-mounted source directories.
+  poll = true
+  poll_interval = 500
+  post_cmd = []
+  pre_cmd = []
+  rerun = false
+  rerun_delay = 500
+  send_interrupt = true
+  stop_on_error = false
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  main_only = false
+  silent = false
+  time = false
+
+[misc]
+  clean_on_exit = true
+
+[proxy]
+  enabled = false
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

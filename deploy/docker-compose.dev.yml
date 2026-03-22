@@ -1,0 +1,104 @@
+# Development compose for contributors and local end-to-end testing.
+#
+# Full stack:
+#   docker compose -f deploy/docker-compose.dev.yml up -d
+#
+# Infra only:
+#   docker compose -f deploy/docker-compose.dev.yml up -d postgres valkey rabbitmq
+#
+# The application services remain optional so contributors can also run them
+# directly on the host for faster feedback loops.
+
+name: paca-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: paca
+      POSTGRES_PASSWORD: paca
+      POSTGRES_DB: paca
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../services/api/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paca -d paca"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: paca
+      RABBITMQ_DEFAULT_PASS: paca
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: golang:1.26-alpine
+    working_dir: /workspace
+    command: sh -c "go install github.com/air-verse/air@latest && air"
+    environment:
+      # Limit parallel package compilation to avoid OOM kills on memory-constrained
+      # Docker Desktop VMs (mirrors the -p=1 flag used in the production Dockerfile).
+      GOFLAGS: "-p=1"
+      ENV: development
+      PORT: "8080"
+      DATABASE_URL: postgres://paca:paca@postgres:5432/paca?sslmode=disable
+      REDIS_URL: redis://valkey:6379/0
+      RABBITMQ_URL: amqp://paca:paca@rabbitmq:5672/
+      JWT_SECRET: dev-change-in-production
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../services/api:/workspace
+      - go_mod_cache:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  web:
+    image: oven/bun:1-alpine
+    working_dir: /workspace
+    command: sh -c "bun install --frozen-lockfile && bun run dev --host 0.0.0.0 --port 3000"
+    environment:
+      NODE_ENV: development
+      DOCKER: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../apps/web:/workspace
+      - web_node_modules:/workspace/node_modules
+      - bun_cache:/root/.bun/install/cache
+
+volumes:
+  postgres_data:
+  valkey_data:
+  go_mod_cache:
+  web_node_modules:
+  bun_cache:

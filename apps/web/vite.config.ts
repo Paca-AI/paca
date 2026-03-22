@@ -5,6 +5,10 @@ import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
+// macOS/Windows → Docker: native fs events don't cross the VM boundary;
+// enable polling only when explicitly running inside a container.
+const usePolling = process.env.DOCKER === "true";
+
 const config = defineConfig({
 	plugins: [
 		devtools(),
@@ -17,6 +21,12 @@ const config = defineConfig({
 			},
 		}),
 	],
+	server: {
+		watch: {
+			usePolling,
+			...(usePolling && { interval: 300 }),
+		},
+	},
 });
 
 export default config;
