@@ -86,4 +86,4 @@ This file is suitable as:
 - a CI/CD handoff artifact;
 - a reference for container image names and required runtime configuration.
 
-By default, only the web service is published to the host in the production compose. PostgreSQL, Valkey, RabbitMQ, and the API stay on the internal Compose network unless an operator intentionally exposes them.
+By default, the web and API services are published to the host in the production compose. PostgreSQL, Valkey, and RabbitMQ stay on the internal Compose network unless an operator intentionally exposes them.
