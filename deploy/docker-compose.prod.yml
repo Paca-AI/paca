@@ -78,7 +78,7 @@ services:
       rabbitmq:
         condition: service_healthy
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
 
   web:
     image: ${PACA_WEB_IMAGE:-paca-web:latest}
