@@ -21,7 +21,7 @@ The development compose file provisions:
 - PostgreSQL;
 - Valkey;
 - RabbitMQ with the management UI;
-- optional `api` and `web` service containers behind profiles.
+- optional `api` and `web` service containers that you can run alongside the infra services as needed.
 
 This supports two workflows:
 
