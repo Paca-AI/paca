@@ -17,6 +17,13 @@ const config = defineConfig({
 			},
 		}),
 	],
+	server: {
+		watch: {
+			// macOS → Docker: native fs events don't cross the boundary, use polling
+			usePolling: true,
+			interval: 300,
+		},
+	},
 });
 
 export default config;

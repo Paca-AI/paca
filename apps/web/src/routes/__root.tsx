@@ -9,7 +9,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import TanStackQueryProvider from "../integrations/tanstack-query/root-provider";
-import appCss from "../styles.css?url";
+import "../styles.css";
 
 interface MyRouterContext {
 	queryClient: QueryClient;
@@ -29,12 +29,6 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 			},
 			{
 				title: "Paca",
-			},
-		],
-		links: [
-			{
-				rel: "stylesheet",
-				href: appCss,
 			},
 		],
 	}),

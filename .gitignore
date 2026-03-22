@@ -4,6 +4,7 @@ dist
 dist-ssr
 *.local
 .env
+.env.production
 .nitro
 .tanstack
 .wrangler
@@ -11,3 +12,6 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# air (Go hot-reload) build artifacts
+services/api/tmp/
