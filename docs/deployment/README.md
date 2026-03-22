@@ -35,6 +35,6 @@ The production compose file is intentionally self-hostable:
 - it defines the web and API containers;
 - it includes PostgreSQL, Valkey, and RabbitMQ for a complete single-host stack;
 - it keeps configuration explicit through environment variables and named volumes;
-- it publishes only the web service by default.
+- it publishes the web and API services by default.
 
 That makes it a better open-source baseline: users can run the full platform immediately, while operators with managed infrastructure can still swap the bundled services for externally hosted equivalents by changing the connection settings.
