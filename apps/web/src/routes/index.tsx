@@ -1,44 +1,38 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Eye, EyeOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import ThemeToggle from "#/components/ThemeToggle";
-import { Button } from "#/components/ui/button";
-import { Input } from "#/components/ui/input";
-import { Label } from "#/components/ui/label";
-import { Switch } from "#/components/ui/switch";
-import { useLoginForm } from "#/hooks/use-login-form";
-import { markLoginSubmit, setUsernamePreview } from "#/lib/login-store";
+import ThemeToggle from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { useIsDark } from "@/hooks/use-is-dark";
+import { useLoginForm } from "@/hooks/use-login-form";
+import { markLoginSubmit, setUsernamePreview } from "@/lib/login-store";
 
 export const Route = createFileRoute("/")({ component: App });
+
+function FieldError({
+	isTouched,
+	error,
+}: {
+	isTouched: boolean;
+	error: string | undefined;
+}) {
+	if (!isTouched || !error) return null;
+	return (
+		<p role="alert" className="text-xs text-red-600 dark:text-red-300">
+			{error}
+		</p>
+	);
+}
 
 function App() {
 	const form = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
-	const [logoSrc, setLogoSrc] = useState("/paca-logo.svg");
-
-	useEffect(() => {
-		const root = document.documentElement;
-		const syncLogo = () => {
-			setLogoSrc(
-				root.classList.contains("dark")
-					? "/paca-logo-dark.svg"
-					: "/paca-logo.svg",
-			);
-		};
-
-		syncLogo();
-
-		const observer = new MutationObserver(syncLogo);
-		observer.observe(root, {
-			attributes: true,
-			attributeFilter: ["class"],
-		});
-
-		return () => {
-			observer.disconnect();
-		};
-	}, []);
+	const isDark = useIsDark();
+	const logoSrc = isDark ? "/paca-logo-dark.svg" : "/paca-logo.svg";
 
 	return (
 		<main className="page-wrap px-4 py-10 sm:py-14">
@@ -98,7 +92,7 @@ function App() {
 										name={field.name}
 										type="text"
 										autoComplete="username"
-										placeholder="your-username"
+										placeholder="Username"
 										value={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(event) => {
@@ -106,11 +100,10 @@ function App() {
 											setUsernamePreview(event.target.value);
 										}}
 									/>
-									{field.state.meta.isTouched && field.state.meta.errors[0] ? (
-										<p className="text-xs text-red-600 dark:text-red-300">
-											{field.state.meta.errors[0]}
-										</p>
-									) : null}
+									<FieldError
+										isTouched={field.state.meta.isTouched}
+										error={field.state.meta.errors[0]}
+									/>
 								</div>
 							)}
 						</form.Field>
@@ -161,11 +154,10 @@ function App() {
 											)}
 										</button>
 									</div>
-									{field.state.meta.isTouched && field.state.meta.errors[0] ? (
-										<p className="text-xs text-red-600 dark:text-red-300">
-											{field.state.meta.errors[0]}
-										</p>
-									) : null}
+									<FieldError
+										isTouched={field.state.meta.isTouched}
+										error={field.state.meta.errors[0]}
+									/>
 								</div>
 							)}
 						</form.Field>

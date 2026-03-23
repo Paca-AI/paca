@@ -1,0 +1,96 @@
+# Production-oriented single-host compose example.
+#
+# This file is a self-hosting baseline for open-source users who want one
+# deployable stack with the application and its stateful dependencies. Teams
+# running managed PostgreSQL, Valkey, or RabbitMQ can still use the same images
+# and environment variables as a handoff into their own platform.
+#
+# Example:
+#   cp deploy/.env.production.example deploy/.env.production
+#   docker compose \
+#     --env-file deploy/.env.production \
+#     -f deploy/docker-compose.prod.yml up -d --build
+
+name: paca-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-paca}
+      POSTGRES_USER: ${POSTGRES_USER:-paca}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../services/api/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paca} -d ${POSTGRES_DB:-paca}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: valkey-server --appendonly yes
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-paca}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: ${PACA_API_IMAGE:-paca-api:latest}
+    build:
+      context: ../services/api
+    restart: unless-stopped
+    environment:
+      ENV: ${ENVIRONMENT:-production}
+      PORT: ${API_PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379/0}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-paca}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-168h}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
+
+  web:
+    image: ${PACA_WEB_IMAGE:-paca-web:latest}
+    build:
+      context: ../apps/web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  postgres_data:
+  valkey_data:
+  rabbitmq_data:
