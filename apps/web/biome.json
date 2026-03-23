@@ -14,7 +14,7 @@
 			"**/vite.config.ts",
 			"!**/src/routeTree.gen.ts",
 			"!**/src/styles.css",
-			"!dist"
+			"!**/dist/**"
 		]
 	},
 	"formatter": {
