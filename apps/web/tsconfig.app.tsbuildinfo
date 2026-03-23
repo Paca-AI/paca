@@ -1,0 +1,1 @@
+{"root":["./vite.config.ts","./src/routetree.gen.ts","./src/integrations/react-query/query-client.ts","./src/lib/utils.ts","./src/app.tsx","./src/main.tsx","./src/router.tsx","./src/integrations/react-query/root-provider.tsx","./src/routes/__root.tsx","./src/routes/index.tsx"],"errors":true,"version":"5.9.3"}

@@ -32,13 +32,9 @@ function applyThemeMode(mode: ThemeMode) {
 }
 
 export default function ThemeToggle() {
-	const [mode, setMode] = useState<ThemeMode>("auto");
-
-	useEffect(() => {
-		const initialMode = getInitialMode();
-		setMode(initialMode);
-		applyThemeMode(initialMode);
-	}, []);
+	// Lazily initialize from localStorage — the index.html script already
+	// applied the correct class on page load, so no extra DOM work needed here.
+	const [mode, setMode] = useState<ThemeMode>(getInitialMode);
 
 	useEffect(() => {
 		if (mode !== "auto") {

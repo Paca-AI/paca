@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.5/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.4.8/schema.json",
 	"vcs": {
 		"enabled": false,
 		"clientKind": "git",
@@ -13,7 +13,8 @@
 			"**/index.html",
 			"**/vite.config.ts",
 			"!**/src/routeTree.gen.ts",
-			"!**/src/styles.css"
+			"!**/src/styles.css",
+			"!dist"
 		]
 	},
 	"formatter": {
@@ -30,6 +31,14 @@
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "double"
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		},
+		"linter": {
+			"enabled": true
 		}
 	}
 }

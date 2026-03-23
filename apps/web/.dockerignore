@@ -1,8 +1,6 @@
-node_modules
-dist
-.output
-.tanstack
-.git
-.vscode
-.env
-.env.*
+node_modules/
+dist/
+.cache/
+*.local
+.env*
+!.env.example
