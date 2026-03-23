@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isDocker = process.env.DOCKER === "true";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -21,5 +22,9 @@ export default defineConfig({
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
 		},
+	},
+	server: {
+		watch: isDocker ? { usePolling: true } : undefined,
+		hmr: isDocker ? { clientPort: 3000 } : undefined,
 	},
 });
