@@ -69,8 +69,6 @@ services:
       REDIS_URL: redis://valkey:6379/0
       RABBITMQ_URL: amqp://paca:paca@rabbitmq:5672/
       JWT_SECRET: dev-change-in-production
-    ports:
-      - "8080:8080"
     volumes:
       - ../services/api:/workspace
       - go_mod_cache:/go/pkg/mod
@@ -89,12 +87,21 @@ services:
     environment:
       NODE_ENV: development
       DOCKER: "true"
-    ports:
-      - "3000:3000"
     volumes:
       - ../apps/web:/workspace
       - web_node_modules:/workspace/node_modules
       - bun_cache:/root/.bun/install/cache
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
 
 volumes:
   postgres_data:
