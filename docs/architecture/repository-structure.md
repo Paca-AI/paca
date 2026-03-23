@@ -18,6 +18,7 @@ paca/
 │   ├── realtime/
 │   └── ai-agent/
 └── deploy/
+    └── nginx/
 ```
 
 ## Why This Shape
@@ -27,6 +28,7 @@ paca/
 - `services` holds backend runtimes with different language stacks.
 - `services/realtime` is split out so Socket.IO delivery can scale and evolve independently from the transactional API.
 - `deploy` keeps environment and infrastructure assets in one place.
+- `deploy/nginx` holds gateway configuration that is mounted read-only into the nginx container at runtime, making it easy to review and modify without rebuilding images.
 
 ## What Is Intentionally Missing
 
