@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
 export function useIsDark(): boolean {
-	const [isDark, setIsDark] = useState(
-		() => document.documentElement.classList.contains("dark"),
+	const [isDark, setIsDark] = useState(() =>
+		document.documentElement.classList.contains("dark"),
 	);
 
 	useEffect(() => {

@@ -13,7 +13,13 @@ import { markLoginSubmit, setUsernamePreview } from "@/lib/login-store";
 
 export const Route = createFileRoute("/")({ component: App });
 
-function FieldError({ isTouched, error }: { isTouched: boolean; error: string | undefined }) {
+function FieldError({
+	isTouched,
+	error,
+}: {
+	isTouched: boolean;
+	error: string | undefined;
+}) {
 	if (!isTouched || !error) return null;
 	return (
 		<p role="alert" className="text-xs text-red-600 dark:text-red-300">
@@ -94,7 +100,10 @@ function App() {
 											setUsernamePreview(event.target.value);
 										}}
 									/>
-									<FieldError isTouched={field.state.meta.isTouched} error={field.state.meta.errors[0]!} />
+									<FieldError
+										isTouched={field.state.meta.isTouched}
+										error={field.state.meta.errors[0]}
+									/>
 								</div>
 							)}
 						</form.Field>
@@ -145,7 +154,10 @@ function App() {
 											)}
 										</button>
 									</div>
-									<FieldError isTouched={field.state.meta.isTouched} error={field.state.meta.errors[0]!} />
+									<FieldError
+										isTouched={field.state.meta.isTouched}
+										error={field.state.meta.errors[0]}
+									/>
 								</div>
 							)}
 						</form.Field>
