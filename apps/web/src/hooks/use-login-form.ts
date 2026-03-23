@@ -1,13 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 
-type LoginFormValues = {
-	username: string;
-	password: string;
-	rememberMe: boolean;
-};
-
 export function useLoginForm() {
-	return useForm<LoginFormValues>({
+	return useForm({
 		defaultValues: {
 			username: "",
 			password: "",
