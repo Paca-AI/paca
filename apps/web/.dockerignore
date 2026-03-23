@@ -4,3 +4,7 @@ dist/
 *.local
 .env*
 !.env.example
+
+.git/
+.vscode/
+.idea/
