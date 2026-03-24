@@ -188,5 +188,11 @@ Ref: tasks.id < task_activities.task_id
 Ref: projects.id < documents.project_id
 Ref: projects.id < dashboards.project_id
 
+Ref: users.id < projects.created_by
+Ref: users.id < documents.created_by
+Ref: users.id < time_logs.user_id
+Ref: users.id < task_activities.user_id
+Ref: users.id < tasks.assignee_id
+Ref: users.id < tasks.reporter_id
 Ref: sprints.id < sprint_views.sprint_id
 ```
