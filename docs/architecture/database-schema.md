@@ -50,6 +50,10 @@ Table project_members {
   project_id integer
   user_id integer
   project_role_id integer
+
+  indexes {
+    (project_id, user_id) [unique]
+  }
 }
 
 // --- TASK CONFIGURATION ---
