@@ -16,8 +16,8 @@ Table users {
 
 Table global_roles {
   id integer [primary key]
-  name varchar 
-  permissions jsonb 
+  name varchar
+  permissions jsonb
 }
 
 Table user_global_roles {
@@ -33,7 +33,7 @@ Table projects {
   id integer [primary key]
   name varchar
   description text
-  settings jsonb 
+  settings jsonb
   created_by integer
   created_at timestamp
 }
@@ -41,8 +41,8 @@ Table projects {
 Table project_roles {
   id integer [primary key]
   project_id integer
-  role_name varchar 
-  permissions jsonb 
+  role_name varchar
+  permissions jsonb
 }
 
 Table project_members {
@@ -60,7 +60,7 @@ Table project_members {
 Table task_types {
   id integer [primary key]
   project_id integer
-  name varchar 
+  name varchar
   icon varchar
   color varchar
   description text
@@ -69,7 +69,7 @@ Table task_types {
 Table task_statuses {
   id integer [primary key]
   project_id integer
-  name varchar 
+  name varchar
   color varchar
   position integer
   category varchar // backlog, refinement, ready, todo, inprogress, done
@@ -79,8 +79,8 @@ Table task_statuses {
 Table tasks {
   id integer [primary key]
   project_id integer
-  task_type_id integer 
-  status_id integer    
+  task_type_id integer
+  status_id integer
   sprint_id integer
   parent_task_id integer [null]
   title varchar
@@ -88,17 +88,17 @@ Table tasks {
   priority varchar
   assignee_id integer
   reporter_id integer
-  custom_fields jsonb 
+  custom_fields jsonb
   created_at timestamp
 }
 
 Table custom_field_definitions {
   id integer [primary key]
   project_id integer
-  field_key varchar 
-  display_name varchar 
-  field_type varchar 
-  options jsonb [null] 
+  field_key varchar
+  display_name varchar
+  field_type varchar
+  options jsonb [null]
   is_required boolean [default: false]
 }
 
@@ -110,7 +110,7 @@ Table sprints {
   start_date date
   end_date date
   goal text
-  status varchar 
+  status varchar
 }
 
 Table sprint_views {
@@ -118,7 +118,7 @@ Table sprint_views {
   sprint_id integer
   name varchar
   view_type varchar // kanban, list, gantt, burndown
-  config jsonb 
+  config jsonb
 }
 
 // --- FEATURES & UTILITIES ---
@@ -152,14 +152,14 @@ Table dashboards {
   id integer [primary key]
   project_id integer
   name varchar
-  layout jsonb 
+  layout jsonb
 }
 
 Table task_activities {
   id integer [primary key]
   task_id integer
   user_id integer
-  activity_type varchar 
+  activity_type varchar
   content text
   created_at timestamp
 }
@@ -180,7 +180,7 @@ Ref: task_statuses.id < tasks.status_id
 Ref: projects.id < tasks.project_id
 Ref: projects.id < sprints.project_id
 Ref: sprints.id < tasks.sprint_id
-Ref: tasks.id < tasks.parent_task_id 
+Ref: tasks.id < tasks.parent_task_id
 Ref: projects.id < custom_field_definitions.project_id
 Ref: tasks.id < bdd_scenarios.task_id
 Ref: tasks.id < time_logs.task_id
