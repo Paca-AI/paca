@@ -4,7 +4,8 @@ import axios, {
 	type InternalAxiosRequestConfig,
 } from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+const API_BASE_URL =
+	import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
 export class ApiClient {
 	readonly instance: AxiosInstance;
@@ -68,7 +69,9 @@ export class ApiClient {
 					await this.instance.post("/auth/refresh-token");
 
 					// Flush queued requests
-					this.refreshSubscribers.forEach((cb) => cb());
+					this.refreshSubscribers.forEach((cb) => {
+						cb();
+					});
 					this.refreshSubscribers = [];
 
 					return this.instance.request(originalRequest);
