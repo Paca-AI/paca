@@ -23,6 +23,9 @@ Table global_roles {
 Table user_global_roles {
   user_id integer
   role_id integer
+  indexes {
+    (user_id, role_id) [unique]
+  }
 }
 
 // --- PROJECT & TEAM MANAGEMENT ---
