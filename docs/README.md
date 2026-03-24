@@ -11,6 +11,7 @@ This directory is the main documentation home for Paca.
 - [guides/getting-started.md](guides/getting-started.md): what a new contributor should read first.
 - [guides/local-development.md](guides/local-development.md): local development intent and future setup direction.
 - [api/README.md](api/README.md): API and event contract documentation index.
+- [api/http-design.md](api/http-design.md): HTTP API paths, endpoint responsibilities, and future resource design.
 - [deployment/README.md](deployment/README.md): deployment and environment documentation index.
 - [product/overview.md](product/overview.md): product concepts and workflow direction.
 
