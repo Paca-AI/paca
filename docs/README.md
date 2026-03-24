@@ -7,6 +7,7 @@ This directory is the main documentation home for Paca.
 - [architecture/overview.md](architecture/overview.md): high-level system view.
 - [architecture/repository-structure.md](architecture/repository-structure.md): planned repository layout.
 - [architecture/service-boundaries.md](architecture/service-boundaries.md): responsibilities for each service.
+- [architecture/database-schema.md](architecture/database-schema.md): database schema (DBML) and interactive diagram.
 - [guides/getting-started.md](guides/getting-started.md): what a new contributor should read first.
 - [guides/local-development.md](guides/local-development.md): local development intent and future setup direction.
 - [api/README.md](api/README.md): API and event contract documentation index.
