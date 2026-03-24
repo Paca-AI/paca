@@ -11,7 +11,7 @@ Paca is planned as a single open-source monorepo with a small set of clearly sep
 
 ## Platform Dependencies
 
-- PostgreSQL stores core transactional product data.
+- PostgreSQL stores core transactional product data. See [database-schema.md](database-schema.md) for the full schema.
 - Redis supports cache and short-lived coordination state.
 - RabbitMQ carries asynchronous workflows and service messages between backend runtimes.
 
