@@ -67,9 +67,9 @@ Target error envelope:
 
 Current-state note:
 
-- Success responses already use the envelope above.
-- Some validation, authentication, and authorization failures still return `{ "error": "..." }` without `success` or `request_id`.
-- New endpoints should use the standard envelope consistently, and existing endpoints should be normalized over time.
+- `/v1` success responses already use the envelope above.
+- The `/healthz` endpoint intentionally returns a minimal `{ "status": "ok" }` body without this envelope.
+- New `/v1` endpoints should use the standard envelope consistently, and existing endpoints should be normalized over time.
 
 ### Timestamps
 
