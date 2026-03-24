@@ -135,7 +135,7 @@ Table bdd_scenarios {
 Table time_logs {
   id integer [primary key]
   task_id integer
-  user_id integer
+  member_id integer
   duration_minutes integer
   logged_date date
 }
@@ -158,7 +158,7 @@ Table dashboards {
 Table task_activities {
   id integer [primary key]
   task_id integer
-  user_id integer
+  member_id integer
   activity_type varchar
   content text
   created_at timestamp
@@ -189,10 +189,10 @@ Ref: projects.id < documents.project_id
 Ref: projects.id < dashboards.project_id
 
 Ref: users.id < projects.created_by
-Ref: users.id < documents.created_by
-Ref: users.id < time_logs.user_id
-Ref: users.id < task_activities.user_id
-Ref: users.id < tasks.assignee_id
-Ref: users.id < tasks.reporter_id
+Ref: project_members.id < documents.created_by
+Ref: project_members.id < time_logs.member_id
+Ref: project_members.id < task_activities.member_id
+Ref: project_members.id < tasks.assignee_id
+Ref: project_members.id < tasks.reporter_id
 Ref: sprints.id < sprint_views.sprint_id
 ```
