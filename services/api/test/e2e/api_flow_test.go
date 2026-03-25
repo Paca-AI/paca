@@ -543,16 +543,26 @@ func checkDockerAvailable(t *testing.T) {
 
 	// If DOCKER_HOST is already set and reachable, trust it.
 	if dh := os.Getenv("DOCKER_HOST"); dh != "" {
-		socket := strings.TrimPrefix(dh, "unix://")
-		if _, err := os.Stat(socket); err == nil {
-			// Ryuk mounts the socket path inside its own container, which fails
-			// when the path is on an external volume (e.g. Colima on macOS).
-			// We handle cleanup ourselves with t.Cleanup, so disable the reaper.
-			t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-			return
+		// Only treat DOCKER_HOST as a filesystem socket path when it is either:
+		//   - a bare path (no scheme), or
+		//   - a unix:// URL.
+		if !strings.Contains(dh, "://") || strings.HasPrefix(dh, "unix://") {
+			socket := strings.TrimPrefix(dh, "unix://")
+			if _, err := os.Stat(socket); err == nil {
+				// Ryuk mounts the socket path inside its own container, which fails
+				// when the path is on an external volume (e.g. Colima on macOS).
+				// We handle cleanup ourselves with t.Cleanup, so disable the reaper.
+				t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+				return
+			}
+			// Explicitly set but not reachable — don't fall through silently.
+			t.Skipf("DOCKER_HOST=%s set but socket not found; is Docker running?", dh)
 		}
-		// Explicitly set but not reachable — don't fall through silently.
-		t.Skipf("DOCKER_HOST=%s set but socket not found; is Docker running?", dh)
+
+		// For non-unix schemes (e.g. tcp://, ssh://), assume the user has
+		// configured a reachable Docker host and let testcontainers perform
+		// the actual connectivity checks.
+		return
 	}
 
 	// 1. Try to resolve via the active Docker context (handles Colima, Rancher
