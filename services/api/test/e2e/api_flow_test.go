@@ -196,14 +196,14 @@ func TestAPIFlow(t *testing.T) {
 	// -------------------------------------------------------------------------
 
 	t.Run("health_check", func(t *testing.T) {
-		resp := mustDo(t, client, mustRequest(t, ctx, http.MethodGet, base+"/api/healthz", nil))
-		defer resp.Body.Close()
+		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/healthz", nil))
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("unauthenticated_access_rejected", func(t *testing.T) {
-		resp := mustDo(t, client, mustRequest(t, ctx, http.MethodGet, base+"/api/v1/users/me", nil))
-		defer resp.Body.Close()
+		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/v1/users/me", nil))
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
 	})
 
@@ -213,10 +213,10 @@ func TestAPIFlow(t *testing.T) {
 			"password":  "supersecret",
 			"full_name": "Alice Tester",
 		})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/users", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/users", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, client, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusCreated)
 
 		var env envelope
@@ -235,74 +235,74 @@ func TestAPIFlow(t *testing.T) {
 			"password":  "anotherpass",
 			"full_name": "Duplicate",
 		})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/users", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/users", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, client, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusConflict)
 	})
 
 	t.Run("login_bad_password_rejected", func(t *testing.T) {
 		// Use a cookieless client so this doesn't pollute the session jar.
 		body := jsonBody(t, map[string]string{"username": "alice", "password": "wrongpass"})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("login_missing_body", func(t *testing.T) {
 		// No body at all — binding must return 400.
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", nil)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", nil)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusBadRequest)
 	})
 
 	t.Run("login_missing_password", func(t *testing.T) {
 		// Password field absent — binding validation must return 400.
 		body := jsonBody(t, map[string]string{"username": "alice"})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusBadRequest)
 	})
 
 	t.Run("login_short_password", func(t *testing.T) {
 		// Password shorter than the required minimum (min=8) — must return 400.
 		body := jsonBody(t, map[string]string{"username": "alice", "password": "short"})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusBadRequest)
 	})
 
 	t.Run("login_nonexistent_user", func(t *testing.T) {
 		// Username that was never registered — service must return 401.
 		body := jsonBody(t, map[string]string{"username": "nobody", "password": "supersecret"})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("login", func(t *testing.T) {
 		body := jsonBody(t, map[string]string{"username": "alice", "password": "supersecret"})
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, client, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("get_me", func(t *testing.T) {
-		resp := mustDo(t, client, mustRequest(t, ctx, http.MethodGet, base+"/api/v1/users/me", nil))
-		defer resp.Body.Close()
+		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/v1/users/me", nil))
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 
 		var env envelope
@@ -318,10 +318,10 @@ func TestAPIFlow(t *testing.T) {
 			t.Skip("userID not set; register subtest must have failed")
 		}
 		body := jsonBody(t, map[string]string{"full_name": "Alice Updated"})
-		req := mustRequest(t, ctx, http.MethodPatch, base+"/api/v1/users/"+userID, body)
+		req := mustRequest(ctx, t, http.MethodPatch, base+"/api/v1/users/"+userID, body)
 		req.Header.Set("Content-Type", "application/json")
 		resp := mustDo(t, client, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 
 		var env envelope
@@ -333,9 +333,9 @@ func TestAPIFlow(t *testing.T) {
 	})
 
 	t.Run("refresh_token", func(t *testing.T) {
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/refresh", nil)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/refresh", nil)
 		resp := mustDo(t, client, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 		var env envelope
 		decodeJSON(t, resp, &env)
@@ -347,16 +347,16 @@ func TestAPIFlow(t *testing.T) {
 
 	t.Run("access_after_refresh", func(t *testing.T) {
 		// The rotated access token must still grant access to protected routes.
-		resp := mustDo(t, client, mustRequest(t, ctx, http.MethodGet, base+"/api/v1/users/me", nil))
-		defer resp.Body.Close()
+		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/v1/users/me", nil))
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 	})
 
 	t.Run("refresh_without_cookie_rejected", func(t *testing.T) {
 		// A client that sends no cookies must not be able to refresh.
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/refresh", nil)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/refresh", nil)
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
 	})
 
@@ -367,42 +367,42 @@ func TestAPIFlow(t *testing.T) {
 
 		// Login and capture the original refresh token before it is consumed.
 		body := jsonBody(t, map[string]string{"username": "alice", "password": "supersecret"})
-		loginReq := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		loginReq := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		loginReq.Header.Set("Content-Type", "application/json")
 		loginResp := mustDo(t, isoClient, loginReq)
 		oldRefreshToken := cookieValue(loginResp, "refresh_token")
-		loginResp.Body.Close()
+		_ = loginResp.Body.Close()
 		assertStatus(t, loginResp, http.StatusOK)
 		if oldRefreshToken == "" {
 			t.Fatal("expected refresh_token cookie in login response")
 		}
 
 		// First refresh: legitimate use — rotates the token stored in isoClient's jar.
-		r1 := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/refresh", nil)
+		r1 := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/refresh", nil)
 		r1resp := mustDo(t, isoClient, r1)
-		r1resp.Body.Close()
+		_ = r1resp.Body.Close()
 		assertStatus(t, r1resp, http.StatusOK)
 
 		// Replay the original (now stale) refresh token — must be rejected.
-		r2 := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/refresh", nil)
+		r2 := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/refresh", nil)
 		r2.AddCookie(&http.Cookie{Name: "refresh_token", Value: oldRefreshToken})
 		r2resp := mustDo(t, &http.Client{}, r2)
-		defer r2resp.Body.Close()
+		defer func() { _ = r2resp.Body.Close() }()
 		assertStatus(t, r2resp, http.StatusUnauthorized)
 	})
 
 	t.Run("logout_without_auth_rejected", func(t *testing.T) {
 		// Logout is protected; a client with no access token must get 401.
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/logout", nil)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/logout", nil)
 		resp := mustDo(t, &http.Client{}, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
 	})
 
 	t.Run("logout", func(t *testing.T) {
-		req := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/logout", nil)
+		req := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/logout", nil)
 		resp := mustDo(t, client, req)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusOK)
 		var env envelope
 		decodeJSON(t, resp, &env)
@@ -413,8 +413,8 @@ func TestAPIFlow(t *testing.T) {
 	})
 
 	t.Run("protected_after_logout", func(t *testing.T) {
-		resp := mustDo(t, client, mustRequest(t, ctx, http.MethodGet, base+"/api/v1/users/me", nil))
-		defer resp.Body.Close()
+		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/v1/users/me", nil))
+		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
 	})
 
@@ -425,27 +425,27 @@ func TestAPIFlow(t *testing.T) {
 		isoClient := &http.Client{Jar: isoJar}
 
 		body := jsonBody(t, map[string]string{"username": "alice", "password": "supersecret"})
-		loginReq := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/login", body)
+		loginReq := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/login", body)
 		loginReq.Header.Set("Content-Type", "application/json")
 		loginResp := mustDo(t, isoClient, loginReq)
 		refreshToken := cookieValue(loginResp, "refresh_token")
-		loginResp.Body.Close()
+		_ = loginResp.Body.Close()
 		assertStatus(t, loginResp, http.StatusOK)
 		if refreshToken == "" {
 			t.Fatal("expected refresh_token cookie after login")
 		}
 
 		// Logout revokes the entire session family.
-		logoutReq := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/logout", nil)
+		logoutReq := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/logout", nil)
 		logoutResp := mustDo(t, isoClient, logoutReq)
-		logoutResp.Body.Close()
+		_ = logoutResp.Body.Close()
 		assertStatus(t, logoutResp, http.StatusOK)
 
 		// The pre-logout refresh token must now be rejected.
-		refreshReq := mustRequest(t, ctx, http.MethodPost, base+"/api/v1/auth/refresh", nil)
+		refreshReq := mustRequest(ctx, t, http.MethodPost, base+"/api/v1/auth/refresh", nil)
 		refreshReq.AddCookie(&http.Cookie{Name: "refresh_token", Value: refreshToken})
 		refreshResp := mustDo(t, &http.Client{}, refreshReq)
-		defer refreshResp.Body.Close()
+		defer func() { _ = refreshResp.Body.Close() }()
 		assertStatus(t, refreshResp, http.StatusUnauthorized)
 	})
 }
@@ -461,7 +461,7 @@ type envelope struct {
 	Error   string `json:"error"`
 }
 
-func mustRequest(t *testing.T, ctx context.Context, method, url string, body *bytes.Buffer) *http.Request {
+func mustRequest(ctx context.Context, t *testing.T, method, url string, body *bytes.Buffer) *http.Request {
 	t.Helper()
 	var req *http.Request
 	var err error
