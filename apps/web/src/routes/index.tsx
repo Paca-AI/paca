@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import {
+	AlertCircle,
 	Eye,
 	EyeOff,
 	GitBranch,
@@ -17,9 +18,17 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useIsDark } from "@/hooks/use-is-dark";
 import { useLoginForm } from "@/hooks/use-login-form";
-import { markLoginSubmit, setUsernamePreview } from "@/lib/login-store";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 
-export const Route = createFileRoute("/")({ component: App });
+export const Route = createFileRoute("/")({
+	beforeLoad: async ({ context: { queryClient } }) => {
+		const user = await queryClient
+			.fetchQuery(currentUserQueryOptions)
+			.catch(() => null);
+		if (user) throw redirect({ to: "/dashboard" });
+	},
+	component: App,
+});
 
 function FieldError({
 	isTouched,
@@ -109,7 +118,7 @@ function BrandPanel() {
 					href="https://github.com/Paca-AI/paca"
 					target="_blank"
 					rel="noopener noreferrer"
-					className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/8 px-3.5 py-2 text-xs font-medium !text-white transition-colors hover:bg-white/14 hover:!text-white/80"
+					className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/8 px-3.5 py-2 text-xs font-medium text-white! transition-colors hover:bg-white/14 hover:text-white/80!"
 				>
 					<Github className="size-3.5" />
 					View on GitHub
@@ -123,7 +132,7 @@ function BrandPanel() {
 }
 
 function App() {
-	const form = useLoginForm();
+	const { form, serverError } = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
 	const isDark = useIsDark();
 	const logoSrc = isDark ? "/paca-logo-dark.svg" : "/paca-logo.svg";
@@ -172,7 +181,6 @@ function App() {
 									onSubmit={(event) => {
 										event.preventDefault();
 										event.stopPropagation();
-										markLoginSubmit();
 										form.handleSubmit();
 									}}
 									className="space-y-4"
@@ -204,7 +212,6 @@ function App() {
 													onBlur={field.handleBlur}
 													onChange={(event) => {
 														field.handleChange(event.target.value);
-														setUsernamePreview(event.target.value);
 													}}
 												/>
 												<FieldError
@@ -270,6 +277,16 @@ function App() {
 											</div>
 										)}
 									</form.Field>
+
+									{serverError && (
+										<div
+											role="alert"
+											className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
+										>
+											<AlertCircle className="mt-px size-4 shrink-0" />
+											<span>{serverError}</span>
+										</div>
+									)}
 
 									<form.Field name="rememberMe">
 										{(field) => (

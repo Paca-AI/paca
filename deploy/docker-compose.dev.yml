@@ -92,6 +92,8 @@ services:
     environment:
       NODE_ENV: development
       DOCKER: "true"
+      # Gateway is the single public entry-point; the browser always calls it.
+      VITE_API_BASE_URL: http://localhost
     volumes:
       - ../apps/web:/workspace
       - web_node_modules:/workspace/node_modules
