@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -25,6 +26,11 @@ func Load() (*Config, error) {
 	refreshTTL, err := parseDuration(env("JWT_REFRESH_TTL", "168h"))
 	if err != nil {
 		return nil, fmt.Errorf("config: JWT_REFRESH_TTL: %w", err)
+	}
+
+	cookieSecure, err := strconv.ParseBool(env("COOKIE_SECURE", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: COOKIE_SECURE: %w", err)
 	}
 
 	// Collect all missing required keys before returning so the caller sees
@@ -69,7 +75,7 @@ func Load() (*Config, error) {
 		Env: env("ENV", "development"),
 		Server: ServerConfig{
 			Port:         env("PORT", "8080"),
-			CookieSecure: env("COOKIE_SECURE", "false") == "true",
+			CookieSecure: cookieSecure,
 		},
 		Database: DatabaseConfig{
 			DSN: dsn,
