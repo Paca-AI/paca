@@ -22,6 +22,13 @@ export const ApiErrorCode = {
 
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
 
+/** Shape of the success envelope returned by the API on success. */
+export interface SuccessEnvelope<T> {
+	success: true;
+	data: T;
+	request_id?: string;
+}
+
 /** Shape of the error envelope returned by the API on failure. */
 export interface ApiErrorEnvelope {
 	success: false;
@@ -29,6 +36,9 @@ export interface ApiErrorEnvelope {
 	error: string;
 	request_id?: string;
 }
+
+/** Discriminated union of all possible API response envelopes. */
+export type ApiEnvelope<T> = SuccessEnvelope<T> | ApiErrorEnvelope;
 
 /**
  * Extracts the `error_code` from an Axios error response.
