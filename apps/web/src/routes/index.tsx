@@ -11,13 +11,14 @@ import {
 import { useState } from "react";
 
 import ThemeToggle from "@/components/ThemeToggle";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useIsDark } from "@/hooks/use-is-dark";
 import { useLoginForm } from "@/hooks/use-login-form";
 import { currentUserQueryOptions } from "@/lib/auth-api";
+import { cn } from "@/lib/utils";
 
 const GitHubIcon = (props: React.SVGProps<SVGSVGElement>) => (
 	<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" {...props}>
@@ -313,16 +314,22 @@ function App() {
 									</form.Field>
 
 									<form.Subscribe
-										selector={(state) => [state.canSubmit, state.isSubmitting]}
+										selector={(state) => ({
+											username: state.values.username,
+											password: state.values.password,
+											isSubmitting: state.isSubmitting,
+										})}
 									>
-										{([canSubmit, isSubmitting]) => (
-											<Button
+										{({ username, password, isSubmitting }) => (
+											<button
 												type="submit"
-												className="w-full"
-												disabled={!canSubmit}
+												className={cn(buttonVariants(), "w-full")}
+												disabled={
+													isSubmitting || !username.trim() || !password
+												}
 											>
 												{isSubmitting ? "Signing in..." : "Sign in"}
-											</Button>
+											</button>
 										)}
 									</form.Subscribe>
 								</form>
