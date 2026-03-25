@@ -50,7 +50,7 @@ func TestCreateUser(t *testing.T) {
 		"full_name": "Test User",
 	})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/users", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -73,7 +73,7 @@ func TestCreateUserDuplicateUsername(t *testing.T) {
 		"full_name": "Duplicate",
 	})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/users", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

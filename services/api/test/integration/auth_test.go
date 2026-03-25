@@ -128,7 +128,7 @@ func TestLoginSuccess(t *testing.T) {
 	r := buildTestRouter(repo)
 
 	body, _ := json.Marshal(map[string]string{"username": "testuser", "password": "password123"})
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -166,7 +166,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	r := buildTestRouter(repo)
 
 	body, _ := json.Marshal(map[string]string{"username": "testuser", "password": "wrong-password"})
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

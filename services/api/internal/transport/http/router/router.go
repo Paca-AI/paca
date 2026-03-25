@@ -35,10 +35,12 @@ func New(deps Deps) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
 
-	// Public routes
-	r.GET("/healthz", deps.Health.Check)
+	api := r.Group("/api")
 
-	v1 := r.Group("/v1")
+	// Public routes
+	api.GET("/healthz", deps.Health.Check)
+
+	v1 := api.Group("/v1")
 	{
 		auth := v1.Group("/auth")
 		{
