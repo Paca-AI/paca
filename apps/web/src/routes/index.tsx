@@ -109,7 +109,7 @@ function BrandPanel() {
 					href="https://github.com/Paca-AI/paca"
 					target="_blank"
 					rel="noopener noreferrer"
-					className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/8 px-3.5 py-2 text-xs font-medium text-white! transition-colors hover:bg-white/14 hover:text-white/80!"
+					className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/8 px-3.5 py-2 text-xs font-medium !text-white transition-colors hover:bg-white/14 hover:!text-white/80"
 				>
 					<Github className="size-3.5" />
 					View on GitHub
