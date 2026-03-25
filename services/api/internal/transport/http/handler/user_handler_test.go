@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -86,12 +87,12 @@ func TestUserCreate_Success(t *testing.T) {
 	}
 }
 
-func TestUserCreate_BadJSON(t *testing.T) {
+func TestUserCreate_MalformedJSON(t *testing.T) {
 	r := newUserRouter(&mockUserSvc{})
 
-	w := do(t, r, http.MethodPost, "/users", jsonBody(t, map[string]string{"full_name": "bad"}))
-	if w.Code == http.StatusCreated {
-		t.Errorf("expected validation error, got 201")
+	w := do(t, r, http.MethodPost, "/users", bytes.NewBufferString("{bad body"))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for malformed JSON, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
