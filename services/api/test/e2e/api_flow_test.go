@@ -549,11 +549,10 @@ func checkDockerAvailable(t *testing.T) {
 		if !strings.Contains(dh, "://") || strings.HasPrefix(dh, "unix://") {
 			socket := strings.TrimPrefix(dh, "unix://")
 			if _, err := os.Stat(socket); err == nil {
-				if isColimaSock(socket) {
-					// Ryuk mounts the socket path inside its own container, which
-					// fails for Colima sockets on an external macOS volume.
-					t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-				}
+				// Ryuk mounts the socket path inside its own container, which fails
+				// when the path is on an external volume (e.g. Colima on macOS).
+				// We handle cleanup ourselves with t.Cleanup, so disable the reaper.
+				t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 				return
 			}
 			// Explicitly set but not reachable — don't fall through silently.
@@ -571,11 +570,7 @@ func checkDockerAvailable(t *testing.T) {
 	if socket := socketFromDockerContext(); socket != "" {
 		if _, err := os.Stat(socket); err == nil {
 			t.Setenv("DOCKER_HOST", "unix://"+socket)
-			if isColimaSock(socket) {
-				// Ryuk mounts the socket path inside its own container, which
-				// fails for Colima sockets on an external macOS volume.
-				t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-			}
+			t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 			return
 		}
 	}
@@ -592,29 +587,15 @@ func checkDockerAvailable(t *testing.T) {
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
 			t.Setenv("DOCKER_HOST", "unix://"+p)
-			if isColimaSock(p) {
-				// Ryuk mounts the socket path inside its own container, which
-				// fails for Colima sockets on an external macOS volume.
-				t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
-			}
+			// Ryuk mounts the socket path inside its own container, which fails
+			// when the path is on an external volume (e.g. Colima on macOS).
+			// We handle cleanup ourselves with t.Cleanup, so disable the reaper.
+			t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 			return
 		}
 	}
 
 	t.Skip("Docker socket not found; install Docker Desktop or Colima and retry with PACA_E2E=1")
-}
-
-// isColimaSock reports whether p looks like a Colima-managed Docker socket.
-// Ryuk cannot mount these paths inside its own container because they live on
-// an external (non-Linux) volume that Colima exposes on macOS.
-func isColimaSock(p string) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		// Fall back to substring check if the home directory is unavailable.
-		return strings.Contains(filepath.ToSlash(p), "/.colima/")
-	}
-	colimaDir := filepath.Join(home, ".colima") + string(filepath.Separator)
-	return strings.HasPrefix(p, colimaDir)
 }
 
 // socketFromDockerContext reads ~/.docker/config.json to find the active
