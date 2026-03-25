@@ -99,7 +99,7 @@ func TestAPIFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get postgres host: %v", err)
 	}
-	pgPort, err := pgC.MappedPort(ctx, "5432")
+	pgPort, err := pgC.MappedPort(ctx, "5432/tcp")
 	if err != nil {
 		t.Fatalf("get postgres port: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestAPIFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get redis host: %v", err)
 	}
-	redisPort, err := redisC.MappedPort(ctx, "6379")
+	redisPort, err := redisC.MappedPort(ctx, "6379/tcp")
 	if err != nil {
 		t.Fatalf("get redis port: %v", err)
 	}
