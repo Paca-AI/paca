@@ -92,7 +92,10 @@ func TestUserCreate_MalformedJSON(t *testing.T) {
 
 	w := do(t, r, http.MethodPost, "/users", bytes.NewBufferString("{bad body"))
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for malformed JSON, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 400 for malformed JSON, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "BAD_REQUEST" {
+		t.Errorf("expected error_code BAD_REQUEST, got %q", code)
 	}
 }
 
@@ -107,7 +110,10 @@ func TestUserCreate_UsernameTaken(t *testing.T) {
 	w := do(t, r, http.MethodPost, "/users",
 		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob"}))
 	if w.Code != http.StatusConflict {
-		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 409, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "USER_USERNAME_TAKEN" {
+		t.Errorf("expected error_code USER_USERNAME_TAKEN, got %q", code)
 	}
 }
 
@@ -139,7 +145,10 @@ func TestGetMe_Unauthenticated(t *testing.T) {
 
 	w := do(t, r, http.MethodGet, "/users/me", nil)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "AUTH_UNAUTHENTICATED" {
+		t.Errorf("expected error_code AUTH_UNAUTHENTICATED, got %q", code)
 	}
 }
 
@@ -156,7 +165,10 @@ func TestGetMe_NotFound(t *testing.T) {
 
 	w := do(t, r, http.MethodGet, "/users/me", nil)
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "USER_NOT_FOUND" {
+		t.Errorf("expected error_code USER_NOT_FOUND, got %q", code)
 	}
 }
 
@@ -186,7 +198,10 @@ func TestUserUpdate_BadID(t *testing.T) {
 	w := do(t, r, http.MethodPatch, "/users/not-a-uuid",
 		jsonBody(t, map[string]string{"full_name": "X"}))
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "BAD_REQUEST" {
+		t.Errorf("expected error_code BAD_REQUEST, got %q", code)
 	}
 }
 
@@ -202,7 +217,10 @@ func TestUserUpdate_NotFound(t *testing.T) {
 	w := do(t, r, http.MethodPatch, fmt.Sprintf("/users/%s", id),
 		jsonBody(t, map[string]string{"full_name": "X"}))
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "USER_NOT_FOUND" {
+		t.Errorf("expected error_code USER_NOT_FOUND, got %q", code)
 	}
 }
 
@@ -235,7 +253,10 @@ func TestUserDelete_BadID(t *testing.T) {
 
 	w := do(t, r, http.MethodDelete, "/users/not-a-uuid", nil)
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "BAD_REQUEST" {
+		t.Errorf("expected error_code BAD_REQUEST, got %q", code)
 	}
 }
 
@@ -250,6 +271,9 @@ func TestUserDelete_NotFound(t *testing.T) {
 
 	w := do(t, r, http.MethodDelete, fmt.Sprintf("/users/%s", id), nil)
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "USER_NOT_FOUND" {
+		t.Errorf("expected error_code USER_NOT_FOUND, got %q", code)
 	}
 }

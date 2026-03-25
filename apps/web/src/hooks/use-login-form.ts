@@ -2,8 +2,13 @@ import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { currentUserQueryOptions, login } from "@/lib/auth-api";
+
+const loginErrorMessages: Partial<Record<ApiErrorCode, string>> = {
+	[ApiErrorCode.InvalidCredentials]: "Invalid username or password.",
+	[ApiErrorCode.Unauthenticated]: "Session expired. Please log in again.",
+};
 
 export function useLoginForm() {
 	const navigate = useNavigate();
@@ -25,11 +30,10 @@ export function useLoginForm() {
 				});
 				await navigate({ to: "/dashboard" });
 			} catch (err: unknown) {
-				const apiErr = err as {
-					response?: { data?: { error?: string } };
-				};
+				const code = getApiErrorCode(err);
 				setServerError(
-					apiErr?.response?.data?.error ?? "Invalid username or password.",
+					(code && loginErrorMessages[code]) ??
+						"Something went wrong. Please try again.",
 				);
 			}
 		},

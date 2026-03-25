@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
+import type { SuccessEnvelope } from "./api-error";
 
 /** Shape of the authenticated user returned by GET /users/me. */
 export interface User {
@@ -9,13 +10,6 @@ export interface User {
 	full_name: string;
 	role: string;
 	created_at: string;
-}
-
-/** API envelope wrapper used by the backend presenter. */
-interface Envelope<T> {
-	success: boolean;
-	data: T;
-	request_id?: string;
 }
 
 export async function login(username: string, password: string): Promise<void> {
@@ -27,7 +21,8 @@ export async function logout(): Promise<void> {
 }
 
 export async function getMe(): Promise<User> {
-	const { data } = await apiClient.instance.get<Envelope<User>>("/users/me");
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<User>>("/users/me");
 	return data.data;
 }
 

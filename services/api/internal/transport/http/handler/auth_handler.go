@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/paca/api/internal/apierr"
 	domainauth "github.com/paca/api/internal/domain/auth"
 	"github.com/paca/api/internal/transport/http/dto"
 	"github.com/paca/api/internal/transport/http/middleware"
@@ -48,7 +49,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	pair, err := h.svc.Login(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		presenter.Error(c, err)
 		return
 	}
 
@@ -62,13 +63,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie(refreshCookieName)
 	if err != nil || refreshToken == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing refresh token"})
+		presenter.Error(c, apierr.New(apierr.CodeMissingToken, "missing refresh token"))
 		return
 	}
 
 	pair, err := h.svc.Refresh(c.Request.Context(), refreshToken)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		presenter.Error(c, err)
 		return
 	}
 
@@ -81,7 +82,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	claims := middleware.ClaimsFrom(c)
 	if claims == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		presenter.Error(c, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
 		return
 	}
 

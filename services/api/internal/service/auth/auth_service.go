@@ -53,13 +53,13 @@ func (s *Service) Login(ctx context.Context, username, password string) (*domain
 	u, err := s.users.FindByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
-			return nil, fmt.Errorf("auth: invalid credentials")
+			return nil, domainauth.ErrInvalidCredentials
 		}
 		return nil, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
-		return nil, fmt.Errorf("auth: invalid credentials")
+		return nil, domainauth.ErrInvalidCredentials
 	}
 
 	familyID := uuid.NewString()
@@ -83,11 +83,11 @@ func (s *Service) Login(ctx context.Context, username, password string) (*domain
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth.TokenPair, error) {
 	claims, err := s.tokens.Verify(refreshToken)
 	if err != nil {
-		return nil, fmt.Errorf("auth: invalid refresh token: %w", err)
+		return nil, domainauth.ErrTokenInvalid
 	}
 
 	if claims.Kind != "refresh" {
-		return nil, fmt.Errorf("auth: expected refresh token")
+		return nil, domainauth.ErrTokenInvalid
 	}
 
 	// Fast path: reject immediately if the family was already invalidated.
@@ -96,7 +96,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		return nil, err
 	}
 	if revoked {
-		return nil, fmt.Errorf("auth: session has been invalidated")
+		return nil, domainauth.ErrSessionInvalidated
 	}
 
 	// Record use — detect reuse.
@@ -110,13 +110,13 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		if time.Since(*firstUsedAt) <= gracePeriod {
 			// Within the grace period: likely a network retry — reject without
 			// breaking the session so the original response can be retried.
-			return nil, fmt.Errorf("auth: token recently used, please retry with the latest token")
+			return nil, domainauth.ErrTokenInvalid
 		}
 		// Outside the grace period: potential token theft — revoke the family.
 		if err := s.refreshStore.RevokeFamily(ctx, claims.FamilyID, s.refreshTTL); err != nil {
-			return nil, fmt.Errorf("auth: token reuse detected, failed to revoke session family: %w", err)
+			return nil, fmt.Errorf("auth: revoke session family: %w", err)
 		}
-		return nil, fmt.Errorf("auth: token reuse detected, session invalidated")
+		return nil, domainauth.ErrSessionInvalidated
 	}
 
 	// Issue a rotated token pair preserving the same session family.

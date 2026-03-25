@@ -108,8 +108,8 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_UserNotFound(t *testing.T) {
 	svc := newAuthSvc(&stubUserRepo{}, &stubRefreshStore{})
 	_, err := svc.Login(context.Background(), "ghost", "pass1234")
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, domainauth.ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
 
@@ -125,8 +125,8 @@ func TestLogin_WrongPassword(t *testing.T) {
 	}, &stubRefreshStore{})
 
 	_, err := svc.Login(context.Background(), "alice", "wrongpass")
-	if err == nil {
-		t.Fatal("expected error for wrong password, got nil")
+	if !errors.Is(err, domainauth.ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
 
@@ -171,8 +171,8 @@ func TestRefresh_WrongKind(t *testing.T) {
 	// Pass an access token where a refresh token is expected.
 	access, _ := tm.IssueAccess("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), access)
-	if err == nil {
-		t.Fatal("expected error for access token used as refresh, got nil")
+	if !errors.Is(err, domainauth.ErrTokenInvalid) {
+		t.Fatalf("expected ErrTokenInvalid, got %v", err)
 	}
 }
 
@@ -185,8 +185,8 @@ func TestRefresh_FamilyRevoked(t *testing.T) {
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
-	if err == nil {
-		t.Fatal("expected error for revoked family, got nil")
+	if !errors.Is(err, domainauth.ErrSessionInvalidated) {
+		t.Fatalf("expected ErrSessionInvalidated, got %v", err)
 	}
 }
 
@@ -209,8 +209,8 @@ func TestRefresh_ReuseWithinGrace_RejectsWithoutRevokingFamily(t *testing.T) {
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
-	if err == nil {
-		t.Fatal("expected error for reused token within grace period")
+	if !errors.Is(err, domainauth.ErrTokenInvalid) {
+		t.Fatalf("expected ErrTokenInvalid, got %v", err)
 	}
 	if familyRevoked {
 		t.Fatal("family must NOT be revoked within the grace period")
@@ -236,8 +236,8 @@ func TestRefresh_ReuseOutsideGrace_RevokesFamily(t *testing.T) {
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
-	if err == nil {
-		t.Fatal("expected error for reused token outside grace period")
+	if !errors.Is(err, domainauth.ErrSessionInvalidated) {
+		t.Fatalf("expected ErrSessionInvalidated, got %v", err)
 	}
 	if !familyRevoked {
 		t.Fatal("family must be revoked when reuse is detected outside grace period")

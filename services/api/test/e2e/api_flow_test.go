@@ -210,6 +210,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/v1/users/me", nil))
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
+		assertErrorCode(t, resp, "AUTH_MISSING_TOKEN")
 	})
 
 	t.Run("register", func(t *testing.T) {
@@ -245,6 +246,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusConflict)
+		assertErrorCode(t, resp, "USER_USERNAME_TAKEN")
 	})
 
 	t.Run("login_bad_password_rejected", func(t *testing.T) {
@@ -255,6 +257,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
+		assertErrorCode(t, resp, "AUTH_INVALID_CREDENTIALS")
 	})
 
 	t.Run("login_missing_body", func(t *testing.T) {
@@ -264,6 +267,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
 	t.Run("login_missing_password", func(t *testing.T) {
@@ -274,6 +278,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
 	t.Run("login_short_password", func(t *testing.T) {
@@ -284,6 +289,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
 	t.Run("login_nonexistent_user", func(t *testing.T) {
@@ -294,6 +300,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
+		assertErrorCode(t, resp, "AUTH_INVALID_CREDENTIALS")
 	})
 
 	t.Run("login", func(t *testing.T) {
@@ -363,6 +370,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
+		assertErrorCode(t, resp, "AUTH_MISSING_TOKEN")
 	})
 
 	t.Run("refresh_token_reuse_rejected", func(t *testing.T) {
@@ -394,6 +402,7 @@ func TestAPIFlow(t *testing.T) {
 		r2resp := mustDo(t, &http.Client{}, r2)
 		defer func() { _ = r2resp.Body.Close() }()
 		assertStatus(t, r2resp, http.StatusUnauthorized)
+		assertErrorCode(t, r2resp, "AUTH_TOKEN_INVALID")
 	})
 
 	t.Run("logout_without_auth_rejected", func(t *testing.T) {
@@ -402,6 +411,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, &http.Client{}, req)
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
+		assertErrorCode(t, resp, "AUTH_MISSING_TOKEN")
 	})
 
 	t.Run("logout", func(t *testing.T) {
@@ -421,6 +431,7 @@ func TestAPIFlow(t *testing.T) {
 		resp := mustDo(t, client, mustRequest(ctx, t, http.MethodGet, base+"/api/v1/users/me", nil))
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusUnauthorized)
+		assertErrorCode(t, resp, "AUTH_MISSING_TOKEN")
 	})
 
 	t.Run("logout_refresh_after_logout_rejected", func(t *testing.T) {
@@ -452,6 +463,7 @@ func TestAPIFlow(t *testing.T) {
 		refreshResp := mustDo(t, &http.Client{}, refreshReq)
 		defer func() { _ = refreshResp.Body.Close() }()
 		assertStatus(t, refreshResp, http.StatusUnauthorized)
+		assertErrorCode(t, refreshResp, "AUTH_TOKEN_INVALID")
 	})
 }
 
@@ -461,9 +473,10 @@ func TestAPIFlow(t *testing.T) {
 
 // envelope mirrors the presenter.envelope shape for JSON decoding.
 type envelope struct {
-	Success bool   `json:"success"`
-	Data    any    `json:"data"`
-	Error   string `json:"error"`
+	Success   bool   `json:"success"`
+	Data      any    `json:"data"`
+	ErrorCode string `json:"error_code"`
+	Error     string `json:"error"`
 }
 
 func mustRequest(ctx context.Context, t *testing.T, method, url string, body *bytes.Buffer) *http.Request {
@@ -494,6 +507,19 @@ func assertStatus(t *testing.T, resp *http.Response, want int) {
 	t.Helper()
 	if resp.StatusCode != want {
 		t.Fatalf("expected HTTP %d, got %d", want, resp.StatusCode)
+	}
+}
+
+// assertErrorCode decodes the response body into an envelope and verifies the
+// error_code field. It must be called after assertStatus on error responses.
+func assertErrorCode(t *testing.T, resp *http.Response, wantCode string) {
+	t.Helper()
+	var env envelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.ErrorCode != wantCode {
+		t.Errorf("expected error_code %q, got %q (error: %q)", wantCode, env.ErrorCode, env.Error)
 	}
 }
 

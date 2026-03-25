@@ -3,12 +3,13 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/paca/api/internal/apierr"
 	domainauth "github.com/paca/api/internal/domain/auth"
 	jwttoken "github.com/paca/api/internal/platform/token"
+	"github.com/paca/api/internal/transport/http/presenter"
 )
 
 const claimsKey = "claims"
@@ -37,18 +38,18 @@ func Authn(tm *jwttoken.Manager) gin.HandlerFunc {
 		}
 
 		if tokenStr == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authentication"})
+			presenter.Error(c, apierr.New(apierr.CodeMissingToken, "missing authentication"))
 			return
 		}
 
 		claims, err := tm.Verify(tokenStr)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			presenter.Error(c, apierr.New(apierr.CodeTokenInvalid, "invalid or expired token"))
 			return
 		}
 
 		if claims.Kind != "access" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "expected access token"})
+			presenter.Error(c, apierr.New(apierr.CodeTokenInvalid, "expected access token"))
 			return
 		}
 
