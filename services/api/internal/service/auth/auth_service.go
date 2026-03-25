@@ -113,7 +113,9 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 			return nil, fmt.Errorf("auth: token recently used, please retry with the latest token")
 		}
 		// Outside the grace period: potential token theft — revoke the family.
-		_ = s.refreshStore.RevokeFamily(ctx, claims.FamilyID, s.refreshTTL)
+		if err := s.refreshStore.RevokeFamily(ctx, claims.FamilyID, s.refreshTTL); err != nil {
+			return nil, fmt.Errorf("auth: token reuse detected, failed to revoke session family: %w", err)
+		}
 		return nil, fmt.Errorf("auth: token reuse detected, session invalidated")
 	}
 

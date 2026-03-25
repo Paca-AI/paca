@@ -244,6 +244,32 @@ func TestRefresh_ReuseOutsideGrace_RevokesFamily(t *testing.T) {
 	}
 }
 
+func TestRefresh_ReuseOutsideGrace_RevokeFamilyFailure(t *testing.T) {
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+
+	revokeErr := errors.New("redis unavailable")
+	// Simulate token used 10 seconds ago (outside the 5s grace period).
+	usedAt := time.Now().Add(-10 * time.Second)
+	store := &stubRefreshStore{
+		recordFirstUse: func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) {
+			return &usedAt, nil
+		},
+		revokeFamily: func(_ context.Context, _ string, _ time.Duration) error {
+			return revokeErr
+		},
+	}
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour)
+
+	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
+	_, err := svc.Refresh(context.Background(), refresh)
+	if err == nil {
+		t.Fatal("expected error when family revocation fails")
+	}
+	if !errors.Is(err, revokeErr) {
+		t.Fatalf("expected revoke error to be wrapped, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Logout
 // ---------------------------------------------------------------------------
