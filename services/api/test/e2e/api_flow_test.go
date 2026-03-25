@@ -135,6 +135,11 @@ func TestAPIFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get underlying sql.DB: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	// Locate migrations relative to this source file so the path is correct
 	// regardless of the working directory the test binary was invoked from.
