@@ -8,5 +8,6 @@ type LoginRequest struct {
 }
 
 // RefreshRequest is accepted but unused; the refresh token is read from the
-// HttpOnly cookie instead.  Kept for backwards-compatible JSON binding.
+// HttpOnly cookie instead. The body is ignored and this type is retained
+// only for backwards-compatible API/schema compatibility.
 type RefreshRequest struct{}
