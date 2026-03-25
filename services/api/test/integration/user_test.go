@@ -81,4 +81,7 @@ func TestCreateUserDuplicateUsername(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
 	}
+	if code := decodeErrorCode(t, w); code != "USER_USERNAME_TAKEN" {
+		t.Errorf("expected error_code USER_USERNAME_TAKEN, got %q", code)
+	}
 }

@@ -124,6 +124,19 @@ func testClaims(sub, username, role string) *domainauth.Claims {
 	}
 }
 
+// errorCode decodes the error envelope from w and returns the error_code
+// field. Call this only after asserting a non-2xx status.
+func errorCode(t *testing.T, w *httptest.ResponseRecorder) string {
+	t.Helper()
+	var env struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	return env.ErrorCode
+}
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
@@ -197,7 +210,7 @@ func TestLogin_MissingFields(t *testing.T) {
 func TestLogin_InvalidCreds(t *testing.T) {
 	svc := &mockAuthSvc{
 		login: func(_ context.Context, _, _ string) (*domainauth.TokenPair, error) {
-			return nil, errors.New("auth: invalid credentials")
+			return nil, domainauth.ErrInvalidCredentials
 		},
 	}
 	r := gin.New()
@@ -206,7 +219,10 @@ func TestLogin_InvalidCreds(t *testing.T) {
 	w := do(t, r, http.MethodPost, "/auth/login",
 		jsonBody(t, map[string]string{"username": "alice", "password": "wrongpass"}))
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "AUTH_INVALID_CREDENTIALS" {
+		t.Errorf("expected error_code AUTH_INVALID_CREDENTIALS, got %q", code)
 	}
 }
 
@@ -233,17 +249,20 @@ func TestRefresh_MissingCookie(t *testing.T) {
 	r := gin.New()
 	r.POST("/auth/refresh", handler.NewAuthHandler(&mockAuthSvc{}, testCookieConfig).Refresh)
 
-	// No cookie — expect 401
+	// No cookie — expect 401 with AUTH_MISSING_TOKEN.
 	w := do(t, r, http.MethodPost, "/auth/refresh", nil)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 without cookie, got %d", w.Code)
+		t.Fatalf("expected 401 without cookie, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "AUTH_MISSING_TOKEN" {
+		t.Errorf("expected error_code AUTH_MISSING_TOKEN, got %q", code)
 	}
 }
 
 func TestRefresh_InvalidToken(t *testing.T) {
 	svc := &mockAuthSvc{
 		refresh: func(_ context.Context, _ string) (*domainauth.TokenPair, error) {
-			return nil, errors.New("auth: invalid")
+			return nil, domainauth.ErrTokenInvalid
 		},
 	}
 	r := gin.New()
@@ -251,7 +270,10 @@ func TestRefresh_InvalidToken(t *testing.T) {
 
 	w := doWithCookie(t, r, http.MethodPost, "/auth/refresh", nil, "refresh_token", "bad")
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "AUTH_TOKEN_INVALID" {
+		t.Errorf("expected error_code AUTH_TOKEN_INVALID, got %q", code)
 	}
 }
 
@@ -293,6 +315,9 @@ func TestLogout_NoClaims(t *testing.T) {
 
 	w := do(t, r, http.MethodPost, "/auth/logout", nil)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "AUTH_UNAUTHENTICATED" {
+		t.Errorf("expected error_code AUTH_UNAUTHENTICATED, got %q", code)
 	}
 }

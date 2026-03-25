@@ -15,6 +15,7 @@ export interface User {
 interface Envelope<T> {
 	success: boolean;
 	data: T;
+	error_code?: string;
 	request_id?: string;
 }
 

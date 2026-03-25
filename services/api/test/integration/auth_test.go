@@ -94,6 +94,18 @@ var testCookieCfg = handler.CookieConfig{
 	RefreshTTL: 168 * time.Hour,
 }
 
+// decodeErrorCode decodes the response body and returns the error_code field.
+func decodeErrorCode(t *testing.T, w *httptest.ResponseRecorder) string {
+	t.Helper()
+	var env struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
+		t.Fatalf("decode error code: %v", err)
+	}
+	return env.ErrorCode
+}
+
 func buildTestRouter(repo *fakeUserRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
@@ -173,5 +185,8 @@ func TestLoginWrongPassword(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+	if code := decodeErrorCode(t, w); code != "AUTH_INVALID_CREDENTIALS" {
+		t.Errorf("expected error_code AUTH_INVALID_CREDENTIALS, got %q", code)
 	}
 }
