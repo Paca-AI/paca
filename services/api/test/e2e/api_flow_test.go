@@ -70,7 +70,7 @@ func TestAPIFlow(t *testing.T) {
 				"POSTGRES_DB":       "testdb",
 			},
 			ExposedPorts: []string{"5432/tcp"},
-			WaitingFor:   wait.ForListeningPort("5432/tcp").WithStartupTimeout(60 * time.Second),
+			WaitingFor:   wait.ForLog("database system is ready to accept connections").WithStartupTimeout(60 * time.Second),
 		},
 		Started: true,
 	})
