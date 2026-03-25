@@ -324,9 +324,7 @@ function App() {
 											<button
 												type="submit"
 												className={cn(buttonVariants(), "w-full")}
-												disabled={
-													isSubmitting || !username.trim() || !password
-												}
+												disabled={isSubmitting || !username.trim() || !password}
 											>
 												{isSubmitting ? "Signing in..." : "Sign in"}
 											</button>
