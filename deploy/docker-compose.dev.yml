@@ -69,6 +69,11 @@ services:
       REDIS_URL: redis://valkey:6379/0
       RABBITMQ_URL: amqp://paca:paca@rabbitmq:5672/
       JWT_SECRET: dev-change-in-production
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 168h
+      COOKIE_SECURE: "false"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: adminpassword
     volumes:
       - ../services/api:/workspace
       - go_mod_cache:/go/pkg/mod

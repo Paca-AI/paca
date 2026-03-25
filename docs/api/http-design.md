@@ -107,12 +107,12 @@ These routes already exist in the Go API service.
 | Method | Path | Auth | Function |
 |---|---|---|---|
 | `GET` | `/healthz` | No | Liveness/health probe for infrastructure, containers, and local development. |
-| `POST` | `/v1/auth/login` | No | Validate user credentials and issue an access token plus refresh token. |
-| `POST` | `/v1/auth/refresh` | No | Exchange a valid refresh token for a new access token. |
-| `POST` | `/v1/auth/logout` | Access token | Revoke the current authenticated token/session. |
+| `POST` | `/v1/auth/login` | No | Validate user credentials and set access/refresh tokens as HttpOnly cookies. |
+| `POST` | `/v1/auth/refresh` | No | Exchange refresh token cookie for rotated access/refresh token cookies. |
+| `POST` | `/v1/auth/logout` | Access token | Revoke the current authenticated token/session and clear cookies. |
 | `POST` | `/v1/users` | No | Register a new user account. |
 | `GET` | `/v1/users/me` | Access token | Return the authenticated caller's own profile. |
-| `PATCH` | `/v1/users/:id` | Access token | Update mutable profile fields for the specified user. Current implementation supports `name`. |
+| `PATCH` | `/v1/users/:id` | Access token | Update mutable profile fields for the specified user. Current implementation supports `full_name`. |
 | `DELETE` | `/v1/users/:id` | Access token + `ADMIN` role | Delete a user account. |
 
 ## Current Request and Response Contracts
@@ -121,14 +121,14 @@ These routes already exist in the Go API service.
 
 Function:
 
-- authenticate a user with email and password;
-- return a fresh access token and refresh token pair.
+- authenticate a user with username and password;
+- set access and refresh tokens as HttpOnly cookies.
 
 Request body:
 
 ```json
 {
-  "email": "user@example.com",
+  "username": "alice",
   "password": "secret123"
 }
 ```
@@ -139,8 +139,7 @@ Success response:
 {
   "success": true,
   "data": {
-    "access_token": "...",
-    "refresh_token": "..."
+    "message": "logged in"
   },
   "request_id": "..."
 }
@@ -150,14 +149,20 @@ Success response:
 
 Function:
 
-- accept a refresh token;
-- issue a new access token without requiring credentials again.
+- read refresh token from HttpOnly cookie;
+- issue a rotated access and refresh token pair as HttpOnly cookies.
 
-Request body:
+Request body: (empty - token read from cookie)
+
+Success response:
 
 ```json
 {
-  "refresh_token": "..."
+  "success": true,
+  "data": {
+    "message": "token refreshed"
+  },
+  "request_id": "..."
 }
 ```
 
@@ -174,6 +179,18 @@ Headers:
 Authorization: Bearer <access-token>
 ```
 
+Success response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "logged out"
+  },
+  "request_id": "..."
+}
+```
+
 ### `POST /v1/users`
 
 Function:
@@ -186,9 +203,9 @@ Request body:
 
 ```json
 {
-  "email": "new@example.com",
+  "username": "alice",
   "password": "secret123",
-  "name": "Alice"
+  "full_name": "Alice"
 }
 ```
 
@@ -197,8 +214,8 @@ Success response data:
 ```json
 {
   "id": "uuid",
-  "email": "new@example.com",
-  "name": "Alice",
+  "username": "alice",
+  "full_name": "Alice",
   "role": "USER",
   "created_at": "2026-03-24T00:00:00Z"
 }
@@ -216,13 +233,13 @@ Function:
 Function:
 
 - update mutable user profile fields;
-- current implementation supports `name` only.
+- current implementation supports `full_name` only.
 
 Request body:
 
 ```json
 {
-  "name": "Updated Name"
+  "full_name": "Updated Name"
 }
 ```
 
@@ -347,12 +364,10 @@ To keep the API coherent and aligned with the current codebase, implement the ne
 
 ## Known Model Gaps
 
-There is currently a mismatch between the documentation and the first implementation slice:
+The auth/user implementation is now aligned with the database schema:
 
-- [../architecture/database-schema.md](../architecture/database-schema.md) models integer IDs, `username`, and `full_name`.
-- The implemented API and first SQL migration use UUID IDs plus `email`, `name`, and `role` fields.
+- Users are identified by `username` (unique, required) and stored with `full_name`.
+- Authentication uses `username` + password; there is no email field.
+- UUIDs are used for all public resource identifiers.
 
-Recommended rule:
-
-- use the implemented auth/user contract as the near-term API baseline;
-- update the database schema document before adding project/task endpoints so the storage model and HTTP contract move together.
+The schema and HTTP contract are consistent. Before adding the next slice (projects/tasks), update [../architecture/database-schema.md](../architecture/database-schema.md) first so storage model and HTTP contract continue to move together.

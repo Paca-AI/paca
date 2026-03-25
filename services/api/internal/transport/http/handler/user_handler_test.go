@@ -74,13 +74,13 @@ func TestUserCreate_Success(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
 		create: func(_ context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
-			return &domainuser.User{ID: id, Email: in.Email, Name: in.Name, Role: domainuser.RoleUser}, nil
+			return &domainuser.User{ID: id, Username: in.Username, FullName: in.FullName, Role: domainuser.RoleUser}, nil
 		},
 	}
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/users",
-		jsonBody(t, map[string]string{"email": "new@example.com", "password": "pass1234", "name": "Alice"}))
+		jsonBody(t, map[string]string{"username": "alice", "password": "pass1234", "full_name": "Alice"}))
 	if w.Code != http.StatusCreated {
 		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
@@ -89,22 +89,22 @@ func TestUserCreate_Success(t *testing.T) {
 func TestUserCreate_BadJSON(t *testing.T) {
 	r := newUserRouter(&mockUserSvc{})
 
-	w := do(t, r, http.MethodPost, "/users", jsonBody(t, map[string]string{"email": "bad"}))
+	w := do(t, r, http.MethodPost, "/users", jsonBody(t, map[string]string{"full_name": "bad"}))
 	if w.Code == http.StatusCreated {
 		t.Errorf("expected validation error, got 201")
 	}
 }
 
-func TestUserCreate_EmailTaken(t *testing.T) {
+func TestUserCreate_UsernameTaken(t *testing.T) {
 	svc := &mockUserSvc{
 		create: func(_ context.Context, _ domainuser.CreateInput) (*domainuser.User, error) {
-			return nil, domainuser.ErrEmailTaken
+			return nil, domainuser.ErrUsernameTaken
 		},
 	}
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/users",
-		jsonBody(t, map[string]string{"email": "dup@example.com", "password": "pass1234", "name": "Bob"}))
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob"}))
 	if w.Code != http.StatusConflict {
 		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
 	}
@@ -118,11 +118,11 @@ func TestGetMe_Success(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
 		getByID: func(_ context.Context, _ uuid.UUID) (*domainuser.User, error) {
-			return &domainuser.User{ID: id, Email: "me@example.com", Role: domainuser.RoleUser}, nil
+			return &domainuser.User{ID: id, Username: "me", Role: domainuser.RoleUser}, nil
 		},
 	}
 	r := gin.New()
-	claims := testClaims(id.String(), "me@example.com", "USER")
+	claims := testClaims(id.String(), "me", "USER")
 	r.GET("/users/me", injectClaims(claims), handler.NewUserHandler(svc).GetMe)
 
 	w := do(t, r, http.MethodGet, "/users/me", nil)
@@ -150,7 +150,7 @@ func TestGetMe_NotFound(t *testing.T) {
 		},
 	}
 	r := gin.New()
-	claims := testClaims(id.String(), "a@b.com", "USER")
+	claims := testClaims(id.String(), "a", "USER")
 	r.GET("/users/me", injectClaims(claims), handler.NewUserHandler(svc).GetMe)
 
 	w := do(t, r, http.MethodGet, "/users/me", nil)
@@ -167,13 +167,13 @@ func TestUserUpdate_Success(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
 		update: func(_ context.Context, _ uuid.UUID, in domainuser.UpdateInput) (*domainuser.User, error) {
-			return &domainuser.User{ID: id, Name: in.Name, Role: domainuser.RoleUser}, nil
+			return &domainuser.User{ID: id, FullName: in.FullName, Role: domainuser.RoleUser}, nil
 		},
 	}
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPatch, fmt.Sprintf("/users/%s", id),
-		jsonBody(t, map[string]string{"name": "New Name"}))
+		jsonBody(t, map[string]string{"full_name": "New Name"}))
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -183,7 +183,7 @@ func TestUserUpdate_BadID(t *testing.T) {
 	r := newUserRouter(&mockUserSvc{})
 
 	w := do(t, r, http.MethodPatch, "/users/not-a-uuid",
-		jsonBody(t, map[string]string{"name": "X"}))
+		jsonBody(t, map[string]string{"full_name": "X"}))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
@@ -199,7 +199,7 @@ func TestUserUpdate_NotFound(t *testing.T) {
 	id := uuid.New()
 
 	w := do(t, r, http.MethodPatch, fmt.Sprintf("/users/%s", id),
-		jsonBody(t, map[string]string{"name": "X"}))
+		jsonBody(t, map[string]string{"full_name": "X"}))
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}

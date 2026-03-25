@@ -52,7 +52,7 @@ func statusFor(err error) int {
 	switch {
 	case errors.Is(err, userdom.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, userdom.ErrEmailTaken):
+	case errors.Is(err, userdom.ErrUsernameTaken):
 		return http.StatusConflict
 	case errors.Is(err, userdom.ErrForbidden):
 		return http.StatusForbidden

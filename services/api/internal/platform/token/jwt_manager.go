@@ -27,16 +27,16 @@ func New(secret string, accessTTL, refreshTTL time.Duration) *Manager {
 }
 
 // IssueAccess creates a signed access token for the given claims subject.
-func (m *Manager) IssueAccess(sub, email, role string) (string, error) {
-	return m.sign(sub, email, role, m.accessTTL, "access")
+func (m *Manager) IssueAccess(sub, username, role, familyID string) (string, error) {
+	return m.sign(sub, username, role, familyID, m.accessTTL, "access")
 }
 
 // IssueRefresh creates a signed refresh token.
-func (m *Manager) IssueRefresh(sub, email, role string) (string, error) {
-	return m.sign(sub, email, role, m.refreshTTL, "refresh")
+func (m *Manager) IssueRefresh(sub, username, role, familyID string) (string, error) {
+	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh")
 }
 
-func (m *Manager) sign(sub, email, role string, ttl time.Duration, kind string) (string, error) {
+func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string) (string, error) {
 	now := time.Now()
 	claims := domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -46,9 +46,10 @@ func (m *Manager) sign(sub, email, role string, ttl time.Duration, kind string) 
 			NotBefore: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		Email: email,
-		Role:  role,
-		Kind:  kind,
+		Username: username,
+		Role:     role,
+		Kind:     kind,
+		FamilyID: familyID,
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

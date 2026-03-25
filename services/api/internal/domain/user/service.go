@@ -8,14 +8,14 @@ import (
 
 // CreateInput carries the data needed to register a new user.
 type CreateInput struct {
-	Email    string
+	Username string
 	Password string
-	Name     string
+	FullName string
 }
 
 // UpdateInput carries the fields that may be updated by the user.
 type UpdateInput struct {
-	Name string
+	FullName string
 }
 
 // Service defines the user use-case contract.

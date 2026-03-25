@@ -25,14 +25,14 @@ import (
 // -- fakes -------------------------------------------------------------------
 
 type fakeUserRepo struct {
-	byEmail map[string]*userdom.User
-	byID    map[uuid.UUID]*userdom.User
+	byUsername map[string]*userdom.User
+	byID       map[uuid.UUID]*userdom.User
 }
 
 func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{
-		byEmail: make(map[string]*userdom.User),
-		byID:    make(map[uuid.UUID]*userdom.User),
+		byUsername: make(map[string]*userdom.User),
+		byID:       make(map[uuid.UUID]*userdom.User),
 	}
 }
 
@@ -44,8 +44,8 @@ func (r *fakeUserRepo) FindByID(_ context.Context, id uuid.UUID) (*userdom.User,
 	return u, nil
 }
 
-func (r *fakeUserRepo) FindByEmail(_ context.Context, email string) (*userdom.User, error) {
-	u, ok := r.byEmail[email]
+func (r *fakeUserRepo) FindByUsername(_ context.Context, username string) (*userdom.User, error) {
+	u, ok := r.byUsername[username]
 	if !ok {
 		return nil, userdom.ErrNotFound
 	}
@@ -53,54 +53,59 @@ func (r *fakeUserRepo) FindByEmail(_ context.Context, email string) (*userdom.Us
 }
 
 func (r *fakeUserRepo) Create(_ context.Context, u *userdom.User) error {
-	r.byEmail[u.Email] = u
+	r.byUsername[u.Username] = u
 	r.byID[u.ID] = u
 	return nil
 }
 
 func (r *fakeUserRepo) Update(_ context.Context, u *userdom.User) error {
-	r.byEmail[u.Email] = u
+	r.byUsername[u.Username] = u
 	r.byID[u.ID] = u
 	return nil
 }
 
 func (r *fakeUserRepo) Delete(_ context.Context, id uuid.UUID) error {
 	if u, ok := r.byID[id]; ok {
-		delete(r.byEmail, u.Email)
+		delete(r.byUsername, u.Username)
 		delete(r.byID, id)
 	}
 	return nil
 }
 
-type fakeBlacklist struct{ revoked map[string]bool }
+type fakeRefreshStore struct{}
 
-func newFakeBlacklist() *fakeBlacklist { return &fakeBlacklist{revoked: map[string]bool{}} }
-
-func (b *fakeBlacklist) Revoke(_ context.Context, jti string, _ time.Duration) error {
-	b.revoked[jti] = true
+func (f *fakeRefreshStore) RecordFirstUse(_ context.Context, _ string, _ time.Duration) (*time.Time, error) {
+	return nil, nil // always first use
+}
+func (f *fakeRefreshStore) RevokeFamily(_ context.Context, _ string, _ time.Duration) error {
 	return nil
 }
-
-func (b *fakeBlacklist) IsRevoked(_ context.Context, jti string) (bool, error) {
-	return b.revoked[jti], nil
+func (f *fakeRefreshStore) IsFamilyRevoked(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
 // -- helpers -----------------------------------------------------------------
 
 const testSecret = "test-secret-that-is-at-least-32-chars"
 
+var testCookieCfg = handler.CookieConfig{
+	Secure:     false,
+	AccessTTL:  15 * time.Minute,
+	RefreshTTL: 168 * time.Hour,
+}
+
 func buildTestRouter(repo *fakeUserRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
-	bl := newFakeBlacklist()
-	authService := authsvc.New(repo, tm, bl, 168*time.Hour)
+	store := &fakeRefreshStore{}
+	authService := authsvc.New(repo, tm, store, 168*time.Hour)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
 		TokenManager: tm,
 		AuthzPolicy:  authz.NewPolicy(),
 		Health:       handler.NewHealthHandler(),
-		Auth:         handler.NewAuthHandler(authService),
+		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(nil),
 		Log:          log,
 	})
@@ -112,12 +117,17 @@ func TestLoginSuccess(t *testing.T) {
 	repo := newFakeUserRepo()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
-	u := &userdom.User{ID: uuid.New(), Email: "test@example.com", PasswordHash: string(hash), Role: userdom.RoleUser}
+	u := &userdom.User{
+		ID:           uuid.New(),
+		Username:     "testuser",
+		PasswordHash: string(hash),
+		Role:         userdom.RoleUser,
+	}
 	_ = repo.Create(context.Background(), u)
 
 	r := buildTestRouter(repo)
 
-	body, _ := json.Marshal(map[string]string{"email": "test@example.com", "password": "password123"})
+	body, _ := json.Marshal(map[string]string{"username": "testuser", "password": "password123"})
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -126,18 +136,36 @@ func TestLoginSuccess(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
+	// Verify tokens are delivered as cookies.
+	var hasAccess, hasRefresh bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "access_token" {
+			hasAccess = true
+		}
+		if c.Name == "refresh_token" {
+			hasRefresh = true
+		}
+	}
+	if !hasAccess || !hasRefresh {
+		t.Fatalf("expected access_token and refresh_token cookies")
+	}
 }
 
 func TestLoginWrongPassword(t *testing.T) {
 	repo := newFakeUserRepo()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
-	u := &userdom.User{ID: uuid.New(), Email: "test@example.com", PasswordHash: string(hash), Role: userdom.RoleUser}
+	u := &userdom.User{
+		ID:           uuid.New(),
+		Username:     "testuser",
+		PasswordHash: string(hash),
+		Role:         userdom.RoleUser,
+	}
 	_ = repo.Create(context.Background(), u)
 
 	r := buildTestRouter(repo)
 
-	body, _ := json.Marshal(map[string]string{"email": "test@example.com", "password": "wrong-password"})
+	body, _ := json.Marshal(map[string]string{"username": "testuser", "password": "wrong-password"})
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

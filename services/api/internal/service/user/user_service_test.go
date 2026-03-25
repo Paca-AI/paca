@@ -15,11 +15,11 @@ import (
 // ---------------------------------------------------------------------------
 
 type stubRepo struct {
-	findByID    func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
-	findByEmail func(ctx context.Context, email string) (*userdom.User, error)
-	create      func(ctx context.Context, u *userdom.User) error
-	update      func(ctx context.Context, u *userdom.User) error
-	delete      func(ctx context.Context, id uuid.UUID) error
+	findByID       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
+	findByUsername func(ctx context.Context, username string) (*userdom.User, error)
+	create         func(ctx context.Context, u *userdom.User) error
+	update         func(ctx context.Context, u *userdom.User) error
+	delete         func(ctx context.Context, id uuid.UUID) error
 }
 
 func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
@@ -28,9 +28,9 @@ func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, e
 	}
 	return nil, userdom.ErrNotFound
 }
-func (r *stubRepo) FindByEmail(ctx context.Context, email string) (*userdom.User, error) {
-	if r.findByEmail != nil {
-		return r.findByEmail(ctx, email)
+func (r *stubRepo) FindByUsername(ctx context.Context, username string) (*userdom.User, error) {
+	if r.findByUsername != nil {
+		return r.findByUsername(ctx, username)
 	}
 	return nil, userdom.ErrNotFound
 }
@@ -62,7 +62,7 @@ var _ userdom.Service = (*usersvc.Service)(nil)
 
 func TestGetByID_Found(t *testing.T) {
 	id := uuid.New()
-	want := &userdom.User{ID: id, Email: "a@example.com", Role: userdom.RoleUser}
+	want := &userdom.User{ID: id, Username: "alice", Role: userdom.RoleUser}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return want, nil },
 	})
@@ -92,15 +92,18 @@ func TestCreate_Success(t *testing.T) {
 	svc := usersvc.New(&stubRepo{})
 
 	got, err := svc.Create(context.Background(), userdom.CreateInput{
-		Email:    "new@example.com",
+		Username: "alice",
 		Password: "password123",
-		Name:     "Alice",
+		FullName: "Alice",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Email != "new@example.com" {
-		t.Errorf("unexpected email: %s", got.Email)
+	if got.Username != "alice" {
+		t.Errorf("unexpected username: %s", got.Username)
+	}
+	if got.FullName != "Alice" {
+		t.Errorf("unexpected full name: %s", got.FullName)
 	}
 	if got.Role != userdom.RoleUser {
 		t.Errorf("expected role USER, got %s", got.Role)
@@ -113,19 +116,19 @@ func TestCreate_Success(t *testing.T) {
 	}
 }
 
-func TestCreate_DuplicateEmail(t *testing.T) {
-	existing := &userdom.User{ID: uuid.New(), Email: "dup@example.com"}
+func TestCreate_DuplicateUsername(t *testing.T) {
+	existing := &userdom.User{ID: uuid.New(), Username: "alice"}
 	svc := usersvc.New(&stubRepo{
-		findByEmail: func(_ context.Context, _ string) (*userdom.User, error) { return existing, nil },
+		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return existing, nil },
 	})
 
 	_, err := svc.Create(context.Background(), userdom.CreateInput{
-		Email:    "dup@example.com",
+		Username: "alice",
 		Password: "password123",
-		Name:     "Bob",
+		FullName: "Alice",
 	})
-	if !errors.Is(err, userdom.ErrEmailTaken) {
-		t.Fatalf("expected ErrEmailTaken, got %v", err)
+	if !errors.Is(err, userdom.ErrUsernameTaken) {
+		t.Fatalf("expected ErrUsernameTaken, got %v", err)
 	}
 }
 
@@ -136,9 +139,9 @@ func TestCreate_RepoError(t *testing.T) {
 	})
 
 	_, err := svc.Create(context.Background(), userdom.CreateInput{
-		Email:    "new@example.com",
+		Username: "alice",
 		Password: "password123",
-		Name:     "Alice",
+		FullName: "Alice",
 	})
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("expected wrapped repo error, got %v", err)
@@ -151,23 +154,23 @@ func TestCreate_RepoError(t *testing.T) {
 
 func TestUpdate_Success(t *testing.T) {
 	id := uuid.New()
-	original := &userdom.User{ID: id, Email: "a@example.com", Name: "Old Name", Role: userdom.RoleUser}
+	original := &userdom.User{ID: id, Username: "alice", FullName: "Old Name", Role: userdom.RoleUser}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return original, nil },
 	})
 
-	got, err := svc.Update(context.Background(), id, userdom.UpdateInput{Name: "New Name"})
+	got, err := svc.Update(context.Background(), id, userdom.UpdateInput{FullName: "New Name"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Name != "New Name" {
-		t.Fatalf("expected name 'New Name', got %q", got.Name)
+	if got.FullName != "New Name" {
+		t.Fatalf("expected full name 'New Name', got %q", got.FullName)
 	}
 }
 
 func TestUpdate_NotFound(t *testing.T) {
 	svc := usersvc.New(&stubRepo{})
-	_, err := svc.Update(context.Background(), uuid.New(), userdom.UpdateInput{Name: "X"})
+	_, err := svc.Update(context.Background(), uuid.New(), userdom.UpdateInput{FullName: "X"})
 	if !errors.Is(err, userdom.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
