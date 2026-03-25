@@ -66,7 +66,6 @@ services/api/
 				user_repository.go   # GORM implementation of user repository
 				tx.go                # transaction helpers / unit-of-work helper
 			redis/
-				token_blacklist.go   # optional refresh token/session storage
 		service/
 			auth/
 				auth_service.go      # login, refresh, logout, password flows
