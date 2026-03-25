@@ -44,10 +44,17 @@ func Created(c *gin.Context, data any) {
 // directly; otherwise the code is derived from known domain sentinel errors.
 func Error(c *gin.Context, err error) {
 	status, code := statusAndCodeFor(err)
+
+	// For internal/unexpected errors, avoid leaking implementation details to clients.
+	publicMsg := err.Error()
+	if status == http.StatusInternalServerError || code == apierr.CodeInternalError {
+		publicMsg = "internal server error"
+	}
+
 	c.AbortWithStatusJSON(status, envelope{
 		Success:   false,
 		ErrorCode: string(code),
-		Error:     err.Error(),
+		Error:     publicMsg,
 		RequestID: requestID(c),
 	})
 }
