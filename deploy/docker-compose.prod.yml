@@ -70,6 +70,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-168h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +85,10 @@ services:
     image: ${PACA_WEB_IMAGE:-paca-web:latest}
     build:
       context: ../apps/web
+      args:
+        # VITE_API_BASE_URL is baked into the static bundle at build time.
+        # Set PUBLIC_URL to your public domain (e.g. https://paca.example.com).
+        VITE_API_BASE_URL: ${PUBLIC_URL:-http://localhost}
     restart: unless-stopped
     depends_on:
       - api

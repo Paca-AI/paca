@@ -76,9 +76,9 @@ jobs:
         run: make build
 
   # ---------------------------------------------------------------------------
-  # 3. Unit / integration tests — fast, in-memory fakes, no external services
+  # 3. Unit & integration tests — in-memory fakes, no external services needed
   # ---------------------------------------------------------------------------
-  test-unit:
+  test:
     name: Unit & integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -100,7 +100,7 @@ jobs:
           cache-dependency-path: services/api/go.sum
 
       - name: Run tests (race detector)
-        run: go test -race -timeout 60s -coverprofile=coverage.out ./...
+        run: go test -race -timeout 60s -coverprofile=coverage.out $(go list ./... | grep -v '/test/e2e')
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -110,62 +110,17 @@ jobs:
           retention-days: 7
 
   # ---------------------------------------------------------------------------
-  # 4. Service integration tests — Postgres + Redis + RabbitMQ via Docker
+  # 4. E2E tests — full HTTP flow via testcontainers-go (manages own containers)
   # ---------------------------------------------------------------------------
-  test-services:
-    name: Service integration tests
+  test-e2e:
+    name: E2E tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [build]
 
     defaults:
       run:
         working-directory: services/api
-
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: paca
-          POSTGRES_PASSWORD: paca
-          POSTGRES_DB: paca_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U paca"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-      rabbitmq:
-        image: rabbitmq:4-management-alpine
-        env:
-          RABBITMQ_DEFAULT_USER: guest
-          RABBITMQ_DEFAULT_PASS: guest
-        ports:
-          - 5672:5672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 10
-
-    env:
-      DATABASE_URL: postgres://paca:paca@localhost:5432/paca_test?sslmode=disable
-      REDIS_URL: redis://localhost:6379/0
-      RABBITMQ_URL: amqp://guest:guest@localhost:5672/
-      JWT_SECRET: ci-test-secret-that-is-at-least-32-chars
-      ENV: test
-      PACA_E2E: "1"
 
     steps:
       - name: Checkout repository
@@ -179,10 +134,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: services/api/go.sum
 
-      - name: Run database migrations
-        run: psql "$DATABASE_URL" -f migrations/000001_init.sql
+      - name: Run E2E tests
         env:
-          PGPASSWORD: paca
-
-      - name: Run full test suite
-        run: go test -race -timeout 120s -tags integration ./...
+          PACA_E2E: "1"
+        run: go test -v -timeout 120s ./test/e2e/...

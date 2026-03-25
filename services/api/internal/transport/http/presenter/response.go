@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/paca/api/internal/apierr"
+	domainauth "github.com/paca/api/internal/domain/auth"
 	userdom "github.com/paca/api/internal/domain/user"
 )
 
@@ -14,6 +16,7 @@ import (
 type envelope struct {
 	Success   bool   `json:"success"`
 	Data      any    `json:"data,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
 	Error     string `json:"error,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
 }
@@ -36,26 +39,71 @@ func Created(c *gin.Context, data any) {
 	})
 }
 
-// Error maps a domain/service error to an appropriate HTTP status and writes
-// a JSON error envelope.
+// Error maps a domain/service error to an HTTP status + error code and writes
+// a JSON error envelope.  If err is an *apierr.Error, its code is used
+// directly; otherwise the code is derived from known domain sentinel errors.
 func Error(c *gin.Context, err error) {
-	status := statusFor(err)
+	status, code := statusAndCodeFor(err)
+
+	// For internal/unexpected errors, avoid leaking implementation details to clients.
+	publicMsg := err.Error()
+	if status == http.StatusInternalServerError || code == apierr.CodeInternalError {
+		publicMsg = "internal server error"
+	}
+
 	c.AbortWithStatusJSON(status, envelope{
 		Success:   false,
-		Error:     err.Error(),
+		ErrorCode: string(code),
+		Error:     publicMsg,
 		RequestID: requestID(c),
 	})
 }
 
-// statusFor derives an HTTP status code from a known domain error.
-func statusFor(err error) int {
+// statusAndCodeFor returns the HTTP status and apierr.Code for err.
+func statusAndCodeFor(err error) (int, apierr.Code) {
+	// Prefer an explicit apierr.Error if one was constructed upstream.
+	var apiErr *apierr.Error
+	if errors.As(err, &apiErr) {
+		return httpStatusForCode(apiErr.Code), apiErr.Code
+	}
+
+	// Map domain sentinel errors to codes.
 	switch {
+	case errors.Is(err, domainauth.ErrInvalidCredentials):
+		return http.StatusUnauthorized, apierr.CodeInvalidCredentials
+	case errors.Is(err, domainauth.ErrTokenInvalid):
+		return http.StatusUnauthorized, apierr.CodeTokenInvalid
+	case errors.Is(err, domainauth.ErrSessionInvalidated):
+		return http.StatusUnauthorized, apierr.CodeTokenInvalid
 	case errors.Is(err, userdom.ErrNotFound):
-		return http.StatusNotFound
-	case errors.Is(err, userdom.ErrEmailTaken):
-		return http.StatusConflict
+		return http.StatusNotFound, apierr.CodeUserNotFound
+	case errors.Is(err, userdom.ErrUsernameTaken):
+		return http.StatusConflict, apierr.CodeUsernameTaken
 	case errors.Is(err, userdom.ErrForbidden):
+		return http.StatusForbidden, apierr.CodeForbidden
+	default:
+		return http.StatusInternalServerError, apierr.CodeInternalError
+	}
+}
+
+// httpStatusForCode maps an apierr.Code to its conventional HTTP status code.
+func httpStatusForCode(code apierr.Code) int {
+	switch code {
+	case apierr.CodeInvalidCredentials,
+		apierr.CodeMissingToken,
+		apierr.CodeTokenInvalid,
+		apierr.CodeUnauthenticated:
+		return http.StatusUnauthorized
+	case apierr.CodeUserNotFound:
+		return http.StatusNotFound
+	case apierr.CodeUsernameTaken:
+		return http.StatusConflict
+	case apierr.CodeForbidden:
 		return http.StatusForbidden
+	case apierr.CodeBadRequest:
+		return http.StatusBadRequest
+	case apierr.CodeInternalError:
+		return http.StatusInternalServerError
 	default:
 		return http.StatusInternalServerError
 	}

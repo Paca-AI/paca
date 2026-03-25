@@ -25,8 +25,8 @@ import (
 func buildUserTestRouter(repo *fakeUserRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
-	bl := newFakeBlacklist()
-	authService := authsvc.New(repo, tm, bl, 168*time.Hour)
+	store := &fakeRefreshStore{}
+	authService := authsvc.New(repo, tm, store, 168*time.Hour)
 	userService := usersvc.New(repo)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -34,7 +34,7 @@ func buildUserTestRouter(repo *fakeUserRepo) *gin.Engine {
 		TokenManager: tm,
 		AuthzPolicy:  authz.NewPolicy(),
 		Health:       handler.NewHealthHandler(),
-		Auth:         handler.NewAuthHandler(authService),
+		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
 		Log:          log,
 	})
@@ -45,12 +45,12 @@ func TestCreateUser(t *testing.T) {
 	r := buildUserTestRouter(repo)
 
 	body, _ := json.Marshal(map[string]string{
-		"email":    "newuser@example.com",
-		"password": "securepass",
-		"name":     "Test User",
+		"username":  "newuser",
+		"password":  "securepass",
+		"full_name": "Test User",
 	})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/users", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -60,25 +60,28 @@ func TestCreateUser(t *testing.T) {
 	}
 }
 
-func TestCreateUserDuplicateEmail(t *testing.T) {
+func TestCreateUserDuplicateUsername(t *testing.T) {
 	repo := newFakeUserRepo()
-	existing := &userdom.User{ID: uuid.New(), Email: "dup@example.com", Role: userdom.RoleUser}
+	existing := &userdom.User{ID: uuid.New(), Username: "existing", Role: userdom.RoleUser}
 	_ = repo.Create(context.Background(), existing)
 
 	r := buildUserTestRouter(repo)
 
 	body, _ := json.Marshal(map[string]string{
-		"email":    "dup@example.com",
-		"password": "securepass",
-		"name":     "Duplicate",
+		"username":  "existing",
+		"password":  "securepass",
+		"full_name": "Duplicate",
 	})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/users", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if code := decodeErrorCode(t, w); code != "USER_USERNAME_TAKEN" {
+		t.Errorf("expected error_code USER_USERNAME_TAKEN, got %q", code)
 	}
 }

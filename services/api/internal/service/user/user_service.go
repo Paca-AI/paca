@@ -29,9 +29,10 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*userdom.User, err
 
 // Create registers a new user with a hashed password.
 func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.User, error) {
-	_, err := s.repo.FindByEmail(ctx, in.Email)
+	// Check username uniqueness.
+	_, err := s.repo.FindByUsername(ctx, in.Username)
 	if err == nil {
-		return nil, userdom.ErrEmailTaken
+		return nil, userdom.ErrUsernameTaken
 	}
 	if !errors.Is(err, userdom.ErrNotFound) {
 		return nil, err
@@ -45,9 +46,9 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 	now := time.Now()
 	u := &userdom.User{
 		ID:           uuid.New(),
-		Email:        in.Email,
+		Username:     in.Username,
 		PasswordHash: string(hash),
-		Name:         in.Name,
+		FullName:     in.FullName,
 		Role:         userdom.RoleUser,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -66,7 +67,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in userdom.UpdateInp
 		return nil, err
 	}
 
-	u.Name = in.Name
+	u.FullName = in.FullName
 	u.UpdatedAt = time.Now()
 
 	if err := s.repo.Update(ctx, u); err != nil {

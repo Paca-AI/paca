@@ -11,14 +11,14 @@
 	--lagoon: #2e4980;
 	--lagoon-deep: #244862;
 	--palm: #32cd32;
-	--sand: #fdfcf7;
-	--foam: #f7f5ee;
+	--sand: #ffffff;
+	--foam: #ffffff;
 	--surface: rgba(255, 255, 255, 0.74);
 	--surface-strong: rgba(255, 255, 255, 0.9);
 	--line: rgba(31, 47, 82, 0.14);
 	--inset-glint: rgba(255, 255, 255, 0.82);
 	--kicker: rgba(36, 72, 98, 0.84);
-	--bg-base: #f6f4ed;
+	--bg-base: #ffffff;
 	--header-bg: rgba(253, 252, 247, 0.84);
 	--chip-bg: rgba(255, 255, 255, 0.8);
 	--chip-line: rgba(49, 95, 133, 0.18);
@@ -26,7 +26,7 @@
 	--hero-a: rgba(49, 95, 133, 0.24);
 	--hero-b: rgba(50, 205, 50, 0.18);
 
-	--background: #fdfcf7;
+	--background: #ffffff;
 	--foreground: #1f2f52;
 	--card: #fdfcf7;
 	--card-foreground: #1f2f52;
@@ -167,20 +167,7 @@ body {
 	margin: 0;
 	color: var(--sea-ink);
 	font-family: var(--font-sans);
-	background:
-		radial-gradient(1100px 620px at -8% -10%, var(--hero-a), transparent 58%),
-		radial-gradient(1050px 620px at 112% -12%, var(--hero-b), transparent 62%),
-		radial-gradient(
-			720px 380px at 50% 115%,
-			rgba(49, 95, 133, 0.1),
-			transparent 68%
-		),
-		linear-gradient(
-			180deg,
-			color-mix(in oklab, var(--sand) 68%, white) 0%,
-			var(--foam) 44%,
-			var(--bg-base) 100%
-		);
+	background: var(--background);
 	overflow-x: hidden;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;

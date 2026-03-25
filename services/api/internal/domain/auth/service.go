@@ -11,9 +11,10 @@ type TokenPair struct {
 // Service defines the authentication contract.
 type Service interface {
 	// Login validates credentials and returns a fresh token pair.
-	Login(ctx context.Context, email, password string) (*TokenPair, error)
-	// Refresh issues a new access token given a valid refresh token.
-	Refresh(ctx context.Context, refreshToken string) (string, error)
-	// Logout revokes the token identified by jti.
-	Logout(ctx context.Context, jti string) error
+	Login(ctx context.Context, username, password string) (*TokenPair, error)
+	// Refresh validates a refresh token and issues a rotated token pair.
+	// Token reuse outside the grace period revokes the entire session family.
+	Refresh(ctx context.Context, refreshToken string) (*TokenPair, error)
+	// Logout revokes the entire token family identified by familyID.
+	Logout(ctx context.Context, familyID string) error
 }

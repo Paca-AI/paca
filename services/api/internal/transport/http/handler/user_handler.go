@@ -2,12 +2,12 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/paca/api/internal/apierr"
 	domainuser "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/transport/http/dto"
 	"github.com/paca/api/internal/transport/http/middleware"
 	"github.com/paca/api/internal/transport/http/presenter"
-
-	"github.com/google/uuid"
 )
 
 // UserHandler handles user-related endpoints.
@@ -28,9 +28,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	u, err := h.svc.Create(c.Request.Context(), domainuser.CreateInput{
-		Email:    req.Email,
+		Username: req.Username,
 		Password: req.Password,
-		Name:     req.Name,
+		FullName: req.FullName,
 	})
 	if err != nil {
 		presenter.Error(c, err)
@@ -44,13 +44,13 @@ func (h *UserHandler) Create(c *gin.Context) {
 func (h *UserHandler) GetMe(c *gin.Context) {
 	claims := middleware.ClaimsFrom(c)
 	if claims == nil {
-		c.AbortWithStatusJSON(401, gin.H{"error": "unauthenticated"})
+		presenter.Error(c, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
 		return
 	}
 
 	id, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		c.AbortWithStatusJSON(400, gin.H{"error": "invalid subject claim"})
+		presenter.Error(c, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 func (h *UserHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.AbortWithStatusJSON(400, gin.H{"error": "invalid user id"})
+		presenter.Error(c, apierr.New(apierr.CodeBadRequest, "invalid user id"))
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	u, err := h.svc.Update(c.Request.Context(), id, domainuser.UpdateInput{Name: req.Name})
+	u, err := h.svc.Update(c.Request.Context(), id, domainuser.UpdateInput{FullName: req.FullName})
 	if err != nil {
 		presenter.Error(c, err)
 		return
@@ -89,7 +89,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 func (h *UserHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.AbortWithStatusJSON(400, gin.H{"error": "invalid user id"})
+		presenter.Error(c, apierr.New(apierr.CodeBadRequest, "invalid user id"))
 		return
 	}
 

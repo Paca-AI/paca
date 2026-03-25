@@ -16,13 +16,13 @@ import (
 // from the domain entity at the boundary.
 type userRecord struct {
 	ID           string `gorm:"primarykey;type:uuid"`
-	Email        string `gorm:"uniqueIndex;not null"`
+	Username     string `gorm:"uniqueIndex;not null"`
 	PasswordHash string `gorm:"not null"`
-	Name         string
+	FullName     string `gorm:"column:full_name"`
 	Role         string `gorm:"not null;default:'USER'"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-	DeletedAt    *time.Time `gorm:"index"`
+	DeletedAt    gorm.DeletedAt `gorm:"index"`
 }
 
 func (userRecord) TableName() string { return "users" }
@@ -50,15 +50,15 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*userdom.U
 	return toEntity(&rec), nil
 }
 
-// FindByEmail returns the user with the given email, or userdom.ErrNotFound.
-func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*userdom.User, error) {
+// FindByUsername returns the user with the given username, or userdom.ErrNotFound.
+func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*userdom.User, error) {
 	var rec userRecord
-	result := r.db.WithContext(ctx).First(&rec, "email = ?", email)
+	result := r.db.WithContext(ctx).First(&rec, "username = ?", username)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, userdom.ErrNotFound
 	}
 	if result.Error != nil {
-		return nil, fmt.Errorf("user repo: find by email: %w", result.Error)
+		return nil, fmt.Errorf("user repo: find by username: %w", result.Error)
 	}
 	return toEntity(&rec), nil
 }
@@ -81,13 +81,11 @@ func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	return nil
 }
 
-// Delete soft-deletes the user by setting deleted_at.
+// Delete soft-deletes the user by setting deleted_at via GORM's built-in mechanism.
 func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	now := time.Now()
 	result := r.db.WithContext(ctx).
-		Model(&userRecord{}).
 		Where("id = ?", id.String()).
-		Update("deleted_at", &now)
+		Delete(&userRecord{})
 	if result.Error != nil {
 		return fmt.Errorf("user repo: delete: %w", result.Error)
 	}
@@ -98,27 +96,35 @@ func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func toEntity(r *userRecord) *userdom.User {
 	id, _ := uuid.Parse(r.ID)
+	var deletedAt *time.Time
+	if r.DeletedAt.Valid {
+		deletedAt = &r.DeletedAt.Time
+	}
 	return &userdom.User{
 		ID:           id,
-		Email:        r.Email,
+		Username:     r.Username,
 		PasswordHash: r.PasswordHash,
-		Name:         r.Name,
+		FullName:     r.FullName,
 		Role:         r.Role,
 		CreatedAt:    r.CreatedAt,
 		UpdatedAt:    r.UpdatedAt,
-		DeletedAt:    r.DeletedAt,
+		DeletedAt:    deletedAt,
 	}
 }
 
 func fromEntity(u *userdom.User) *userRecord {
+	var deletedAt gorm.DeletedAt
+	if u.DeletedAt != nil {
+		deletedAt = gorm.DeletedAt{Time: *u.DeletedAt, Valid: true}
+	}
 	return &userRecord{
 		ID:           u.ID.String(),
-		Email:        u.Email,
+		Username:     u.Username,
 		PasswordHash: u.PasswordHash,
-		Name:         u.Name,
+		FullName:     u.FullName,
 		Role:         u.Role,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
-		DeletedAt:    u.DeletedAt,
+		DeletedAt:    deletedAt,
 	}
 }
