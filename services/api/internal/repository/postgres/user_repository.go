@@ -22,7 +22,7 @@ type userRecord struct {
 	Role         string `gorm:"not null;default:'USER'"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-	DeletedAt    *time.Time `gorm:"index"`
+	DeletedAt    gorm.DeletedAt `gorm:"index"`
 }
 
 func (userRecord) TableName() string { return "users" }
@@ -81,13 +81,11 @@ func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	return nil
 }
 
-// Delete soft-deletes the user by setting deleted_at.
+// Delete soft-deletes the user by setting deleted_at via GORM's built-in mechanism.
 func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	now := time.Now()
 	result := r.db.WithContext(ctx).
-		Model(&userRecord{}).
 		Where("id = ?", id.String()).
-		Update("deleted_at", &now)
+		Delete(&userRecord{})
 	if result.Error != nil {
 		return fmt.Errorf("user repo: delete: %w", result.Error)
 	}
@@ -98,6 +96,10 @@ func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func toEntity(r *userRecord) *userdom.User {
 	id, _ := uuid.Parse(r.ID)
+	var deletedAt *time.Time
+	if r.DeletedAt.Valid {
+		deletedAt = &r.DeletedAt.Time
+	}
 	return &userdom.User{
 		ID:           id,
 		Username:     r.Username,
@@ -106,11 +108,15 @@ func toEntity(r *userRecord) *userdom.User {
 		Role:         r.Role,
 		CreatedAt:    r.CreatedAt,
 		UpdatedAt:    r.UpdatedAt,
-		DeletedAt:    r.DeletedAt,
+		DeletedAt:    deletedAt,
 	}
 }
 
 func fromEntity(u *userdom.User) *userRecord {
+	var deletedAt gorm.DeletedAt
+	if u.DeletedAt != nil {
+		deletedAt = gorm.DeletedAt{Time: *u.DeletedAt, Valid: true}
+	}
 	return &userRecord{
 		ID:           u.ID.String(),
 		Username:     u.Username,
@@ -119,6 +125,6 @@ func fromEntity(u *userdom.User) *userRecord {
 		Role:         u.Role,
 		CreatedAt:    u.CreatedAt,
 		UpdatedAt:    u.UpdatedAt,
-		DeletedAt:    u.DeletedAt,
+		DeletedAt:    deletedAt,
 	}
 }
