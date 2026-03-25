@@ -17,9 +17,9 @@ const (
 // boundary; the transport layer uses DTOs without this field.
 type User struct {
 	ID           uuid.UUID
-	Email        string
+	Username     string
 	PasswordHash string
-	Name         string
+	FullName     string
 	Role         string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

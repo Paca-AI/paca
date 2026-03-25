@@ -10,21 +10,21 @@ import (
 
 // CreateUserRequest is the body for POST /users.
 type CreateUserRequest struct {
-	Email    string `json:"email"    binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-	Name     string `json:"name"     binding:"required"`
+	Username string `json:"username"  binding:"required"`
+	Password string `json:"password"  binding:"required,min=8"`
+	FullName string `json:"full_name" binding:"required"`
 }
 
 // UpdateUserRequest is the body for PATCH /users/:id.
 type UpdateUserRequest struct {
-	Name string `json:"name" binding:"required"`
+	FullName string `json:"full_name" binding:"required"`
 }
 
 // UserResponse is the public representation of a user (no password hash).
 type UserResponse struct {
 	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
+	Username  string    `json:"username"`
+	FullName  string    `json:"full_name"`
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -33,8 +33,8 @@ type UserResponse struct {
 func UserFromEntity(u *userdom.User) UserResponse {
 	return UserResponse{
 		ID:        u.ID,
-		Email:     u.Email,
-		Name:      u.Name,
+		Username:  u.Username,
+		FullName:  u.FullName,
 		Role:      u.Role,
 		CreatedAt: u.CreatedAt,
 	}

@@ -28,9 +28,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	u, err := h.svc.Create(c.Request.Context(), domainuser.CreateInput{
-		Email:    req.Email,
+		Username: req.Username,
 		Password: req.Password,
-		Name:     req.Name,
+		FullName: req.FullName,
 	})
 	if err != nil {
 		presenter.Error(c, err)
@@ -76,7 +76,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	u, err := h.svc.Update(c.Request.Context(), id, domainuser.UpdateInput{Name: req.Name})
+	u, err := h.svc.Update(c.Request.Context(), id, domainuser.UpdateInput{FullName: req.FullName})
 	if err != nil {
 		presenter.Error(c, err)
 		return

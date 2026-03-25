@@ -10,12 +10,20 @@ type Config struct {
 	Redis    RedisConfig
 	RabbitMQ RabbitMQConfig
 	JWT      JWTConfig
+	Admin    AdminConfig
 	Env      string // development | production
 }
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Port string
+	Port         string
+	CookieSecure bool // set Secure flag on auth cookies; enable when behind an SSL-terminating proxy
+}
+
+// AdminConfig holds the default administrator credentials seeded on first startup.
+type AdminConfig struct {
+	Username string
+	Password string
 }
 
 // DatabaseConfig holds the primary database connection settings.

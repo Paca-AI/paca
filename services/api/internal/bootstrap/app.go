@@ -4,13 +4,16 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/paca/api/internal/config"
+	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
 	"github.com/paca/api/internal/platform/cache"
 	"github.com/paca/api/internal/platform/database"
@@ -23,6 +26,7 @@ import (
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // App holds the HTTP server and any resources that need graceful shutdown.
@@ -61,18 +65,29 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Repositories -------------------------------------------------------
 	userRepo := pgRepo.NewUserRepository(db)
-	blacklist := redisRepo.NewTokenBlacklist(redisClient)
+	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
+
+	// --- Admin seeding -------------------------------------------------------
+	if err := seedAdmin(context.Background(), userRepo, cfg.Admin, log); err != nil {
+		return nil, fmt.Errorf("bootstrap: %w", err)
+	}
 
 	// --- Services -----------------------------------------------------------
-	authService := authsvc.New(userRepo, tokenManager, blacklist, cfg.JWT.RefreshTTL)
+	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL)
 	userService := usersvc.New(userRepo)
 
 	// --- Handlers -----------------------------------------------------------
+	cookieCfg := handler.CookieConfig{
+		Secure:     cfg.Server.CookieSecure,
+		AccessTTL:  cfg.JWT.AccessTTL,
+		RefreshTTL: cfg.JWT.RefreshTTL,
+	}
+
 	deps := router.Deps{
 		TokenManager: tokenManager,
 		AuthzPolicy:  policy,
 		Health:       handler.NewHealthHandler(),
-		Auth:         handler.NewAuthHandler(authService),
+		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService),
 		Log:          log,
 	}
@@ -105,4 +120,40 @@ func (a *App) Shutdown(ctx context.Context) error {
 		a.publisher.Close()
 	}
 	return a.server.Shutdown(ctx)
+}
+
+// seedAdmin ensures the default admin account exists in the database.
+// If the account already exists it is left unchanged.
+func seedAdmin(ctx context.Context, repo userdom.Repository, cfg config.AdminConfig, log *slog.Logger) error {
+	_, err := repo.FindByUsername(ctx, cfg.Username)
+	if err == nil {
+		// Admin already exists — nothing to do.
+		return nil
+	}
+	if !errors.Is(err, userdom.ErrNotFound) {
+		return fmt.Errorf("seed admin: lookup: %w", err)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("seed admin: hash password: %w", err)
+	}
+
+	now := time.Now()
+	admin := &userdom.User{
+		ID:           uuid.New(),
+		Username:     cfg.Username,
+		PasswordHash: string(hash),
+		FullName:     "Admin",
+		Role:         userdom.RoleAdmin,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if err := repo.Create(ctx, admin); err != nil {
+		return fmt.Errorf("seed admin: create: %w", err)
+	}
+
+	log.Info("admin account created", "username", cfg.Username)
+	return nil
 }

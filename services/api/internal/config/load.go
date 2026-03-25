@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -25,6 +26,11 @@ func Load() (*Config, error) {
 	refreshTTL, err := parseDuration(env("JWT_REFRESH_TTL", "168h"))
 	if err != nil {
 		return nil, fmt.Errorf("config: JWT_REFRESH_TTL: %w", err)
+	}
+
+	cookieSecure, err := strconv.ParseBool(env("COOKIE_SECURE", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: COOKIE_SECURE: %w", err)
 	}
 
 	// Collect all missing required keys before returning so the caller sees
@@ -51,6 +57,16 @@ func Load() (*Config, error) {
 		errs = append(errs, err)
 	}
 
+	adminUser, err := requireEnv("ADMIN_USERNAME")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	adminPass, err := requireEnv("ADMIN_PASSWORD")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -58,7 +74,8 @@ func Load() (*Config, error) {
 	return &Config{
 		Env: env("ENV", "development"),
 		Server: ServerConfig{
-			Port: env("PORT", "8080"),
+			Port:         env("PORT", "8080"),
+			CookieSecure: cookieSecure,
 		},
 		Database: DatabaseConfig{
 			DSN: dsn,
@@ -73,6 +90,10 @@ func Load() (*Config, error) {
 			Secret:     secret,
 			AccessTTL:  accessTTL,
 			RefreshTTL: refreshTTL,
+		},
+		Admin: AdminConfig{
+			Username: adminUser,
+			Password: adminPass,
 		},
 	}, nil
 }

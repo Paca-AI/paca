@@ -70,6 +70,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-168h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
