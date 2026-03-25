@@ -340,7 +340,7 @@ function App() {
 				</a>
 				<span className="opacity-30">·</span>
 				<a
-					href="https://github.com/Paca-AI/paca/blob/master/LICENSE"
+					href="https://github.com/Paca-AI/paca/blob/HEAD/LICENSE"
 					target="_blank"
 					rel="noopener noreferrer"
 					className="hover:text-(--sea-ink)"
