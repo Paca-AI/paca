@@ -16,6 +16,7 @@ type envelope struct {
 	Data      any    `json:"data"`
 	ErrorCode string `json:"error_code"`
 	Error     string `json:"error"`
+	RequestID string `json:"request_id"`
 }
 
 func mustRequest(ctx context.Context, t *testing.T, method, url string, body *bytes.Buffer) *http.Request {
