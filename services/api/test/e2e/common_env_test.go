@@ -169,9 +169,12 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	}
 
 	return &e2eEnv{
-		ctx:         ctx,
-		base:        srv.URL,
-		client:      &http.Client{Jar: jar},
+		ctx:  ctx,
+		base: srv.URL,
+		client: &http.Client{
+			Jar:     jar,
+			Timeout: 30 * time.Second,
+		},
 		userService: userService,
 	}
 }
