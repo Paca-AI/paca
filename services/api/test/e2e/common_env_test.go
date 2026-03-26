@@ -1,4 +1,4 @@
-// Package e2e contains end-to-end smoke tests for the Paca API service.
+// Package e2e_test contains end-to-end smoke tests for the Paca API service.
 // Tests spin up real Postgres and Redis containers via testcontainers-go,
 // apply migrations, wire the full service stack, and exercise the complete
 // HTTP request flow against an in-process httptest.Server.
