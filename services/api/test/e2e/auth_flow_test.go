@@ -95,7 +95,10 @@ func TestAuthFlow(t *testing.T) {
 	})
 
 	t.Run("refresh_token_reuse_within_grace_period", func(t *testing.T) {
-		isoJar, _ := cookiejar.New(nil)
+		isoJar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatalf("failed to create cookie jar: %v", err)
+		}
 		isoClient := &http.Client{Jar: isoJar}
 
 		loginResp := login(env.ctx, t, isoClient, env.base, "alice", "supersecret")
