@@ -209,14 +209,19 @@ func loginBody(t *testing.T, username, password string, rememberMe bool) *bytes.
 
 func seedLoginUser(t *testing.T, repo *fakeUserRepo) *userdom.User {
 	t.Helper()
-	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("failed to generate password hash for seed login user: %v", err)
+	}
 	u := &userdom.User{
 		ID:           uuid.New(),
 		Username:     "loginuser",
 		PasswordHash: string(hash),
 		Role:         userdom.RoleUser,
 	}
-	_ = repo.Create(context.Background(), u)
+	if err := repo.Create(context.Background(), u); err != nil {
+		t.Fatalf("failed to seed login user in repo: %v", err)
+	}
 	return u
 }
 
