@@ -13,7 +13,7 @@ export function LoginFooter() {
 			</a>
 			<span className="opacity-40">·</span>
 			<a
-				href="https://github.com/Paca-AI/paca/tree/master/docs"
+				href="https://github.com/Paca-AI/paca/tree/HEAD/docs"
 				target="_blank"
 				rel="noopener noreferrer"
 				className="transition-colors hover:text-(--sea-ink)"
