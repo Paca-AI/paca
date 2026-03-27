@@ -121,3 +121,33 @@ func login(
 	assertStatus(t, resp, http.StatusOK)
 	return resp
 }
+
+func loginWithRememberMe(
+	ctx context.Context,
+	t *testing.T,
+	client *http.Client,
+	baseURL, username, password string,
+	rememberMe bool,
+) *http.Response {
+	t.Helper()
+	body := jsonBody(t, map[string]any{
+		"username":    username,
+		"password":    password,
+		"remember_me": rememberMe,
+	})
+	req := mustRequest(ctx, t, http.MethodPost, baseURL+"/api/v1/auth/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	resp := mustDo(t, client, req)
+	assertStatus(t, resp, http.StatusOK)
+	return resp
+}
+
+// findCookie returns the named Set-Cookie from resp, or nil if not present.
+func findCookie(resp *http.Response, name string) *http.Cookie {
+	for _, c := range resp.Cookies() {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}

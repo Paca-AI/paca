@@ -12,8 +12,16 @@ export interface User {
 	created_at: string;
 }
 
-export async function login(username: string, password: string): Promise<void> {
-	await apiClient.instance.post("/auth/login", { username, password });
+export async function login(
+	username: string,
+	password: string,
+	rememberMe: boolean,
+): Promise<void> {
+	await apiClient.instance.post("/auth/login", {
+		username,
+		password,
+		remember_me: rememberMe,
+	});
 }
 
 export async function logout(): Promise<void> {

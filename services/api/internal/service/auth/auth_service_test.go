@@ -75,7 +75,7 @@ func hashedPassword(t *testing.T, plain string) string {
 
 func newAuthSvc(repo *stubUserRepo, store *stubRefreshStore) *authsvc.Service {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
-	return authsvc.New(repo, tm, store, 7*24*time.Hour)
+	return authsvc.New(repo, tm, store, 7*24*time.Hour, 24*time.Hour)
 }
 
 // verify that *authsvc.Service satisfies the domain interface
@@ -96,7 +96,7 @@ func TestLogin_Success(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{})
 
-	pair, err := svc.Login(context.Background(), "alice", "secret123")
+	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestLogin_Success(t *testing.T) {
 
 func TestLogin_UserNotFound(t *testing.T) {
 	svc := newAuthSvc(&stubUserRepo{}, &stubRefreshStore{})
-	_, err := svc.Login(context.Background(), "ghost", "pass1234")
+	_, err := svc.Login(context.Background(), "ghost", "pass1234", true)
 	if !errors.Is(err, domainauth.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -124,7 +124,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{})
 
-	_, err := svc.Login(context.Background(), "alice", "wrongpass")
+	_, err := svc.Login(context.Background(), "alice", "wrongpass", true)
 	if !errors.Is(err, domainauth.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -136,7 +136,7 @@ func TestLogin_RepoError(t *testing.T) {
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return nil, repoErr },
 	}, &stubRefreshStore{})
 
-	_, err := svc.Login(context.Background(), "alice", "pass1234")
+	_, err := svc.Login(context.Background(), "alice", "pass1234", true)
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("expected repo error, got %v", err)
 	}
@@ -148,7 +148,7 @@ func TestLogin_RepoError(t *testing.T) {
 
 func TestRefresh_Success(t *testing.T) {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
-	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
 
 	refresh, err := tm.IssueRefresh("sub123", "alice", userdom.RoleUser, "fam1")
 	if err != nil {
@@ -166,7 +166,7 @@ func TestRefresh_Success(t *testing.T) {
 
 func TestRefresh_WrongKind(t *testing.T) {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
-	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
 
 	// Pass an access token where a refresh token is expected.
 	access, _ := tm.IssueAccess("sub", "alice", userdom.RoleUser, "fam1")
@@ -181,7 +181,7 @@ func TestRefresh_FamilyRevoked(t *testing.T) {
 	store := &stubRefreshStore{
 		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return true, nil },
 	}
-	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour, 24*time.Hour)
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
@@ -205,7 +205,7 @@ func TestRefresh_ReuseWithinGrace_RejectsWithoutRevokingFamily(t *testing.T) {
 			return nil
 		},
 	}
-	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour, 24*time.Hour)
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
@@ -232,7 +232,7 @@ func TestRefresh_ReuseOutsideGrace_RevokesFamily(t *testing.T) {
 			return nil
 		},
 	}
-	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour, 24*time.Hour)
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
@@ -258,7 +258,7 @@ func TestRefresh_ReuseOutsideGrace_RevokeFamilyFailure(t *testing.T) {
 			return revokeErr
 		},
 	}
-	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour, 24*time.Hour)
 
 	refresh, _ := tm.IssueRefresh("sub", "alice", userdom.RoleUser, "fam1")
 	_, err := svc.Refresh(context.Background(), refresh)
@@ -283,7 +283,7 @@ func TestLogout_RevokesFamily(t *testing.T) {
 		},
 	}
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
-	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, store, 7*24*time.Hour, 24*time.Hour)
 
 	if err := svc.Logout(context.Background(), "some-family-id"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -295,8 +295,144 @@ func TestLogout_RevokesFamily(t *testing.T) {
 
 func TestLogout_EmptyFamilyID_NoOp(t *testing.T) {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
-	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
 	if err := svc.Logout(context.Background(), ""); err != nil {
 		t.Fatalf("unexpected error for empty familyID: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Remember Me — Login TTL selection
+// ---------------------------------------------------------------------------
+
+func TestLogin_RememberMe_True_UsesLongTTL(t *testing.T) {
+	const refreshTTL = 7 * 24 * time.Hour
+	const sessionTTL = 24 * time.Hour
+
+	u := &userdom.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Role:         userdom.RoleUser,
+		PasswordHash: hashedPassword(t, "secret123"),
+	}
+	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
+	svc := authsvc.New(&stubUserRepo{
+		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
+
+	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.RefreshTTL != refreshTTL {
+		t.Errorf("expected RefreshTTL=%v (long), got %v", refreshTTL, pair.RefreshTTL)
+	}
+
+	// Confirm RememberMe is embedded in the refresh token JWT.
+	claims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify refresh token: %v", err)
+	}
+	if !claims.RememberMe {
+		t.Error("expected RememberMe=true in refresh token claims")
+	}
+}
+
+func TestLogin_RememberMe_False_UsesSessionTTL(t *testing.T) {
+	const refreshTTL = 7 * 24 * time.Hour
+	const sessionTTL = 24 * time.Hour
+
+	u := &userdom.User{
+		ID:           uuid.New(),
+		Username:     "alice",
+		Role:         userdom.RoleUser,
+		PasswordHash: hashedPassword(t, "secret123"),
+	}
+	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
+	svc := authsvc.New(&stubUserRepo{
+		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
+
+	pair, err := svc.Login(context.Background(), "alice", "secret123", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.RefreshTTL != sessionTTL {
+		t.Errorf("expected RefreshTTL=%v (session), got %v", sessionTTL, pair.RefreshTTL)
+	}
+
+	// Confirm RememberMe=false is embedded in the refresh token JWT.
+	claims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify refresh token: %v", err)
+	}
+	if claims.RememberMe {
+		t.Error("expected RememberMe=false in refresh token claims")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Remember Me — Refresh rotation preserves preference
+// ---------------------------------------------------------------------------
+
+func TestRefresh_RememberMe_True_PreservesLongTTL(t *testing.T) {
+	const refreshTTL = 7 * 24 * time.Hour
+	const sessionTTL = 24 * time.Hour
+
+	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
+
+	// Issue a persistent-session refresh token.
+	origRefresh, err := tm.IssueRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", true, refreshTTL)
+	if err != nil {
+		t.Fatalf("IssueRefreshWithTTL: %v", err)
+	}
+
+	pair, err := svc.Refresh(context.Background(), origRefresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.RefreshTTL != refreshTTL {
+		t.Errorf("expected rotated RefreshTTL=%v, got %v", refreshTTL, pair.RefreshTTL)
+	}
+
+	// Confirm the rotated token carries RememberMe=true.
+	claims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify rotated token: %v", err)
+	}
+	if !claims.RememberMe {
+		t.Error("expected RememberMe=true to be preserved through rotation")
+	}
+}
+
+func TestRefresh_RememberMe_False_PreservesSessionTTL(t *testing.T) {
+	const refreshTTL = 7 * 24 * time.Hour
+	const sessionTTL = 24 * time.Hour
+
+	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
+	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
+
+	// Issue a session-only refresh token.
+	origRefresh, err := tm.IssueRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", false, sessionTTL)
+	if err != nil {
+		t.Fatalf("IssueRefreshWithTTL: %v", err)
+	}
+
+	pair, err := svc.Refresh(context.Background(), origRefresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pair.RefreshTTL != sessionTTL {
+		t.Errorf("expected rotated RefreshTTL=%v, got %v", sessionTTL, pair.RefreshTTL)
+	}
+
+	// Confirm the rotated token carries RememberMe=false.
+	claims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify rotated token: %v", err)
+	}
+	if claims.RememberMe {
+		t.Error("expected RememberMe=false to be preserved through rotation")
 	}
 }

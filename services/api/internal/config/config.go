@@ -43,7 +43,8 @@ type RabbitMQConfig struct {
 
 // JWTConfig holds JWT signing and expiry settings.
 type JWTConfig struct {
-	Secret     string
-	AccessTTL  time.Duration
-	RefreshTTL time.Duration
+	Secret            string
+	AccessTTL         time.Duration
+	RefreshTTL        time.Duration // persistent session (remember me = true)
+	RefreshSessionTTL time.Duration // ephemeral session (remember me = false)
 }

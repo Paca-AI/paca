@@ -22,9 +22,10 @@ const (
 
 // CookieConfig carries compile-time-safe settings for auth cookies.
 type CookieConfig struct {
-	Secure     bool
-	AccessTTL  time.Duration
-	RefreshTTL time.Duration
+	Secure            bool
+	AccessTTL         time.Duration
+	RefreshTTL        time.Duration // persistent session (remember me = true)
+	RefreshSessionTTL time.Duration // ephemeral session (remember me = false)
 }
 
 // AuthHandler handles authentication endpoints.
@@ -47,13 +48,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	pair, err := h.svc.Login(c.Request.Context(), req.Username, req.Password)
+	pair, err := h.svc.Login(c.Request.Context(), req.Username, req.Password, req.RememberMe)
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
 
-	h.setTokenCookies(c, pair)
+	h.setTokenCookies(c, pair, pair.RefreshTTL)
 	presenter.OK(c, gin.H{"message": "logged in"})
 }
 
@@ -73,7 +74,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	h.setTokenCookies(c, pair)
+	h.setTokenCookies(c, pair, pair.RefreshTTL)
 	presenter.OK(c, gin.H{"message": "token refreshed"})
 }
 
@@ -96,7 +97,9 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 // setTokenCookies writes both tokens into HttpOnly Set-Cookie headers.
-func (h *AuthHandler) setTokenCookies(c *gin.Context, pair *domainauth.TokenPair) {
+// refreshTTL controls the MaxAge of the refresh cookie and should match the
+// TTL embedded in the refresh JWT (see TokenPair.RefreshTTL).
+func (h *AuthHandler) setTokenCookies(c *gin.Context, pair *domainauth.TokenPair, refreshTTL time.Duration) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     accessCookieName,
 		Value:    pair.AccessToken,
@@ -113,7 +116,7 @@ func (h *AuthHandler) setTokenCookies(c *gin.Context, pair *domainauth.TokenPair
 		HttpOnly: true,
 		Secure:   h.cookie.Secure,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   int(h.cookie.RefreshTTL.Seconds()),
+		MaxAge:   int(refreshTTL.Seconds()),
 	})
 }
 

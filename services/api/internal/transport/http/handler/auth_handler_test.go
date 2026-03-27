@@ -20,9 +20,10 @@ func init() { gin.SetMode(gin.TestMode) }
 
 // testCookieConfig is an insecure config suitable for unit tests.
 var testCookieConfig = handler.CookieConfig{
-	Secure:     false,
-	AccessTTL:  15 * time.Minute,
-	RefreshTTL: 7 * 24 * time.Hour,
+	Secure:            false,
+	AccessTTL:         15 * time.Minute,
+	RefreshTTL:        7 * 24 * time.Hour,
+	RefreshSessionTTL: 24 * time.Hour,
 }
 
 // ---------------------------------------------------------------------------
@@ -30,14 +31,14 @@ var testCookieConfig = handler.CookieConfig{
 // ---------------------------------------------------------------------------
 
 type mockAuthSvc struct {
-	login   func(ctx context.Context, username, pass string) (*domainauth.TokenPair, error)
+	login   func(ctx context.Context, username, pass string, rememberMe bool) (*domainauth.TokenPair, error)
 	refresh func(ctx context.Context, token string) (*domainauth.TokenPair, error)
 	logout  func(ctx context.Context, familyID string) error
 }
 
-func (m *mockAuthSvc) Login(ctx context.Context, username, pass string) (*domainauth.TokenPair, error) {
+func (m *mockAuthSvc) Login(ctx context.Context, username, pass string, rememberMe bool) (*domainauth.TokenPair, error) {
 	if m.login != nil {
-		return m.login(ctx, username, pass)
+		return m.login(ctx, username, pass, rememberMe)
 	}
 	return nil, errors.New("mock: login not configured")
 }
@@ -157,8 +158,8 @@ func TestHealth_OK(t *testing.T) {
 
 func TestLogin_Success(t *testing.T) {
 	svc := &mockAuthSvc{
-		login: func(_ context.Context, _, _ string) (*domainauth.TokenPair, error) {
-			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt"}, nil
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: 7 * 24 * time.Hour}, nil
 		},
 	}
 	r := gin.New()
@@ -209,7 +210,7 @@ func TestLogin_MissingFields(t *testing.T) {
 
 func TestLogin_InvalidCreds(t *testing.T) {
 	svc := &mockAuthSvc{
-		login: func(_ context.Context, _, _ string) (*domainauth.TokenPair, error) {
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
 			return nil, domainauth.ErrInvalidCredentials
 		},
 	}
@@ -233,7 +234,7 @@ func TestLogin_InvalidCreds(t *testing.T) {
 func TestRefresh_Success(t *testing.T) {
 	svc := &mockAuthSvc{
 		refresh: func(_ context.Context, _ string) (*domainauth.TokenPair, error) {
-			return &domainauth.TokenPair{AccessToken: "new-at", RefreshToken: "new-rt"}, nil
+			return &domainauth.TokenPair{AccessToken: "new-at", RefreshToken: "new-rt", RefreshTTL: 7 * 24 * time.Hour}, nil
 		},
 	}
 	r := gin.New()
@@ -320,4 +321,134 @@ func TestLogout_NoClaims(t *testing.T) {
 	if code := errorCode(t, w); code != "AUTH_UNAUTHENTICATED" {
 		t.Errorf("expected error_code AUTH_UNAUTHENTICATED, got %q", code)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Remember Me — handler propagation & cookie MaxAge
+// ---------------------------------------------------------------------------
+
+func TestLogin_RememberMe_True_ForwardedToService(t *testing.T) {
+	var gotRememberMe bool
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, rememberMe bool) (*domainauth.TokenPair, error) {
+			gotRememberMe = rememberMe
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: 7 * 24 * time.Hour}, nil
+		},
+	}
+	r := gin.New()
+	r.POST("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]any{"username": "alice", "password": "secret12", "remember_me": true}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !gotRememberMe {
+		t.Error("expected rememberMe=true to be forwarded to the service")
+	}
+}
+
+func TestLogin_RememberMe_False_ForwardedToService(t *testing.T) {
+	var gotRememberMe bool
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, rememberMe bool) (*domainauth.TokenPair, error) {
+			gotRememberMe = rememberMe
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: 24 * time.Hour}, nil
+		},
+	}
+	r := gin.New()
+	r.POST("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	// Omitting remember_me defaults to false.
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotRememberMe {
+		t.Error("expected rememberMe=false when field is omitted")
+	}
+}
+
+func TestLogin_RememberMe_True_LongCookieMaxAge(t *testing.T) {
+	const wantTTL = 7 * 24 * time.Hour
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: wantTTL}, nil
+		},
+	}
+	r := gin.New()
+	r.POST("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]any{"username": "alice", "password": "secret12", "remember_me": true}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "refresh_token" {
+			wantMaxAge := int(wantTTL.Seconds())
+			if c.MaxAge != wantMaxAge {
+				t.Errorf("refresh_token MaxAge: want %d, got %d", wantMaxAge, c.MaxAge)
+			}
+			return
+		}
+	}
+	t.Fatal("refresh_token cookie not found")
+}
+
+func TestLogin_RememberMe_False_ShortCookieMaxAge(t *testing.T) {
+	const wantTTL = 24 * time.Hour
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: wantTTL}, nil
+		},
+	}
+	r := gin.New()
+	r.POST("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]any{"username": "alice", "password": "secret12", "remember_me": false}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "refresh_token" {
+			wantMaxAge := int(wantTTL.Seconds())
+			if c.MaxAge != wantMaxAge {
+				t.Errorf("refresh_token MaxAge: want %d, got %d", wantMaxAge, c.MaxAge)
+			}
+			return
+		}
+	}
+	t.Fatal("refresh_token cookie not found")
+}
+
+func TestRefresh_CookieMaxAge_ReflectsServiceTTL(t *testing.T) {
+	const wantTTL = 24 * time.Hour
+	svc := &mockAuthSvc{
+		refresh: func(_ context.Context, _ string) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "new-at", RefreshToken: "new-rt", RefreshTTL: wantTTL}, nil
+		},
+	}
+	r := gin.New()
+	r.POST("/auth/refresh", handler.NewAuthHandler(svc, testCookieConfig).Refresh)
+
+	w := doWithCookie(t, r, http.MethodPost, "/auth/refresh", nil, "refresh_token", "old-rt")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "refresh_token" {
+			wantMaxAge := int(wantTTL.Seconds())
+			if c.MaxAge != wantMaxAge {
+				t.Errorf("refresh_token MaxAge after rotation: want %d, got %d", wantMaxAge, c.MaxAge)
+			}
+			return
+		}
+	}
+	t.Fatal("refresh_token cookie not found in refresh response")
 }

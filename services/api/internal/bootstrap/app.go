@@ -73,14 +73,15 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Services -----------------------------------------------------------
-	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL)
+	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
 	userService := usersvc.New(userRepo)
 
 	// --- Handlers -----------------------------------------------------------
 	cookieCfg := handler.CookieConfig{
-		Secure:     cfg.Server.CookieSecure,
-		AccessTTL:  cfg.JWT.AccessTTL,
-		RefreshTTL: cfg.JWT.RefreshTTL,
+		Secure:            cfg.Server.CookieSecure,
+		AccessTTL:         cfg.JWT.AccessTTL,
+		RefreshTTL:        cfg.JWT.RefreshTTL,
+		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
 	deps := router.Deps{

@@ -27,6 +27,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: JWT_REFRESH_TTL: %w", err)
 	}
+	refreshSessionTTL, err := parseDuration(env("JWT_REFRESH_SESSION_TTL", "24h"))
+	if err != nil {
+		return nil, fmt.Errorf("config: JWT_REFRESH_SESSION_TTL: %w", err)
+	}
 
 	cookieSecure, err := strconv.ParseBool(env("COOKIE_SECURE", "false"))
 	if err != nil {
@@ -87,9 +91,10 @@ func Load() (*Config, error) {
 			URL: rabbitURL,
 		},
 		JWT: JWTConfig{
-			Secret:     secret,
-			AccessTTL:  accessTTL,
-			RefreshTTL: refreshTTL,
+			Secret:            secret,
+			AccessTTL:         accessTTL,
+			RefreshTTL:        refreshTTL,
+			RefreshSessionTTL: refreshSessionTTL,
 		},
 		Admin: AdminConfig{
 			Username: adminUser,

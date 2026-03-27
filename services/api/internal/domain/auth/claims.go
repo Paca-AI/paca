@@ -13,4 +13,8 @@ type Claims struct {
 	// FamilyID links all tokens that originate from the same login session.
 	// Used for refresh-token rotation and reuse detection.
 	FamilyID string `json:"fid"`
+	// RememberMe is true when the user opted into a persistent session.
+	// Propagated through refresh-token rotation to preserve the original
+	// session lifetime preference.
+	RememberMe bool `json:"rme"`
 }
