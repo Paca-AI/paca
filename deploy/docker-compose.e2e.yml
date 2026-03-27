@@ -1,0 +1,123 @@
+# E2E test stack – mirrors the production topology with fixed, test-safe
+# credentials.  All secrets are intentionally weak and public; never use
+# these values outside of a local E2E environment.
+#
+# Usage (from repo root):
+#   docker compose -f deploy/docker-compose.e2e.yml up -d --build --wait
+#   docker compose -f deploy/docker-compose.e2e.yml down -v
+
+name: paca-e2e
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paca
+      POSTGRES_USER: paca
+      POSTGRES_PASSWORD: e2e-postgres-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../services/api/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paca -d paca"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: valkey-server --appendonly yes
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: paca
+      RABBITMQ_DEFAULT_PASS: e2e-rabbitmq-password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: paca-api:e2e
+    build:
+      context: ../services/api
+    restart: unless-stopped
+    environment:
+      ENV: test
+      PORT: "8080"
+      DATABASE_URL: postgres://paca:e2e-postgres-password@postgres:5432/paca?sslmode=disable
+      REDIS_URL: redis://valkey:6379/0
+      RABBITMQ_URL: amqp://paca:e2e-rabbitmq-password@rabbitmq:5672/
+      JWT_SECRET: e2e-jwt-secret-not-for-production
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 168h
+      COOKIE_SECURE: "false"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: e2e-admin-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null -T 3 --tries=1 http://127.0.0.1:8080/api/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+
+  web:
+    image: paca-web:e2e
+    build:
+      context: ../apps/web
+      args:
+        # The browser always accesses the gateway on localhost:80.
+        VITE_API_BASE_URL: http://localhost
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null -T 3 --tries=1 http://127.0.0.1:3000/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO/dev/null -T 3 --tries=1 http://127.0.0.1/api/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres_data:
+  valkey_data:
+  rabbitmq_data:

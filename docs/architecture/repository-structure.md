@@ -12,7 +12,8 @@ paca/
 ├── .github/
 ├── docs/
 ├── apps/
-│   └── web/
+│   ├── web/
+│   └── e2e/
 ├── services/
 │   ├── api/
 │   ├── realtime/
@@ -24,7 +25,8 @@ paca/
 ## Why This Shape
 
 - `docs` keeps durable technical writing out of the root.
-- `apps` holds user-facing runtime surfaces.
+- `apps` holds user-facing surfaces and their test counterparts.
+- `apps/e2e` lives under `apps` because it directly exercises `apps/web` and is versioned alongside it; it is not deployed.
 - `services` holds backend runtimes with different language stacks.
 - `services/realtime` is split out so Socket.IO delivery can scale and evolve independently from the transactional API.
 - `deploy` keeps environment and infrastructure assets in one place.
