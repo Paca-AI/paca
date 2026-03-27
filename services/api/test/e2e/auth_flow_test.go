@@ -206,9 +206,8 @@ func TestAuthFlow_RememberMe(t *testing.T) {
 		if c == nil {
 			t.Fatal("refresh_token cookie not found")
 		}
-		// Persistent session: MaxAge should equal the persistent TTL (e2eRefreshTTL = 24h in e2e env,
-		// which is also the RefreshTTL from the config — the e2e env sets both to 24h for speed).
-		// We check it is >= session TTL (24h); in a real deployment it would be 168h.
+		// Persistent session: MaxAge should equal the persistent TTL (e2eRefreshTTL = 48h in e2e env),
+		// which is strictly greater than the session TTL (e2eRefreshSessionTTL = 24h).
 		wantMinAge := int(e2eRefreshTTL.Seconds())
 		if c.MaxAge < wantMinAge {
 			t.Errorf("expected refresh_token MaxAge >= %d (persistent), got %d", wantMinAge, c.MaxAge)
@@ -226,8 +225,8 @@ func TestAuthFlow_RememberMe(t *testing.T) {
 		if c == nil {
 			t.Fatal("refresh_token cookie not found")
 		}
-		// Session: MaxAge must equal 24h (the RefreshSessionTTL wired in newE2EEnv).
-		wantMaxAge := int((24 * time.Hour).Seconds())
+		// Session: MaxAge must equal the session TTL (e2eRefreshSessionTTL = 24h).
+		wantMaxAge := int(e2eRefreshSessionTTL.Seconds())
 		if c.MaxAge != wantMaxAge {
 			t.Errorf("expected refresh_token MaxAge=%d (24h session), got %d", wantMaxAge, c.MaxAge)
 		}
@@ -245,7 +244,7 @@ func TestAuthFlow_RememberMe(t *testing.T) {
 		if c == nil {
 			t.Fatal("refresh_token cookie not found")
 		}
-		wantMaxAge := int((24 * time.Hour).Seconds())
+		wantMaxAge := int(e2eRefreshSessionTTL.Seconds())
 		if c.MaxAge != wantMaxAge {
 			t.Errorf("expected refresh_token MaxAge=%d (24h session), got %d", wantMaxAge, c.MaxAge)
 		}
@@ -270,7 +269,7 @@ func TestAuthFlow_RememberMe(t *testing.T) {
 		if rotated == nil {
 			t.Fatal("refresh_token cookie not found after rotation")
 		}
-		wantMaxAge := int((24 * time.Hour).Seconds())
+		wantMaxAge := int(e2eRefreshSessionTTL.Seconds())
 		if rotated.MaxAge != wantMaxAge {
 			t.Errorf("expected rotated refresh_token MaxAge=%d (session), got %d", wantMaxAge, rotated.MaxAge)
 		}
