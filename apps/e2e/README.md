@@ -4,7 +4,7 @@ Playwright-based end-to-end tests for the paca web application.
 
 ## Prerequisites
 
-- Node.js ≥ 20
+- Bun ≥ 1.0
 - The full application stack must be running before you execute tests
   (see [Local Development](../../docs/guides/local-development.md))
 
@@ -12,10 +12,10 @@ Playwright-based end-to-end tests for the paca web application.
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Install Playwright browsers (first time only)
-npx playwright install --with-deps
+bunx playwright install --with-deps
 
 # Copy and configure environment variables
 cp .env.example .env
@@ -26,35 +26,35 @@ cp .env.example .env
 
 ```bash
 # Run the full suite (headless, all configured browsers)
-npm test
+bun test
 
 # Run with the Playwright UI for interactive debugging
-npm run test:ui
+bun run test:ui
 
 # Run headed (visible browser window)
-npm run test:headed
+bun run test:headed
 
 # Run in debug mode (step through tests)
-npm run test:debug
+bun run test:debug
 
 # Open the last HTML report
-npm run test:report
+bun run test:report
 ```
 
 ### Running a subset
 
 ```bash
 # Single file
-npx playwright test tests/auth/login.spec.ts
+bunx playwright test tests/auth/login.spec.ts
 
 # Single test by title
-npx playwright test -g "redirects to dashboard on valid credentials"
+bunx playwright test -g "redirects to dashboard on valid credentials"
 
 # One browser only
-npx playwright test --project=chromium
+bunx playwright test --project=chromium
 
 # Mobile only
-npx playwright test --project=mobile-chrome
+bunx playwright test --project=mobile-chrome
 ```
 
 ## Project Structure
