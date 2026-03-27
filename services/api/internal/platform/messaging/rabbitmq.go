@@ -4,6 +4,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -48,6 +49,10 @@ func (p *Publisher) Publish(ctx context.Context, routingKey string, payload any)
 		return fmt.Errorf("messaging: marshal: %w", err)
 	}
 
+	if p == nil || p.ch == nil {
+		return errors.New("messaging: publisher not initialized")
+	}
+
 	err = p.ch.PublishWithContext(ctx, p.exchange, routingKey, false, false,
 		amqp.Publishing{
 			ContentType: "application/json",
@@ -63,6 +68,13 @@ func (p *Publisher) Publish(ctx context.Context, routingKey string, payload any)
 
 // Close releases the channel and connection.
 func (p *Publisher) Close() {
-	_ = p.ch.Close()
-	_ = p.conn.Close()
+	if p == nil {
+		return
+	}
+	if p.ch != nil {
+		_ = p.ch.Close()
+	}
+	if p.conn != nil {
+		_ = p.conn.Close()
+	}
 }
