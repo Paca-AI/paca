@@ -13,6 +13,19 @@ Planned concerns:
 - human and AI collaboration views;
 - product-facing components built with React and shadcn/ui.
 
+## apps/e2e
+
+Responsible for end-to-end validation of the full running stack from a real browser.
+
+Concerns:
+
+- Playwright test suites that exercise cross-cutting flows spanning `apps/web`, `services/api`, and the nginx gateway;
+- test categories: auth flows, form validation, security (injection/XSS rejection), session management, and UX correctness;
+- Page Object Models and shared fixtures to keep test logic stable as the UI evolves;
+- global setup that logs in once and persists browser auth state, giving session tests a pre-authenticated context without repeating login steps.
+
+Not deployed. Runs against a live environment (local stack or CI-provisioned stack) and produces an HTML report with traces and screenshots on failure.
+
 ## services/api
 
 Responsible for the core application backend.

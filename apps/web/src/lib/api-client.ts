@@ -43,7 +43,7 @@ export class ApiClient {
 				const isAuthEndpoint =
 					url.includes("/auth/login") ||
 					url.includes("/auth/register") ||
-					url.includes("/auth/refresh-token");
+					url.includes("/auth/refresh");
 
 				if (isAuthEndpoint) {
 					return Promise.reject(error);
@@ -66,7 +66,7 @@ export class ApiClient {
 				this.isRefreshing = true;
 
 				try {
-					await this.instance.post("/auth/refresh-token");
+					await this.instance.post("/auth/refresh");
 
 					// Flush queued requests
 					this.refreshSubscribers.forEach((cb) => {

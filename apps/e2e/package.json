@@ -1,0 +1,21 @@
+{
+  "name": "@paca/e2e",
+  "version": "0.0.0",
+  "description": "End-to-end tests for the paca web application using Playwright",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.9",
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.5.0"
+  }
+}
