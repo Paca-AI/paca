@@ -16,5 +16,5 @@ type Claims struct {
 	// RememberMe is true when the user opted into a persistent session.
 	// Propagated through refresh-token rotation to preserve the original
 	// session lifetime preference.
-	RememberMe bool `json:"rme,omitempty"`
+	RememberMe bool `json:"rme"`
 }
