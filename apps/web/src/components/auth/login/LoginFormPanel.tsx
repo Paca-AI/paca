@@ -1,4 +1,4 @@
-import { AlertCircle, Eye, EyeOff, Info } from "lucide-react";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
@@ -18,11 +18,14 @@ export function LoginFormPanel() {
 	const logoSrc = isDark ? "/paca-logo-dark.svg" : "/paca-logo.svg";
 
 	return (
-		<div className="relative flex flex-col justify-center px-7 py-10 sm:px-10">
-			<div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-[radial-gradient(circle,rgba(50,205,50,0.18),transparent_65%)] lg:hidden" />
+		<div className="relative flex flex-col justify-center px-8 py-10 sm:px-10">
+			{/* Top accent line */}
+			<div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(50,205,50,0.45),transparent)] lg:hidden" />
+			<div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-[radial-gradient(circle,rgba(50,205,50,0.14),transparent_65%)] lg:hidden" />
 
 			<div className="relative">
-				<div className="mb-6 flex items-center gap-2.5 lg:hidden">
+				{/* Mobile logo */}
+				<div className="mb-7 flex items-center gap-2.5 lg:hidden">
 					<img
 						src={logoSrc}
 						alt="Paca logo"
@@ -35,11 +38,12 @@ export function LoginFormPanel() {
 					</span>
 				</div>
 
-				<h1 className="display-title mb-1 text-2xl font-bold text-(--sea-ink) sm:text-3xl">
+				{/* Heading */}
+				<h1 className="display-title mb-1 text-2xl font-bold text-(--sea-ink) sm:text-[1.75rem]">
 					Welcome back
 				</h1>
-				<p className="mb-7 text-sm text-(--sea-ink-soft)">
-					Sign in to your Paca account to continue.
+				<p className="mb-8 text-sm text-(--sea-ink-soft)">
+					Sign in to your workspace to continue.
 				</p>
 
 				<form
@@ -48,7 +52,7 @@ export function LoginFormPanel() {
 						event.stopPropagation();
 						form.handleSubmit();
 					}}
-					className="space-y-4"
+					className="space-y-5"
 				>
 					<form.Field
 						name="username"
@@ -66,18 +70,24 @@ export function LoginFormPanel() {
 					>
 						{(field) => (
 							<div className="space-y-1.5">
-								<Label htmlFor={field.name}>Username</Label>
+								<Label
+									htmlFor={field.name}
+									className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
+								>
+									Username
+								</Label>
 								<Input
 									id={field.name}
 									name={field.name}
 									type="text"
 									autoComplete="username"
-									placeholder="Username"
+									placeholder="Enter your username"
 									value={field.state.value}
 									onBlur={field.handleBlur}
 									onChange={(event) => {
 										field.handleChange(event.target.value);
 									}}
+									className="h-10"
 								/>
 								<FieldError
 									isTouched={field.state.meta.isTouched}
@@ -103,7 +113,12 @@ export function LoginFormPanel() {
 					>
 						{(field) => (
 							<div className="space-y-1.5">
-								<Label htmlFor={field.name}>Password</Label>
+								<Label
+									htmlFor={field.name}
+									className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
+								>
+									Password
+								</Label>
 								<div className="relative">
 									<Input
 										id={field.name}
@@ -114,12 +129,12 @@ export function LoginFormPanel() {
 										value={field.state.value}
 										onBlur={field.handleBlur}
 										onChange={(event) => field.handleChange(event.target.value)}
-										className="pr-10"
+										className="h-10 pr-10"
 									/>
 									<button
 										type="button"
 										onClick={() => setShowPassword((current) => !current)}
-										className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--sea-ink-soft) hover:text-(--sea-ink)"
+										className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 										aria-label={
 											showPassword ? "Hide password" : "Show password"
 										}
@@ -142,7 +157,7 @@ export function LoginFormPanel() {
 					{serverError && (
 						<div
 							role="alert"
-							className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
+							className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-400"
 						>
 							<AlertCircle className="mt-px size-4 shrink-0" />
 							<span>{serverError}</span>
@@ -151,9 +166,12 @@ export function LoginFormPanel() {
 
 					<form.Field name="rememberMe">
 						{(field) => (
-							<div className="flex items-center justify-between rounded-lg border border-(--line) bg-(--chip-bg) px-3 py-2.5">
-								<Label htmlFor={field.name} className="cursor-pointer text-sm">
-									Remember me
+							<div className="flex items-center justify-between">
+								<Label
+									htmlFor={field.name}
+									className="cursor-pointer text-sm text-(--sea-ink-soft)"
+								>
+									Keep me signed in
 								</Label>
 								<Switch
 									id={field.name}
@@ -174,18 +192,26 @@ export function LoginFormPanel() {
 						{({ username, password, isSubmitting }) => (
 							<button
 								type="submit"
-								className={cn(buttonVariants(), "w-full")}
+								className={cn(
+									buttonVariants({ size: "lg" }),
+									"mt-1 h-11 w-full font-semibold tracking-wide",
+								)}
+								style={{
+									background: isSubmitting
+										? undefined
+										: "linear-gradient(135deg, #2e4980 0%, #1b3360 100%)",
+								}}
 								disabled={isSubmitting || !username.trim() || !password}
 							>
-								{isSubmitting ? "Signing in..." : "Sign in"}
+								{isSubmitting ? "Signing in…" : "Sign in"}
 							</button>
 						)}
 					</form.Subscribe>
 				</form>
 
-				<div className="mt-5 flex items-start gap-2 rounded-lg border border-(--line) bg-(--chip-bg) px-3.5 py-3">
-					<Info className="mt-px size-3.5 shrink-0 text-(--sea-ink-soft)" />
-					<p className="text-xs leading-relaxed text-(--sea-ink-soft)">
+				{/* Divider + admin note */}
+				<div className="mt-6 border-t border-(--line) pt-5">
+					<p className="text-xs leading-relaxed text-(--sea-ink-soft)/70">
 						Account access and password resets are managed by your
 						administrator.
 					</p>

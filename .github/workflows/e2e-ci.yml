@@ -2,6 +2,8 @@ name: e2e-ci
 
 on:
   pull_request:
+    branches:
+      - master
     paths:
       - "apps/e2e/**"
       - "apps/web/**"

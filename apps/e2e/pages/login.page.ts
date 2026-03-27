@@ -21,7 +21,7 @@ export class LoginPage {
 		this.usernameInput = page.getByRole("textbox", { name: "Username" });
 		this.passwordInput = page.getByRole("textbox", { name: "Password" });
 		this.signInButton = page.getByRole("button", { name: "Sign in" });
-		this.rememberMeSwitch = page.getByRole("switch", { name: "Remember me" });
+		this.rememberMeSwitch = page.getByRole("switch", { name: "Keep me signed in" });
 		this.errorMessage = page.getByText("Invalid username or password.");
 		this.themeToggle = page.getByRole("button", { name: /Theme mode/i });
 		this.showPasswordButton = page.getByRole("button", {
