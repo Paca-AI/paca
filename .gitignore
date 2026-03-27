@@ -16,3 +16,12 @@ todos.json
 
 # air (Go hot-reload) build artifacts
 services/api/tmp/
+
+# Playwright
+test-results
+playwright-report
+blob-report
+playwright
+
+# VS Code settings
+.vscode/
