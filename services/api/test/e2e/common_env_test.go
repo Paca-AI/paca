@@ -38,10 +38,10 @@ import (
 )
 
 const (
-	e2eJWTSecret          = "e2e-test-secret-value-that-is-at-least-32-chars"
-	e2eAccessTTL          = 15 * time.Minute
-	e2eRefreshTTL         = 48 * time.Hour
-	e2eRefreshSessionTTL  = 24 * time.Hour
+	e2eJWTSecret         = "e2e-test-secret-value-that-is-at-least-32-chars"
+	e2eAccessTTL         = 15 * time.Minute
+	e2eRefreshTTL        = 48 * time.Hour
+	e2eRefreshSessionTTL = 24 * time.Hour
 )
 
 type e2eEnv struct {
