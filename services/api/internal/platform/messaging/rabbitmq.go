@@ -4,6 +4,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -43,6 +44,10 @@ func NewPublisher(url, exchange string, log *slog.Logger) (*Publisher, error) {
 
 // Publish serialises payload as JSON and publishes it with the given routing key.
 func (p *Publisher) Publish(ctx context.Context, routingKey string, payload any) error {
+	if p == nil || p.ch == nil {
+		return errors.New("messaging: publisher not initialized")
+	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("messaging: marshal: %w", err)
@@ -63,6 +68,13 @@ func (p *Publisher) Publish(ctx context.Context, routingKey string, payload any)
 
 // Close releases the channel and connection.
 func (p *Publisher) Close() {
-	_ = p.ch.Close()
-	_ = p.conn.Close()
+	if p == nil {
+		return
+	}
+	if p.ch != nil {
+		_ = p.ch.Close()
+	}
+	if p.conn != nil {
+		_ = p.conn.Close()
+	}
 }
