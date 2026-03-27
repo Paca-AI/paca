@@ -22,18 +22,15 @@ func TestNewPublisher_DialError(t *testing.T) {
 	}
 }
 
-func TestPublish_MarshalError(t *testing.T) {
+func TestPublish_NotInitialized(t *testing.T) {
 	p := &Publisher{}
-	payload := map[string]any{
-		"bad": func() {},
-	}
 
-	err := p.Publish(context.Background(), "route.key", payload)
+	err := p.Publish(context.Background(), "route.key", struct{}{})
 	if err == nil {
-		t.Fatal("expected marshal error")
+		t.Fatal("expected not-initialized error")
 	}
-	if !strings.Contains(err.Error(), "messaging: marshal") {
-		t.Fatalf("expected marshal wrapper error, got %v", err)
+	if !strings.Contains(err.Error(), "messaging: publisher not initialized") {
+		t.Fatalf("expected not-initialized error, got %v", err)
 	}
 }
 

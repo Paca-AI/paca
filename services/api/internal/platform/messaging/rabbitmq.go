@@ -44,13 +44,13 @@ func NewPublisher(url, exchange string, log *slog.Logger) (*Publisher, error) {
 
 // Publish serialises payload as JSON and publishes it with the given routing key.
 func (p *Publisher) Publish(ctx context.Context, routingKey string, payload any) error {
+	if p == nil || p.ch == nil {
+		return errors.New("messaging: publisher not initialized")
+	}
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("messaging: marshal: %w", err)
-	}
-
-	if p == nil || p.ch == nil {
-		return errors.New("messaging: publisher not initialized")
 	}
 
 	err = p.ch.PublishWithContext(ctx, p.exchange, routingKey, false, false,
