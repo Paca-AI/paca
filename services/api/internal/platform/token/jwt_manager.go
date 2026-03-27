@@ -28,15 +28,23 @@ func New(secret string, accessTTL, refreshTTL time.Duration) *Manager {
 
 // IssueAccess creates a signed access token for the given claims subject.
 func (m *Manager) IssueAccess(sub, username, role, familyID string) (string, error) {
-	return m.sign(sub, username, role, familyID, m.accessTTL, "access")
+	return m.sign(sub, username, role, familyID, m.accessTTL, "access", false)
 }
 
-// IssueRefresh creates a signed refresh token.
+// IssueRefresh creates a signed refresh token with the Manager's default TTL.
+// The session is treated as persistent (rememberMe=true).
 func (m *Manager) IssueRefresh(sub, username, role, familyID string) (string, error) {
-	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh")
+	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh", true)
 }
 
-func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string) (string, error) {
+// IssueRefreshWithTTL creates a signed refresh token with an explicit TTL and
+// rememberMe flag. Use this instead of IssueRefresh when the caller needs to
+// honour the user's "remember me" preference.
+func (m *Manager) IssueRefreshWithTTL(sub, username, role, familyID string, rememberMe bool, ttl time.Duration) (string, error) {
+	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe)
+}
+
+func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string, rememberMe bool) (string, error) {
 	now := time.Now()
 	claims := domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -46,10 +54,11 @@ func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, 
 			NotBefore: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		Username: username,
-		Role:     role,
-		Kind:     kind,
-		FamilyID: familyID,
+		Username:   username,
+		Role:       role,
+		Kind:       kind,
+		FamilyID:   familyID,
+		RememberMe: rememberMe,
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

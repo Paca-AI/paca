@@ -3,8 +3,9 @@ package dto
 
 // LoginRequest is the body for POST /auth/login.
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required,min=8"`
+	Username   string `json:"username" binding:"required"`
+	Password   string `json:"password" binding:"required,min=8"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 // RefreshRequest is accepted but unused; the refresh token is read from the

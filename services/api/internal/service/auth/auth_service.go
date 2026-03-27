@@ -32,24 +32,29 @@ type RefreshTokenStore interface {
 
 // Service is the concrete implementation of domain/auth.Service.
 type Service struct {
-	users        userdom.Repository
-	tokens       *jwttoken.Manager
-	refreshStore RefreshTokenStore
-	refreshTTL   time.Duration
+	users             userdom.Repository
+	tokens            *jwttoken.Manager
+	refreshStore      RefreshTokenStore
+	refreshTTL        time.Duration
+	refreshSessionTTL time.Duration
 }
 
 // New returns a configured auth Service.
-func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore RefreshTokenStore, refreshTTL time.Duration) *Service {
+func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore RefreshTokenStore, refreshTTL, refreshSessionTTL time.Duration) *Service {
 	return &Service{
-		users:        users,
-		tokens:       tokens,
-		refreshStore: refreshStore,
-		refreshTTL:   refreshTTL,
+		users:             users,
+		tokens:            tokens,
+		refreshStore:      refreshStore,
+		refreshTTL:        refreshTTL,
+		refreshSessionTTL: refreshSessionTTL,
 	}
 }
 
 // Login validates credentials and returns a fresh token pair.
-func (s *Service) Login(ctx context.Context, username, password string) (*domainauth.TokenPair, error) {
+// When rememberMe is true, the refresh token uses the long-lived TTL
+// (JWT_REFRESH_TTL); when false, the shorter session TTL is used
+// (JWT_REFRESH_SESSION_TTL, default 24 h).
+func (s *Service) Login(ctx context.Context, username, password string, rememberMe bool) (*domainauth.TokenPair, error) {
 	u, err := s.users.FindByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
@@ -65,16 +70,21 @@ func (s *Service) Login(ctx context.Context, username, password string) (*domain
 	familyID := uuid.NewString()
 	sub := u.ID.String()
 
+	refreshTTL := s.refreshTTL
+	if !rememberMe {
+		refreshTTL = s.refreshSessionTTL
+	}
+
 	access, err := s.tokens.IssueAccess(sub, u.Username, u.Role, familyID)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := s.tokens.IssueRefresh(sub, u.Username, u.Role, familyID)
+	refresh, err := s.tokens.IssueRefreshWithTTL(sub, u.Username, u.Role, familyID, rememberMe, refreshTTL)
 	if err != nil {
 		return nil, err
 	}
 
-	return &domainauth.TokenPair{AccessToken: access, RefreshToken: refresh}, nil
+	return &domainauth.TokenPair{AccessToken: access, RefreshToken: refresh, RefreshTTL: refreshTTL}, nil
 }
 
 // Refresh validates a refresh token and issues a rotated token pair.
@@ -119,17 +129,24 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		return nil, domainauth.ErrSessionInvalidated
 	}
 
-	// Issue a rotated token pair preserving the same session family.
+	// Issue a rotated token pair preserving the same session family and
+	// the original remember-me preference so the TTL is consistent across
+	// the entire session lifetime.
+	refreshTTL := s.refreshTTL
+	if !claims.RememberMe {
+		refreshTTL = s.refreshSessionTTL
+	}
+
 	access, err := s.tokens.IssueAccess(claims.Subject, claims.Username, claims.Role, claims.FamilyID)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := s.tokens.IssueRefresh(claims.Subject, claims.Username, claims.Role, claims.FamilyID)
+	refresh, err := s.tokens.IssueRefreshWithTTL(claims.Subject, claims.Username, claims.Role, claims.FamilyID, claims.RememberMe, refreshTTL)
 	if err != nil {
 		return nil, err
 	}
 
-	return &domainauth.TokenPair{AccessToken: access, RefreshToken: refresh}, nil
+	return &domainauth.TokenPair{AccessToken: access, RefreshToken: refresh, RefreshTTL: refreshTTL}, nil
 }
 
 // Logout revokes the entire token family so all in-flight refresh tokens for

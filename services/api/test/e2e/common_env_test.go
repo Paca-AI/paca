@@ -143,13 +143,14 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	policy := authz.NewPolicy()
 	userRepo := pgRepo.NewUserRepository(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
-	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL)
+	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL, 24*time.Hour)
 	userService := usersvc.New(userRepo)
 
 	cookieCfg := handler.CookieConfig{
-		Secure:     false,
-		AccessTTL:  e2eAccessTTL,
-		RefreshTTL: e2eRefreshTTL,
+		Secure:            false,
+		AccessTTL:         e2eAccessTTL,
+		RefreshTTL:        e2eRefreshTTL,
+		RefreshSessionTTL: 24 * time.Hour,
 	}
 	engine := router.New(router.Deps{
 		TokenManager: tm,

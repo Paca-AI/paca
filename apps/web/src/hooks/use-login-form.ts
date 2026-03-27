@@ -24,7 +24,7 @@ export function useLoginForm() {
 		onSubmit: async ({ value }) => {
 			setServerError(null);
 			try {
-				await login(value.username, value.password);
+				await login(value.username, value.password, value.rememberMe);
 				await queryClient.invalidateQueries({
 					queryKey: currentUserQueryOptions.queryKey,
 				});

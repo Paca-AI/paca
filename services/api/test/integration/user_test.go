@@ -26,7 +26,7 @@ func buildUserTestRouter(repo *fakeUserRepo) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	store := &fakeRefreshStore{}
-	authService := authsvc.New(repo, tm, store, 168*time.Hour)
+	authService := authsvc.New(repo, tm, store, 168*time.Hour, 24*time.Hour)
 	userService := usersvc.New(repo)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

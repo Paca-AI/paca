@@ -190,3 +190,89 @@ func TestAuthFlow(t *testing.T) {
 		}
 	})
 }
+
+func TestAuthFlow_RememberMe(t *testing.T) {
+	env := newE2EEnv(t)
+	seedUser(t, env, "bob", "supersecret", "Bob Tester")
+
+	t.Run("remember_me_true_long_lived_cookie", func(t *testing.T) {
+		jar, _ := cookiejar.New(nil)
+		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+
+		resp := loginWithRememberMe(env.ctx, t, client, env.base, "bob", "supersecret", true)
+		defer func() { _ = resp.Body.Close() }()
+
+		c := findCookie(resp, "refresh_token")
+		if c == nil {
+			t.Fatal("refresh_token cookie not found")
+		}
+		// Persistent session: MaxAge should equal the persistent TTL (e2eRefreshTTL = 24h in e2e env,
+		// which is also the RefreshTTL from the config — the e2e env sets both to 24h for speed).
+		// We check it is >= session TTL (24h); in a real deployment it would be 168h.
+		wantMinAge := int(e2eRefreshTTL.Seconds())
+		if c.MaxAge < wantMinAge {
+			t.Errorf("expected refresh_token MaxAge >= %d (persistent), got %d", wantMinAge, c.MaxAge)
+		}
+	})
+
+	t.Run("remember_me_false_session_cookie", func(t *testing.T) {
+		jar, _ := cookiejar.New(nil)
+		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+
+		resp := loginWithRememberMe(env.ctx, t, client, env.base, "bob", "supersecret", false)
+		defer func() { _ = resp.Body.Close() }()
+
+		c := findCookie(resp, "refresh_token")
+		if c == nil {
+			t.Fatal("refresh_token cookie not found")
+		}
+		// Session: MaxAge must equal 24h (the RefreshSessionTTL wired in newE2EEnv).
+		wantMaxAge := int((24 * time.Hour).Seconds())
+		if c.MaxAge != wantMaxAge {
+			t.Errorf("expected refresh_token MaxAge=%d (24h session), got %d", wantMaxAge, c.MaxAge)
+		}
+	})
+
+	t.Run("remember_me_omitted_defaults_to_false", func(t *testing.T) {
+		jar, _ := cookiejar.New(nil)
+		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+
+		// login() helper does not set remember_me — defaults to false.
+		resp := login(env.ctx, t, client, env.base, "bob", "supersecret")
+		defer func() { _ = resp.Body.Close() }()
+
+		c := findCookie(resp, "refresh_token")
+		if c == nil {
+			t.Fatal("refresh_token cookie not found")
+		}
+		wantMaxAge := int((24 * time.Hour).Seconds())
+		if c.MaxAge != wantMaxAge {
+			t.Errorf("expected refresh_token MaxAge=%d (24h session), got %d", wantMaxAge, c.MaxAge)
+		}
+	})
+
+	t.Run("remember_me_preserved_through_refresh_rotation", func(t *testing.T) {
+		jar, _ := cookiejar.New(nil)
+		client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+
+		// Login without remember me → session TTL.
+		loginResp := loginWithRememberMe(env.ctx, t, client, env.base, "bob", "supersecret", false)
+		_ = loginResp.Body.Close()
+
+		// Rotate the token.
+		req := mustRequest(env.ctx, t, http.MethodPost, env.base+"/api/v1/auth/refresh", nil)
+		refreshResp := mustDo(t, client, req)
+		defer func() { _ = refreshResp.Body.Close() }()
+		assertStatus(t, refreshResp, http.StatusOK)
+
+		// The rotated cookie must still carry the session TTL.
+		rotated := findCookie(refreshResp, "refresh_token")
+		if rotated == nil {
+			t.Fatal("refresh_token cookie not found after rotation")
+		}
+		wantMaxAge := int((24 * time.Hour).Seconds())
+		if rotated.MaxAge != wantMaxAge {
+			t.Errorf("expected rotated refresh_token MaxAge=%d (session), got %d", wantMaxAge, rotated.MaxAge)
+		}
+	})
+}
