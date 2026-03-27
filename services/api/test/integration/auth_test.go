@@ -199,11 +199,14 @@ func TestLoginWrongPassword(t *testing.T) {
 // loginRequestBody returns a JSON-encoded login body with an optional remember_me field.
 func loginBody(t *testing.T, username, password string, rememberMe bool) *bytes.Reader {
 	t.Helper()
-	b, _ := json.Marshal(map[string]any{
+	b, err := json.Marshal(map[string]any{
 		"username":    username,
 		"password":    password,
 		"remember_me": rememberMe,
 	})
+	if err != nil {
+		t.Fatalf("failed to marshal login body: %v", err)
+	}
 	return bytes.NewReader(b)
 }
 
