@@ -27,7 +27,7 @@ func TestBindJSON_Success(t *testing.T) {
 	})
 
 	body := bytes.NewBufferString(`{"name":"alice"}`)
-	req := httptest.NewRequest(http.MethodPost, "/bind", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/bind", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -48,7 +48,7 @@ func TestBindJSON_Failure(t *testing.T) {
 	})
 
 	body := bytes.NewBufferString(`{"name":""}`)
-	req := httptest.NewRequest(http.MethodPost, "/bind", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/bind", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

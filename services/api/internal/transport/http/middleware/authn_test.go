@@ -21,7 +21,7 @@ func TestAuthn_MissingToken(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -46,7 +46,7 @@ func TestAuthn_InvalidToken(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer not-a-token")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -73,7 +73,7 @@ func TestAuthn_ValidAccessTokenInHeader(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"username": claims.Username})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+at)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -95,7 +95,7 @@ func TestAuthn_RefreshTokenRejected(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+rt)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

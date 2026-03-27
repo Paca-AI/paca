@@ -23,6 +23,6 @@ type nopPublisher struct{}
 
 func (nopPublisher) Publish(context.Context, string, any) error { return nil }
 
-func TestPublisherInterface_Implemented(t *testing.T) {
+func TestPublisherInterface_Implemented(_ *testing.T) {
 	var _ Publisher = nopPublisher{}
 }

@@ -37,7 +37,7 @@ func TestPublish_MarshalError(t *testing.T) {
 	}
 }
 
-func TestClose_NilSafe(t *testing.T) {
+func TestClose_NilSafe(_ *testing.T) {
 	var p *Publisher
 	p.Close()
 

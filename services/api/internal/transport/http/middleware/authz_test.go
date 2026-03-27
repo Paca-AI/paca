@@ -29,7 +29,7 @@ func TestAuthz_Unauthenticated(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -44,7 +44,7 @@ func TestAuthz_Forbidden(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
@@ -59,7 +59,7 @@ func TestAuthz_Allowed(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {

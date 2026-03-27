@@ -67,7 +67,7 @@ func TestNew_HealthRoute(t *testing.T) {
 	r := newTestRouter(t)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/healthz", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/healthz", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -79,7 +79,7 @@ func TestNew_CORSPreflight(t *testing.T) {
 	r := newTestRouter(t)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodOptions, "/any", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/any", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNoContent {
@@ -94,7 +94,7 @@ func TestNew_RequestIDPropagation(t *testing.T) {
 	r := newTestRouter(t)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/healthz", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/healthz", nil)
 	req.Header.Set("X-Request-ID", "req-123")
 	r.ServeHTTP(w, req)
 
@@ -107,7 +107,7 @@ func TestNew_ProtectedRouteRequiresAuth(t *testing.T) {
 	r := newTestRouter(t)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/me", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -120,7 +120,7 @@ func TestNew_PublicCreateUserRoute(t *testing.T) {
 
 	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice"}`)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", body)
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
