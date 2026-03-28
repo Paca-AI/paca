@@ -49,8 +49,8 @@ jobs:
       - name: Run code quality checks
         run: bun run lint
 
-      # - name: Run tests
-      #   run: bun run test
+      - name: Run tests
+        run: bun run test
 
       - name: Build production bundle
         run: bun run build

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDocker = process.env.DOCKER === "true";
@@ -26,5 +26,10 @@ export default defineConfig({
 	server: {
 		watch: isDocker ? { usePolling: true } : undefined,
 		hmr: isDocker ? { clientPort: 3000 } : undefined,
+	},
+	test: {
+		environment: "jsdom",
+		globals: true,
+		setupFiles: "./src/test/setup.ts",
 	},
 });
