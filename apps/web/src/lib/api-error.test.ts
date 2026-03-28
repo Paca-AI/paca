@@ -1,5 +1,5 @@
-import { ApiErrorCode, getApiErrorCode } from "./api-error";
 import { describe, expect, it } from "vitest";
+import { ApiErrorCode, getApiErrorCode } from "./api-error";
 
 describe("getApiErrorCode", () => {
 	it("returns known API error code", () => {

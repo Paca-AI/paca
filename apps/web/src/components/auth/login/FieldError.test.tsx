@@ -18,8 +18,6 @@ describe("FieldError", () => {
 	it("renders alert text when touched and invalid", () => {
 		render(<FieldError isTouched={true} error="Username is required" />);
 
-		expect(screen.getByRole("alert")).toHaveTextContent(
-			"Username is required",
-		);
+		expect(screen.getByRole("alert")).toHaveTextContent("Username is required");
 	});
 });

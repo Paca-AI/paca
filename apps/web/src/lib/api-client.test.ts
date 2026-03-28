@@ -175,7 +175,9 @@ describe("ApiClient", () => {
 		const mockInstance = createAxiosInstanceMock();
 		vi.mocked(axios.create).mockReturnValue(mockInstance as never);
 		const refreshError = new Error("refresh failed");
-		mockInstance.post.mockRejectedValueOnce(refreshError).mockResolvedValueOnce({});
+		mockInstance.post
+			.mockRejectedValueOnce(refreshError)
+			.mockResolvedValueOnce({});
 		mockInstance.request.mockResolvedValue({ data: { ok: true } });
 
 		new ApiClient();

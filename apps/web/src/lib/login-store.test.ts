@@ -1,9 +1,9 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	loginExampleStore,
 	markLoginSubmit,
 	setUsernamePreview,
 } from "./login-store";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("loginExampleStore", () => {
 	beforeEach(() => {

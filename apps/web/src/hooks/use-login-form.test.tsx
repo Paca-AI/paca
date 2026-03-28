@@ -38,18 +38,15 @@ vi.mock("@tanstack/react-query", async () => {
 });
 
 vi.mock("@tanstack/react-form", () => ({
-	useForm: (options: {
-		onSubmit: (args: SubmitPayload) => Promise<void>;
-	}) => {
+	useForm: (options: { onSubmit: (args: SubmitPayload) => Promise<void> }) => {
 		mocks.capturedOnSubmit = options.onSubmit;
 		return { handleSubmit: mocks.handleSubmitMock };
 	},
 }));
 
 vi.mock("@/lib/auth-api", async () => {
-	const actual = await vi.importActual<typeof import("@/lib/auth-api")>(
-		"@/lib/auth-api",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/lib/auth-api")>("@/lib/auth-api");
 	return {
 		...actual,
 		login: vi.fn(),
@@ -57,9 +54,8 @@ vi.mock("@/lib/auth-api", async () => {
 });
 
 vi.mock("@/lib/api-error", async () => {
-	const actual = await vi.importActual<typeof import("@/lib/api-error")>(
-		"@/lib/api-error",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/lib/api-error")>("@/lib/api-error");
 	return {
 		...actual,
 		getApiErrorCode: mocks.getApiErrorCodeMock,
