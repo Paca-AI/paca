@@ -62,6 +62,7 @@ bunx playwright test --project=mobile-chrome
 ```
 apps/e2e/
 ├── .env.example            # document required environment variables
+├── features/               # Gherkin feature files mirroring current coverage
 ├── global-setup.ts         # runs once before all tests — saves auth state
 ├── playwright.config.ts    # Playwright configuration
 ├── fixtures/
@@ -75,6 +76,21 @@ apps/e2e/
     ├── session/            # logout, back-button, session persistence
     └── ux/                 # UX: error display, password toggle, theme, mobile
 ```
+
+  ## BDD Feature Files
+
+  The `features/` directory mirrors the current Playwright coverage with Gherkin
+  feature files grouped the same way as the executable test suites:
+
+  - `features/auth/login.feature`
+  - `features/validation/form.feature`
+  - `features/security/login.feature`
+  - `features/session/management.feature`
+  - `features/ux/login.feature`
+
+  These files are the BDD specification for the existing test coverage. The
+  current runner is still plain Playwright; no Cucumber or Playwright-BDD adapter
+  is wired into the suite yet.
 
 ## Authentication State
 
