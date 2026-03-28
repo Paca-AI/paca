@@ -19,10 +19,11 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockUserSvc struct {
-	getByID func(ctx context.Context, id uuid.UUID) (*domainuser.User, error)
-	create  func(ctx context.Context, in domainuser.CreateInput) (*domainuser.User, error)
-	update  func(ctx context.Context, id uuid.UUID, in domainuser.UpdateInput) (*domainuser.User, error)
-	delete  func(ctx context.Context, id uuid.UUID) error
+	getByID               func(ctx context.Context, id uuid.UUID) (*domainuser.User, error)
+	listGlobalPermissions func(ctx context.Context, id uuid.UUID) ([]string, error)
+	create                func(ctx context.Context, in domainuser.CreateInput) (*domainuser.User, error)
+	update                func(ctx context.Context, id uuid.UUID, in domainuser.UpdateInput) (*domainuser.User, error)
+	delete                func(ctx context.Context, id uuid.UUID) error
 }
 
 func (m *mockUserSvc) GetByID(ctx context.Context, id uuid.UUID) (*domainuser.User, error) {
@@ -30,6 +31,12 @@ func (m *mockUserSvc) GetByID(ctx context.Context, id uuid.UUID) (*domainuser.Us
 		return m.getByID(ctx, id)
 	}
 	return nil, domainuser.ErrNotFound
+}
+func (m *mockUserSvc) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
+	if m.listGlobalPermissions != nil {
+		return m.listGlobalPermissions(ctx, id)
+	}
+	return []string{}, nil
 }
 func (m *mockUserSvc) Create(ctx context.Context, in domainuser.CreateInput) (*domainuser.User, error) {
 	if m.create != nil {
@@ -62,6 +69,7 @@ func newUserRouter(svc domainuser.Service) *gin.Engine {
 	h := handler.NewUserHandler(svc)
 	r.POST("/users", h.Create)
 	r.GET("/users/me", h.GetMe)
+	r.GET("/users/me/global-permissions", h.GetMyGlobalPermissions)
 	r.PATCH("/users/:id", h.Update)
 	r.DELETE("/users/:id", h.Delete)
 	return r
@@ -164,6 +172,73 @@ func TestGetMe_NotFound(t *testing.T) {
 	r.GET("/users/me", injectClaims(claims), handler.NewUserHandler(svc).GetMe)
 
 	w := do(t, r, http.MethodGet, "/users/me", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "USER_NOT_FOUND" {
+		t.Errorf("expected error_code USER_NOT_FOUND, got %q", code)
+	}
+}
+
+func TestGetMyGlobalPermissions_Success(t *testing.T) {
+	id := uuid.New()
+	svc := &mockUserSvc{
+		listGlobalPermissions: func(_ context.Context, got uuid.UUID) ([]string, error) {
+			if got != id {
+				t.Fatalf("unexpected id: %v", got)
+			}
+			return []string{"global_roles.read", "users.read"}, nil
+		},
+	}
+	r := gin.New()
+	claims := testClaims(id.String(), "me", "USER")
+	r.GET("/users/me/global-permissions", injectClaims(claims), handler.NewUserHandler(svc).GetMyGlobalPermissions)
+
+	w := do(t, r, http.MethodGet, "/users/me/global-permissions", nil)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetMyGlobalPermissions_Unauthenticated(t *testing.T) {
+	r := gin.New()
+	r.GET("/users/me/global-permissions", handler.NewUserHandler(&mockUserSvc{}).GetMyGlobalPermissions)
+
+	w := do(t, r, http.MethodGet, "/users/me/global-permissions", nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "AUTH_UNAUTHENTICATED" {
+		t.Errorf("expected error_code AUTH_UNAUTHENTICATED, got %q", code)
+	}
+}
+
+func TestGetMyGlobalPermissions_InvalidSubjectClaim(t *testing.T) {
+	r := gin.New()
+	claims := testClaims("not-a-uuid", "me", "USER")
+	r.GET("/users/me/global-permissions", injectClaims(claims), handler.NewUserHandler(&mockUserSvc{}).GetMyGlobalPermissions)
+
+	w := do(t, r, http.MethodGet, "/users/me/global-permissions", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "BAD_REQUEST" {
+		t.Errorf("expected error_code BAD_REQUEST, got %q", code)
+	}
+}
+
+func TestGetMyGlobalPermissions_ServiceError(t *testing.T) {
+	id := uuid.New()
+	svc := &mockUserSvc{
+		listGlobalPermissions: func(_ context.Context, _ uuid.UUID) ([]string, error) {
+			return nil, domainuser.ErrNotFound
+		},
+	}
+	r := gin.New()
+	claims := testClaims(id.String(), "me", "USER")
+	r.GET("/users/me/global-permissions", injectClaims(claims), handler.NewUserHandler(svc).GetMyGlobalPermissions)
+
+	w := do(t, r, http.MethodGet, "/users/me/global-permissions", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}

@@ -5,26 +5,69 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 	userdom "github.com/paca/api/internal/domain/user"
+	"github.com/paca/api/internal/platform/authz"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// GlobalPermissionReader resolves global permissions for a user.
+type GlobalPermissionReader interface {
+	ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error)
+}
+
 // Service is the concrete implementation of domain/user.Service.
 type Service struct {
-	repo userdom.Repository
+	repo                   userdom.Repository
+	globalPermissionReader GlobalPermissionReader
 }
 
 // New returns a configured user Service.
-func New(repo userdom.Repository) *Service {
-	return &Service{repo: repo}
+func New(repo userdom.Repository, globalPermissionReaders ...GlobalPermissionReader) *Service {
+	var reader GlobalPermissionReader
+	if len(globalPermissionReaders) > 0 {
+		reader = globalPermissionReaders[0]
+	}
+	return &Service{repo: repo, globalPermissionReader: reader}
 }
 
 // GetByID returns a user by primary key.
 func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
 	return s.repo.FindByID(ctx, id)
+}
+
+// ListGlobalPermissions returns effective global permissions for the user.
+func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
+	u, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[string]struct{}{}
+	for _, p := range authz.LegacyPermissionsForRole(u.Role) {
+		seen[string(p)] = struct{}{}
+	}
+
+	if s.globalPermissionReader != nil {
+		perms, err := s.globalPermissionReader.ListGlobalPermissions(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range perms {
+			seen[string(p)] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+
+	return out, nil
 }
 
 // Create registers a new user with a hashed password.

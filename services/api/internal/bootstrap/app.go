@@ -93,7 +93,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Services -----------------------------------------------------------
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
-	userService := usersvc.New(userRepo)
+	userService := usersvc.New(userRepo, permissionStore)
 	globalRoleService := globalrolesvc.New(globalRoleRepo)
 
 	// --- Handlers -----------------------------------------------------------

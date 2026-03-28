@@ -35,6 +35,9 @@ type mockUserSvc struct{}
 func (m *mockUserSvc) GetByID(context.Context, uuid.UUID) (*userdom.User, error) {
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
 }
+func (m *mockUserSvc) ListGlobalPermissions(context.Context, uuid.UUID) ([]string, error) {
+	return []string{string(authz.PermissionUsersRead)}, nil
+}
 func (m *mockUserSvc) Create(context.Context, userdom.CreateInput) (*userdom.User, error) {
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
 }
@@ -162,6 +165,18 @@ func TestNew_ProtectedRouteRequiresAuth(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/me", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestNew_MeGlobalPermissionsRouteRequiresAuth(t *testing.T) {
+	r := newTestRouter(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/me/global-permissions", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {

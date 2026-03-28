@@ -69,6 +69,68 @@ func TestAuthFlow(t *testing.T) {
 		assertStatus(t, resp, http.StatusOK)
 	})
 
+	t.Run("me_global_permissions", func(t *testing.T) {
+		loginResp := login(env.ctx, t, env.client, env.base, "alice", "supersecret")
+		_ = loginResp.Body.Close()
+
+		req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/users/me/global-permissions", nil)
+		resp := mustDo(t, env.client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+
+		var envResp envelope
+		decodeJSON(t, resp, &envResp)
+		data := assertDataMap(t, envResp)
+
+		rawPerms, ok := data["permissions"].([]any)
+		if !ok {
+			t.Fatalf("expected permissions array, got %T (%v)", data["permissions"], data["permissions"])
+		}
+
+		foundUsersRead := false
+		for _, p := range rawPerms {
+			s, ok := p.(string)
+			if ok && s == "users.read" {
+				foundUsersRead = true
+			}
+		}
+		if !foundUsersRead {
+			t.Fatalf("expected users.read in permissions, got %v", rawPerms)
+		}
+	})
+
+	t.Run("me_global_permissions_includes_assigned_global_role_permissions", func(t *testing.T) {
+		assignGlobalRolesByName(t, env, "alice", "ADMIN")
+
+		loginResp := login(env.ctx, t, env.client, env.base, "alice", "supersecret")
+		_ = loginResp.Body.Close()
+
+		req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/users/me/global-permissions", nil)
+		resp := mustDo(t, env.client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+
+		var envResp envelope
+		decodeJSON(t, resp, &envResp)
+		data := assertDataMap(t, envResp)
+
+		rawPerms, ok := data["permissions"].([]any)
+		if !ok {
+			t.Fatalf("expected permissions array, got %T (%v)", data["permissions"], data["permissions"])
+		}
+
+		foundGlobalRolesWildcard := false
+		for _, p := range rawPerms {
+			s, ok := p.(string)
+			if ok && s == "global_roles.*" {
+				foundGlobalRolesWildcard = true
+			}
+		}
+		if !foundGlobalRolesWildcard {
+			t.Fatalf("expected global_roles.* in permissions, got %v", rawPerms)
+		}
+	})
+
 	t.Run("refresh_without_cookie_rejected", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodPost, env.base+"/api/v1/auth/refresh", nil)
 		resp := mustDo(t, &http.Client{}, req)

@@ -63,6 +63,29 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 	presenter.OK(c, dto.UserFromEntity(u))
 }
 
+// GetMyGlobalPermissions handles GET /users/me/global-permissions.
+func (h *UserHandler) GetMyGlobalPermissions(c *gin.Context) {
+	claims := middleware.ClaimsFrom(c)
+	if claims == nil {
+		presenter.Error(c, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(c, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	permissions, err := h.svc.ListGlobalPermissions(c.Request.Context(), id)
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+
+	presenter.OK(c, gin.H{"permissions": permissions})
+}
+
 // Update handles PATCH /users/:id.
 func (h *UserHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))

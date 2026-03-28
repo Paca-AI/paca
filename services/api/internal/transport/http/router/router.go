@@ -57,6 +57,7 @@ func New(deps Deps) *gin.Engine {
 			// Protected
 			users.Use(httpmw.Authn(deps.TokenManager))
 			users.GET("/me", deps.User.GetMe)
+			users.GET("/me/global-permissions", deps.User.GetMyGlobalPermissions)
 			users.PATCH("/:id", deps.User.Update)
 			users.DELETE("/:id",
 				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersDelete),

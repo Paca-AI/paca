@@ -149,7 +149,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	authzStore := pgRepo.NewAuthzPermissionStore(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL, e2eRefreshSessionTTL)
-	userService := usersvc.New(userRepo)
+	userService := usersvc.New(userRepo, authzStore)
 	globalRoleService := globalrolesvc.New(roleRepo)
 
 	cookieCfg := handler.CookieConfig{
