@@ -36,7 +36,8 @@ Where the current implementation and the schema diverge, this document calls tha
 
 - Protected endpoints require `Authorization: Bearer <access-token>`.
 - Access and refresh token lifecycle is handled under `/api/v1/auth`.
-- Role-based checks are enforced in middleware for admin-only operations.
+- Authorization is permission-based and enforced in middleware for protected operations.
+- Permissions may come from legacy role compatibility, assigned global roles, and later project-scoped roles.
 
 ### Identifier strategy
 
@@ -112,8 +113,14 @@ These routes already exist in the Go API service.
 | `POST` | `/api/v1/auth/logout` | Access token | Revoke the current authenticated token/session and clear cookies. |
 | `POST` | `/api/v1/users` | No | Register a new user account. |
 | `GET` | `/api/v1/users/me` | Access token | Return the authenticated caller's own profile. |
+| `GET` | `/api/v1/users/me/global-permissions` | Access token | Return the authenticated caller's effective global permissions. |
 | `PATCH` | `/api/v1/users/:id` | Access token | Update mutable profile fields for the specified user. Current implementation supports `full_name`. |
-| `DELETE` | `/api/v1/users/:id` | Access token + `ADMIN` role | Delete a user account. |
+| `DELETE` | `/api/v1/users/:id` | Access token + `users.delete` permission | Delete a user account. |
+| `GET` | `/api/v1/admin/global-roles` | Access token + `global_roles.read` permission | List available global roles and permissions. |
+| `POST` | `/api/v1/admin/global-roles` | Access token + `global_roles.write` permission | Create a new global role definition. |
+| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token + `global_roles.write` permission | Update a global role definition. |
+| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token + `global_roles.write` permission | Remove a global role definition. |
+| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token + `global_roles.assign` permission | Replace the set of global roles assigned to a user. |
 
 ## Current Request and Response Contracts
 
@@ -228,6 +235,29 @@ Function:
 - read the profile of the authenticated user;
 - resolve the user from the JWT subject claim.
 
+### `GET /api/v1/users/me/global-permissions`
+
+Function:
+
+- return the authenticated caller's effective global permissions;
+- merge legacy compatibility permissions from the user's stored role with permissions granted by assigned global roles;
+- return a deduplicated permission list.
+
+Success response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "permissions": [
+      "users.read",
+      "global_roles.read"
+    ]
+  },
+  "request_id": "..."
+}
+```
+
 ### `PATCH /api/v1/users/:id`
 
 Function:
@@ -248,7 +278,64 @@ Request body:
 Function:
 
 - remove or soft-delete a user account;
-- restricted to callers with the `ADMIN` role.
+- restricted to callers with the `users.delete` permission.
+
+## Implemented Administration API
+
+### `GET /api/v1/admin/global-roles`
+
+Function:
+
+- list global role definitions;
+- return each role with its assigned permission map.
+
+### `POST /api/v1/admin/global-roles`
+
+Function:
+
+- create a global role definition;
+- persist a role name and permission map.
+
+Request body:
+
+```json
+{
+  "name": "SECURITY_ADMIN",
+  "permissions": {
+    "global_roles.read": true,
+    "users.delete": true
+  }
+}
+```
+
+### `PATCH /api/v1/admin/global-roles/:roleId`
+
+Function:
+
+- update the target global role's name and permission map.
+
+### `DELETE /api/v1/admin/global-roles/:roleId`
+
+Function:
+
+- remove a global role definition;
+- remove any user-role assignments pointing to the deleted role.
+
+### `PUT /api/v1/admin/users/:userId/global-roles`
+
+Function:
+
+- replace the complete set of global roles assigned to a user.
+
+Request body:
+
+```json
+{
+  "role_ids": [
+    "uuid"
+  ]
+}
+```
 
 ## Planned Resource API
 
@@ -260,11 +347,6 @@ The following endpoints are not fully implemented yet, but they are the recommen
 |---|---|---|
 | `GET` | `/api/v1/users` | List users for administration and member selection. |
 | `GET` | `/api/v1/users/:id` | Get a user profile by ID. |
-| `GET` | `/api/v1/admin/global-roles` | List available global roles and permissions. |
-| `POST` | `/api/v1/admin/global-roles` | Create a new global role definition. |
-| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Update a global role definition. |
-| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Remove a global role definition. |
-| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Replace the set of global roles assigned to a user. |
 
 ## Projects and Membership
 
