@@ -116,7 +116,9 @@ describe("ApiClient", () => {
 
 		new ApiClient();
 		const onResponseError = getResponseErrorHandler(mockInstance);
-		const originalRequest = { url: "/users/me" };
+		const originalRequest: { url: string; _retry?: boolean } = {
+			url: "/users/me",
+		};
 
 		await expect(
 			onResponseError({ config: originalRequest, response: { status: 401 } }),

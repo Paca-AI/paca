@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { beforeAll, beforeEach } from "vitest";
 
 type StorageLike = {
 	getItem: (key: string) => string | null;
