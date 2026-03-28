@@ -22,7 +22,10 @@ tidy:
 
 migrate-up:
 	@echo "Running migrations against $$DATABASE_URL"
-	psql "$(DB_DSN)" -f $(MIGRATE)/000001_init.sql
+	@for f in $(shell ls $(MIGRATE)/*.sql | sort); do \
+		echo "Applying $$f"; \
+		psql "$(DB_DSN)" -f $$f || exit 1; \
+	done
 
 migrate-down:
 	@echo "Dropping schema (destructive!) — set DB_DSN before running"

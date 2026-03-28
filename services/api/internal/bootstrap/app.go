@@ -4,6 +4,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/paca/api/internal/config"
+	globalroledom "github.com/paca/api/internal/domain/globalrole"
 	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
 	"github.com/paca/api/internal/platform/cache"
@@ -23,10 +25,12 @@ import (
 	pgRepo "github.com/paca/api/internal/repository/postgres"
 	redisRepo "github.com/paca/api/internal/repository/redis"
 	authsvc "github.com/paca/api/internal/service/auth"
+	globalrolesvc "github.com/paca/api/internal/service/globalrole"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // App holds the HTTP server and any resources that need graceful shutdown.
@@ -61,20 +65,36 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	tokenManager := jwttoken.New(cfg.JWT.Secret, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL)
-	policy := authz.NewPolicy()
+	permissionStore := pgRepo.NewAuthzPermissionStore(db)
+	authorizer := authz.NewAuthorizer(permissionStore)
 
 	// --- Repositories -------------------------------------------------------
 	userRepo := pgRepo.NewUserRepository(db)
+	globalRoleRepo := pgRepo.NewGlobalRoleRepository(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
+
+	if err := db.AutoMigrate(
+		&projectModel{},
+		&projectRoleModel{},
+		&projectMemberModel{},
+		&globalRoleModel{},
+		&userGlobalRoleModel{},
+	); err != nil {
+		return nil, fmt.Errorf("bootstrap: migrate role tables: %w", err)
+	}
 
 	// --- Admin seeding -------------------------------------------------------
 	if err := seedAdmin(context.Background(), userRepo, cfg.Admin, log); err != nil {
+		return nil, fmt.Errorf("bootstrap: %w", err)
+	}
+	if err := seedDefaultRoles(context.Background(), db, userRepo, globalRoleRepo, cfg.Admin.Username, log); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
 
 	// --- Services -----------------------------------------------------------
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
 	userService := usersvc.New(userRepo)
+	globalRoleService := globalrolesvc.New(globalRoleRepo)
 
 	// --- Handlers -----------------------------------------------------------
 	cookieCfg := handler.CookieConfig{
@@ -86,10 +106,11 @@ func New(cfg *config.Config) (*App, error) {
 
 	deps := router.Deps{
 		TokenManager: tokenManager,
-		AuthzPolicy:  policy,
+		Authorizer:   authorizer,
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService),
+		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
 		Log:          log,
 	}
 
@@ -107,6 +128,57 @@ func New(cfg *config.Config) (*App, error) {
 
 	return &App{server: srv, publisher: publisher, log: log}, nil
 }
+
+// globalRoleModel is used only for startup AutoMigrate to ensure the planned
+// admin tables exist in development environments.
+type globalRoleModel struct {
+	ID          string `gorm:"primarykey;type:uuid"`
+	Name        string `gorm:"uniqueIndex;not null"`
+	Permissions []byte `gorm:"type:jsonb;not null"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (globalRoleModel) TableName() string { return "global_roles" }
+
+// userGlobalRoleModel keeps the user-role relationship table aligned.
+type userGlobalRoleModel struct {
+	UserID string `gorm:"primaryKey;type:uuid;column:user_id"`
+	RoleID string `gorm:"primaryKey;type:uuid;column:role_id"`
+}
+
+func (userGlobalRoleModel) TableName() string { return "user_global_roles" }
+
+type projectModel struct {
+	ID          string `gorm:"primarykey;type:uuid"`
+	Name        string `gorm:"not null"`
+	Description string
+	Settings    []byte `gorm:"type:jsonb;not null"`
+	CreatedBy   *string
+	CreatedAt   time.Time
+}
+
+func (projectModel) TableName() string { return "projects" }
+
+type projectRoleModel struct {
+	ID          string  `gorm:"primarykey;type:uuid"`
+	ProjectID   *string `gorm:"type:uuid;column:project_id;index"`
+	RoleName    string  `gorm:"column:role_name;not null"`
+	Permissions []byte  `gorm:"type:jsonb;not null"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (projectRoleModel) TableName() string { return "project_roles" }
+
+type projectMemberModel struct {
+	ID            string `gorm:"primarykey;type:uuid"`
+	ProjectID     string `gorm:"type:uuid;column:project_id;index"`
+	UserID        string `gorm:"type:uuid;column:user_id;index"`
+	ProjectRoleID string `gorm:"type:uuid;column:project_role_id;index"`
+}
+
+func (projectMemberModel) TableName() string { return "project_members" }
 
 // Run starts the HTTP server.  It returns when the server stops.
 func (a *App) Run() error {
@@ -157,4 +229,128 @@ func seedAdmin(ctx context.Context, repo userdom.Repository, cfg config.AdminCon
 
 	log.Info("admin account created", "username", cfg.Username)
 	return nil
+}
+
+func seedDefaultRoles(
+	ctx context.Context,
+	db *gorm.DB,
+	userRepo userdom.Repository,
+	globalRoleRepo *pgRepo.GlobalRoleRepository,
+	adminUsername string,
+	log *slog.Logger,
+) error {
+	for _, def := range authz.DefaultGlobalRoles() {
+		role, err := globalRoleRepo.FindByName(ctx, def.Name)
+		if err != nil {
+			if !errors.Is(err, globalroledom.ErrNotFound) {
+				return fmt.Errorf("seed global roles: find %s: %w", def.Name, err)
+			}
+			now := time.Now()
+			if err := globalRoleRepo.Create(ctx, &globalroledom.GlobalRole{
+				ID:          uuid.New(),
+				Name:        def.Name,
+				Permissions: permissionMap(def.Permissions),
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}); err != nil {
+				return fmt.Errorf("seed global roles: create %s: %w", def.Name, err)
+			}
+			continue
+		}
+
+		role.Permissions = permissionMap(def.Permissions)
+		role.UpdatedAt = time.Now()
+		if err := globalRoleRepo.Update(ctx, role); err != nil {
+			return fmt.Errorf("seed global roles: update %s: %w", def.Name, err)
+		}
+	}
+
+	if err := seedDefaultProjectRoleTemplates(ctx, db); err != nil {
+		return err
+	}
+
+	adminUser, err := userRepo.FindByUsername(ctx, adminUsername)
+	if err != nil {
+		if errors.Is(err, userdom.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("seed global roles: load admin user: %w", err)
+	}
+
+	superAdminRole, err := globalRoleRepo.FindByName(ctx, "SUPER_ADMIN")
+	if err != nil {
+		return fmt.Errorf("seed global roles: load SUPER_ADMIN role: %w", err)
+	}
+
+	existingRoles, err := globalRoleRepo.ListUserRoles(ctx, adminUser.ID)
+	if err != nil {
+		return fmt.Errorf("seed global roles: list admin user roles: %w", err)
+	}
+	roleIDs := make([]uuid.UUID, 0, len(existingRoles)+1)
+	hasSuperAdmin := false
+	for _, role := range existingRoles {
+		roleIDs = append(roleIDs, role.ID)
+		if role.ID == superAdminRole.ID {
+			hasSuperAdmin = true
+		}
+	}
+	if !hasSuperAdmin {
+		roleIDs = append(roleIDs, superAdminRole.ID)
+		if err := globalRoleRepo.ReplaceUserRoles(ctx, adminUser.ID, roleIDs); err != nil {
+			return fmt.Errorf("seed global roles: assign SUPER_ADMIN: %w", err)
+		}
+		log.Info("assigned SUPER_ADMIN role to admin user", "username", adminUsername)
+	}
+
+	return nil
+}
+
+func seedDefaultProjectRoleTemplates(ctx context.Context, db *gorm.DB) error {
+	for _, def := range authz.DefaultProjectRoles() {
+		permissionsRaw, err := json.Marshal(permissionMap(def.Permissions))
+		if err != nil {
+			return fmt.Errorf("seed project roles: marshal %s permissions: %w", def.Name, err)
+		}
+
+		var existing projectRoleModel
+		find := db.WithContext(ctx).
+			Where("project_id IS NULL AND role_name = ?", def.Name).
+			First(&existing)
+
+		if errors.Is(find.Error, gorm.ErrRecordNotFound) {
+			now := time.Now()
+			projectRoleID := uuid.NewString()
+			if err := db.WithContext(ctx).Create(&projectRoleModel{
+				ID:          projectRoleID,
+				ProjectID:   nil,
+				RoleName:    def.Name,
+				Permissions: permissionsRaw,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}).Error; err != nil {
+				return fmt.Errorf("seed project roles: create template %s: %w", def.Name, err)
+			}
+			continue
+		}
+		if find.Error != nil {
+			return fmt.Errorf("seed project roles: find template %s: %w", def.Name, find.Error)
+		}
+
+		if err := db.WithContext(ctx).
+			Model(&projectRoleModel{}).
+			Where("id = ?", existing.ID).
+			Updates(map[string]any{"permissions": permissionsRaw, "updated_at": time.Now()}).Error; err != nil {
+			return fmt.Errorf("seed project roles: update template %s: %w", def.Name, err)
+		}
+	}
+
+	return nil
+}
+
+func permissionMap(permissions []authz.Permission) map[string]any {
+	out := make(map[string]any, len(permissions))
+	for _, p := range permissions {
+		out[string(p)] = true
+	}
+	return out
 }

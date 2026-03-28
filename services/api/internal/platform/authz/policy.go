@@ -1,4 +1,4 @@
-// Package authz provides a lightweight role-based authorization policy.
+// Package authz provides authorization helpers.
 package authz
 
 import "fmt"
@@ -18,6 +18,9 @@ func NewPolicy() *Policy { return &Policy{} }
 // Require returns an error if the given role does not satisfy any of the
 // required roles.
 func (p *Policy) Require(role string, required ...string) error {
+	if len(required) == 0 {
+		return fmt.Errorf("authz: no required roles configured")
+	}
 	for _, r := range required {
 		if role == r {
 			return nil

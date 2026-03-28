@@ -30,6 +30,7 @@ import (
 	pgRepo "github.com/paca/api/internal/repository/postgres"
 	redisRepo "github.com/paca/api/internal/repository/redis"
 	authsvc "github.com/paca/api/internal/service/auth"
+	globalrolesvc "github.com/paca/api/internal/service/globalrole"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
@@ -49,6 +50,8 @@ type e2eEnv struct {
 	base        string
 	client      *http.Client
 	userService *usersvc.Service
+	userRepo    *pgRepo.UserRepository
+	roleRepo    *pgRepo.GlobalRoleRepository
 }
 
 func newE2EEnv(t *testing.T) *e2eEnv {
@@ -141,11 +144,13 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Cleanup(func() { _ = redisClient.Close() })
 
 	tm := jwttoken.New(e2eJWTSecret, e2eAccessTTL, e2eRefreshTTL)
-	policy := authz.NewPolicy()
 	userRepo := pgRepo.NewUserRepository(db)
+	roleRepo := pgRepo.NewGlobalRoleRepository(db)
+	authzStore := pgRepo.NewAuthzPermissionStore(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL, e2eRefreshSessionTTL)
 	userService := usersvc.New(userRepo)
+	globalRoleService := globalrolesvc.New(roleRepo)
 
 	cookieCfg := handler.CookieConfig{
 		Secure:            false,
@@ -155,10 +160,11 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	}
 	engine := router.New(router.Deps{
 		TokenManager: tm,
-		AuthzPolicy:  policy,
+		Authorizer:   authz.NewAuthorizer(authzStore),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService),
+		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
 		Log:          log,
 	})
 
@@ -178,6 +184,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			Timeout: 30 * time.Second,
 		},
 		userService: userService,
+		userRepo:    userRepo,
+		roleRepo:    roleRepo,
 	}
 }
 

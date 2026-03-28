@@ -32,7 +32,7 @@ func buildUserTestRouter(repo *fakeUserRepo) *gin.Engine {
 
 	return router.New(router.Deps{
 		TokenManager: tm,
-		AuthzPolicy:  authz.NewPolicy(),
+		Authorizer:   authz.NewAuthorizer(nil),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),

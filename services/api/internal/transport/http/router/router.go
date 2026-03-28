@@ -18,10 +18,11 @@ import (
 // Deps holds all handler and middleware dependencies.
 type Deps struct {
 	TokenManager *jwttoken.Manager
-	AuthzPolicy  *authz.Policy
+	Authorizer   *authz.Authorizer
 	Health       *handler.HealthHandler
 	Auth         *handler.AuthHandler
 	User         *handler.UserHandler
+	GlobalRole   *handler.GlobalRoleHandler
 	Log          *slog.Logger
 }
 
@@ -58,8 +59,33 @@ func New(deps Deps) *gin.Engine {
 			users.GET("/me", deps.User.GetMe)
 			users.PATCH("/:id", deps.User.Update)
 			users.DELETE("/:id",
-				httpmw.Authz(deps.AuthzPolicy, "ADMIN"),
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersDelete),
 				deps.User.Delete,
+			)
+		}
+
+		admin := v1.Group("/admin")
+		admin.Use(httpmw.Authn(deps.TokenManager))
+		{
+			admin.GET("/global-roles",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesRead),
+				deps.GlobalRole.List,
+			)
+			admin.POST("/global-roles",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesWrite),
+				deps.GlobalRole.Create,
+			)
+			admin.PATCH("/global-roles/:roleId",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesWrite),
+				deps.GlobalRole.Update,
+			)
+			admin.DELETE("/global-roles/:roleId",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesWrite),
+				deps.GlobalRole.Delete,
+			)
+			admin.PUT("/users/:userId/global-roles",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesAssign),
+				deps.GlobalRole.ReplaceUserRoles,
 			)
 		}
 	}
