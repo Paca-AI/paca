@@ -27,4 +27,9 @@ export default defineConfig({
 		watch: isDocker ? { usePolling: true } : undefined,
 		hmr: isDocker ? { clientPort: 3000 } : undefined,
 	},
+	test: {
+		environment: "jsdom",
+		globals: true,
+		setupFiles: "./src/test/setup.ts",
+	},
 });
