@@ -199,7 +199,9 @@ export function LoginFormPanel() {
 								style={{
 									background: isSubmitting
 										? undefined
-										: "linear-gradient(135deg, #2e4980 0%, #1b3360 100%)",
+										: isDark
+											? "linear-gradient(135deg, #4a6cf7 0%, #3352d8 100%)"
+											: "linear-gradient(135deg, #2e4980 0%, #1b3360 100%)",
 								}}
 								disabled={isSubmitting || !username.trim() || !password}
 							>

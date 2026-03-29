@@ -13,7 +13,7 @@ export const Route = createFileRoute("/")({
 		const user = await queryClient
 			.fetchQuery(currentUserQueryOptions)
 			.catch(() => null);
-		if (user) throw redirect({ to: "/dashboard" });
+		if (user) throw redirect({ to: "/home" });
 	},
 	component: LoginPage,
 });
