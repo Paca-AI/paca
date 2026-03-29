@@ -12,7 +12,7 @@ test.describe("Authentication", () => {
 		await context.clearCookies();
 	});
 
-	test("redirects to dashboard on valid credentials", async ({
+	test("redirects to home on valid credentials", async ({
 		loginPage,
 		page,
 	}) => {
@@ -20,7 +20,7 @@ test.describe("Authentication", () => {
 			process.env.E2E_USERNAME ?? "admin",
 			process.env.E2E_PASSWORD ?? "e2e-admin-password",
 		);
-		await expect(page).toHaveURL(/\/dashboard/);
+		await expect(page).toHaveURL(/\/home/);
 	});
 
 	test("shows error on invalid username", async ({ loginPage }) => {

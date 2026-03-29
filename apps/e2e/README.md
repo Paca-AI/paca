@@ -48,7 +48,7 @@ bun run test:report
 bunx playwright test tests/auth/login.spec.ts
 
 # Single test by title
-bunx playwright test -g "redirects to dashboard on valid credentials"
+bunx playwright test -g "redirects to home on valid credentials"
 
 # One browser only
 bunx playwright test --project=chromium

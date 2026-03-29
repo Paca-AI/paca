@@ -21,12 +21,12 @@ vi.mock("./api-client", () => ({
 import {
 	createGlobalRole,
 	deleteGlobalRole,
+	type GlobalRole,
 	getGlobalRoles,
 	getMyGlobalPermissions,
 	globalRolesQueryOptions,
 	myPermissionsQueryOptions,
 	updateGlobalRole,
-	type GlobalRole,
 } from "./admin-api";
 
 describe("admin-api", () => {

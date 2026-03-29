@@ -23,9 +23,9 @@ test.describe("Session Management — authenticated", () => {
 	test.use({ storageState: AUTH_FILE });
 
 	test("logout redirects to login page", async ({ page }) => {
-		await page.goto("/dashboard");
+		await page.goto("/home");
 		await expect(
-			page.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 
 		// Update this selector to match the actual logout button in the UI.
@@ -36,12 +36,12 @@ test.describe("Session Management — authenticated", () => {
 		await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
 	});
 
-	test("back button after logout shows login, not dashboard", async ({
+	test("back button after logout shows login, not home page", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard");
+		await page.goto("/home");
 		await expect(
-			page.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 
 		await page.getByRole("button", { name: /temporary logout/i }).click();
@@ -58,14 +58,14 @@ test.describe("Session Management — authenticated", () => {
 	});
 
 	test("session persists across page reload", async ({ page }) => {
-		await page.goto("/dashboard");
+		await page.goto("/home");
 		await expect(
-			page.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 	});
 
@@ -73,15 +73,15 @@ test.describe("Session Management — authenticated", () => {
 		context,
 		page,
 	}) => {
-		await page.goto("/dashboard");
+		await page.goto("/home");
 		await expect(
-			page.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 
 		const page2 = await context.newPage();
 		await page2.goto("/");
 		await expect(
-			page2.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page2.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 	});
 });
@@ -100,7 +100,7 @@ test.describe("Session Management — fresh context", () => {
 		await page1.getByRole("textbox", { name: "Password" }).fill(PASSWORD);
 		await page1.getByRole("button", { name: /sign in/i }).click();
 		await expect(
-			page1.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page1.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 		await ctx1.close();
 

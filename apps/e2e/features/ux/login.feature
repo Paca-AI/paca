@@ -10,7 +10,7 @@ Feature: Login page user experience
     When the user signs in with username "invaliduser" and password "invalidpass"
     Then the login error message should be visible
     When the user signs in with the configured valid username and password
-    Then the user should be redirected to the dashboard
+    Then the user should be redirected to the home page
 
   Scenario: Password visibility can be toggled with the show and hide controls
     When the user fills the password field with "e2e-admin-password"
@@ -24,7 +24,7 @@ Feature: Login page user experience
     When the user enables remember me
     Then the remember-me control should be checked
     When the user signs in with the configured valid username and password
-    Then the user should be redirected to the dashboard
+    Then the user should be redirected to the home page
 
   Scenario: Theme mode cycles from auto to light to dark without breaking the form
     When the user changes the theme mode from auto to light
@@ -44,4 +44,4 @@ Feature: Login page user experience
     When the user resizes the viewport to 375 by 667
     And the user reloads the login page
     And the user signs in on mobile with the configured valid username and password
-    Then the dashboard heading should be visible
+    Then the home heading should be visible
