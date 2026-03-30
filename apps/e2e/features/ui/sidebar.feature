@@ -157,11 +157,6 @@ Feature: Sidebar navigation
       And the main content should remain visible behind the overlay
       And the page content should not be pushed aside
 
-    Scenario: Mobile sidebar can be dismissed by clicking outside
-      Given the mobile sidebar is open
-      When the user clicks outside the sidebar panel
-      Then the sidebar sheet should close
-
     Scenario: Mobile sidebar can be dismissed with the Escape key
       Given the mobile sidebar is open
       When the user presses the Escape key

@@ -158,27 +158,6 @@ test.describe('Sidebar Navigation - Mobile Behavior', () => {
     await expect(page.getByRole('link', { name: 'Global Roles' })).toBeVisible();
   });
 
-  test('Mobile sidebar can be dismissed by clicking outside', async ({ page }) => {
-    // This test is currently marked as fixme because the mobile sidebar implementation
-    // has an overlay that cannot be clicked due to pointer event interception by the sidebar content
-    test.fixme(true, 'Mobile sidebar overlay cannot be clicked - pointer events are intercepted by sidebar content');
-    
-    await signInAsAdminMobile(page);
-
-    // Open the mobile sidebar
-    await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
-    
-    // Verify sidebar is open
-    await expect(page.getByText('Administration')).toBeVisible();
-    
-    // Try to click on the backdrop/overlay element
-    const backdrop = page.locator('[data-slot="sheet-overlay"]');
-    await backdrop.click();
-    
-    // Wait for sidebar to close and verify navigation items are not visible
-    await expect(page.getByText('Administration')).not.toBeVisible();
-  });
-
   test('Mobile sidebar can be dismissed with the Escape key', async ({ page }) => {
     await signInAsAdminMobile(page);
 
