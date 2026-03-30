@@ -67,7 +67,7 @@ export function UserMenu() {
 						render={
 							<SidebarMenuButton
 								size="lg"
-								className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+								className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center"
 							/>
 						}
 					>
@@ -76,13 +76,13 @@ export function UserMenu() {
 								{initials}
 							</AvatarFallback>
 						</Avatar>
-						<div className="grid flex-1 text-left text-sm leading-tight">
+						<div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
 							<span className="truncate font-semibold">{displayName}</span>
 							<span className="truncate text-xs text-muted-foreground capitalize">
 								{user.role.toLowerCase()}
 							</span>
 						</div>
-						<ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50" />
+						<ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden" />
 					</DropdownMenuTrigger>
 					<DropdownMenuContent
 						side="top"
