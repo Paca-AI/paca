@@ -80,7 +80,7 @@ test.describe('Global Roles Management', () => {
       try {
         await link.waitFor({ state: 'visible', timeout: 5000 });
         await link.click({ timeout: 10000 });
-      } catch (error) {
+      } catch (_error) {
         // Fallback: try re-opening sidebar and clicking again
         console.warn(`Failed to click ${linkName} link, retrying...`);
         await page.keyboard.press('Escape'); // Close any open sidebar
@@ -98,7 +98,7 @@ test.describe('Global Roles Management', () => {
     }
   };
 
-  test.beforeEach(async ({ request, page, context }) => {
+  test.beforeEach(async ({ request, context }) => {
     // Clear API test data
     await cleanupTestRoles(request);
     

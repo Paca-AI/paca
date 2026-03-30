@@ -25,18 +25,16 @@ describe("permissions", () => {
 	});
 
 	it("hasPermission supports multi-segment domain wildcard", () => {
-		expect(
-			hasPermission(["project.members.*"], "project.members.write"),
-		).toBe(true);
-		expect(
-			hasPermission(["project.members.*"], "project.members.read"),
-		).toBe(true);
-		expect(
-			hasPermission(["project.*"], "project.members.write"),
-		).toBe(false);
-		expect(
-			hasPermission(["project.roles.*"], "project.members.write"),
-		).toBe(false);
+		expect(hasPermission(["project.members.*"], "project.members.write")).toBe(
+			true,
+		);
+		expect(hasPermission(["project.members.*"], "project.members.read")).toBe(
+			true,
+		);
+		expect(hasPermission(["project.*"], "project.members.write")).toBe(false);
+		expect(hasPermission(["project.roles.*"], "project.members.write")).toBe(
+			false,
+		);
 	});
 
 	it("hasAnyPermission returns true if any required permission is granted", () => {

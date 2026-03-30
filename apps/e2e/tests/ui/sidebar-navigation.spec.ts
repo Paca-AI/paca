@@ -11,7 +11,7 @@ test.describe('Sidebar Navigation', () => {
     await page.getByRole('button', { name: 'Sign in' }).click();
   };
 
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ context }) => {
     // Clear all browser state to ensure test isolation when running in parallel
     await context.clearCookies();
     await context.clearPermissions();
