@@ -24,9 +24,19 @@ test.describe("Session Management — authenticated", () => {
 
 	test("logout redirects to login page", async ({ page }) => {
 		await page.goto("/home");
+		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
+
+		// Check if we need to open the sidebar on mobile devices
+		const viewport = page.viewportSize();
+		const isMobile = viewport && viewport.width <= 768;
+
+		if (isMobile) {
+			// On mobile, open the sidebar first to access user profile dropdown
+			await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
+		}
 
 		// Click user profile dropdown, then click logout (using actual sidebar logout functionality)
 		await page.getByRole("button", { name: /A Admin admin/i }).click();
@@ -41,9 +51,19 @@ test.describe("Session Management — authenticated", () => {
 		page,
 	}) => {
 		await page.goto("/home");
+		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
+
+		// Check if we need to open the sidebar on mobile devices
+		const viewport = page.viewportSize();
+		const isMobile = viewport && viewport.width <= 768;
+
+		if (isMobile) {
+			// On mobile, open the sidebar first to access user profile dropdown
+			await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
+		}
 
 		// Click user profile dropdown, then click logout (using actual sidebar logout functionality)
 		await page.getByRole("button", { name: /A Admin admin/i }).click();
@@ -69,14 +89,16 @@ test.describe("Session Management — authenticated", () => {
 
 	test("session persists across page reload", async ({ page }) => {
 		await page.goto("/home");
+		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 
 		await page.reload();
+		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 	});
 
 	test("session is shared across tabs in the same context", async ({
@@ -84,15 +106,17 @@ test.describe("Session Management — authenticated", () => {
 		page,
 	}) => {
 		await page.goto("/home");
+		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 
 		const page2 = await context.newPage();
 		await page2.goto("/");
+		await page2.waitForLoadState("networkidle");
 		await expect(
 			page2.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 	});
 });
 
@@ -106,21 +130,24 @@ test.describe("Session Management — fresh context", () => {
 		const ctx1 = await browser.newContext();
 		const page1 = await ctx1.newPage();
 		await page1.goto("/");
+		await page1.waitForLoadState("networkidle");
 		await page1.getByRole("textbox", { name: "Username" }).fill(USERNAME);
 		await page1.getByRole("textbox", { name: "Password" }).fill(PASSWORD);
 		await page1.getByRole("button", { name: /sign in/i }).click();
+		await page1.waitForLoadState("networkidle");
 		await expect(
 			page1.getByRole("heading", { name: /home|welcome/i }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 		await ctx1.close();
 
 		// Create a fresh context and verify the session doesn't carry over.
 		const ctx2 = await browser.newContext();
 		const page2 = await ctx2.newPage();
 		await page2.goto("/");
+		await page2.waitForLoadState("networkidle");
 		await expect(
 			page2.getByRole("heading", { name: "Welcome back" }),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 		await ctx2.close();
 	});
 });

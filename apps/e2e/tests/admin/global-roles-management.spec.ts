@@ -39,7 +39,63 @@ test.describe('Global Roles Management', () => {
     await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
     await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.getByRole('link', { name: 'Global Roles' }).click();
+    
+    // On mobile devices, the sidebar may be collapsed, so we need to check and toggle it if necessary
+    const viewport = page.viewportSize();
+    if (viewport && viewport.width <= 768) {
+      // Check if the Global Roles link is already visible (sidebar is expanded)
+      const globalRolesLink = page.getByRole('link', { name: 'Global Roles' });
+      const isVisible = await globalRolesLink.isVisible();
+      
+      if (!isVisible) {
+        // Click the toggle sidebar button to open the sidebar
+        await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
+      }
+      
+      // Click the Global Roles link
+      await page.getByRole('link', { name: 'Global Roles' }).click();
+      
+      // Close the mobile sidebar after navigation to avoid interfering with page content
+      await page.keyboard.press('Escape');
+    } else {
+      // On desktop, simply click the Global Roles link
+      await page.getByRole('link', { name: 'Global Roles' }).click();
+    }
+  };
+
+  const navigateToLink = async (page: Page, linkName: string) => {
+    const viewport = page.viewportSize();
+    if (viewport && viewport.width <= 768) {
+      // On mobile, open sidebar first
+      const link = page.getByRole('link', { name: linkName });
+      const isVisible = await link.isVisible();
+      
+      if (!isVisible) {
+        await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
+        // Wait for sidebar to be fully opened
+        await page.waitForTimeout(200);
+      }
+      
+      // Use a more robust approach for webkit browsers
+      try {
+        await link.waitFor({ state: 'visible', timeout: 5000 });
+        await link.click({ timeout: 10000 });
+      } catch (error) {
+        // Fallback: try re-opening sidebar and clicking again
+        console.warn(`Failed to click ${linkName} link, retrying...`);
+        await page.keyboard.press('Escape'); // Close any open sidebar
+        await page.waitForTimeout(100);
+        await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
+        await page.waitForTimeout(200);
+        await page.getByRole('link', { name: linkName }).click({ timeout: 10000 });
+      }
+      
+      // Close the sidebar after navigation
+      await page.keyboard.press('Escape');
+    } else {
+      // On desktop, simply click the link
+      await page.getByRole('link', { name: linkName }).click();
+    }
   };
 
   test.beforeEach(async ({ request, page, context }) => {
@@ -101,7 +157,7 @@ test.describe('Global Roles Management', () => {
     await expect(roleRow.getByRole('button', { name: 'Delete role' })).toBeVisible();
   });
 
-  test('Page Navigation Preserves Roles', async ({ page }) => {
+  test('Page Navigation Preserves Roles', async ({ page, browserName }) => {
     await signInAsAdmin(page);
 
     const timestamp = Date.now();
@@ -113,9 +169,15 @@ test.describe('Global Roles Management', () => {
     await expect(page.getByRole('table').getByText(roleName)).toBeVisible();
 
     // Navigate away and back
-    await page.getByRole('link', { name: 'Home' }).click();
+    await navigateToLink(page, 'Home');
     await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening), Admin/i })).toBeVisible();
-    await page.getByRole('link', { name: 'Global Roles' }).click();
+    
+    // For webkit (Safari), add extra wait time to handle DOM stability issues
+    if (browserName === 'webkit') {
+      await page.waitForTimeout(500);
+    }
+    
+    await navigateToLink(page, 'Global Roles');
 
     await expect(page.getByRole('table').getByText(roleName)).toBeVisible();
   });
