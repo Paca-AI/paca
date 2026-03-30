@@ -12,10 +12,11 @@ export function hasPermission(
 	if (grantedPermissions.includes("*")) return true;
 	if (grantedPermissions.includes(requiredPermission)) return true;
 
-	const [domain, action] = requiredPermission.split(".");
-	if (!domain || !action) return false;
+	const lastDotIndex = requiredPermission.lastIndexOf(".");
+	if (lastDotIndex === -1) return false;
 
-	return grantedPermissions.includes(`${domain}.*`);
+	const prefix = requiredPermission.slice(0, lastDotIndex);
+	return grantedPermissions.includes(`${prefix}.*`);
 }
 
 export function hasAnyPermission(
