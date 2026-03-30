@@ -5,11 +5,13 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS global_roles (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        TEXT        NOT NULL UNIQUE,
+    name        TEXT        NOT NULL,
     permissions JSONB       NOT NULL DEFAULT '{}'::jsonb,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uni_global_roles_name ON global_roles (name);
 
 CREATE TABLE IF NOT EXISTS user_global_roles (
     user_id UUID NOT NULL,
