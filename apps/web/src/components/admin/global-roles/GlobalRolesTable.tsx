@@ -29,7 +29,7 @@ export function GlobalRolesTable({
 	onDelete,
 }: GlobalRolesTableProps) {
 	return (
-		<div className="rounded-xl border overflow-hidden">
+		<div className="overflow-x-auto rounded-xl border">
 			<Table>
 				<TableHeader>
 					<TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -83,7 +83,7 @@ export function GlobalRolesTable({
 								</TableCell>
 								{canWrite ? (
 									<TableCell className="px-5">
-										<div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+										<div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
 											<Button
 												variant="ghost"
 												size="icon-sm"
