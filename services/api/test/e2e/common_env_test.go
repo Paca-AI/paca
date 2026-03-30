@@ -123,7 +123,24 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 
 	db, err := database.Open(pgDSN, log)
 	if err != nil {
-		t.Fatalf("open database: %v", err)
+		// Postgres in fresh containers can briefly accept TCP before it is fully ready.
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				t.Fatalf("open database: context canceled while waiting for postgres: %v", ctx.Err())
+			default:
+			}
+
+			time.Sleep(300 * time.Millisecond)
+			db, err = database.Open(pgDSN, log)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			t.Fatalf("open database: %v", err)
+		}
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
