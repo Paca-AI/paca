@@ -23,6 +23,12 @@ const (
 	CodeUsernameTaken Code = "USER_USERNAME_TAKEN"
 	// CodeForbidden represents a forbidden action.
 	CodeForbidden Code = "FORBIDDEN"
+	// CodeGlobalRoleNotFound represents a global role that was not found.
+	CodeGlobalRoleNotFound Code = "GLOBAL_ROLE_NOT_FOUND"
+	// CodeGlobalRoleNameTaken represents a duplicate global role name.
+	CodeGlobalRoleNameTaken Code = "GLOBAL_ROLE_NAME_TAKEN"
+	// CodeGlobalRoleNameInvalid represents an invalid global role name.
+	CodeGlobalRoleNameInvalid Code = "GLOBAL_ROLE_NAME_INVALID"
 
 	// CodeBadRequest represents a bad request.
 	CodeBadRequest Code = "BAD_REQUEST"

@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/paca/api/internal/apierr"
 	domainauth "github.com/paca/api/internal/domain/auth"
+	globalroledom "github.com/paca/api/internal/domain/globalrole"
 	userdom "github.com/paca/api/internal/domain/user"
 )
 
@@ -81,6 +82,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeUsernameTaken
 	case errors.Is(err, userdom.ErrForbidden):
 		return http.StatusForbidden, apierr.CodeForbidden
+	case errors.Is(err, globalroledom.ErrNotFound):
+		return http.StatusNotFound, apierr.CodeGlobalRoleNotFound
+	case errors.Is(err, globalroledom.ErrNameTaken):
+		return http.StatusConflict, apierr.CodeGlobalRoleNameTaken
+	case errors.Is(err, globalroledom.ErrInvalidName):
+		return http.StatusBadRequest, apierr.CodeGlobalRoleNameInvalid
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -100,6 +107,12 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusConflict
 	case apierr.CodeForbidden:
 		return http.StatusForbidden
+	case apierr.CodeGlobalRoleNotFound:
+		return http.StatusNotFound
+	case apierr.CodeGlobalRoleNameTaken:
+		return http.StatusConflict
+	case apierr.CodeGlobalRoleNameInvalid:
+		return http.StatusBadRequest
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
 	case apierr.CodeInternalError:

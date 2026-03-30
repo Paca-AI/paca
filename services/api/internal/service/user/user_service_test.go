@@ -3,10 +3,12 @@ package usersvc_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
 	userdom "github.com/paca/api/internal/domain/user"
+	"github.com/paca/api/internal/platform/authz"
 	usersvc "github.com/paca/api/internal/service/user"
 )
 
@@ -20,6 +22,17 @@ type stubRepo struct {
 	create         func(ctx context.Context, u *userdom.User) error
 	update         func(ctx context.Context, u *userdom.User) error
 	delete         func(ctx context.Context, id uuid.UUID) error
+}
+
+type stubPermissionReader struct {
+	listGlobalPermissions func(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error)
+}
+
+func (r *stubPermissionReader) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error) {
+	if r.listGlobalPermissions != nil {
+		return r.listGlobalPermissions(ctx, userID)
+	}
+	return nil, nil
 }
 
 func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
@@ -81,6 +94,93 @@ func TestGetByID_NotFound(t *testing.T) {
 	_, err := svc.GetByID(context.Background(), uuid.New())
 	if !errors.Is(err, userdom.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListGlobalPermissions_LegacyOnly(t *testing.T) {
+	id := uuid.New()
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+			if got != id {
+				t.Fatalf("unexpected id: %v", got)
+			}
+			return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
+		},
+	})
+
+	got, err := svc.ListGlobalPermissions(context.Background(), id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{string(authz.PermissionUsersRead)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected permissions: want %v got %v", want, got)
+	}
+}
+
+func TestListGlobalPermissions_MergesAndDedupes(t *testing.T) {
+	id := uuid.New()
+	svc := usersvc.New(
+		&stubRepo{
+			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
+			},
+		},
+		&stubPermissionReader{
+			listGlobalPermissions: func(_ context.Context, got uuid.UUID) ([]authz.Permission, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return []authz.Permission{authz.PermissionUsersRead, authz.PermissionGlobalRolesRead}, nil
+			},
+		},
+	)
+
+	got, err := svc.ListGlobalPermissions(context.Background(), id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{string(authz.PermissionGlobalRolesRead), string(authz.PermissionUsersRead)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected permissions: want %v got %v", want, got)
+	}
+}
+
+func TestListGlobalPermissions_UserNotFound(t *testing.T) {
+	svc := usersvc.New(&stubRepo{})
+
+	_, err := svc.ListGlobalPermissions(context.Background(), uuid.New())
+	if !errors.Is(err, userdom.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListGlobalPermissions_ReaderError(t *testing.T) {
+	id := uuid.New()
+	wantErr := errors.New("permission store failed")
+
+	svc := usersvc.New(
+		&stubRepo{
+			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return &userdom.User{ID: id, Role: userdom.RoleUser}, nil
+			},
+		},
+		&stubPermissionReader{
+			listGlobalPermissions: func(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
+				return nil, wantErr
+			},
+		},
+	)
+
+	_, err := svc.ListGlobalPermissions(context.Background(), id)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected reader error, got %v", err)
 	}
 }
 

@@ -28,7 +28,7 @@ export function useLoginForm() {
 				await queryClient.invalidateQueries({
 					queryKey: currentUserQueryOptions.queryKey,
 				});
-				await navigate({ to: "/dashboard" });
+				await navigate({ to: "/home" });
 			} catch (err: unknown) {
 				const code = getApiErrorCode(err);
 				setServerError(

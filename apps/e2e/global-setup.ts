@@ -32,7 +32,7 @@ export default async function globalSetup() {
 	await page.getByRole("textbox", { name: "Username" }).fill(username);
 	await page.getByRole("textbox", { name: "Password" }).fill(password);
 	await page.getByRole("button", { name: "Sign in" }).click();
-	await page.waitForURL(/\/dashboard/);
+	await page.waitForURL(/\/home/);
 
 	await context.storageState({ path: AUTH_FILE });
 	await browser.close();

@@ -30,6 +30,7 @@ import (
 	pgRepo "github.com/paca/api/internal/repository/postgres"
 	redisRepo "github.com/paca/api/internal/repository/redis"
 	authsvc "github.com/paca/api/internal/service/auth"
+	globalrolesvc "github.com/paca/api/internal/service/globalrole"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
@@ -49,6 +50,8 @@ type e2eEnv struct {
 	base        string
 	client      *http.Client
 	userService *usersvc.Service
+	userRepo    *pgRepo.UserRepository
+	roleRepo    *pgRepo.GlobalRoleRepository
 }
 
 func newE2EEnv(t *testing.T) *e2eEnv {
@@ -120,7 +123,24 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 
 	db, err := database.Open(pgDSN, log)
 	if err != nil {
-		t.Fatalf("open database: %v", err)
+		// Postgres in fresh containers can briefly accept TCP before it is fully ready.
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			select {
+			case <-ctx.Done():
+				t.Fatalf("open database: context canceled while waiting for postgres: %v", ctx.Err())
+			default:
+			}
+
+			time.Sleep(300 * time.Millisecond)
+			db, err = database.Open(pgDSN, log)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			t.Fatalf("open database: %v", err)
+		}
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -141,11 +161,13 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	t.Cleanup(func() { _ = redisClient.Close() })
 
 	tm := jwttoken.New(e2eJWTSecret, e2eAccessTTL, e2eRefreshTTL)
-	policy := authz.NewPolicy()
 	userRepo := pgRepo.NewUserRepository(db)
+	roleRepo := pgRepo.NewGlobalRoleRepository(db)
+	authzStore := pgRepo.NewAuthzPermissionStore(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL, e2eRefreshSessionTTL)
-	userService := usersvc.New(userRepo)
+	userService := usersvc.New(userRepo, authzStore)
+	globalRoleService := globalrolesvc.New(roleRepo)
 
 	cookieCfg := handler.CookieConfig{
 		Secure:            false,
@@ -155,10 +177,11 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	}
 	engine := router.New(router.Deps{
 		TokenManager: tm,
-		AuthzPolicy:  policy,
+		Authorizer:   authz.NewAuthorizer(authzStore),
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService),
+		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
 		Log:          log,
 	})
 
@@ -178,6 +201,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			Timeout: 30 * time.Second,
 		},
 		userService: userService,
+		userRepo:    userRepo,
+		roleRepo:    roleRepo,
 	}
 }
 

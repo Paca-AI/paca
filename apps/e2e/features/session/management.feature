@@ -9,29 +9,29 @@ Feature: Session management
       Given the user already has a stored authenticated session
 
     Scenario: Logout redirects back to the login page
-      When the user opens the dashboard
+      When the user opens the home page
       And the user clicks the logout button
       Then the username field should be visible
       And the password field should be visible
       And the sign-in button should be visible
 
-    Scenario: Browser back navigation after logout does not restore the dashboard
-      When the user opens the dashboard
+    Scenario: Browser back navigation after logout does not restore the home page
+      When the user opens the home page
       And the user clicks the logout button
       And the user navigates back in the browser
       Then the username field should be visible
       And the sign-in button should be visible
 
     Scenario: Session persists across a page reload
-      When the user opens the dashboard
+      When the user opens the home page
       And the user reloads the page
-      Then the dashboard heading should be visible
+      Then the home heading should be visible
 
     Scenario: Session is shared across tabs in the same browser context
-      When the user opens the dashboard
+      When the user opens the home page
       And the user opens a second tab in the same browser context
       And the user navigates the second tab to the application root
-      Then the dashboard heading should be visible in the second tab
+      Then the home heading should be visible in the second tab
 
   @fresh-context
   Rule: Fresh browser context behavior

@@ -11,7 +11,9 @@ import { expect, test } from "../../fixtures";
  */
 
 test.beforeEach(async ({ context }) => {
+	// Clear all browser state to ensure test isolation when running in parallel
 	await context.clearCookies();
+	await context.clearPermissions();
 });
 
 /* ─── Error display ────────────────────────────────────────────────── */
@@ -29,7 +31,7 @@ test.describe("Error Display", () => {
 			process.env.E2E_PASSWORD ?? "e2e-admin-password",
 		);
 		await loginPage.submit();
-		await expect(page).toHaveURL(/\/dashboard/);
+		await expect(page).toHaveURL(/\/home/);
 	});
 });
 
@@ -64,7 +66,7 @@ test.describe("Remember Me", () => {
 			process.env.E2E_USERNAME ?? "admin",
 			process.env.E2E_PASSWORD ?? "e2e-admin-password",
 		);
-		await expect(page).toHaveURL(/\/dashboard/);
+		await expect(page).toHaveURL(/\/home/);
 	});
 });
 
@@ -128,7 +130,7 @@ test.describe("Mobile Layout", () => {
 		await loginPage.submit();
 
 		await expect(
-			page.getByRole("heading", { name: /dashboard|home|welcome/i }),
+			page.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible();
 	});
 });

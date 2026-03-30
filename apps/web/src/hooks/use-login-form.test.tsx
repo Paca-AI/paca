@@ -94,7 +94,7 @@ describe("useLoginForm", () => {
 		expect(mocks.invalidateQueriesMock).toHaveBeenCalledWith({
 			queryKey: currentUserQueryOptions.queryKey,
 		});
-		expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/dashboard" });
+		expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/home" });
 	});
 
 	it("sets user-friendly server error for known API error codes", async () => {

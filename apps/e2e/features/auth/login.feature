@@ -6,9 +6,9 @@ Feature: Login authentication
     Given the browser starts with a clean unauthenticated session
     And the user is on the login page
 
-  Scenario: Valid credentials redirect to the dashboard
+  Scenario: Valid credentials redirect to the home page
     When the user signs in with the configured valid username and password
-    Then the user should be redirected to the dashboard
+    Then the user should be redirected to the home page
 
   Scenario: Invalid username shows an error and preserves entered values
     When the user signs in with username "nonexistentuser" and password "wrongpassword"

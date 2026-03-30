@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	userdom "github.com/paca/api/internal/domain/user"
 )
 
@@ -104,6 +106,28 @@ func seedUser(t *testing.T, env *e2eEnv, username, password, fullName string) {
 	})
 	if err != nil {
 		t.Fatalf("seed user %q: %v", username, err)
+	}
+}
+
+func assignGlobalRolesByName(t *testing.T, env *e2eEnv, username string, roleNames ...string) {
+	t.Helper()
+
+	user, err := env.userRepo.FindByUsername(env.ctx, username)
+	if err != nil {
+		t.Fatalf("find user %q: %v", username, err)
+	}
+
+	roleIDs := make([]uuid.UUID, 0, len(roleNames))
+	for _, name := range roleNames {
+		role, err := env.roleRepo.FindByName(env.ctx, name)
+		if err != nil {
+			t.Fatalf("find global role %q: %v", name, err)
+		}
+		roleIDs = append(roleIDs, role.ID)
+	}
+
+	if err := env.roleRepo.ReplaceUserRoles(env.ctx, user.ID, roleIDs); err != nil {
+		t.Fatalf("replace user roles for %q: %v", username, err)
 	}
 }
 
