@@ -1,7 +1,7 @@
 // spec: features/admin/global-roles.feature
 // seed: tests/seed.spec.ts
 
-import { test, expect, Page, APIRequestContext } from '@playwright/test';
+import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost';
 const USERNAME = process.env.E2E_USERNAME ?? 'admin';
