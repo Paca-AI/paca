@@ -9,7 +9,9 @@ import { expect, test } from "../../fixtures";
  */
 test.describe("Authentication", () => {
 	test.beforeEach(async ({ context }) => {
+		// Clear all browser state to ensure test isolation when running in parallel
 		await context.clearCookies();
+		await context.clearPermissions();
 	});
 
 	test("redirects to home on valid credentials", async ({

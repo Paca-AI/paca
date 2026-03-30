@@ -21,8 +21,8 @@ export default defineConfig({
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
-	/* Limit parallelism to reduce resource contention; keep 1 on CI. */
-	workers: process.env.CI ? 1 : 3,
+	/* Limit parallelism to reduce resource contention; keep 1 on CI, 1 locally for better test stability. */
+	workers: 1,
 
 	reporter: [["html"], ["list"]],
 

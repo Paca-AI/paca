@@ -10,7 +10,9 @@ import { expect, test } from "../../fixtures";
  */
 test.describe("Login Security", () => {
 	test.beforeEach(async ({ context }) => {
+		// Clear all browser state to ensure test isolation when running in parallel
 		await context.clearCookies();
+		await context.clearPermissions();
 	});
 
 	const INVALID_CREDS_MSG = "Invalid username or password.";

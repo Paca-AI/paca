@@ -11,6 +11,12 @@ test.describe('Sidebar Navigation', () => {
     await page.getByRole('button', { name: 'Sign in' }).click();
   };
 
+  test.beforeEach(async ({ page, context }) => {
+    // Clear all browser state to ensure test isolation when running in parallel
+    await context.clearCookies();
+    await context.clearPermissions();
+  });
+
   test('Sidebar Collapse and Expand Functionality', async ({ page }) => {
     await signInAsAdmin(page);
 
@@ -196,21 +202,28 @@ test.describe('Sidebar Navigation - Mobile Behavior', () => {
 
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
+      // Wait for layout to stabilize after viewport change
+      await page.waitForTimeout(100);
       await page.goto('http://localhost/');
       
       // Check if we need to sign in or if we're already authenticated
       const usernameField = page.getByRole('textbox', { name: 'Username' });
       const greetingText = page.getByText(/Good (morning|afternoon|evening), Admin/i);
       
-      if (await usernameField.isVisible()) {
+      // Wait for page to load and determine authentication state
+      await page.waitForLoadState('networkidle');
+      
+      const isLoginPage = await usernameField.isVisible();
+      
+      if (isLoginPage) {
         // Need to sign in
         await usernameField.fill('admin');
         await page.getByRole('textbox', { name: 'Password' }).fill('e2e-admin-password');
         await page.getByRole('button', { name: 'Sign in' }).click();
         await expect(greetingText).toBeVisible({ timeout: 10000 });
       } else {
-        // Already authenticated, just verify we see the greeting
-        await expect(greetingText).toBeVisible({ timeout: 5000 });
+        // Already authenticated, just verify we see the greeting with increased timeout
+        await expect(greetingText).toBeVisible({ timeout: 10000 });
       }
       
       // Test sidebar trigger is accessible

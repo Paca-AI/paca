@@ -6,7 +6,9 @@ import { expect, test } from "../../fixtures";
  */
 test.describe("Form Validation", () => {
 	test.beforeEach(async ({ context }) => {
+		// Clear all browser state to ensure test isolation when running in parallel
 		await context.clearCookies();
+		await context.clearPermissions();
 	});
 
 	test('shows "Username is required" after tabbing out of empty username', async ({
