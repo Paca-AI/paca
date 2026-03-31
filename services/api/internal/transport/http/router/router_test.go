@@ -35,16 +35,24 @@ type mockUserSvc struct{}
 func (m *mockUserSvc) GetByID(context.Context, uuid.UUID) (*userdom.User, error) {
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
 }
+func (m *mockUserSvc) List(context.Context, int, int) ([]*userdom.User, int64, error) {
+	return []*userdom.User{}, 0, nil
+}
 func (m *mockUserSvc) ListGlobalPermissions(context.Context, uuid.UUID) ([]string, error) {
 	return []string{string(authz.PermissionUsersRead)}, nil
 }
 func (m *mockUserSvc) Create(context.Context, userdom.CreateInput) (*userdom.User, error) {
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
 }
-func (m *mockUserSvc) Update(context.Context, uuid.UUID, userdom.UpdateInput) (*userdom.User, error) {
+func (m *mockUserSvc) UpdateProfile(context.Context, uuid.UUID, userdom.UpdateProfileInput) (*userdom.User, error) {
 	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice Updated", Role: userdom.RoleUser}, nil
 }
-func (m *mockUserSvc) Delete(context.Context, uuid.UUID) error { return nil }
+func (m *mockUserSvc) AdminUpdate(context.Context, uuid.UUID, userdom.AdminUpdateInput) (*userdom.User, error) {
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice Updated", Role: userdom.RoleUser}, nil
+}
+func (m *mockUserSvc) ResetPassword(context.Context, uuid.UUID, string) error            { return nil }
+func (m *mockUserSvc) ChangeMyPassword(context.Context, uuid.UUID, string, string) error { return nil }
+func (m *mockUserSvc) Delete(context.Context, uuid.UUID) error                           { return nil }
 
 type mockGlobalRoleSvc struct{}
 
@@ -113,7 +121,7 @@ func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) *gin.Engi
 func issueAccessTokenForRouterTests(t *testing.T) string {
 	t.Helper()
 	tm := jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour)
-	tok, err := tm.IssueAccess(uuid.NewString(), "alice", "USER", "fam-1")
+	tok, err := tm.IssueAccess(uuid.NewString(), "alice", "USER", "fam-1", false)
 	if err != nil {
 		t.Fatalf("issue access token: %v", err)
 	}
@@ -184,12 +192,29 @@ func TestNew_MeGlobalPermissionsRouteRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestNew_PublicCreateUserRoute(t *testing.T) {
+func TestAdminRoute_CreateUser_RequiresAuth(t *testing.T) {
 	r := newTestRouter(t)
+
+	// Without auth token — must be rejected.
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice"}`)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/users", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated create user, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminRoute_CreateUser_WithPermission(t *testing.T) {
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionUsersWrite}})
+	tok := issueAccessTokenForRouterTests(t)
 
 	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice"}`)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/users", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 

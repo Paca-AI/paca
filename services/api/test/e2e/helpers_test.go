@@ -100,9 +100,10 @@ func cookieValue(resp *http.Response, name string) string {
 func seedUser(t *testing.T, env *e2eEnv, username, password, fullName string) {
 	t.Helper()
 	_, err := env.userService.Create(env.ctx, userdom.CreateInput{
-		Username: username,
-		Password: password,
-		FullName: fullName,
+		Username:           username,
+		Password:           password,
+		FullName:           fullName,
+		MustChangePassword: false,
 	})
 	if err != nil {
 		t.Fatalf("seed user %q: %v", username, err)
@@ -117,16 +118,18 @@ func assignGlobalRolesByName(t *testing.T, env *e2eEnv, username string, roleNam
 		t.Fatalf("find user %q: %v", username, err)
 	}
 
-	roleIDs := make([]uuid.UUID, 0, len(roleNames))
-	for _, name := range roleNames {
-		role, err := env.roleRepo.FindByName(env.ctx, name)
-		if err != nil {
-			t.Fatalf("find global role %q: %v", name, err)
-		}
-		roleIDs = append(roleIDs, role.ID)
+	// Default to USER role when no names provided (users.role_id is NOT NULL).
+	names := roleNames
+	if len(names) == 0 {
+		names = []string{"USER"}
+	}
+	// The schema supports a single role per user; take the first name.
+	role, err := env.roleRepo.FindByName(env.ctx, names[0])
+	if err != nil {
+		t.Fatalf("find global role %q: %v", names[0], err)
 	}
 
-	if err := env.roleRepo.ReplaceUserRoles(env.ctx, user.ID, roleIDs); err != nil {
+	if err := env.roleRepo.ReplaceUserRoles(env.ctx, user.ID, []uuid.UUID{role.ID}); err != nil {
 		t.Fatalf("replace user roles for %q: %v", username, err)
 	}
 }

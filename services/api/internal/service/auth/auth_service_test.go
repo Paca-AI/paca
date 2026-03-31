@@ -19,10 +19,14 @@ import (
 // ---------------------------------------------------------------------------
 
 type stubUserRepo struct {
+	findByID       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
 	findByUsername func(ctx context.Context, username string) (*userdom.User, error)
 }
 
-func (r *stubUserRepo) FindByID(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+func (r *stubUserRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
+	if r.findByID != nil {
+		return r.findByID(ctx, id)
+	}
 	return nil, userdom.ErrNotFound
 }
 func (r *stubUserRepo) FindByUsername(ctx context.Context, username string) (*userdom.User, error) {
@@ -30,6 +34,9 @@ func (r *stubUserRepo) FindByUsername(ctx context.Context, username string) (*us
 		return r.findByUsername(ctx, username)
 	}
 	return nil, userdom.ErrNotFound
+}
+func (r *stubUserRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, error) {
+	return nil, 0, nil
 }
 func (r *stubUserRepo) Create(_ context.Context, _ *userdom.User) error { return nil }
 func (r *stubUserRepo) Update(_ context.Context, _ *userdom.User) error { return nil }
@@ -147,10 +154,22 @@ func TestLogin_RepoError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRefresh_Success(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{
+		ID:       userID,
+		Username: "alice",
+		Role:     userdom.RoleUser,
+	}
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
-	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
 
-	refresh, err := tm.IssueRefresh("sub123", "alice", userdom.RoleUser, "fam1")
+	refresh, err := tm.IssueRefresh(userID.String(), "alice", userdom.RoleUser, "fam1")
 	if err != nil {
 		t.Fatalf("IssueRefresh: %v", err)
 	}
@@ -169,7 +188,7 @@ func TestRefresh_WrongKind(t *testing.T) {
 	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
 
 	// Pass an access token where a refresh token is expected.
-	access, _ := tm.IssueAccess("sub", "alice", userdom.RoleUser, "fam1")
+	access, _ := tm.IssueAccess("sub", "alice", userdom.RoleUser, "fam1", false)
 	_, err := svc.Refresh(context.Background(), access)
 	if !errors.Is(err, domainauth.ErrTokenInvalid) {
 		t.Fatalf("expected ErrTokenInvalid, got %v", err)
@@ -379,11 +398,15 @@ func TestRefresh_RememberMe_True_PreservesLongTTL(t *testing.T) {
 	const refreshTTL = 7 * 24 * time.Hour
 	const sessionTTL = 24 * time.Hour
 
+	userID := uuid.New()
+	stubUser := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleUser}
 	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
-	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
+	svc := authsvc.New(&stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return stubUser, nil },
+	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
 
 	// Issue a persistent-session refresh token.
-	origRefresh, err := tm.IssueRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", true, refreshTTL)
+	origRefresh, err := tm.IssueRefreshWithTTL(userID.String(), "alice", userdom.RoleUser, "fam1", true, refreshTTL)
 	if err != nil {
 		t.Fatalf("IssueRefreshWithTTL: %v", err)
 	}
@@ -410,11 +433,15 @@ func TestRefresh_RememberMe_False_PreservesSessionTTL(t *testing.T) {
 	const refreshTTL = 7 * 24 * time.Hour
 	const sessionTTL = 24 * time.Hour
 
+	userID := uuid.New()
+	stubUser := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleUser}
 	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
-	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
+	svc := authsvc.New(&stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return stubUser, nil },
+	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
 
 	// Issue a session-only refresh token.
-	origRefresh, err := tm.IssueRefreshWithTTL("sub", "alice", userdom.RoleUser, "fam1", false, sessionTTL)
+	origRefresh, err := tm.IssueRefreshWithTTL(userID.String(), "alice", userdom.RoleUser, "fam1", false, sessionTTL)
 	if err != nil {
 		t.Fatalf("IssueRefreshWithTTL: %v", err)
 	}

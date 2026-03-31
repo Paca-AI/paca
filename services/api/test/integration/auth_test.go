@@ -63,12 +63,28 @@ func (r *fakeUserRepo) Update(_ context.Context, u *userdom.User) error {
 	r.byID[u.ID] = u
 	return nil
 }
-
-func (r *fakeUserRepo) Delete(_ context.Context, id uuid.UUID) error {
-	if u, ok := r.byID[id]; ok {
-		delete(r.byUsername, u.Username)
-		delete(r.byID, id)
+func (r *fakeUserRepo) List(_ context.Context, offset, limit int) ([]*userdom.User, int64, error) {
+	all := make([]*userdom.User, 0, len(r.byID))
+	for _, u := range r.byID {
+		all = append(all, u)
 	}
+	total := int64(len(all))
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+func (r *fakeUserRepo) Delete(_ context.Context, id uuid.UUID) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return userdom.ErrNotFound
+	}
+	delete(r.byUsername, u.Username)
+	delete(r.byID, id)
 	return nil
 }
 

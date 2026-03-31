@@ -21,7 +21,7 @@ func openGlobalRoleRepoTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&userRecord{}, &globalRoleRecord{}, &userGlobalRoleRecord{}); err != nil {
+	if err := db.AutoMigrate(&userRecord{}, &globalRoleRecord{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db
@@ -68,19 +68,6 @@ func TestGlobalRoleRepository_ReplaceUserRoles(t *testing.T) {
 	ctx := context.Background()
 
 	userID := uuid.New()
-	user := &userdom.User{
-		ID:           userID,
-		Username:     "alice",
-		PasswordHash: "hash",
-		FullName:     "Alice",
-		Role:         userdom.RoleAdmin,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-	if err := db.Create(fromEntity(user)).Error; err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-
 	roleA := testGlobalRole(uuid.New(), "SUPER_ADMIN")
 	roleB := testGlobalRole(uuid.New(), "AUDITOR")
 	if err := repo.Create(ctx, roleA); err != nil {
@@ -90,7 +77,23 @@ func TestGlobalRoleRepository_ReplaceUserRoles(t *testing.T) {
 		t.Fatalf("create roleB: %v", err)
 	}
 
-	if err := repo.ReplaceUserRoles(ctx, userID, []uuid.UUID{roleA.ID, roleB.ID, roleA.ID}); err != nil {
+	// Seed user with roleA as initial role_id (SQLite ignores FK constraints).
+	user := &userdom.User{
+		ID:           userID,
+		Username:     "alice",
+		PasswordHash: "hash",
+		FullName:     "Alice",
+		RoleID:       roleA.ID,
+		Role:         userdom.RoleAdmin,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := db.Create(entityToRecord(user)).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	// With single-role schema, exactly one role ID is required.
+	if err := repo.ReplaceUserRoles(ctx, userID, []uuid.UUID{roleB.ID}); err != nil {
 		t.Fatalf("replace user roles: %v", err)
 	}
 
@@ -98,16 +101,26 @@ func TestGlobalRoleRepository_ReplaceUserRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list user roles: %v", err)
 	}
-	if len(assigned) != 2 {
-		t.Fatalf("expected 2 assigned roles, got %d", len(assigned))
+	if len(assigned) != 1 {
+		t.Fatalf("expected 1 assigned role, got %d", len(assigned))
+	}
+	if assigned[0].ID != roleB.ID {
+		t.Fatalf("expected roleB to be assigned, got %v", assigned[0].Name)
 	}
 }
 
 func TestGlobalRoleRepository_ReplaceUserRoles_UserNotFound(t *testing.T) {
 	db := openGlobalRoleRepoTestDB(t)
 	repo := NewGlobalRoleRepository(db)
+	ctx := context.Background()
 
-	err := repo.ReplaceUserRoles(context.Background(), uuid.New(), nil)
+	// Seed a real role so the validation passes role-check but fails user-check.
+	role := testGlobalRole(uuid.New(), "SOME_ROLE")
+	if err := repo.Create(ctx, role); err != nil {
+		t.Fatalf("create role: %v", err)
+	}
+
+	err := repo.ReplaceUserRoles(context.Background(), uuid.New(), []uuid.UUID{role.ID})
 	if !errors.Is(err, userdom.ErrNotFound) {
 		t.Fatalf("expected user ErrNotFound, got %v", err)
 	}

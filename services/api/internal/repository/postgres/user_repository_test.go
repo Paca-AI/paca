@@ -13,26 +13,42 @@ import (
 	"gorm.io/gorm"
 )
 
-func openUserRepoTestDB(t *testing.T) *gorm.DB {
+// openUserRepoTestDB sets up an in-memory SQLite DB for user repository tests.
+// It auto-migrates both globalRoleRecord and userRecord, seeds a "USER" global
+// role, and returns the db plus the seeded role's UUID.
+func openUserRepoTestDB(t *testing.T) (*gorm.DB, uuid.UUID) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "user-repo-test.db")
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&userRecord{}); err != nil {
-		t.Fatalf("auto migrate users: %v", err)
+	if err := db.AutoMigrate(&globalRoleRecord{}, &userRecord{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
 	}
-	return db
+
+	// Seed a global role so foreign-key constraints are satisfied.
+	roleID := uuid.New()
+	if err := db.Create(&globalRoleRecord{
+		ID:          roleID.String(),
+		Name:        userdom.RoleUser,
+		Permissions: []byte("{}"),
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("seed global role: %v", err)
+	}
+	return db, roleID
 }
 
-func testUser(id uuid.UUID) *userdom.User {
+func testUser(id, roleID uuid.UUID) *userdom.User {
 	now := time.Now().UTC().Truncate(time.Second)
 	return &userdom.User{
 		ID:           id,
 		Username:     "alice",
 		PasswordHash: "hashed",
 		FullName:     "Alice",
+		RoleID:       roleID,
 		Role:         userdom.RoleUser,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -40,12 +56,12 @@ func testUser(id uuid.UUID) *userdom.User {
 }
 
 func TestUserRepository_CreateAndFind(t *testing.T) {
-	db := openUserRepoTestDB(t)
+	db, roleID := openUserRepoTestDB(t)
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	id := uuid.New()
-	u := testUser(id)
+	u := testUser(id, roleID)
 	if err := repo.Create(ctx, u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -68,7 +84,7 @@ func TestUserRepository_CreateAndFind(t *testing.T) {
 }
 
 func TestUserRepository_FindNotFound(t *testing.T) {
-	db := openUserRepoTestDB(t)
+	db, _ := openUserRepoTestDB(t)
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
@@ -84,11 +100,11 @@ func TestUserRepository_FindNotFound(t *testing.T) {
 }
 
 func TestUserRepository_Update(t *testing.T) {
-	db := openUserRepoTestDB(t)
+	db, roleID := openUserRepoTestDB(t)
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
-	u := testUser(uuid.New())
+	u := testUser(uuid.New(), roleID)
 	if err := repo.Create(ctx, u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -108,11 +124,11 @@ func TestUserRepository_Update(t *testing.T) {
 }
 
 func TestUserRepository_DeleteSoftDelete(t *testing.T) {
-	db := openUserRepoTestDB(t)
+	db, roleID := openUserRepoTestDB(t)
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
-	u := testUser(uuid.New())
+	u := testUser(uuid.New(), roleID)
 	if err := repo.Create(ctx, u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}

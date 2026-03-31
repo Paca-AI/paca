@@ -27,24 +27,24 @@ func New(secret string, accessTTL, refreshTTL time.Duration) *Manager {
 }
 
 // IssueAccess creates a signed access token for the given claims subject.
-func (m *Manager) IssueAccess(sub, username, role, familyID string) (string, error) {
-	return m.sign(sub, username, role, familyID, m.accessTTL, "access", false)
+func (m *Manager) IssueAccess(sub, username, role, familyID string, mustChangePassword bool) (string, error) {
+	return m.sign(sub, username, role, familyID, m.accessTTL, "access", false, mustChangePassword)
 }
 
 // IssueRefresh creates a signed refresh token with the Manager's default TTL.
 // The session is treated as persistent (rememberMe=true).
 func (m *Manager) IssueRefresh(sub, username, role, familyID string) (string, error) {
-	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh", true)
+	return m.sign(sub, username, role, familyID, m.refreshTTL, "refresh", true, false)
 }
 
 // IssueRefreshWithTTL creates a signed refresh token with an explicit TTL and
 // rememberMe flag. Use this instead of IssueRefresh when the caller needs to
 // honour the user's "remember me" preference.
 func (m *Manager) IssueRefreshWithTTL(sub, username, role, familyID string, rememberMe bool, ttl time.Duration) (string, error) {
-	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe)
+	return m.sign(sub, username, role, familyID, ttl, "refresh", rememberMe, false)
 }
 
-func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string, rememberMe bool) (string, error) {
+func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, kind string, rememberMe bool, mustChangePassword bool) (string, error) {
 	now := time.Now()
 	claims := domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -54,11 +54,12 @@ func (m *Manager) sign(sub, username, role, familyID string, ttl time.Duration, 
 			NotBefore: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		Username:   username,
-		Role:       role,
-		Kind:       kind,
-		FamilyID:   familyID,
-		RememberMe: rememberMe,
+		Username:           username,
+		Role:               role,
+		Kind:               kind,
+		FamilyID:           familyID,
+		RememberMe:         rememberMe,
+		MustChangePassword: mustChangePassword,
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -51,23 +51,53 @@ func New(deps Deps) *gin.Engine {
 		}
 
 		users := v1.Group("/users")
+		users.Use(httpmw.Authn(deps.TokenManager))
 		{
-			// Public: register
-			users.POST("", deps.User.Create)
-			// Protected
-			users.Use(httpmw.Authn(deps.TokenManager))
-			users.GET("/me", deps.User.GetMe)
-			users.GET("/me/global-permissions", deps.User.GetMyGlobalPermissions)
-			users.PATCH("/:id", deps.User.Update)
-			users.DELETE("/:id",
-				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersDelete),
-				deps.User.Delete,
-			)
+			// Password change is allowed even when MustChangePassword=true so
+			// that users can fulfil the forced-change requirement.
+			users.PATCH("/me/password", deps.User.ChangeMyPassword)
+
+			// All other self-service routes require a fresh (non-forced) password.
+			me := users.Group("")
+			me.Use(httpmw.RequireFreshPassword())
+			{
+				me.GET("/me", deps.User.GetMe)
+				me.PATCH("/me", deps.User.UpdateMe)
+				me.GET("/me/global-permissions", deps.User.GetMyGlobalPermissions)
+			}
 		}
 
 		admin := v1.Group("/admin")
 		admin.Use(httpmw.Authn(deps.TokenManager))
+		admin.Use(httpmw.RequireFreshPassword())
 		{
+			// User management — requires users.* permissions
+			admin.GET("/users",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersRead),
+				deps.User.ListUsers,
+			)
+			admin.POST("/users",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersWrite),
+				deps.User.CreateUser,
+			)
+			admin.GET("/users/:userId",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersRead),
+				deps.User.GetUserByID,
+			)
+			admin.PATCH("/users/:userId",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersWrite),
+				deps.User.AdminUpdateUser,
+			)
+			admin.PATCH("/users/:userId/password",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersWrite),
+				deps.User.ResetPassword,
+			)
+			admin.DELETE("/users/:userId",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersDelete),
+				deps.User.DeleteUser,
+			)
+
+			// Global role management — requires global_roles.* permissions
 			admin.GET("/global-roles",
 				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesRead),
 				deps.GlobalRole.List,

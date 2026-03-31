@@ -82,7 +82,7 @@ func buildAdminTestRouter(perms []authz.Permission) *gin.Engine {
 func issueIntegrationAccessToken(t *testing.T) string {
 	t.Helper()
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
-	tok, err := tm.IssueAccess(uuid.NewString(), "integration-user", "USER", "fam-it")
+	tok, err := tm.IssueAccess(uuid.NewString(), "integration-user", "USER", "fam-it", false)
 	if err != nil {
 		t.Fatalf("issue access token: %v", err)
 	}

@@ -25,13 +25,6 @@ type globalRoleRecord struct {
 
 func (globalRoleRecord) TableName() string { return "global_roles" }
 
-type userGlobalRoleRecord struct {
-	UserID string `gorm:"primaryKey;type:uuid;column:user_id"`
-	RoleID string `gorm:"primaryKey;type:uuid;column:role_id"`
-}
-
-func (userGlobalRoleRecord) TableName() string { return "user_global_roles" }
-
 // GlobalRoleRepository is the GORM implementation of globalrole.Repository.
 type GlobalRoleRepository struct {
 	db *gorm.DB
@@ -139,70 +132,72 @@ func (r *GlobalRoleRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// ReplaceUserRoles atomically replaces all global-role assignments for a user.
+// ReplaceUserRoles sets the single global role for a user (users.role_id).
+// Exactly one roleID must be provided; the schema does not support multiple roles per user.
 func (r *GlobalRoleRepository) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) error {
+	normalized := normalizeUUIDs(roleIDs)
+	if len(normalized) != 1 {
+		return fmt.Errorf("global role repo: exactly one role id required, got %d", len(normalized))
+	}
+	roleID := normalized[0]
+
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Table("users").Where("id = ?", userID.String()).Count(&count).Error; err != nil {
+		var userCount int64
+		if err := tx.Table("users").Where("id = ? AND deleted_at IS NULL", userID.String()).Count(&userCount).Error; err != nil {
 			return fmt.Errorf("global role repo: check user exists: %w", err)
 		}
-		if count == 0 {
+		if userCount == 0 {
 			return userdom.ErrNotFound
 		}
 
-		normalizedRoleIDs := normalizeUUIDs(roleIDs)
-		if len(normalizedRoleIDs) > 0 {
-			var roleCount int64
-			if err := tx.Model(&globalRoleRecord{}).Where("id IN ?", normalizedRoleIDs).Count(&roleCount).Error; err != nil {
-				return fmt.Errorf("global role repo: check role ids: %w", err)
-			}
-			if int(roleCount) != len(normalizedRoleIDs) {
-				return globalroledom.ErrNotFound
-			}
+		var roleCount int64
+		if err := tx.Model(&globalRoleRecord{}).Where("id = ?", roleID).Count(&roleCount).Error; err != nil {
+			return fmt.Errorf("global role repo: check role id: %w", err)
+		}
+		if roleCount == 0 {
+			return globalroledom.ErrNotFound
 		}
 
-		if err := tx.Where("user_id = ?", userID.String()).Delete(&userGlobalRoleRecord{}).Error; err != nil {
-			return fmt.Errorf("global role repo: clear user roles: %w", err)
-		}
-
-		if len(normalizedRoleIDs) == 0 {
-			return nil
-		}
-
-		mappings := make([]userGlobalRoleRecord, 0, len(normalizedRoleIDs))
-		for _, roleID := range normalizedRoleIDs {
-			mappings = append(mappings, userGlobalRoleRecord{UserID: userID.String(), RoleID: roleID})
-		}
-		if err := tx.Create(&mappings).Error; err != nil {
-			return fmt.Errorf("global role repo: create user role mappings: %w", err)
+		result := tx.Table("users").Where("id = ?", userID.String()).Update("role_id", roleID)
+		if result.Error != nil {
+			return fmt.Errorf("global role repo: set user role: %w", result.Error)
 		}
 		return nil
 	})
 }
 
-// ListUserRoles returns global roles assigned to the provided user.
+// ListUserRoles returns the single global role assigned to the provided user via users.role_id.
 func (r *GlobalRoleRepository) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]*globalroledom.GlobalRole, error) {
-	var records []globalRoleRecord
+	var record globalRoleRecord
 	err := r.db.WithContext(ctx).
 		Model(&globalRoleRecord{}).
 		Select("global_roles.*").
-		Joins("JOIN user_global_roles ugr ON ugr.role_id = global_roles.id").
-		Where("ugr.user_id = ?", userID.String()).
-		Order("global_roles.name asc").
-		Find(&records).Error
+		Joins("JOIN users u ON u.role_id = global_roles.id").
+		Where("u.id = ? AND u.deleted_at IS NULL", userID.String()).
+		First(&record).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return []*globalroledom.GlobalRole{}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("global role repo: list user roles: %w", err)
 	}
-
-	roles := make([]*globalroledom.GlobalRole, 0, len(records))
-	for i := range records {
-		role, err := toGlobalRoleEntity(&records[i])
-		if err != nil {
-			return nil, err
-		}
-		roles = append(roles, role)
+	role, err := toGlobalRoleEntity(&record)
+	if err != nil {
+		return nil, err
 	}
-	return roles, nil
+	return []*globalroledom.GlobalRole{role}, nil
+}
+
+// CountUsersWithRole returns the total number of non-deleted users with the given role_id.
+func (r *GlobalRoleRepository) CountUsersWithRole(ctx context.Context, id uuid.UUID) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Table("users").
+		Where("role_id = ? AND deleted_at IS NULL", id.String()).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("global role repo: count users with role: %w", err)
+	}
+	return count, nil
 }
 
 func fromGlobalRoleEntity(role *globalroledom.GlobalRole) (*globalRoleRecord, error) {

@@ -11,14 +11,15 @@ import (
 )
 
 type stubRepo struct {
-	list             func(ctx context.Context) ([]*globalroledom.GlobalRole, error)
-	findByID         func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
-	findByName       func(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
-	create           func(ctx context.Context, role *globalroledom.GlobalRole) error
-	update           func(ctx context.Context, role *globalroledom.GlobalRole) error
-	delete           func(ctx context.Context, id uuid.UUID) error
-	replaceUserRoles func(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) error
-	listUserRoles    func(ctx context.Context, userID uuid.UUID) ([]*globalroledom.GlobalRole, error)
+	list               func(ctx context.Context) ([]*globalroledom.GlobalRole, error)
+	findByID           func(ctx context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error)
+	findByName         func(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+	create             func(ctx context.Context, role *globalroledom.GlobalRole) error
+	update             func(ctx context.Context, role *globalroledom.GlobalRole) error
+	delete             func(ctx context.Context, id uuid.UUID) error
+	replaceUserRoles   func(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) error
+	listUserRoles      func(ctx context.Context, userID uuid.UUID) ([]*globalroledom.GlobalRole, error)
+	countUsersWithRole func(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
 func (r *stubRepo) List(ctx context.Context) ([]*globalroledom.GlobalRole, error) {
@@ -77,6 +78,13 @@ func (r *stubRepo) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]*glob
 	return nil, nil
 }
 
+func (r *stubRepo) CountUsersWithRole(ctx context.Context, id uuid.UUID) (int64, error) {
+	if r.countUsersWithRole != nil {
+		return r.countUsersWithRole(ctx, id)
+	}
+	return 0, nil
+}
+
 func TestCreate_NameValidation(t *testing.T) {
 	svc := globalrolesvc.New(&stubRepo{})
 	_, err := svc.Create(context.Background(), globalroledom.CreateInput{Name: "   "})
@@ -94,6 +102,45 @@ func TestCreate_NameTaken(t *testing.T) {
 	_, err := svc.Create(context.Background(), globalroledom.CreateInput{Name: "SUPER_ADMIN"})
 	if !errors.Is(err, globalroledom.ErrNameTaken) {
 		t.Fatalf("expected ErrNameTaken, got %v", err)
+	}
+}
+
+func TestDelete_RejectedWhenUsersAssigned(t *testing.T) {
+	roleID := uuid.New()
+	svc := globalrolesvc.New(&stubRepo{
+		countUsersWithRole: func(_ context.Context, id uuid.UUID) (int64, error) {
+			if id != roleID {
+				t.Fatalf("unexpected role id: %s", id)
+			}
+			return 3, nil // 3 users reference this role
+		},
+	})
+
+	err := svc.Delete(context.Background(), roleID)
+	if !errors.Is(err, globalroledom.ErrHasAssignedUsers) {
+		t.Fatalf("expected ErrHasAssignedUsers, got %v", err)
+	}
+}
+
+func TestDelete_SucceedsWhenNoUsersAssigned(t *testing.T) {
+	roleID := uuid.New()
+	deleted := false
+	svc := globalrolesvc.New(&stubRepo{
+		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
+			return &globalroledom.GlobalRole{ID: id, Name: "OLD"}, nil
+		},
+		countUsersWithRole: func(_ context.Context, _ uuid.UUID) (int64, error) { return 0, nil },
+		delete: func(_ context.Context, _ uuid.UUID) error {
+			deleted = true
+			return nil
+		},
+	})
+
+	if err := svc.Delete(context.Background(), roleID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !deleted {
+		t.Fatal("expected repo.Delete to be called")
 	}
 }
 

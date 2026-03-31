@@ -2,54 +2,60 @@
 
 Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190)
 
+> **Note:** The DBML diagram above may lag behind the latest migrations. The authoritative source is `services/api/migrations/`. The schema below reflects the current migration state.
+
+## Current Migration State
+
+| File | Purpose |
+|---|---|
+| `000001_init.sql` | Full schema: `global_roles`, `users` (with `role_id` FK and `must_change_password`), projects, project roles/members, seed data |
+
 ## Schema (DBML)
 
 ```dbml
 // --- USER & GLOBAL ROLE MANAGEMENT ---
 Table users {
-  id integer [primary key]
-  username varchar [unique]
-  password_hash varchar
+  id uuid [primary key]
+  username varchar [unique, not null]
+  password_hash varchar [not null]
   full_name varchar
+  role_id uuid [ref: > global_roles.id, not null]
+  must_change_password boolean [not null, default: false]
   created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp [null]
 }
 
 Table global_roles {
-  id integer [primary key]
-  name varchar
-  permissions jsonb
-}
-
-Table user_global_roles {
-  user_id integer
-  role_id integer
-  indexes {
-    (user_id, role_id) [unique]
-  }
+  id uuid [primary key]
+  name varchar [unique, not null]
+  permissions jsonb [not null]
+  created_at timestamp
+  updated_at timestamp
 }
 
 // --- PROJECT & TEAM MANAGEMENT ---
 Table projects {
-  id integer [primary key]
+  id uuid [primary key]
   name varchar
   description text
   settings jsonb
-  created_by integer
+  created_by uuid
   created_at timestamp
 }
 
 Table project_roles {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   role_name varchar
   permissions jsonb
 }
 
 Table project_members {
-  id integer [primary key]
-  project_id integer
-  user_id integer
-  project_role_id integer
+  id uuid [primary key]
+  project_id uuid
+  user_id uuid
+  project_role_id uuid
 
   indexes {
     (project_id, user_id) [unique]
@@ -58,8 +64,8 @@ Table project_members {
 
 // --- TASK CONFIGURATION ---
 Table task_types {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   name varchar
   icon varchar
   color varchar
@@ -67,8 +73,8 @@ Table task_types {
 }
 
 Table task_statuses {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   name varchar
   color varchar
   position integer
@@ -77,24 +83,24 @@ Table task_statuses {
 
 // --- TASKS ---
 Table tasks {
-  id integer [primary key]
-  project_id integer
-  task_type_id integer
-  status_id integer
-  sprint_id integer
-  parent_task_id integer [null]
+  id uuid [primary key]
+  project_id uuid
+  task_type_id uuid
+  status_id uuid
+  sprint_id uuid
+  parent_task_id uuid [null]
   title varchar
   description text
   priority varchar
-  assignee_id integer
-  reporter_id integer
+  assignee_id uuid
+  reporter_id uuid
   custom_fields jsonb
   created_at timestamp
 }
 
 Table custom_field_definitions {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   field_key varchar
   display_name varchar
   field_type varchar
@@ -104,8 +110,8 @@ Table custom_field_definitions {
 
 // --- SPRINTS & VIEWS ---
 Table sprints {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   name varchar
   start_date date
   end_date date
@@ -114,8 +120,8 @@ Table sprints {
 }
 
 Table sprint_views {
-  id integer [primary key]
-  sprint_id integer
+  id uuid [primary key]
+  sprint_id uuid
   name varchar
   view_type varchar // kanban, list, gantt, burndown
   config jsonb
@@ -123,8 +129,8 @@ Table sprint_views {
 
 // --- FEATURES & UTILITIES ---
 Table bdd_scenarios {
-  id integer [primary key]
-  task_id integer
+  id uuid [primary key]
+  task_id uuid
   title varchar
   given text
   when text
@@ -133,40 +139,38 @@ Table bdd_scenarios {
 }
 
 Table time_logs {
-  id integer [primary key]
-  task_id integer
-  member_id integer
+  id uuid [primary key]
+  task_id uuid
+  member_id uuid
   duration_minutes integer
   logged_date date
 }
 
 Table documents {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   title varchar
   content text
-  created_by integer
+  created_by uuid
 }
 
 Table dashboards {
-  id integer [primary key]
-  project_id integer
+  id uuid [primary key]
+  project_id uuid
   name varchar
   layout jsonb
 }
 
 Table task_activities {
-  id integer [primary key]
-  task_id integer
-  member_id integer
+  id uuid [primary key]
+  task_id uuid
+  member_id uuid
   activity_type varchar
   content text
   created_at timestamp
 }
 
 // --- RELATIONSHIPS ---
-Ref: users.id < user_global_roles.user_id
-Ref: global_roles.id < user_global_roles.role_id
 Ref: projects.id < project_members.project_id
 Ref: users.id < project_members.user_id
 Ref: project_roles.id < project_members.project_role_id
