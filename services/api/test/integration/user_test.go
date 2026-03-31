@@ -625,7 +625,7 @@ func TestAdminResetPassword(t *testing.T) {
 	}
 }
 
-func TestAdminResetPassword_SetsMusChangePassword(t *testing.T) {
+func TestAdminResetPassword_SetsMustChangePassword(t *testing.T) {
 	repo := newFakeUserRepo()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("oldpassword"), bcrypt.MinCost)
 	u := &userdom.User{
