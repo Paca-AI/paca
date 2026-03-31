@@ -121,6 +121,15 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
+	// Normalize to match the service's clamping logic so response metadata
+	// reflects the actual query that was executed.
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
 	users, total, err := h.svc.List(c.Request.Context(), page, pageSize)
 	if err != nil {
 		presenter.Error(c, err)
