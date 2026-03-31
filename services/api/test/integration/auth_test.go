@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	globalroledom "github.com/paca/api/internal/domain/globalrole"
 	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
 	jwttoken "github.com/paca/api/internal/platform/token"
@@ -28,6 +29,11 @@ type fakeUserRepo struct {
 	byUsername map[string]*userdom.User
 	byID       map[uuid.UUID]*userdom.User
 }
+
+var (
+	fakeRoleIDUser  = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	fakeRoleIDAdmin = uuid.MustParse("22222222-2222-2222-2222-222222222222")
+)
 
 func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{
@@ -50,6 +56,17 @@ func (r *fakeUserRepo) FindByUsername(_ context.Context, username string) (*user
 		return nil, userdom.ErrNotFound
 	}
 	return u, nil
+}
+
+func (r *fakeUserRepo) FindByName(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
+	switch name {
+	case userdom.RoleUser:
+		return &globalroledom.GlobalRole{ID: fakeRoleIDUser, Name: userdom.RoleUser}, nil
+	case userdom.RoleAdmin:
+		return &globalroledom.GlobalRole{ID: fakeRoleIDAdmin, Name: userdom.RoleAdmin}, nil
+	default:
+		return nil, globalroledom.ErrNotFound
+	}
 }
 
 func (r *fakeUserRepo) Create(_ context.Context, u *userdom.User) error {
