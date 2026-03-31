@@ -180,7 +180,8 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, in userdom.Admi
 			r, err := s.roleRepo.FindByName(ctx, in.Role)
 			if err != nil {
 				if errors.Is(err, globalroledom.ErrNotFound) {
-					return nil, fmt.Errorf("user svc: admin update: role %q not found", in.Role)
+					// propagate domain-typed not-found error so presenter can map to a 4xx
+					return nil, globalroledom.ErrNotFound
 				}
 				return nil, fmt.Errorf("user svc: admin update: lookup role: %w", err)
 			}
