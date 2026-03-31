@@ -320,21 +320,21 @@ func seedDefaultRoles(
 		return fmt.Errorf("seed global roles: load SUPER_ADMIN role: %w", err)
 	}
 
+	// Under the single-role schema users.role_id holds exactly one role.
+	// Check whether the admin already has SUPER_ADMIN; if not, assign it (replacing whatever role they have).
 	existingRoles, err := globalRoleRepo.ListUserRoles(ctx, adminUser.ID)
 	if err != nil {
 		return fmt.Errorf("seed global roles: list admin user roles: %w", err)
 	}
-	roleIDs := make([]uuid.UUID, 0, len(existingRoles)+1)
 	hasSuperAdmin := false
 	for _, role := range existingRoles {
-		roleIDs = append(roleIDs, role.ID)
 		if role.ID == superAdminRole.ID {
 			hasSuperAdmin = true
+			break
 		}
 	}
 	if !hasSuperAdmin {
-		roleIDs = append(roleIDs, superAdminRole.ID)
-		if err := globalRoleRepo.ReplaceUserRoles(ctx, adminUser.ID, roleIDs); err != nil {
+		if err := globalRoleRepo.ReplaceUserRoles(ctx, adminUser.ID, []uuid.UUID{superAdminRole.ID}); err != nil {
 			return fmt.Errorf("seed global roles: assign SUPER_ADMIN: %w", err)
 		}
 		log.Info("assigned SUPER_ADMIN role to admin user", "username", adminUsername)
