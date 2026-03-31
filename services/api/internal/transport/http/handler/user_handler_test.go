@@ -188,7 +188,7 @@ func TestCreateUser_UsernameTaken(t *testing.T) {
 func TestListUsers_Success(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
-		list: func(_ context.Context, page, pageSize int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
 			return []*domainuser.User{
 				{ID: id, Username: "alice", FullName: "Alice", Role: domainuser.RoleUser},
 			}, 1, nil
@@ -817,7 +817,7 @@ func TestCreateUser_PasswordTooShort(t *testing.T) {
 func TestListUsers_ResponseShape(t *testing.T) {
 	id := uuid.New()
 	svc := &mockUserSvc{
-		list: func(_ context.Context, page, pageSize int) ([]*domainuser.User, int64, error) {
+		list: func(_ context.Context, _, _ int) ([]*domainuser.User, int64, error) {
 			return []*domainuser.User{
 				{ID: id, Username: "alice", FullName: "Alice", Role: domainuser.RoleUser},
 			}, 1, nil

@@ -17,7 +17,8 @@ func adminLogin(t *testing.T, env *e2eEnv) *http.Client {
 	seedUser(t, env, "e2e-admin", "adminpass1", "E2E Admin")
 	assignGlobalRolesByName(t, env, "e2e-admin", "ADMIN")
 
-	_ = login(env.ctx, t, env.client, env.base, "e2e-admin", "adminpass1")
+	resp := login(env.ctx, t, env.client, env.base, "e2e-admin", "adminpass1")
+	defer func() { _ = resp.Body.Close() }()
 	return env.client
 }
 
