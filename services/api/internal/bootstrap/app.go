@@ -140,7 +140,7 @@ type userModel struct {
 	Username           string `gorm:"uniqueIndex;not null"`
 	PasswordHash       string `gorm:"not null"`
 	FullName           string `gorm:"column:full_name"`
-	RoleID             string `gorm:"column:role_id;type:uuid"`
+	RoleID             string `gorm:"column:role_id;type:uuid;not null"`
 	MustChangePassword bool   `gorm:"column:must_change_password;not null;default:false"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
