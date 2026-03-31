@@ -32,6 +32,10 @@ type Service struct {
 	roleRepo               RoleByNameFinder
 }
 
+// ErrRoleResolverRequired indicates a missing role resolver dependency when a
+// mutating path requires Role -> RoleID resolution.
+var ErrRoleResolverRequired = errors.New("user svc: role resolver required")
+
 // New returns a configured user Service.
 // Pass optional GlobalPermissionReader and RoleByNameFinder as variadic args.
 func New(repo userdom.Repository, opts ...any) *Service {
@@ -116,18 +120,18 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 	if roleName == "" {
 		roleName = userdom.RoleUser
 	}
-
-	var roleID uuid.UUID
-	if s.roleRepo != nil {
-		r, err := s.roleRepo.FindByName(ctx, roleName)
-		if err != nil {
-			if errors.Is(err, globalroledom.ErrNotFound) {
-				return nil, fmt.Errorf("user svc: create: role %q not found: %w", roleName, err)
-			}
-			return nil, fmt.Errorf("user svc: create: lookup role: %w", err)
-		}
-		roleID = r.ID
+	if s.roleRepo == nil {
+		return nil, ErrRoleResolverRequired
 	}
+
+	r, err := s.roleRepo.FindByName(ctx, roleName)
+	if err != nil {
+		if errors.Is(err, globalroledom.ErrNotFound) {
+			return nil, fmt.Errorf("user svc: create: role %q not found: %w", roleName, err)
+		}
+		return nil, fmt.Errorf("user svc: create: lookup role: %w", err)
+	}
+	roleID := r.ID
 
 	now := time.Now()
 	u := &userdom.User{
@@ -176,17 +180,19 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, in userdom.Admi
 		u.FullName = in.FullName
 	}
 	if in.Role != "" {
-		if s.roleRepo != nil {
-			r, err := s.roleRepo.FindByName(ctx, in.Role)
-			if err != nil {
-				if errors.Is(err, globalroledom.ErrNotFound) {
-					// propagate domain-typed not-found error so presenter can map to a 4xx
-					return nil, globalroledom.ErrNotFound
-				}
-				return nil, fmt.Errorf("user svc: admin update: lookup role: %w", err)
-			}
-			u.RoleID = r.ID
+		if s.roleRepo == nil {
+			return nil, ErrRoleResolverRequired
 		}
+
+		r, err := s.roleRepo.FindByName(ctx, in.Role)
+		if err != nil {
+			if errors.Is(err, globalroledom.ErrNotFound) {
+				// propagate domain-typed not-found error so presenter can map to a 4xx
+				return nil, globalroledom.ErrNotFound
+			}
+			return nil, fmt.Errorf("user svc: admin update: lookup role: %w", err)
+		}
+		u.RoleID = r.ID
 		u.Role = in.Role
 	}
 	u.UpdatedAt = time.Now()

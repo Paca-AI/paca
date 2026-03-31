@@ -280,6 +280,87 @@ func TestCreate_RepoError(t *testing.T) {
 	}
 }
 
+func TestCreate_RequiresRoleResolver(t *testing.T) {
+	svc := usersvc.New(&stubRepo{})
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice",
+		Password: "password123",
+		FullName: "Alice",
+	})
+	if !errors.Is(err, usersvc.ErrRoleResolverRequired) {
+		t.Fatalf("expected ErrRoleResolverRequired, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AdminUpdate
+// ---------------------------------------------------------------------------
+
+func TestAdminUpdate_SetsRoleAndRoleID(t *testing.T) {
+	id := uuid.New()
+	roleID := uuid.New()
+	repoUser := &userdom.User{ID: id, Username: "alice", FullName: "Alice", Role: userdom.RoleUser}
+
+	svc := usersvc.New(
+		&stubRepo{
+			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return repoUser, nil
+			},
+			update: func(_ context.Context, u *userdom.User) error {
+				if u.Role != userdom.RoleAdmin {
+					t.Fatalf("expected role %q, got %q", userdom.RoleAdmin, u.Role)
+				}
+				if u.RoleID != roleID {
+					t.Fatalf("expected roleID %v, got %v", roleID, u.RoleID)
+				}
+				return nil
+			},
+		},
+		&stubRoleRepo{
+			findByName: func(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
+				if name != userdom.RoleAdmin {
+					t.Fatalf("unexpected role lookup: %q", name)
+				}
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleAdmin}, nil
+			},
+		},
+	)
+
+	got, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{Role: userdom.RoleAdmin})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Role != userdom.RoleAdmin {
+		t.Fatalf("expected role %q, got %q", userdom.RoleAdmin, got.Role)
+	}
+	if got.RoleID != roleID {
+		t.Fatalf("expected roleID %v, got %v", roleID, got.RoleID)
+	}
+}
+
+func TestAdminUpdate_RoleChangeRequiresRoleResolver(t *testing.T) {
+	id := uuid.New()
+	svc := usersvc.New(
+		&stubRepo{
+			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return &userdom.User{ID: id, Username: "alice", Role: userdom.RoleUser}, nil
+			},
+		},
+	)
+
+	_, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{Role: userdom.RoleAdmin})
+	if !errors.Is(err, usersvc.ErrRoleResolverRequired) {
+		t.Fatalf("expected ErrRoleResolverRequired, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // UpdateProfile
 // ---------------------------------------------------------------------------
