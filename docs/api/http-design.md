@@ -125,7 +125,7 @@ These routes already exist in the Go API service.
 | `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. |
 | `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. |
 | `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409` if users are assigned to it. |
-| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Replace the set of global roles assigned to a user. |
+| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. |
 
 > **"fresh" access token**: an access token whose `must_change_password` claim is `false`. If the claim is `true`, the request is rejected with `403 AUTH_PASSWORD_CHANGE_REQUIRED` and the user must call `PATCH /api/v1/users/me/password` first.
 
