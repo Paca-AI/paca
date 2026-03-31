@@ -122,7 +122,7 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 		r, err := s.roleRepo.FindByName(ctx, roleName)
 		if err != nil {
 			if errors.Is(err, globalroledom.ErrNotFound) {
-				return nil, fmt.Errorf("user svc: create: role %q not found", roleName)
+				return nil, fmt.Errorf("user svc: create: role %q not found: %w", roleName, err)
 			}
 			return nil, fmt.Errorf("user svc: create: lookup role: %w", err)
 		}
