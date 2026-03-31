@@ -90,8 +90,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in globalroledom.Upd
 }
 
 // Delete removes a global role definition. It returns ErrHasAssignedUsers if
-// any user currently references this role (either as their primary role or via
-// an explicit user_global_roles assignment).
+// any user currently references this role via their assigned global role
+// (for example, through users.role_id).
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	count, err := s.repo.CountUsersWithRole(ctx, id)
 	if err != nil {
