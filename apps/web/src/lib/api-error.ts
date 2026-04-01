@@ -10,10 +10,20 @@ export const ApiErrorCode = {
 	TokenInvalid: "AUTH_TOKEN_INVALID",
 	Unauthenticated: "AUTH_UNAUTHENTICATED",
 
+	// Password / session gate errors.
+	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",
+
 	// User domain errors.
 	UserNotFound: "USER_NOT_FOUND",
 	UsernameTaken: "USER_USERNAME_TAKEN",
+	InvalidCurrentPassword: "USER_INVALID_CURRENT_PASSWORD",
 	Forbidden: "FORBIDDEN",
+
+	// Global role domain errors.
+	GlobalRoleNotFound: "GLOBAL_ROLE_NOT_FOUND",
+	GlobalRoleNameTaken: "GLOBAL_ROLE_NAME_TAKEN",
+	GlobalRoleNameInvalid: "GLOBAL_ROLE_NAME_INVALID",
+	GlobalRoleHasUsers: "GLOBAL_ROLE_HAS_ASSIGNED_USERS",
 
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
@@ -21,6 +31,17 @@ export const ApiErrorCode = {
 } as const;
 
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
+
+/** Returns true when an Axios error is a 403 AUTH_PASSWORD_CHANGE_REQUIRED. */
+export function isPasswordChangeRequired(err: unknown): boolean {
+	const e = err as {
+		response?: { status?: number; data?: { error_code?: string } };
+	};
+	return (
+		e?.response?.status === 403 &&
+		e?.response?.data?.error_code === ApiErrorCode.PasswordChangeRequired
+	);
+}
 
 /** Shape of the success envelope returned by the API on success. */
 export interface SuccessEnvelope<T> {

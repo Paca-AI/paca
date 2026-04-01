@@ -39,7 +39,7 @@ func openAuthzStoreTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&userRecord{}, &globalRoleRecord{}, &userGlobalRoleRecord{}, &projectRoleTestRecord{}, &projectMemberTestRecord{}); err != nil {
+	if err := db.AutoMigrate(&userRecord{}, &globalRoleRecord{}, &projectRoleTestRecord{}, &projectMemberTestRecord{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db
@@ -48,12 +48,6 @@ func openAuthzStoreTestDB(t *testing.T) *gorm.DB {
 func TestAuthzPermissionStore_ListGlobalPermissions(t *testing.T) {
 	db := openAuthzStoreTestDB(t)
 	store := NewAuthzPermissionStore(db)
-
-	userID := uuid.New()
-	user := &userRecord{ID: userID.String(), Username: "alice", PasswordHash: "hash", FullName: "Alice", Role: "USER"}
-	if err := db.Create(user).Error; err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
 
 	roleID := uuid.New().String()
 	if err := db.Create(&globalRoleRecord{
@@ -66,8 +60,11 @@ func TestAuthzPermissionStore_ListGlobalPermissions(t *testing.T) {
 		t.Fatalf("seed role: %v", err)
 	}
 
-	if err := db.Create(&userGlobalRoleRecord{UserID: userID.String(), RoleID: roleID}).Error; err != nil {
-		t.Fatalf("seed mapping: %v", err)
+	// Seed user whose role_id points directly to the role (new schema).
+	userID := uuid.New()
+	user := &userRecord{ID: userID.String(), Username: "alice", PasswordHash: "hash", FullName: "Alice", RoleID: roleID}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
 	}
 
 	perms, err := store.ListGlobalPermissions(context.Background(), userID)
@@ -87,7 +84,7 @@ func TestAuthzPermissionStore_ListProjectPermissions(t *testing.T) {
 	projectID := uuid.New()
 	roleID := uuid.New()
 
-	user := &userRecord{ID: userID.String(), Username: "alice", PasswordHash: "hash", FullName: "Alice", Role: "USER"}
+	user := &userRecord{ID: userID.String(), Username: "alice", PasswordHash: "hash", FullName: "Alice", RoleID: uuid.New().String()}
 	if err := db.Create(user).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}

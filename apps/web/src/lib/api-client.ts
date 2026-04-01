@@ -4,8 +4,22 @@ import axios, {
 	type InternalAxiosRequestConfig,
 } from "axios";
 
+import { ApiErrorCode } from "./api-error";
+
 const API_BASE_URL =
 	import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+
+/**
+ * SPA navigation callback injected after the router is created (see router.tsx).
+ * Falls back to a hard redirect so it always works even before the router mounts.
+ */
+type NavigateFn = (to: string) => void;
+let _navigate: NavigateFn = (to) => {
+	window.location.href = to;
+};
+export function setNavigate(fn: NavigateFn) {
+	_navigate = fn;
+}
 
 export class ApiClient {
 	readonly instance: AxiosInstance;
@@ -33,6 +47,20 @@ export class ApiClient {
 				const originalRequest = error.config as InternalAxiosRequestConfig & {
 					_retry?: boolean;
 				};
+
+				// Redirect to the forced password-change page on this specific 403.
+				// Guard: skip navigation when already on /change-password to prevent
+				// re-entrant loops triggered by beforeLoad fetching /me.
+				if (
+					error.response?.status === 403 &&
+					error.response?.data?.error_code ===
+						ApiErrorCode.PasswordChangeRequired
+				) {
+					if (window.location.pathname !== "/change-password") {
+						_navigate("/change-password");
+					}
+					return Promise.reject(error);
+				}
 
 				if (error.response?.status !== 401 || originalRequest._retry) {
 					return Promise.reject(error);

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	globalroledom "github.com/paca/api/internal/domain/globalrole"
 	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
 	usersvc "github.com/paca/api/internal/service/user"
@@ -17,11 +18,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type stubRepo struct {
-	findByID       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
-	findByUsername func(ctx context.Context, username string) (*userdom.User, error)
-	create         func(ctx context.Context, u *userdom.User) error
-	update         func(ctx context.Context, u *userdom.User) error
-	delete         func(ctx context.Context, id uuid.UUID) error
+	findByID                       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
+	findByUsername                 func(ctx context.Context, username string) (*userdom.User, error)
+	findByUsernameIncludingDeleted func(ctx context.Context, username string) (*userdom.User, error)
+	create                         func(ctx context.Context, u *userdom.User) error
+	update                         func(ctx context.Context, u *userdom.User) error
+	delete                         func(ctx context.Context, id uuid.UUID) error
 }
 
 type stubPermissionReader struct {
@@ -35,6 +37,18 @@ func (r *stubPermissionReader) ListGlobalPermissions(ctx context.Context, userID
 	return nil, nil
 }
 
+// stubRoleRepo implements usersvc.RoleByNameFinder.
+type stubRoleRepo struct {
+	findByName func(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
+}
+
+func (r *stubRoleRepo) FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error) {
+	if r.findByName != nil {
+		return r.findByName(ctx, name)
+	}
+	return nil, globalroledom.ErrNotFound
+}
+
 func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error) {
 	if r.findByID != nil {
 		return r.findByID(ctx, id)
@@ -46,6 +60,18 @@ func (r *stubRepo) FindByUsername(ctx context.Context, username string) (*userdo
 		return r.findByUsername(ctx, username)
 	}
 	return nil, userdom.ErrNotFound
+}
+func (r *stubRepo) FindByUsernameIncludingDeleted(ctx context.Context, username string) (*userdom.User, error) {
+	if r.findByUsernameIncludingDeleted != nil {
+		return r.findByUsernameIncludingDeleted(ctx, username)
+	}
+	if r.findByUsername != nil {
+		return r.findByUsername(ctx, username)
+	}
+	return nil, userdom.ErrNotFound
+}
+func (r *stubRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, error) {
+	return nil, 0, nil
 }
 func (r *stubRepo) Create(ctx context.Context, u *userdom.User) error {
 	if r.create != nil {
@@ -189,7 +215,15 @@ func TestListGlobalPermissions_ReaderError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCreate_Success(t *testing.T) {
-	svc := usersvc.New(&stubRepo{})
+	roleID := uuid.New()
+	svc := usersvc.New(
+		&stubRepo{},
+		&stubRoleRepo{
+			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			},
+		},
+	)
 
 	got, err := svc.Create(context.Background(), userdom.CreateInput{
 		Username: "alice",
@@ -219,7 +253,7 @@ func TestCreate_Success(t *testing.T) {
 func TestCreate_DuplicateUsername(t *testing.T) {
 	existing := &userdom.User{ID: uuid.New(), Username: "alice"}
 	svc := usersvc.New(&stubRepo{
-		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return existing, nil },
+		findByUsernameIncludingDeleted: func(_ context.Context, _ string) (*userdom.User, error) { return existing, nil },
 	})
 
 	_, err := svc.Create(context.Background(), userdom.CreateInput{
@@ -234,9 +268,17 @@ func TestCreate_DuplicateUsername(t *testing.T) {
 
 func TestCreate_RepoError(t *testing.T) {
 	repoErr := errors.New("insert failed")
-	svc := usersvc.New(&stubRepo{
-		create: func(_ context.Context, _ *userdom.User) error { return repoErr },
-	})
+	roleID := uuid.New()
+	svc := usersvc.New(
+		&stubRepo{
+			create: func(_ context.Context, _ *userdom.User) error { return repoErr },
+		},
+		&stubRoleRepo{
+			findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleUser}, nil
+			},
+		},
+	)
 
 	_, err := svc.Create(context.Background(), userdom.CreateInput{
 		Username: "alice",
@@ -248,18 +290,99 @@ func TestCreate_RepoError(t *testing.T) {
 	}
 }
 
+func TestCreate_RequiresRoleResolver(t *testing.T) {
+	svc := usersvc.New(&stubRepo{})
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username: "alice",
+		Password: "password123",
+		FullName: "Alice",
+	})
+	if !errors.Is(err, usersvc.ErrRoleResolverRequired) {
+		t.Fatalf("expected ErrRoleResolverRequired, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
-// Update
+// AdminUpdate
 // ---------------------------------------------------------------------------
 
-func TestUpdate_Success(t *testing.T) {
+func TestAdminUpdate_SetsRoleAndRoleID(t *testing.T) {
+	id := uuid.New()
+	roleID := uuid.New()
+	repoUser := &userdom.User{ID: id, Username: "alice", FullName: "Alice", Role: userdom.RoleUser}
+
+	svc := usersvc.New(
+		&stubRepo{
+			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return repoUser, nil
+			},
+			update: func(_ context.Context, u *userdom.User) error {
+				if u.Role != userdom.RoleAdmin {
+					t.Fatalf("expected role %q, got %q", userdom.RoleAdmin, u.Role)
+				}
+				if u.RoleID != roleID {
+					t.Fatalf("expected roleID %v, got %v", roleID, u.RoleID)
+				}
+				return nil
+			},
+		},
+		&stubRoleRepo{
+			findByName: func(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
+				if name != userdom.RoleAdmin {
+					t.Fatalf("unexpected role lookup: %q", name)
+				}
+				return &globalroledom.GlobalRole{ID: roleID, Name: userdom.RoleAdmin}, nil
+			},
+		},
+	)
+
+	got, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{Role: userdom.RoleAdmin})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Role != userdom.RoleAdmin {
+		t.Fatalf("expected role %q, got %q", userdom.RoleAdmin, got.Role)
+	}
+	if got.RoleID != roleID {
+		t.Fatalf("expected roleID %v, got %v", roleID, got.RoleID)
+	}
+}
+
+func TestAdminUpdate_RoleChangeRequiresRoleResolver(t *testing.T) {
+	id := uuid.New()
+	svc := usersvc.New(
+		&stubRepo{
+			findByID: func(_ context.Context, got uuid.UUID) (*userdom.User, error) {
+				if got != id {
+					t.Fatalf("unexpected id: %v", got)
+				}
+				return &userdom.User{ID: id, Username: "alice", Role: userdom.RoleUser}, nil
+			},
+		},
+	)
+
+	_, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{Role: userdom.RoleAdmin})
+	if !errors.Is(err, usersvc.ErrRoleResolverRequired) {
+		t.Fatalf("expected ErrRoleResolverRequired, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateProfile
+// ---------------------------------------------------------------------------
+
+func TestUpdateProfile_Success(t *testing.T) {
 	id := uuid.New()
 	original := &userdom.User{ID: id, Username: "alice", FullName: "Old Name", Role: userdom.RoleUser}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return original, nil },
 	})
 
-	got, err := svc.Update(context.Background(), id, userdom.UpdateInput{FullName: "New Name"})
+	got, err := svc.UpdateProfile(context.Background(), id, userdom.UpdateProfileInput{FullName: "New Name"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -268,9 +391,42 @@ func TestUpdate_Success(t *testing.T) {
 	}
 }
 
-func TestUpdate_NotFound(t *testing.T) {
+func TestUpdateProfile_NotFound(t *testing.T) {
 	svc := usersvc.New(&stubRepo{})
-	_, err := svc.Update(context.Background(), uuid.New(), userdom.UpdateInput{FullName: "X"})
+	_, err := svc.UpdateProfile(context.Background(), uuid.New(), userdom.UpdateProfileInput{FullName: "X"})
+	if !errors.Is(err, userdom.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ResetPassword
+// ---------------------------------------------------------------------------
+
+func TestResetPassword_Success(t *testing.T) {
+	id := uuid.New()
+	var savedHash string
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id, Role: userdom.RoleUser, PasswordHash: "oldhash"}, nil
+		},
+		update: func(_ context.Context, u *userdom.User) error {
+			savedHash = u.PasswordHash
+			return nil
+		},
+	})
+
+	if err := svc.ResetPassword(context.Background(), id, "newpassword123"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if savedHash == "oldhash" || savedHash == "newpassword123" {
+		t.Fatalf("expected bcrypt hash, got %q", savedHash)
+	}
+}
+
+func TestResetPassword_UserNotFound(t *testing.T) {
+	svc := usersvc.New(&stubRepo{})
+	err := svc.ResetPassword(context.Background(), uuid.New(), "newpassword123")
 	if !errors.Is(err, userdom.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}

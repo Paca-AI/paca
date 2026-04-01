@@ -44,3 +44,19 @@ export function GlobalRolesErrorState() {
 		</div>
 	);
 }
+
+export function GlobalRolesNoPermissionState() {
+	return (
+		<div className="flex flex-col items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 py-14 text-center dark:border-amber-900/40 dark:bg-amber-900/10">
+			<Shield className="size-8 text-amber-400 dark:text-amber-500" />
+			<div>
+				<p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+					You don't have permission to view roles
+				</p>
+				<p className="mt-0.5 text-xs text-muted-foreground">
+					You can still create new roles using the button above.
+				</p>
+			</div>
+		</div>
+	);
+}

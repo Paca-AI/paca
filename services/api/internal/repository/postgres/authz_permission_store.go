@@ -21,7 +21,7 @@ func NewAuthzPermissionStore(db *gorm.DB) *AuthzPermissionStore {
 	return &AuthzPermissionStore{db: db}
 }
 
-// ListGlobalPermissions returns permissions granted by assigned global roles.
+// ListGlobalPermissions returns permissions granted by the user's global role (via users.role_id).
 func (s *AuthzPermissionStore) ListGlobalPermissions(ctx context.Context, userID uuid.UUID) ([]authz.Permission, error) {
 	var rows []struct {
 		Permissions []byte
@@ -29,8 +29,8 @@ func (s *AuthzPermissionStore) ListGlobalPermissions(ctx context.Context, userID
 	err := s.db.WithContext(ctx).
 		Table("global_roles gr").
 		Select("gr.permissions").
-		Joins("JOIN user_global_roles ugr ON ugr.role_id = gr.id").
-		Where("ugr.user_id = ?", userID.String()).
+		Joins("JOIN users u ON u.role_id = gr.id").
+		Where("u.id = ? AND u.deleted_at IS NULL", userID.String()).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("authz store: list global permissions: %w", err)

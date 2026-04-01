@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { DeleteRoleDialog } from "@/components/admin/global-roles/DeleteRoleDialog";
 import { GlobalRolesHeader } from "@/components/admin/global-roles/GlobalRolesHeader";
 import {
 	EmptyRolesState,
 	GlobalRolesErrorState,
+	GlobalRolesNoPermissionState,
 } from "@/components/admin/global-roles/GlobalRolesStates";
 import { GlobalRolesStats } from "@/components/admin/global-roles/GlobalRolesStats";
 import { GlobalRolesTable } from "@/components/admin/global-roles/GlobalRolesTable";
@@ -13,21 +14,41 @@ import { RoleFormDialog } from "@/components/admin/global-roles/RoleFormDialog";
 import { RolesTableSkeleton } from "@/components/admin/global-roles/RolesTableSkeleton";
 import { activePermissions } from "@/components/admin/global-roles/utils";
 import { usePermissions } from "@/hooks/use-permissions";
-import { type GlobalRole, globalRolesQueryOptions } from "@/lib/admin-api";
+import {
+	type GlobalRole,
+	globalRolesQueryOptions,
+	myPermissionsQueryOptions,
+} from "@/lib/admin-api";
+import { hasPermission } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/admin/global-roles/")({
+	beforeLoad: async ({ context: { queryClient } }) => {
+		const permissions = await queryClient
+			.fetchQuery(myPermissionsQueryOptions)
+			.catch(() => [] as string[]);
+
+		const canAccess =
+			hasPermission(permissions, "global_roles.read") ||
+			hasPermission(permissions, "global_roles.write") ||
+			hasPermission(permissions, "global_roles.assign");
+
+		if (!canAccess) {
+			throw redirect({ to: "/home" });
+		}
+	},
 	component: GlobalRolesPage,
 });
 
 function GlobalRolesPage() {
 	const { hasPermission } = usePermissions();
+	const canRead = hasPermission("global_roles.read");
 	const canWrite = hasPermission("global_roles.write");
 
 	const {
 		data: roles = [],
 		isLoading,
 		isError,
-	} = useQuery(globalRolesQueryOptions);
+	} = useQuery({ ...globalRolesQueryOptions, enabled: canRead });
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editRole, setEditRole] = useState<GlobalRole | null>(null);
@@ -49,14 +70,16 @@ function GlobalRolesPage() {
 				<RoleFormDialog open={createOpen} onOpenChange={setCreateOpen} />
 			) : null}
 
-			{!isLoading && !isError && (
+			{canRead && !isLoading && !isError && (
 				<GlobalRolesStats
 					rolesCount={roles.length}
 					totalGranted={totalGranted}
 				/>
 			)}
 
-			{isLoading ? (
+			{!canRead ? (
+				<GlobalRolesNoPermissionState />
+			) : isLoading ? (
 				<RolesTableSkeleton />
 			) : isError ? (
 				<GlobalRolesErrorState />

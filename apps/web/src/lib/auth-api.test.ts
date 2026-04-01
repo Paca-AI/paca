@@ -53,6 +53,7 @@ describe("auth-api", () => {
 			username: "alice",
 			full_name: "Alice Example",
 			role: "admin",
+			must_change_password: false,
 			created_at: "2026-03-28T10:00:00.000Z",
 		};
 		mockGet.mockResolvedValue({

@@ -135,12 +135,18 @@ func TestAdminGlobalRolesAuthorization(t *testing.T) {
 			t.Fatalf("find target user: %v", err)
 		}
 
+		// Resolve the USER role id — schema requires exactly one role (NOT NULL).
+		userRole, err := env.roleRepo.FindByName(env.ctx, "USER")
+		if err != nil {
+			t.Fatalf("find USER role: %v", err)
+		}
+
 		assignReq := mustRequest(
 			env.ctx,
 			t,
 			http.MethodPut,
 			env.base+"/api/v1/admin/users/"+target.ID.String()+"/global-roles",
-			jsonBody(t, map[string]any{"role_ids": []string{}}),
+			jsonBody(t, map[string]any{"role_ids": []string{userRole.ID.String()}}),
 		)
 		assignReq.Header.Set("Content-Type", "application/json")
 

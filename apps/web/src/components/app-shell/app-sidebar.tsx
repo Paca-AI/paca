@@ -192,8 +192,14 @@ function ThemeSwitcher() {
 export function AppSidebar() {
 	const { hasPermission } = usePermissions();
 	const { resolvedMode } = useThemeMode();
-	const isAdmin =
+
+	const canAccessGlobalRoles =
 		hasPermission("global_roles.read") || hasPermission("global_roles.write");
+
+	const canAccessUsers =
+		hasPermission("users.read") || hasPermission("users.write");
+
+	const showAdminSection = canAccessGlobalRoles || canAccessUsers;
 
 	return (
 		<Sidebar collapsible="icon">
@@ -228,20 +234,24 @@ export function AppSidebar() {
 					</SidebarGroupContent>
 				</SidebarGroup>
 
-				{/* Admin section — only visible to admins */}
-				{isAdmin ? (
+				{/* Admin section — only visible when user has at least one admin permission */}
+				{showAdminSection ? (
 					<>
 						<SidebarSeparator />
 						<SidebarGroup>
 							<SidebarGroupLabel>Administration</SidebarGroupLabel>
 							<SidebarGroupContent>
 								<SidebarMenu>
-									<NavItem
-										to="/admin/global-roles"
-										icon={Shield}
-										label="Global Roles"
-									/>
-									<NavItem to="/admin/users" icon={Users} label="Users" />
+									{canAccessGlobalRoles ? (
+										<NavItem
+											to="/admin/global-roles"
+											icon={Shield}
+											label="Global Roles"
+										/>
+									) : null}
+									{canAccessUsers ? (
+										<NavItem to="/admin/users" icon={Users} label="Users" />
+									) : null}
 								</SidebarMenu>
 							</SidebarGroupContent>
 						</SidebarGroup>

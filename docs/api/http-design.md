@@ -111,16 +111,23 @@ These routes already exist in the Go API service.
 | `POST` | `/api/v1/auth/login` | No | Validate user credentials and set access/refresh tokens as HttpOnly cookies. |
 | `POST` | `/api/v1/auth/refresh` | No | Exchange refresh token cookie for rotated access/refresh token cookies. |
 | `POST` | `/api/v1/auth/logout` | Access token | Revoke the current authenticated token/session and clear cookies. |
-| `POST` | `/api/v1/users` | No | Register a new user account. |
-| `GET` | `/api/v1/users/me` | Access token | Return the authenticated caller's own profile. |
-| `GET` | `/api/v1/users/me/global-permissions` | Access token | Return the authenticated caller's effective global permissions. |
-| `PATCH` | `/api/v1/users/:id` | Access token | Update mutable profile fields for the specified user. Current implementation supports `full_name`. |
-| `DELETE` | `/api/v1/users/:id` | Access token + `users.delete` permission | Delete a user account. |
-| `GET` | `/api/v1/admin/global-roles` | Access token + `global_roles.read` permission | List available global roles and permissions. |
-| `POST` | `/api/v1/admin/global-roles` | Access token + `global_roles.write` permission | Create a new global role definition. |
-| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token + `global_roles.write` permission | Update a global role definition. |
-| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token + `global_roles.write` permission | Remove a global role definition. |
-| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token + `global_roles.assign` permission | Replace the set of global roles assigned to a user. |
+| `PATCH` | `/api/v1/users/me/password` | Access token | Change the authenticated user's own password. Allowed even when `must_change_password` is true. Revokes the current session after a successful change. |
+| `GET` | `/api/v1/users/me` | Access token (fresh) | Return the authenticated caller's own profile. |
+| `PATCH` | `/api/v1/users/me` | Access token (fresh) | Update mutable profile fields (`full_name`) for the caller. |
+| `GET` | `/api/v1/users/me/global-permissions` | Access token (fresh) | Return the authenticated caller's effective global permissions. |
+| `GET` | `/api/v1/admin/users` | Access token (fresh) + `users.read` | List all users with pagination. |
+| `POST` | `/api/v1/admin/users` | Access token (fresh) + `users.write` | Create a new user account. Sets `must_change_password = true`. |
+| `GET` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.read` | Get a user profile by ID. |
+| `PATCH` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.write` | Update a user's `full_name` or `role`. |
+| `PATCH` | `/api/v1/admin/users/:userId/password` | Access token (fresh) + `users.write` | Admin password reset. Sets `must_change_password = true`. |
+| `DELETE` | `/api/v1/admin/users/:userId` | Access token (fresh) + `users.delete` | Soft-delete a user account. |
+| `GET` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.read` | List available global roles and permissions. |
+| `POST` | `/api/v1/admin/global-roles` | Access token (fresh) + `global_roles.write` | Create a new global role definition. |
+| `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. |
+| `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409` if users are assigned to it. |
+| `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. |
+
+> **"fresh" access token**: an access token whose `must_change_password` claim is `false`. If the claim is `true`, the request is rejected with `403 AUTH_PASSWORD_CHANGE_REQUIRED` and the user must call `PATCH /api/v1/users/me/password` first.
 
 ## Current Request and Response Contracts
 
@@ -129,14 +136,16 @@ These routes already exist in the Go API service.
 Function:
 
 - authenticate a user with username and password;
-- set access and refresh tokens as HttpOnly cookies.
+- set access and refresh tokens as HttpOnly cookies;
+- the access token embeds `must_change_password` in the JWT payload so clients can prompt immediately on login.
 
 Request body:
 
 ```json
 {
   "username": "alice",
-  "password": "secret123"
+  "password": "secret123",
+  "remember_me": false
 }
 ```
 
@@ -198,23 +207,12 @@ Success response:
 }
 ```
 
-### `POST /api/v1/users`
+### `GET /api/v1/users/me`
 
 Function:
 
-- create a new user record;
-- hash the password before persistence;
-- assign the default `USER` role.
-
-Request body:
-
-```json
-{
-  "username": "alice",
-  "password": "secret123",
-  "full_name": "Alice"
-}
-```
+- read the profile of the authenticated user;
+- resolve the user from the JWT subject claim.
 
 Success response data:
 
@@ -224,16 +222,53 @@ Success response data:
   "username": "alice",
   "full_name": "Alice",
   "role": "USER",
+  "must_change_password": false,
   "created_at": "2026-03-24T00:00:00Z"
 }
 ```
 
-### `GET /api/v1/users/me`
+### `PATCH /api/v1/users/me`
 
 Function:
 
-- read the profile of the authenticated user;
-- resolve the user from the JWT subject claim.
+- update mutable user profile fields;
+- current implementation supports `full_name` only.
+
+Request body:
+
+```json
+{
+  "full_name": "Updated Name"
+}
+```
+
+### `PATCH /api/v1/users/me/password`
+
+Function:
+
+- change the authenticated user's own password;
+- verify `current_password` against the stored bcrypt hash;
+- set the new password and clear `must_change_password`;
+- revoke the current session (the user must re-authenticate with the new password).
+
+This endpoint is explicitly **not** gated by the `RequireFreshPassword` middleware, so users with `must_change_password = true` can reach it to fulfil the force-change requirement.
+
+Request body:
+
+```json
+{
+  "current_password": "old-password",
+  "new_password": "new-password-min-8"
+}
+```
+
+Success response: `204 No Content`
+
+Error codes:
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `USER_INVALID_CURRENT_PASSWORD` | 422 | Supplied `current_password` does not match the stored hash. |
 
 ### `GET /api/v1/users/me/global-permissions`
 
@@ -258,29 +293,118 @@ Success response:
 }
 ```
 
-### `PATCH /api/v1/users/:id`
+## Implemented Administration API
+
+### `GET /api/v1/admin/users`
 
 Function:
 
-- update mutable user profile fields;
-- current implementation supports `full_name` only.
+- list all non-deleted users ordered by creation date;
+- paginated via `page` and `page_size` query parameters.
+
+Query parameters:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `page` | `1` | 1-based page number |
+| `page_size` | `20` | Items per page (max 100) |
+
+Success response data:
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "username": "alice",
+      "full_name": "Alice",
+      "role": "USER",
+      "must_change_password": true,
+      "created_at": "2026-03-24T00:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 20
+}
+```
+
+### `POST /api/v1/admin/users`
+
+Function:
+
+- create a new user account;
+- resolve the provided role name against `global_roles`;
+- hash password before persistence;
+- set `must_change_password = true` so the user is required to change their password on first login.
 
 Request body:
 
 ```json
 {
-  "full_name": "Updated Name"
+  "username": "alice",
+  "password": "secret123",
+  "full_name": "Alice",
+  "role": "USER"
 }
 ```
 
-### `DELETE /api/v1/users/:id`
+Success response: `201 Created` with user response data (see `GET /api/v1/users/me` shape).
+
+Error codes:
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `USER_USERNAME_TAKEN` | 409 | Username already in use. |
+
+### `GET /api/v1/admin/users/:userId`
 
 Function:
 
-- remove or soft-delete a user account;
+- get a user profile by UUID;
+- returns full user data including `must_change_password` flag.
+
+### `PATCH /api/v1/admin/users/:userId`
+
+Function:
+
+- update a user's `full_name` or `role`;
+- role changes are validated against `global_roles` — the role name must exist.
+
+Request body:
+
+```json
+{
+  "full_name": "New Name",
+  "role": "ADMIN"
+}
+```
+
+### `PATCH /api/v1/admin/users/:userId/password`
+
+Function:
+
+- reset a user's password without knowing the current password (admin privilege);
+- set `must_change_password = true` so the user is forced to set a personal password on next login.
+
+Request body:
+
+```json
+{
+  "new_password": "new-password-min-8"
+}
+```
+
+Success response: `204 No Content`
+
+### `DELETE /api/v1/admin/users/:userId`
+
+Function:
+
+- soft-delete a user account (sets `deleted_at`);
 - restricted to callers with the `users.delete` permission.
 
-## Implemented Administration API
+Success response: `204 No Content`
 
 ### `GET /api/v1/admin/global-roles`
 
@@ -319,7 +443,7 @@ Function:
 Function:
 
 - remove a global role definition;
-- remove any user-role assignments pointing to the deleted role.
+- returns `409 GLOBAL_ROLE_HAS_ASSIGNED_USERS` if any users are currently assigned to the role — reassign users first.
 
 ### `PUT /api/v1/admin/users/:userId/global-roles`
 
@@ -339,14 +463,7 @@ Request body:
 
 ## Planned Resource API
 
-The following endpoints are not fully implemented yet, but they are the recommended path design for the next API slices based on the domain model.
-
-## Identity and Administration
-
-| Method | Path | Function |
-|---|---|---|
-| `GET` | `/api/v1/users` | List users for administration and member selection. |
-| `GET` | `/api/v1/users/:id` | Get a user profile by ID. |
+The following endpoints are not yet implemented. They are the recommended path design for the next API slices based on the domain model.
 
 ## Projects and Membership
 
@@ -438,18 +555,42 @@ The following endpoints are not fully implemented yet, but they are the recommen
 
 To keep the API coherent and aligned with the current codebase, implement the next slices in this order:
 
-1. Normalize the existing auth and user error contracts.
-2. Add project and project-member endpoints.
-3. Add task configuration endpoints: statuses, types, custom fields.
-4. Add task CRUD and task activity endpoints.
-5. Add sprint, document, dashboard, BDD scenario, and time-log endpoints.
+1. ~~Normalize the existing auth and user error contracts.~~ ✅ Done
+2. ~~Add complete admin user management: list, create, update, delete, reset-password.~~ ✅ Done
+3. ~~Force password change after admin create/reset.~~ ✅ Done
+4. Add project and project-member endpoints.
+5. Add task configuration endpoints: statuses, types, custom fields.
+6. Add task CRUD and task activity endpoints.
+7. Add sprint, document, dashboard, BDD scenario, and time-log endpoints.
 
 ## Known Model Gaps
 
-The auth/user implementation is now aligned with the database schema:
+The auth/user implementation is aligned with the database schema:
 
 - Users are identified by `username` (unique, required) and stored with `full_name`.
 - Authentication uses `username` + password; there is no email field.
 - UUIDs are used for all public resource identifiers.
+- The `users` table stores a `role_id` FK pointing to `global_roles`; the role name is resolved via a JOIN on every read.
+- `must_change_password` is persisted in `users` and embedded in access tokens so middleware can enforce the force-change requirement without a DB round-trip.
 
-The schema and HTTP contract are consistent. Before adding the next slice (projects/tasks), update [../architecture/database-schema.md](../architecture/database-schema.md) first so storage model and HTTP contract continue to move together.
+The schema and HTTP contract are consistent. Before adding the next slice (projects/tasks), update [../architecture/database-schema.md](../architecture/database-schema.md) first so the storage model and HTTP contract continue to move together.
+
+## Error Codes Reference
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `AUTH_INVALID_CREDENTIALS` | 401 | Username or password incorrect. |
+| `AUTH_MISSING_TOKEN` | 401 | Request has no access token. |
+| `AUTH_TOKEN_INVALID` | 401 | Token is malformed, expired, or of the wrong kind. |
+| `AUTH_UNAUTHENTICATED` | 401 | Generic unauthenticated access. |
+| `AUTH_PASSWORD_CHANGE_REQUIRED` | 403 | User must call `PATCH /users/me/password` before accessing this resource. |
+| `USER_NOT_FOUND` | 404 | User with the given ID does not exist. |
+| `USER_USERNAME_TAKEN` | 409 | Username already in use. |
+| `USER_INVALID_CURRENT_PASSWORD` | 422 | Supplied `current_password` does not match the stored hash. |
+| `FORBIDDEN` | 403 | Caller lacks the required permission. |
+| `GLOBAL_ROLE_NOT_FOUND` | 404 | Global role with the given ID does not exist. |
+| `GLOBAL_ROLE_NAME_TAKEN` | 409 | A global role with that name already exists. |
+| `GLOBAL_ROLE_NAME_INVALID` | 400 | Role name does not meet naming requirements. |
+| `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users are assigned to it. |
+| `BAD_REQUEST` | 400 | Malformed or invalid request body. |
+| `INTERNAL_ERROR` | 500 | Unexpected server error. |

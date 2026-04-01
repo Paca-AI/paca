@@ -74,6 +74,7 @@ func New(cfg *config.Config) (*App, error) {
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 
 	if err := db.AutoMigrate(
+		&userModel{},
 		&projectModel{},
 		&projectRoleModel{},
 		&projectMemberModel{},
@@ -84,16 +85,18 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Admin seeding -------------------------------------------------------
-	if err := seedAdmin(context.Background(), userRepo, cfg.Admin, log); err != nil {
+	// seedDefaultRoles must run first so the ADMIN global role exists before
+	// seedAdmin tries to reference it by FK.
+	if err := seedDefaultRoles(context.Background(), db, userRepo, globalRoleRepo, cfg.Admin.Username, log); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
-	if err := seedDefaultRoles(context.Background(), db, userRepo, globalRoleRepo, cfg.Admin.Username, log); err != nil {
+	if err := seedAdmin(context.Background(), userRepo, globalRoleRepo, cfg.Admin, log); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
 
 	// --- Services -----------------------------------------------------------
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
-	userService := usersvc.New(userRepo, permissionStore)
+	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo)
 	globalRoleService := globalrolesvc.New(globalRoleRepo)
 
 	// --- Handlers -----------------------------------------------------------
@@ -109,7 +112,7 @@ func New(cfg *config.Config) (*App, error) {
 		Authorizer:   authorizer,
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
-		User:         handler.NewUserHandler(userService),
+		User:         handler.NewUserHandler(userService, authService),
 		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
 		Log:          log,
 	}
@@ -128,6 +131,23 @@ func New(cfg *config.Config) (*App, error) {
 
 	return &App{server: srv, publisher: publisher, log: log}, nil
 }
+
+// userModel is used only for startup AutoMigrate to ensure the users table
+// has the role_id and must_change_password columns in development without
+// running SQL migrations.
+type userModel struct {
+	ID                 string `gorm:"primarykey;type:uuid"`
+	Username           string `gorm:"uniqueIndex;not null"`
+	PasswordHash       string `gorm:"not null"`
+	FullName           string `gorm:"column:full_name"`
+	RoleID             string `gorm:"column:role_id;type:uuid;not null"`
+	MustChangePassword bool   `gorm:"column:must_change_password;not null;default:false"`
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          gorm.DeletedAt `gorm:"index"`
+}
+
+func (userModel) TableName() string { return "users" }
 
 // globalRoleModel is used only for startup AutoMigrate to ensure the planned
 // admin tables exist in development environments.
@@ -196,15 +216,22 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 // seedAdmin ensures the default admin account exists in the database.
+// It must be called after seedDefaultRoles so the ADMIN global role exists.
 // If the account already exists it is left unchanged.
-func seedAdmin(ctx context.Context, repo userdom.Repository, cfg config.AdminConfig, log *slog.Logger) error {
-	_, err := repo.FindByUsername(ctx, cfg.Username)
+func seedAdmin(ctx context.Context, repo userdom.Repository, globalRoleRepo *pgRepo.GlobalRoleRepository, cfg config.AdminConfig, log *slog.Logger) error {
+	_, err := repo.FindByUsernameIncludingDeleted(ctx, cfg.Username)
 	if err == nil {
 		// Admin already exists — nothing to do.
 		return nil
 	}
 	if !errors.Is(err, userdom.ErrNotFound) {
 		return fmt.Errorf("seed admin: lookup: %w", err)
+	}
+
+	// Resolve the ADMIN global role FK.
+	adminRole, err := globalRoleRepo.FindByName(ctx, "ADMIN")
+	if err != nil {
+		return fmt.Errorf("seed admin: find ADMIN role: %w", err)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.Password), bcrypt.DefaultCost)
@@ -218,13 +245,24 @@ func seedAdmin(ctx context.Context, repo userdom.Repository, cfg config.AdminCon
 		Username:     cfg.Username,
 		PasswordHash: string(hash),
 		FullName:     "Admin",
-		Role:         userdom.RoleAdmin,
+		RoleID:       adminRole.ID,
+		Role:         adminRole.Name,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
 
 	if err := repo.Create(ctx, admin); err != nil {
 		return fmt.Errorf("seed admin: create: %w", err)
+	}
+
+	// Immediately assign the SUPER_ADMIN global role via users.role_id so the
+	// admin user has full permissions from the first request.
+	superAdminRole, err := globalRoleRepo.FindByName(ctx, "SUPER_ADMIN")
+	if err != nil {
+		return fmt.Errorf("seed admin: find SUPER_ADMIN role: %w", err)
+	}
+	if err := globalRoleRepo.ReplaceUserRoles(ctx, admin.ID, []uuid.UUID{superAdminRole.ID}); err != nil {
+		return fmt.Errorf("seed admin: assign SUPER_ADMIN: %w", err)
 	}
 
 	log.Info("admin account created", "username", cfg.Username)
@@ -282,21 +320,21 @@ func seedDefaultRoles(
 		return fmt.Errorf("seed global roles: load SUPER_ADMIN role: %w", err)
 	}
 
+	// Under the single-role schema users.role_id holds exactly one role.
+	// Check whether the admin already has SUPER_ADMIN; if not, assign it (replacing whatever role they have).
 	existingRoles, err := globalRoleRepo.ListUserRoles(ctx, adminUser.ID)
 	if err != nil {
 		return fmt.Errorf("seed global roles: list admin user roles: %w", err)
 	}
-	roleIDs := make([]uuid.UUID, 0, len(existingRoles)+1)
 	hasSuperAdmin := false
 	for _, role := range existingRoles {
-		roleIDs = append(roleIDs, role.ID)
 		if role.ID == superAdminRole.ID {
 			hasSuperAdmin = true
+			break
 		}
 	}
 	if !hasSuperAdmin {
-		roleIDs = append(roleIDs, superAdminRole.ID)
-		if err := globalRoleRepo.ReplaceUserRoles(ctx, adminUser.ID, roleIDs); err != nil {
+		if err := globalRoleRepo.ReplaceUserRoles(ctx, adminUser.ID, []uuid.UUID{superAdminRole.ID}); err != nil {
 			return fmt.Errorf("seed global roles: assign SUPER_ADMIN: %w", err)
 		}
 		log.Info("assigned SUPER_ADMIN role to admin user", "username", adminUsername)

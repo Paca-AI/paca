@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	globalroledom "github.com/paca/api/internal/domain/globalrole"
 	userdom "github.com/paca/api/internal/domain/user"
 	"github.com/paca/api/internal/platform/authz"
 	jwttoken "github.com/paca/api/internal/platform/token"
@@ -28,6 +29,11 @@ type fakeUserRepo struct {
 	byUsername map[string]*userdom.User
 	byID       map[uuid.UUID]*userdom.User
 }
+
+var (
+	fakeRoleIDUser  = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	fakeRoleIDAdmin = uuid.MustParse("22222222-2222-2222-2222-222222222222")
+)
 
 func newFakeUserRepo() *fakeUserRepo {
 	return &fakeUserRepo{
@@ -52,6 +58,21 @@ func (r *fakeUserRepo) FindByUsername(_ context.Context, username string) (*user
 	return u, nil
 }
 
+func (r *fakeUserRepo) FindByUsernameIncludingDeleted(ctx context.Context, username string) (*userdom.User, error) {
+	return r.FindByUsername(ctx, username)
+}
+
+func (r *fakeUserRepo) FindByName(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
+	switch name {
+	case userdom.RoleUser:
+		return &globalroledom.GlobalRole{ID: fakeRoleIDUser, Name: userdom.RoleUser}, nil
+	case userdom.RoleAdmin:
+		return &globalroledom.GlobalRole{ID: fakeRoleIDAdmin, Name: userdom.RoleAdmin}, nil
+	default:
+		return nil, globalroledom.ErrNotFound
+	}
+}
+
 func (r *fakeUserRepo) Create(_ context.Context, u *userdom.User) error {
 	r.byUsername[u.Username] = u
 	r.byID[u.ID] = u
@@ -63,12 +84,28 @@ func (r *fakeUserRepo) Update(_ context.Context, u *userdom.User) error {
 	r.byID[u.ID] = u
 	return nil
 }
-
-func (r *fakeUserRepo) Delete(_ context.Context, id uuid.UUID) error {
-	if u, ok := r.byID[id]; ok {
-		delete(r.byUsername, u.Username)
-		delete(r.byID, id)
+func (r *fakeUserRepo) List(_ context.Context, offset, limit int) ([]*userdom.User, int64, error) {
+	all := make([]*userdom.User, 0, len(r.byID))
+	for _, u := range r.byID {
+		all = append(all, u)
 	}
+	total := int64(len(all))
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+func (r *fakeUserRepo) Delete(_ context.Context, id uuid.UUID) error {
+	u, ok := r.byID[id]
+	if !ok {
+		return userdom.ErrNotFound
+	}
+	delete(r.byUsername, u.Username)
+	delete(r.byID, id)
 	return nil
 }
 

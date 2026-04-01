@@ -16,4 +16,7 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) error
 	ListUserRoles(ctx context.Context, userID uuid.UUID) ([]*GlobalRole, error)
+	// CountUsersWithRole returns the number of non-deleted users whose primary
+	// role foreign key points to the given role ID.
+	CountUsersWithRole(ctx context.Context, id uuid.UUID) (int64, error)
 }

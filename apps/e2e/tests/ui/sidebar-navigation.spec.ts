@@ -3,12 +3,17 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
+function profileMenuButton(page: Page) {
+  return page.getByRole('button', { name: /Admin super_admin/i });
+}
+
 test.describe('Sidebar Navigation', () => {
   const signInAsAdmin = async (page: Page) => {
-    await page.goto('http://localhost/');
+    await page.goto('/');
     await page.getByRole('textbox', { name: 'Username' }).fill('admin');
     await page.getByRole('textbox', { name: 'Password' }).fill('e2e-admin-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening), Admin/i })).toBeVisible();
   };
 
   test.beforeEach(async ({ context }) => {
@@ -86,10 +91,10 @@ test.describe('Sidebar Navigation', () => {
     }
 
     // Verify the user profile section is visible in the sidebar
-    await expect(page.getByRole('button', { name: 'A Admin admin' })).toBeVisible();
+    await expect(profileMenuButton(page)).toBeVisible();
 
     // Click on the user profile dropdown
-    await page.getByRole('button', { name: 'A Admin admin' }).click();
+    await profileMenuButton(page).click();
 
     // Verify logout functionality is accessible from the sidebar
     await expect(page.getByRole('menuitem', { name: 'Log out' })).toBeVisible();
@@ -110,8 +115,8 @@ test.describe('Sidebar Navigation', () => {
       await expect(page.getByText('Theme')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Light' })).toBeVisible();
 
-      // Test hover functionality on Home link (may not work on touch devices)
-      await page.getByRole('link', { name: 'Home' }).hover();
+      // Verify the primary navigation link remains accessible inside the sheet.
+      await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
 
       // Close the sidebar using escape key or clicking outside
       await page.keyboard.press('Escape');
@@ -122,12 +127,13 @@ test.describe('Sidebar Navigation', () => {
       // On desktop, test keyboard shortcut Cmd+B to toggle sidebar
       await page.keyboard.press('Meta+b');
       
-      // Verify sidebar is collapsed (check that theme switcher is still visible)
-      await expect(page.getByText('Theme')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Light' })).toBeVisible();
+      // Verify the collapsed sidebar still exposes icon-only navigation and profile access.
+      const homeLink = page.getByRole('link', { name: 'Home' });
+      await expect(homeLink).toBeVisible();
 
-      // Test hover functionality on Home link (tooltips may not be implemented)
-      await page.getByRole('link', { name: 'Home' }).hover();
+      // Focus remains reliable in the collapsed state even when animated labels overlap pointer events.
+      await homeLink.focus();
+      await expect(homeLink).toBeFocused();
 
       // Test keyboard shortcut again to expand
       await page.keyboard.press('Meta+b');

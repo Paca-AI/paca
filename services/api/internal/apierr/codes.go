@@ -30,10 +30,18 @@ const (
 	// CodeGlobalRoleNameInvalid represents an invalid global role name.
 	CodeGlobalRoleNameInvalid Code = "GLOBAL_ROLE_NAME_INVALID"
 
+	// CodeGlobalRoleHasUsers indicates the role cannot be deleted because it
+	// still has assigned users.
+	CodeGlobalRoleHasUsers Code = "GLOBAL_ROLE_HAS_ASSIGNED_USERS"
 	// CodeBadRequest represents a bad request.
 	CodeBadRequest Code = "BAD_REQUEST"
 	// CodeInternalError represents an internal server error.
 	CodeInternalError Code = "INTERNAL_ERROR"
+	// CodePasswordChangeRequired indicates the user must change their password
+	// before accessing any other endpoint.
+	CodePasswordChangeRequired Code = "AUTH_PASSWORD_CHANGE_REQUIRED"
+	// CodeInvalidCurrentPassword indicates the supplied current password is wrong.
+	CodeInvalidCurrentPassword Code = "USER_INVALID_CURRENT_PASSWORD"
 )
 
 // Error carries a machine-readable Code alongside a human-readable Message.

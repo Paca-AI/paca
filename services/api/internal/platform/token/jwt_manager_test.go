@@ -14,7 +14,7 @@ func newTestManager() *jwttoken.Manager {
 
 func TestIssueAccess_ReturnsToken(t *testing.T) {
 	m := newTestManager()
-	tok, err := m.IssueAccess("sub123", "alice", "USER", "fam1")
+	tok, err := m.IssueAccess("sub123", "alice", "USER", "fam1", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestIssueRefresh_ReturnsToken(t *testing.T) {
 
 func TestVerify_AccessToken_ValidClaims(t *testing.T) {
 	m := newTestManager()
-	tok, _ := m.IssueAccess("sub123", "alice", "USER", "fam1")
+	tok, _ := m.IssueAccess("sub123", "alice", "USER", "fam1", false)
 	claims, err := m.Verify(tok)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -70,7 +70,7 @@ func TestVerify_RefreshToken_ValidClaims(t *testing.T) {
 func TestVerify_WrongSecret_ReturnsError(t *testing.T) {
 	m1 := newTestManager()
 	m2 := jwttoken.New("other-secret", 15*time.Minute, 7*24*time.Hour)
-	tok, _ := m1.IssueAccess("sub", "alice", "USER", "fam1")
+	tok, _ := m1.IssueAccess("sub", "alice", "USER", "fam1", false)
 	if _, err := m2.Verify(tok); err == nil {
 		t.Fatal("expected error for wrong secret, got nil")
 	}
@@ -78,7 +78,7 @@ func TestVerify_WrongSecret_ReturnsError(t *testing.T) {
 
 func TestVerify_ExpiredToken_ReturnsError(t *testing.T) {
 	m := jwttoken.New("test-secret", -1*time.Second, 7*24*time.Hour)
-	tok, _ := m.IssueAccess("sub", "alice", "USER", "fam1")
+	tok, _ := m.IssueAccess("sub", "alice", "USER", "fam1", false)
 	if _, err := m.Verify(tok); err == nil {
 		t.Fatal("expected error for expired token, got nil")
 	}
@@ -93,7 +93,7 @@ func TestVerify_MalformedToken_ReturnsError(t *testing.T) {
 
 func TestVerify_TokenHasJTI(t *testing.T) {
 	m := newTestManager()
-	tok, _ := m.IssueAccess("sub", "alice", "USER", "fam1")
+	tok, _ := m.IssueAccess("sub", "alice", "USER", "fam1", false)
 	claims, err := m.Verify(tok)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

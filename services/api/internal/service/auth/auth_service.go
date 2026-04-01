@@ -75,7 +75,7 @@ func (s *Service) Login(ctx context.Context, username, password string, remember
 		refreshTTL = s.refreshSessionTTL
 	}
 
-	access, err := s.tokens.IssueAccess(sub, u.Username, u.Role, familyID)
+	access, err := s.tokens.IssueAccess(sub, u.Username, u.Role, familyID, u.MustChangePassword)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +129,18 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		return nil, domainauth.ErrSessionInvalidated
 	}
 
+	// Look up the user to get the current MustChangePassword flag; this
+	// ensures that if an admin resets the password while the user has an
+	// active session, the very next Refresh call will carry the updated flag.
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return nil, domainauth.ErrSessionInvalidated
+	}
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return nil, domainauth.ErrSessionInvalidated
+	}
+
 	// Issue a rotated token pair preserving the same session family and
 	// the original remember-me preference so the TTL is consistent across
 	// the entire session lifetime.
@@ -137,7 +149,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		refreshTTL = s.refreshSessionTTL
 	}
 
-	access, err := s.tokens.IssueAccess(claims.Subject, claims.Username, claims.Role, claims.FamilyID)
+	access, err := s.tokens.IssueAccess(claims.Subject, claims.Username, claims.Role, claims.FamilyID, u.MustChangePassword)
 	if err != nil {
 		return nil, err
 	}

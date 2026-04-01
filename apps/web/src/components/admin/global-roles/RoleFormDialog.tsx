@@ -22,6 +22,7 @@ import {
 	globalRolesQueryOptions,
 	updateGlobalRole,
 } from "@/lib/admin-api";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	expandWildcardPermissions,
 	normalizePermissionsToWildcards,
@@ -48,6 +49,7 @@ export function RoleFormDialog({
 		expandWildcardPermissions(role?.permissions, KNOWN_PERMISSIONS),
 	);
 	const [error, setError] = useState<string | null>(null);
+	const [nameError, setNameError] = useState<string | null>(null);
 
 	const reset = () => {
 		setName(role?.name ?? "");
@@ -55,11 +57,7 @@ export function RoleFormDialog({
 			expandWildcardPermissions(role?.permissions, KNOWN_PERMISSIONS),
 		);
 		setError(null);
-	};
-
-	const handleOpenChange = (next: boolean) => {
-		if (!next) reset();
-		onOpenChange(next);
+		setNameError(null);
 	};
 
 	const mutation = useMutation({
@@ -84,8 +82,30 @@ export function RoleFormDialog({
 			onOpenChange(false);
 			reset();
 		},
-		onError: (err: Error) => {
-			setError(err.message ?? "Something went wrong.");
+		onError: (err: unknown) => {
+			setNameError(null);
+			const code = getApiErrorCode(err);
+			if (code === ApiErrorCode.GlobalRoleNameTaken) {
+				setNameError("A role with this name already exists.");
+				return;
+			}
+			if (code === ApiErrorCode.GlobalRoleNameInvalid) {
+				setNameError(
+					"Role name must be uppercase letters, numbers, and underscores only.",
+				);
+				return;
+			}
+			const messages: Partial<Record<string, string>> = {
+				[ApiErrorCode.GlobalRoleNotFound]:
+					"This role no longer exists. It may have already been deleted.",
+				[ApiErrorCode.Forbidden]:
+					"You don't have permission to perform this action.",
+				[ApiErrorCode.InternalError]:
+					"Something went wrong on the server. Please try again.",
+			};
+			const fallback =
+				err instanceof Error ? err.message : "Something went wrong.";
+			setError((code && messages[code]) ?? fallback);
 		},
 	});
 
@@ -94,6 +114,11 @@ export function RoleFormDialog({
 	};
 
 	const enabledCount = Object.values(permissions).filter(Boolean).length;
+
+	const handleOpenChange = (next: boolean) => {
+		if (!next) reset();
+		onOpenChange(next);
+	};
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
@@ -126,10 +151,19 @@ export function RoleFormDialog({
 							id="role-name"
 							placeholder="e.g. SECURITY_ADMIN"
 							value={name}
-							onChange={(e) => setName(e.target.value)}
+							onChange={(e) => {
+								setName(e.target.value);
+								if (nameError) setNameError(null);
+							}}
 							autoComplete="off"
-							className="font-mono"
+							className={`font-mono${nameError ? " border-destructive focus-visible:ring-destructive" : ""}`}
+							aria-describedby={nameError ? "role-name-error" : undefined}
 						/>
+						{nameError ? (
+							<p id="role-name-error" className="text-xs text-destructive">
+								{nameError}
+							</p>
+						) : null}
 					</div>
 
 					<div className="flex flex-col gap-2.5">

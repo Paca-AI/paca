@@ -17,4 +17,8 @@ type Claims struct {
 	// Propagated through refresh-token rotation to preserve the original
 	// session lifetime preference.
 	RememberMe bool `json:"rme"`
+	// MustChangePassword is true when the user is required to change their
+	// password before accessing any other endpoint (e.g. after admin creation
+	// or admin password reset).
+	MustChangePassword bool `json:"mcp,omitempty"`
 }

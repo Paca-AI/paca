@@ -40,6 +40,11 @@ func Created(c *gin.Context, data any) {
 	})
 }
 
+// NoContent writes a 204 No Content response with no body.
+func NoContent(c *gin.Context) {
+	c.Status(http.StatusNoContent)
+}
+
 // Error maps a domain/service error to an HTTP status + error code and writes
 // a JSON error envelope.  If err is an *apierr.Error, its code is used
 // directly; otherwise the code is derived from known domain sentinel errors.
@@ -82,12 +87,16 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeUsernameTaken
 	case errors.Is(err, userdom.ErrForbidden):
 		return http.StatusForbidden, apierr.CodeForbidden
+	case errors.Is(err, userdom.ErrInvalidCurrentPassword):
+		return http.StatusUnprocessableEntity, apierr.CodeInvalidCurrentPassword
 	case errors.Is(err, globalroledom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeGlobalRoleNotFound
 	case errors.Is(err, globalroledom.ErrNameTaken):
 		return http.StatusConflict, apierr.CodeGlobalRoleNameTaken
 	case errors.Is(err, globalroledom.ErrInvalidName):
 		return http.StatusBadRequest, apierr.CodeGlobalRoleNameInvalid
+	case errors.Is(err, globalroledom.ErrHasAssignedUsers):
+		return http.StatusConflict, apierr.CodeGlobalRoleHasUsers
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -113,8 +122,14 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusConflict
 	case apierr.CodeGlobalRoleNameInvalid:
 		return http.StatusBadRequest
+	case apierr.CodeGlobalRoleHasUsers:
+		return http.StatusConflict
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
+	case apierr.CodePasswordChangeRequired:
+		return http.StatusForbidden
+	case apierr.CodeInvalidCurrentPassword:
+		return http.StatusUnprocessableEntity
 	case apierr.CodeInternalError:
 		return http.StatusInternalServerError
 	default:

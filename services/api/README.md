@@ -80,6 +80,7 @@ services/api/
 					authn.go           # JWT authentication middleware
 					authz.go           # role/permission authorization middleware
 					validate.go        # request validation helper
+					must_change_password.go # force-change-password gate
 				handler/
 					health_handler.go
 					auth_handler.go
@@ -127,6 +128,8 @@ Recommended claims include:
 - `exp`, `iat`, `nbf`
 - `role` and/or `permissions`
 - `jti` (token id) for revocation support
+- `fid` (family ID) linking all tokens from the same login session
+- `mcp` (`must_change_password`) flag — when true, all endpoints except `PATCH /users/me/password` are blocked with `403 AUTH_PASSWORD_CHANGE_REQUIRED`
 
 ## GORM + PostgreSQL Guidelines
 

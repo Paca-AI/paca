@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays, User } from "lucide-react";
 import { useState } from "react";
-
+import { ChangePasswordCard } from "@/components/profile/ChangePasswordCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -204,6 +204,9 @@ function ProfilePage() {
 					)}
 				</CardFooter>
 			</Card>
+
+			{/* Change Password card */}
+			<ChangePasswordCard mustChange={user.must_change_password} />
 		</div>
 	);
 }

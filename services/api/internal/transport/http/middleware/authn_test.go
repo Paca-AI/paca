@@ -58,7 +58,7 @@ func TestAuthn_InvalidToken(t *testing.T) {
 
 func TestAuthn_ValidAccessTokenInHeader(t *testing.T) {
 	tm := newTestTokenManager()
-	at, err := tm.IssueAccess("user-id", "alice", "USER", "fam")
+	at, err := tm.IssueAccess("user-id", "alice", "USER", "fam", false)
 	if err != nil {
 		t.Fatalf("issue access token: %v", err)
 	}
