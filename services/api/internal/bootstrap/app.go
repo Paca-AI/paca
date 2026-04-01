@@ -255,7 +255,7 @@ func seedAdmin(ctx context.Context, repo userdom.Repository, globalRoleRepo *pgR
 		return fmt.Errorf("seed admin: create: %w", err)
 	}
 
-	// Immediately grant the SUPER_ADMIN global role via user_global_roles so the
+	// Immediately assign the SUPER_ADMIN global role via users.role_id so the
 	// admin user has full permissions from the first request.
 	superAdminRole, err := globalRoleRepo.FindByName(ctx, "SUPER_ADMIN")
 	if err != nil {
