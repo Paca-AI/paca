@@ -150,3 +150,30 @@ func TestUserRepository_DeleteSoftDelete(t *testing.T) {
 		t.Fatal("expected deleted_at to be set")
 	}
 }
+
+func TestUserRepository_FindByUsernameIncludingDeleted_FindsSoftDeleted(t *testing.T) {
+	db, roleID := openUserRepoTestDB(t)
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+
+	u := testUser(uuid.New(), roleID)
+	if err := repo.Create(ctx, u); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := repo.Delete(ctx, u.ID); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+
+	_, err := repo.FindByUsername(ctx, u.Username)
+	if !errors.Is(err, userdom.ErrNotFound) {
+		t.Fatalf("expected FindByUsername to ignore soft-deleted user, got %v", err)
+	}
+
+	got, err := repo.FindByUsernameIncludingDeleted(ctx, u.Username)
+	if err != nil {
+		t.Fatalf("find by username including deleted: %v", err)
+	}
+	if got.ID != u.ID {
+		t.Fatalf("expected id %s, got %s", u.ID, got.ID)
+	}
+}

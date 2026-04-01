@@ -9,7 +9,18 @@ export interface User {
 	username: string;
 	full_name: string;
 	role: string;
+	must_change_password: boolean;
 	created_at: string;
+}
+
+export async function changeMyPassword(
+	currentPassword: string,
+	newPassword: string,
+): Promise<void> {
+	await apiClient.instance.patch("/users/me/password", {
+		current_password: currentPassword,
+		new_password: newPassword,
+	});
 }
 
 export async function login(

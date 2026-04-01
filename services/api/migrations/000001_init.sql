@@ -25,7 +25,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uni_global_roles_name ON global_roles (name);
 
 CREATE TABLE IF NOT EXISTS users (
     id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    username             TEXT        NOT NULL UNIQUE,
+    username             TEXT        NOT NULL,
     password_hash        TEXT        NOT NULL,
     full_name            TEXT        NOT NULL DEFAULT '',
     role_id              UUID        NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
         ON DELETE RESTRICT
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_username   ON users (username);
+CREATE UNIQUE INDEX IF NOT EXISTS uni_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users (deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role_id    ON users (role_id);
 

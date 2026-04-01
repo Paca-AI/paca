@@ -125,6 +125,26 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 	return rowToEntity(&row), nil
 }
 
+// FindByUsernameIncludingDeleted returns the user with the given username,
+// including rows that were soft-deleted.
+func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, username string) (*userdom.User, error) {
+	var row userReadRow
+	result := r.db.WithContext(ctx).
+		Unscoped().
+		Select(userReadCols).
+		Table("users").
+		Joins(userReadJoin).
+		Where("users.username = ?", username).
+		Scan(&row)
+	if result.Error != nil {
+		return nil, fmt.Errorf("user repo: find by username including deleted: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, userdom.ErrNotFound
+	}
+	return rowToEntity(&row), nil
+}
+
 // Create persists a new user record.
 func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 	rec := entityToRecord(u)

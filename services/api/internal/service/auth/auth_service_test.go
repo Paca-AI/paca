@@ -35,6 +35,9 @@ func (r *stubUserRepo) FindByUsername(ctx context.Context, username string) (*us
 	}
 	return nil, userdom.ErrNotFound
 }
+func (r *stubUserRepo) FindByUsernameIncludingDeleted(ctx context.Context, username string) (*userdom.User, error) {
+	return r.FindByUsername(ctx, username)
+}
 func (r *stubUserRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, error) {
 	return nil, 0, nil
 }

@@ -17,10 +17,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { ChangePasswordCard } from "@/components/profile/ChangePasswordCard";
 import { apiClient } from "@/lib/api-client";
 import type { SuccessEnvelope } from "@/lib/api-error";
-import type { User as UserType } from "@/lib/auth-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
+import type { User as UserType } from "@/lib/auth-api";
 
 export const Route = createFileRoute("/_authenticated/profile/")({
 	component: ProfilePage,
@@ -204,6 +205,9 @@ function ProfilePage() {
 					)}
 				</CardFooter>
 			</Card>
+
+			{/* Change Password card */}
+			<ChangePasswordCard mustChange={user.must_change_password} />
 		</div>
 	);
 }

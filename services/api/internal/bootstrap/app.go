@@ -219,7 +219,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 // It must be called after seedDefaultRoles so the ADMIN global role exists.
 // If the account already exists it is left unchanged.
 func seedAdmin(ctx context.Context, repo userdom.Repository, globalRoleRepo *pgRepo.GlobalRoleRepository, cfg config.AdminConfig, log *slog.Logger) error {
-	_, err := repo.FindByUsername(ctx, cfg.Username)
+	_, err := repo.FindByUsernameIncludingDeleted(ctx, cfg.Username)
 	if err == nil {
 		// Admin already exists — nothing to do.
 		return nil

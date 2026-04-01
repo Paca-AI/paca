@@ -11,6 +11,26 @@ import { cn } from "@/lib/utils";
 
 import { FieldError } from "./FieldError";
 
+function validateUsername(value: string) {
+	if (!value.trim()) {
+		return "Username is required";
+	}
+	if (value.trim().length < 3) {
+		return "Username must be at least 3 characters";
+	}
+	return undefined;
+}
+
+function validatePassword(value: string) {
+	if (!value.trim()) {
+		return "Password is required";
+	}
+	if (value.length < 8) {
+		return "Password must be at least 8 characters";
+	}
+	return undefined;
+}
+
 export function LoginFormPanel() {
 	const { form, serverError } = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
@@ -57,15 +77,8 @@ export function LoginFormPanel() {
 					<form.Field
 						name="username"
 						validators={{
-							onBlur: ({ value }) => {
-								if (!value.trim()) {
-									return "Username is required";
-								}
-								if (value.trim().length < 3) {
-									return "Username must be at least 3 characters";
-								}
-								return undefined;
-							},
+							onBlur: ({ value }) => validateUsername(value),
+							onChange: ({ value }) => validateUsername(value),
 						}}
 					>
 						{(field) => (
@@ -100,15 +113,8 @@ export function LoginFormPanel() {
 					<form.Field
 						name="password"
 						validators={{
-							onBlur: ({ value }) => {
-								if (!value.trim()) {
-									return "Password is required";
-								}
-								if (value.length < 8) {
-									return "Password must be at least 8 characters";
-								}
-								return undefined;
-							},
+							onBlur: ({ value }) => validatePassword(value),
+							onChange: ({ value }) => validatePassword(value),
 						}}
 					>
 						{(field) => (

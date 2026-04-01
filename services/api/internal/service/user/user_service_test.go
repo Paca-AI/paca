@@ -18,11 +18,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type stubRepo struct {
-	findByID       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
-	findByUsername func(ctx context.Context, username string) (*userdom.User, error)
-	create         func(ctx context.Context, u *userdom.User) error
-	update         func(ctx context.Context, u *userdom.User) error
-	delete         func(ctx context.Context, id uuid.UUID) error
+	findByID                       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
+	findByUsername                 func(ctx context.Context, username string) (*userdom.User, error)
+	findByUsernameIncludingDeleted func(ctx context.Context, username string) (*userdom.User, error)
+	create                         func(ctx context.Context, u *userdom.User) error
+	update                         func(ctx context.Context, u *userdom.User) error
+	delete                         func(ctx context.Context, id uuid.UUID) error
 }
 
 type stubPermissionReader struct {
@@ -55,6 +56,15 @@ func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, e
 	return nil, userdom.ErrNotFound
 }
 func (r *stubRepo) FindByUsername(ctx context.Context, username string) (*userdom.User, error) {
+	if r.findByUsername != nil {
+		return r.findByUsername(ctx, username)
+	}
+	return nil, userdom.ErrNotFound
+}
+func (r *stubRepo) FindByUsernameIncludingDeleted(ctx context.Context, username string) (*userdom.User, error) {
+	if r.findByUsernameIncludingDeleted != nil {
+		return r.findByUsernameIncludingDeleted(ctx, username)
+	}
 	if r.findByUsername != nil {
 		return r.findByUsername(ctx, username)
 	}
@@ -243,7 +253,7 @@ func TestCreate_Success(t *testing.T) {
 func TestCreate_DuplicateUsername(t *testing.T) {
 	existing := &userdom.User{ID: uuid.New(), Username: "alice"}
 	svc := usersvc.New(&stubRepo{
-		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return existing, nil },
+		findByUsernameIncludingDeleted: func(_ context.Context, _ string) (*userdom.User, error) { return existing, nil },
 	})
 
 	_, err := svc.Create(context.Background(), userdom.CreateInput{

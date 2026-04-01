@@ -6,6 +6,7 @@ import {
 	SidebarProvider,
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { isPasswordChangeRequired } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 
 /**
@@ -20,10 +21,21 @@ export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async ({ context: { queryClient } }) => {
 		const user = await queryClient
 			.fetchQuery(currentUserQueryOptions)
-			.catch(() => null);
+			.catch((err: unknown) => {
+				// 403 AUTH_PASSWORD_CHANGE_REQUIRED means the user IS authenticated
+				// but the backend blocks all endpoints. Send them to the dedicated page.
+				if (isPasswordChangeRequired(err)) {
+					throw redirect({ to: "/change-password" });
+				}
+				return null;
+			});
 
 		if (!user) {
 			throw redirect({ to: "/" });
+		}
+
+		if (user.must_change_password) {
+			throw redirect({ to: "/change-password" });
 		}
 	},
 	component: AuthenticatedLayout,
