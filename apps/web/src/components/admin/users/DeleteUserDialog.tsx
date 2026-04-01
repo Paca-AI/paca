@@ -41,16 +41,24 @@ export function DeleteUserDialog({
 			const code = getApiErrorCode(err);
 			const messages: Partial<Record<string, string>> = {
 				[ApiErrorCode.UserNotFound]: "This user no longer exists.",
-				[ApiErrorCode.Forbidden]: "You don't have permission to delete this user.",
+				[ApiErrorCode.Forbidden]:
+					"You don't have permission to delete this user.",
 				[ApiErrorCode.InternalError]: "Something went wrong. Please try again.",
 			};
-			const fallback = err instanceof Error ? err.message : "Something went wrong.";
+			const fallback =
+				err instanceof Error ? err.message : "Something went wrong.";
 			setError((code && messages[code]) ?? fallback);
 		},
 	});
 
 	return (
-		<Dialog open={open} onOpenChange={(next) => { if (!next) setError(null); onOpenChange(next); }}>
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!next) setError(null);
+				onOpenChange(next);
+			}}
+		>
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
 					<div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-destructive/10">
@@ -77,7 +85,9 @@ export function DeleteUserDialog({
 					</div>
 				) : null}
 				<DialogFooter>
-					<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+					<DialogClose render={<Button variant="outline" />}>
+						Cancel
+					</DialogClose>
 					<Button
 						variant="destructive"
 						onClick={() => mutation.mutate()}

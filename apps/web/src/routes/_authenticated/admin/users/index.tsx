@@ -1,25 +1,49 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { DeleteUserDialog } from "@/components/admin/users/DeleteUserDialog";
 import { ResetPasswordDialog } from "@/components/admin/users/ResetPasswordDialog";
 import { UserFormDialog } from "@/components/admin/users/UserFormDialog";
 import { UsersHeader } from "@/components/admin/users/UsersHeader";
-import { EmptyUsersState, UsersErrorState } from "@/components/admin/users/UsersStates";
+import {
+	EmptyUsersState,
+	UsersErrorState,
+	UsersNoPermissionState,
+} from "@/components/admin/users/UsersStates";
 import { UsersStats } from "@/components/admin/users/UsersStats";
 import { UsersTable } from "@/components/admin/users/UsersTable";
 import { UsersTableSkeleton } from "@/components/admin/users/UsersTableSkeleton";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+	myPermissionsQueryOptions,
+	type User,
+	usersQueryOptions,
+} from "@/lib/admin-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
-import { type User, usersQueryOptions } from "@/lib/admin-api";
+import { hasPermission } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/admin/users/")({
+	beforeLoad: async ({ context: { queryClient } }) => {
+		const permissions = await queryClient
+			.fetchQuery(myPermissionsQueryOptions)
+			.catch(() => [] as string[]);
+
+		const canAccess =
+			hasPermission(permissions, "users.read") ||
+			hasPermission(permissions, "users.write") ||
+			hasPermission(permissions, "users.delete");
+
+		if (!canAccess) {
+			throw redirect({ to: "/home" });
+		}
+	},
 	component: UsersManagementPage,
 });
 
 function UsersManagementPage() {
 	const { hasPermission } = usePermissions();
+	const canRead = hasPermission("users.read");
 	const canWrite = hasPermission("users.write");
 
 	const [page] = useState(1);
@@ -29,7 +53,7 @@ function UsersManagementPage() {
 		data: pagedUsers,
 		isLoading,
 		isError,
-	} = useQuery(usersQueryOptions(page, pageSize));
+	} = useQuery({ ...usersQueryOptions(page, pageSize), enabled: canRead });
 
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 
@@ -52,14 +76,16 @@ function UsersManagementPage() {
 				<UserFormDialog open={createOpen} onOpenChange={setCreateOpen} />
 			) : null}
 
-			{!isLoading && !isError && (
+			{canRead && !isLoading && !isError && (
 				<UsersStats
 					total={total}
 					mustChangePasswordCount={mustChangePasswordCount}
 				/>
 			)}
 
-			{isLoading ? (
+			{!canRead ? (
+				<UsersNoPermissionState />
+			) : isLoading ? (
 				<UsersTableSkeleton />
 			) : isError ? (
 				<UsersErrorState />
@@ -111,4 +137,3 @@ function UsersManagementPage() {
 		</div>
 	);
 }
-

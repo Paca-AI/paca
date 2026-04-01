@@ -7,7 +7,10 @@ interface UsersStatsProps {
 	mustChangePasswordCount: number;
 }
 
-export function UsersStats({ total, mustChangePasswordCount }: UsersStatsProps) {
+export function UsersStats({
+	total,
+	mustChangePasswordCount,
+}: UsersStatsProps) {
 	return (
 		<div className="flex items-center gap-5 rounded-xl border bg-muted/20 px-5 py-3">
 			<div className="flex items-center gap-2">

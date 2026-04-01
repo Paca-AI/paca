@@ -124,11 +124,14 @@ export function UserFormDialog({
 				return;
 			}
 			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.UserNotFound]: "User not found. They may have already been deleted.",
-				[ApiErrorCode.Forbidden]: "You don't have permission to perform this action.",
-				[ApiErrorCode.InternalError]: "Something went wrong on the server. Please try again.",
+				[ApiErrorCode.UserNotFound]:
+					"User not found. They may have already been deleted.",
+				[ApiErrorCode.Forbidden]:
+					"You don't have permission to perform this action.",
+				[ApiErrorCode.InternalError]:
+					"Something went wrong on the server. Please try again.",
 			};
-			const message = (err instanceof Error ? err.message : null);
+			const message = err instanceof Error ? err.message : null;
 			setError((code && messages[code]) ?? message ?? "Something went wrong.");
 		},
 	});
@@ -245,7 +248,9 @@ export function UserFormDialog({
 								aria-describedby={usernameError ? "username-error" : undefined}
 							/>
 							{usernameError ? (
-								<p id="username-error" className="text-xs text-destructive">{usernameError}</p>
+								<p id="username-error" className="text-xs text-destructive">
+									{usernameError}
+								</p>
 							) : null}
 						</div>
 					) : null}
@@ -299,7 +304,9 @@ export function UserFormDialog({
 				</div>
 
 				<DialogFooter>
-					<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+					<DialogClose render={<Button variant="outline" />}>
+						Cancel
+					</DialogClose>
 					<Button
 						onClick={() => mutation.mutate()}
 						disabled={mutation.isPending}

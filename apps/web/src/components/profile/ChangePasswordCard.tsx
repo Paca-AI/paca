@@ -107,9 +107,7 @@ export function ChangePasswordCard({ mustChange }: ChangePasswordCardProps) {
 							autoComplete="new-password"
 						/>
 					</div>
-					{error ? (
-						<p className="text-sm text-destructive">{error}</p>
-					) : null}
+					{error ? <p className="text-sm text-destructive">{error}</p> : null}
 					{success ? (
 						<p className="text-sm text-green-600 dark:text-green-400">
 							Password changed successfully.

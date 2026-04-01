@@ -59,10 +59,12 @@ export function ResetPasswordDialog({
 			const code = getApiErrorCode(err);
 			const messages: Partial<Record<string, string>> = {
 				[ApiErrorCode.UserNotFound]: "This user no longer exists.",
-				[ApiErrorCode.Forbidden]: "You don't have permission to reset this user's password.",
+				[ApiErrorCode.Forbidden]:
+					"You don't have permission to reset this user's password.",
 				[ApiErrorCode.InternalError]: "Something went wrong. Please try again.",
 			};
-			const fallback = err instanceof Error ? err.message : "Something went wrong.";
+			const fallback =
+				err instanceof Error ? err.message : "Something went wrong.";
 			setError((code && messages[code]) ?? fallback);
 		},
 	});
@@ -91,9 +93,22 @@ export function ResetPasswordDialog({
 					</div>
 					<DialogDescription className="mt-2">
 						{generatedPassword ? (
-							<>Password for <span className="font-mono font-semibold text-foreground">{user.username}</span> has been reset. Share the temporary password below — it will not be shown again.</>
+							<>
+								Password for{" "}
+								<span className="font-mono font-semibold text-foreground">
+									{user.username}
+								</span>{" "}
+								has been reset. Share the temporary password below — it will not
+								be shown again.
+							</>
 						) : (
-							<>A strong temporary password will be generated and assigned to <span className="font-mono font-semibold text-foreground">{user.username}</span>. They will be required to change it on next login.</>
+							<>
+								A strong temporary password will be generated and assigned to{" "}
+								<span className="font-mono font-semibold text-foreground">
+									{user.username}
+								</span>
+								. They will be required to change it on next login.
+							</>
 						)}
 					</DialogDescription>
 				</DialogHeader>
@@ -117,7 +132,11 @@ export function ResetPasswordDialog({
 									onClick={() => setRevealed((v) => !v)}
 									aria-label={revealed ? "Hide password" : "Show password"}
 								>
-									{revealed ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+									{revealed ? (
+										<EyeOff className="size-4" />
+									) : (
+										<Eye className="size-4" />
+									)}
 								</Button>
 								<Button
 									variant="outline"
@@ -125,7 +144,11 @@ export function ResetPasswordDialog({
 									onClick={handleCopy}
 									aria-label="Copy password"
 								>
-									{copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4" />}
+									{copied ? (
+										<Check className="size-4 text-green-500" />
+									) : (
+										<Copy className="size-4" />
+									)}
 								</Button>
 							</div>
 						</div>
@@ -145,7 +168,9 @@ export function ResetPasswordDialog({
 						<Button onClick={() => handleOpenChange(false)}>Done</Button>
 					) : (
 						<>
-							<Button variant="outline" onClick={() => handleOpenChange(false)}>Cancel</Button>
+							<Button variant="outline" onClick={() => handleOpenChange(false)}>
+								Cancel
+							</Button>
 							<Button
 								onClick={() => mutation.mutate()}
 								disabled={mutation.isPending}

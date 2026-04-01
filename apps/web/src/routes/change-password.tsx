@@ -133,7 +133,10 @@ function ChangePasswordPage() {
 
 							<div className="relative space-y-4">
 								{[
-									{ step: "01", label: "Enter the temporary password you received" },
+									{
+										step: "01",
+										label: "Enter the temporary password you received",
+									},
 									{ step: "02", label: "Choose a strong new password" },
 									{ step: "03", label: "Sign in again with your new password" },
 								].map(({ step, label }) => (
@@ -178,9 +181,7 @@ function ChangePasswordPage() {
 									your account.
 								</p>
 
-								<ChangePasswordForm
-									onSuccess={() => logoutMutation.mutate()}
-								/>
+								<ChangePasswordForm onSuccess={() => logoutMutation.mutate()} />
 							</div>
 						</div>
 					</div>

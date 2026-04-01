@@ -1,13 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useIsDark } from "@/hooks/use-is-dark";
-import { changeMyPassword } from "@/lib/auth-api";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import { changeMyPassword } from "@/lib/auth-api";
 import { cn } from "@/lib/utils";
 
 interface ChangePasswordFormProps {
@@ -54,10 +54,13 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 			const code = getApiErrorCode(err);
 			const messages: Partial<Record<string, string>> = {
 				[ApiErrorCode.InvalidCurrentPassword]: "Current password is incorrect.",
-				[ApiErrorCode.Unauthenticated]: "Your session has expired. Please log in again.",
-				[ApiErrorCode.InternalError]: "Something went wrong on the server. Please try again.",
+				[ApiErrorCode.Unauthenticated]:
+					"Your session has expired. Please log in again.",
+				[ApiErrorCode.InternalError]:
+					"Something went wrong on the server. Please try again.",
 			};
-			const fallback = err instanceof Error ? err.message : "Failed to change password.";
+			const fallback =
+				err instanceof Error ? err.message : "Failed to change password.";
 			setError((code && messages[code]) ?? fallback);
 			setSuccess(false);
 		},
@@ -91,9 +94,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					/>
 					<button
 						type="button"
-						onClick={() =>
-							setShowCurrentPassword((current) => !current)
-						}
+						onClick={() => setShowCurrentPassword((current) => !current)}
 						className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 						aria-label={
 							showCurrentPassword
@@ -163,9 +164,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					/>
 					<button
 						type="button"
-						onClick={() =>
-							setShowConfirmPassword((current) => !current)
-						}
+						onClick={() => setShowConfirmPassword((current) => !current)}
 						className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 						aria-label={
 							showConfirmPassword

@@ -19,6 +19,12 @@ export const ApiErrorCode = {
 	InvalidCurrentPassword: "USER_INVALID_CURRENT_PASSWORD",
 	Forbidden: "FORBIDDEN",
 
+	// Global role domain errors.
+	GlobalRoleNotFound: "GLOBAL_ROLE_NOT_FOUND",
+	GlobalRoleNameTaken: "GLOBAL_ROLE_NAME_TAKEN",
+	GlobalRoleNameInvalid: "GLOBAL_ROLE_NAME_INVALID",
+	GlobalRoleHasUsers: "GLOBAL_ROLE_HAS_ASSIGNED_USERS",
+
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
 	InternalError: "INTERNAL_ERROR",
