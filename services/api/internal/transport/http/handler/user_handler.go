@@ -278,7 +278,10 @@ func (h *UserHandler) ChangeMyPassword(c *gin.Context) {
 	// Revoke the current session so old tokens cannot be reused after the
 	// password change. The client must re-authenticate with the new password.
 	if h.authSvc != nil {
-		_ = h.authSvc.Logout(c.Request.Context(), claims.FamilyID)
+		if err := h.authSvc.Logout(c.Request.Context(), claims.FamilyID); err != nil {
+			presenter.Error(c, err)
+			return
+		}
 	}
 
 	presenter.NoContent(c)
