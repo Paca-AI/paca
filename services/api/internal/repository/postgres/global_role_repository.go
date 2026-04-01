@@ -158,9 +158,15 @@ func (r *GlobalRoleRepository) ReplaceUserRoles(ctx context.Context, userID uuid
 			return globalroledom.ErrNotFound
 		}
 
-		result := tx.Table("users").Where("id = ?", userID.String()).Update("role_id", roleID)
+		result := tx.Table("users").Where("id = ?", userID.String()).Updates(map[string]any{
+			"role_id":    roleID,
+			"updated_at": time.Now(),
+		})
 		if result.Error != nil {
 			return fmt.Errorf("global role repo: set user role: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return userdom.ErrNotFound
 		}
 		return nil
 	})
