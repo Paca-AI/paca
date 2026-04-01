@@ -1,8 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { AUTH_FILE } from "../../playwright.config";
 
 const USERNAME = process.env.E2E_USERNAME ?? "admin";
 const PASSWORD = process.env.E2E_PASSWORD ?? "e2e-admin-password";
+
+function profileMenuButton(page: Page) {
+	return page.getByRole("button", { name: /Admin super_admin/i });
+}
 
 /**
  * Session management tests.
@@ -24,7 +28,6 @@ test.describe("Session Management — authenticated", () => {
 
 	test("logout redirects to login page", async ({ page }) => {
 		await page.goto("/home");
-		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
 		).toBeVisible({ timeout: 10000 });
@@ -39,7 +42,7 @@ test.describe("Session Management — authenticated", () => {
 		}
 
 		// Click user profile dropdown, then click logout (using actual sidebar logout functionality)
-		await page.getByRole("button", { name: /A Admin admin/i }).click();
+		await profileMenuButton(page).click();
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 
 		await expect(page.getByRole("textbox", { name: "Username" })).toBeVisible();
@@ -51,7 +54,6 @@ test.describe("Session Management — authenticated", () => {
 		page,
 	}) => {
 		await page.goto("/home");
-		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
 		).toBeVisible({ timeout: 10000 });
@@ -66,21 +68,17 @@ test.describe("Session Management — authenticated", () => {
 		}
 
 		// Click user profile dropdown, then click logout (using actual sidebar logout functionality)
-		await page.getByRole("button", { name: /A Admin admin/i }).click();
+		await profileMenuButton(page).click();
 		await page.getByRole("menuitem", { name: "Log out" }).click();
 		
 		// Wait for logout to fully complete before going back.
 		await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
 
 		await page.goBack();
-		// The auth guard may redirect asynchronously after loading the cached page;
-		// wait for the network to settle before asserting.
-		await page.waitForLoadState("networkidle");
 		
 		// In case we end up on about:blank, navigate to login explicitly
 		if (page.url() === "about:blank" || page.url().includes("about:")) {
 			await page.goto("/");
-			await page.waitForLoadState("networkidle");
 		}
 
 		await expect(page.getByRole("textbox", { name: "Username" })).toBeVisible();
@@ -89,13 +87,11 @@ test.describe("Session Management — authenticated", () => {
 
 	test("session persists across page reload", async ({ page }) => {
 		await page.goto("/home");
-		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
 		).toBeVisible({ timeout: 10000 });
 
 		await page.reload();
-		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
 		).toBeVisible({ timeout: 10000 });
@@ -106,14 +102,12 @@ test.describe("Session Management — authenticated", () => {
 		page,
 	}) => {
 		await page.goto("/home");
-		await page.waitForLoadState("networkidle");
 		await expect(
 			page.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
 		).toBeVisible({ timeout: 10000 });
 
 		const page2 = await context.newPage();
 		await page2.goto("/");
-		await page2.waitForLoadState("networkidle");
 		await expect(
 			page2.getByRole("heading", { name: /Good (morning|afternoon|evening), Admin/i }),
 		).toBeVisible({ timeout: 10000 });
@@ -130,11 +124,9 @@ test.describe("Session Management — fresh context", () => {
 		const ctx1 = await browser.newContext();
 		const page1 = await ctx1.newPage();
 		await page1.goto("/");
-		await page1.waitForLoadState("networkidle");
 		await page1.getByRole("textbox", { name: "Username" }).fill(USERNAME);
 		await page1.getByRole("textbox", { name: "Password" }).fill(PASSWORD);
 		await page1.getByRole("button", { name: /sign in/i }).click();
-		await page1.waitForLoadState("networkidle");
 		await expect(
 			page1.getByRole("heading", { name: /home|welcome/i }),
 		).toBeVisible({ timeout: 10000 });
@@ -144,7 +136,6 @@ test.describe("Session Management — fresh context", () => {
 		const ctx2 = await browser.newContext();
 		const page2 = await ctx2.newPage();
 		await page2.goto("/");
-		await page2.waitForLoadState("networkidle");
 		await expect(
 			page2.getByRole("heading", { name: "Welcome back" }),
 		).toBeVisible({ timeout: 10000 });

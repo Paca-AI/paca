@@ -11,10 +11,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-query", async () => {
-	const actual =
-		await vi.importActual<typeof import("@tanstack/react-query")>(
-			"@tanstack/react-query",
-		);
+	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
+		"@tanstack/react-query",
+	);
 	return {
 		...actual,
 		useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
@@ -61,11 +60,7 @@ describe("DeleteUserDialog", () => {
 
 	it("renders username in dialog", () => {
 		render(
-			<DeleteUserDialog
-				user={mockUser}
-				open={true}
-				onOpenChange={vi.fn()}
-			/>,
+			<DeleteUserDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
 		);
 
 		expect(screen.getByText("alice")).toBeInTheDocument();
@@ -73,27 +68,17 @@ describe("DeleteUserDialog", () => {
 
 	it("calls mutation.mutate when Delete user button is clicked", async () => {
 		render(
-			<DeleteUserDialog
-				user={mockUser}
-				open={true}
-				onOpenChange={vi.fn()}
-			/>,
+			<DeleteUserDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
 		);
 
-		await userEvent.click(
-			screen.getByRole("button", { name: /delete user/i }),
-		);
+		await userEvent.click(screen.getByRole("button", { name: /delete user/i }));
 
 		expect(mocks.mutate).toHaveBeenCalledTimes(1);
 	});
 
 	it("shows error message on mutation failure", async () => {
 		render(
-			<DeleteUserDialog
-				user={mockUser}
-				open={true}
-				onOpenChange={vi.fn()}
-			/>,
+			<DeleteUserDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
 		);
 
 		mocks.onError?.(new Error("Something went wrong."));
@@ -124,11 +109,7 @@ describe("DeleteUserDialog", () => {
 		mocks.isPending = true;
 
 		render(
-			<DeleteUserDialog
-				user={mockUser}
-				open={true}
-				onOpenChange={vi.fn()}
-			/>,
+			<DeleteUserDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
 		);
 
 		expect(screen.getByRole("button", { name: /deleting/i })).toBeDisabled();

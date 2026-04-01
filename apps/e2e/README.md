@@ -82,6 +82,8 @@ apps/e2e/
   The `features/` directory mirrors the current Playwright coverage with Gherkin
   feature files grouped the same way as the executable test suites:
 
+  - `features/admin/global-roles.feature`
+  - `features/admin/users.feature`
   - `features/auth/login.feature`
   - `features/validation/form.feature`
   - `features/security/login.feature`

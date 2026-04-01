@@ -8,14 +8,19 @@ const mocks = vi.hoisted(() => ({
 	isPending: false,
 	onSuccess: null as null | ((result: unknown) => void),
 	onError: null as null | ((err: unknown) => void),
-	rolesData: [] as Array<{ id: string; name: string; permissions: Record<string, boolean>; created_at: string; updated_at: string }>,
+	rolesData: [] as Array<{
+		id: string;
+		name: string;
+		permissions: Record<string, boolean>;
+		created_at: string;
+		updated_at: string;
+	}>,
 }));
 
 vi.mock("@tanstack/react-query", async () => {
-	const actual =
-		await vi.importActual<typeof import("@tanstack/react-query")>(
-			"@tanstack/react-query",
-		);
+	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
+		"@tanstack/react-query",
+	);
 	return {
 		...actual,
 		useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
@@ -67,9 +72,7 @@ describe("UserFormDialog — create mode", () => {
 	});
 
 	it("shows Create User title", () => {
-		render(
-			<UserFormDialog open={true} onOpenChange={vi.fn()} />,
-		);
+		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
 
 		expect(screen.getByText("Create User")).toBeInTheDocument();
 	});
@@ -84,9 +87,7 @@ describe("UserFormDialog — create mode", () => {
 	it("calls mutation.mutate when Create user button is clicked", async () => {
 		render(<UserFormDialog open={true} onOpenChange={vi.fn()} />);
 
-		await userEvent.click(
-			screen.getByRole("button", { name: /create user/i }),
-		);
+		await userEvent.click(screen.getByRole("button", { name: /create user/i }));
 
 		expect(mocks.mutate).toHaveBeenCalledTimes(1);
 	});

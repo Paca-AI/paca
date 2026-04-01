@@ -30,9 +30,9 @@ import {
 	globalRolesQueryOptions,
 	myPermissionsQueryOptions,
 	resetUserPassword,
+	type User,
 	updateGlobalRole,
 	updateUser,
-	type User,
 	usersQueryOptions,
 } from "./admin-api";
 
@@ -167,7 +167,11 @@ describe("admin-api", () => {
 
 	it("uses default page and page_size for getUsers", async () => {
 		mockGet.mockResolvedValue({
-			data: { data: { items: [], total: 0, page: 1, page_size: 20 }, error_code: null, message: "ok" },
+			data: {
+				data: { items: [], total: 0, page: 1, page_size: 20 },
+				error_code: null,
+				message: "ok",
+			},
 		});
 
 		await getUsers();
@@ -216,9 +220,7 @@ describe("admin-api", () => {
 	it("patches user password by id", async () => {
 		mockPatch.mockResolvedValue({});
 
-		await expect(
-			resetUserPassword("u1", "NewP@ss1!"),
-		).resolves.toBeUndefined();
+		await expect(resetUserPassword("u1", "NewP@ss1!")).resolves.toBeUndefined();
 		expect(mockPatch).toHaveBeenCalledWith("/admin/users/u1/password", {
 			new_password: "NewP@ss1!",
 		});

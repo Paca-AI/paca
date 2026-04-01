@@ -10,10 +10,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-query", async () => {
-	const actual =
-		await vi.importActual<typeof import("@tanstack/react-query")>(
-			"@tanstack/react-query",
-		);
+	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
+		"@tanstack/react-query",
+	);
 	return {
 		...actual,
 		useMutation: (opts: {
@@ -63,7 +62,11 @@ describe("ResetPasswordDialog", () => {
 
 	it("renders username and reset description", () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		expect(
@@ -74,7 +77,11 @@ describe("ResetPasswordDialog", () => {
 
 	it("shows Reset password button", () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		expect(
@@ -84,7 +91,11 @@ describe("ResetPasswordDialog", () => {
 
 	it("calls mutation.mutate when Reset password button is clicked", async () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		await userEvent.click(
@@ -98,7 +109,11 @@ describe("ResetPasswordDialog", () => {
 		mocks.isPending = true;
 
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		expect(screen.getByRole("button", { name: /resetting/i })).toBeDisabled();
@@ -106,21 +121,27 @@ describe("ResetPasswordDialog", () => {
 
 	it("shows generated password after successful reset", async () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		mocks.onSuccess?.("MockPw1!MockPw1!");
 
 		await waitFor(() => {
-			expect(
-				screen.getByText("Temporary Password"),
-			).toBeInTheDocument();
+			expect(screen.getByText("Temporary Password")).toBeInTheDocument();
 		});
 	});
 
 	it("shows a Done button after successful reset", async () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		mocks.onSuccess?.("MockPw1!MockPw1!");
@@ -132,7 +153,11 @@ describe("ResetPasswordDialog", () => {
 
 	it("toggles password visibility when show/hide button is clicked", async () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		mocks.onSuccess?.("MockPw1!MockPw1!");
@@ -141,17 +166,23 @@ describe("ResetPasswordDialog", () => {
 			expect(screen.getByLabelText(/show password/i)).toBeInTheDocument();
 		});
 
-		const pwInput = document.querySelector<HTMLInputElement>("input[readonly]")!;
-		expect(pwInput.type).toBe("password");
+		const pwInput = document.querySelector<HTMLInputElement>("input[readonly]");
+		expect(pwInput).toBeTruthy();
+		const input = pwInput as HTMLInputElement;
+		expect(input.type).toBe("password");
 
 		await userEvent.click(screen.getByLabelText(/show password/i));
 
-		expect(pwInput.type).toBe("text");
+		expect(input.type).toBe("text");
 	});
 
 	it("shows error message on mutation failure", async () => {
 		render(
-			<ResetPasswordDialog user={mockUser} open={true} onOpenChange={vi.fn()} />,
+			<ResetPasswordDialog
+				user={mockUser}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		mocks.onError?.(new Error("Something went wrong."));
