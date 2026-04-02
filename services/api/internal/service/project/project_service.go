@@ -71,7 +71,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in projectdom.Update
 	if name != "" {
 		p.Name = name
 	}
-	p.Description = strings.TrimSpace(in.Description)
+	desc := strings.TrimSpace(in.Description)
+	if desc != "" {
+		p.Description = desc
+	}
 	if in.Settings != nil {
 		p.Settings = cloneSettings(in.Settings)
 	}
