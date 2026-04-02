@@ -3,9 +3,11 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,6 +304,39 @@ func TestUpdateProject_Success(t *testing.T) {
 		jsonBody(t, map[string]any{"name": "updated"}))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateProject_PreservesOmittedFields(t *testing.T) {
+	projID := uuid.New()
+	const existingDesc = "existing description"
+	r := newProjectRouter(&mockProjectSvc{
+		update: func(_ context.Context, id uuid.UUID, in projectdom.UpdateProjectInput) (*projectdom.Project, error) {
+			// Simulate service PATCH semantics: only overwrite description when provided.
+			desc := existingDesc
+			if strings.TrimSpace(in.Description) != "" {
+				desc = strings.TrimSpace(in.Description)
+			}
+			return &projectdom.Project{ID: id, Name: in.Name, Description: desc}, nil
+		},
+	})
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/admin/projects/%s", projID),
+		jsonBody(t, map[string]any{"name": "updated"}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var env struct {
+		Data struct {
+			Description string `json:"description"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&env); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if env.Data.Description != existingDesc {
+		t.Fatalf("expected description %q to be preserved, got %q", existingDesc, env.Data.Description)
 	}
 }
 
