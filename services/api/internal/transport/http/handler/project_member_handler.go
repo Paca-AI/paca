@@ -53,6 +53,34 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 	presenter.Created(c, dto.ProjectMemberFromEntity(m))
 }
 
+// UpdateMemberRole handles PATCH /projects/:projectId/members/:userId.
+func (h *ProjectHandler) UpdateMemberRole(c *gin.Context) {
+	projectID, err := parseProjectID(c)
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+	userID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		presenter.Error(c, apierr.New(apierr.CodeBadRequest, "invalid user id"))
+		return
+	}
+
+	var req dto.UpdateProjectMemberRoleRequest
+	if !middleware.BindJSON(c, &req) {
+		return
+	}
+
+	m, err := h.svc.UpdateMemberRole(c.Request.Context(), projectID, userID, projectdom.UpdateMemberRoleInput{
+		ProjectRoleID: req.ProjectRoleID,
+	})
+	if err != nil {
+		presenter.Error(c, err)
+		return
+	}
+	presenter.OK(c, dto.ProjectMemberFromEntity(m))
+}
+
 // RemoveMember handles DELETE /projects/:projectId/members/:userId.
 func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 	projectID, err := parseProjectID(c)

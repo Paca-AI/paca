@@ -341,6 +341,21 @@ func (r *ProjectRepository) AddMember(ctx context.Context, m *projectdom.Project
 	return nil
 }
 
+// UpdateMemberRole changes the role of an existing project member.
+func (r *ProjectRepository) UpdateMemberRole(ctx context.Context, projectID, userID, roleID uuid.UUID) error {
+	result := r.db.WithContext(ctx).
+		Table("project_members").
+		Where("project_id = ? AND user_id = ?", projectID.String(), userID.String()).
+		Update("project_role_id", roleID.String())
+	if result.Error != nil {
+		return fmt.Errorf("project repo: update member role: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return projectdom.ErrMemberNotFound
+	}
+	return nil
+}
+
 // RemoveMember deletes the membership row for the given project + user.
 func (r *ProjectRepository) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
 	result := r.db.WithContext(ctx).

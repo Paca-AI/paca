@@ -37,7 +37,9 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*projectdom.Projec
 	return s.repo.FindByID(ctx, id)
 }
 
-// Create defines and persists a new project.
+// Create defines and persists a new project, bootstraps the three default
+// project-scoped roles (admin, editor, viewer), and adds the creator as the
+// project admin.
 func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -57,6 +59,74 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 	if err := s.repo.Create(ctx, p); err != nil {
 		return nil, err
 	}
+
+	// Bootstrap the three default project-scoped roles.
+	defaultRoles := []*projectdom.ProjectRole{
+		{
+			ID:        uuid.New(),
+			ProjectID: &p.ID,
+			RoleName:  "Admin",
+			Permissions: map[string]any{
+				"projects.*":        true,
+				"project.members.*": true,
+				"project.roles.*":   true,
+				"tasks.*":           true,
+				"sprints.*":         true,
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:        uuid.New(),
+			ProjectID: &p.ID,
+			RoleName:  "Editor",
+			Permissions: map[string]any{
+				"projects.read": true,
+				"tasks.read":    true,
+				"tasks.write":   true,
+				"sprints.read":  true,
+				"sprints.write": true,
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:        uuid.New(),
+			ProjectID: &p.ID,
+			RoleName:  "Viewer",
+			Permissions: map[string]any{
+				"projects.read": true,
+				"tasks.read":    true,
+				"sprints.read":  true,
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	var adminRoleID uuid.UUID
+	for _, r := range defaultRoles {
+		if err := s.repo.CreateRole(ctx, r); err != nil {
+			return nil, err
+		}
+		if r.RoleName == "Admin" {
+			adminRoleID = r.ID
+		}
+	}
+
+	// Add the creator as a project admin.
+	if in.CreatedBy != nil {
+		m := &projectdom.ProjectMember{
+			ID:            uuid.New(),
+			ProjectID:     p.ID,
+			UserID:        *in.CreatedBy,
+			ProjectRoleID: adminRoleID,
+		}
+		if err := s.repo.AddMember(ctx, m); err != nil {
+			return nil, err
+		}
+	}
+
 	return p, nil
 }
 

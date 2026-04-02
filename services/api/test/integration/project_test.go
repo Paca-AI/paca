@@ -297,6 +297,20 @@ func (r *fakeProjectRepo) RemoveMember(_ context.Context, projectID, userID uuid
 	return nil
 }
 
+func (r *fakeProjectRepo) UpdateMemberRole(_ context.Context, projectID, userID, roleID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	k := memberKey(projectID, userID)
+	m, ok := r.members[k]
+	if !ok {
+		return projectdom.ErrMemberNotFound
+	}
+	m.ProjectRoleID = roleID
+	r.members[k] = cloneMember(m)
+	return nil
+}
+
 type projectPermStore struct {
 	globalPerms  []authz.Permission
 	projectPerms map[uuid.UUID][]authz.Permission
@@ -524,7 +538,44 @@ func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
 		t.Fatalf("expected PROJECT_MEMBER_ALREADY_ADDED, got %q", code)
 	}
 
-	deleteRoleURL := fmt.Sprintf("/api/v1/projects/%s/roles/%s", projectID, roleID)
+	updatedRoleW := serve(r, authedJSONReq(t.Context(), http.MethodPost, createRoleURL, tok, map[string]any{
+		"role_name": "qa",
+	}))
+	if updatedRoleW.Code != http.StatusCreated {
+		t.Fatalf("create second role: expected 201, got %d (%s)", updatedRoleW.Code, updatedRoleW.Body.String())
+	}
+	updatedRoleID := roleIDFromCreate(t, updatedRoleW)
+
+	updateMemberURL := fmt.Sprintf("/api/v1/projects/%s/members/%s", projectID, memberUserID)
+	updateMemberW := serve(r, authedJSONReq(t.Context(), http.MethodPatch, updateMemberURL, tok, map[string]any{
+		"project_role_id": updatedRoleID,
+	}))
+	if updateMemberW.Code != http.StatusOK {
+		t.Fatalf("update member role: expected 200, got %d (%s)", updateMemberW.Code, updateMemberW.Body.String())
+	}
+
+	var updateMemberEnv struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(updateMemberW.Body).Decode(&updateMemberEnv); err != nil {
+		t.Fatalf("decode update member response: %v", err)
+	}
+	if got, _ := updateMemberEnv.Data["project_role_id"].(string); got != updatedRoleID {
+		t.Fatalf("expected updated role id %q, got %q", updatedRoleID, got)
+	}
+
+	missingMemberW := serve(r, authedJSONReq(t.Context(), http.MethodPatch,
+		fmt.Sprintf("/api/v1/projects/%s/members/%s", projectID, uuid.New()), tok, map[string]any{
+			"project_role_id": updatedRoleID,
+		}))
+	if missingMemberW.Code != http.StatusNotFound {
+		t.Fatalf("update missing member: expected 404, got %d (%s)", missingMemberW.Code, missingMemberW.Body.String())
+	}
+	if code := decodeErrorCode(t, missingMemberW); code != "PROJECT_MEMBER_NOT_FOUND" {
+		t.Fatalf("expected PROJECT_MEMBER_NOT_FOUND, got %q", code)
+	}
+
+	deleteRoleURL := fmt.Sprintf("/api/v1/projects/%s/roles/%s", projectID, updatedRoleID)
 	deleteRoleWhileAssignedW := serve(r, authedJSONReq(t.Context(), http.MethodDelete, deleteRoleURL, tok, nil))
 	if deleteRoleWhileAssignedW.Code != http.StatusConflict {
 		t.Fatalf("delete role in use: expected 409, got %d (%s)", deleteRoleWhileAssignedW.Code, deleteRoleWhileAssignedW.Body.String())

@@ -25,6 +25,17 @@ export const ApiErrorCode = {
 	GlobalRoleNameInvalid: "GLOBAL_ROLE_NAME_INVALID",
 	GlobalRoleHasUsers: "GLOBAL_ROLE_HAS_ASSIGNED_USERS",
 
+	// Project domain errors.
+	ProjectNotFound: "PROJECT_NOT_FOUND",
+	ProjectNameTaken: "PROJECT_NAME_TAKEN",
+	ProjectNameInvalid: "PROJECT_NAME_INVALID",
+	ProjectRoleNotFound: "PROJECT_ROLE_NOT_FOUND",
+	ProjectRoleNameTaken: "PROJECT_ROLE_NAME_TAKEN",
+	ProjectRoleNameInvalid: "PROJECT_ROLE_NAME_INVALID",
+	ProjectRoleHasMembers: "PROJECT_ROLE_HAS_MEMBERS",
+	ProjectMemberNotFound: "PROJECT_MEMBER_NOT_FOUND",
+	ProjectMemberAlreadyAdded: "PROJECT_MEMBER_ALREADY_ADDED",
+
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
 	InternalError: "INTERNAL_ERROR",

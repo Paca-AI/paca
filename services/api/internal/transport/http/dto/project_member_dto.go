@@ -13,6 +13,11 @@ type AddProjectMemberRequest struct {
 	ProjectRoleID uuid.UUID `json:"project_role_id" binding:"required"`
 }
 
+// UpdateProjectMemberRoleRequest is the body for PATCH /v1/projects/:projectId/members/:userId.
+type UpdateProjectMemberRoleRequest struct {
+	ProjectRoleID uuid.UUID `json:"project_role_id" binding:"required"`
+}
+
 // ProjectMemberResponse is the public representation of a project membership.
 type ProjectMemberResponse struct {
 	ID            uuid.UUID `json:"id"`

@@ -158,6 +158,10 @@ func New(deps Deps) *gin.Engine {
 					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
 					deps.Project.AddMember,
 				)
+				members.PATCH("/:userId",
+					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
+					deps.Project.UpdateMemberRole,
+				)
 				members.DELETE("/:userId",
 					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
 					deps.Project.RemoveMember,

@@ -29,6 +29,7 @@ type mockProjectSvc struct {
 	delete       func(ctx context.Context, id uuid.UUID) error
 	listMembers  func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
 	addMember    func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
+	updateMember func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
 	removeMember func(ctx context.Context, projectID, userID uuid.UUID) error
 	listRoles    func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error)
 	createRole   func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
@@ -85,6 +86,13 @@ func (m *mockProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in 
 	return nil, errors.New("mock: addMember not configured")
 }
 
+func (m *mockProjectSvc) UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+	if m.updateMember != nil {
+		return m.updateMember(ctx, projectID, userID, in)
+	}
+	return nil, errors.New("mock: updateMember not configured")
+}
+
 func (m *mockProjectSvc) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
 	if m.removeMember != nil {
 		return m.removeMember(ctx, projectID, userID)
@@ -139,6 +147,7 @@ func newProjectRouter(svc projectdom.Service) *gin.Engine {
 	// Project member routes
 	r.GET("/projects/:projectId/members", h.ListMembers)
 	r.POST("/projects/:projectId/members", h.AddMember)
+	r.PATCH("/projects/:projectId/members/:userId", h.UpdateMemberRole)
 	r.DELETE("/projects/:projectId/members/:userId", h.RemoveMember)
 	// Project role routes
 	r.GET("/projects/:projectId/roles", h.ListRoles)
@@ -717,6 +726,98 @@ func TestAddMember_MemberAlreadyAdded(t *testing.T) {
 		t.Fatalf("expected 409, got %d", w.Code)
 	}
 	if code := errorCode(t, w); code != "PROJECT_MEMBER_ALREADY_ADDED" {
+		t.Fatalf("unexpected error_code: %s", code)
+	}
+}
+
+func TestUpdateMemberRole_Success(t *testing.T) {
+	projID := uuid.New()
+	userID := uuid.New()
+	roleID := uuid.New()
+	memberID := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		updateMember: func(_ context.Context, pid, uid uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+			if pid != projID {
+				t.Fatalf("expected project id %s, got %s", projID, pid)
+			}
+			if uid != userID {
+				t.Fatalf("expected user id %s, got %s", userID, uid)
+			}
+			if in.ProjectRoleID != roleID {
+				t.Fatalf("expected role id %s, got %s", roleID, in.ProjectRoleID)
+			}
+			return &projectdom.ProjectMember{
+				ID:            memberID,
+				ProjectID:     pid,
+				UserID:        uid,
+				ProjectRoleID: in.ProjectRoleID,
+			}, nil
+		},
+	})
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, userID),
+		jsonBody(t, map[string]any{"project_role_id": roleID}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateMemberRole_BadProjectID(t *testing.T) {
+	userID := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{})
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/not-a-uuid/members/%s", userID),
+		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMemberRole_BadUserID(t *testing.T) {
+	projID := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{})
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/not-a-uuid", projID),
+		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMemberRole_MemberNotFound(t *testing.T) {
+	projID := uuid.New()
+	userID := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		updateMember: func(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+			return nil, projectdom.ErrMemberNotFound
+		},
+	})
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, userID),
+		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "PROJECT_MEMBER_NOT_FOUND" {
+		t.Fatalf("unexpected error_code: %s", code)
+	}
+}
+
+func TestUpdateMemberRole_RoleNotFound(t *testing.T) {
+	projID := uuid.New()
+	userID := uuid.New()
+	r := newProjectRouter(&mockProjectSvc{
+		updateMember: func(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+			return nil, projectdom.ErrRoleNotFound
+		},
+	})
+
+	w := do(t, r, http.MethodPatch, fmt.Sprintf("/projects/%s/members/%s", projID, userID),
+		jsonBody(t, map[string]any{"project_role_id": uuid.New()}))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if code := errorCode(t, w); code != "PROJECT_ROLE_NOT_FOUND" {
 		t.Fatalf("unexpected error_code: %s", code)
 	}
 }

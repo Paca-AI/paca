@@ -351,6 +351,7 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 	client, token := projectAdminLogin(t, env, "members-admin", "mbrpass1")
 	projID := createProjectViaAPI(t, env, client, token, "members-project-"+uuid.NewString(), "")
 	roleID := createProjectRoleViaAPI(t, env, client, token, projID, "member-role")
+	updatedRoleID := createProjectRoleViaAPI(t, env, client, token, projID, "member-role-updated")
 
 	// Seed a separate user to add as a project member.
 	memberUsername := "member-user-" + uuid.NewString()
@@ -405,6 +406,35 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 		assertStatus(t, resp, http.StatusConflict)
 		assertErrorCode(t, resp, "PROJECT_MEMBER_ALREADY_ADDED")
+	})
+
+	t.Run("update_member_role", func(t *testing.T) {
+		url := membersURL + "/" + memberUserID
+		req := mustRequest(env.ctx, t, http.MethodPatch, url,
+			jsonBody(t, map[string]any{"project_role_id": updatedRoleID}))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		if rid, _ := data["project_role_id"].(string); rid != updatedRoleID {
+			t.Errorf("expected project_role_id %q, got %q", updatedRoleID, rid)
+		}
+	})
+
+	t.Run("update_member_role_missing_member", func(t *testing.T) {
+		url := membersURL + "/" + uuid.NewString()
+		req := mustRequest(env.ctx, t, http.MethodPatch, url,
+			jsonBody(t, map[string]any{"project_role_id": updatedRoleID}))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusNotFound)
+		assertErrorCode(t, resp, "PROJECT_MEMBER_NOT_FOUND")
 	})
 
 	t.Run("remove_member", func(t *testing.T) {

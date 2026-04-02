@@ -57,6 +57,31 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 	return added, nil
 }
 
+// UpdateMemberRole changes the role of an existing project member.
+func (s *Service) UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+	if _, err := s.repo.FindByID(ctx, projectID); err != nil {
+		return nil, err
+	}
+	if _, err := s.repo.FindMember(ctx, projectID, userID); err != nil {
+		return nil, err
+	}
+
+	role, err := s.repo.FindRoleByID(ctx, in.ProjectRoleID)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure the role belongs to this project (or is a template).
+	if role.ProjectID != nil && *role.ProjectID != projectID {
+		return nil, projectdom.ErrRoleNotFound
+	}
+
+	if err := s.repo.UpdateMemberRole(ctx, projectID, userID, in.ProjectRoleID); err != nil {
+		return nil, err
+	}
+
+	return s.repo.FindMember(ctx, projectID, userID)
+}
+
 // RemoveMember removes a user from the project.
 func (s *Service) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
 	if _, err := s.repo.FindByID(ctx, projectID); err != nil {
