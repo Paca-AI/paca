@@ -41,7 +41,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*projectdom.Projec
 func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return nil, projectdom.ErrNameTaken
+		return nil, projectdom.ErrNameInvalid
 	}
 
 	now := time.Now()

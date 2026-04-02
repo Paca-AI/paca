@@ -247,6 +247,23 @@ func TestCreateProject_MissingName(t *testing.T) {
 	}
 }
 
+func TestCreateProject_WhitespaceName(t *testing.T) {
+	r := newProjectRouter(&mockProjectSvc{
+		create: func(_ context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
+			return nil, projectdom.ErrNameInvalid
+		},
+	})
+
+	w := do(t, r, http.MethodPost, "/admin/projects",
+		jsonBody(t, map[string]any{"name": "   "}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if code := errorCode(t, w); code != "PROJECT_NAME_INVALID" {
+		t.Fatalf("unexpected error_code: %s", code)
+	}
+}
+
 func TestCreateProject_MalformedJSON(t *testing.T) {
 	r := newProjectRouter(&mockProjectSvc{})
 

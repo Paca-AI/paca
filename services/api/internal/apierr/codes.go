@@ -47,6 +47,8 @@ const (
 	CodeProjectNotFound Code = "PROJECT_NOT_FOUND"
 	// CodeProjectNameTaken indicates the project name is already in use.
 	CodeProjectNameTaken Code = "PROJECT_NAME_TAKEN"
+	// CodeProjectNameInvalid indicates the project name is empty or invalid.
+	CodeProjectNameInvalid Code = "PROJECT_NAME_INVALID"
 
 	// CodeProjectRoleNotFound indicates the requested project role does not exist.
 	CodeProjectRoleNotFound Code = "PROJECT_ROLE_NOT_FOUND"
