@@ -52,7 +52,7 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 	// Re-fetch to populate username/role name via JOIN.
 	added, err := s.repo.FindMember(ctx, projectID, in.UserID)
 	if err != nil {
-		return m, nil
+		return nil, err
 	}
 	return added, nil
 }
