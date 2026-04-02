@@ -26,6 +26,7 @@ import (
 	redisRepo "github.com/paca/api/internal/repository/redis"
 	authsvc "github.com/paca/api/internal/service/auth"
 	globalrolesvc "github.com/paca/api/internal/service/globalrole"
+	projectsvc "github.com/paca/api/internal/service/project"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
@@ -71,6 +72,7 @@ func New(cfg *config.Config) (*App, error) {
 	// --- Repositories -------------------------------------------------------
 	userRepo := pgRepo.NewUserRepository(db)
 	globalRoleRepo := pgRepo.NewGlobalRoleRepository(db)
+	projectRepo := pgRepo.NewProjectRepository(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 
 	if err := db.AutoMigrate(
@@ -98,6 +100,7 @@ func New(cfg *config.Config) (*App, error) {
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
 	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo)
 	globalRoleService := globalrolesvc.New(globalRoleRepo)
+	projectService := projectsvc.New(projectRepo)
 
 	// --- Handlers -----------------------------------------------------------
 	cookieCfg := handler.CookieConfig{
@@ -114,6 +117,7 @@ func New(cfg *config.Config) (*App, error) {
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService, authService),
 		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
+		Project:      handler.NewProjectHandler(projectService),
 		Log:          log,
 	}
 

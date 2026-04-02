@@ -31,6 +31,7 @@ import (
 	redisRepo "github.com/paca/api/internal/repository/redis"
 	authsvc "github.com/paca/api/internal/service/auth"
 	globalrolesvc "github.com/paca/api/internal/service/globalrole"
+	projectsvc "github.com/paca/api/internal/service/project"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
@@ -52,6 +53,8 @@ type e2eEnv struct {
 	userService *usersvc.Service
 	userRepo    *pgRepo.UserRepository
 	roleRepo    *pgRepo.GlobalRoleRepository
+	projectRepo *pgRepo.ProjectRepository
+	projectSvc  *projectsvc.Service
 }
 
 func newE2EEnv(t *testing.T) *e2eEnv {
@@ -168,6 +171,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	authService := authsvc.New(userRepo, tm, refreshStore, e2eRefreshTTL, e2eRefreshSessionTTL)
 	userService := usersvc.New(userRepo, authzStore, roleRepo)
 	globalRoleService := globalrolesvc.New(roleRepo)
+	projectRepo := pgRepo.NewProjectRepository(db)
+	projectService := projectsvc.New(projectRepo)
 
 	cookieCfg := handler.CookieConfig{
 		Secure:            false,
@@ -182,6 +187,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService),
 		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
+		Project:      handler.NewProjectHandler(projectService),
 		Log:          log,
 	})
 
@@ -203,6 +209,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		userService: userService,
 		userRepo:    userRepo,
 		roleRepo:    roleRepo,
+		projectRepo: projectRepo,
+		projectSvc:  projectService,
 	}
 }
 
