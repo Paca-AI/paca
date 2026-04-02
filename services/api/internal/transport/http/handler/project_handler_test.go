@@ -251,7 +251,7 @@ func TestCreateProject_MissingName(t *testing.T) {
 
 func TestCreateProject_WhitespaceName(t *testing.T) {
 	r := newProjectRouter(&mockProjectSvc{
-		create: func(_ context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error) {
+		create: func(_ context.Context, _ projectdom.CreateProjectInput) (*projectdom.Project, error) {
 			return nil, projectdom.ErrNameInvalid
 		},
 	})
