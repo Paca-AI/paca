@@ -103,9 +103,7 @@ export function ProjectRoleFormDialog({
 				return;
 			}
 			if (code === ApiErrorCode.ProjectRoleNameInvalid) {
-				setNameError(
-					"Role name must be uppercase letters, numbers, and underscores only.",
-				);
+				setNameError("Role name cannot be empty or whitespace only.");
 				return;
 			}
 			const messages: Partial<Record<string, string>> = {
