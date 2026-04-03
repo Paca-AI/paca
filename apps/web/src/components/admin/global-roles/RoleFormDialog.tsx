@@ -122,7 +122,7 @@ export function RoleFormDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="sm:max-w-lg">
+			<DialogContent className="flex flex-col sm:max-w-lg max-h-[90svh]">
 				<DialogHeader>
 					<div className="flex items-center gap-2.5">
 						<div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -139,7 +139,7 @@ export function RoleFormDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex flex-col gap-5 py-1">
+				<div className="flex flex-col gap-5 py-1 overflow-y-auto min-h-0">
 					<div className="flex flex-col gap-1.5">
 						<Label
 							htmlFor="role-name"

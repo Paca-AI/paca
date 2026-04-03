@@ -1,10 +1,12 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockUseQuery, mockCheckPermission } = vi.hoisted(() => ({
-	mockUseQuery: vi.fn(),
-	mockCheckPermission: vi.fn(),
-}));
+const { mockUseQuery, mockCheckPermission, mockCheckAnyPermission } =
+	vi.hoisted(() => ({
+		mockUseQuery: vi.fn(),
+		mockCheckPermission: vi.fn(),
+		mockCheckAnyPermission: vi.fn(),
+	}));
 
 vi.mock("@tanstack/react-query", async () => {
 	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
@@ -19,6 +21,7 @@ vi.mock("@tanstack/react-query", async () => {
 
 vi.mock("@/lib/permissions", () => ({
 	hasPermission: mockCheckPermission,
+	hasAnyPermission: mockCheckAnyPermission,
 }));
 
 import { usePermissions } from "./use-permissions";
@@ -66,6 +69,26 @@ describe("usePermissions", () => {
 		expect(mockCheckPermission).toHaveBeenCalledWith(
 			["projects.*"],
 			"projects.manage",
+		);
+	});
+
+	it("delegates hasAnyPermission checks to permissions helper", () => {
+		mockUseQuery.mockReturnValue({
+			data: ["projects.create"],
+			isLoading: false,
+		});
+		mockCheckAnyPermission.mockReturnValue(true);
+
+		const { result } = renderHook(() => usePermissions());
+		const canAny = result.current.hasAnyPermission([
+			"projects.create",
+			"projects.delete",
+		]);
+
+		expect(canAny).toBe(true);
+		expect(mockCheckAnyPermission).toHaveBeenCalledWith(
+			["projects.create"],
+			["projects.create", "projects.delete"],
 		);
 	});
 });

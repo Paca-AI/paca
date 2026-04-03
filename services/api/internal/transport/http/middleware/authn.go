@@ -68,3 +68,7 @@ func ClaimsFrom(c *gin.Context) *domainauth.Claims {
 	claims, _ := v.(*domainauth.Claims)
 	return claims
 }
+
+// ClaimsContextKey returns the context key used to store JWT claims.
+// Intended for use in tests that need to inject synthetic claims.
+func ClaimsContextKey() string { return claimsKey }

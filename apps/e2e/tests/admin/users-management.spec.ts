@@ -105,6 +105,15 @@ async function deleteUserIfExists(request: APIRequestContext, username: string) 
 
 async function openUsersPage(page: Page) {
   await page.goto('/admin/users');
+  // If a prior test invalidated the server-side session stored in AUTH_FILE, the app
+  // redirects to login. Re-authenticate directly so these tests remain self-contained.
+  if (!page.url().includes('/admin')) {
+    await page.getByRole('textbox', { name: 'Username' }).fill(USERNAME);
+    await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL(/\/home/);
+    await page.goto('/admin/users');
+  }
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
 }
 

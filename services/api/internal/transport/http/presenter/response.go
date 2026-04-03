@@ -10,6 +10,7 @@ import (
 	"github.com/paca/api/internal/apierr"
 	domainauth "github.com/paca/api/internal/domain/auth"
 	globalroledom "github.com/paca/api/internal/domain/globalrole"
+	projectdom "github.com/paca/api/internal/domain/project"
 	userdom "github.com/paca/api/internal/domain/user"
 )
 
@@ -97,6 +98,24 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeGlobalRoleNameInvalid
 	case errors.Is(err, globalroledom.ErrHasAssignedUsers):
 		return http.StatusConflict, apierr.CodeGlobalRoleHasUsers
+	case errors.Is(err, projectdom.ErrNotFound):
+		return http.StatusNotFound, apierr.CodeProjectNotFound
+	case errors.Is(err, projectdom.ErrNameTaken):
+		return http.StatusConflict, apierr.CodeProjectNameTaken
+	case errors.Is(err, projectdom.ErrNameInvalid):
+		return http.StatusBadRequest, apierr.CodeProjectNameInvalid
+	case errors.Is(err, projectdom.ErrRoleNotFound):
+		return http.StatusNotFound, apierr.CodeProjectRoleNotFound
+	case errors.Is(err, projectdom.ErrRoleNameTaken):
+		return http.StatusConflict, apierr.CodeProjectRoleNameTaken
+	case errors.Is(err, projectdom.ErrRoleNameInvalid):
+		return http.StatusBadRequest, apierr.CodeProjectRoleNameInvalid
+	case errors.Is(err, projectdom.ErrRoleHasMembers):
+		return http.StatusConflict, apierr.CodeProjectRoleHasMembers
+	case errors.Is(err, projectdom.ErrMemberNotFound):
+		return http.StatusNotFound, apierr.CodeProjectMemberNotFound
+	case errors.Is(err, projectdom.ErrMemberAlreadyAdded):
+		return http.StatusConflict, apierr.CodeProjectMemberAlreadyAdded
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -123,6 +142,24 @@ func httpStatusForCode(code apierr.Code) int {
 	case apierr.CodeGlobalRoleNameInvalid:
 		return http.StatusBadRequest
 	case apierr.CodeGlobalRoleHasUsers:
+		return http.StatusConflict
+	case apierr.CodeProjectNotFound:
+		return http.StatusNotFound
+	case apierr.CodeProjectNameTaken:
+		return http.StatusConflict
+	case apierr.CodeProjectNameInvalid:
+		return http.StatusBadRequest
+	case apierr.CodeProjectRoleNotFound:
+		return http.StatusNotFound
+	case apierr.CodeProjectRoleNameTaken:
+		return http.StatusConflict
+	case apierr.CodeProjectRoleNameInvalid:
+		return http.StatusBadRequest
+	case apierr.CodeProjectRoleHasMembers:
+		return http.StatusConflict
+	case apierr.CodeProjectMemberNotFound:
+		return http.StatusNotFound
+	case apierr.CodeProjectMemberAlreadyAdded:
 		return http.StatusConflict
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest

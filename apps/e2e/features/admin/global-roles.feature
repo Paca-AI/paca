@@ -38,7 +38,7 @@ Feature: Global roles management
     Scenario: Opening the create-role dialog
       When the user clicks the "New Role" button
       Then the role form dialog should open
-      And the dialog title should be "Create role"
+      And the dialog title should be "Create Role"
       And the name field should be empty
       And all permission switches should be in their default state
 
@@ -85,11 +85,28 @@ Feature: Global roles management
       When the user clicks the "New Role" button
       And the user fills the role name with "USERS_WILDCARD_ROLE"
       And the user enables the "Read Users" permission
+      And the user enables the "Write Users" permission
       And the user enables the "Delete Users" permission
       And the user clicks "Create role"
       Then the dialog should close
       And the role "USERS_WILDCARD_ROLE" should appear in the roles table
       And the role should show 1 active permission representing "users.*"
+
+    Scenario: Enabling all projects permissions collapses to projects wildcard
+      When the user clicks the "New Role" button
+      And the user fills the role name with "PROJECTS_WILDCARD_ROLE"
+      And the user enables the "Read All Projects" permission
+      And the user enables the "Create Projects" permission
+      And the user enables the "Write Projects" permission
+      And the user enables the "Delete Projects" permission
+      And the user enables the "Read Project Members" permission
+      And the user enables the "Write Project Members" permission
+      And the user enables the "Read Project Roles" permission
+      And the user enables the "Write Project Roles" permission
+      And the user clicks "Create role"
+      Then the dialog should close
+      And the role "PROJECTS_WILDCARD_ROLE" should appear in the roles table
+      And the role should show 1 active permission representing "projects.*"
 
     Scenario: Enabling all permissions across all groups collapses each domain independently
       When the user clicks the "New Role" button
@@ -98,11 +115,20 @@ Feature: Global roles management
       And the user enables the "Write Global Roles" permission
       And the user enables the "Assign Global Roles" permission
       And the user enables the "Read Users" permission
+      And the user enables the "Write Users" permission
       And the user enables the "Delete Users" permission
+      And the user enables the "Read All Projects" permission
+      And the user enables the "Create Projects" permission
+      And the user enables the "Write Projects" permission
+      And the user enables the "Delete Projects" permission
+      And the user enables the "Read Project Members" permission
+      And the user enables the "Write Project Members" permission
+      And the user enables the "Read Project Roles" permission
+      And the user enables the "Write Project Roles" permission
       And the user clicks "Create role"
       Then the dialog should close
       And the role "SUPER_ROLE" should appear in the roles table
-      And the role should show 2 active permissions representing "global_roles.*" and "users.*"
+      And the role should show 3 active permissions representing "global_roles.*", "users.*", and "projects.*"
 
     Scenario: Creating a role with permissions from multiple groups
       When the user clicks the "New Role" button
@@ -132,6 +158,11 @@ Feature: Global roles management
       Then the role form dialog should open
       And the permission section should display a "Global Roles" group
       And the permission section should display a "Users" group
+      And the permission section should display a "Projects" group
+
+    Scenario: Each group in the Projects domain is labelled correctly
+      When the user clicks the "New Role" button
+      Then the "Projects" group should contain "Read All Projects", "Create Projects", "Write Projects", "Delete Projects", "Read Project Members", "Write Project Members", "Read Project Roles", and "Write Project Roles" permissions
 
     Scenario: Each permission switch shows a label and description
       When the user clicks the "New Role" button
@@ -139,7 +170,16 @@ Feature: Global roles management
       And the "Write Global Roles" permission should show description "Create and update global role definitions"
       And the "Assign Global Roles" permission should show description "Assign global roles to users"
       And the "Read Users" permission should show description "View user profiles and list"
+      And the "Write Users" permission should show description "Create and update user accounts"
       And the "Delete Users" permission should show description "Remove user accounts"
+      And the "Read All Projects" permission should show description "View all projects in the workspace"
+      And the "Create Projects" permission should show description "Create new projects"
+      And the "Write Projects" permission should show description "Update project details"
+      And the "Delete Projects" permission should show description "Permanently delete projects"
+      And the "Read Project Members" permission should show description "View members of any project"
+      And the "Write Project Members" permission should show description "Add, remove, and update members in any project"
+      And the "Read Project Roles" permission should show description "View roles defined in any project"
+      And the "Write Project Roles" permission should show description "Create and update roles in any project"
 
     Scenario: All permission switches are off by default in the create dialog
       When the user clicks the "New Role" button
@@ -147,7 +187,16 @@ Feature: Global roles management
       And the "Write Global Roles" permission switch should be off
       And the "Assign Global Roles" permission switch should be off
       And the "Read Users" permission switch should be off
+      And the "Write Users" permission switch should be off
       And the "Delete Users" permission switch should be off
+      And the "Read All Projects" permission switch should be off
+      And the "Create Projects" permission switch should be off
+      And the "Write Projects" permission switch should be off
+      And the "Delete Projects" permission switch should be off
+      And the "Read Project Members" permission switch should be off
+      And the "Write Project Members" permission switch should be off
+      And the "Read Project Roles" permission switch should be off
+      And the "Write Project Roles" permission switch should be off
 
     Scenario: Enabling a permission updates the switch to on
       When the user clicks the "New Role" button

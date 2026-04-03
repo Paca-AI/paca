@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 test.describe('Test group', () => {
-  test('seed', async ({ page }) => {
+  test('seed', async () => {
     // generate code here.
   });
 });

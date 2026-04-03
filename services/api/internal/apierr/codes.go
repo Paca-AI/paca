@@ -42,6 +42,27 @@ const (
 	CodePasswordChangeRequired Code = "AUTH_PASSWORD_CHANGE_REQUIRED"
 	// CodeInvalidCurrentPassword indicates the supplied current password is wrong.
 	CodeInvalidCurrentPassword Code = "USER_INVALID_CURRENT_PASSWORD"
+
+	// CodeProjectNotFound indicates the requested project does not exist.
+	CodeProjectNotFound Code = "PROJECT_NOT_FOUND"
+	// CodeProjectNameTaken indicates the project name is already in use.
+	CodeProjectNameTaken Code = "PROJECT_NAME_TAKEN"
+	// CodeProjectNameInvalid indicates the project name is empty or invalid.
+	CodeProjectNameInvalid Code = "PROJECT_NAME_INVALID"
+
+	// CodeProjectRoleNotFound indicates the requested project role does not exist.
+	CodeProjectRoleNotFound Code = "PROJECT_ROLE_NOT_FOUND"
+	// CodeProjectRoleNameTaken indicates the role name is already in use within the project.
+	CodeProjectRoleNameTaken Code = "PROJECT_ROLE_NAME_TAKEN"
+	// CodeProjectRoleNameInvalid indicates an invalid or empty role name.
+	CodeProjectRoleNameInvalid Code = "PROJECT_ROLE_NAME_INVALID"
+	// CodeProjectRoleHasMembers indicates the role cannot be deleted because members still use it.
+	CodeProjectRoleHasMembers Code = "PROJECT_ROLE_HAS_MEMBERS"
+
+	// CodeProjectMemberNotFound indicates the membership record was not found.
+	CodeProjectMemberNotFound Code = "PROJECT_MEMBER_NOT_FOUND"
+	// CodeProjectMemberAlreadyAdded indicates the user is already a member of the project.
+	CodeProjectMemberAlreadyAdded Code = "PROJECT_MEMBER_ALREADY_ADDED"
 )
 
 // Error carries a machine-readable Code alongside a human-readable Message.
