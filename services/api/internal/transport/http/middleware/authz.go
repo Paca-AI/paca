@@ -114,6 +114,7 @@ func RequireAnyPermissions(authorizer *authz.Authorizer, groups ...PermissionGro
 			return
 		}
 
+		var firstScopeErr error
 		for _, group := range groups {
 			resolver := group.Scope
 			if resolver == nil {
@@ -121,7 +122,11 @@ func RequireAnyPermissions(authorizer *authz.Authorizer, groups ...PermissionGro
 			}
 			projectID, err := resolver(c)
 			if err != nil {
-				// Scope resolution error (e.g. malformed project ID in param): skip group.
+				// Capture the first scope-resolution error; still try remaining groups
+				// (a later global-scope group may succeed without needing projectId).
+				if firstScopeErr == nil {
+					firstScopeErr = err
+				}
 				continue
 			}
 			allowed, err := authorizer.HasPermissions(c.Request.Context(), userID, projectID, claims.Role, group.Permissions...)
@@ -135,6 +140,12 @@ func RequireAnyPermissions(authorizer *authz.Authorizer, groups ...PermissionGro
 			}
 		}
 
+		// Surface the scope-resolution error (e.g. 400 for an invalid projectId)
+		// rather than hiding it behind a generic 403 Forbidden.
+		if firstScopeErr != nil {
+			presenter.Error(c, firstScopeErr)
+			return
+		}
 		presenter.Error(c, apierr.New(apierr.CodeForbidden, "insufficient permissions"))
 	}
 }

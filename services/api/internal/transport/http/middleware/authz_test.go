@@ -217,3 +217,48 @@ func TestRequireAnyPermissions_AllowedByWildcard_GlobalProjectsAll(t *testing.T)
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+func TestRequireAnyPermissions_InvalidProjectID_Returns400(t *testing.T) {
+	// A request with an invalid (non-UUID) projectId should return 400, not 403.
+	// The project-scoped group's resolver fails; no global-scope group is present.
+	r := gin.New()
+	store := &mockPermissionStore{}
+	r.GET("/projects/:projectId/members",
+		withClaims("USER"),
+		RequireAnyPermissions(authz.NewAuthorizer(store),
+			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/not-a-uuid/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestRequireAnyPermissions_InvalidProjectID_GlobalGroupSucceeds(t *testing.T) {
+	// Even when the project-scoped group's resolver fails (bad UUID), a preceding
+	// global-scope group that satisfies the permission check should allow access.
+	r := gin.New()
+	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}}
+	r.GET("/projects/:projectId/members",
+		withClaims("USER"),
+		RequireAnyPermissions(authz.NewAuthorizer(store),
+			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/not-a-uuid/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
