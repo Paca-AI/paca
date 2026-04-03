@@ -23,8 +23,10 @@ func seedProjectAdminUser(t *testing.T, env *e2eEnv, username, password string) 
 		ID:   uuid.New(),
 		Name: roleName,
 		Permissions: map[string]any{
+			"projects.create":       true,
 			"projects.read":         true,
 			"projects.write":        true,
+			"projects.delete":       true,
 			"project.roles.read":    true,
 			"project.roles.write":   true,
 			"project.members.read":  true,
@@ -194,19 +196,40 @@ func TestE2EProject_Unauthenticated(t *testing.T) {
 
 func TestE2EProject_InsufficientPermission(t *testing.T) {
 	env := newE2EEnv(t)
-	// A plain USER should not have projects.read permission unless their global
-	// role grants it. Seed a user with only the default USER role.
+	// A plain USER has no projects.create permission. They can list projects
+	// (receiving an empty list) but cannot create one.
 	seedUser(t, env, "plain-user", "plainpass1", "Plain User")
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
 	loginResp := login(env.ctx, t, client, env.base, "plain-user", "plainpass1")
+	token := cookieValue(loginResp, "access_token")
 	_ = loginResp.Body.Close()
 
-	req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
-	resp := mustDo(t, client, req)
-	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusForbidden)
-	assertErrorCode(t, resp, "FORBIDDEN")
+	t.Run("list_projects_returns_empty", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		total, _ := data["total"].(float64)
+		if total != 0 {
+			t.Errorf("expected 0 projects for plain user, got %v", total)
+		}
+	})
+
+	t.Run("create_project_forbidden", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{"name": "should-fail", "description": ""})
+		req := mustRequest(env.ctx, t, http.MethodPost, env.base+"/api/v1/projects", body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -501,4 +524,409 @@ func TestE2EProject_DeleteCascadesRolesAndMembers(t *testing.T) {
 	resp = mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()
 	assertStatus(t, resp, http.StatusNotFound)
+}
+
+// ---------------------------------------------------------------------------
+// Role-based access control workflow tests
+// ---------------------------------------------------------------------------
+
+// createProjectRoleWithPermsViaAPI creates a project-scoped role with arbitrary
+// permissions and returns its ID.
+func createProjectRoleWithPermsViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, roleName string, permissions map[string]any) string {
+	t.Helper()
+	body := jsonBody(t, map[string]any{
+		"role_name":   roleName,
+		"permissions": permissions,
+	})
+	url := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projectID)
+	req := mustRequest(env.ctx, t, http.MethodPost, url, body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusCreated)
+	var env2 envelope
+	decodeJSON(t, resp, &env2)
+	data := assertDataMap(t, env2)
+	id, _ := data["id"].(string)
+	return id
+}
+
+// loginUser creates a fresh HTTP client, logs in, and returns the client plus
+// access token extracted from the response cookie.
+func loginUser(t *testing.T, env *e2eEnv, username, password string) (*http.Client, string) {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
+	resp := login(env.ctx, t, client, env.base, username, password)
+	defer func() { _ = resp.Body.Close() }()
+	return client, cookieValue(resp, "access_token")
+}
+
+// addMemberViaAPI adds a user as a project member using the given auth token.
+func addMemberViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, userID, roleID string) {
+	t.Helper()
+	url := fmt.Sprintf("%s/api/v1/projects/%s/members", env.base, projectID)
+	req := mustRequest(env.ctx, t, http.MethodPost, url,
+		jsonBody(t, map[string]any{"user_id": userID, "project_role_id": roleID}))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusCreated)
+}
+
+// TestE2EProject_ProjectViewerAccess verifies that a project member with a
+// viewer-only role (projects.read) can GET the project but cannot update or
+// delete it, and that the project appears in their accessible list.
+func TestE2EProject_ProjectViewerAccess(t *testing.T) {
+	env := newE2EEnv(t)
+
+	seedProjectAdminUser(t, env, "viewer-access-admin", "adminpass1")
+	adminClient, adminToken := projectAdminLogin(t, env, "viewer-access-admin", "adminpass1")
+	projID := createProjectViaAPI(t, env, adminClient, adminToken, "viewer-access-project-"+uuid.NewString(), "")
+
+	// Create a project role that only grants projects.read.
+	viewerRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "read-only",
+		map[string]any{"projects.read": true})
+
+	// Seed a plain user and add them as a project member with the viewer role.
+	seedUser(t, env, "viewer-access-user", "viewerpass1", "Viewer Access User")
+	viewerUser, err := env.userRepo.FindByUsername(env.ctx, "viewer-access-user")
+	if err != nil {
+		t.Fatalf("find viewer user: %v", err)
+	}
+	addMemberViaAPI(t, env, adminClient, adminToken, projID, viewerUser.ID.String(), viewerRoleID)
+
+	viewerClient, viewerToken := loginUser(t, env, "viewer-access-user", "viewerpass1")
+
+	t.Run("viewer_can_get_project", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet,
+			env.base+"/api/v1/projects/"+projID, nil)
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		if id, _ := data["id"].(string); id != projID {
+			t.Errorf("expected project id %q, got %q", projID, id)
+		}
+	})
+
+	t.Run("viewer_cannot_update_project", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{"name": "hacked", "description": ""})
+		req := mustRequest(env.ctx, t, http.MethodPatch,
+			env.base+"/api/v1/projects/"+projID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("viewer_cannot_delete_project", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodDelete,
+			env.base+"/api/v1/projects/"+projID, nil)
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("project_appears_in_viewer_accessible_list", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet,
+			env.base+"/api/v1/projects", nil)
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		total, _ := data["total"].(float64)
+		if total < 1 {
+			t.Errorf("expected viewer to see at least 1 accessible project, got %v", total)
+		}
+	})
+}
+
+// TestE2EProject_NonMemberForbidden verifies that an authenticated user who is
+// not a project member and has no global projects.read cannot access any
+// project-specific endpoint.
+func TestE2EProject_NonMemberForbidden(t *testing.T) {
+	env := newE2EEnv(t)
+
+	seedProjectAdminUser(t, env, "non-member-admin", "adminpass2")
+	adminClient, adminToken := projectAdminLogin(t, env, "non-member-admin", "adminpass2")
+	projID := createProjectViaAPI(t, env, adminClient, adminToken, "non-member-project-"+uuid.NewString(), "")
+
+	// Seed a plain user with no project membership.
+	seedUser(t, env, "non-member-user", "nonmbrpass1", "Non Member User")
+	nmClient, nmToken := loginUser(t, env, "non-member-user", "nonmbrpass1")
+
+	t.Run("get_project_forbidden", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet,
+			env.base+"/api/v1/projects/"+projID, nil)
+		req.Header.Set("Authorization", "Bearer "+nmToken)
+		resp := mustDo(t, nmClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("update_project_forbidden", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{"name": "hacked"})
+		req := mustRequest(env.ctx, t, http.MethodPatch,
+			env.base+"/api/v1/projects/"+projID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+nmToken)
+		resp := mustDo(t, nmClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("delete_project_forbidden", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodDelete,
+			env.base+"/api/v1/projects/"+projID, nil)
+		req.Header.Set("Authorization", "Bearer "+nmToken)
+		resp := mustDo(t, nmClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("non_member_project_not_in_accessible_list", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet,
+			env.base+"/api/v1/projects", nil)
+		req.Header.Set("Authorization", "Bearer "+nmToken)
+		resp := mustDo(t, nmClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		total, _ := data["total"].(float64)
+		if total != 0 {
+			t.Errorf("expected non-member to see 0 projects, got %v", total)
+		}
+	})
+}
+
+// TestE2EProject_MemberRolePermissionsEnforced verifies that project members
+// can only perform the operations their project role grants. A "manager" role
+// (with members.write, roles.write, projects.write) is compared against a
+// "viewer" role (projects.read only).
+func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
+	env := newE2EEnv(t)
+
+	seedProjectAdminUser(t, env, "perm-test-admin", "adminpass3")
+	adminClient, adminToken := projectAdminLogin(t, env, "perm-test-admin", "adminpass3")
+	projID := createProjectViaAPI(t, env, adminClient, adminToken, "perm-test-project-"+uuid.NewString(), "")
+
+	managerRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "proj-manager",
+		map[string]any{
+			"projects.read":         true,
+			"projects.write":        true,
+			"project.members.read":  true,
+			"project.members.write": true,
+			"project.roles.read":    true,
+			"project.roles.write":   true,
+		})
+	viewerRoleID := createProjectRoleWithPermsViaAPI(t, env, adminClient, adminToken, projID, "proj-viewer",
+		map[string]any{"projects.read": true})
+
+	// Seed and add manager user.
+	seedUser(t, env, "perm-mgr-user", "mgrpass1", "Perm Manager User")
+	mgrUser, err := env.userRepo.FindByUsername(env.ctx, "perm-mgr-user")
+	if err != nil {
+		t.Fatalf("find manager user: %v", err)
+	}
+	addMemberViaAPI(t, env, adminClient, adminToken, projID, mgrUser.ID.String(), managerRoleID)
+
+	// Seed and add viewer user.
+	seedUser(t, env, "perm-viewer-user", "viewerpass2", "Perm Viewer User")
+	viewerUser, err := env.userRepo.FindByUsername(env.ctx, "perm-viewer-user")
+	if err != nil {
+		t.Fatalf("find viewer user: %v", err)
+	}
+	addMemberViaAPI(t, env, adminClient, adminToken, projID, viewerUser.ID.String(), viewerRoleID)
+
+	// Seed an extra user to use as the add/remove target.
+	seedUser(t, env, "perm-extra-user", "extrapass1", "Extra User")
+	extraUser, err := env.userRepo.FindByUsername(env.ctx, "perm-extra-user")
+	if err != nil {
+		t.Fatalf("find extra user: %v", err)
+	}
+
+	mgrClient, mgrToken := loginUser(t, env, "perm-mgr-user", "mgrpass1")
+	viewerClient, viewerToken := loginUser(t, env, "perm-viewer-user", "viewerpass2")
+
+	membersURL := fmt.Sprintf("%s/api/v1/projects/%s/members", env.base, projID)
+	rolesURL := fmt.Sprintf("%s/api/v1/projects/%s/roles", env.base, projID)
+
+	t.Run("manager_can_update_project", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{"name": "updated-by-manager", "description": "mgr update"})
+		req := mustRequest(env.ctx, t, http.MethodPatch,
+			env.base+"/api/v1/projects/"+projID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+mgrToken)
+		resp := mustDo(t, mgrClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+	})
+
+	t.Run("viewer_cannot_update_project", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{"name": "hacked-by-viewer", "description": ""})
+		req := mustRequest(env.ctx, t, http.MethodPatch,
+			env.base+"/api/v1/projects/"+projID, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("manager_can_add_member", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
+			jsonBody(t, map[string]any{"user_id": extraUser.ID.String(), "project_role_id": viewerRoleID}))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+mgrToken)
+		resp := mustDo(t, mgrClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusCreated)
+	})
+
+	t.Run("viewer_cannot_add_member", func(t *testing.T) {
+		// extraUser is already a member, but 403 is checked before the conflict.
+		req := mustRequest(env.ctx, t, http.MethodPost, membersURL,
+			jsonBody(t, map[string]any{"user_id": extraUser.ID.String(), "project_role_id": viewerRoleID}))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("manager_can_remove_member", func(t *testing.T) {
+		url := membersURL + "/" + extraUser.ID.String()
+		req := mustRequest(env.ctx, t, http.MethodDelete, url, nil)
+		req.Header.Set("Authorization", "Bearer "+mgrToken)
+		resp := mustDo(t, mgrClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+	})
+
+	t.Run("viewer_cannot_remove_member", func(t *testing.T) {
+		// Target the manager user — authz check happens before existence check.
+		url := membersURL + "/" + mgrUser.ID.String()
+		req := mustRequest(env.ctx, t, http.MethodDelete, url, nil)
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+
+	t.Run("manager_can_create_project_role", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{
+			"role_name":   "mgr-created-role",
+			"permissions": map[string]any{"projects.read": true},
+		})
+		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+mgrToken)
+		resp := mustDo(t, mgrClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusCreated)
+	})
+
+	t.Run("viewer_cannot_create_project_role", func(t *testing.T) {
+		body := jsonBody(t, map[string]any{
+			"role_name":   "viewer-attempted-role",
+			"permissions": map[string]any{"projects.read": true},
+		})
+		req := mustRequest(env.ctx, t, http.MethodPost, rolesURL, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+viewerToken)
+		resp := mustDo(t, viewerClient, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusForbidden)
+		assertErrorCode(t, resp, "FORBIDDEN")
+	})
+}
+
+// TestE2EProject_GlobalReadSeesAllProjects verifies that a user with a global
+// projects.read permission can see ALL projects (not just their own) in the
+// list, as well as access individual project details.
+func TestE2EProject_GlobalReadSeesAllProjects(t *testing.T) {
+	env := newE2EEnv(t)
+
+	// Admin A creates a project.
+	seedProjectAdminUser(t, env, "global-read-admin-a", "adminpassA")
+	clientA, tokenA := projectAdminLogin(t, env, "global-read-admin-a", "adminpassA")
+	projID := createProjectViaAPI(t, env, clientA, tokenA, "global-read-project-"+uuid.NewString(), "")
+
+	// Seed user B who has global projects.read but is NOT a member of A's project.
+	seedUser(t, env, "global-read-user-b", "adminpassB", "Global Read User B")
+	roleName := "GLOBAL_READ_" + uuid.NewString()
+	if err := env.roleRepo.Create(env.ctx, &globalroledom.GlobalRole{
+		ID:   uuid.New(),
+		Name: roleName,
+		Permissions: map[string]any{
+			"projects.read": true,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("create global-read role: %v", err)
+	}
+	assignGlobalRolesByName(t, env, "global-read-user-b", roleName)
+
+	clientB, tokenB := loginUser(t, env, "global-read-user-b", "adminpassB")
+
+	t.Run("global_read_user_can_list_all_projects", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenB)
+		resp := mustDo(t, clientB, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		items, _ := data["items"].([]any)
+		found := false
+		for _, item := range items {
+			if m, ok := item.(map[string]any); ok {
+				if id, _ := m["id"].(string); id == projID {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("expected global-read user to see project %q in list", projID)
+		}
+	})
+
+	t.Run("global_read_user_can_get_project_directly", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet,
+			env.base+"/api/v1/projects/"+projID, nil)
+		req.Header.Set("Authorization", "Bearer "+tokenB)
+		resp := mustDo(t, clientB, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		if id, _ := data["id"].(string); id != projID {
+			t.Errorf("expected project id %q, got %q", projID, id)
+		}
+	})
 }
