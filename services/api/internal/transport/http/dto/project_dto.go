@@ -9,14 +9,14 @@ import (
 
 // --- Project DTOs -----------------------------------------------------------
 
-// CreateProjectRequest is the body for POST /v1/admin/projects.
+// CreateProjectRequest is the body for POST /projects.
 type CreateProjectRequest struct {
 	Name        string         `json:"name" binding:"required"`
 	Description string         `json:"description"`
 	Settings    map[string]any `json:"settings"`
 }
 
-// UpdateProjectRequest is the body for PATCH /v1/admin/projects/:projectId.
+// UpdateProjectRequest is the body for PATCH /projects/:projectId.
 type UpdateProjectRequest struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
