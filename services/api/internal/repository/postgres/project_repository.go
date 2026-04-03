@@ -407,10 +407,15 @@ func (r *ProjectRepository) RemoveMember(ctx context.Context, projectID, userID 
 // --- Mapping helpers --------------------------------------------------------
 
 func toProjectEntity(rec *projectRecord) (*projectdom.Project, error) {
-	id, _ := uuid.Parse(rec.ID)
-	var settings map[string]any
-	if err := json.Unmarshal(rec.Settings, &settings); err != nil {
-		settings = map[string]any{}
+	id, err := uuid.Parse(rec.ID)
+	if err != nil {
+		return nil, fmt.Errorf("project repo: parse id: %w", err)
+	}
+	settings := map[string]any{}
+	if len(rec.Settings) > 0 {
+		if err := json.Unmarshal(rec.Settings, &settings); err != nil {
+			return nil, fmt.Errorf("project repo: unmarshal settings: %w", err)
+		}
 	}
 	var createdBy *uuid.UUID
 	if rec.CreatedBy != nil {
@@ -449,10 +454,15 @@ func fromProjectEntity(p *projectdom.Project) (*projectRecord, error) {
 }
 
 func toProjectRoleEntity(rec *projectRoleRecord) (*projectdom.ProjectRole, error) {
-	id, _ := uuid.Parse(rec.ID)
-	var perms map[string]any
-	if err := json.Unmarshal(rec.Permissions, &perms); err != nil {
-		perms = map[string]any{}
+	id, err := uuid.Parse(rec.ID)
+	if err != nil {
+		return nil, fmt.Errorf("project role repo: parse id: %w", err)
+	}
+	perms := map[string]any{}
+	if len(rec.Permissions) > 0 {
+		if err := json.Unmarshal(rec.Permissions, &perms); err != nil {
+			return nil, fmt.Errorf("project role repo: unmarshal permissions: %w", err)
+		}
 	}
 	var projectID *uuid.UUID
 	if rec.ProjectID != nil {
