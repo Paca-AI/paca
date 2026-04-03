@@ -26,6 +26,19 @@ function profileMenuButton(page: Page) {
 test.describe("Session Management — authenticated", () => {
 	test.use({ storageState: AUTH_FILE });
 
+	test.beforeEach(async ({ page }) => {
+		await page.goto("/home");
+		// If a prior test in the suite logged out the admin and invalidated the server-side
+		// session stored in AUTH_FILE, the app will redirect to login instead of /home.
+		// Re-authenticate directly so these tests remain independent of test order.
+		if (!page.url().includes("/home")) {
+			await page.getByRole("textbox", { name: "Username" }).fill(USERNAME);
+			await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD);
+			await page.getByRole("button", { name: /sign in/i }).click();
+			await page.waitForURL(/\/home/);
+		}
+	});
+
 	test("logout redirects to login page", async ({ page }) => {
 		await page.goto("/home");
 		await expect(

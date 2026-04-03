@@ -511,8 +511,9 @@ function DangerZone({ projectId }: { projectId: string }) {
 	const deleteMutation = useMutation({
 		mutationFn: () => deleteProject(projectId),
 		onSuccess: async () => {
+			queryClient.removeQueries({ queryKey: ["projects", projectId] });
+			await navigate({ to: "/home" });
 			await queryClient.invalidateQueries({ queryKey: ["projects"] });
-			void navigate({ to: "/home" });
 		},
 	});
 
