@@ -130,16 +130,18 @@ function AddMemberDialog({
 	existingMemberIds: Set<string>;
 }) {
 	const queryClient = useQueryClient();
+	const { can } = usePermissions();
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
 	const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 	const [userSearch, setUserSearch] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
+	const canReadUsers = can("users.read");
 
 	const { data: usersData, isLoading: isLoadingUsers } = useQuery({
 		queryKey: ["admin", "users", "all"],
 		queryFn: () => getUsers(1, 500),
-		enabled: open,
+		enabled: open && canReadUsers,
 	});
 
 	const filteredUsers = useMemo<User[]>(() => {
