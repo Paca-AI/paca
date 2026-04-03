@@ -54,7 +54,7 @@ func projectAdminLogin(t *testing.T, env *e2eEnv, username, password string) (*h
 func createProjectViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, name, description string) string {
 	t.Helper()
 	body := jsonBody(t, map[string]any{"name": name, "description": description})
-	req := mustRequest(env.ctx, t, http.MethodPost, env.base+"/api/v1/admin/projects", body)
+	req := mustRequest(env.ctx, t, http.MethodPost, env.base+"/api/v1/projects", body)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp := mustDo(t, client, req)
@@ -108,7 +108,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 
 	t.Run("get_project", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodGet,
-			env.base+"/api/v1/admin/projects/"+projID, nil)
+			env.base+"/api/v1/projects/"+projID, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
@@ -122,7 +122,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 	})
 
 	t.Run("list_projects", func(t *testing.T) {
-		req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/admin/projects", nil)
+		req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
@@ -142,7 +142,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 			"description": "updated description",
 		})
 		req := mustRequest(env.ctx, t, http.MethodPatch,
-			env.base+"/api/v1/admin/projects/"+projID, body)
+			env.base+"/api/v1/projects/"+projID, body)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -158,7 +158,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 
 	t.Run("delete_project", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodDelete,
-			env.base+"/api/v1/admin/projects/"+projID, nil)
+			env.base+"/api/v1/projects/"+projID, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
@@ -167,7 +167,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 
 	t.Run("get_deleted_project_returns_not_found", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodGet,
-			env.base+"/api/v1/admin/projects/"+projID, nil)
+			env.base+"/api/v1/projects/"+projID, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
 		defer func() { _ = resp.Body.Close() }()
@@ -182,7 +182,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 
 func TestE2EProject_Unauthenticated(t *testing.T) {
 	env := newE2EEnv(t)
-	req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/admin/projects", nil)
+	req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
 	resp := mustDo(t, env.client, req)
 	defer func() { _ = resp.Body.Close() }()
 	assertStatus(t, resp, http.StatusUnauthorized)
@@ -202,7 +202,7 @@ func TestE2EProject_InsufficientPermission(t *testing.T) {
 	loginResp := login(env.ctx, t, client, env.base, "plain-user", "plainpass1")
 	_ = loginResp.Body.Close()
 
-	req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/admin/projects", nil)
+	req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
 	resp := mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()
 	assertStatus(t, resp, http.StatusForbidden)
@@ -488,7 +488,7 @@ func TestE2EProject_DeleteCascadesRolesAndMembers(t *testing.T) {
 
 	// Delete the project — DB cascade constraints remove roles and members.
 	req := mustRequest(env.ctx, t, http.MethodDelete,
-		env.base+"/api/v1/admin/projects/"+projID, nil)
+		env.base+"/api/v1/projects/"+projID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp := mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()
@@ -496,7 +496,7 @@ func TestE2EProject_DeleteCascadesRolesAndMembers(t *testing.T) {
 
 	// Confirm the project is gone.
 	req = mustRequest(env.ctx, t, http.MethodGet,
-		env.base+"/api/v1/admin/projects/"+projID, nil)
+		env.base+"/api/v1/projects/"+projID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp = mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()

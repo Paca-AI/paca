@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { usePermissions } from "@/hooks/use-permissions";
 import { DeleteProjectRoleDialog } from "@/components/projects/roles/DeleteProjectRoleDialog";
 import { ProjectRoleFormDialog } from "@/components/projects/roles/ProjectRoleFormDialog";
 
@@ -40,9 +41,12 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	deleteProject,
+	type ProjectMember,
 	type ProjectRole,
+	projectMembersQueryOptions,
 	projectQueryOptions,
 	projectRolesQueryOptions,
 	updateProject,
@@ -55,6 +59,7 @@ export const Route = createFileRoute(
 		await Promise.all([
 			queryClient.ensureQueryData(projectQueryOptions(projectId)),
 			queryClient.ensureQueryData(projectRolesQueryOptions(projectId)),
+			queryClient.ensureQueryData(projectMembersQueryOptions(projectId)),
 		]);
 	},
 	component: SettingsPage,
@@ -62,7 +67,7 @@ export const Route = createFileRoute(
 
 // ── General Settings ──────────────────────────────────────────────────────────
 
-function GeneralSettings({ projectId }: { projectId: string }) {
+function GeneralSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const queryClient = useQueryClient();
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 
@@ -123,6 +128,7 @@ function GeneralSettings({ projectId }: { projectId: string }) {
 							setNameError(null);
 						}}
 						placeholder="My awesome project"
+						disabled={!canEdit}
 						className={
 							nameError
 								? "border-destructive focus-visible:ring-destructive/30"
@@ -142,6 +148,7 @@ function GeneralSettings({ projectId }: { projectId: string }) {
 						onChange={(e) => setDescription(e.target.value)}
 						placeholder="Describe what this project is about…"
 						rows={3}
+						disabled={!canEdit}
 						className="resize-none"
 					/>
 				</div>
@@ -152,24 +159,30 @@ function GeneralSettings({ projectId }: { projectId: string }) {
 					</p>
 				) : null}
 
-				<div className="flex items-center gap-2 pt-1">
-					<Button
-						size="sm"
-						disabled={!isDirty || mutation.isPending}
-						onClick={() => mutation.mutate()}
-						className="gap-1.5"
-					>
-						{mutation.isPending ? (
-							<Loader2 className="size-3.5 animate-spin" />
+				{canEdit ? (
+					<div className="flex items-center gap-2 pt-1">
+						<Button
+							size="sm"
+							disabled={!isDirty || mutation.isPending}
+							onClick={() => mutation.mutate()}
+							className="gap-1.5"
+						>
+							{mutation.isPending ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : null}
+							Save changes
+						</Button>
+						{saved ? (
+							<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+								Saved ✓
+							</span>
 						) : null}
-						Save changes
-					</Button>
-					{saved ? (
-						<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-							Saved ✓
-						</span>
-					) : null}
-				</div>
+					</div>
+				) : (
+					<p className="text-xs text-muted-foreground">
+						You don't have permission to edit this project.
+					</p>
+				)}
 			</div>
 		</div>
 	);
@@ -244,11 +257,12 @@ function RolesTableSkeleton() {
 
 interface RoleRowProps {
 	role: ProjectRole;
+	canManageRoles: boolean;
 	onEdit: (role: ProjectRole) => void;
 	onDelete: (role: ProjectRole) => void;
 }
 
-function RoleTableRow({ role, onEdit, onDelete }: RoleRowProps) {
+function RoleTableRow({ role, canManageRoles, onEdit, onDelete }: RoleRowProps) {
 	const isSystem = !role.project_id;
 	const active = activePermissions(role.permissions);
 
@@ -284,7 +298,7 @@ function RoleTableRow({ role, onEdit, onDelete }: RoleRowProps) {
 				{formatDate(role.created_at)}
 			</TableCell>
 			<TableCell className="px-5">
-				{!isSystem ? (
+			{!isSystem && canManageRoles ? (
 					<div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
 						<Button
 							variant="ghost"
@@ -310,7 +324,7 @@ function RoleTableRow({ role, onEdit, onDelete }: RoleRowProps) {
 	);
 }
 
-function RolesSettings({ projectId }: { projectId: string }) {
+function RolesSettings({ projectId, canManageRoles }: { projectId: string; canManageRoles: boolean }) {
 	const { data: roles, isLoading } = useQuery(
 		projectRolesQueryOptions(projectId),
 	);
@@ -331,15 +345,17 @@ function RolesSettings({ projectId }: { projectId: string }) {
 						Manage roles and permissions for members of this project.
 					</p>
 				</div>
-				<Button
-					size="sm"
-					variant="outline"
-					className="gap-1.5 border-border/60 shrink-0"
-					onClick={() => setCreateOpen(true)}
-				>
-					<Plus className="size-3.5" />
-					New role
-				</Button>
+				{canManageRoles ? (
+					<Button
+						size="sm"
+						variant="outline"
+						className="gap-1.5 border-border/60 shrink-0"
+						onClick={() => setCreateOpen(true)}
+					>
+						<Plus className="size-3.5" />
+						New role
+					</Button>
+				) : null}
 			</div>
 
 			{/* Stats strip */}
@@ -386,14 +402,16 @@ function RolesSettings({ projectId }: { projectId: string }) {
 							Create your first role to start assigning permissions to members.
 						</p>
 					</div>
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={() => setCreateOpen(true)}
-					>
-						<Plus className="size-4" />
-						Create role
-					</Button>
+					{canManageRoles ? (
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => setCreateOpen(true)}
+						>
+							<Plus className="size-4" />
+							Create role
+						</Button>
+					) : null}
 				</div>
 			) : (
 				<div className="overflow-x-auto rounded-xl border mt-4">
@@ -417,6 +435,7 @@ function RolesSettings({ projectId }: { projectId: string }) {
 								<RoleTableRow
 									key={role.id}
 									role={role}
+									canManageRoles={canManageRoles}
 									onEdit={setEditRole}
 									onDelete={setDeleteRole}
 								/>
@@ -598,6 +617,42 @@ const NAV_ITEMS = [
 function SettingsPage() {
 	const { projectId } = Route.useParams();
 	const { data: project } = useQuery(projectQueryOptions(projectId));
+	const { hasPermission } = usePermissions();
+	const { data: currentUser } = useQuery(currentUserQueryOptions);
+	const { data: members = [] } = useQuery(
+		projectMembersQueryOptions(projectId),
+	);
+	const { data: roles = [] } = useQuery(projectRolesQueryOptions(projectId));
+
+	const myMembership = (members as ProjectMember[]).find(
+		(m) => m.user_id === currentUser?.id,
+	);
+	const myRole = (roles as ProjectRole[]).find(
+		(r) => r.id === myMembership?.project_role_id,
+	);
+	const hasProjectDelete = Boolean(
+		(myRole?.permissions as Record<string, boolean> | undefined)?.[
+			"projects.delete"
+		],
+	);
+	const hasProjectWrite = Boolean(
+		(myRole?.permissions as Record<string, boolean> | undefined)?.[
+			"projects.write"
+		],
+	);
+	const hasProjectRolesWrite = Boolean(
+		(myRole?.permissions as Record<string, boolean> | undefined)?.[
+			"project.roles.write"
+		],
+	);
+	const canDelete = hasPermission("projects.delete") || hasProjectDelete;
+	const canEditProject = hasPermission("projects.write") || hasProjectWrite;
+	const canManageRoles = hasPermission("project.roles.write") || hasProjectRolesWrite;
+
+	const visibleNavItems = canDelete
+		? NAV_ITEMS
+		: NAV_ITEMS.filter((i) => i.id !== "danger");
+
 	const [activeSection, setActiveSection] = useState<
 		"general" | "roles" | "danger"
 	>("general");
@@ -637,7 +692,7 @@ function SettingsPage() {
 						<p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 px-3 mb-1">
 							Settings
 						</p>
-						{NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+						{visibleNavItems.map(({ id, label, icon: Icon }) => (
 							<button
 								key={id}
 								type="button"
@@ -658,7 +713,7 @@ function SettingsPage() {
 					<div className="flex-1 min-w-0">
 						{/* Mobile section picker */}
 						<div className="flex gap-1 mb-6 lg:hidden">
-							{NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+							{visibleNavItems.map(({ id, label, icon: Icon }) => (
 								<button
 									key={id}
 									type="button"
@@ -676,12 +731,14 @@ function SettingsPage() {
 						</div>
 
 						{activeSection === "general" && (
-							<GeneralSettings projectId={projectId} />
+							<GeneralSettings projectId={projectId} canEdit={canEditProject} />
 						)}
 						{activeSection === "roles" && (
-							<RolesSettings projectId={projectId} />
+							<RolesSettings projectId={projectId} canManageRoles={canManageRoles} />
 						)}
-						{activeSection === "danger" && <DangerZone projectId={projectId} />}
+							{activeSection === "danger" && canDelete && (
+								<DangerZone projectId={projectId} />
+							)}
 					</div>
 				</div>
 			</div>

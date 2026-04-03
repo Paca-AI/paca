@@ -107,3 +107,113 @@ func TestRequirePermissions_ProjectScope(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// RequireAnyPermissions
+// ---------------------------------------------------------------------------
+
+func TestRequireAnyPermissions_Unauthenticated(t *testing.T) {
+	r := gin.New()
+	r.GET("/resource",
+		RequireAnyPermissions(authz.NewAuthorizer(nil),
+			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/resource", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestRequireAnyPermissions_Forbidden(t *testing.T) {
+	// User has neither global projects.read nor project-scoped members.read.
+	r := gin.New()
+	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionUsersRead}}
+	r.GET("/projects/:projectId/members",
+		withClaims("USER"),
+		RequireAnyPermissions(authz.NewAuthorizer(store),
+			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/"+uuid.NewString()+"/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestRequireAnyPermissions_AllowedByFirstGroup_GlobalProjectsRead(t *testing.T) {
+	// User has global projects.read → should be allowed even without project-scoped members.read.
+	r := gin.New()
+	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionProjectsRead}}
+	r.GET("/projects/:projectId/members",
+		withClaims("USER"),
+		RequireAnyPermissions(authz.NewAuthorizer(store),
+			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/"+uuid.NewString()+"/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestRequireAnyPermissions_AllowedBySecondGroup_ProjectScopedRead(t *testing.T) {
+	// User does NOT have global projects.read but does have project-scoped members.read.
+	r := gin.New()
+	store := &mockPermissionStore{projectPerms: []authz.Permission{authz.PermissionProjectMembersRead}}
+	r.GET("/projects/:projectId/members",
+		withClaims("USER"),
+		RequireAnyPermissions(authz.NewAuthorizer(store),
+			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/"+uuid.NewString()+"/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestRequireAnyPermissions_AllowedByWildcard_GlobalProjectsAll(t *testing.T) {
+	// User has global projects.* → satisfies projects.read via wildcard expansion.
+	r := gin.New()
+	store := &mockPermissionStore{globalPerms: []authz.Permission{authz.PermissionProjectsAll}}
+	r.GET("/projects/:projectId/members",
+		withClaims("USER"),
+		RequireAnyPermissions(authz.NewAuthorizer(store),
+			PermissionGroup{Scope: GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+			PermissionGroup{Scope: ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+		),
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+	)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/projects/"+uuid.NewString()+"/members", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}

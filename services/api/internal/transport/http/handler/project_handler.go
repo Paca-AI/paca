@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/paca/api/internal/apierr"
 	projectdom "github.com/paca/api/internal/domain/project"
+	"github.com/paca/api/internal/platform/authz"
 	"github.com/paca/api/internal/transport/http/dto"
 	"github.com/paca/api/internal/transport/http/middleware"
 	"github.com/paca/api/internal/transport/http/presenter"
@@ -14,22 +15,52 @@ import (
 
 // ProjectHandler handles project management endpoints.
 type ProjectHandler struct {
-	svc projectdom.Service
+	svc        projectdom.Service
+	authorizer *authz.Authorizer
 }
 
-// NewProjectHandler returns a ProjectHandler wired to the service.
-func NewProjectHandler(svc projectdom.Service) *ProjectHandler {
-	return &ProjectHandler{svc: svc}
+// NewProjectHandler returns a ProjectHandler wired to the service and authorizer.
+func NewProjectHandler(svc projectdom.Service, authorizer *authz.Authorizer) *ProjectHandler {
+	return &ProjectHandler{svc: svc, authorizer: authorizer}
 }
 
-// ListProjects handles GET /admin/projects.
+// ListProjects handles GET /projects.
+// Users with the global projects.read permission receive all projects.
+// All other authenticated users receive only the projects they are a member of.
 func (h *ProjectHandler) ListProjects(c *gin.Context) {
+	claims := middleware.ClaimsFrom(c)
 	page, pageSize := pagingParams(c)
-	projects, total, err := h.svc.List(c.Request.Context(), page, pageSize)
+
+	var (
+		projects []*projectdom.Project
+		total    int64
+		err      error
+	)
+
+	userID, parseErr := uuid.Parse(claims.Subject)
+	if parseErr != nil {
+		presenter.Error(c, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	hasGlobalRead, authzErr := h.authorizer.HasPermissions(
+		c.Request.Context(), userID, nil, claims.Role, authz.PermissionProjectsRead,
+	)
+	if authzErr != nil {
+		presenter.Error(c, authzErr)
+		return
+	}
+
+	if hasGlobalRead {
+		projects, total, err = h.svc.List(c.Request.Context(), page, pageSize)
+	} else {
+		projects, total, err = h.svc.ListAccessible(c.Request.Context(), userID, page, pageSize)
+	}
 	if err != nil {
 		presenter.Error(c, err)
 		return
 	}
+
 	resp := make([]dto.ProjectResponse, 0, len(projects))
 	for _, p := range projects {
 		resp = append(resp, dto.ProjectFromEntity(p))
@@ -37,7 +68,7 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	presenter.OK(c, gin.H{"items": resp, "total": total, "page": page, "page_size": pageSize})
 }
 
-// GetProject handles GET /admin/projects/:projectId.
+// GetProject handles GET /projects/:projectId.
 func (h *ProjectHandler) GetProject(c *gin.Context) {
 	id, err := parseProjectID(c)
 	if err != nil {
@@ -52,7 +83,7 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 	presenter.OK(c, dto.ProjectFromEntity(p))
 }
 
-// CreateProject handles POST /admin/projects.
+// CreateProject handles POST /projects.
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	var req dto.CreateProjectRequest
 	if !middleware.BindJSON(c, &req) {
@@ -80,7 +111,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	presenter.Created(c, dto.ProjectFromEntity(p))
 }
 
-// UpdateProject handles PATCH /admin/projects/:projectId.
+// UpdateProject handles PATCH /projects/:projectId.
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	id, err := parseProjectID(c)
 	if err != nil {
@@ -105,7 +136,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	presenter.OK(c, dto.ProjectFromEntity(p))
 }
 
-// DeleteProject handles DELETE /admin/projects/:projectId.
+// DeleteProject handles DELETE /projects/:projectId.
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 	id, err := parseProjectID(c)
 	if err != nil {

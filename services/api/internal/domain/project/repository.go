@@ -18,6 +18,8 @@ type Repository interface {
 // ProjectRepository defines persistence operations for projects.
 type ProjectRepository interface {
 	List(ctx context.Context, offset, limit int) ([]*Project, int64, error)
+	// ListAccessible returns only projects the given user is a member of.
+	ListAccessible(ctx context.Context, userID uuid.UUID, offset, limit int) ([]*Project, int64, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*Project, error)
 	Create(ctx context.Context, p *Project) error
 	Update(ctx context.Context, p *Project) error

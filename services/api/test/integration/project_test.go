@@ -104,6 +104,30 @@ func (r *fakeProjectRepo) List(_ context.Context, offset, limit int) ([]*project
 	return all[offset:end], total, nil
 }
 
+func (r *fakeProjectRepo) ListAccessible(_ context.Context, userID uuid.UUID, offset, limit int) ([]*projectdom.Project, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	all := make([]*projectdom.Project, 0)
+	for _, p := range r.projects {
+		for _, m := range r.members {
+			if m.ProjectID == p.ID && m.UserID == userID {
+				all = append(all, cloneProject(p))
+				break
+			}
+		}
+	}
+	total := int64(len(all))
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+
 func (r *fakeProjectRepo) FindByID(_ context.Context, id uuid.UUID) (*projectdom.Project, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -342,7 +366,7 @@ func buildProjectTestRouter(repo *fakeProjectRepo, store *projectPermStore) *gin
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
 		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
-		Project:      handler.NewProjectHandler(projectService),
+		Project:      handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
 		Log:          log,
 	})
 }
@@ -412,12 +436,17 @@ func roleIDFromCreate(t *testing.T, w *httptest.ResponseRecorder) string {
 func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 	repo := newFakeProjectRepo()
 	store := &projectPermStore{
-		globalPerms: []authz.Permission{authz.PermissionProjectsRead, authz.PermissionProjectsWrite},
+		globalPerms: []authz.Permission{
+			authz.PermissionProjectsRead,
+			authz.PermissionProjectsWrite,
+			authz.PermissionProjectsCreate,
+			authz.PermissionProjectsDelete,
+		},
 	}
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, uuid.NewString())
 
-	createReq := authedJSONReq(t.Context(), http.MethodPost, "/api/v1/admin/projects", tok, map[string]any{
+	createReq := authedJSONReq(t.Context(), http.MethodPost, "/api/v1/projects", tok, map[string]any{
 		"name":        "Project Alpha",
 		"description": "first",
 	})
@@ -427,17 +456,17 @@ func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 	}
 	projectID := projectIDFromCreate(t, createW)
 
-	listW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/admin/projects", tok, nil))
+	listW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/projects", tok, nil))
 	if listW.Code != http.StatusOK {
 		t.Fatalf("list: expected 200, got %d (%s)", listW.Code, listW.Body.String())
 	}
 
-	getW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/admin/projects/"+projectID, tok, nil))
+	getW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/projects/"+projectID, tok, nil))
 	if getW.Code != http.StatusOK {
 		t.Fatalf("get: expected 200, got %d (%s)", getW.Code, getW.Body.String())
 	}
 
-	patchW := serve(r, authedJSONReq(t.Context(), http.MethodPatch, "/api/v1/admin/projects/"+projectID, tok, map[string]any{
+	patchW := serve(r, authedJSONReq(t.Context(), http.MethodPatch, "/api/v1/projects/"+projectID, tok, map[string]any{
 		"name":        "Project Alpha Updated",
 		"description": "updated",
 	}))
@@ -445,12 +474,12 @@ func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 		t.Fatalf("update: expected 200, got %d (%s)", patchW.Code, patchW.Body.String())
 	}
 
-	delW := serve(r, authedJSONReq(t.Context(), http.MethodDelete, "/api/v1/admin/projects/"+projectID, tok, nil))
+	delW := serve(r, authedJSONReq(t.Context(), http.MethodDelete, "/api/v1/projects/"+projectID, tok, nil))
 	if delW.Code != http.StatusOK {
 		t.Fatalf("delete: expected 200, got %d (%s)", delW.Code, delW.Body.String())
 	}
 
-	getDeletedW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/admin/projects/"+projectID, tok, nil))
+	getDeletedW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/projects/"+projectID, tok, nil))
 	if getDeletedW.Code != http.StatusNotFound {
 		t.Fatalf("get deleted: expected 404, got %d (%s)", getDeletedW.Code, getDeletedW.Body.String())
 	}
@@ -465,15 +494,15 @@ func TestIntegrationProjectManagement_AuthzGuards(t *testing.T) {
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, uuid.NewString())
 
-	writeW := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/admin/projects", tok, map[string]any{"name": "No Write"}))
+	writeW := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/projects", tok, map[string]any{"name": "No Write"}))
 	if writeW.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without projects.write, got %d (%s)", writeW.Code, writeW.Body.String())
+		t.Fatalf("expected 403 without projects.create, got %d (%s)", writeW.Code, writeW.Body.String())
 	}
 	if code := decodeErrorCode(t, writeW); code != "FORBIDDEN" {
 		t.Fatalf("expected FORBIDDEN, got %q", code)
 	}
 
-	unauthW := serve(r, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/admin/projects", nil))
+	unauthW := serve(r, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/projects", nil))
 	if unauthW.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without token, got %d (%s)", unauthW.Code, unauthW.Body.String())
 	}

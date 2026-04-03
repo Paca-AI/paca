@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
 	createProject,
 	type Project,
@@ -311,7 +312,10 @@ const GETTING_STARTED = [
 function HomePage() {
 	const { data: user } = useQuery(currentUserQueryOptions);
 	const { data: projectsResult } = useQuery(projectsQueryOptions());
+	const { hasPermission } = usePermissions();
 	const [createOpen, setCreateOpen] = useState(false);
+
+	const canCreate = hasPermission("projects.create");
 
 	const projects = projectsResult?.items ?? [];
 	const projectCount = projectsResult?.total ?? 0;
@@ -371,22 +375,16 @@ function HomePage() {
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
-						<Button
-							size="sm"
-							variant="outline"
-							className="gap-1.5 border-border/70"
-						>
-							<Users className="size-3.5" />
-							Invite
-						</Button>
-						<Button
-							size="sm"
-							className="gap-1.5 shadow-sm shadow-primary/20"
-							onClick={() => setCreateOpen(true)}
-						>
-							<Plus className="size-3.5" />
-							New Project
-						</Button>
+						{canCreate ? (
+							<Button
+								size="sm"
+								className="gap-1.5 shadow-sm shadow-primary/20"
+								onClick={() => setCreateOpen(true)}
+							>
+								<Plus className="size-3.5" />
+								New Project
+							</Button>
+						) : null}
 					</div>
 				</div>
 			</div>
@@ -439,31 +437,35 @@ function HomePage() {
 									in your workspace
 								</p>
 							</div>
-							<Button
-								size="sm"
-								variant="outline"
-								className="gap-1.5 border-border/60"
-								onClick={() => setCreateOpen(true)}
-							>
-								<Plus className="size-3.5" />
-								New
-							</Button>
+							{canCreate ? (
+								<Button
+									size="sm"
+									variant="outline"
+									className="gap-1.5 border-border/60"
+									onClick={() => setCreateOpen(true)}
+								>
+									<Plus className="size-3.5" />
+									New
+								</Button>
+							) : null}
 						</div>
 						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 							{projects.map((project) => (
 								<ProjectCard key={project.id} project={project} />
 							))}
 							{/* Add project card */}
-							<button
-								type="button"
-								onClick={() => setCreateOpen(true)}
-								className="group flex min-h-30 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/60 bg-muted/10 p-5 text-muted-foreground/50 transition-all hover:border-primary/40 hover:bg-primary/3 hover:text-primary/70"
-							>
-								<div className="flex size-9 items-center justify-center rounded-xl border border-dashed border-current transition-colors">
-									<Plus className="size-4" />
-								</div>
-								<span className="text-xs font-medium">New project</span>
-							</button>
+							{canCreate ? (
+								<button
+									type="button"
+									onClick={() => setCreateOpen(true)}
+									className="group flex min-h-30 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/60 bg-muted/10 p-5 text-muted-foreground/50 transition-all hover:border-primary/40 hover:bg-primary/3 hover:text-primary/70"
+								>
+									<div className="flex size-9 items-center justify-center rounded-xl border border-dashed border-current transition-colors">
+										<Plus className="size-4" />
+									</div>
+									<span className="text-xs font-medium">New project</span>
+								</button>
+							) : null}
 						</div>
 					</div>
 				) : (
@@ -522,12 +524,16 @@ function HomePage() {
 								<CardContent className="pt-0">
 									<div className="space-y-2">
 										{[
-											{
-												icon: FolderKanban,
-												label: "New Project",
-												description: "Create a scrumban board",
-												onClick: () => setCreateOpen(true),
-											},
+											...(canCreate
+												? [
+														{
+															icon: FolderKanban,
+															label: "New Project",
+															description: "Create a scrumban board",
+															onClick: () => setCreateOpen(true),
+														},
+													]
+												: []),
 											{
 												icon: Users,
 												label: "Invite Team",

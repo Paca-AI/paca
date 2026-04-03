@@ -32,6 +32,8 @@ type Service interface {
 // ProjectService defines project CRUD use cases.
 type ProjectService interface {
 	List(ctx context.Context, page, pageSize int) ([]*Project, int64, error)
+	// ListAccessible returns only the projects the given user is a member of.
+	ListAccessible(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*Project, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Project, error)
 	Create(ctx context.Context, in CreateProjectInput) (*Project, error)
 	Update(ctx context.Context, id uuid.UUID, in UpdateProjectInput) (*Project, error)

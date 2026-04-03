@@ -88,6 +88,39 @@ func (r *ProjectRepository) List(ctx context.Context, offset, limit int) ([]*pro
 	return projects, total, nil
 }
 
+// ListAccessible returns the projects that the given user is a member of.
+func (r *ProjectRepository) ListAccessible(ctx context.Context, userID uuid.UUID, offset, limit int) ([]*projectdom.Project, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Table("projects").
+		Joins("JOIN project_members ON project_members.project_id = projects.id").
+		Where("project_members.user_id = ?", userID.String()).
+		Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("project repo: list accessible count: %w", err)
+	}
+
+	var records []projectRecord
+	if err := r.db.WithContext(ctx).
+		Joins("JOIN project_members ON project_members.project_id = projects.id").
+		Where("project_members.user_id = ?", userID.String()).
+		Order("projects.created_at ASC").
+		Offset(offset).
+		Limit(limit).
+		Find(&records).Error; err != nil {
+		return nil, 0, fmt.Errorf("project repo: list accessible: %w", err)
+	}
+
+	projects := make([]*projectdom.Project, 0, len(records))
+	for i := range records {
+		p, err := toProjectEntity(&records[i])
+		if err != nil {
+			return nil, 0, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, total, nil
+}
+
 // FindByID returns a project by its primary key.
 func (r *ProjectRepository) FindByID(ctx context.Context, id uuid.UUID) (*projectdom.Project, error) {
 	var record projectRecord

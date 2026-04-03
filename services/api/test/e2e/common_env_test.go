@@ -187,7 +187,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService),
 		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
-		Project:      handler.NewProjectHandler(projectService),
+		Project:      handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore)),
 		Log:          log,
 	})
 

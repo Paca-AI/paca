@@ -117,7 +117,7 @@ func New(cfg *config.Config) (*App, error) {
 		Auth:         handler.NewAuthHandler(authService, cookieCfg),
 		User:         handler.NewUserHandler(userService, authService),
 		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
-		Project:      handler.NewProjectHandler(projectService),
+		Project:      handler.NewProjectHandler(projectService, authorizer),
 		Log:          log,
 	}
 

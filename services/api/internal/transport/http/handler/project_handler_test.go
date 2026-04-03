@@ -12,9 +12,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	domainauth "github.com/paca/api/internal/domain/auth"
 	projectdom "github.com/paca/api/internal/domain/project"
+	"github.com/paca/api/internal/platform/authz"
 	"github.com/paca/api/internal/transport/http/handler"
+	"github.com/paca/api/internal/transport/http/middleware"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,24 +26,32 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockProjectSvc struct {
-	list         func(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error)
-	getByID      func(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
-	create       func(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error)
-	update       func(ctx context.Context, id uuid.UUID, in projectdom.UpdateProjectInput) (*projectdom.Project, error)
-	delete       func(ctx context.Context, id uuid.UUID) error
-	listMembers  func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
-	addMember    func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
-	updateMember func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
-	removeMember func(ctx context.Context, projectID, userID uuid.UUID) error
-	listRoles    func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error)
-	createRole   func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
-	updateRole   func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
-	deleteRole   func(ctx context.Context, projectID, roleID uuid.UUID) error
+	list           func(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error)
+	listAccessible func(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*projectdom.Project, int64, error)
+	getByID        func(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
+	create         func(ctx context.Context, in projectdom.CreateProjectInput) (*projectdom.Project, error)
+	update         func(ctx context.Context, id uuid.UUID, in projectdom.UpdateProjectInput) (*projectdom.Project, error)
+	delete         func(ctx context.Context, id uuid.UUID) error
+	listMembers    func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
+	addMember      func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
+	updateMember   func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
+	removeMember   func(ctx context.Context, projectID, userID uuid.UUID) error
+	listRoles      func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectRole, error)
+	createRole     func(ctx context.Context, projectID uuid.UUID, in projectdom.CreateRoleInput) (*projectdom.ProjectRole, error)
+	updateRole     func(ctx context.Context, projectID, roleID uuid.UUID, in projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error)
+	deleteRole     func(ctx context.Context, projectID, roleID uuid.UUID) error
 }
 
 func (m *mockProjectSvc) List(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error) {
 	if m.list != nil {
 		return m.list(ctx, page, pageSize)
+	}
+	return []*projectdom.Project{}, 0, nil
+}
+
+func (m *mockProjectSvc) ListAccessible(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*projectdom.Project, int64, error) {
+	if m.listAccessible != nil {
+		return m.listAccessible(ctx, userID, page, pageSize)
 	}
 	return []*projectdom.Project{}, 0, nil
 }
@@ -135,9 +147,29 @@ var _ projectdom.Service = (*mockProjectSvc)(nil)
 // router helper
 // ---------------------------------------------------------------------------
 
+// adminClaimsMiddleware injects a synthetic ADMIN claims into the gin context so
+// unit tests can exercise the handler without a real JWT stack.
+func adminClaimsMiddleware() gin.HandlerFunc {
+	claims := &domainauth.Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: uuid.New().String(),
+		},
+		Role: "ADMIN",
+		Kind: "access",
+	}
+	return func(c *gin.Context) {
+		c.Set(middleware.ClaimsContextKey(), claims)
+		c.Next()
+	}
+}
+
 func newProjectRouter(svc projectdom.Service) *gin.Engine {
+	// Use a real Authorizer with nil store — legacy ADMIN role grants everything
+	// without any database calls.
+	authorizer := authz.NewAuthorizer(nil)
 	r := gin.New()
-	h := handler.NewProjectHandler(svc)
+	r.Use(adminClaimsMiddleware())
+	h := handler.NewProjectHandler(svc, authorizer)
 	// Admin project CRUD
 	r.GET("/admin/projects", h.ListProjects)
 	r.POST("/admin/projects", h.CreateProject)

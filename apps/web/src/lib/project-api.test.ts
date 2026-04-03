@@ -97,7 +97,7 @@ describe("project-api", () => {
 			mockGet.mockResolvedValue(ok(result));
 
 			await expect(listProjects()).resolves.toEqual(result);
-			expect(mockGet).toHaveBeenCalledWith("/admin/projects", {
+			expect(mockGet).toHaveBeenCalledWith("/projects", {
 				params: { page: 1, page_size: 50 },
 			});
 		});
@@ -112,7 +112,7 @@ describe("project-api", () => {
 			mockGet.mockResolvedValue(ok(result));
 
 			await listProjects(3, 10);
-			expect(mockGet).toHaveBeenCalledWith("/admin/projects", {
+			expect(mockGet).toHaveBeenCalledWith("/projects", {
 				params: { page: 3, page_size: 10 },
 			});
 		});
@@ -122,7 +122,7 @@ describe("project-api", () => {
 		mockGet.mockResolvedValue(ok(mockProject));
 
 		await expect(getProject("p1")).resolves.toEqual(mockProject);
-		expect(mockGet).toHaveBeenCalledWith("/admin/projects/p1");
+		expect(mockGet).toHaveBeenCalledWith("/projects/p1");
 	});
 
 	it("createProject posts payload and unwraps the created project", async () => {
@@ -130,14 +130,14 @@ describe("project-api", () => {
 		const payload = { name: "Alpha", description: "First project" };
 
 		await expect(createProject(payload)).resolves.toEqual(mockProject);
-		expect(mockPost).toHaveBeenCalledWith("/admin/projects", payload);
+		expect(mockPost).toHaveBeenCalledWith("/projects", payload);
 	});
 
 	it("createProject omits optional description field when not provided", async () => {
 		mockPost.mockResolvedValue(ok(mockProject));
 
 		await createProject({ name: "Minimal" });
-		expect(mockPost).toHaveBeenCalledWith("/admin/projects", {
+		expect(mockPost).toHaveBeenCalledWith("/projects", {
 			name: "Minimal",
 		});
 	});
@@ -149,7 +149,7 @@ describe("project-api", () => {
 		await expect(updateProject("p1", { name: "Alpha v2" })).resolves.toEqual(
 			updated,
 		);
-		expect(mockPatch).toHaveBeenCalledWith("/admin/projects/p1", {
+		expect(mockPatch).toHaveBeenCalledWith("/projects/p1", {
 			name: "Alpha v2",
 		});
 	});
@@ -158,7 +158,7 @@ describe("project-api", () => {
 		mockDelete.mockResolvedValue({});
 
 		await expect(deleteProject("p1")).resolves.toBeUndefined();
-		expect(mockDelete).toHaveBeenCalledWith("/admin/projects/p1");
+		expect(mockDelete).toHaveBeenCalledWith("/projects/p1");
 	});
 
 	// ── Members ────────────────────────────────────────────────────────────────

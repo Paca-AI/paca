@@ -17,9 +17,11 @@ const (
 	PermissionGlobalRolesAssign Permission = "global_roles.assign"
 	PermissionGlobalRolesAll    Permission = "global_roles.*"
 
-	PermissionProjectsRead  Permission = "projects.read"
-	PermissionProjectsWrite Permission = "projects.write"
-	PermissionProjectsAll   Permission = "projects.*"
+	PermissionProjectsRead   Permission = "projects.read"
+	PermissionProjectsWrite  Permission = "projects.write"
+	PermissionProjectsCreate Permission = "projects.create"
+	PermissionProjectsDelete Permission = "projects.delete"
+	PermissionProjectsAll    Permission = "projects.*"
 
 	PermissionProjectMembersRead  Permission = "project.members.read"
 	PermissionProjectMembersWrite Permission = "project.members.write"

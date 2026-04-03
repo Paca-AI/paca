@@ -51,7 +51,13 @@ import { cn } from "@/lib/utils";
 import { UserMenu } from "./user-menu";
 
 // ── Project Switcher ───────────────────────────────────────────────────────────
-function ProjectSwitcher({ currentProjectId }: { currentProjectId?: string }) {
+function ProjectSwitcher({
+	currentProjectId,
+	canCreate,
+}: {
+	currentProjectId?: string;
+	canCreate: boolean;
+}) {
 	const [open, setOpen] = useState(false);
 	const { data: projectsResult } = useQuery(projectsQueryOptions());
 	const { data: currentProject } = useQuery({
@@ -127,10 +133,12 @@ function ProjectSwitcher({ currentProjectId }: { currentProjectId?: string }) {
 					</div>
 				)}
 				<DropdownMenuSeparator />
-				<DropdownMenuItem render={<Link to="/home" />}>
-					<Plus className="size-3.5" />
-					New project
-				</DropdownMenuItem>
+				{canCreate ? (
+					<DropdownMenuItem render={<Link to="/home" />}>
+						<Plus className="size-3.5" />
+						New project
+					</DropdownMenuItem>
+				) : null}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
@@ -313,6 +321,8 @@ export function AppSidebar() {
 	const canAccessUsers =
 		hasPermission("users.read") || hasPermission("users.write");
 
+	const canCreateProject = hasPermission("projects.create");
+
 	const showAdminSection = canAccessGlobalRoles || canAccessUsers;
 	const isProjectContext = !!projectId;
 
@@ -337,7 +347,7 @@ export function AppSidebar() {
 					</span>
 				</div>
 				<div className="group-data-[collapsible=icon]:hidden">
-					<ProjectSwitcher currentProjectId={projectId} />
+					<ProjectSwitcher currentProjectId={projectId} canCreate={canCreateProject} />
 				</div>
 			</SidebarHeader>
 

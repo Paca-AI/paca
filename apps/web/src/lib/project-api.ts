@@ -48,13 +48,13 @@ export async function listProjects(
 ): Promise<ProjectListResult> {
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<ProjectListResult>
-	>("/admin/projects", { params: { page, page_size: pageSize } });
+	>("/projects", { params: { page, page_size: pageSize } });
 	return data.data;
 }
 
 export async function getProject(projectId: string): Promise<Project> {
 	const { data } = await apiClient.instance.get<SuccessEnvelope<Project>>(
-		`/admin/projects/${projectId}`,
+		`/projects/${projectId}`,
 	);
 	return data.data;
 }
@@ -64,7 +64,7 @@ export async function createProject(payload: {
 	description?: string;
 }): Promise<Project> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Project>>(
-		"/admin/projects",
+		"/projects",
 		payload,
 	);
 	return data.data;
@@ -75,14 +75,14 @@ export async function updateProject(
 	payload: { name?: string; description?: string },
 ): Promise<Project> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Project>>(
-		`/admin/projects/${projectId}`,
+		`/projects/${projectId}`,
 		payload,
 	);
 	return data.data;
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-	await apiClient.instance.delete(`/admin/projects/${projectId}`);
+	await apiClient.instance.delete(`/projects/${projectId}`);
 }
 
 // ── Members ───────────────────────────────────────────────────────────────────

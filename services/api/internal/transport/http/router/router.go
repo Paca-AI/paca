@@ -119,73 +119,91 @@ func New(deps Deps) *gin.Engine {
 				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesAssign),
 				deps.GlobalRole.ReplaceUserRoles,
 			)
-
-			// Project management — requires projects.* permissions
-			admin.GET("/projects",
-				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsRead),
-				deps.Project.ListProjects,
-			)
-			admin.POST("/projects",
-				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsWrite),
-				deps.Project.CreateProject,
-			)
-			admin.GET("/projects/:projectId",
-				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsRead),
-				deps.Project.GetProject,
-			)
-			admin.PATCH("/projects/:projectId",
-				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsWrite),
-				deps.Project.UpdateProject,
-			)
-			admin.DELETE("/projects/:projectId",
-				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsWrite),
-				deps.Project.DeleteProject,
-			)
 		}
 
-		// Project-scoped routes — accessible to project members with appropriate roles.
-		projects := v1.Group("/projects/:projectId")
+		// Project routes — list/create are collection-level; all other actions are
+		// project-scoped and accessible to members with appropriate roles.
+		projects := v1.Group("/projects")
 		projects.Use(httpmw.Authn(deps.TokenManager))
 		projects.Use(httpmw.RequireFreshPassword())
 		{
-			members := projects.Group("/members")
-			{
-				members.GET("",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersRead),
-					deps.Project.ListMembers,
-				)
-				members.POST("",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
-					deps.Project.AddMember,
-				)
-				members.PATCH("/:userId",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
-					deps.Project.UpdateMemberRole,
-				)
-				members.DELETE("/:userId",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
-					deps.Project.RemoveMember,
-				)
-			}
+			// Collection routes
+			// ListProjects self-selects: global projects.read → all projects,
+			// otherwise → only the caller's accessible projects.
+			projects.GET("", deps.Project.ListProjects)
+			projects.POST("",
+				httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsCreate),
+				deps.Project.CreateProject,
+			)
 
-			roles := projects.Group("/roles")
+			// Single-project routes
+			project := projects.Group("/:projectId")
 			{
-				roles.GET("",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesRead),
-					deps.Project.ListRoles,
+				project.GET("",
+					// Allow: global projects.read OR project-scoped projects.read
+					// (any project member role with projects.read can view the project).
+					httpmw.RequireAnyPermissions(deps.Authorizer,
+						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+					),
+					deps.Project.GetProject,
 				)
-				roles.POST("",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesWrite),
-					deps.Project.CreateRole,
+				project.PATCH("",
+					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsWrite),
+					deps.Project.UpdateProject,
 				)
-				roles.PATCH("/:roleId",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesWrite),
-					deps.Project.UpdateRole,
+				project.DELETE("",
+					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsDelete),
+					deps.Project.DeleteProject,
 				)
-				roles.DELETE("/:roleId",
-					httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesWrite),
-					deps.Project.DeleteRole,
-				)
+
+				members := project.Group("/members")
+				{
+					members.GET("",
+						// Allow: global projects.read (view-all grant) OR project-scoped members.read.
+						httpmw.RequireAnyPermissions(deps.Authorizer,
+							httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+							httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectMembersRead}},
+						),
+						deps.Project.ListMembers,
+					)
+					members.POST("",
+						httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
+						deps.Project.AddMember,
+					)
+					members.PATCH("/:userId",
+						httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
+						deps.Project.UpdateMemberRole,
+					)
+					members.DELETE("/:userId",
+						httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectMembersWrite),
+						deps.Project.RemoveMember,
+					)
+				}
+
+				roles := project.Group("/roles")
+				{
+					roles.GET("",
+						// Allow: global projects.read (view-all grant) OR project-scoped roles.read.
+						httpmw.RequireAnyPermissions(deps.Authorizer,
+							httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+							httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectRolesRead}},
+						),
+						deps.Project.ListRoles,
+					)
+					roles.POST("",
+						httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesWrite),
+						deps.Project.CreateRole,
+					)
+					roles.PATCH("/:roleId",
+						httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesWrite),
+						deps.Project.UpdateRole,
+					)
+					roles.DELETE("/:roleId",
+						httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectRolesWrite),
+						deps.Project.DeleteRole,
+					)
+				}
 			}
 		}
 	}

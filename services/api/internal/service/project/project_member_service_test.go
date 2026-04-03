@@ -20,6 +20,10 @@ func (m *memberServiceRepoMock) List(context.Context, int, int) ([]*projectdom.P
 	return nil, 0, nil
 }
 
+func (m *memberServiceRepoMock) ListAccessible(_ context.Context, _ uuid.UUID, _, _ int) ([]*projectdom.Project, int64, error) {
+	return nil, 0, nil
+}
+
 func (m *memberServiceRepoMock) FindByID(ctx context.Context, id uuid.UUID) (*projectdom.Project, error) {
 	if m.findByID != nil {
 		return m.findByID(ctx, id)

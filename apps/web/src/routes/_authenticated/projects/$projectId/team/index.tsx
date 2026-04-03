@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
+import { usePermissions } from "@/hooks/use-permissions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getUsers, type User } from "@/lib/admin-api";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	addProjectMember,
 	type ProjectMember,
@@ -477,11 +479,13 @@ function MemberRow({
 	member,
 	projectId,
 	roles,
+	canManage,
 	onRemove,
 }: {
 	member: ProjectMember;
 	projectId: string;
 	roles: ProjectRole[];
+	canManage: boolean;
 	onRemove: (member: ProjectMember) => void;
 }) {
 	const display = member.full_name || member.username;
@@ -502,7 +506,15 @@ function MemberRow({
 					@{member.username}
 				</p>
 			</div>
+		{canManage ? (
 			<RoleChip member={member} projectId={projectId} roles={roles} />
+		) : (
+			<span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+				<Shield className="size-3 text-muted-foreground" />
+				{member.role_name}
+			</span>
+		)}
+		{canManage ? (
 			<DropdownMenu>
 				<DropdownMenuTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
 					<MoreHorizontal className="size-4" />
@@ -517,7 +529,8 @@ function MemberRow({
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
-		</div>
+		) : null}
+	</div>
 	);
 }
 
@@ -531,11 +544,25 @@ function TeamPage() {
 		null,
 	);
 
+	const { hasPermission } = usePermissions();
+	const { data: currentUser } = useQuery(currentUserQueryOptions);
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const { data: members, isLoading } = useQuery(
 		projectMembersQueryOptions(projectId),
 	);
 	const { data: roles = [] } = useQuery(projectRolesQueryOptions(projectId));
+
+	const myMembership = (members ?? []).find(
+		(m) => m.user_id === currentUser?.id,
+	);
+	const myRole = roles.find((r) => r.id === myMembership?.project_role_id);
+	const hasProjectMembersWrite = Boolean(
+		(myRole?.permissions as Record<string, boolean> | undefined)?.[
+			"project.members.write"
+		],
+	);
+	const canManageMembers =
+		hasPermission("project.members.write") || hasProjectMembersWrite;
 
 	const existingMemberIds = useMemo(
 		() => new Set((members ?? []).map((m) => m.user_id)),
@@ -578,14 +605,16 @@ function TeamPage() {
 							{project?.name} · Manage project members and roles
 						</p>
 					</div>
-					<Button
-						size="sm"
-						className="gap-1.5 shadow-sm shadow-primary/20"
-						onClick={() => setAddMemberOpen(true)}
-					>
-						<Plus className="size-3.5" />
-						Add Member
-					</Button>
+					{canManageMembers ? (
+						<Button
+							size="sm"
+							className="gap-1.5 shadow-sm shadow-primary/20"
+							onClick={() => setAddMemberOpen(true)}
+						>
+							<Plus className="size-3.5" />
+							Add Member
+						</Button>
+					) : null}
 				</div>
 			</div>
 
@@ -612,14 +641,16 @@ function TeamPage() {
 								Add teammates or AI agents to this project to get started.
 							</p>
 						</div>
-						<Button
-							size="sm"
-							className="gap-1.5 mt-1"
-							onClick={() => setAddMemberOpen(true)}
-						>
-							<Plus className="size-3.5" />
-							Add first member
-						</Button>
+							{canManageMembers ? (
+								<Button
+									size="sm"
+									className="gap-1.5 mt-1"
+									onClick={() => setAddMemberOpen(true)}
+								>
+									<Plus className="size-3.5" />
+									Add first member
+								</Button>
+							) : null}
 					</div>
 				) : (
 					<div>
@@ -635,6 +666,7 @@ function TeamPage() {
 									member={member}
 									projectId={projectId}
 									roles={roles}
+									canManage={canManageMembers}
 									onRemove={setRemovingMember}
 								/>
 							))}

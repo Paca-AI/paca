@@ -28,6 +28,12 @@ export const PROJECT_KNOWN_PERMISSIONS: KnownPermission[] = [
 		description: "Update project name, description, and settings",
 		domain: "projects",
 	},
+	{
+		key: "projects.delete",
+		label: "Delete Project",
+		description: "Permanently delete this project",
+		domain: "projects",
+	},
 	// project members
 	{
 		key: "project.members.read",
