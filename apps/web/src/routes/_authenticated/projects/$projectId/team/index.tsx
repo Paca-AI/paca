@@ -130,7 +130,7 @@ function AddMemberDialog({
 	existingMemberIds: Set<string>;
 }) {
 	const queryClient = useQueryClient();
-	const { can } = usePermissions();
+	const { hasPermission: can } = usePermissions();
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
 	const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 	const [userSearch, setUserSearch] = useState("");
