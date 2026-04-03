@@ -14,8 +14,6 @@ import {
 	Users,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-
-import { usePermissions } from "@/hooks/use-permissions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +44,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/hooks/use-permissions";
 import { getUsers, type User } from "@/lib/admin-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
@@ -506,31 +505,31 @@ function MemberRow({
 					@{member.username}
 				</p>
 			</div>
-		{canManage ? (
-			<RoleChip member={member} projectId={projectId} roles={roles} />
-		) : (
-			<span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-				<Shield className="size-3 text-muted-foreground" />
-				{member.role_name}
-			</span>
-		)}
-		{canManage ? (
-			<DropdownMenu>
-				<DropdownMenuTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-					<MoreHorizontal className="size-4" />
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="w-44">
-					<DropdownMenuItem
-						className="text-destructive focus:text-destructive focus:bg-destructive/10"
-						onClick={() => onRemove(member)}
-					>
-						<Trash2 className="size-3.5 mr-2" />
-						Remove member
-					</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
-		) : null}
-	</div>
+			{canManage ? (
+				<RoleChip member={member} projectId={projectId} roles={roles} />
+			) : (
+				<span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+					<Shield className="size-3 text-muted-foreground" />
+					{member.role_name}
+				</span>
+			)}
+			{canManage ? (
+				<DropdownMenu>
+					<DropdownMenuTrigger className="flex size-7 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+						<MoreHorizontal className="size-4" />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-44">
+						<DropdownMenuItem
+							className="text-destructive focus:text-destructive focus:bg-destructive/10"
+							onClick={() => onRemove(member)}
+						>
+							<Trash2 className="size-3.5 mr-2" />
+							Remove member
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			) : null}
+		</div>
 	);
 }
 
@@ -641,16 +640,16 @@ function TeamPage() {
 								Add teammates or AI agents to this project to get started.
 							</p>
 						</div>
-							{canManageMembers ? (
-								<Button
-									size="sm"
-									className="gap-1.5 mt-1"
-									onClick={() => setAddMemberOpen(true)}
-								>
-									<Plus className="size-3.5" />
-									Add first member
-								</Button>
-							) : null}
+						{canManageMembers ? (
+							<Button
+								size="sm"
+								className="gap-1.5 mt-1"
+								onClick={() => setAddMemberOpen(true)}
+							>
+								<Plus className="size-3.5" />
+								Add first member
+							</Button>
+						) : null}
 					</div>
 				) : (
 					<div>

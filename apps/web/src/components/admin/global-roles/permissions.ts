@@ -1,4 +1,4 @@
-import { type LucideIcon, FolderKanban, Shield, Users } from "lucide-react";
+import { FolderKanban, type LucideIcon, Shield, Users } from "lucide-react";
 
 export interface KnownPermission {
 	key: string;

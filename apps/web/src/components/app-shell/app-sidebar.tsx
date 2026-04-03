@@ -347,7 +347,10 @@ export function AppSidebar() {
 					</span>
 				</div>
 				<div className="group-data-[collapsible=icon]:hidden">
-					<ProjectSwitcher currentProjectId={projectId} canCreate={canCreateProject} />
+					<ProjectSwitcher
+						currentProjectId={projectId}
+						canCreate={canCreateProject}
+					/>
 				</div>
 			</SidebarHeader>
 

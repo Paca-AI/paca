@@ -12,11 +12,8 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useState } from "react";
-
-import { usePermissions } from "@/hooks/use-permissions";
 import { DeleteProjectRoleDialog } from "@/components/projects/roles/DeleteProjectRoleDialog";
 import { ProjectRoleFormDialog } from "@/components/projects/roles/ProjectRoleFormDialog";
-
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -27,7 +24,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,6 +36,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { usePermissions } from "@/hooks/use-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
@@ -67,7 +64,13 @@ export const Route = createFileRoute(
 
 // ── General Settings ──────────────────────────────────────────────────────────
 
-function GeneralSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+function GeneralSettings({
+	projectId,
+	canEdit,
+}: {
+	projectId: string;
+	canEdit: boolean;
+}) {
 	const queryClient = useQueryClient();
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 
@@ -262,7 +265,12 @@ interface RoleRowProps {
 	onDelete: (role: ProjectRole) => void;
 }
 
-function RoleTableRow({ role, canManageRoles, onEdit, onDelete }: RoleRowProps) {
+function RoleTableRow({
+	role,
+	canManageRoles,
+	onEdit,
+	onDelete,
+}: RoleRowProps) {
 	const isSystem = !role.project_id;
 	const active = activePermissions(role.permissions);
 
@@ -298,7 +306,7 @@ function RoleTableRow({ role, canManageRoles, onEdit, onDelete }: RoleRowProps) 
 				{formatDate(role.created_at)}
 			</TableCell>
 			<TableCell className="px-5">
-			{!isSystem && canManageRoles ? (
+				{!isSystem && canManageRoles ? (
 					<div className="flex items-center justify-end gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
 						<Button
 							variant="ghost"
@@ -324,7 +332,13 @@ function RoleTableRow({ role, canManageRoles, onEdit, onDelete }: RoleRowProps) 
 	);
 }
 
-function RolesSettings({ projectId, canManageRoles }: { projectId: string; canManageRoles: boolean }) {
+function RolesSettings({
+	projectId,
+	canManageRoles,
+}: {
+	projectId: string;
+	canManageRoles: boolean;
+}) {
 	const { data: roles, isLoading } = useQuery(
 		projectRolesQueryOptions(projectId),
 	);
@@ -647,7 +661,8 @@ function SettingsPage() {
 	);
 	const canDelete = hasPermission("projects.delete") || hasProjectDelete;
 	const canEditProject = hasPermission("projects.write") || hasProjectWrite;
-	const canManageRoles = hasPermission("project.roles.write") || hasProjectRolesWrite;
+	const canManageRoles =
+		hasPermission("project.roles.write") || hasProjectRolesWrite;
 
 	const visibleNavItems = canDelete
 		? NAV_ITEMS
@@ -734,11 +749,14 @@ function SettingsPage() {
 							<GeneralSettings projectId={projectId} canEdit={canEditProject} />
 						)}
 						{activeSection === "roles" && (
-							<RolesSettings projectId={projectId} canManageRoles={canManageRoles} />
+							<RolesSettings
+								projectId={projectId}
+								canManageRoles={canManageRoles}
+							/>
 						)}
-							{activeSection === "danger" && canDelete && (
-								<DangerZone projectId={projectId} />
-							)}
+						{activeSection === "danger" && canDelete && (
+							<DangerZone projectId={projectId} />
+						)}
 					</div>
 				</div>
 			</div>

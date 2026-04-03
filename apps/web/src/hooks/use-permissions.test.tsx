@@ -1,11 +1,12 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockUseQuery, mockCheckPermission, mockCheckAnyPermission } = vi.hoisted(() => ({
-	mockUseQuery: vi.fn(),
-	mockCheckPermission: vi.fn(),
-	mockCheckAnyPermission: vi.fn(),
-}));
+const { mockUseQuery, mockCheckPermission, mockCheckAnyPermission } =
+	vi.hoisted(() => ({
+		mockUseQuery: vi.fn(),
+		mockCheckPermission: vi.fn(),
+		mockCheckAnyPermission: vi.fn(),
+	}));
 
 vi.mock("@tanstack/react-query", async () => {
 	const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
