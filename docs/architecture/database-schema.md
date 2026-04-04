@@ -9,6 +9,7 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | File | Purpose |
 |---|---|
 | `000001_init.sql` | Full schema: `global_roles`, `users` (with `role_id` FK and `must_change_password`), projects, project roles/members, seed data |
+| `000002_tasks.sql` | Task-related tables: `task_types`, `task_statuses`, `tasks` (with `importance`, `board_position`), `custom_field_definitions`, `sprints`, `sprint_views`, `bdd_scenarios`, `time_logs`, `documents`, `dashboards`, `task_activities` |
 
 ## Schema (DBML)
 
@@ -91,7 +92,8 @@ Table tasks {
   parent_task_id uuid [null]
   title varchar
   description text
-  priority varchar
+  importance integer [not null, default: 0, note: 'unsigned; higher = more important']
+  board_position integer [not null, default: 0, note: 'ordering within a status column on the kanban board']
   assignee_id uuid
   reporter_id uuid
   custom_fields jsonb

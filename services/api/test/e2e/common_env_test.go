@@ -32,6 +32,8 @@ import (
 	authsvc "github.com/paca/api/internal/service/auth"
 	globalrolesvc "github.com/paca/api/internal/service/globalrole"
 	projectsvc "github.com/paca/api/internal/service/project"
+	sprintsvc "github.com/paca/api/internal/service/sprint"
+	tasksvc "github.com/paca/api/internal/service/task"
 	usersvc "github.com/paca/api/internal/service/user"
 	"github.com/paca/api/internal/transport/http/handler"
 	"github.com/paca/api/internal/transport/http/router"
@@ -55,6 +57,10 @@ type e2eEnv struct {
 	roleRepo    *pgRepo.GlobalRoleRepository
 	projectRepo *pgRepo.ProjectRepository
 	projectSvc  *projectsvc.Service
+	taskRepo    *pgRepo.TaskRepository
+	taskSvc     *tasksvc.Service
+	sprintRepo  *pgRepo.SprintRepository
+	sprintSvc   *sprintsvc.Service
 }
 
 func newE2EEnv(t *testing.T) *e2eEnv {
@@ -173,6 +179,10 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	globalRoleService := globalrolesvc.New(roleRepo)
 	projectRepo := pgRepo.NewProjectRepository(db)
 	projectService := projectsvc.New(projectRepo)
+	taskRepo := pgRepo.NewTaskRepository(db)
+	taskService := tasksvc.New(taskRepo)
+	sprintRepo := pgRepo.NewSprintRepository(db)
+	sprintService := sprintsvc.New(sprintRepo)
 
 	cookieCfg := handler.CookieConfig{
 		Secure:            false,
@@ -188,6 +198,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		User:         handler.NewUserHandler(userService),
 		GlobalRole:   handler.NewGlobalRoleHandler(globalRoleService),
 		Project:      handler.NewProjectHandler(projectService, authz.NewAuthorizer(authzStore)),
+		Task:         handler.NewTaskHandler(taskService),
+		Sprint:       handler.NewSprintHandler(sprintService),
 		Log:          log,
 	})
 
@@ -211,6 +223,10 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		roleRepo:    roleRepo,
 		projectRepo: projectRepo,
 		projectSvc:  projectService,
+		taskRepo:    taskRepo,
+		taskSvc:     taskService,
+		sprintRepo:  sprintRepo,
+		sprintSvc:   sprintService,
 	}
 }
 

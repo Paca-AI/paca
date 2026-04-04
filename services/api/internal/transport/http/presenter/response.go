@@ -11,6 +11,8 @@ import (
 	domainauth "github.com/paca/api/internal/domain/auth"
 	globalroledom "github.com/paca/api/internal/domain/globalrole"
 	projectdom "github.com/paca/api/internal/domain/project"
+	sprintdom "github.com/paca/api/internal/domain/sprint"
+	taskdom "github.com/paca/api/internal/domain/task"
 	userdom "github.com/paca/api/internal/domain/user"
 )
 
@@ -116,6 +118,26 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeProjectMemberNotFound
 	case errors.Is(err, projectdom.ErrMemberAlreadyAdded):
 		return http.StatusConflict, apierr.CodeProjectMemberAlreadyAdded
+	case errors.Is(err, taskdom.ErrTaskNotFound):
+		return http.StatusNotFound, apierr.CodeTaskNotFound
+	case errors.Is(err, taskdom.ErrTaskTitleInvalid):
+		return http.StatusBadRequest, apierr.CodeTaskTitleInvalid
+	case errors.Is(err, taskdom.ErrTypeNotFound):
+		return http.StatusNotFound, apierr.CodeTaskTypeNotFound
+	case errors.Is(err, taskdom.ErrTypeNameInvalid):
+		return http.StatusBadRequest, apierr.CodeTaskTypeNameInvalid
+	case errors.Is(err, taskdom.ErrStatusNotFound):
+		return http.StatusNotFound, apierr.CodeTaskStatusNotFound
+	case errors.Is(err, taskdom.ErrStatusNameInvalid):
+		return http.StatusBadRequest, apierr.CodeTaskStatusNameInvalid
+	case errors.Is(err, taskdom.ErrStatusCategoryInvalid):
+		return http.StatusBadRequest, apierr.CodeTaskStatusCategoryInvalid
+	case errors.Is(err, sprintdom.ErrSprintNotFound):
+		return http.StatusNotFound, apierr.CodeSprintNotFound
+	case errors.Is(err, sprintdom.ErrSprintNameInvalid):
+		return http.StatusBadRequest, apierr.CodeSprintNameInvalid
+	case errors.Is(err, sprintdom.ErrSprintStatusInvalid):
+		return http.StatusBadRequest, apierr.CodeSprintStatusInvalid
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -161,6 +183,18 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusNotFound
 	case apierr.CodeProjectMemberAlreadyAdded:
 		return http.StatusConflict
+	case apierr.CodeTaskNotFound,
+		apierr.CodeTaskTypeNotFound,
+		apierr.CodeTaskStatusNotFound,
+		apierr.CodeSprintNotFound:
+		return http.StatusNotFound
+	case apierr.CodeTaskTitleInvalid,
+		apierr.CodeTaskTypeNameInvalid,
+		apierr.CodeTaskStatusNameInvalid,
+		apierr.CodeTaskStatusCategoryInvalid,
+		apierr.CodeSprintNameInvalid,
+		apierr.CodeSprintStatusInvalid:
+		return http.StatusBadRequest
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
 	case apierr.CodePasswordChangeRequired:

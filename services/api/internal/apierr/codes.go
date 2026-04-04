@@ -63,6 +63,30 @@ const (
 	CodeProjectMemberNotFound Code = "PROJECT_MEMBER_NOT_FOUND"
 	// CodeProjectMemberAlreadyAdded indicates the user is already a member of the project.
 	CodeProjectMemberAlreadyAdded Code = "PROJECT_MEMBER_ALREADY_ADDED"
+
+	// CodeTaskNotFound indicates the requested task does not exist.
+	CodeTaskNotFound Code = "TASK_NOT_FOUND"
+	// CodeTaskTitleInvalid indicates an empty or invalid task title.
+	CodeTaskTitleInvalid Code = "TASK_TITLE_INVALID"
+
+	// CodeTaskTypeNotFound indicates the requested task type does not exist.
+	CodeTaskTypeNotFound Code = "TASK_TYPE_NOT_FOUND"
+	// CodeTaskTypeNameInvalid indicates an empty or invalid task type name.
+	CodeTaskTypeNameInvalid Code = "TASK_TYPE_NAME_INVALID"
+
+	// CodeTaskStatusNotFound indicates the requested task status does not exist.
+	CodeTaskStatusNotFound Code = "TASK_STATUS_NOT_FOUND"
+	// CodeTaskStatusNameInvalid indicates an empty or invalid task status name.
+	CodeTaskStatusNameInvalid Code = "TASK_STATUS_NAME_INVALID"
+	// CodeTaskStatusCategoryInvalid indicates an invalid status category value.
+	CodeTaskStatusCategoryInvalid Code = "TASK_STATUS_CATEGORY_INVALID"
+
+	// CodeSprintNotFound indicates the requested sprint does not exist.
+	CodeSprintNotFound Code = "SPRINT_NOT_FOUND"
+	// CodeSprintNameInvalid indicates an empty or invalid sprint name.
+	CodeSprintNameInvalid Code = "SPRINT_NAME_INVALID"
+	// CodeSprintStatusInvalid indicates an invalid sprint status value.
+	CodeSprintStatusInvalid Code = "SPRINT_STATUS_INVALID"
 )
 
 // Error carries a machine-readable Code alongside a human-readable Message.

@@ -126,6 +126,39 @@ These routes already exist in the Go API service.
 | `PATCH` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Update a global role definition. |
 | `DELETE` | `/api/v1/admin/global-roles/:roleId` | Access token (fresh) + `global_roles.write` | Remove a global role definition. Fails with `409` if users are assigned to it. |
 | `PUT` | `/api/v1/admin/users/:userId/global-roles` | Access token (fresh) + `global_roles.assign` | Assign or replace the single global role for a user. |
+| `GET` | `/api/v1/projects` | Access token (fresh) | List projects visible to the caller. |
+| `POST` | `/api/v1/projects` | Access token (fresh) + `projects.create` | Create a new project. |
+| `GET` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.read` | Get project details. |
+| `PATCH` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.write` | Update project name or description. |
+| `DELETE` | `/api/v1/projects/:projectId` | Access token (fresh) + `projects.delete` | Delete a project. |
+| `GET` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `members.read` | List project members. |
+| `POST` | `/api/v1/projects/:projectId/members` | Access token (fresh) + `members.write` | Add a user to a project. |
+| `PATCH` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `members.write` | Change a member's project role. |
+| `DELETE` | `/api/v1/projects/:projectId/members/:userId` | Access token (fresh) + `members.write` | Remove a member from a project. |
+| `GET` | `/api/v1/projects/:projectId/roles` | Access token (fresh) + `roles.read` | List custom project roles. |
+| `POST` | `/api/v1/projects/:projectId/roles` | Access token (fresh) + `roles.write` | Create a project-scoped role. |
+| `PATCH` | `/api/v1/projects/:projectId/roles/:roleId` | Access token (fresh) + `roles.write` | Update a project role. |
+| `DELETE` | `/api/v1/projects/:projectId/roles/:roleId` | Access token (fresh) + `roles.write` | Delete a project role. |
+| `GET` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `tasks.read` | List task type definitions. |
+| `POST` | `/api/v1/projects/:projectId/task-types` | Access token (fresh) + `tasks.write` | Create a task type (e.g. story, bug, chore). |
+| `PATCH` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `tasks.write` | Update a task type. |
+| `DELETE` | `/api/v1/projects/:projectId/task-types/:typeId` | Access token (fresh) + `tasks.write` | Delete a task type. |
+| `GET` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `tasks.read` | List workflow statuses in board order. |
+| `POST` | `/api/v1/projects/:projectId/task-statuses` | Access token (fresh) + `tasks.write` | Create a workflow status. |
+| `PATCH` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `tasks.write` | Update a workflow status. |
+| `DELETE` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Access token (fresh) + `tasks.write` | Delete a workflow status. |
+| `GET` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.read` | List sprints for a project ordered by creation date. |
+| `POST` | `/api/v1/projects/:projectId/sprints` | Access token (fresh) + `sprints.write` | Create a sprint. |
+| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.read` | Get sprint details (goal, dates, status). |
+| `PATCH` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.write` | Update sprint metadata or lifecycle status. |
+| `DELETE` | `/api/v1/projects/:projectId/sprints/:sprintId` | Access token (fresh) + `sprints.write` | Delete a sprint. |
+| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId/tasks` | Access token (fresh) + `tasks.read` | List tasks assigned to a specific sprint (sprint backlog view). |
+| `GET` | `/api/v1/projects/:projectId/product-backlog` | Access token (fresh) + `tasks.read` | List tasks not yet assigned to any sprint (product backlog view). |
+| `GET` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks.read` | List tasks with optional filters (`sprint_id`, `status_id`, `assignee_id`). |
+| `POST` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks.write` | Create a task. |
+| `GET` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.read` | Get task detail. |
+| `PATCH` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.write` | Update a task. |
+| `DELETE` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks.write` | Soft-delete a task. |
 
 > **"fresh" access token**: an access token whose `must_change_password` claim is `false`. If the claim is `true`, the request is rejected with `403 AUTH_PASSWORD_CHANGE_REQUIRED` and the user must call `PATCH /api/v1/users/me/password` first.
 
@@ -465,50 +498,12 @@ Request body:
 
 The following endpoints are not yet implemented. They are the recommended path design for the next API slices based on the domain model.
 
-## Projects and Membership
+## Task Extras
+
+Sub-resources of tasks that are not yet implemented.
 
 | Method | Path | Function |
 |---|---|---|
-| `GET` | `/api/v1/projects` | List projects visible to the caller. |
-| `POST` | `/api/v1/projects` | Create a project with initial settings. |
-| `GET` | `/api/v1/projects/:projectId` | Get project details, settings, and summary metadata. |
-| `PATCH` | `/api/v1/projects/:projectId` | Update project name, description, or settings. |
-| `DELETE` | `/api/v1/projects/:projectId` | Archive or delete a project. |
-| `GET` | `/api/v1/projects/:projectId/members` | List project members and their project roles. |
-| `POST` | `/api/v1/projects/:projectId/members` | Add a user to a project with a project role. |
-| `PATCH` | `/api/v1/projects/:projectId/members/:memberId` | Change a member's project role or membership metadata. |
-| `DELETE` | `/api/v1/projects/:projectId/members/:memberId` | Remove a member from a project. |
-| `GET` | `/api/v1/projects/:projectId/roles` | List custom project roles for a project. |
-| `POST` | `/api/v1/projects/:projectId/roles` | Create a project-specific role and permission set. |
-| `PATCH` | `/api/v1/projects/:projectId/roles/:roleId` | Update a project role definition. |
-| `DELETE` | `/api/v1/projects/:projectId/roles/:roleId` | Delete a project role definition. |
-
-## Task Configuration
-
-| Method | Path | Function |
-|---|---|---|
-| `GET` | `/api/v1/projects/:projectId/task-types` | List task type definitions for a project. |
-| `POST` | `/api/v1/projects/:projectId/task-types` | Create a task type such as story, bug, or chore. |
-| `PATCH` | `/api/v1/projects/:projectId/task-types/:taskTypeId` | Update a task type's name, icon, color, or description. |
-| `DELETE` | `/api/v1/projects/:projectId/task-types/:taskTypeId` | Delete a task type definition. |
-| `GET` | `/api/v1/projects/:projectId/task-statuses` | List workflow statuses in board order. |
-| `POST` | `/api/v1/projects/:projectId/task-statuses` | Create a workflow status. |
-| `PATCH` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Update status name, color, position, or category. |
-| `DELETE` | `/api/v1/projects/:projectId/task-statuses/:statusId` | Delete a workflow status. |
-| `GET` | `/api/v1/projects/:projectId/custom-fields` | List custom field definitions. |
-| `POST` | `/api/v1/projects/:projectId/custom-fields` | Create a custom field definition. |
-| `PATCH` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Update a custom field definition. |
-| `DELETE` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Delete a custom field definition. |
-
-## Tasks and Collaboration
-
-| Method | Path | Function |
-|---|---|---|
-| `GET` | `/api/v1/projects/:projectId/tasks` | List tasks for a project with filters for status, assignee, sprint, and parent task. |
-| `POST` | `/api/v1/projects/:projectId/tasks` | Create a new task in a project. |
-| `GET` | `/api/v1/projects/:projectId/tasks/:taskId` | Get task detail including workflow, assignee, reporter, and custom fields. |
-| `PATCH` | `/api/v1/projects/:projectId/tasks/:taskId` | Update task title, description, status, sprint, assignee, or custom field values. |
-| `DELETE` | `/api/v1/projects/:projectId/tasks/:taskId` | Delete or archive a task. |
 | `GET` | `/api/v1/projects/:projectId/tasks/:taskId/children` | List child tasks under a parent task. |
 | `POST` | `/api/v1/projects/:projectId/tasks/:taskId/children` | Create a child task under the specified parent task. |
 | `GET` | `/api/v1/projects/:projectId/tasks/:taskId/activities` | List audit/activity entries for a task. |
@@ -522,16 +517,24 @@ The following endpoints are not yet implemented. They are the recommended path d
 | `PATCH` | `/api/v1/projects/:projectId/tasks/:taskId/time-logs/:timeLogId` | Update a time log entry. |
 | `DELETE` | `/api/v1/projects/:projectId/tasks/:taskId/time-logs/:timeLogId` | Delete a time log entry. |
 
-## Sprints and Views
+## Project Configuration Extras
+
+Custom field definitions are not yet implemented.
 
 | Method | Path | Function |
 |---|---|---|
-| `GET` | `/api/v1/projects/:projectId/sprints` | List sprints for a project. |
-| `POST` | `/api/v1/projects/:projectId/sprints` | Create a sprint. |
-| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId` | Get sprint details including goal, dates, and status. |
-| `PATCH` | `/api/v1/projects/:projectId/sprints/:sprintId` | Update sprint metadata or lifecycle status. |
-| `DELETE` | `/api/v1/projects/:projectId/sprints/:sprintId` | Delete or archive a sprint. |
-| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId/views` | List saved sprint views such as kanban, list, gantt, and burndown. |
+| `GET` | `/api/v1/projects/:projectId/custom-fields` | List custom field definitions. |
+| `POST` | `/api/v1/projects/:projectId/custom-fields` | Create a custom field definition. |
+| `PATCH` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Update a custom field definition. |
+| `DELETE` | `/api/v1/projects/:projectId/custom-fields/:fieldId` | Delete a custom field definition. |
+
+## Sprint Extras
+
+Saved sprint views (kanban, list, Gantt, burndown configurations) are not yet implemented.
+
+| Method | Path | Function |
+|---|---|---|
+| `GET` | `/api/v1/projects/:projectId/sprints/:sprintId/views` | List saved sprint view configurations. |
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/views` | Create a saved sprint view configuration. |
 | `PATCH` | `/api/v1/projects/:projectId/sprints/:sprintId/views/:viewId` | Update a sprint view configuration. |
 | `DELETE` | `/api/v1/projects/:projectId/sprints/:sprintId/views/:viewId` | Delete a sprint view configuration. |
@@ -558,10 +561,14 @@ To keep the API coherent and aligned with the current codebase, implement the ne
 1. ~~Normalize the existing auth and user error contracts.~~ ✅ Done
 2. ~~Add complete admin user management: list, create, update, delete, reset-password.~~ ✅ Done
 3. ~~Force password change after admin create/reset.~~ ✅ Done
-4. Add project and project-member endpoints.
-5. Add task configuration endpoints: statuses, types, custom fields.
-6. Add task CRUD and task activity endpoints.
-7. Add sprint, document, dashboard, BDD scenario, and time-log endpoints.
+4. ~~Add project and project-member endpoints.~~ ✅ Done
+5. ~~Add task configuration endpoints: statuses and types.~~ ✅ Done
+6. ~~Add task CRUD endpoints.~~ ✅ Done
+7. ~~Add sprint CRUD, sprint backlog view (`GET /sprints/:id/tasks`), and product-backlog view (`GET /product-backlog`).~~ ✅ Done
+8. Add task sub-resource endpoints: child tasks, activities, BDD scenarios, and time logs.
+9. Add custom field definitions.
+10. Add sprint saved views (kanban, list, Gantt, burndown).
+11. Add knowledge and reporting: documents and dashboards.
 
 ## Known Model Gaps
 
@@ -592,5 +599,24 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `GLOBAL_ROLE_NAME_TAKEN` | 409 | A global role with that name already exists. |
 | `GLOBAL_ROLE_NAME_INVALID` | 400 | Role name does not meet naming requirements. |
 | `GLOBAL_ROLE_HAS_ASSIGNED_USERS` | 409 | Role cannot be deleted while users are assigned to it. |
+| `PROJECT_NOT_FOUND` | 404 | Project with the given ID does not exist. |
+| `PROJECT_NAME_TAKEN` | 409 | A project with that name already exists. |
+| `PROJECT_NAME_INVALID` | 400 | Project name is empty or does not meet naming requirements. |
+| `PROJECT_ROLE_NOT_FOUND` | 404 | Project role with the given ID does not exist. |
+| `PROJECT_ROLE_NAME_TAKEN` | 409 | A role with that name already exists within the project. |
+| `PROJECT_ROLE_NAME_INVALID` | 400 | Project role name is empty or invalid. |
+| `PROJECT_ROLE_HAS_MEMBERS` | 409 | Project role cannot be deleted while members are assigned to it. |
+| `PROJECT_MEMBER_NOT_FOUND` | 404 | Membership record for the given user in this project does not exist. |
+| `PROJECT_MEMBER_ALREADY_ADDED` | 409 | User is already a member of the project. |
+| `TASK_NOT_FOUND` | 404 | Task with the given ID does not exist. |
+| `TASK_TITLE_INVALID` | 400 | Task title is empty or invalid. |
+| `TASK_TYPE_NOT_FOUND` | 404 | Task type with the given ID does not exist. |
+| `TASK_TYPE_NAME_INVALID` | 400 | Task type name is empty or invalid. |
+| `TASK_STATUS_NOT_FOUND` | 404 | Task status with the given ID does not exist. |
+| `TASK_STATUS_NAME_INVALID` | 400 | Task status name is empty or invalid. |
+| `TASK_STATUS_CATEGORY_INVALID` | 400 | Task status category value is not one of the allowed values. |
+| `SPRINT_NOT_FOUND` | 404 | Sprint with the given ID does not exist. |
+| `SPRINT_NAME_INVALID` | 400 | Sprint name is empty or invalid. |
+| `SPRINT_STATUS_INVALID` | 400 | Sprint status value is not one of the allowed values. |
 | `BAD_REQUEST` | 400 | Malformed or invalid request body. |
 | `INTERNAL_ERROR` | 500 | Unexpected server error. |
