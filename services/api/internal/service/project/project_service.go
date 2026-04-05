@@ -8,16 +8,25 @@ import (
 
 	"github.com/google/uuid"
 	projectdom "github.com/paca/api/internal/domain/project"
+	taskdom "github.com/paca/api/internal/domain/task"
 )
+
+// taskBootstrapper is the minimal persistence interface the project service
+// needs to seed default task types and statuses at project creation time.
+type taskBootstrapper interface {
+	CreateTaskType(ctx context.Context, t *taskdom.TaskType) error
+	CreateTaskStatus(ctx context.Context, s *taskdom.TaskStatus) error
+}
 
 // Service is the concrete implementation of projectdom.Service.
 type Service struct {
-	repo projectdom.Repository
+	repo     projectdom.Repository
+	taskRepo taskBootstrapper
 }
 
 // New returns a configured project service.
-func New(repo projectdom.Repository) *Service {
-	return &Service{repo: repo}
+func New(repo projectdom.Repository, taskRepo taskBootstrapper) *Service {
+	return &Service{repo: repo, taskRepo: taskRepo}
 }
 
 // List returns a page of projects and the total count.
@@ -139,7 +148,50 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 		}
 	}
 
+	// Bootstrap default task types and statuses.
+	if s.taskRepo != nil {
+		if err := s.seedDefaultTaskTypes(ctx, p.ID, now); err != nil {
+			return nil, err
+		}
+		if err := s.seedDefaultTaskStatuses(ctx, p.ID, now); err != nil {
+			return nil, err
+		}
+	}
+
 	return p, nil
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// seedDefaultTaskTypes creates the three built-in task types for a new project.
+func (s *Service) seedDefaultTaskTypes(ctx context.Context, projectID uuid.UUID, now time.Time) error {
+	defaults := []*taskdom.TaskType{
+		{ID: uuid.New(), ProjectID: projectID, Name: "Task", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Bug", Icon: ptr("bug"), Color: ptr("#EF4444"), CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Story", Icon: ptr("story"), Color: ptr("#3B82F6"), CreatedAt: now, UpdatedAt: now},
+	}
+	for _, tt := range defaults {
+		if err := s.taskRepo.CreateTaskType(ctx, tt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// seedDefaultTaskStatuses creates the four built-in task statuses for a new project.
+func (s *Service) seedDefaultTaskStatuses(ctx context.Context, projectID uuid.UUID, now time.Time) error {
+	defaults := []*taskdom.TaskStatus{
+		{ID: uuid.New(), ProjectID: projectID, Name: "Backlog", Color: ptr("#94A3B8"), Position: 1, Category: taskdom.StatusCategoryBacklog, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Todo", Color: ptr("#F59E0B"), Position: 2, Category: taskdom.StatusCategoryTodo, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "In Progress", Color: ptr("#3B82F6"), Position: 3, Category: taskdom.StatusCategoryInProgress, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Done", Color: ptr("#22C55E"), Position: 4, Category: taskdom.StatusCategoryDone, CreatedAt: now, UpdatedAt: now},
+	}
+	for _, ts := range defaults {
+		if err := s.taskRepo.CreateTaskStatus(ctx, ts); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Update modifies an existing project's mutable fields.

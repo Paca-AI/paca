@@ -137,7 +137,7 @@ func TestUpdateMemberRole_Success(t *testing.T) {
 		},
 	}
 
-	svc := New(repo)
+	svc := New(repo, nil)
 	member, err := svc.UpdateMemberRole(context.Background(), projectID, userID, projectdom.UpdateMemberRoleInput{
 		ProjectRoleID: newRoleID,
 	})
@@ -159,7 +159,7 @@ func TestUpdateMemberRole_ProjectNotFound(t *testing.T) {
 		},
 	}
 
-	svc := New(repo)
+	svc := New(repo, nil)
 	_, err := svc.UpdateMemberRole(context.Background(), uuid.New(), uuid.New(), projectdom.UpdateMemberRoleInput{
 		ProjectRoleID: uuid.New(),
 	})
@@ -187,7 +187,7 @@ func TestUpdateMemberRole_RoleFromDifferentProject(t *testing.T) {
 		},
 	}
 
-	svc := New(repo)
+	svc := New(repo, nil)
 	_, err := svc.UpdateMemberRole(context.Background(), projectID, uuid.New(), projectdom.UpdateMemberRoleInput{
 		ProjectRoleID: uuid.New(),
 	})
@@ -214,7 +214,7 @@ func TestUpdateMemberRole_UpdateError(t *testing.T) {
 		},
 	}
 
-	svc := New(repo)
+	svc := New(repo, nil)
 	_, err := svc.UpdateMemberRole(context.Background(), projectID, userID, projectdom.UpdateMemberRoleInput{
 		ProjectRoleID: uuid.New(),
 	})

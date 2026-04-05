@@ -351,13 +351,18 @@ func (s *projectPermStore) ListProjectPermissions(_ context.Context, _ uuid.UUID
 }
 
 func buildProjectTestRouter(repo *fakeProjectRepo, store *projectPermStore) *gin.Engine {
+	r, _ := buildProjectTestRouterWithTaskRepo(repo, store, newFakeTaskRepoIT())
+	return r
+}
+
+func buildProjectTestRouterWithTaskRepo(repo *fakeProjectRepo, store *projectPermStore, taskRepo *fakeTaskRepo) (*gin.Engine, *fakeTaskRepo) {
 	gin.SetMode(gin.TestMode)
 	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
 	refreshStore := &fakeRefreshStore{}
 	userRepo := newFakeUserRepo()
 	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
 	userService := usersvc.New(userRepo)
-	projectService := projectsvc.New(repo)
+	projectService := projectsvc.New(repo, taskRepo)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
@@ -368,9 +373,9 @@ func buildProjectTestRouter(repo *fakeProjectRepo, store *projectPermStore) *gin
 		User:         handler.NewUserHandler(userService),
 		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
 		Project:      handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
-		Task:         handler.NewTaskHandler(tasksvc.New(newFakeTaskRepoIT())),
+		Task:         handler.NewTaskHandler(tasksvc.New(taskRepo)),
 		Log:          log,
-	})
+	}), taskRepo
 }
 
 func issueProjectToken(t *testing.T, subject string) string {
@@ -632,5 +637,86 @@ func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
 	deleteRoleW := serve(r, authedJSONReq(t.Context(), http.MethodDelete, deleteRoleURL, tok, nil))
 	if deleteRoleW.Code != http.StatusOK {
 		t.Fatalf("delete role: expected 200, got %d (%s)", deleteRoleW.Code, deleteRoleW.Body.String())
+	}
+}
+
+func TestIntegrationProjectCreation_DefaultTaskRecords(t *testing.T) {
+	repo := newFakeProjectRepo()
+	taskRepo := newFakeTaskRepoIT()
+	store := &projectPermStore{
+		globalPerms: []authz.Permission{
+			authz.PermissionProjectsRead,
+			authz.PermissionProjectsWrite,
+			authz.PermissionProjectsCreate,
+		},
+	}
+	r, _ := buildProjectTestRouterWithTaskRepo(repo, store, taskRepo)
+	tok := issueProjectToken(t, uuid.NewString())
+
+	createW := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/projects", tok, map[string]any{
+		"name":        "Default Records Project",
+		"description": "test",
+	}))
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create project: expected 201, got %d (%s)", createW.Code, createW.Body.String())
+	}
+	projectID := projectIDFromCreate(t, createW)
+
+	// --- task types ---
+	typesURL := fmt.Sprintf("/api/v1/projects/%s/task-types", projectID)
+	typesW := serve(r, authedJSONReq(t.Context(), http.MethodGet, typesURL, tok, nil))
+	if typesW.Code != http.StatusOK {
+		t.Fatalf("list task types: expected 200, got %d (%s)", typesW.Code, typesW.Body.String())
+	}
+	var typesEnv struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(typesW.Body).Decode(&typesEnv); err != nil {
+		t.Fatalf("decode task types: %v", err)
+	}
+	const wantTypes = 3
+	if got := len(typesEnv.Data.Items); got != wantTypes {
+		t.Errorf("expected %d default task types, got %d", wantTypes, got)
+	}
+	gotTypeNames := map[string]bool{}
+	for _, item := range typesEnv.Data.Items {
+		name, _ := item["name"].(string)
+		gotTypeNames[name] = true
+	}
+	for _, name := range []string{"Task", "Bug", "Story"} {
+		if !gotTypeNames[name] {
+			t.Errorf("missing default task type %q", name)
+		}
+	}
+
+	// --- task statuses ---
+	statusesURL := fmt.Sprintf("/api/v1/projects/%s/task-statuses", projectID)
+	statusesW := serve(r, authedJSONReq(t.Context(), http.MethodGet, statusesURL, tok, nil))
+	if statusesW.Code != http.StatusOK {
+		t.Fatalf("list task statuses: expected 200, got %d (%s)", statusesW.Code, statusesW.Body.String())
+	}
+	var statusesEnv struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(statusesW.Body).Decode(&statusesEnv); err != nil {
+		t.Fatalf("decode task statuses: %v", err)
+	}
+	const wantStatuses = 4
+	if got := len(statusesEnv.Data.Items); got != wantStatuses {
+		t.Errorf("expected %d default task statuses, got %d", wantStatuses, got)
+	}
+	gotStatusNames := map[string]bool{}
+	for _, item := range statusesEnv.Data.Items {
+		name, _ := item["name"].(string)
+		gotStatusNames[name] = true
+	}
+	for _, name := range []string{"Backlog", "Todo", "In Progress", "Done"} {
+		if !gotStatusNames[name] {
+			t.Errorf("missing default task status %q", name)
+		}
 	}
 }

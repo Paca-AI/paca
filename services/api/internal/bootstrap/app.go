@@ -104,7 +104,7 @@ func New(cfg *config.Config) (*App, error) {
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
 	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo)
 	globalRoleService := globalrolesvc.New(globalRoleRepo)
-	projectService := projectsvc.New(projectRepo)
+	projectService := projectsvc.New(projectRepo, taskRepo)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(sprintRepo)
 

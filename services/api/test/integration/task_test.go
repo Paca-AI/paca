@@ -301,7 +301,7 @@ func buildTaskTestRouterWithSprints(taskRepo *fakeTaskRepo, sprintRepo *fakeSpri
 	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
 	userService := usersvc.New(userRepo)
 	projectRepo := newFakeProjectRepo()
-	projectService := projectsvc.New(projectRepo)
+	projectService := projectsvc.New(projectRepo, taskRepo)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(sprintRepo)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))

@@ -930,3 +930,70 @@ func TestE2EProject_GlobalReadSeesAllProjects(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Default task records seeded on project creation
+// ---------------------------------------------------------------------------
+
+func TestE2EProjectCreation_DefaultTaskRecords(t *testing.T) {
+	env := newE2EEnv(t)
+	seedProjectAdminUser(t, env, "defaults-admin", "defaultspass1")
+	client, token := projectAdminLogin(t, env, "defaults-admin", "defaultspass1")
+	projID := createProjectViaAPI(t, env, client, token, "defaults-project-"+uuid.NewString(), "")
+
+	t.Run("default_task_types", func(t *testing.T) {
+		url := fmt.Sprintf("%s/api/v1/projects/%s/task-types", env.base, projID)
+		req := mustRequest(env.ctx, t, http.MethodGet, url, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		items, _ := data["items"].([]any)
+		if len(items) != 3 {
+			t.Errorf("expected 3 default task types, got %d", len(items))
+		}
+		gotNames := map[string]bool{}
+		for _, item := range items {
+			m, _ := item.(map[string]any)
+			name, _ := m["name"].(string)
+			gotNames[name] = true
+		}
+		for _, name := range []string{"Task", "Bug", "Story"} {
+			if !gotNames[name] {
+				t.Errorf("missing default task type %q", name)
+			}
+		}
+	})
+
+	t.Run("default_task_statuses", func(t *testing.T) {
+		url := fmt.Sprintf("%s/api/v1/projects/%s/task-statuses", env.base, projID)
+		req := mustRequest(env.ctx, t, http.MethodGet, url, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+
+		var env2 envelope
+		decodeJSON(t, resp, &env2)
+		data := assertDataMap(t, env2)
+		items, _ := data["items"].([]any)
+		if len(items) != 4 {
+			t.Errorf("expected 4 default task statuses, got %d", len(items))
+		}
+		gotNames := map[string]bool{}
+		for _, item := range items {
+			m, _ := item.(map[string]any)
+			name, _ := m["name"].(string)
+			gotNames[name] = true
+		}
+		for _, name := range []string{"Backlog", "Todo", "In Progress", "Done"} {
+			if !gotNames[name] {
+				t.Errorf("missing default task status %q", name)
+			}
+		}
+	})
+}
