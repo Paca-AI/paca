@@ -20,6 +20,7 @@ import { DeleteTaskStatusDialog } from "@/components/projects/task-statuses/Dele
 import { TaskStatusFormDialog } from "@/components/projects/task-statuses/TaskStatusFormDialog";
 import { DeleteTaskTypeDialog } from "@/components/projects/task-types/DeleteTaskTypeDialog";
 import { TaskTypeFormDialog } from "@/components/projects/task-types/TaskTypeFormDialog";
+import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -810,25 +811,32 @@ function TaskTypesSettings({
 							{types.map((type) => (
 								<TableRow key={type.id} className="group">
 									<TableCell className="px-5">
-										{type.icon ? (
-											<span className="text-base leading-none">
-												{type.icon}
-											</span>
-										) : (
-											<span
-												className="inline-block size-3 rounded-full"
-												style={{ backgroundColor: type.color ?? "#6366f1" }}
-											/>
-										)}
+										{(() => {
+											const IconComp = getTaskTypeIconComponent(type.icon);
+											if (IconComp) {
+												return (
+													<IconComp
+														className="size-4"
+														style={{ color: type.color ?? "#6366f1" }}
+													/>
+												);
+											}
+											return (
+												<span
+													className="inline-block size-3 rounded-full"
+													style={{ backgroundColor: type.color ?? "#6366f1" }}
+												/>
+											);
+										})()}
 									</TableCell>
 									<TableCell className="px-5">
 										<div className="flex items-center gap-2">
-											{!type.icon ? null : (
+											{type.icon && !getTaskTypeIconComponent(type.icon) ? (
 												<span
 													className="inline-block size-2.5 rounded-full shrink-0"
 													style={{ backgroundColor: type.color ?? "#6366f1" }}
 												/>
-											)}
+											) : null}
 											<span className="text-sm font-medium">{type.name}</span>
 										</div>
 									</TableCell>

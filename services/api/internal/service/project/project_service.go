@@ -166,9 +166,9 @@ func ptr[T any](v T) *T { return &v }
 // seedDefaultTaskTypes creates the three built-in task types for a new project.
 func (s *Service) seedDefaultTaskTypes(ctx context.Context, projectID uuid.UUID, now time.Time) error {
 	defaults := []*taskdom.TaskType{
-		{ID: uuid.New(), ProjectID: projectID, Name: "Task", CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "Bug", Icon: ptr("bug"), Color: ptr("#EF4444"), CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "Story", Icon: ptr("story"), Color: ptr("#3B82F6"), CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Task", Icon: ptr("CheckSquare"), Color: ptr("#3b82f6"), CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Bug", Icon: ptr("Bug"), Color: ptr("#ef4444"), CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Story", Icon: ptr("BookOpen"), Color: ptr("#22c55e"), CreatedAt: now, UpdatedAt: now},
 	}
 	for _, tt := range defaults {
 		if err := s.taskRepo.CreateTaskType(ctx, tt); err != nil {
@@ -181,10 +181,10 @@ func (s *Service) seedDefaultTaskTypes(ctx context.Context, projectID uuid.UUID,
 // seedDefaultTaskStatuses creates the four built-in task statuses for a new project.
 func (s *Service) seedDefaultTaskStatuses(ctx context.Context, projectID uuid.UUID, now time.Time) error {
 	defaults := []*taskdom.TaskStatus{
-		{ID: uuid.New(), ProjectID: projectID, Name: "Backlog", Color: ptr("#94A3B8"), Position: 1, Category: taskdom.StatusCategoryBacklog, CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "Todo", Color: ptr("#F59E0B"), Position: 2, Category: taskdom.StatusCategoryTodo, CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "In Progress", Color: ptr("#3B82F6"), Position: 3, Category: taskdom.StatusCategoryInProgress, CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.New(), ProjectID: projectID, Name: "Done", Color: ptr("#22C55E"), Position: 4, Category: taskdom.StatusCategoryDone, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Backlog", Color: ptr("#64748b"), Position: 1, Category: taskdom.StatusCategoryBacklog, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Todo", Color: ptr("#eab308"), Position: 2, Category: taskdom.StatusCategoryTodo, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "In Progress", Color: ptr("#3b82f6"), Position: 3, Category: taskdom.StatusCategoryInProgress, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New(), ProjectID: projectID, Name: "Done", Color: ptr("#22c55e"), Position: 4, Category: taskdom.StatusCategoryDone, CreatedAt: now, UpdatedAt: now},
 	}
 	for _, ts := range defaults {
 		if err := s.taskRepo.CreateTaskStatus(ctx, ts); err != nil {

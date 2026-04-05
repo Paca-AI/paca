@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -22,6 +21,7 @@ import {
 	taskTypesQueryOptions,
 	updateTaskType,
 } from "@/lib/project-api";
+import { getTaskTypeIconComponent, TASK_TYPE_ICONS } from "./task-type-icons";
 
 interface TaskTypeFormDialogProps {
 	projectId: string;
@@ -156,18 +156,50 @@ export function TaskTypeFormDialog({
 
 					{/* Icon */}
 					<div className="space-y-1.5">
-						<Label htmlFor="type-icon">
+						<Label>
 							Icon{" "}
-							<span className="text-muted-foreground font-normal">(emoji)</span>
+							<span className="text-muted-foreground font-normal">
+								(optional)
+							</span>
 						</Label>
-						<Input
-							id="type-icon"
-							value={icon}
-							onChange={(e) => setIcon(e.target.value)}
-							placeholder="🐛"
-							className="font-mono"
-							maxLength={8}
-						/>
+						<div className="flex flex-wrap gap-1">
+							{TASK_TYPE_ICONS.map(({ name, component: Icon, label }) => (
+								<button
+									key={name}
+									type="button"
+									title={label}
+									aria-label={label}
+									className={`flex size-8 items-center justify-center rounded-md border transition-colors ${
+										icon === name
+											? "border-foreground bg-accent"
+											: "border-transparent hover:border-border hover:bg-accent/60"
+									}`}
+									onClick={() => setIcon(icon === name ? "" : name)}
+								>
+									<Icon className="size-4" />
+								</button>
+							))}
+						</div>
+						{icon ? (
+							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+								{(() => {
+									const Comp = getTaskTypeIconComponent(icon);
+									return Comp ? (
+										<>
+											<Comp className="size-3.5" />
+											<span>{icon}</span>
+										</>
+									) : null;
+								})()}
+								<button
+									type="button"
+									className="ml-1 underline hover:text-foreground"
+									onClick={() => setIcon("")}
+								>
+									Clear
+								</button>
+							</div>
+						) : null}
 					</div>
 
 					{/* Color */}
@@ -188,13 +220,27 @@ export function TaskTypeFormDialog({
 									aria-label={preset}
 								/>
 							))}
-							<input
-								type="color"
-								value={color}
-								onChange={(e) => setColor(e.target.value)}
-								className="size-6 rounded-full cursor-pointer border border-border bg-transparent p-0"
+							<label
 								title="Custom color"
-							/>
+								className={`relative size-6 rounded-full cursor-pointer border-2 transition-transform hover:scale-110 overflow-hidden shrink-0 ${
+									!COLOR_PRESETS.includes(color)
+										? "border-foreground scale-110"
+										: "border-transparent"
+								}`}
+								style={{
+									background:
+										"conic-gradient(#ef4444, #f97316, #eab308, #22c55e, #14b8a6, #06b6d4, #3b82f6, #6366f1, #8b5cf6, #ec4899, #ef4444)",
+									backgroundSize: "120% 120%",
+									backgroundPosition: "center",
+								}}
+							>
+								<input
+									type="color"
+									value={color}
+									onChange={(e) => setColor(e.target.value)}
+									className="sr-only"
+								/>
+							</label>
 						</div>
 					</div>
 

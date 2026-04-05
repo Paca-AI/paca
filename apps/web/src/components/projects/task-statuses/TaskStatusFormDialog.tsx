@@ -206,13 +206,27 @@ export function TaskStatusFormDialog({
 									aria-label={preset}
 								/>
 							))}
-							<input
-								type="color"
-								value={color}
-								onChange={(e) => setColor(e.target.value)}
-								className="size-6 rounded-full cursor-pointer border border-border bg-transparent p-0"
+							<label
 								title="Custom color"
-							/>
+								className={`relative size-6 rounded-full cursor-pointer border-2 transition-transform hover:scale-110 overflow-hidden shrink-0 ${
+									!COLOR_PRESETS.includes(color)
+										? "border-foreground scale-110"
+										: "border-transparent"
+								}`}
+								style={{
+									background:
+										"conic-gradient(#ef4444, #f97316, #eab308, #22c55e, #14b8a6, #06b6d4, #3b82f6, #6366f1, #8b5cf6, #ec4899, #ef4444)",
+									backgroundSize: "120% 120%",
+									backgroundPosition: "center",
+								}}
+							>
+								<input
+									type="color"
+									value={color}
+									onChange={(e) => setColor(e.target.value)}
+									className="sr-only"
+								/>
+							</label>
 						</div>
 					</div>
 				</div>
