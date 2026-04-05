@@ -8,7 +8,7 @@
 :root {
 	--sea-ink: #0b0f1f;
 	--sea-ink-soft: #4a5880;
-	--lagoon: #2E4980;
+	--lagoon: #2e4980;
 	--lagoon-deep: #243b6e;
 	--palm: #10b981;
 	--sand: #ffffff;
@@ -32,19 +32,19 @@
 	--card-foreground: #0b0f1f;
 	--popover: #ffffff;
 	--popover-foreground: #0b0f1f;
-	--primary: #2E4980;
+	--primary: #2e4980;
 	--primary-foreground: #ffffff;
 	--secondary: #10b981;
 	--secondary-foreground: #052e1c;
 	--muted: #e3e8f3;
 	--muted-foreground: #4a5880;
 	--accent: #e3e8f3;
-	--accent-foreground: #2E4980;
+	--accent-foreground: #2e4980;
 	--destructive: oklch(0.577 0.245 27.325);
 	--destructive-foreground: oklch(0.577 0.245 27.325);
 	--border: #bcc6d9;
 	--input: #c0cbdb;
-	--ring: #2E4980;
+	--ring: #2e4980;
 	--chart-1: oklch(0.646 0.222 41.116);
 	--chart-2: oklch(0.6 0.118 184.704);
 	--chart-3: oklch(0.398 0.07 227.392);
@@ -53,12 +53,12 @@
 	--radius: 0.75rem;
 	--sidebar: #f3f5fb;
 	--sidebar-foreground: #0b0f1f;
-	--sidebar-primary: #2E4980;
+	--sidebar-primary: #2e4980;
 	--sidebar-primary-foreground: #ffffff;
 	--sidebar-accent: #e6ebf5;
-	--sidebar-accent-foreground: #2E4980;
+	--sidebar-accent-foreground: #2e4980;
 	--sidebar-border: #cdd5e4;
-	--sidebar-ring: #2E4980;
+	--sidebar-ring: #2e4980;
 }
 
 .dark {

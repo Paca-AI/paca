@@ -36,6 +36,19 @@ export const ApiErrorCode = {
 	ProjectMemberNotFound: "PROJECT_MEMBER_NOT_FOUND",
 	ProjectMemberAlreadyAdded: "PROJECT_MEMBER_ALREADY_ADDED",
 
+	// Task type domain errors.
+	TaskTypeNotFound: "TASK_TYPE_NOT_FOUND",
+	TaskTypeNameInvalid: "TASK_TYPE_NAME_INVALID",
+
+	// Task status domain errors.
+	TaskStatusNotFound: "TASK_STATUS_NOT_FOUND",
+	TaskStatusNameInvalid: "TASK_STATUS_NAME_INVALID",
+	TaskStatusCategoryInvalid: "TASK_STATUS_CATEGORY_INVALID",
+
+	// Task domain errors.
+	TaskNotFound: "TASK_NOT_FOUND",
+	TaskTitleInvalid: "TASK_TITLE_INVALID",
+
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
 	InternalError: "INTERNAL_ERROR",

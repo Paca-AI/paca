@@ -165,6 +165,158 @@ export async function deleteProjectRole(
 	await apiClient.instance.delete(`/projects/${projectId}/roles/${roleId}`);
 }
 
+// ── Task Types ────────────────────────────────────────────────────────────────
+
+export interface TaskType {
+	id: string;
+	project_id: string;
+	name: string;
+	icon?: string | null;
+	color?: string | null;
+	description?: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export async function listTaskTypes(projectId: string): Promise<TaskType[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: TaskType[] }>
+	>(`/projects/${projectId}/task-types`);
+	return data.data.items;
+}
+
+export async function createTaskType(
+	projectId: string,
+	payload: {
+		name: string;
+		icon?: string | null;
+		color?: string | null;
+		description?: string | null;
+	},
+): Promise<TaskType> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<TaskType>>(
+		`/projects/${projectId}/task-types`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function updateTaskType(
+	projectId: string,
+	typeId: string,
+	payload: {
+		name?: string;
+		icon?: string | null;
+		color?: string | null;
+		description?: string | null;
+	},
+): Promise<TaskType> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<TaskType>>(
+		`/projects/${projectId}/task-types/${typeId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteTaskType(
+	projectId: string,
+	typeId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/projects/${projectId}/task-types/${typeId}`,
+	);
+}
+
+// ── Task Statuses ─────────────────────────────────────────────────────────────
+
+export type StatusCategory =
+	| "backlog"
+	| "refinement"
+	| "ready"
+	| "todo"
+	| "inprogress"
+	| "done";
+
+export const STATUS_CATEGORIES: StatusCategory[] = [
+	"backlog",
+	"refinement",
+	"ready",
+	"todo",
+	"inprogress",
+	"done",
+];
+
+export const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
+	backlog: "Backlog",
+	refinement: "Refinement",
+	ready: "Ready",
+	todo: "To Do",
+	inprogress: "In Progress",
+	done: "Done",
+};
+
+export interface TaskStatus {
+	id: string;
+	project_id: string;
+	name: string;
+	color?: string | null;
+	position: number;
+	category: StatusCategory;
+	created_at: string;
+	updated_at: string;
+}
+
+export async function listTaskStatuses(
+	projectId: string,
+): Promise<TaskStatus[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: TaskStatus[] }>
+	>(`/projects/${projectId}/task-statuses`);
+	return data.data.items;
+}
+
+export async function createTaskStatus(
+	projectId: string,
+	payload: {
+		name: string;
+		color?: string | null;
+		position: number;
+		category: StatusCategory;
+	},
+): Promise<TaskStatus> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<TaskStatus>>(
+		`/projects/${projectId}/task-statuses`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function updateTaskStatus(
+	projectId: string,
+	statusId: string,
+	payload: {
+		name?: string;
+		color?: string | null;
+		position?: number;
+		category?: StatusCategory;
+	},
+): Promise<TaskStatus> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<TaskStatus>>(
+		`/projects/${projectId}/task-statuses/${statusId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteTaskStatus(
+	projectId: string,
+	statusId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/projects/${projectId}/task-statuses/${statusId}`,
+	);
+}
+
 // ── Query Options ─────────────────────────────────────────────────────────────
 
 export const projectsQueryOptions = (page = 1, pageSize = 50) =>
@@ -190,4 +342,16 @@ export const projectRolesQueryOptions = (projectId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "roles"],
 		queryFn: () => listProjectRoles(projectId),
+	});
+
+export const taskTypesQueryOptions = (projectId: string) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "task-types"],
+		queryFn: () => listTaskTypes(projectId),
+	});
+
+export const taskStatusesQueryOptions = (projectId: string) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "task-statuses"],
+		queryFn: () => listTaskStatuses(projectId),
 	});

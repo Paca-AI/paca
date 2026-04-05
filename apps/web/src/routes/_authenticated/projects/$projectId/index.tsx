@@ -169,6 +169,7 @@ function ProjectDashboardPage() {
 							<Button
 								key={to}
 								variant="outline"
+								nativeButton={false}
 								className="h-auto w-full flex-col items-start gap-1.5 p-4 text-left border-border/60 hover:border-primary/40 hover:bg-primary/5"
 								render={<Link to={to} params={{ projectId }} />}
 							>
