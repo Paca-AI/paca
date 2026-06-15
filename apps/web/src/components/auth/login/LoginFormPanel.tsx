@@ -14,9 +14,9 @@ function validateUsername(value: string) {
 	if (!value.trim()) {
 		return "Username is required";
 	}
-	if (value.trim().length < 3) {
-		return "Username must be at least 3 characters";
-	}
+	// Login must accept any existing username. Length/format are registration
+	// concerns enforced at account creation; applying them here locks out valid
+	// accounts (e.g. a 2-char admin username the installer allows to be created).
 	return undefined;
 }
 

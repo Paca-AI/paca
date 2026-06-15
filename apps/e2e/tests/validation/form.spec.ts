@@ -32,15 +32,13 @@ test.describe("Form Validation", () => {
 		).toBeVisible();
 	});
 
-	test("shows minimum-length error when username is too short", async ({
-		loginPage,
-	}) => {
+	test("accepts short usernames at login", async ({ loginPage }) => {
 		await loginPage.usernameInput.fill("ab");
 		await loginPage.passwordInput.fill("validpass1");
 		await loginPage.passwordInput.click();
 		await expect(
 			loginPage.page.getByText("Username must be at least 3 characters"),
-		).toBeVisible();
+		).toHaveCount(0);
 		await expect(loginPage.signInButton).toBeEnabled();
 	});
 
