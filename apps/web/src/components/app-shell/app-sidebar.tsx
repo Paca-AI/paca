@@ -932,7 +932,7 @@ function ProjectNavItems({
 					<SidebarMenu>
 						{PROJECT_NAV_ITEMS.filter(
 							(item) => !isAnonymous || !ANON_HIDDEN_SEGMENTS.has(item.segment),
-						).map(({ segment, icon: Icon, label }) => {
+						).map(({ segment, icon: Icon }) => {
 							const href = segment
 								? `/projects/${projectId}/${segment}`
 								: `/projects/${projectId}`;
@@ -940,10 +940,10 @@ function ProjectNavItems({
 								? location.startsWith(href)
 								: location === href || location === `${href}/`;
 							return (
-								<SidebarMenuItem key={label}>
+								<SidebarMenuItem key={segment}>
 									<SidebarMenuButton
 										isActive={isActive}
-										tooltip={label}
+										tooltip={t(`common.${segment}`)}
 										render={<Link to={href} />}
 										className={cn(
 											"relative transition-all duration-150",
@@ -953,7 +953,7 @@ function ProjectNavItems({
 										)}
 									>
 										<Icon className="size-4" />
-										<span>{label}</span>
+										<span>{t(`common.${segment}`)}</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 							);
