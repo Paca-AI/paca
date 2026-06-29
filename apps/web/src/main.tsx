@@ -2,6 +2,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import "./i18n";
 import { QueryProvider } from "./integrations/react-query/root-provider";
 import { router } from "./router";
 

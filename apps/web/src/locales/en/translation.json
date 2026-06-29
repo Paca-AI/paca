@@ -1,0 +1,40 @@
+{
+	"common": {
+		"language": "Language",
+		"home": "Home",
+		"administration": "Administration",
+		"globalRoles": "Global Roles",
+		"users": "Users",
+		"plugins": "Plugins",
+		"theme": "Theme",
+		"light": "Light",
+		"dark": "Dark",
+		"auto": "Auto",
+		"project": "Project",
+		"projects": "Projects",
+		"agents": "Agents",
+		"team": "Team",
+		"settings": "Settings",
+		"documentation": "Documentation",
+		"interactions": "Interactions",
+		"timeline": "Timeline",
+		"productBacklog": "Product Backlog",
+		"allProjects": "All Projects",
+		"newProject": "New project",
+		"yourProjects": "Your Projects",
+		"noProjectsYet": "No projects yet"
+	},
+	"auth": {
+		"welcomeBack": "Welcome back",
+		"signInSubtitle": "Sign in to your workspace to continue.",
+		"username": "Username",
+		"usernamePlaceholder": "Enter your username",
+		"password": "Password",
+		"showPassword": "Show password",
+		"hidePassword": "Hide password",
+		"keepSignedIn": "Keep me signed in",
+		"signIn": "Sign in",
+		"signingIn": "Signing in…",
+		"adminNote": "Account access and password resets are managed by your administrator."
+	}
+}

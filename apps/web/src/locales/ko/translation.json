@@ -1,0 +1,40 @@
+{
+	"common": {
+		"language": "언어",
+		"home": "홈",
+		"administration": "관리",
+		"globalRoles": "전역 역할",
+		"users": "사용자",
+		"plugins": "플러그인",
+		"theme": "테마",
+		"light": "밝게",
+		"dark": "어둡게",
+		"auto": "자동",
+		"project": "프로젝트",
+		"projects": "프로젝트",
+		"agents": "에이전트",
+		"team": "팀",
+		"settings": "설정",
+		"documentation": "문서",
+		"interactions": "인터랙션",
+		"timeline": "타임라인",
+		"productBacklog": "제품 백로그",
+		"allProjects": "모든 프로젝트",
+		"newProject": "새 프로젝트",
+		"yourProjects": "내 프로젝트",
+		"noProjectsYet": "아직 프로젝트가 없습니다"
+	},
+	"auth": {
+		"welcomeBack": "다시 오신 것을 환영합니다",
+		"signInSubtitle": "계속하려면 워크스페이스에 로그인하세요.",
+		"username": "사용자 이름",
+		"usernamePlaceholder": "사용자 이름을 입력하세요",
+		"password": "비밀번호",
+		"showPassword": "비밀번호 표시",
+		"hidePassword": "비밀번호 숨기기",
+		"keepSignedIn": "로그인 상태 유지",
+		"signIn": "로그인",
+		"signingIn": "로그인 중…",
+		"adminNote": "계정 접근과 비밀번호 재설정은 관리자가 관리합니다."
+	}
+}
