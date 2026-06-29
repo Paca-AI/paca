@@ -149,6 +149,7 @@ export function TaskRow({
 	isDragging,
 	canEdit,
 	onUpdateTaskField,
+		onDoubleClick,
 }: TaskRowProps) {
 	const status = statuses.find((s) => s.id === task.status_id);
 

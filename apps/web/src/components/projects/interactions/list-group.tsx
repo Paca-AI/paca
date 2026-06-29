@@ -403,6 +403,7 @@ export function ListGroup({
 				isDragging={draggingId === task.id}
 				canEdit={canEdit}
 				onUpdateTaskField={onUpdateTaskField}
+				onDoubleClick={onTaskDoubleClick ? () => onTaskDoubleClick(task) : undefined}
 			/>
 		</div>
 	);
