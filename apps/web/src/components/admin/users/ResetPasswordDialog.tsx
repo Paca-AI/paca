@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Check, Copy, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,7 @@ export function ResetPasswordDialog({
 	open,
 	onOpenChange,
 }: ResetPasswordDialogProps) {
+	const { t } = useTranslation();
 	const [generatedPassword, setGeneratedPassword] = useState<string | null>(
 		null,
 	);
@@ -58,13 +60,12 @@ export function ResetPasswordDialog({
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
 			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.UserNotFound]: "This user no longer exists.",
-				[ApiErrorCode.Forbidden]:
-					"You don't have permission to reset this user's password.",
-				[ApiErrorCode.InternalError]: "Something went wrong. Please try again.",
+				[ApiErrorCode.UserNotFound]: t("admin.users.errUserNotFound"),
+				[ApiErrorCode.Forbidden]: t("admin.users.errForbiddenReset"),
+				[ApiErrorCode.InternalError]: t("admin.users.errServer"),
 			};
 			const fallback =
-				err instanceof Error ? err.message : "Something went wrong.";
+				err instanceof Error ? err.message : t("admin.users.errFallback");
 			setError((code && messages[code]) ?? fallback);
 		},
 	});
@@ -89,26 +90,31 @@ export function ResetPasswordDialog({
 						<div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
 							<KeyRound className="size-4" />
 						</div>
-						<DialogTitle className="text-base">Reset password</DialogTitle>
+						<DialogTitle className="text-base">
+							{t("admin.users.resetPassword")}
+						</DialogTitle>
 					</div>
 					<DialogDescription className="mt-2">
 						{generatedPassword ? (
-							<>
-								Password for{" "}
-								<span className="font-mono font-semibold text-foreground">
-									{user.username}
-								</span>{" "}
-								has been reset. Share the temporary password below — it will not
-								be shown again.
-							</>
+							<Trans
+								i18nKey="admin.users.resetDoneDesc"
+								values={{ username: user.username }}
+								components={{
+									name: (
+										<span className="font-mono font-semibold text-foreground" />
+									),
+								}}
+							/>
 						) : (
-							<>
-								A strong temporary password will be generated and assigned to{" "}
-								<span className="font-mono font-semibold text-foreground">
-									{user.username}
-								</span>
-								. They will be required to change it on next login.
-							</>
+							<Trans
+								i18nKey="admin.users.resetDesc"
+								values={{ username: user.username }}
+								components={{
+									name: (
+										<span className="font-mono font-semibold text-foreground" />
+									),
+								}}
+							/>
 						)}
 					</DialogDescription>
 				</DialogHeader>
@@ -117,7 +123,7 @@ export function ResetPasswordDialog({
 					<div className="flex flex-col gap-3 py-1">
 						<div className="flex flex-col gap-1.5">
 							<Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-								Temporary Password
+								{t("admin.users.tempPassword")}
 							</Label>
 							<div className="flex gap-2">
 								<Input
@@ -130,7 +136,9 @@ export function ResetPasswordDialog({
 									variant="outline"
 									size="icon"
 									onClick={() => setRevealed((v) => !v)}
-									aria-label={revealed ? "Hide password" : "Show password"}
+									aria-label={
+										revealed ? t("auth.hidePassword") : t("auth.showPassword")
+									}
 								>
 									{revealed ? (
 										<EyeOff className="size-4" />
@@ -142,7 +150,7 @@ export function ResetPasswordDialog({
 									variant="outline"
 									size="icon"
 									onClick={handleCopy}
-									aria-label="Copy password"
+									aria-label={t("admin.users.copyPassword")}
 								>
 									{copied ? (
 										<Check className="size-4 text-green-500" />
@@ -153,7 +161,7 @@ export function ResetPasswordDialog({
 							</div>
 						</div>
 						<p className="text-xs text-muted-foreground">
-							⚠ This password will not be shown again after closing.
+							{t("admin.users.notShownAgain")}
 						</p>
 					</div>
 				) : error ? (
@@ -165,17 +173,21 @@ export function ResetPasswordDialog({
 
 				<DialogFooter>
 					{generatedPassword ? (
-						<Button onClick={() => handleOpenChange(false)}>Done</Button>
+						<Button onClick={() => handleOpenChange(false)}>
+							{t("admin.users.done")}
+						</Button>
 					) : (
 						<>
 							<Button variant="outline" onClick={() => handleOpenChange(false)}>
-								Cancel
+								{t("admin.users.cancel")}
 							</Button>
 							<Button
 								onClick={() => mutation.mutate()}
 								disabled={mutation.isPending}
 							>
-								{mutation.isPending ? "Resetting…" : "Reset password"}
+								{mutation.isPending
+									? t("admin.users.resetting")
+									: t("admin.users.resetPassword")}
 							</Button>
 						</>
 					)}

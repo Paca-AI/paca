@@ -1,4 +1,5 @@
 import { Shield, Users } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { Separator } from "@/components/ui/separator";
 
@@ -11,15 +12,20 @@ export function UsersStats({
 	total,
 	mustChangePasswordCount,
 }: UsersStatsProps) {
+	const { t } = useTranslation();
 	return (
 		<div className="flex items-center gap-5 rounded-xl border bg-muted/20 px-5 py-3">
 			<div className="flex items-center gap-2">
 				<Users className="size-4 text-primary" />
 				<span className="text-sm">
-					<span className="font-semibold tabular-nums">{total}</span>
-					<span className="ml-1.5 text-muted-foreground">
-						{total === 1 ? "user" : "users"} in system
-					</span>
+					<Trans
+						i18nKey="admin.users.usersInSystem"
+						count={total}
+						components={{
+							n: <span className="font-semibold tabular-nums" />,
+							m: <span className="ml-1.5 text-muted-foreground" />,
+						}}
+					/>
 				</span>
 			</div>
 			{mustChangePasswordCount > 0 ? (
@@ -32,7 +38,7 @@ export function UsersStats({
 								{mustChangePasswordCount}
 							</span>
 							<span className="ml-1.5 text-muted-foreground">
-								must change password
+								{t("admin.users.mustChangePassword")}
 							</span>
 						</span>
 					</div>

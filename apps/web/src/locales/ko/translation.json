@@ -57,7 +57,28 @@
 			"loadFailed": "사용자를 불러오지 못했습니다",
 			"loadFailedHint": "페이지를 새로고침한 뒤 다시 시도하세요.",
 			"noPermission": "사용자를 볼 권한이 없습니다",
-			"noPermissionHint": "위 버튼으로 새 사용자를 만들 수 있습니다."
+			"noPermissionHint": "위 버튼으로 새 사용자를 만들 수 있습니다.",
+			"cancel": "취소",
+			"deleteUser": "사용자 삭제",
+			"deleting": "삭제 중…",
+			"deleteConfirm": "정말 <name>{{username}}</name> 사용자를 삭제하시겠어요? 계정이 영구적으로 제거됩니다.",
+			"cannotUndo": "이 작업은 되돌릴 수 없습니다.",
+			"resetPassword": "비밀번호 재설정",
+			"resetting": "재설정 중…",
+			"resetDesc": "강력한 임시 비밀번호가 생성되어 <name>{{username}}</name>에게 할당됩니다. 다음 로그인 시 변경해야 합니다.",
+			"resetDoneDesc": "<name>{{username}}</name>의 비밀번호가 재설정되었습니다. 아래 임시 비밀번호를 공유하세요 — 다시 표시되지 않습니다.",
+			"tempPassword": "임시 비밀번호",
+			"copyPassword": "비밀번호 복사",
+			"notShownAgain": "⚠ 닫은 후에는 이 비밀번호가 다시 표시되지 않습니다.",
+			"done": "완료",
+			"mustChangePassword": "비밀번호 변경 필요",
+			"usersInSystem_one": "<m>시스템 내 사용자 </m><n>{{count}}</n><m>명</m>",
+			"usersInSystem_other": "<m>시스템 내 사용자 </m><n>{{count}}</n><m>명</m>",
+			"errUserNotFound": "해당 사용자가 더 이상 존재하지 않습니다.",
+			"errForbiddenDelete": "이 사용자를 삭제할 권한이 없습니다.",
+			"errForbiddenReset": "이 사용자의 비밀번호를 재설정할 권한이 없습니다.",
+			"errServer": "문제가 발생했습니다. 다시 시도하세요.",
+			"errFallback": "문제가 발생했습니다."
 		}
 	}
 }

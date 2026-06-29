@@ -57,7 +57,28 @@
 			"loadFailed": "Failed to load users",
 			"loadFailedHint": "Please refresh the page and try again.",
 			"noPermission": "You don't have permission to view users",
-			"noPermissionHint": "You can still create new users using the button above."
+			"noPermissionHint": "You can still create new users using the button above.",
+			"cancel": "Cancel",
+			"deleteUser": "Delete user",
+			"deleting": "Deleting…",
+			"deleteConfirm": "Are you sure you want to delete <name>{{username}}</name>? Their account will be permanently removed.",
+			"cannotUndo": "This action cannot be undone.",
+			"resetPassword": "Reset password",
+			"resetting": "Resetting…",
+			"resetDesc": "A strong temporary password will be generated and assigned to <name>{{username}}</name>. They will be required to change it on next login.",
+			"resetDoneDesc": "Password for <name>{{username}}</name> has been reset. Share the temporary password below — it will not be shown again.",
+			"tempPassword": "Temporary Password",
+			"copyPassword": "Copy password",
+			"notShownAgain": "⚠ This password will not be shown again after closing.",
+			"done": "Done",
+			"mustChangePassword": "must change password",
+			"usersInSystem_one": "<n>{{count}}</n> <m>user in system</m>",
+			"usersInSystem_other": "<n>{{count}}</n> <m>users in system</m>",
+			"errUserNotFound": "This user no longer exists.",
+			"errForbiddenDelete": "You don't have permission to delete this user.",
+			"errForbiddenReset": "You don't have permission to reset this user's password.",
+			"errServer": "Something went wrong. Please try again.",
+			"errFallback": "Something went wrong."
 		}
 	}
 }
