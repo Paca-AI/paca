@@ -1,5 +1,5 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -20,6 +20,7 @@ import type {
 	TaskType,
 } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
+import { consumeToggled, markToggled } from "@/lib/sprint-toggle-tracker";
 
 import {
 	getPriority,
@@ -154,7 +155,9 @@ export function TaskRow({
 }: TaskRowProps) {
 	const status = statuses.find((s) => s.id === task.status_id);
 	const [isAnimating, setIsAnimating] = useState(false);
+	const [showEnter, setShowEnter] = useState(() => consumeToggled(task.id));
 	const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(() => { if (showEnter) { const t = setTimeout(() => setShowEnter(false), 500); return () => clearTimeout(t); } }, [showEnter]);
 
 	/** Renders a single cell value for the given field key. */
 	const renderCell = (fieldKey: string) => {
@@ -694,11 +697,13 @@ export function TaskRow({
 					clearTimeout(clickTimer.current);
 					clickTimer.current = null;
 				}
+				markToggled(task.id);
 				setIsAnimating(true);
 				setTimeout(() => { onDoubleClick?.(); }, 350);
 			}}
 			className={cn(
 				isAnimating && (task.sprint_id ? "animate-sprint-exit-down" : "animate-sprint-exit-up"),
+			showEnter && (task.sprint_id ? "animate-sprint-enter-down" : "animate-sprint-enter-up"),
 				"group flex items-center gap-3 px-4 py-2.5 cursor-pointer",
 				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",
 				isDragging && "opacity-40 bg-muted/20",

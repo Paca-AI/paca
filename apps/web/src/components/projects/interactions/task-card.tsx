@@ -1,5 +1,5 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import {
@@ -21,6 +21,7 @@ import type {
 	TaskType,
 } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
+import { consumeToggled, markToggled } from "@/lib/sprint-toggle-tracker";
 
 import {
 	getPriority,
@@ -75,7 +76,9 @@ export function TaskCard({
 }: TaskCardProps) {
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
 	const [isAnimating, setIsAnimating] = useState(false);
+	const [showEnter, setShowEnter] = useState(() => consumeToggled(task.id));
 	const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(() => { if (showEnter) { const t = setTimeout(() => setShowEnter(false), 500); return () => clearTimeout(t); } }, [showEnter]);
 	const taskType = taskTypes.find((t) => t.id === task.task_type_id);
 	const assignee = task.assignee_id
 		? members.find((m) => m.id === task.assignee_id)
@@ -616,6 +619,7 @@ export function TaskCard({
 					clearTimeout(clickTimer.current);
 					clickTimer.current = null;
 				}
+				markToggled(task.id);
 				setIsAnimating(true);
 				setTimeout(() => { onDoubleClick?.(); }, 350);
 			}}
@@ -625,6 +629,7 @@ export function TaskCard({
 				isDragging && "opacity-50 ring-2 ring-primary/30 shadow-lg rotate-1",
 				canEdit && "cursor-grab active:cursor-grabbing",
 				isAnimating && (task.sprint_id ? "animate-sprint-exit-down" : "animate-sprint-exit-up"),
+				showEnter && (task.sprint_id ? "animate-sprint-enter-down" : "animate-sprint-enter-up"),
 			)}
 		>
 			{canEdit && (
