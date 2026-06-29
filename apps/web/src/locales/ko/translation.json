@@ -22,7 +22,16 @@
 		"allProjects": "모든 프로젝트",
 		"newProject": "새 프로젝트",
 		"yourProjects": "내 프로젝트",
-		"noProjectsYet": "아직 프로젝트가 없습니다"
+		"noProjectsYet": "아직 프로젝트가 없습니다",
+		"noDocumentsYet": "아직 문서가 없습니다",
+		"add": "추가",
+		"newDocument": "새 문서",
+		"newFolder": "새 폴더",
+		"newSubfolder": "새 하위 폴더",
+		"emptyFolder": "빈 폴더",
+		"untitled": "제목 없음",
+		"rename": "이름 변경",
+		"delete": "삭제"
 	},
 	"auth": {
 		"welcomeBack": "다시 오신 것을 환영합니다",

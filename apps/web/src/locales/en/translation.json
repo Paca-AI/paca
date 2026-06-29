@@ -22,7 +22,16 @@
 		"allProjects": "All Projects",
 		"newProject": "New project",
 		"yourProjects": "Your Projects",
-		"noProjectsYet": "No projects yet"
+		"noProjectsYet": "No projects yet",
+		"noDocumentsYet": "No documents yet",
+		"add": "Add",
+		"newDocument": "New Document",
+		"newFolder": "New Folder",
+		"newSubfolder": "New Subfolder",
+		"emptyFolder": "Empty folder",
+		"untitled": "Untitled",
+		"rename": "Rename",
+		"delete": "Delete"
 	},
 	"auth": {
 		"welcomeBack": "Welcome back",

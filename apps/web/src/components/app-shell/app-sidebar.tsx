@@ -483,6 +483,7 @@ function DocsFolderNode({
 
 /** The full docs tree sidebar section — shown when in project context */
 function DocsSidebarSection({ projectId }: { projectId: string }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 	const location = useRouterState({ select: (s) => s.location.pathname });
@@ -603,7 +604,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 				<SidebarGroupContent>
 					<SidebarMenu>
 						<SidebarMenuItem>
-							<SidebarMenuButton tooltip="Documentation">
+							<SidebarMenuButton tooltip={t("common.documentation")}>
 								<BookOpen className="size-4" />
 							</SidebarMenuButton>
 						</SidebarMenuItem>
@@ -620,7 +621,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors px-3"
 				onClick={toggleCollapse}
 			>
-				<span>Documentation</span>
+				<span>{t("common.documentation")}</span>
 				<ChevronRight
 					className={cn(
 						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
@@ -634,7 +635,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 					<div className="py-1 space-y-0.5">
 						{isEmpty ? (
 							<div className="px-4 py-2 text-xs text-sidebar-foreground/40 italic">
-								No documents yet
+								{t("common.noDocumentsYet")}
 							</div>
 						) : (
 							<>
@@ -702,6 +703,7 @@ function ProjectSwitcher({
 	currentProjectId?: string;
 	canCreate: boolean;
 }) {
+	const { t } = useTranslation();
 	const [open, setOpen] = useState(false);
 	const { data: projectsResult } = useQuery(projectsQueryOptions());
 	const { data: currentProject } = useQuery({
@@ -710,7 +712,7 @@ function ProjectSwitcher({
 	});
 
 	const projects = projectsResult?.items ?? [];
-	const label = currentProject?.name ?? "Projects";
+	const label = currentProject?.name ?? t("common.projects");
 	const initials = currentProject?.name
 		? currentProject.name.slice(0, 2).toUpperCase()
 		: null;
@@ -752,7 +754,7 @@ function ProjectSwitcher({
 			<DropdownMenuContent align="start" sideOffset={6} className="w-60">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel className="text-xs text-muted-foreground pb-1">
-						Your Projects
+						{t("common.yourProjects")}
 					</DropdownMenuLabel>
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
@@ -785,7 +787,7 @@ function ProjectSwitcher({
 							<FolderKanban className="size-4 text-muted-foreground" />
 						</div>
 						<p className="text-xs text-muted-foreground mt-0.5">
-							No projects yet
+							{t("common.noProjectsYet")}
 						</p>
 					</div>
 				)}
@@ -793,7 +795,7 @@ function ProjectSwitcher({
 				{canCreate ? (
 					<DropdownMenuItem render={<Link to="/home" />}>
 						<Plus className="size-3.5" />
-						New project
+						{t("common.newProject")}
 					</DropdownMenuItem>
 				) : null}
 			</DropdownMenuContent>
@@ -879,6 +881,7 @@ function ProjectNavItems({
 	projectId: string;
 	isAnonymous?: boolean;
 }) {
+	const { t } = useTranslation();
 	const location = useRouterState({ select: (s) => s.location.pathname });
 
 	const [collapsed, setCollapsed] = useState(() => {
@@ -913,7 +916,7 @@ function ProjectNavItems({
 				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
 				onClick={toggle}
 			>
-				<span>Project</span>
+				<span>{t("common.project")}</span>
 				<ChevronRight
 					className={cn(
 						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
@@ -968,6 +971,7 @@ function ProjectInteractionsSection({
 	projectId: string;
 	isAnonymous?: boolean;
 }) {
+	const { t } = useTranslation();
 	const location = useRouterState({ select: (s) => s.location.pathname });
 	const { hasPermission } = usePermissions();
 	const qc = useQueryClient();
@@ -1097,7 +1101,7 @@ function ProjectInteractionsSection({
 				className="flex cursor-pointer items-center justify-between hover:text-sidebar-foreground transition-colors"
 				onClick={toggle}
 			>
-				<span>Interactions</span>
+				<span>{t("common.interactions")}</span>
 				<ChevronRight
 					className={cn(
 						"size-3.5 transition-transform duration-200 text-sidebar-foreground/40",
@@ -1113,7 +1117,7 @@ function ProjectInteractionsSection({
 						<SidebarMenuItem>
 							<SidebarMenuButton
 								isActive={isTimelineActive}
-								tooltip="Timeline"
+								tooltip={t("common.timeline")}
 								render={<Link to={timelineHref} />}
 								className={cn(
 									"relative transition-all duration-150",
@@ -1123,7 +1127,7 @@ function ProjectInteractionsSection({
 								)}
 							>
 								<GanttChart className="size-4" />
-								<span>Timeline</span>
+								<span>{t("common.timeline")}</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 						{/* Product Backlog — always shown */}
@@ -1134,7 +1138,7 @@ function ProjectInteractionsSection({
 						>
 							<SidebarMenuButton
 								isActive={isBacklogActive}
-								tooltip="Product Backlog"
+								tooltip={t("common.productBacklog")}
 								render={<Link to={backlogHref} />}
 								className={cn(
 									"relative transition-all duration-150",
@@ -1146,7 +1150,7 @@ function ProjectInteractionsSection({
 								)}
 							>
 								<BookOpen className="size-4" />
-								<span>Product Backlog</span>
+								<span>{t("common.productBacklog")}</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 						{/* Open sprints */}
@@ -1194,6 +1198,7 @@ const THEME_MODES = [
 ] as const;
 
 function ThemeSwitcher() {
+	const { t } = useTranslation();
 	const { mode, set } = useThemeMode();
 	const cycle = () =>
 		set(mode === "light" ? "dark" : mode === "dark" ? "auto" : "light");
@@ -1216,15 +1221,15 @@ function ThemeSwitcher() {
 			{/* Expanded: segmented 3-way control */}
 			<div className="flex items-center justify-between px-2 py-1.5 group-data-[collapsible=icon]:hidden">
 				<span className="text-xs font-medium text-sidebar-foreground/50 tracking-wide">
-					Theme
+					{t("common.theme")}
 				</span>
 				<div className="flex items-center gap-0.5 rounded-md border border-sidebar-border bg-sidebar p-0.5">
-					{THEME_MODES.map(({ mode: m, Icon, label }) => (
+					{THEME_MODES.map(({ mode: m, Icon }) => (
 						<button
 							key={m}
 							type="button"
 							onClick={() => set(m)}
-							title={label}
+							title={t(`common.${m}`)}
 							className={cn(
 								"flex size-6 items-center justify-center rounded transition-all duration-150",
 								mode === m
