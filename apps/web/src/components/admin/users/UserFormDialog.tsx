@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Eye, EyeOff, KeyRound, UserRound } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +44,7 @@ export function UserFormDialog({
 	open,
 	onOpenChange,
 }: UserFormDialogProps) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const isEdit = !!user;
 
@@ -85,7 +87,7 @@ export function UserFormDialog({
 
 	const mutation = useMutation({
 		mutationFn: async () => {
-			if (!fullName.trim()) throw new Error("Full name is required.");
+			if (!fullName.trim()) throw new Error(t("admin.users.fullNameRequired"));
 
 			if (isEdit && user) {
 				return updateUser(user.id, {
@@ -122,7 +124,7 @@ export function UserFormDialog({
 			setUsernameError(null);
 			const code = getApiErrorCode(err);
 			if (code === ApiErrorCode.UsernameTaken) {
-				setUsernameError("This username is already taken.");
+				setUsernameError(t("admin.users.usernameTaken"));
 				return;
 			}
 			if (
@@ -133,15 +135,14 @@ export function UserFormDialog({
 				return;
 			}
 			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.UserNotFound]:
-					"User not found. They may have already been deleted.",
-				[ApiErrorCode.Forbidden]:
-					"You don't have permission to perform this action.",
-				[ApiErrorCode.InternalError]:
-					"Something went wrong on the server. Please try again.",
+				[ApiErrorCode.UserNotFound]: t("admin.users.errUserNotFound2"),
+				[ApiErrorCode.Forbidden]: t("admin.users.errForbidden2"),
+				[ApiErrorCode.InternalError]: t("admin.users.errServer2"),
 			};
 			const message = err instanceof Error ? err.message : null;
-			setError((code && messages[code]) ?? message ?? "Something went wrong.");
+			setError(
+				(code && messages[code]) ?? message ?? t("admin.users.errFallback"),
+			);
 		},
 	});
 
@@ -155,18 +156,24 @@ export function UserFormDialog({
 							<div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
 								<KeyRound className="size-4" />
 							</div>
-							<DialogTitle className="text-base">User created</DialogTitle>
+							<DialogTitle className="text-base">
+								{t("admin.users.userCreated")}
+							</DialogTitle>
 						</div>
 						<DialogDescription className="mt-2">
-							<strong className="text-foreground">{username}</strong> has been
-							created. Share the temporary password below — the user will be
-							asked to change it on first login.
+							<Trans
+								i18nKey="admin.users.userCreatedDesc"
+								values={{ username }}
+								components={{
+									name: <strong className="text-foreground" />,
+								}}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 
 					<div className="flex flex-col gap-3 py-1">
 						<Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-							Temporary password
+							{t("admin.users.tempPasswordCreate")}
 						</Label>
 						<div className="flex items-center gap-2">
 							<div className="relative flex-1">
@@ -180,7 +187,11 @@ export function UserFormDialog({
 									type="button"
 									onClick={() => setShowPassword((v) => !v)}
 									className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground transition-colors"
-									aria-label={showPassword ? "Hide password" : "Show password"}
+									aria-label={
+										showPassword
+											? t("auth.hidePassword")
+											: t("auth.showPassword")
+									}
 								>
 									{showPassword ? (
 										<EyeOff className="size-4" />
@@ -193,7 +204,7 @@ export function UserFormDialog({
 								variant="outline"
 								size="icon"
 								onClick={handleCopy}
-								aria-label="Copy password"
+								aria-label={t("admin.users.copyPassword")}
 							>
 								{copied ? (
 									<Check className="size-4 text-emerald-500" />
@@ -203,12 +214,14 @@ export function UserFormDialog({
 							</Button>
 						</div>
 						<p className="text-xs text-muted-foreground">
-							This password will not be shown again. Make sure to copy it now.
+							{t("admin.users.copyNow")}
 						</p>
 					</div>
 
 					<DialogFooter>
-						<Button onClick={() => handleOpenChange(false)}>Done</Button>
+						<Button onClick={() => handleOpenChange(false)}>
+							{t("admin.users.done")}
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -225,13 +238,13 @@ export function UserFormDialog({
 							<UserRound className="size-4" />
 						</div>
 						<DialogTitle className="text-base">
-							{isEdit ? "Edit User" : "Create User"}
+							{isEdit
+								? t("admin.users.editUser")
+								: t("admin.users.createUserTitle")}
 						</DialogTitle>
 					</div>
 					<DialogDescription className="mt-2">
-						{isEdit
-							? "Update the user's display name and role assignment."
-							: "A secure temporary password will be generated automatically. The user will be required to change it on first login."}
+						{isEdit ? t("admin.users.editDesc") : t("admin.users.createDesc")}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -242,11 +255,11 @@ export function UserFormDialog({
 								htmlFor="user-username"
 								className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 							>
-								Username
+								{t("auth.username")}
 							</Label>
 							<Input
 								id="user-username"
-								placeholder="e.g. john.doe"
+								placeholder={t("admin.users.usernameExample")}
 								value={username}
 								onChange={(e) => {
 									setUsername(e.target.value);
@@ -269,11 +282,11 @@ export function UserFormDialog({
 							htmlFor="user-fullname"
 							className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 						>
-							Full Name
+							{t("admin.users.fullName")}
 						</Label>
 						<Input
 							id="user-fullname"
-							placeholder="e.g. John Doe"
+							placeholder={t("admin.users.fullNameExample")}
 							value={fullName}
 							onChange={(e) => setFullName(e.target.value)}
 							autoComplete="off"
@@ -285,14 +298,14 @@ export function UserFormDialog({
 							htmlFor="user-role"
 							className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 						>
-							Role{" "}
+							{t("admin.users.role")}{" "}
 							<span className="normal-case font-normal text-muted-foreground/70">
-								(optional — defaults to USER)
+								{t("admin.users.roleOptional")}
 							</span>
 						</Label>
 						<Select value={role} onValueChange={(v) => setRole(v ?? "")}>
 							<SelectTrigger id="user-role" className="w-full">
-								<SelectValue placeholder="Select a role…" />
+								<SelectValue placeholder={t("admin.users.selectRole")} />
 							</SelectTrigger>
 							<SelectContent>
 								{roles.map((r) => (
@@ -314,7 +327,7 @@ export function UserFormDialog({
 
 				<DialogFooter>
 					<DialogClose render={<Button variant="outline" />}>
-						Cancel
+						{t("admin.users.cancel")}
 					</DialogClose>
 					<Button
 						onClick={() => mutation.mutate()}
@@ -322,11 +335,11 @@ export function UserFormDialog({
 					>
 						{mutation.isPending
 							? isEdit
-								? "Saving…"
-								: "Creating…"
+								? t("admin.users.saving")
+								: t("admin.users.creating")
 							: isEdit
-								? "Save changes"
-								: "Create user"}
+								? t("admin.users.saveChanges")
+								: t("admin.users.createUser")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

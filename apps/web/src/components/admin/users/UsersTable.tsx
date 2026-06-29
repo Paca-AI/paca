@@ -1,4 +1,5 @@
 import { Edit2, KeyRound, Lock, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +12,8 @@ import {
 } from "@/components/ui/table";
 import type { User } from "@/lib/admin-api";
 
-function formatDate(iso: string): string {
-	return new Date(iso).toLocaleDateString(undefined, {
+function formatDate(iso: string, locale?: string): string {
+	return new Date(iso).toLocaleDateString(locale, {
 		year: "numeric",
 		month: "short",
 		day: "numeric",
@@ -36,22 +37,23 @@ export function UsersTable({
 	onDelete,
 	onResetPassword,
 }: UsersTableProps) {
+	const { t, i18n } = useTranslation();
 	return (
 		<div className="overflow-x-auto rounded-xl border">
 			<Table>
 				<TableHeader>
 					<TableRow className="bg-muted/40 hover:bg-muted/40">
 						<TableHead className="w-44 px-5 text-xs font-semibold uppercase tracking-wide">
-							Username
+							{t("auth.username")}
 						</TableHead>
 						<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-							Full Name
+							{t("admin.users.fullName")}
 						</TableHead>
 						<TableHead className="w-36 px-5 text-xs font-semibold uppercase tracking-wide">
-							Role
+							{t("admin.users.role")}
 						</TableHead>
 						<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
-							Created
+							{t("admin.users.created")}
 						</TableHead>
 						{canWrite ? (
 							<TableHead className="w-28 px-5 text-xs font-semibold uppercase tracking-wide" />
@@ -71,12 +73,12 @@ export function UsersTable({
 										</span>
 										{user.must_change_password ? (
 											<span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-												pwd reset
+												{t("admin.users.pwdReset")}
 											</span>
 										) : null}
 										{isSelf ? (
 											<span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-												you
+												{t("admin.users.you")}
 											</span>
 										) : null}
 									</div>
@@ -92,7 +94,7 @@ export function UsersTable({
 									</span>
 								</TableCell>
 								<TableCell className="px-5 text-sm text-muted-foreground">
-									{formatDate(user.created_at)}
+									{formatDate(user.created_at, i18n.language)}
 								</TableCell>
 								{canWrite ? (
 									<TableCell className="px-5">
@@ -101,7 +103,7 @@ export function UsersTable({
 												variant="ghost"
 												size="icon-sm"
 												onClick={() => onResetPassword(user)}
-												title="Reset password"
+												title={t("admin.users.resetPassword")}
 											>
 												<KeyRound className="size-3.5" />
 											</Button>
@@ -109,7 +111,7 @@ export function UsersTable({
 												variant="ghost"
 												size="icon-sm"
 												onClick={() => onEdit(user)}
-												title="Edit user"
+												title={t("admin.users.editUserAction")}
 											>
 												<Edit2 className="size-3.5" />
 											</Button>
@@ -119,7 +121,7 @@ export function UsersTable({
 													size="icon-sm"
 													className="text-destructive hover:text-destructive hover:bg-destructive/10"
 													onClick={() => onDelete(user)}
-													title="Delete user"
+													title={t("admin.users.deleteUser")}
 												>
 													<Trash2 className="size-3.5" />
 												</Button>
