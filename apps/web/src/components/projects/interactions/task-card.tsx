@@ -1,5 +1,5 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import {
@@ -71,8 +71,10 @@ export function TaskCard({
 	isDragging,
 	canEdit,
 	onUpdate,
+		onDoubleClick,
 }: TaskCardProps) {
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
+	const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const taskType = taskTypes.find((t) => t.id === task.task_type_id);
 	const assignee = task.assignee_id
 		? members.find((m) => m.id === task.assignee_id)
@@ -601,7 +603,20 @@ export function TaskCard({
 			draggable={canEdit}
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
-			onClick={onClick}
+			onClick={() => {
+				if (clickTimer.current) return;
+				clickTimer.current = setTimeout(() => {
+					onClick?.();
+					clickTimer.current = null;
+				}, 280);
+			}}
+			onDoubleClick={() => {
+				if (clickTimer.current) {
+					clearTimeout(clickTimer.current);
+					clickTimer.current = null;
+				}
+				onDoubleClick?.();
+			}}
 			className={cn(
 				"group relative rounded-xl border border-border/30 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",
 				"hover:border-border/50 hover:shadow-sm",
