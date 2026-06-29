@@ -621,7 +621,7 @@ export function TaskCard({
 				}
 				markToggled(task.id);
 				setIsAnimating(true);
-				setTimeout(() => { onDoubleClick?.(); }, 350);
+				setTimeout(() => { onDoubleClick?.(); }, 180);
 			}}
 			className={cn(
 				"group relative rounded-xl border border-border/30 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",

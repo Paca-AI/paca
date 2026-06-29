@@ -699,7 +699,7 @@ export function TaskRow({
 				}
 				markToggled(task.id);
 				setIsAnimating(true);
-				setTimeout(() => { onDoubleClick?.(); }, 350);
+				setTimeout(() => { onDoubleClick?.(); }, 180);
 			}}
 			className={cn(
 				isAnimating && (task.sprint_id ? "animate-sprint-exit-down" : "animate-sprint-exit-up"),

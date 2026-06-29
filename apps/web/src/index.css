@@ -507,16 +507,16 @@ a {
 }
 
 .animate-sprint-exit-up {
-	animation: sprint-exit-up 220ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+	animation: sprint-exit-up 180ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 	pointer-events: none;
 }
 .animate-sprint-exit-down {
-	animation: sprint-exit-down 220ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+	animation: sprint-exit-down 180ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 	pointer-events: none;
 }
 .animate-sprint-enter-up {
-	animation: sprint-enter-up 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+	animation: sprint-enter-up 180ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .animate-sprint-enter-down {
-	animation: sprint-enter-down 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+	animation: sprint-enter-down 180ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
