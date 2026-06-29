@@ -617,18 +617,14 @@ export function TaskCard({
 					clickTimer.current = null;
 				}
 				setIsAnimating(true);
-				// Delay API call so animation plays before React re-render removes the element
-				setTimeout(() => {
-					onDoubleClick?.();
-					setTimeout(() => setIsAnimating(false), 400);
-				}, 300);
+				setTimeout(() => { onDoubleClick?.(); }, 350);
 			}}
 			className={cn(
 				"group relative rounded-xl border border-border/30 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",
 				"hover:border-border/50 hover:shadow-sm",
 				isDragging && "opacity-50 ring-2 ring-primary/30 shadow-lg rotate-1",
 				canEdit && "cursor-grab active:cursor-grabbing",
-				isAnimating && "animate-sprint-toggle",
+				isAnimating && (task.sprint_id ? "animate-sprint-exit-down" : "animate-sprint-exit-up"),
 			)}
 		>
 			{canEdit && (

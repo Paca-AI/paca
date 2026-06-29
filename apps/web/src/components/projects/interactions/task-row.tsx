@@ -695,13 +695,10 @@ export function TaskRow({
 					clickTimer.current = null;
 				}
 				setIsAnimating(true);
-				setTimeout(() => {
-					onDoubleClick?.();
-					setTimeout(() => setIsAnimating(false), 400);
-				}, 300);
+				setTimeout(() => { onDoubleClick?.(); }, 350);
 			}}
 			className={cn(
-				isAnimating && "animate-sprint-toggle",
+				isAnimating && (task.sprint_id ? "animate-sprint-exit-down" : "animate-sprint-exit-up"),
 				"group flex items-center gap-3 px-4 py-2.5 cursor-pointer",
 				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",
 				isDragging && "opacity-40 bg-muted/20",

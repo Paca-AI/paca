@@ -488,30 +488,35 @@ a {
 	padding-right: 0;
 }
 
-/* ── Double-click sprint toggle animation ──────────────────────────── */
-@keyframes sprint-toggle {
-	0% {
-		transform: scale(1);
-		opacity: 1;
-		filter: brightness(1);
-	}
-	30% {
-		transform: scale(0.96);
-		opacity: 0.6;
-		filter: brightness(1.15);
-	}
-	60% {
-		transform: scale(1.02);
-		opacity: 0.9;
-		filter: brightness(1.05);
-	}
-	100% {
-		transform: scale(1);
-		opacity: 1;
-		filter: brightness(1);
-	}
+/* ── Double-click sprint toggle: directional exit/enter animations ── */
+@keyframes sprint-exit-up {
+	0%   { transform: translateY(0) scale(1); opacity: 1; }
+	100% { transform: translateY(-24px) scale(0.95); opacity: 0; }
+}
+@keyframes sprint-exit-down {
+	0%   { transform: translateY(0) scale(1); opacity: 1; }
+	100% { transform: translateY(24px) scale(0.95); opacity: 0; }
+}
+@keyframes sprint-enter-up {
+	0%   { transform: translateY(24px) scale(0.95); opacity: 0; }
+	100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes sprint-enter-down {
+	0%   { transform: translateY(-24px) scale(0.95); opacity: 0; }
+	100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
-.animate-sprint-toggle {
-	animation: sprint-toggle 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+.animate-sprint-exit-up {
+	animation: sprint-exit-up 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+	pointer-events: none;
+}
+.animate-sprint-exit-down {
+	animation: sprint-exit-down 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+	pointer-events: none;
+}
+.animate-sprint-enter-up {
+	animation: sprint-enter-up 400ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.animate-sprint-enter-down {
+	animation: sprint-enter-down 400ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
