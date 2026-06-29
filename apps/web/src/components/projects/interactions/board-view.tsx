@@ -545,6 +545,7 @@ export function BoardView({
 							onDragEnd={handleDragEnd}
 							onClick={() => onTaskClick(task)}
 							onUpdate={canEdit ? handleInlineUpdate : undefined}
+							onDoubleClick={() => handleDoubleClick(task)}
 						/>
 					</div>
 				))}
@@ -603,6 +604,15 @@ export function BoardView({
 					)}
 			</div>
 		);
+	};
+
+	// ── Double-click to toggle task between backlog and sprint ─────────────
+	const handleDoubleClick = (task: Task) => {
+		if (!canEdit || !onMoveToColumn) return;
+		const sprint = sprints.find(s => s.status === "active") || sprints[sprints.length - 1];
+		const targetSprintId = task.sprint_id ? null : sprint?.id;
+		if (task.sprint_id === targetSprintId) return;
+		onMoveToColumn(task.id, { sprint_id: targetSprintId as string | null });
 	};
 
 	// ── Render ────────────────────────────────────────────────────────────────

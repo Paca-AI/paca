@@ -46,6 +46,7 @@ interface TaskCardProps {
 	isDragging?: boolean;
 	canEdit?: boolean;
 	onUpdate?: (taskId: string, payload: UpdatePayload) => void;
+	onDoubleClick?: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
