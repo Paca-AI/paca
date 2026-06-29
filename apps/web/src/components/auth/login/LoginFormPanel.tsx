@@ -1,5 +1,6 @@
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import { FieldError } from "./FieldError";
 
 export function LoginFormPanel() {
 	const { form, serverError } = useLoginForm();
+	const { t } = useTranslation();
 	const [showPassword, setShowPassword] = useState(false);
 	const logoSrc = "/paca-logo.svg";
 
@@ -35,10 +37,10 @@ export function LoginFormPanel() {
 
 				{/* Heading */}
 				<h1 className="display-title mb-1 text-2xl font-bold text-(--sea-ink) sm:text-3xl">
-					Welcome back
+					{t("auth.welcomeBack")}
 				</h1>
 				<p className="mb-8 text-sm text-(--sea-ink-soft)">
-					Sign in to your workspace to continue.
+					{t("auth.signInSubtitle")}
 				</p>
 
 				<form
@@ -62,14 +64,14 @@ export function LoginFormPanel() {
 									htmlFor={field.name}
 									className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
 								>
-									Username
+									{t("auth.username")}
 								</Label>
 								<Input
 									id={field.name}
 									name={field.name}
 									type="text"
 									autoComplete="username"
-									placeholder="Enter your username"
+									placeholder={t("auth.usernamePlaceholder")}
 									value={field.state.value}
 									onBlur={field.handleBlur}
 									onChange={(event) => {
@@ -98,7 +100,7 @@ export function LoginFormPanel() {
 									htmlFor={field.name}
 									className="text-xs font-semibold tracking-wide text-(--sea-ink) uppercase"
 								>
-									Password
+									{t("auth.password")}
 								</Label>
 								<div className="relative">
 									<Input
@@ -117,7 +119,9 @@ export function LoginFormPanel() {
 										onClick={() => setShowPassword((current) => !current)}
 										className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 										aria-label={
-											showPassword ? "Hide password" : "Show password"
+											showPassword
+												? t("auth.hidePassword")
+												: t("auth.showPassword")
 										}
 									>
 										{showPassword ? (
@@ -152,7 +156,7 @@ export function LoginFormPanel() {
 									htmlFor={field.name}
 									className="cursor-pointer text-sm text-(--sea-ink-soft)"
 								>
-									Keep me signed in
+									{t("auth.keepSignedIn")}
 								</Label>
 								<Switch
 									id={field.name}
@@ -179,7 +183,7 @@ export function LoginFormPanel() {
 								)}
 								disabled={isSubmitting || !username.trim() || !password}
 							>
-								{isSubmitting ? "Signing in…" : "Sign in"}
+								{isSubmitting ? t("auth.signingIn") : t("auth.signIn")}
 							</button>
 						)}
 					</form.Subscribe>
@@ -188,8 +192,7 @@ export function LoginFormPanel() {
 				{/* Divider + admin note */}
 				<div className="mt-6 border-t border-(--line) pt-5">
 					<p className="text-xs leading-relaxed text-(--sea-ink-soft)/70">
-						Account access and password resets are managed by your
-						administrator.
+						{t("auth.adminNote")}
 					</p>
 				</div>
 			</div>
