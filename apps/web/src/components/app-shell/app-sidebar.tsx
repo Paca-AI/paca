@@ -38,6 +38,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -87,6 +88,7 @@ import { sprintsQueryOptions, updateTask } from "@/lib/interaction-api";
 import { ExtensionPoint } from "@/lib/plugins/extension-point";
 import { projectQueryOptions, projectsQueryOptions } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
+import { LanguageSwitcher } from "./language-switcher";
 import { UserMenu } from "./user-menu";
 
 // ── Docs Tree ─────────────────────────────────────────────────────────────────
@@ -847,18 +849,19 @@ const PROJECT_NAV_ITEMS = [
 ] as const;
 
 function ProjectNav() {
+	const { t } = useTranslation();
 	return (
 		<SidebarGroup>
 			<SidebarGroupContent>
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
-							tooltip="All Projects"
+							tooltip={t("common.allProjects")}
 							render={<Link to="/home" />}
 							className="text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60 transition-all"
 						>
 							<ArrowLeft className="size-4" />
-							<span>All Projects</span>
+							<span>{t("common.allProjects")}</span>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 				</SidebarMenu>
@@ -1240,6 +1243,7 @@ function ThemeSwitcher() {
 
 // ── App Sidebar ────────────────────────────────────────────────────────────────
 export function AppSidebar() {
+	const { t } = useTranslation();
 	const { hasPermission } = usePermissions();
 	const { resolvedMode } = useThemeMode();
 	const { projectId } = useParams({ strict: false });
@@ -1328,7 +1332,7 @@ export function AppSidebar() {
 							<SidebarGroup>
 								<SidebarGroupContent>
 									<SidebarMenu>
-										<NavItem to="/home" icon={Home} label="Home" />
+										<NavItem to="/home" icon={Home} label={t("common.home")} />
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
@@ -1340,24 +1344,30 @@ export function AppSidebar() {
 							<>
 								<SidebarSeparator />
 								<SidebarGroup>
-									<SidebarGroupLabel>Administration</SidebarGroupLabel>
+									<SidebarGroupLabel>
+										{t("common.administration")}
+									</SidebarGroupLabel>
 									<SidebarGroupContent>
 										<SidebarMenu>
 											{canAccessGlobalRoles ? (
 												<NavItem
 													to="/admin/global-roles"
 													icon={Shield}
-													label="Global Roles"
+													label={t("common.globalRoles")}
 												/>
 											) : null}
 											{canAccessUsers ? (
-												<NavItem to="/admin/users" icon={Users} label="Users" />
+												<NavItem
+													to="/admin/users"
+													icon={Users}
+													label={t("common.users")}
+												/>
 											) : null}
 											{canAccessPlugins ? (
 												<NavItem
 													to="/admin/plugins"
 													icon={Puzzle}
-													label="Plugins"
+													label={t("common.plugins")}
 												/>
 											) : null}
 										</SidebarMenu>
@@ -1373,6 +1383,7 @@ export function AppSidebar() {
 			<SidebarSeparator />
 			<SidebarFooter className="gap-1 pb-3">
 				<ThemeSwitcher />
+				<LanguageSwitcher />
 				<UserMenu />
 			</SidebarFooter>
 
