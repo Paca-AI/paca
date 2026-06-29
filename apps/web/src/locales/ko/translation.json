@@ -45,5 +45,19 @@
 		"signIn": "로그인",
 		"signingIn": "로그인 중…",
 		"adminNote": "계정 접근과 비밀번호 재설정은 관리자가 관리합니다."
+	},
+	"admin": {
+		"users": {
+			"title": "사용자 관리",
+			"subtitle": "사용자 계정과 할당된 역할을 보고 관리합니다.",
+			"newUser": "새 사용자",
+			"noUsers": "사용자가 없습니다",
+			"noUsersHint": "첫 사용자를 만들어 시작하세요.",
+			"createUser": "사용자 만들기",
+			"loadFailed": "사용자를 불러오지 못했습니다",
+			"loadFailedHint": "페이지를 새로고침한 뒤 다시 시도하세요.",
+			"noPermission": "사용자를 볼 권한이 없습니다",
+			"noPermissionHint": "위 버튼으로 새 사용자를 만들 수 있습니다."
+		}
 	}
 }

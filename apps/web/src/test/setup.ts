@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import "@/i18n";
 import { beforeAll, beforeEach } from "vitest";
 
 type StorageLike = {

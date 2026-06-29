@@ -45,5 +45,19 @@
 		"signIn": "Sign in",
 		"signingIn": "Signing in…",
 		"adminNote": "Account access and password resets are managed by your administrator."
+	},
+	"admin": {
+		"users": {
+			"title": "User Management",
+			"subtitle": "View and manage user accounts and their assigned roles.",
+			"newUser": "New User",
+			"noUsers": "No users found",
+			"noUsersHint": "Create your first user to get started.",
+			"createUser": "Create user",
+			"loadFailed": "Failed to load users",
+			"loadFailedHint": "Please refresh the page and try again.",
+			"noPermission": "You don't have permission to view users",
+			"noPermissionHint": "You can still create new users using the button above."
+		}
 	}
 }

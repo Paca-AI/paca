@@ -1,4 +1,5 @@
 import { Plus, Users } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 
@@ -8,6 +9,7 @@ interface UsersHeaderProps {
 }
 
 export function UsersHeader({ canWrite, onCreate }: UsersHeaderProps) {
+	const { t } = useTranslation();
 	return (
 		<div className="flex items-start justify-between gap-4">
 			<div>
@@ -16,17 +18,17 @@ export function UsersHeader({ canWrite, onCreate }: UsersHeaderProps) {
 						<Users className="size-4" />
 					</div>
 					<h1 className="text-xl font-semibold tracking-tight">
-						User Management
+						{t("admin.users.title")}
 					</h1>
 				</div>
 				<p className="ml-10 text-sm text-muted-foreground">
-					View and manage user accounts and their assigned roles.
+					{t("admin.users.subtitle")}
 				</p>
 			</div>
 			{canWrite ? (
 				<Button size="sm" onClick={onCreate} className="shrink-0">
 					<Plus className="size-4" />
-					New User
+					{t("admin.users.newUser")}
 				</Button>
 			) : null}
 		</div>
