@@ -144,6 +144,7 @@ function DocsDocRow({
 	canWrite: boolean;
 	depth: number;
 }) {
+	const { t } = useTranslation();
 	const location = useRouterState({ select: (s) => s.location.pathname });
 	const navigate = useNavigate();
 	const qc = useQueryClient();
@@ -211,7 +212,7 @@ function DocsDocRow({
 				/>
 				{renaming ? (
 					<TreeInlineRename
-						initialValue={doc.title || "Untitled"}
+						initialValue={doc.title || t("common.untitled")}
 						onConfirm={(title) => {
 							renameMutation.mutate(title);
 							setRenaming(false);
@@ -222,7 +223,7 @@ function DocsDocRow({
 					<span className="truncate leading-snug">
 						{doc.title || (
 							<span className="italic text-sidebar-foreground/40">
-								Untitled
+								{t("common.untitled")}
 							</span>
 						)}
 					</span>
@@ -245,7 +246,7 @@ function DocsDocRow({
 							}}
 						>
 							<Pencil className="size-3.5 mr-2" />
-							Rename
+							{t("common.rename")}
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
@@ -256,7 +257,7 @@ function DocsDocRow({
 							}}
 						>
 							<Trash2 className="size-3.5 mr-2" />
-							Delete
+							{t("common.delete")}
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -283,6 +284,7 @@ function DocsFolderNode({
 	onToggle: (id: string) => void;
 	depth: number;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const [renaming, setRenaming] = useState(false);
 	const [addingDoc, setAddingDoc] = useState(false);
@@ -390,7 +392,7 @@ function DocsFolderNode({
 									}}
 								>
 									<Pencil className="size-3.5 mr-2" />
-									Rename
+									{t("common.rename")}
 								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 								<DropdownMenuItem
@@ -401,7 +403,7 @@ function DocsFolderNode({
 									}}
 								>
 									<Trash2 className="size-3.5 mr-2" />
-									Delete
+									{t("common.delete")}
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
@@ -440,7 +442,7 @@ function DocsFolderNode({
 								className="text-xs text-sidebar-foreground/30 italic py-1"
 								style={{ paddingLeft: `${8 + (depth + 1) * 16 + 26}px` }}
 							>
-								Empty folder
+								{t("common.emptyFolder")}
 							</div>
 						)}
 					{canWrite && (
@@ -448,7 +450,7 @@ function DocsFolderNode({
 							<DropdownMenu>
 								<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
 									<Plus className="size-3 shrink-0" />
-									<span>Add</span>
+									<span>{t("common.add")}</span>
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align="start" className="w-40">
 									<DropdownMenuItem
@@ -459,7 +461,7 @@ function DocsFolderNode({
 										disabled={newDocMutation.isPending}
 									>
 										<File className="size-3.5 mr-2" />
-										New Document
+										{t("common.newDocument")}
 									</DropdownMenuItem>
 									<DropdownMenuItem
 										onClick={() => {
@@ -469,7 +471,7 @@ function DocsFolderNode({
 										disabled={newSubfolderMutation.isPending}
 									>
 										<FolderOpen className="size-3.5 mr-2" />
-										New Subfolder
+										{t("common.newSubfolder")}
 									</DropdownMenuItem>
 								</DropdownMenuContent>
 							</DropdownMenu>
@@ -667,7 +669,7 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 								<DropdownMenu>
 									<DropdownMenuTrigger className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground hover:bg-sidebar-accent/40 transition-all duration-150">
 										<Plus className="size-3 shrink-0" />
-										<span>Add</span>
+										<span>{t("common.add")}</span>
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="start" className="w-40">
 										<DropdownMenuItem
@@ -675,14 +677,14 @@ function DocsSidebarSection({ projectId }: { projectId: string }) {
 											disabled={newDocMutation.isPending}
 										>
 											<File className="size-3.5 mr-2" />
-											New Document
+											{t("common.newDocument")}
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											onClick={() => newFolderMutation.mutate("New Folder")}
 											disabled={newFolderMutation.isPending}
 										>
 											<FolderOpen className="size-3.5 mr-2" />
-											New Folder
+											{t("common.newFolder")}
 										</DropdownMenuItem>
 									</DropdownMenuContent>
 								</DropdownMenu>
