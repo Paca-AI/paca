@@ -74,6 +74,7 @@ export function TaskCard({
 		onDoubleClick,
 }: TaskCardProps) {
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
+	const [isAnimating, setIsAnimating] = useState(false);
 	const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const taskType = taskTypes.find((t) => t.id === task.task_type_id);
 	const assignee = task.assignee_id
@@ -615,13 +616,19 @@ export function TaskCard({
 					clearTimeout(clickTimer.current);
 					clickTimer.current = null;
 				}
-				onDoubleClick?.();
+				setIsAnimating(true);
+				// Delay API call so animation plays before React re-render removes the element
+				setTimeout(() => {
+					onDoubleClick?.();
+					setTimeout(() => setIsAnimating(false), 400);
+				}, 300);
 			}}
 			className={cn(
 				"group relative rounded-xl border border-border/30 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",
 				"hover:border-border/50 hover:shadow-sm",
 				isDragging && "opacity-50 ring-2 ring-primary/30 shadow-lg rotate-1",
 				canEdit && "cursor-grab active:cursor-grabbing",
+				isAnimating && "animate-sprint-toggle",
 			)}
 		>
 			{canEdit && (

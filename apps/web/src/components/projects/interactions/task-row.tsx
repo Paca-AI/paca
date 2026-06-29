@@ -1,5 +1,5 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -153,6 +153,7 @@ export function TaskRow({
 		onDoubleClick,
 }: TaskRowProps) {
 	const status = statuses.find((s) => s.id === task.status_id);
+	const [isAnimating, setIsAnimating] = useState(false);
 	const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	/** Renders a single cell value for the given field key. */
@@ -693,9 +694,14 @@ export function TaskRow({
 					clearTimeout(clickTimer.current);
 					clickTimer.current = null;
 				}
-				onDoubleClick?.();
+				setIsAnimating(true);
+				setTimeout(() => {
+					onDoubleClick?.();
+					setTimeout(() => setIsAnimating(false), 400);
+				}, 300);
 			}}
 			className={cn(
+				isAnimating && "animate-sprint-toggle",
 				"group flex items-center gap-3 px-4 py-2.5 cursor-pointer",
 				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",
 				isDragging && "opacity-40 bg-muted/20",
