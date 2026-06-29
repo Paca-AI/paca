@@ -44,6 +44,7 @@ export interface ListViewProps {
 	canEdit?: boolean;
 	sortBy?: string;
 	onUpdateTaskField?: (taskId: string, update: TaskFieldUpdate) => void;
+	onTaskDoubleClick?: (task: Task) => void;
 	sprints?: Sprint[];
 	onStartSprint?: (
 		sprintId: string,
@@ -89,6 +90,7 @@ export function ListView({
 	canEdit,
 	sortBy,
 	onUpdateTaskField,
+		onTaskDoubleClick,
 	sprints,
 	onStartSprint,
 	onCreateSprint,
@@ -230,6 +232,7 @@ export function ListView({
 						isStatusGrouping={isStatusGrouping}
 						sortBy={sortBy}
 						onUpdateTaskField={onUpdateTaskField}
+						onTaskDoubleClick={onTaskDoubleClick}
 						visibleFields={visibleFields}
 						taskIdPrefix={taskIdPrefix}
 						sprint={sprints?.find((s) => s.id === grp.key)}

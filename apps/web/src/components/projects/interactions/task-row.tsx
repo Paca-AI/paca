@@ -132,6 +132,7 @@ interface TaskRowProps {
 	isDragging?: boolean;
 	canEdit?: boolean;
 	onUpdateTaskField?: (taskId: string, update: TaskFieldUpdate) => void;
+	onDoubleClick?: () => void;
 }
 
 export function TaskRow({
@@ -678,6 +679,7 @@ export function TaskRow({
 		// biome-ignore lint/a11y/useKeyWithClickEvents: drag-and-drop row; keyboard nav handled by parent
 		<div
 			onClick={onClick}
+			onDoubleClick={onDoubleClick}
 			className={cn(
 				"group flex items-center gap-3 px-4 py-2.5 cursor-pointer",
 				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",

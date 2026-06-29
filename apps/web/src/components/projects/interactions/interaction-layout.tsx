@@ -1172,6 +1172,18 @@ export function InteractionLayout({
 		],
 	);
 
+	// Double-click toggle sprint for table/list view
+	const handleDoubleClickSprintToggle = useCallback(
+		(task: Task) => {
+			if (!canEdit) return;
+			const activeSprint = sprints.find(s => s.status === "active") || sprints[sprints.length - 1];
+			const targetSprintId = task.sprint_id ? null : activeSprint?.id;
+			if (task.sprint_id === targetSprintId) return;
+			handleMoveToColumn(task.id, { sprint_id: targetSprintId as string | null });
+		},
+		[canEdit, sprints, handleMoveToColumn],
+	);
+
 	const handleMoveToColumn = useCallback(
 		(taskId: string, update: TaskFieldUpdate) => {
 			updateTask(projectId, taskId, update)
