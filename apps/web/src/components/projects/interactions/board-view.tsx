@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
 	type Sprint,
@@ -95,6 +96,7 @@ export function BoardView({
 	onCollapseChange,
 	columnPagination,
 }: BoardViewProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const [draggingId, setDraggingId] = useState<string | null>(null);
 	const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
@@ -423,22 +425,27 @@ export function BoardView({
 			defs = columnDefs;
 		} else {
 			// Build columns from unique task values (for number/text fields)
+			const noneLabel = t("project.interactions.board.none");
 			const seen = new Set<string>();
 			const dynamic: ColumnGroupDef[] = [];
-			for (const t of tasks) {
-				for (const k of getTaskColumnKeys(t, columnBy, viewCtx)) {
+			for (const task of tasks) {
+				for (const k of getTaskColumnKeys(task, columnBy, viewCtx)) {
 					if (!seen.has(k)) {
 						seen.add(k);
 						dynamic.push({
 							key: k,
-							label: k === "__none" ? "None" : k,
+							label: k === "__none" ? noneLabel : k,
 							fieldValue: k,
 						});
 					}
 				}
 			}
 			if (!seen.has("__none")) {
-				dynamic.push({ key: "__none", label: "None", fieldValue: null });
+				dynamic.push({
+					key: "__none",
+					label: noneLabel,
+					fieldValue: null,
+				});
 			}
 			defs = dynamic;
 		}
@@ -457,6 +464,7 @@ export function BoardView({
 		isStatusGrouping,
 		viewConfig?.filters?.statuses,
 		statuses,
+		t,
 	]);
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
@@ -499,7 +507,7 @@ export function BoardView({
 			>
 				{laneTasks.length === 0 && !columnPagination?.[colDef.key]?.hasMore && (
 					<div className="flex flex-1 flex-col items-center justify-center py-6 text-muted-foreground/30">
-						<p className="text-sm">No tasks</p>
+						<p className="text-sm">{t("project.interactions.board.noTasks")}</p>
 					</div>
 				)}
 				{laneTasks.map((task, index) => (
@@ -558,7 +566,9 @@ export function BoardView({
 							disabled={pg.isLoadingMore}
 							className="mt-1 w-full rounded-lg border border-dashed border-border/40 py-1.5 text-xs font-medium text-muted-foreground/70 hover:border-primary/40 hover:text-primary transition-all duration-150 disabled:opacity-50"
 						>
-							{pg.isLoadingMore ? "Loading…" : "View more"}
+							{pg.isLoadingMore
+								? t("project.interactions.board.loadingMore")
+								: t("project.interactions.board.viewMore")}
 						</button>
 					);
 				})()}
@@ -629,7 +639,11 @@ export function BoardView({
 					type="button"
 					onClick={() => toggleCollapse(colDef.key)}
 					className="flex size-5 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted/60"
-					title={isCollapsed ? "Expand column" : "Collapse column"}
+					title={
+						isCollapsed
+							? t("project.interactions.board.expandColumn")
+							: t("project.interactions.board.collapseColumn")
+					}
 				>
 					{isCollapsed ? (
 						<ChevronRight className="size-3 text-muted-foreground" />
@@ -676,7 +690,7 @@ export function BoardView({
 											type="button"
 											onClick={() => toggleCollapse(colDef.key)}
 											className="flex size-7 shrink-0 items-center justify-center rounded-lg hover:bg-muted/60 transition-colors"
-											title="Expand column"
+											title={t("project.interactions.board.expandColumn")}
 										>
 											<ChevronRight className="size-3.5 text-muted-foreground" />
 										</button>
@@ -779,7 +793,7 @@ export function BoardView({
 								type="button"
 								onClick={() => toggleCollapse(colDef.key)}
 								className="flex size-7 shrink-0 items-center justify-center rounded-lg hover:bg-muted/60 transition-colors"
-								title="Expand column"
+								title={t("project.interactions.board.expandColumn")}
 							>
 								<ChevronRight className="size-3.5 text-muted-foreground" />
 							</button>

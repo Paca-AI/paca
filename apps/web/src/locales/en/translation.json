@@ -728,6 +728,22 @@
 						"select": "Select"
 					}
 				}
+			},
+			"board": {
+				"none": "None",
+				"noTasks": "No tasks",
+				"loadingMore": "Loading…",
+				"viewMore": "View more",
+				"expandColumn": "Expand column",
+				"collapseColumn": "Collapse column"
+			},
+			"taskCard": {
+				"unassigned": "Unassigned",
+				"storyPoints": "Story Points",
+				"priority": "Priority",
+				"reporter": "Reporter",
+				"epic": "Epic",
+				"noEpic": "No Epic"
 			}
 		},
 		"docs": {

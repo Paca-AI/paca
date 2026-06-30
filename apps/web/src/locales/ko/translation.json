@@ -728,6 +728,22 @@
 						"select": "선택"
 					}
 				}
+			},
+			"board": {
+				"none": "없음",
+				"noTasks": "작업 없음",
+				"loadingMore": "불러오는 중…",
+				"viewMore": "더 보기",
+				"expandColumn": "열 펼치기",
+				"collapseColumn": "열 접기"
+			},
+			"taskCard": {
+				"unassigned": "미할당",
+				"storyPoints": "스토리 포인트",
+				"priority": "우선순위",
+				"reporter": "보고자",
+				"epic": "에픽",
+				"noEpic": "에픽 없음"
 			}
 		},
 		"docs": {

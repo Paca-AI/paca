@@ -1,5 +1,6 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import {
@@ -71,6 +72,7 @@ export function TaskCard({
 	canEdit,
 	onUpdate,
 }: TaskCardProps) {
+	const { t } = useTranslation();
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
 	const taskType = taskTypes.find((t) => t.id === task.task_type_id);
 	const assignee = task.assignee_id
@@ -114,7 +116,9 @@ export function TaskCard({
 								}}
 							>
 								<User className="size-3.5 opacity-60" />
-								<span className="flex-1 text-left">Unassigned</span>
+								<span className="flex-1 text-left">
+									{t("project.interactions.taskCard.unassigned")}
+								</span>
 								{!assignee && <Check className="size-3.5 text-primary" />}
 							</button>
 							{members.map((m) => (
@@ -316,7 +320,7 @@ export function TaskCard({
 				return (
 					<span
 						key="story_points"
-						title="Story Points"
+						title={t("project.interactions.taskCard.storyPoints")}
 						className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-bold text-primary/80 shrink-0 tabular-nums"
 					>
 						{task.story_points}
@@ -344,7 +348,7 @@ export function TaskCard({
 								</>
 							) : (
 								<span className="text-xs text-muted-foreground/40">
-									Priority
+									{t("project.interactions.taskCard.priority")}
 								</span>
 							)}
 						</DropdownMenuTrigger>
@@ -395,7 +399,9 @@ export function TaskCard({
 					<div
 						key="reporter"
 						title={
-							reporter ? reporter.full_name || reporter.username : "Reporter"
+							reporter
+								? reporter.full_name || reporter.username
+								: t("project.interactions.taskCard.reporter")
 						}
 						className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-muted/80 to-muted/40 text-muted-foreground text-xs font-bold ring-1 ring-border/25"
 					>
@@ -455,7 +461,9 @@ export function TaskCard({
 							{epic ? (
 								<span className="max-w-20 truncate">{epic.title}</span>
 							) : (
-								<span className="text-muted-foreground/40">Epic</span>
+								<span className="text-muted-foreground/40">
+									{t("project.interactions.taskCard.epic")}
+								</span>
 							)}
 						</PopoverTrigger>
 						<PopoverContent
@@ -470,7 +478,9 @@ export function TaskCard({
 									onUpdate?.(task.id, { parent_task_id: null });
 								}}
 							>
-								<span className="flex-1 text-left">No Epic</span>
+								<span className="flex-1 text-left">
+									{t("project.interactions.taskCard.noEpic")}
+								</span>
 								{!task.parent_task_id && (
 									<Check className="size-3.5 text-primary" />
 								)}
