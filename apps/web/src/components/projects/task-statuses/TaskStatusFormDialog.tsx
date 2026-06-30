@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +26,6 @@ import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	createTaskStatus,
 	STATUS_CATEGORIES,
-	STATUS_CATEGORY_LABELS,
 	type StatusCategory,
 	type TaskStatus,
 	taskStatusesQueryOptions,
@@ -62,6 +62,7 @@ export function TaskStatusFormDialog({
 	open,
 	onOpenChange,
 }: TaskStatusFormDialogProps) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const isEdit = !!status;
 
@@ -110,14 +111,14 @@ export function TaskStatusFormDialog({
 				code === ApiErrorCode.TaskStatusNameInvalid ||
 				code === ApiErrorCode.BadRequest
 			) {
-				setNameError("Status name is empty or invalid.");
+				setNameError(t("project.taskStatuses.errNameInvalid"));
 				return;
 			}
 			if (code === ApiErrorCode.TaskStatusCategoryInvalid) {
-				setError("Invalid category selected.");
+				setError(t("project.taskStatuses.errCategoryInvalid"));
 				return;
 			}
-			setError("Failed to save status. Please try again.");
+			setError(t("project.taskStatuses.errSaveFailed"));
 		},
 	});
 
@@ -133,18 +134,24 @@ export function TaskStatusFormDialog({
 		>
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>{isEdit ? "Edit status" : "Create status"}</DialogTitle>
+					<DialogTitle>
+						{isEdit
+							? t("project.taskStatuses.edit")
+							: t("project.taskStatuses.create")}
+					</DialogTitle>
 					<DialogDescription>
 						{isEdit
-							? "Update this workflow status."
-							: "Add a new status to the project workflow."}
+							? t("project.taskStatuses.editDesc")
+							: t("project.taskStatuses.createDesc")}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4 py-1">
 					{/* Name */}
 					<div className="space-y-1.5">
-						<Label htmlFor="status-name">Name</Label>
+						<Label htmlFor="status-name">
+							{t("project.taskStatuses.name")}
+						</Label>
 						<Input
 							id="status-name"
 							value={name}
@@ -155,7 +162,7 @@ export function TaskStatusFormDialog({
 							onKeyDown={(e) => {
 								if (e.key === "Enter" && canSubmit) mutation.mutate();
 							}}
-							placeholder="e.g. In Review"
+							placeholder={t("project.taskStatuses.namePlaceholder")}
 							autoFocus
 							className={
 								nameError
@@ -170,18 +177,22 @@ export function TaskStatusFormDialog({
 
 					{/* Category */}
 					<div className="space-y-1.5">
-						<Label htmlFor="status-category">Category</Label>
+						<Label htmlFor="status-category">
+							{t("project.taskStatuses.category")}
+						</Label>
 						<Select
 							value={category}
 							onValueChange={(v) => setCategory(v as StatusCategory)}
 						>
 							<SelectTrigger id="status-category" className="w-full">
-								<SelectValue>{STATUS_CATEGORY_LABELS[category]}</SelectValue>
+								<SelectValue>
+									{t(`project.statusCategories.${category}`)}
+								</SelectValue>
 							</SelectTrigger>
 							<SelectContent>
 								{STATUS_CATEGORIES.map((cat) => (
 									<SelectItem key={cat} value={cat}>
-										{STATUS_CATEGORY_LABELS[cat]}
+										{t(`project.statusCategories.${cat}`)}
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -190,7 +201,7 @@ export function TaskStatusFormDialog({
 
 					{/* Color */}
 					<div className="space-y-1.5">
-						<Label>Color</Label>
+						<Label>{t("project.taskStatuses.color")}</Label>
 						<div className="flex items-center gap-2 flex-wrap">
 							{COLOR_PRESETS.map((preset) => (
 								<button
@@ -207,7 +218,7 @@ export function TaskStatusFormDialog({
 								/>
 							))}
 							<label
-								title="Custom color"
+								title={t("project.taskStatuses.customColor")}
 								className={`relative size-6 rounded-full cursor-pointer border-2 transition-transform hover:scale-110 overflow-hidden shrink-0 ${
 									!COLOR_PRESETS.includes(color)
 										? "border-foreground scale-110"
@@ -247,7 +258,7 @@ export function TaskStatusFormDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.taskStatuses.cancel")}
 					</DialogClose>
 					<Button
 						size="sm"
@@ -257,7 +268,9 @@ export function TaskStatusFormDialog({
 						{mutation.isPending ? (
 							<Loader2 className="size-3.5 animate-spin" />
 						) : null}
-						{isEdit ? "Save changes" : "Create status"}
+						{isEdit
+							? t("project.taskStatuses.saveChanges")
+							: t("project.taskStatuses.create")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

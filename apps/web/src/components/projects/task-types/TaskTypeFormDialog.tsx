@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -51,6 +52,7 @@ export function TaskTypeFormDialog({
 	open,
 	onOpenChange,
 }: TaskTypeFormDialogProps) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const isEdit = !!taskType;
 
@@ -98,10 +100,10 @@ export function TaskTypeFormDialog({
 				code === ApiErrorCode.TaskTypeNameInvalid ||
 				code === ApiErrorCode.BadRequest
 			) {
-				setNameError("Type name is empty or invalid.");
+				setNameError(t("project.taskTypes.errNameInvalid"));
 				return;
 			}
-			setError("Failed to save task type. Please try again.");
+			setError(t("project.taskTypes.errSaveFailed"));
 		},
 	});
 
@@ -118,19 +120,21 @@ export function TaskTypeFormDialog({
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
 					<DialogTitle>
-						{isEdit ? "Edit task type" : "Create task type"}
+						{isEdit
+							? t("project.taskTypes.edit")
+							: t("project.taskTypes.create")}
 					</DialogTitle>
 					<DialogDescription>
 						{isEdit
-							? "Update this task type."
-							: "Add a new type to categorise tasks in this project."}
+							? t("project.taskTypes.editDesc")
+							: t("project.taskTypes.createDesc")}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4 py-1">
 					{/* Name */}
 					<div className="space-y-1.5">
-						<Label htmlFor="type-name">Name</Label>
+						<Label htmlFor="type-name">{t("project.taskTypes.name")}</Label>
 						<Input
 							id="type-name"
 							value={name}
@@ -141,7 +145,7 @@ export function TaskTypeFormDialog({
 							onKeyDown={(e) => {
 								if (e.key === "Enter" && canSubmit) mutation.mutate();
 							}}
-							placeholder="e.g. Bug, Feature, Story"
+							placeholder={t("project.taskTypes.namePlaceholder")}
 							autoFocus
 							className={
 								nameError
@@ -157,18 +161,20 @@ export function TaskTypeFormDialog({
 					{/* Icon */}
 					<div className="space-y-1.5">
 						<Label>
-							Icon{" "}
+							{t("project.taskTypes.icon")}{" "}
 							<span className="text-muted-foreground font-normal">
-								(optional)
+								{t("project.taskTypes.optional")}
 							</span>
 						</Label>
 						<div className="flex flex-wrap gap-1">
-							{TASK_TYPE_ICONS.map(({ name, component: Icon, label }) => (
+							{TASK_TYPE_ICONS.map(({ name, component: Icon }) => {
+								const iconLabel = t(`project.taskTypes.icons.${name}`);
+								return (
 								<button
 									key={name}
 									type="button"
-									title={label}
-									aria-label={label}
+									title={iconLabel}
+									aria-label={iconLabel}
 									className={`flex size-8 items-center justify-center rounded-md border transition-colors ${
 										icon === name
 											? "border-foreground bg-accent"
@@ -178,7 +184,8 @@ export function TaskTypeFormDialog({
 								>
 									<Icon className="size-4" />
 								</button>
-							))}
+								);
+							})}
 						</div>
 						{icon ? (
 							<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -196,7 +203,7 @@ export function TaskTypeFormDialog({
 									className="ml-1 underline hover:text-foreground"
 									onClick={() => setIcon("")}
 								>
-									Clear
+									{t("project.taskTypes.clear")}
 								</button>
 							</div>
 						) : null}
@@ -204,7 +211,7 @@ export function TaskTypeFormDialog({
 
 					{/* Color */}
 					<div className="space-y-1.5">
-						<Label>Color</Label>
+						<Label>{t("project.taskTypes.color")}</Label>
 						<div className="flex items-center gap-2 flex-wrap">
 							{COLOR_PRESETS.map((preset) => (
 								<button
@@ -221,7 +228,7 @@ export function TaskTypeFormDialog({
 								/>
 							))}
 							<label
-								title="Custom color"
+								title={t("project.taskTypes.customColor")}
 								className={`relative size-6 rounded-full cursor-pointer border-2 transition-transform hover:scale-110 overflow-hidden shrink-0 ${
 									!COLOR_PRESETS.includes(color)
 										? "border-foreground scale-110"
@@ -247,16 +254,16 @@ export function TaskTypeFormDialog({
 					{/* Description */}
 					<div className="space-y-1.5">
 						<Label htmlFor="type-description">
-							Description{" "}
+							{t("project.taskTypes.description")}{" "}
 							<span className="text-muted-foreground font-normal">
-								(optional)
+								{t("project.taskTypes.optional")}
 							</span>
 						</Label>
 						<Textarea
 							id="type-description"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Describe when to use this type…"
+							placeholder={t("project.taskTypes.descPlaceholder")}
 							rows={2}
 							className="resize-none"
 						/>
@@ -279,7 +286,7 @@ export function TaskTypeFormDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.taskTypes.cancel")}
 					</DialogClose>
 					<Button
 						size="sm"
@@ -289,7 +296,9 @@ export function TaskTypeFormDialog({
 						{mutation.isPending ? (
 							<Loader2 className="size-3.5 animate-spin" />
 						) : null}
-						{isEdit ? "Save changes" : "Create type"}
+						{isEdit
+							? t("project.taskTypes.saveChanges")
+							: t("project.taskTypes.createType")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
