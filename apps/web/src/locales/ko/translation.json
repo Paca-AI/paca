@@ -351,6 +351,131 @@
 		}
 	},
 	"project": {
+		"team": {
+			"title": "팀",
+			"subtitle": "프로젝트 멤버와 역할을 관리합니다",
+			"addMemberButton": "멤버 추가",
+			"addMember": "멤버 추가",
+			"addMemberDesc": "사용자를 선택하고 이 프로젝트에서의 역할을 지정하세요.",
+			"user": "사용자",
+			"change": "변경",
+			"searchUsers": "이름 또는 사용자명으로 검색…",
+			"noUsersMatch": "검색과 일치하는 사용자가 없습니다.",
+			"noUsersAvailable": "추가할 수 있는 사용자가 없습니다.",
+			"role": "역할",
+			"selectRole": "역할을 선택하세요…",
+			"cancel": "취소",
+			"errUserRoleRequired": "사용자와 역할을 모두 선택해야 합니다",
+			"errAddFailed": "멤버를 추가하지 못했습니다. 다시 시도하세요.",
+			"changeRole": "역할 변경",
+			"errChangeRole": "역할을 변경하지 못했습니다.",
+			"removeMember": "멤버 제거",
+			"emptyTitle": "아직 멤버가 없습니다",
+			"emptyDesc": "팀원이나 AI 에이전트를 이 프로젝트에 추가하여 시작하세요.",
+			"addFirstMember": "첫 멤버 추가",
+			"memberCount_one": "멤버 {{count}}명",
+			"memberCount_other": "멤버 {{count}}명",
+			"removeMemberTitle": "멤버 제거",
+			"removeConfirm": "<name>{{name}}</name> 님을 <project>{{project}}</project>에서 제거하시겠어요? 즉시 접근 권한을 잃게 됩니다.",
+			"errRemoveFailed": "멤버를 제거하지 못했습니다. 다시 시도하세요.",
+			"remove": "제거"
+		},
+		"roles": {
+			"editRoleTitle": "역할 수정",
+			"createRoleTitle": "새 역할",
+			"editDesc": "역할 이름과 권한 부여를 구성합니다.",
+			"createDesc": "새 프로젝트 역할을 정의하고 멤버에게 부여할 권한을 구성합니다.",
+			"roleName": "역할 이름",
+			"rolePlaceholder": "예: PROJECT_REVIEWER",
+			"permissions": "권한",
+			"enabledCount": "{{count}}개 활성화",
+			"cancel": "취소",
+			"saveChanges": "변경 사항 저장",
+			"createRole": "역할 만들기",
+			"errNameTaken": "이미 같은 이름의 역할이 있습니다.",
+			"errNameInvalid": "역할 이름은 대문자, 숫자, 밑줄만 사용할 수 있습니다.",
+			"errNotFound": "이 역할이 더 이상 존재하지 않습니다. 이미 삭제되었을 수 있습니다.",
+			"errForbidden": "이 작업을 수행할 권한이 없습니다.",
+			"errServer": "서버에서 문제가 발생했습니다. 다시 시도하세요.",
+			"errFallback": "문제가 발생했습니다.",
+			"deleteRole": "역할 삭제",
+			"deleteConfirm": "정말 <name>{{name}}</name> 역할을 삭제하시겠어요? 현재 이 역할이 할당된 멤버는 접근 권한을 잃게 됩니다. 이 작업은 되돌릴 수 없습니다.",
+			"errRoleNotFound": "해당 역할이 더 이상 존재하지 않습니다.",
+			"errRoleHasMembers": "이 역할은 아직 한 명 이상의 멤버에게 할당되어 있어 삭제할 수 없습니다.",
+			"errForbiddenDelete": "이 역할을 삭제할 권한이 없습니다.",
+			"errServerDelete": "문제가 발생했습니다. 다시 시도하세요.",
+			"permGroups": {
+				"projects": "프로젝트",
+				"project_members": "멤버",
+				"project_roles": "역할",
+				"tasks": "작업",
+				"sprints": "스프린트",
+				"docs": "문서",
+				"agents": "AI 에이전트"
+			},
+			"perms": {
+				"projects_read": {
+					"label": "프로젝트 읽기",
+					"desc": "프로젝트 세부 정보 및 설정 보기"
+				},
+				"projects_write": {
+					"label": "프로젝트 수정",
+					"desc": "프로젝트 이름, 설명, 설정 수정"
+				},
+				"projects_delete": {
+					"label": "프로젝트 삭제",
+					"desc": "이 프로젝트 영구 삭제"
+				},
+				"project_members_read": {
+					"label": "멤버 보기",
+					"desc": "프로젝트 멤버 목록 및 조회"
+				},
+				"project_members_write": {
+					"label": "멤버 관리",
+					"desc": "프로젝트 멤버 추가, 제거, 재지정"
+				},
+				"project_roles_read": {
+					"label": "역할 보기",
+					"desc": "프로젝트 역할 정의 목록 및 조회"
+				},
+				"project_roles_write": {
+					"label": "역할 관리",
+					"desc": "프로젝트 역할 생성, 수정, 삭제"
+				},
+				"tasks_read": {
+					"label": "작업 보기",
+					"desc": "프로젝트의 작업 탐색 및 조회"
+				},
+				"tasks_write": {
+					"label": "작업 수정",
+					"desc": "작업 생성, 수정, 이동"
+				},
+				"sprints_read": {
+					"label": "스프린트 보기",
+					"desc": "스프린트 보드 및 백로그 탐색"
+				},
+				"sprints_write": {
+					"label": "스프린트 관리",
+					"desc": "스프린트 생성, 수정, 종료"
+				},
+				"docs_read": {
+					"label": "문서 보기",
+					"desc": "프로젝트의 문서 탐색 및 조회"
+				},
+				"docs_write": {
+					"label": "문서 수정",
+					"desc": "문서 및 폴더 생성, 수정, 삭제"
+				},
+				"agents_read": {
+					"label": "에이전트 보기",
+					"desc": "AI 에이전트 탐색 및 구성 조회"
+				},
+				"agents_write": {
+					"label": "에이전트 관리",
+					"desc": "AI 에이전트 생성, 구성, 삭제"
+				}
+			}
+		},
 		"statusCategories": {
 			"backlog": "백로그",
 			"refinement": "정제",

@@ -14,6 +14,7 @@ import {
 	Users,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -129,6 +130,7 @@ function AddMemberDialog({
 	roles: ProjectRole[];
 	existingMemberIds: Set<string>;
 }) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const { hasPermission: can } = usePermissions();
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -160,7 +162,7 @@ function AddMemberDialog({
 	const addMutation = useMutation({
 		mutationFn: () => {
 			if (!selectedUser || !selectedRoleId) {
-				return Promise.reject(new Error("User and role are required"));
+				return Promise.reject(new Error(t("project.team.errUserRoleRequired")));
 			}
 
 			return addProjectMember(projectId, {
@@ -176,9 +178,7 @@ function AddMemberDialog({
 		},
 		onError: (err: unknown) => {
 			const e = err as { response?: { data?: { error?: string } } };
-			setError(
-				e?.response?.data?.error ?? "Failed to add member. Please try again.",
-			);
+			setError(e?.response?.data?.error ?? t("project.team.errAddFailed"));
 		},
 	});
 
@@ -205,16 +205,16 @@ function AddMemberDialog({
 					<div className="flex size-10 items-center justify-center rounded-full bg-primary/10 mb-2">
 						<Users className="size-5 text-primary" />
 					</div>
-					<DialogTitle>Add member</DialogTitle>
+					<DialogTitle>{t("project.team.addMember")}</DialogTitle>
 					<DialogDescription>
-						Select a user and assign them a role in this project.
+						{t("project.team.addMemberDesc")}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4 py-1">
 					{/* User search */}
 					<div className="space-y-1.5">
-						<p className="text-sm font-medium">User</p>
+						<p className="text-sm font-medium">{t("project.team.user")}</p>
 						{selectedUser ? (
 							<div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
 								<Avatar className="size-7 shrink-0">
@@ -242,7 +242,7 @@ function AddMemberDialog({
 										setTimeout(() => searchRef.current?.focus(), 50);
 									}}
 								>
-									Change
+									{t("project.team.change")}
 								</button>
 							</div>
 						) : (
@@ -252,7 +252,7 @@ function AddMemberDialog({
 									<input
 										ref={searchRef}
 										className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-										placeholder="Search by name or username…"
+										placeholder={t("project.team.searchUsers")}
 										value={userSearch}
 										onChange={(e) => setUserSearch(e.target.value)}
 										autoFocus
@@ -266,8 +266,8 @@ function AddMemberDialog({
 									) : filteredUsers.length === 0 ? (
 										<p className="py-4 text-center text-xs text-muted-foreground">
 											{userSearch
-												? "No users match your search."
-												: "No users available to add."}
+												? t("project.team.noUsersMatch")
+												: t("project.team.noUsersAvailable")}
 										</p>
 									) : (
 										filteredUsers.map((user: User) => (
@@ -286,7 +286,7 @@ function AddMemberDialog({
 
 					{/* Role picker */}
 					<div className="space-y-1.5">
-						<p className="text-sm font-medium">Role</p>
+						<p className="text-sm font-medium">{t("project.team.role")}</p>
 						<Select
 							value={selectedRoleId}
 							onValueChange={(v) => {
@@ -298,7 +298,7 @@ function AddMemberDialog({
 							}))}
 						>
 							<SelectTrigger className="w-full">
-								<SelectValue placeholder="Select a role…" />
+								<SelectValue placeholder={t("project.team.selectRole")} />
 							</SelectTrigger>
 							<SelectContent>
 								{roles.map((role) => (
@@ -327,7 +327,7 @@ function AddMemberDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.team.cancel")}
 					</DialogClose>
 					<Button
 						size="sm"
@@ -339,7 +339,7 @@ function AddMemberDialog({
 						) : (
 							<Plus className="size-3.5" />
 						)}
-						Add member
+						{t("project.team.addMember")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -358,6 +358,7 @@ function RoleChip({
 	projectId: string;
 	roles: ProjectRole[];
 }) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [open, setOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -400,7 +401,7 @@ function RoleChip({
 				);
 			}
 			const e = _err as { response?: { data?: { error?: string } } };
-			setError(e?.response?.data?.error ?? "Failed to change role.");
+			setError(e?.response?.data?.error ?? t("project.team.errChangeRole"));
 		},
 		onSuccess: () => {
 			setOpen(false);
@@ -423,7 +424,7 @@ function RoleChip({
 		>
 			<PopoverTrigger
 				type="button"
-				aria-label="Change role"
+				aria-label={t("project.team.changeRole")}
 				disabled={mutation.isPending}
 				className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-secondary/50 px-2.5 py-1 text-xs font-medium text-secondary-foreground transition-all hover:bg-accent hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
 			>
@@ -439,7 +440,7 @@ function RoleChip({
 			</PopoverTrigger>
 			<PopoverContent className="w-52 p-1.5" align="end">
 				<p className="px-2 py-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-					Change role
+					{t("project.team.changeRole")}
 				</p>
 				<div className="mt-0.5 space-y-px">
 					{roles.map((role) => {
@@ -493,6 +494,7 @@ function MemberRow({
 	canManage: boolean;
 	onRemove: (member: ProjectMember) => void;
 }) {
+	const { t } = useTranslation();
 	const display = member.full_name || member.username;
 	const isBot =
 		member.member_type === "agent" ||
@@ -531,7 +533,7 @@ function MemberRow({
 							onClick={() => onRemove(member)}
 						>
 							<Trash2 className="size-3.5 mr-2" />
-							Remove member
+							{t("project.team.removeMember")}
 						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -543,6 +545,7 @@ function MemberRow({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 function TeamPage() {
+	const { t } = useTranslation();
 	const { projectId } = Route.useParams();
 	const queryClient = useQueryClient();
 	const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -605,10 +608,10 @@ function TeamPage() {
 				<div className="relative flex items-end justify-between px-6 py-8">
 					<div>
 						<h1 className="font-[Syne] text-2xl font-bold tracking-tight">
-							Team
+							{t("project.team.title")}
 						</h1>
 						<p className="mt-1 text-sm text-muted-foreground">
-							{project?.name} · Manage project members and roles
+							{project?.name} · {t("project.team.subtitle")}
 						</p>
 					</div>
 					{canManageMembers ? (
@@ -618,7 +621,7 @@ function TeamPage() {
 							onClick={() => setAddMemberOpen(true)}
 						>
 							<Plus className="size-3.5" />
-							Add Member
+							{t("project.team.addMemberButton")}
 						</Button>
 					) : null}
 				</div>
@@ -654,9 +657,11 @@ function TeamPage() {
 							<Users className="size-6 text-primary" />
 						</div>
 						<div className="text-center">
-							<p className="text-sm font-medium">No members yet</p>
+							<p className="text-sm font-medium">
+								{t("project.team.emptyTitle")}
+							</p>
 							<p className="mt-0.5 text-xs text-muted-foreground">
-								Add teammates or AI agents to this project to get started.
+								{t("project.team.emptyDesc")}
 							</p>
 						</div>
 						{canManageMembers ? (
@@ -666,7 +671,7 @@ function TeamPage() {
 								onClick={() => setAddMemberOpen(true)}
 							>
 								<Plus className="size-3.5" />
-								Add first member
+								{t("project.team.addFirstMember")}
 							</Button>
 						) : null}
 					</div>
@@ -674,7 +679,7 @@ function TeamPage() {
 					<div>
 						<div className="mb-3 flex items-center justify-between">
 							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-								{members.length} {members.length === 1 ? "member" : "members"}
+								{t("project.team.memberCount", { count: members.length })}
 							</p>
 						</div>
 						<div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -714,22 +719,24 @@ function TeamPage() {
 						<div className="flex size-10 items-center justify-center rounded-full bg-destructive/10 mb-2">
 							<UserRound className="size-5 text-destructive" />
 						</div>
-						<DialogTitle>Remove member</DialogTitle>
+						<DialogTitle>{t("project.team.removeMemberTitle")}</DialogTitle>
 						<DialogDescription>
-							Remove{" "}
-							<span className="font-medium text-foreground">
-								{removingMember?.full_name || removingMember?.username}
-							</span>{" "}
-							from{" "}
-							<span className="font-medium text-foreground">
-								{project?.name}
-							</span>
-							? They will lose access immediately.
+							<Trans
+								i18nKey="project.team.removeConfirm"
+								values={{
+									name: removingMember?.full_name || removingMember?.username,
+									project: project?.name,
+								}}
+								components={{
+									name: <span className="font-medium text-foreground" />,
+									project: <span className="font-medium text-foreground" />,
+								}}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					{removeMutation.isError ? (
 						<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-							Failed to remove member. Please try again.
+							{t("project.team.errRemoveFailed")}
 						</p>
 					) : null}
 					<DialogFooter>
@@ -742,7 +749,7 @@ function TeamPage() {
 								/>
 							}
 						>
-							Cancel
+							{t("project.team.cancel")}
 						</DialogClose>
 						<Button
 							variant="destructive"
@@ -755,7 +762,7 @@ function TeamPage() {
 							) : (
 								<Trash2 className="size-3.5" />
 							)}
-							Remove
+							{t("project.team.remove")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

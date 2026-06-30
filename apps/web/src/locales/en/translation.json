@@ -351,6 +351,131 @@
 		}
 	},
 	"project": {
+		"team": {
+			"title": "Team",
+			"subtitle": "Manage project members and roles",
+			"addMemberButton": "Add Member",
+			"addMember": "Add member",
+			"addMemberDesc": "Select a user and assign them a role in this project.",
+			"user": "User",
+			"change": "Change",
+			"searchUsers": "Search by name or username…",
+			"noUsersMatch": "No users match your search.",
+			"noUsersAvailable": "No users available to add.",
+			"role": "Role",
+			"selectRole": "Select a role…",
+			"cancel": "Cancel",
+			"errUserRoleRequired": "User and role are required",
+			"errAddFailed": "Failed to add member. Please try again.",
+			"changeRole": "Change role",
+			"errChangeRole": "Failed to change role.",
+			"removeMember": "Remove member",
+			"emptyTitle": "No members yet",
+			"emptyDesc": "Add teammates or AI agents to this project to get started.",
+			"addFirstMember": "Add first member",
+			"memberCount_one": "{{count}} member",
+			"memberCount_other": "{{count}} members",
+			"removeMemberTitle": "Remove member",
+			"removeConfirm": "Remove <name>{{name}}</name> from <project>{{project}}</project>? They will lose access immediately.",
+			"errRemoveFailed": "Failed to remove member. Please try again.",
+			"remove": "Remove"
+		},
+		"roles": {
+			"editRoleTitle": "Edit Role",
+			"createRoleTitle": "New Role",
+			"editDesc": "Update the role name and configure its permission grants.",
+			"createDesc": "Define a new project role and configure which permissions it grants to members.",
+			"roleName": "Role Name",
+			"rolePlaceholder": "e.g. PROJECT_REVIEWER",
+			"permissions": "Permissions",
+			"enabledCount": "{{count}} enabled",
+			"cancel": "Cancel",
+			"saveChanges": "Save changes",
+			"createRole": "Create role",
+			"errNameTaken": "A role with this name already exists.",
+			"errNameInvalid": "Role name must use uppercase letters, numbers, and underscores.",
+			"errNotFound": "This role no longer exists. It may have already been deleted.",
+			"errForbidden": "You don't have permission to perform this action.",
+			"errServer": "Something went wrong on the server. Please try again.",
+			"errFallback": "Something went wrong.",
+			"deleteRole": "Delete role",
+			"deleteConfirm": "Are you sure you want to delete <name>{{name}}</name>? Any members currently assigned this role will lose their access. This action cannot be undone.",
+			"errRoleNotFound": "This role no longer exists.",
+			"errRoleHasMembers": "This role cannot be deleted because it is still assigned to one or more members.",
+			"errForbiddenDelete": "You don't have permission to delete this role.",
+			"errServerDelete": "Something went wrong. Please try again.",
+			"permGroups": {
+				"projects": "Project",
+				"project_members": "Members",
+				"project_roles": "Roles",
+				"tasks": "Tasks",
+				"sprints": "Sprints",
+				"docs": "Documents",
+				"agents": "AI Agents"
+			},
+			"perms": {
+				"projects_read": {
+					"label": "Read Project",
+					"desc": "View project details and settings"
+				},
+				"projects_write": {
+					"label": "Edit Project",
+					"desc": "Update project name, description, and settings"
+				},
+				"projects_delete": {
+					"label": "Delete Project",
+					"desc": "Permanently delete this project"
+				},
+				"project_members_read": {
+					"label": "View Members",
+					"desc": "List and view project members"
+				},
+				"project_members_write": {
+					"label": "Manage Members",
+					"desc": "Add, remove, and reassign project members"
+				},
+				"project_roles_read": {
+					"label": "View Roles",
+					"desc": "List and view project role definitions"
+				},
+				"project_roles_write": {
+					"label": "Manage Roles",
+					"desc": "Create, edit, and delete project roles"
+				},
+				"tasks_read": {
+					"label": "View Tasks",
+					"desc": "Browse and read tasks in the project"
+				},
+				"tasks_write": {
+					"label": "Edit Tasks",
+					"desc": "Create, update, and move tasks"
+				},
+				"sprints_read": {
+					"label": "View Sprints",
+					"desc": "Browse sprint boards and backlogs"
+				},
+				"sprints_write": {
+					"label": "Manage Sprints",
+					"desc": "Create, update, and close sprints"
+				},
+				"docs_read": {
+					"label": "View Documents",
+					"desc": "Browse and read documents in the project"
+				},
+				"docs_write": {
+					"label": "Edit Documents",
+					"desc": "Create, update, and delete documents and folders"
+				},
+				"agents_read": {
+					"label": "View Agents",
+					"desc": "Browse AI agents and view their configuration"
+				},
+				"agents_write": {
+					"label": "Manage Agents",
+					"desc": "Create, configure, and delete AI agents"
+				}
+			}
+		},
 		"statusCategories": {
 			"backlog": "Backlog",
 			"refinement": "Refinement",

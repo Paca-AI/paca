@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +33,7 @@ export function DeleteProjectRoleDialog({
 	open,
 	onOpenChange,
 }: DeleteProjectRoleDialogProps) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 
@@ -46,15 +48,15 @@ export function DeleteProjectRoleDialog({
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
 			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.ProjectRoleNotFound]: "This role no longer exists.",
-				[ApiErrorCode.ProjectRoleHasMembers]:
-					"This role cannot be deleted because it is still assigned to one or more members.",
-				[ApiErrorCode.Forbidden]:
-					"You don't have permission to delete this role.",
-				[ApiErrorCode.InternalError]: "Something went wrong. Please try again.",
+				[ApiErrorCode.ProjectRoleNotFound]: t("project.roles.errRoleNotFound"),
+				[ApiErrorCode.ProjectRoleHasMembers]: t(
+					"project.roles.errRoleHasMembers",
+				),
+				[ApiErrorCode.Forbidden]: t("project.roles.errForbiddenDelete"),
+				[ApiErrorCode.InternalError]: t("project.roles.errServerDelete"),
 			};
 			const fallback =
-				err instanceof Error ? err.message : "Something went wrong.";
+				err instanceof Error ? err.message : t("project.roles.errFallback");
 			setError((code && messages[code]) ?? fallback);
 		},
 	});
@@ -72,14 +74,17 @@ export function DeleteProjectRoleDialog({
 					<div className="mb-1 flex size-9 items-center justify-center rounded-lg bg-destructive/10">
 						<Trash2 className="size-4 text-destructive" />
 					</div>
-					<DialogTitle>Delete role</DialogTitle>
+					<DialogTitle>{t("project.roles.deleteRole")}</DialogTitle>
 					<DialogDescription className="mt-1">
-						Are you sure you want to delete{" "}
-						<span className="font-mono font-semibold text-foreground">
-							{role.role_name}
-						</span>
-						? Any members currently assigned this role will lose their access.
-						This action cannot be undone.
+						<Trans
+							i18nKey="project.roles.deleteConfirm"
+							values={{ name: role.role_name }}
+							components={{
+								name: (
+									<span className="font-mono font-semibold text-foreground" />
+								),
+							}}
+						/>
 					</DialogDescription>
 				</DialogHeader>
 
@@ -100,7 +105,7 @@ export function DeleteProjectRoleDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.roles.cancel")}
 					</DialogClose>
 					<Button
 						variant="destructive"
@@ -113,7 +118,7 @@ export function DeleteProjectRoleDialog({
 						) : (
 							<Trash2 className="size-3.5" />
 						)}
-						Delete role
+						{t("project.roles.deleteRole")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
