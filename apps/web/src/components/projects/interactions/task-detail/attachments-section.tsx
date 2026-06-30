@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Paperclip, Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	deleteTaskAttachment,
 	taskAttachmentsQueryOptions,
@@ -20,6 +21,7 @@ export function AttachmentsSection({
 	taskId,
 	canEdit = true,
 }: AttachmentsSectionProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [isDragOver, setIsDragOver] = useState(false);
@@ -73,7 +75,7 @@ export function AttachmentsSection({
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
 				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
-					<span>Attachments</span>
+					<span>{t("project.interactions.taskDetail.attachments.title")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
 				{canEdit && (
@@ -82,7 +84,9 @@ export function AttachmentsSection({
 							type="button"
 							onClick={() => fileInputRef.current?.click()}
 							className="flex size-7 items-center justify-center rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-all duration-150"
-							aria-label="Upload attachment"
+							aria-label={t(
+								"project.interactions.taskDetail.attachments.upload",
+							)}
 						>
 							<Upload className="size-3.5" />
 						</button>
@@ -142,10 +146,10 @@ export function AttachmentsSection({
 						<Paperclip className="size-5" />
 					</div>
 					<p className="text-sm font-medium text-muted-foreground/70 group-hover/drop:text-muted-foreground transition-colors">
-						Drop your files here to upload
+						{t("project.interactions.taskDetail.attachments.dropPrompt")}
 					</p>
 					<p className="text-xs mt-1.5 text-muted-foreground/45 transition-colors">
-						or click to browse
+						{t("project.interactions.taskDetail.attachments.browsePrompt")}
 					</p>
 				</button>
 			)}

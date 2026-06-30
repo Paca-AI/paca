@@ -611,7 +611,123 @@
 				"taskActions": "작업 동작",
 				"closeTaskDetail": "작업 세부 정보 닫기",
 				"deleteTaskTitle": "작업을 삭제하시겠어요?",
-				"deleteTaskDesc": "\"{{title}}\" 및 모든 데이터가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다."
+				"deleteTaskDesc": "\"{{title}}\" 및 모든 데이터가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+				"activity": {
+					"created": "이 작업을 생성했습니다",
+					"deleted": "이 작업을 삭제했습니다",
+					"updated": "이 작업을 수정했습니다",
+					"madeChange": "변경했습니다",
+					"system": "시스템",
+					"noneValue": "없음",
+					"attachmentAdded": "첨부를 추가했습니다",
+					"attachmentAddedNamed": "첨부를 추가했습니다: {{name}}",
+					"attachmentRemoved": "첨부를 삭제했습니다",
+					"attachmentRemovedNamed": "첨부를 삭제했습니다: {{name}}",
+					"linkAdded": "작업 링크를 추가했습니다 ({{linkType}})",
+					"linkRemoved": "작업 링크를 삭제했습니다",
+					"linkTypeBlocks": "차단",
+					"linkTypeRelatesTo": "관련",
+					"linkTypeDuplicates": "중복",
+					"aiSessionStarted": "AI 세션을 시작했습니다",
+					"watchSession": "세션 보기",
+					"descriptionDiff": "설명 변경 비교",
+					"statusChanged": "상태를 \"{{old}}\"에서 \"{{new}}\"(으)로 변경했습니다",
+					"statusSet": "상태를 \"{{new}}\"(으)로 설정했습니다",
+					"statusCleared": "상태를 지웠습니다",
+					"typeChanged": "유형을 \"{{old}}\"에서 \"{{new}}\"(으)로 변경했습니다",
+					"typeSet": "유형을 \"{{new}}\"(으)로 설정했습니다",
+					"typeCleared": "유형을 지웠습니다",
+					"titleRenamed": "제목을 \"{{old}}\"에서 \"{{new}}\"(으)로 변경했습니다",
+					"titleSet": "제목을 \"{{new}}\"(으)로 설정했습니다",
+					"priorityChanged": "우선순위를 {{old}}에서 {{new}}(으)로 변경했습니다",
+					"prioritySet": "우선순위를 {{new}}(으)로 설정했습니다",
+					"assigneeChanged": "담당자를 {{old}}에서 {{new}}(으)로 변경했습니다",
+					"assigneeSet": "{{new}}님에게 할당했습니다",
+					"assigneeRemoved": "담당자 {{old}}님을 제거했습니다",
+					"reporterChanged": "보고자를 {{old}}에서 {{new}}(으)로 변경했습니다",
+					"reporterSet": "보고자를 {{new}}(으)로 설정했습니다",
+					"reporterRemoved": "보고자 {{old}}님을 제거했습니다",
+					"sprintMoved": "스프린트를 \"{{old}}\"에서 \"{{new}}\"(으)로 이동했습니다",
+					"sprintAdded": "스프린트 \"{{new}}\"에 추가했습니다",
+					"sprintRemoved": "스프린트 \"{{old}}\"에서 제거했습니다",
+					"parentSet": "상위 작업을 설정했습니다",
+					"parentRemoved": "상위 작업을 제거했습니다",
+					"dueDateChanged": "마감일을 {{old}}에서 {{new}}(으)로 변경했습니다",
+					"dueDateSet": "마감일을 {{new}}(으)로 설정했습니다",
+					"dueDateRemoved": "마감일을 제거했습니다",
+					"startDateChanged": "시작일을 {{old}}에서 {{new}}(으)로 변경했습니다",
+					"startDateSet": "시작일을 {{new}}(으)로 설정했습니다",
+					"startDateRemoved": "시작일을 제거했습니다",
+					"descriptionUpdated": "설명을 수정했습니다",
+					"tagsUpdated": "태그를 수정했습니다",
+					"customFieldsUpdated": "커스텀 필드를 수정했습니다",
+					"fieldUpdated": "{{field}}을(를) 수정했습니다"
+				},
+				"links": {
+					"title": "연결된 작업",
+					"addLink": "링크 추가",
+					"openTask": "작업 열기",
+					"removeLink": "링크 제거",
+					"empty": "연결된 작업이 없습니다",
+					"types": {
+						"blocks": "차단함",
+						"isBlockedBy": "차단됨",
+						"relatesTo": "관련됨",
+						"duplicates": "중복함",
+						"isDuplicatedBy": "중복됨"
+					},
+					"modal": {
+						"title": "작업 링크",
+						"relationship": "관계",
+						"searchPlaceholder": "제목 또는 번호로 작업 검색…",
+						"loading": "작업을 불러오는 중…",
+						"noTasks": "작업을 찾을 수 없습니다",
+						"options": {
+							"blocks": {
+								"label": "차단함",
+								"desc": "이 작업이 다른 작업보다 먼저 완료되어야 합니다"
+							},
+							"isBlockedBy": {
+								"label": "차단됨",
+								"desc": "다른 작업이 완료되어야 이 작업을 시작할 수 있습니다"
+							},
+							"relatesTo": {
+								"label": "관련됨",
+								"desc": "이 작업들은 관련되어 있지만 종속되지는 않습니다"
+							},
+							"duplicates": {
+								"label": "중복함",
+								"desc": "이 작업은 다른 작업과 중복됩니다"
+							}
+						}
+					}
+				},
+				"attachments": {
+					"title": "첨부",
+					"upload": "첨부 업로드",
+					"dropPrompt": "업로드할 파일을 여기에 놓으세요",
+					"browsePrompt": "또는 클릭하여 찾아보기",
+					"preview": "{{name}} 미리보기",
+					"download": "{{name}} 다운로드",
+					"delete": "{{name}} 삭제"
+				},
+				"addField": {
+					"title": "커스텀 필드 만들기",
+					"displayName": "표시 이름",
+					"displayNamePlaceholder": "예: 릴리스 태그",
+					"fieldKey": "필드 키",
+					"fieldType": "필드 유형",
+					"required": "필수",
+					"creating": "만드는 중…",
+					"create": "필드 만들기",
+					"types": {
+						"text": "텍스트",
+						"number": "숫자",
+						"date": "날짜",
+						"checkbox": "체크박스",
+						"select": "선택"
+					}
+				}
 			}
 		},
 		"docs": {

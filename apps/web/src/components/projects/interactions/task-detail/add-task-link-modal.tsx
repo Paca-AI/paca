@@ -1,5 +1,6 @@
 import { Link2, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	type DisplayLinkType,
 	type LinkType,
@@ -22,31 +23,14 @@ interface AddTaskLinkModalProps {
 	taskIdPrefix?: string;
 }
 
-const LINK_TYPE_OPTIONS: {
+const LINK_TYPE_OPTION_VALUES: {
 	value: DisplayLinkType;
-	label: string;
-	description: string;
+	optionKey: string;
 }[] = [
-	{
-		value: "blocks",
-		label: "Blocks",
-		description: "This task must be completed before the other",
-	},
-	{
-		value: "is_blocked_by",
-		label: "Is blocked by",
-		description: "This task cannot start until the other is done",
-	},
-	{
-		value: "relates_to",
-		label: "Relates to",
-		description: "These tasks are related but not dependent",
-	},
-	{
-		value: "duplicates",
-		label: "Duplicates",
-		description: "This task is a duplicate of the other",
-	},
+	{ value: "blocks", optionKey: "blocks" },
+	{ value: "is_blocked_by", optionKey: "isBlockedBy" },
+	{ value: "relates_to", optionKey: "relatesTo" },
+	{ value: "duplicates", optionKey: "duplicates" },
 ];
 
 // Maps the display type chosen in the UI to the canonical (source, target)
@@ -88,6 +72,7 @@ export function AddTaskLinkModal({
 	currentTaskId,
 	taskIdPrefix = "",
 }: AddTaskLinkModalProps) {
+	const { t } = useTranslation();
 	const [selectedLinkType, setSelectedLinkType] =
 		useState<DisplayLinkType>("blocks");
 	const [query, setQuery] = useState("");
@@ -151,7 +136,7 @@ export function AddTaskLinkModal({
 							<Link2 className="size-3.5 text-primary" />
 						</div>
 						<h2 className="text-base font-semibold text-foreground">
-							Link task
+							{t("project.interactions.taskDetail.links.modal.title")}
 						</h2>
 					</div>
 					<button
@@ -166,10 +151,10 @@ export function AddTaskLinkModal({
 				{/* Link type selector */}
 				<div className="px-5 pt-4 pb-3">
 					<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/60 mb-2">
-						Relationship
+						{t("project.interactions.taskDetail.links.modal.relationship")}
 					</p>
 					<div className="grid grid-cols-2 gap-1.5">
-						{LINK_TYPE_OPTIONS.map((opt) => (
+						{LINK_TYPE_OPTION_VALUES.map((opt) => (
 							<button
 								key={opt.value}
 								type="button"
@@ -179,9 +164,13 @@ export function AddTaskLinkModal({
 										? "bg-primary/10 border-primary/30 text-primary"
 										: "bg-muted/20 border-border/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
 								}`}
-								title={opt.description}
+								title={t(
+									`project.interactions.taskDetail.links.modal.options.${opt.optionKey}.desc`,
+								)}
 							>
-								{opt.label}
+								{t(
+									`project.interactions.taskDetail.links.modal.options.${opt.optionKey}.label`,
+								)}
 							</button>
 						))}
 					</div>
@@ -196,7 +185,9 @@ export function AddTaskLinkModal({
 							type="text"
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
-							placeholder="Search tasks by title or number..."
+							placeholder={t(
+								"project.interactions.taskDetail.links.modal.searchPlaceholder",
+							)}
 							className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-border/30 bg-muted/20 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all duration-150"
 						/>
 					</div>
@@ -206,12 +197,12 @@ export function AddTaskLinkModal({
 				<div className="mx-5 mb-5 rounded-xl border border-border/20 overflow-hidden max-h-64 overflow-y-auto [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/40">
 					{loading && (
 						<div className="flex items-center justify-center py-8 text-muted-foreground/50 text-sm">
-							Loading tasks…
+							{t("project.interactions.taskDetail.links.modal.loading")}
 						</div>
 					)}
 					{!loading && filteredTasks.length === 0 && (
 						<div className="flex items-center justify-center py-8 text-muted-foreground/45 text-sm italic">
-							No tasks found
+							{t("project.interactions.taskDetail.links.modal.noTasks")}
 						</div>
 					)}
 					{!loading &&

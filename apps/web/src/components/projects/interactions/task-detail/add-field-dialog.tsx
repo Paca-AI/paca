@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	createCustomFieldDefinition,
 	customFieldsQueryOptions,
@@ -31,7 +32,15 @@ export function AddFieldDialog({
 	projectId,
 	onAdd,
 }: AddFieldDialogProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
+	const fieldTypeLabels: Record<UiFieldType, string> = {
+		Text: t("project.interactions.taskDetail.addField.types.text"),
+		Number: t("project.interactions.taskDetail.addField.types.number"),
+		Date: t("project.interactions.taskDetail.addField.types.date"),
+		Checkbox: t("project.interactions.taskDetail.addField.types.checkbox"),
+		Select: t("project.interactions.taskDetail.addField.types.select"),
+	};
 	const [displayName, setDisplayName] = useState("");
 	const [fieldKey, setFieldKey] = useState("");
 	const [keyManual, setKeyManual] = useState(false);
@@ -111,7 +120,7 @@ export function AddFieldDialog({
 				{/* Header */}
 				<div className="flex items-center justify-between mb-6">
 					<h2 className="font-[Syne] text-base font-bold tracking-tight text-foreground">
-						Create custom field
+						{t("project.interactions.taskDetail.addField.title")}
 					</h2>
 					<button
 						type="button"
@@ -132,7 +141,8 @@ export function AddFieldDialog({
 							htmlFor="add-field-display-name"
 							className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
 						>
-							Display name <span className="text-destructive/70">*</span>
+							{t("project.interactions.taskDetail.addField.displayName")}{" "}
+							<span className="text-destructive/70">*</span>
 						</label>
 						<input
 							id="add-field-display-name"
@@ -141,7 +151,9 @@ export function AddFieldDialog({
 								setDisplayName(e.target.value);
 								if (!keyManual) setFieldKey(slugify(e.target.value));
 							}}
-							placeholder="e.g. Release Tag"
+							placeholder={t(
+								"project.interactions.taskDetail.addField.displayNamePlaceholder",
+							)}
 							className="w-full rounded-lg border border-border/30 bg-muted/15 px-3.5 py-2.5 text-sm outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 placeholder:text-muted-foreground/45 transition-all duration-150"
 						/>
 					</div>
@@ -152,7 +164,7 @@ export function AddFieldDialog({
 							htmlFor="add-field-key"
 							className="text-sm font-semibold text-foreground/80 uppercase tracking-wide"
 						>
-							Field key
+							{t("project.interactions.taskDetail.addField.fieldKey")}
 						</label>
 						<input
 							id="add-field-key"
@@ -169,7 +181,7 @@ export function AddFieldDialog({
 					{/* Field type */}
 					<div className="space-y-2.5">
 						<p className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
-							Field type
+							{t("project.interactions.taskDetail.addField.fieldType")}
 						</p>
 						<div className="flex flex-wrap gap-1.5">
 							{FIELD_TYPES.map((ft) => (
@@ -184,7 +196,7 @@ export function AddFieldDialog({
 											: "border-border/25 text-muted-foreground/70 hover:border-border/50 hover:bg-muted/30 hover:text-muted-foreground",
 									)}
 								>
-									{ft}
+									{fieldTypeLabels[ft]}
 								</button>
 							))}
 						</div>
@@ -193,7 +205,7 @@ export function AddFieldDialog({
 					{/* Required toggle */}
 					<div className="flex items-center justify-between rounded-xl border border-border/20 bg-muted/15 px-4 py-3">
 						<span className="text-sm text-foreground/80 font-medium">
-							Required
+							{t("project.interactions.taskDetail.addField.required")}
 						</span>
 						<button
 							type="button"
@@ -227,7 +239,7 @@ export function AddFieldDialog({
 						}}
 						className="rounded-lg border border-border/30 px-4 py-2 text-sm font-medium text-muted-foreground/80 hover:bg-muted/30 hover:text-foreground transition-all duration-150"
 					>
-						Cancel
+						{t("project.interactions.taskDetail.cancel")}
 					</button>
 					<button
 						type="button"
@@ -235,7 +247,9 @@ export function AddFieldDialog({
 						onClick={handleCreate}
 						className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40 hover:bg-primary/90 transition-all duration-150 shadow-sm disabled:shadow-none"
 					>
-						{submitting ? "Creating…" : "Create field"}
+						{submitting
+							? t("project.interactions.taskDetail.addField.creating")
+							: t("project.interactions.taskDetail.addField.create")}
 					</button>
 				</div>
 			</div>

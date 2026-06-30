@@ -1,5 +1,6 @@
 import { Download, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { TaskAttachment } from "@/lib/attachment-api";
 import { getAttachmentDownloadURL } from "@/lib/attachment-api";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ export function AttachmentItem({
 	canDelete,
 	onDelete,
 }: AttachmentItemProps) {
+	const { t } = useTranslation();
 	const [isDownloading, setIsDownloading] = useState(false);
 	const ext =
 		attachment.file.file_name.split(".").pop()?.toUpperCase() ?? "FILE";
@@ -65,7 +67,9 @@ export function AttachmentItem({
 				type="button"
 				onClick={handlePreview}
 				className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/12 to-primary/5 text-primary/80 hover:from-primary/20 hover:to-primary/10 transition-all duration-150"
-				aria-label={`Preview ${attachment.file.file_name}`}
+				aria-label={t("project.interactions.taskDetail.attachments.preview", {
+					name: attachment.file.file_name,
+				})}
 			>
 				<span className="text-xs font-bold tracking-tight">{ext}</span>
 			</button>
@@ -92,7 +96,9 @@ export function AttachmentItem({
 					onClick={handleDownload}
 					disabled={isDownloading}
 					className="shrink-0 size-7 flex items-center justify-center rounded-lg text-muted-foreground/45 hover:text-foreground hover:bg-muted/50 transition-all duration-150 disabled:opacity-50"
-					aria-label={`Download ${attachment.file.file_name}`}
+					aria-label={t("project.interactions.taskDetail.attachments.download", {
+						name: attachment.file.file_name,
+					})}
 				>
 					<Download className="size-3.5" />
 				</button>
@@ -101,7 +107,9 @@ export function AttachmentItem({
 						type="button"
 						onClick={() => onDelete?.(attachment.id)}
 						className="shrink-0 size-7 flex items-center justify-center rounded-lg text-muted-foreground/45 hover:text-destructive hover:bg-destructive/8 transition-all duration-150"
-						aria-label={`Delete ${attachment.file.file_name}`}
+						aria-label={t("project.interactions.taskDetail.attachments.delete", {
+							name: attachment.file.file_name,
+						})}
 					>
 						<Trash2 className="size-3.5" />
 					</button>

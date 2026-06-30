@@ -611,7 +611,123 @@
 				"taskActions": "Task actions",
 				"closeTaskDetail": "Close task detail",
 				"deleteTaskTitle": "Delete task?",
-				"deleteTaskDesc": "This permanently deletes \"{{title}}\" and all of its data. This action cannot be undone."
+				"deleteTaskDesc": "This permanently deletes \"{{title}}\" and all of its data. This action cannot be undone.",
+				"activity": {
+					"created": "created this task",
+					"deleted": "deleted this task",
+					"updated": "updated this task",
+					"madeChange": "made a change",
+					"system": "System",
+					"noneValue": "none",
+					"attachmentAdded": "added attachment",
+					"attachmentAddedNamed": "added attachment: {{name}}",
+					"attachmentRemoved": "removed attachment",
+					"attachmentRemovedNamed": "removed attachment: {{name}}",
+					"linkAdded": "added task link ({{linkType}})",
+					"linkRemoved": "removed task link",
+					"linkTypeBlocks": "blocks",
+					"linkTypeRelatesTo": "related to",
+					"linkTypeDuplicates": "duplicates",
+					"aiSessionStarted": "started an AI session",
+					"watchSession": "Watch session",
+					"descriptionDiff": "Description change diff",
+					"statusChanged": "changed status from \"{{old}}\" to \"{{new}}\"",
+					"statusSet": "set status to \"{{new}}\"",
+					"statusCleared": "cleared status",
+					"typeChanged": "changed type from \"{{old}}\" to \"{{new}}\"",
+					"typeSet": "set type to \"{{new}}\"",
+					"typeCleared": "cleared type",
+					"titleRenamed": "renamed from \"{{old}}\" to \"{{new}}\"",
+					"titleSet": "set title to \"{{new}}\"",
+					"priorityChanged": "changed priority from {{old}} to {{new}}",
+					"prioritySet": "set priority to {{new}}",
+					"assigneeChanged": "changed assignee from {{old}} to {{new}}",
+					"assigneeSet": "assigned to {{new}}",
+					"assigneeRemoved": "removed assignee {{old}}",
+					"reporterChanged": "changed reporter from {{old}} to {{new}}",
+					"reporterSet": "set reporter to {{new}}",
+					"reporterRemoved": "removed reporter {{old}}",
+					"sprintMoved": "moved from sprint \"{{old}}\" to \"{{new}}\"",
+					"sprintAdded": "added to sprint \"{{new}}\"",
+					"sprintRemoved": "removed from sprint \"{{old}}\"",
+					"parentSet": "set parent task",
+					"parentRemoved": "removed parent task",
+					"dueDateChanged": "changed due date from {{old}} to {{new}}",
+					"dueDateSet": "set due date to {{new}}",
+					"dueDateRemoved": "removed due date",
+					"startDateChanged": "changed start date from {{old}} to {{new}}",
+					"startDateSet": "set start date to {{new}}",
+					"startDateRemoved": "removed start date",
+					"descriptionUpdated": "updated description",
+					"tagsUpdated": "updated tags",
+					"customFieldsUpdated": "updated custom fields",
+					"fieldUpdated": "updated {{field}}"
+				},
+				"links": {
+					"title": "Linked Tasks",
+					"addLink": "Add Link",
+					"openTask": "Open task",
+					"removeLink": "Remove link",
+					"empty": "No linked tasks",
+					"types": {
+						"blocks": "blocks",
+						"isBlockedBy": "is blocked by",
+						"relatesTo": "relates to",
+						"duplicates": "duplicates",
+						"isDuplicatedBy": "is duplicated by"
+					},
+					"modal": {
+						"title": "Link task",
+						"relationship": "Relationship",
+						"searchPlaceholder": "Search tasks by title or number…",
+						"loading": "Loading tasks…",
+						"noTasks": "No tasks found",
+						"options": {
+							"blocks": {
+								"label": "Blocks",
+								"desc": "This task must be completed before the other"
+							},
+							"isBlockedBy": {
+								"label": "Is blocked by",
+								"desc": "This task cannot start until the other is done"
+							},
+							"relatesTo": {
+								"label": "Relates to",
+								"desc": "These tasks are related but not dependent"
+							},
+							"duplicates": {
+								"label": "Duplicates",
+								"desc": "This task is a duplicate of the other"
+							}
+						}
+					}
+				},
+				"attachments": {
+					"title": "Attachments",
+					"upload": "Upload attachment",
+					"dropPrompt": "Drop your files here to upload",
+					"browsePrompt": "or click to browse",
+					"preview": "Preview {{name}}",
+					"download": "Download {{name}}",
+					"delete": "Delete {{name}}"
+				},
+				"addField": {
+					"title": "Create custom field",
+					"displayName": "Display name",
+					"displayNamePlaceholder": "e.g. Release Tag",
+					"fieldKey": "Field key",
+					"fieldType": "Field type",
+					"required": "Required",
+					"creating": "Creating…",
+					"create": "Create field",
+					"types": {
+						"text": "Text",
+						"number": "Number",
+						"date": "Date",
+						"checkbox": "Checkbox",
+						"select": "Select"
+					}
+				}
 			}
 		},
 		"docs": {

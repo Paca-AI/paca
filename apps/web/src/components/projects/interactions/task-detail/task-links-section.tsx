@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Link2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	createTaskLink,
 	type DisplayLinkType,
 	deleteTaskLink,
-	LINK_TYPE_LABELS,
 	type TaskLink,
 	taskLinksQueryOptions,
 } from "@/lib/interaction-api";
@@ -33,6 +33,15 @@ const DISPLAY_ORDER: DisplayLinkType[] = [
 	"is_duplicated_by",
 ];
 
+// Maps the API display link type to its translation key suffix
+const LINK_TYPE_KEYS: Record<DisplayLinkType, string> = {
+	blocks: "blocks",
+	is_blocked_by: "isBlockedBy",
+	relates_to: "relatesTo",
+	duplicates: "duplicates",
+	is_duplicated_by: "isDuplicatedBy",
+};
+
 function groupLinks(links: TaskLink[]): GroupedLinks {
 	const groups: GroupedLinks = {};
 	for (const link of links) {
@@ -50,6 +59,7 @@ export function TaskLinksSection({
 	canEdit = true,
 	onNavigateToTask,
 }: TaskLinksSectionProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const [modalOpen, setModalOpen] = useState(false);
 
@@ -95,7 +105,7 @@ export function TaskLinksSection({
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
 				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
-					<span>Linked Tasks</span>
+					<span>{t("project.interactions.taskDetail.links.title")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
 				{canEdit && (
@@ -105,7 +115,7 @@ export function TaskLinksSection({
 						className="flex items-center gap-1.5 rounded-lg bg-primary/8 text-primary/80 hover:bg-primary/15 hover:text-primary px-2.5 py-1.5 text-xs font-semibold transition-all duration-150"
 					>
 						<Plus className="size-3" />
-						Add Link
+						{t("project.interactions.taskDetail.links.addLink")}
 					</button>
 				)}
 			</div>
@@ -121,14 +131,16 @@ export function TaskLinksSection({
 					{orderedKeys.map((displayType) => (
 						<div key={displayType}>
 							<p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/50 mb-1.5 px-0.5">
-								{LINK_TYPE_LABELS[displayType as DisplayLinkType]}
+								{t(
+									`project.interactions.taskDetail.links.types.${LINK_TYPE_KEYS[displayType as DisplayLinkType]}`,
+								)}
 							</p>
 							<div className="rounded-xl border border-border/25 bg-card/50 divide-y divide-border/15 overflow-hidden">
 								{grouped[displayType].map((link) => {
-									const t = link.linked_task;
+									const linked = link.linked_task;
 									const prefix = taskIdPrefix
-										? `${taskIdPrefix}-${t.task_number}`
-										: `#${t.task_number}`;
+										? `${taskIdPrefix}-${linked.task_number}`
+										: `#${linked.task_number}`;
 									return (
 										<div
 											key={link.id}
@@ -147,23 +159,25 @@ export function TaskLinksSection({
 														? "cursor-pointer hover:text-primary transition-colors duration-100"
 														: ""
 												}`}
-												onClick={() => onNavigateToTask?.(t.id)}
+												onClick={() => onNavigateToTask?.(linked.id)}
 												onKeyDown={(e) => {
 													if (e.key === "Enter" || e.key === " ") {
 														e.preventDefault();
-														onNavigateToTask?.(t.id);
+														onNavigateToTask?.(linked.id);
 													}
 												}}
 											>
-												{t.title}
+												{linked.title}
 											</span>
 											<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
 												{onNavigateToTask && (
 													<button
 														type="button"
-														onClick={() => onNavigateToTask(t.id)}
+														onClick={() => onNavigateToTask(linked.id)}
 														className="size-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-muted/30 transition-all duration-100"
-														title="Open task"
+														title={t(
+												"project.interactions.taskDetail.links.openTask",
+											)}
 													>
 														<ExternalLink className="size-3" />
 													</button>
@@ -173,7 +187,9 @@ export function TaskLinksSection({
 														type="button"
 														onClick={() => deleteMutation.mutate(link.id)}
 														className="size-6 rounded flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-all duration-100"
-														title="Remove link"
+														title={t(
+												"project.interactions.taskDetail.links.removeLink",
+											)}
 													>
 														<Trash2 className="size-3" />
 													</button>
@@ -191,7 +207,9 @@ export function TaskLinksSection({
 			{orderedKeys.length === 0 && (
 				<div className="flex items-center gap-3 px-1 py-3 text-muted-foreground/45">
 					<Link2 className="size-4 opacity-70" />
-					<p className="text-sm italic">No linked tasks</p>
+					<p className="text-sm italic">
+						{t("project.interactions.taskDetail.links.empty")}
+					</p>
 				</div>
 			)}
 
