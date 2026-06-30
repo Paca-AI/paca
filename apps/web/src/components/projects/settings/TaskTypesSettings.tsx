@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit2, Plus, Star, Tag, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DeleteTaskTypeDialog } from "@/components/projects/task-types/DeleteTaskTypeDialog";
 import { TaskTypeFormDialog } from "@/components/projects/task-types/TaskTypeFormDialog";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
@@ -27,6 +28,7 @@ export function TaskTypesSettings({
 	projectId: string;
 	canWrite: boolean;
 }) {
+	const { t } = useTranslation();
 	const { data: types, isLoading } = useQuery(taskTypesQueryOptions(projectId));
 	const queryClient = useQueryClient();
 	const [createOpen, setCreateOpen] = useState(false);
@@ -46,9 +48,11 @@ export function TaskTypesSettings({
 		<div className="rounded-xl border border-border/60 bg-card p-6">
 			<div className="flex items-center justify-between mb-1">
 				<div>
-					<h3 className="font-[Syne] text-base font-semibold">Task Types</h3>
+					<h3 className="font-[Syne] text-base font-semibold">
+						{t("project.settings.types.title")}
+					</h3>
 					<p className="text-xs text-muted-foreground mt-0.5">
-						Categorise tasks with custom types (e.g. Bug, Feature, Story).
+						{t("project.settings.types.subtitle")}
 					</p>
 				</div>
 				{canWrite ? (
@@ -59,7 +63,7 @@ export function TaskTypesSettings({
 						onClick={() => setCreateOpen(true)}
 					>
 						<Plus className="size-3.5" />
-						New type
+						{t("project.settings.types.newType")}
 					</Button>
 				) : null}
 			</div>
@@ -87,10 +91,11 @@ export function TaskTypesSettings({
 						<Tag className="size-6" />
 					</div>
 					<div>
-						<p className="text-sm font-medium">No task types defined</p>
+						<p className="text-sm font-medium">
+							{t("project.settings.types.emptyTitle")}
+						</p>
 						<p className="mt-1 text-xs text-muted-foreground">
-							Create types to categorise tasks by kind — e.g. Bug, Feature,
-							Story.
+							{t("project.settings.types.emptyDesc")}
 						</p>
 					</div>
 					{canWrite ? (
@@ -100,7 +105,7 @@ export function TaskTypesSettings({
 							onClick={() => setCreateOpen(true)}
 						>
 							<Plus className="size-4" />
-							Create type
+							{t("project.settings.types.createType")}
 						</Button>
 					) : null}
 				</div>
@@ -110,16 +115,16 @@ export function TaskTypesSettings({
 						<TableHeader>
 							<TableRow className="bg-muted/40 hover:bg-muted/40">
 								<TableHead className="w-10 px-5 text-xs font-semibold uppercase tracking-wide">
-									Icon
+									{t("project.settings.types.colIcon")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Name
+									{t("project.settings.types.colName")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Description
+									{t("project.settings.types.colDescription")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Default
+									{t("project.settings.types.colDefault")}
 								</TableHead>
 								<TableHead className="w-20 px-5 text-xs font-semibold uppercase tracking-wide" />
 							</TableRow>
@@ -166,7 +171,7 @@ export function TaskTypesSettings({
 										{type.is_default ? (
 											<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
 												<Star className="size-3 fill-current" />
-												Default
+												{t("project.settings.types.default")}
 											</span>
 										) : null}
 									</TableCell>
@@ -179,8 +184,8 @@ export function TaskTypesSettings({
 														size="icon-sm"
 														onClick={() => setDefaultMutation.mutate(type.id)}
 														disabled={setDefaultMutation.isPending}
-														title="Set as default type"
-														aria-label="Set as default type"
+														title={t("project.settings.types.setDefault")}
+														aria-label={t("project.settings.types.setDefault")}
 													>
 														<Star className="size-3.5" />
 													</Button>
@@ -189,8 +194,8 @@ export function TaskTypesSettings({
 													variant="ghost"
 													size="icon-sm"
 													onClick={() => setEditType(type)}
-													title="Edit type"
-													aria-label="Edit type"
+													title={t("project.settings.types.editType")}
+													aria-label={t("project.settings.types.editType")}
 												>
 													<Edit2 className="size-3.5" />
 												</Button>
@@ -199,8 +204,8 @@ export function TaskTypesSettings({
 													size="icon-sm"
 													className="text-destructive hover:text-destructive hover:bg-destructive/10"
 													onClick={() => setDeleteType(type)}
-													title="Delete type"
-													aria-label="Delete type"
+													title={t("project.settings.types.deleteType")}
+													aria-label={t("project.settings.types.deleteType")}
 												>
 													<Trash2 className="size-3.5" />
 												</Button>

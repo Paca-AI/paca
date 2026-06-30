@@ -8,6 +8,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DeleteTaskStatusDialog } from "@/components/projects/task-statuses/DeleteTaskStatusDialog";
 import { TaskStatusFormDialog } from "@/components/projects/task-statuses/TaskStatusFormDialog";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/table";
 import {
 	reorderTaskStatuses,
-	STATUS_CATEGORY_LABELS,
 	setDefaultTaskStatus,
 	type TaskStatus,
 	taskStatusesQueryOptions,
@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 
 function StatusCategoryBadge({ category }: { category: string }) {
+	const { t } = useTranslation();
 	const colors: Record<string, string> = {
 		backlog:
 			"bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900/30 dark:text-slate-400 dark:border-slate-700/30",
@@ -42,9 +43,9 @@ function StatusCategoryBadge({ category }: { category: string }) {
 			"bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700/30",
 		done: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-700/30",
 	};
-	const label =
-		STATUS_CATEGORY_LABELS[category as keyof typeof STATUS_CATEGORY_LABELS] ??
-		category;
+	const label = t(`project.statusCategories.${category}`, {
+		defaultValue: category,
+	});
 	return (
 		<span
 			className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium leading-none ${colors[category] ?? "bg-muted text-muted-foreground border-border"}`}
@@ -61,6 +62,7 @@ export function TaskStatusesSettings({
 	projectId: string;
 	canWrite: boolean;
 }) {
+	const { t } = useTranslation();
 	const { data: statuses, isLoading } = useQuery(
 		taskStatusesQueryOptions(projectId),
 	);
@@ -96,7 +98,7 @@ export function TaskStatusesSettings({
 		},
 		onError: () => {
 			setLocalOrder(null);
-			setReorderError("Failed to save the new order. Please try again.");
+			setReorderError(t("project.settings.statuses.errReorderFailed"));
 		},
 	});
 
@@ -131,9 +133,11 @@ export function TaskStatusesSettings({
 		<div className="rounded-xl border border-border/60 bg-card p-6">
 			<div className="flex items-center justify-between mb-1">
 				<div>
-					<h3 className="font-[Syne] text-base font-semibold">Task Statuses</h3>
+					<h3 className="font-[Syne] text-base font-semibold">
+						{t("project.settings.statuses.title")}
+					</h3>
 					<p className="text-xs text-muted-foreground mt-0.5">
-						Define the workflow statuses tasks move through in this project.
+						{t("project.settings.statuses.subtitle")}
 					</p>
 				</div>
 				{canWrite ? (
@@ -144,7 +148,7 @@ export function TaskStatusesSettings({
 						onClick={() => setCreateOpen(true)}
 					>
 						<Plus className="size-3.5" />
-						New status
+						{t("project.settings.statuses.newStatus")}
 					</Button>
 				) : null}
 			</div>
@@ -178,9 +182,11 @@ export function TaskStatusesSettings({
 						<LayoutList className="size-6" />
 					</div>
 					<div>
-						<p className="text-sm font-medium">No statuses defined</p>
+						<p className="text-sm font-medium">
+							{t("project.settings.statuses.emptyTitle")}
+						</p>
 						<p className="mt-1 text-xs text-muted-foreground">
-							Create statuses to define the workflow for tasks in this project.
+							{t("project.settings.statuses.emptyDesc")}
 						</p>
 					</div>
 					{canWrite ? (
@@ -190,7 +196,7 @@ export function TaskStatusesSettings({
 							onClick={() => setCreateOpen(true)}
 						>
 							<Plus className="size-4" />
-							Create status
+							{t("project.settings.statuses.createStatus")}
 						</Button>
 					) : null}
 				</div>
@@ -204,13 +210,13 @@ export function TaskStatusesSettings({
 									#
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Name
+									{t("project.settings.statuses.colName")}
 								</TableHead>
 								<TableHead className="w-36 px-5 text-xs font-semibold uppercase tracking-wide">
-									Category
+									{t("project.settings.statuses.colCategory")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Default
+									{t("project.settings.statuses.colDefault")}
 								</TableHead>
 								<TableHead className="w-20 px-5 text-xs font-semibold uppercase tracking-wide" />
 							</TableRow>
@@ -272,7 +278,7 @@ export function TaskStatusesSettings({
 										{status.is_default ? (
 											<span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
 												<Star className="size-3 fill-current" />
-												Default
+												{t("project.settings.statuses.default")}
 											</span>
 										) : null}
 									</TableCell>
@@ -285,8 +291,8 @@ export function TaskStatusesSettings({
 														size="icon-sm"
 														onClick={() => setDefaultMutation.mutate(status.id)}
 														disabled={setDefaultMutation.isPending}
-														title="Set as default status"
-														aria-label="Set as default status"
+														title={t("project.settings.statuses.setDefault")}
+														aria-label={t("project.settings.statuses.setDefault")}
 													>
 														<Star className="size-3.5" />
 													</Button>
@@ -295,7 +301,7 @@ export function TaskStatusesSettings({
 													variant="ghost"
 													size="icon-sm"
 													onClick={() => setEditStatus(status)}
-													title="Edit status"
+													title={t("project.settings.statuses.editStatus")}
 												>
 													<Edit2 className="size-3.5" />
 												</Button>
@@ -304,7 +310,7 @@ export function TaskStatusesSettings({
 													size="icon-sm"
 													className="text-destructive hover:text-destructive hover:bg-destructive/10"
 													onClick={() => setDeleteStatus(status)}
-													title="Delete status"
+													title={t("project.settings.statuses.deleteStatus")}
 												>
 													<Trash2 className="size-3.5" />
 												</Button>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -85,6 +86,7 @@ function CreateCustomFieldDialog({
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
 }) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [displayName, setDisplayName] = useState("");
 	const [fieldKey, setFieldKey] = useState("");
@@ -130,18 +132,18 @@ function CreateCustomFieldDialog({
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
 			if (code === ApiErrorCode.CustomFieldKeyTaken) {
-				setError("A field with this key already exists in the project.");
+				setError(t("project.settings.customFields.create.errKeyTaken"));
 				return;
 			}
 			if (code === ApiErrorCode.CustomFieldKeyInvalid) {
-				setError("Field key is empty or invalid.");
+				setError(t("project.settings.customFields.create.errKeyInvalid"));
 				return;
 			}
 			if (code === ApiErrorCode.CustomFieldNameInvalid) {
-				setError("Display name is empty or invalid.");
+				setError(t("project.settings.customFields.create.errNameInvalid"));
 				return;
 			}
-			setError("Failed to create field. Please try again.");
+			setError(t("project.settings.customFields.create.errCreateFailed"));
 		},
 	});
 
@@ -155,10 +157,11 @@ function CreateCustomFieldDialog({
 		>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Create custom field</DialogTitle>
+					<DialogTitle>
+						{t("project.settings.customFields.create.title")}
+					</DialogTitle>
 					<DialogDescription>
-						Define a new field to capture additional data on tasks in this
-						project.
+						{t("project.settings.customFields.create.desc")}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -166,20 +169,25 @@ function CreateCustomFieldDialog({
 					{/* Display name */}
 					<div className="space-y-1.5">
 						<Label htmlFor="cf-display-name">
-							Display name <span className="text-destructive">*</span>
+							{t("project.settings.customFields.create.displayName")}{" "}
+							<span className="text-destructive">*</span>
 						</Label>
 						<Input
 							id="cf-display-name"
 							value={displayName}
 							onChange={(e) => handleDisplayName(e.target.value)}
-							placeholder="e.g. Release Tag"
+							placeholder={t(
+								"project.settings.customFields.create.displayNamePlaceholder",
+							)}
 							autoFocus
 						/>
 					</div>
 
 					{/* Field key */}
 					<div className="space-y-1.5">
-						<Label htmlFor="cf-field-key">Field key</Label>
+						<Label htmlFor="cf-field-key">
+							{t("project.settings.customFields.create.fieldKey")}
+						</Label>
 						<Input
 							id="cf-field-key"
 							value={fieldKey}
@@ -187,17 +195,19 @@ function CreateCustomFieldDialog({
 								setKeyManuallyEdited(true);
 								setFieldKey(slugify(e.target.value));
 							}}
-							placeholder="release_tag"
+							placeholder={t(
+								"project.settings.customFields.create.fieldKeyPlaceholder",
+							)}
 							className="font-mono text-sm"
 						/>
 						<p className="text-xs text-muted-foreground/60">
-							Used as the identifier in the API and data exports.
+							{t("project.settings.customFields.create.fieldKeyHint")}
 						</p>
 					</div>
 
 					{/* Field type */}
 					<div className="space-y-1.5">
-						<Label>Field type</Label>
+						<Label>{t("project.settings.customFields.create.fieldType")}</Label>
 						<div className="flex flex-wrap gap-1.5">
 							{UI_FIELD_TYPES.map((ft) => (
 								<button
@@ -211,7 +221,7 @@ function CreateCustomFieldDialog({
 											: "border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50",
 									)}
 								>
-									{ft}
+									{t(`project.settings.customFields.fieldTypes.${ft}`)}
 								</button>
 							))}
 						</div>
@@ -220,7 +230,7 @@ function CreateCustomFieldDialog({
 					{/* Options editor — only for Select type */}
 					{fieldType === "Select" && (
 						<div className="space-y-1.5">
-							<Label>Options</Label>
+							<Label>{t("project.settings.customFields.create.options")}</Label>
 							<div className="space-y-1">
 								{options.map((opt, i) => (
 									<div
@@ -257,7 +267,9 @@ function CreateCustomFieldDialog({
 												setNewOption("");
 											}
 										}}
-										placeholder="Add option…"
+										placeholder={t(
+											"project.settings.customFields.create.addOptionPlaceholder",
+										)}
 										className="text-xs h-8"
 									/>
 									<button
@@ -270,7 +282,7 @@ function CreateCustomFieldDialog({
 										className="flex items-center gap-1 rounded-md bg-muted px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 disabled:opacity-40 transition-colors"
 									>
 										<Plus className="size-3" />
-										Add
+										{t("project.settings.customFields.create.add")}
 									</button>
 								</div>
 							</div>
@@ -280,9 +292,11 @@ function CreateCustomFieldDialog({
 					{/* Required toggle */}
 					<div className="flex items-center justify-between rounded-xl border border-border/50 bg-muted/20 px-4 py-3">
 						<div>
-							<p className="text-sm font-medium">Required</p>
+							<p className="text-sm font-medium">
+								{t("project.settings.customFields.create.required")}
+							</p>
 							<p className="text-xs text-muted-foreground/70">
-								Users must fill this field when creating or editing a task.
+								{t("project.settings.customFields.create.requiredHint")}
 							</p>
 						</div>
 						<button
@@ -323,7 +337,7 @@ function CreateCustomFieldDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.settings.customFields.cancel")}
 					</DialogClose>
 					<Button
 						size="sm"
@@ -333,7 +347,7 @@ function CreateCustomFieldDialog({
 						{mutation.isPending ? (
 							<Loader2 className="size-3.5 animate-spin" />
 						) : null}
-						Create field
+						{t("project.settings.customFields.create.createField")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -354,6 +368,7 @@ function EditCustomFieldDialog({
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
 }) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [displayName, setDisplayName] = useState(field?.display_name ?? "");
 	const [options, setOptions] = useState<string[]>(field?.options ?? []);
@@ -390,10 +405,10 @@ function EditCustomFieldDialog({
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
 			if (code === ApiErrorCode.CustomFieldNameInvalid) {
-				setError("Display name is empty or invalid.");
+				setError(t("project.settings.customFields.edit.errNameInvalid"));
 				return;
 			}
-			setError("Failed to save changes. Please try again.");
+			setError(t("project.settings.customFields.edit.errSaveFailed"));
 		},
 	});
 
@@ -409,13 +424,19 @@ function EditCustomFieldDialog({
 		>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Edit custom field</DialogTitle>
-					<DialogDescription>Update the field settings.</DialogDescription>
+					<DialogTitle>
+						{t("project.settings.customFields.edit.title")}
+					</DialogTitle>
+					<DialogDescription>
+						{t("project.settings.customFields.edit.desc")}
+					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					<div className="space-y-1.5">
-						<Label htmlFor="cf-edit-name">Display name</Label>
+						<Label htmlFor="cf-edit-name">
+							{t("project.settings.customFields.edit.displayName")}
+						</Label>
 						<Input
 							id="cf-edit-name"
 							value={displayName}
@@ -425,36 +446,38 @@ function EditCustomFieldDialog({
 					</div>
 
 					<div className="space-y-1.5">
-						<Label>Field key</Label>
+						<Label>{t("project.settings.customFields.edit.fieldKey")}</Label>
 						<Input
 							value={field.field_key}
 							disabled
 							className="font-mono text-sm opacity-60"
 						/>
 						<p className="text-xs text-muted-foreground/60">
-							Field key cannot be changed after creation.
+							{t("project.settings.customFields.edit.fieldKeyHint")}
 						</p>
 					</div>
 
 					<div className="space-y-1.5">
-						<Label>Field type</Label>
+						<Label>{t("project.settings.customFields.edit.fieldType")}</Label>
 						<div className="flex flex-wrap gap-1.5">
 							<button
 								type="button"
 								disabled
 								className="rounded-lg border border-primary bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary opacity-60 cursor-not-allowed"
 							>
-								{uiFieldType}
+								{t(`project.settings.customFields.fieldTypes.${uiFieldType}`, {
+									defaultValue: uiFieldType,
+								})}
 							</button>
 						</div>
 						<p className="text-xs text-muted-foreground/60">
-							Field type cannot be changed after creation.
+							{t("project.settings.customFields.edit.fieldTypeHint")}
 						</p>
 					</div>
 
 					{field.field_type === "select" && (
 						<div className="space-y-1.5">
-							<Label>Options</Label>
+							<Label>{t("project.settings.customFields.create.options")}</Label>
 							<div className="space-y-1">
 								{options.map((opt, i) => (
 									<div
@@ -491,7 +514,9 @@ function EditCustomFieldDialog({
 												setNewOption("");
 											}
 										}}
-										placeholder="Add option…"
+										placeholder={t(
+											"project.settings.customFields.create.addOptionPlaceholder",
+										)}
 										className="text-xs h-8"
 									/>
 									<button
@@ -504,7 +529,7 @@ function EditCustomFieldDialog({
 										className="flex items-center gap-1 rounded-md bg-muted px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 disabled:opacity-40"
 									>
 										<Plus className="size-3" />
-										Add
+										{t("project.settings.customFields.create.add")}
 									</button>
 								</div>
 							</div>
@@ -514,9 +539,11 @@ function EditCustomFieldDialog({
 					{/* Required toggle */}
 					<div className="flex items-center justify-between rounded-xl border border-border/50 bg-muted/20 px-4 py-3">
 						<div>
-							<p className="text-sm font-medium">Required</p>
+							<p className="text-sm font-medium">
+								{t("project.settings.customFields.create.required")}
+							</p>
 							<p className="text-xs text-muted-foreground/70">
-								Users must fill this field when creating or editing a task.
+								{t("project.settings.customFields.create.requiredHint")}
 							</p>
 						</div>
 						<button
@@ -557,7 +584,7 @@ function EditCustomFieldDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.settings.customFields.cancel")}
 					</DialogClose>
 					<Button
 						size="sm"
@@ -567,7 +594,7 @@ function EditCustomFieldDialog({
 						{mutation.isPending ? (
 							<Loader2 className="size-3.5 animate-spin" />
 						) : null}
-						Save changes
+						{t("project.settings.customFields.saveChanges")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -588,6 +615,7 @@ function DeleteCustomFieldDialog({
 	open: boolean;
 	onOpenChange: (v: boolean) => void;
 }) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [error, setError] = useState<string | null>(null);
 
@@ -611,7 +639,7 @@ function DeleteCustomFieldDialog({
 				onOpenChange(false);
 				return;
 			}
-			setError("Failed to delete field. Please try again.");
+			setError(t("project.settings.customFields.delete.errDeleteFailed"));
 		},
 	});
 
@@ -630,14 +658,17 @@ function DeleteCustomFieldDialog({
 					<div className="flex size-10 items-center justify-center rounded-full bg-destructive/10 mb-2">
 						<Trash2 className="size-5 text-destructive" />
 					</div>
-					<DialogTitle>Delete custom field</DialogTitle>
+					<DialogTitle>
+						{t("project.settings.customFields.delete.title")}
+					</DialogTitle>
 					<DialogDescription>
-						Delete{" "}
-						<span className="font-semibold text-foreground">
-							&ldquo;{field.display_name}&rdquo;
-						</span>
-						? Task data stored in this field will be lost. This action cannot be
-						undone.
+						<Trans
+							i18nKey="project.settings.customFields.delete.confirm"
+							values={{ name: field.display_name }}
+							components={{
+								name: <span className="font-semibold text-foreground" />,
+							}}
+						/>
 					</DialogDescription>
 				</DialogHeader>
 
@@ -657,7 +688,7 @@ function DeleteCustomFieldDialog({
 							/>
 						}
 					>
-						Cancel
+						{t("project.settings.customFields.cancel")}
 					</DialogClose>
 					<Button
 						variant="destructive"
@@ -668,7 +699,7 @@ function DeleteCustomFieldDialog({
 						{mutation.isPending ? (
 							<Loader2 className="size-3.5 animate-spin" />
 						) : null}
-						Delete field
+						{t("project.settings.customFields.deleteField")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -685,6 +716,7 @@ export function CustomFieldsSettings({
 	projectId: string;
 	canWrite: boolean;
 }) {
+	const { t } = useTranslation();
 	const { data: fields = [], isLoading } = useQuery(
 		customFieldsQueryOptions(projectId),
 	);
@@ -700,10 +732,11 @@ export function CustomFieldsSettings({
 		<div className="rounded-xl border border-border/60 bg-card p-6">
 			<div className="flex items-start justify-between mb-1">
 				<div>
-					<h3 className="font-[Syne] text-base font-semibold">Custom Fields</h3>
+					<h3 className="font-[Syne] text-base font-semibold">
+						{t("project.settings.customFields.title")}
+					</h3>
 					<p className="text-xs text-muted-foreground mt-0.5 max-w-xs">
-						Define project-level custom task fields that extend tasks with
-						additional data specific to your workflow.
+						{t("project.settings.customFields.subtitle")}
 					</p>
 				</div>
 				{canWrite && (
@@ -714,7 +747,7 @@ export function CustomFieldsSettings({
 						onClick={() => setCreateOpen(true)}
 					>
 						<Plus className="size-3.5" />
-						New custom field
+						{t("project.settings.customFields.newField")}
 					</Button>
 				)}
 			</div>
@@ -739,10 +772,11 @@ export function CustomFieldsSettings({
 						<Plus className="size-5 text-muted-foreground/60" />
 					</div>
 					<div>
-						<p className="text-sm font-medium">No custom fields yet</p>
+						<p className="text-sm font-medium">
+							{t("project.settings.customFields.emptyTitle")}
+						</p>
 						<p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
-							Custom fields let you capture data specific to your workflow —
-							sprints, severity levels, release tags, and more.
+							{t("project.settings.customFields.emptyDesc")}
 						</p>
 					</div>
 					{canWrite && (
@@ -752,7 +786,7 @@ export function CustomFieldsSettings({
 							onClick={() => setCreateOpen(true)}
 						>
 							<Plus className="size-4 mr-1" />
-							Create first field
+							{t("project.settings.customFields.createFirst")}
 						</Button>
 					)}
 				</div>
@@ -762,16 +796,16 @@ export function CustomFieldsSettings({
 						<TableHeader>
 							<TableRow className="bg-muted/40 hover:bg-muted/40">
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Display Name
+									{t("project.settings.customFields.colDisplayName")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Field Key
+									{t("project.settings.customFields.colFieldKey")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Type
+									{t("project.settings.customFields.colType")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Required
+									{t("project.settings.customFields.colRequired")}
 								</TableHead>
 								{canWrite && <TableHead className="w-20 px-5" />}
 							</TableRow>
@@ -787,18 +821,21 @@ export function CustomFieldsSettings({
 									</TableCell>
 									<TableCell className="px-5">
 										<span className="inline-flex items-center rounded-md border border-border/40 bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-											{toUIFieldType(field.field_type)}
+											{t(
+												`project.settings.customFields.fieldTypes.${toUIFieldType(field.field_type)}`,
+												{ defaultValue: toUIFieldType(field.field_type) },
+											)}
 										</span>
 									</TableCell>
 									<TableCell className="px-5">
 										{field.is_required ? (
 											<span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-medium">
 												<Check className="size-3" />
-												Yes
+												{t("project.settings.customFields.yes")}
 											</span>
 										) : (
 											<span className="text-xs text-muted-foreground/50">
-												No
+												{t("project.settings.customFields.no")}
 											</span>
 										)}
 									</TableCell>
@@ -809,8 +846,10 @@ export function CustomFieldsSettings({
 													variant="ghost"
 													size="icon-sm"
 													onClick={() => setEditField(field)}
-													title="Edit field"
-													aria-label="Edit field"
+													title={t("project.settings.customFields.editField")}
+													aria-label={t(
+														"project.settings.customFields.editField",
+													)}
 												>
 													<Edit2 className="size-3.5" />
 												</Button>
@@ -819,8 +858,10 @@ export function CustomFieldsSettings({
 													size="icon-sm"
 													className="text-destructive hover:text-destructive hover:bg-destructive/10"
 													onClick={() => setDeleteField(field)}
-													title="Delete field"
-													aria-label="Delete field"
+													title={t("project.settings.customFields.deleteField")}
+													aria-label={t(
+														"project.settings.customFields.deleteField",
+													)}
 												>
 													<Trash2 className="size-3.5" />
 												</Button>

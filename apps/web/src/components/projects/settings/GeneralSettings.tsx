@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Globe, Loader2, Lock } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ export function GeneralSettings({
 	projectId: string;
 	canEdit: boolean;
 }) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 
@@ -55,20 +57,18 @@ export function GeneralSettings({
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
 			if (code === ApiErrorCode.ProjectNameTaken) {
-				setNameError("A project with this name already exists.");
+				setNameError(t("project.settings.general.errNameTaken"));
 				return;
 			}
 			if (code === ApiErrorCode.ProjectNameInvalid) {
-				setNameError("Project name is empty or invalid.");
+				setNameError(t("project.settings.general.errNameInvalid"));
 				return;
 			}
 			if (code === ApiErrorCode.ProjectPrefixInvalid) {
-				setPrefixError(
-					"Prefix must be 1–10 uppercase letters/digits (e.g. PACA).",
-				);
+				setPrefixError(t("project.settings.general.errPrefixInvalid"));
 				return;
 			}
-			setError("Failed to update project. Please try again.");
+			setError(t("project.settings.general.errUpdateFailed"));
 		},
 	});
 
@@ -80,10 +80,14 @@ export function GeneralSettings({
 
 	return (
 		<div className="rounded-xl border border-border/60 bg-card p-6">
-			<h3 className="font-[Syne] text-base font-semibold mb-4">General</h3>
+			<h3 className="font-[Syne] text-base font-semibold mb-4">
+				{t("project.settings.general.title")}
+			</h3>
 			<div className="space-y-4 max-w-md">
 				<div className="space-y-1.5">
-					<Label htmlFor="project-name">Project name</Label>
+					<Label htmlFor="project-name">
+						{t("project.settings.general.name")}
+					</Label>
 					<Input
 						id="project-name"
 						value={name}
@@ -91,7 +95,7 @@ export function GeneralSettings({
 							setName(e.target.value);
 							setNameError(null);
 						}}
-						placeholder="My awesome project"
+						placeholder={t("project.settings.general.namePlaceholder")}
 						disabled={!canEdit}
 						className={
 							nameError
@@ -106,9 +110,9 @@ export function GeneralSettings({
 
 				<div className="space-y-1.5">
 					<Label htmlFor="project-prefix">
-						Task ID prefix{" "}
+						{t("project.settings.general.prefix")}{" "}
 						<span className="text-muted-foreground font-normal text-xs">
-							e.g. PACA → PACA-1, PACA-2…
+							{t("project.settings.general.prefixHint")}
 						</span>
 					</Label>
 					<Input
@@ -123,7 +127,7 @@ export function GeneralSettings({
 							);
 							setPrefixError(null);
 						}}
-						placeholder="PROJ"
+						placeholder={t("project.settings.general.prefixPlaceholder")}
 						disabled={!canEdit}
 						className={`font-[JetBrains_Mono,monospace] uppercase w-32${prefixError ? " border-destructive focus-visible:ring-destructive/30" : ""}`}
 						maxLength={10}
@@ -134,12 +138,14 @@ export function GeneralSettings({
 				</div>
 
 				<div className="space-y-1.5">
-					<Label htmlFor="project-description">Description</Label>
+					<Label htmlFor="project-description">
+						{t("project.settings.general.description")}
+					</Label>
 					<Textarea
 						id="project-description"
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
-						placeholder="Describe what this project is about…"
+						placeholder={t("project.settings.general.descriptionPlaceholder")}
 						rows={3}
 						disabled={!canEdit}
 						className="resize-none"
@@ -157,12 +163,12 @@ export function GeneralSettings({
 						</div>
 						<div>
 							<Label htmlFor="is-public" className="font-medium cursor-pointer">
-								Public project
+								{t("project.settings.general.publicProject")}
 							</Label>
 							<p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
 								{isPublic
-									? "Anyone with the link can view this project. Anonymous users have read-only access."
-									: "Only team members can access this project."}
+									? t("project.settings.general.publicDescOn")
+									: t("project.settings.general.publicDescOff")}
 							</p>
 						</div>
 					</div>
@@ -191,17 +197,17 @@ export function GeneralSettings({
 							{mutation.isPending ? (
 								<Loader2 className="size-3.5 animate-spin" />
 							) : null}
-							Save changes
+							{t("project.settings.general.saveChanges")}
 						</Button>
 						{saved ? (
 							<span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-								Saved ✓
+								{t("project.settings.general.saved")}
 							</span>
 						) : null}
 					</div>
 				) : (
 					<p className="text-xs text-muted-foreground">
-						You don't have permission to edit this project.
+						{t("project.settings.general.noPermission")}
 					</p>
 				)}
 			</div>

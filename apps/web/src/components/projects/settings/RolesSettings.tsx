@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Edit2, Key, Lock, Plus, Shield, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DeleteProjectRoleDialog } from "@/components/projects/roles/DeleteProjectRoleDialog";
 import { ProjectRoleFormDialog } from "@/components/projects/roles/ProjectRoleFormDialog";
 import { Button } from "@/components/ui/button";
@@ -21,8 +22,8 @@ function activePermissions(perms: Record<string, unknown>): string[] {
 		.map(([k]) => k);
 }
 
-function formatDate(iso: string) {
-	return new Date(iso).toLocaleDateString("en-US", {
+function formatDate(iso: string, locale?: string) {
+	return new Date(iso).toLocaleDateString(locale, {
 		year: "numeric",
 		month: "short",
 		day: "numeric",
@@ -99,6 +100,7 @@ function RoleTableRow({
 	onEdit,
 	onDelete,
 }: RoleRowProps) {
+	const { t, i18n } = useTranslation();
 	const isSystem = !role.project_id;
 	const active = activePermissions(role.permissions);
 
@@ -115,7 +117,7 @@ function RoleTableRow({
 			<TableCell className="px-5">
 				{active.length === 0 ? (
 					<span className="text-xs italic text-muted-foreground/60">
-						No permissions assigned
+						{t("project.settings.roles.noPermsAssigned")}
 					</span>
 				) : (
 					<div className="flex flex-wrap gap-1">
@@ -131,7 +133,7 @@ function RoleTableRow({
 				)}
 			</TableCell>
 			<TableCell className="px-5 text-sm text-muted-foreground">
-				{formatDate(role.created_at)}
+				{formatDate(role.created_at, i18n.language)}
 			</TableCell>
 			<TableCell className="px-5">
 				{!isSystem && canManageRoles ? (
@@ -140,7 +142,7 @@ function RoleTableRow({
 							variant="ghost"
 							size="icon-sm"
 							onClick={() => onEdit(role)}
-							title="Edit role"
+							title={t("project.settings.roles.editRole")}
 						>
 							<Edit2 className="size-3.5" />
 						</Button>
@@ -149,7 +151,7 @@ function RoleTableRow({
 							size="icon-sm"
 							className="text-destructive hover:text-destructive hover:bg-destructive/10"
 							onClick={() => onDelete(role)}
-							title="Delete role"
+							title={t("project.settings.roles.deleteRole")}
 						>
 							<Trash2 className="size-3.5" />
 						</Button>
@@ -167,6 +169,7 @@ export function RolesSettings({
 	projectId: string;
 	canManageRoles: boolean;
 }) {
+	const { t } = useTranslation();
 	const { data: roles, isLoading } = useQuery(
 		projectRolesQueryOptions(projectId),
 	);
@@ -182,9 +185,11 @@ export function RolesSettings({
 			{/* Header */}
 			<div className="flex items-center justify-between mb-1">
 				<div>
-					<h3 className="font-[Syne] text-base font-semibold">Project Roles</h3>
+					<h3 className="font-[Syne] text-base font-semibold">
+						{t("project.settings.roles.title")}
+					</h3>
 					<p className="text-xs text-muted-foreground mt-0.5">
-						Manage roles and permissions for members of this project.
+						{t("project.settings.roles.subtitle")}
 					</p>
 				</div>
 				{canManageRoles ? (
@@ -195,7 +200,7 @@ export function RolesSettings({
 						onClick={() => setCreateOpen(true)}
 					>
 						<Plus className="size-3.5" />
-						New role
+						{t("project.settings.roles.newRole")}
 					</Button>
 				) : null}
 			</div>
@@ -208,7 +213,9 @@ export function RolesSettings({
 						<span className="text-sm">
 							<span className="font-semibold tabular-nums">{roles.length}</span>
 							<span className="ml-1.5 text-muted-foreground">
-								{roles.length === 1 ? "role" : "roles"} defined
+								{t("project.settings.roles.rolesDefinedLabel", {
+									count: roles.length,
+								})}
 							</span>
 						</span>
 					</div>
@@ -223,7 +230,7 @@ export function RolesSettings({
 								)}
 							</span>
 							<span className="ml-1.5 text-muted-foreground">
-								permission grants across all roles
+								{t("project.settings.roles.permissionGrants")}
 							</span>
 						</span>
 					</div>
@@ -239,9 +246,11 @@ export function RolesSettings({
 						<Shield className="size-6" />
 					</div>
 					<div>
-						<p className="text-sm font-medium">No roles defined yet</p>
+						<p className="text-sm font-medium">
+							{t("project.settings.roles.emptyTitle")}
+						</p>
 						<p className="mt-1 text-xs text-muted-foreground">
-							Create your first role to start assigning permissions to members.
+							{t("project.settings.roles.emptyDesc")}
 						</p>
 					</div>
 					{canManageRoles ? (
@@ -251,7 +260,7 @@ export function RolesSettings({
 							onClick={() => setCreateOpen(true)}
 						>
 							<Plus className="size-4" />
-							Create role
+							{t("project.settings.roles.createRole")}
 						</Button>
 					) : null}
 				</div>
@@ -261,13 +270,13 @@ export function RolesSettings({
 						<TableHeader>
 							<TableRow className="bg-muted/40 hover:bg-muted/40">
 								<TableHead className="w-44 px-5 text-xs font-semibold uppercase tracking-wide">
-									Name
+									{t("project.settings.roles.colName")}
 								</TableHead>
 								<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-									Permissions
+									{t("project.settings.roles.colPermissions")}
 								</TableHead>
 								<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
-									Created
+									{t("project.settings.roles.colCreated")}
 								</TableHead>
 								<TableHead className="w-20 px-5 text-xs font-semibold uppercase tracking-wide" />
 							</TableRow>
@@ -291,7 +300,7 @@ export function RolesSettings({
 			{systemRoles.length > 0 ? (
 				<p className="text-xs text-muted-foreground/60 mt-3 flex items-center gap-1">
 					<Lock className="size-3 shrink-0" />
-					System roles are shared templates and cannot be edited or deleted.
+					{t("project.settings.roles.systemRolesNote")}
 				</p>
 			) : null}
 
