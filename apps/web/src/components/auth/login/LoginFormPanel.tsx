@@ -54,8 +54,8 @@ export function LoginFormPanel() {
 					<form.Field
 						name="username"
 						validators={{
-							onBlur: ({ value }) => validateUsername(value),
-							onChange: ({ value }) => validateUsername(value),
+							onBlur: ({ value }) => validateUsername(value, t),
+							onChange: ({ value }) => validateUsername(value, t),
 						}}
 					>
 						{(field) => (
@@ -90,8 +90,8 @@ export function LoginFormPanel() {
 					<form.Field
 						name="password"
 						validators={{
-							onBlur: ({ value }) => validatePassword(value),
-							onChange: ({ value }) => validatePassword(value),
+							onBlur: ({ value }) => validatePassword(value, t),
+							onChange: ({ value }) => validatePassword(value, t),
 						}}
 					>
 						{(field) => (

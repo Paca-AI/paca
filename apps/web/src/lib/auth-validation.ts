@@ -3,7 +3,12 @@
  *
  * Used by the login form, the change-password form, and the admin user
  * dialog so that every surface applies the same rules and messages.
+ *
+ * Validators take a `t` translation function so the returned messages are
+ * localized at the call site (the rules themselves are language-agnostic).
  */
+
+import type { TFunction } from "i18next";
 
 /** Minimum number of characters a password must contain. */
 export const MIN_PASSWORD_LENGTH = 8;
@@ -16,13 +21,16 @@ export const MIN_USERNAME_LENGTH = 3;
  *
  * Returns `undefined` when the value is valid, or an error message otherwise.
  */
-export function validateUsername(value: string): string | undefined {
+export function validateUsername(
+	value: string,
+	t: TFunction,
+): string | undefined {
 	if (!value.trim()) {
-		return "Username is required.";
+		return t("validation.usernameRequired");
 	}
 
 	if (value.trim().length < MIN_USERNAME_LENGTH) {
-		return `Username must be at least ${MIN_USERNAME_LENGTH} characters.`;
+		return t("validation.usernameMinLength", { min: MIN_USERNAME_LENGTH });
 	}
 
 	return undefined;
@@ -34,13 +42,16 @@ export function validateUsername(value: string): string | undefined {
  *
  * Returns `undefined` when the value is valid, or an error message otherwise.
  */
-export function validatePassword(value: string): string | undefined {
+export function validatePassword(
+	value: string,
+	t: TFunction,
+): string | undefined {
 	if (!value) {
-		return "Password is required.";
+		return t("validation.passwordRequired");
 	}
 
 	if (value.length < MIN_PASSWORD_LENGTH) {
-		return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+		return t("validation.passwordMinLength", { min: MIN_PASSWORD_LENGTH });
 	}
 
 	return undefined;
@@ -57,18 +68,19 @@ export function validatePassword(value: string): string | undefined {
  */
 export function validateNewPassword(
 	value: string,
+	t: TFunction,
 	currentPassword?: string,
 ): string | undefined {
 	if (!value) {
-		return "New password is required.";
+		return t("validation.newPasswordRequired");
 	}
 
 	if (value.length < MIN_PASSWORD_LENGTH) {
-		return `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+		return t("validation.newPasswordMinLength", { min: MIN_PASSWORD_LENGTH });
 	}
 
 	if (currentPassword && value === currentPassword) {
-		return "New password must be different from current password.";
+		return t("validation.newPasswordDifferent");
 	}
 
 	return undefined;
@@ -82,13 +94,14 @@ export function validateNewPassword(
 export function validateConfirmPassword(
 	value: string,
 	newPassword: string,
+	t: TFunction,
 ): string | undefined {
 	if (!value) {
-		return "Please confirm your new password.";
+		return t("validation.confirmRequired");
 	}
 
 	if (newPassword !== value) {
-		return "Passwords do not match.";
+		return t("validation.passwordsNoMatch");
 	}
 
 	return undefined;

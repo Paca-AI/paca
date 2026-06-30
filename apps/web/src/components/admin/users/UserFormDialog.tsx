@@ -96,7 +96,7 @@ export function UserFormDialog({
 				});
 			}
 
-			const usernameError = validateUsername(username);
+			const usernameError = validateUsername(username, t);
 			if (usernameError) throw new Error(usernameError);
 
 			const password = generatePassword();

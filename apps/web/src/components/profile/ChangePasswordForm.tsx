@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,14 +34,15 @@ const initialTouchedState: TouchedState = {
 	confirmPassword: false,
 };
 
-function validateCurrentPassword(value: string) {
+function validateCurrentPassword(value: string, t: TFunction) {
 	if (!value) {
-		return "Current password is required.";
+		return t("validation.currentPasswordRequired");
 	}
-	return validatePassword(value);
+	return validatePassword(value, t);
 }
 
 export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
+	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [currentPassword, setCurrentPassword] = useState("");
 	const [newPassword, setNewPassword] = useState("");
@@ -55,11 +58,12 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 	const [success, setSuccess] = useState(false);
 
 	const currentPasswordError =
-		currentPasswordServerError ?? validateCurrentPassword(currentPassword);
-	const newPasswordError = validateNewPassword(newPassword, currentPassword);
+		currentPasswordServerError ?? validateCurrentPassword(currentPassword, t);
+	const newPasswordError = validateNewPassword(newPassword, t, currentPassword);
 	const confirmPasswordError = validateConfirmPassword(
 		confirmPassword,
 		newPassword,
+		t,
 	);
 	const hasValidationErrors = Boolean(
 		currentPasswordError || newPasswordError || confirmPasswordError,
@@ -119,14 +123,14 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 		onError: (err: unknown) => {
 			const code = getApiErrorCode(err);
 			const messages: Partial<Record<string, string>> = {
-				[ApiErrorCode.InvalidCurrentPassword]: "Current password is incorrect.",
-				[ApiErrorCode.Unauthenticated]:
-					"Your session has expired. Please log in again.",
-				[ApiErrorCode.InternalError]:
-					"Something went wrong on the server. Please try again.",
+				[ApiErrorCode.InvalidCurrentPassword]: t(
+					"profile.password.errIncorrect",
+				),
+				[ApiErrorCode.Unauthenticated]: t("profile.password.errSession"),
+				[ApiErrorCode.InternalError]: t("profile.password.errServer"),
 			};
 			const fallback =
-				err instanceof Error ? err.message : "Failed to change password.";
+				err instanceof Error ? err.message : t("profile.password.errFailed");
 
 			if (code === ApiErrorCode.InvalidCurrentPassword) {
 				setCurrentPasswordServerError(messages[code] ?? fallback);
@@ -167,7 +171,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					htmlFor="current-password"
 					className="text-xs font-semibold uppercase tracking-wide text-(--sea-ink)"
 				>
-					Current password
+					{t("profile.password.current")}
 				</Label>
 				<div className="relative">
 					<Input
@@ -199,8 +203,8 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 						className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 						aria-label={
 							showCurrentPassword
-								? "Hide current password"
-								: "Show current password"
+								? t("profile.password.hideCurrent")
+								: t("profile.password.showCurrent")
 						}
 					>
 						{showCurrentPassword ? (
@@ -226,7 +230,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					htmlFor="new-password"
 					className="text-xs font-semibold uppercase tracking-wide text-(--sea-ink)"
 				>
-					New password
+					{t("profile.password.new")}
 				</Label>
 				<div className="relative">
 					<Input
@@ -255,7 +259,9 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 						onClick={() => setShowNewPassword((current) => !current)}
 						className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 						aria-label={
-							showNewPassword ? "Hide new password" : "Show new password"
+							showNewPassword
+								? t("profile.password.hideNew")
+								: t("profile.password.showNew")
 						}
 					>
 						{showNewPassword ? (
@@ -275,8 +281,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					</p>
 				) : (
 					<p className="mt-1 text-xs text-(--sea-ink-soft)">
-						Use at least 8 characters and choose something different from your
-						current password.
+						{t("profile.password.newHint")}
 					</p>
 				)}
 			</div>
@@ -286,7 +291,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 					htmlFor="confirm-password"
 					className="text-xs font-semibold uppercase tracking-wide text-(--sea-ink)"
 				>
-					Confirm new password
+					{t("profile.password.confirm")}
 				</Label>
 				<div className="relative">
 					<Input
@@ -318,8 +323,8 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 						className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-(--sea-ink-soft) transition-colors hover:text-(--sea-ink)"
 						aria-label={
 							showConfirmPassword
-								? "Hide confirm password"
-								: "Show confirm password"
+								? t("profile.password.hideConfirm")
+								: t("profile.password.showConfirm")
 						}
 					>
 						{showConfirmPassword ? (
@@ -344,7 +349,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 				<p className="text-sm text-destructive">{formError}</p>
 			) : null}
 			{success ? (
-				<p className="text-sm text-primary">Password changed successfully.</p>
+				<p className="text-sm text-primary">{t("profile.password.success")}</p>
 			) : null}
 
 			<button
@@ -355,7 +360,9 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps) {
 				)}
 				disabled={mutation.isPending || hasValidationErrors}
 			>
-				{mutation.isPending ? "Updating…" : "Change password"}
+				{mutation.isPending
+					? t("profile.password.updating")
+					: t("profile.password.submit")}
 			</button>
 		</form>
 	);

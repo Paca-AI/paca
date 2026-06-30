@@ -27,6 +27,11 @@ import { GlobalRolesHeader } from "@/components/admin/global-roles/GlobalRolesHe
 import { GlobalRolesStats } from "@/components/admin/global-roles/GlobalRolesStats";
 import { RoleFormDialog } from "@/components/admin/global-roles/RoleFormDialog";
 import { PluginMarketplacePanel } from "@/components/plugins/PluginMarketplacePanel";
+import { ChangePasswordCard } from "@/components/profile/ChangePasswordCard";
+import {
+	validateNewPassword,
+	validateUsername,
+} from "@/lib/auth-validation";
 
 async function setLang(lng: string) {
 	await act(async () => {
@@ -123,6 +128,33 @@ describe("i18n localization", () => {
 			).toBe("사이드바 — 일반");
 			expect(i18n.getFixedT("en")("admin.plugins.extPoints.view")).toBe(
 				"Custom View",
+			);
+		});
+	});
+
+	describe("profile", () => {
+		it("renders the change-password card in ko", async () => {
+			await setLang("ko");
+			const { container } = render(<ChangePasswordCard mustChange={false} />);
+			// title + submit button both read "비밀번호 변경"
+			expect(container.textContent).toContain("비밀번호 변경");
+			expect(container.textContent).toContain("현재 비밀번호");
+			expect(container.textContent).toContain("새 비밀번호");
+			expect(container.textContent).toContain("새 비밀번호 확인");
+		});
+
+		it("localizes shared auth validation messages (en + ko)", () => {
+			const en = i18n.getFixedT("en");
+			const ko = i18n.getFixedT("ko");
+			// English values must stay byte-identical (existing unit tests rely on it)
+			expect(validateUsername("", en)).toBe("Username is required.");
+			expect(validateNewPassword("short", en)).toBe(
+				"New password must be at least 8 characters.",
+			);
+			// Korean localization
+			expect(validateUsername("", ko)).toBe("사용자 이름을 입력하세요.");
+			expect(validateNewPassword("short", ko)).toBe(
+				"새 비밀번호는 최소 8자 이상이어야 합니다.",
 			);
 		});
 	});

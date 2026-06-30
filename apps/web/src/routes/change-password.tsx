@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { KeyRound, LogOut } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { ChangePasswordForm } from "@/components/profile/ChangePasswordForm";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -43,6 +44,7 @@ export const Route = createFileRoute("/change-password")({
 });
 
 function ChangePasswordPage() {
+	const { t } = useTranslation();
 	const router = useRouter();
 	const queryClient = useQueryClient();
 
@@ -68,7 +70,9 @@ function ChangePasswordPage() {
 						onClick={() => logoutMutation.mutate()}
 					>
 						<LogOut className="size-3.5" />
-						{logoutMutation.isPending ? "Signing out…" : "Sign out"}
+						{logoutMutation.isPending
+							? t("profile.forced.signingOut")
+							: t("profile.forced.signOut")}
 					</Button>
 				</div>
 			</header>
@@ -103,27 +107,22 @@ function ChangePasswordPage() {
 								<div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1">
 									<span className="size-1.5 rounded-full bg-amber-400" />
 									<span className="text-xs font-medium text-amber-300">
-										Action required
+										{t("profile.forced.actionRequired")}
 									</span>
 								</div>
 								<h2 className="display-title mb-3 text-2xl font-bold text-white sm:text-3xl">
-									Secure your account
+									{t("profile.forced.secureTitle")}
 								</h2>
 								<p className="text-sm leading-relaxed text-white/55">
-									Your administrator has assigned you a temporary password. You
-									must set a new personal password before you can access the
-									workspace.
+									{t("profile.forced.secureDesc")}
 								</p>
 							</div>
 
 							<div className="relative space-y-4">
 								{[
-									{
-										step: "01",
-										label: "Enter the temporary password you received",
-									},
-									{ step: "02", label: "Choose a strong new password" },
-									{ step: "03", label: "Sign in again with your new password" },
+									{ step: "01", label: t("profile.forced.step1") },
+									{ step: "02", label: t("profile.forced.step2") },
+									{ step: "03", label: t("profile.forced.step3") },
 								].map(({ step, label }) => (
 									<div key={step} className="flex items-center gap-3">
 										<div className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 text-xs font-bold text-white/60">
@@ -155,15 +154,14 @@ function ChangePasswordPage() {
 								<div className="mb-1 flex items-center gap-2">
 									<div className="size-2 rounded-full bg-amber-400" />
 									<span className="text-xs font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">
-										Password change required
+										{t("profile.forced.badge")}
 									</span>
 								</div>
 								<h1 className="display-title mb-1 text-2xl font-bold text-(--sea-ink) sm:text-3xl">
-									Set new password
+									{t("profile.forced.heading")}
 								</h1>
 								<p className="mb-8 text-sm text-(--sea-ink-soft)">
-									Enter your temporary password and choose a new one to unlock
-									your account.
+									{t("profile.forced.headingDesc")}
 								</p>
 
 								<ChangePasswordForm onSuccess={() => logoutMutation.mutate()} />
@@ -174,7 +172,7 @@ function ChangePasswordPage() {
 			</main>
 
 			<footer className="py-4 text-center text-xs text-(--sea-ink-soft) opacity-60">
-				© {new Date().getFullYear()} Paca. All rights reserved.
+				{t("profile.forced.copyright", { year: new Date().getFullYear() })}
 			</footer>
 		</div>
 	);
