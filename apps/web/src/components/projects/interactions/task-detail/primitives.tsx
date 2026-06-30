@@ -1,5 +1,7 @@
 // Shared UI primitives used across task-detail sub-components
 
+import { useTranslation } from "react-i18next";
+
 export function FieldRow({
 	label,
 	children,
@@ -24,9 +26,12 @@ export function FieldValue({
 	children?: React.ReactNode;
 	empty?: boolean;
 }) {
+	const { t } = useTranslation();
 	if (empty) {
 		return (
-			<span className="text-sm text-muted-foreground/50 italic">Empty</span>
+			<span className="text-sm text-muted-foreground/50 italic">
+				{t("project.interactions.taskDetail.empty")}
+			</span>
 		);
 	}
 	return (

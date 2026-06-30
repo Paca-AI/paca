@@ -1,4 +1,5 @@
 import { Calendar, Flag, GitBranch, User } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
 	Sheet,
@@ -9,7 +10,16 @@ import {
 import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
 
-import { getPriority } from "./priority";
+import { getImportanceBucket, getPriority } from "./priority";
+
+/** Maps a priority bucket index (0-4) to its translation key. */
+const PRIORITY_LABEL_KEYS = [
+	"none",
+	"low",
+	"medium",
+	"high",
+	"critical",
+] as const;
 
 interface TaskDetailPanelProps {
 	task: Task | null;
@@ -26,9 +36,13 @@ export function TaskDetailPanel({
 	statuses,
 	taskTypes,
 }: TaskDetailPanelProps) {
+	const { t, i18n } = useTranslation();
 	const status = statuses.find((s) => s.id === task?.status_id);
-	const taskType = taskTypes.find((t) => t.id === task?.task_type_id);
+	const taskType = taskTypes.find((tt) => tt.id === task?.task_type_id);
 	const priority = getPriority(task?.importance ?? 0);
+	const priorityLabel = t(
+		`project.interactions.taskDetail.priorities.${PRIORITY_LABEL_KEYS[getImportanceBucket(task?.importance ?? 0)]}`,
+	);
 
 	return (
 		<Sheet open={open} onOpenChange={onOpenChange}>
@@ -81,7 +95,7 @@ export function TaskDetailPanel({
 							{/* Properties */}
 							<div>
 								<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-3 flex items-center gap-2">
-									<span>Properties</span>
+									<span>{t("project.interactions.taskDetail.properties")}</span>
 									<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 								</h3>
 								<div className="flex flex-col gap-0">
@@ -89,7 +103,7 @@ export function TaskDetailPanel({
 									<div className="grid grid-cols-[9.5rem_1fr] items-center gap-4 py-2.5 px-1 group/field rounded-lg hover:bg-muted/30 transition-colors duration-150">
 										<span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground leading-snug select-none">
 											<Flag className="size-3.5 opacity-70" />
-											Priority
+											{t("project.interactions.taskDetail.fields.priority")}
 										</span>
 										<span
 											className="inline-flex items-center gap-1.5 text-sm font-medium"
@@ -99,7 +113,7 @@ export function TaskDetailPanel({
 												className="size-2 rounded-full"
 												style={{ background: priority.color }}
 											/>
-											{priority.label}
+											{priorityLabel}
 										</span>
 									</div>
 
@@ -107,7 +121,7 @@ export function TaskDetailPanel({
 									<div className="grid grid-cols-[9.5rem_1fr] items-center gap-4 py-2.5 px-1 group/field rounded-lg hover:bg-muted/30 transition-colors duration-150">
 										<span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground leading-snug select-none">
 											<User className="size-3.5 opacity-70" />
-											Assignee
+											{t("project.interactions.taskDetail.fields.assignee")}
 										</span>
 										{task.assignee_id ? (
 											<div className="flex items-center gap-2">
@@ -115,12 +129,12 @@ export function TaskDetailPanel({
 													<User className="size-3" />
 												</div>
 												<span className="text-sm font-medium text-foreground">
-													Assigned
+													{t("project.interactions.taskDetail.assigned")}
 												</span>
 											</div>
 										) : (
 											<span className="text-sm text-muted-foreground/50 italic">
-												Unassigned
+												{t("project.interactions.taskDetail.unassigned")}
 											</span>
 										)}
 									</div>
@@ -130,7 +144,7 @@ export function TaskDetailPanel({
 										<div className="grid grid-cols-[9.5rem_1fr] items-center gap-4 py-2.5 px-1 group/field rounded-lg hover:bg-muted/30 transition-colors duration-150">
 											<span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground leading-snug select-none">
 												<GitBranch className="size-3.5 opacity-70" />
-												Sprint
+												{t("project.interactions.taskDetail.fields.sprint")}
 											</span>
 											<span className="text-sm font-medium text-muted-foreground font-[JetBrains_Mono,monospace] tracking-wider truncate">
 												{task.sprint_id}
@@ -142,14 +156,17 @@ export function TaskDetailPanel({
 									<div className="grid grid-cols-[9.5rem_1fr] items-center gap-4 py-2.5 px-1 group/field rounded-lg hover:bg-muted/30 transition-colors duration-150">
 										<span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground leading-snug select-none">
 											<Calendar className="size-3.5 opacity-70" />
-											Created
+											{t("project.interactions.taskDetail.fields.created")}
 										</span>
 										<span className="text-sm font-medium text-muted-foreground">
-											{new Date(task.created_at).toLocaleDateString(undefined, {
-												year: "numeric",
-												month: "short",
-												day: "numeric",
-											})}
+											{new Date(task.created_at).toLocaleDateString(
+												i18n.language,
+												{
+													year: "numeric",
+													month: "short",
+													day: "numeric",
+												},
+											)}
 										</span>
 									</div>
 
@@ -157,14 +174,17 @@ export function TaskDetailPanel({
 									<div className="grid grid-cols-[9.5rem_1fr] items-center gap-4 py-2.5 px-1 group/field rounded-lg hover:bg-muted/30 transition-colors duration-150">
 										<span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground leading-snug select-none">
 											<Calendar className="size-3.5 opacity-70" />
-											Updated
+											{t("project.interactions.taskDetail.fields.updated")}
 										</span>
 										<span className="text-sm font-medium text-muted-foreground">
-											{new Date(task.updated_at).toLocaleDateString(undefined, {
-												year: "numeric",
-												month: "short",
-												day: "numeric",
-											})}
+											{new Date(task.updated_at).toLocaleDateString(
+												i18n.language,
+												{
+													year: "numeric",
+													month: "short",
+													day: "numeric",
+												},
+											)}
 										</span>
 									</div>
 								</div>
@@ -174,7 +194,7 @@ export function TaskDetailPanel({
 							{task.description && task.description.length > 0 && (
 								<div>
 									<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-3 flex items-center gap-2">
-										<span>Description</span>
+										<span>{t("project.interactions.taskDetail.description")}</span>
 										<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 									</h3>
 									<p className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	createTask,
 	epicTasksQueryOptions,
@@ -56,6 +57,7 @@ export function TaskDetailModal({
 	mode = "modal",
 	canEdit = true,
 }: TaskDetailModalProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
@@ -340,7 +342,7 @@ export function TaskDetailModal({
 						{/* Properties */}
 						<div>
 							<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 mb-3 flex items-center gap-2">
-								<span>Properties</span>
+								<span>{t("project.interactions.taskDetail.properties")}</span>
 								<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 							</h3>
 							<PropertiesPanel
@@ -457,10 +459,10 @@ export function TaskDetailModal({
 				</div>
 				<div className="text-center">
 					<p className="text-lg font-semibold text-foreground/80">
-						Task not found
+						{t("project.interactions.taskDetail.notFoundTitle")}
 					</p>
 					<p className="text-base mt-1.5 text-muted-foreground/70">
-						This task may have been deleted or the link is invalid.
+						{t("project.interactions.taskDetail.notFoundDesc")}
 					</p>
 				</div>
 			</div>
@@ -491,7 +493,9 @@ export function TaskDetailModal({
 			<div
 				role="dialog"
 				aria-modal="true"
-				aria-label={task?.title ?? "Task detail"}
+				aria-label={
+					task?.title ?? t("project.interactions.taskDetail.taskDetailLabel")
+				}
 				className={cn(
 					"fixed z-50",
 					"inset-0 lg:left-1/2 lg:top-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2",

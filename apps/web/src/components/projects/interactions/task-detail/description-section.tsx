@@ -6,6 +6,7 @@ import { BlockNoteView } from "@blocknote/shadcn";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bot, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CustomSideMenu } from "@/components/shared/blocknote-custom-side-menu";
 import { customSchema } from "@/components/shared/blocknote-schema";
 import { MentionSuggestionMenus } from "@/components/shared/mention-suggestion-menus";
@@ -50,6 +51,7 @@ export function DescriptionSection({
 	taskId,
 	onUpdate,
 }: DescriptionSectionProps) {
+	const { t } = useTranslation();
 	const { resolvedMode } = useThemeMode();
 	const { teamMembers, tasks, documents } = useMentionData(projectId);
 	const [writeWithAIOpen, setWriteWithAIOpen] = useState(false);
@@ -188,7 +190,7 @@ export function DescriptionSection({
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
 				<h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70 flex items-center gap-2">
-					<span>Description</span>
+					<span>{t("project.interactions.taskDetail.description")}</span>
 					<div className="flex-1 h-px bg-linear-to-r from-border/40 to-transparent" />
 				</h3>
 				{canEdit && (
@@ -198,7 +200,7 @@ export function DescriptionSection({
 						onClick={() => setWriteWithAIOpen(true)}
 					>
 						<Sparkles className="size-3" />
-						Write with AI
+						{t("project.interactions.taskDetail.writeWithAI")}
 					</button>
 				)}
 			</div>
@@ -239,17 +241,17 @@ export function DescriptionSection({
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
 							<Sparkles className="size-4 text-muted-foreground" />
-							Write with AI
+							{t("project.interactions.taskDetail.writeWithAI")}
 						</DialogTitle>
 						<DialogDescription>
-							Select an agent to write the task description.
+							{t("project.interactions.taskDetail.writeWithAIDesc")}
 						</DialogDescription>
 					</DialogHeader>
 
 					<div className="space-y-2 py-2">
 						{agents.length === 0 ? (
 							<p className="text-base text-muted-foreground text-center py-4">
-								No agents configured for this project.
+								{t("project.interactions.taskDetail.noAgents")}
 							</p>
 						) : (
 							agents.map((agent) => (
@@ -295,7 +297,7 @@ export function DescriptionSection({
 								setSelectedAgentId(null);
 							}}
 						>
-							Cancel
+							{t("project.interactions.taskDetail.cancel")}
 						</Button>
 						<Button
 							size="sm"
@@ -305,12 +307,12 @@ export function DescriptionSection({
 							{writeWithAIMutation.isPending ? (
 								<>
 									<Sparkles className="size-3 mr-1.5 animate-pulse" />
-									Starting...
+									{t("project.interactions.taskDetail.starting")}
 								</>
 							) : (
 								<>
 									<Sparkles className="size-3 mr-1.5" />
-									Write description
+									{t("project.interactions.taskDetail.writeDescription")}
 								</>
 							)}
 						</Button>

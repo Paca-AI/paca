@@ -1,4 +1,5 @@
 import { Check, User } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -14,11 +15,20 @@ import type { Task } from "@/lib/interaction-api";
 import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
 import {
-	getPriority,
+	getImportanceBucket,
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "../priority";
 import { TaskTypeSelector } from "../task-type-selector";
+
+/** Maps a priority bucket index (0-4) to its translation key. */
+const PRIORITY_LABEL_KEYS = [
+	"none",
+	"low",
+	"medium",
+	"high",
+	"critical",
+] as const;
 
 type SubtaskUpdatePayload = Partial<{
 	status_id: string | null;
@@ -51,9 +61,14 @@ export function SubtaskRow({
 	onUpdate,
 	onClick,
 }: SubtaskRowProps) {
+	const { t } = useTranslation();
 	const status = statuses.find((s) => s.id === task.status_id);
 	const assignee = members.find((m) => m.id === task.assignee_id);
-	const priority = getPriority(task.importance ?? 0);
+	const priorityBucket = getImportanceBucket(task.importance ?? 0);
+	const priorityColor = PRIORITY_LEVELS[priorityBucket]?.color;
+	const priorityLabel = t(
+		`project.interactions.taskDetail.priorities.${PRIORITY_LABEL_KEYS[priorityBucket]}`,
+	);
 	const canEditField = !!(canEdit && onUpdate);
 
 	const displayId = taskIdPrefix
@@ -140,7 +155,9 @@ export function SubtaskRow({
 								onClick={() => onUpdate?.(task.id, { assignee_id: null })}
 							>
 								<User className="size-3.5 opacity-60" />
-								<span className="flex-1 text-left">Unassigned</span>
+								<span className="flex-1 text-left">
+									{t("project.interactions.taskDetail.unassigned")}
+								</span>
 								{!assignee && <Check className="size-3.5 text-primary" />}
 							</button>
 							{members.map((m) => (
@@ -197,13 +214,13 @@ export function SubtaskRow({
 								<>
 									<span
 										className="size-1.5 rounded-full shrink-0"
-										style={{ background: priority.color }}
+										style={{ background: priorityColor }}
 									/>
 									<span
 										className="text-xs font-medium truncate"
-										style={{ color: priority.color }}
+										style={{ color: priorityColor }}
 									>
-										{priority.label}
+										{priorityLabel}
 									</span>
 								</>
 							) : (
@@ -224,8 +241,12 @@ export function SubtaskRow({
 										className="size-2 rounded-full shrink-0 mr-2"
 										style={{ background: p.color }}
 									/>
-									<span style={{ color: p.color }}>{p.label}</span>
-									{priority.label === p.label && (task.importance ?? 0) > 0 && (
+									<span style={{ color: p.color }}>
+										{t(
+											`project.interactions.taskDetail.priorities.${PRIORITY_LABEL_KEYS[p.value]}`,
+										)}
+									</span>
+									{priorityBucket === p.value && (task.importance ?? 0) > 0 && (
 										<Check className="size-3.5 text-primary ml-auto" />
 									)}
 								</DropdownMenuItem>
@@ -236,13 +257,13 @@ export function SubtaskRow({
 					<>
 						<span
 							className="size-1.5 rounded-full shrink-0 mr-1"
-							style={{ background: priority.color }}
+							style={{ background: priorityColor }}
 						/>
 						<span
 							className="text-xs font-medium truncate"
-							style={{ color: priority.color }}
+							style={{ color: priorityColor }}
 						>
-							{priority.label}
+							{priorityLabel}
 						</span>
 					</>
 				) : (
