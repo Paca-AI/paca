@@ -1,4 +1,5 @@
 import { Key, Shield } from "lucide-react";
+import { Trans } from "react-i18next";
 
 import { Separator } from "@/components/ui/separator";
 
@@ -16,20 +17,28 @@ export function GlobalRolesStats({
 			<div className="flex items-center gap-2">
 				<Shield className="size-4 text-primary" />
 				<span className="text-sm">
-					<span className="font-semibold tabular-nums">{rolesCount}</span>
-					<span className="ml-1.5 text-muted-foreground">
-						{rolesCount === 1 ? "role" : "roles"} defined
-					</span>
+					<Trans
+						i18nKey="admin.globalRoles.rolesDefined"
+						count={rolesCount}
+						components={{
+							n: <span className="font-semibold tabular-nums" />,
+							m: <span className="ml-1.5 text-muted-foreground" />,
+						}}
+					/>
 				</span>
 			</div>
 			<Separator orientation="vertical" className="h-4" />
 			<div className="flex items-center gap-2">
 				<Key className="size-4 text-muted-foreground" />
 				<span className="text-sm">
-					<span className="font-semibold tabular-nums">{totalGranted}</span>
-					<span className="ml-1.5 text-muted-foreground">
-						permission grants across all roles
-					</span>
+					<Trans
+						i18nKey="admin.globalRoles.permissionGrants"
+						values={{ total: totalGranted }}
+						components={{
+							n: <span className="font-semibold tabular-nums" />,
+							m: <span className="ml-1.5 text-muted-foreground" />,
+						}}
+					/>
 				</span>
 			</div>
 		</div>

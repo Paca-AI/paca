@@ -1,4 +1,5 @@
 import { Edit2, Lock, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
 	activePermissions,
 	formatDate,
@@ -28,19 +29,20 @@ export function GlobalRolesTable({
 	onEdit,
 	onDelete,
 }: GlobalRolesTableProps) {
+	const { t, i18n } = useTranslation();
 	return (
 		<div className="overflow-x-auto rounded-xl border">
 			<Table>
 				<TableHeader>
 					<TableRow className="bg-muted/40 hover:bg-muted/40">
 						<TableHead className="w-44 px-5 text-xs font-semibold uppercase tracking-wide">
-							Name
+							{t("admin.globalRoles.tableName")}
 						</TableHead>
 						<TableHead className="px-5 text-xs font-semibold uppercase tracking-wide">
-							Permissions
+							{t("admin.globalRoles.tablePermissions")}
 						</TableHead>
 						<TableHead className="w-32 px-5 text-xs font-semibold uppercase tracking-wide">
-							Created
+							{t("admin.globalRoles.tableCreated")}
 						</TableHead>
 						{canWrite ? (
 							<TableHead className="w-20 px-5 text-xs font-semibold uppercase tracking-wide" />
@@ -63,7 +65,7 @@ export function GlobalRolesTable({
 								<TableCell className="px-5">
 									{active.length === 0 ? (
 										<span className="text-xs italic text-muted-foreground/60">
-											No permissions assigned
+											{t("admin.globalRoles.noPermsAssigned")}
 										</span>
 									) : (
 										<div className="flex flex-wrap gap-1">
@@ -79,7 +81,7 @@ export function GlobalRolesTable({
 									)}
 								</TableCell>
 								<TableCell className="px-5 text-sm text-muted-foreground">
-									{formatDate(role.created_at)}
+									{formatDate(role.created_at, i18n.language)}
 								</TableCell>
 								{canWrite ? (
 									<TableCell className="px-5">
@@ -88,7 +90,7 @@ export function GlobalRolesTable({
 												variant="ghost"
 												size="icon-sm"
 												onClick={() => onEdit(role)}
-												title="Edit role"
+												title={t("admin.globalRoles.editRole")}
 											>
 												<Edit2 className="size-3.5" />
 											</Button>
@@ -97,7 +99,7 @@ export function GlobalRolesTable({
 												size="icon-sm"
 												className="text-destructive hover:text-destructive hover:bg-destructive/10"
 												onClick={() => onDelete(role)}
-												title="Delete role"
+												title={t("admin.globalRoles.deleteRole")}
 											>
 												<Trash2 className="size-3.5" />
 											</Button>

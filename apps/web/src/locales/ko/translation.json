@@ -105,6 +105,115 @@
 			"created": "생성일",
 			"pwdReset": "비번 재설정",
 			"you": "나"
+		},
+		"globalRoles": {
+			"title": "전역 역할",
+			"subtitle": "시스템 전역 역할과 사용자에게 부여되는 권한을 관리합니다.",
+			"newRole": "새 역할",
+			"noRoles": "아직 정의된 역할이 없습니다",
+			"noRolesHint": "첫 역할을 만들어 사용자 권한 관리를 시작하세요.",
+			"createRole": "역할 만들기",
+			"loadFailed": "역할을 불러오지 못했습니다",
+			"loadFailedHint": "페이지를 새로고침한 뒤 다시 시도하세요.",
+			"noPermission": "역할을 볼 권한이 없습니다",
+			"noPermissionHint": "위 버튼으로 새 역할을 만들 수 있습니다.",
+			"rolesDefined_one": "<m>정의된 역할 </m><n>{{count}}</n><m>개</m>",
+			"rolesDefined_other": "<m>정의된 역할 </m><n>{{count}}</n><m>개</m>",
+			"permissionGrants": "<m>전체 역할의 권한 부여 </m><n>{{total}}</n><m>건</m>",
+			"tableName": "이름",
+			"tablePermissions": "권한",
+			"tableCreated": "생성일",
+			"noPermsAssigned": "할당된 권한 없음",
+			"editRole": "역할 수정",
+			"deleteRole": "역할 삭제",
+			"deleting": "삭제 중…",
+			"cancel": "취소",
+			"deleteConfirm": "정말 <name>{{name}}</name> 역할을 삭제하시겠어요? 이 역할의 모든 사용자 할당도 함께 제거됩니다.",
+			"cannotUndo": "이 작업은 되돌릴 수 없습니다.",
+			"errRoleNotFound": "해당 역할이 더 이상 존재하지 않습니다.",
+			"errRoleHasUsers": "이 역할은 아직 한 명 이상의 사용자에게 할당되어 있어 삭제할 수 없습니다.",
+			"errForbiddenDelete": "이 역할을 삭제할 권한이 없습니다.",
+			"errServer": "문제가 발생했습니다. 다시 시도하세요.",
+			"errFallback": "문제가 발생했습니다.",
+			"editRoleTitle": "역할 수정",
+			"createRoleTitle": "역할 생성",
+			"editDesc": "역할 이름과 권한 부여를 수정합니다.",
+			"createDesc": "새 시스템 전역 역할을 정의하고 권한을 구성합니다.",
+			"roleName": "역할 이름",
+			"rolePlaceholder": "예: SECURITY_ADMIN",
+			"permissions": "권한",
+			"enabledCount": "{{count}}개 활성화",
+			"saving": "저장 중…",
+			"saveChanges": "변경 사항 저장",
+			"errNameRequired": "역할 이름을 입력하세요.",
+			"errNameTaken": "이미 같은 이름의 역할이 있습니다.",
+			"errNameInvalid": "역할 이름은 대문자, 숫자, 밑줄만 사용할 수 있습니다.",
+			"errNotFound2": "이 역할이 더 이상 존재하지 않습니다. 이미 삭제되었을 수 있습니다.",
+			"errForbidden2": "이 작업을 수행할 권한이 없습니다.",
+			"errServer2": "서버에서 문제가 발생했습니다. 다시 시도하세요.",
+			"permGroups": {
+				"global_roles": "전역 역할",
+				"users": "사용자",
+				"projects": "프로젝트"
+			},
+			"perms": {
+				"global_roles_read": {
+					"label": "전역 역할 읽기",
+					"desc": "전역 역할 정의 보기"
+				},
+				"global_roles_write": {
+					"label": "전역 역할 쓰기",
+					"desc": "전역 역할 정의 생성 및 수정"
+				},
+				"global_roles_assign": {
+					"label": "전역 역할 할당",
+					"desc": "사용자에게 전역 역할 할당"
+				},
+				"users_read": {
+					"label": "사용자 읽기",
+					"desc": "사용자 프로필 및 목록 보기"
+				},
+				"users_write": {
+					"label": "사용자 쓰기",
+					"desc": "사용자 계정 생성 및 수정"
+				},
+				"users_delete": {
+					"label": "사용자 삭제",
+					"desc": "사용자 계정 제거"
+				},
+				"projects_read": {
+					"label": "모든 프로젝트 읽기",
+					"desc": "워크스페이스의 모든 프로젝트 보기"
+				},
+				"projects_create": {
+					"label": "프로젝트 생성",
+					"desc": "새 프로젝트 만들기"
+				},
+				"projects_write": {
+					"label": "프로젝트 쓰기",
+					"desc": "프로젝트 세부 정보 수정"
+				},
+				"projects_delete": {
+					"label": "프로젝트 삭제",
+					"desc": "프로젝트 영구 삭제"
+				},
+				"project_members_read": {
+					"label": "프로젝트 멤버 읽기",
+					"desc": "모든 프로젝트의 멤버 보기"
+				},
+				"project_members_write": {
+					"label": "프로젝트 멤버 쓰기",
+					"desc": "모든 프로젝트의 멤버 추가, 제거, 수정"
+				},
+				"project_roles_read": {
+					"label": "프로젝트 역할 읽기",
+					"desc": "모든 프로젝트에 정의된 역할 보기"
+				},
+				"project_roles_write": {
+					"label": "프로젝트 역할 쓰기",
+					"desc": "모든 프로젝트의 역할 생성 및 수정"
+				}
+			}
 		}
 	}
 }

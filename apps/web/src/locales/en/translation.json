@@ -105,6 +105,115 @@
 			"created": "Created",
 			"pwdReset": "pwd reset",
 			"you": "you"
+		},
+		"globalRoles": {
+			"title": "Global Roles",
+			"subtitle": "Manage system-wide roles and the permissions they grant to users.",
+			"newRole": "New Role",
+			"noRoles": "No roles defined yet",
+			"noRolesHint": "Create your first role to start managing user permissions.",
+			"createRole": "Create role",
+			"loadFailed": "Failed to load roles",
+			"loadFailedHint": "Please refresh the page and try again.",
+			"noPermission": "You don't have permission to view roles",
+			"noPermissionHint": "You can still create new roles using the button above.",
+			"rolesDefined_one": "<n>{{count}}</n> <m>role defined</m>",
+			"rolesDefined_other": "<n>{{count}}</n> <m>roles defined</m>",
+			"permissionGrants": "<n>{{total}}</n> <m>permission grants across all roles</m>",
+			"tableName": "Name",
+			"tablePermissions": "Permissions",
+			"tableCreated": "Created",
+			"noPermsAssigned": "No permissions assigned",
+			"editRole": "Edit role",
+			"deleteRole": "Delete role",
+			"deleting": "Deleting…",
+			"cancel": "Cancel",
+			"deleteConfirm": "Are you sure you want to delete <name>{{name}}</name>? This will also remove all user assignments for this role.",
+			"cannotUndo": "This action cannot be undone.",
+			"errRoleNotFound": "This role no longer exists.",
+			"errRoleHasUsers": "This role cannot be deleted because it is still assigned to one or more users.",
+			"errForbiddenDelete": "You don't have permission to delete this role.",
+			"errServer": "Something went wrong. Please try again.",
+			"errFallback": "Something went wrong.",
+			"editRoleTitle": "Edit Role",
+			"createRoleTitle": "Create Role",
+			"editDesc": "Update the role name and its permission grants.",
+			"createDesc": "Define a new system-wide role and configure its permissions.",
+			"roleName": "Role Name",
+			"rolePlaceholder": "e.g. SECURITY_ADMIN",
+			"permissions": "Permissions",
+			"enabledCount": "{{count}} enabled",
+			"saving": "Saving…",
+			"saveChanges": "Save changes",
+			"errNameRequired": "Role name is required.",
+			"errNameTaken": "A role with this name already exists.",
+			"errNameInvalid": "Role name must be uppercase letters, numbers, and underscores only.",
+			"errNotFound2": "This role no longer exists. It may have already been deleted.",
+			"errForbidden2": "You don't have permission to perform this action.",
+			"errServer2": "Something went wrong on the server. Please try again.",
+			"permGroups": {
+				"global_roles": "Global Roles",
+				"users": "Users",
+				"projects": "Projects"
+			},
+			"perms": {
+				"global_roles_read": {
+					"label": "Read Global Roles",
+					"desc": "View global role definitions"
+				},
+				"global_roles_write": {
+					"label": "Write Global Roles",
+					"desc": "Create and update global role definitions"
+				},
+				"global_roles_assign": {
+					"label": "Assign Global Roles",
+					"desc": "Assign global roles to users"
+				},
+				"users_read": {
+					"label": "Read Users",
+					"desc": "View user profiles and list"
+				},
+				"users_write": {
+					"label": "Write Users",
+					"desc": "Create and update user accounts"
+				},
+				"users_delete": {
+					"label": "Delete Users",
+					"desc": "Remove user accounts"
+				},
+				"projects_read": {
+					"label": "Read All Projects",
+					"desc": "View all projects in the workspace"
+				},
+				"projects_create": {
+					"label": "Create Projects",
+					"desc": "Create new projects"
+				},
+				"projects_write": {
+					"label": "Write Projects",
+					"desc": "Update project details"
+				},
+				"projects_delete": {
+					"label": "Delete Projects",
+					"desc": "Permanently delete projects"
+				},
+				"project_members_read": {
+					"label": "Read Project Members",
+					"desc": "View members of any project"
+				},
+				"project_members_write": {
+					"label": "Write Project Members",
+					"desc": "Add, remove, and update members in any project"
+				},
+				"project_roles_read": {
+					"label": "Read Project Roles",
+					"desc": "View roles defined in any project"
+				},
+				"project_roles_write": {
+					"label": "Write Project Roles",
+					"desc": "Create and update roles in any project"
+				}
+			}
 		}
 	}
 }
