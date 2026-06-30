@@ -11,6 +11,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -122,6 +123,7 @@ function PluginCard({
 	onUninstall: (name: string) => void;
 	onUpgrade: (pluginName: string) => void;
 }) {
+	const { t } = useTranslation();
 	const { artifacts } = plugin;
 	const hasBackend = !!artifacts.backend_tar_gz_url;
 	const hasFrontend = !!artifacts.frontend_tar_gz_url;
@@ -156,11 +158,13 @@ function PluginCard({
 						<Badge variant="outline" className="text-xs">
 							{plugin.version}
 						</Badge>
-						{isInstalled ? <Badge className="text-xs">Installed</Badge> : null}
+						{isInstalled ? (
+							<Badge className="text-xs">{t("admin.plugins.installed")}</Badge>
+						) : null}
 						{upgradeAvailable ? (
 							<Badge variant="secondary" className="text-xs gap-1">
 								<ArrowUpCircle className="size-3" />
-								Update available
+								{t("admin.plugins.updateAvailable")}
 							</Badge>
 						) : null}
 					</div>
@@ -181,23 +185,26 @@ function PluginCard({
 					{hasBackend && (
 						<FeatureBadge
 							icon={<Server className="size-3" />}
-							label="Backend"
+							label={t("admin.plugins.featBackend")}
 						/>
 					)}
 					{hasFrontend && (
 						<FeatureBadge
 							icon={<LayoutTemplate className="size-3" />}
-							label="Frontend"
+							label={t("admin.plugins.featFrontend")}
 						/>
 					)}
 					{hasMigrations && (
 						<FeatureBadge
 							icon={<Database className="size-3" />}
-							label="Migrations"
+							label={t("admin.plugins.featMigrations")}
 						/>
 					)}
 					{hasMCP && (
-						<FeatureBadge icon={<Zap className="size-3" />} label="MCP" />
+						<FeatureBadge
+							icon={<Zap className="size-3" />}
+							label={t("admin.plugins.featMcp")}
+						/>
 					)}
 				</div>
 
@@ -210,7 +217,7 @@ function PluginCard({
 							className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
 						>
 							<ExternalLink className="size-3.5" />
-							Source
+							{t("admin.plugins.source")}
 						</a>
 					) : (
 						<span /> // Spacer for alignment
@@ -226,8 +233,10 @@ function PluginCard({
 								>
 									<ArrowUpCircle className="size-4" />
 									{isUpgrading
-										? "Upgrading..."
-										: `Upgrade to ${plugin.version}`}
+										? t("admin.plugins.upgrading")
+										: t("admin.plugins.upgradeTo", {
+												version: plugin.version,
+											})}
 								</Button>
 							) : null}
 							<Button
@@ -237,7 +246,9 @@ function PluginCard({
 								onClick={() => onUninstall(plugin.name)}
 							>
 								<Trash2 className="size-4" />
-								{isUninstalling ? "Uninstalling..." : "Uninstall"}
+								{isUninstalling
+									? t("admin.plugins.uninstalling")
+									: t("admin.plugins.uninstall")}
 							</Button>
 						</div>
 					) : (
@@ -247,7 +258,9 @@ function PluginCard({
 							onClick={() => onInstall(plugin.name)}
 						>
 							<Download className="size-4" />
-							{isInstalling ? "Installing..." : "Install"}
+							{isInstalling
+								? t("admin.plugins.installing")
+								: t("admin.plugins.install")}
 						</Button>
 					)}
 				</div>
@@ -257,6 +270,7 @@ function PluginCard({
 }
 
 export function PluginMarketplacePanel() {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const [query, setQuery] = useState("");
 
@@ -303,7 +317,7 @@ export function PluginMarketplacePanel() {
 	if (isLoading) {
 		return (
 			<div className="text-sm text-muted-foreground py-6">
-				Loading marketplace...
+				{t("admin.plugins.loadingMarketplace")}
 			</div>
 		);
 	}
@@ -315,14 +329,14 @@ export function PluginMarketplacePanel() {
 				<Input
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
-					placeholder="Search plugins"
+					placeholder={t("admin.plugins.searchPlaceholder")}
 					className="pl-9"
 				/>
 			</div>
 
 			{filtered.length === 0 ? (
 				<div className="text-sm text-muted-foreground py-6">
-					No marketplace plugins found.
+					{t("admin.plugins.noPlugins")}
 				</div>
 			) : (
 				<div className="grid grid-cols-1 gap-3">

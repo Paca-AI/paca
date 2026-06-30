@@ -214,6 +214,42 @@
 					"desc": "Create and update roles in any project"
 				}
 			}
+		},
+		"plugins": {
+			"title": "Plugin Settings",
+			"subtitle": "Manage system-wide plugin panel ordering and visibility for all users.",
+			"tabMarketplace": "Marketplace",
+			"tabLayout": "Extension Point Layout",
+			"marketplaceTitle": "Marketplace",
+			"marketplaceDesc": "Install or uninstall plugins from the public paca-plugins catalog.",
+			"layoutTitle": "Extension Point Layout",
+			"layoutDesc": "Drag to reorder plugin panels within each extension point. Toggle visibility to show or hide panels for all users.",
+			"installed": "Installed",
+			"updateAvailable": "Update available",
+			"featBackend": "Backend",
+			"featFrontend": "Frontend",
+			"featMigrations": "Migrations",
+			"featMcp": "MCP",
+			"source": "Source",
+			"upgrading": "Upgrading…",
+			"upgradeTo": "Upgrade to {{version}}",
+			"uninstalling": "Uninstalling…",
+			"uninstall": "Uninstall",
+			"installing": "Installing…",
+			"install": "Install",
+			"loadingMarketplace": "Loading marketplace…",
+			"searchPlaceholder": "Search plugins",
+			"noPlugins": "No marketplace plugins found.",
+			"show": "Show",
+			"hide": "Hide",
+			"noExtensionPlugins": "No plugins with extension points are installed.",
+			"extPoints": {
+				"sidebar_general_section": "Sidebar — General",
+				"sidebar_project_section": "Sidebar — Project",
+				"task_detail_section": "Task Detail",
+				"project_settings_tab": "Project Settings Tab",
+				"view": "Custom View"
+			}
 		}
 	}
 }

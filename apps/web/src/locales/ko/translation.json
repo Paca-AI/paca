@@ -214,6 +214,42 @@
 					"desc": "모든 프로젝트의 역할 생성 및 수정"
 				}
 			}
+		},
+		"plugins": {
+			"title": "플러그인 설정",
+			"subtitle": "모든 사용자에 대한 시스템 전역 플러그인 패널 순서와 표시 여부를 관리합니다.",
+			"tabMarketplace": "마켓플레이스",
+			"tabLayout": "확장 지점 레이아웃",
+			"marketplaceTitle": "마켓플레이스",
+			"marketplaceDesc": "공개 paca-plugins 카탈로그에서 플러그인을 설치하거나 제거합니다.",
+			"layoutTitle": "확장 지점 레이아웃",
+			"layoutDesc": "각 확장 지점 내에서 플러그인 패널을 드래그하여 순서를 변경하세요. 표시 여부를 전환해 모든 사용자에게 패널을 보이거나 숨깁니다.",
+			"installed": "설치됨",
+			"updateAvailable": "업데이트 가능",
+			"featBackend": "백엔드",
+			"featFrontend": "프런트엔드",
+			"featMigrations": "마이그레이션",
+			"featMcp": "MCP",
+			"source": "소스",
+			"upgrading": "업그레이드 중…",
+			"upgradeTo": "{{version}}(으)로 업그레이드",
+			"uninstalling": "제거 중…",
+			"uninstall": "제거",
+			"installing": "설치 중…",
+			"install": "설치",
+			"loadingMarketplace": "마켓플레이스를 불러오는 중…",
+			"searchPlaceholder": "플러그인 검색",
+			"noPlugins": "마켓플레이스 플러그인이 없습니다.",
+			"show": "표시",
+			"hide": "숨기기",
+			"noExtensionPlugins": "확장 지점이 있는 플러그인이 설치되어 있지 않습니다.",
+			"extPoints": {
+				"sidebar_general_section": "사이드바 — 일반",
+				"sidebar_project_section": "사이드바 — 프로젝트",
+				"task_detail_section": "작업 상세",
+				"project_settings_tab": "프로젝트 설정 탭",
+				"view": "커스텀 뷰"
+			}
 		}
 	}
 }
