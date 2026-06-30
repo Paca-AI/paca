@@ -17,6 +17,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ConversationView } from "@/components/projects/agents/conversation-view";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -56,7 +57,6 @@ import {
 	agentQueryOptions,
 	agentSkillsQueryOptions,
 	CONVERSATION_STATUS_COLORS,
-	CONVERSATION_STATUS_LABELS,
 	conversationsQueryOptions,
 	deleteMCPServer,
 	deleteSkill,
@@ -103,6 +103,7 @@ function OverviewTab({
 	projectId: string;
 	canWrite: boolean;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const { data: llmModels = {} } = useQuery(llmModelsQueryOptions);
 
@@ -224,7 +225,7 @@ function OverviewTab({
 	return (
 		<div className="space-y-6 max-w-2xl">
 			<div className="space-y-1.5">
-				<Label>Name</Label>
+				<Label>{t("project.agents.name")}</Label>
 				<Input
 					value={name}
 					onChange={(e) => setName(e.target.value)}
@@ -235,10 +236,12 @@ function OverviewTab({
 			<Separator />
 
 			<div>
-				<p className="text-sm font-medium mb-3">LLM Configuration</p>
+				<p className="text-sm font-medium mb-3">
+					{t("project.agents.detail.llmConfig")}
+				</p>
 				<div className="grid grid-cols-2 gap-3">
 					<div className="space-y-1.5">
-						<Label>Provider</Label>
+						<Label>{t("project.agents.provider")}</Label>
 						<Select
 							value={providerSelect}
 							onValueChange={handleProviderChange}
@@ -254,12 +257,12 @@ function OverviewTab({
 									</SelectItem>
 								))}
 								<SelectSeparator />
-								<SelectItem value={CUSTOM}>Custom…</SelectItem>
+								<SelectItem value={CUSTOM}>{t("project.agents.custom")}</SelectItem>
 							</SelectContent>
 						</Select>
 						{providerSelect === CUSTOM && (
 							<Input
-								placeholder="my-provider"
+								placeholder={t("project.agents.providerPlaceholder")}
 								value={customProvider}
 								onChange={(e) => setCustomProvider(e.target.value)}
 								disabled={!canWrite}
@@ -267,10 +270,10 @@ function OverviewTab({
 						)}
 					</div>
 					<div className="space-y-1.5">
-						<Label>Model</Label>
+						<Label>{t("project.agents.model")}</Label>
 						{providerSelect === CUSTOM ? (
 							<Input
-								placeholder="my-model-name"
+								placeholder={t("project.agents.modelPlaceholder")}
 								value={customModel}
 								onChange={(e) => setCustomModel(e.target.value)}
 								disabled={!canWrite}
@@ -292,12 +295,12 @@ function OverviewTab({
 											</SelectItem>
 										))}
 										<SelectSeparator />
-										<SelectItem value={CUSTOM}>Custom…</SelectItem>
+										<SelectItem value={CUSTOM}>{t("project.agents.custom")}</SelectItem>
 									</SelectContent>
 								</Select>
 								{modelSelect === CUSTOM && (
 									<Input
-										placeholder="my-model-name"
+										placeholder={t("project.agents.modelPlaceholder")}
 										value={customModel}
 										onChange={(e) => setCustomModel(e.target.value)}
 										disabled={!canWrite}
@@ -309,9 +312,9 @@ function OverviewTab({
 				</div>
 				<div className="space-y-1.5 mt-3">
 					<Label>
-						API Key Update{" "}
+						{t("project.agents.detail.apiKeyUpdate")}{" "}
 						<span className="text-muted-foreground font-normal text-xs">
-							(leave blank to keep current)
+							{t("project.agents.detail.apiKeyUpdateHint")}
 						</span>
 					</Label>
 					<Input
@@ -324,7 +327,8 @@ function OverviewTab({
 				</div>
 				<div className="space-y-1.5 mt-3">
 					<Label>
-						Base URL <span className="text-destructive">*</span>
+						{t("project.agents.baseUrl")}{" "}
+						<span className="text-destructive">*</span>
 					</Label>
 					<Input
 						placeholder="https://api.openai.com/v1"
@@ -338,7 +342,7 @@ function OverviewTab({
 			<Separator />
 
 			<div className="space-y-1.5">
-				<Label>System Prompt</Label>
+				<Label>{t("project.agents.systemPrompt")}</Label>
 				<Textarea
 					value={systemPrompt}
 					onChange={(e) => setSystemPrompt(e.target.value)}
@@ -351,28 +355,31 @@ function OverviewTab({
 			<div className="space-y-2">
 				<div>
 					<Label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-						Auto-appended trigger prompts
+						{t("project.agents.detail.triggerPrompts")}
 					</Label>
 					<p className="mt-1 text-xs text-muted-foreground">
-						Automatically appended to the system prompt at runtime based on how
-						the agent is invoked.
+						{t("project.agents.detail.triggerPromptsHint")}
 					</p>
 				</div>
 				{(
 					[
 						[
-							"Task assignment / task comment",
+							t("project.agents.detail.triggerTask"),
 							taskTriggerPrompt,
 							setTaskTriggerPrompt,
 						],
 						[
-							"Documentation comment @mention",
+							t("project.agents.detail.triggerDocComment"),
 							docCommentTriggerPrompt,
 							setDocCommentTriggerPrompt,
 						],
-						["Direct chat", chatTriggerPrompt, setChatTriggerPrompt],
 						[
-							"Write task description with AI",
+							t("project.agents.detail.triggerChat"),
+							chatTriggerPrompt,
+							setChatTriggerPrompt,
+						],
+						[
+							t("project.agents.detail.triggerDescriptionWrite"),
 							descriptionWriteTriggerPrompt,
 							setDescriptionWriteTriggerPrompt,
 						],
@@ -407,7 +414,7 @@ function OverviewTab({
 						<div>
 							<p className="text-sm">Clone repositories</p>
 							<p className="text-xs text-muted-foreground">
-								Allow agent to git clone repos locally
+								{t("project.agents.detail.cloneReposHint")}
 							</p>
 						</div>
 						<Switch
@@ -422,9 +429,9 @@ function OverviewTab({
 			<Separator />
 
 			<div>
-				<p className="text-sm font-medium mb-1">Git committer identity</p>
+				<p className="text-sm font-medium mb-1">{t("project.agents.detail.gitCommitter")}</p>
 				<p className="text-xs text-muted-foreground mb-3">
-					Name and email used for commits made by this agent.
+					{t("project.agents.detail.gitCommitterHint")}
 				</p>
 				<div className="grid grid-cols-2 gap-3">
 					<div className="space-y-1.5">
@@ -457,17 +464,17 @@ function OverviewTab({
 						) : (
 							<Save className="size-4 mr-2" />
 						)}
-						Save changes
+						{t("project.agents.detail.saveChanges")}
 					</Button>
 					{saveMutation.isSuccess && (
 						<span className="flex items-center gap-1 text-xs text-emerald-600">
 							<Check className="size-3" />
-							Saved
+							{t("project.agents.detail.saved")}
 						</span>
 					)}
 					{saveMutation.isError && (
 						<span className="text-xs text-destructive">
-							Failed to save. Please try again.
+							{t("project.agents.detail.saveError")}
 						</span>
 					)}
 				</div>
@@ -489,6 +496,7 @@ function AddMCPServerDialog({
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const [serverName, setServerName] = useState("");
 	const [transport, setTransport] = useState<"stdio" | "sse" | "http">("stdio");
@@ -529,15 +537,15 @@ function AddMCPServerDialog({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<Server className="size-4 text-primary" />
-						Add MCP Server
+						{t("project.agents.detail.addMcpServerTitle")}
 					</DialogTitle>
 					<DialogDescription>
-						Connect an MCP server to extend the agent's capabilities.
+						{t("project.agents.detail.addMcpServerDesc")}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4 py-2">
 					<div className="space-y-1.5">
-						<Label>Server name</Label>
+						<Label>{t("project.agents.detail.serverName")}</Label>
 						<Input
 							placeholder="filesystem"
 							value={serverName}
@@ -545,7 +553,7 @@ function AddMCPServerDialog({
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<Label>Transport</Label>
+						<Label>{t("project.agents.detail.transport")}</Label>
 						<Select
 							value={transport}
 							onValueChange={(v) => setTransport(v as typeof transport)}
@@ -563,7 +571,7 @@ function AddMCPServerDialog({
 					{transport === "stdio" ? (
 						<>
 							<div className="space-y-1.5">
-								<Label>Command</Label>
+								<Label>{t("project.agents.detail.command")}</Label>
 								<Input
 									placeholder="npx"
 									value={command}
@@ -572,9 +580,9 @@ function AddMCPServerDialog({
 							</div>
 							<div className="space-y-1.5">
 								<Label>
-									Args{" "}
+									{t("project.agents.detail.args")}{" "}
 									<span className="text-muted-foreground font-normal text-xs">
-										(space-separated)
+										{t("project.agents.detail.spaceSeparated")}
 									</span>
 								</Label>
 								<Input
@@ -586,7 +594,7 @@ function AddMCPServerDialog({
 						</>
 					) : (
 						<div className="space-y-1.5">
-							<Label>URL</Label>
+							<Label>{t("project.agents.url")}</Label>
 							<Input
 								placeholder="https://mcp.example.com/sse"
 								value={url}
@@ -597,7 +605,7 @@ function AddMCPServerDialog({
 				</div>
 				<DialogFooter>
 					<Button variant="outline" onClick={() => onOpenChange(false)}>
-						Cancel
+						{t("project.agents.cancel")}
 					</Button>
 					<Button
 						onClick={() => addMutation.mutate()}
@@ -606,7 +614,7 @@ function AddMCPServerDialog({
 						{addMutation.isPending ? (
 							<Loader2 className="size-4 animate-spin" />
 						) : (
-							"Add server"
+							t("project.agents.detail.addServer")
 						)}
 					</Button>
 				</DialogFooter>
@@ -624,6 +632,7 @@ function MCPServersTab({
 	agentId: string;
 	canWrite: boolean;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const { data: servers = [] } = useQuery(
 		agentMCPServersQueryOptions(projectId, agentId),
@@ -655,12 +664,12 @@ function MCPServersTab({
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<p className="text-sm text-muted-foreground">
-					{servers.length} server{servers.length !== 1 && "s"} configured
+					{t("project.agents.detail.serversConfigured", { count: servers.length })}
 				</p>
 				{canWrite && (
 					<Button size="sm" onClick={() => setAddOpen(true)}>
 						<Plus className="size-4 mr-1.5" />
-						Add server
+						{t("project.agents.detail.addServer")}
 					</Button>
 				)}
 			</div>
@@ -668,7 +677,9 @@ function MCPServersTab({
 			{servers.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
 					<Server className="size-8 text-muted-foreground/40" />
-					<p className="text-sm text-muted-foreground">No MCP servers added</p>
+					<p className="text-sm text-muted-foreground">
+						{t("project.agents.detail.noServers")}
+					</p>
 					{canWrite && (
 						<Button
 							size="sm"
@@ -676,7 +687,7 @@ function MCPServersTab({
 							onClick={() => setAddOpen(true)}
 						>
 							<Plus className="size-3.5 mr-1" />
-							Add your first server
+							{t("project.agents.detail.addFirstServer")}
 						</Button>
 					)}
 				</div>
@@ -746,6 +757,7 @@ function AddSkillDialog({
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const [skillName, setSkillName] = useState("");
 	const [source, setSource] = useState<"inline" | "marketplace" | "github_url">(
@@ -779,15 +791,15 @@ function AddSkillDialog({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<Wand2 className="size-4 text-primary" />
-						Add Skill
+						{t("project.agents.detail.addSkillTitle")}
 					</DialogTitle>
 					<DialogDescription>
-						Give the agent specialised instructions or capabilities.
+						{t("project.agents.detail.addSkillDesc")}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4 py-2">
 					<div className="space-y-1.5">
-						<Label>Skill name</Label>
+						<Label>{t("project.agents.detail.skillName")}</Label>
 						<Input
 							placeholder="code-reviewer"
 							value={skillName}
@@ -795,7 +807,7 @@ function AddSkillDialog({
 						/>
 					</div>
 					<div className="space-y-1.5">
-						<Label>Source</Label>
+						<Label>{t("project.agents.detail.source")}</Label>
 						<Select
 							value={source}
 							onValueChange={(v) => setSource(v as typeof source)}
@@ -805,16 +817,20 @@ function AddSkillDialog({
 							</SelectTrigger>
 							<SelectContent>
 								<SelectItem value="inline">
-									Inline (write content here)
+									{t("project.agents.detail.sourceInline")}
 								</SelectItem>
-								<SelectItem value="marketplace">Marketplace</SelectItem>
-								<SelectItem value="github_url">GitHub URL</SelectItem>
+								<SelectItem value="marketplace">
+									{t("project.agents.detail.sourceMarketplace")}
+								</SelectItem>
+								<SelectItem value="github_url">
+									{t("project.agents.detail.sourceGithubUrl")}
+								</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>
 					{source === "inline" ? (
 						<div className="space-y-1.5">
-							<Label>Skill content (Markdown)</Label>
+							<Label>{t("project.agents.detail.skillContent")}</Label>
 							<Textarea
 								placeholder="# Code Reviewer&#10;&#10;You review pull requests for security, performance…"
 								value={skillContent}
@@ -825,7 +841,7 @@ function AddSkillDialog({
 						</div>
 					) : (
 						<div className="space-y-1.5">
-							<Label>URL</Label>
+							<Label>{t("project.agents.url")}</Label>
 							<Input
 								placeholder={
 									source === "marketplace"
@@ -840,7 +856,7 @@ function AddSkillDialog({
 				</div>
 				<DialogFooter>
 					<Button variant="outline" onClick={() => onOpenChange(false)}>
-						Cancel
+						{t("project.agents.cancel")}
 					</Button>
 					<Button
 						onClick={() => addMutation.mutate()}
@@ -849,7 +865,7 @@ function AddSkillDialog({
 						{addMutation.isPending ? (
 							<Loader2 className="size-4 animate-spin" />
 						) : (
-							"Add skill"
+							t("project.agents.detail.addSkill")
 						)}
 					</Button>
 				</DialogFooter>
@@ -867,6 +883,7 @@ function SkillsTab({
 	agentId: string;
 	canWrite: boolean;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const { data: skills = [] } = useQuery(
 		agentSkillsQueryOptions(projectId, agentId),
@@ -896,12 +913,12 @@ function SkillsTab({
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<p className="text-sm text-muted-foreground">
-					{skills.length} skill{skills.length !== 1 && "s"} attached
+					{t("project.agents.detail.skillsAttached", { count: skills.length })}
 				</p>
 				{canWrite && (
 					<Button size="sm" onClick={() => setAddOpen(true)}>
 						<Plus className="size-4 mr-1.5" />
-						Add skill
+						{t("project.agents.detail.addSkill")}
 					</Button>
 				)}
 			</div>
@@ -909,7 +926,9 @@ function SkillsTab({
 			{skills.length === 0 ? (
 				<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
 					<Wand2 className="size-8 text-muted-foreground/40" />
-					<p className="text-sm text-muted-foreground">No skills yet</p>
+					<p className="text-sm text-muted-foreground">
+						{t("project.agents.detail.noSkills")}
+					</p>
 					{canWrite && (
 						<Button
 							size="sm"
@@ -917,7 +936,7 @@ function SkillsTab({
 							onClick={() => setAddOpen(true)}
 						>
 							<Plus className="size-3.5 mr-1" />
-							Add first skill
+							{t("project.agents.detail.addFirstSkill")}
 						</Button>
 					)}
 				</div>
@@ -982,8 +1001,9 @@ function ConversationRow({
 	projectId: string;
 	onClick: () => void;
 }) {
+	const { t, i18n } = useTranslation();
 	const statusColor = CONVERSATION_STATUS_COLORS[conv.status];
-	const statusLabel = CONVERSATION_STATUS_LABELS[conv.status];
+	const statusLabel = t(`project.agents.status.${conv.status}`);
 
 	return (
 		<div className="w-full flex items-center gap-4 rounded-lg border border-border/60 bg-card px-4 py-3 transition-colors hover:border-border hover:bg-accent/30">
@@ -995,10 +1015,10 @@ function ConversationRow({
 				<div className="flex items-center gap-2">
 					<span className="text-sm font-medium truncate">
 						{conv.trigger_type === "chat_message"
-							? "Chat"
+							? t("project.agents.detail.convTypeChat")
 							: conv.trigger_type === "description_write"
-								? "Write description"
-								: "Task"}{" "}
+								? t("project.agents.detail.convTypeWriteDescription")
+								: t("project.agents.detail.convTypeTask")}{" "}
 						· {conv.id.slice(0, 8)}
 					</span>
 					<Badge
@@ -1011,7 +1031,9 @@ function ConversationRow({
 				<div className="flex items-center gap-3 text-xs text-muted-foreground">
 					<span className="flex items-center gap-1">
 						<Zap className="size-3" />
-						{conv.iteration_count} iterations
+						{t("project.agents.detail.iterations", {
+							count: conv.iteration_count,
+						})}
 					</span>
 					{conv.branch_name && (
 						<span className="flex items-center gap-1 truncate">
@@ -1022,12 +1044,12 @@ function ConversationRow({
 					{conv.pr_url && (
 						<span className="flex items-center gap-1">
 							<GitPullRequest className="size-3" />
-							PR opened
+							{t("project.agents.detail.prOpened")}
 						</span>
 					)}
 					<span className="flex items-center gap-1 ml-auto">
 						<Clock className="size-3" />
-						{new Date(conv.created_at).toLocaleDateString()}
+						{new Date(conv.created_at).toLocaleDateString(i18n.language)}
 					</span>
 				</div>
 			</button>
@@ -1036,7 +1058,7 @@ function ConversationRow({
 				params={{ projectId, conversationId: conv.id }}
 				className="shrink-0 text-xs font-medium text-primary/70 hover:text-primary transition-colors"
 			>
-				Watch
+				{t("project.agents.detail.watch")}
 			</Link>
 		</div>
 	);
@@ -1072,6 +1094,7 @@ function ConversationsTab({
 	projectId: string;
 	agentId: string;
 }) {
+	const { t } = useTranslation();
 	const { data: conversations = [], isLoading } = useQuery(
 		conversationsQueryOptions(projectId, agentId),
 	);
@@ -1092,10 +1115,11 @@ function ConversationsTab({
 		return (
 			<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
 				<MessageSquare className="size-8 text-muted-foreground/40" />
-				<p className="text-sm text-muted-foreground">No conversations yet</p>
+				<p className="text-sm text-muted-foreground">
+					{t("project.agents.detail.noConversations")}
+				</p>
 				<p className="text-xs text-muted-foreground max-w-xs text-center">
-					Conversations start when a task is assigned to this agent or someone
-					messages it.
+					{t("project.agents.detail.noConversationsDesc")}
 				</p>
 			</div>
 		);
@@ -1132,16 +1156,25 @@ function ConversationsTab({
 
 const TABS: {
 	id: Tab;
-	label: string;
+	labelKey: string;
 	icon: React.ComponentType<{ className?: string }>;
 }[] = [
-	{ id: "overview", label: "Overview", icon: Bot },
-	{ id: "mcp-servers", label: "MCP Servers", icon: Server },
-	{ id: "skills", label: "Skills", icon: Wand2 },
-	{ id: "conversations", label: "Conversations", icon: MessageSquare },
+	{ id: "overview", labelKey: "project.agents.detail.tabOverview", icon: Bot },
+	{
+		id: "mcp-servers",
+		labelKey: "project.agents.detail.tabMcpServers",
+		icon: Server,
+	},
+	{ id: "skills", labelKey: "project.agents.detail.tabSkills", icon: Wand2 },
+	{
+		id: "conversations",
+		labelKey: "project.agents.detail.tabConversations",
+		icon: MessageSquare,
+	},
 ];
 
 function AgentDetailPage() {
+	const { t } = useTranslation();
 	const { projectId, agentId } = Route.useParams();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
@@ -1208,7 +1241,7 @@ function AgentDetailPage() {
 								}`}
 							>
 								<Icon className="size-3.5" />
-								{tab.label}
+								{t(tab.labelKey)}
 							</button>
 						);
 					})}
