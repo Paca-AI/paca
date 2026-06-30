@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	type ActivityEntry,
 	ActivityPane,
@@ -43,23 +45,23 @@ function getDocActivityChanges(content: unknown): DocActivityChange[] {
 	);
 }
 
-function describeDocActivity(entry: ActivityEntry): string {
+function describeDocActivity(entry: ActivityEntry, t: TFunction): string {
 	const activity = entry as DocActivity;
 	switch (activity.activity_type) {
 		case "doc.created":
-			return "created this document";
+			return t("project.docs.actCreated");
 		case "doc.updated": {
 			const changes = getDocActivityChanges(activity.content);
 			if (changes.length > 0) {
 				const fields = changes.map((c) => c.field).join(", ");
-				return `updated ${fields}`;
+				return t("project.docs.actUpdatedFields", { fields });
 			}
-			return "updated the document";
+			return t("project.docs.actUpdated");
 		}
 		case "doc.deleted":
-			return "deleted the document";
+			return t("project.docs.actDeleted");
 		case "doc.moved":
-			return "moved the document";
+			return t("project.docs.actMoved");
 		case "comment":
 			return "";
 		default:
@@ -78,6 +80,7 @@ export function DocActivityPane({
 	docId,
 	canEdit = true,
 }: DocActivityPaneProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 	const { data: membersData } = useQuery(projectMembersQueryOptions(projectId));
@@ -130,9 +133,9 @@ export function DocActivityPane({
 		return {
 			old: contentChange.old,
 			new: contentChange.new,
-			title: "Content change diff",
+			title: t("project.docs.contentDiff"),
 		};
-	}, []);
+	}, [t]);
 
 	const isRevertable = useCallback((entry: DocActivity) => {
 		if (entry.activity_type !== "doc.updated") return false;
@@ -169,7 +172,7 @@ export function DocActivityPane({
 			onRevert={canEdit ? handleRevert : undefined}
 			getDiffContent={getDiffContent}
 			isRevertable={canEdit ? isRevertable : undefined}
-			describeActivity={describeDocActivity}
+			describeActivity={(entry) => describeDocActivity(entry, t)}
 			getCommentBlocks={(content) => {
 				if (Array.isArray(content)) return content;
 				if (content && typeof content === "object" && !("length" in content)) {

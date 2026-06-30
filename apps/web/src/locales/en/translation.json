@@ -426,6 +426,20 @@
 				"Ticket": "Ticket",
 				"ClipboardList": "Checklist"
 			}
+		},
+		"docs": {
+			"notFound": "Document not found",
+			"notFoundDesc": "This document may have been deleted or the link is invalid.",
+			"unsaved": "Unsaved",
+			"saving": "Saving…",
+			"saved": "Saved",
+			"commentsActivity": "Comments & activity",
+			"actCreated": "created this document",
+			"actUpdatedFields": "updated {{fields}}",
+			"actUpdated": "updated the document",
+			"actDeleted": "deleted the document",
+			"actMoved": "moved the document",
+			"contentDiff": "Content change diff"
 		}
 	}
 }
