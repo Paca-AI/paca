@@ -440,6 +440,21 @@
 			"actDeleted": "deleted the document",
 			"actMoved": "moved the document",
 			"contentDiff": "Content change diff"
+		},
+		"agents": {
+			"status": {
+				"queued": "Queued",
+				"running": "Running",
+				"finished": "Finished",
+				"failed": "Failed",
+				"stopped": "Stopped"
+			},
+			"thinking": "Thinking…",
+			"stop": "Stop",
+			"convNotFound": "Conversation not found",
+			"chatSession": "Chat session",
+			"taskSession": "Task session",
+			"noMessages": "No messages yet"
 		}
 	}
 }

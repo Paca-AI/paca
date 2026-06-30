@@ -12,6 +12,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -20,7 +21,6 @@ import {
 	type AgentConversation,
 	type AgentConversationEvent,
 	CONVERSATION_STATUS_COLORS,
-	CONVERSATION_STATUS_LABELS,
 	conversationEventsQueryOptions,
 	conversationQueryOptions,
 	stopConversation,
@@ -271,6 +271,7 @@ function ToolCallMessage({ msg }: { msg: ChatMessage }) {
 }
 
 function ThinkingMessage({ msg }: { msg: ChatMessage }) {
+	const { t } = useTranslation();
 	const [expanded, setExpanded] = useState(false);
 
 	return (
@@ -289,7 +290,7 @@ function ThinkingMessage({ msg }: { msg: ChatMessage }) {
 					) : (
 						<ChevronRight className="size-3" />
 					)}
-					Thinking…
+					{t("project.agents.thinking")}
 				</button>
 				{expanded && (
 					<p className="mt-1.5 text-xs text-muted-foreground/60 italic leading-relaxed border-l-2 border-border/30 pl-3">
@@ -391,6 +392,7 @@ function ConversationControls({
 	projectId: string;
 	conversation: AgentConversation;
 }) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 
 	const invalidate = () => {
@@ -425,7 +427,7 @@ function ConversationControls({
 				) : (
 					<Square className="size-3" />
 				)}
-				Stop
+				{t("project.agents.stop")}
 			</Button>
 		</div>
 	);
@@ -442,6 +444,7 @@ export function ConversationView({
 	projectId,
 	conversationId,
 }: ConversationViewProps) {
+	const { t } = useTranslation();
 	const scrollRef = useRef<HTMLDivElement>(null);
 
 	const { data: conversation, isLoading: convLoading } = useQuery(
@@ -484,13 +487,13 @@ export function ConversationView({
 		return (
 			<div className="flex flex-col h-full items-center justify-center text-muted-foreground/50 gap-3">
 				<Bot className="size-10" />
-				<p className="text-sm">Conversation not found</p>
+				<p className="text-sm">{t("project.agents.convNotFound")}</p>
 			</div>
 		);
 	}
 
 	const statusColor = CONVERSATION_STATUS_COLORS[conversation.status];
-	const statusLabel = CONVERSATION_STATUS_LABELS[conversation.status];
+	const statusLabel = t(`project.agents.status.${conversation.status}`);
 	const isRunning = conversation.status === "running";
 
 	return (
@@ -501,8 +504,8 @@ export function ConversationView({
 					<Bot className="size-4 text-primary shrink-0" />
 					<span className="text-sm font-medium truncate">
 						{conversation.trigger_type === "chat_message"
-							? "Chat session"
-							: "Task session"}
+							? t("project.agents.chatSession")
+							: t("project.agents.taskSession")}
 					</span>
 					<Badge
 						variant="outline"
@@ -543,7 +546,7 @@ export function ConversationView({
 					{messages.length === 0 && !isRunning ? (
 						<div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground/40">
 							<Bot className="size-10" />
-							<p className="text-sm">No messages yet</p>
+							<p className="text-sm">{t("project.agents.noMessages")}</p>
 						</div>
 					) : (
 						<>

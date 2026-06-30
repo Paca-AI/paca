@@ -440,6 +440,21 @@
 			"actDeleted": "문서를 삭제했습니다",
 			"actMoved": "문서를 이동했습니다",
 			"contentDiff": "내용 변경 차이"
+		},
+		"agents": {
+			"status": {
+				"queued": "대기 중",
+				"running": "실행 중",
+				"finished": "완료됨",
+				"failed": "실패",
+				"stopped": "중지됨"
+			},
+			"thinking": "생각 중…",
+			"stop": "중지",
+			"convNotFound": "대화를 찾을 수 없습니다",
+			"chatSession": "채팅 세션",
+			"taskSession": "작업 세션",
+			"noMessages": "아직 메시지가 없습니다"
 		}
 	}
 }
