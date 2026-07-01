@@ -206,7 +206,7 @@ export function ActivityItem({
 								{displayName}
 							</span>
 							<span className="text-xs text-muted-foreground/50">
-								{timeAgo(entry.created_at)}
+								{timeAgo(entry.created_at, t)}
 							</span>
 						</div>
 						{commentBlocks && commentBlocks.length > 0 ? (
@@ -228,7 +228,7 @@ export function ActivityItem({
 							{activityDescription(entry, names, t)}
 						</span>
 						<span className="text-xs text-muted-foreground/45">
-							{timeAgo(entry.created_at)}
+							{timeAgo(entry.created_at, t)}
 						</span>
 					</div>
 				)}

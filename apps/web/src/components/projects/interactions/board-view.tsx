@@ -165,14 +165,14 @@ export function BoardView({
 
 	// Static column definitions (all possible values)
 	const columnDefs = useMemo(
-		() => getColumnGroupDefs(columnBy, viewCtx),
-		[columnBy, viewCtx],
+		() => getColumnGroupDefs(columnBy, viewCtx, t),
+		[columnBy, viewCtx, t],
 	);
 
 	// Swimlane definitions
 	const swimlaneDefs = useMemo(
-		() => getSwimlaneDefs(swimlaneBy, viewCtx),
-		[swimlaneBy, viewCtx],
+		() => getSwimlaneDefs(swimlaneBy, viewCtx, t),
+		[swimlaneBy, viewCtx, t],
 	);
 
 	// ── Column tasks helper ───────────────────────────────────────────────────

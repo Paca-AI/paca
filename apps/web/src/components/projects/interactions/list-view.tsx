@@ -113,8 +113,8 @@ export function ListView({
 	);
 
 	const groupDefs = useMemo(
-		() => getColumnGroupDefs(columnBy, viewCtx),
-		[columnBy, viewCtx],
+		() => getColumnGroupDefs(columnBy, viewCtx, t),
+		[columnBy, viewCtx, t],
 	);
 
 	const effectiveGroupDefs = useMemo((): ColumnGroupDef[] => {
@@ -161,8 +161,8 @@ export function ListView({
 	]);
 
 	const swimlaneDefs = useMemo(
-		() => getSwimlaneDefs(swimlaneBy, viewCtx),
-		[swimlaneBy, viewCtx],
+		() => getSwimlaneDefs(swimlaneBy, viewCtx, t),
+		[swimlaneBy, viewCtx, t],
 	);
 
 	const getGroupTasks = (groupKey: string): Task[] =>

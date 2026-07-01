@@ -54,7 +54,7 @@ export function TaskHeader({
 	onClose,
 	onDeleted,
 }: TaskHeaderProps) {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const qc = useQueryClient();
 	const [linkCopied, setLinkCopied] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
@@ -124,7 +124,7 @@ export function TaskHeader({
 
 			<span className="hidden md:inline text-xs text-muted-foreground/60 font-medium">
 				{t("project.interactions.taskDetail.createdAt", {
-					date: formatDate(task.created_at),
+					date: formatDate(task.created_at, i18n.language),
 				})}
 			</span>
 

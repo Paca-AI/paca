@@ -606,6 +606,12 @@
 				"subtaskTitlePlaceholder": "하위 작업 제목…",
 				"noSubtasks": "아직 하위 작업이 없습니다",
 				"createdAt": "{{date}} 생성됨",
+				"time": {
+					"justNow": "방금 전",
+					"minutesAgo": "{{n}}분 전",
+					"hoursAgo": "{{n}}시간 전",
+					"daysAgo": "{{n}}일 전"
+				},
 				"copied": "복사됨!",
 				"share": "공유",
 				"taskActions": "작업 동작",
@@ -736,6 +742,13 @@
 				"viewMore": "더 보기",
 				"expandColumn": "열 펼치기",
 				"collapseColumn": "열 접기"
+			},
+			"columnGroups": {
+				"backlog": "백로그",
+				"noReporter": "보고자 없음",
+				"noType": "유형 없음",
+				"yes": "예",
+				"no": "아니요"
 			},
 			"taskCard": {
 				"unassigned": "미할당",

@@ -54,6 +54,7 @@ export interface ColumnGroupDef {
 export function getColumnGroupDefs(
 	columnBy: string | undefined,
 	ctx: ViewContext,
+	t: TFunction,
 ): ColumnGroupDef[] {
 	if (!columnBy || columnBy === "status") {
 		return ctx.statuses
@@ -81,7 +82,11 @@ export function getColumnGroupDefs(
 			}));
 		return [
 			...sprintGroups,
-			{ key: "__backlog", label: "Backlog", fieldValue: null },
+			{
+				key: "__backlog",
+				label: t("project.interactions.columnGroups.backlog"),
+				fieldValue: null,
+			},
 		];
 	}
 
@@ -92,7 +97,11 @@ export function getColumnGroupDefs(
 				label: m.full_name || m.username,
 				fieldValue: m.id,
 			})),
-			{ key: "__unassigned", label: "Unassigned", fieldValue: null },
+			{
+				key: "__unassigned",
+				label: t("project.interactions.taskCard.unassigned"),
+				fieldValue: null,
+			},
 		];
 	}
 
@@ -107,7 +116,11 @@ export function getColumnGroupDefs(
 					label: m.full_name || m.username,
 					fieldValue: m.id,
 				})),
-			{ key: "__none", label: "No Reporter", fieldValue: null },
+			{
+				key: "__none",
+				label: t("project.interactions.columnGroups.noReporter"),
+				fieldValue: null,
+			},
 		];
 	}
 
@@ -129,7 +142,11 @@ export function getColumnGroupDefs(
 				color: t.color ?? undefined,
 				fieldValue: t.id,
 			})),
-			{ key: "__none", label: "No Type", fieldValue: null },
+			{
+				key: "__none",
+				label: t("project.interactions.columnGroups.noType"),
+				fieldValue: null,
+			},
 		];
 	}
 
@@ -143,13 +160,25 @@ export function getColumnGroupDefs(
 					label: opt,
 					fieldValue: opt,
 				})),
-				{ key: "__none", label: "None", fieldValue: null },
+				{
+					key: "__none",
+					label: t("project.interactions.board.none"),
+					fieldValue: null,
+				},
 			];
 		}
 		if (cf.field_type === "boolean") {
 			return [
-				{ key: "true", label: "Yes", fieldValue: true },
-				{ key: "false", label: "No", fieldValue: false },
+				{
+					key: "true",
+					label: t("project.interactions.columnGroups.yes"),
+					fieldValue: true,
+				},
+				{
+					key: "false",
+					label: t("project.interactions.columnGroups.no"),
+					fieldValue: false,
+				},
 			];
 		}
 		// number / text / date → dynamic groups from task values (built at render time)
@@ -239,11 +268,12 @@ export function getTaskColumnKeys(
 export function getSwimlaneDefs(
 	swimlanes: string | undefined,
 	ctx: ViewContext,
+	t: TFunction,
 ): ColumnGroupDef[] {
 	if (!swimlanes || swimlanes === "none") {
 		return [{ key: "__all", label: "", fieldValue: null }];
 	}
-	const defs = getColumnGroupDefs(swimlanes, ctx);
+	const defs = getColumnGroupDefs(swimlanes, ctx, t);
 	// Show Critical (highest bucket) first, None last
 	if (swimlanes === "importance") return [...defs].reverse();
 	return defs;

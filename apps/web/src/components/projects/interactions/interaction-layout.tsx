@@ -607,8 +607,8 @@ export function InteractionLayout({
 
 	const fetchColumnDefs = useMemo(() => {
 		if (!isColumnBySupported) return [];
-		return getColumnGroupDefs(columnBy, viewCtx);
-	}, [isColumnBySupported, columnBy, viewCtx]);
+		return getColumnGroupDefs(columnBy, viewCtx, t);
+	}, [isColumnBySupported, columnBy, viewCtx, t]);
 
 	// Guard: do not start column queries until views have finished loading.
 	// Without this, queries fire before effectiveViewId is available, fetching

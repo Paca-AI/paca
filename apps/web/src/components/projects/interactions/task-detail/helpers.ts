@@ -1,8 +1,9 @@
+import type { TFunction } from "i18next";
 import type { CustomFieldDefinition, FieldType } from "@/lib/project-api";
 import type { CustomFieldDef } from "./types";
 
-export function formatDate(iso: string): string {
-	return new Date(iso).toLocaleDateString("en-US", {
+export function formatDate(iso: string, locale?: string): string {
+	return new Date(iso).toLocaleDateString(locale, {
 		month: "long",
 		day: "numeric",
 		year: "numeric",
@@ -13,14 +14,18 @@ export function shortId(id: string): string {
 	return id.slice(0, 8).toUpperCase();
 }
 
-export function timeAgo(iso: string): string {
+export function timeAgo(iso: string, t: TFunction): string {
 	const diff = Date.now() - new Date(iso).getTime();
 	const mins = Math.floor(diff / 60000);
-	if (mins < 1) return "just now";
-	if (mins < 60) return `${mins}m ago`;
+	if (mins < 1) return t("project.interactions.taskDetail.time.justNow");
+	if (mins < 60)
+		return t("project.interactions.taskDetail.time.minutesAgo", { n: mins });
 	const hrs = Math.floor(mins / 60);
-	if (hrs < 24) return `${hrs}h ago`;
-	return `${Math.floor(hrs / 24)}d ago`;
+	if (hrs < 24)
+		return t("project.interactions.taskDetail.time.hoursAgo", { n: hrs });
+	return t("project.interactions.taskDetail.time.daysAgo", {
+		n: Math.floor(hrs / 24),
+	});
 }
 
 export function slugify(s: string): string {

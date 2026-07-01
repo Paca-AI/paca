@@ -83,7 +83,7 @@ export function AttachmentItem({
 				</p>
 				<p className="text-xs text-muted-foreground/60 mt-0.5">
 					{formatBytes(attachment.file.file_size)} ·{" "}
-					{timeAgo(attachment.created_at)}
+					{timeAgo(attachment.created_at, t)}
 				</p>
 			</button>
 			<div

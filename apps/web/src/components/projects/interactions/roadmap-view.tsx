@@ -99,8 +99,8 @@ export function RoadmapView({
 	);
 
 	const groupDefs = useMemo(
-		() => getColumnGroupDefs(columnBy, viewCtx),
-		[columnBy, viewCtx],
+		() => getColumnGroupDefs(columnBy, viewCtx, t),
+		[columnBy, viewCtx, t],
 	);
 
 	const defaultStatusId = useMemo(
