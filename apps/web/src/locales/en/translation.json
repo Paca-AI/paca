@@ -777,6 +777,39 @@
 				"noDatesSet": "No dates set",
 				"startTooltip": "Start: {{date}}",
 				"dueTooltip": "Due: {{date}}"
+			},
+			"layout": {
+				"renameView": "Rename view",
+				"deleteView": "Delete view",
+				"searchTasks": "Search tasks…",
+				"pluginNotAvailable": "Plugin not available"
+			},
+			"newView": {
+				"addView": "Add view",
+				"title": "New view",
+				"viewName": "View name",
+				"namePlaceholder": "New {{layout}}",
+				"layout": "Layout",
+				"createView": "Create view",
+				"creating": "Creating…",
+				"layouts": {
+					"Board": "Board",
+					"Table": "Table",
+					"Roadmap": "Roadmap"
+				}
+			},
+			"renameView": {
+				"cancel": "Cancel",
+				"renaming": "Renaming…"
+			},
+			"startSprint": {
+				"name": "Name",
+				"goal": "Goal",
+				"optional": "(optional)",
+				"goalPlaceholder": "What should this sprint achieve?",
+				"startDate": "Start date",
+				"endDate": "End date",
+				"cancel": "Cancel"
 			}
 		},
 		"docs": {

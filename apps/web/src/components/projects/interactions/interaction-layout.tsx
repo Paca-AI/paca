@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
 	DropdownMenu,
@@ -274,6 +275,7 @@ export function InteractionLayout({
 	context,
 	headerActions,
 }: InteractionLayoutProps) {
+	const { t } = useTranslation();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
@@ -1316,7 +1318,7 @@ export function InteractionLayout({
 							className="flex items-center gap-1.5 rounded-lg border border-dashed border-border/60 bg-muted/10 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-primary transition-all duration-150 disabled:opacity-50"
 						>
 							<Plus className="size-3.5 shrink-0" />
-							New sprint
+							{t("project.interactions.list.newSprint")}
 						</button>
 					)}
 				</div>
@@ -1413,7 +1415,7 @@ export function InteractionLayout({
 													setRenameOpen(true);
 												}}
 											>
-												Rename view
+												{t("project.interactions.layout.renameView")}
 											</DropdownMenuItem>
 											<DropdownMenuSeparator />
 											<DropdownMenuItem
@@ -1421,7 +1423,7 @@ export function InteractionLayout({
 												onClick={() => deleteViewMutation.mutate(view.id)}
 												className="text-destructive focus:text-destructive"
 											>
-												Delete view
+												{t("project.interactions.layout.deleteView")}
 											</DropdownMenuItem>
 										</DropdownMenuContent>
 									</DropdownMenu>
@@ -1456,7 +1458,7 @@ export function InteractionLayout({
 									setSearchQuery(e.target.value);
 									debouncedSetSearchQuery(e.target.value);
 								}}
-								placeholder="Search tasks…"
+								placeholder={t("project.interactions.layout.searchTasks")}
 								className="w-36 bg-transparent text-xs font-medium outline-none placeholder:text-muted-foreground/50"
 								onKeyDown={(e) => {
 									if (e.key === "Escape") {
@@ -1523,7 +1525,7 @@ export function InteractionLayout({
 					/>
 				) : activeView?.layout === "Plugin" ? (
 					<div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-						Plugin not available
+						{t("project.interactions.layout.pluginNotAvailable")}
 					</div>
 				) : tasksLoading ? (
 					activeView?.layout === "Board" ? (

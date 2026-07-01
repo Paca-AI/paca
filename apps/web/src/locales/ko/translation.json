@@ -777,6 +777,39 @@
 				"noDatesSet": "설정된 날짜 없음",
 				"startTooltip": "시작: {{date}}",
 				"dueTooltip": "마감: {{date}}"
+			},
+			"layout": {
+				"renameView": "뷰 이름 변경",
+				"deleteView": "뷰 삭제",
+				"searchTasks": "작업 검색…",
+				"pluginNotAvailable": "플러그인을 사용할 수 없습니다"
+			},
+			"newView": {
+				"addView": "뷰 추가",
+				"title": "새 뷰",
+				"viewName": "뷰 이름",
+				"namePlaceholder": "새 {{layout}}",
+				"layout": "레이아웃",
+				"createView": "뷰 만들기",
+				"creating": "만드는 중…",
+				"layouts": {
+					"Board": "보드",
+					"Table": "테이블",
+					"Roadmap": "로드맵"
+				}
+			},
+			"renameView": {
+				"cancel": "취소",
+				"renaming": "이름 변경 중…"
+			},
+			"startSprint": {
+				"name": "이름",
+				"goal": "목표",
+				"optional": "(선택 사항)",
+				"goalPlaceholder": "이 스프린트로 무엇을 달성해야 하나요?",
+				"startDate": "시작 날짜",
+				"endDate": "종료 날짜",
+				"cancel": "취소"
 			}
 		},
 		"docs": {

@@ -1,5 +1,6 @@
 import { KanbanSquare, List, Map as MapIcon, Plus, Puzzle } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
 	Popover,
@@ -37,6 +38,7 @@ export function NewViewPopover({
 	isPending,
 	pluginRegistrations = [],
 }: NewViewPopoverProps) {
+	const { t } = useTranslation();
 	const [open, setOpen] = useState(false);
 	const [name, setName] = useState("");
 	const [selected, setSelected] = useState<LayoutOption>({
@@ -44,15 +46,29 @@ export function NewViewPopover({
 		layout: "Board",
 	});
 
+	const layoutLabel = (l: ViewLayout) =>
+		t(`project.interactions.newView.layouts.${l}`);
+
 	const activeLabel =
-		selected.type === "builtin" ? selected.layout : selected.registration.label;
+		selected.type === "builtin"
+			? layoutLabel(selected.layout)
+			: selected.registration.label;
 
 	const submit = async () => {
 		if (selected.type === "builtin") {
-			await onSubmit(name || `New ${selected.layout}`, selected.layout);
+			await onSubmit(
+				name ||
+					t("project.interactions.newView.namePlaceholder", {
+						layout: layoutLabel(selected.layout),
+					}),
+				selected.layout,
+			);
 		} else {
 			await onSubmit(
-				name || `New ${selected.registration.label}`,
+				name ||
+					t("project.interactions.newView.namePlaceholder", {
+						layout: selected.registration.label,
+					}),
 				"Plugin",
 				selected.registration,
 			);
@@ -67,13 +83,15 @@ export function NewViewPopover({
 				render={
 					<button
 						type="button"
-						aria-label="Add view"
+						aria-label={t("project.interactions.newView.addView")}
 						className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground/70 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 					/>
 				}
 			>
 				<Plus className="size-3.5" />
-				<span className="hidden sm:inline">Add view</span>
+				<span className="hidden sm:inline">
+					{t("project.interactions.newView.addView")}
+				</span>
 			</PopoverTrigger>
 			<PopoverContent
 				side="bottom"
@@ -83,7 +101,7 @@ export function NewViewPopover({
 			>
 				<div className="px-3 py-2.5 border-b border-border/30">
 					<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-						New view
+						{t("project.interactions.newView.title")}
 					</p>
 				</div>
 				<div className="p-3 flex flex-col gap-3">
@@ -92,19 +110,23 @@ export function NewViewPopover({
 							htmlFor="new-view-name"
 							className="text-xs font-medium text-muted-foreground"
 						>
-							View name
+							{t("project.interactions.newView.viewName")}
 						</label>
 						<input
 							id="new-view-name"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							onKeyDown={(e) => e.key === "Enter" && submit()}
-							placeholder={`New ${activeLabel}`}
+							placeholder={t("project.interactions.newView.namePlaceholder", {
+								layout: activeLabel,
+							})}
 							className="w-full rounded-lg border border-border/30 bg-muted/15 px-3 py-2 text-sm font-medium outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/15 placeholder:text-muted-foreground/50 transition-all duration-150"
 						/>
 					</div>
 					<div className="flex flex-col gap-1.5">
-						<p className="text-xs font-medium text-muted-foreground">Layout</p>
+						<p className="text-xs font-medium text-muted-foreground">
+							{t("project.interactions.newView.layout")}
+						</p>
 						<div className="flex flex-wrap gap-2">
 							{builtinLayouts.map((l) => {
 								const isActive =
@@ -122,7 +144,7 @@ export function NewViewPopover({
 										)}
 									>
 										{layoutIcon(l)}
-										{l}
+										{layoutLabel(l)}
 									</button>
 								);
 							})}
@@ -159,7 +181,9 @@ export function NewViewPopover({
 						disabled={isPending}
 						className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm disabled:opacity-40 transition-all duration-150"
 					>
-						{isPending ? "Creating…" : "Create view"}
+						{isPending
+							? t("project.interactions.newView.creating")
+							: t("project.interactions.newView.createView")}
 					</button>
 				</div>
 			</PopoverContent>
