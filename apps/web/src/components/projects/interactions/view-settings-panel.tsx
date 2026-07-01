@@ -7,6 +7,7 @@ import {
 	Settings,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
 import {
 	Popover,
@@ -26,7 +27,6 @@ import {
 	customFieldsQueryOptions,
 	projectMembersQueryOptions,
 	STATUS_CATEGORIES,
-	STATUS_CATEGORY_LABELS,
 	type StatusCategory,
 	type TaskStatus,
 	type TaskType,
@@ -222,7 +222,8 @@ function FieldPicker({
 	customFields,
 	onChange,
 }: FieldPickerProps) {
-	const allFields = buildAllFieldOptions(customFields);
+	const { t } = useTranslation();
+	const allFields = buildAllFieldOptions(customFields, t);
 	const dragRef = useRef<string | null>(null);
 
 	const toggle = (key: string) => {
@@ -323,11 +324,14 @@ function SprintFilterSection({
 	selectedIds: string[];
 	onChange: (ids: string[]) => void;
 }) {
+	const { t } = useTranslation();
 	const isAll = selectedIds.length === 0;
 
 	if (sprints.length === 0) {
 		return (
-			<p className="px-3 pb-2 text-xs text-muted-foreground/50">No sprints</p>
+			<p className="px-3 pb-2 text-xs text-muted-foreground/50">
+				{t("project.interactions.viewSettings.sprintFilter.empty")}
+			</p>
 		);
 	}
 
@@ -343,7 +347,7 @@ function SprintFilterSection({
 		<div className="px-3 pb-3 space-y-1.5">
 			<div className="flex flex-wrap gap-1.5">
 				<FilterPill selected={isAll} onClick={() => onChange([])}>
-					All sprints
+					{t("project.interactions.viewSettings.sprintFilter.all")}
 				</FilterPill>
 				{sprints.map((sprint) => {
 					const selected = selectedIds.includes(sprint.id);
@@ -373,6 +377,7 @@ function StatusFilterSection({
 	selectedIds: string[];
 	onChange: (ids: string[]) => void;
 }) {
+	const { t } = useTranslation();
 	const allIds = statuses.map((s) => s.id);
 	const isAll = selectedIds.length === 0;
 
@@ -405,7 +410,9 @@ function StatusFilterSection({
 
 	if (statuses.length === 0) {
 		return (
-			<p className="px-3 pb-2 text-xs text-muted-foreground/50">No statuses</p>
+			<p className="px-3 pb-2 text-xs text-muted-foreground/50">
+				{t("project.interactions.viewSettings.statusFilter.empty")}
+			</p>
 		);
 	}
 
@@ -413,7 +420,7 @@ function StatusFilterSection({
 		<div className="px-1 pb-3 space-y-0.5">
 			<CheckRow
 				id="status-all"
-				label="All statuses"
+				label={t("project.interactions.viewSettings.statusFilter.all")}
 				checked={isAll}
 				bold
 				onChange={() => onChange([])}
@@ -434,14 +441,16 @@ function StatusFilterSection({
 								)}
 							/>
 							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
-								{STATUS_CATEGORY_LABELS[cat]}
+								{t(`project.statusCategories.${cat}`)}
 							</span>
 							<button
 								type="button"
 								onClick={() => toggleGroup(groupIds)}
 								className="ml-auto text-xs text-muted-foreground/50 hover:text-primary transition-colors font-medium"
 							>
-								{allChecked ? "Clear" : "All"}
+								{allChecked
+									? t("project.interactions.viewSettings.statusFilter.clear")
+									: t("project.interactions.viewSettings.statusFilter.selectAll")}
 							</button>
 						</div>
 						{groupStatuses.map((status) => (
@@ -482,6 +491,7 @@ function AssigneeFilterSection({
 	selectedIds: string[];
 	onChange: (ids: string[]) => void;
 }) {
+	const { t } = useTranslation();
 	const allFilterIds = [...members.map((m) => m.id), UNASSIGNED_FILTER_ID];
 	const isAll = selectedIds.length === 0;
 
@@ -501,13 +511,15 @@ function AssigneeFilterSection({
 		<div className="px-1 pb-3 space-y-0.5 max-h-44 overflow-y-auto">
 			<CheckRow
 				id="assignee-all"
-				label="All assignees"
+				label={t("project.interactions.viewSettings.assigneeFilter.all")}
 				checked={isAll}
 				bold
 				onChange={() => onChange([])}
 			/>
 			{members.length === 0 ? (
-				<p className="px-2 py-1 text-xs text-muted-foreground/50">No members</p>
+				<p className="px-2 py-1 text-xs text-muted-foreground/50">
+					{t("project.interactions.viewSettings.assigneeFilter.empty")}
+				</p>
 			) : (
 				members.map((m) => {
 					const display = m.full_name || m.username;
@@ -529,7 +541,7 @@ function AssigneeFilterSection({
 			)}
 			<CheckRow
 				id="assignee-unassigned"
-				label="Unassigned"
+				label={t("project.interactions.viewSettings.assigneeFilter.unassigned")}
 				checked={isAll || selectedIds.includes(UNASSIGNED_FILTER_ID)}
 				onChange={() => toggle(UNASSIGNED_FILTER_ID)}
 				icon={
@@ -607,8 +619,9 @@ function TaskTypeFilterSection({
 	onChange: (ids: string[]) => void;
 	onAllNormalChange: (allNormal: boolean) => void;
 }) {
-	const normalTypes = taskTypes.filter((t) => !t.is_system);
-	const systemTypes = taskTypes.filter((t) => t.is_system);
+	const { t } = useTranslation();
+	const normalTypes = taskTypes.filter((tt) => !tt.is_system);
+	const systemTypes = taskTypes.filter((tt) => tt.is_system);
 
 	const toggle = (id: string) => {
 		if (selectedIds.includes(id)) {
@@ -643,13 +656,15 @@ function TaskTypeFilterSection({
 				<>
 					<div className="flex items-center gap-1.5 px-2 pt-2 pb-0.5">
 						<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
-							Normal types
+							{t("project.interactions.viewSettings.taskTypeFilter.normalTypes")}
 						</span>
 					</div>
 					{/* "All normal types" toggle */}
 					<CheckRow
 						id="type-all-normal"
-						label="All normal types (dynamic)"
+						label={t(
+							"project.interactions.viewSettings.taskTypeFilter.allNormal",
+						)}
 						checked={allNormal}
 						bold
 						onChange={() => onAllNormalChange(!allNormal)}
@@ -683,7 +698,7 @@ function TaskTypeFilterSection({
 				<>
 					<div className="flex items-center gap-1.5 px-2 pt-2 pb-0.5">
 						<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
-							System types
+							{t("project.interactions.viewSettings.taskTypeFilter.systemTypes")}
 						</span>
 					</div>
 					{systemTypes.map((type) => (
@@ -701,7 +716,7 @@ function TaskTypeFilterSection({
 
 			{taskTypes.length === 0 && (
 				<p className="px-2 py-1 text-xs text-muted-foreground/50">
-					No task types
+					{t("project.interactions.viewSettings.taskTypeFilter.empty")}
 				</p>
 			)}
 		</div>
@@ -769,6 +784,7 @@ export function ViewSettingsPanel({
 	onPreview,
 	isPending,
 }: ViewSettingsPanelProps) {
+	const { t } = useTranslation();
 	const { data: customFields = [] } = useQuery(
 		customFieldsQueryOptions(projectId),
 	);
@@ -839,18 +855,18 @@ export function ViewSettingsPanel({
 			? draft.fields
 			: DEFAULT_VISIBLE_FIELDS;
 
-	const allFieldOpts = buildAllFieldOptions(customFields);
+	const allFieldOpts = buildAllFieldOptions(customFields, t);
 	const fieldsLabel = [
-		"Title",
+		t("project.interactions.viewSettings.fieldNames.title"),
 		...visibleFields.map(
 			(k) => allFieldOpts.find((f) => f.key === k)?.label ?? k,
 		),
 	].join(", ");
 
-	const columnByOpts = buildColumnByOptions(customFields);
-	const sortByOpts = buildSortByOptions(customFields);
-	const swimlaneOpts = buildSwimlaneOptions(customFields);
-	const fieldSumOpts = buildFieldSumOptions(customFields);
+	const columnByOpts = buildColumnByOptions(customFields, t);
+	const sortByOpts = buildSortByOptions(customFields, t);
+	const swimlaneOpts = buildSwimlaneOptions(customFields, t);
+	const fieldSumOpts = buildFieldSumOptions(customFields, t);
 
 	const sortByValue = draft.sort_by ?? "manual";
 	// Mirrors the runtime defaults in interaction-layout.tsx (see
@@ -877,7 +893,7 @@ export function ViewSettingsPanel({
 				render={
 					<button
 						type="button"
-						aria-label="View settings"
+						aria-label={t("project.interactions.viewSettings.ariaLabel")}
 						className={cn(
 							"relative flex size-7 items-center justify-center rounded-md transition-all duration-150",
 							open
@@ -900,20 +916,20 @@ export function ViewSettingsPanel({
 					{fieldsOpen ? (
 						<>
 							<p className="text-xs font-semibold text-muted-foreground/80">
-								Choose fields
+								{t("project.interactions.viewSettings.chooseFields")}
 							</p>
 							<button
 								type="button"
 								onClick={() => setFieldsOpen(false)}
 								className="text-xs font-medium text-primary/80 hover:text-primary transition-colors"
 							>
-								← Back
+								{t("project.interactions.viewSettings.back")}
 							</button>
 						</>
 					) : (
 						<>
 							<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-								View settings
+								{t("project.interactions.viewSettings.title")}
 							</p>
 							{hasSavedFilters && (
 								<button
@@ -921,7 +937,7 @@ export function ViewSettingsPanel({
 									onClick={() => update({ filters: {} })}
 									className="text-xs font-medium text-muted-foreground/60 hover:text-foreground transition-colors"
 								>
-									Clear filters
+									{t("project.interactions.viewSettings.clearFilters")}
 								</button>
 							)}
 						</>
@@ -940,9 +956,13 @@ export function ViewSettingsPanel({
 				) : (
 					<div className="overflow-y-auto max-h-[70vh]">
 						{/* ── Display section ─────────────────────────────────── */}
-						<PanelSectionHeader>Display</PanelSectionHeader>
+						<PanelSectionHeader>
+							{t("project.interactions.viewSettings.display")}
+						</PanelSectionHeader>
 						<div className="pb-2 space-y-0.5">
-							<SettingRow label="Fields">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.fields")}
+							>
 								<button
 									type="button"
 									onClick={() => setFieldsOpen(true)}
@@ -952,7 +972,9 @@ export function ViewSettingsPanel({
 								</button>
 							</SettingRow>
 
-							<SettingRow label="Column by">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.columnBy")}
+							>
 								<DynamicSelect
 									value={draft.column_by ?? "status"}
 									options={columnByOpts}
@@ -960,7 +982,9 @@ export function ViewSettingsPanel({
 								/>
 							</SettingRow>
 
-							<SettingRow label="Swimlanes">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.swimlanes")}
+							>
 								<DynamicSelect
 									value={draft.swimlanes ?? "none"}
 									options={swimlaneOpts}
@@ -968,7 +992,9 @@ export function ViewSettingsPanel({
 								/>
 							</SettingRow>
 
-							<SettingRow label="Sort by">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.sortBy")}
+							>
 								<DynamicSelect
 									value={sortByValue}
 									options={sortByOpts}
@@ -976,7 +1002,9 @@ export function ViewSettingsPanel({
 								/>
 							</SettingRow>
 
-							<SettingRow label="Field sum">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.fieldSum")}
+							>
 								<DynamicSelect
 									value={draft.field_sum ?? "count"}
 									options={fieldSumOpts}
@@ -984,7 +1012,9 @@ export function ViewSettingsPanel({
 								/>
 							</SettingRow>
 
-							<SettingRow label="Initial size">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.initialSize")}
+							>
 								<DynamicSelect
 									value={String(
 										draft.initial_page_size ?? defaultInitialPageSize,
@@ -996,7 +1026,9 @@ export function ViewSettingsPanel({
 								/>
 							</SettingRow>
 
-							<SettingRow label="Per page">
+							<SettingRow
+								label={t("project.interactions.viewSettings.rows.perPage")}
+							>
 								<DynamicSelect
 									value={String(draft.page_size ?? defaultPageSize)}
 									options={PAGE_SIZE_OPTIONS}
@@ -1009,11 +1041,15 @@ export function ViewSettingsPanel({
 
 						{/* ── Filters section ──────────────────────────────────── */}
 						<div className="border-t border-border/20">
-							<PanelSectionHeader>Filters</PanelSectionHeader>
+							<PanelSectionHeader>
+								{t("project.interactions.viewSettings.filters")}
+							</PanelSectionHeader>
 
 							<div className="pb-1">
 								<CollapsibleFilter
-									label="Sprints"
+									label={t(
+										"project.interactions.viewSettings.filterGroups.sprints",
+									)}
 									badge={filterSprintIds.length}
 									defaultOpen={filterSprintIds.length > 0}
 								>
@@ -1027,7 +1063,9 @@ export function ViewSettingsPanel({
 								</CollapsibleFilter>
 
 								<CollapsibleFilter
-									label="Statuses"
+									label={t(
+										"project.interactions.viewSettings.filterGroups.statuses",
+									)}
 									badge={filterStatusIds.length}
 									defaultOpen={filterStatusIds.length > 0}
 								>
@@ -1041,7 +1079,9 @@ export function ViewSettingsPanel({
 								</CollapsibleFilter>
 
 								<CollapsibleFilter
-									label="Assignees"
+									label={t(
+										"project.interactions.viewSettings.filterGroups.assignees",
+									)}
 									badge={filterAssigneeIds.length}
 									defaultOpen={filterAssigneeIds.length > 0}
 								>
@@ -1055,7 +1095,9 @@ export function ViewSettingsPanel({
 								</CollapsibleFilter>
 
 								<CollapsibleFilter
-									label="Task types"
+									label={t(
+										"project.interactions.viewSettings.filterGroups.taskTypes",
+									)}
 									badge={
 										filterTaskTypeIds.length + (filterTaskTypeAllNormal ? 1 : 0)
 									}
@@ -1082,7 +1124,8 @@ export function ViewSettingsPanel({
 													next
 														? filterTaskTypeIds.filter(
 																(id) =>
-																	taskTypes.find((t) => t.id === id)?.is_system,
+																	taskTypes.find((tt) => tt.id === id)
+																		?.is_system,
 															)
 														: filterTaskTypeIds,
 												),
@@ -1102,7 +1145,7 @@ export function ViewSettingsPanel({
 						onClick={handleReset}
 						className="rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground/80 transition-all duration-150 hover:bg-muted hover:text-foreground"
 					>
-						Reset
+						{t("project.interactions.viewSettings.reset")}
 					</button>
 					<button
 						type="button"
@@ -1110,7 +1153,9 @@ export function ViewSettingsPanel({
 						disabled={isPending}
 						className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
 					>
-						{isPending ? "Saving…" : "Save"}
+						{isPending
+							? t("project.interactions.viewSettings.saving")
+							: t("project.interactions.viewSettings.save")}
 					</button>
 				</div>
 			</PopoverContent>

@@ -810,6 +810,94 @@
 				"startDate": "시작 날짜",
 				"endDate": "종료 날짜",
 				"cancel": "취소"
+			},
+			"viewSettings": {
+				"ariaLabel": "뷰 설정",
+				"title": "뷰 설정",
+				"chooseFields": "필드 선택",
+				"back": "← 뒤로",
+				"clearFilters": "필터 지우기",
+				"display": "표시",
+				"filters": "필터",
+				"reset": "초기화",
+				"save": "저장",
+				"saving": "저장 중…",
+				"rows": {
+					"fields": "필드",
+					"columnBy": "열 기준",
+					"swimlanes": "스윔레인",
+					"sortBy": "정렬 기준",
+					"fieldSum": "필드 합계",
+					"initialSize": "초기 개수",
+					"perPage": "페이지당"
+				},
+				"filterGroups": {
+					"sprints": "스프린트",
+					"statuses": "상태",
+					"assignees": "담당자",
+					"taskTypes": "작업 유형"
+				},
+				"sprintFilter": {
+					"empty": "스프린트 없음",
+					"all": "모든 스프린트"
+				},
+				"statusFilter": {
+					"empty": "상태 없음",
+					"all": "모든 상태",
+					"clear": "지우기",
+					"selectAll": "전체"
+				},
+				"assigneeFilter": {
+					"all": "모든 담당자",
+					"empty": "멤버 없음",
+					"unassigned": "미할당"
+				},
+				"taskTypeFilter": {
+					"normalTypes": "일반 유형",
+					"allNormal": "모든 일반 유형(동적)",
+					"systemTypes": "시스템 유형",
+					"empty": "작업 유형 없음"
+				},
+				"fieldNames": {
+					"title": "제목",
+					"status": "상태",
+					"sprint": "스프린트",
+					"assignee": "담당자",
+					"importance": "중요도",
+					"type": "유형",
+					"reporter": "보고자",
+					"manual": "수동",
+					"storyPoints": "스토리 포인트",
+					"created": "생성일",
+					"startDate": "시작일",
+					"dueDate": "마감일",
+					"none": "없음",
+					"count": "개수",
+					"epic": "에픽"
+				}
+			},
+			"sprint": {
+				"notFound": "스프린트를 찾을 수 없거나 접근 권한이 없습니다.",
+				"status": {
+					"active": "진행 중",
+					"planned": "계획됨",
+					"completed": "완료됨"
+				},
+				"description": "{{status}} 스프린트",
+				"descriptionStarted": "{{status}} 스프린트 · {{date}}에 시작",
+				"completeSprint": "스프린트 완료",
+				"completing": "완료하는 중…",
+				"incompleteMove_one": "미완료 작업 {{count}}개가 다음으로 이동됩니다:",
+				"incompleteMove_other": "미완료 작업 {{count}}개가 다음으로 이동됩니다:",
+				"noIncomplete": "이 스프린트에 남은 미완료 작업이 없습니다.",
+				"unassignFromSprint": "작업이 모든 스프린트에서 할당 해제됩니다",
+				"cancel": "취소"
+			},
+			"backlog": {
+				"description": "스프린트에 할당되지 않은 모든 작업 항목입니다."
+			},
+			"timeline": {
+				"description": "로드맵에서 에픽과 장기 계획을 관리합니다."
 			}
 		},
 		"docs": {

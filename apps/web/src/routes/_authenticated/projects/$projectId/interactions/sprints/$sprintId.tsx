@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { InteractionLayout } from "@/components/projects/interactions/interaction-layout";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -39,6 +40,7 @@ export const Route = createFileRoute(
 });
 
 function SprintPage() {
+	const { t, i18n } = useTranslation();
 	const { projectId, sprintId } = Route.useParams();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const qc = useQueryClient();
@@ -69,7 +71,7 @@ function SprintPage() {
 		taskStatuses.filter((s) => s.category === "done").map((s) => s.id),
 	);
 	const incompleteTasks = sprintTasks.filter(
-		(t) => !t.status_id || !doneStatusIds.has(t.status_id),
+		(task) => !task.status_id || !doneStatusIds.has(task.status_id),
 	);
 
 	const otherSprints = allSprints.filter(
@@ -101,17 +103,17 @@ function SprintPage() {
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted-foreground">
 				<AlertCircle className="size-8 opacity-40" />
-				<p className="text-sm">Sprint not found or access denied.</p>
+				<p className="text-sm">{t("project.interactions.sprint.notFound")}</p>
 			</div>
 		);
 	}
 
 	const statusBadge =
 		sprint.status === "active"
-			? "Active"
+			? t("project.interactions.sprint.status.active")
 			: sprint.status === "planned"
-				? "Planned"
-				: "Completed";
+				? t("project.interactions.sprint.status.planned")
+				: t("project.interactions.sprint.status.completed");
 
 	return (
 		<>
@@ -122,7 +124,16 @@ function SprintPage() {
 				description={
 					sprint.goal
 						? sprint.goal
-						: `${statusBadge} sprint${sprint.start_date ? ` · started ${new Date(sprint.start_date).toLocaleDateString()}` : ""}`
+						: sprint.start_date
+							? t("project.interactions.sprint.descriptionStarted", {
+									status: statusBadge,
+									date: new Date(sprint.start_date).toLocaleDateString(
+										i18n.language,
+									),
+								})
+							: t("project.interactions.sprint.description", {
+									status: statusBadge,
+								})
 				}
 				canCreate={canCreate}
 				canEdit={canEdit}
@@ -137,7 +148,7 @@ function SprintPage() {
 							className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all duration-150"
 						>
 							<CheckCircle2 className="size-3.5 shrink-0" />
-							Complete sprint
+							{t("project.interactions.sprint.completeSprint")}
 						</button>
 					) : undefined
 				}
@@ -168,12 +179,14 @@ function SprintPage() {
 							<X className="size-4" />
 						</button>
 						<h2 className="font-[Syne] text-lg font-bold tracking-tight mb-1">
-							Complete sprint
+							{t("project.interactions.sprint.completeSprint")}
 						</h2>
 						<p className="text-sm text-muted-foreground mb-5">
 							{incompleteTasks.length > 0
-								? `${incompleteTasks.length} incomplete task${incompleteTasks.length === 1 ? "" : "s"} will be moved to:`
-								: "No incomplete tasks remain in this sprint."}
+								? t("project.interactions.sprint.incompleteMove", {
+										count: incompleteTasks.length,
+									})
+								: t("project.interactions.sprint.noIncomplete")}
 						</p>
 
 						{incompleteTasks.length > 0 && (
@@ -196,9 +209,11 @@ function SprintPage() {
 										className="accent-primary"
 									/>
 									<div>
-										<p className="text-sm font-semibold">Product Backlog</p>
+										<p className="text-sm font-semibold">
+											{t("common.productBacklog")}
+										</p>
 										<p className="text-xs text-muted-foreground">
-											Tasks will be unassigned from any sprint
+											{t("project.interactions.sprint.unassignFromSprint")}
 										</p>
 									</div>
 								</label>
@@ -225,7 +240,7 @@ function SprintPage() {
 										<div>
 											<p className="text-sm font-semibold">{s.name}</p>
 											<p className="text-xs text-muted-foreground capitalize">
-												{s.status}
+												{t(`project.interactions.sprint.status.${s.status}`)}
 											</p>
 										</div>
 									</label>
@@ -239,7 +254,7 @@ function SprintPage() {
 								onClick={() => setCompleteOpen(false)}
 								className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
 							>
-								Cancel
+								{t("project.interactions.sprint.cancel")}
 							</button>
 							<button
 								type="button"
@@ -248,8 +263,8 @@ function SprintPage() {
 								className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
 							>
 								{completeSprintMutation.isPending
-									? "Completing…"
-									: "Complete sprint"}
+									? t("project.interactions.sprint.completing")
+									: t("project.interactions.sprint.completeSprint")}
 							</button>
 						</div>
 					</div>

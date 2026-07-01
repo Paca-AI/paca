@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
 	type FilterConfig,
 	resolveFilterConfig,
@@ -260,35 +261,37 @@ export function getTaskSwimlaneKey(
 
 // ── Option builders for ViewSettingsPanel dropdowns ──────────────────────────
 
-export const BUILTIN_COLUMN_BY: { key: string; label: string }[] = [
-	{ key: "status", label: "Status" },
-	{ key: "sprint", label: "Sprint" },
-	{ key: "assignee", label: "Assignee" },
-	{ key: "importance", label: "Importance" },
-	{ key: "type", label: "Type" },
-	{ key: "reporter", label: "Reporter" },
+const FIELD_NAME_KEYS = "project.interactions.viewSettings.fieldNames";
+
+export const BUILTIN_COLUMN_BY: { key: string; labelKey: string }[] = [
+	{ key: "status", labelKey: `${FIELD_NAME_KEYS}.status` },
+	{ key: "sprint", labelKey: `${FIELD_NAME_KEYS}.sprint` },
+	{ key: "assignee", labelKey: `${FIELD_NAME_KEYS}.assignee` },
+	{ key: "importance", labelKey: `${FIELD_NAME_KEYS}.importance` },
+	{ key: "type", labelKey: `${FIELD_NAME_KEYS}.type` },
+	{ key: "reporter", labelKey: `${FIELD_NAME_KEYS}.reporter` },
 ];
 
-export const BUILTIN_SORT_BY: { key: string; label: string }[] = [
-	{ key: "manual", label: "Manual" },
-	{ key: "importance", label: "Importance" },
-	{ key: "story_points", label: "Story Points" },
-	{ key: "title", label: "Title" },
-	{ key: "created", label: "Created" },
-	{ key: "start_date", label: "Start Date" },
-	{ key: "due_date", label: "Due Date" },
+export const BUILTIN_SORT_BY: { key: string; labelKey: string }[] = [
+	{ key: "manual", labelKey: `${FIELD_NAME_KEYS}.manual` },
+	{ key: "importance", labelKey: `${FIELD_NAME_KEYS}.importance` },
+	{ key: "story_points", labelKey: `${FIELD_NAME_KEYS}.storyPoints` },
+	{ key: "title", labelKey: `${FIELD_NAME_KEYS}.title` },
+	{ key: "created", labelKey: `${FIELD_NAME_KEYS}.created` },
+	{ key: "start_date", labelKey: `${FIELD_NAME_KEYS}.startDate` },
+	{ key: "due_date", labelKey: `${FIELD_NAME_KEYS}.dueDate` },
 ];
 
-export const BUILTIN_SWIMLANES: { key: string; label: string }[] = [
-	{ key: "none", label: "None" },
-	{ key: "assignee", label: "Assignee" },
-	{ key: "importance", label: "Importance" },
-	{ key: "type", label: "Type" },
+export const BUILTIN_SWIMLANES: { key: string; labelKey: string }[] = [
+	{ key: "none", labelKey: `${FIELD_NAME_KEYS}.none` },
+	{ key: "assignee", labelKey: `${FIELD_NAME_KEYS}.assignee` },
+	{ key: "importance", labelKey: `${FIELD_NAME_KEYS}.importance` },
+	{ key: "type", labelKey: `${FIELD_NAME_KEYS}.type` },
 ];
 
-export const FIELD_SUM_COUNT: { key: string; label: string } = {
+export const FIELD_SUM_COUNT: { key: string; labelKey: string } = {
 	key: "count",
-	label: "Count",
+	labelKey: `${FIELD_NAME_KEYS}.count`,
 };
 
 /**
@@ -328,17 +331,17 @@ export const PAGE_SIZE_OPTIONS: { key: string; label: string }[] = [
 ];
 
 /** All built-in fields available for the Field Picker. Title is excluded — it is always visible. */
-export const BUILTIN_FIELDS: { key: string; label: string }[] = [
-	{ key: "assignee", label: "Assignee" },
-	{ key: "status", label: "Status" },
-	{ key: "importance", label: "Importance" },
-	{ key: "story_points", label: "Story Points" },
-	{ key: "type", label: "Type" },
-	{ key: "epic", label: "Epic" },
-	{ key: "reporter", label: "Reporter" },
-	{ key: "start_date", label: "Start Date" },
-	{ key: "due_date", label: "Due Date" },
-	{ key: "created", label: "Created" },
+export const BUILTIN_FIELDS: { key: string; labelKey: string }[] = [
+	{ key: "assignee", labelKey: `${FIELD_NAME_KEYS}.assignee` },
+	{ key: "status", labelKey: `${FIELD_NAME_KEYS}.status` },
+	{ key: "importance", labelKey: `${FIELD_NAME_KEYS}.importance` },
+	{ key: "story_points", labelKey: `${FIELD_NAME_KEYS}.storyPoints` },
+	{ key: "type", labelKey: `${FIELD_NAME_KEYS}.type` },
+	{ key: "epic", labelKey: `${FIELD_NAME_KEYS}.epic` },
+	{ key: "reporter", labelKey: `${FIELD_NAME_KEYS}.reporter` },
+	{ key: "start_date", labelKey: `${FIELD_NAME_KEYS}.startDate` },
+	{ key: "due_date", labelKey: `${FIELD_NAME_KEYS}.dueDate` },
+	{ key: "created", labelKey: `${FIELD_NAME_KEYS}.created` },
 ];
 
 /**
@@ -354,56 +357,73 @@ export const DEFAULT_VISIBLE_FIELDS = [
 
 export function buildColumnByOptions(
 	customFields: CustomFieldDefinition[],
+	t: TFunction,
 ): { key: string; label: string }[] {
 	const custom = customFields
 		.filter((cf) =>
 			["select", "multi_select", "boolean", "number"].includes(cf.field_type),
 		)
 		.map((cf) => ({ key: cf.field_key, label: cf.display_name }));
-	return [...BUILTIN_COLUMN_BY, ...custom];
+	return [
+		...BUILTIN_COLUMN_BY.map((o) => ({ key: o.key, label: t(o.labelKey) })),
+		...custom,
+	];
 }
 
 export function buildSortByOptions(
 	customFields: CustomFieldDefinition[],
+	t: TFunction,
 ): { key: string; label: string }[] {
 	const custom = customFields
 		.filter((cf) => ["number", "date", "select"].includes(cf.field_type))
 		.map((cf) => ({ key: cf.field_key, label: cf.display_name }));
-	return [...BUILTIN_SORT_BY, ...custom];
+	return [
+		...BUILTIN_SORT_BY.map((o) => ({ key: o.key, label: t(o.labelKey) })),
+		...custom,
+	];
 }
 
 export function buildSwimlaneOptions(
 	customFields: CustomFieldDefinition[],
+	t: TFunction,
 ): { key: string; label: string }[] {
 	const custom = customFields
 		.filter((cf) =>
 			["select", "multi_select", "boolean"].includes(cf.field_type),
 		)
 		.map((cf) => ({ key: cf.field_key, label: cf.display_name }));
-	return [...BUILTIN_SWIMLANES, ...custom];
+	return [
+		...BUILTIN_SWIMLANES.map((o) => ({ key: o.key, label: t(o.labelKey) })),
+		...custom,
+	];
 }
 
 export function buildFieldSumOptions(
 	customFields: CustomFieldDefinition[],
+	t: TFunction,
 ): { key: string; label: string }[] {
 	const custom = customFields
 		.filter((cf) => cf.field_type === "number")
 		.map((cf) => ({ key: cf.field_key, label: cf.display_name }));
 	return [
-		FIELD_SUM_COUNT,
-		{ key: "story_points", label: "Story Points" },
+		{ key: FIELD_SUM_COUNT.key, label: t(FIELD_SUM_COUNT.labelKey) },
+		{ key: "story_points", label: t(`${FIELD_NAME_KEYS}.storyPoints`) },
 		...custom,
 	];
 }
 
 export function buildAllFieldOptions(
 	customFields: CustomFieldDefinition[],
+	t: TFunction,
 ): { key: string; label: string }[] {
 	const custom = customFields.map((cf) => ({
 		key: cf.field_key,
 		label: cf.display_name,
 	}));
-	return [...BUILTIN_FIELDS, ...custom];
+	return [
+		...BUILTIN_FIELDS.map((o) => ({ key: o.key, label: t(o.labelKey) })),
+		...custom,
+	];
 }
 
 // ── Task update payload builder for column drag ───────────────────────────────

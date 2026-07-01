@@ -810,6 +810,94 @@
 				"startDate": "Start date",
 				"endDate": "End date",
 				"cancel": "Cancel"
+			},
+			"viewSettings": {
+				"ariaLabel": "View settings",
+				"title": "View settings",
+				"chooseFields": "Choose fields",
+				"back": "← Back",
+				"clearFilters": "Clear filters",
+				"display": "Display",
+				"filters": "Filters",
+				"reset": "Reset",
+				"save": "Save",
+				"saving": "Saving…",
+				"rows": {
+					"fields": "Fields",
+					"columnBy": "Column by",
+					"swimlanes": "Swimlanes",
+					"sortBy": "Sort by",
+					"fieldSum": "Field sum",
+					"initialSize": "Initial size",
+					"perPage": "Per page"
+				},
+				"filterGroups": {
+					"sprints": "Sprints",
+					"statuses": "Statuses",
+					"assignees": "Assignees",
+					"taskTypes": "Task types"
+				},
+				"sprintFilter": {
+					"empty": "No sprints",
+					"all": "All sprints"
+				},
+				"statusFilter": {
+					"empty": "No statuses",
+					"all": "All statuses",
+					"clear": "Clear",
+					"selectAll": "All"
+				},
+				"assigneeFilter": {
+					"all": "All assignees",
+					"empty": "No members",
+					"unassigned": "Unassigned"
+				},
+				"taskTypeFilter": {
+					"normalTypes": "Normal types",
+					"allNormal": "All normal types (dynamic)",
+					"systemTypes": "System types",
+					"empty": "No task types"
+				},
+				"fieldNames": {
+					"title": "Title",
+					"status": "Status",
+					"sprint": "Sprint",
+					"assignee": "Assignee",
+					"importance": "Importance",
+					"type": "Type",
+					"reporter": "Reporter",
+					"manual": "Manual",
+					"storyPoints": "Story Points",
+					"created": "Created",
+					"startDate": "Start Date",
+					"dueDate": "Due Date",
+					"none": "None",
+					"count": "Count",
+					"epic": "Epic"
+				}
+			},
+			"sprint": {
+				"notFound": "Sprint not found or access denied.",
+				"status": {
+					"active": "Active",
+					"planned": "Planned",
+					"completed": "Completed"
+				},
+				"description": "{{status}} sprint",
+				"descriptionStarted": "{{status}} sprint · started {{date}}",
+				"completeSprint": "Complete sprint",
+				"completing": "Completing…",
+				"incompleteMove_one": "{{count}} incomplete task will be moved to:",
+				"incompleteMove_other": "{{count}} incomplete tasks will be moved to:",
+				"noIncomplete": "No incomplete tasks remain in this sprint.",
+				"unassignFromSprint": "Tasks will be unassigned from any sprint",
+				"cancel": "Cancel"
+			},
+			"backlog": {
+				"description": "All work items not assigned to a sprint."
+			},
+			"timeline": {
+				"description": "Epics and long-horizon planning on a roadmap."
 			}
 		},
 		"docs": {

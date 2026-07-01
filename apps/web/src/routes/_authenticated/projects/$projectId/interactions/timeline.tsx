@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import { InteractionLayout } from "@/components/projects/interactions/interaction-layout";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -10,6 +11,7 @@ export const Route = createFileRoute(
 });
 
 function TimelinePage() {
+	const { t } = useTranslation();
 	const { projectId } = Route.useParams();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 
@@ -21,8 +23,8 @@ function TimelinePage() {
 		<InteractionLayout
 			projectId={projectId}
 			interactionKey={`timeline:${projectId}`}
-			title="Timeline"
-			description="Epics and long-horizon planning on a roadmap."
+			title={t("common.timeline")}
+			description={t("project.interactions.timeline.description")}
 			canCreate={canCreate}
 			canEdit={canEdit}
 			canManageViews={canManageViews}
