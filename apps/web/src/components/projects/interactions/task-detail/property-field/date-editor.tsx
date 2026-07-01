@@ -1,4 +1,5 @@
 import { CalendarDays, Minus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Calendar } from "@/components/ui/calendar";
 import {
 	Popover,
@@ -9,13 +10,14 @@ import { displayDate, toDateObject, toISODate } from "./helpers";
 
 export function SingleDateEditor({
 	value,
-	placeholder = "Date",
+	placeholder,
 	onChange,
 }: {
 	value?: string | null;
 	placeholder?: string;
 	onChange?: (v: string | null) => void;
 }) {
+	const { t } = useTranslation();
 	return (
 		<Popover>
 			<PopoverTrigger
@@ -23,7 +25,11 @@ export function SingleDateEditor({
 				className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground hover:border-border/50 hover:bg-muted/40 transition-all duration-150 font-medium"
 			>
 				<CalendarDays className="size-3 shrink-0 opacity-70" />
-				<span>{displayDate(value) ?? placeholder}</span>
+				<span>
+					{displayDate(value) ??
+						placeholder ??
+						t("project.interactions.taskDetail.datePlaceholder")}
+				</span>
 			</PopoverTrigger>
 			<PopoverContent
 				className="w-auto p-2 rounded-xl border border-border/40 shadow-lg"
@@ -65,17 +71,20 @@ export function DateRangeEditor({
 	onStartDateChange?: (v: string | null) => void;
 	onDueDateChange?: (v: string | null) => void;
 }) {
+	const { t } = useTranslation();
 	if (!canEdit) {
 		return (
 			<div className="flex items-center gap-2 flex-wrap">
 				<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
 					<CalendarDays className="size-3 shrink-0 opacity-70" />
-					{displayDate(startDate) ?? "Start date"}
+					{displayDate(startDate) ??
+						t("project.interactions.taskDetail.startDatePlaceholder")}
 				</span>
 				<Minus className="size-3 text-border/40 shrink-0" />
 				<span className="inline-flex items-center gap-1.5 rounded-lg border border-border/25 bg-muted/25 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
 					<CalendarDays className="size-3 shrink-0 opacity-70" />
-					{displayDate(dueDate) ?? "Due date"}
+					{displayDate(dueDate) ??
+						t("project.interactions.taskDetail.dueDatePlaceholder")}
 				</span>
 			</div>
 		);
@@ -85,13 +94,13 @@ export function DateRangeEditor({
 		<div className="flex items-center gap-2 flex-wrap">
 			<SingleDateEditor
 				value={startDate}
-				placeholder="Start date"
+				placeholder={t("project.interactions.taskDetail.startDatePlaceholder")}
 				onChange={onStartDateChange}
 			/>
 			<Minus className="size-3 text-border/40 shrink-0" />
 			<SingleDateEditor
 				value={dueDate}
-				placeholder="Due date"
+				placeholder={t("project.interactions.taskDetail.dueDatePlaceholder")}
 				onChange={onDueDateChange}
 			/>
 		</div>

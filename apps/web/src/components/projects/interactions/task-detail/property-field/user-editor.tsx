@@ -1,4 +1,5 @@
 import { Check, User } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
 	Popover,
 	PopoverContent,
@@ -19,12 +20,13 @@ export function UserEditor({
 	showUnassigned?: boolean;
 	onChange?: (value: string | null) => void;
 }) {
+	const { t } = useTranslation();
 	if (!canEdit) {
 		if (!userValue) {
 			return (
 				<span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/50 italic">
 					<User className="size-3.5 opacity-60" />
-					Unassigned
+					{t("project.interactions.taskDetail.unassigned")}
 				</span>
 			);
 		}
@@ -77,7 +79,9 @@ export function UserEditor({
 						onClick={() => onChange?.(null)}
 					>
 						<User className="size-3.5 opacity-60" />
-						<span className="flex-1 text-left">Unassigned</span>
+						<span className="flex-1 text-left">
+							{t("project.interactions.taskDetail.unassigned")}
+						</span>
 						{!userValue && <Check className="size-3.5 text-primary" />}
 					</button>
 				)}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, Plus, Send, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -27,6 +28,7 @@ interface AIChatFloatProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function AIChatFloat({ projectId }: AIChatFloatProps) {
+	const { t } = useTranslation();
 	const [open, setOpen] = useState(false);
 	const [phase, setPhase] = useState<ChatPhase>({ kind: "compose" });
 	const [agentId, setAgentId] = useState<string>("");
@@ -73,7 +75,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 			{/* Floating trigger button */}
 			<button
 				type="button"
-				aria-label="Chat with AI Agent"
+				aria-label={t("project.agents.chat.title")}
 				onClick={() => setOpen((o) => !o)}
 				className={cn(
 					"fixed bottom-6 right-6 z-40 flex size-12 items-center justify-center rounded-full shadow-lg transition-all hover:scale-105",
@@ -92,7 +94,9 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 					<div className="flex shrink-0 items-center justify-between border-b border-border/40 bg-muted/30 px-4 py-3">
 						<div className="flex items-center gap-2">
 							<Bot className="size-4 text-primary" />
-							<span className="text-sm font-semibold">Chat with AI Agent</span>
+							<span className="text-sm font-semibold">
+								{t("project.agents.chat.title")}
+							</span>
 						</div>
 						{phase.kind === "conversation" && (
 							<Button
@@ -102,7 +106,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 								onClick={handleNewConversation}
 							>
 								<Plus className="size-3" />
-								New conversation
+								{t("project.agents.chat.newConversation")}
 							</Button>
 						)}
 					</div>
@@ -167,16 +171,19 @@ function ComposeForm({
 	onSend,
 	error,
 }: ComposeFormProps) {
+	const { t } = useTranslation();
 	return (
 		<div className="flex flex-col gap-3 p-4">
 			{/* Agent selector */}
 			<div className="space-y-1.5">
-				<p className="text-xs font-medium text-muted-foreground">Agent</p>
+				<p className="text-xs font-medium text-muted-foreground">
+					{t("project.agents.chat.agent")}
+				</p>
 				{agentsLoading ? (
 					<div className="h-9 animate-pulse rounded-md bg-muted" />
 				) : agents.length === 0 ? (
 					<p className="text-xs text-muted-foreground">
-						No agents configured for this project.
+						{t("project.agents.chat.noAgents")}
 					</p>
 				) : (
 					<Select
@@ -185,7 +192,9 @@ function ComposeForm({
 						items={agents.map((a) => ({ value: a.id, label: a.name }))}
 					>
 						<SelectTrigger className="h-9 text-sm">
-							<SelectValue placeholder="Select an agent…" />
+							<SelectValue
+								placeholder={t("project.agents.chat.selectAgent")}
+							/>
 						</SelectTrigger>
 						<SelectContent>
 							{agents.map((agent) => (
@@ -204,15 +213,15 @@ function ComposeForm({
 					htmlFor="chat-message"
 					className="text-xs font-medium text-muted-foreground"
 				>
-					Message
+					{t("project.agents.chat.message")}
 					<span className="ml-1.5 font-normal opacity-50">
-						(Enter to send, Shift+Enter for newline)
+						{t("project.agents.chat.messageHint")}
 					</span>
 				</label>
 				<Textarea
 					id="chat-message"
 					ref={textareaRef}
-					placeholder="What would you like the agent to help with?"
+					placeholder={t("project.agents.chat.messagePlaceholder")}
 					value={message}
 					onChange={(e) => onMessageChange(e.target.value)}
 					onKeyDown={onKeyDown}
@@ -231,7 +240,7 @@ function ComposeForm({
 				) : (
 					<Send className="size-4" />
 				)}
-				Send
+				{t("project.agents.chat.send")}
 			</Button>
 		</div>
 	);

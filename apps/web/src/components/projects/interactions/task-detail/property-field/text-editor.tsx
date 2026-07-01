@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FieldValue } from "../primitives";
 
 export function TextEditor({
@@ -10,6 +11,7 @@ export function TextEditor({
 	canEdit: boolean;
 	onChange?: (value: string) => void;
 }) {
+	const { t } = useTranslation();
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState(value ?? "");
 	const ref = useRef<HTMLInputElement>(null);
@@ -58,7 +60,9 @@ export function TextEditor({
 			{value ? (
 				value
 			) : (
-				<span className="text-muted-foreground/50 italic">Empty</span>
+				<span className="text-muted-foreground/50 italic">
+				{t("project.interactions.taskDetail.empty")}
+			</span>
 			)}
 		</button>
 	);
