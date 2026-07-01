@@ -1,4 +1,5 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
 	DropdownMenu,
@@ -32,7 +33,13 @@ import { DEFAULT_VISIBLE_FIELDS, type TaskFieldUpdate } from "./view-utils";
 
 interface ColConfig {
 	className: string;
+	/**
+	 * For built-in fields this is an i18n key to resolve with `t()`; for custom
+	 * fields it is the raw display name (see `isCustomLabel`).
+	 */
 	headerLabel: string;
+	/** When true, `headerLabel` is a literal string and must NOT be passed to `t()`. */
+	isCustomLabel?: boolean;
 	responsive?: boolean; // hide on xs screens
 }
 
@@ -42,55 +49,61 @@ export function getRowColConfig(
 ): ColConfig {
 	switch (fieldKey) {
 		case "type":
-			return { className: "w-28 shrink-0", headerLabel: "Type" };
+			return {
+				className: "w-28 shrink-0",
+				headerLabel: "project.interactions.taskRow.headers.type",
+			};
 		case "importance":
 			return {
 				className: "w-20 shrink-0",
-				headerLabel: "Importance",
+				headerLabel: "project.interactions.taskRow.headers.importance",
 				responsive: true,
 			};
 		case "story_points":
 			return {
 				className: "w-14 shrink-0",
-				headerLabel: "SP",
+				headerLabel: "project.interactions.taskRow.headers.storyPoints",
 				responsive: true,
 			};
 		case "status":
 			return {
 				className: "w-24 shrink-0",
-				headerLabel: "Status",
+				headerLabel: "project.interactions.taskRow.headers.status",
 				responsive: true,
 			};
 		case "assignee":
-			return { className: "w-20 shrink-0", headerLabel: "Assignee" };
+			return {
+				className: "w-20 shrink-0",
+				headerLabel: "project.interactions.taskRow.headers.assignee",
+			};
 		case "reporter":
 			return {
 				className: "w-20 shrink-0",
-				headerLabel: "Reporter",
+				headerLabel: "project.interactions.taskRow.headers.reporter",
 				responsive: true,
 			};
 		case "start_date":
 			return {
 				className: "w-24 shrink-0",
-				headerLabel: "Start Date",
+				headerLabel: "project.interactions.taskRow.headers.startDate",
 				responsive: true,
 			};
 		case "due_date":
 			return {
 				className: "w-24 shrink-0",
-				headerLabel: "Due Date",
+				headerLabel: "project.interactions.taskRow.headers.dueDate",
 				responsive: true,
 			};
 		case "epic":
 			return {
 				className: "w-32 shrink-0",
-				headerLabel: "Epic",
+				headerLabel: "project.interactions.taskRow.headers.epic",
 				responsive: true,
 			};
 		case "created":
 			return {
 				className: "w-24 shrink-0",
-				headerLabel: "Created",
+				headerLabel: "project.interactions.taskRow.headers.created",
 				responsive: true,
 			};
 		default: {
@@ -105,6 +118,7 @@ export function getRowColConfig(
 			return {
 				className: `${width} shrink-0`,
 				headerLabel: label,
+				isCustomLabel: true,
 				responsive: true,
 			};
 		}
@@ -149,6 +163,7 @@ export function TaskRow({
 	canEdit,
 	onUpdateTaskField,
 }: TaskRowProps) {
+	const { t } = useTranslation();
 	const status = statuses.find((s) => s.id === task.status_id);
 
 	/** Renders a single cell value for the given field key. */
@@ -388,7 +403,9 @@ export function TaskRow({
 									}
 								>
 									<User className="size-3.5 opacity-60" />
-									<span className="flex-1 text-left">Unassigned</span>
+									<span className="flex-1 text-left">
+										{t("project.interactions.taskCard.unassigned")}
+									</span>
 									{!assignee && <Check className="size-3.5 text-primary" />}
 								</button>
 								{members.map((m) => (
@@ -558,7 +575,9 @@ export function TaskRow({
 										onUpdateTaskField(task.id, { parent_task_id: null })
 									}
 								>
-									<span className="flex-1 text-left">No Epic</span>
+									<span className="flex-1 text-left">
+										{t("project.interactions.taskCard.noEpic")}
+									</span>
 									{!task.parent_task_id && (
 										<Check className="size-3.5 text-primary" />
 									)}

@@ -1,5 +1,6 @@
 import { CalendarDays } from "lucide-react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Sprint, Task } from "@/lib/interaction-api";
 import type {
@@ -88,6 +89,7 @@ export function RoadmapView({
 	onTaskClick,
 	pagination,
 }: RoadmapViewProps) {
+	const { t } = useTranslation();
 	// Stable "now" — fixed at mount so all bars are consistent
 	const now = useMemo(() => Date.now(), []);
 
@@ -112,9 +114,9 @@ export function RoadmapView({
 	// ── Timeline geometry ──────────────────────────────────────────────────────
 	const { chartWidth, toPx, months, todayPx } = useMemo(() => {
 		const allMs: number[] = [];
-		for (const t of tasks) {
-			const s = parseDateMs(t.start_date);
-			const d = parseDateMs(t.due_date);
+		for (const task of tasks) {
+			const s = parseDateMs(task.start_date);
+			const d = parseDateMs(task.due_date);
 			if (s !== null) allMs.push(s);
 			if (d !== null) allMs.push(d);
 		}
@@ -179,9 +181,13 @@ export function RoadmapView({
 		if (startMs !== null && dueMs !== null) {
 			tooltip = `${fmtDate(startMs)} → ${fmtDate(dueMs)}`;
 		} else if (startMs !== null) {
-			tooltip = `Start: ${fmtDate(startMs)}`;
+			tooltip = t("project.interactions.roadmap.startTooltip", {
+				date: fmtDate(startMs),
+			});
 		} else {
-			tooltip = `Due: ${fmtDate(dueMs as number)}`;
+			tooltip = t("project.interactions.roadmap.dueTooltip", {
+				date: fmtDate(dueMs as number),
+			});
 		}
 
 		return { leftPx, widthPx, singleDate, overdue, tooltip };
@@ -225,7 +231,7 @@ export function RoadmapView({
 					/>
 				) : (
 					<div
-						title="No dates set"
+						title={t("project.interactions.roadmap.noDatesSet")}
 						className="absolute h-5 w-20 rounded border border-dashed border-muted-foreground/20"
 						style={{ left: Math.max(0, todayPx - 40) }}
 					/>
@@ -325,7 +331,7 @@ export function RoadmapView({
 						>
 							<CalendarDays className="size-3 text-muted-foreground/45" />
 							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/55">
-								Task
+								{t("project.interactions.roadmap.taskColumn")}
 							</span>
 						</div>
 
@@ -366,12 +372,14 @@ export function RoadmapView({
 					{tasks.length === 0 ? (
 						<div className="flex flex-col items-center py-20 text-muted-foreground/40">
 							<CalendarDays className="mb-2 size-7" />
-							<p className="text-sm font-medium">No tasks to display</p>
+							<p className="text-sm font-medium">
+								{t("project.interactions.roadmap.noTasksToDisplay")}
+							</p>
 						</div>
 					) : (
 						groupDefs.map((group) => {
-							const groupTasks = tasks.filter((t) =>
-								getTaskColumnKeys(t, columnBy, viewCtx).includes(group.key),
+							const groupTasks = tasks.filter((task) =>
+								getTaskColumnKeys(task, columnBy, viewCtx).includes(group.key),
 							);
 							if (groupTasks.length === 0) return null;
 
@@ -381,8 +389,8 @@ export function RoadmapView({
 									className="border-b border-border/20 last:border-0"
 								>
 									<GroupHeader group={group} count={groupTasks.length} />
-									{groupTasks.map((t) => (
-										<RoadmapTaskRow key={t.id} task={t} />
+									{groupTasks.map((task) => (
+										<RoadmapTaskRow key={task.id} task={task} />
 									))}
 								</div>
 							);
@@ -398,7 +406,9 @@ export function RoadmapView({
 								disabled={pagination.isLoadingMore}
 								className="rounded-lg border border-border/40 px-4 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-primary transition-all duration-150 disabled:opacity-50"
 							>
-								{pagination.isLoadingMore ? "Loading…" : "View more"}
+								{pagination.isLoadingMore
+									? t("project.interactions.board.loadingMore")
+									: t("project.interactions.board.viewMore")}
 							</button>
 						</div>
 					)}

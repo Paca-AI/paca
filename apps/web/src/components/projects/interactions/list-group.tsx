@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Play, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Sprint, Task } from "@/lib/interaction-api";
 import type {
@@ -114,6 +115,7 @@ export function ListGroup({
 	totalCount,
 	apiFieldSum,
 }: ListGroupProps) {
+	const { t } = useTranslation();
 	const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
 	const [draggingId, setDraggingId] = useState<string | null>(null);
 	const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -188,7 +190,7 @@ export function ListGroup({
 		const currentDraggingId = draggingId;
 		if (!currentDraggingId || currentDraggingId === targetTask.id) return;
 		const sourceIndex = orderedTasks.findIndex(
-			(t) => t.id === currentDraggingId,
+			(tt) => tt.id === currentDraggingId,
 		);
 		if (sourceIndex === -1) return;
 		// After removing source, indices shift by -1 for elements past it.
@@ -244,10 +246,10 @@ export function ListGroup({
 		<div className="flex items-center gap-3 px-4 py-1.5 bg-muted/20 border-b border-border/25">
 			{isDraggable && <div className="w-3 shrink-0" />}
 			<div className="w-20 shrink-0 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60">
-				ID
+				{t("project.interactions.list.idHeader")}
 			</div>
 			<div className="flex-1 text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/60">
-				Title
+				{t("project.interactions.list.titleHeader")}
 			</div>
 			{visibleFields.map((fk) => {
 				const col = getRowColConfig(fk, customFields);
@@ -260,7 +262,7 @@ export function ListGroup({
 							col.responsive ? "hidden sm:block" : "",
 						)}
 					>
-						{col.headerLabel}
+						{col.isCustomLabel ? col.headerLabel : t(col.headerLabel)}
 					</div>
 				);
 			})}
@@ -365,10 +367,10 @@ export function ListGroup({
 							const currentDraggingId = draggingId;
 							if (!currentDraggingId || currentDraggingId === task.id) return;
 							const sourceOrderedIndex = orderedTasks.findIndex(
-								(t) => t.id === currentDraggingId,
+								(tt) => tt.id === currentDraggingId,
 							);
 							const targetOrderedIndex = orderedTasks.findIndex(
-								(t) => t.id === task.id,
+								(tt) => tt.id === task.id,
 							);
 							if (sourceOrderedIndex === -1 || targetOrderedIndex === -1)
 								return;
@@ -417,7 +419,9 @@ export function ListGroup({
 			disabled={groupPagination.isLoadingMore}
 			className="flex w-full items-center justify-center border-t border-border/10 py-2 text-xs font-medium text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-all duration-150 disabled:opacity-50"
 		>
-			{groupPagination.isLoadingMore ? "Loading…" : "View more"}
+			{groupPagination.isLoadingMore
+				? t("project.interactions.board.loadingMore")
+				: t("project.interactions.board.viewMore")}
 		</button>
 	) : null;
 
@@ -482,7 +486,7 @@ export function ListGroup({
 						className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 active:scale-95 transition-all duration-150 shrink-0"
 					>
 						<Play className="size-3 fill-white" />
-						Start sprint
+						{t("project.interactions.list.startSprint")}
 					</button>
 				)}
 
@@ -497,7 +501,7 @@ export function ListGroup({
 						className="flex items-center gap-1.5 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 hover:border-primary/60 active:scale-95 transition-all duration-150 shrink-0"
 					>
 						<Plus className="size-3" />
-						New sprint
+						{t("project.interactions.list.newSprint")}
 					</button>
 				)}
 
@@ -534,8 +538,8 @@ export function ListGroup({
 								swimDef.key === "__all"
 									? getViewCtxTasks()
 									: getViewCtxTasks().filter(
-											(t) =>
-												getTaskSwimlaneKey(t, swimlaneBy, viewCtxForSwim) ===
+											(tt) =>
+												getTaskSwimlaneKey(tt, swimlaneBy, viewCtxForSwim) ===
 												swimDef.key,
 										);
 
@@ -597,7 +601,9 @@ export function ListGroup({
 										columnHeaders}
 									{laneTasks.length === 0 && !groupPagination?.hasMore ? (
 										<div className="flex flex-col items-center py-5 text-muted-foreground/40">
-											<p className="text-sm font-medium">No tasks</p>
+											<p className="text-sm font-medium">
+								{t("project.interactions.board.noTasks")}
+							</p>
 										</div>
 									) : (
 										laneTasks.map((task, index) =>
@@ -624,7 +630,9 @@ export function ListGroup({
 						{columnHeaders}
 						{orderedTasks.length === 0 && !groupPagination?.hasMore ? (
 							<div className="flex flex-col items-center py-8 text-muted-foreground/40">
-								<p className="text-sm font-medium">No tasks</p>
+								<p className="text-sm font-medium">
+								{t("project.interactions.board.noTasks")}
+							</p>
 							</div>
 						) : (
 							orderedTasks.map((task, index) =>

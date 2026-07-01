@@ -744,6 +744,39 @@
 				"reporter": "Reporter",
 				"epic": "Epic",
 				"noEpic": "No Epic"
+			},
+			"taskRow": {
+				"headers": {
+					"type": "Type",
+					"importance": "Importance",
+					"storyPoints": "SP",
+					"status": "Status",
+					"assignee": "Assignee",
+					"reporter": "Reporter",
+					"startDate": "Start Date",
+					"dueDate": "Due Date",
+					"epic": "Epic",
+					"created": "Created"
+				}
+			},
+			"list": {
+				"idHeader": "ID",
+				"titleHeader": "Title",
+				"startSprint": "Start sprint",
+				"newSprint": "New sprint"
+			},
+			"addTask": {
+				"addTask": "Add task",
+				"titlePlaceholder": "Task title…",
+				"cancel": "Cancel",
+				"create": "Create"
+			},
+			"roadmap": {
+				"taskColumn": "Task",
+				"noTasksToDisplay": "No tasks to display",
+				"noDatesSet": "No dates set",
+				"startTooltip": "Start: {{date}}",
+				"dueTooltip": "Due: {{date}}"
 			}
 		},
 		"docs": {

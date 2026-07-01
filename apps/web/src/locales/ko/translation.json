@@ -744,6 +744,39 @@
 				"reporter": "보고자",
 				"epic": "에픽",
 				"noEpic": "에픽 없음"
+			},
+			"taskRow": {
+				"headers": {
+					"type": "유형",
+					"importance": "중요도",
+					"storyPoints": "SP",
+					"status": "상태",
+					"assignee": "담당자",
+					"reporter": "보고자",
+					"startDate": "시작일",
+					"dueDate": "마감일",
+					"epic": "에픽",
+					"created": "생성일"
+				}
+			},
+			"list": {
+				"idHeader": "ID",
+				"titleHeader": "제목",
+				"startSprint": "스프린트 시작",
+				"newSprint": "새 스프린트"
+			},
+			"addTask": {
+				"addTask": "작업 추가",
+				"titlePlaceholder": "작업 제목…",
+				"cancel": "취소",
+				"create": "생성"
+			},
+			"roadmap": {
+				"taskColumn": "작업",
+				"noTasksToDisplay": "표시할 작업이 없습니다",
+				"noDatesSet": "설정된 날짜 없음",
+				"startTooltip": "시작: {{date}}",
+				"dueTooltip": "마감: {{date}}"
 			}
 		},
 		"docs": {
