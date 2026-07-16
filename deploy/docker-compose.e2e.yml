@@ -68,6 +68,9 @@ services:
       # Pre-shared key for the AI agent service to authenticate with the API.
       # Must match PACA_API_KEY in the ai-agent service.
       AGENT_API_KEY: e2e-agent-api-key
+      # Authenticates the reverse direction: API calling into ai-agent's
+      # internal-only routes. Must match INTERNAL_API_KEY in the ai-agent service.
+      AI_AGENT_INTERNAL_KEY: e2e-internal-api-key
       # Plugin subsystem — load WASM binaries + migrations from the local plugin store.
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend

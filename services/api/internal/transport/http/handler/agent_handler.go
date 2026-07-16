@@ -26,23 +26,27 @@ type agentActivityRecorder interface {
 
 // AgentHandler handles AI agent management endpoints.
 type AgentHandler struct {
-	svc         agentdom.Service
-	aiAgentURL  string
-	publicURL   string
-	httpClient  *http.Client
-	activityRec agentActivityRecorder
-	memberRepo  projectdom.MemberRepository
+	svc                agentdom.Service
+	aiAgentURL         string
+	aiAgentInternalKey string
+	publicURL          string
+	httpClient         *http.Client
+	activityRec        agentActivityRecorder
+	memberRepo         projectdom.MemberRepository
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
 // publicURL is the externally reachable base URL (e.g. https://paca.example.com)
-// used to build the local-bridge "run this command" snippet.
-func NewAgentHandler(svc agentdom.Service, aiAgentURL, publicURL string) *AgentHandler {
+// used to build the local-bridge "run this command" snippet. aiAgentInternalKey
+// authenticates calls into ai-agent's internal-only routes and must match
+// ai-agent's own INTERNAL_API_KEY.
+func NewAgentHandler(svc agentdom.Service, aiAgentURL, aiAgentInternalKey, publicURL string) *AgentHandler {
 	return &AgentHandler{
-		svc:        svc,
-		aiAgentURL: aiAgentURL,
-		publicURL:  publicURL,
-		httpClient: &http.Client{},
+		svc:                svc,
+		aiAgentURL:         aiAgentURL,
+		aiAgentInternalKey: aiAgentInternalKey,
+		publicURL:          publicURL,
+		httpClient:         &http.Client{},
 	}
 }
 
@@ -872,6 +876,7 @@ func (h *AgentHandler) GetACPBridgeStatus(w http.ResponseWriter, r *http.Request
 		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to create request"))
 		return
 	}
+	req.Header.Set("X-Internal-Token", h.aiAgentInternalKey)
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach ai-agent service"))

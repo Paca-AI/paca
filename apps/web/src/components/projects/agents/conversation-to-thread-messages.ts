@@ -142,6 +142,22 @@ export function eventsToThreadMessages(
 				(typeof p.tool_name === "string" ? p.tool_name : undefined) ??
 				toolCall?.name ??
 				"tool";
+
+			// Every turn (both regular Agent and ACPAgent conversations) ends
+			// with a synthetic "finish" tool call whose action carries the
+			// agent's actual natural-language reply in `message` — render it
+			// as reply text, not a tool-call card, or it shows up as an
+			// opaque "finish" bubble instead of the agent's answer. The
+			// matching ObservationEvent is skipped below since this already
+			// surfaces the same text.
+			if (toolName === "finish") {
+				const action = p.action as { message?: unknown } | undefined;
+				const finishText =
+					typeof action?.message === "string" ? action.message : null;
+				if (finishText) current.parts.push({ type: "text", text: finishText });
+				continue;
+			}
+
 			const argsText =
 				(typeof toolCall?.arguments === "string" ? toolCall.arguments : null) ??
 				JSON.stringify(toolCall?.arguments ?? toolCall ?? {}, null, 2);
@@ -167,6 +183,12 @@ export function eventsToThreadMessages(
 			t === "AgentErrorEvent" ||
 			t === "UserRejectObservation"
 		) {
+			// The matching ActionEvent already rendered the "finish" tool
+			// call's message as reply text — its observation just repeats
+			// the same text, so skip it rather than emitting a duplicate
+			// tool-call card.
+			if (p.tool_name === "finish") continue;
+
 			const isError = t !== "ObservationEvent";
 			const obs = p.observation as Record<string, unknown> | undefined;
 			const resultText =
@@ -204,6 +226,58 @@ export function eventsToThreadMessages(
 					result: resultText,
 					...(isError ? { isError: true } : {}),
 				});
+			}
+			continue;
+		}
+
+		// ACPToolCallEvent — emitted by ACP-type agents in place of the
+		// ActionEvent/ObservationEvent pair for every tool call the local
+		// ACP CLI (Claude Code/Codex/Gemini CLI) makes. Unlike that pair,
+		// ACP streams multiple updates (start, progress, terminal) for the
+		// *same* tool_call_id as one call progresses, so the part is
+		// created once and mutated in place on each subsequent update
+		// rather than matched against a separately-typed observation event.
+		if (t === "ACPToolCallEvent") {
+			if (!current)
+				current = startAssistantMessage(ev.id, new Date(ev.created_at));
+
+			const toolCallId =
+				typeof p.tool_call_id === "string" ? p.tool_call_id : ev.id;
+			const toolName =
+				(typeof p.title === "string" ? p.title : null) ??
+				(typeof p.tool_kind === "string" ? p.tool_kind : null) ??
+				"tool";
+			const rawInput = p.raw_input;
+			const argsText =
+				typeof rawInput === "string"
+					? rawInput
+					: rawInput !== undefined && rawInput !== null
+						? JSON.stringify(rawInput, null, 2)
+						: "";
+
+			let part = current.openToolCalls.get(toolCallId);
+			if (!part) {
+				part = { type: "tool-call", toolCallId, toolName, argsText };
+				current.parts.push(part);
+				current.openToolCalls.set(toolCallId, part);
+			} else {
+				part.toolName = toolName;
+				if (argsText) part.argsText = argsText;
+			}
+
+			const status = typeof p.status === "string" ? p.status : null;
+			if (status === "completed" || status === "failed") {
+				const rawOutput = p.raw_output;
+				const resultText =
+					extractContentText(p.content) ??
+					(typeof rawOutput === "string"
+						? rawOutput
+						: rawOutput !== undefined && rawOutput !== null
+							? JSON.stringify(rawOutput)
+							: null) ??
+					"";
+				part.result = resultText;
+				if (p.is_error === true) part.isError = true;
 			}
 			continue;
 		}

@@ -18,6 +18,7 @@ import json
 import logging
 from typing import Any, Protocol
 
+from ..core import streams as stream_store
 from ..core.streams import get_client
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,10 @@ _DISPATCH_PREFIX = "paca:acp-bridge:dispatch:"
 # well within this window; comfortably longer than the daemon's own ~20s
 # heartbeat interval so a couple of missed/delayed pings don't flap presence.
 _PRESENCE_TTL_SECONDS = 45
+# Backoff for re-subscribing after the forwarder's Pub/Sub connection drops
+# (e.g. a Valkey restart) — keeps the WebSocket connection usable instead of
+# silently losing dispatch delivery for the rest of its lifetime.
+_RECONNECT_BACKOFF_SECONDS = 2
 
 
 class _SendsJSON(Protocol):
@@ -51,41 +56,65 @@ def _dispatch_channel(agent_id: str) -> str:
 
 async def _forward_dispatched_messages(agent_id: str, ws: _SendsJSON) -> None:
     """Subscribe to the per-agent dispatch channel and forward each message
-    to the connected WebSocket until cancelled (on unregister/disconnect)."""
-    client = get_client()
-    pubsub = client.pubsub()
-    try:
-        await pubsub.subscribe(_dispatch_channel(agent_id))
-        async for message in pubsub.listen():
-            if message.get("type") != "message":
-                continue
-            try:
-                payload = json.loads(message["data"])
-            except (TypeError, ValueError, KeyError):
-                logger.warning("Dropping malformed ACP bridge dispatch for agent %s", agent_id)
-                continue
-            await ws.send_json(payload)
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        logger.exception("ACP bridge forwarder for agent %s crashed", agent_id)
-    finally:
+    to the connected WebSocket until cancelled (on unregister/disconnect).
+
+    Reconnects with backoff on a dropped Pub/Sub connection (e.g. a Valkey
+    restart) rather than giving up for the rest of the WebSocket's lifetime —
+    the outer loop only exits on cancellation.
+    """
+    while True:
+        # get_pubsub_client() is a dedicated, no-read-timeout connection —
+        # get_client()'s regular 5s socket_timeout is right for short
+        # request/response commands but would spuriously kill this
+        # long-idle .listen() loop the first time nothing arrives in 5s.
+        pubsub = stream_store.get_pubsub_client().pubsub()
         try:
-            await pubsub.unsubscribe(_dispatch_channel(agent_id))
-            await pubsub.aclose()
+            await pubsub.subscribe(_dispatch_channel(agent_id))
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                try:
+                    payload = json.loads(message["data"])
+                except (TypeError, ValueError, KeyError):
+                    logger.warning(
+                        "Dropping malformed ACP bridge dispatch for agent %s", agent_id
+                    )
+                    continue
+                await ws.send_json(payload)
+            return
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            logger.debug("Failed to clean up pubsub for agent %s", agent_id, exc_info=True)
+            logger.exception(
+                "ACP bridge forwarder for agent %s lost its connection — "
+                "reconnecting in %ss",
+                agent_id,
+                _RECONNECT_BACKOFF_SECONDS,
+            )
+        finally:
+            try:
+                await pubsub.unsubscribe(_dispatch_channel(agent_id))
+                await pubsub.aclose()
+            except Exception:
+                logger.debug("Failed to clean up pubsub for agent %s", agent_id, exc_info=True)
+        await asyncio.sleep(_RECONNECT_BACKOFF_SECONDS)
 
 
-async def register(agent_id: str, ws: _SendsJSON) -> None:
-    """Mark an agent's local bridge as connected on this replica."""
+async def register(agent_id: str, project_id: str, ws: _SendsJSON) -> None:
+    """Mark an agent's local bridge as connected on this replica.
+
+    Publishes an "agent.acp_bridge.status" realtime event so the frontend
+    can react immediately instead of polling the status endpoint — see
+    src/hooks/use-project-realtime.ts on the frontend.
+    """
     client = get_client()
     await client.set(_presence_key(agent_id), "1", ex=_PRESENCE_TTL_SECONDS)
     _connections[agent_id] = ws
     _forward_tasks[agent_id] = asyncio.create_task(_forward_dispatched_messages(agent_id, ws))
+    await _publish_status(agent_id, project_id, connected=True)
 
 
-async def unregister(agent_id: str) -> None:
+async def unregister(agent_id: str, project_id: str) -> None:
     """Tear down a bridge connection — called on WebSocket disconnect."""
     task = _forward_tasks.pop(agent_id, None)
     if task is not None:
@@ -97,6 +126,21 @@ async def unregister(agent_id: str) -> None:
     _connections.pop(agent_id, None)
     client = get_client()
     await client.delete(_presence_key(agent_id))
+    await _publish_status(agent_id, project_id, connected=False)
+
+
+async def _publish_status(agent_id: str, project_id: str, *, connected: bool) -> None:
+    try:
+        await stream_store.publish_realtime(
+            project_id=project_id,
+            conversation_id="",
+            event_type="agent.acp_bridge.status",
+            extra_payload={"agent_id": agent_id, "connected": connected},
+        )
+    except Exception:
+        logger.warning(
+            "Failed to publish ACP bridge status for agent %s", agent_id, exc_info=True
+        )
 
 
 async def heartbeat(agent_id: str) -> None:

@@ -281,10 +281,13 @@ export async function getAcpBridgeStatus(
 	projectId: string,
 	agentId: string,
 ): Promise<AcpBridgeStatus> {
-	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<AcpBridgeStatus>
-	>(`/projects/${projectId}/agents/${agentId}/acp-bridge-status`);
-	return data.data;
+	// Unlike most endpoints, this one proxies ai-agent's response verbatim
+	// (no SuccessEnvelope wrapping) — same pass-through pattern as
+	// listLLMModels below.
+	const { data } = await apiClient.instance.get<AcpBridgeStatus>(
+		`/projects/${projectId}/agents/${agentId}/acp-bridge-status`,
+	);
+	return data;
 }
 
 export async function writeTaskDescriptionWithAI(
@@ -622,9 +625,9 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 		queryFn: () => listEnvVars(projectId, agentId),
 	});
 
-// Polled while the Local Bridge panel is visible (see agents/$agentId route) —
-// there's no realtime push for bridge connect/disconnect, so the caller
-// passes `enabled` and a refetchInterval to only poll when the panel is open.
+// Fetched once (no polling) — kept live afterward via useProjectRealtime's
+// direct cache update on "agent.acp_bridge.status" events (published by
+// services/ai-agent's acp_bridge.py on every bridge connect/disconnect).
 export const acpBridgeStatusQueryOptions = (
 	projectId: string,
 	agentId: string,
@@ -633,7 +636,6 @@ export const acpBridgeStatusQueryOptions = (
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "acp-bridge-status"],
 		queryFn: () => getAcpBridgeStatus(projectId, agentId),
-		refetchInterval: 10_000,
 		enabled: options?.enabled ?? true,
 	});
 

@@ -124,7 +124,7 @@ var _ agentdom.Service = (*mockAgentSvc)(nil)
 // ---------------------------------------------------------------------------
 
 func newAgentRouter(svc agentdom.Service) chi.Router {
-	h := handler.NewAgentHandler(svc, "", "")
+	h := handler.NewAgentHandler(svc, "", "", "")
 	r := chi.NewRouter()
 	r.Route("/projects/{projectId}", func(r chi.Router) {
 		r.Post("/agents", h.CreateAgent)
@@ -211,7 +211,7 @@ func claimsMiddleware(subject string) func(http.Handler) http.Handler {
 // injects claims with the given subject, so resolveMemberID's branches can
 // be exercised end-to-end through the HTTP layer.
 func newAgentRouterWithMemberRepo(svc agentdom.Service, memberRepo projectdom.MemberRepository, subject string) chi.Router {
-	h := handler.NewAgentHandler(svc, "", "")
+	h := handler.NewAgentHandler(svc, "", "", "")
 	if memberRepo != nil {
 		h = h.WithMemberRepo(memberRepo)
 	}

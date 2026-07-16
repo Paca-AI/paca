@@ -96,6 +96,24 @@ export function useProjectRealtime(projectId: string): void {
 				return;
 			}
 
+			// agent.acp_bridge.status: the Local Bridge panel's connected/
+			// disconnected badge. The payload already carries the new state, so
+			// this writes it directly into the query cache instead of
+			// invalidating + refetching — the whole point of moving off polling.
+			if (type === "agent.acp_bridge.status") {
+				const agentId =
+					typeof event.payload.agent_id === "string"
+						? event.payload.agent_id
+						: null;
+				if (agentId && typeof event.payload.connected === "boolean") {
+					queryClient.setQueryData(
+						["projects", projectId, "agents", agentId, "acp-bridge-status"],
+						{ connected: event.payload.connected },
+					);
+				}
+				return;
+			}
+
 			// agent.* events: invalidate conversation list/events and task activities
 			// (agent.session.started is recorded as a task activity).
 			if (type.startsWith("agent.")) {

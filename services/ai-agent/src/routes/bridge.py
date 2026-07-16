@@ -23,7 +23,7 @@ from ..config import settings
 from ..core import streams as stream_store
 from ..models.conversation_status import ConversationStatus
 from ..repositories import conversation_repository
-from ..repositories.agent_repository import find_agent_id_by_bridge_token_hash
+from ..repositories.agent_repository import find_agent_by_bridge_token_hash
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +48,13 @@ async def bridge_ws(websocket: WebSocket) -> None:
         return
 
     token_hash = _hash_token(hello["token"])
-    resolved_agent_id = await find_agent_id_by_bridge_token_hash(token_hash)
-    if resolved_agent_id is None or resolved_agent_id != hello["agent_id"]:
+    resolved = await find_agent_by_bridge_token_hash(token_hash)
+    if resolved is None or resolved[0] != hello["agent_id"]:
         await websocket.close(code=4401)
         return
 
-    agent_id = resolved_agent_id
-    await acp_bridge.register(agent_id, websocket)
+    agent_id, project_id = resolved
+    await acp_bridge.register(agent_id, project_id, websocket)
     logger.info("ACP bridge connected for agent %s", agent_id)
     await websocket.send_json({"type": "hello_ack"})
 
@@ -114,7 +114,7 @@ async def bridge_ws(websocket: WebSocket) -> None:
     except Exception:
         logger.exception("ACP bridge connection for agent %s crashed", agent_id)
     finally:
-        await acp_bridge.unregister(agent_id)
+        await acp_bridge.unregister(agent_id, project_id)
         logger.info("ACP bridge disconnected for agent %s", agent_id)
 
 

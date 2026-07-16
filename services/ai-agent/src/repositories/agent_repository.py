@@ -159,20 +159,23 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
     )
 
 
-async def find_agent_id_by_bridge_token_hash(token_hash: str) -> str | None:
+async def find_agent_by_bridge_token_hash(token_hash: str) -> tuple[str, str] | None:
     """Look up the ACP agent whose current local-bridge token hashes to
     token_hash. Used to authenticate an incoming bridge WebSocket connection
     (see src/routes/bridge.py) — a hash miss (wrong/revoked token) or a match
     against a non-ACP or soft-deleted agent both return None.
+
+    Returns (agent_id, project_id) — project_id lets the caller publish a
+    project-scoped realtime event on connect/disconnect without a second query.
     """
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        SELECT id FROM agents
+        SELECT id, project_id FROM agents
         WHERE acp_bridge_token_hash = $1
           AND agent_type = 'acp'
           AND deleted_at IS NULL
         """,
         token_hash,
     )
-    return str(row["id"]) if row is not None else None
+    return (str(row["id"]), str(row["project_id"])) if row is not None else None

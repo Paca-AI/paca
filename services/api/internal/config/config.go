@@ -15,7 +15,11 @@ type Config struct {
 	Security   SecurityConfig
 	Plugins    PluginsConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
-	Env        string // development | production
+	// AIAgentInternalKey authenticates server-to-server calls into ai-agent's
+	// internal-only routes (see services/ai-agent's _require_internal_key) —
+	// must match ai-agent's own INTERNAL_API_KEY.
+	AIAgentInternalKey string
+	Env                string // development | production
 }
 
 // ServerConfig holds HTTP server settings.

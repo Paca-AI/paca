@@ -195,7 +195,8 @@ func Load() (*Config, error) {
 				MaxRequestBodyBytes: pluginMaxRequestBodyBytes,
 			},
 		},
-		AIAgentURL: env("AI_AGENT_URL", "http://ai-agent:8080"),
+		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
+		AIAgentInternalKey: env("AI_AGENT_INTERNAL_KEY", ""),
 	}, nil
 }
 

@@ -150,21 +150,26 @@ class ConversationRunner:
 
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:
-            payload = event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
-            message = {
-                "type": "event",
-                "conversation_id": conversation_id,
-                "project_id": project_id,
-                "event_type": type(event).__name__,
-                "event_source": str(getattr(event, "source", "agent")),
-                "payload": payload,
-            }
-            future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
             try:
+                payload = (
+                    event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
+                )
+                message = {
+                    "type": "event",
+                    "conversation_id": conversation_id,
+                    "project_id": project_id,
+                    "event_type": type(event).__name__,
+                    "event_source": str(getattr(event, "source", "agent")),
+                    "payload": payload,
+                }
+                future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
                 future.result(timeout=10)
             except Exception:
                 logger.warning(
-                    "Failed to report event for conversation %s", conversation_id, exc_info=True
+                    "Failed to report event %s for conversation %s",
+                    type(event).__name__,
+                    conversation_id,
+                    exc_info=True,
                 )
 
         return callback
