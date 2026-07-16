@@ -31,6 +31,28 @@ async def update_conversation_status(
         )
 
 
+async def get_conversation_agent_type(conversation_id: str) -> tuple[str, str] | None:
+    """Return (agent_id, agent_type) for a conversation's owning agent.
+
+    Used by worker._handle_control to decide whether a stop/pause control
+    message should signal the in-process polling loop (LLM agents) or forward
+    through the ACP bridge dispatch channel (see agent/acp_bridge.py) instead.
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT a.id AS agent_id, a.agent_type
+        FROM agent_conversations c
+        JOIN agents a ON a.id = c.agent_id
+        WHERE c.id = $1
+        """,
+        conversation_id,
+    )
+    if row is None:
+        return None
+    return str(row["agent_id"]), row["agent_type"]
+
+
 async def get_next_event_index(conversation_id: str) -> int:
     """Return the next unused event_index for a conversation.
 

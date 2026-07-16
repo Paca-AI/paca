@@ -63,10 +63,13 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
             a.id,
             a.project_id,
             a.system_prompt,
+            a.agent_type,
             a.llm_provider,
             a.llm_model,
             a.llm_api_key_secret AS llm_api_key_secret_ref,
             a.llm_base_url,
+            a.acp_provider,
+            a.acp_command,
             a.max_iterations,
             a.git_committer_name,
             a.git_committer_email
@@ -147,7 +150,29 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
         git_committer_name=row["git_committer_name"] or "paca-agent",
         git_committer_email=row["git_committer_email"]
         or "280579135+paca-agent@users.noreply.github.com",
+        agent_type=row["agent_type"] or "llm",
+        acp_provider=row["acp_provider"],
+        acp_command=json.loads(row["acp_command"]) if row["acp_command"] else [],
         mcp_servers=mcp_servers,
         skills=skills,
         env_vars=env_vars,
     )
+
+
+async def find_agent_id_by_bridge_token_hash(token_hash: str) -> str | None:
+    """Look up the ACP agent whose current local-bridge token hashes to
+    token_hash. Used to authenticate an incoming bridge WebSocket connection
+    (see src/routes/bridge.py) — a hash miss (wrong/revoked token) or a match
+    against a non-ACP or soft-deleted agent both return None.
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id FROM agents
+        WHERE acp_bridge_token_hash = $1
+          AND agent_type = 'acp'
+          AND deleted_at IS NULL
+        """,
+        token_hash,
+    )
+    return str(row["id"]) if row is not None else None

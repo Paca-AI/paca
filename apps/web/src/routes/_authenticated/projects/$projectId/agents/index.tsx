@@ -56,8 +56,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
+	type ACPProvider,
 	AGENT_PRESETS,
 	type Agent,
+	type AgentType,
 	agentsQueryOptions,
 	createAgent,
 	deleteAgent,
@@ -114,6 +116,7 @@ function CreateAgentDialog({
 	const [handle, setHandle] = useState("");
 	const [presetId, setPresetId] = useState("");
 	const [roleId, setRoleId] = useState("");
+	const [agentType, setAgentType] = useState<AgentType>("llm");
 	const [providerSelect, setProviderSelect] = useState("anthropic");
 	const [customProvider, setCustomProvider] = useState("");
 	const [modelSelect, setModelSelect] = useState("claude-sonnet-4-5-20250929");
@@ -122,6 +125,8 @@ function CreateAgentDialog({
 	const [llmBaseUrl, setLlmBaseUrl] = useState(
 		llmModels.anthropic?.base_url ?? "",
 	);
+	const [acpProvider, setAcpProvider] = useState<ACPProvider>("claude-code");
+	const [acpCommand, setAcpCommand] = useState("");
 	const [systemPrompt, setSystemPrompt] = useState("");
 	const [showApiKey, setShowApiKey] = useState(false);
 
@@ -136,12 +141,15 @@ function CreateAgentDialog({
 		setHandle("");
 		setPresetId("");
 		setRoleId("");
+		setAgentType("llm");
 		setProviderSelect("anthropic");
 		setCustomProvider("");
 		setModelSelect("claude-sonnet-4-5-20250929");
 		setCustomModel("");
 		setLlmApiKey("");
 		setLlmBaseUrl(llmModels.anthropic?.base_url ?? "");
+		setAcpProvider("claude-code");
+		setAcpCommand("");
 		setSystemPrompt("");
 		setShowApiKey(false);
 	};
@@ -184,17 +192,29 @@ function CreateAgentDialog({
 	const availableModels: string[] =
 		providerSelect !== CUSTOM ? (llmModels[providerSelect]?.models ?? []) : [];
 
+	const acpCommandParts = acpCommand.trim().split(/\s+/).filter(Boolean);
+
 	const createMutation = useMutation({
 		mutationFn: () =>
 			createAgent(projectId, {
 				name: name.trim(),
 				handle: handle.trim(),
-				llm_provider: llmProvider,
-				llm_model: llmModel,
-				llm_api_key: llmApiKey,
-				llm_base_url: llmBaseUrl,
-				system_prompt: systemPrompt,
+				agent_type: agentType,
 				project_role_id: roleId,
+				...(agentType === "llm"
+					? {
+							llm_provider: llmProvider,
+							llm_model: llmModel,
+							llm_api_key: llmApiKey,
+							llm_base_url: llmBaseUrl,
+						}
+					: {
+							acp_provider: acpProvider,
+							...(acpProvider === "custom"
+								? { acp_command: acpCommandParts }
+								: {}),
+						}),
+				system_prompt: systemPrompt,
 			}),
 		onSuccess: () => {
 			qc.invalidateQueries({
@@ -215,14 +235,14 @@ function CreateAgentDialog({
 	};
 
 	const step1Valid = !!(name.trim() && handle.trim() && roleId);
-	const canSubmit = !!(
-		step1Valid &&
-		llmProvider &&
-		llmModel &&
-		llmBaseUrl.trim() &&
-		llmApiKey.trim() &&
-		!createMutation.isPending
-	);
+	const step2Valid =
+		agentType === "llm"
+			? !!(llmProvider && llmModel && llmBaseUrl.trim() && llmApiKey.trim())
+			: !!(
+					acpProvider &&
+					(acpProvider !== "custom" || acpCommandParts.length > 0)
+				);
+	const canSubmit = !!(step1Valid && step2Valid && !createMutation.isPending);
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -396,65 +416,126 @@ function CreateAgentDialog({
 				{/* ── Step 2: AI Configuration ─────────────────────────────────── */}
 				{step === 2 && (
 					<div className="overflow-y-auto max-h-[62vh] px-6 py-5 space-y-5">
-						{/* Provider + Model card */}
-						<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
-							<div className="flex items-center gap-1.5">
-								<Cpu className="size-3.5 text-muted-foreground" />
-								<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-									{t("agents.createDialog.modelSection")}
-								</span>
+						{/* Agent Type */}
+						<div className="space-y-1.5">
+							<Label>{t("agents.createDialog.agentTypeLabel")}</Label>
+							<div className="grid grid-cols-2 gap-2">
+								{(["llm", "acp"] as const).map((type) => {
+									const isSelected = agentType === type;
+									return (
+										<button
+											key={type}
+											type="button"
+											onClick={() => setAgentType(type)}
+											className={cn(
+												"rounded-lg border p-3 text-left transition-all",
+												isSelected
+													? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
+													: "border-border/60 hover:border-border hover:bg-muted/30",
+											)}
+										>
+											<p className="text-xs font-semibold leading-tight">
+												{t(
+													type === "llm"
+														? "agents.createDialog.agentTypeLLM"
+														: "agents.createDialog.agentTypeACP",
+												)}
+											</p>
+											<p className="mt-0.5 text-xs leading-tight text-muted-foreground">
+												{t(
+													type === "llm"
+														? "agents.createDialog.agentTypeLLMHint"
+														: "agents.createDialog.agentTypeACPHint",
+												)}
+											</p>
+										</button>
+									);
+								})}
 							</div>
-							<div className="grid grid-cols-2 gap-3">
+						</div>
+
+						{agentType === "acp" && (
+							<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+								<div className="flex items-center gap-1.5">
+									<Cpu className="size-3.5 text-muted-foreground" />
+									<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+										{t("agents.createDialog.acpSection")}
+									</span>
+								</div>
 								<div className="space-y-1.5">
-									<Label>{t("agents.createDialog.providerLabel")}</Label>
+									<Label>{t("agents.createDialog.acpProviderLabel")}</Label>
 									<Select
-										value={providerSelect}
-										onValueChange={handleProviderChange}
+										value={acpProvider}
+										onValueChange={(v) => v && setAcpProvider(v as ACPProvider)}
 									>
 										<SelectTrigger>
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											{providers.map((p) => (
-												<SelectItem key={p} value={p}>
-													{p}
-												</SelectItem>
-											))}
+											<SelectItem value="claude-code">
+												{t("agents.createDialog.acpProviderClaudeCode")}
+											</SelectItem>
+											<SelectItem value="codex">
+												{t("agents.createDialog.acpProviderCodex")}
+											</SelectItem>
+											<SelectItem value="gemini-cli">
+												{t("agents.createDialog.acpProviderGeminiCli")}
+											</SelectItem>
 											<SelectSeparator />
-											<SelectItem value={CUSTOM}>
-												{t("agents.createDialog.customOption")}
+											<SelectItem value="custom">
+												{t("agents.createDialog.acpProviderCustom")}
 											</SelectItem>
 										</SelectContent>
 									</Select>
-									{providerSelect === CUSTOM && (
-										<Input
-											placeholder="my-provider"
-											value={customProvider}
-											onChange={(e) => setCustomProvider(e.target.value)}
-										/>
-									)}
 								</div>
-								<div className="space-y-1.5">
-									<Label>{t("agents.createDialog.modelLabel")}</Label>
-									{providerSelect === CUSTOM ? (
+								{acpProvider === "custom" && (
+									<div className="space-y-1.5">
+										<Label htmlFor="agent-acp-command">
+											{t("agents.createDialog.acpCommandLabel")}
+										</Label>
 										<Input
-											placeholder="my-model-name"
-											value={customModel}
-											onChange={(e) => setCustomModel(e.target.value)}
+											id="agent-acp-command"
+											placeholder={t(
+												"agents.createDialog.acpCommandPlaceholder",
+											)}
+											value={acpCommand}
+											onChange={(e) => setAcpCommand(e.target.value)}
 										/>
-									) : (
-										<>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.createDialog.acpCommandHint")}
+										</p>
+									</div>
+								)}
+								<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
+									{t("agents.createDialog.acpGuidance")}
+								</p>
+							</div>
+						)}
+
+						{/* Provider + Model card */}
+						{agentType === "llm" && (
+							<>
+								<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+									<div className="flex items-center gap-1.5">
+										<Cpu className="size-3.5 text-muted-foreground" />
+										<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+											{t("agents.createDialog.modelSection")}
+										</span>
+									</div>
+									<div className="grid grid-cols-2 gap-3">
+										<div className="space-y-1.5">
+											<Label>{t("agents.createDialog.providerLabel")}</Label>
 											<Select
-												value={modelSelect}
-												onValueChange={(v) => v && setModelSelect(v)}
+												value={providerSelect}
+												onValueChange={handleProviderChange}
 											>
 												<SelectTrigger>
 													<SelectValue />
 												</SelectTrigger>
 												<SelectContent>
-													{availableModels.map((m) => (
-														<SelectItem key={m} value={m}>
-															{m}
+													{providers.map((p) => (
+														<SelectItem key={p} value={p}>
+															{p}
 														</SelectItem>
 													))}
 													<SelectSeparator />
@@ -463,75 +544,114 @@ function CreateAgentDialog({
 													</SelectItem>
 												</SelectContent>
 											</Select>
-											{modelSelect === CUSTOM && (
+											{providerSelect === CUSTOM && (
+												<Input
+													placeholder="my-provider"
+													value={customProvider}
+													onChange={(e) => setCustomProvider(e.target.value)}
+												/>
+											)}
+										</div>
+										<div className="space-y-1.5">
+											<Label>{t("agents.createDialog.modelLabel")}</Label>
+											{providerSelect === CUSTOM ? (
 												<Input
 													placeholder="my-model-name"
 													value={customModel}
 													onChange={(e) => setCustomModel(e.target.value)}
 												/>
+											) : (
+												<>
+													<Select
+														value={modelSelect}
+														onValueChange={(v) => v && setModelSelect(v)}
+													>
+														<SelectTrigger>
+															<SelectValue />
+														</SelectTrigger>
+														<SelectContent>
+															{availableModels.map((m) => (
+																<SelectItem key={m} value={m}>
+																	{m}
+																</SelectItem>
+															))}
+															<SelectSeparator />
+															<SelectItem value={CUSTOM}>
+																{t("agents.createDialog.customOption")}
+															</SelectItem>
+														</SelectContent>
+													</Select>
+													{modelSelect === CUSTOM && (
+														<Input
+															placeholder="my-model-name"
+															value={customModel}
+															onChange={(e) => setCustomModel(e.target.value)}
+														/>
+													)}
+												</>
 											)}
-										</>
-									)}
+										</div>
+									</div>
 								</div>
-							</div>
-						</div>
 
-						{/* API Key */}
-						<div className="space-y-1.5">
-							<Label htmlFor="agent-api-key">
-								<span className="flex items-center gap-1.5">
-									<Lock className="size-3 text-muted-foreground" />
-									{t("agents.createDialog.apiKeyLabel")}{" "}
-									<span className="text-destructive">*</span>
-								</span>
-							</Label>
-							<div className="relative">
-								<Input
-									id="agent-api-key"
-									type={showApiKey ? "text" : "password"}
-									placeholder={
-										llmProvider === "anthropic" ? "sk-ant-…" : "sk-…"
-									}
-									value={llmApiKey}
-									onChange={(e) => setLlmApiKey(e.target.value)}
-									className="pr-9"
-								/>
-								<button
-									type="button"
-									onClick={() => setShowApiKey((s) => !s)}
-									className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
-									aria-label={
-										showApiKey
-											? t("agents.createDialog.hideApiKey")
-											: t("agents.createDialog.showApiKey")
-									}
-								>
-									{showApiKey ? (
-										<EyeOff className="size-4" />
-									) : (
-										<Eye className="size-4" />
-									)}
-								</button>
-							</div>
-							<p className="text-xs text-muted-foreground flex items-center gap-1.5">
-								<span className="size-1.5 shrink-0 rounded-full bg-emerald-500 inline-block" />
-								{t("agents.createDialog.apiKeyHint")}
-							</p>
-						</div>
+								{/* API Key */}
+								<div className="space-y-1.5">
+									<Label htmlFor="agent-api-key">
+										<span className="flex items-center gap-1.5">
+											<Lock className="size-3 text-muted-foreground" />
+											{t("agents.createDialog.apiKeyLabel")}{" "}
+											<span className="text-destructive">*</span>
+										</span>
+									</Label>
+									<div className="relative">
+										<Input
+											id="agent-api-key"
+											type={showApiKey ? "text" : "password"}
+											placeholder={
+												llmProvider === "anthropic" ? "sk-ant-…" : "sk-…"
+											}
+											value={llmApiKey}
+											onChange={(e) => setLlmApiKey(e.target.value)}
+											className="pr-9"
+										/>
+										<button
+											type="button"
+											onClick={() => setShowApiKey((s) => !s)}
+											className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
+											aria-label={
+												showApiKey
+													? t("agents.createDialog.hideApiKey")
+													: t("agents.createDialog.showApiKey")
+											}
+										>
+											{showApiKey ? (
+												<EyeOff className="size-4" />
+											) : (
+												<Eye className="size-4" />
+											)}
+										</button>
+									</div>
+									<p className="text-xs text-muted-foreground flex items-center gap-1.5">
+										<span className="size-1.5 shrink-0 rounded-full bg-emerald-500 inline-block" />
+										{t("agents.createDialog.apiKeyHint")}
+									</p>
+								</div>
 
-						{/* Base URL */}
-						<div className="space-y-1.5">
-							<Label htmlFor="agent-base-url">
-								{t("agents.createDialog.baseUrlLabel")}{" "}
-								<span className="text-destructive">*</span>
-							</Label>
-							<Input
-								id="agent-base-url"
-								placeholder="https://api.openai.com/v1"
-								value={llmBaseUrl}
-								onChange={(e) => setLlmBaseUrl(e.target.value)}
-							/>
-						</div>
+								{/* Base URL */}
+								<div className="space-y-1.5">
+									<Label htmlFor="agent-base-url">
+										{t("agents.createDialog.baseUrlLabel")}{" "}
+										<span className="text-destructive">*</span>
+									</Label>
+									<Input
+										id="agent-base-url"
+										placeholder="https://api.openai.com/v1"
+										value={llmBaseUrl}
+										onChange={(e) => setLlmBaseUrl(e.target.value)}
+									/>
+								</div>
+							</>
+						)}
 
 						{/* System Prompt */}
 						<div className="space-y-1.5">

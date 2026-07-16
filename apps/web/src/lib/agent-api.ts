@@ -108,15 +108,22 @@ export interface AgentEnvVar {
 	created_at: string;
 }
 
+export type AgentType = "llm" | "acp";
+export type ACPProvider = "claude-code" | "codex" | "gemini-cli" | "custom";
+
 export interface Agent {
 	id: string;
 	project_id: string;
 	name: string;
 	handle: string;
 	avatar_url?: string | null;
+	agent_type: AgentType;
 	llm_provider: string;
 	llm_model: string;
 	llm_base_url: string;
+	acp_provider?: ACPProvider | null;
+	acp_command?: string[];
+	has_acp_bridge_token: boolean;
 	system_prompt: string;
 	git_committer_name: string;
 	git_committer_email: string;
@@ -205,10 +212,13 @@ export async function createAgent(
 	payload: {
 		name: string;
 		handle: string;
-		llm_provider: string;
-		llm_model: string;
-		llm_api_key: string;
-		llm_base_url: string;
+		agent_type?: AgentType;
+		llm_provider?: string;
+		llm_model?: string;
+		llm_api_key?: string;
+		llm_base_url?: string;
+		acp_provider?: ACPProvider;
+		acp_command?: string[];
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
@@ -232,6 +242,8 @@ export async function updateAgent(
 		llm_model?: string;
 		llm_api_key?: string;
 		llm_base_url?: string | null;
+		acp_provider?: ACPProvider;
+		acp_command?: string[];
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
@@ -241,6 +253,37 @@ export async function updateAgent(
 		`/projects/${projectId}/agents/${agentId}`,
 		payload,
 	);
+	return data.data;
+}
+
+// ── ACP Local Bridge ─────────────────────────────────────────────────────────
+
+export interface AcpBridgeToken {
+	token: string;
+	run_command: string;
+}
+
+export async function generateAcpBridgeToken(
+	projectId: string,
+	agentId: string,
+): Promise<AcpBridgeToken> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AcpBridgeToken>
+	>(`/projects/${projectId}/agents/${agentId}/acp-bridge-token`);
+	return data.data;
+}
+
+export interface AcpBridgeStatus {
+	connected: boolean;
+}
+
+export async function getAcpBridgeStatus(
+	projectId: string,
+	agentId: string,
+): Promise<AcpBridgeStatus> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<AcpBridgeStatus>
+	>(`/projects/${projectId}/agents/${agentId}/acp-bridge-status`);
 	return data.data;
 }
 
@@ -577,6 +620,21 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "env-vars"],
 		queryFn: () => listEnvVars(projectId, agentId),
+	});
+
+// Polled while the Local Bridge panel is visible (see agents/$agentId route) —
+// there's no realtime push for bridge connect/disconnect, so the caller
+// passes `enabled` and a refetchInterval to only poll when the panel is open.
+export const acpBridgeStatusQueryOptions = (
+	projectId: string,
+	agentId: string,
+	options?: { enabled?: boolean },
+) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "agents", agentId, "acp-bridge-status"],
+		queryFn: () => getAcpBridgeStatus(projectId, agentId),
+		refetchInterval: 10_000,
+		enabled: options?.enabled ?? true,
 	});
 
 // No refetchInterval: kept live via useProjectRealtime's socket-driven

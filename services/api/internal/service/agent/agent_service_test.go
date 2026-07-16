@@ -114,6 +114,10 @@ func (m *mockAgentRepo) SetAgentMemberID(ctx context.Context, agentID, memberID 
 	return nil
 }
 
+func (m *mockAgentRepo) SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error {
+	return nil
+}
+
 func (m *mockAgentRepo) ListMCPServers(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error) {
 	if m.listMCPServers != nil {
 		return m.listMCPServers(ctx, agentID)

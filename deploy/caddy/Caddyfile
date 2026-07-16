@@ -4,12 +4,13 @@
 #
 # Single public entrypoint for the Paca stack:
 #
-#   /api/*         →  REST API service       (forwarded as-is, /api kept)
-#   /ws/*          →  Realtime service        (Socket.IO, /ws stripped)
-#   /storage/*     →  MinIO                   (/storage stripped)
-#   /plugins/*     →  Plugin frontend assets  (static files)
-#   /plugins-mcp/* →  Plugin MCP bundles      (static files)
-#   /*             →  Web application         (SPA with client-side routing)
+#   /api/*          →  REST API service       (forwarded as-is, /api kept)
+#   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
+#   /agent-bridge/* →  AI-agent local ACP bridge (forwarded as-is)
+#   /storage/*      →  MinIO                   (/storage stripped)
+#   /plugins/*      →  Plugin frontend assets  (static files)
+#   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
+#   /*              →  Web application         (SPA with client-side routing)
 #
 # This file is mounted at /etc/caddy/Caddyfile inside the gateway container.
 #
@@ -125,6 +126,16 @@
 	#   /api/healthz   →  /api/healthz
 	handle /api/* {
 		reverse_proxy api:8080
+	}
+
+	# -- AI agent local ACP bridge -------------------------------------------------
+	#
+	# The only part of services/ai-agent exposed publicly: the WebSocket a
+	# user's local `paca-acp-bridge` daemon connects to (see
+	# services/ai-agent/src/routes/bridge.py). WebSocket upgrades are proxied
+	# automatically, same as the realtime service above.
+	handle /agent-bridge/* {
+		reverse_proxy ai-agent:8080
 	}
 
 	# -- Web application (SPA) -----------------------------------------------------

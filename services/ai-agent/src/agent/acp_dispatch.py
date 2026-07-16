@@ -1,0 +1,75 @@
+"""Routes triggers for ACP-type agents to their connected local bridge.
+
+Mirrors executor.run_conversation's role for LLM agents (called from
+worker._process_trigger), but never spins up a sandbox — the ACP CLI runs
+entirely on the user's own machine via apps/acp-bridge, connected through
+acp_bridge.py / routes/bridge.py. Auth, MCP servers, and skills are all the
+user's own local responsibility — nothing is forwarded from Paca.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from ..core import streams as stream_store
+from ..core.streams import TriggerMessage
+from ..models.agent import AgentConfig
+from ..models.conversation_status import ConversationStatus
+from ..repositories import conversation_repository
+from . import acp_bridge
+
+logger = logging.getLogger(__name__)
+
+_OFFLINE_MESSAGE = (
+    "Local ACP bridge is not connected. Run `paca-acp-bridge run --agent-id "
+    "<id> --token <token>` in your project folder, then try again."
+)
+
+
+async def _fail_offline(trigger: TriggerMessage) -> None:
+    await conversation_repository.update_conversation_status(
+        trigger.conversation_id, ConversationStatus.FAILED, error_message=_OFFLINE_MESSAGE
+    )
+    await stream_store.publish_realtime(
+        project_id=trigger.project_id,
+        conversation_id=trigger.conversation_id,
+        event_type="agent.conversation.failed",
+    )
+
+
+async def dispatch_acp_trigger(trigger: TriggerMessage, agent_config: AgentConfig) -> None:
+    """Hand a trigger off to the agent's connected local ACP bridge."""
+    agent_id = agent_config.agent_id
+    if not await acp_bridge.is_online(agent_id):
+        logger.info(
+            "ACP bridge offline for agent %s; failing conversation %s",
+            agent_id,
+            trigger.conversation_id,
+        )
+        await _fail_offline(trigger)
+        return
+
+    await conversation_repository.update_conversation_status(
+        trigger.conversation_id, ConversationStatus.RUNNING
+    )
+    dispatched = await acp_bridge.dispatch(
+        agent_id,
+        {
+            "type": "start_turn",
+            "conversation_id": trigger.conversation_id,
+            "project_id": trigger.project_id,
+            "message": trigger.message,
+            "trigger_type": trigger.trigger_type,
+            "acp_provider": agent_config.acp_provider,
+            "acp_command": agent_config.acp_command,
+        },
+    )
+    if not dispatched:
+        # Bridge disconnected between the is_online check above and here
+        # (e.g. the daemon crashed mid-dispatch) — fail the same way.
+        logger.info(
+            "ACP bridge for agent %s went offline before dispatch; failing conversation %s",
+            agent_id,
+            trigger.conversation_id,
+        )
+        await _fail_offline(trigger)

@@ -28,16 +28,20 @@ type agentActivityRecorder interface {
 type AgentHandler struct {
 	svc         agentdom.Service
 	aiAgentURL  string
+	publicURL   string
 	httpClient  *http.Client
 	activityRec agentActivityRecorder
 	memberRepo  projectdom.MemberRepository
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
-func NewAgentHandler(svc agentdom.Service, aiAgentURL string) *AgentHandler {
+// publicURL is the externally reachable base URL (e.g. https://paca.example.com)
+// used to build the local-bridge "run this command" snippet.
+func NewAgentHandler(svc agentdom.Service, aiAgentURL, publicURL string) *AgentHandler {
 	return &AgentHandler{
 		svc:        svc,
 		aiAgentURL: aiAgentURL,
+		publicURL:  publicURL,
 		httpClient: &http.Client{},
 	}
 }
@@ -130,6 +134,10 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
+	agentType := req.AgentType
+	if agentType == "" {
+		agentType = agentdom.AgentTypeLLM
+	}
 	switch {
 	case req.Name == "":
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "name is required"))
@@ -137,20 +145,33 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	case req.Handle == "":
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "handle is required"))
 		return
-	case req.LLMProvider == "":
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_provider is required"))
-		return
-	case req.LLMModel == "":
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_model is required"))
-		return
-	case req.LLMAPIKey == "":
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_api_key is required"))
-		return
-	case req.LLMBaseURL == "":
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_base_url is required"))
-		return
 	case req.ProjectRoleID == uuid.Nil:
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "project_role_id is required"))
+		return
+	}
+	switch agentType {
+	case agentdom.AgentTypeLLM:
+		switch {
+		case req.LLMProvider == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_provider is required"))
+			return
+		case req.LLMModel == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_model is required"))
+			return
+		case req.LLMAPIKey == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_api_key is required"))
+			return
+		case req.LLMBaseURL == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_base_url is required"))
+			return
+		}
+	case agentdom.AgentTypeACP:
+		if req.ACPProvider == "" {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "acp_provider is required"))
+			return
+		}
+	default:
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp"))
 		return
 	}
 	claims := middleware.ClaimsFrom(r)
@@ -159,10 +180,13 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	a, err := h.svc.CreateAgent(r.Context(), projectID, agentdom.CreateAgentInput{
 		Name:              req.Name,
 		Handle:            req.Handle,
+		AgentType:         agentType,
 		LLMProvider:       req.LLMProvider,
 		LLMModel:          req.LLMModel,
 		LLMAPIKey:         req.LLMAPIKey,
 		LLMBaseURL:        req.LLMBaseURL,
+		ACPProvider:       req.ACPProvider,
+		ACPCommand:        req.ACPCommand,
 		SystemPrompt:      req.SystemPrompt,
 		MaxIterations:     req.MaxIterations,
 		TimeoutMinutes:    req.TimeoutMinutes,
@@ -202,6 +226,8 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		LLMModel:          req.LLMModel,
 		LLMAPIKey:         req.LLMAPIKey,
 		LLMBaseURL:        req.LLMBaseURL,
+		ACPProvider:       req.ACPProvider,
+		ACPCommand:        req.ACPCommand,
 		SystemPrompt:      req.SystemPrompt,
 		MaxIterations:     req.MaxIterations,
 		TimeoutMinutes:    req.TimeoutMinutes,
@@ -781,6 +807,83 @@ func (h *AgentHandler) GetLLMModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service returned an error"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+// --- ACP local bridge --------------------------------------------------------
+
+// GenerateACPBridgeToken handles POST
+// /projects/:projectId/agents/:agentId/acp-bridge-token. It issues a new
+// local-bridge auth token, returning the plaintext once — the caller must
+// copy it now, since only its hash is persisted.
+func (h *AgentHandler) GenerateACPBridgeToken(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	token, err := h.svc.GenerateACPBridgeToken(r.Context(), projectID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	runCommand := fmt.Sprintf("uvx paca-acp-bridge run --agent-id %s --token %s", agentID, token)
+	if h.publicURL != "" {
+		runCommand += fmt.Sprintf(" --server %s", h.publicURL)
+	}
+	presenter.OK(w, r, dto.GenerateACPBridgeTokenResponse{
+		Token:      token,
+		RunCommand: runCommand,
+	})
+}
+
+// GetACPBridgeStatus handles GET
+// /projects/:projectId/agents/:agentId/acp-bridge-status. It proxies to the
+// ai-agent service's internal presence check so the frontend can show a live
+// connected/disconnected badge for the agent's local bridge.
+func (h *AgentHandler) GetACPBridgeStatus(w http.ResponseWriter, r *http.Request) {
+	_, agentID, err := h.parseAgentForProject(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if h.aiAgentURL == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service URL not configured"))
+		return
+	}
+
+	req, err := http.NewRequestWithContext(
+		r.Context(), http.MethodGet,
+		fmt.Sprintf("%s/agent-bridge/status/%s", h.aiAgentURL, agentID), nil,
+	)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to create request"))
+		return
+	}
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach ai-agent service"))
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to read ai-agent response"))
+		return
+	}
 	if resp.StatusCode != http.StatusOK {
 		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service returned an error"))
 		return

@@ -36,6 +36,12 @@ class AgentConfig:
     max_iterations: int
     git_committer_name: str = "paca-agent"
     git_committer_email: str = "280579135+paca-agent@users.noreply.github.com"
+    # "llm" (default) or "acp". ACP agents delegate to a coding CLI the user
+    # runs themselves via the local bridge (src/agent/acp_bridge.py) instead
+    # of calling llm_provider/llm_model directly — see acp_dispatch.py.
+    agent_type: str = "llm"
+    acp_provider: str | None = None
+    acp_command: list[str] = field(default_factory=list)
     mcp_servers: list[AgentMCPServerRow] = field(default_factory=list)
     skills: list[AgentSkillRow] = field(default_factory=list)
     env_vars: dict[str, str] = field(default_factory=dict)

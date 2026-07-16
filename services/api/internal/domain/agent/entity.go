@@ -9,29 +9,66 @@ import (
 
 // Agent represents an AI agent belonging to a project.
 type Agent struct {
-	ID                uuid.UUID
-	ProjectID         uuid.UUID
-	Name              string
-	Handle            string
-	AvatarURL         *string
-	LLMProvider       string
-	LLMModel          string
-	LLMAPIKeySecret   string // reference to secrets store entry
-	LLMBaseURL        string
-	SystemPrompt      string
-	MaxIterations     int
-	TimeoutMinutes    int
-	GitCommitterName  string
-	GitCommitterEmail string
-	CreatedBy         *uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	DeletedAt         *time.Time
+	ID              uuid.UUID
+	ProjectID       uuid.UUID
+	Name            string
+	Handle          string
+	AvatarURL       *string
+	AgentType       string // llm | acp
+	LLMProvider     string
+	LLMModel        string
+	LLMAPIKeySecret string // reference to secrets store entry
+	LLMBaseURL      string
+	// ACPProvider is one of claude-code | codex | gemini-cli | custom; nil for
+	// llm-type agents.
+	ACPProvider *string
+	// ACPCommand is the command + args used to launch the ACP server. Only
+	// meaningful (and required) when ACPProvider == "custom" — built-in
+	// providers resolve a default command via the OpenHands SDK's own
+	// provider registry.
+	ACPCommand []string
+	// HasACPBridgeToken reports whether a local-bridge auth token has been
+	// generated; the token itself (and its hash) are never exposed here.
+	HasACPBridgeToken bool
+	// ACPBridgeTokenHash is the SHA-256 hex digest of the current bridge
+	// token, used only for verification — never serialized to API responses.
+	ACPBridgeTokenHash string
+	SystemPrompt       string
+	MaxIterations      int
+	TimeoutMinutes     int
+	GitCommitterName   string
+	GitCommitterEmail  string
+	CreatedBy          *uuid.UUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer
 	Skills     []*AgentSkill
 	EnvVars    []*AgentEnvironmentVariable
+}
+
+// AgentType values.
+const (
+	AgentTypeLLM = "llm"
+	AgentTypeACP = "acp"
+)
+
+// ACPProvider values.
+const (
+	ACPProviderClaudeCode = "claude-code"
+	ACPProviderCodex      = "codex"
+	ACPProviderGeminiCLI  = "gemini-cli"
+	ACPProviderCustom     = "custom"
+)
+
+// ValidACPProviders is the set of allowed acp_provider values.
+var ValidACPProviders = map[string]bool{
+	ACPProviderClaudeCode: true,
+	ACPProviderCodex:      true,
+	ACPProviderGeminiCLI:  true,
+	ACPProviderCustom:     true,
 }
 
 // AgentMCPServer is a custom MCP server configuration attached to an agent.

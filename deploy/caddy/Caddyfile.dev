@@ -14,13 +14,14 @@
 #
 # Single public entrypoint for the Paca stack:
 #
-#   /api/*         →  REST API service       (forwarded as-is, /api kept)
-#   /ws/*          →  Realtime service        (Socket.IO, /ws stripped)
-#   /storage/*     →  MinIO                   (/storage stripped)
-#   /plugins/*     →  Plugin frontend assets  (static files)
-#   /plugins-mcp/* →  Plugin MCP bundles      (static files)
-#   /*             →  Web application         (SPA with client-side routing;
-#                      Vite HMR WebSocket proxied automatically)
+#   /api/*          →  REST API service       (forwarded as-is, /api kept)
+#   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
+#   /agent-bridge/* →  AI-agent local ACP bridge (forwarded as-is)
+#   /storage/*      →  MinIO                   (/storage stripped)
+#   /plugins/*      →  Plugin frontend assets  (static files)
+#   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
+#   /*              →  Web application         (SPA with client-side routing;
+#                       Vite HMR WebSocket proxied automatically)
 # =============================================================================
 
 :80 {
@@ -72,6 +73,10 @@
 
 	handle /api/* {
 		reverse_proxy api:8080
+	}
+
+	handle /agent-bridge/* {
+		reverse_proxy ai-agent:8080
 	}
 
 	handle {
