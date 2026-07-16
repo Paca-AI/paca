@@ -133,6 +133,7 @@ func New(deps Deps) http.Handler {
 				r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
 				r.Use(httpmw.RequireFreshPassword())
 				r.Get("/", deps.Project.ListProjects)
+				r.Get("/workspace-stats", deps.Project.GetWorkspaceStats)
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsCreate)).
 					Post("/", deps.Project.CreateProject)
 			})
