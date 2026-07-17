@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
+import signal
 import sys
 
 from .bridge_client import BridgeClient
+
+logger = logging.getLogger(__name__)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -43,6 +47,41 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+async def _run_until_stopped(client: BridgeClient) -> None:
+    """Runs client.run_forever() until a SIGINT/SIGTERM handler cancels it.
+
+    asyncio.run() only turns SIGINT into a catchable KeyboardInterrupt by
+    default — SIGTERM (what a process manager sends to stop a backgrounded
+    daemon) would otherwise kill the process immediately, skipping
+    run_forever()'s own cleanup (cancelling the sender task, closing the
+    WebSocket) and potentially losing a not-yet-sent turn_status still
+    sitting in the outbox.
+    """
+    loop = asyncio.get_running_loop()
+    stop = asyncio.Event()
+
+    def _request_stop(sig: signal.Signals) -> None:
+        logger.info("Received %s — shutting down", sig.name)
+        stop.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _request_stop, sig)
+        except NotImplementedError:
+            # Not available on Windows' default event loop — SIGINT still
+            # reaches us as KeyboardInterrupt via main()'s except clause.
+            pass
+
+    run_task = asyncio.create_task(client.run_forever())
+    stop_task = asyncio.create_task(stop.wait())
+    try:
+        await asyncio.wait({run_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        run_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await run_task
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     logging.basicConfig(
@@ -71,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         workspace=args.workspace,
     )
     try:
-        asyncio.run(client.run_forever())
+        asyncio.run(_run_until_stopped(client))
     except KeyboardInterrupt:
         pass
     return 0

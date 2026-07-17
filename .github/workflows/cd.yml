@@ -400,9 +400,9 @@ jobs:
       # touching uv.lock. Must run BEFORE build so the version is baked
       # into the built sdist/wheel.
       - name: Set package version
-        run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          uv version --frozen "${VERSION#v}"
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: uv version --frozen "${VERSION#v}"
 
       - name: Build sdist and wheel
         run: uv build

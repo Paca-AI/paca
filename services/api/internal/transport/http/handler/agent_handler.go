@@ -904,9 +904,23 @@ func (h *AgentHandler) disconnectACPBridge(agentID uuid.UUID) {
 // ai-agent service's internal presence check so the frontend can show a live
 // connected/disconnected badge for the agent's local bridge.
 func (h *AgentHandler) GetACPBridgeStatus(w http.ResponseWriter, r *http.Request) {
-	_, agentID, err := h.parseAgentForProject(r)
+	projectID, err := parseProjectID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agent, err := h.svc.GetAgent(r.Context(), projectID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if agent.AgentType != agentdom.AgentTypeACP {
+		presenter.Error(w, r, agentdom.ErrAgentTypeInvalid)
 		return
 	}
 	if h.aiAgentURL == "" {

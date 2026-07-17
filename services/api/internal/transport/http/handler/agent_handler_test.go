@@ -132,6 +132,7 @@ func newAgentRouter(svc agentdom.Service) chi.Router {
 			r.Post("/mcp-servers", h.AddMCPServer)
 			r.Post("/skills", h.AddSkill)
 			r.Post("/chat-sessions", h.StartChatSession)
+			r.Get("/acp-bridge-status", h.GetACPBridgeStatus)
 		})
 		r.Route("/tasks/{taskId}", func(r chi.Router) {
 			r.Post("/write-with-ai", h.WriteTaskDescriptionWithAI)
@@ -368,6 +369,37 @@ func validAgentSvc() *mockAgentSvc {
 		getAgent: func(_ context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
 			return &agentdom.Agent{ID: agentID, ProjectID: projectID}, nil
 		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetACPBridgeStatus validation tests
+// ---------------------------------------------------------------------------
+
+func TestGetACPBridgeStatus_NonACPAgent_Returns400(t *testing.T) {
+	r := newAgentRouter(validAgentSvc()) // validAgentSvc's agent has the zero-value (LLM) AgentType
+	projectID := uuid.New()
+	agentID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/acp-bridge-status", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-ACP agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetACPBridgeStatus_WrongProject_Returns404(t *testing.T) {
+	svc := &mockAgentSvc{
+		getAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	r := newAgentRouter(svc)
+	projectID := uuid.New()
+	agentID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/acp-bridge-status", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for wrong-project agent, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

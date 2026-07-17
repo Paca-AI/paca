@@ -25,6 +25,11 @@ _MAX_BACKOFF_SECONDS = 30
 # disconnected (or while a send attempt just failed) — short enough that a
 # reconnect is picked up quickly, long enough not to spin tightly.
 _SEND_RETRY_SECONDS = 0.5
+# Bounds the outbox so a very long disconnect during an active, event-heavy
+# conversation can't grow it without limit. put() still blocks rather than
+# dropping on overflow (see _send) — this just backpressures the caller
+# instead of the process running out of memory.
+_OUTBOX_MAX_SIZE = 5000
 
 
 def to_bridge_ws_url(server: str) -> str:
@@ -48,7 +53,7 @@ class BridgeClient:
         # turn_status could vanish and leave the server-side conversation
         # stuck at RUNNING forever (see acp_dispatch.py's watchdog for the
         # server-side backstop this complements).
-        self._outbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._outbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_OUTBOX_MAX_SIZE)
         self._sender_task: asyncio.Task | None = None
 
     async def _send(self, message: dict[str, Any]) -> None:
@@ -102,20 +107,28 @@ class BridgeClient:
         logger.info("Connecting to %s", self._url)
         async with websockets.connect(self._url) as ws:
             self._ws = ws
-            await ws.send(
-                json.dumps({"type": "hello", "agent_id": self._agent_id, "token": self._token})
-            )
-            ack = json.loads(await ws.recv())
-            if ack.get("type") != "hello_ack":
-                raise RuntimeError(f"Bridge rejected connection: {ack}")
-            logger.info("Connected — serving ACP conversations from %s", self._runner.workspace)
-
-            heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             try:
-                async for raw in ws:
-                    await self._handle_message(json.loads(raw))
+                await ws.send(
+                    json.dumps({"type": "hello", "agent_id": self._agent_id, "token": self._token})
+                )
+                ack = json.loads(await ws.recv())
+                if ack.get("type") != "hello_ack":
+                    raise RuntimeError(f"Bridge rejected connection: {ack}")
+                logger.info("Connected — serving ACP conversations from %s", self._runner.workspace)
+
+                heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                try:
+                    async for raw in ws:
+                        await self._handle_message(json.loads(raw))
+                finally:
+                    heartbeat_task.cancel()
             finally:
-                heartbeat_task.cancel()
+                # Reset on *every* exit from this connection attempt, not
+                # just a clean disconnect after the message loop — otherwise
+                # a hello rejection (or a failure sending/parsing it) leaves
+                # self._ws pointing at an already-closed socket, and
+                # _sender_loop keeps calling .send() on it every
+                # _SEND_RETRY_SECONDS until the next successful reconnect.
                 self._ws = None
 
     async def _heartbeat_loop(self) -> None:

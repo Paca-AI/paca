@@ -70,6 +70,7 @@ import {
 	updateMCPServer,
 	updateSkill,
 } from "@/lib/agent-api";
+import { splitShellCommand } from "@/lib/shell-command";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/agents/$agentId/",
@@ -158,7 +159,7 @@ function OverviewTab({
 	const llmProvider =
 		providerSelect === CUSTOM ? customProvider.trim() : providerSelect;
 	const llmModel = modelSelect === CUSTOM ? customModel.trim() : modelSelect;
-	const acpCommandParts = acpCommand.trim().split(/\s+/).filter(Boolean);
+	const acpCommandParts = splitShellCommand(acpCommand);
 	const isAcp = agent.agent_type === "acp";
 
 	const handleProviderChange = (v: string | null) => {
@@ -411,6 +412,7 @@ function OverviewTab({
 						agentId={agent.id}
 						acpProvider={agent.acp_provider ?? "claude-code"}
 						hasToken={agent.has_acp_bridge_token}
+						canWrite={canWrite}
 						onTokenGenerated={() =>
 							qc.setQueryData(
 								["projects", projectId, "agents", agent.id],
@@ -500,12 +502,14 @@ function LocalBridgePanel({
 	agentId,
 	acpProvider,
 	hasToken,
+	canWrite,
 	onTokenGenerated,
 }: {
 	projectId: string;
 	agentId: string;
 	acpProvider: ACPProvider;
 	hasToken: boolean;
+	canWrite: boolean;
 	onTokenGenerated: () => void;
 }) {
 	const { t } = useTranslation("projects");
@@ -522,6 +526,7 @@ function LocalBridgePanel({
 				agentId={agentId}
 				acpProvider={acpProvider}
 				hasToken={hasToken}
+				canWrite={canWrite}
 				onTokenGenerated={onTokenGenerated}
 			/>
 		</div>

@@ -101,6 +101,7 @@ export function AcpBridgeSetup({
 	agentId,
 	acpProvider,
 	hasToken,
+	canWrite,
 	onTokenGenerated,
 	initialToken = null,
 }: {
@@ -108,6 +109,7 @@ export function AcpBridgeSetup({
 	agentId: string;
 	acpProvider: ACPProvider;
 	hasToken: boolean;
+	canWrite: boolean;
 	onTokenGenerated: () => void;
 	// Already-generated token to show immediately — used by the post-creation
 	// dialog, which generates the token as part of agent creation itself
@@ -136,9 +138,17 @@ export function AcpBridgeSetup({
 	});
 
 	const copy = (field: CopyField, text: string) => {
-		navigator.clipboard.writeText(text);
-		setCopiedField(field);
-		setTimeout(() => setCopiedField((f) => (f === field ? null : f)), 2000);
+		navigator.clipboard
+			.writeText(text)
+			.then(() => {
+				setCopiedField(field);
+				setTimeout(() => setCopiedField((f) => (f === field ? null : f)), 2000);
+			})
+			.catch(() => {
+				// Clipboard write can fail (permission denied, insecure context) —
+				// leave copiedField untouched so the button doesn't falsely claim
+				// success for a value the user may need to copy manually.
+			});
 	};
 
 	return (
@@ -204,7 +214,7 @@ export function AcpBridgeSetup({
 						variant="outline"
 						size="sm"
 						onClick={() => generateMutation.mutate()}
-						disabled={generateMutation.isPending}
+						disabled={!canWrite || generateMutation.isPending}
 					>
 						{generateMutation.isPending ? (
 							<>

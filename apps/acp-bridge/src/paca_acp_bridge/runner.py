@@ -82,6 +82,25 @@ class ConversationRunner:
 
         existing = self._conversations.get(conversation_id)
         if existing is not None:
+            if existing.thread.is_alive():
+                # A previous turn's thread is still driving this same
+                # Conversation object via .send_message()/.run() — starting
+                # a second thread on top of it would call into the SDK
+                # concurrently from two threads, which Conversation isn't
+                # built to handle. Reject explicitly rather than risking
+                # corrupted state, so the caller gets an immediate failure
+                # instead of waiting out acp_dispatch.py's watchdog timeout.
+                logger.warning(
+                    "Ignoring start_turn for conversation %s: a previous turn is still running",
+                    conversation_id,
+                )
+                await self._report_status(
+                    conversation_id,
+                    project_id,
+                    "failed",
+                    "A previous turn for this conversation is still running; please retry.",
+                )
+                return
             # Resume — reply on the conversation object already running from
             # an earlier turn in this same chat session. `.run()` is a
             # blocking, synchronous SDK call for a local (non-remote)

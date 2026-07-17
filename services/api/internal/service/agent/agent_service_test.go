@@ -20,6 +20,7 @@ type mockAgentRepo struct {
 	softDeleteAgent                 func(ctx context.Context, id uuid.UUID) error
 	softDeleteAgentWithMembership   func(ctx context.Context, projectID, agentID uuid.UUID) error
 	setAgentMemberID                func(ctx context.Context, agentID, memberID uuid.UUID) error
+	setACPBridgeTokenHash           func(ctx context.Context, agentID uuid.UUID, hash string) error
 	listMCPServers                  func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error)
 	findMCPServerByID               func(ctx context.Context, id uuid.UUID) (*agentdom.AgentMCPServer, error)
 	createMCPServer                 func(ctx context.Context, server *agentdom.AgentMCPServer) error
@@ -114,7 +115,10 @@ func (m *mockAgentRepo) SetAgentMemberID(ctx context.Context, agentID, memberID 
 	return nil
 }
 
-func (m *mockAgentRepo) SetACPBridgeTokenHash(_ context.Context, _ uuid.UUID, _ string) error {
+func (m *mockAgentRepo) SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error {
+	if m.setACPBridgeTokenHash != nil {
+		return m.setACPBridgeTokenHash(ctx, agentID, hash)
+	}
 	return nil
 }
 
@@ -1538,4 +1542,170 @@ func TestTriggerCommentMention_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, "comment_mention", result.TriggerType)
+}
+
+func TestCreateAgent_ACPInvalidAgentType(t *testing.T) {
+	projectID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:      "Bad Agent",
+		Handle:    "bad-agent",
+		AgentType: "not-a-real-type",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentTypeInvalid)
+}
+
+func TestCreateAgent_ACPMissingProvider(t *testing.T) {
+	projectID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:      "ACP Agent",
+		Handle:    "acp-agent",
+		AgentType: agentdom.AgentTypeACP,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrACPProviderInvalid)
+}
+
+func TestCreateAgent_ACPCustomProviderMissingCommand(t *testing.T) {
+	projectID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "Custom ACP Agent",
+		Handle:      "custom-acp-agent",
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: agentdom.ACPProviderCustom,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrACPCommandRequired)
+}
+
+func TestCreateAgent_ACPCustomProviderSuccess(t *testing.T) {
+	projectID := uuid.New()
+	projectRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(_ context.Context, _ *agentdom.Agent, _ uuid.UUID, _, _ uuid.UUID) error {
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:          "Custom ACP Agent",
+		Handle:        "custom-acp-agent",
+		AgentType:     agentdom.AgentTypeACP,
+		ACPProvider:   agentdom.ACPProviderCustom,
+		ACPCommand:    []string{"npx", "-y", "my-acp-server"},
+		ProjectRoleID: projectRoleID,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, agentdom.AgentTypeACP, result.AgentType)
+	assert.Equal(t, []string{"npx", "-y", "my-acp-server"}, result.ACPCommand)
+}
+
+func TestGenerateACPBridgeToken_Success(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	provider := agentdom.ACPProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:          agentID,
+		ProjectID:   projectID,
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: &provider,
+	}
+
+	var storedHash string
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	repo.setACPBridgeTokenHash = func(_ context.Context, id uuid.UUID, hash string) error {
+		if id != agentID {
+			t.Fatalf("expected agentID %v, got %v", agentID, id)
+		}
+		storedHash = hash
+		return nil
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	token, err := svc.GenerateACPBridgeToken(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+	assert.NotEmpty(t, storedHash)
+	// The stored value must be a hash, never the plaintext token itself.
+	assert.NotEqual(t, token, storedHash)
+}
+
+func TestGenerateACPBridgeToken_NonACPAgent(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	agent := &agentdom.Agent{
+		ID:        agentID,
+		ProjectID: projectID,
+		AgentType: agentdom.AgentTypeLLM,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GenerateACPBridgeToken(context.Background(), projectID, agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentTypeInvalid)
+}
+
+func TestGenerateACPBridgeToken_WrongProject(t *testing.T) {
+	projectID := uuid.New()
+	wrongProjectID := uuid.New()
+	agentID := uuid.New()
+	provider := agentdom.ACPProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:          agentID,
+		ProjectID:   wrongProjectID,
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: &provider,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GenerateACPBridgeToken(context.Background(), projectID, agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
 }

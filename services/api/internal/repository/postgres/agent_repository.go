@@ -229,8 +229,11 @@ func (r *AgentRepository) FindAgentByHandle(ctx context.Context, projectID uuid.
 
 // CreateAgent inserts a new agent record.
 func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) error {
-	rec := agentToRecord(a)
-	_, err := r.db.ExecContext(ctx, `
+	rec, err := agentToRecord(a)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO agents (id, project_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
@@ -250,7 +253,10 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 // When LLMAPIKeySecret is non-empty it is updated atomically with the rest of
 // the fields inside a single transaction so no partial update is possible.
 func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) error {
-	rec := agentToRecord(a)
+	rec, err := agentToRecord(a)
+	if err != nil {
+		return err
+	}
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		_, err := tx.ExecContext(ctx, `
 			UPDATE agents SET
@@ -302,8 +308,11 @@ func (r *AgentRepository) SetAgentMemberID(_ context.Context, _, _ uuid.UUID) er
 // row within a single database transaction.
 func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agentdom.Agent, memberID, projectID, roleID uuid.UUID) error {
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		rec := agentToRecord(a)
-		_, err := tx.ExecContext(ctx, `
+		rec, err := agentToRecord(a)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
 			INSERT INTO agents (id, project_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
@@ -855,7 +864,7 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	return a, nil
 }
 
-func agentToRecord(a *agentdom.Agent) agentRecord {
+func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 	agentType := a.AgentType
 	if agentType == "" {
 		agentType = agentdom.AgentTypeLLM
@@ -864,7 +873,10 @@ func agentToRecord(a *agentdom.Agent) agentRecord {
 	if cmd == nil {
 		cmd = []string{}
 	}
-	cmdJSON, _ := json.Marshal(cmd)
+	cmdJSON, err := json.Marshal(cmd)
+	if err != nil {
+		return agentRecord{}, fmt.Errorf("marshal acp_command for agent %s: %w", a.ID, err)
+	}
 	rec := agentRecord{
 		ID:                a.ID.String(),
 		ProjectID:         a.ProjectID.String(),
@@ -890,7 +902,7 @@ func agentToRecord(a *agentdom.Agent) agentRecord {
 		s := a.CreatedBy.String()
 		rec.CreatedBy = &s
 	}
-	return rec
+	return rec, nil
 }
 
 func mcpServerFromRecord(rec agentMCPServerRecord) (*agentdom.AgentMCPServer, error) {

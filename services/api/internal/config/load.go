@@ -127,6 +127,17 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: STORAGE_USE_SSL: %w", err)
 	}
 
+	// Required even though it authenticates only a handful of internal
+	// ai-agent routes: ai-agent's own INTERNAL_API_KEY is a required,
+	// non-empty pydantic field (see services/ai-agent/src/config.py), so an
+	// empty key here would never actually authenticate anything — it would
+	// just silently break ACP bridge status/disconnect calls instead of
+	// failing loudly at startup.
+	aiAgentInternalKey, err := requireEnv("AI_AGENT_INTERNAL_KEY")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -197,7 +208,7 @@ func Load() (*Config, error) {
 			},
 		},
 		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
-		AIAgentInternalKey: env("AI_AGENT_INTERNAL_KEY", ""),
+		AIAgentInternalKey: aiAgentInternalKey,
 	}, nil
 }
 

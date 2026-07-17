@@ -58,6 +58,17 @@ _sessions: dict[str, str] = {}
 _forward_tasks: dict[str, asyncio.Task] = {}
 _eviction_tasks: dict[str, asyncio.Task] = {}
 
+# Serializes register()'s check-then-act sequence (presence check through the
+# dict writes below) — without this, two register() calls racing for the
+# same agent_id (e.g. a reconnect overlapping the still-live old connection)
+# can both observe "not already online", both write _forward_tasks/
+# _eviction_tasks, and the loser's tasks are then silently overwritten in the
+# dict rather than cancelled, leaking a forwarder that spins forever against
+# a now-orphaned connection. A single process-wide lock (not per-agent) is
+# fine here — register() is only called at WebSocket connect time, so the
+# critical section is rare and fast.
+_register_lock = asyncio.Lock()
+
 
 def _presence_key(agent_id: str) -> str:
     return f"{_PRESENCE_PREFIX}{agent_id}"
@@ -194,16 +205,19 @@ async def register(agent_id: str, project_id: str, ws: _SendsJSON) -> str:
     session per agent is allowed at a time.
     """
     client = get_client()
-    already_online = bool(await client.exists(_presence_key(agent_id)))
-    session_id = uuid.uuid4().hex
-    await client.set(_presence_key(agent_id), "1", ex=_PRESENCE_TTL_SECONDS)
-    _connections[agent_id] = ws
-    _sessions[agent_id] = session_id
-    _forward_tasks[agent_id] = asyncio.create_task(_forward_dispatched_messages(agent_id, ws))
-    _eviction_tasks[agent_id] = asyncio.create_task(_watch_for_eviction(agent_id, session_id, ws))
-    await _publish_status(agent_id, project_id, connected=True)
-    if already_online:
-        await _broadcast_eviction(agent_id, session_id)
+    async with _register_lock:
+        already_online = bool(await client.exists(_presence_key(agent_id)))
+        session_id = uuid.uuid4().hex
+        await client.set(_presence_key(agent_id), "1", ex=_PRESENCE_TTL_SECONDS)
+        _connections[agent_id] = ws
+        _sessions[agent_id] = session_id
+        _forward_tasks[agent_id] = asyncio.create_task(_forward_dispatched_messages(agent_id, ws))
+        _eviction_tasks[agent_id] = asyncio.create_task(
+            _watch_for_eviction(agent_id, session_id, ws)
+        )
+        await _publish_status(agent_id, project_id, connected=True)
+        if already_online:
+            await _broadcast_eviction(agent_id, session_id)
     return session_id
 
 

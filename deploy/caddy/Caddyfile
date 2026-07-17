@@ -6,7 +6,7 @@
 #
 #   /api/*          →  REST API service       (forwarded as-is, /api kept)
 #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
-#   /agent-bridge/* →  AI-agent local ACP bridge (forwarded as-is)
+#   /agent-bridge/ws → AI-agent local ACP bridge WebSocket (forwarded as-is)
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -134,7 +134,12 @@
 	# user's local `paca-acp-bridge` daemon connects to (see
 	# services/ai-agent/src/routes/bridge.py). WebSocket upgrades are proxied
 	# automatically, same as the realtime service above.
-	handle /agent-bridge/* {
+	#
+	# Scoped to exactly /agent-bridge/ws — the sibling /agent-bridge/status/*
+	# and /agent-bridge/disconnect/* routes are internal-only (called by
+	# services/api over the docker-internal network) and must not be
+	# reachable from here.
+	handle /agent-bridge/ws {
 		reverse_proxy ai-agent:8080
 	}
 

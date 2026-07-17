@@ -73,6 +73,7 @@ import {
 	projectQueryOptions,
 	projectRolesQueryOptions,
 } from "@/lib/project-api";
+import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
 
 const CUSTOM = "__custom__";
@@ -198,7 +199,7 @@ function CreateAgentDialog({
 	const availableModels: string[] =
 		providerSelect !== CUSTOM ? (llmModels[providerSelect]?.models ?? []) : [];
 
-	const acpCommandParts = acpCommand.trim().split(/\s+/).filter(Boolean);
+	const acpCommandParts = splitShellCommand(acpCommand);
 
 	const createMutation = useMutation({
 		mutationFn: async () => {
@@ -780,6 +781,7 @@ function AcpSetupDialog({
 	agent,
 	token,
 	open,
+	canWrite,
 	onOpenChange,
 	onTokenGenerated,
 }: {
@@ -787,6 +789,7 @@ function AcpSetupDialog({
 	agent: Agent | null;
 	token: AcpBridgeToken | null;
 	open: boolean;
+	canWrite: boolean;
 	onOpenChange: (open: boolean) => void;
 	onTokenGenerated: () => void;
 }) {
@@ -810,6 +813,7 @@ function AcpSetupDialog({
 						agentId={agent.id}
 						acpProvider={agent.acp_provider ?? "claude-code"}
 						hasToken={agent.has_acp_bridge_token || token !== null}
+						canWrite={canWrite}
 						initialToken={token}
 						onTokenGenerated={() => {
 							qc.invalidateQueries({
@@ -1116,6 +1120,7 @@ function AgentsPage() {
 				agent={acpSetupAgent}
 				token={acpSetupToken}
 				open={acpSetupAgent !== null}
+				canWrite={canWrite}
 				onOpenChange={(v) => {
 					if (!v) {
 						setAcpSetupAgent(null);

@@ -107,6 +107,7 @@ func TestLoad_Success(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "password")
 	t.Setenv("STORAGE_ACCESS_KEY_ID", "access-key")
 	t.Setenv("STORAGE_SECRET_ACCESS_KEY", "secret-key")
+	t.Setenv("AI_AGENT_INTERNAL_KEY", "internal-key")
 
 	cfg, err := Load()
 	if err != nil {
@@ -272,4 +273,5 @@ func setLoadDefaults(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "password")
 	t.Setenv("STORAGE_ACCESS_KEY_ID", "access-key")
 	t.Setenv("STORAGE_SECRET_ACCESS_KEY", "secret-key")
+	t.Setenv("AI_AGENT_INTERNAL_KEY", "internal-key")
 }

@@ -50,7 +50,8 @@ async def test_interrupt_calls_conversation_interrupt_for_known_conversation():
     from paca_acp_bridge.runner import _ConversationHandle
 
     runner._conversations["conv-1"] = _ConversationHandle(
-        conversation=fake_conv, thread=None  # type: ignore[arg-type]
+        conversation=fake_conv,
+        thread=None,  # type: ignore[arg-type]
     )
 
     runner.interrupt("conv-1")
@@ -91,3 +92,42 @@ async def test_start_turn_reports_failure_for_unresolvable_custom_provider():
     assert sent[0]["type"] == "turn_status"
     assert sent[0]["status"] == "failed"
     assert "conv-1" not in runner._conversations
+
+
+async def test_start_turn_rejects_resume_while_previous_turn_still_running():
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner = ConversationRunner(workspace="/tmp", send=send)
+
+    class _FakeConversation:
+        pass
+
+    class _FakeAliveThread:
+        def is_alive(self):
+            return True
+
+    from paca_acp_bridge.runner import _ConversationHandle
+
+    fake_conv = _FakeConversation()
+    runner._conversations["conv-1"] = _ConversationHandle(
+        conversation=fake_conv,
+        thread=_FakeAliveThread(),  # type: ignore[arg-type]
+    )
+
+    await runner.start_turn(
+        {
+            "conversation_id": "conv-1",
+            "project_id": "proj-1",
+            "message": "a follow-up message",
+        }
+    )
+
+    assert len(sent) == 1
+    assert sent[0]["type"] == "turn_status"
+    assert sent[0]["status"] == "failed"
+    # The still-running conversation's handle must be left untouched — no
+    # second thread should have been started against it.
+    assert runner._conversations["conv-1"].conversation is fake_conv

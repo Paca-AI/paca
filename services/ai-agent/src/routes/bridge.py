@@ -85,8 +85,15 @@ async def bridge_ws(websocket: WebSocket) -> None:
 
             if msg_type == "event":
                 conversation_id = data.get("conversation_id")
-                project_id = data.get("project_id")
-                if not conversation_id or not project_id:
+                if not conversation_id:
+                    continue
+                owner = await conversation_repository.get_conversation_agent_type(conversation_id)
+                if owner is None or owner[0] != agent_id:
+                    logger.warning(
+                        "Dropping ACP event for conversation %s not owned by agent %s",
+                        conversation_id,
+                        agent_id,
+                    )
                     continue
                 event_index = await conversation_repository.get_next_event_index(conversation_id)
                 await persist_conversation_event(
@@ -100,9 +107,16 @@ async def bridge_ws(websocket: WebSocket) -> None:
 
             elif msg_type == "turn_status":
                 conversation_id = data.get("conversation_id")
-                project_id = data.get("project_id")
                 status_str = data.get("status")
-                if not conversation_id or not project_id or status_str is None:
+                if not conversation_id or status_str is None:
+                    continue
+                owner = await conversation_repository.get_conversation_agent_type(conversation_id)
+                if owner is None or owner[0] != agent_id:
+                    logger.warning(
+                        "Dropping ACP turn_status for conversation %s not owned by agent %s",
+                        conversation_id,
+                        agent_id,
+                    )
                     continue
                 try:
                     status = ConversationStatus(status_str)
