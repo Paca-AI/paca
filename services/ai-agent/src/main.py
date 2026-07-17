@@ -13,6 +13,7 @@ from .agent.executor import reap_idle_chat_sandboxes
 from .config import settings
 from .core.db import close_pool
 from .core.streams import close_client
+from .routes.bridge import router as bridge_router
 from .routes.conversations import router as conversations_router
 from .routes.health import router as health_router
 from .routes.llm import router as llm_router
@@ -53,6 +54,7 @@ app = FastAPI(title="Paca AI-Agent Service", lifespan=lifespan)
 app.include_router(health_router)
 app.include_router(llm_router)
 app.include_router(conversations_router)
+app.include_router(bridge_router)
 
 
 if __name__ == "__main__":

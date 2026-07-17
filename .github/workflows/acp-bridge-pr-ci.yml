@@ -1,0 +1,114 @@
+name: acp-bridge-pr-ci
+
+on:
+  pull_request:
+    paths:
+      - "apps/acp-bridge/**"
+      - ".github/workflows/acp-bridge-pr-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acp-bridge-pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Lint — fast feedback, no services needed
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: apps/acp-bridge
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "apps/acp-bridge/uv.lock"
+
+      - name: Install dev dependencies
+        run: uv sync --locked
+
+      - name: Run ruff (lint)
+        run: uv run ruff check src/
+
+      - name: Run ruff (format check)
+        run: uv run ruff format --check src/
+
+  # ---------------------------------------------------------------------------
+  # 2. Unit tests
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: apps/acp-bridge
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "apps/acp-bridge/uv.lock"
+
+      - name: Install dev dependencies
+        run: uv sync --locked
+
+      - name: Run pytest
+        run: uv run pytest --tb=short
+
+  # ---------------------------------------------------------------------------
+  # 3. Package build — verify the sdist/wheel builds cleanly, since this
+  #    package is distributed via PyPI (uvx / pip install), not a Docker image.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Package build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [lint, test]
+
+    defaults:
+      run:
+        working-directory: apps/acp-bridge
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "apps/acp-bridge/uv.lock"
+
+      - name: Build sdist and wheel
+        run: uv build

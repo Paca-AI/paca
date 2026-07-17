@@ -32,6 +32,7 @@ import (
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	redisRepo "github.com/Paca-AI/api/internal/repository/redis"
+	agentsvc "github.com/Paca-AI/api/internal/service/agent"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
@@ -43,11 +44,22 @@ import (
 	workflowsvc "github.com/Paca-AI/api/internal/service/workflow"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/router"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+// noopMemberCacheInvalidator satisfies agentsvc's projectMemberWriter
+// dependency without wiring a real members cache into the e2e harness — the
+// e2e suite doesn't exercise cache invalidation, only the agent CRUD /
+// ACP-bridge HTTP surface.
+type noopMemberCacheInvalidator struct{}
+
+func (noopMemberCacheInvalidator) InvalidateMembersCache(context.Context, uuid.UUID) error {
+	return nil
+}
 
 const (
 	e2eJWTSecret         = "e2e-test-secret-value-that-is-at-least-32-chars"
@@ -90,6 +102,8 @@ type e2eEnv struct {
 	apiKeySvc      *apikeysvc.Service
 	workflowRepo   *pgRepo.WorkflowRepository
 	workflowSvc    *workflowsvc.Service
+	agentRepo      *pgRepo.AgentRepository
+	agentSvc       *agentsvc.Service
 	activitySvc    *tasksvc.ActivitySvc
 	redisClient    *redis.Client // shared Valkey client, for per-test worker/consumer wiring
 	db             *sqlx.DB      // raw connection for per-test service wiring
@@ -209,6 +223,9 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher)
 	workflowRepo := pgRepo.NewWorkflowRepository(db)
 	workflowService := workflowsvc.New(workflowRepo, taskRepo, projectRepo, publisher)
+	agentRepo := pgRepo.NewAgentRepository(db)
+	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
+	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{}, publisher, pluginRepoForAgent)
 	var attachmentService *attachmentsvc.Service
 	if sharedMinIOEndpoint != "" {
 		minIOEndpoint := sharedMinIOEndpoint
@@ -251,6 +268,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		Attachment:           handler.NewAttachmentHandler(attachmentService),
 		APIKey:               handler.NewAPIKeyHandler(apiKeyService),
 		Workflow:             handler.NewWorkflowHandler(workflowService),
+		Agent:                handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
 		Log:                  log,
 	})
 
@@ -286,6 +304,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		apiKeySvc:      apiKeyService,
 		workflowRepo:   workflowRepo,
 		workflowSvc:    workflowService,
+		agentRepo:      agentRepo,
+		agentSvc:       agentService,
 		activitySvc:    activityService,
 		redisClient:    redisClient,
 		db:             db,

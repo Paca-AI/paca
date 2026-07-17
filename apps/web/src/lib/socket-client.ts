@@ -38,6 +38,21 @@ export function connectSocket(): Socket {
 		autoConnect: true,
 	});
 
+	// socket.io-client auto-reconnects after most disconnects, but NOT after
+	// one the server itself initiated (reason "io server disconnect") — per
+	// https://socket.io/docs/v4/client-socket-instance/#disconnect, that case
+	// requires an explicit reconnect call. The realtime service disconnects a
+	// socket exactly this way when a "join" 401s because its captured
+	// access-token snapshot has expired (see services/realtime/src/server.ts)
+	// — without this handler that socket would sit disconnected forever,
+	// joining no project rooms and receiving nothing, until something else
+	// (e.g. a full page reload) established a new connection.
+	socket.on("disconnect", (reason) => {
+		if (reason === "io server disconnect") {
+			socket?.connect();
+		}
+	});
+
 	return socket;
 }
 

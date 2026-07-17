@@ -47,6 +47,9 @@ func (m *mockAgentSvc) CreateAgent(ctx context.Context, projectID uuid.UUID, in 
 func (m *mockAgentSvc) UpdateAgent(_ context.Context, _, _ uuid.UUID, _ agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
 	return nil, agentdom.ErrAgentNotFound
 }
+func (m *mockAgentSvc) GenerateACPBridgeToken(_ context.Context, _, _ uuid.UUID) (string, error) {
+	return "", nil
+}
 func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
 	return agentdom.ErrAgentNotFound
 }
@@ -121,7 +124,7 @@ var _ agentdom.Service = (*mockAgentSvc)(nil)
 // ---------------------------------------------------------------------------
 
 func newAgentRouter(svc agentdom.Service) chi.Router {
-	h := handler.NewAgentHandler(svc, "")
+	h := handler.NewAgentHandler(svc, "", "", "")
 	r := chi.NewRouter()
 	r.Route("/projects/{projectId}", func(r chi.Router) {
 		r.Post("/agents", h.CreateAgent)
@@ -129,6 +132,7 @@ func newAgentRouter(svc agentdom.Service) chi.Router {
 			r.Post("/mcp-servers", h.AddMCPServer)
 			r.Post("/skills", h.AddSkill)
 			r.Post("/chat-sessions", h.StartChatSession)
+			r.Get("/acp-bridge-status", h.GetACPBridgeStatus)
 		})
 		r.Route("/tasks/{taskId}", func(r chi.Router) {
 			r.Post("/write-with-ai", h.WriteTaskDescriptionWithAI)
@@ -208,7 +212,7 @@ func claimsMiddleware(subject string) func(http.Handler) http.Handler {
 // injects claims with the given subject, so resolveMemberID's branches can
 // be exercised end-to-end through the HTTP layer.
 func newAgentRouterWithMemberRepo(svc agentdom.Service, memberRepo projectdom.MemberRepository, subject string) chi.Router {
-	h := handler.NewAgentHandler(svc, "")
+	h := handler.NewAgentHandler(svc, "", "", "")
 	if memberRepo != nil {
 		h = h.WithMemberRepo(memberRepo)
 	}
@@ -314,14 +318,32 @@ func TestCreateAgent_MissingLLMAPIKey_Returns400(t *testing.T) {
 	}
 }
 
-func TestCreateAgent_MissingLLMBaseURL_Returns400(t *testing.T) {
-	r := newAgentRouter(&mockAgentSvc{})
+func TestCreateAgent_EmptyLLMBaseURL_Allowed(t *testing.T) {
+	// llm_base_url is NOT required: the agents.llm_base_url column defaults
+	// to '' and several LLM providers resolve their own default base URL, so
+	// rejecting an empty value here would reject otherwise-valid requests.
+	svc := &mockAgentSvc{
+		createAgent: func(_ context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			return &agentdom.Agent{
+				ID:         uuid.New(),
+				ProjectID:  projectID,
+				Name:       in.Name,
+				Handle:     in.Handle,
+				AgentType:  agentdom.AgentTypeLLM,
+				LLMBaseURL: in.LLMBaseURL,
+			}, nil
+		},
+	}
+	h := handler.NewAgentHandler(svc, "", "", "")
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(uuid.New().String()))
+	r.Post("/projects/{projectId}/agents", h.CreateAgent)
 	projectID := uuid.New()
 	w := doAgentRequest(t, r, http.MethodPost,
 		"/projects/"+projectID.String()+"/agents",
 		validCreateAgentBody(map[string]any{"llm_base_url": ""}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing llm_base_url, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for empty llm_base_url, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -347,6 +369,37 @@ func validAgentSvc() *mockAgentSvc {
 		getAgent: func(_ context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
 			return &agentdom.Agent{ID: agentID, ProjectID: projectID}, nil
 		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetACPBridgeStatus validation tests
+// ---------------------------------------------------------------------------
+
+func TestGetACPBridgeStatus_NonACPAgent_Returns400(t *testing.T) {
+	r := newAgentRouter(validAgentSvc()) // validAgentSvc's agent has the zero-value (LLM) AgentType
+	projectID := uuid.New()
+	agentID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/acp-bridge-status", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-ACP agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetACPBridgeStatus_WrongProject_Returns404(t *testing.T) {
+	svc := &mockAgentSvc{
+		getAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	r := newAgentRouter(svc)
+	projectID := uuid.New()
+	agentID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/acp-bridge-status", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for wrong-project agent, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

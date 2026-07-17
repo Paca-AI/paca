@@ -32,6 +32,9 @@ type AgentRepository interface {
 	// SoftDeleteAgentWithMembership atomically soft-deletes both the agent and
 	// its project_members row within a single database transaction.
 	SoftDeleteAgentWithMembership(ctx context.Context, projectID, agentID uuid.UUID) error
+	// SetACPBridgeTokenHash stores the SHA-256 hash of a newly generated
+	// local-bridge auth token, replacing any previous one.
+	SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error
 }
 
 // MCPServerRepository defines storage for agent MCP server configurations.

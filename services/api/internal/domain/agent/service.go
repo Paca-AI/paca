@@ -24,6 +24,10 @@ type AgentService interface {
 	UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID, in UpdateAgentInput) (*Agent, error)
 	DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID) error
 	TriggerDescriptionWrite(ctx context.Context, projectID, agentID, taskID, triggeredByMemberID uuid.UUID) (*AgentConversation, error)
+	// GenerateACPBridgeToken issues a new local-bridge auth token for an
+	// ACP-type agent, replacing any existing one, and returns the plaintext
+	// once — only its SHA-256 hash is persisted.
+	GenerateACPBridgeToken(ctx context.Context, projectID, agentID uuid.UUID) (plaintext string, err error)
 }
 
 // MCPServerService defines MCP server CRUD use cases.
@@ -79,12 +83,18 @@ type ChatSessionService interface {
 
 // CreateAgentInput carries fields required to create an agent.
 type CreateAgentInput struct {
-	Name              string
-	Handle            string
+	Name   string
+	Handle string
+	// AgentType is "llm" (default) or "acp". LLM fields below are required
+	// (and ACP fields ignored) for "llm"; ACP fields are required (and LLM
+	// fields ignored) for "acp".
+	AgentType         string
 	LLMProvider       string
 	LLMModel          string
 	LLMAPIKey         string // plain text key; stored encrypted by service
 	LLMBaseURL        string
+	ACPProvider       string
+	ACPCommand        []string
 	SystemPrompt      string
 	MaxIterations     int
 	TimeoutMinutes    int
@@ -102,6 +112,8 @@ type UpdateAgentInput struct {
 	LLMModel          *string
 	LLMAPIKey         *string
 	LLMBaseURL        *string
+	ACPProvider       *string
+	ACPCommand        []string
 	SystemPrompt      *string
 	MaxIterations     *int
 	TimeoutMinutes    *int

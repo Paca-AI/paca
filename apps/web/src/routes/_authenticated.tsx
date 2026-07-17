@@ -9,13 +9,18 @@ import {
 	SidebarProvider,
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { onTokenRefreshed } from "@/lib/api-client";
 import { isPasswordChangeRequired } from "@/lib/api-error";
 import {
 	currentUserOptionalQueryOptions,
 	currentUserQueryOptions,
 } from "@/lib/auth-api";
 import { PluginRegistryProvider } from "@/lib/plugins/registry";
-import { connectSocket, disconnectSocket } from "@/lib/socket-client";
+import {
+	connectSocket,
+	disconnectSocket,
+	getSocket,
+} from "@/lib/socket-client";
 
 const PROJECT_ROUTE_RE = /^\/projects\/[^/]+/;
 
@@ -78,7 +83,29 @@ function AuthenticatedLayout() {
 		};
 		socket.on("notification", handleNotification);
 
+		// The realtime service's socket auth reads the access_token cookie only
+		// once, at connect time (see services/realtime/src/server.ts's io.use
+		// middleware), and reuses that same token for every subsequent "join"
+		// call for as long as the WebSocket connection stays up — which, unlike
+		// a plain HTTP request, has no natural expiry of its own. Once the
+		// token expires, every "join" from then on (e.g. a project route
+		// re-mounting) silently 401s, leaving the socket in zero rooms.
+		// api-client already refreshes the cookie whenever a real HTTP call
+		// 401s (e.g. the chat heartbeat ping while a conversation is open) —
+		// piggyback on that same event to reconnect the socket, so its next
+		// auth handshake picks up the freshly refreshed cookie.
+		// useProjectRealtime's "connect" handler then re-joins the current
+		// project automatically, exactly as it already does for a real
+		// network drop.
+		const unsubscribe = onTokenRefreshed(() => {
+			const current = getSocket();
+			if (current?.connected) {
+				current.disconnect().connect();
+			}
+		});
+
 		return () => {
+			unsubscribe();
 			socket.off("notification", handleNotification);
 			disconnectSocket();
 		};

@@ -12,6 +12,19 @@ export interface AuthResult {
 	globalPermissions: string[];
 }
 
+// Thrown by the API calls below so callers can distinguish an expired/invalid
+// token (401 — the caller may want to force a reconnect) from any other
+// failure (network blip, API 5xx) without parsing the error message.
+export class ApiRequestError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+		this.name = "ApiRequestError";
+	}
+}
+
 // All API responses are wrapped in a standard success envelope:
 // { success: true, data: <T> }
 interface ApiEnvelope<T> {
@@ -43,7 +56,10 @@ export async function verifyTokenWithAPI(
 	});
 
 	if (!res.ok) {
-		throw new Error(`API auth rejected token: HTTP ${res.status}`);
+		throw new ApiRequestError(
+			`API auth rejected token: HTTP ${res.status}`,
+			res.status,
+		);
 	}
 
 	const envelope = (await res.json()) as ApiEnvelope<GlobalPermissionsData>;

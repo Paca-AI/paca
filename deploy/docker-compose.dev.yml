@@ -144,6 +144,10 @@ services:
       # without a database-stored API key.  Must match PACA_API_KEY in the
       # ai-agent service.
       AGENT_API_KEY: dev-agent-api-key-change-in-production
+      # Authenticates the reverse direction: API calling into ai-agent's
+      # internal-only routes (e.g. the ACP bridge status check). Must match
+      # INTERNAL_API_KEY in the ai-agent service.
+      AI_AGENT_INTERNAL_KEY: dev-internal-key-change-in-production
       # Public base URL used by plugins to generate callback/webhook URLs.
       PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}
       # Plugin subsystem — load WASM binaries + migrations from the local plugin store.

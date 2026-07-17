@@ -204,6 +204,9 @@ services:
       PLUGINS_MCP_DIR: /plugins-mcp
       # Pre-shared key matching PACA_API_KEY in the ai-agent service.
       AGENT_API_KEY: ${AGENT_API_KEY:-}
+      # Authenticates the reverse direction: API calling into ai-agent's
+      # internal-only routes. Must match INTERNAL_API_KEY in the ai-agent service.
+      AI_AGENT_INTERNAL_KEY: ${INTERNAL_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

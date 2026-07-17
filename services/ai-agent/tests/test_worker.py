@@ -58,6 +58,11 @@ async def test_stop_sets_stop_event_when_run_in_flight(monkeypatch):
 async def test_stop_tears_down_paused_sandbox_when_not_in_flight(monkeypatch):
     teardown_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(worker, "teardown_paused_chat_sandbox", teardown_mock)
+    monkeypatch.setattr(
+        worker.conversation_repository,
+        "get_conversation_agent_type",
+        AsyncMock(return_value=None),
+    )
 
     await worker._handle_control(_control("agent.stop"))
 
@@ -84,12 +89,55 @@ async def test_pause_does_not_fall_through_to_teardown_when_not_in_flight(monkey
     # so the name to patch is the one bound in worker's own namespace.
     teardown_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(worker, "teardown_paused_chat_sandbox", teardown_mock)
+    monkeypatch.setattr(
+        worker.conversation_repository,
+        "get_conversation_agent_type",
+        AsyncMock(return_value=None),
+    )
     chat_sandboxes["conv-1"] = _fake_sandbox_state()
 
     await worker._handle_control(_control("agent.pause"))
 
     teardown_mock.assert_not_called()
     assert "conv-1" in chat_sandboxes
+
+
+# ─── ACP-agent stop/pause forwarding ───────────────────────────────────────────
+
+
+async def test_stop_forwards_to_acp_bridge_when_agent_is_acp(monkeypatch):
+    teardown_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(worker, "teardown_paused_chat_sandbox", teardown_mock)
+    monkeypatch.setattr(
+        worker.conversation_repository,
+        "get_conversation_agent_type",
+        AsyncMock(return_value=("agent-1", "acp")),
+    )
+    dispatch_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(worker.acp_bridge, "dispatch", dispatch_mock)
+
+    await worker._handle_control(_control("agent.stop"))
+
+    dispatch_mock.assert_awaited_once_with(
+        "agent-1", {"type": "stop_turn", "conversation_id": "conv-1"}
+    )
+    teardown_mock.assert_not_called()
+
+
+async def test_pause_forwards_to_acp_bridge_when_agent_is_acp(monkeypatch):
+    monkeypatch.setattr(
+        worker.conversation_repository,
+        "get_conversation_agent_type",
+        AsyncMock(return_value=("agent-1", "acp")),
+    )
+    dispatch_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(worker.acp_bridge, "dispatch", dispatch_mock)
+
+    await worker._handle_control(_control("agent.pause"))
+
+    dispatch_mock.assert_awaited_once_with(
+        "agent-1", {"type": "pause_turn", "conversation_id": "conv-1"}
+    )
 
 
 # ─── agent.heartbeat ────────────────────────────────────────────────────────────
@@ -114,6 +162,80 @@ async def test_heartbeat_ignored_when_project_id_mismatches():
 async def test_heartbeat_no_op_when_sandbox_absent():
     # Should not raise even though no sandbox is registered for this replica.
     await worker._handle_control(_control("agent.heartbeat"))
+
+
+# ─── _process_trigger agent_type branching ─────────────────────────────────────
+
+
+async def test_process_trigger_dispatches_acp_agents_to_bridge(monkeypatch):
+    from src.models.agent import AgentConfig
+
+    acp_config = AgentConfig(
+        agent_id="agent-1",
+        project_id="proj-1",
+        system_prompt=None,
+        llm_provider="",
+        llm_model="",
+        llm_api_key_secret_ref="",
+        llm_base_url="",
+        max_iterations=500,
+        agent_type="acp",
+    )
+    monkeypatch.setattr(worker, "load_agent_config", AsyncMock(return_value=acp_config))
+    dispatch_acp_mock = AsyncMock()
+    monkeypatch.setattr(worker, "dispatch_acp_trigger", dispatch_acp_mock)
+    run_conversation_mock = AsyncMock()
+    monkeypatch.setattr(worker, "run_conversation", run_conversation_mock)
+
+    trigger = _trigger_message()
+    await worker._process_trigger(trigger)
+
+    dispatch_acp_mock.assert_awaited_once_with(trigger, acp_config)
+    run_conversation_mock.assert_not_called()
+
+
+async def test_process_trigger_runs_llm_agents_as_before(monkeypatch):
+    from src.models.agent import AgentConfig
+
+    llm_config = AgentConfig(
+        agent_id="agent-1",
+        project_id="proj-1",
+        system_prompt=None,
+        llm_provider="anthropic",
+        llm_model="claude-sonnet-4-6",
+        llm_api_key_secret_ref="key",
+        llm_base_url="",
+        max_iterations=500,
+    )
+    monkeypatch.setattr(worker, "load_agent_config", AsyncMock(return_value=llm_config))
+    dispatch_acp_mock = AsyncMock()
+    monkeypatch.setattr(worker, "dispatch_acp_trigger", dispatch_acp_mock)
+    run_conversation_mock = AsyncMock()
+    monkeypatch.setattr(worker, "run_conversation", run_conversation_mock)
+
+    trigger = _trigger_message()
+    await worker._process_trigger(trigger)
+
+    run_conversation_mock.assert_awaited_once_with(trigger, llm_config)
+    dispatch_acp_mock.assert_not_called()
+
+
+def _trigger_message():
+    from src.core.streams import TriggerMessage
+
+    return TriggerMessage(
+        stream_id="1-1",
+        trigger_type="chat_message",
+        conversation_id="conv-1",
+        agent_id="agent-1",
+        project_id="proj-1",
+        task_id=None,
+        comment_id=None,
+        chat_session_id="sess-1",
+        message="hello",
+        actor_member_id="member-1",
+        repo_plugin_ids=[],
+    )
 
 
 # ─── unknown control type ──────────────────────────────────────────────────────

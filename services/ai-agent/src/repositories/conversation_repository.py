@@ -31,6 +31,51 @@ async def update_conversation_status(
         )
 
 
+async def fail_if_not_terminal(conversation_id: str, error_message: str) -> bool:
+    """Atomically mark a conversation FAILED unless it has already reached a
+    terminal status. Returns True iff this call performed the transition.
+
+    Used by acp_dispatch.py's watchdog to fail a turn that never got a
+    turn_status back from the bridge — the WHERE clause makes this race-safe
+    against a legitimate terminal status arriving concurrently (the watchdog
+    then simply loses the race and does nothing).
+    """
+    pool = await get_pool()
+    result = await pool.execute(
+        """
+        UPDATE agent_conversations
+        SET status = $1, error_message = $2, updated_at = now()
+        WHERE id = $3 AND status NOT IN ('finished', 'failed', 'stopped')
+        """,
+        ConversationStatus.FAILED,
+        error_message,
+        conversation_id,
+    )
+    return result == "UPDATE 1"
+
+
+async def get_conversation_agent_type(conversation_id: str) -> tuple[str, str] | None:
+    """Return (agent_id, agent_type) for a conversation's owning agent.
+
+    Used by worker._handle_control to decide whether a stop/pause control
+    message should signal the in-process polling loop (LLM agents) or forward
+    through the ACP bridge dispatch channel (see agent/acp_bridge.py) instead.
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT a.id AS agent_id, a.agent_type
+        FROM agent_conversations c
+        JOIN agents a ON a.id = c.agent_id
+        WHERE c.id = $1
+        """,
+        conversation_id,
+    )
+    if row is None:
+        return None
+    return str(row["agent_id"]), row["agent_type"]
+
+
 async def get_next_event_index(conversation_id: str) -> int:
     """Return the next unused event_index for a conversation.
 

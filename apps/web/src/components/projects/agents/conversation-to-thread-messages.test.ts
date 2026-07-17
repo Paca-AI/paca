@@ -110,6 +110,73 @@ function userRejectObservation(opts: {
 	};
 }
 
+function finishActionEvent(
+	toolCallId: string,
+	message: string,
+): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "ActionEvent",
+		event_source: "agent",
+		payload: {
+			thought: [],
+			tool_call_id: toolCallId,
+			tool_name: "finish",
+			tool_call: { name: "finish", arguments: JSON.stringify({ message }) },
+			action: { message },
+		},
+		created_at: "2026-01-01T00:00:04.000Z",
+	};
+}
+
+function finishObservationEvent(
+	toolCallId: string,
+	message: string,
+): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "ObservationEvent",
+		event_source: "agent",
+		payload: {
+			tool_call_id: toolCallId,
+			tool_name: "finish",
+			observation: { content: message },
+		},
+		created_at: "2026-01-01T00:00:05.000Z",
+	};
+}
+
+function acpToolCallEvent(opts: {
+	toolCallId: string;
+	title: string;
+	status?: string;
+	rawInput?: unknown;
+	rawOutput?: unknown;
+	isError?: boolean;
+}): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "ACPToolCallEvent",
+		event_source: "agent",
+		payload: {
+			tool_call_id: opts.toolCallId,
+			title: opts.title,
+			status: opts.status ?? null,
+			raw_input: opts.rawInput ?? null,
+			raw_output: opts.rawOutput ?? null,
+			content: null,
+			is_error: opts.isError ?? false,
+		},
+		created_at: "2026-01-01T00:00:06.000Z",
+	};
+}
+
 describe("eventsToThreadMessages", () => {
 	it("converts a text-only turn into user + assistant messages", () => {
 		const events = [userMessage("hi"), agentReply("hello!")];
@@ -338,5 +405,105 @@ describe("eventsToThreadMessages", () => {
 			Record<string, unknown>
 		>;
 		expect(parts[0]).not.toHaveProperty("isError");
+	});
+
+	it("renders the synthetic 'finish' tool call as reply text, not a tool-call card", () => {
+		const events = [
+			userMessage("do the task"),
+			finishActionEvent("call-finish", "All done, here's the summary."),
+			finishObservationEvent("call-finish", "All done, here's the summary."),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		expect(messages).toHaveLength(2);
+		const parts = messages[1].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts).toHaveLength(1);
+		expect(parts[0]).toMatchObject({
+			type: "text",
+			text: "All done, here's the summary.",
+		});
+	});
+
+	it("renders an ACPToolCallEvent as a tool-call part keyed by tool_call_id", () => {
+		const events = [
+			userMessage("run ls"),
+			acpToolCallEvent({
+				toolCallId: "acp-1",
+				title: "Bash: ls -la",
+				status: "in_progress",
+				rawInput: { command: "ls -la" },
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, true);
+
+		const parts = messages[1].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts).toHaveLength(1);
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "acp-1",
+			toolName: "Bash: ls -la",
+		});
+		expect(parts[0]).not.toHaveProperty("result");
+	});
+
+	it("updates the same ACPToolCallEvent part in place across start/progress/terminal updates", () => {
+		const events = [
+			userMessage("run ls"),
+			acpToolCallEvent({
+				toolCallId: "acp-1",
+				title: "Bash: ls -la",
+				status: "pending",
+				rawInput: { command: "ls -la" },
+			}),
+			acpToolCallEvent({
+				toolCallId: "acp-1",
+				title: "Bash: ls -la",
+				status: "completed",
+				rawInput: { command: "ls -la" },
+				rawOutput: "file1\nfile2",
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[1].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts).toHaveLength(1);
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "acp-1",
+			result: "file1\nfile2",
+		});
+	});
+
+	it("marks a failed ACPToolCallEvent's terminal update as an error", () => {
+		const events = [
+			acpToolCallEvent({
+				toolCallId: "acp-1",
+				title: "Bash: rm nonexistent",
+				status: "failed",
+				rawOutput: "No such file or directory",
+				isError: true,
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "acp-1",
+			result: "No such file or directory",
+			isError: true,
+		});
 	});
 });

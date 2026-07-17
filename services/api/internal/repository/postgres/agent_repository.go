@@ -18,25 +18,29 @@ import (
 // -------------------------------------------------------------------------
 
 type agentRecord struct {
-	ID                string     `db:"id"`
-	ProjectID         string     `db:"project_id"`
-	Name              string     `db:"name"`
-	Handle            string     `db:"handle"`
-	AvatarURL         *string    `db:"avatar_url"`
-	LLMProvider       string     `db:"llm_provider"`
-	LLMModel          string     `db:"llm_model"`
-	LLMAPIKeySecret   string     `db:"llm_api_key_secret"`
-	LLMBaseURL        string     `db:"llm_base_url"`
-	SystemPrompt      string     `db:"system_prompt"`
-	MaxIterations     int        `db:"max_iterations"`
-	TimeoutMinutes    int        `db:"timeout_minutes"`
-	GitCommitterName  string     `db:"git_committer_name"`
-	GitCommitterEmail string     `db:"git_committer_email"`
-	CreatedBy         *string    `db:"created_by"`
-	CreatedAt         time.Time  `db:"created_at"`
-	UpdatedAt         time.Time  `db:"updated_at"`
-	DeletedAt         *time.Time `db:"deleted_at"`
-	MemberID          *string    `db:"member_id"` // populated when joining with project_members
+	ID                 string     `db:"id"`
+	ProjectID          string     `db:"project_id"`
+	Name               string     `db:"name"`
+	Handle             string     `db:"handle"`
+	AvatarURL          *string    `db:"avatar_url"`
+	AgentType          string     `db:"agent_type"`
+	LLMProvider        string     `db:"llm_provider"`
+	LLMModel           string     `db:"llm_model"`
+	LLMAPIKeySecret    string     `db:"llm_api_key_secret"`
+	LLMBaseURL         string     `db:"llm_base_url"`
+	ACPProvider        *string    `db:"acp_provider"`
+	ACPCommand         []byte     `db:"acp_command"`
+	ACPBridgeTokenHash *string    `db:"acp_bridge_token_hash"`
+	SystemPrompt       string     `db:"system_prompt"`
+	MaxIterations      int        `db:"max_iterations"`
+	TimeoutMinutes     int        `db:"timeout_minutes"`
+	GitCommitterName   string     `db:"git_committer_name"`
+	GitCommitterEmail  string     `db:"git_committer_email"`
+	CreatedBy          *string    `db:"created_by"`
+	CreatedAt          time.Time  `db:"created_at"`
+	UpdatedAt          time.Time  `db:"updated_at"`
+	DeletedAt          *time.Time `db:"deleted_at"`
+	MemberID           *string    `db:"member_id"` // populated when joining with project_members
 }
 
 type agentMCPServerRecord struct {
@@ -135,8 +139,8 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 	return &AgentRepository{db: db}
 }
 
-const agentSelectCols = `a.id, a.project_id, a.name, a.handle, a.avatar_url, a.llm_provider, a.llm_model,
-	a.llm_api_key_secret, a.llm_base_url, a.system_prompt,
+const agentSelectCols = `a.id, a.project_id, a.name, a.handle, a.avatar_url, a.agent_type, a.llm_provider, a.llm_model,
+	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
 	a.git_committer_name, a.git_committer_email, a.created_by, a.created_at, a.updated_at, a.deleted_at,
 	pm.id AS member_id`
@@ -159,7 +163,11 @@ func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID) (
 
 	result := make([]*agentdom.Agent, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, agentFromReadRow(row))
+		a, err := agentFromReadRow(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, a)
 	}
 	return result, nil
 }
@@ -178,7 +186,10 @@ func (r *AgentRepository) FindAgentByID(ctx context.Context, id uuid.UUID) (*age
 	if err != nil {
 		return nil, err
 	}
-	agent := agentFromReadRow(row)
+	agent, err := agentFromReadRow(row)
+	if err != nil {
+		return nil, err
+	}
 	// Load MCP servers and skills
 	mcpServers, err := r.ListMCPServers(ctx, id)
 	if err != nil {
@@ -213,20 +224,24 @@ func (r *AgentRepository) FindAgentByHandle(ctx context.Context, projectID uuid.
 	if err != nil {
 		return nil, err
 	}
-	return agentFromReadRow(row), nil
+	return agentFromReadRow(row)
 }
 
 // CreateAgent inserts a new agent record.
 func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) error {
-	rec := agentToRecord(a)
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO agents (id, project_id, name, handle, avatar_url, llm_provider, llm_model,
-		  llm_api_key_secret, llm_base_url, system_prompt,
+	rec, err := agentToRecord(a)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO agents (id, project_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
+		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
 		  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarURL,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarURL, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
+		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
@@ -238,15 +253,21 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 // When LLMAPIKeySecret is non-empty it is updated atomically with the rest of
 // the fields inside a single transaction so no partial update is possible.
 func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) error {
+	rec, err := agentToRecord(a)
+	if err != nil {
+		return err
+	}
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		_, err := tx.ExecContext(ctx, `
 			UPDATE agents SET
 			  name=$1, handle=$2, avatar_url=$3, llm_provider=$4, llm_model=$5, llm_base_url=$6,
-			  system_prompt=$7,
-			  max_iterations=$8, timeout_minutes=$9,
-			  git_committer_name=$10, git_committer_email=$11, updated_at=$12
-			WHERE id=$13`,
+			  acp_provider=$7, acp_command=$8,
+			  system_prompt=$9,
+			  max_iterations=$10, timeout_minutes=$11,
+			  git_committer_name=$12, git_committer_email=$13, updated_at=$14
+			WHERE id=$15`,
 			a.Name, a.Handle, a.AvatarURL, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
+			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, time.Now(), a.ID.String(),
@@ -267,6 +288,16 @@ func (r *AgentRepository) SoftDeleteAgent(ctx context.Context, id uuid.UUID) err
 	return err
 }
 
+// SetACPBridgeTokenHash stores the SHA-256 hash of a newly generated
+// local-bridge auth token, replacing any previous one.
+func (r *AgentRepository) SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agents SET acp_bridge_token_hash=$1, updated_at=$2 WHERE id=$3`,
+		hash, time.Now(), agentID.String(),
+	)
+	return err
+}
+
 // SetAgentMemberID is a no-op; membership is derived from project_members JOIN.
 func (r *AgentRepository) SetAgentMemberID(_ context.Context, _, _ uuid.UUID) error {
 	// Member ID is derived from the project_members table by JOIN; no separate column needed.
@@ -277,15 +308,19 @@ func (r *AgentRepository) SetAgentMemberID(_ context.Context, _, _ uuid.UUID) er
 // row within a single database transaction.
 func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agentdom.Agent, memberID, projectID, roleID uuid.UUID) error {
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		rec := agentToRecord(a)
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO agents (id, project_id, name, handle, avatar_url, llm_provider, llm_model,
-			  llm_api_key_secret, llm_base_url, system_prompt,
+		rec, err := agentToRecord(a)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO agents (id, project_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
+			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
 			  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarURL,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarURL, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
+			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
 			rec.MaxIterations, rec.TimeoutMinutes,
 			rec.GitCommitterName, rec.GitCommitterEmail, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
@@ -785,17 +820,20 @@ func (r *AgentRepository) UpdateChatSession(ctx context.Context, s *agentdom.Age
 // Mapping helpers
 // -------------------------------------------------------------------------
 
-func agentFromReadRow(row agentRecord) *agentdom.Agent {
+func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	a := &agentdom.Agent{
 		ID:                mustParseUUID(row.ID),
 		ProjectID:         mustParseUUID(row.ProjectID),
 		Name:              row.Name,
 		Handle:            row.Handle,
 		AvatarURL:         row.AvatarURL,
+		AgentType:         row.AgentType,
 		LLMProvider:       row.LLMProvider,
 		LLMModel:          row.LLMModel,
 		LLMAPIKeySecret:   row.LLMAPIKeySecret,
 		LLMBaseURL:        row.LLMBaseURL,
+		ACPProvider:       row.ACPProvider,
+		HasACPBridgeToken: row.ACPBridgeTokenHash != nil && *row.ACPBridgeTokenHash != "",
 		SystemPrompt:      row.SystemPrompt,
 		MaxIterations:     row.MaxIterations,
 		TimeoutMinutes:    row.TimeoutMinutes,
@@ -805,6 +843,16 @@ func agentFromReadRow(row agentRecord) *agentdom.Agent {
 		UpdatedAt:         row.UpdatedAt,
 		DeletedAt:         row.DeletedAt,
 	}
+	if row.ACPBridgeTokenHash != nil {
+		a.ACPBridgeTokenHash = *row.ACPBridgeTokenHash
+	}
+	if len(row.ACPCommand) > 0 {
+		var cmd []string
+		if err := json.Unmarshal(row.ACPCommand, &cmd); err != nil {
+			return nil, fmt.Errorf("unmarshal acp_command for agent %s: %w", row.ID, err)
+		}
+		a.ACPCommand = cmd
+	}
 	if row.CreatedBy != nil {
 		id := mustParseUUID(*row.CreatedBy)
 		a.CreatedBy = &id
@@ -813,20 +861,35 @@ func agentFromReadRow(row agentRecord) *agentdom.Agent {
 		mid := mustParseUUID(*row.MemberID)
 		a.MemberID = &mid
 	}
-	return a
+	return a, nil
 }
 
-func agentToRecord(a *agentdom.Agent) agentRecord {
+func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
+	agentType := a.AgentType
+	if agentType == "" {
+		agentType = agentdom.AgentTypeLLM
+	}
+	cmd := a.ACPCommand
+	if cmd == nil {
+		cmd = []string{}
+	}
+	cmdJSON, err := json.Marshal(cmd)
+	if err != nil {
+		return agentRecord{}, fmt.Errorf("marshal acp_command for agent %s: %w", a.ID, err)
+	}
 	rec := agentRecord{
 		ID:                a.ID.String(),
 		ProjectID:         a.ProjectID.String(),
 		Name:              a.Name,
 		Handle:            a.Handle,
 		AvatarURL:         a.AvatarURL,
+		AgentType:         agentType,
 		LLMProvider:       a.LLMProvider,
 		LLMModel:          a.LLMModel,
 		LLMAPIKeySecret:   a.LLMAPIKeySecret,
 		LLMBaseURL:        a.LLMBaseURL,
+		ACPProvider:       a.ACPProvider,
+		ACPCommand:        cmdJSON,
 		SystemPrompt:      a.SystemPrompt,
 		MaxIterations:     a.MaxIterations,
 		TimeoutMinutes:    a.TimeoutMinutes,
@@ -839,7 +902,7 @@ func agentToRecord(a *agentdom.Agent) agentRecord {
 		s := a.CreatedBy.String()
 		rec.CreatedBy = &s
 	}
-	return rec
+	return rec, nil
 }
 
 func mcpServerFromRecord(rec agentMCPServerRecord) (*agentdom.AgentMCPServer, error) {

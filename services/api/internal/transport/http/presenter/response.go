@@ -276,6 +276,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentHandleInvalid
 	case errors.Is(err, agentdom.ErrAgentNameInvalid):
 		return http.StatusBadRequest, apierr.CodeAgentNameInvalid
+	case errors.Is(err, agentdom.ErrAgentTypeInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentTypeInvalid
+	case errors.Is(err, agentdom.ErrACPProviderInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentACPProviderInvalid
+	case errors.Is(err, agentdom.ErrACPCommandRequired):
+		return http.StatusBadRequest, apierr.CodeAgentACPCommandRequired
 	case errors.Is(err, agentdom.ErrMCPServerNotFound):
 		return http.StatusNotFound, apierr.CodeAgentMCPServerNotFound
 	case errors.Is(err, agentdom.ErrSkillNotFound):
@@ -515,6 +521,9 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusConflict
 	case apierr.CodeAgentHandleInvalid,
 		apierr.CodeAgentNameInvalid,
+		apierr.CodeAgentTypeInvalid,
+		apierr.CodeAgentACPProviderInvalid,
+		apierr.CodeAgentACPCommandRequired,
 		apierr.CodeAgentEnvVarKeyInvalid,
 		apierr.CodeAgentEnvVarKeyReserved,
 		apierr.CodeAgentSkillNameReserved:

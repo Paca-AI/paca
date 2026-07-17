@@ -44,7 +44,11 @@ import { createServer } from "node:http";
 import type Redis from "ioredis";
 import type { Logger } from "pino";
 import { Server } from "socket.io";
-import { fetchProjectPermissions, verifyTokenWithAPI } from "./api-client.ts";
+import {
+	ApiRequestError,
+	fetchProjectPermissions,
+	verifyTokenWithAPI,
+} from "./api-client.ts";
 import { extractTokenFromCookieHeader } from "./auth.ts";
 import type { Config } from "./config.ts";
 import {
@@ -203,6 +207,19 @@ export function createSocketServer(
 				);
 			} catch (err) {
 				logger.warn({ userId, projectId, err }, "project join failed");
+				// socket.data.rawToken is captured once at connect time and reused
+				// for every "join" on this socket for as long as the WebSocket
+				// stays up — unlike a plain HTTP request, it has no natural
+				// expiry that would otherwise force a fresh handshake. Once the
+				// access token expires, every join from then on 401s the same
+				// way and the socket is left in zero rooms with no recovery.
+				// Disconnecting trips socket.io-client's built-in automatic
+				// reconnection, which re-runs this connection's auth handshake
+				// against whatever access_token cookie the browser holds at that
+				// point — fresh, if the client has refreshed it by then.
+				if (err instanceof ApiRequestError && err.status === 401) {
+					socket.disconnect(true);
+				}
 			}
 		});
 

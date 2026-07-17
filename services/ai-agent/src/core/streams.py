@@ -15,6 +15,7 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 _client: aioredis.Redis | None = None
+_pubsub_client: aioredis.Redis | None = None
 
 TRIGGER_STREAM = "paca:agent:triggers"
 EVENTS_STREAM = "paca:agent:events"
@@ -32,11 +33,35 @@ def get_client() -> aioredis.Redis:
     return _client
 
 
+def get_pubsub_client() -> aioredis.Redis:
+    """A dedicated client for long-lived Pub/Sub listeners (see
+    agent/acp_bridge.py's dispatch forwarder).
+
+    redis-py defaults socket_timeout to 5 seconds — fine for get_client()'s
+    request/response commands, but wrong for a Pub/Sub .listen() loop that
+    legitimately sits idle for long stretches between messages: the first
+    time nothing arrives within 5s, the read raises redis.exceptions.
+    TimeoutError and kills the listener for good (it never reconnects).
+    socket_timeout=None blocks indefinitely instead; socket_keepalive stays
+    on (the library default) so a genuinely dead TCP connection still
+    surfaces as a ConnectionError rather than hanging forever.
+    """
+    global _pubsub_client
+    if _pubsub_client is None:
+        _pubsub_client = aioredis.from_url(
+            settings.valkey_url, decode_responses=True, socket_timeout=None
+        )
+    return _pubsub_client
+
+
 async def close_client() -> None:
-    global _client
+    global _client, _pubsub_client
     if _client is not None:
         await _client.aclose()
         _client = None
+    if _pubsub_client is not None:
+        await _pubsub_client.aclose()
+        _pubsub_client = None
 
 
 async def ensure_consumer_group() -> None:

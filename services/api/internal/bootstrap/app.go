@@ -269,7 +269,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithRouteAuth(tokenManager, apiKeyService, authorizer).
 		WithMarketplace(marketplaceClient, pluginInstaller, pluginMigrationRunner)
 
-	agentHandler := handler.NewAgentHandler(agentService, cfg.AIAgentURL).
+	agentHandler := handler.NewAgentHandler(agentService, cfg.AIAgentURL, cfg.AIAgentInternalKey, cfg.Server.PublicURL).
 		WithActivityRecorder(activityService).
 		WithMemberRepo(projectRepo)
 	convHandler := handler.NewConversationHandler(agentService)
@@ -304,17 +304,18 @@ func New(cfg *config.Config) (*App, error) {
 			handler.WithSprintDefaultTaskTypes(taskService),
 			handler.WithSprintDefaultTaskStatuses(taskService),
 		),
-		View:         handler.NewViewHandler(viewService),
-		Attachment:   handler.NewAttachmentHandler(attachmentService),
-		Document:     handler.NewDocumentHandler(docService, docActivityService),
-		DocFile:      handler.NewDocFileHandler(attachmentService),
-		Notification: handler.NewNotificationHandler(notificationService),
-		APIKey:       handler.NewAPIKeyHandler(apiKeyService),
-		Plugin:       pluginHandler,
-		Agent:        agentHandler,
-		Conversation: convHandler,
-		Workflow:     workflowHandler,
-		Log:          log,
+		View:               handler.NewViewHandler(viewService),
+		Attachment:         handler.NewAttachmentHandler(attachmentService),
+		Document:           handler.NewDocumentHandler(docService, docActivityService),
+		DocFile:            handler.NewDocFileHandler(attachmentService),
+		Notification:       handler.NewNotificationHandler(notificationService),
+		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
+		Plugin:             pluginHandler,
+		Agent:              agentHandler,
+		Conversation:       convHandler,
+		Workflow:           workflowHandler,
+		Log:                log,
+		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
 	}
 
 	engine := router.New(deps)

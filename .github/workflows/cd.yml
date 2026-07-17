@@ -17,6 +17,7 @@ name: cd
 #   <dockerhub-username>/paca-agent-server:<tag> — Sandbox agent-server image (OpenHands + Paca MCP pre-installed)
 #   registry.npmjs.org @paca-ai/paca-mcp — MCP server npm package
 #   registry.npmjs.org @paca-ai/plugin-sdk-react — Plugin frontend SDK npm package
+#   pypi.org paca-acp-bridge — ACP bridge local daemon Python package
 #   GitHub Release assets:
 #     install.sh         — one-shot interactive install script
 #     upgrade.sh         — upgrades an existing installation in place
@@ -370,6 +371,46 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # ACP bridge Python package → pypi.org
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-acp-bridge:
+    name: Publish ACP bridge package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Required for PyPI Trusted Publishing (OIDC) — no stored API token needed.
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: apps/acp-bridge
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # Strip the leading 'v' from the release tag (v1.2.3 → 1.2.3) so it
+      # matches PyPI's version format, then stamp pyproject.toml without
+      # touching uv.lock. Must run BEFORE build so the version is baked
+      # into the built sdist/wheel.
+      - name: Set package version
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: uv version --frozen "${VERSION#v}"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Deployment assets → GitHub Release
   #
   # Uploads four files so that users can run or upgrade Paca without cloning the repo:
@@ -385,7 +426,16 @@ jobs:
   release-assets:
     name: Upload deployment assets to release
     runs-on: ubuntu-latest
-    needs: [api-image, realtime-image, web-image, ai-agent-image, agent-server-image, publish-mcp]
+    needs:
+      [
+        api-image,
+        realtime-image,
+        web-image,
+        ai-agent-image,
+        agent-server-image,
+        publish-mcp,
+        publish-acp-bridge,
+      ]
     permissions:
       contents: write
 

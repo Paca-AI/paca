@@ -20,6 +20,21 @@ export function setNavigate(fn: NavigateFn) {
 	_navigate = fn;
 }
 
+/**
+ * Notified whenever a 401 causes the access_token cookie to actually be
+ * refreshed. Consumers that hold a long-lived connection authenticated at
+ * connect time (e.g. the realtime Socket.IO client, which reads the cookie
+ * once and reuses it for the connection's whole lifetime) can use this to
+ * re-authenticate against the fresh cookie instead of running on a stale one
+ * until something else forces a reconnect.
+ */
+type TokenRefreshedListener = () => void;
+const tokenRefreshedListeners = new Set<TokenRefreshedListener>();
+export function onTokenRefreshed(listener: TokenRefreshedListener): () => void {
+	tokenRefreshedListeners.add(listener);
+	return () => tokenRefreshedListeners.delete(listener);
+}
+
 export class ApiClient {
 	readonly instance: AxiosInstance;
 
@@ -107,6 +122,9 @@ export class ApiClient {
 
 				try {
 					await this.instance.post("/auth/refresh");
+					tokenRefreshedListeners.forEach((listener) => {
+						listener();
+					});
 
 					// Flush queued requests
 					this.refreshSubscribers.forEach(({ retry }) => {

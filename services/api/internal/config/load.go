@@ -127,6 +127,17 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: STORAGE_USE_SSL: %w", err)
 	}
 
+	// Required even though it authenticates only a handful of internal
+	// ai-agent routes: ai-agent's own INTERNAL_API_KEY is a required,
+	// non-empty pydantic field (see services/ai-agent/src/config.py), so an
+	// empty key here would never actually authenticate anything — it would
+	// just silently break ACP bridge status/disconnect calls instead of
+	// failing loudly at startup.
+	aiAgentInternalKey, err := requireEnv("AI_AGENT_INTERNAL_KEY")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -134,9 +145,10 @@ func Load() (*Config, error) {
 	return &Config{
 		Env: env("ENV", "development"),
 		Server: ServerConfig{
-			Port:         env("PORT", "8080"),
-			CookieSecure: cookieSecure,
-			PublicURL:    env("PUBLIC_URL", ""),
+			Port:               env("PORT", "8080"),
+			CookieSecure:       cookieSecure,
+			PublicURL:          env("PUBLIC_URL", ""),
+			CORSAllowedOrigins: parseCORSOrigins(env("CORS_ORIGINS", "*")),
 		},
 		Database: DatabaseConfig{
 			DSN: dsn,
@@ -195,8 +207,23 @@ func Load() (*Config, error) {
 				MaxRequestBodyBytes: pluginMaxRequestBodyBytes,
 			},
 		},
-		AIAgentURL: env("AI_AGENT_URL", "http://ai-agent:8080"),
+		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
+		AIAgentInternalKey: aiAgentInternalKey,
 	}, nil
+}
+
+// parseCORSOrigins splits a comma-separated CORS_ORIGINS value into an
+// allow-list, trimming whitespace and dropping empty entries.
+func parseCORSOrigins(v string) []string {
+	parts := strings.Split(v, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			origins = append(origins, p)
+		}
+	}
+	return origins
 }
 
 // env returns the environment variable value or a fallback default.

@@ -1,0 +1,65 @@
+# paca-acp-bridge
+
+A small local daemon that connects an **ACP-type** Paca AI agent to a coding
+CLI running on your own machine — Claude Code, Codex, Gemini CLI, or a custom
+[Agent Client Protocol](https://docs.openhands.dev/sdk/guides/agent-acp)
+server. Run it from your project's source directory; it spawns the ACP server
+there and streams the conversation back to Paca. Nothing is cloned into a
+cloud sandbox and no source code leaves your machine — Paca only ever sends
+task requests and receives responses back.
+
+## Prerequisites
+
+- Python 3.12+ (only needed if you don't use `uvx`, which manages this for you)
+- Node.js (most built-in ACP providers are launched via `npx`)
+- Your own local auth for whichever provider you pick — e.g. run
+  `claude setup-token` for Claude Code, or export `OPENAI_API_KEY` /
+  `GEMINI_API_KEY` for Codex/Gemini CLI. This is entirely your own local
+  setup, exactly as if you were running that CLI yourself — Paca never sees,
+  stores, or forwards this. Likewise, any MCP servers or skills you've
+  configured for your local ACP client are used as-is; Paca doesn't manage or
+  inject any of that.
+
+## Run it
+
+No install step needed — [uv](https://docs.astral.sh/uv/) fetches and runs it
+in one shot:
+
+```sh
+cd /path/to/your/project
+uvx paca-acp-bridge run \
+  --agent-id <agent-id> \
+  --token <token> \
+  --server https://your-paca-instance.example.com
+```
+
+(Or `pip install paca-acp-bridge` first, then run `paca-acp-bridge run ...` the same way.)
+
+`--agent-id`, `--token`, and `--server` can also be set via
+`PACA_ACP_AGENT_ID`, `PACA_ACP_TOKEN`, and `PACA_ACP_SERVER`. The agent id and
+token are shown once when you generate (or regenerate) the local bridge token
+for an ACP agent in Paca's Agents UI — copy the run command shown there.
+
+By default the ACP server operates on your current directory; pass
+`--workspace <path>` to point at a different one.
+
+## Tools, MCP servers, skills, and git access
+
+ACP agents don't take Paca-managed tool/MCP/skill configuration — the ACP
+server you run owns all of that, using your own local setup. This also means
+it has full, native access to whatever git/`gh` credentials you already have
+configured locally, so it can clone, commit, push, and open pull requests
+exactly as if you were driving it yourself in a terminal.
+
+## How it works
+
+This daemon runs the OpenHands SDK's `ACPAgent` in its default local mode —
+the same as the SDK's own quickstart example — which spawns your chosen ACP
+CLI as a real local subprocess against the current directory. Conversation
+events stream back to Paca over an authenticated WebSocket
+(`/agent-bridge/ws` on your Paca instance) and are stored the same way as any
+other agent conversation, so the chat UI works identically regardless of
+where the agent actually ran.
+
+Keep this process running for as long as you want the agent to be reachable
+from Paca — it reconnects automatically on a dropped connection.

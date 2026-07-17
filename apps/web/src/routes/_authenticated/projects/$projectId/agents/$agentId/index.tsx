@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AcpBridgeSetup } from "@/components/projects/agents/acp-bridge-setup";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
+	type ACPProvider,
 	type Agent,
 	type AgentConversation,
 	type AgentMCPServer,
@@ -68,6 +70,7 @@ import {
 	updateMCPServer,
 	updateSkill,
 } from "@/lib/agent-api";
+import { splitShellCommand } from "@/lib/shell-command";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/agents/$agentId/",
@@ -145,11 +148,19 @@ function OverviewTab({
 	const [committerEmail, setCommitterEmail] = useState(
 		agent.git_committer_email,
 	);
+	const [acpProviderSelect, setAcpProviderSelect] = useState<ACPProvider>(
+		agent.acp_provider ?? "claude-code",
+	);
+	const [acpCommand, setAcpCommand] = useState(
+		(agent.acp_command ?? []).join(" "),
+	);
 
 	// Derived final values sent to the API
 	const llmProvider =
 		providerSelect === CUSTOM ? customProvider.trim() : providerSelect;
 	const llmModel = modelSelect === CUSTOM ? customModel.trim() : modelSelect;
+	const acpCommandParts = splitShellCommand(acpCommand);
+	const isAcp = agent.agent_type === "acp";
 
 	const handleProviderChange = (v: string | null) => {
 		if (!v) return;
@@ -171,22 +182,34 @@ function OverviewTab({
 
 	const isDirty =
 		name !== agent.name ||
-		llmProvider !== agent.llm_provider ||
-		llmModel !== agent.llm_model ||
-		llmApiKey !== "" ||
-		llmBaseUrl !== (agent.llm_base_url ?? "") ||
 		systemPrompt !== agent.system_prompt ||
 		committerName !== agent.git_committer_name ||
-		committerEmail !== agent.git_committer_email;
+		committerEmail !== agent.git_committer_email ||
+		(isAcp
+			? acpProviderSelect !== (agent.acp_provider ?? "claude-code") ||
+				acpCommandParts.join(" ") !== (agent.acp_command ?? []).join(" ")
+			: llmProvider !== agent.llm_provider ||
+				llmModel !== agent.llm_model ||
+				llmApiKey !== "" ||
+				llmBaseUrl !== (agent.llm_base_url ?? ""));
 
 	const saveMutation = useMutation({
 		mutationFn: () =>
 			updateAgent(projectId, agent.id, {
 				name: name.trim(),
-				llm_provider: llmProvider,
-				llm_model: llmModel,
-				...(llmApiKey ? { llm_api_key: llmApiKey } : {}),
-				llm_base_url: llmBaseUrl,
+				...(isAcp
+					? {
+							acp_provider: acpProviderSelect,
+							...(acpProviderSelect === "custom"
+								? { acp_command: acpCommandParts }
+								: {}),
+						}
+					: {
+							llm_provider: llmProvider,
+							llm_model: llmModel,
+							...(llmApiKey ? { llm_api_key: llmApiKey } : {}),
+							llm_base_url: llmBaseUrl,
+						}),
 				system_prompt: systemPrompt,
 				git_committer_name: committerName.trim(),
 				git_committer_email: committerEmail.trim(),
@@ -199,9 +222,10 @@ function OverviewTab({
 
 	const canSave =
 		isDirty &&
-		!!llmProvider &&
-		!!llmModel &&
-		!!llmBaseUrl.trim() &&
+		(isAcp
+			? !!acpProviderSelect &&
+				(acpProviderSelect !== "custom" || acpCommandParts.length > 0)
+			: !!llmProvider && !!llmModel && !!llmBaseUrl.trim()) &&
 		!saveMutation.isPending;
 
 	return (
@@ -217,115 +241,189 @@ function OverviewTab({
 
 			<Separator />
 
-			<div>
-				<p className="text-sm font-medium mb-3">
-					{t("agents.detail.overview.llmConfiguration")}
-				</p>
-				<div className="grid grid-cols-2 gap-3">
+			{!isAcp && (
+				<div>
+					<p className="text-sm font-medium mb-3">
+						{t("agents.detail.overview.llmConfiguration")}
+					</p>
+					<div className="grid grid-cols-2 gap-3">
+						<div className="space-y-1.5">
+							<Label>{t("agents.detail.overview.providerLabel")}</Label>
+							<Select
+								value={providerSelect}
+								onValueChange={handleProviderChange}
+								disabled={!canWrite}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{providers.map((p) => (
+										<SelectItem key={p} value={p}>
+											{p}
+										</SelectItem>
+									))}
+									<SelectSeparator />
+									<SelectItem value={CUSTOM}>
+										{t("agents.detail.overview.customOption")}
+									</SelectItem>
+								</SelectContent>
+							</Select>
+							{providerSelect === CUSTOM && (
+								<Input
+									placeholder="my-provider"
+									value={customProvider}
+									onChange={(e) => setCustomProvider(e.target.value)}
+									disabled={!canWrite}
+								/>
+							)}
+						</div>
+						<div className="space-y-1.5">
+							<Label>{t("agents.detail.overview.modelLabel")}</Label>
+							{providerSelect === CUSTOM ? (
+								<Input
+									placeholder="my-model-name"
+									value={customModel}
+									onChange={(e) => setCustomModel(e.target.value)}
+									disabled={!canWrite}
+								/>
+							) : (
+								<>
+									<Select
+										value={modelSelect}
+										onValueChange={(v) => v && setModelSelect(v)}
+										disabled={!canWrite}
+									>
+										<SelectTrigger>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{availableModels.map((m) => (
+												<SelectItem key={m} value={m}>
+													{m}
+												</SelectItem>
+											))}
+											<SelectSeparator />
+											<SelectItem value={CUSTOM}>
+												{t("agents.detail.overview.customOption")}
+											</SelectItem>
+										</SelectContent>
+									</Select>
+									{modelSelect === CUSTOM && (
+										<Input
+											placeholder="my-model-name"
+											value={customModel}
+											onChange={(e) => setCustomModel(e.target.value)}
+											disabled={!canWrite}
+										/>
+									)}
+								</>
+							)}
+						</div>
+					</div>
+					<div className="space-y-1.5 mt-3">
+						<Label>
+							{t("agents.detail.overview.apiKeyUpdateLabel")}{" "}
+							<span className="text-muted-foreground font-normal text-xs">
+								{t("agents.detail.overview.apiKeyUpdateHint")}
+							</span>
+						</Label>
+						<Input
+							type="password"
+							placeholder="sk-ant-…"
+							value={llmApiKey}
+							onChange={(e) => setLlmApiKey(e.target.value)}
+							disabled={!canWrite}
+						/>
+					</div>
+					<div className="space-y-1.5 mt-3">
+						<Label>
+							{t("agents.detail.overview.baseUrlLabel")}{" "}
+							<span className="text-destructive">*</span>
+						</Label>
+						<Input
+							placeholder="https://api.openai.com/v1"
+							value={llmBaseUrl}
+							onChange={(e) => setLlmBaseUrl(e.target.value)}
+							disabled={!canWrite}
+						/>
+					</div>
+				</div>
+			)}
+
+			{isAcp && (
+				<div>
+					<p className="text-sm font-medium mb-3">
+						{t("agents.detail.overview.acpConfiguration")}
+					</p>
 					<div className="space-y-1.5">
-						<Label>{t("agents.detail.overview.providerLabel")}</Label>
+						<Label>{t("agents.detail.overview.acpProviderLabel")}</Label>
 						<Select
-							value={providerSelect}
-							onValueChange={handleProviderChange}
+							value={acpProviderSelect}
+							onValueChange={(v) => v && setAcpProviderSelect(v as ACPProvider)}
 							disabled={!canWrite}
 						>
 							<SelectTrigger>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{providers.map((p) => (
-									<SelectItem key={p} value={p}>
-										{p}
-									</SelectItem>
-								))}
+								<SelectItem value="claude-code">
+									{t("agents.detail.overview.acpProviderClaudeCode")}
+								</SelectItem>
+								<SelectItem value="codex">
+									{t("agents.detail.overview.acpProviderCodex")}
+								</SelectItem>
+								<SelectItem value="gemini-cli">
+									{t("agents.detail.overview.acpProviderGeminiCli")}
+								</SelectItem>
 								<SelectSeparator />
-								<SelectItem value={CUSTOM}>
-									{t("agents.detail.overview.customOption")}
+								<SelectItem value="custom">
+									{t("agents.detail.overview.acpProviderCustom")}
 								</SelectItem>
 							</SelectContent>
 						</Select>
-						{providerSelect === CUSTOM && (
+					</div>
+					{acpProviderSelect === "custom" && (
+						<div className="space-y-1.5 mt-3">
+							<Label>{t("agents.detail.overview.acpCommandLabel")}</Label>
 							<Input
-								placeholder="my-provider"
-								value={customProvider}
-								onChange={(e) => setCustomProvider(e.target.value)}
+								placeholder="npx -y my-acp-server"
+								value={acpCommand}
+								onChange={(e) => setAcpCommand(e.target.value)}
 								disabled={!canWrite}
 							/>
-						)}
-					</div>
-					<div className="space-y-1.5">
-						<Label>{t("agents.detail.overview.modelLabel")}</Label>
-						{providerSelect === CUSTOM ? (
-							<Input
-								placeholder="my-model-name"
-								value={customModel}
-								onChange={(e) => setCustomModel(e.target.value)}
-								disabled={!canWrite}
-							/>
-						) : (
-							<>
-								<Select
-									value={modelSelect}
-									onValueChange={(v) => v && setModelSelect(v)}
-									disabled={!canWrite}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{availableModels.map((m) => (
-											<SelectItem key={m} value={m}>
-												{m}
-											</SelectItem>
-										))}
-										<SelectSeparator />
-										<SelectItem value={CUSTOM}>
-											{t("agents.detail.overview.customOption")}
-										</SelectItem>
-									</SelectContent>
-								</Select>
-								{modelSelect === CUSTOM && (
-									<Input
-										placeholder="my-model-name"
-										value={customModel}
-										onChange={(e) => setCustomModel(e.target.value)}
-										disabled={!canWrite}
-									/>
-								)}
-							</>
-						)}
-					</div>
+							<p className="text-xs text-muted-foreground">
+								{t("agents.detail.overview.acpCommandHint")}
+							</p>
+						</div>
+					)}
+					<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2 mt-3">
+						{t("agents.detail.overview.acpGuidanceBanner")}
+					</p>
 				</div>
-				<div className="space-y-1.5 mt-3">
-					<Label>
-						{t("agents.detail.overview.apiKeyUpdateLabel")}{" "}
-						<span className="text-muted-foreground font-normal text-xs">
-							{t("agents.detail.overview.apiKeyUpdateHint")}
-						</span>
-					</Label>
-					<Input
-						type="password"
-						placeholder="sk-ant-…"
-						value={llmApiKey}
-						onChange={(e) => setLlmApiKey(e.target.value)}
-						disabled={!canWrite}
-					/>
-				</div>
-				<div className="space-y-1.5 mt-3">
-					<Label>
-						{t("agents.detail.overview.baseUrlLabel")}{" "}
-						<span className="text-destructive">*</span>
-					</Label>
-					<Input
-						placeholder="https://api.openai.com/v1"
-						value={llmBaseUrl}
-						onChange={(e) => setLlmBaseUrl(e.target.value)}
-						disabled={!canWrite}
-					/>
-				</div>
-			</div>
+			)}
 
 			<Separator />
+
+			{isAcp && (
+				<>
+					<LocalBridgePanel
+						projectId={projectId}
+						agentId={agent.id}
+						acpProvider={agent.acp_provider ?? "claude-code"}
+						hasToken={agent.has_acp_bridge_token}
+						canWrite={canWrite}
+						onTokenGenerated={() =>
+							qc.setQueryData(
+								["projects", projectId, "agents", agent.id],
+								(old: Agent | undefined) =>
+									old ? { ...old, has_acp_bridge_token: true } : old,
+							)
+						}
+					/>
+					<Separator />
+				</>
+			)}
 
 			<div className="space-y-1.5">
 				<Label>{t("agents.detail.overview.systemPromptLabel")}</Label>
@@ -393,6 +491,44 @@ function OverviewTab({
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+// ── Local Bridge Panel (ACP agents, embedded in Overview) ───────────────────────
+
+function LocalBridgePanel({
+	projectId,
+	agentId,
+	acpProvider,
+	hasToken,
+	canWrite,
+	onTokenGenerated,
+}: {
+	projectId: string;
+	agentId: string;
+	acpProvider: ACPProvider;
+	hasToken: boolean;
+	canWrite: boolean;
+	onTokenGenerated: () => void;
+}) {
+	const { t } = useTranslation("projects");
+	return (
+		<div>
+			<p className="text-sm font-medium mb-1">
+				{t("agents.acpSetup.panelTitle")}
+			</p>
+			<p className="text-xs text-muted-foreground mb-3">
+				{t("agents.acpSetup.panelDescription")}
+			</p>
+			<AcpBridgeSetup
+				projectId={projectId}
+				agentId={agentId}
+				acpProvider={acpProvider}
+				hasToken={hasToken}
+				canWrite={canWrite}
+				onTokenGenerated={onTokenGenerated}
+			/>
 		</div>
 	);
 }
@@ -1281,6 +1417,15 @@ function AgentDetailPage() {
 		.toUpperCase()
 		.slice(0, 2);
 
+	// ACP agents run entirely in the user's own local environment (see the
+	// Local Bridge panel on the Overview tab) — Paca never forwards tools,
+	// MCP servers, skills, or environment variables into that local process,
+	// so none of those tabs apply.
+	const acpHiddenTabs: Tab[] = ["mcp-servers", "skills", "env-vars"];
+	const visibleTabs = TABS.filter(
+		(tab) => agent.agent_type !== "acp" || !acpHiddenTabs.includes(tab.id),
+	);
+
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
 			{/* Agent header */}
@@ -1299,7 +1444,9 @@ function AgentDetailPage() {
 							</span>
 							<span className="text-muted-foreground/40">·</span>
 							<Badge variant="secondary" className="text-xs">
-								{agent.llm_provider}
+								{agent.agent_type === "acp"
+									? (agent.acp_provider ?? "acp")
+									: agent.llm_provider}
 							</Badge>
 						</div>
 					</div>
@@ -1309,7 +1456,7 @@ function AgentDetailPage() {
 			{/* Tabs */}
 			<div className="border-b border-border/50 px-6 shrink-0">
 				<div className="flex items-center gap-1 -mb-px">
-					{TABS.map((tab) => {
+					{visibleTabs.map((tab) => {
 						const Icon = tab.icon;
 						const isActive = activeTab === tab.id;
 						return (
@@ -1340,21 +1487,21 @@ function AgentDetailPage() {
 						canWrite={canWrite}
 					/>
 				)}
-				{activeTab === "mcp-servers" && (
+				{activeTab === "mcp-servers" && agent.agent_type !== "acp" && (
 					<MCPServersTab
 						projectId={projectId}
 						agentId={agentId}
 						canWrite={canWrite}
 					/>
 				)}
-				{activeTab === "skills" && (
+				{activeTab === "skills" && agent.agent_type !== "acp" && (
 					<SkillsTab
 						projectId={projectId}
 						agentId={agentId}
 						canWrite={canWrite}
 					/>
 				)}
-				{activeTab === "env-vars" && (
+				{activeTab === "env-vars" && agent.agent_type !== "acp" && (
 					<EnvVarsTab
 						projectId={projectId}
 						agentId={agentId}

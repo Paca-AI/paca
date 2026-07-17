@@ -6,6 +6,8 @@ import asyncio
 import logging
 import time
 
+from .agent import acp_bridge
+from .agent.acp_dispatch import dispatch_acp_trigger
 from .agent.executor import run_conversation, teardown_paused_chat_sandbox
 from .config import settings
 from .core.registry import chat_sandboxes, pause_events, stop_events
@@ -16,6 +18,7 @@ from .core.streams import (
     ensure_consumer_group,
     read_triggers,
 )
+from .repositories import conversation_repository
 from .repositories.agent_repository import load_agent_config
 
 logger = logging.getLogger(__name__)
@@ -35,10 +38,16 @@ async def _handle_control(msg: ControlMessage) -> None:
             logger.info("Stopping conversation %s via stream control message", cid)
             stop_event.set()
             return
-        # No in-flight run to signal — this is either a chat conversation
-        # paused between turns (explicit stop, or the idle reaper firing
-        # early via a control message) or a stop for a conversation this
-        # replica never owned.
+        # No in-process polling loop found — could be an ACP-type agent
+        # (which never populates stop_events; the "sandbox" is a bridge
+        # connection, forwarded a stop_turn instead), a chat conversation
+        # paused between turns, or a stop for a conversation this replica
+        # never owned.
+        agent_info = await conversation_repository.get_conversation_agent_type(cid)
+        if agent_info is not None and agent_info[1] == "acp":
+            agent_id, _ = agent_info
+            await acp_bridge.dispatch(agent_id, {"type": "stop_turn", "conversation_id": cid})
+            return
         if await teardown_paused_chat_sandbox(cid):
             logger.info("Stopped paused chat sandbox for conversation %s", cid)
         else:
@@ -57,12 +66,16 @@ async def _handle_control(msg: ControlMessage) -> None:
         if pause_event is not None:
             logger.info("Pausing conversation %s via stream control message", cid)
             pause_event.set()
-        else:
-            logger.info(
-                "Received pause for conversation %s but no active run found on this "
-                "replica — no-op",
-                cid,
-            )
+            return
+        agent_info = await conversation_repository.get_conversation_agent_type(cid)
+        if agent_info is not None and agent_info[1] == "acp":
+            agent_id, _ = agent_info
+            await acp_bridge.dispatch(agent_id, {"type": "pause_turn", "conversation_id": cid})
+            return
+        logger.info(
+            "Received pause for conversation %s but no active run found on this replica — no-op",
+            cid,
+        )
         return
 
     if msg.control_type == "agent.heartbeat":
@@ -86,7 +99,10 @@ async def _process_trigger(msg: TriggerMessage | ControlMessage) -> None:
         logger.warning("Agent %s not found; dropping trigger %s", msg.agent_id, msg.stream_id)
         return
 
-    await run_conversation(msg, agent_config)
+    if agent_config.agent_type == "acp":
+        await dispatch_acp_trigger(msg, agent_config)
+    else:
+        await run_conversation(msg, agent_config)
 
 
 async def run_worker() -> None:

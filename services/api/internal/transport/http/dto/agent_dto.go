@@ -20,9 +20,13 @@ type AgentResponse struct {
 	Name              string                   `json:"name"`
 	Handle            string                   `json:"handle"`
 	AvatarURL         *string                  `json:"avatar_url,omitempty"`
+	AgentType         string                   `json:"agent_type"`
 	LLMProvider       string                   `json:"llm_provider"`
 	LLMModel          string                   `json:"llm_model"`
 	LLMBaseURL        string                   `json:"llm_base_url"`
+	ACPProvider       *string                  `json:"acp_provider,omitempty"`
+	ACPCommand        []string                 `json:"acp_command,omitempty"`
+	HasACPBridgeToken bool                     `json:"has_acp_bridge_token"`
 	SystemPrompt      string                   `json:"system_prompt"`
 	MaxIterations     int                      `json:"max_iterations"`
 	TimeoutMinutes    int                      `json:"timeout_minutes"`
@@ -37,13 +41,19 @@ type AgentResponse struct {
 }
 
 // CreateAgentRequest is the body for POST /projects/:projectId/agents.
+// LLM fields are required when agent_type is "llm" (the default when
+// omitted); ACP fields are required when agent_type is "acp" — validated in
+// the handler since it depends on the value of AgentType itself.
 type CreateAgentRequest struct {
 	Name              string    `json:"name" binding:"required"`
 	Handle            string    `json:"handle" binding:"required"`
-	LLMProvider       string    `json:"llm_provider" binding:"required"`
-	LLMModel          string    `json:"llm_model" binding:"required"`
-	LLMAPIKey         string    `json:"llm_api_key" binding:"required"`
-	LLMBaseURL        string    `json:"llm_base_url" binding:"required"`
+	AgentType         string    `json:"agent_type"`
+	LLMProvider       string    `json:"llm_provider"`
+	LLMModel          string    `json:"llm_model"`
+	LLMAPIKey         string    `json:"llm_api_key"`
+	LLMBaseURL        string    `json:"llm_base_url"`
+	ACPProvider       string    `json:"acp_provider"`
+	ACPCommand        []string  `json:"acp_command"`
 	SystemPrompt      string    `json:"system_prompt"`
 	MaxIterations     int       `json:"max_iterations"`
 	TimeoutMinutes    int       `json:"timeout_minutes"`
@@ -54,17 +64,27 @@ type CreateAgentRequest struct {
 
 // UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId.
 type UpdateAgentRequest struct {
-	Name              *string `json:"name"`
-	Handle            *string `json:"handle"`
-	LLMProvider       *string `json:"llm_provider"`
-	LLMModel          *string `json:"llm_model"`
-	LLMAPIKey         *string `json:"llm_api_key"`
-	LLMBaseURL        *string `json:"llm_base_url"`
-	SystemPrompt      *string `json:"system_prompt"`
-	MaxIterations     *int    `json:"max_iterations"`
-	TimeoutMinutes    *int    `json:"timeout_minutes"`
-	GitCommitterName  *string `json:"git_committer_name"`
-	GitCommitterEmail *string `json:"git_committer_email"`
+	Name              *string  `json:"name"`
+	Handle            *string  `json:"handle"`
+	LLMProvider       *string  `json:"llm_provider"`
+	LLMModel          *string  `json:"llm_model"`
+	LLMAPIKey         *string  `json:"llm_api_key"`
+	LLMBaseURL        *string  `json:"llm_base_url"`
+	ACPProvider       *string  `json:"acp_provider"`
+	ACPCommand        []string `json:"acp_command"`
+	SystemPrompt      *string  `json:"system_prompt"`
+	MaxIterations     *int     `json:"max_iterations"`
+	TimeoutMinutes    *int     `json:"timeout_minutes"`
+	GitCommitterName  *string  `json:"git_committer_name"`
+	GitCommitterEmail *string  `json:"git_committer_email"`
+}
+
+// GenerateACPBridgeTokenResponse is the body returned for POST
+// /projects/:projectId/agents/:agentId/acp-bridge-token. Token is shown once
+// and cannot be retrieved again — only its hash is persisted.
+type GenerateACPBridgeTokenResponse struct {
+	Token      string `json:"token"`
+	RunCommand string `json:"run_command"`
 }
 
 // AgentFromEntity maps an Agent entity to AgentResponse.
@@ -76,9 +96,13 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		Name:              a.Name,
 		Handle:            a.Handle,
 		AvatarURL:         a.AvatarURL,
+		AgentType:         a.AgentType,
 		LLMProvider:       a.LLMProvider,
 		LLMModel:          a.LLMModel,
 		LLMBaseURL:        a.LLMBaseURL,
+		ACPProvider:       a.ACPProvider,
+		ACPCommand:        a.ACPCommand,
+		HasACPBridgeToken: a.HasACPBridgeToken,
 		SystemPrompt:      a.SystemPrompt,
 		MaxIterations:     a.MaxIterations,
 		TimeoutMinutes:    a.TimeoutMinutes,
