@@ -43,6 +43,18 @@ def build_llm(agent_config: AgentConfig) -> LLM:
     provider = agent_config.llm_provider
     llm_base_url = agent_config.llm_base_url or None
 
+    # Platform override (ADR-038): force LLM traffic through the platform
+    # proxy regardless of the per-agent llm_base_url stored in the DB.
+    if settings.llm_base_url_override:
+        logger.info(
+            "LLM_BASE_URL_OVERRIDE active for agent %s: routing via %s "
+            "(per-agent base_url %r ignored)",
+            agent_config.agent_id,
+            settings.llm_base_url_override,
+            agent_config.llm_base_url or "",
+        )
+        llm_base_url = settings.llm_base_url_override
+
     # For providers outside our own catalog (freeform "Custom…" entries), route
     # through the OpenAI-compatible client by prefixing with "openai/". Checking
     # against our catalog rather than litellm.provider_list matters: litellm
@@ -59,6 +71,12 @@ def build_llm(agent_config: AgentConfig) -> LLM:
         model_str = f"{provider}/{agent_config.llm_model}"
 
     key_val = agent_config.llm_api_key_secret_ref or ""
+    if settings.llm_api_key_override:
+        logger.info(
+            "LLM_API_KEY_OVERRIDE active for agent %s: per-agent API key ignored",
+            agent_config.agent_id,
+        )
+        key_val = settings.llm_api_key_override
     logger.info(
         "LLM config — model=%s base_url=%s api_key_set=%s",
         model_str,

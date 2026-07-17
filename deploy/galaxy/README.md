@@ -8,7 +8,7 @@ Fork của [Paca-AI/paca](https://github.com/Paca-AI/paca) (Apache-2.0), branch 
 - Caddy gateway join `galaxy_network` với alias `paca-gateway`.
 - Cloudflare tunnel routes `tasks.skyplatform.net` → `http://paca-gateway:80` (ingress được quản lý trên Cloudflare dashboard/API, không phải file trên host).
 - TLS ở Cloudflare edge; nội bộ plain HTTP (`SITE_ADDRESS=:80`).
-- `ai-agent` **scale 0** cho đến khi xong identity rework (P1) — cần docker.sock nên chỉ bật sau khi có socket-proxy.
+- `ai-agent` **scale 0** (giữ nguyên cho đến khi quyết định bật). Khi bật: Docker đi qua `socket-proxy` (`DOCKER_HOST=tcp://socket-proxy:2375`, KHÔNG mount docker.sock trực tiếp) và toàn bộ LLM traffic ép qua platform proxy (`LLM_BASE_URL_OVERRIDE`) — xem ADR-038 P1.
 - Backup Postgres hằng đêm 02:00 (giờ VN) vào `/backup/paca-postgres`, giữ 14 ngày.
 
 ## Deploy / update

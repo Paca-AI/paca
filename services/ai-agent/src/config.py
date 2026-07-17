@@ -1,4 +1,6 @@
-from pydantic import Field
+import sys
+
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,7 +39,18 @@ class Settings(BaseSettings):
     # When set, llm_api_key_secret values read from the DB are decrypted before use.
     encryption_key: str = ""
 
-    # Docker sandbox
+    # LLM routing overrides (ADR-038).  When set they take precedence over the
+    # per-agent llm_base_url / API key stored in the DB, so production can
+    # force ALL LLM traffic through the platform proxy regardless of what
+    # individual agents are configured with.
+    llm_base_url_override: str = ""
+    llm_api_key_override: str = ""
+
+    # Docker sandbox.
+    # DOCKER_HOST, when set, is the full daemon URL (e.g. tcp://socket-proxy:2375
+    # for a mediating socket proxy per ADR-038) and takes precedence over
+    # DOCKER_SOCKET, which remains the legacy bare-path form.
+    docker_host: str = ""
     docker_socket: str = "/var/run/docker.sock"
     agent_server_image: str = "ghcr.io/paca-ai/paca-agent-server:latest"
     # Port the agent-server process listens on *inside* its container.
@@ -60,4 +73,22 @@ class Settings(BaseSettings):
     chat_sandbox_idle_timeout_minutes: int = 3
 
 
-settings = Settings()
+# Fail fast on invalid configuration (ADR-038): a clear message and a non-zero
+# exit beat a fail-open service.  Only field locations and messages are
+# printed — never configured values.
+try:
+    settings = Settings()
+except ValidationError as exc:
+    details = "; ".join(
+        f"{'.'.join(str(p) for p in err['loc']).upper()}: {err['msg']}" for err in exc.errors()
+    )
+    print(f"FATAL: invalid ai-agent configuration — {details}", file=sys.stderr)
+    raise SystemExit(1) from None
+
+if not settings.internal_api_key.strip():
+    print(
+        "FATAL: INTERNAL_API_KEY must be a non-empty secret — an empty key would "
+        "leave the conversations API unauthenticated (ADR-038).",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)

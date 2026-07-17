@@ -82,3 +82,29 @@ def test_exhausted_pool_raises_runtime_error():
     )
     with pytest.raises(RuntimeError, match="No ports available"):
         _acquire_port()
+
+
+# ─── docker_daemon_url ────────────────────────────────────────────────────────
+
+
+def test_docker_daemon_url_prefers_docker_host(monkeypatch):
+    from src.agent import docker_workspace
+
+    monkeypatch.setattr(docker_workspace.settings, "docker_host", "tcp://socket-proxy:2375")
+    assert docker_workspace.docker_daemon_url() == "tcp://socket-proxy:2375"
+
+
+def test_docker_daemon_url_wraps_bare_socket_path(monkeypatch):
+    from src.agent import docker_workspace
+
+    monkeypatch.setattr(docker_workspace.settings, "docker_host", "")
+    monkeypatch.setattr(docker_workspace.settings, "docker_socket", "/var/run/docker.sock")
+    assert docker_workspace.docker_daemon_url() == "unix:///var/run/docker.sock"
+
+
+def test_docker_daemon_url_passes_through_socket_with_scheme(monkeypatch):
+    from src.agent import docker_workspace
+
+    monkeypatch.setattr(docker_workspace.settings, "docker_host", "")
+    monkeypatch.setattr(docker_workspace.settings, "docker_socket", "tcp://legacy-proxy:2375")
+    assert docker_workspace.docker_daemon_url() == "tcp://legacy-proxy:2375"
