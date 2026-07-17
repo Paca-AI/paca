@@ -1,0 +1,4 @@
+frontend/node_modules/
+frontend/dist/
+backend/backend.wasm
+backend/backend.h

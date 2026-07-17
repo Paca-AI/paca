@@ -33,15 +33,22 @@ curl -fsS https://tasks.skyplatform.net/api/healthz
 
 ## Plugins
 
-- `plugins/com.galaxy.sdd` — **SDD Sensor** (ADR-038 T6): nhúng dashboard SDD sensor (`nexus.8verse.games/sdd-server`) vào Paca qua iframe; v1 frontend-only, không secret, backend chỉ là stub WASM trơ (host bắt buộc phải có file). Build + cài prod:
+- `plugins/com.galaxy.sdd` — **SDD Sensor** (ADR-038 T6): nhúng dashboard SDD sensor (`nexus.8verse.games/sdd-server`) vào Paca qua iframe; v1 frontend-only, không secret, backend chỉ là stub WASM trơ (host bắt buộc phải có file).
+- `plugins/com.galaxy.analytics` — **Analytics** (ADR-038 P3.4): 4 panel agile (Sprint Progress/burndown v1, Velocity, Status Distribution, Sprint Report) — component Module Federation THẬT (không iframe, không chart lib), tự fetch REST same-origin `/api/v1` bằng session của chính user (`credentials: "include"`, phân trang tasks theo cursor `page_size=100`), tính toán client-side + cache 60s; backend cũng là stub WASM trơ. Các phép xấp xỉ "không có history" ghi rõ ở footnote UI — xem `plugins/com.galaxy.analytics/README.md`.
+
+Build + cài prod (mỗi plugin cùng một quy trình):
 
 ```bash
-cd deploy/galaxy/plugins/com.galaxy.sdd
+cd deploy/galaxy/plugins/<plugin-id>   # com.galaxy.sdd | com.galaxy.analytics
 ./build.sh
 API_KEY=<paca-api-key> ./install-prod.sh
 ```
 
-Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng bước copy của `scripts/install-local-plugin.sh` (script đó cho dev bind-mount); `install-prod.sh` tự `docker cp` vào container api rồi đăng ký qua admin API. Gateway hiện **không set CSP** nên không phải allowlist `frame-src`; nếu iframe trắng thì chỉnh phía SENSOR (bỏ `X-Frame-Options` / set `frame-ancestors` cho phép `https://tasks.skyplatform.net`) — chi tiết trong `plugins/com.galaxy.sdd/README.md`.
+Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng bước copy của `scripts/install-local-plugin.sh` (script đó cho dev bind-mount); `install-prod.sh` tự `docker cp` vào container api rồi đăng ký qua admin API. Gateway hiện **không set CSP** nên không phải allowlist `frame-src`; nếu iframe SDD trắng thì chỉnh phía SENSOR (bỏ `X-Frame-Options` / set `frame-ancestors` cho phép `https://tasks.skyplatform.net`) — chi tiết trong `plugins/com.galaxy.sdd/README.md`.
+
+## Agent skills (AI insights)
+
+- `skills/` — 3 skill PM analyst cho Paca agent (ADR-038 P3.4), chuyển thể từ prompt của PM service (`pm_service/routers/ai_service.py`) sang MCP tools của Paca: `galaxy-sprint-health` (sức khoẻ sprint 🟢/🟡/🔴, tiếng Việt mặc định), `galaxy-triage` (gợi ý epic/importance/tags), `galaxy-estimate` (story points Fibonacci kèm lý do). Gắn **inline theo từng agent** qua UI (agent → Skills tab) hoặc API — runbook trong `skills/README.md`. Prod KHÔNG cấp key LLM riêng cho agent: toàn bộ traffic đã ép qua platform proxy bằng `LLM_BASE_URL_OVERRIDE` (ADR-038, xem mục Topology).
 
 ## Upgrade theo upstream (pin-and-roll)
 
