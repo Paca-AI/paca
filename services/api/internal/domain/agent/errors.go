@@ -43,6 +43,9 @@ var (
 	// ErrConversationBusy is returned when a chat reply is sent while the
 	// session's current conversation is still mid-turn (status "running").
 	ErrConversationBusy = errors.New("agent is still responding to the previous message")
+	// ErrConversationInvalidCursor is returned when a client-supplied
+	// pagination cursor fails to decode.
+	ErrConversationInvalidCursor = errors.New("invalid pagination cursor")
 )
 
 // Chat session errors

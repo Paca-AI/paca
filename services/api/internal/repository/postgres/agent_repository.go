@@ -613,7 +613,7 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 	if in.CursorAfter != nil {
 		cur, err := agentdom.DecodeConversationCursor(*in.CursorAfter)
 		if err != nil {
-			return nil, false, fmt.Errorf("agent repo: invalid cursor: %w", err)
+			return nil, false, fmt.Errorf("%w: %s", agentdom.ErrConversationInvalidCursor, err)
 		}
 		where += fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)", idx, idx+1)
 		args = append(args, cur.CreatedAt, cur.ID)
