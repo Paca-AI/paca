@@ -116,6 +116,34 @@ services:
       # whatever llm_base_url / API key individual agents carry in the DB.
       LLM_BASE_URL_OVERRIDE: ${LLM_BASE_URL_OVERRIDE:-}
       LLM_API_KEY_OVERRIDE: ${LLM_API_KEY_OVERRIDE:-}
+      # ── ADR-038 T3: platform AI role routing ───────────────────────────
+      # GALAXY_AI_ROLE (e.g. `paca-ai`) routes ALL LLM traffic through
+      # identity /ai/v1 under that role (model rebindable in /nexus/admin →
+      # AI Models, no redeploy) with per-conversation act_as tokens naming
+      # the triggering user (billing attribution). Supersedes
+      # LLM_BASE_URL_OVERRIDE. GALAXY_INTERNAL_SERVICE_SECRET = platform
+      # INTERNAL_SERVICE_SECRET, referenced host-side from
+      # ~/Nexus/Galaxy-Nexus/runtime/galaxy-shared/*.env — NEVER committed.
+      GALAXY_AI_ROLE: ${GALAXY_AI_ROLE:-}
+      GALAXY_AI_PROXY_URL: ${GALAXY_AI_PROXY_URL:-http://nexus-identity:8086/ai/v1}
+      GALAXY_IDENTITY_URL: ${GALAXY_IDENTITY_URL:-}
+      GALAXY_INTERNAL_SERVICE_SECRET: ${GALAXY_INTERNAL_SERVICE_SECRET:-}
+      # Sandboxes make the LLM calls themselves (SDK ships the agent spec into
+      # the agent-server) → they must join galaxy_network too. Spawned
+      # containers have random names + no aliases: no DNS-collision surface.
+      SANDBOX_EXTRA_NETWORKS: ${SANDBOX_EXTRA_NETWORKS:-}
+    # galaxy_network for minting act_as tokens at nexus-identity + reaching
+    # the AI proxy. ⚠️ Compose thêm alias ngầm = tên service (`ai-agent`)
+    # trên network chung — đã scan 17/07: không container nào khác giữ alias
+    # `ai-agent` hay `paca-ai-agent` (gần nhất: galaxy-ai-agent-service với
+    # alias `ai_service` — khác tên). Nếu sau này đụng, đổi tên service như
+    # vụ paca-edge. Alias tường minh `paca-ai-agent` là tên chính thức để
+    # các stack khác trỏ tới.
+    networks:
+      default: {}
+      galaxy_network:
+        aliases:
+          - paca-ai-agent
     depends_on:
       socket-proxy:
         condition: service_started
@@ -196,8 +224,15 @@ services:
     # Reachable only through galaxy_network (Cloudflare tunnel), never via
     # host ports. GATEWAY_NETWORK_ALIAS parameterizes the DNS name for
     # instance-per-tenant deploys (ADR-038 T7: paca-<tenant>-gateway).
+    # Alias `gateway` on the STACK network only: the base compose points
+    # ai-agent (GATEWAY_BASE_URL) and sandbox MCP bundle URLs at
+    # http://gateway, which stopped resolving when the `gateway` service was
+    # profile-disabled above — the alias restores that contract without
+    # touching galaxy_network (where `gateway` belongs to vortex-gateway).
     networks:
-      default: {}
+      default:
+        aliases:
+          - gateway
       galaxy_network:
         aliases:
           - ${GATEWAY_NETWORK_ALIAS:-paca-gateway}
