@@ -149,20 +149,42 @@ services:
     mem_limit: 256m
     memswap_limit: 256m
 
+  # ⚠️ SỰ CỐ 17/07: service upstream tên `gateway` sinh alias DNS NGẦM
+  # `gateway` trên galaxy_network (Compose luôn thêm alias = tên service),
+  # đụng alias `gateway` của vortex-gateway → tunnel round-robin đưa traffic
+  # portal (ai.skyplatform.net) sang Paca. Vô hiệu service này bằng profile
+  # và thay bằng `paca-edge` bên dưới (config copy đủ từ base + phần Galaxy).
   gateway:
-    # Reachable only through galaxy_network (Cloudflare tunnel), never via
-    # host ports — do not re-add port bindings here.
-    # GATEWAY_NETWORK_ALIAS parameterizes the galaxy_network DNS name for
-    # instance-per-tenant deploys (ADR-038 T7: paca-<tenant>-gateway, see
-    # deploy/galaxy/tenant-template/); the default stays the shared-instance
-    # alias the Cloudflare tunnel already routes to.
-    ports: !override []
+    profiles: ["disabled-name-collides-with-vortex-gateway"]
+
+  paca-edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
     environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
       # ── ADR-038 P3.2: Galaxy chat dock bridge ──────────────────────────
       # Platform gateway origin the Caddyfile galaxy_dock_bridge snippet
       # streams /dock.js + /api/agentops* + /api/identity* through to, over
       # galaxy_network (origin only — scheme://host[:port], no path).
       GALAXY_GATEWAY_URL: ${GALAXY_GATEWAY_URL:-http://vortex-gateway}
+    volumes:
+      # Relative paths resolve against the FIRST compose file's dir (deploy/).
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - frontend_plugins:/var/www/plugins:ro
+      - mcp_plugins:/var/www/plugins-mcp:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+        required: false
+      realtime:
+        condition: service_started
+    # Reachable only through galaxy_network (Cloudflare tunnel), never via
+    # host ports. GATEWAY_NETWORK_ALIAS parameterizes the DNS name for
+    # instance-per-tenant deploys (ADR-038 T7: paca-<tenant>-gateway).
     networks:
       default: {}
       galaxy_network:
