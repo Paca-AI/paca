@@ -20,19 +20,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Connect to Paca and serve ACP conversations from the current directory",
     )
     run.add_argument(
-        "--agent-id", default=os.environ.get("PACA_ACP_AGENT_ID"),
+        "--agent-id",
+        default=os.environ.get("PACA_ACP_AGENT_ID"),
         help="The ACP agent's id (or PACA_ACP_AGENT_ID)",
     )
     run.add_argument(
-        "--token", default=os.environ.get("PACA_ACP_TOKEN"),
+        "--token",
+        default=os.environ.get("PACA_ACP_TOKEN"),
         help="The agent's local-bridge token, generated in Paca's UI (or PACA_ACP_TOKEN)",
     )
     run.add_argument(
-        "--server", default=os.environ.get("PACA_ACP_SERVER"),
+        "--server",
+        default=os.environ.get("PACA_ACP_SERVER"),
         help="Your Paca instance's base URL, e.g. https://paca.example.com (or PACA_ACP_SERVER)",
     )
     run.add_argument(
-        "--workspace", default=os.getcwd(),
+        "--workspace",
+        default=os.getcwd(),
         help="Directory the ACP server operates on (default: current directory)",
     )
     run.add_argument("--log-level", default="INFO")
@@ -48,8 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.agent_id or not args.token:
         print(
-            "error: --agent-id and --token are required "
-            "(or PACA_ACP_AGENT_ID / PACA_ACP_TOKEN)",
+            "error: --agent-id and --token are required (or PACA_ACP_AGENT_ID / PACA_ACP_TOKEN)",
             file=sys.stderr,
         )
         return 2

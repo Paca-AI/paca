@@ -99,9 +99,7 @@ class ConversationRunner:
             return
 
         try:
-            command = resolve_acp_command(
-                data.get("acp_provider"), data.get("acp_command") or []
-            )
+            command = resolve_acp_command(data.get("acp_provider"), data.get("acp_command") or [])
         except Exception as exc:
             logger.error("Cannot start conversation %s: %s", conversation_id, exc)
             await self._report_status(conversation_id, project_id, "failed", str(exc))
@@ -151,9 +149,7 @@ class ConversationRunner:
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:
             try:
-                payload = (
-                    event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
-                )
+                payload = event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
                 message = {
                     "type": "event",
                     "conversation_id": conversation_id,
