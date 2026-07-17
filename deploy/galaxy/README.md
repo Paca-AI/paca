@@ -8,7 +8,7 @@ Fork của [Paca-AI/paca](https://github.com/Paca-AI/paca) (Apache-2.0), branch 
 - Caddy gateway join `galaxy_network` với alias `paca-gateway`.
 - Cloudflare tunnel routes `tasks.skyplatform.net` → `http://paca-gateway:80` (ingress được quản lý trên Cloudflare dashboard/API, không phải file trên host).
 - TLS ở Cloudflare edge; nội bộ plain HTTP (`SITE_ADDRESS=:80`).
-- `ai-agent` **scale 0** (giữ nguyên cho đến khi quyết định bật). Khi bật: Docker đi qua `socket-proxy` (`DOCKER_HOST=tcp://socket-proxy:2375`, KHÔNG mount docker.sock trực tiếp) và toàn bộ LLM traffic ép qua platform proxy (`LLM_BASE_URL_OVERRIDE`) — xem ADR-038 P1.
+- `ai-agent` + `socket-proxy` **RETIRED 17/07** (profile `retired-use-chatdock` trong overlay — default `up` không bao giờ start; xem mục "Agent surface = ChatDock" bên dưới). Source upstream giữ nguyên (thin-fork: disable, không delete).
 - Backup Postgres hằng đêm 02:00 (giờ VN) vào `/backup/paca-postgres`, giữ 14 ngày.
 
 ## Deploy / update
@@ -19,8 +19,10 @@ docker compose \
   --env-file deploy/galaxy/.env.galaxy \
   -f deploy/docker-compose.prod.yml \
   -f deploy/galaxy/docker-compose.galaxy.yml \
-  up -d --scale ai-agent=0
+  up -d
 ```
+
+(Không cần `--scale ai-agent=0` nữa — `ai-agent`/`socket-proxy` đã bị profile-gate `retired-use-chatdock`; truyền `--scale` cho service ngoài profile sẽ lỗi `no such service`.)
 
 Lần đầu: `sudo mkdir -p /backup/paca-postgres && sudo chown $(id -u):$(id -g) /backup/paca-postgres`, rồi copy `.env.galaxy.example` → `.env.galaxy` và điền secrets (`openssl rand -hex 32`).
 
@@ -46,19 +48,48 @@ API_KEY=<paca-api-key> ./install-prod.sh
 
 Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng bước copy của `scripts/install-local-plugin.sh` (script đó cho dev bind-mount); `install-prod.sh` tự `docker cp` vào container api rồi đăng ký qua admin API. Gateway hiện **không set CSP** nên không phải allowlist `frame-src`; nếu iframe SDD trắng thì chỉnh phía SENSOR (bỏ `X-Frame-Options` / set `frame-ancestors` cho phép `https://tasks.skyplatform.net`) — chi tiết trong `plugins/com.galaxy.sdd/README.md`.
 
-## Agent skills (AI insights)
+## Agent surface = ChatDock (ADR-037/ADR-038 — từ 17/07)
 
-- `skills/` — 3 skill PM analyst cho Paca agent (ADR-038 P3.4), chuyển thể từ prompt của PM service (`pm_service/routers/ai_service.py`) sang MCP tools của Paca: `galaxy-sprint-health` (sức khoẻ sprint 🟢/🟡/🔴, tiếng Việt mặc định), `galaxy-triage` (gợi ý epic/importance/tags), `galaxy-estimate` (story points Fibonacci kèm lý do). Gắn **inline theo từng agent** qua UI (agent → Skills tab) hoặc API — runbook trong `skills/README.md`. Prod KHÔNG cấp key LLM riêng cho agent: toàn bộ traffic đã ép qua platform proxy bằng `LLM_BASE_URL_OVERRIDE` (ADR-038, xem mục Topology).
+Bề mặt agent chính thức của Galaxy Tasks là **ChatDock của platform**
+(assistant AgentOps `app_id=paca`, migration `0069_paca_assistant`), KHÔNG
+phải agent OpenHands in-app nữa:
 
-## AI Agents qua platform AI role (ADR-038 T3)
+- **Chat chủ động:** dock trên tasks.skyplatform.net resolve assistant qua
+  `GET /api/assistants/by-app/paca` → react_agent với 23 tool `paca_*`
+  (galaxy-paca-mcp, RS256 act_as per-user — ADR-038 T2) + `wiki_*`
+  (galaxy-wiki MCP, tra cứu tài liệu nội bộ theo đúng ACL của user hỏi).
+- **Event trigger:** service `dock-trigger` (sibling của notify-bridge, consumer
+  group `galaxy-dock-agent`) — task **giao cho** hoặc **@mention** user dịch vụ
+  `galaxy-tasks-agent` (Editor 5 project, member "human" kiểu sdd-sensor) → chạy
+  assistant paca **thay danh nghĩa NGƯỜI GIAO/NGƯỜI NHẮC** (mint RS256
+  `sub=users.oidc_sub` của actor) → agent xử lý bằng tool `paca_*` và LUÔN
+  comment kết quả lên task. Bật bằng `DOCK_TRIGGER_ENABLED=true` trong
+  `.env.galaxy`; actor chưa từng login SSO (không có `oidc_sub`) bị skip có log.
+  At-most-once (ack trước khi dispatch) — crash giữa chừng thì re-assign/
+  re-mention lại.
+- **Skill:** 3 skill PM analyst đã port sang catalog AgentOps
+  (`agentops/backend/agentops/paca_skills.py`, app_id=paca, autoload theo
+  `when_to_load`) — bản gốc trong `skills/` giữ làm reference cho ai-agent
+  dormant.
+- **ai-agent + socket-proxy (OpenHands in-app) RETIRED:** profile
+  `retired-use-chatdock` trong overlay; KHÔNG xoá source/service (thin-fork).
+  Muốn hồi sinh tạm: thêm `--profile retired-use-chatdock` vào lệnh `up` và
+  làm theo hai mục ADR-038 T3 bên dưới (giữ nguyên làm tài liệu cho đường
+  dormant này).
+
+## Agent skills (AI insights) — reference cho ai-agent dormant
+
+- `skills/` — 3 skill PM analyst cho Paca agent (ADR-038 P3.4), chuyển thể từ prompt của PM service (`pm_service/routers/ai_service.py`) sang MCP tools của Paca: `galaxy-sprint-health` (sức khoẻ sprint 🟢/🟡/🔴, tiếng Việt mặc định), `galaxy-triage` (gợi ý epic/importance/tags), `galaxy-estimate` (story points Fibonacci kèm lý do). Gắn **inline theo từng agent** qua UI (agent → Skills tab) hoặc API — runbook trong `skills/README.md`. Prod KHÔNG cấp key LLM riêng cho agent: toàn bộ traffic đã ép qua platform proxy bằng `LLM_BASE_URL_OVERRIDE` (ADR-038, xem mục Topology). **Bản đang chạy trên ChatDock nằm ở AgentOps** (xem mục trên).
+
+## AI Agents qua platform AI role (ADR-038 T3) — dormant, chỉ khi hồi sinh ai-agent
 
 - `GALAXY_AI_ROLE=paca-ai` (`.env.galaxy`) ép TOÀN BỘ LLM traffic của ai-agent qua identity `/ai/v1` với `model=paca-ai` — proxy resolve role qua `ai_role_assignments` (đổi model tại `/nexus/admin` → AI Models, mục Roles, KHÔNG cần redeploy Paca). Không agent nào cầm key LLM thô.
 - **Attribution:** mỗi conversation mint một token RS256 tại `POST nexus-identity:8086/internal/mint-service-token` (header `X-Service-Secret` = `GALAXY_INTERNAL_SERVICE_SECRET`, chép từ `~/Nexus/Galaxy-Nexus/runtime/galaxy-shared/*.env` lúc deploy — KHÔNG commit). Claims: `sub=paca-service@galaxy.internal.nexus`, `act_as` = email user kích hoạt (assign/mention/chat, tra `project_members`→`users`), `act_as_agent=paca-ai` → hiện trong `ai_usage_logs` (`on_behalf_of`/`agent_id`).
 - **TTL 900s (trần của mint endpoint):** token được SDK gửi vào sandbox MỘT LẦN lúc mở conversation (kể cả chat resume không gửi lại) — conversation chạy quá 15 phút sẽ 401 ở proxy và fail. Trade-off đã ghi nhận; nếu thành vấn đề thật thì cần cơ chế refresh secret phía agent-server.
 - **Network:** ai-agent join `galaxy_network` (alias tường minh `paca-ai-agent`; alias ngầm `ai-agent` đã scan không đụng 17/07). Sandbox agent-server TỰ gọi LLM nên cũng phải join — `SANDBOX_EXTRA_NETWORKS=galaxy_network` (connect sau create, network này bị LOẠI khỏi slot primary để `api`/`gateway` vẫn resolve trên stack network; sandbox tên ngẫu nhiên, không alias → không đụng DNS).
-- Bật/tắt: `up -d --scale ai-agent=1` / `=0`. Fail-closed: thiếu `GALAXY_INTERNAL_SERVICE_SECRET` khi đã set role → container từ chối start.
+- Bật/tắt (sau khi RETIRED 17/07): thêm/bỏ `--profile retired-use-chatdock` vào lệnh `up` (không dùng `--scale` nữa). Fail-closed: thiếu `GALAXY_INTERNAL_SERVICE_SECRET` khi đã set role → container từ chối start.
 
-## Paca MCP bearer — tool write-backs mang danh user (ADR-038)
+## Paca MCP bearer — tool write-backs mang danh user (ADR-038) — dormant, chỉ khi hồi sinh ai-agent
 
 Agent trong sandbox gọi Paca API (tạo task, comment, đổi status, …) qua MCP
 server built-in. Ở galaxy mode nó chạy **`PACA_AUTH_MODE=bearer`**: mỗi

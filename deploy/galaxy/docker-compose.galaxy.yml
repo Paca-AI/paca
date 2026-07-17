@@ -94,7 +94,16 @@ services:
   # Mediates the ai-agent's Docker access (ADR-038): the raw docker.sock is
   # mounted read-only HERE only, and ai-agent talks to it over tcp with just
   # the API surface a sandbox runner needs.  Stack-private network only.
+  #
+  # ⚠️ RETIRED 17/07 (ADR-038): the in-app OpenHands agent surface is replaced
+  # by the platform ChatDock agent (assistant app_id=paca + galaxy-paca-mcp +
+  # dock-trigger below — ADR-037 doctrine: agent surface = ChatDock). Both
+  # sandbox services are profile-gated so a default `up` NEVER starts them
+  # (same pattern as `gateway` above); upstream source stays untouched
+  # (thin-fork rule: disable, don't delete). To resurrect temporarily:
+  # `docker compose ... --profile retired-use-chatdock up -d`.
   socket-proxy:
+    profiles: ["retired-use-chatdock"]
     image: tecnativa/docker-socket-proxy:latest
     restart: unless-stopped
     environment:
@@ -112,6 +121,9 @@ services:
     memswap_limit: 128m
 
   ai-agent:
+    # ⚠️ RETIRED 17/07 (ADR-038) — see socket-proxy note above. ChatDock is
+    # the agent surface now; this stays defined-but-dormant per thin-fork rules.
+    profiles: ["retired-use-chatdock"]
     # Docker access goes through socket-proxy — never mount docker.sock here.
     volumes: !override []
     environment:
@@ -189,6 +201,45 @@ services:
       # agentops-redis-net, KHÔNG phải galaxy_network — vortex-notification
       # cũng join network này y hệt.
       agentops-redis-net: {}
+    mem_limit: 256m
+    memswap_limit: 256m
+
+  # ── Paca events → ChatDock agent runs (ADR-038, thay ai-agent in-app) ─────
+  # Same image as notify-bridge, own consumer group (galaxy-dock-agent): task
+  # ASSIGNED to / @MENTION of a designated agent principal (Paca service user
+  # `galaxy-tasks-agent`) → mint an RS256 token AS THE ASSIGNER/MENTIONER
+  # (identity /internal/mint-service-token, sub = users.oidc_sub) → run the
+  # AgentOps paca assistant via /api/chat/stream; the agent works the task
+  # with paca_* tools and ALWAYS comments the result back. At-most-once
+  # delivery (ack-before-dispatch). Idles unless DOCK_TRIGGER_ENABLED=true.
+  # Networks: default (valkey/postgres) + agentops-redis-net (agentops-backend
+  # :8090 listens there) + galaxy_network (nexus-identity mint).
+  dock-trigger:
+    build:
+      context: ./galaxy/notify-bridge
+    command: ["python", "-u", "dock_trigger.py"]
+    restart: unless-stopped
+    environment:
+      DOCK_TRIGGER_ENABLED: ${DOCK_TRIGGER_ENABLED:-false}
+      DOCK_AGENT_TRIGGER_USERNAMES: ${DOCK_AGENT_TRIGGER_USERNAMES:-galaxy-tasks-agent}
+      AGENTOPS_URL: ${AGENTOPS_URL:-http://agentops-backend:8090}
+      GALAXY_IDENTITY_URL: ${GALAXY_IDENTITY_URL:-http://nexus-identity:8086}
+      GALAXY_INTERNAL_SERVICE_SECRET: ${GALAXY_INTERNAL_SERVICE_SECRET:-}
+      DOCK_TRIGGER_TIMEOUT_S: ${DOCK_TRIGGER_TIMEOUT_S:-300}
+      PACA_VALKEY_URL: ${PACA_VALKEY_URL:-redis://valkey:6379/0}
+      PACA_DATABASE_URL: ${PACA_DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
+      PACA_PUBLIC_URL: ${PUBLIC_URL:-https://tasks.skyplatform.net}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      valkey:
+        condition: service_healthy
+    networks:
+      default: {}
+      agentops-redis-net: {}
+      galaxy_network: {}
     mem_limit: 256m
     memswap_limit: 256m
 
