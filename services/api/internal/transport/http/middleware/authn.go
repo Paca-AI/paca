@@ -44,6 +44,20 @@ type AgentAPIKeyAuthenticator interface {
 	IsAgentKey(ctx context.Context, rawKey string) bool
 }
 
+// AgentImpersonationPolicy optionally reports whether the legacy
+// AGENT_API_KEY + X-Agent-ID header impersonation path is allowed.
+// Authenticators that do not implement it are treated as DISABLED — the
+// fail-closed default mandated by ADR-038 (identity from signed tokens,
+// never headers).
+type AgentImpersonationPolicy interface {
+	AgentHeaderImpersonationEnabled() bool
+}
+
+// errAgentHeaderImpersonationDisabled is returned when a request presents
+// X-Agent-ID with the shared agent key while the kill-switch is off.
+var errAgentHeaderImpersonationDisabled = apierr.New(apierr.CodeUnauthenticated,
+	"X-Agent-ID header impersonation is disabled (ADR-038): identity must come from a signed token — use a Vortex bearer token with an act_as claim, or set AGENT_HEADER_IMPERSONATION=enabled to restore the legacy behavior")
+
 // Authn validates the access JWT and stores the parsed claims in the request context
 // as well as the caller's user UUID so service-layer code can access it without
 // depending on the HTTP layer.
@@ -106,6 +120,12 @@ func EnforceOptionalAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.M
 }
 
 func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, apiKeyAuthenticator APIKeyAuthenticator, optional bool) (*http.Request, bool) {
+	// Already authenticated upstream (e.g. by the GalaxyBearer middleware,
+	// ADR-038) — keep that identity rather than re-deriving one.
+	if ClaimsFrom(r) != nil {
+		return r, true
+	}
+
 	tokenStr := ""
 	isAPIKey := false
 
@@ -147,14 +167,10 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			if apiKeyAuthenticator != nil {
 				key, err := apiKeyAuthenticator.Authenticate(r.Context(), tokenStr)
 				if err == nil {
-					var agentID uuid.UUID
-					if agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator); ok && agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
-						agentIDHeader := r.Header.Get("X-Agent-ID")
-						if agentIDHeader != "" {
-							if parsedID, parseErr := uuid.Parse(agentIDHeader); parseErr == nil {
-								agentID = parsedID
-							}
-						}
+					agentID, impErr := resolveAgentImpersonation(r, apiKeyAuthenticator, tokenStr)
+					if impErr != nil {
+						presenter.Error(w, r, impErr)
+						return r, false
 					}
 					r = setAPIKeyAuthContext(r, key.UserID, agentID)
 				}
@@ -178,14 +194,10 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			return r, false
 		}
 
-		var agentID uuid.UUID
-		if agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator); ok && agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
-			agentIDHeader := r.Header.Get("X-Agent-ID")
-			if agentIDHeader != "" {
-				if parsedID, parseErr := uuid.Parse(agentIDHeader); parseErr == nil {
-					agentID = parsedID
-				}
-			}
+		agentID, impErr := resolveAgentImpersonation(r, apiKeyAuthenticator, tokenStr)
+		if impErr != nil {
+			presenter.Error(w, r, impErr)
+			return r, false
 		}
 
 		r = setAPIKeyAuthContext(r, key.UserID, agentID)
@@ -208,6 +220,36 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 	}
 	r = r.WithContext(ctx)
 	return r, true
+}
+
+// resolveAgentImpersonation returns the agent ID asserted via the X-Agent-ID
+// header when the presented key is the shared agent key.  The path is gated
+// behind AGENT_HEADER_IMPERSONATION (ADR-038): when disabled — the default,
+// and always when the authenticator implements no AgentImpersonationPolicy —
+// any request pairing the shared key with an X-Agent-ID header is rejected.
+func resolveAgentImpersonation(r *http.Request, apiKeyAuthenticator APIKeyAuthenticator, rawKey string) (uuid.UUID, error) {
+	agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator)
+	if !ok || !agentKeyAuth.IsAgentKey(r.Context(), rawKey) {
+		return uuid.Nil, nil
+	}
+	agentIDHeader := r.Header.Get("X-Agent-ID")
+	if agentIDHeader == "" {
+		return uuid.Nil, nil
+	}
+
+	enabled := false
+	if policy, ok := apiKeyAuthenticator.(AgentImpersonationPolicy); ok {
+		enabled = policy.AgentHeaderImpersonationEnabled()
+	}
+	if !enabled {
+		return uuid.Nil, errAgentHeaderImpersonationDisabled
+	}
+
+	parsedID, parseErr := uuid.Parse(agentIDHeader)
+	if parseErr != nil {
+		return uuid.Nil, nil // legacy behavior: malformed agent IDs are ignored
+	}
+	return parsedID, nil
 }
 
 func setAPIKeyAuthContext(r *http.Request, userID uuid.UUID, agentID uuid.UUID) *http.Request {
@@ -305,10 +347,12 @@ func RequireJWTAuth() func(http.Handler) http.Handler {
 	}
 }
 
-// EnforceJWTAuth rejects API key-authenticated requests.
+// EnforceJWTAuth rejects API key-authenticated requests.  Trusted-issuer
+// bearer tokens (ADR-038) are rejected too: an acting agent must not mint
+// long-lived credentials (API keys) or rotate the user's break-glass password.
 func EnforceJWTAuth(w http.ResponseWriter, r *http.Request) bool {
-	if IsAPIKeyAuth(r) {
-		presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "this endpoint requires session authentication and does not accept API key credentials"))
+	if IsAPIKeyAuth(r) || IsGalaxyBearerAuth(r) {
+		presenter.Error(w, r, apierr.New(apierr.CodeForbidden, "this endpoint requires session authentication and does not accept API key or platform bearer credentials"))
 		return false
 	}
 	return true

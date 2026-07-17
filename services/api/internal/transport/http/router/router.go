@@ -20,6 +20,7 @@ import (
 type Deps struct {
 	TokenManager         *jwttoken.Manager
 	APIKeyAuth           httpmw.APIKeyAuthenticator
+	GalaxyBearer         httpmw.GalaxyBearerAuthenticator // nil unless GALAXY_TRUSTED_ISSUER is set (ADR-038)
 	Authorizer           *authz.Authorizer
 	ProjectVisibilitySvc httpmw.ProjectVisibilityChecker
 	Health               *handler.HealthHandler
@@ -52,6 +53,11 @@ func New(deps Deps) http.Handler {
 	r.Use(loggerMiddleware(deps.Log))
 	r.Use(chimw.Recoverer)
 	r.Use(corsMiddleware())
+	// Trusted-issuer RS256 bearer auth (ADR-038).  Runs before the per-route
+	// Authn middleware, which keeps an identity established here.
+	if deps.GalaxyBearer != nil {
+		r.Use(httpmw.GalaxyBearer(deps.GalaxyBearer, deps.Log))
+	}
 
 	r.Route("/api", func(r chi.Router) {
 		// Public routes

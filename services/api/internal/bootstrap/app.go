@@ -43,6 +43,7 @@ import (
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 	workflowsvc "github.com/Paca-AI/api/internal/service/workflow"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
+	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/router"
 	"github.com/Paca-AI/api/internal/worker"
 	"github.com/Paca-AI/api/migrations"
@@ -203,6 +204,13 @@ func New(cfg *config.Config) (*App, error) {
 	if cfg.Security.AgentAPIKey != "" {
 		apiKeyService.WithAgentKey(cfg.Security.AgentAPIKey, agentBotUserID)
 	}
+	// Legacy AGENT_API_KEY + X-Agent-ID header impersonation is disabled by
+	// default (ADR-038); requests presenting the header are rejected with 401
+	// unless AGENT_HEADER_IMPERSONATION=enabled.
+	apiKeyService.WithAgentHeaderImpersonation(cfg.Security.AgentHeaderImpersonation)
+	if cfg.Security.AgentHeaderImpersonation {
+		log.Warn("legacy X-Agent-ID header impersonation is ENABLED — ADR-038 recommends the Vortex bearer act_as contract instead")
+	}
 
 	// --- Plugin infrastructure ----------------------------------------------
 	// sqlx.DB embeds *sql.DB; plugin infrastructure uses the raw driver interface.
@@ -312,9 +320,19 @@ func New(cfg *config.Config) (*App, error) {
 		log.Info("OIDC SSO login enabled", "issuer", cfg.OIDC.Issuer, "auto_create_users", cfg.OIDC.AutoCreateUsers)
 	}
 
+	// Trusted-issuer RS256 bearer auth: platform tokens (with act_as) map to
+	// local users via users.oidc_sub; unknown principals are rejected.
+	var galaxyBearer httpmw.GalaxyBearerAuthenticator
+	if cfg.Security.GalaxyTrustedIssuer != "" {
+		galaxyBearer = galaxyauthsvc.NewBearerAuthenticator(
+			oidcplatform.NewProvider(cfg.Security.GalaxyTrustedIssuer), userRepo, log)
+		log.Info("Galaxy trusted-issuer bearer auth enabled", "issuer", cfg.Security.GalaxyTrustedIssuer)
+	}
+
 	deps := router.Deps{
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
+		GalaxyBearer:         galaxyBearer,
 		Authorizer:           authorizer,
 		Health:               handler.NewHealthHandler(),
 		Auth:                 authHandler,

@@ -5,6 +5,17 @@ export interface PermissionMap {
 	projects: Record<string, Record<string, boolean>>;
 }
 
+/**
+ * Raised when permission fetching fails in a scoped (agent/project) mode.
+ * Callers must fail closed: expose ZERO tools rather than guessing (ADR-038).
+ */
+export class PermissionFetchError extends Error {
+	constructor(message: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = "PermissionFetchError";
+	}
+}
+
 export interface ToolPermission {
 	toolName: string;
 	permissionKey: string;
@@ -393,9 +404,15 @@ export async function fetchAgentPermissions(
 							}
 						}
 					}
+				} else {
+					throw new PermissionFetchError(
+						`global permissions request failed: ${globalResponse.status} ${globalResponse.statusText}`,
+					);
 				}
 			} catch (err) {
 				console.error("[permissions] Failed to fetch global permissions:", err);
+				// Fail closed (ADR-038): propagate instead of pretending "no permissions fetched" is fine.
+				throw err;
 			}
 		}
 
@@ -439,7 +456,7 @@ export async function fetchAgentPermissions(
 						);
 					}
 				} else {
-					console.error(
+					throw new PermissionFetchError(
 						`Failed to fetch permissions for project ${projectId}: ${permResponse.status} ${permResponse.statusText}`,
 					);
 				}
@@ -448,6 +465,8 @@ export async function fetchAgentPermissions(
 					`Failed to fetch permissions for project ${projectId}:`,
 					err,
 				);
+				// Fail closed (ADR-038): propagate instead of returning empty maps.
+				throw err;
 			}
 
 			const entityType = config.agentId ? "agent" : "user";
@@ -457,6 +476,13 @@ export async function fetchAgentPermissions(
 		}
 	} catch (error) {
 		console.error("[permissions] Failed to fetch permissions:", error);
+		// Fail closed (ADR-038): callers must expose ZERO tools on permission
+		// errors, so surface the failure instead of returning empty maps.
+		throw error instanceof PermissionFetchError
+			? error
+			: new PermissionFetchError(`Permission fetch failed: ${String(error)}`, {
+					cause: error,
+				});
 	}
 
 	return { global, projects };
@@ -527,4 +553,63 @@ export function hasPermission(
 
 export function getToolPermission(toolName: string): ToolPermission | null {
 	return TOOL_PERMISSIONS.find((tp) => tp.toolName === toolName) || null;
+}
+
+/**
+ * Filters core tools down to those the caller's permissions allow.
+ *
+ * The permissionMap MUST come from a successful fetchAgentPermissions call —
+ * that function throws on failure, and callers are expected to expose ZERO
+ * tools in that case rather than filtering against an empty map (fail closed,
+ * ADR-038).
+ */
+export function filterToolsByPermissions<T extends { name: string }>(
+	tools: T[],
+	permissionMap: PermissionMap,
+	config: PacaConfig,
+): T[] {
+	return tools.filter((tool) => {
+		const toolPerm = getToolPermission(tool.name);
+		if (!toolPerm) {
+			console.error(
+				`[server] Tool ${tool.name} has no permission mapping, allowing by default`,
+			);
+			return true;
+		}
+
+		// For personal API key without project ID, show all tools (backward compatibility)
+		if (!config.agentId && !config.projectId) {
+			console.error(
+				`[server] Personal API key mode, allowing tool ${tool.name}`,
+			);
+			return true;
+		}
+
+		if (config.projectId) {
+			const hasPerm = hasPermission(
+				permissionMap,
+				toolPerm.permissionKey,
+				config.projectId,
+			);
+			console.error(
+				`[server] Tool ${tool.name} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+			);
+			return hasPerm;
+		}
+
+		if (toolPerm.requiresProject) {
+			const hasPerm = Object.keys(permissionMap.projects).some((projectId) =>
+				hasPermission(permissionMap, toolPerm.permissionKey, projectId),
+			);
+			console.error(
+				`[server] Tool ${tool.name} requires project permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+			);
+			return hasPerm;
+		}
+		const hasPerm = hasPermission(permissionMap, toolPerm.permissionKey);
+		console.error(
+			`[server] Tool ${tool.name} requires global permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+		);
+		return hasPerm;
+	});
 }

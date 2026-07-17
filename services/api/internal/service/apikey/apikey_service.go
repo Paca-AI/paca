@@ -28,6 +28,9 @@ type Service struct {
 	agentKeyHash   [32]byte  // SHA-256 of the configured static agent API key
 	agentKeySet    bool      // true when an agent API key has been configured
 	agentBotUserID uuid.UUID // user identity returned for the static agent key
+	// agentHeaderImpersonation re-enables the legacy AGENT_API_KEY +
+	// X-Agent-ID header impersonation path (ADR-038: off by default).
+	agentHeaderImpersonation bool
 }
 
 // New returns a configured API key Service.
@@ -134,6 +137,20 @@ func (s *Service) Authenticate(ctx context.Context, rawKey string) (*apikeydom.A
 	_ = s.repo.UpdateLastUsed(ctx, key.ID, time.Now().UTC())
 
 	return key, nil
+}
+
+// WithAgentHeaderImpersonation toggles the legacy AGENT_API_KEY + X-Agent-ID
+// header impersonation path.  Disabled by default per ADR-038 — identity must
+// come from signed tokens, never from request headers.
+func (s *Service) WithAgentHeaderImpersonation(enabled bool) *Service {
+	s.agentHeaderImpersonation = enabled
+	return s
+}
+
+// AgentHeaderImpersonationEnabled implements the auth middleware's
+// AgentImpersonationPolicy.
+func (s *Service) AgentHeaderImpersonationEnabled() bool {
+	return s.agentHeaderImpersonation
 }
 
 // IsAgentKey checks if the provided raw key is the static agent API key.

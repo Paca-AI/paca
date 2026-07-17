@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	fetchAgentPermissions,
+	filterToolsByPermissions,
 	getToolPermission,
 	hasPermission,
+	PermissionFetchError,
 	type PermissionMap,
 	TOOL_PERMISSIONS,
 } from "../permissions.js";
@@ -289,16 +291,106 @@ describe("fetchAgentPermissions", () => {
 		expect(result.global).toEqual({ "projects.read": true });
 	});
 
-	it("returns empty maps gracefully when fetch fails", async () => {
+	it("throws when fetch fails so callers can fail closed (ADR-038)", async () => {
 		vi.mocked(fetch).mockRejectedValue(new Error("network error"));
 
-		const result = await fetchAgentPermissions({
-			apiKey: "key-123",
+		await expect(
+			fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				projectId: "proj-abc",
+			}),
+		).rejects.toThrow(PermissionFetchError);
+	});
+
+	it("throws when the project permissions request returns non-OK", async () => {
+		vi.mocked(fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ permissions: {} }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+				statusText: "Internal Server Error",
+			} as Response);
+
+		await expect(
+			fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				projectId: "proj-abc",
+			}),
+		).rejects.toThrow(PermissionFetchError);
+	});
+
+	it("throws when the global permissions request returns non-OK", async () => {
+		vi.mocked(fetch).mockResolvedValueOnce({
+			ok: false,
+			status: 502,
+			statusText: "Bad Gateway",
+		} as Response);
+
+		await expect(
+			fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				projectId: "proj-abc",
+			}),
+		).rejects.toThrow(PermissionFetchError);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// filterToolsByPermissions
+// ---------------------------------------------------------------------------
+
+describe("filterToolsByPermissions", () => {
+	const tools = [
+		{ name: "list_tasks" }, // mapped: tasks.read (requiresProject)
+		{ name: "create_task" }, // mapped: tasks.write (requiresProject)
+		{ name: "totally_unmapped_tool" },
+	];
+
+	it("keeps only tools whose permission is granted in project scope", () => {
+		const map: PermissionMap = {
+			global: {},
+			projects: { "proj-1": { "tasks.read": true } },
+		};
+
+		const filtered = filterToolsByPermissions(tools, map, {
+			apiKey: "k",
 			baseURL: "http://localhost:8080",
-			projectId: "proj-abc",
+			projectId: "proj-1",
 		});
 
-		expect(result.global).toEqual({});
-		expect(result.projects).toEqual({});
+		const names = filtered.map((t) => t.name);
+		expect(names).toContain("list_tasks");
+		expect(names).not.toContain("create_task");
+		// Unmapped tools are allowed by default (unchanged behavior).
+		expect(names).toContain("totally_unmapped_tool");
+	});
+
+	it("hides all mapped tools when the permission map is empty in scoped mode", () => {
+		const map: PermissionMap = { global: {}, projects: {} };
+
+		const filtered = filterToolsByPermissions(tools, map, {
+			apiKey: "k",
+			baseURL: "http://localhost:8080",
+			projectId: "proj-1",
+		});
+
+		expect(filtered.map((t) => t.name)).toEqual(["totally_unmapped_tool"]);
+	});
+
+	it("shows all tools in unscoped personal key mode", () => {
+		const map: PermissionMap = { global: {}, projects: {} };
+
+		const filtered = filterToolsByPermissions(tools, map, {
+			apiKey: "k",
+			baseURL: "http://localhost:8080",
+		});
+
+		expect(filtered).toHaveLength(tools.length);
 	});
 });

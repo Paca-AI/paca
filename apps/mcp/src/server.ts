@@ -13,8 +13,7 @@ import {
 } from "./api/index.js";
 import {
 	fetchAgentPermissions,
-	getToolPermission,
-	hasPermission,
+	filterToolsByPermissions,
 	type PermissionMap,
 } from "./permissions.js";
 import { loadPlugins } from "./plugin-loader.js";
@@ -50,8 +49,18 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	// Failures for individual plugins are logged and skipped.
 	const pluginRegistry = await loadPlugins(config);
 
-	// Fetch agent permissions at startup
-	const permissionMap: PermissionMap = await fetchAgentPermissions(config);
+	// Fetch agent permissions at startup. If this fails the server still
+	// starts, but it exposes ZERO tools until a fetch succeeds — never "all
+	// tools" (fail closed, ADR-038).
+	let permissionMap: PermissionMap | null = null;
+	try {
+		permissionMap = await fetchAgentPermissions(config);
+	} catch (err) {
+		console.error(
+			"[server] Permission fetch failed at startup — exposing ZERO tools until it succeeds (fail closed, ADR-038):",
+			err,
+		);
+	}
 
 	const server = new Server(
 		{
@@ -67,54 +76,32 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 
 	// Handler for listing available tools (core + plugins)
 	server.setRequestHandler(ListToolsRequestSchema, async (_request) => {
+		// Retry a failed startup fetch; if permissions still cannot be
+		// determined, surface the error and expose ZERO tools (ADR-038).
+		if (permissionMap === null) {
+			try {
+				permissionMap = await fetchAgentPermissions(config);
+			} catch (err) {
+				const reason = err instanceof Error ? err.message : String(err);
+				console.error(
+					"[server] Permission fetch failed — exposing ZERO tools (fail closed, ADR-038):",
+					err,
+				);
+				throw new Error(
+					`Permission fetch failed; refusing to expose any tools (fail closed, ADR-038): ${reason}`,
+				);
+			}
+		}
+
 		const allCoreTools = getAllTools();
 		const allPluginTools = pluginRegistry.getAllTools();
 
 		// Filter core tools based on permissions
-		const filteredCoreTools = allCoreTools.filter((tool) => {
-			const toolPerm = getToolPermission(tool.name);
-			if (!toolPerm) {
-				console.error(
-					`[server] Tool ${tool.name} has no permission mapping, allowing by default`,
-				);
-				return true;
-			}
-
-			// For personal API key without project ID, show all tools (backward compatibility)
-			if (!config.agentId && !config.projectId) {
-				console.error(
-					`[server] Personal API key mode, allowing tool ${tool.name}`,
-				);
-				return true;
-			}
-
-			if (config.projectId) {
-				const hasPerm = hasPermission(
-					permissionMap,
-					toolPerm.permissionKey,
-					config.projectId,
-				);
-				console.error(
-					`[server] Tool ${tool.name} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-				);
-				return hasPerm;
-			}
-
-			if (toolPerm.requiresProject) {
-				const hasPerm = Object.keys(permissionMap.projects).some((projectId) =>
-					hasPermission(permissionMap, toolPerm.permissionKey, projectId),
-				);
-				console.error(
-					`[server] Tool ${tool.name} requires project permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-				);
-				return hasPerm;
-			}
-			const hasPerm = hasPermission(permissionMap, toolPerm.permissionKey);
-			console.error(
-				`[server] Tool ${tool.name} requires global permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-			);
-			return hasPerm;
-		});
+		const filteredCoreTools = filterToolsByPermissions(
+			allCoreTools,
+			permissionMap,
+			config,
+		);
 
 		console.error(
 			`[server] Filtered ${filteredCoreTools.length} tools from ${allCoreTools.length} total tools`,

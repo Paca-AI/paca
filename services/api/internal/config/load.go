@@ -203,6 +203,11 @@ func Load() (*Config, error) {
 			// AGENT_API_KEY is optional; when set the API accepts it as a
 			// static service key for the AI agent without a DB lookup.
 			AgentAPIKey: env("AGENT_API_KEY", ""),
+			// GALAXY_TRUSTED_ISSUER enables Vortex RS256 bearer auth (ADR-038).
+			GalaxyTrustedIssuer: strings.TrimRight(env("GALAXY_TRUSTED_ISSUER", ""), "/"),
+			// Header impersonation stays off unless explicitly "enabled"
+			// (ADR-038 kill-switch; identity from signed tokens, not headers).
+			AgentHeaderImpersonation: strings.EqualFold(env("AGENT_HEADER_IMPERSONATION", "disabled"), "enabled"),
 		},
 		Plugins: PluginsConfig{
 			// PLUGINS_STORE controls where WASM binaries are loaded from.

@@ -188,4 +188,18 @@ type SecurityConfig struct {
 	// agent bot user — no database lookup is required.
 	// Configure via the AGENT_API_KEY environment variable.
 	AgentAPIKey string
+
+	// GalaxyTrustedIssuer enables RS256 bearer authentication against the
+	// Vortex identity provider (ADR-038): tokens signed by this issuer are
+	// accepted on Authorization: Bearer, with the effective principal taken
+	// from the act_as claim (falling back to sub) and mapped to
+	// users.oidc_sub.  Same value as OIDC_ISSUER but an independent switch.
+	// Configure via the GALAXY_TRUSTED_ISSUER environment variable.
+	GalaxyTrustedIssuer string
+
+	// AgentHeaderImpersonation re-enables the legacy AGENT_API_KEY +
+	// X-Agent-ID header impersonation path.  Disabled by default per
+	// ADR-038 (identity must come from signed tokens, never headers).
+	// Configure via AGENT_HEADER_IMPERSONATION=enabled.
+	AgentHeaderImpersonation bool
 }
