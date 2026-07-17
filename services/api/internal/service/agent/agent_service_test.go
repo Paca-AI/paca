@@ -37,7 +37,7 @@ type mockAgentRepo struct {
 	createEnvVar                    func(ctx context.Context, v *agentdom.AgentEnvironmentVariable) error
 	updateEnvVar                    func(ctx context.Context, v *agentdom.AgentEnvironmentVariable) error
 	deleteEnvVar                    func(ctx context.Context, id uuid.UUID) error
-	listConversations               func(ctx context.Context, filter agentdom.ListConversationsFilter) ([]*agentdom.AgentConversation, int64, error)
+	listConversations               func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	findConversationByID            func(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error)
 	findLatestConversationBySession func(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error)
 	createConversation              func(ctx context.Context, conv *agentdom.AgentConversation) error
@@ -234,11 +234,11 @@ func (m *mockAgentRepo) DeleteEnvVar(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (m *mockAgentRepo) ListConversations(ctx context.Context, filter agentdom.ListConversationsFilter) ([]*agentdom.AgentConversation, int64, error) {
+func (m *mockAgentRepo) ListConversations(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
 	if m.listConversations != nil {
-		return m.listConversations(ctx, filter)
+		return m.listConversations(ctx, filter, limit)
 	}
-	return nil, 0, nil
+	return nil, false, nil
 }
 
 func (m *mockAgentRepo) FindConversationByID(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {

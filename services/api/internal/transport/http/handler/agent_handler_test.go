@@ -86,8 +86,8 @@ func (m *mockAgentSvc) UpdateEnvVar(_ context.Context, _, _ uuid.UUID, _ agentdo
 	return nil, errors.New("not found")
 }
 func (m *mockAgentSvc) DeleteEnvVar(_ context.Context, _, _ uuid.UUID) error { return nil }
-func (m *mockAgentSvc) ListConversations(_ context.Context, _ agentdom.ListConversationsFilter) ([]*agentdom.AgentConversation, int64, error) {
-	return nil, 0, nil
+func (m *mockAgentSvc) ListConversations(_ context.Context, _ agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+	return nil, false, nil
 }
 func (m *mockAgentSvc) GetConversation(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 	return nil, errors.New("not found")

@@ -581,8 +581,10 @@ const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comme
 	repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
 	started_at, finished_at, created_at, updated_at`
 
-// ListConversations returns a paginated list of conversations matching the filter.
-func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.ListConversationsFilter) ([]*agentdom.AgentConversation, int64, error) {
+// ListConversations returns a keyset-paginated page of conversations matching
+// the filter, ordered newest-first. It fetches one row beyond limit to detect
+// whether more pages remain, without a separate COUNT query.
+func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
 	// Build dynamic WHERE clause
 	where := "WHERE 1=1"
 	args := []interface{}{}
@@ -608,26 +610,35 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		args = append(args, *in.Status)
 		idx++
 	}
-
-	var total int64
-	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM agent_conversations `+where, args...); err != nil {
-		return nil, 0, err
+	if in.CursorAfter != nil {
+		cur, err := agentdom.DecodeConversationCursor(*in.CursorAfter)
+		if err != nil {
+			return nil, false, fmt.Errorf("agent repo: invalid cursor: %w", err)
+		}
+		where += fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)", idx, idx+1)
+		args = append(args, cur.CreatedAt, cur.ID)
+		idx += 2
 	}
 
-	orderArgs := make([]interface{}, len(args), len(args)+2)
-	copy(orderArgs, args)
-	orderArgs = append(orderArgs, in.Offset, in.Limit)
+	limitP := idx
+	args = append(args, limit+1)
+
 	var recs []agentConversationRecord
 	if err := r.db.SelectContext(ctx, &recs, `SELECT `+conversationCols+` FROM agent_conversations `+where+
-		fmt.Sprintf(` ORDER BY created_at DESC OFFSET $%d LIMIT $%d`, idx, idx+1), orderArgs...); err != nil {
-		return nil, 0, err
+		fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, limitP), args...); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(recs) > limit
+	if hasMore {
+		recs = recs[:limit]
 	}
 
 	result := make([]*agentdom.AgentConversation, 0, len(recs))
 	for _, rec := range recs {
 		result = append(result, conversationFromRecord(rec))
 	}
-	return result, total, nil
+	return result, hasMore, nil
 }
 
 // FindConversationByID returns a single conversation by its primary key.
