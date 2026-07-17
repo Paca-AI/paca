@@ -315,7 +315,7 @@ func TestE2EACPAgent_CreateValidation(t *testing.T) {
 
 // TestE2EACPAgent_LLMBaseURLNotRequired guards against a regression of the
 // fix that stopped rejecting llm_base_url == "" — the agents.llm_base_url
-// column defaults to '' and several LLM providers resolve their own default,
+// column defaults to ” and several LLM providers resolve their own default,
 // so requiring it here would reject otherwise-valid requests.
 func TestE2EACPAgent_LLMBaseURLNotRequired(t *testing.T) {
 	env := newE2EEnv(t)
