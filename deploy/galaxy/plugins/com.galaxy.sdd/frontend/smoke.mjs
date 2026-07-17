@@ -39,7 +39,7 @@ assert.equal(typeof container.get, "function", "remoteEntry exports get()");
 await container.init(shareScope);
 
 for (const [name, checks] of [
-	["SddFleetView", ["<iframe", "nexus.8verse.games/sdd-server", "sandbox=", "allow-same-origin", "SDD Fleet"]],
+	["SddFleetView", ["<iframe", "ai.skyplatform.net/sdd-server", "sandbox=", "allow-same-origin", "SDD Fleet"]],
 	["SddSidebarCard", ["/projects/proj-123/plugins/com.galaxy.sdd/sdd-fleet", "target=\"_blank\"", "SDD Sensor"]],
 ]) {
 	const factory = await container.get(`./${name}`);
