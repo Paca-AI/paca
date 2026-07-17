@@ -121,8 +121,7 @@
 				"overview": "Обзор",
 				"mcpServers": "MCP-серверы",
 				"skills": "Навыки",
-				"envVars": "Окружение",
-				"conversations": "Диалоги"
+				"envVars": "Окружение"
 			},
 			"overview": {
 				"nameLabel": "Имя",
@@ -217,20 +216,6 @@
 					"urlLabel": "URL",
 					"cancel": "Отмена",
 					"addSkill": "Добавить навык"
-				}
-			},
-			"conversations": {
-				"triggerChat": "Чат",
-				"triggerWriteDescription": "Написать описание",
-				"triggerTask": "Задача",
-				"iterations_one": "{{count}} итерация",
-				"iterations_few": "{{count}} итерации",
-				"iterations_many": "{{count}} итераций",
-				"iterations_other": "{{count}} итерации",
-				"prOpened": "PR открыт",
-				"empty": {
-					"title": "Диалогов пока нет",
-					"description": "Диалоги начинаются, когда задача назначена этому агенту или кто-то пишет ему сообщение."
 				}
 			}
 		},
@@ -1001,6 +986,29 @@
 		"backlog": {
 			"title": "Бэклог продукта",
 			"description": "Все элементы работы, не назначенные в спринт."
+		}
+	},
+	"conversationsPage": {
+		"title": "Диалоги",
+		"triggerChat": "Чат",
+		"triggerWriteDescription": "Написать описание",
+		"triggerTask": "Задача",
+		"iterations_one": "{{count}} итерация",
+		"iterations_few": "{{count}} итерации",
+		"iterations_many": "{{count}} итераций",
+		"iterations_other": "{{count}} итерации",
+		"prOpened": "PR открыт",
+		"list": {
+			"empty": {
+				"title": "Диалогов пока нет",
+				"description": "Диалоги начинаются, когда задача назначена агенту или кто-то пишет ему сообщение."
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "Диалог не выбран",
+				"description": "Выберите диалог из списка, чтобы просмотреть его."
+			}
 		}
 	},
 	"layout": {

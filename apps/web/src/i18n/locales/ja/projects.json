@@ -121,8 +121,7 @@
 				"overview": "概要",
 				"mcpServers": "MCPサーバー",
 				"skills": "スキル",
-				"envVars": "環境変数",
-				"conversations": "会話"
+				"envVars": "環境変数"
 			},
 			"overview": {
 				"nameLabel": "名前",
@@ -211,18 +210,6 @@
 					"urlLabel": "URL",
 					"cancel": "キャンセル",
 					"addSkill": "スキルを追加"
-				}
-			},
-			"conversations": {
-				"triggerChat": "チャット",
-				"triggerWriteDescription": "説明の作成",
-				"triggerTask": "タスク",
-				"iterations_one": "{{count}}回の反復",
-				"iterations_other": "{{count}}回の反復",
-				"prOpened": "PRを作成しました",
-				"empty": {
-					"title": "会話はまだありません",
-					"description": "タスクがこのエージェントに割り当てられるか、誰かがメッセージを送ると会話が始まります。"
 				}
 			}
 		},
@@ -983,6 +970,27 @@
 		"backlog": {
 			"title": "プロダクトバックログ",
 			"description": "スプリントに割り当てられていないすべての作業項目です。"
+		}
+	},
+	"conversationsPage": {
+		"title": "会話",
+		"triggerChat": "チャット",
+		"triggerWriteDescription": "説明の作成",
+		"triggerTask": "タスク",
+		"iterations_one": "{{count}}回の反復",
+		"iterations_other": "{{count}}回の反復",
+		"prOpened": "PRを作成しました",
+		"list": {
+			"empty": {
+				"title": "会話はまだありません",
+				"description": "タスクがエージェントに割り当てられるか、誰かがメッセージを送ると会話が始まります。"
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "会話が選択されていません",
+				"description": "リストから会話を選択すると表示されます。"
+			}
 		}
 	},
 	"layout": {

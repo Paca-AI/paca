@@ -121,8 +121,7 @@
 				"overview": "Visão geral",
 				"mcpServers": "Servidores MCP",
 				"skills": "Skills",
-				"envVars": "Ambiente",
-				"conversations": "Conversas"
+				"envVars": "Ambiente"
 			},
 			"overview": {
 				"nameLabel": "Nome",
@@ -211,18 +210,6 @@
 					"urlLabel": "URL",
 					"cancel": "Cancelar",
 					"addSkill": "Adicionar skill"
-				}
-			},
-			"conversations": {
-				"triggerChat": "Chat",
-				"triggerWriteDescription": "Escrever descrição",
-				"triggerTask": "Tarefa",
-				"iterations_one": "{{count}} iteração",
-				"iterations_other": "{{count}} iterações",
-				"prOpened": "PR aberto",
-				"empty": {
-					"title": "Nenhuma conversa ainda",
-					"description": "As conversas começam quando uma tarefa é atribuída a este agente ou quando alguém envia uma mensagem a ele."
 				}
 			}
 		},
@@ -983,6 +970,27 @@
 		"backlog": {
 			"title": "Backlog do produto",
 			"description": "Todos os itens de trabalho não atribuídos a um sprint."
+		}
+	},
+	"conversationsPage": {
+		"title": "Conversas",
+		"triggerChat": "Chat",
+		"triggerWriteDescription": "Escrever descrição",
+		"triggerTask": "Tarefa",
+		"iterations_one": "{{count}} iteração",
+		"iterations_other": "{{count}} iterações",
+		"prOpened": "PR aberto",
+		"list": {
+			"empty": {
+				"title": "Nenhuma conversa ainda",
+				"description": "As conversas começam quando uma tarefa é atribuída a um agente ou quando alguém envia uma mensagem a ele."
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "Nenhuma conversa selecionada",
+				"description": "Selecione uma conversa na lista para visualizá-la."
+			}
 		}
 	},
 	"layout": {

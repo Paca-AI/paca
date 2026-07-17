@@ -121,8 +121,7 @@
 				"overview": "개요",
 				"mcpServers": "MCP 서버",
 				"skills": "스킬",
-				"envVars": "환경 변수",
-				"conversations": "대화"
+				"envVars": "환경 변수"
 			},
 			"overview": {
 				"nameLabel": "이름",
@@ -211,18 +210,6 @@
 					"urlLabel": "URL",
 					"cancel": "취소",
 					"addSkill": "스킬 추가"
-				}
-			},
-			"conversations": {
-				"triggerChat": "채팅",
-				"triggerWriteDescription": "설명 작성",
-				"triggerTask": "작업",
-				"iterations_one": "{{count}}회 반복",
-				"iterations_other": "{{count}}회 반복",
-				"prOpened": "PR 열림",
-				"empty": {
-					"title": "아직 대화가 없습니다",
-					"description": "이 에이전트에게 작업이 배정되거나 누군가 메시지를 보내면 대화가 시작됩니다."
 				}
 			}
 		},
@@ -983,6 +970,27 @@
 		"backlog": {
 			"title": "제품 백로그",
 			"description": "스프린트에 배정되지 않은 모든 작업 항목입니다."
+		}
+	},
+	"conversationsPage": {
+		"title": "대화",
+		"triggerChat": "채팅",
+		"triggerWriteDescription": "설명 작성",
+		"triggerTask": "작업",
+		"iterations_one": "{{count}}회 반복",
+		"iterations_other": "{{count}}회 반복",
+		"prOpened": "PR 열림",
+		"list": {
+			"empty": {
+				"title": "아직 대화가 없습니다",
+				"description": "에이전트에게 작업이 배정되거나 누군가 메시지를 보내면 대화가 시작됩니다."
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "선택된 대화가 없습니다",
+				"description": "목록에서 대화를 선택하면 여기에 표시됩니다."
+			}
 		}
 	},
 	"layout": {

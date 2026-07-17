@@ -121,8 +121,7 @@
 				"overview": "概览",
 				"mcpServers": "MCP 服务器",
 				"skills": "技能",
-				"envVars": "环境变量",
-				"conversations": "对话"
+				"envVars": "环境变量"
 			},
 			"overview": {
 				"nameLabel": "名称",
@@ -211,18 +210,6 @@
 					"urlLabel": "URL",
 					"cancel": "取消",
 					"addSkill": "添加技能"
-				}
-			},
-			"conversations": {
-				"triggerChat": "聊天",
-				"triggerWriteDescription": "编写描述",
-				"triggerTask": "任务",
-				"iterations_one": "{{count}} 次迭代",
-				"iterations_other": "{{count}} 次迭代",
-				"prOpened": "PR 已创建",
-				"empty": {
-					"title": "暂无对话",
-					"description": "当任务分配给该智能体或有人向其发送消息时，对话将开始。"
 				}
 			}
 		},
@@ -983,6 +970,27 @@
 		"backlog": {
 			"title": "产品待办列表",
 			"description": "所有未分配到冲刺的工作项。"
+		}
+	},
+	"conversationsPage": {
+		"title": "对话",
+		"triggerChat": "聊天",
+		"triggerWriteDescription": "编写描述",
+		"triggerTask": "任务",
+		"iterations_one": "{{count}} 次迭代",
+		"iterations_other": "{{count}} 次迭代",
+		"prOpened": "PR 已创建",
+		"list": {
+			"empty": {
+				"title": "暂无对话",
+				"description": "当任务分配给某个智能体或有人向其发送消息时，对话将开始。"
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "未选择对话",
+				"description": "从列表中选择一个对话即可查看。"
+			}
 		}
 	},
 	"layout": {
