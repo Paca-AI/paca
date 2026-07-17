@@ -23,6 +23,12 @@ export interface ProjectListResult {
 	page_size: number;
 }
 
+export interface WorkspaceStats {
+	open_task_count: number;
+	team_member_count: number;
+	ai_agent_count: number;
+}
+
 export interface ProjectMember {
 	id: string;
 	project_id: string;
@@ -55,6 +61,13 @@ export async function listProjects(
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<ProjectListResult>
 	>("/projects", { params: { page, page_size: pageSize } });
+	return data.data;
+}
+
+export async function getWorkspaceStats(): Promise<WorkspaceStats> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<WorkspaceStats>
+	>("/projects/workspace-stats");
 	return data.data;
 }
 
@@ -480,6 +493,13 @@ export const projectsQueryOptions = (page = 1, pageSize = 50) =>
 	queryOptions({
 		queryKey: ["projects", { page, pageSize }],
 		queryFn: () => listProjects(page, pageSize),
+	});
+
+export const workspaceStatsQueryOptions = () =>
+	queryOptions({
+		queryKey: ["workspace-stats"],
+		queryFn: () => getWorkspaceStats(),
+		staleTime: 2 * 60 * 1000,
 	});
 
 export const projectQueryOptions = (projectId: string) =>

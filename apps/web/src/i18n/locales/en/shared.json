@@ -52,7 +52,8 @@
 			},
 			"aiAgents": {
 				"label": "AI Agents",
-				"sub": "None configured"
+				"sub": "None configured",
+				"subActive": "{{count}} configured"
 			}
 		},
 		"projectsSection": {

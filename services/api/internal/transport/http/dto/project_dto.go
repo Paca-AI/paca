@@ -39,6 +39,14 @@ type ProjectResponse struct {
 	CreatedAt    time.Time      `json:"created_at"`
 }
 
+// WorkspaceStatsResponse is the public representation of workspace-level
+// statistics shown on the authenticated home page.
+type WorkspaceStatsResponse struct {
+	OpenTaskCount   int64 `json:"open_task_count"`
+	TeamMemberCount int64 `json:"team_member_count"`
+	AIAgentCount    int64 `json:"ai_agent_count"`
+}
+
 // ProjectFromEntity maps a domain Project to a ProjectResponse DTO.
 func ProjectFromEntity(p *projectdom.Project) ProjectResponse {
 	settings := p.Settings

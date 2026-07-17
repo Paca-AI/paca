@@ -292,7 +292,12 @@ func New(cfg *config.Config) (*App, error) {
 		User:                 handler.NewUserHandler(userService, authService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
-		Project:              handler.NewProjectHandler(projectService, authorizer, handler.WithProjectDefaultViews(viewService, taskService)),
+		Project: handler.NewProjectHandler(
+			projectService,
+			authorizer,
+			handler.WithProjectDefaultViews(viewService, taskService),
+			handler.WithProjectStatsServices(taskService, agentService),
+		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskPublisher(publisher)),
 		Sprint: handler.NewSprintHandler(sprintService, viewService,

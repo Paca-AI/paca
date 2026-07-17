@@ -41,12 +41,16 @@ import {
 	createProject,
 	type Project,
 	projectsQueryOptions,
+	workspaceStatsQueryOptions,
 } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/home/")({
 	loader: async ({ context: { queryClient } }) => {
-		await queryClient.ensureQueryData(projectsQueryOptions());
+		await Promise.all([
+			queryClient.ensureQueryData(projectsQueryOptions()),
+			queryClient.ensureQueryData(workspaceStatsQueryOptions()),
+		]);
 	},
 	component: HomePage,
 });
@@ -444,6 +448,7 @@ function HomePage() {
 	const { t } = useTranslation("shared");
 	const { data: user } = useQuery(currentUserQueryOptions);
 	const { data: projectsResult } = useQuery(projectsQueryOptions());
+	const { data: workspaceStats } = useQuery(workspaceStatsQueryOptions());
 	const { hasPermission } = usePermissions();
 	const [createOpen, setCreateOpen] = useState(false);
 
@@ -451,6 +456,9 @@ function HomePage() {
 
 	const projects = projectsResult?.items ?? [];
 	const projectCount = projectsResult?.total ?? 0;
+	const openTaskCount = workspaceStats?.open_task_count ?? 0;
+	const teamMemberCount = workspaceStats?.team_member_count ?? 0;
+	const aiAgentCount = workspaceStats?.ai_agent_count ?? 0;
 
 	const greeting = (() => {
 		const hour = new Date().getHours();
@@ -538,22 +546,26 @@ function HomePage() {
 					<StatCard
 						icon={Layers}
 						label={t("home.stats.openTasks.label")}
-						value={0}
+						value={openTaskCount}
 						sub={t("home.stats.openTasks.sub")}
 						iconClass="bg-primary/10 text-primary"
 					/>
 					<StatCard
 						icon={Users}
 						label={t("home.stats.teamMembers.label")}
-						value={1}
+						value={teamMemberCount}
 						sub={t("home.stats.teamMembers.sub")}
 						iconClass="bg-muted text-muted-foreground"
 					/>
 					<StatCard
 						icon={Bot}
 						label={t("home.stats.aiAgents.label")}
-						value={0}
-						sub={t("home.stats.aiAgents.sub")}
+						value={aiAgentCount}
+						sub={
+							aiAgentCount === 0
+								? t("home.stats.aiAgents.sub")
+								: t("home.stats.aiAgents.subActive", { count: aiAgentCount })
+						}
 						iconClass="bg-muted text-muted-foreground"
 					/>
 				</div>
