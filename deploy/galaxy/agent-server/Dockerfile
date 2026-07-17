@@ -39,7 +39,9 @@
 FROM oven/bun:1 AS deps
 WORKDIR /mcp
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+# --ignore-scripts: the package's prepare script shells out to npm/node,
+# which the bun image does not provide — the build stage compiles explicitly.
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # ── Stage 2: TypeScript build (node — the build script shells out to
 #    `node -e …`, which the bun image does not provide) ──────────────────────
@@ -54,7 +56,7 @@ RUN npm run build
 FROM oven/bun:1 AS proddeps
 WORKDIR /mcp
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production --ignore-scripts
 
 # ── Final: upstream agent-server + fork MCP overlay ──────────────────────────
 FROM ghcr.io/paca-ai/paca-agent-server:0.9.7
