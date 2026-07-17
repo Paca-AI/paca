@@ -19,6 +19,7 @@ import {
 	GanttChart,
 	Home,
 	KanbanSquare,
+	MessageSquare,
 	Monitor,
 	Moon,
 	MoreHorizontal,
@@ -865,6 +866,11 @@ function NavItem({
 // ── Project Nav ───────────────────────────────────────────────────────────────
 const PROJECT_NAV_ITEMS = [
 	{ segment: "agents", icon: Bot, labelKey: "nav.agents" },
+	{
+		segment: "conversations",
+		icon: MessageSquare,
+		labelKey: "nav.conversations",
+	},
 	{ segment: "automation", icon: Workflow, labelKey: "nav.automation" },
 	{ segment: "team", icon: Users, labelKey: "nav.team" },
 	{ segment: "settings", icon: Settings, labelKey: "nav.settings" },
@@ -894,6 +900,7 @@ function ProjectNav() {
 
 const ANON_HIDDEN_SEGMENTS = new Set([
 	"agents",
+	"conversations",
 	"automation",
 	"team",
 	"settings",

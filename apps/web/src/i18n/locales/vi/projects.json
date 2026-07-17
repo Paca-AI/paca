@@ -121,8 +121,7 @@
 				"overview": "Tổng quan",
 				"mcpServers": "Máy chủ MCP",
 				"skills": "Skill",
-				"envVars": "Môi trường",
-				"conversations": "Hội thoại"
+				"envVars": "Môi trường"
 			},
 			"overview": {
 				"nameLabel": "Tên",
@@ -211,18 +210,6 @@
 					"urlLabel": "URL",
 					"cancel": "Hủy",
 					"addSkill": "Thêm skill"
-				}
-			},
-			"conversations": {
-				"triggerChat": "Trò chuyện",
-				"triggerWriteDescription": "Viết mô tả",
-				"triggerTask": "Nhiệm vụ",
-				"iterations_one": "{{count}} lượt lặp",
-				"iterations_other": "{{count}} lượt lặp",
-				"prOpened": "PR đã mở",
-				"empty": {
-					"title": "Chưa có hội thoại nào",
-					"description": "Hội thoại bắt đầu khi một nhiệm vụ được giao cho agent này hoặc khi có ai đó nhắn tin cho nó."
 				}
 			}
 		},
@@ -983,6 +970,27 @@
 		"backlog": {
 			"title": "Product Backlog",
 			"description": "Tất cả công việc chưa được gán vào sprint nào."
+		}
+	},
+	"conversationsPage": {
+		"title": "Hội thoại",
+		"triggerChat": "Trò chuyện",
+		"triggerWriteDescription": "Viết mô tả",
+		"triggerTask": "Nhiệm vụ",
+		"iterations_one": "{{count}} lượt lặp",
+		"iterations_other": "{{count}} lượt lặp",
+		"prOpened": "PR đã mở",
+		"list": {
+			"empty": {
+				"title": "Chưa có hội thoại nào",
+				"description": "Hội thoại bắt đầu khi một nhiệm vụ được giao cho agent hoặc khi có ai đó nhắn tin cho agent đó."
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "Chưa chọn hội thoại nào",
+				"description": "Chọn một hội thoại từ danh sách để xem."
+			}
 		}
 	},
 	"layout": {

@@ -121,8 +121,7 @@
 				"overview": "Overview",
 				"mcpServers": "MCP Servers",
 				"skills": "Skills",
-				"envVars": "Environment",
-				"conversations": "Conversations"
+				"envVars": "Environment"
 			},
 			"overview": {
 				"nameLabel": "Name",
@@ -211,18 +210,6 @@
 					"urlLabel": "URL",
 					"cancel": "Cancel",
 					"addSkill": "Add skill"
-				}
-			},
-			"conversations": {
-				"triggerChat": "Chat",
-				"triggerWriteDescription": "Write description",
-				"triggerTask": "Task",
-				"iterations_one": "{{count}} iteration",
-				"iterations_other": "{{count}} iterations",
-				"prOpened": "PR opened",
-				"empty": {
-					"title": "No conversations yet",
-					"description": "Conversations start when a task is assigned to this agent or someone messages it."
 				}
 			}
 		},
@@ -983,6 +970,27 @@
 		"backlog": {
 			"title": "Product Backlog",
 			"description": "All work items not assigned to a sprint."
+		}
+	},
+	"conversationsPage": {
+		"title": "Conversations",
+		"triggerChat": "Chat",
+		"triggerWriteDescription": "Write description",
+		"triggerTask": "Task",
+		"iterations_one": "{{count}} iteration",
+		"iterations_other": "{{count}} iterations",
+		"prOpened": "PR opened",
+		"list": {
+			"empty": {
+				"title": "No conversations yet",
+				"description": "Conversations start when a task is assigned to an agent or someone messages one."
+			}
+		},
+		"detail": {
+			"empty": {
+				"title": "No conversation selected",
+				"description": "Select a conversation from the list to view it."
+			}
 		}
 	},
 	"layout": {

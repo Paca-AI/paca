@@ -1,21 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import {
 	Bot,
 	Check,
-	Clock,
 	Code2,
-	GitBranch,
-	GitPullRequest,
 	KeyRound,
 	Loader2,
-	MessageSquare,
 	Plus,
 	Save,
 	Server,
 	Trash2,
 	Wand2,
-	Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -49,7 +44,6 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type ACPProvider,
 	type Agent,
-	type AgentConversation,
 	type AgentMCPServer,
 	type AgentSkill,
 	addEnvVar,
@@ -59,9 +53,6 @@ import {
 	agentMCPServersQueryOptions,
 	agentQueryOptions,
 	agentSkillsQueryOptions,
-	CONVERSATION_STATUS_COLORS,
-	CONVERSATION_STATUS_LABELS,
-	conversationsQueryOptions,
 	deleteEnvVar,
 	deleteMCPServer,
 	deleteSkill,
@@ -86,16 +77,13 @@ export const Route = createFileRoute(
 			),
 			queryClient.ensureQueryData(agentSkillsQueryOptions(projectId, agentId)),
 			queryClient.ensureQueryData(agentEnvVarsQueryOptions(projectId, agentId)),
-			queryClient.ensureQueryData(
-				conversationsQueryOptions(projectId, agentId),
-			),
 			queryClient.ensureQueryData(llmModelsQueryOptions),
 		]);
 	},
 	component: AgentDetailPage,
 });
 
-type Tab = "overview" | "mcp-servers" | "skills" | "env-vars" | "conversations";
+type Tab = "overview" | "mcp-servers" | "skills" | "env-vars";
 
 const CUSTOM = "__custom__";
 
@@ -1232,115 +1220,6 @@ function EnvVarsTab({
 	);
 }
 
-// ── Conversations Tab ─────────────────────────────────────────────────────────
-
-function ConversationRow({
-	conv,
-	projectId,
-}: {
-	conv: AgentConversation;
-	projectId: string;
-}) {
-	const { t } = useTranslation("projects");
-	const statusColor = CONVERSATION_STATUS_COLORS[conv.status];
-	const statusLabel = CONVERSATION_STATUS_LABELS[conv.status];
-
-	return (
-		<Link
-			to="/projects/$projectId/conversations/$conversationId"
-			params={{ projectId, conversationId: conv.id }}
-			className="flex w-full flex-col gap-0.5 rounded-lg border border-border/60 bg-card px-4 py-3 text-left transition-colors hover:border-border hover:bg-accent/30"
-		>
-			<div className="flex items-center gap-2">
-				<span className="text-sm font-medium truncate">
-					{conv.trigger_type === "chat_message"
-						? t("agents.detail.conversations.triggerChat")
-						: conv.trigger_type === "description_write"
-							? t("agents.detail.conversations.triggerWriteDescription")
-							: t("agents.detail.conversations.triggerTask")}{" "}
-					· {conv.id.slice(0, 8)}
-				</span>
-				<Badge
-					variant="outline"
-					className={`text-xs font-semibold shrink-0 ${statusColor}`}
-				>
-					{statusLabel}
-				</Badge>
-			</div>
-			<div className="flex items-center gap-3 text-xs text-muted-foreground">
-				<span className="flex items-center gap-1">
-					<Zap className="size-3" />
-					{t("agents.detail.conversations.iterations", {
-						count: conv.iteration_count,
-					})}
-				</span>
-				{conv.branch_name && (
-					<span className="flex items-center gap-1 truncate">
-						<GitBranch className="size-3" />
-						{conv.branch_name}
-					</span>
-				)}
-				{conv.pr_url && (
-					<span className="flex items-center gap-1">
-						<GitPullRequest className="size-3" />
-						{t("agents.detail.conversations.prOpened")}
-					</span>
-				)}
-				<span className="flex items-center gap-1 ml-auto">
-					<Clock className="size-3" />
-					{new Date(conv.created_at).toLocaleDateString()}
-				</span>
-			</div>
-		</Link>
-	);
-}
-
-function ConversationsTab({
-	projectId,
-	agentId,
-}: {
-	projectId: string;
-	agentId: string;
-}) {
-	const { t } = useTranslation("projects");
-	const { data: conversations = [], isLoading } = useQuery(
-		conversationsQueryOptions(projectId, agentId),
-	);
-
-	if (isLoading) {
-		return (
-			<div className="space-y-2">
-				{Array.from({ length: 3 }).map((_, i) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-					<Skeleton key={i} className="h-16 rounded-lg" />
-				))}
-			</div>
-		);
-	}
-
-	if (conversations.length === 0) {
-		return (
-			<div className="flex flex-col items-center justify-center gap-3 py-14 rounded-xl border border-dashed border-border">
-				<MessageSquare className="size-8 text-muted-foreground/40" />
-				<p className="text-sm text-muted-foreground">
-					{t("agents.detail.conversations.empty.title")}
-				</p>
-				<p className="text-xs text-muted-foreground max-w-xs text-center">
-					{t("agents.detail.conversations.empty.description")}
-				</p>
-			</div>
-		);
-	}
-
-	return (
-		<div className="space-y-2">
-			{conversations.map((conv) => (
-				<ConversationRow key={conv.id} conv={conv} projectId={projectId} />
-			))}
-		</div>
-	);
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -1355,11 +1234,6 @@ const TABS = [
 		id: "env-vars",
 		labelKey: "agents.detail.tabs.envVars",
 		icon: KeyRound,
-	},
-	{
-		id: "conversations",
-		labelKey: "agents.detail.tabs.conversations",
-		icon: MessageSquare,
 	},
 ] as const satisfies {
 	id: Tab;
@@ -1507,9 +1381,6 @@ function AgentDetailPage() {
 						agentId={agentId}
 						canWrite={canWrite}
 					/>
-				)}
-				{activeTab === "conversations" && (
-					<ConversationsTab projectId={projectId} agentId={agentId} />
 				)}
 			</div>
 		</div>
