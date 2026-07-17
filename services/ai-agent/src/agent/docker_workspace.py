@@ -92,6 +92,20 @@ def _get_current_networks(client: docker.DockerClient) -> list[str]:
         return []
 
 
+def _sandbox_extra_networks() -> list[str]:
+    """Extra networks each sandbox joins (SANDBOX_EXTRA_NETWORKS, comma-sep).
+
+    In galaxy mode the sandboxed agent-server makes the LLM calls itself, so
+    it must reach the platform proxy over galaxy_network (ADR-038 T3). These
+    are also EXCLUDED from primary-network selection in `start_sandbox`:
+    ai-agent itself joins galaxy_network too (to mint tokens), and Docker
+    lists a container's networks alphabetically — without the exclusion the
+    sandbox's primary network (which must resolve `api`/`gateway` on the
+    stack network) would silently depend on how the network names sort.
+    """
+    return [n.strip() for n in settings.sandbox_extra_networks.split(",") if n.strip()]
+
+
 def _get_app_host_path(client: docker.DockerClient) -> str | None:
     """Return the host-side absolute path of the ai-agent application directory.
 
@@ -325,17 +339,32 @@ def start_sandbox(
         if _is_inside_docker():
             # Join the same network as this container so the sandbox can reach
             # `api` and `gateway` by their Docker Compose service hostnames.
-            networks = _get_current_networks(client)
-            network = networks[0] if networks else "bridge"
+            # Networks listed in SANDBOX_EXTRA_NETWORKS never win the primary
+            # slot — see _sandbox_extra_networks — they are connected as
+            # SECONDARY attachments right after create, below.
+            extra_networks = _sandbox_extra_networks()
+            candidates = [n for n in _get_current_networks(client) if n not in extra_networks]
+            network = candidates[0] if candidates else "bridge"
             run_kwargs["network"] = network
 
             logger.info(
-                "Starting agent sandbox: conversation=%s network=%s image=%s",
+                "Starting agent sandbox: conversation=%s network=%s extra=%s image=%s",
                 conversation_id,
                 network,
+                extra_networks or "-",
                 settings.agent_server_image,
             )
             container = client.containers.run(**run_kwargs)
+            # Attach secondary networks BEFORE the readiness wait: LLM calls
+            # need them from the very first agent step. A missing/typo'd
+            # network raises — better a loud failed start (the except block
+            # below cleans the container up) than conversations that die
+            # mid-run with an opaque upstream connect error. Spawned sandboxes
+            # carry random container names and no aliases, so joining a shared
+            # network like galaxy_network adds no DNS-collision surface
+            # (contrast: the compose-level paca-edge alias incident).
+            for extra in extra_networks:
+                client.networks.get(extra).connect(container)
             container.reload()
             container_ip = container.attrs["NetworkSettings"]["Networks"][network]["IPAddress"]
             host = f"http://{container_ip}:{settings.agent_server_container_port}"

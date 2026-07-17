@@ -108,3 +108,72 @@ def test_docker_daemon_url_passes_through_socket_with_scheme(monkeypatch):
     monkeypatch.setattr(docker_workspace.settings, "docker_host", "")
     monkeypatch.setattr(docker_workspace.settings, "docker_socket", "tcp://legacy-proxy:2375")
     assert docker_workspace.docker_daemon_url() == "tcp://legacy-proxy:2375"
+
+
+# ─── Sandbox extra networks (ADR-038 T3) ─────────────────────────────────────
+
+
+def test_sandbox_extra_networks_parses_comma_separated(monkeypatch):
+    from src.agent import docker_workspace
+
+    monkeypatch.setattr(
+        docker_workspace.settings, "sandbox_extra_networks", "galaxy_network, other-net ,"
+    )
+    assert docker_workspace._sandbox_extra_networks() == ["galaxy_network", "other-net"]
+
+
+def test_sandbox_extra_networks_empty_by_default(monkeypatch):
+    from src.agent import docker_workspace
+
+    monkeypatch.setattr(docker_workspace.settings, "sandbox_extra_networks", "")
+    assert docker_workspace._sandbox_extra_networks() == []
+
+
+def test_start_sandbox_primary_network_excludes_extras_and_connects_them(monkeypatch):
+    """Drive start_sandbox with a mocked daemon: the primary network must be
+    the stack network even when an extra network (galaxy_network) is listed
+    first alphabetically, and the extra must be connected before readiness."""
+    from unittest.mock import MagicMock
+
+    from src.agent import docker_workspace
+
+    monkeypatch.setattr(
+        docker_workspace.settings, "sandbox_extra_networks", "galaxy_network"
+    )
+
+    container = MagicMock()
+    container.attrs = {
+        "NetworkSettings": {"Networks": {"galaxy-paca_default": {"IPAddress": "10.0.0.9"}}}
+    }
+    client = MagicMock()
+    client.containers.run.return_value = container
+    galaxy_net = MagicMock()
+    client.networks.get.return_value = galaxy_net
+
+    events: list[str] = []
+    galaxy_net.connect.side_effect = lambda c: events.append("connect")
+
+    with (
+        patch("src.agent.docker_workspace.docker.DockerClient", return_value=client),
+        patch("src.agent.docker_workspace._is_inside_docker", return_value=True),
+        # galaxy_network deliberately FIRST: alphabetical order must not win.
+        patch(
+            "src.agent.docker_workspace._get_current_networks",
+            return_value=["galaxy_network", "galaxy-paca_default"],
+        ),
+        patch("src.agent.docker_workspace._get_app_host_path", return_value="/host/app"),
+        patch(
+            "src.agent.docker_workspace._wait_for_ready",
+            side_effect=lambda *a, **k: events.append("ready"),
+        ),
+    ):
+        handle = docker_workspace.start_sandbox("conv-1")
+
+    run_kwargs = client.containers.run.call_args.kwargs
+    assert run_kwargs["network"] == "galaxy-paca_default"
+    client.networks.get.assert_called_once_with("galaxy_network")
+    galaxy_net.connect.assert_called_once_with(container)
+    # Secondary attach happens before the readiness wait — LLM calls need the
+    # route from the very first agent step.
+    assert events == ["connect", "ready"]
+    assert handle.workspace.host == "http://10.0.0.9:8000"
