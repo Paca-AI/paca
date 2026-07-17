@@ -14,9 +14,42 @@ type Config struct {
 	Storage    StorageConfig
 	Security   SecurityConfig
 	Plugins    PluginsConfig
+	OIDC       OIDCConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
 	Env        string // development | production
 }
+
+// OIDCConfig holds settings for OIDC SSO login against the Vortex identity
+// provider (ADR-038).  The feature is disabled unless Issuer is set.
+type OIDCConfig struct {
+	// Issuer is the OIDC issuer base URL (OIDC_ISSUER), e.g.
+	// https://ai.skyplatform.net/api/identity.  Discovery metadata is read
+	// from {Issuer}/.well-known/openid-configuration.
+	Issuer string
+	// ClientID / ClientSecret identify this API as an OAuth client
+	// (OIDC_CLIENT_ID / OIDC_CLIENT_SECRET, client_secret_post).
+	ClientID     string
+	ClientSecret string
+	// RedirectURL is the externally reachable callback URL
+	// (OIDC_REDIRECT_URL).  Defaults to
+	// {PUBLIC_URL}/api/v1/auth/oidc/callback when PUBLIC_URL is set.
+	RedirectURL string
+	// Scopes is the space-separated scope list (OIDC_SCOPES,
+	// default "openid profile email").
+	Scopes string
+	// AutoCreateUsers enables JIT user provisioning on first SSO login
+	// (OIDC_AUTO_CREATE_USERS, default true).
+	AutoCreateUsers bool
+	// DefaultRole is the global role name assigned to JIT-created users
+	// (OIDC_DEFAULT_ROLE, default "USER"), resolved against global_roles.
+	DefaultRole string
+	// ButtonLabel is the label the SPA shows on the SSO button
+	// (OIDC_BUTTON_LABEL, default "Sign in with Vortex").
+	ButtonLabel string
+}
+
+// Enabled reports whether OIDC SSO login is configured.
+func (c OIDCConfig) Enabled() bool { return c.Issuer != "" }
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
@@ -155,4 +188,18 @@ type SecurityConfig struct {
 	// agent bot user — no database lookup is required.
 	// Configure via the AGENT_API_KEY environment variable.
 	AgentAPIKey string
+
+	// GalaxyTrustedIssuer enables RS256 bearer authentication against the
+	// Vortex identity provider (ADR-038): tokens signed by this issuer are
+	// accepted on Authorization: Bearer, with the effective principal taken
+	// from the act_as claim (falling back to sub) and mapped to
+	// users.oidc_sub.  Same value as OIDC_ISSUER but an independent switch.
+	// Configure via the GALAXY_TRUSTED_ISSUER environment variable.
+	GalaxyTrustedIssuer string
+
+	// AgentHeaderImpersonation re-enables the legacy AGENT_API_KEY +
+	// X-Agent-ID header impersonation path.  Disabled by default per
+	// ADR-038 (identity must come from signed tokens, never headers).
+	// Configure via AGENT_HEADER_IMPERSONATION=enabled.
+	AgentHeaderImpersonation bool
 }

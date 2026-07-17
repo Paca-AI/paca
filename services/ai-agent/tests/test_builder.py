@@ -309,3 +309,38 @@ def test_multiple_servers_all_included(no_paca_key):
 def test_empty_servers_returns_empty_dict(no_paca_key):
     cfg = build_mcp_config([], "a", "p")
     assert cfg == {}
+
+
+def test_llm_base_url_override_takes_precedence_over_agent_config(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "llm_base_url_override", "https://proxy.example/ai/v1")
+    config = _agent_config(
+        provider="anthropic", model="claude-sonnet-4-6", base_url="https://api.anthropic.com"
+    )
+    llm = build_llm(config)
+    assert llm.base_url == "https://proxy.example/ai/v1"
+
+
+def test_llm_base_url_override_applies_even_without_agent_base_url(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "llm_base_url_override", "https://proxy.example/ai/v1")
+    llm = build_llm(_agent_config(base_url=""))
+    assert llm.base_url == "https://proxy.example/ai/v1"
+
+
+def test_llm_api_key_override_takes_precedence_over_agent_secret(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "llm_api_key_override", "platform-proxy-key")
+    llm = build_llm(_agent_config())
+    assert llm.api_key is not None
+    assert llm.api_key.get_secret_value() == "platform-proxy-key"
+
+
+def test_no_override_keeps_agent_configured_values(catalog):
+    llm = build_llm(_agent_config(base_url="http://self-hosted:8000/v1"))
+    assert llm.base_url == "http://self-hosted:8000/v1"
+    assert llm.api_key is not None
+    assert llm.api_key.get_secret_value() == "secret-ref"

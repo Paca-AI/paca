@@ -20,10 +20,12 @@ import (
 type Deps struct {
 	TokenManager         *jwttoken.Manager
 	APIKeyAuth           httpmw.APIKeyAuthenticator
+	GalaxyBearer         httpmw.GalaxyBearerAuthenticator // nil unless GALAXY_TRUSTED_ISSUER is set (ADR-038)
 	Authorizer           *authz.Authorizer
 	ProjectVisibilitySvc httpmw.ProjectVisibilityChecker
 	Health               *handler.HealthHandler
 	Auth                 *handler.AuthHandler
+	OIDC                 *handler.OIDCHandler // nil unless OIDC SSO is configured (ADR-038)
 	User                 *handler.UserHandler
 	GlobalRole           *handler.GlobalRoleHandler
 	Project              *handler.ProjectHandler
@@ -51,6 +53,11 @@ func New(deps Deps) http.Handler {
 	r.Use(loggerMiddleware(deps.Log))
 	r.Use(chimw.Recoverer)
 	r.Use(corsMiddleware())
+	// Trusted-issuer RS256 bearer auth (ADR-038).  Runs before the per-route
+	// Authn middleware, which keeps an identity established here.
+	if deps.GalaxyBearer != nil {
+		r.Use(httpmw.GalaxyBearer(deps.GalaxyBearer, deps.Log))
+	}
 
 	r.Route("/api", func(r chi.Router) {
 		// Public routes
@@ -61,7 +68,14 @@ func New(deps Deps) http.Handler {
 			r.Route("/auth", func(r chi.Router) {
 				r.Post("/login", deps.Auth.Login)
 				r.Post("/refresh", deps.Auth.Refresh)
+				r.Get("/config", deps.Auth.GetConfig)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
+
+				// OIDC SSO login (ADR-038) — registered only when configured.
+				if deps.OIDC != nil {
+					r.Get("/oidc/login", deps.OIDC.Login)
+					r.Get("/oidc/callback", deps.OIDC.Callback)
+				}
 			})
 
 			// Users

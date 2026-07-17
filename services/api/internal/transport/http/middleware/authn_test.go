@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,9 @@ type stubAPIKeyAuth struct {
 	key        *apikeydom.APIKey
 	err        error
 	isAgentKey bool
+	// allowImpersonation mirrors the AGENT_HEADER_IMPERSONATION kill-switch
+	// (ADR-038); the default false matches the production default.
+	allowImpersonation bool
 }
 
 func (s *stubAPIKeyAuth) Authenticate(_ context.Context, _ string) (*apikeydom.APIKey, error) {
@@ -28,6 +32,10 @@ func (s *stubAPIKeyAuth) Authenticate(_ context.Context, _ string) (*apikeydom.A
 
 func (s *stubAPIKeyAuth) IsAgentKey(_ context.Context, _ string) bool {
 	return s.isAgentKey
+}
+
+func (s *stubAPIKeyAuth) AgentHeaderImpersonationEnabled() bool {
+	return s.allowImpersonation
 }
 
 func newTestTokenManager() *jwttoken.Manager {
@@ -307,7 +315,7 @@ func TestRequireJWTAuth_AllowsJWT(t *testing.T) {
 func TestAuthn_APIKey_WithValidAgentID(t *testing.T) {
 	userID := uuid.New()
 	agentID := uuid.New()
-	stub := &stubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true}
+	stub := &stubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true, allowImpersonation: true}
 
 	r := chi.NewRouter()
 	r.With(Authn(newTestTokenManager(), stub)).Get("/protected", func(w http.ResponseWriter, req *http.Request) {
@@ -375,7 +383,7 @@ func TestAuthn_APIKey_UserKeyCannotFakeAgentID(t *testing.T) {
 
 func TestAuthn_APIKey_WithInvalidAgentID(t *testing.T) {
 	userID := uuid.New()
-	stub := &stubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true}
+	stub := &stubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true, allowImpersonation: true}
 
 	r := chi.NewRouter()
 	r.With(Authn(newTestTokenManager(), stub)).Get("/protected", func(w http.ResponseWriter, req *http.Request) {
@@ -436,6 +444,82 @@ func TestAuthn_APIKey_WithoutAgentID(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
 	}
+}
+
+func TestAuthn_APIKey_AgentIDRejectedWhenImpersonationDisabled(t *testing.T) {
+	userID := uuid.New()
+	// allowImpersonation deliberately left false — the ADR-038 default.
+	stub := &stubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true}
+
+	r := chi.NewRouter()
+	r.With(Authn(newTestTokenManager(), stub)).Get("/protected", okHandler)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/protected", nil)
+	req.Header.Set("X-API-Key", "shared-agent-key")
+	req.Header.Set("X-Agent-ID", uuid.NewString())
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when header impersonation is disabled, got %d (%s)", w.Code, w.Body.String())
+	}
+	if body := w.Body.String(); !strings.Contains(body, "ADR-038") {
+		t.Fatalf("expected error to mention ADR-038, got %s", body)
+	}
+}
+
+func TestAuthn_APIKey_AgentIDRejectedWhenNoPolicyImplemented(t *testing.T) {
+	// An authenticator that satisfies AgentAPIKeyAuthenticator but not
+	// AgentImpersonationPolicy must be treated as disabled (fail closed).
+	userID := uuid.New()
+	stub := &legacyStubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true}
+
+	r := chi.NewRouter()
+	r.With(Authn(newTestTokenManager(), stub)).Get("/protected", okHandler)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/protected", nil)
+	req.Header.Set("X-API-Key", "shared-agent-key")
+	req.Header.Set("X-Agent-ID", uuid.NewString())
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for policy-less authenticator, got %d", w.Code)
+	}
+}
+
+func TestAuthn_APIKey_AgentKeyWithoutHeaderStillWorksWhenDisabled(t *testing.T) {
+	// The kill-switch only targets the X-Agent-ID header; the shared key by
+	// itself keeps authenticating the ai-agent service as the bot user.
+	userID := uuid.New()
+	stub := &stubAPIKeyAuth{key: &apikeydom.APIKey{ID: uuid.New(), UserID: userID}, isAgentKey: true}
+
+	r := chi.NewRouter()
+	r.With(Authn(newTestTokenManager(), stub)).Get("/protected", okHandler)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/protected", nil)
+	req.Header.Set("X-API-Key", "shared-agent-key")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 without X-Agent-ID, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// legacyStubAPIKeyAuth implements AgentAPIKeyAuthenticator but NOT
+// AgentImpersonationPolicy, mimicking a pre-ADR-038 authenticator.
+type legacyStubAPIKeyAuth struct {
+	key        *apikeydom.APIKey
+	isAgentKey bool
+}
+
+func (s *legacyStubAPIKeyAuth) Authenticate(_ context.Context, _ string) (*apikeydom.APIKey, error) {
+	return s.key, nil
+}
+
+func (s *legacyStubAPIKeyAuth) IsAgentKey(_ context.Context, _ string) bool {
+	return s.isAgentKey
 }
 
 func TestAgentIDFromContext(t *testing.T) {

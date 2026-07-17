@@ -127,6 +127,32 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: STORAGE_USE_SSL: %w", err)
 	}
 
+	oidcAutoCreate, err := strconv.ParseBool(env("OIDC_AUTO_CREATE_USERS", "true"))
+	if err != nil {
+		return nil, fmt.Errorf("config: OIDC_AUTO_CREATE_USERS: %w", err)
+	}
+
+	// OIDC SSO (ADR-038) is optional and off unless OIDC_ISSUER is set, but a
+	// half-configured issuer would only surface as a broken login redirect at
+	// runtime — surface the gaps at startup instead.
+	oidcIssuer := strings.TrimRight(env("OIDC_ISSUER", ""), "/")
+	oidcRedirectURL := env("OIDC_REDIRECT_URL", "")
+	publicURL := env("PUBLIC_URL", "")
+	if oidcIssuer != "" {
+		if oidcRedirectURL == "" && publicURL != "" {
+			oidcRedirectURL = strings.TrimRight(publicURL, "/") + "/api/v1/auth/oidc/callback"
+		}
+		if os.Getenv("OIDC_CLIENT_ID") == "" {
+			errs = append(errs, fmt.Errorf("config: OIDC_CLIENT_ID must be set when OIDC_ISSUER is set"))
+		}
+		if os.Getenv("OIDC_CLIENT_SECRET") == "" {
+			errs = append(errs, fmt.Errorf("config: OIDC_CLIENT_SECRET must be set when OIDC_ISSUER is set"))
+		}
+		if oidcRedirectURL == "" {
+			errs = append(errs, fmt.Errorf("config: OIDC_REDIRECT_URL (or PUBLIC_URL) must be set when OIDC_ISSUER is set"))
+		}
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -136,7 +162,7 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Port:         env("PORT", "8080"),
 			CookieSecure: cookieSecure,
-			PublicURL:    env("PUBLIC_URL", ""),
+			PublicURL:    publicURL,
 		},
 		Database: DatabaseConfig{
 			DSN: dsn,
@@ -177,6 +203,11 @@ func Load() (*Config, error) {
 			// AGENT_API_KEY is optional; when set the API accepts it as a
 			// static service key for the AI agent without a DB lookup.
 			AgentAPIKey: env("AGENT_API_KEY", ""),
+			// GALAXY_TRUSTED_ISSUER enables Vortex RS256 bearer auth (ADR-038).
+			GalaxyTrustedIssuer: strings.TrimRight(env("GALAXY_TRUSTED_ISSUER", ""), "/"),
+			// Header impersonation stays off unless explicitly "enabled"
+			// (ADR-038 kill-switch; identity from signed tokens, not headers).
+			AgentHeaderImpersonation: strings.EqualFold(env("AGENT_HEADER_IMPERSONATION", "disabled"), "enabled"),
 		},
 		Plugins: PluginsConfig{
 			// PLUGINS_STORE controls where WASM binaries are loaded from.
@@ -194,6 +225,16 @@ func Load() (*Config, error) {
 				MaxMemoryPages:      pluginMaxMemoryPages,
 				MaxRequestBodyBytes: pluginMaxRequestBodyBytes,
 			},
+		},
+		OIDC: OIDCConfig{
+			Issuer:          oidcIssuer,
+			ClientID:        env("OIDC_CLIENT_ID", ""),
+			ClientSecret:    env("OIDC_CLIENT_SECRET", ""),
+			RedirectURL:     oidcRedirectURL,
+			Scopes:          env("OIDC_SCOPES", "openid profile email"),
+			AutoCreateUsers: oidcAutoCreate,
+			DefaultRole:     env("OIDC_DEFAULT_ROLE", "USER"),
+			ButtonLabel:     env("OIDC_BUTTON_LABEL", "Sign in with Vortex"),
 		},
 		AIAgentURL: env("AI_AGENT_URL", "http://ai-agent:8080"),
 	}, nil

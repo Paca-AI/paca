@@ -23,8 +23,11 @@
 #   - Database backups land on the host HDD via BACKUP_DIR=/backup/paca-postgres.
 #   - Memory limits on every service (mem_limit + memswap_limit together —
 #     see prod ops runbook).
-#   - ai-agent stays scaled to 0 until the identity rework (P1) lands; its
-#     pre-shared keys must still be set so the API side is never fail-open.
+#   - ai-agent stays scaled to 0 for now; its pre-shared keys must still be
+#     set so the API side is never fail-open.  When it is enabled it reaches
+#     Docker ONLY via the socket-proxy service below (DOCKER_HOST=tcp://…,
+#     no docker.sock bind) and all LLM traffic is forced through the platform
+#     proxy via LLM_BASE_URL_OVERRIDE (ADR-038).
 
 name: galaxy-paca
 
@@ -42,6 +45,22 @@ services:
     memswap_limit: 1g
 
   api:
+    environment:
+      # ── ADR-038 P1: Vortex identity ────────────────────────────────────
+      # OIDC SSO login (off unless OIDC_ISSUER is set).
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email}
+      OIDC_AUTO_CREATE_USERS: ${OIDC_AUTO_CREATE_USERS:-true}
+      OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-USER}
+      OIDC_BUTTON_LABEL: ${OIDC_BUTTON_LABEL:-Sign in with Vortex}
+      # Trusted-issuer RS256 bearer auth (act_as contract).
+      GALAXY_TRUSTED_ISSUER: ${GALAXY_TRUSTED_ISSUER:-}
+      # Legacy X-Agent-ID header impersonation stays OFF; identity comes
+      # from signed tokens only.
+      AGENT_HEADER_IMPERSONATION: ${AGENT_HEADER_IMPERSONATION:-disabled}
     mem_limit: 1g
     memswap_limit: 1g
 
@@ -52,6 +71,41 @@ services:
   realtime:
     mem_limit: 512m
     memswap_limit: 512m
+
+  # Mediates the ai-agent's Docker access (ADR-038): the raw docker.sock is
+  # mounted read-only HERE only, and ai-agent talks to it over tcp with just
+  # the API surface a sandbox runner needs.  Stack-private network only.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      EXEC: 1
+      VOLUMES: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      default: {}
+    mem_limit: 128m
+    memswap_limit: 128m
+
+  ai-agent:
+    # Docker access goes through socket-proxy — never mount docker.sock here.
+    volumes: !override []
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      # ADR-038: force ALL LLM traffic through the platform proxy, overriding
+      # whatever llm_base_url / API key individual agents carry in the DB.
+      LLM_BASE_URL_OVERRIDE: ${LLM_BASE_URL_OVERRIDE:-}
+      LLM_API_KEY_OVERRIDE: ${LLM_API_KEY_OVERRIDE:-}
+    depends_on:
+      socket-proxy:
+        condition: service_started
+    mem_limit: 1g
+    memswap_limit: 1g
 
   gateway:
     # Reachable only through galaxy_network (Cloudflare tunnel), never via

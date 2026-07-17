@@ -1,4 +1,5 @@
-import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertCircle, Eye, EyeOff, KeyRound } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,16 +8,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useLoginForm } from "@/hooks/use-login-form";
+import { authConfigQueryOptions } from "@/lib/auth-api";
 import { validatePassword, validateUsername } from "@/lib/auth-validation";
 import { cn } from "@/lib/utils";
 
 import { FieldError } from "./FieldError";
+
+/** Browser-navigation target for the OIDC SSO flow (full redirect, not XHR). */
+const OIDC_LOGIN_URL = "/api/v1/auth/oidc/login";
 
 export function LoginFormPanel() {
 	const { t } = useTranslation("auth");
 	const { t: tCommon } = useTranslation("common");
 	const { form, serverError } = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
+	const { data: authConfig } = useQuery(authConfigQueryOptions);
 	const logoSrc = "/paca-logo.svg";
 
 	return (
@@ -43,6 +49,30 @@ export function LoginFormPanel() {
 				<p className="mb-8 text-sm text-(--sea-ink-soft)">
 					{t("login.subtitle")}
 				</p>
+
+				{/* OIDC SSO (ADR-038) — primary path when the server enables it;
+				    username/password below stays available as break-glass. */}
+				{authConfig?.oidc_enabled && (
+					<div className="mb-6">
+						<a
+							href={OIDC_LOGIN_URL}
+							className={cn(
+								buttonVariants({ size: "lg" }),
+								"h-11 w-full font-semibold tracking-wide bg-primary text-primary-foreground hover:bg-primary/90",
+							)}
+						>
+							<KeyRound className="size-4" />
+							{authConfig.oidc_button_label || t("login.ssoSignIn")}
+						</a>
+						<div className="mt-6 flex items-center gap-3">
+							<span className="h-px flex-1 bg-(--line)" />
+							<span className="text-xs tracking-wide text-(--sea-ink-soft)/70 uppercase">
+								{t("login.ssoDivider")}
+							</span>
+							<span className="h-px flex-1 bg-(--line)" />
+						</div>
+					</div>
+				)}
 
 				<form
 					onSubmit={(event) => {

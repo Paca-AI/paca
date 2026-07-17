@@ -67,6 +67,14 @@ func (s *Service) Login(ctx context.Context, username, password string, remember
 		return nil, domainauth.ErrInvalidCredentials
 	}
 
+	return s.IssueSession(ctx, u, rememberMe)
+}
+
+// IssueSession mints a fresh token pair (a new session family) for a user
+// whose identity has already been established by the caller — the password
+// path above or a verified OIDC SSO login (ADR-038).  It must never be called
+// with an unauthenticated user.
+func (s *Service) IssueSession(_ context.Context, u *userdom.User, rememberMe bool) (*domainauth.TokenPair, error) {
 	familyID := uuid.NewString()
 	sub := u.ID.String()
 

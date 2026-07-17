@@ -65,6 +65,22 @@ def _is_inside_docker() -> bool:
     return os.path.exists("/.dockerenv")
 
 
+def docker_daemon_url() -> str:
+    """Resolve the Docker daemon base_url from settings.
+
+    DOCKER_HOST takes precedence and is passed through verbatim, so a
+    tcp:// socket proxy (ADR-038: no raw /var/run/docker.sock mount in prod)
+    works out of the box.  DOCKER_SOCKET keeps its legacy bare-path form but
+    values that already carry a scheme are also passed through.
+    """
+    if settings.docker_host:
+        return settings.docker_host
+    sock = settings.docker_socket
+    if "://" in sock:
+        return sock
+    return f"unix://{sock}"
+
+
 def _get_current_networks(client: docker.DockerClient) -> list[str]:
     """Return the Docker networks the current container is attached to."""
     try:
@@ -215,7 +231,7 @@ def start_sandbox(
     call (chat conversations kept alive between turns) must call
     `stop_sandbox()` explicitly when they're actually done with it.
     """
-    client = docker.DockerClient(base_url=f"unix://{settings.docker_socket}")
+    client = docker.DockerClient(base_url=docker_daemon_url())
     container: Container | None = None
     host_port: int | None = None
 

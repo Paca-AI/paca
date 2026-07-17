@@ -36,7 +36,19 @@ import (
 const testAgentAPIKey = "paca_test_agent_key_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
 const testAgentBotUserID = "00000000-0000-0000-0000-000000000001"
 
-// buildAgentKeyRouter creates a test router with agent API key authentication configured
+// agentImpersonationForTest controls the ADR-038 kill-switch for routers
+// built by buildAgentKeyRouter*.  It defaults to true because most tests in
+// this file exercise the legacy AGENT_API_KEY + X-Agent-ID contract, which is
+// opt-in in production (AGENT_HEADER_IMPERSONATION=enabled).
+// TestAgentAPIKey_HeaderImpersonationDisabledByDefault flips it to false to
+// pin the production default.
+var agentImpersonationForTest = true
+
+// buildAgentKeyRouter creates a test router with agent API key authentication
+// configured.  Header impersonation is enabled because most tests below
+// exercise the legacy AGENT_API_KEY + X-Agent-ID contract, which is opt-in
+// per ADR-038 (disabled by default in production; see
+// TestAgentAPIKey_HeaderImpersonationDisabledByDefault).
 func buildAgentKeyRouter(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKeyRepo, store *projectPermStore, activityRepos ...*fakeTaskActivityRepo) http.Handler {
 	return buildAgentKeyRouterWithBotID(taskRepo, apiKeyRepo, store, uuid.MustParse(testAgentBotUserID), activityRepos...)
 }
@@ -67,7 +79,9 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	}
 	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
 
-	apiKeyService := apikeysvc.New(apiKeyRepo).WithAgentKey(testAgentAPIKey, botUserID)
+	apiKeyService := apikeysvc.New(apiKeyRepo).
+		WithAgentKey(testAgentAPIKey, botUserID).
+		WithAgentHeaderImpersonation(agentImpersonationForTest)
 
 	if store == nil {
 		store = &projectPermStore{}
@@ -1162,4 +1176,46 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 			t.Errorf("no permission: expected 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// ADR-038: header impersonation kill-switch
+// ---------------------------------------------------------------------------
+
+// TestAgentAPIKey_HeaderImpersonationDisabledByDefault pins the production
+// default: without AGENT_HEADER_IMPERSONATION=enabled, pairing the shared
+// agent key with an X-Agent-ID header is rejected with 401.
+func TestAgentAPIKey_HeaderImpersonationDisabledByDefault(t *testing.T) {
+	agentImpersonationForTest = false
+	defer func() { agentImpersonationForTest = true }()
+
+	taskRepo := newFakeTaskRepoIT()
+	apiKeyRepo := newFakeAPIKeyRepo()
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	store := &projectPermStore{
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			projectID: {
+				agentID: {authz.PermissionTasksWrite},
+			},
+		},
+	}
+	r := buildAgentKeyRouter(taskRepo, apiKeyRepo, store)
+
+	url := fmt.Sprintf("/api/v1/projects/%s/tasks", projectID)
+	w := serve(r, agentKeyAuthReq(t.Context(), http.MethodPost, url, agentID, map[string]any{"title": "should not exist"}))
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with impersonation disabled, got %d: %s", w.Code, w.Body.String())
+	}
+	if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("ADR-038")) {
+		t.Fatalf("expected error to mention ADR-038, got: %s", body)
+	}
+
+	// The shared key WITHOUT the header must keep working (bot identity).
+	w = serve(r, agentKeyAuthReq(t.Context(), http.MethodGet, url, uuid.Nil, nil))
+	if w.Code == http.StatusUnauthorized {
+		t.Fatalf("agent key without X-Agent-ID must not be rejected by the kill-switch, got 401: %s", w.Body.String())
+	}
 }
