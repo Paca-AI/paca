@@ -142,7 +142,10 @@ services:
         condition: service_healthy
     networks:
       default: {}
-      galaxy_network: {}
+      # agentops-redis (kênh notify.fan-out) nằm ở network riêng
+      # agentops-redis-net, KHÔNG phải galaxy_network — vortex-notification
+      # cũng join network này y hệt.
+      agentops-redis-net: {}
     mem_limit: 256m
     memswap_limit: 256m
 
@@ -170,4 +173,6 @@ services:
 
 networks:
   galaxy_network:
+    external: true
+  agentops-redis-net:
     external: true
