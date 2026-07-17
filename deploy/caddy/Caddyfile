@@ -118,7 +118,11 @@
 		@wasm path *.wasm
 		header @wasm Content-Type "application/wasm"
 
-		# Fingerprinted assets can be cached immutably for a long time.
+		# Fingerprinted chunks may cache long; the federation manifest
+		# (remoteEntry.js, stable filename) must revalidate every load or
+		# plugin updates go stale at the CDN edge for the full TTL.
+		@manifest path *remoteEntry.js
+		header @manifest Cache-Control "no-cache"
 		header Cache-Control "public, max-age=900, immutable"
 		file_server
 	}
