@@ -59,6 +59,10 @@ RUN bun install --frozen-lockfile --production
 # ── Final: upstream agent-server + fork MCP overlay ──────────────────────────
 FROM ghcr.io/paca-ai/paca-agent-server:0.9.7
 
+# The upstream image runs as USER openhands, which cannot modify the global
+# npm tree — switch to root for the overlay and back afterwards.
+USER root
+
 # Replace the published package's code and dependencies with the fork's.
 # The package.json (with its bin -> build/index.js mapping that the
 # /usr/local/bin/paca symlink and npx resolution rely on) stays in place.
@@ -67,6 +71,10 @@ RUN rm -rf /usr/local/lib/node_modules/@paca-ai/paca-mcp/build \
 COPY --from=build    /mcp/build        /usr/local/lib/node_modules/@paca-ai/paca-mcp/build
 COPY --from=proddeps /mcp/node_modules /usr/local/lib/node_modules/@paca-ai/paca-mcp/node_modules
 
-# Provenance marker for `docker exec … cat` sanity checks.
+# Provenance marker for `docker exec … cat` sanity checks; keep the tree
+# world-readable for the runtime user.
 RUN printf 'galaxy-fork paca-mcp overlay (PACA_AUTH_MODE=bearer, ADR-038)\n' \
-      > /usr/local/lib/node_modules/@paca-ai/paca-mcp/GALAXY_OVERLAY
+      > /usr/local/lib/node_modules/@paca-ai/paca-mcp/GALAXY_OVERLAY \
+  && chmod -R a+rX /usr/local/lib/node_modules/@paca-ai/paca-mcp
+
+USER openhands
