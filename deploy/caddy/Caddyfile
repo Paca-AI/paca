@@ -34,6 +34,26 @@
 #   install.sh enables HTTPS by default and prompts for this address.
 # =============================================================================
 
+# -- Galaxy chat dock bridge (ADR-038 P3.2) -----------------------------------
+#
+# Same-origin bridge for the shared Galaxy chat dock: the dock bundle
+# (`dock.js`, built by Galaxy-Nexus packages/galaxy-chat-dock) calls
+# `/api/agentops` and `/api/identity` with RELATIVE URLs — on the portal
+# origin the platform gateway serves those; here we stream them through to
+# it over the shared galaxy_network so this origin behaves the same (no
+# CORS, cookies/authorization pass untouched, SSE flushes unbuffered).
+# Mirrors Galaxy-AI-Wiki server/middlewares/galaxyDockProxy.ts.
+#
+# GALAXY_GATEWAY_URL must be an origin only (scheme://host[:port], no path).
+# On vanilla deployments nothing ever requests these paths (the SPA mounts
+# the dock only when the API advertises GALAXY_DOCK_SRC) and the default
+# upstream simply doesn't resolve, so the block is inert.
+(galaxy_dock_bridge) {
+	reverse_proxy {$GALAXY_GATEWAY_URL:http://vortex-gateway} {
+		flush_interval -1
+	}
+}
+
 {$SITE_ADDRESS::80} {
 	encode gzip
 
@@ -116,6 +136,20 @@
 		root * /var/www/plugins-mcp
 		header Cache-Control "public, max-age=900, immutable"
 		file_server
+	}
+
+	# -- Galaxy chat dock bridge (ADR-038 P3.2) ---------------------------------
+	#
+	# Longest-path-first sorting guarantees these win over the generic
+	# /api/* handle below. See the galaxy_dock_bridge snippet up top.
+	handle /dock.js {
+		import galaxy_dock_bridge
+	}
+	handle /api/agentops* {
+		import galaxy_dock_bridge
+	}
+	handle /api/identity* {
+		import galaxy_dock_bridge
 	}
 
 	# -- API routes ---------------------------------------------------------------

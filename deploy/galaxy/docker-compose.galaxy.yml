@@ -61,6 +61,10 @@ services:
       # Legacy X-Agent-ID header impersonation stays OFF; identity comes
       # from signed tokens only.
       AGENT_HEADER_IMPERSONATION: ${AGENT_HEADER_IMPERSONATION:-disabled}
+      # ── ADR-038 P3.2: Galaxy chat dock ─────────────────────────────────
+      # Advertised on the public /auth/config endpoint; the SPA mounts the
+      # dock after login. Empty keeps the dock disabled.
+      GALAXY_DOCK_SRC: ${GALAXY_DOCK_SRC:-}
     mem_limit: 1g
     memswap_limit: 1g
 
@@ -107,15 +111,60 @@ services:
     mem_limit: 1g
     memswap_limit: 1g
 
+  # ── Paca events → Galaxy notification inbox (ADR-038 P3.1) ────────────────
+  # Tails Paca's task_assignments + plugin_events Valkey streams with its own
+  # consumer group (galaxy-notify-bridge — never Paca's groups) and
+  # republishes assigned/mentioned notifications to the platform notify
+  # fan-out (notify.fan-out on the galaxy_network Redis), mapping Paca users
+  # to Vortex subs via a READ-ONLY lookup on users.oidc_sub.
+  # Joins BOTH networks: default (valkey/postgres) + galaxy_network (platform
+  # Redis). Scale with env: it idles unless BRIDGE_ENABLED=true, and
+  # `... up -d --scale notify-bridge=0` removes the container entirely.
+  notify-bridge:
+    build:
+      # Relative paths resolve against the FIRST compose file's directory
+      # (deploy/), not this overlay's — hence the galaxy/ segment.
+      context: ./galaxy/notify-bridge
+    restart: unless-stopped
+    environment:
+      BRIDGE_ENABLED: ${BRIDGE_ENABLED:-false}
+      PACA_VALKEY_URL: ${PACA_VALKEY_URL:-redis://valkey:6379/0}
+      PACA_DATABASE_URL: ${PACA_DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
+      GALAXY_NOTIFY_REDIS_URL: ${GALAXY_NOTIFY_REDIS_URL:-redis://agentops-redis:6379/0}
+      NOTIFY_FANOUT_CHANNEL: ${NOTIFY_FANOUT_CHANNEL:-notify.fan-out}
+      PACA_PUBLIC_URL: ${PUBLIC_URL:-https://tasks.skyplatform.net}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      valkey:
+        condition: service_healthy
+    networks:
+      default: {}
+      galaxy_network: {}
+    mem_limit: 256m
+    memswap_limit: 256m
+
   gateway:
     # Reachable only through galaxy_network (Cloudflare tunnel), never via
     # host ports — do not re-add port bindings here.
+    # GATEWAY_NETWORK_ALIAS parameterizes the galaxy_network DNS name for
+    # instance-per-tenant deploys (ADR-038 T7: paca-<tenant>-gateway, see
+    # deploy/galaxy/tenant-template/); the default stays the shared-instance
+    # alias the Cloudflare tunnel already routes to.
     ports: !override []
+    environment:
+      # ── ADR-038 P3.2: Galaxy chat dock bridge ──────────────────────────
+      # Platform gateway origin the Caddyfile galaxy_dock_bridge snippet
+      # streams /dock.js + /api/agentops* + /api/identity* through to, over
+      # galaxy_network (origin only — scheme://host[:port], no path).
+      GALAXY_GATEWAY_URL: ${GALAXY_GATEWAY_URL:-http://vortex-gateway}
     networks:
       default: {}
       galaxy_network:
         aliases:
-          - paca-gateway
+          - ${GATEWAY_NETWORK_ALIAS:-paca-gateway}
     mem_limit: 256m
     memswap_limit: 256m
 

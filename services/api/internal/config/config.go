@@ -16,7 +16,12 @@ type Config struct {
 	Plugins    PluginsConfig
 	OIDC       OIDCConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
-	Env        string // development | production
+	// GalaxyDockSrc is the Galaxy chat dock bundle URL advertised to the SPA
+	// on the public /auth/config endpoint (GALAXY_DOCK_SRC, ADR-038 P3.2),
+	// e.g. https://ai.skyplatform.net/dock.js or /dock.js (same-origin via
+	// the gateway bridge).  Empty disables the dock.
+	GalaxyDockSrc string
+	Env           string // development | production
 }
 
 // OIDCConfig holds settings for OIDC SSO login against the Vortex identity

@@ -35,6 +35,10 @@ type AuthHandler struct {
 	// OIDC SSO advertisement for the public /auth/config endpoint (ADR-038).
 	oidcEnabled     bool
 	oidcButtonLabel string
+
+	// Galaxy chat dock advertisement for the public /auth/config endpoint
+	// (ADR-038 P3.2).  Empty means the dock stays unmounted in the SPA.
+	dockSrc string
 }
 
 // NewAuthHandler returns an AuthHandler wired to the provided auth service.
@@ -49,12 +53,22 @@ func (h *AuthHandler) WithOIDC(buttonLabel string) *AuthHandler {
 	return h
 }
 
+// WithGalaxyDock advertises the Galaxy chat dock bundle URL on the public
+// auth config endpoint (ADR-038 P3.2).
+func (h *AuthHandler) WithGalaxyDock(src string) *AuthHandler {
+	h.dockSrc = src
+	return h
+}
+
 // GetConfig handles GET /auth/config (public).  It tells the SPA which login
-// methods are available before any authentication happens.
+// methods are available before any authentication happens, plus whether the
+// Galaxy chat dock should be mounted after login.
 func (h *AuthHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{
 		"oidc_enabled":      h.oidcEnabled,
 		"oidc_button_label": h.oidcButtonLabel,
+		"dock_enabled":      h.dockSrc != "",
+		"dock_src":          h.dockSrc,
 	})
 }
 

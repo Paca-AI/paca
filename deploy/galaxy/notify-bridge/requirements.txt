@@ -1,0 +1,6 @@
+# galaxy-notify-bridge runtime deps (ADR-038 P3.1).
+# redis-py talks to both Paca's Valkey (streams) and the platform Redis
+# (notify.fan-out publish); psycopg (v3, binary wheel — no build deps on
+# python:3.12-slim) performs the read-only user/task lookups.
+redis>=5.0,<7
+psycopg[binary]>=3.1,<4

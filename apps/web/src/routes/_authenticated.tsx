@@ -3,6 +3,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { GalaxyChatDock } from "@/components/app-shell/galaxy-dock";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import {
 	SidebarInset,
@@ -103,6 +104,10 @@ function AuthenticatedLayout() {
 						<Outlet />
 					</div>
 				</SidebarInset>
+				{/* Galaxy chat dock (ADR-038 P3.2) — only for signed-in
+				    sessions; renders nothing unless /auth/config advertises
+				    dock_enabled. */}
+				{user && <GalaxyChatDock />}
 			</SidebarProvider>
 		</PluginRegistryProvider>
 	);
