@@ -32,6 +32,22 @@ func TestRequireEnv(t *testing.T) {
 	}
 }
 
+func TestParseCORSOrigins(t *testing.T) {
+	if got := parseCORSOrigins("*"); len(got) != 1 || got[0] != "*" {
+		t.Fatalf("expected [\"*\"], got %v", got)
+	}
+	got := parseCORSOrigins("https://a.example.com, https://b.example.com ,,")
+	want := []string{"https://a.example.com", "https://b.example.com"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+	}
+}
+
 func TestParseDuration(t *testing.T) {
 	d, err := parseDuration("15m")
 	if err != nil {

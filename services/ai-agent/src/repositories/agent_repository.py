@@ -71,6 +71,7 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
             a.acp_provider,
             a.acp_command,
             a.max_iterations,
+            a.timeout_minutes,
             a.git_committer_name,
             a.git_committer_email
         FROM agents a
@@ -147,6 +148,7 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
         llm_api_key_secret_ref=_decrypt_secret(row["llm_api_key_secret_ref"] or ""),
         llm_base_url=row["llm_base_url"] or "",
         max_iterations=row["max_iterations"],
+        timeout_minutes=row["timeout_minutes"] or 30,
         git_committer_name=row["git_committer_name"] or "paca-agent",
         git_committer_email=row["git_committer_email"]
         or "280579135+paca-agent@users.noreply.github.com",

@@ -317,14 +317,32 @@ func TestCreateAgent_MissingLLMAPIKey_Returns400(t *testing.T) {
 	}
 }
 
-func TestCreateAgent_MissingLLMBaseURL_Returns400(t *testing.T) {
-	r := newAgentRouter(&mockAgentSvc{})
+func TestCreateAgent_EmptyLLMBaseURL_Allowed(t *testing.T) {
+	// llm_base_url is NOT required: the agents.llm_base_url column defaults
+	// to '' and several LLM providers resolve their own default base URL, so
+	// rejecting an empty value here would reject otherwise-valid requests.
+	svc := &mockAgentSvc{
+		createAgent: func(_ context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			return &agentdom.Agent{
+				ID:         uuid.New(),
+				ProjectID:  projectID,
+				Name:       in.Name,
+				Handle:     in.Handle,
+				AgentType:  agentdom.AgentTypeLLM,
+				LLMBaseURL: in.LLMBaseURL,
+			}, nil
+		},
+	}
+	h := handler.NewAgentHandler(svc, "", "", "")
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(uuid.New().String()))
+	r.Post("/projects/{projectId}/agents", h.CreateAgent)
 	projectID := uuid.New()
 	w := doAgentRequest(t, r, http.MethodPost,
 		"/projects/"+projectID.String()+"/agents",
 		validCreateAgentBody(map[string]any{"llm_base_url": ""}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing llm_base_url, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for empty llm_base_url, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

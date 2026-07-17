@@ -268,6 +268,12 @@ const (
 	CodeAgentNameInvalid Code = "AGENT_NAME_INVALID"
 	// CodeAgentTypeNotFound indicates the requested agent type does not exist.
 	CodeAgentTypeNotFound Code = "AGENT_TYPE_NOT_FOUND"
+	// CodeAgentTypeInvalid indicates agent_type is not one of the supported values.
+	CodeAgentTypeInvalid Code = "AGENT_TYPE_INVALID"
+	// CodeAgentACPProviderInvalid indicates acp_provider is not one of the supported values.
+	CodeAgentACPProviderInvalid Code = "AGENT_ACP_PROVIDER_INVALID"
+	// CodeAgentACPCommandRequired indicates acp_command is required for the given acp_provider.
+	CodeAgentACPCommandRequired Code = "AGENT_ACP_COMMAND_REQUIRED"
 	// CodeAgentMCPServerNotFound indicates the requested MCP server does not exist.
 	CodeAgentMCPServerNotFound Code = "AGENT_MCP_SERVER_NOT_FOUND"
 	// CodeAgentSkillNotFound indicates the requested skill does not exist.

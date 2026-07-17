@@ -163,7 +163,11 @@ func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID) (
 
 	result := make([]*agentdom.Agent, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, agentFromReadRow(row))
+		a, err := agentFromReadRow(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, a)
 	}
 	return result, nil
 }
@@ -182,7 +186,10 @@ func (r *AgentRepository) FindAgentByID(ctx context.Context, id uuid.UUID) (*age
 	if err != nil {
 		return nil, err
 	}
-	agent := agentFromReadRow(row)
+	agent, err := agentFromReadRow(row)
+	if err != nil {
+		return nil, err
+	}
 	// Load MCP servers and skills
 	mcpServers, err := r.ListMCPServers(ctx, id)
 	if err != nil {
@@ -217,7 +224,7 @@ func (r *AgentRepository) FindAgentByHandle(ctx context.Context, projectID uuid.
 	if err != nil {
 		return nil, err
 	}
-	return agentFromReadRow(row), nil
+	return agentFromReadRow(row)
 }
 
 // CreateAgent inserts a new agent record.
@@ -804,7 +811,7 @@ func (r *AgentRepository) UpdateChatSession(ctx context.Context, s *agentdom.Age
 // Mapping helpers
 // -------------------------------------------------------------------------
 
-func agentFromReadRow(row agentRecord) *agentdom.Agent {
+func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	a := &agentdom.Agent{
 		ID:                mustParseUUID(row.ID),
 		ProjectID:         mustParseUUID(row.ProjectID),
@@ -832,9 +839,10 @@ func agentFromReadRow(row agentRecord) *agentdom.Agent {
 	}
 	if len(row.ACPCommand) > 0 {
 		var cmd []string
-		if err := json.Unmarshal(row.ACPCommand, &cmd); err == nil {
-			a.ACPCommand = cmd
+		if err := json.Unmarshal(row.ACPCommand, &cmd); err != nil {
+			return nil, fmt.Errorf("unmarshal acp_command for agent %s: %w", row.ID, err)
 		}
+		a.ACPCommand = cmd
 	}
 	if row.CreatedBy != nil {
 		id := mustParseUUID(*row.CreatedBy)
@@ -844,7 +852,7 @@ func agentFromReadRow(row agentRecord) *agentdom.Agent {
 		mid := mustParseUUID(*row.MemberID)
 		a.MemberID = &mid
 	}
-	return a
+	return a, nil
 }
 
 func agentToRecord(a *agentdom.Agent) agentRecord {

@@ -154,6 +154,39 @@ func TestNew_CORSPreflight(t *testing.T) {
 	}
 }
 
+func TestNew_CORSAllowList(t *testing.T) {
+	deps := Deps{
+		TokenManager:       jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
+		Authorizer:         authz.NewAuthorizer(&allowAllPermissionStore{}),
+		Health:             handler.NewHealthHandler(),
+		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+		CORSAllowedOrigins: []string{"https://paca.example.com"},
+	}
+	r := New(deps)
+
+	t.Run("allowed origin is echoed back", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/healthz", nil)
+		req.Header.Set("Origin", "https://paca.example.com")
+		r.ServeHTTP(w, req)
+
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://paca.example.com" {
+			t.Fatalf("expected allowed origin echoed back, got %q", got)
+		}
+	})
+
+	t.Run("unlisted origin gets no CORS header", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/healthz", nil)
+		req.Header.Set("Origin", "https://evil.example.com")
+		r.ServeHTTP(w, req)
+
+		if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Fatalf("expected no CORS header for unlisted origin, got %q", got)
+		}
+	})
+}
+
 func TestNew_RequestIDPropagation(t *testing.T) {
 	r := newTestRouter(t)
 

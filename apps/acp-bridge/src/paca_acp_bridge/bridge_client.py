@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 _HEARTBEAT_INTERVAL_SECONDS = 20
 _INITIAL_BACKOFF_SECONDS = 1
 _MAX_BACKOFF_SECONDS = 30
+# Delay between retries of the head-of-line message in the outbox while
+# disconnected (or while a send attempt just failed) — short enough that a
+# reconnect is picked up quickly, long enough not to spin tightly.
+_SEND_RETRY_SECONDS = 0.5
 
 
 def to_bridge_ws_url(server: str) -> str:
@@ -37,35 +41,74 @@ class BridgeClient:
         self._token = token
         self._runner = ConversationRunner(workspace=workspace, send=self._send)
         self._ws: Any = None
-        self._send_lock = asyncio.Lock()
+        # Outbound messages (events + turn_status) are queued rather than sent
+        # directly — _sender_loop is the only thing that ever calls ws.send(),
+        # so a message queued while disconnected (or mid-reconnect) waits here
+        # instead of being silently dropped, which previously meant a final
+        # turn_status could vanish and leave the server-side conversation
+        # stuck at RUNNING forever (see acp_dispatch.py's watchdog for the
+        # server-side backstop this complements).
+        self._outbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._sender_task: asyncio.Task | None = None
 
     async def _send(self, message: dict[str, Any]) -> None:
-        if self._ws is None:
-            logger.warning("Dropping message — not connected: %s", message.get("type"))
-            return
-        async with self._send_lock:
-            await self._ws.send(json.dumps(message))
+        await self._outbox.put(message)
+
+    async def _sender_loop(self) -> None:
+        """Drains the outbox in order, retrying a message across reconnects
+        instead of dropping it. Runs for the lifetime of the process — one
+        instance survives every individual WebSocket connection.
+        """
+        while True:
+            message = await self._outbox.get()
+            while True:
+                ws = self._ws
+                if ws is None:
+                    await asyncio.sleep(_SEND_RETRY_SECONDS)
+                    continue
+                try:
+                    await ws.send(json.dumps(message))
+                    break
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.warning(
+                        "Failed to send %s — will retry once reconnected",
+                        message.get("type"),
+                        exc_info=True,
+                    )
+                    await asyncio.sleep(_SEND_RETRY_SECONDS)
 
     async def run_forever(self) -> None:
-        backoff = _INITIAL_BACKOFF_SECONDS
-        while True:
-            try:
-                await self._connect_once()
-                backoff = _INITIAL_BACKOFF_SECONDS
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.warning("Bridge connection lost (%s) — reconnecting in %ss", exc, backoff)
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
+        self._sender_task = asyncio.create_task(self._sender_loop())
+        try:
+            backoff = _INITIAL_BACKOFF_SECONDS
+            while True:
+                try:
+                    await self._connect_once()
+                    backoff = _INITIAL_BACKOFF_SECONDS
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        "Bridge connection lost (%s) — reconnecting in %ss", exc, backoff
+                    )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, _MAX_BACKOFF_SECONDS)
+        finally:
+            self._sender_task.cancel()
 
     async def _connect_once(self) -> None:
         logger.info("Connecting to %s", self._url)
-        async with websockets.connect(self._url) as ws:
+        # Credentials travel as connection headers rather than a first frame
+        # so the server can reject an invalid/missing token before completing
+        # the WebSocket handshake at all (see services/ai-agent's
+        # routes/bridge.py) — an invalid token surfaces here as a failed
+        # handshake (websockets.connect raising), caught by run_forever's
+        # retry loop the same way a network failure would be.
+        headers = {"X-Paca-Agent-Id": self._agent_id, "X-Paca-Bridge-Token": self._token}
+        async with websockets.connect(self._url, additional_headers=headers) as ws:
             self._ws = ws
-            await ws.send(
-                json.dumps({"type": "hello", "agent_id": self._agent_id, "token": self._token})
-            )
             ack = json.loads(await ws.recv())
             if ack.get("type") != "hello_ack":
                 raise RuntimeError(f"Bridge rejected connection: {ack}")

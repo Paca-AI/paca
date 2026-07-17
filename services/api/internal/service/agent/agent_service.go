@@ -193,34 +193,47 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			a.Handle = h
 		}
 	}
-	if in.LLMProvider != nil {
-		a.LLMProvider = *in.LLMProvider
-	}
-	if in.LLMModel != nil {
-		a.LLMModel = *in.LLMModel
-	}
-	if in.LLMAPIKey != nil {
-		encryptedKey, err := s.encryptKey(*in.LLMAPIKey)
-		if err != nil {
-			return nil, fmt.Errorf("encrypt LLM API key: %w", err)
+	// LLM/ACP fields are guarded by the agent's existing (immutable) type —
+	// agent_type can't be changed through this API, so applying the other
+	// shape's fields would only ever leave stale/wrong data on the agent
+	// (e.g. an encrypted LLM API key sitting unused on an ACP agent). A
+	// request that happens to include both sets of fields (e.g. a generic
+	// client payload) silently has the irrelevant half ignored rather than
+	// erroring, matching CreateAgent's per-type field selection. Anything
+	// other than the explicit ACP type is treated as LLM (its default, as
+	// in CreateAgent) so an agent loaded with an unset AgentType isn't
+	// silently locked out of updating its LLM fields.
+	if a.AgentType != agentdom.AgentTypeACP {
+		if in.LLMProvider != nil {
+			a.LLMProvider = *in.LLMProvider
 		}
-		a.LLMAPIKeySecret = encryptedKey
-	}
-	if in.LLMBaseURL != nil {
-		a.LLMBaseURL = *in.LLMBaseURL
-	}
-	if in.ACPProvider != nil {
-		if !agentdom.ValidACPProviders[*in.ACPProvider] {
-			return nil, agentdom.ErrACPProviderInvalid
+		if in.LLMModel != nil {
+			a.LLMModel = *in.LLMModel
 		}
-		a.ACPProvider = in.ACPProvider
+		if in.LLMAPIKey != nil {
+			encryptedKey, err := s.encryptKey(*in.LLMAPIKey)
+			if err != nil {
+				return nil, fmt.Errorf("encrypt LLM API key: %w", err)
+			}
+			a.LLMAPIKeySecret = encryptedKey
+		}
+		if in.LLMBaseURL != nil {
+			a.LLMBaseURL = *in.LLMBaseURL
+		}
 	}
-	if in.ACPCommand != nil {
-		a.ACPCommand = in.ACPCommand
-	}
-	if a.AgentType == agentdom.AgentTypeACP && a.ACPProvider != nil &&
-		*a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
-		return nil, agentdom.ErrACPCommandRequired
+	if a.AgentType == agentdom.AgentTypeACP {
+		if in.ACPProvider != nil {
+			if !agentdom.ValidACPProviders[*in.ACPProvider] {
+				return nil, agentdom.ErrACPProviderInvalid
+			}
+			a.ACPProvider = in.ACPProvider
+		}
+		if in.ACPCommand != nil {
+			a.ACPCommand = in.ACPCommand
+		}
+		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
+			return nil, agentdom.ErrACPCommandRequired
+		}
 	}
 	if in.SystemPrompt != nil {
 		a.SystemPrompt = *in.SystemPrompt

@@ -1,6 +1,6 @@
 """Tests for dispatch_acp_trigger's online/offline branches (src/agent/acp_dispatch.py)."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import src.agent.acp_dispatch as acp_dispatch
 from src.core.streams import TriggerMessage
@@ -69,6 +69,8 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
     monkeypatch.setattr(
         acp_dispatch.conversation_repository, "update_conversation_status", update_status
     )
+    schedule_watchdog = MagicMock()
+    monkeypatch.setattr(acp_dispatch, "_schedule_watchdog", schedule_watchdog)
 
     trigger = _trigger()
     config = _acp_config()
@@ -87,6 +89,7 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
             "acp_command": [],
         },
     )
+    schedule_watchdog.assert_called_once_with("conv-1", "proj-1", 30)
 
 
 async def test_bridge_goes_offline_mid_dispatch_still_fails(monkeypatch):
@@ -112,3 +115,38 @@ async def test_bridge_goes_offline_mid_dispatch_still_fails(monkeypatch):
         update_status.await_args_list[-1].kwargs["error_message"] == acp_dispatch._OFFLINE_MESSAGE
     )
     publish_realtime.assert_awaited_once()
+
+
+async def test_watchdog_fails_conversation_still_running_after_timeout(monkeypatch):
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(acp_dispatch.asyncio, "sleep", sleep_mock)
+    fail_if_not_terminal = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        acp_dispatch.conversation_repository, "fail_if_not_terminal", fail_if_not_terminal
+    )
+    publish_realtime = AsyncMock()
+    monkeypatch.setattr(acp_dispatch.stream_store, "publish_realtime", publish_realtime)
+
+    await acp_dispatch._watchdog("conv-1", "proj-1", 30)
+
+    sleep_mock.assert_awaited_once_with(30 * 60)
+    fail_if_not_terminal.assert_awaited_once_with("conv-1", acp_dispatch._TIMEOUT_MESSAGE)
+    publish_realtime.assert_awaited_once()
+    assert publish_realtime.await_args.kwargs["event_type"] == "agent.conversation.failed"
+
+
+async def test_watchdog_noop_when_conversation_already_terminal(monkeypatch):
+    """fail_if_not_terminal returns False when a turn_status already landed
+    (or the conversation was stopped) before the watchdog woke up — the
+    watchdog must not publish a spurious failed event in that case."""
+    monkeypatch.setattr(acp_dispatch.asyncio, "sleep", AsyncMock())
+    fail_if_not_terminal = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        acp_dispatch.conversation_repository, "fail_if_not_terminal", fail_if_not_terminal
+    )
+    publish_realtime = AsyncMock()
+    monkeypatch.setattr(acp_dispatch.stream_store, "publish_realtime", publish_realtime)
+
+    await acp_dispatch._watchdog("conv-1", "proj-1", 30)
+
+    publish_realtime.assert_not_called()

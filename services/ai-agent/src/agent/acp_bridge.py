@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any, Protocol
 
 from ..core import streams as stream_store
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 _PRESENCE_PREFIX = "paca:acp-bridge:online:"
 _DISPATCH_PREFIX = "paca:acp-bridge:dispatch:"
+_CONTROL_PREFIX = "paca:acp-bridge:control:"
 # Presence TTL — the daemon must ping (see routes/bridge.py's "ping" handling)
 # well within this window; comfortably longer than the daemon's own ~20s
 # heartbeat interval so a couple of missed/delayed pings don't flap presence.
@@ -33,17 +35,28 @@ _PRESENCE_TTL_SECONDS = 45
 # (e.g. a Valkey restart) — keeps the WebSocket connection usable instead of
 # silently losing dispatch delivery for the rest of its lifetime.
 _RECONNECT_BACKOFF_SECONDS = 2
+# Sentinel published on the control channel to force-close *any* currently
+# registered session for an agent, regardless of its session_id — used when
+# the agent's bridge token is regenerated (see evict()). Never equal to a
+# real session_id (those are uuid4 hex strings).
+_FORCE_EVICT_SESSION_ID = "__force_evict__"
 
 
 class _SendsJSON(Protocol):
     async def send_json(self, data: Any) -> None: ...
+    async def close(self, code: int = 1000) -> None: ...
 
 
-# Connections + their forwarding tasks, keyed by agent_id — only valid on
+# Connections + their background tasks, keyed by agent_id — only valid on
 # *this* replica; presence/dispatch below is what makes routing work when the
-# connection lives on a different replica.
+# connection lives on a different replica. _sessions tracks which session_id
+# (assigned by register()) currently owns each agent_id's entry here, so a
+# stale unregister() (e.g. a connection that just lost an eviction race) can
+# detect it's stale and not tear down a newer session's state.
 _connections: dict[str, _SendsJSON] = {}
+_sessions: dict[str, str] = {}
 _forward_tasks: dict[str, asyncio.Task] = {}
+_eviction_tasks: dict[str, asyncio.Task] = {}
 
 
 def _presence_key(agent_id: str) -> str:
@@ -52,6 +65,10 @@ def _presence_key(agent_id: str) -> str:
 
 def _dispatch_channel(agent_id: str) -> str:
     return f"{_DISPATCH_PREFIX}{agent_id}"
+
+
+def _control_channel(agent_id: str) -> str:
+    return f"{_CONTROL_PREFIX}{agent_id}"
 
 
 async def _forward_dispatched_messages(agent_id: str, ws: _SendsJSON) -> None:
@@ -97,22 +114,118 @@ async def _forward_dispatched_messages(agent_id: str, ws: _SendsJSON) -> None:
         await asyncio.sleep(_RECONNECT_BACKOFF_SECONDS)
 
 
-async def register(agent_id: str, project_id: str, ws: _SendsJSON) -> None:
+async def _watch_for_eviction(agent_id: str, session_id: str, ws: _SendsJSON) -> None:
+    """Closes ws when a message on the control channel names a different
+    session_id — either a newer bridge session registering for this same
+    agent_id (possibly on a different replica) or a forced eviction from
+    evict() (bridge-token regeneration). Enforces at most one active bridge
+    connection per agent.
+
+    Structured like _forward_dispatched_messages: reconnects with backoff on
+    a dropped Pub/Sub connection rather than giving up for the connection's
+    remaining lifetime.
+    """
+    while True:
+        pubsub = stream_store.get_pubsub_client().pubsub()
+        try:
+            await pubsub.subscribe(_control_channel(agent_id))
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                try:
+                    payload = json.loads(message["data"])
+                except (TypeError, ValueError, KeyError):
+                    continue
+                if payload.get("session_id") == session_id:
+                    continue
+                logger.info(
+                    "Evicting ACP bridge session for agent %s (superseded by a newer "
+                    "connection or a bridge-token regeneration)",
+                    agent_id,
+                )
+                try:
+                    await ws.close(code=4409)
+                except Exception:
+                    logger.debug(
+                        "Failed to close evicted connection for agent %s", agent_id, exc_info=True
+                    )
+                return
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "ACP bridge eviction watcher for agent %s lost its connection — "
+                "reconnecting in %ss",
+                agent_id,
+                _RECONNECT_BACKOFF_SECONDS,
+            )
+        finally:
+            try:
+                await pubsub.unsubscribe(_control_channel(agent_id))
+                await pubsub.aclose()
+            except Exception:
+                logger.debug(
+                    "Failed to clean up eviction pubsub for agent %s", agent_id, exc_info=True
+                )
+        await asyncio.sleep(_RECONNECT_BACKOFF_SECONDS)
+
+
+async def _broadcast_eviction(agent_id: str, winning_session_id: str) -> None:
+    client = get_client()
+    await client.publish(_control_channel(agent_id), json.dumps({"session_id": winning_session_id}))
+
+
+async def register(agent_id: str, project_id: str, ws: _SendsJSON) -> str:
     """Mark an agent's local bridge as connected on this replica.
 
     Publishes an "agent.acp_bridge.status" realtime event so the frontend
     can react immediately instead of polling the status endpoint — see
     src/hooks/use-project-realtime.ts on the frontend.
+
+    Returns a session_id the caller (routes/bridge.py) must pass back to
+    unregister() — it's how a stale disconnect (a connection that just lost
+    an eviction race to a newer one) knows not to tear down the newer
+    session's state.
+
+    If another bridge session is already registered for this agent_id
+    (tracked by presence, so this catches a connection on a different
+    replica too), it is evicted — see _watch_for_eviction. Only one bridge
+    session per agent is allowed at a time.
     """
     client = get_client()
+    already_online = bool(await client.exists(_presence_key(agent_id)))
+    session_id = uuid.uuid4().hex
     await client.set(_presence_key(agent_id), "1", ex=_PRESENCE_TTL_SECONDS)
     _connections[agent_id] = ws
+    _sessions[agent_id] = session_id
     _forward_tasks[agent_id] = asyncio.create_task(_forward_dispatched_messages(agent_id, ws))
+    _eviction_tasks[agent_id] = asyncio.create_task(_watch_for_eviction(agent_id, session_id, ws))
     await _publish_status(agent_id, project_id, connected=True)
+    if already_online:
+        await _broadcast_eviction(agent_id, session_id)
+    return session_id
 
 
-async def unregister(agent_id: str, project_id: str) -> None:
-    """Tear down a bridge connection — called on WebSocket disconnect."""
+async def evict(agent_id: str) -> None:
+    """Force-close any bridge connection currently registered for this
+    agent, regardless of session — called when the agent's bridge token is
+    regenerated so a session still authenticated with the old token can't
+    linger indefinitely (see routes/bridge.py's POST /disconnect).
+    """
+    await _broadcast_eviction(agent_id, _FORCE_EVICT_SESSION_ID)
+
+
+async def unregister(agent_id: str, project_id: str, session_id: str) -> None:
+    """Tear down a bridge connection — called on WebSocket disconnect.
+
+    No-ops if session_id no longer matches the currently registered session
+    for this agent: a stale connection's disconnect (e.g. it just lost an
+    eviction race to a newer connection's register()) must not clear the
+    newer session's presence/connection state out from under it.
+    """
+    if _sessions.get(agent_id) != session_id:
+        return
     task = _forward_tasks.pop(agent_id, None)
     if task is not None:
         task.cancel()
@@ -120,7 +233,15 @@ async def unregister(agent_id: str, project_id: str) -> None:
             await task
         except asyncio.CancelledError:
             pass
+    evict_task = _eviction_tasks.pop(agent_id, None)
+    if evict_task is not None:
+        evict_task.cancel()
+        try:
+            await evict_task
+        except asyncio.CancelledError:
+            pass
     _connections.pop(agent_id, None)
+    _sessions.pop(agent_id, None)
     client = get_client()
     await client.delete(_presence_key(agent_id))
     await _publish_status(agent_id, project_id, connected=False)

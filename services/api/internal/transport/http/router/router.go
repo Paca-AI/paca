@@ -40,6 +40,11 @@ type Deps struct {
 	Conversation         *handler.ConversationHandler
 	Workflow             *handler.WorkflowHandler
 	Log                  *slog.Logger
+	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
+	// or empty slice (the zero value, so every existing caller of this
+	// struct literal keeps working unchanged) is treated the same as ["*"]:
+	// reflect Access-Control-Allow-Origin: * for every request.
+	CORSAllowedOrigins []string
 }
 
 // New builds and returns a configured http.Handler.
@@ -50,7 +55,7 @@ func New(deps Deps) http.Handler {
 	r.Use(requestIDMiddleware())
 	r.Use(loggerMiddleware(deps.Log))
 	r.Use(chimw.Recoverer)
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware(deps.CORSAllowedOrigins))
 
 	r.Route("/api", func(r chi.Router) {
 		// Public routes
@@ -656,11 +661,33 @@ func loggerMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// corsMiddleware sets permissive CORS headers (tighten in production).
-func corsMiddleware() func(http.Handler) http.Handler {
+// corsMiddleware sets CORS headers per the given allow-list. An empty list,
+// or a list containing "*", reflects Access-Control-Allow-Origin: * for
+// every request (the historical default — permissive, tighten in production
+// by setting CORS_ORIGINS). Otherwise only an exact-match Origin gets
+// Access-Control-Allow-Origin echoed back; everything else gets no CORS
+// headers at all, so the browser blocks the response.
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowAll := len(allowedOrigins) == 0
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		if o == "*" {
+			allowAll = true
+			break
+		}
+		allowed[o] = true
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			origin := r.Header.Get("Origin")
+			switch {
+			case allowAll:
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			case origin != "" && allowed[origin]:
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
 

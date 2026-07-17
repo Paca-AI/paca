@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -19,6 +21,11 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
+
+// aiAgentHTTPTimeout bounds every call this handler makes into the ai-agent
+// service (LLM model listing, ACP bridge status/disconnect) so a slow or
+// wedged ai-agent instance can't hang the calling request indefinitely.
+const aiAgentHTTPTimeout = 10 * time.Second
 
 type agentActivityRecorder interface {
 	RecordActivity(ctx context.Context, in taskdom.RecordActivityInput) error
@@ -46,7 +53,7 @@ func NewAgentHandler(svc agentdom.Service, aiAgentURL, aiAgentInternalKey, publi
 		aiAgentURL:         aiAgentURL,
 		aiAgentInternalKey: aiAgentInternalKey,
 		publicURL:          publicURL,
-		httpClient:         &http.Client{},
+		httpClient:         &http.Client{Timeout: aiAgentHTTPTimeout},
 	}
 }
 
@@ -155,6 +162,11 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	switch agentType {
 	case agentdom.AgentTypeLLM:
+		// llm_base_url is intentionally not required here: the agents table
+		// column defaults to '' (see migration 000022's note on this), and
+		// several LLM providers resolve a default base URL on their own —
+		// requiring it at the API layer would reject otherwise-valid
+		// requests that rely on that default.
 		switch {
 		case req.LLMProvider == "":
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_provider is required"))
@@ -164,9 +176,6 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		case req.LLMAPIKey == "":
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_api_key is required"))
-			return
-		case req.LLMBaseURL == "":
-			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_base_url is required"))
 			return
 		}
 	case agentdom.AgentTypeACP:
@@ -843,6 +852,11 @@ func (h *AgentHandler) GenerateACPBridgeToken(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, err)
 		return
 	}
+	// Best-effort: force-close any bridge session still connected with the
+	// token that was just replaced, so it can't keep using it indefinitely.
+	// Run in the background (own context, not r.Context()) so a slow or
+	// unreachable ai-agent doesn't add latency to token generation itself.
+	go h.disconnectACPBridge(agentID)
 	runCommand := fmt.Sprintf("uvx paca-acp-bridge run --agent-id %s --token %s", agentID, token)
 	if h.publicURL != "" {
 		runCommand += fmt.Sprintf(" --server %s", h.publicURL)
@@ -851,6 +865,38 @@ func (h *AgentHandler) GenerateACPBridgeToken(w http.ResponseWriter, r *http.Req
 		Token:      token,
 		RunCommand: runCommand,
 	})
+}
+
+// disconnectACPBridge best-effort force-closes any bridge session currently
+// connected for agentID by calling ai-agent's internal POST
+// /agent-bridge/disconnect/:agentId (see routes/bridge.py). Called after a
+// bridge token is regenerated — errors are logged, not surfaced, since the
+// token has already been persisted regardless of whether this succeeds; a
+// stale session left connected in the failure case is bounded by the
+// presence TTL and will eventually be treated as offline.
+func (h *AgentHandler) disconnectACPBridge(agentID uuid.UUID) {
+	if h.aiAgentURL == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), aiAgentHTTPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodPost,
+		fmt.Sprintf("%s/agent-bridge/disconnect/%s", h.aiAgentURL, agentID), nil,
+	)
+	if err != nil {
+		return
+	}
+	req.Header.Set("X-Internal-Token", h.aiAgentInternalKey)
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		slog.Warn("disconnect ACP bridge session after token regeneration", "agent_id", agentID, "error", err)
+		return
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("disconnect ACP bridge session after token regeneration", "agent_id", agentID, "status", resp.StatusCode)
+	}
 }
 
 // GetACPBridgeStatus handles GET

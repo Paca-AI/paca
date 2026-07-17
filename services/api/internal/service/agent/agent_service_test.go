@@ -589,6 +589,78 @@ func TestUpdateAgent_Success(t *testing.T) {
 	assert.Equal(t, newModel, result.LLMModel)
 }
 
+func TestUpdateAgent_ACPAgentIgnoresLLMFields(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	provider := agentdom.ACPProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:          agentID,
+		ProjectID:   projectID,
+		Name:        "ACP Agent",
+		Handle:      "acp-agent",
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: &provider,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		updateAgent: func(_ context.Context, _ *agentdom.Agent) error {
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	newModel := "gpt-4"
+	newAPIKey := "sk-leaked-onto-acp-agent"
+	newBaseURL := "https://api.openai.com/v1"
+
+	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		LLMModel:   &newModel,
+		LLMAPIKey:  &newAPIKey,
+		LLMBaseURL: &newBaseURL,
+	})
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.LLMModel)
+	assert.Empty(t, result.LLMAPIKeySecret)
+	assert.Empty(t, result.LLMBaseURL)
+}
+
+func TestUpdateAgent_LLMAgentIgnoresACPFields(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	agent := &agentdom.Agent{
+		ID:        agentID,
+		ProjectID: projectID,
+		Name:      "LLM Agent",
+		Handle:    "llm-agent",
+		AgentType: agentdom.AgentTypeLLM,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		updateAgent: func(_ context.Context, _ *agentdom.Agent) error {
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	newProvider := agentdom.ACPProviderCustom
+
+	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		ACPProvider: &newProvider,
+		ACPCommand:  []string{"my-server"},
+	})
+
+	assert.NoError(t, err)
+	assert.Nil(t, result.ACPProvider)
+	assert.Empty(t, result.ACPCommand)
+}
+
 func TestUpdateAgent_HandleTaken(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()

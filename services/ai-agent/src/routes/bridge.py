@@ -7,6 +7,13 @@ published by acp_dispatch.py via acp_bridge.dispatch(), and (2) reports SDK
 events + turn status back, persisted through the same
 executor.persist_conversation_event() path cloud-sandboxed conversations use
 — so the frontend renders either source identically.
+
+The agent id and bridge token travel as connection headers (X-Paca-Agent-Id /
+X-Paca-Bridge-Token) rather than as a first WebSocket frame, so they can be
+verified *before* websocket.accept() — an invalid/missing token is rejected
+at the handshake without ever completing it, rather than accepting the
+connection first and validating a follow-up message (which would let an
+unauthenticated caller hold the connection open indefinitely).
 """
 
 from __future__ import annotations
@@ -36,25 +43,23 @@ def _hash_token(token: str) -> str:
 
 @router.websocket("/ws")
 async def bridge_ws(websocket: WebSocket) -> None:
-    await websocket.accept()
-
-    try:
-        hello = await websocket.receive_json()
-    except Exception:
-        await websocket.close(code=4400)
-        return
-    if hello.get("type") != "hello" or not hello.get("agent_id") or not hello.get("token"):
+    hdr_agent_id = websocket.headers.get("x-paca-agent-id")
+    token = websocket.headers.get("x-paca-bridge-token")
+    if not hdr_agent_id or not token:
+        # Headers are available from the connection scope before accept(), so
+        # a malformed handshake can be rejected without ever accepting it.
         await websocket.close(code=4400)
         return
 
-    token_hash = _hash_token(hello["token"])
+    token_hash = _hash_token(token)
     resolved = await find_agent_by_bridge_token_hash(token_hash)
-    if resolved is None or resolved[0] != hello["agent_id"]:
+    if resolved is None or resolved[0] != hdr_agent_id:
         await websocket.close(code=4401)
         return
 
     agent_id, project_id = resolved
-    await acp_bridge.register(agent_id, project_id, websocket)
+    await websocket.accept()
+    session_id = await acp_bridge.register(agent_id, project_id, websocket)
     logger.info("ACP bridge connected for agent %s", agent_id)
     await websocket.send_json({"type": "hello_ack"})
 
@@ -114,7 +119,7 @@ async def bridge_ws(websocket: WebSocket) -> None:
     except Exception:
         logger.exception("ACP bridge connection for agent %s crashed", agent_id)
     finally:
-        await acp_bridge.unregister(agent_id, project_id)
+        await acp_bridge.unregister(agent_id, project_id, session_id)
         logger.info("ACP bridge disconnected for agent %s", agent_id)
 
 
@@ -133,3 +138,14 @@ def _require_internal_key(x_internal_token: str = Header(default="")) -> None:
 async def bridge_status(agent_id: str) -> dict:
     """Internal endpoint proxied by services/api's GetACPBridgeStatus."""
     return {"connected": await acp_bridge.is_online(agent_id)}
+
+
+@router.post("/disconnect/{agent_id}", dependencies=[Depends(_require_internal_key)])
+async def bridge_disconnect(agent_id: str) -> dict:
+    """Internal endpoint: force-close any currently connected bridge session
+    for this agent. Called by services/api right after a bridge token is
+    regenerated, so a daemon still holding the old token can't stay
+    connected indefinitely (see agent_handler.go's GenerateACPBridgeToken).
+    """
+    await acp_bridge.evict(agent_id)
+    return {"ok": True}

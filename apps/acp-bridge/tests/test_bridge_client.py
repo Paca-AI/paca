@@ -1,5 +1,6 @@
 """Tests for BridgeClient's URL conversion and message dispatch."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -61,6 +62,52 @@ async def test_handle_message_ignores_unknown_type(client):
     client._runner.interrupt.assert_not_called()
 
 
-async def test_send_drops_message_when_not_connected(client):
-    # No connection established — should log and return rather than raise.
+async def test_send_queues_message_when_not_connected(client):
+    # No connection established — the message is queued rather than dropped.
     await client._send({"type": "ping"})
+
+    assert client._outbox.qsize() == 1
+    assert await client._outbox.get() == {"type": "ping"}
+
+
+async def test_sender_loop_delivers_queued_message_once_connected(client):
+    ws = AsyncMock()
+    await client._send({"type": "turn_status", "conversation_id": "c1", "status": "finished"})
+
+    sender = asyncio.create_task(client._sender_loop())
+    try:
+        # Simulate a connection becoming available shortly after the message
+        # was queued (e.g. still reconnecting when _send was called).
+        await asyncio.sleep(0)
+        client._ws = ws
+        for _ in range(100):
+            if ws.send.await_count:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        sender.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await sender
+
+    ws.send.assert_awaited_once()
+    assert '"conversation_id": "c1"' in ws.send.await_args.args[0]
+
+
+async def test_sender_loop_retries_after_send_failure(client):
+    ws = AsyncMock()
+    ws.send.side_effect = [RuntimeError("connection reset"), None]
+    client._ws = ws
+    await client._send({"type": "ping"})
+
+    sender = asyncio.create_task(client._sender_loop())
+    try:
+        for _ in range(200):
+            if ws.send.await_count >= 2:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        sender.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await sender
+
+    assert ws.send.await_count == 2

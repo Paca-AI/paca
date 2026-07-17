@@ -27,6 +27,13 @@ type ServerConfig struct {
 	Port         string
 	CookieSecure bool   // set Secure flag on auth cookies; enable when behind an SSL-terminating proxy
 	PublicURL    string // externally reachable base URL (for example, https://paca.example.com)
+	// CORSAllowedOrigins is the allow-list of frontend origins permitted to
+	// make cross-origin requests. A single "*" (the default, for backward
+	// compatibility with existing deployments that don't set CORS_ORIGINS)
+	// reflects Access-Control-Allow-Origin: * for every request; any other
+	// value is an exact-match allow-list. Configure via the comma-separated
+	// CORS_ORIGINS environment variable, e.g. "https://paca.example.com".
+	CORSAllowedOrigins []string
 }
 
 // AdminConfig holds the default administrator credentials seeded on first startup.
