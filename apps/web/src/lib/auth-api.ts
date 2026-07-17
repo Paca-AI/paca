@@ -66,6 +66,10 @@ export async function getMeOptional(): Promise<User | null> {
 export interface AuthConfig {
 	oidc_enabled: boolean;
 	oidc_button_label: string;
+	/** Galaxy chat dock (ADR-038 P3.2): mount `<galaxy-chat-dock>` after login. */
+	dock_enabled: boolean;
+	/** Dock bundle URL, e.g. https://ai.skyplatform.net/dock.js or /dock.js. */
+	dock_src: string;
 }
 
 export async function getAuthConfig(): Promise<AuthConfig> {

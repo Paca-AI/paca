@@ -295,6 +295,12 @@ func New(cfg *config.Config) (*App, error) {
 
 	authHandler := handler.NewAuthHandler(authService, cookieCfg)
 
+	// Galaxy chat dock (ADR-038 P3.2): advertise the dock bundle URL on the
+	// public /auth/config endpoint so the SPA mounts it after login.
+	if cfg.GalaxyDockSrc != "" {
+		authHandler = authHandler.WithGalaxyDock(cfg.GalaxyDockSrc)
+	}
+
 	// --- Galaxy identity (ADR-038) -------------------------------------------
 	// OIDC SSO login against the Vortex identity provider. Off unless
 	// OIDC_ISSUER is set; discovery/JWKS are fetched lazily on first login.

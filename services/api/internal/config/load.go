@@ -237,6 +237,8 @@ func Load() (*Config, error) {
 			ButtonLabel:     env("OIDC_BUTTON_LABEL", "Sign in with Vortex"),
 		},
 		AIAgentURL: env("AI_AGENT_URL", "http://ai-agent:8080"),
+		// Galaxy chat dock (ADR-038 P3.2) — empty keeps the dock disabled.
+		GalaxyDockSrc: env("GALAXY_DOCK_SRC", ""),
 	}, nil
 }
 
