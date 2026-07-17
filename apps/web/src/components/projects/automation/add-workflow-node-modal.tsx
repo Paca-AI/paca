@@ -113,7 +113,7 @@ export function AddWorkflowNodeModal({
 					</div>
 				</div>
 
-				<div className="mx-5 mb-5 rounded-xl border border-border/20 overflow-hidden max-h-64 overflow-y-auto [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/40">
+				<div className="mx-5 mb-5 rounded-xl border border-border/20 overflow-hidden max-h-64 overflow-y-auto [scrollbar-gutter:stable]">
 					{loading && (
 						<div className="flex items-center justify-center py-8 text-muted-foreground/50 text-sm">
 							{t("automation.addNodeModal.loadingTasks")}

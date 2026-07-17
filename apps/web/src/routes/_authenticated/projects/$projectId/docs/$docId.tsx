@@ -175,7 +175,7 @@ function DocEditorPage() {
 			{/* ── Body: editor + optional right panel ──────────────────────── */}
 			<div className="flex flex-1 min-h-0 overflow-hidden">
 				{/* Editor area */}
-				<div className="flex-1 overflow-y-auto [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60 [&::-webkit-scrollbar-thumb]:hover:bg-border">
+				<div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
 					<div className="max-w-7xl mx-auto px-8 py-7">
 						{doc && (
 							<DocEditor
