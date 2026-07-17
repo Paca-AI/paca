@@ -51,7 +51,7 @@ Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng
 ## Agent surface = ChatDock (ADR-037/ADR-038 — từ 17/07)
 
 Bề mặt agent chính thức của Galaxy Tasks là **ChatDock của platform**
-(assistant AgentOps `app_id=paca`, migration `0069_paca_assistant`), KHÔNG
+(assistant AgentOps `app_id=paca`, migrations `0069`–`0071`), KHÔNG
 phải agent OpenHands in-app nữa:
 
 - **Chat chủ động:** dock trên tasks.skyplatform.net resolve assistant qua
