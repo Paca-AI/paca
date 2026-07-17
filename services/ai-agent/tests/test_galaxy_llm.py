@@ -205,3 +205,92 @@ async def test_galaxy_mode_on_resolves_then_mints(monkeypatch):
     ):
         assert await galaxy_llm_api_key(MEMBER_ID) == "tok"
     assert fake.calls[0]["json"]["extra"]["act_as"] == "bob@example.com"
+
+
+# ─── resolve_mcp_act_as_sub / mint_paca_mcp_token / galaxy_mcp_bearer_token ──
+
+
+from src.agent.galaxy_llm import (  # noqa: E402
+    _mcp_token_ttl_seconds,
+    galaxy_mcp_bearer_token,
+    resolve_mcp_act_as_sub,
+)
+
+
+async def test_mcp_act_as_uses_oidc_sub_never_email():
+    # Paca resolves principals via users.oidc_sub — an email would never match.
+    row = {"is_agent": False, "email": "alice@example.com", "oidc_sub": "sub-uuid"}
+    with patch.object(galaxy_llm, "get_pool", AsyncMock(return_value=_pool_returning(row))):
+        assert await resolve_mcp_act_as_sub(MEMBER_ID) == "sub-uuid"
+
+
+async def test_mcp_act_as_none_when_user_has_no_oidc_sub():
+    # Non-SSO user: NO email fallback — fail closed at the API instead.
+    row = {"is_agent": False, "email": "alice@example.com", "oidc_sub": None}
+    with patch.object(galaxy_llm, "get_pool", AsyncMock(return_value=_pool_returning(row))):
+        assert await resolve_mcp_act_as_sub(MEMBER_ID) is None
+
+
+async def test_mcp_act_as_none_for_agent_actor():
+    row = {"is_agent": True, "email": None, "oidc_sub": "agent-sub"}
+    with patch.object(galaxy_llm, "get_pool", AsyncMock(return_value=_pool_returning(row))):
+        assert await resolve_mcp_act_as_sub(MEMBER_ID) is None
+
+
+def test_mcp_token_ttl_is_conversation_timeout_plus_buffer_capped(monkeypatch):
+    # Ideal = conversation timeout + 10 min, but identity hard-clamps service
+    # tokens to 900s (C2 bound) — we cap explicitly rather than pretending.
+    monkeypatch.setattr(galaxy_llm.settings, "conversation_timeout_seconds", 120)
+    assert _mcp_token_ttl_seconds() == 120 + 600
+    monkeypatch.setattr(galaxy_llm.settings, "conversation_timeout_seconds", 3600)
+    assert _mcp_token_ttl_seconds() == 900
+
+
+async def test_mcp_mint_sends_paca_aud_and_sub_act_as(monkeypatch):
+    _galaxy_settings(monkeypatch)
+    monkeypatch.setattr(galaxy_llm.settings, "conversation_timeout_seconds", 3600)
+    row = {"is_agent": False, "email": "cao.phan@galaxytechnology.vn", "oidc_sub": "debe7c24-sub"}
+    fake = _FakeAsyncClient(response=_FakeResponse(200, {"access_token": "mcp-tok"}))
+    with (
+        patch.object(galaxy_llm, "get_pool", AsyncMock(return_value=_pool_returning(row))),
+        patch.object(galaxy_llm.httpx, "AsyncClient", fake),
+    ):
+        assert await galaxy_mcp_bearer_token(MEMBER_ID) == "mcp-tok"
+    body = fake.calls[0]["json"]
+    assert body["aud"] == "paca-api"
+    assert body["ttl_seconds"] == 900
+    # act_as is the Vortex OIDC sub, NOT the email (users.oidc_sub mapping).
+    assert body["extra"]["act_as"] == "debe7c24-sub"
+    assert body["extra"]["act_as_agent"] == "paca-ai"
+
+
+async def test_mcp_token_none_when_galaxy_mode_off(monkeypatch):
+    _galaxy_settings(monkeypatch, galaxy_ai_role="")
+    assert await galaxy_mcp_bearer_token(MEMBER_ID) is None
+
+
+async def test_mcp_token_minted_without_act_as_for_non_sso_actor(monkeypatch):
+    # Fail-closed delivery: the token still ships, Paca rejects it (401), the
+    # MCP server surfaces a clear zero-tools error — never impersonation.
+    _galaxy_settings(monkeypatch)
+    row = {"is_agent": False, "email": "nobody@example.com", "oidc_sub": None}
+    fake = _FakeAsyncClient(response=_FakeResponse(200, {"access_token": "t"}))
+    with (
+        patch.object(galaxy_llm, "get_pool", AsyncMock(return_value=_pool_returning(row))),
+        patch.object(galaxy_llm.httpx, "AsyncClient", fake),
+    ):
+        assert await galaxy_mcp_bearer_token(MEMBER_ID) == "t"
+    assert "act_as" not in fake.calls[0]["json"]["extra"]
+
+
+async def test_mcp_mint_refused_raises(monkeypatch):
+    _galaxy_settings(monkeypatch)
+    row = {"is_agent": False, "email": None, "oidc_sub": "s"}
+    fake = _FakeAsyncClient(response=_FakeResponse(403, {}))
+    with (
+        patch.object(galaxy_llm, "get_pool", AsyncMock(return_value=_pool_returning(row))),
+        patch.object(galaxy_llm.httpx, "AsyncClient", fake),
+    ):
+        with pytest.raises(RuntimeError) as err:
+            await galaxy_mcp_bearer_token(MEMBER_ID)
+    assert "403" in str(err.value)

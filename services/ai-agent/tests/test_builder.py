@@ -397,3 +397,54 @@ def test_galaxy_role_static_key_override_is_dev_fallback(catalog, monkeypatch):
     llm = build_llm(_agent_config())
     assert llm.api_key is not None
     assert llm.api_key.get_secret_value() == "static-dev-key"
+
+
+# ─── build_mcp_config: bearer mode (galaxy fork, ADR-038) ────────────────────
+
+
+def test_paca_server_bearer_mode_env(with_paca_key):
+    cfg = build_mcp_config([], "agent-99", "proj-42", mcp_bearer_token="rs256-mcp-token")
+    paca = cfg["paca"]
+    assert paca["command"] == "npx"
+    assert paca["args"] == ["-y", "@paca-ai/paca-mcp"]
+    env = paca["env"]
+    assert env["PACA_AUTH_MODE"] == "bearer"
+    assert env["PACA_MCP_TOKEN"] == "rs256-mcp-token"
+    assert env["PACA_PROJECT_ID"] == "proj-42"
+    assert env["PACA_API_URL"] == "http://api:8080"
+    assert env["PACA_GATEWAY_URL"] == "http://gateway"
+    # Never ship the legacy identity-header credentials alongside the bearer:
+    # the API rejects header impersonation by design (ADR-038).
+    assert "PACA_API_KEY" not in env
+    assert "PACA_AGENT_ID" not in env
+
+
+def test_paca_server_bearer_mode_works_without_api_key(no_paca_key):
+    # Galaxy mode must not depend on the legacy pre-shared AGENT_API_KEY.
+    no_paca_key.api_base_url = "http://api:8080"
+    no_paca_key.gateway_base_url = "http://gateway"
+    no_paca_key.dev_mcp_path = ""
+    cfg = build_mcp_config([], "a", "p", mcp_bearer_token="tok")
+    assert cfg["paca"]["env"]["PACA_AUTH_MODE"] == "bearer"
+    assert "PACA_API_KEY" not in cfg["paca"]["env"]
+
+
+def test_paca_server_bearer_mode_respects_dev_mcp_path(with_paca_key):
+    with_paca_key.dev_mcp_path = "/mcp/build/index.js"
+    cfg = build_mcp_config([], "a", "p", mcp_bearer_token="tok")
+    assert cfg["paca"]["command"] == "node"
+    assert cfg["paca"]["args"] == ["/mcp/build/index.js"]
+
+
+def test_paca_server_no_token_no_key_stays_omitted(no_paca_key):
+    cfg = build_mcp_config([], "a", "p", mcp_bearer_token=None)
+    assert "paca" not in cfg
+
+
+def test_paca_server_apikey_path_unchanged_without_token(with_paca_key):
+    cfg = build_mcp_config([], "agent-99", "proj-42", mcp_bearer_token=None)
+    env = cfg["paca"]["env"]
+    assert env["PACA_API_KEY"] == "test-api-key"
+    assert env["PACA_AGENT_ID"] == "agent-99"
+    assert "PACA_AUTH_MODE" not in env
+    assert "PACA_MCP_TOKEN" not in env

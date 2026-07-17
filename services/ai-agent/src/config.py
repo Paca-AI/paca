@@ -93,6 +93,12 @@ class Settings(BaseSettings):
     # Worker
     worker_concurrency: int = 10
 
+    # Upper bound on a single conversation turn (the executor's polling loop
+    # gives up after this long).  Also feeds the Paca MCP bearer token TTL
+    # request (conversation timeout + buffer — see galaxy_llm), though the
+    # identity mint endpoint clamps TTLs to its own platform maximum.
+    conversation_timeout_seconds: int = 3600
+
     # Chat sandboxes are kept alive between turns instead of being torn down
     # after each reply (so the agent has memory across a chat session). The
     # frontend pings an "agent.heartbeat" control message every ~30s while a

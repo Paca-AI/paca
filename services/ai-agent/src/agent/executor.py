@@ -30,7 +30,7 @@ from ..repositories import conversation_repository
 from . import trigger_skills
 from .builder import build_llm, build_mcp_config, build_skills, load_default_skills
 from .docker_workspace import start_sandbox, stop_sandbox
-from .galaxy_llm import galaxy_llm_api_key
+from .galaxy_llm import galaxy_llm_api_key, galaxy_mcp_bearer_token
 from .prompt import build_initial_prompt, build_trigger_suffix
 from .repo_tools import make_repository_tool_specs
 
@@ -492,13 +492,22 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
         # sandbox, so the token from the conversation's FIRST turn keeps
         # authenticating its LLM calls — see galaxy_llm's TTL note.
         llm = build_llm(agent_config, api_key=await galaxy_llm_api_key(trigger.actor_member_id))
+        # Second platform token for the built-in Paca MCP server (bearer mode):
+        # act_as = the triggering user's Vortex OIDC sub, delivered into the
+        # sandbox as PACA_MCP_TOKEN via the serialized MCP env (never logged).
+        # None when GALAXY_AI_ROLE is off → build_mcp_config keeps the
+        # upstream PACA_API_KEY path.
+        mcp_bearer_token = await galaxy_mcp_bearer_token(trigger.actor_member_id)
         # User-configured skills win on a name collision with a default.
         skills = merge_skills_by_name(build_skills(agent_config.skills), load_default_skills())
         trigger_skills.append_trigger_skill(
             skills, trigger.trigger_type, trigger.task_id, trigger.conversation_id
         )
         mcp_config = build_mcp_config(
-            agent_config.mcp_servers, agent_config.agent_id, trigger.project_id
+            agent_config.mcp_servers,
+            agent_config.agent_id,
+            trigger.project_id,
+            mcp_bearer_token=mcp_bearer_token,
         )
 
         system_suffix = agent_config.system_prompt or ""
@@ -645,7 +654,11 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                     conversation.run(blocking=False)
                     reconcile = _make_reconciler(trigger, loop, counter, seen_events)
                     stopped, errored, shutdown = _wait_for_done_or_stop(
-                        conversation, stop_event, pause_event, reconcile
+                        conversation,
+                        stop_event,
+                        pause_event,
+                        reconcile,
+                        timeout=float(settings.conversation_timeout_seconds),
                     )
                 finally:
                     active_conversations.pop(trigger.conversation_id, None)
