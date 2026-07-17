@@ -30,6 +30,7 @@ from ..repositories import conversation_repository
 from . import trigger_skills
 from .builder import build_llm, build_mcp_config, build_skills, load_default_skills
 from .docker_workspace import start_sandbox, stop_sandbox
+from .galaxy_llm import galaxy_llm_api_key
 from .prompt import build_initial_prompt, build_trigger_suffix
 from .repo_tools import make_repository_tool_specs
 
@@ -485,7 +486,12 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
     pause_events[trigger.conversation_id] = pause_event
 
     try:
-        llm = build_llm(agent_config)
+        # Galaxy platform routing (ADR-038 T3): mint a fresh act_as token per
+        # turn, naming the triggering user. None when GALAXY_AI_ROLE is off.
+        # On resumed chat turns the SDK never re-sends the agent spec to the
+        # sandbox, so the token from the conversation's FIRST turn keeps
+        # authenticating its LLM calls — see galaxy_llm's TTL note.
+        llm = build_llm(agent_config, api_key=await galaxy_llm_api_key(trigger.actor_member_id))
         # User-configured skills win on a name collision with a default.
         skills = merge_skills_by_name(build_skills(agent_config.skills), load_default_skills())
         trigger_skills.append_trigger_skill(

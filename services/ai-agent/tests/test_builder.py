@@ -344,3 +344,56 @@ def test_no_override_keeps_agent_configured_values(catalog):
     assert llm.base_url == "http://self-hosted:8000/v1"
     assert llm.api_key is not None
     assert llm.api_key.get_secret_value() == "secret-ref"
+
+
+# ─── GALAXY_AI_ROLE platform routing (ADR-038 T3) ────────────────────────────
+
+
+def test_galaxy_role_routes_model_and_base_url_to_platform_proxy(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "galaxy_ai_role", "paca-ai")
+    monkeypatch.setattr(
+        builder.settings, "galaxy_ai_proxy_url", "http://nexus-identity:8086/ai/v1"
+    )
+    config = _agent_config(
+        provider="anthropic", model="claude-sonnet-4-6", base_url="https://api.anthropic.com"
+    )
+    llm = build_llm(config, api_key="minted-act-as-token")
+    # model = the AI ROLE — identity resolves it via ai_role_assignments.
+    assert llm.model == "openai/paca-ai"
+    assert llm.base_url == "http://nexus-identity:8086/ai/v1"
+    assert llm.api_key is not None
+    assert llm.api_key.get_secret_value() == "minted-act-as-token"
+
+
+def test_galaxy_role_wins_over_llm_base_url_override(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "galaxy_ai_role", "paca-ai")
+    monkeypatch.setattr(
+        builder.settings, "galaxy_ai_proxy_url", "http://nexus-identity:8086/ai/v1"
+    )
+    monkeypatch.setattr(builder.settings, "llm_base_url_override", "https://other.example/v1")
+    llm = build_llm(_agent_config(), api_key="tok")
+    assert llm.base_url == "http://nexus-identity:8086/ai/v1"
+    assert llm.model == "openai/paca-ai"
+
+
+def test_galaxy_role_without_token_fails_closed(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "galaxy_ai_role", "paca-ai")
+    monkeypatch.setattr(builder.settings, "llm_api_key_override", "")
+    with pytest.raises(RuntimeError):
+        build_llm(_agent_config())
+
+
+def test_galaxy_role_static_key_override_is_dev_fallback(catalog, monkeypatch):
+    from src.agent import builder
+
+    monkeypatch.setattr(builder.settings, "galaxy_ai_role", "paca-ai")
+    monkeypatch.setattr(builder.settings, "llm_api_key_override", "static-dev-key")
+    llm = build_llm(_agent_config())
+    assert llm.api_key is not None
+    assert llm.api_key.get_secret_value() == "static-dev-key"
