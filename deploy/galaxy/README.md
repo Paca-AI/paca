@@ -58,6 +58,40 @@ Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng
 - **Network:** ai-agent join `galaxy_network` (alias tường minh `paca-ai-agent`; alias ngầm `ai-agent` đã scan không đụng 17/07). Sandbox agent-server TỰ gọi LLM nên cũng phải join — `SANDBOX_EXTRA_NETWORKS=galaxy_network` (connect sau create, network này bị LOẠI khỏi slot primary để `api`/`gateway` vẫn resolve trên stack network; sandbox tên ngẫu nhiên, không alias → không đụng DNS).
 - Bật/tắt: `up -d --scale ai-agent=1` / `=0`. Fail-closed: thiếu `GALAXY_INTERNAL_SERVICE_SECRET` khi đã set role → container từ chối start.
 
+## Paca MCP bearer — tool write-backs mang danh user (ADR-038)
+
+Agent trong sandbox gọi Paca API (tạo task, comment, đổi status, …) qua MCP
+server built-in. Ở galaxy mode nó chạy **`PACA_AUTH_MODE=bearer`**: mỗi
+conversation, ai-agent mint token RS256 THỨ HAI (cùng mint endpoint, cùng
+`X-Service-Secret`) với `aud=paca-api`, `act_as` = **Vortex OIDC sub** của
+user kích hoạt (KHÔNG phải email — API map principal qua `users.oidc_sub`,
+điền lúc user login SSO lần đầu), `act_as_agent=paca-ai`, rồi đưa vào sandbox
+qua env `PACA_MCP_TOKEN` trong MCP config (kênh serialize sẵn có, không log).
+API verify qua JWKS của `GALAXY_TRUSTED_ISSUER` và cần
+`GALAXY_TRUSTED_ISSUER_CLAIMS=galaxy-nexus` (identity đóng dấu iss logic
+`galaxy-nexus`, không phải URL — chỉ nới string-so-sánh claim `iss`, chữ ký
+vẫn kiểm đúng một bộ JWKS đó).
+
+**Nguyên tắc principal — fail-closed, KHÔNG bot user:**
+
+- Agent chỉ viết được với đúng quyền của user kích hoạt (assign/mention/chat
+  → `actor_member_id` → `project_members`→`users.oidc_sub`). Comment/task
+  hiện tên user, kèm attribution agent (`act_as_agent`) trong log API.
+- **User kích hoạt PHẢI là user SSO** (đã từng đăng nhập Vortex để có
+  `oidc_sub`). User local-password hoặc trigger không rõ actor → token mint
+  KHÔNG có `act_as` → API 401 → MCP server expose **0 tool** với lỗi nói rõ
+  lý do, không retry (latch chống MaxIterations loop). Không có fallback bot
+  user, không header impersonation (`AGENT_HEADER_IMPERSONATION=disabled`
+  giữ nguyên; cặp `X-API-Key`+`X-Agent-ID` vẫn bị 401 by design).
+- **TTL:** xin `conversation_timeout + 10 phút` nhưng identity clamp cứng
+  900s (chặn C2, xem `identity_service/api/internal.py`) — conversation chạy
+  quá ~15 phút sẽ mất quyền write-back MCP với lỗi 401 rõ ràng (cùng
+  trade-off với LLM token ở trên).
+- Image sandbox: `deploy/galaxy/agent-server/Dockerfile` overlay bundle MCP
+  của fork lên image upstream — build trên prod host, pin qua
+  `AGENT_SERVER_IMAGE=galaxy-local/paca-agent-server:<tag>-galaxy.N`, bump
+  suffix mỗi lần rebuild.
+
 ## Upgrade theo upstream (pin-and-roll)
 
 1. Đọc release notes upstream + `deploy/upgrade.sh` diff của bản mới.

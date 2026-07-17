@@ -38,6 +38,15 @@ type Provider struct {
 	issuer string
 	client *http.Client
 
+	// extraIssuerClaims are additional values accepted for the iss CLAIM on
+	// verified tokens (signature verification is unaffected — it always runs
+	// against this provider's JWKS).  Needed because the Vortex identity
+	// service stamps service/act_as tokens with a logical issuer name
+	// ("galaxy-nexus") while its OIDC discovery/JWKS live at the issuer URL
+	// this Provider is constructed with.  Empty = strict (iss must equal the
+	// issuer URL exactly), which is the default and the SSO id_token path.
+	extraIssuerClaims []string
+
 	mu            sync.Mutex
 	discovery     *Discovery
 	keys          map[string]*rsa.PublicKey
@@ -50,6 +59,19 @@ func NewProvider(issuer string) *Provider {
 		issuer: issuer,
 		client: &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+// NewProviderWithIssuerClaims returns a Provider that, in addition to the
+// issuer URL itself, accepts the given iss claim values on tokens verified
+// against this issuer's JWKS.  The trust anchor is unchanged: only tokens
+// whose signature checks out against keys fetched from `issuer` are ever
+// accepted — this merely relaxes the string equality of the iss claim to a
+// configured allow-list (ADR-038: identity's /internal/mint-service-token
+// stamps iss="galaxy-nexus", not the discovery URL).
+func NewProviderWithIssuerClaims(issuer string, extraIssuerClaims []string) *Provider {
+	p := NewProvider(issuer)
+	p.extraIssuerClaims = extraIssuerClaims
+	return p
 }
 
 // Issuer returns the configured issuer base URL.
@@ -82,11 +104,19 @@ func (p *Provider) discoverLocked(ctx context.Context) (*Discovery, error) {
 // VerifyToken parses and validates an RS256 token issued by this provider:
 // signature against the issuer JWKS, iss, exp (required) and — when
 // expectedAudience is non-empty — aud.  It returns the token's claims.
+//
+// The iss claim must equal the issuer URL, or — for providers constructed
+// via NewProviderWithIssuerClaims — one of the configured extra claim
+// values.  Signature verification always runs against this issuer's JWKS
+// regardless.
 func (p *Provider) VerifyToken(ctx context.Context, rawToken, expectedAudience string) (jwt.MapClaims, error) {
 	opts := []jwt.ParserOption{
 		jwt.WithValidMethods([]string{"RS256"}),
-		jwt.WithIssuer(p.issuer),
 		jwt.WithExpirationRequired(),
+	}
+	if len(p.extraIssuerClaims) == 0 {
+		// Strict single-issuer mode: let the parser enforce it.
+		opts = append(opts, jwt.WithIssuer(p.issuer))
 	}
 	if expectedAudience != "" {
 		opts = append(opts, jwt.WithAudience(expectedAudience))
@@ -104,7 +134,31 @@ func (p *Provider) VerifyToken(ctx context.Context, rawToken, expectedAudience s
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("oidc: verify token: invalid claims")
 	}
+
+	if len(p.extraIssuerClaims) > 0 {
+		iss, _ := claims.GetIssuer()
+		if !p.issuerClaimAllowed(iss) {
+			return nil, fmt.Errorf("oidc: verify token: token has invalid issuer %q", iss)
+		}
+	}
 	return claims, nil
+}
+
+// issuerClaimAllowed reports whether iss is the issuer URL itself or one of
+// the configured extra issuer claim values.  Empty iss is never allowed.
+func (p *Provider) issuerClaimAllowed(iss string) bool {
+	if iss == "" {
+		return false
+	}
+	if iss == p.issuer {
+		return true
+	}
+	for _, allowed := range p.extraIssuerClaims {
+		if iss == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 // keyForKID returns the RSA public key for kid, refreshing the JWKS cache

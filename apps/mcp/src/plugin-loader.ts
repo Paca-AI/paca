@@ -15,6 +15,7 @@
 import { resolve4, resolve6 } from "node:dns/promises";
 import { isIPv4, isIPv6 } from "node:net";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { buildAuthHeaders, registerAuthResponse } from "./auth.js";
 import type { PacaConfig } from "./types/index.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -208,9 +209,10 @@ async function fetchInstalledPlugins(
 	const response = await fetch(url, {
 		headers: {
 			"Content-Type": "application/json",
-			"X-API-Key": config.apiKey,
+			...buildAuthHeaders(config),
 		},
 	});
+	registerAuthResponse(response.status, config);
 
 	if (!response.ok) {
 		const text = await response.text();

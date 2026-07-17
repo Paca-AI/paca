@@ -158,6 +158,7 @@ def build_mcp_config(
     db_servers: list[AgentMCPServerRow],
     agent_id: str,
     project_id: str,
+    mcp_bearer_token: str | None = None,
 ) -> dict:
     """Build the MCP server configuration dict for the OpenHands SDK.
 
@@ -166,6 +167,14 @@ def build_mcp_config(
 
     User-configured servers come first; the built-in Paca MCP server is always
     appended last so it cannot be overridden by user entries.
+
+    ``mcp_bearer_token`` (galaxy mode, ADR-038) switches the built-in Paca MCP
+    server to PACA_AUTH_MODE=bearer: the per-conversation RS256 platform token
+    is the ONLY credential — no PACA_API_KEY and no PACA_AGENT_ID, because the
+    principal comes from the token's signed act_as claim and the API rejects
+    header impersonation by design (AGENT_HEADER_IMPERSONATION=disabled).
+    The env dict travels to the sandbox inside the serialized agent spec (the
+    same channel PACA_API_KEY used); it is never logged here.
     """
     servers: dict = {}
 
@@ -184,21 +193,27 @@ def build_mcp_config(
                 **({"auth": {"strategy": "oauth2"}} if row.transport == "oauth" else {}),
             }
 
-    if settings.paca_api_key:
+    if mcp_bearer_token or settings.paca_api_key:
         if settings.dev_mcp_path:
             command, args = "node", [settings.dev_mcp_path]
         else:
             command, args = "npx", ["-y", "@paca-ai/paca-mcp"]
-        servers["paca"] = {
-            "command": command,
-            "args": args,
-            "env": {
+        if mcp_bearer_token:
+            env = {
+                "PACA_AUTH_MODE": "bearer",
+                "PACA_MCP_TOKEN": mcp_bearer_token,
+                "PACA_API_URL": settings.api_base_url,
+                "PACA_GATEWAY_URL": settings.gateway_base_url,
+                "PACA_PROJECT_ID": project_id,
+            }
+        else:
+            env = {
                 "PACA_API_KEY": settings.paca_api_key,
                 "PACA_API_URL": settings.api_base_url,
                 "PACA_GATEWAY_URL": settings.gateway_base_url,
                 "PACA_AGENT_ID": agent_id,
                 "PACA_PROJECT_ID": project_id,
-            },
-        }
+            }
+        servers["paca"] = {"command": command, "args": args, "env": env}
 
     return servers

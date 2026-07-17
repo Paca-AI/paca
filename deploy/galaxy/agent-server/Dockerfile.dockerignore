@@ -1,0 +1,8 @@
+# Per-Dockerfile ignore (BuildKit) — keeps a locally-dirty apps/mcp context
+# (dev node_modules, previous build output) out of the image build; the
+# Dockerfile installs and compiles everything itself from the lockfile.
+node_modules
+build
+coverage
+.env
+.env.*

@@ -1,3 +1,4 @@
+import { buildAuthHeaders, registerAuthResponse } from "./auth.js";
 import type { PacaConfig } from "./types/index.js";
 
 export interface PermissionMap {
@@ -366,16 +367,14 @@ export async function fetchAgentPermissions(
 	try {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			"X-API-Key": config.apiKey,
+			...buildAuthHeaders(config),
 		};
-		if (config.agentId) {
-			headers["X-Agent-ID"] = config.agentId;
-		}
 
 		if (!config.agentId) {
 			try {
 				const globalUrl = `${config.baseURL}/api/v1/users/me/global-permissions`;
 				const globalResponse = await fetch(globalUrl, { headers });
+				registerAuthResponse(globalResponse.status, config);
 
 				if (globalResponse.ok) {
 					const globalJson = await globalResponse.json();
@@ -421,6 +420,7 @@ export async function fetchAgentPermissions(
 			try {
 				const permUrl = `${config.baseURL}/api/v1/projects/${projectId}/members/me/permissions`;
 				const permResponse = await fetch(permUrl, { headers });
+				registerAuthResponse(permResponse.status, config);
 
 				if (permResponse.ok) {
 					const permJson = await permResponse.json();

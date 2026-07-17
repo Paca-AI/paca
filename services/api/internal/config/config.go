@@ -202,6 +202,17 @@ type SecurityConfig struct {
 	// Configure via the GALAXY_TRUSTED_ISSUER environment variable.
 	GalaxyTrustedIssuer string
 
+	// GalaxyTrustedIssuerClaims lists ADDITIONAL iss claim values accepted on
+	// bearer tokens whose signature verifies against the trusted issuer's
+	// JWKS.  Needed because the Vortex identity service stamps service/act_as
+	// tokens (its /internal/mint-service-token endpoint) with the logical
+	// issuer name "galaxy-nexus" while its OIDC discovery/JWKS live at
+	// GALAXY_TRUSTED_ISSUER.  The signature check — the actual trust
+	// boundary — is unaffected.  Empty = strict (iss must equal
+	// GALAXY_TRUSTED_ISSUER exactly).
+	// Configure via GALAXY_TRUSTED_ISSUER_CLAIMS (comma-separated).
+	GalaxyTrustedIssuerClaims []string
+
 	// AgentHeaderImpersonation re-enables the legacy AGENT_API_KEY +
 	// X-Agent-ID header impersonation path.  Disabled by default per
 	// ADR-038 (identity must come from signed tokens, never headers).
