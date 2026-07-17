@@ -50,6 +50,14 @@ Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng
 
 - `skills/` — 3 skill PM analyst cho Paca agent (ADR-038 P3.4), chuyển thể từ prompt của PM service (`pm_service/routers/ai_service.py`) sang MCP tools của Paca: `galaxy-sprint-health` (sức khoẻ sprint 🟢/🟡/🔴, tiếng Việt mặc định), `galaxy-triage` (gợi ý epic/importance/tags), `galaxy-estimate` (story points Fibonacci kèm lý do). Gắn **inline theo từng agent** qua UI (agent → Skills tab) hoặc API — runbook trong `skills/README.md`. Prod KHÔNG cấp key LLM riêng cho agent: toàn bộ traffic đã ép qua platform proxy bằng `LLM_BASE_URL_OVERRIDE` (ADR-038, xem mục Topology).
 
+## AI Agents qua platform AI role (ADR-038 T3)
+
+- `GALAXY_AI_ROLE=paca-ai` (`.env.galaxy`) ép TOÀN BỘ LLM traffic của ai-agent qua identity `/ai/v1` với `model=paca-ai` — proxy resolve role qua `ai_role_assignments` (đổi model tại `/nexus/admin` → AI Models, mục Roles, KHÔNG cần redeploy Paca). Không agent nào cầm key LLM thô.
+- **Attribution:** mỗi conversation mint một token RS256 tại `POST nexus-identity:8086/internal/mint-service-token` (header `X-Service-Secret` = `GALAXY_INTERNAL_SERVICE_SECRET`, chép từ `~/Nexus/Galaxy-Nexus/runtime/galaxy-shared/*.env` lúc deploy — KHÔNG commit). Claims: `sub=paca-service@galaxy.internal.nexus`, `act_as` = email user kích hoạt (assign/mention/chat, tra `project_members`→`users`), `act_as_agent=paca-ai` → hiện trong `ai_usage_logs` (`on_behalf_of`/`agent_id`).
+- **TTL 900s (trần của mint endpoint):** token được SDK gửi vào sandbox MỘT LẦN lúc mở conversation (kể cả chat resume không gửi lại) — conversation chạy quá 15 phút sẽ 401 ở proxy và fail. Trade-off đã ghi nhận; nếu thành vấn đề thật thì cần cơ chế refresh secret phía agent-server.
+- **Network:** ai-agent join `galaxy_network` (alias tường minh `paca-ai-agent`; alias ngầm `ai-agent` đã scan không đụng 17/07). Sandbox agent-server TỰ gọi LLM nên cũng phải join — `SANDBOX_EXTRA_NETWORKS=galaxy_network` (connect sau create, network này bị LOẠI khỏi slot primary để `api`/`gateway` vẫn resolve trên stack network; sandbox tên ngẫu nhiên, không alias → không đụng DNS).
+- Bật/tắt: `up -d --scale ai-agent=1` / `=0`. Fail-closed: thiếu `GALAXY_INTERNAL_SERVICE_SECRET` khi đã set role → container từ chối start.
+
 ## Upgrade theo upstream (pin-and-roll)
 
 1. Đọc release notes upstream + `deploy/upgrade.sh` diff của bản mới.

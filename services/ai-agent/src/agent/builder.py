@@ -38,10 +38,47 @@ def load_default_skills() -> tuple[Skill, ...]:
     )
 
 
-def build_llm(agent_config: AgentConfig) -> LLM:
-    """Construct an OpenHands SDK LLM instance from agent configuration."""
+def build_llm(agent_config: AgentConfig, api_key: str | None = None) -> LLM:
+    """Construct an OpenHands SDK LLM instance from agent configuration.
+
+    ``api_key`` is the per-conversation platform token minted by
+    ``galaxy_llm.galaxy_llm_api_key`` — only used in GALAXY_AI_ROLE mode,
+    where it wins over every stored/override key.
+    """
     provider = agent_config.llm_provider
     llm_base_url = agent_config.llm_base_url or None
+
+    # Galaxy platform role routing (ADR-038 T3): model = the AI ROLE name —
+    # identity's /ai/v1 resolves it via ai_role_assignments to whatever model
+    # the platform admin bound (rebind in /nexus/admin → AI Models, no Paca
+    # redeploy). The "openai/" prefix only picks litellm's OpenAI-compatible
+    # client; the proxy is OpenAI-compatible regardless of the bound model's
+    # real provider. Wins over LLM_BASE_URL_OVERRIDE (a role implies the
+    # platform proxy; configuring both would be contradictory).
+    if settings.galaxy_ai_role.strip():
+        role = settings.galaxy_ai_role.strip()
+        key_val = api_key or settings.llm_api_key_override
+        if not key_val:
+            # Fail closed: without a minted act_as token the proxy would 401
+            # anyway — surface the real cause instead of an upstream auth error.
+            raise RuntimeError(
+                "GALAXY_AI_ROLE is set but no platform token was provided to "
+                "build_llm — the executor must mint one per conversation "
+                "(see src/agent/galaxy_llm.py)."
+            )
+        logger.info(
+            "GALAXY_AI_ROLE active for agent %s: model=openai/%s via %s "
+            "(per-agent provider/model/key/base_url ignored)",
+            agent_config.agent_id,
+            role,
+            settings.galaxy_ai_proxy_url,
+        )
+        return LLM(
+            model=f"openai/{role}",
+            api_key=SecretStr(key_val),
+            base_url=settings.galaxy_ai_proxy_url,
+            stream=True,
+        )
 
     # Platform override (ADR-038): force LLM traffic through the platform
     # proxy regardless of the per-agent llm_base_url stored in the DB.
