@@ -1,0 +1,40 @@
+{
+  "id": "com.galaxy.analytics",
+  "displayName": "Analytics",
+  "description": "Agile analytics for Paca projects (ADR-038 P3.4): sprint progress, velocity, status distribution and a per-sprint report, computed client-side from the user's own session against the same-origin REST API. Native Module Federation views with dependency-free inline SVG charts — no iframe, no chart libraries, no secrets.",
+  "version": "0.1.0",
+  "permissions": [],
+
+  "backend": {
+    "routes": [],
+    "eventSubscriptions": []
+  },
+
+  "frontend": {
+    "remoteEntryUrl": "/plugins/com.galaxy.analytics/assets/remoteEntry.js",
+    "extensionPoints": [
+      {
+        "point": "view",
+        "component": "AnalyticsView",
+        "label": "Analytics",
+        "order": 60
+      },
+      {
+        "point": "project.page",
+        "component": "AnalyticsView",
+        "label": "Analytics",
+        "order": 60
+      }
+    ],
+    "navItems": [
+      {
+        "scope": "project",
+        "slug": "analytics",
+        "label": "Analytics",
+        "icon": "ChartNoAxesCombined",
+        "component": "AnalyticsView",
+        "order": 60
+      }
+    ]
+  }
+}
