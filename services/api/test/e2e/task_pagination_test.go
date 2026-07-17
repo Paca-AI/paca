@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -991,4 +992,107 @@ func TestE2EListTaskPagination_ViewPositionSort(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestE2ECustomFieldFilters_FieldKeyReuseAfterDeleteDoesNotCrash is a
+// regression test: deleting a custom field definition used to leave its
+// stray values behind under that key in every task's custom_fields JSONB
+// column. If a new field definition was then created reusing the same
+// field_key but an incompatible type (e.g. the original field was "select"
+// and the new one is "date"), filtering by the new field crashed the whole
+// query with a Postgres cast error (SQLSTATE 22007: invalid input syntax for
+// type date) on the leftover value, instead of just excluding that task.
+func TestE2ECustomFieldFilters_FieldKeyReuseAfterDeleteDoesNotCrash(t *testing.T) {
+	env := newE2EEnv(t)
+	seedTaskMemberUser(t, env, "cf-reuse-user", "cfreusepass1")
+	client, token := taskMemberLogin(t, env, "cf-reuse-user", "cfreusepass1")
+	projID := createProjectForTasksViaAPI(t, env, client, token)
+
+	selectFieldID := createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
+		"field_key":    "custom_1",
+		"display_name": "Custom 1",
+		"field_type":   "select",
+		"options":      []string{"Test 3", "Other"},
+	})
+	createTaskWithCustomFieldViaAPI(t, env, client, token, projID, "Stale select value",
+		map[string]any{"custom_1": "Test 3"})
+
+	delReq := mustRequest(env.ctx, t, http.MethodDelete,
+		fmt.Sprintf("%s/api/v1/projects/%s/custom-fields/%s", env.base, projID, selectFieldID), nil)
+	delReq.Header.Set("Authorization", "Bearer "+token)
+	delResp := mustDo(t, client, delReq)
+	_ = delResp.Body.Close()
+	assertStatus(t, delResp, http.StatusOK)
+
+	// Recreate a field with the same field_key but an incompatible type.
+	createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
+		"field_key":    "custom_1",
+		"display_name": "Custom 1 (date)",
+		"field_type":   "date",
+	})
+	createTaskWithCustomFieldViaAPI(t, env, client, token, projID, "Valid date value",
+		map[string]any{"custom_1": "2024-03-15"})
+
+	filters, err := json.Marshal(map[string]any{
+		"custom_1": map[string]any{"after": "2024-01-01", "before": "2024-12-31"},
+	})
+	if err != nil {
+		t.Fatalf("marshal filters: %v", err)
+	}
+
+	data := listTasksPage(t, env, client, token, projID, url.Values{
+		"custom_field_filters": {string(filters)},
+	})
+	ids := itemIDs(data)
+	if len(ids) != 1 {
+		t.Fatalf("expected exactly 1 matching task (the valid date; the stale select value must be excluded, not crash the query), got %d: %v", len(ids), ids)
+	}
+}
+
+// TestE2ECustomFieldFilters_InvalidStoredValueDoesNotCrash is a regression
+// test for the more general case underlying the same bug class: custom_fields
+// has no write-time type validation (task creation/update accepts any JSON
+// value regardless of the field's declared type), so a task can end up with
+// a value that doesn't match its field's type through any write path, not
+// just field deletion + key reuse. Filtering or sorting by that field must
+// exclude the invalid row instead of crashing the whole query.
+func TestE2ECustomFieldFilters_InvalidStoredValueDoesNotCrash(t *testing.T) {
+	env := newE2EEnv(t)
+	seedTaskMemberUser(t, env, "cf-invalid-user", "cfinvalidpass1")
+	client, token := taskMemberLogin(t, env, "cf-invalid-user", "cfinvalidpass1")
+	projID := createProjectForTasksViaAPI(t, env, client, token)
+
+	createCustomFieldViaAPI(t, env, client, token, projID, map[string]any{
+		"field_key":    "due",
+		"display_name": "Due",
+		"field_type":   "date",
+	})
+	// No write-time type validation exists today, so this succeeds despite
+	// "not-a-date" being an invalid value for a "date" field.
+	createTaskWithCustomFieldViaAPI(t, env, client, token, projID, "Bad value",
+		map[string]any{"due": "not-a-date"})
+	createTaskWithCustomFieldViaAPI(t, env, client, token, projID, "Good value",
+		map[string]any{"due": "2024-03-15"})
+
+	filters, err := json.Marshal(map[string]any{
+		"due": map[string]any{"after": "2024-01-01", "before": "2024-12-31"},
+	})
+	if err != nil {
+		t.Fatalf("marshal filters: %v", err)
+	}
+
+	data := listTasksPage(t, env, client, token, projID, url.Values{
+		"custom_field_filters": {string(filters)},
+	})
+	ids := itemIDs(data)
+	if len(ids) != 1 {
+		t.Fatalf("expected exactly 1 matching task (invalid date value must be excluded, not crash the query), got %d: %v", len(ids), ids)
+	}
+
+	// Sorting by the same field must not crash either — it hits the same
+	// unguarded-cast bug class in buildCFOrderBy.
+	sortData := listTasksPage(t, env, client, token, projID, url.Values{"sort_by": {"due"}})
+	if got := len(itemIDs(sortData)); got != 2 {
+		t.Fatalf("expected sort_by=due to return both tasks without crashing, got %d: %v", got, itemIDs(sortData))
+	}
 }

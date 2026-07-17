@@ -69,6 +69,9 @@ export function getImportanceBucketBounds(bucket: number): {
 		case 3:
 			return { min: 50, max: 99 };
 		default:
-			return { min: 100, max: Number.MAX_SAFE_INTEGER };
+			// Matches Postgres' `importance` column type (INTEGER, max 2147483647) —
+			// the API binds this value directly into a SQL integer comparison, so a
+			// larger bound (e.g. Number.MAX_SAFE_INTEGER) overflows and errors.
+			return { min: 100, max: 2147483647 };
 	}
 }

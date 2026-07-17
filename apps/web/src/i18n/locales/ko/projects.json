@@ -740,10 +740,7 @@
 			"title": "속성",
 			"status": "상태",
 			"dates": "날짜",
-			"trackTime": "시간 기록",
-			"addTime": "시간 추가",
 			"type": "유형",
-			"relationships": "관계",
 			"assignees": "담당자",
 			"importance": "중요도",
 			"none": "없음",
@@ -1017,6 +1014,11 @@
 			"statusesLabel": "상태",
 			"assigneesLabel": "담당자",
 			"taskTypesLabel": "작업 유형",
+			"startDateLabel": "시작일",
+			"dueDateLabel": "마감일",
+			"importanceLabel": "중요도",
+			"storyPointsLabel": "스토리 포인트",
+			"tagsLabel": "태그",
 			"reset": "초기화",
 			"saving": "저장 중…",
 			"save": "저장",
@@ -1040,6 +1042,20 @@
 				"allNormalTypesDynamic": "모든 일반 유형(동적)",
 				"systemTypes": "시스템 유형",
 				"noTaskTypes": "작업 유형 없음"
+			},
+			"customFieldFilter": {
+				"allValues": "모든 값",
+				"noOptions": "옵션 없음",
+				"min": "최소",
+				"max": "최대",
+				"containsPlaceholder": "포함…"
+			},
+			"importanceFilter": {
+				"allLevels": "모든 수준"
+			},
+			"tagsFilter": {
+				"addTag": "태그 추가",
+				"addTagPlaceholder": "태그 추가..."
 			}
 		},
 		"roadmap": {

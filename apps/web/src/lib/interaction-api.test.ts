@@ -296,6 +296,100 @@ describe("interaction-api", () => {
 			];
 			expect(config.params?.search).toBeUndefined();
 		});
+
+		it("serializes customFieldFilters as a single JSON query param", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, {
+				customFieldFilters: {
+					priority: { values: ["High", "Urgent"] },
+					effort: { min: 2, max: 8 },
+				},
+			});
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.custom_field_filters).toBe(
+				JSON.stringify({
+					priority: { values: ["High", "Urgent"] },
+					effort: { min: 2, max: 8 },
+				}),
+			);
+		});
+
+		it("omits custom_field_filters when customFieldFilters is empty or unset", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, { customFieldFilters: {} });
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.custom_field_filters).toBeUndefined();
+		});
+
+		it("serializes the built-in date/story-points/importance/tags filters", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, {
+				startDateAfter: "2024-01-01",
+				startDateBefore: "2024-06-01",
+				dueDateAfter: "2024-02-01",
+				dueDateBefore: "2024-07-01",
+				storyPointsMin: 2,
+				storyPointsMax: 8,
+				importanceRanges: [
+					{ min: 1, max: 19 },
+					{ min: 100, max: 2147483647 },
+				],
+				tags: ["urgent", "needs review"],
+			});
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.start_date_after).toBe("2024-01-01");
+			expect(config.params?.start_date_before).toBe("2024-06-01");
+			expect(config.params?.due_date_after).toBe("2024-02-01");
+			expect(config.params?.due_date_before).toBe("2024-07-01");
+			expect(config.params?.story_points_min).toBe(2);
+			expect(config.params?.story_points_max).toBe(8);
+			expect(config.params?.importance_ranges).toBe(
+				JSON.stringify([
+					{ min: 1, max: 19 },
+					{ min: 100, max: 2147483647 },
+				]),
+			);
+			expect(config.params?.tags).toBe("urgent,needs review");
+		});
+
+		it("omits the built-in filter params when unset or empty", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, { importanceRanges: [], tags: [] });
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.start_date_after).toBeUndefined();
+			expect(config.params?.due_date_before).toBeUndefined();
+			expect(config.params?.story_points_min).toBeUndefined();
+			expect(config.params?.importance_ranges).toBeUndefined();
+			expect(config.params?.tags).toBeUndefined();
+		});
 	});
 
 	// ── layoutToViewType ─────────────────────────────────────────────────────

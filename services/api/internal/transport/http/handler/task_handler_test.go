@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +33,7 @@ type fakeTaskSvc struct {
 	types         map[uuid.UUID]*taskdom.TaskType
 	lastProjectID uuid.UUID
 	lastFilter    taskdom.TaskFilter
+	customFields  []*taskdom.CustomFieldDefinition
 }
 
 func newFakeTaskSvc() *fakeTaskSvc {
@@ -235,7 +238,9 @@ func (f *fakeTaskSvc) DeleteTask(_ context.Context, _, id uuid.UUID) error {
 // -- CustomFieldDefinitionService --
 
 func (f *fakeTaskSvc) ListCustomFieldDefinitions(_ context.Context, _ uuid.UUID) ([]*taskdom.CustomFieldDefinition, error) {
-	return nil, nil
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.customFields, nil
 }
 
 func (f *fakeTaskSvc) GetCustomFieldDefinition(_ context.Context, _, _ uuid.UUID) (*taskdom.CustomFieldDefinition, error) {
@@ -600,6 +605,215 @@ func TestTaskHandler_ListTasks_TaskTypeIDsDriveFiltering(t *testing.T) {
 	}
 	if len(svc.lastFilter.TaskTypeIDs) != 1 || svc.lastFilter.TaskTypeIDs[0] != taskTypeID {
 		t.Fatalf("unexpected task type ids: %+v", svc.lastFilter.TaskTypeIDs)
+	}
+}
+
+func TestTaskHandler_ListTasks_CustomFieldFilters_SelectResolvesFieldType(t *testing.T) {
+	svc := newFakeTaskSvc()
+	svc.customFields = []*taskdom.CustomFieldDefinition{
+		{FieldKey: "priority", FieldType: taskdom.FieldTypeSelect, Options: []string{"Low", "High"}},
+	}
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	raw := `{"priority":{"values":["High"]}}`
+	path := fmt.Sprintf("/projects/%s/tasks?custom_field_filters=%s", projectID, url.QueryEscape(raw))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got, ok := svc.lastFilter.CustomFieldFilters["priority"]
+	if !ok {
+		t.Fatalf("expected CustomFieldFilters to include %q, got %+v", "priority", svc.lastFilter.CustomFieldFilters)
+	}
+	want := taskdom.CustomFieldFilterQuery{FieldType: "select", Values: []string{"High"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CustomFieldFilters[%q] = %+v, want %+v", "priority", got, want)
+	}
+}
+
+func TestTaskHandler_ListTasks_CustomFieldFilters_NumberRange(t *testing.T) {
+	svc := newFakeTaskSvc()
+	svc.customFields = []*taskdom.CustomFieldDefinition{
+		{FieldKey: "effort", FieldType: taskdom.FieldTypeNumber},
+	}
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	raw := `{"effort":{"min":2,"max":8}}`
+	path := fmt.Sprintf("/projects/%s/tasks?custom_field_filters=%s", projectID, url.QueryEscape(raw))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got, ok := svc.lastFilter.CustomFieldFilters["effort"]
+	if !ok {
+		t.Fatalf("expected CustomFieldFilters to include %q, got %+v", "effort", svc.lastFilter.CustomFieldFilters)
+	}
+	if got.FieldType != "number" || got.Min == nil || *got.Min != 2 || got.Max == nil || *got.Max != 8 {
+		t.Fatalf("CustomFieldFilters[%q] = %+v, want FieldType=number Min=2 Max=8", "effort", got)
+	}
+}
+
+func TestTaskHandler_ListTasks_CustomFieldFilters_UnknownFieldKeyIgnored(t *testing.T) {
+	svc := newFakeTaskSvc()
+	svc.customFields = []*taskdom.CustomFieldDefinition{
+		{FieldKey: "priority", FieldType: taskdom.FieldTypeSelect, Options: []string{"Low", "High"}},
+	}
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	raw := `{"deleted_field":{"values":["x"]}}`
+	path := fmt.Sprintf("/projects/%s/tasks?custom_field_filters=%s", projectID, url.QueryEscape(raw))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(svc.lastFilter.CustomFieldFilters) != 0 {
+		t.Fatalf("expected stale field key to be ignored, got %+v", svc.lastFilter.CustomFieldFilters)
+	}
+}
+
+func TestTaskHandler_ListTasks_CustomFieldFilters_InvalidJSONReturns400(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf("/projects/%s/tasks?custom_field_filters=%s", projectID, url.QueryEscape("not-json"))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_ListTasks_DateRangeFilters(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf(
+		"/projects/%s/tasks?start_date_after=2024-01-01&start_date_before=2024-06-01&due_date_after=2024-02-01&due_date_before=2024-07-01",
+		projectID,
+	)
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	f := svc.lastFilter
+	if f.StartDateAfter == nil || *f.StartDateAfter != "2024-01-01" {
+		t.Errorf("expected StartDateAfter=2024-01-01, got %+v", f.StartDateAfter)
+	}
+	if f.StartDateBefore == nil || *f.StartDateBefore != "2024-06-01" {
+		t.Errorf("expected StartDateBefore=2024-06-01, got %+v", f.StartDateBefore)
+	}
+	if f.DueDateAfter == nil || *f.DueDateAfter != "2024-02-01" {
+		t.Errorf("expected DueDateAfter=2024-02-01, got %+v", f.DueDateAfter)
+	}
+	if f.DueDateBefore == nil || *f.DueDateBefore != "2024-07-01" {
+		t.Errorf("expected DueDateBefore=2024-07-01, got %+v", f.DueDateBefore)
+	}
+}
+
+func TestTaskHandler_ListTasks_InvalidDateFilterReturns400(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf("/projects/%s/tasks?due_date_after=not-a-date", projectID)
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_ListTasks_StoryPointsRangeFilter(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf("/projects/%s/tasks?story_points_min=2&story_points_max=8", projectID)
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	f := svc.lastFilter
+	if f.StoryPointsMin == nil || *f.StoryPointsMin != 2 {
+		t.Errorf("expected StoryPointsMin=2, got %+v", f.StoryPointsMin)
+	}
+	if f.StoryPointsMax == nil || *f.StoryPointsMax != 8 {
+		t.Errorf("expected StoryPointsMax=8, got %+v", f.StoryPointsMax)
+	}
+}
+
+func TestTaskHandler_ListTasks_InvalidStoryPointsFilterReturns400(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf("/projects/%s/tasks?story_points_min=abc", projectID)
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_ListTasks_ImportanceRangesFilter(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	raw := `[{"min":1,"max":19},{"min":100,"max":2147483647}]`
+	path := fmt.Sprintf("/projects/%s/tasks?importance_ranges=%s", projectID, url.QueryEscape(raw))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	want := []taskdom.IntRange{{Min: 1, Max: 19}, {Min: 100, Max: 2147483647}}
+	if !reflect.DeepEqual(svc.lastFilter.ImportanceRanges, want) {
+		t.Fatalf("ImportanceRanges = %+v, want %+v", svc.lastFilter.ImportanceRanges, want)
+	}
+}
+
+func TestTaskHandler_ListTasks_ImportanceRanges_InvalidJSONReturns400(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf("/projects/%s/tasks?importance_ranges=%s", projectID, url.QueryEscape("not-json"))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_ListTasks_ImportanceRanges_MinGreaterThanMaxReturns400(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	raw := `[{"min":50,"max":10}]`
+	path := fmt.Sprintf("/projects/%s/tasks?importance_ranges=%s", projectID, url.QueryEscape(raw))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTaskHandler_ListTasks_TagsFilter(t *testing.T) {
+	svc := newFakeTaskSvc()
+	r := buildTaskHandlerRouter(svc)
+	projectID := uuid.New()
+
+	path := fmt.Sprintf("/projects/%s/tasks?tags=urgent,%s", projectID, url.QueryEscape("needs review"))
+	w := doTaskRequest(r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	want := []string{"urgent", "needs review"}
+	if !reflect.DeepEqual(svc.lastFilter.Tags, want) {
+		t.Fatalf("Tags = %+v, want %+v", svc.lastFilter.Tags, want)
 	}
 }
 

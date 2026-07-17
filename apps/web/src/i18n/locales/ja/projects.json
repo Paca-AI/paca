@@ -740,10 +740,7 @@
 			"title": "プロパティ",
 			"status": "ステータス",
 			"dates": "日付",
-			"trackTime": "作業時間を記録",
-			"addTime": "時間を追加",
 			"type": "タイプ",
-			"relationships": "関連付け",
 			"assignees": "担当者",
 			"importance": "重要度",
 			"none": "なし",
@@ -1017,6 +1014,11 @@
 			"statusesLabel": "ステータス",
 			"assigneesLabel": "担当者",
 			"taskTypesLabel": "タスクタイプ",
+			"startDateLabel": "開始日",
+			"dueDateLabel": "期日",
+			"importanceLabel": "重要度",
+			"storyPointsLabel": "ストーリーポイント",
+			"tagsLabel": "タグ",
 			"reset": "リセット",
 			"saving": "保存中…",
 			"save": "保存",
@@ -1040,6 +1042,20 @@
 				"allNormalTypesDynamic": "すべての通常タイプ（動的）",
 				"systemTypes": "システムタイプ",
 				"noTaskTypes": "タスクタイプはありません"
+			},
+			"customFieldFilter": {
+				"allValues": "すべての値",
+				"noOptions": "オプションはありません",
+				"min": "最小",
+				"max": "最大",
+				"containsPlaceholder": "を含む…"
+			},
+			"importanceFilter": {
+				"allLevels": "すべてのレベル"
+			},
+			"tagsFilter": {
+				"addTag": "タグを追加",
+				"addTagPlaceholder": "タグを追加..."
 			}
 		},
 		"roadmap": {
