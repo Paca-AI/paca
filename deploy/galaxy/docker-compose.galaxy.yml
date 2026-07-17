@@ -58,6 +58,10 @@ services:
       OIDC_BUTTON_LABEL: ${OIDC_BUTTON_LABEL:-Sign in with Vortex}
       # Trusted-issuer RS256 bearer auth (act_as contract).
       GALAXY_TRUSTED_ISSUER: ${GALAXY_TRUSTED_ISSUER:-}
+      # Extra iss claim values accepted on JWKS-verified bearers — identity's
+      # mint-service-token stamps iss=galaxy-nexus (logical name), not the
+      # discovery URL. Signature trust anchor unchanged.
+      GALAXY_TRUSTED_ISSUER_CLAIMS: ${GALAXY_TRUSTED_ISSUER_CLAIMS:-}
       # Legacy X-Agent-ID header impersonation stays OFF; identity comes
       # from signed tokens only.
       AGENT_HEADER_IMPERSONATION: ${AGENT_HEADER_IMPERSONATION:-disabled}
