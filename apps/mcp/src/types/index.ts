@@ -10,10 +10,19 @@ export interface PacaConfig {
 	 * URL (e.g. `http://gateway`).
 	 */
 	gatewayURL?: string;
-	/** Agent UUID forwarded as X-Agent-ID on every API request. */
+	/** Agent UUID forwarded as X-Agent-ID on every API request (apikey mode only). */
 	agentId?: string;
 	/** Project UUID - required when agentId is provided for single-project agent mode. */
 	projectId?: string;
+	/**
+	 * Authentication mode (Galaxy fork, ADR-038). "apikey" (default) keeps
+	 * upstream X-API-Key/X-Agent-ID behavior; "bearer" sends a single RS256
+	 * platform token whose signed act_as claim carries the principal — no
+	 * identity headers. See src/auth.ts.
+	 */
+	authMode?: "apikey" | "bearer";
+	/** RS256 platform bearer token — required when authMode is "bearer". */
+	bearerToken?: string;
 }
 
 export interface PermissionMap {

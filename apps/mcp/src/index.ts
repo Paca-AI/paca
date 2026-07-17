@@ -2,6 +2,7 @@
 
 import { createRequire } from "node:module";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { resolveAuthEnv } from "./auth.js";
 import { createServer } from "./server.js";
 import type { PacaConfig } from "./types/index.js";
 
@@ -26,8 +27,21 @@ async function main() {
 	const agentId = process.env.PACA_AGENT_ID || undefined;
 	const projectId = process.env.PACA_PROJECT_ID || undefined;
 
-	// Validate required configuration
-	if (!apiKey) {
+	// Auth mode (Galaxy fork, ADR-038): fail fast on invalid PACA_AUTH_MODE
+	// or bearer mode without a PACA_MCP_TOKEN — a misconfigured server that
+	// limps along could only ever produce confusing downstream 401s.
+	let authMode: PacaConfig["authMode"];
+	let bearerToken: string | undefined;
+	try {
+		({ authMode, bearerToken } = resolveAuthEnv(process.env));
+	} catch (err) {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
+
+	// Validate required configuration (apikey mode only — bearer mode
+	// authenticates exclusively with the platform token).
+	if (authMode !== "bearer" && !apiKey) {
 		console.error(
 			"PACA_API_KEY environment variable is required. Please set it to your Paca API key.",
 		);
@@ -50,13 +64,26 @@ async function main() {
 		process.exit(1);
 	}
 
+	if (authMode === "bearer" && agentId) {
+		// Identity comes from the token's signed act_as claim — never from an
+		// X-Agent-ID header (the Galaxy API rejects header impersonation by
+		// design). Drop the agent id so no code path can ever send it.
+		console.error(
+			"[auth] PACA_AUTH_MODE=bearer: ignoring PACA_AGENT_ID — the principal " +
+				"comes from the platform token's signed act_as claim, and agent " +
+				"attribution from its act_as_agent claim.",
+		);
+	}
+
 	// Create configuration object
 	const config: PacaConfig = {
-		apiKey,
+		apiKey: authMode === "bearer" ? "" : (apiKey as string),
 		baseURL,
 		gatewayURL,
-		agentId,
+		agentId: authMode === "bearer" ? undefined : agentId,
 		projectId,
+		authMode,
+		bearerToken,
 	};
 
 	// Create and configure MCP server (loads plugin modules asynchronously)

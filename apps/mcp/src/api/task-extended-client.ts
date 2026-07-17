@@ -7,6 +7,7 @@ import type {
 	TaskLink,
 	UpdateCommentInput,
 } from "../types/index.js";
+import { buildAuthHeaders, registerAuthResponse } from "../auth.js";
 import { markdownToBlocknote } from "../utils/index.js";
 
 /**
@@ -27,11 +28,8 @@ export class PacaAPITaskExtendedClient {
 		const url = `${this.config.baseURL}${path}`;
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			"X-API-Key": this.config.apiKey,
+			...buildAuthHeaders(this.config),
 		};
-		if (this.config.agentId) {
-			headers["X-Agent-ID"] = this.config.agentId;
-		}
 
 		const options: RequestInit = {
 			method,
@@ -43,6 +41,7 @@ export class PacaAPITaskExtendedClient {
 		}
 
 		const response = await fetch(url, options);
+		registerAuthResponse(response.status, this.config);
 
 		if (!response.ok) {
 			const errorText = await response.text();

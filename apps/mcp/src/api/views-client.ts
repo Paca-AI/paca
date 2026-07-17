@@ -12,6 +12,7 @@ import type {
 	UpdateViewInput,
 	View,
 } from "../types/index.js";
+import { buildAuthHeaders, registerAuthResponse } from "../auth.js";
 
 /**
  * Extended API client for Views, Custom Fields, and Attachments.
@@ -31,11 +32,8 @@ export class PacaAPIViewsClient {
 		const url = `${this.config.baseURL}${path}`;
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			"X-API-Key": this.config.apiKey,
+			...buildAuthHeaders(this.config),
 		};
-		if (this.config.agentId) {
-			headers["X-Agent-ID"] = this.config.agentId;
-		}
 
 		const options: RequestInit = {
 			method,
@@ -47,6 +45,7 @@ export class PacaAPIViewsClient {
 		}
 
 		const response = await fetch(url, options);
+		registerAuthResponse(response.status, this.config);
 
 		if (!response.ok) {
 			const errorText = await response.text();
