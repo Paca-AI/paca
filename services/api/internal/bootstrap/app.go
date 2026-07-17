@@ -331,8 +331,12 @@ func New(cfg *config.Config) (*App, error) {
 	var galaxyBearer httpmw.GalaxyBearerAuthenticator
 	if cfg.Security.GalaxyTrustedIssuer != "" {
 		galaxyBearer = galaxyauthsvc.NewBearerAuthenticator(
-			oidcplatform.NewProvider(cfg.Security.GalaxyTrustedIssuer), userRepo, log)
-		log.Info("Galaxy trusted-issuer bearer auth enabled", "issuer", cfg.Security.GalaxyTrustedIssuer)
+			oidcplatform.NewProviderWithIssuerClaims(
+				cfg.Security.GalaxyTrustedIssuer, cfg.Security.GalaxyTrustedIssuerClaims),
+			userRepo, log)
+		log.Info("Galaxy trusted-issuer bearer auth enabled",
+			"issuer", cfg.Security.GalaxyTrustedIssuer,
+			"extra_issuer_claims", cfg.Security.GalaxyTrustedIssuerClaims)
 	}
 
 	deps := router.Deps{

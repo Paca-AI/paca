@@ -205,6 +205,10 @@ func Load() (*Config, error) {
 			AgentAPIKey: env("AGENT_API_KEY", ""),
 			// GALAXY_TRUSTED_ISSUER enables Vortex RS256 bearer auth (ADR-038).
 			GalaxyTrustedIssuer: strings.TrimRight(env("GALAXY_TRUSTED_ISSUER", ""), "/"),
+			// Extra iss claim values accepted for tokens signed by the trusted
+			// issuer's JWKS (identity's mint-service-token stamps
+			// iss="galaxy-nexus", not the discovery URL).
+			GalaxyTrustedIssuerClaims: splitCommaList(env("GALAXY_TRUSTED_ISSUER_CLAIMS", "")),
 			// Header impersonation stays off unless explicitly "enabled"
 			// (ADR-038 kill-switch; identity from signed tokens, not headers).
 			AgentHeaderImpersonation: strings.EqualFold(env("AGENT_HEADER_IMPERSONATION", "disabled"), "enabled"),
@@ -281,4 +285,16 @@ func parseInt64(s string) (int64, error) {
 		return 0, fmt.Errorf("invalid int64 %q: %w", s, err)
 	}
 	return v, nil
+}
+
+// splitCommaList parses a comma-separated env value into trimmed, non-empty
+// entries.  An empty or all-whitespace value yields nil.
+func splitCommaList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }

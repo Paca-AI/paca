@@ -202,3 +202,96 @@ func TestBearerRejectsExpiredToken(t *testing.T) {
 		t.Fatal("expected expired token to be rejected")
 	}
 }
+
+// newBearerFixtureWithIssuerClaims mirrors newBearerFixture but constructs
+// the provider with an extra-issuer-claims allow-list (ADR-038: identity's
+// mint-service-token stamps iss="galaxy-nexus", not the discovery URL).
+func newBearerFixtureWithIssuerClaims(
+	t *testing.T, extraClaims []string,
+) (*BearerAuthenticator, *memUserStore, func(claims jwt.MapClaims) string) {
+	t.Helper()
+	issuer, key, kid := newFakeJWKSIssuer(t)
+	store := newMemUserStore()
+	auth := NewBearerAuthenticator(
+		oidc.NewProviderWithIssuerClaims(issuer, extraClaims),
+		store,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	return auth, store, func(claims jwt.MapClaims) string {
+		return signBearer(t, issuer, key, kid, claims)
+	}
+}
+
+func TestBearerAcceptsConfiguredExtraIssuerClaim(t *testing.T) {
+	auth, store, sign := newBearerFixtureWithIssuerClaims(t, []string{"galaxy-nexus"})
+
+	user := &userdom.User{ID: uuid.New(), Username: "cao"}
+	store.users = append(store.users, user)
+	store.oidcSub[user.ID] = "cao-sub"
+
+	// Signed by OUR issuer's key, but stamped with the logical issuer name —
+	// exactly what identity's /internal/mint-service-token produces.
+	token := sign(jwt.MapClaims{
+		"iss":          "galaxy-nexus",
+		"sub":          "paca-service@galaxy.internal.nexus",
+		"act_as":       "cao-sub",
+		"act_as_agent": "paca-ai",
+	})
+
+	u, agentName, err := auth.AuthenticateBearer(context.Background(), token)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.ID != user.ID {
+		t.Fatal("expected act_as principal to resolve with the extra issuer claim")
+	}
+	if agentName != "paca-ai" {
+		t.Fatalf("agent attribution = %q", agentName)
+	}
+}
+
+func TestBearerExtraIssuerClaimStillRejectsUnlistedIssuers(t *testing.T) {
+	auth, store, sign := newBearerFixtureWithIssuerClaims(t, []string{"galaxy-nexus"})
+
+	user := &userdom.User{ID: uuid.New(), Username: "cao"}
+	store.users = append(store.users, user)
+	store.oidcSub[user.ID] = "cao-sub"
+
+	if _, _, err := auth.AuthenticateBearer(context.Background(),
+		sign(jwt.MapClaims{"iss": "evil-issuer", "sub": "cao-sub"})); err == nil {
+		t.Fatal("expected unlisted iss claim to be rejected even with a valid signature")
+	}
+}
+
+func TestBearerExtraIssuerClaimDoesNotRelaxSignatureCheck(t *testing.T) {
+	auth, store, _ := newBearerFixtureWithIssuerClaims(t, []string{"galaxy-nexus"})
+
+	user := &userdom.User{ID: uuid.New(), Username: "cao"}
+	store.users = append(store.users, user)
+	store.oidcSub[user.ID] = "cao-sub"
+
+	// A token from a DIFFERENT key/issuer carrying the allow-listed iss claim
+	// must still fail signature verification against OUR issuer's JWKS.
+	otherIssuer, otherKey, otherKid := newFakeJWKSIssuer(t)
+	forged := signBearer(t, otherIssuer, otherKey, otherKid,
+		jwt.MapClaims{"iss": "galaxy-nexus", "sub": "cao-sub"})
+
+	if _, _, err := auth.AuthenticateBearer(context.Background(), forged); err == nil {
+		t.Fatal("expected forged token (foreign key, allow-listed iss) to be rejected")
+	}
+}
+
+func TestBearerWithoutExtraClaimsKeepsStrictIssuer(t *testing.T) {
+	auth, store, sign := newBearerFixture(t)
+
+	user := &userdom.User{ID: uuid.New(), Username: "cao"}
+	store.users = append(store.users, user)
+	store.oidcSub[user.ID] = "cao-sub"
+
+	// Default (no allow-list) stays strict: a logical issuer name is rejected
+	// even though the signature is ours.
+	if _, _, err := auth.AuthenticateBearer(context.Background(),
+		sign(jwt.MapClaims{"iss": "galaxy-nexus", "sub": "cao-sub"})); err == nil {
+		t.Fatal("expected non-URL iss to be rejected in strict mode")
+	}
+}
