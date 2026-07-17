@@ -71,10 +71,12 @@ export function LoginFormPanel() {
 					{authConfig.oidc_button_label || t("login.ssoSignIn")}
 				</a>
 				{/* ADR-027 single logout — also ends the platform (Zitadel) session.
-				    TODO: derive the identity origin from server config for
-				    instance-per-tenant deploys (ADR-038 T7). */}
+				    NO post_logout_redirect_uri: Zitadel only accepts URIs registered
+				    on the portal client (tasks.* is not), so let identity fall back
+				    to its default dest (the portal login page). TODO: derive the
+				    identity origin from server config for tenant deploys (T7). */}
 				<a
-					href={`https://ai.skyplatform.net/api/identity/auth/logout?post_logout_redirect_uri=${encodeURIComponent("https://tasks.skyplatform.net/?logged_out=1")}`}
+					href="https://ai.skyplatform.net/api/identity/auth/logout"
 					className="text-xs text-(--sea-ink-soft) underline underline-offset-2"
 				>
 					{t(
