@@ -543,16 +543,22 @@ func TestE2EACPAgent_BridgeStatusProxy(t *testing.T) {
 // is JSONB, so Postgres itself already rejects syntactically invalid JSON on
 // write — the case that actually reaches Go's json.Unmarshal is
 // syntactically valid JSON of the wrong shape (e.g. an object, not a string
-// array), which Postgres has no way to reject.
+// array).
+//
+// Uses the default "claude-code" provider rather than "custom": migration
+// 000024 added a CHECK constraint requiring a non-empty acp_command array
+// specifically for acp_provider = 'custom', so corrupting a custom-provider
+// agent's acp_command to a non-array shape would now be rejected by Postgres
+// at the UPDATE itself rather than reaching this test's actual target, the
+// read-path json.Unmarshal handling in agentFromReadRow. A non-custom
+// provider has no such constraint on acp_command, so it still reaches
+// Postgres as a bare column write.
 func TestE2EACPAgent_MalformedACPCommandSurfacesAsError(t *testing.T) {
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
 	handle := "malformed-command-" + uuid.NewString()
-	_, createEnv := createAgentRequest(t, env, client, token, projID, acpAgentBody(roleID, handle, map[string]any{
-		"acp_provider": "custom",
-		"acp_command":  []string{"my-server"},
-	}))
+	_, createEnv := createAgentRequest(t, env, client, token, projID, acpAgentBody(roleID, handle, nil))
 	agentID, _ := assertDataMap(t, createEnv)["id"].(string)
 
 	if _, err := env.db.ExecContext(env.ctx,
