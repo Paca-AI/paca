@@ -31,6 +31,18 @@ docker compose -p galaxy-paca ps
 curl -fsS https://tasks.skyplatform.net/api/healthz
 ```
 
+## Plugins
+
+- `plugins/com.galaxy.sdd` — **SDD Sensor** (ADR-038 T6): nhúng dashboard SDD sensor (`nexus.8verse.games/sdd-server`) vào Paca qua iframe; v1 frontend-only, không secret, backend chỉ là stub WASM trơ (host bắt buộc phải có file). Build + cài prod:
+
+```bash
+cd deploy/galaxy/plugins/com.galaxy.sdd
+./build.sh
+API_KEY=<paca-api-key> ./install-prod.sh
+```
+
+Prod dùng named volume (`backend_plugins`/`frontend_plugins`) nên KHÔNG dùng bước copy của `scripts/install-local-plugin.sh` (script đó cho dev bind-mount); `install-prod.sh` tự `docker cp` vào container api rồi đăng ký qua admin API. Gateway hiện **không set CSP** nên không phải allowlist `frame-src`; nếu iframe trắng thì chỉnh phía SENSOR (bỏ `X-Frame-Options` / set `frame-ancestors` cho phép `https://tasks.skyplatform.net`) — chi tiết trong `plugins/com.galaxy.sdd/README.md`.
+
 ## Upgrade theo upstream (pin-and-roll)
 
 1. Đọc release notes upstream + `deploy/upgrade.sh` diff của bản mới.

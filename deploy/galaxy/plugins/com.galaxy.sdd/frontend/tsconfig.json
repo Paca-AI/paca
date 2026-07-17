@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // Classic JSX runtime on purpose: every element goes through
+    // React.createElement from the bare "react" import, which is the ONLY
+    // specifier the host's Module Federation share scope provides
+    // (loader.tsx registers react/react-dom/@tanstack/react-query — there is
+    // no "react/jsx-runtime" entry, so the automatic runtime would bundle a
+    // private copy). Class components + createElement stay correct even if
+    // shared resolution ever falls back to the bundled copy.
+    "jsx": "react",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src"]
+}
