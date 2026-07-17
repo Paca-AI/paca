@@ -24,6 +24,7 @@ type Deps struct {
 	ProjectVisibilitySvc httpmw.ProjectVisibilityChecker
 	Health               *handler.HealthHandler
 	Auth                 *handler.AuthHandler
+	OIDC                 *handler.OIDCHandler // nil unless OIDC SSO is configured (ADR-038)
 	User                 *handler.UserHandler
 	GlobalRole           *handler.GlobalRoleHandler
 	Project              *handler.ProjectHandler
@@ -61,7 +62,14 @@ func New(deps Deps) http.Handler {
 			r.Route("/auth", func(r chi.Router) {
 				r.Post("/login", deps.Auth.Login)
 				r.Post("/refresh", deps.Auth.Refresh)
+				r.Get("/config", deps.Auth.GetConfig)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
+
+				// OIDC SSO login (ADR-038) — registered only when configured.
+				if deps.OIDC != nil {
+					r.Get("/oidc/login", deps.OIDC.Login)
+					r.Get("/oidc/callback", deps.OIDC.Callback)
+				}
 			})
 
 			// Users

@@ -31,11 +31,31 @@ type CookieConfig struct {
 type AuthHandler struct {
 	svc    domainauth.Service
 	cookie CookieConfig
+
+	// OIDC SSO advertisement for the public /auth/config endpoint (ADR-038).
+	oidcEnabled     bool
+	oidcButtonLabel string
 }
 
 // NewAuthHandler returns an AuthHandler wired to the provided auth service.
 func NewAuthHandler(svc domainauth.Service, cookie CookieConfig) *AuthHandler {
 	return &AuthHandler{svc: svc, cookie: cookie}
+}
+
+// WithOIDC advertises OIDC SSO login on the public auth config endpoint.
+func (h *AuthHandler) WithOIDC(buttonLabel string) *AuthHandler {
+	h.oidcEnabled = true
+	h.oidcButtonLabel = buttonLabel
+	return h
+}
+
+// GetConfig handles GET /auth/config (public).  It tells the SPA which login
+// methods are available before any authentication happens.
+func (h *AuthHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	presenter.OK(w, r, map[string]any{
+		"oidc_enabled":      h.oidcEnabled,
+		"oidc_button_label": h.oidcButtonLabel,
+	})
 }
 
 // Login handles POST /auth/login.

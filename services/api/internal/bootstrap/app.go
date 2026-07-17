@@ -21,6 +21,7 @@ import (
 	"github.com/Paca-AI/api/internal/platform/database"
 	"github.com/Paca-AI/api/internal/platform/logger"
 	"github.com/Paca-AI/api/internal/platform/messaging"
+	oidcplatform "github.com/Paca-AI/api/internal/platform/oidc"
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	"github.com/Paca-AI/api/internal/platform/storage"
@@ -32,6 +33,7 @@ import (
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
+	galaxyauthsvc "github.com/Paca-AI/api/internal/service/galaxyauth"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -283,12 +285,40 @@ func New(cfg *config.Config) (*App, error) {
 		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
+	authHandler := handler.NewAuthHandler(authService, cookieCfg)
+
+	// --- Galaxy identity (ADR-038) -------------------------------------------
+	// OIDC SSO login against the Vortex identity provider. Off unless
+	// OIDC_ISSUER is set; discovery/JWKS are fetched lazily on first login.
+	var oidcHandler *handler.OIDCHandler
+	if cfg.OIDC.Enabled() {
+		authHandler = authHandler.WithOIDC(cfg.OIDC.ButtonLabel)
+		oidcProvider := oidcplatform.NewProvider(cfg.OIDC.Issuer)
+		galaxyAuthService := galaxyauthsvc.New(userRepo, globalRoleRepo, cfg.OIDC.AutoCreateUsers, cfg.OIDC.DefaultRole, log)
+		oidcHandler = handler.NewOIDCHandler(
+			oidcProvider,
+			handler.OIDCOptions{
+				ClientID:     cfg.OIDC.ClientID,
+				ClientSecret: cfg.OIDC.ClientSecret,
+				RedirectURL:  cfg.OIDC.RedirectURL,
+				Scopes:       cfg.OIDC.Scopes,
+			},
+			galaxyAuthService,
+			authService,
+			authHandler,
+			[]byte(cfg.JWT.Secret),
+			log,
+		)
+		log.Info("OIDC SSO login enabled", "issuer", cfg.OIDC.Issuer, "auto_create_users", cfg.OIDC.AutoCreateUsers)
+	}
+
 	deps := router.Deps{
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
 		Authorizer:           authorizer,
 		Health:               handler.NewHealthHandler(),
-		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
+		Auth:                 authHandler,
+		OIDC:                 oidcHandler,
 		User:                 handler.NewUserHandler(userService, authService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,

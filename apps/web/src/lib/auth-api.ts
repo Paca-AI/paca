@@ -62,6 +62,25 @@ export async function getMeOptional(): Promise<User | null> {
 	}
 }
 
+/** Public login configuration returned by GET /auth/config (no auth). */
+export interface AuthConfig {
+	oidc_enabled: boolean;
+	oidc_button_label: string;
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<AuthConfig>>("/auth/config");
+	return data.data;
+}
+
+export const authConfigQueryOptions = queryOptions({
+	queryKey: ["auth", "config"],
+	queryFn: getAuthConfig,
+	retry: false,
+	staleTime: 5 * 60 * 1000,
+});
+
 export const currentUserQueryOptions = queryOptions({
 	queryKey: ["auth", "me"],
 	queryFn: getMe,
