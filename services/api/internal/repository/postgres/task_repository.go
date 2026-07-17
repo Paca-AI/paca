@@ -664,7 +664,7 @@ func customFieldNumericExpr(keyP string) string {
 
 // customFieldDateExpr is the date-typed counterpart of customFieldNumericExpr.
 func customFieldDateExpr(keyP string) string {
-	return "(CASE WHEN custom_fields->>" + keyP + " ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN (custom_fields->>" + keyP + ")::date END)"
+	return "(CASE WHEN custom_fields->>" + keyP + " ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (custom_fields->>" + keyP + ")::date END)"
 }
 
 // escapeLikePattern escapes the LIKE/ILIKE wildcard characters (% and _) and
