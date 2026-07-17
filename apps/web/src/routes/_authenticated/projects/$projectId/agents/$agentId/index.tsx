@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AcpBridgeSetup } from "@/components/projects/agents/acp-bridge-setup";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,12 +48,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type ACPProvider,
-	type AcpBridgeToken,
 	type Agent,
 	type AgentConversation,
 	type AgentMCPServer,
 	type AgentSkill,
-	acpBridgeStatusQueryOptions,
 	addEnvVar,
 	addMCPServer,
 	addSkill,
@@ -66,7 +65,6 @@ import {
 	deleteEnvVar,
 	deleteMCPServer,
 	deleteSkill,
-	generateAcpBridgeToken,
 	llmModelsQueryOptions,
 	updateAgent,
 	updateMCPServer,
@@ -411,6 +409,7 @@ function OverviewTab({
 					<LocalBridgePanel
 						projectId={projectId}
 						agentId={agent.id}
+						acpProvider={agent.acp_provider ?? "claude-code"}
 						hasToken={agent.has_acp_bridge_token}
 						onTokenGenerated={() =>
 							qc.setQueryData(
@@ -494,108 +493,37 @@ function OverviewTab({
 	);
 }
 
-// ── Local Bridge Panel (ACP agents) ─────────────────────────────────────────────
+// ── Local Bridge Panel (ACP agents, embedded in Overview) ───────────────────────
 
 function LocalBridgePanel({
 	projectId,
 	agentId,
+	acpProvider,
 	hasToken,
 	onTokenGenerated,
 }: {
 	projectId: string;
 	agentId: string;
+	acpProvider: ACPProvider;
 	hasToken: boolean;
 	onTokenGenerated: () => void;
 }) {
 	const { t } = useTranslation("projects");
-	const [revealed, setRevealed] = useState<AcpBridgeToken | null>(null);
-	const [copied, setCopied] = useState(false);
-
-	const { data: status } = useQuery(
-		acpBridgeStatusQueryOptions(projectId, agentId, { enabled: hasToken }),
-	);
-
-	const generateMutation = useMutation({
-		mutationFn: () => generateAcpBridgeToken(projectId, agentId),
-		onSuccess: (result) => {
-			setRevealed(result);
-			onTokenGenerated();
-		},
-	});
-
-	const copyCommand = () => {
-		if (!revealed) return;
-		navigator.clipboard.writeText(revealed.run_command);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
-	};
-
 	return (
 		<div>
 			<p className="text-sm font-medium mb-1">
-				{t("agents.detail.localBridge.title")}
+				{t("agents.acpSetup.panelTitle")}
 			</p>
 			<p className="text-xs text-muted-foreground mb-3">
-				{t("agents.detail.localBridge.description")}
+				{t("agents.acpSetup.panelDescription")}
 			</p>
-
-			<div className="flex items-center gap-1.5 mb-3">
-				<span
-					className={`size-1.5 rounded-full ${
-						status?.connected ? "bg-emerald-500" : "bg-muted-foreground/40"
-					}`}
-				/>
-				<span className="text-xs text-muted-foreground">
-					{status?.connected
-						? t("agents.detail.localBridge.statusConnected")
-						: t("agents.detail.localBridge.statusDisconnected")}
-				</span>
-			</div>
-
-			{!hasToken && !revealed && (
-				<p className="text-xs text-muted-foreground mb-3">
-					{t("agents.detail.localBridge.noTokenYet")}
-				</p>
-			)}
-
-			{revealed && (
-				<div className="space-y-1.5 mb-3">
-					<p className="text-xs text-amber-600">
-						{t("agents.detail.localBridge.tokenWarning")}
-					</p>
-					<Label className="text-xs">
-						{t("agents.detail.localBridge.runCommandLabel")}
-					</Label>
-					<div className="flex items-center gap-2">
-						<code className="flex-1 rounded-md bg-muted px-2 py-1.5 text-xs overflow-x-auto whitespace-nowrap">
-							{revealed.run_command}
-						</code>
-						<Button variant="outline" size="sm" onClick={copyCommand}>
-							{copied
-								? t("agents.detail.localBridge.copied")
-								: t("agents.detail.localBridge.copy")}
-						</Button>
-					</div>
-				</div>
-			)}
-
-			<Button
-				variant="outline"
-				size="sm"
-				onClick={() => generateMutation.mutate()}
-				disabled={generateMutation.isPending}
-			>
-				{generateMutation.isPending ? (
-					<>
-						<Loader2 className="size-4 mr-1.5 animate-spin" />
-						{t("agents.detail.localBridge.generating")}
-					</>
-				) : hasToken ? (
-					t("agents.detail.localBridge.regenerateToken")
-				) : (
-					t("agents.detail.localBridge.generateToken")
-				)}
-			</Button>
+			<AcpBridgeSetup
+				projectId={projectId}
+				agentId={agentId}
+				acpProvider={acpProvider}
+				hasToken={hasToken}
+				onTokenGenerated={onTokenGenerated}
+			/>
 		</div>
 	);
 }
@@ -1485,9 +1413,9 @@ function AgentDetailPage() {
 		.slice(0, 2);
 
 	// ACP agents run entirely in the user's own local environment (see the
-	// Local Bridge panel below) — Paca never forwards tools, MCP servers,
-	// skills, or environment variables into that local process, so none of
-	// those tabs apply.
+	// Local Bridge panel on the Overview tab) — Paca never forwards tools,
+	// MCP servers, skills, or environment variables into that local process,
+	// so none of those tabs apply.
 	const acpHiddenTabs: Tab[] = ["mcp-servers", "skills", "env-vars"];
 	const visibleTabs = TABS.filter(
 		(tab) => agent.agent_type !== "acp" || !acpHiddenTabs.includes(tab.id),

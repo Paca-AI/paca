@@ -17,6 +17,7 @@ from ..models.agent import AgentConfig
 from ..models.conversation_status import ConversationStatus
 from ..repositories import conversation_repository
 from . import acp_bridge
+from .prompt import build_acp_message
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ async def dispatch_acp_trigger(trigger: TriggerMessage, agent_config: AgentConfi
             "type": "start_turn",
             "conversation_id": trigger.conversation_id,
             "project_id": trigger.project_id,
-            "message": trigger.message,
+            "message": build_acp_message(trigger),
             "trigger_type": trigger.trigger_type,
             "acp_provider": agent_config.acp_provider,
             "acp_command": agent_config.acp_command,

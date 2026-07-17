@@ -1,6 +1,6 @@
 """Tests for the prompt and system-suffix builders."""
 
-from src.agent.prompt import build_initial_prompt, build_trigger_suffix
+from src.agent.prompt import build_acp_message, build_initial_prompt, build_trigger_suffix
 from src.core.streams import TriggerMessage
 
 
@@ -43,6 +43,20 @@ def test_initial_prompt_empty_stays_empty_for_other_triggers():
         _trigger(trigger_type="chat_message", message="")
     )
     assert result == ""
+
+
+# ── build_acp_message ─────────────────────────────────────────────────────────
+
+
+def test_acp_message_prefixes_paca_skill():
+    result = build_acp_message(_trigger(message="Do something"))
+    assert result == "/paca Do something"
+
+
+def test_acp_message_uses_task_assigned_fallback():
+    result = build_acp_message(_trigger(trigger_type="task_assigned", message=""))
+    assert result.startswith("/paca ")
+    assert "assigned" in result.lower()
 
 
 def test_action_type_task_assigned():

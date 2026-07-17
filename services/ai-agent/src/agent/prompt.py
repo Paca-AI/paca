@@ -45,6 +45,18 @@ def build_initial_prompt(trigger: TriggerMessage) -> str:
     return trigger.message
 
 
+# ACP agents don't get Paca-managed skills injected via system context the
+# way the LLM/sandbox path does (see skills/paca/SKILL.md) — the only way to
+# route a local ACP CLI (Claude Code, Codex, ...) through the Paca skill is
+# the literal slash command, so prefix every dispatched message with it.
+_ACP_SKILL_TRIGGER = "/paca"
+
+
+def build_acp_message(trigger: TriggerMessage) -> str:
+    """Prefix the initial prompt with the `/paca` skill trigger for ACP agents."""
+    return f"{_ACP_SKILL_TRIGGER} {build_initial_prompt(trigger)}"
+
+
 def build_trigger_suffix(trigger: TriggerMessage, all_repos: list[dict] | None = None) -> str:
     """Build the system-message suffix for trigger-specific metadata.
 

@@ -81,7 +81,7 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
             "type": "start_turn",
             "conversation_id": "conv-1",
             "project_id": "proj-1",
-            "message": "hello",
+            "message": "/paca hello",
             "trigger_type": "chat_message",
             "acp_provider": "claude-code",
             "acp_command": [],

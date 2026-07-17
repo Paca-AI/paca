@@ -51,7 +51,7 @@
 			"acpCommandLabel": "Command",
 			"acpCommandPlaceholder": "npx -y my-acp-server",
 			"acpCommandHint": "Space-separated command used to launch your ACP server.",
-			"acpGuidance": "Tools, MCP servers, and skills aren't configured here — they come from your ACP client's own local settings, running with your own git/gh credentials (clone, push, and open PRs all work natively). You'll get a command to run locally after creating this agent.",
+			"acpGuidance": "Tools, MCP servers, and skills aren't configured here — they come from your ACP client's own local settings, running with your own git/gh credentials (clone, push, and open PRs all work natively). After you create this agent, we'll walk you through connecting the local bridge, installing the Paca skill, and wiring up the MCP server.",
 			"systemPromptLabel": "System Prompt",
 			"optional": "(optional)",
 			"charsCount": "{{count}} chars",
@@ -67,6 +67,8 @@
 		"card": {
 			"configure": "Configure",
 			"delete": "Delete",
+			"acpStatusConnected": "Online",
+			"acpStatusDisconnected": "Offline",
 			"deleteDialog": {
 				"title": "Delete {{name}}?",
 				"description": "This permanently deletes the agent and removes it from the project. Running conversations will be stopped.",
@@ -83,6 +85,36 @@
 				"description": "Add an AI agent to automate tasks, review code, write documentation, and more.",
 				"createFirstAgent": "Create your first agent"
 			}
+		},
+		"acpSetup": {
+			"dialogTitle": "Connect your local ACP bridge",
+			"dialogDescription": "{{name}} is ready — complete these steps on your own machine to bring it online.",
+			"panelTitle": "Local Bridge",
+			"panelDescription": "Run this agent's ACP server on your own machine and connect it here.",
+			"statusConnected": "Connected",
+			"statusDisconnected": "Not connected",
+			"step1Title": "Install the ACP bridge",
+			"step1Description": "Requires Python 3.12+. Install the daemon once with pip (or skip this — the run command below uses uvx, which fetches it automatically).",
+			"step2Title": "Run the local bridge",
+			"step2Description": "Generate a token, then run this in your project folder.",
+			"noTokenYet": "Generate a token to reveal the run command.",
+			"generateToken": "Generate token",
+			"regenerateToken": "Regenerate token",
+			"generating": "Generating…",
+			"generateFailed": "Couldn't generate a token. Please try again.",
+			"tokenWarning": "Copy this now — it won't be shown again.",
+			"copy": "Copy",
+			"copied": "Copied!",
+			"step3Title": "Install the Paca skill",
+			"step3Description": "Lets your CLI route requests through Paca's MCP tools — added to every prompt via /paca by default.",
+			"step3NotAvailable": "Automatic installation is available for Claude Code only. {{provider}} doesn't have a known custom-prompt installer yet — Paca's MCP tools below still work without it.",
+			"step3ViewContent": "View skill instructions",
+			"step4Title": "Connect the MCP server",
+			"step4Description": "Uses a personal API key so the CLI can call Paca's tools directly.",
+			"step4ApiKeyLink": "Get an API key",
+			"step4GenericHint": "The exact steps to register an MCP server vary by CLI — {{provider}} typically reads this from its own config file. Use this command as a reference:",
+			"customProviderLabel": "your custom ACP server",
+			"done": "Done"
 		},
 		"detail": {
 			"tabs": {
@@ -118,20 +150,6 @@
 				"acpCommandLabel": "Command",
 				"acpCommandHint": "Space-separated command used to launch your ACP server.",
 				"acpGuidanceBanner": "This agent's tools, MCP servers, and skills are configured in your local ACP client, which runs with your own git/gh credentials — not in Paca."
-			},
-			"localBridge": {
-				"title": "Local Bridge",
-				"description": "Run this agent's ACP server on your own machine and connect it here.",
-				"statusConnected": "Connected",
-				"statusDisconnected": "Not connected",
-				"noTokenYet": "Generate a token to connect your local ACP bridge.",
-				"generateToken": "Generate token",
-				"regenerateToken": "Regenerate token",
-				"generating": "Generating…",
-				"tokenWarning": "Copy this now — it won't be shown again.",
-				"runCommandLabel": "Run this in your project folder:",
-				"copy": "Copy",
-				"copied": "Copied!"
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} server configured",

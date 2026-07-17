@@ -24,6 +24,7 @@ import {
 import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AcpBridgeSetup } from "@/components/projects/agents/acp-bridge-setup";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,12 +58,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type ACPProvider,
+	type AcpBridgeToken,
 	AGENT_PRESETS,
 	type Agent,
 	type AgentType,
+	acpBridgeStatusQueryOptions,
 	agentsQueryOptions,
 	createAgent,
 	deleteAgent,
+	generateAcpBridgeToken,
 	llmModelsQueryOptions,
 } from "@/lib/agent-api";
 import {
@@ -101,10 +105,12 @@ function CreateAgentDialog({
 	projectId,
 	open,
 	onOpenChange,
+	onAcpAgentCreated,
 }: {
 	projectId: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	onAcpAgentCreated: (agent: Agent, token: AcpBridgeToken | null) => void;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -195,8 +201,8 @@ function CreateAgentDialog({
 	const acpCommandParts = acpCommand.trim().split(/\s+/).filter(Boolean);
 
 	const createMutation = useMutation({
-		mutationFn: () =>
-			createAgent(projectId, {
+		mutationFn: async () => {
+			const agent = await createAgent(projectId, {
 				name: name.trim(),
 				handle: handle.trim(),
 				agent_type: agentType,
@@ -215,12 +221,31 @@ function CreateAgentDialog({
 								: {}),
 						}),
 				system_prompt: systemPrompt,
-			}),
-		onSuccess: () => {
+			});
+			if (agent.agent_type !== "acp") {
+				return { agent, token: null };
+			}
+			// Generate the bridge token as part of the same "Creating…" spinner
+			// instead of a separate loading step inside the setup dialog — the
+			// dialog can then just display an already-resolved result. If this
+			// sub-step fails, the agent still exists; fall through with
+			// token: null so the setup dialog offers a manual retry instead of
+			// failing the whole creation.
+			try {
+				const token = await generateAcpBridgeToken(projectId, agent.id);
+				return { agent, token };
+			} catch {
+				return { agent, token: null };
+			}
+		},
+		onSuccess: ({ agent, token }) => {
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "agents"],
 			});
 			handleClose(false);
+			if (agent.agent_type === "acp") {
+				onAcpAgentCreated(agent, token);
+			}
 		},
 	});
 
@@ -744,6 +769,66 @@ function CreateAgentDialog({
 	);
 }
 
+// ── ACP Setup Dialog ─────────────────────────────────────────────────────────
+
+// Shown right after a new ACP agent is created — walks the user through
+// generating a bridge token and connecting the local bridge, skill, and MCP
+// server, instead of leaving them to discover the Local Bridge panel on the
+// agent's detail page on their own.
+function AcpSetupDialog({
+	projectId,
+	agent,
+	token,
+	open,
+	onOpenChange,
+	onTokenGenerated,
+}: {
+	projectId: string;
+	agent: Agent | null;
+	token: AcpBridgeToken | null;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	onTokenGenerated: () => void;
+}) {
+	const { t } = useTranslation("projects");
+	const qc = useQueryClient();
+
+	if (!agent) return null;
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-lg">
+				<DialogHeader>
+					<DialogTitle>{t("agents.acpSetup.dialogTitle")}</DialogTitle>
+					<DialogDescription>
+						{t("agents.acpSetup.dialogDescription", { name: agent.name })}
+					</DialogDescription>
+				</DialogHeader>
+				<div className="overflow-y-auto max-h-[60vh] pr-1 -mr-1">
+					<AcpBridgeSetup
+						projectId={projectId}
+						agentId={agent.id}
+						acpProvider={agent.acp_provider ?? "claude-code"}
+						hasToken={agent.has_acp_bridge_token || token !== null}
+						initialToken={token}
+						onTokenGenerated={() => {
+							qc.invalidateQueries({
+								queryKey: ["projects", projectId, "agents"],
+							});
+							onTokenGenerated();
+						}}
+					/>
+				</div>
+				<DialogFooter>
+					<Button onClick={() => onOpenChange(false)}>
+						{t("agents.acpSetup.done")}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 // ── Agent Card ────────────────────────────────────────────────────────────────
 
 function AgentCard({
@@ -759,6 +844,7 @@ function AgentCard({
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 	const [confirmDelete, setConfirmDelete] = useState(false);
+	const isAcp = agent.agent_type === "acp";
 
 	const deleteMutation = useMutation({
 		mutationFn: () => deleteAgent(projectId, agent.id),
@@ -767,6 +853,15 @@ function AgentCard({
 			setConfirmDelete(false);
 		},
 	});
+
+	// Kept live via useProjectRealtime's socket-driven cache write on
+	// "agent.acp_bridge.status" (same query key the detail page's Local
+	// Bridge panel reads), so this stays in sync without polling.
+	const { data: acpStatus } = useQuery(
+		acpBridgeStatusQueryOptions(projectId, agent.id, {
+			enabled: isAcp && agent.has_acp_bridge_token,
+		}),
+	);
 
 	const initials = agent.name
 		.split(" ")
@@ -808,7 +903,7 @@ function AgentCard({
 
 					<div className="flex items-center gap-1.5 shrink-0">
 						<Badge variant="secondary" className="text-xs font-medium">
-							{agent.llm_provider}
+							{isAcp ? (agent.acp_provider ?? "acp") : agent.llm_provider}
 						</Badge>
 						{canWrite && (
 							<DropdownMenu>
@@ -850,10 +945,26 @@ function AgentCard({
 
 				{/* Stats row */}
 				<div className="flex items-center gap-4 text-xs text-muted-foreground">
-					<span className="flex items-center gap-1">
-						<Zap className="size-3" />
-						{agent.llm_provider}/{agent.llm_model}
-					</span>
+					{isAcp ? (
+						<span className="flex items-center gap-1.5">
+							<span
+								className={cn(
+									"size-1.5 rounded-full",
+									acpStatus?.connected
+										? "bg-emerald-500"
+										: "bg-muted-foreground/40",
+								)}
+							/>
+							{acpStatus?.connected
+								? t("agents.card.acpStatusConnected")
+								: t("agents.card.acpStatusDisconnected")}
+						</span>
+					) : (
+						<span className="flex items-center gap-1">
+							<Zap className="size-3" />
+							{agent.llm_provider}/{agent.llm_model}
+						</span>
+					)}
 				</div>
 			</div>
 
@@ -907,6 +1018,10 @@ function AgentsPage() {
 		agentsQueryOptions(projectId),
 	);
 	const [createOpen, setCreateOpen] = useState(false);
+	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);
+	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(
+		null,
+	);
 
 	return (
 		<div className="flex flex-col">
@@ -991,6 +1106,27 @@ function AgentsPage() {
 				projectId={projectId}
 				open={createOpen}
 				onOpenChange={setCreateOpen}
+				onAcpAgentCreated={(agent, token) => {
+					setAcpSetupAgent(agent);
+					setAcpSetupToken(token);
+				}}
+			/>
+			<AcpSetupDialog
+				projectId={projectId}
+				agent={acpSetupAgent}
+				token={acpSetupToken}
+				open={acpSetupAgent !== null}
+				onOpenChange={(v) => {
+					if (!v) {
+						setAcpSetupAgent(null);
+						setAcpSetupToken(null);
+					}
+				}}
+				onTokenGenerated={() =>
+					setAcpSetupAgent((a) =>
+						a ? { ...a, has_acp_bridge_token: true } : a,
+					)
+				}
 			/>
 		</div>
 	);
