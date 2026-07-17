@@ -740,10 +740,7 @@
 			"title": "Thuộc tính",
 			"status": "Trạng thái",
 			"dates": "Ngày tháng",
-			"trackTime": "Theo dõi thời gian",
-			"addTime": "Thêm thời gian",
 			"type": "Loại",
-			"relationships": "Liên kết",
 			"assignees": "Người được giao",
 			"importance": "Mức độ quan trọng",
 			"none": "Không có",
@@ -1017,6 +1014,11 @@
 			"statusesLabel": "Trạng thái",
 			"assigneesLabel": "Người được giao",
 			"taskTypesLabel": "Loại nhiệm vụ",
+			"startDateLabel": "Ngày bắt đầu",
+			"dueDateLabel": "Ngày đến hạn",
+			"importanceLabel": "Mức độ quan trọng",
+			"storyPointsLabel": "Story Points",
+			"tagsLabel": "Thẻ",
 			"reset": "Đặt lại",
 			"saving": "Đang lưu…",
 			"save": "Lưu",
@@ -1040,6 +1042,20 @@
 				"allNormalTypesDynamic": "Tất cả loại thông thường (động)",
 				"systemTypes": "Loại hệ thống",
 				"noTaskTypes": "Không có loại nhiệm vụ"
+			},
+			"customFieldFilter": {
+				"allValues": "Tất cả giá trị",
+				"noOptions": "Không có tùy chọn",
+				"min": "Tối thiểu",
+				"max": "Tối đa",
+				"containsPlaceholder": "Chứa…"
+			},
+			"importanceFilter": {
+				"allLevels": "Tất cả mức độ"
+			},
+			"tagsFilter": {
+				"addTag": "Thêm thẻ",
+				"addTagPlaceholder": "Thêm thẻ..."
 			}
 		},
 		"roadmap": {

@@ -756,10 +756,7 @@
 			"title": "Свойства",
 			"status": "Статус",
 			"dates": "Даты",
-			"trackTime": "Учёт времени",
-			"addTime": "Добавить время",
 			"type": "Тип",
-			"relationships": "Связи",
 			"assignees": "Исполнители",
 			"importance": "Важность",
 			"none": "Нет",
@@ -1035,6 +1032,11 @@
 			"statusesLabel": "Статусы",
 			"assigneesLabel": "Исполнители",
 			"taskTypesLabel": "Типы задач",
+			"startDateLabel": "Дата начала",
+			"dueDateLabel": "Срок",
+			"importanceLabel": "Важность",
+			"storyPointsLabel": "Story Points",
+			"tagsLabel": "Теги",
 			"reset": "Сбросить",
 			"saving": "Сохранение…",
 			"save": "Сохранить",
@@ -1058,6 +1060,20 @@
 				"allNormalTypesDynamic": "Все обычные типы (динамически)",
 				"systemTypes": "Системные типы",
 				"noTaskTypes": "Нет типов задач"
+			},
+			"customFieldFilter": {
+				"allValues": "Все значения",
+				"noOptions": "Нет вариантов",
+				"min": "Мин",
+				"max": "Макс",
+				"containsPlaceholder": "Содержит…"
+			},
+			"importanceFilter": {
+				"allLevels": "Все уровни"
+			},
+			"tagsFilter": {
+				"addTag": "Добавить тег",
+				"addTagPlaceholder": "Добавить тег..."
 			}
 		},
 		"roadmap": {

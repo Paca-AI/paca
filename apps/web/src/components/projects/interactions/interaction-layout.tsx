@@ -37,6 +37,7 @@ import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import {
 	allTasksQueryOptions,
 	bulkMoveViewTaskPositions,
+	type CustomFieldFilterQuery,
 	createSprint,
 	createTask,
 	createViewByContext,
@@ -76,6 +77,7 @@ import { cn } from "@/lib/utils";
 import { BoardView } from "./board-view";
 import { ListView } from "./list-view";
 import { NewViewPopover } from "./new-view-popover";
+import { getImportanceBucketBounds } from "./priority";
 import { RenameViewDialog } from "./rename-view-dialog";
 import { RoadmapView } from "./roadmap-view";
 import { TaskDetailModal } from "./task-detail-modal";
@@ -561,6 +563,52 @@ export function InteractionLayout({
 			);
 		}
 
+		let custom_field_filters:
+			| Record<string, CustomFieldFilterQuery>
+			| undefined;
+		const cfFilterConfig = activeViewConfig?.filters?.custom_fields;
+		if (cfFilterConfig) {
+			const resolved: Record<string, CustomFieldFilterQuery> = {};
+			for (const cf of customFields) {
+				const f = cfFilterConfig[cf.field_key];
+				if (!f) continue;
+				if (cf.field_type === "select" || cf.field_type === "multi_select") {
+					if (!f.selector) continue;
+					const values = resolveFilterConfig(f.selector, cf.options);
+					if (values.length > 0) resolved[cf.field_key] = { values };
+				} else if (cf.field_type === "boolean") {
+					if (!f.selector) continue;
+					const values = resolveFilterConfig(f.selector, ["true", "false"]);
+					if (values.length > 0) resolved[cf.field_key] = { values };
+				} else if (cf.field_type === "number") {
+					if (f.min == null && f.max == null) continue;
+					resolved[cf.field_key] = { min: f.min, max: f.max };
+				} else if (cf.field_type === "date") {
+					if (!f.after && !f.before) continue;
+					resolved[cf.field_key] = { after: f.after, before: f.before };
+				} else {
+					// text / url
+					if (!f.contains) continue;
+					resolved[cf.field_key] = { contains: f.contains };
+				}
+			}
+			if (Object.keys(resolved).length > 0) custom_field_filters = resolved;
+		}
+
+		let importance_ranges: { min: number; max: number }[] | undefined;
+		const importanceBuckets = activeViewConfig?.filters?.importance;
+		if (importanceBuckets && importanceBuckets.length > 0) {
+			importance_ranges = importanceBuckets.map((bucket) =>
+				getImportanceBucketBounds(bucket),
+			);
+		}
+
+		const tags =
+			activeViewConfig?.filters?.tags &&
+			activeViewConfig.filters.tags.length > 0
+				? activeViewConfig.filters.tags
+				: undefined;
+
 		return {
 			sprint_ids:
 				activeViewConfig?.filters !== undefined
@@ -582,9 +630,19 @@ export function InteractionLayout({
 			assignee_ids,
 			assignee_null,
 			task_type_ids,
+			custom_field_filters,
+			start_date_after: activeViewConfig?.filters?.start_date?.after,
+			start_date_before: activeViewConfig?.filters?.start_date?.before,
+			due_date_after: activeViewConfig?.filters?.due_date?.after,
+			due_date_before: activeViewConfig?.filters?.due_date?.before,
+			story_points_min: activeViewConfig?.filters?.story_points?.min,
+			story_points_max: activeViewConfig?.filters?.story_points?.max,
+			importance_ranges,
+			tags,
 		};
 	}, [
 		activeViewConfig?.filters,
+		customFields,
 		defaultPageTaskTypeIds,
 		members,
 		sprints,
@@ -645,6 +703,15 @@ export function InteractionLayout({
 			sortBy: activeViewConfig?.sort_by,
 			viewId: effectiveViewId,
 			search: debouncedSearchQuery || undefined,
+			customFieldFilters: apiFilters.custom_field_filters,
+			startDateAfter: apiFilters.start_date_after,
+			startDateBefore: apiFilters.start_date_before,
+			dueDateAfter: apiFilters.due_date_after,
+			dueDateBefore: apiFilters.due_date_before,
+			storyPointsMin: apiFilters.story_points_min,
+			storyPointsMax: apiFilters.story_points_max,
+			importanceRanges: apiFilters.importance_ranges,
+			tags: apiFilters.tags,
 		}),
 		[
 			context,
@@ -724,6 +791,15 @@ export function InteractionLayout({
 			sortBy: activeViewConfig?.sort_by,
 			viewId: effectiveViewId,
 			search: debouncedSearchQuery || undefined,
+			customFieldFilters: apiFilters.custom_field_filters,
+			startDateAfter: apiFilters.start_date_after,
+			startDateBefore: apiFilters.start_date_before,
+			dueDateAfter: apiFilters.due_date_after,
+			dueDateBefore: apiFilters.due_date_before,
+			storyPointsMin: apiFilters.story_points_min,
+			storyPointsMax: apiFilters.story_points_max,
+			importanceRanges: apiFilters.importance_ranges,
+			tags: apiFilters.tags,
 		}),
 		[
 			context,

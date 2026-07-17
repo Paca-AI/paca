@@ -740,10 +740,7 @@
 			"title": "Properties",
 			"status": "Status",
 			"dates": "Dates",
-			"trackTime": "Track Time",
-			"addTime": "Add time",
 			"type": "Type",
-			"relationships": "Relationships",
 			"assignees": "Assignees",
 			"importance": "Importance",
 			"none": "None",
@@ -1017,6 +1014,11 @@
 			"statusesLabel": "Statuses",
 			"assigneesLabel": "Assignees",
 			"taskTypesLabel": "Task types",
+			"startDateLabel": "Start Date",
+			"dueDateLabel": "Due Date",
+			"importanceLabel": "Importance",
+			"storyPointsLabel": "Story Points",
+			"tagsLabel": "Tags",
 			"reset": "Reset",
 			"saving": "Saving…",
 			"save": "Save",
@@ -1040,6 +1042,20 @@
 				"allNormalTypesDynamic": "All normal types (dynamic)",
 				"systemTypes": "System types",
 				"noTaskTypes": "No task types"
+			},
+			"customFieldFilter": {
+				"allValues": "All values",
+				"noOptions": "No options",
+				"min": "Min",
+				"max": "Max",
+				"containsPlaceholder": "Contains…"
+			},
+			"importanceFilter": {
+				"allLevels": "All levels"
+			},
+			"tagsFilter": {
+				"addTag": "Add tag",
+				"addTagPlaceholder": "Add tag..."
 			}
 		},
 		"roadmap": {

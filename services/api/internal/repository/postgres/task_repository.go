@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -497,6 +498,173 @@ func applyTaskFilter(b *queryBuilder, filter taskdom.TaskFilter) {
 				"(title ILIKE %s OR ('#' || task_number::text) ILIKE %s)", p1, p2))
 		}
 	}
+
+	if filter.StartDateAfter != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "start_date >= "+p)
+		b.args = append(b.args, *filter.StartDateAfter)
+	}
+	if filter.StartDateBefore != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "start_date <= "+p)
+		b.args = append(b.args, *filter.StartDateBefore)
+	}
+	if filter.DueDateAfter != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "due_date >= "+p)
+		b.args = append(b.args, *filter.DueDateAfter)
+	}
+	if filter.DueDateBefore != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "due_date <= "+p)
+		b.args = append(b.args, *filter.DueDateBefore)
+	}
+	if filter.StoryPointsMin != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "story_points >= "+p)
+		b.args = append(b.args, *filter.StoryPointsMin)
+	}
+	if filter.StoryPointsMax != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, "story_points <= "+p)
+		b.args = append(b.args, *filter.StoryPointsMax)
+	}
+	if len(filter.ImportanceRanges) > 0 {
+		parts := make([]string, len(filter.ImportanceRanges))
+		for i, rg := range filter.ImportanceRanges {
+			minP := b.placeholder()
+			b.args = append(b.args, rg.Min)
+			maxP := b.placeholder()
+			b.args = append(b.args, rg.Max)
+			parts[i] = "(importance BETWEEN " + minP + " AND " + maxP + ")"
+		}
+		b.whereClauses = append(b.whereClauses, "("+strings.Join(parts, " OR ")+")")
+	}
+	if len(filter.Tags) > 0 {
+		parts := make([]string, len(filter.Tags))
+		for i, tag := range filter.Tags {
+			p := b.placeholder()
+			b.args = append(b.args, tag)
+			parts[i] = "tags @> to_jsonb(" + p + "::text)"
+		}
+		b.whereClauses = append(b.whereClauses, "("+strings.Join(parts, " OR ")+")")
+	}
+
+	applyCustomFieldFilters(b, filter.CustomFieldFilters)
+}
+
+// applyCustomFieldFilters adds WHERE predicates for TaskFilter.CustomFieldFilters,
+// reading and casting the custom_fields JSONB column per field type. Field
+// keys are bound as parameters (never string-concatenated) and iterated in
+// sorted order so the generated SQL text is deterministic across calls with
+// the same filter set, which helps the driver's prepared-statement cache.
+func applyCustomFieldFilters(b *queryBuilder, filters map[string]taskdom.CustomFieldFilterQuery) {
+	if len(filters) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(filters))
+	for k := range filters {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		q := filters[key]
+		switch q.FieldType {
+		case "select", "boolean":
+			if len(q.Values) == 0 {
+				continue
+			}
+			keyP := b.placeholder()
+			b.args = append(b.args, key)
+			placeholders := make([]string, len(q.Values))
+			for i, v := range q.Values {
+				p := b.placeholder()
+				b.args = append(b.args, v)
+				placeholders[i] = p
+			}
+			b.whereClauses = append(b.whereClauses,
+				"(custom_fields->>"+keyP+") IN ("+strings.Join(placeholders, ",")+")")
+		case "multi_select":
+			if len(q.Values) == 0 {
+				continue
+			}
+			keyP := b.placeholder()
+			b.args = append(b.args, key)
+			parts := make([]string, len(q.Values))
+			for i, v := range q.Values {
+				p := b.placeholder()
+				b.args = append(b.args, v)
+				parts[i] = "custom_fields->" + keyP + " @> to_jsonb(" + p + "::text)"
+			}
+			b.whereClauses = append(b.whereClauses, "("+strings.Join(parts, " OR ")+")")
+		case "number":
+			if q.Min == nil && q.Max == nil {
+				continue
+			}
+			keyP := b.placeholder()
+			b.args = append(b.args, key)
+			expr := customFieldNumericExpr(keyP)
+			if q.Min != nil {
+				p := b.placeholder()
+				b.args = append(b.args, *q.Min)
+				b.whereClauses = append(b.whereClauses, expr+" >= "+p)
+			}
+			if q.Max != nil {
+				p := b.placeholder()
+				b.args = append(b.args, *q.Max)
+				b.whereClauses = append(b.whereClauses, expr+" <= "+p)
+			}
+		case "date":
+			if q.After == nil && q.Before == nil {
+				continue
+			}
+			keyP := b.placeholder()
+			b.args = append(b.args, key)
+			expr := customFieldDateExpr(keyP)
+			if q.After != nil {
+				p := b.placeholder()
+				b.args = append(b.args, *q.After)
+				b.whereClauses = append(b.whereClauses, expr+" >= "+p)
+			}
+			if q.Before != nil {
+				p := b.placeholder()
+				b.args = append(b.args, *q.Before)
+				b.whereClauses = append(b.whereClauses, expr+" <= "+p)
+			}
+		case "text", "url":
+			if q.Contains == nil || strings.TrimSpace(*q.Contains) == "" {
+				continue
+			}
+			keyP := b.placeholder()
+			b.args = append(b.args, key)
+			pattern := "%" + escapeLikePattern(*q.Contains) + "%"
+			p := b.placeholder()
+			b.args = append(b.args, pattern)
+			b.whereClauses = append(b.whereClauses,
+				"(custom_fields->>"+keyP+") ILIKE "+p)
+		}
+	}
+}
+
+// customFieldNumericExpr returns a SQL expression that reads the
+// custom_fields JSONB text value under keyP (a bound $N placeholder holding
+// the field key) and safely casts it to numeric, yielding NULL instead of
+// erroring the whole query when the stored value isn't a valid number.
+// custom_fields has no write-time validation against the field's declared
+// type (any JSON value is accepted on task create/update), and a field
+// definition can be deleted and recreated with the same field_key but a
+// different type — either way, a task can end up with a stray/invalid value
+// under a "numeric" field's key. A bare ::numeric cast on such a row aborts
+// the entire query with a Postgres error instead of just excluding that row,
+// so the cast is guarded by a regex check first.
+func customFieldNumericExpr(keyP string) string {
+	return "(CASE WHEN custom_fields->>" + keyP + " ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (custom_fields->>" + keyP + ")::numeric END)"
+}
+
+// customFieldDateExpr is the date-typed counterpart of customFieldNumericExpr.
+func customFieldDateExpr(keyP string) string {
+	return "(CASE WHEN custom_fields->>" + keyP + " ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN (custom_fields->>" + keyP + ")::date END)"
 }
 
 // escapeLikePattern escapes the LIKE/ILIKE wildcard characters (% and _) and
@@ -549,11 +717,11 @@ func buildCFOrderBy(sort taskdom.TaskSort, b *queryBuilder) string {
 	case "number":
 		p := b.placeholder()
 		b.args = append(b.args, sort.By)
-		return fmt.Sprintf("(custom_fields->>%s)::numeric ASC NULLS LAST, created_at ASC, id ASC", p)
+		return customFieldNumericExpr(p) + " ASC NULLS LAST, created_at ASC, id ASC"
 	case "date":
 		p := b.placeholder()
 		b.args = append(b.args, sort.By)
-		return fmt.Sprintf("(custom_fields->>%s)::date ASC NULLS LAST, created_at ASC, id ASC", p)
+		return customFieldDateExpr(p) + " ASC NULLS LAST, created_at ASC, id ASC"
 	case "select":
 		if len(sort.CFOpts) == 0 {
 			return "created_at ASC, id ASC"
@@ -719,8 +887,8 @@ func applyCFCursorWhere(b *queryBuilder, cur *taskdom.TaskCursor, sort taskdom.T
 			keyP3 := b.placeholder()
 			b.args = append(b.args, sort.By)
 			b.whereClauses = append(b.whereClauses, fmt.Sprintf(
-				"((custom_fields->>%s)::numeric > %s OR ((custom_fields->>%s)::numeric = %s AND (created_at, id) > (%s, %s)) OR custom_fields->>%s IS NULL)",
-				keyP, vP, keyP2, vP2, caP, idP, keyP3))
+				"(%s > %s OR (%s = %s AND (created_at, id) > (%s, %s)) OR custom_fields->>%s IS NULL)",
+				customFieldNumericExpr(keyP), vP, customFieldNumericExpr(keyP2), vP2, caP, idP, keyP3))
 		} else {
 			keyP := b.placeholder()
 			b.args = append(b.args, sort.By)
@@ -748,8 +916,8 @@ func applyCFCursorWhere(b *queryBuilder, cur *taskdom.TaskCursor, sort taskdom.T
 			keyP3 := b.placeholder()
 			b.args = append(b.args, sort.By)
 			b.whereClauses = append(b.whereClauses, fmt.Sprintf(
-				"((custom_fields->>%s)::date > %s::date OR ((custom_fields->>%s)::date = %s::date AND (created_at, id) > (%s, %s)) OR custom_fields->>%s IS NULL)",
-				keyP, dP, keyP2, dP2, caP, idP, keyP3))
+				"(%s > %s::date OR (%s = %s::date AND (created_at, id) > (%s, %s)) OR custom_fields->>%s IS NULL)",
+				customFieldDateExpr(keyP), dP, customFieldDateExpr(keyP2), dP2, caP, idP, keyP3))
 		} else {
 			keyP := b.placeholder()
 			b.args = append(b.args, sort.By)
@@ -918,7 +1086,7 @@ func (r *TaskRepository) SumTaskField(ctx context.Context, projectID uuid.UUID, 
 	} else {
 		keyP := b.placeholder()
 		b.args = append(b.args, fieldKey)
-		err = r.db.GetContext(ctx, &sum, `SELECT COALESCE(SUM((custom_fields->>`+keyP+`)::numeric), 0) FROM tasks WHERE `+whereSQL, b.args...)
+		err = r.db.GetContext(ctx, &sum, `SELECT COALESCE(SUM(`+customFieldNumericExpr(keyP)+`), 0) FROM tasks WHERE `+whereSQL, b.args...)
 	}
 	if err != nil {
 		return 0, fmt.Errorf("task repo: sum field %q: %w", fieldKey, err)
@@ -1376,13 +1544,37 @@ func (r *TaskRepository) UpdateCustomFieldDefinition(ctx context.Context, f *tas
 	return nil
 }
 
-// DeleteCustomFieldDefinition removes a custom field definition by ID.
+// DeleteCustomFieldDefinition removes a custom field definition by ID and
+// purges its value from every task in the project's custom_fields JSONB
+// column. Without this, a deleted field's stray/stale values remain attached
+// to tasks forever; if a new field is later created reusing the same
+// field_key (e.g. because the display name is unchanged), it silently
+// inherits data from the old, possibly incompatible, field type.
 func (r *TaskRepository) DeleteCustomFieldDefinition(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM custom_field_definitions WHERE id = $1`, id.String())
-	if err != nil {
-		return fmt.Errorf("custom field repo: delete: %w", err)
-	}
-	return nil
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var deleted struct {
+			ProjectID string `db:"project_id"`
+			FieldKey  string `db:"field_key"`
+		}
+		err := tx.GetContext(ctx, &deleted,
+			`DELETE FROM custom_field_definitions WHERE id = $1 RETURNING project_id, field_key`,
+			id.String(),
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return taskdom.ErrCustomFieldNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("custom field repo: delete: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tasks SET custom_fields = custom_fields - $1 WHERE project_id = $2`,
+			deleted.FieldKey, deleted.ProjectID,
+		); err != nil {
+			return fmt.Errorf("custom field repo: delete: purge task values: %w", err)
+		}
+		return nil
+	})
 }
 
 func toCustomFieldEntity(r *customFieldDefinitionRecord) (*taskdom.CustomFieldDefinition, error) {

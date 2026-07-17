@@ -740,10 +740,7 @@
 			"title": "Propriétés",
 			"status": "Statut",
 			"dates": "Dates",
-			"trackTime": "Suivre le temps",
-			"addTime": "Ajouter du temps",
 			"type": "Type",
-			"relationships": "Relations",
 			"assignees": "Assignés",
 			"importance": "Importance",
 			"none": "Aucune",
@@ -1017,6 +1014,11 @@
 			"statusesLabel": "Statuts",
 			"assigneesLabel": "Assignés",
 			"taskTypesLabel": "Types de tâche",
+			"startDateLabel": "Date de début",
+			"dueDateLabel": "Date d'échéance",
+			"importanceLabel": "Importance",
+			"storyPointsLabel": "Story points",
+			"tagsLabel": "Tags",
 			"reset": "Réinitialiser",
 			"saving": "Enregistrement…",
 			"save": "Enregistrer",
@@ -1040,6 +1042,20 @@
 				"allNormalTypesDynamic": "Tous les types normaux (dynamique)",
 				"systemTypes": "Types système",
 				"noTaskTypes": "Aucun type de tâche"
+			},
+			"customFieldFilter": {
+				"allValues": "Toutes les valeurs",
+				"noOptions": "Aucune option",
+				"min": "Min",
+				"max": "Max",
+				"containsPlaceholder": "Contient…"
+			},
+			"importanceFilter": {
+				"allLevels": "Tous les niveaux"
+			},
+			"tagsFilter": {
+				"addTag": "Ajouter une étiquette",
+				"addTagPlaceholder": "Ajouter une étiquette..."
 			}
 		},
 		"roadmap": {

@@ -2,11 +2,9 @@ import {
 	ArrowRight,
 	BookOpen,
 	Check,
-	Clock,
 	ExternalLink,
 	KanbanSquare,
 	Layers,
-	Link2,
 	Plus,
 	X,
 } from "lucide-react";
@@ -31,7 +29,7 @@ import {
 } from "../priority";
 import { TaskTypeSelector } from "../task-type-selector";
 import { AddFieldDialog } from "./add-field-dialog";
-import { FieldRow, FieldValue } from "./primitives";
+import { FieldRow } from "./primitives";
 import type { SelectOption, UserOption } from "./property-field";
 import { PropertyField } from "./property-field";
 import { NumberEditor } from "./property-field/number-editor";
@@ -163,16 +161,6 @@ export function PropertiesPanel({
 					canEdit={canEdit}
 				/>
 
-				<FieldRow label={t("taskDetail.properties.trackTime")}>
-					<button
-						type="button"
-						className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/70 hover:text-foreground transition-colors duration-150 font-medium"
-					>
-						<Clock className="size-3.5 opacity-70" />
-						{t("taskDetail.properties.addTime")}
-					</button>
-				</FieldRow>
-
 				{(taskType || (canEdit && taskTypes.length > 0)) && (
 					<FieldRow label={t("taskDetail.properties.type")}>
 						<TaskTypeSelector
@@ -183,16 +171,6 @@ export function PropertiesPanel({
 						/>
 					</FieldRow>
 				)}
-
-				<FieldRow label={t("taskDetail.properties.relationships")}>
-					<button
-						type="button"
-						className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/70 hover:text-foreground transition-colors duration-150 font-medium"
-					>
-						<Link2 className="size-3.5 opacity-70" />
-						<FieldValue empty />
-					</button>
-				</FieldRow>
 
 				<PropertyField
 					label={t("taskDetail.properties.assignees")}

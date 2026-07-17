@@ -94,6 +94,38 @@ export interface FilterConfig {
 }
 
 /**
+ * A per-custom-field filter selector stored inside a view's filters, keyed by
+ * the target custom field's `field_key`. Which members are meaningful depends
+ * on the field's type (looked up from its `CustomFieldDefinition` at resolve
+ * time, not stored here):
+ * - `select` / `multi_select` / `boolean` → `selector` (matches ANY of the
+ *   resolved option values, same recursive semantics as `FilterConfig`)
+ * - `number` → `min` / `max` (inclusive range; either may be unset)
+ * - `date` → `after` / `before` (inclusive range, "YYYY-MM-DD"; either may be unset)
+ * - `text` / `url` → `contains` (case-insensitive substring match)
+ */
+export interface CustomFieldFilterConfig {
+	selector?: FilterConfig;
+	min?: number;
+	max?: number;
+	after?: string;
+	before?: string;
+	contains?: string;
+}
+
+/** An inclusive date range filter, "YYYY-MM-DD"; either bound may be unset. */
+export interface DateRangeFilter {
+	after?: string;
+	before?: string;
+}
+
+/** An inclusive numeric range filter; either bound may be unset. */
+export interface NumberRangeFilter {
+	min?: number;
+	max?: number;
+}
+
+/**
  * Per-view filter configuration stored in the database.
  * Each dimension uses an optional FilterConfig selector; absent means no filter
  * (include everything) for that dimension.
@@ -103,6 +135,34 @@ export interface ViewFilters {
 	statuses?: FilterConfig;
 	assignees?: FilterConfig;
 	sprints?: FilterConfig;
+	custom_fields?: Record<string, CustomFieldFilterConfig>;
+	start_date?: DateRangeFilter;
+	due_date?: DateRangeFilter;
+	story_points?: NumberRangeFilter;
+	/**
+	 * Selected priority bucket indices (0=None, 1=Low, 2=Medium, 3=High,
+	 * 4=Critical — see priority.ts). Resolved into concrete importance ranges
+	 * client-side (via getImportanceBucketBounds) before querying, so
+	 * non-contiguous selections like "Low or Critical" work correctly.
+	 */
+	importance?: number[];
+	/** Matches tasks that have ANY of these tag values. */
+	tags?: string[];
+}
+
+/**
+ * The resolved (query-ready) shape of a single custom field filter, sent to
+ * the API as part of `custom_field_filters`. Unlike `CustomFieldFilterConfig`,
+ * `values` is already an explicit list — any `selector` FilterConfig has been
+ * resolved client-side against the field's option values.
+ */
+export interface CustomFieldFilterQuery {
+	values?: string[];
+	min?: number;
+	max?: number;
+	after?: string;
+	before?: string;
+	contains?: string;
 }
 
 export interface ViewConfig {
@@ -427,6 +487,21 @@ export interface ListTasksOptions {
 	viewId?: string;
 	/** Free-text search matched server-side against title and "#<task_number>". */
 	search?: string;
+	/** Resolved per-custom-field filter criteria, keyed by field key. Sent as a single JSON query param since fields are dynamic per project. */
+	customFieldFilters?: Record<string, CustomFieldFilterQuery>;
+	/** Inclusive start_date range, "YYYY-MM-DD". */
+	startDateAfter?: string;
+	startDateBefore?: string;
+	/** Inclusive due_date range, "YYYY-MM-DD". */
+	dueDateAfter?: string;
+	dueDateBefore?: string;
+	/** Inclusive story_points range. */
+	storyPointsMin?: number;
+	storyPointsMax?: number;
+	/** Inclusive importance ranges (OR'd together), resolved from selected priority buckets. */
+	importanceRanges?: { min: number; max: number }[];
+	/** Matches tasks with ANY of these tag values. */
+	tags?: string[];
 }
 
 function buildTaskQueryParams(opts: ListTasksOptions = {}) {
@@ -465,6 +540,24 @@ function buildTaskQueryParams(opts: ListTasksOptions = {}) {
 		params.view_id = opts.viewId;
 	}
 	if (opts.search?.trim()) params.search = opts.search.trim();
+	if (
+		opts.customFieldFilters &&
+		Object.keys(opts.customFieldFilters).length > 0
+	) {
+		params.custom_field_filters = JSON.stringify(opts.customFieldFilters);
+	}
+	if (opts.startDateAfter) params.start_date_after = opts.startDateAfter;
+	if (opts.startDateBefore) params.start_date_before = opts.startDateBefore;
+	if (opts.dueDateAfter) params.due_date_after = opts.dueDateAfter;
+	if (opts.dueDateBefore) params.due_date_before = opts.dueDateBefore;
+	if (opts.storyPointsMin != null)
+		params.story_points_min = opts.storyPointsMin;
+	if (opts.storyPointsMax != null)
+		params.story_points_max = opts.storyPointsMax;
+	if (opts.importanceRanges && opts.importanceRanges.length > 0) {
+		params.importance_ranges = JSON.stringify(opts.importanceRanges);
+	}
+	if (opts.tags && opts.tags.length > 0) params.tags = opts.tags.join(",");
 	return params;
 }
 

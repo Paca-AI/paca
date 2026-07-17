@@ -46,16 +46,6 @@ var _ attachmentdom.Service = (*fakeAttachmentSvc)(nil)
 // Router helper
 // ---------------------------------------------------------------------------
 
-func newAttachmentRouter() chi.Router {
-	h := handler.NewAttachmentHandler(&fakeAttachmentSvc{})
-	r := chi.NewRouter()
-	r.Route("/projects/{projectId}/tasks/{taskId}/attachments", func(r chi.Router) {
-		r.Post("/initiate-upload", h.InitiateUpload)
-		r.Post("/complete-upload", h.CompleteUpload)
-	})
-	return r
-}
-
 // injectAuthClaims injects JWT claims for the attachment handler tests
 // (InitiateUpload/CompleteUpload require claims.Subject for the uploader UUID).
 func injectAuthClaimsMiddleware(sub string) func(http.Handler) http.Handler {

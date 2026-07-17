@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
@@ -160,5 +162,299 @@ func TestSyncTaskAssignees_PreservesUnchangedRows(t *testing.T) {
 	}
 	if _, added := got[memberC.String()]; !added {
 		t.Fatalf("expected memberC to be newly inserted, got %+v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyCustomFieldFilters
+// ---------------------------------------------------------------------------
+
+func f64Ptr(v float64) *float64 { return &v }
+func strPtr(v string) *string   { return &v }
+
+func TestApplyCustomFieldFilters_Select(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"priority": {FieldType: "select", Values: []string{"High", "Urgent"}},
+	})
+	wantClause := "(custom_fields->>$1) IN ($2,$3)"
+	if len(b.whereClauses) != 1 || b.whereClauses[0] != wantClause {
+		t.Fatalf("whereClauses = %+v, want [%q]", b.whereClauses, wantClause)
+	}
+	wantArgs := []interface{}{"priority", "High", "Urgent"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyCustomFieldFilters_Boolean(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"is_blocked": {FieldType: "boolean", Values: []string{"true"}},
+	})
+	wantClause := "(custom_fields->>$1) IN ($2)"
+	if len(b.whereClauses) != 1 || b.whereClauses[0] != wantClause {
+		t.Fatalf("whereClauses = %+v, want [%q]", b.whereClauses, wantClause)
+	}
+	wantArgs := []interface{}{"is_blocked", "true"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyCustomFieldFilters_MultiSelect(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"labels": {FieldType: "multi_select", Values: []string{"backend", "urgent"}},
+	})
+	wantClause := "(custom_fields->$1 @> to_jsonb($2::text) OR custom_fields->$1 @> to_jsonb($3::text))"
+	if len(b.whereClauses) != 1 || b.whereClauses[0] != wantClause {
+		t.Fatalf("whereClauses = %+v, want [%q]", b.whereClauses, wantClause)
+	}
+	wantArgs := []interface{}{"labels", "backend", "urgent"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyCustomFieldFilters_NumberRange(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"effort": {FieldType: "number", Min: f64Ptr(2), Max: f64Ptr(8)},
+	})
+	numExpr := customFieldNumericExpr("$1")
+	wantClauses := []string{
+		numExpr + " >= $2",
+		numExpr + " <= $3",
+	}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+	wantArgs := []interface{}{"effort", 2.0, 8.0}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyCustomFieldFilters_NumberMinOnly(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"effort": {FieldType: "number", Min: f64Ptr(5)},
+	})
+	wantClauses := []string{customFieldNumericExpr("$1") + " >= $2"}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+}
+
+func TestApplyCustomFieldFilters_DateRange(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"due": {FieldType: "date", After: strPtr("2024-01-01"), Before: strPtr("2024-06-01")},
+	})
+	dateExpr := customFieldDateExpr("$1")
+	wantClauses := []string{
+		dateExpr + " >= $2",
+		dateExpr + " <= $3",
+	}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+	wantArgs := []interface{}{"due", "2024-01-01", "2024-06-01"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+// TestApplyCustomFieldFilters_InvalidStoredValueDoesNotCrashQuery is a
+// regression test: a task can end up with a stray non-numeric/non-date
+// string under a field key (e.g. a select-type field was deleted and a new
+// date-type field was created reusing the same field_key before the old
+// value was purged). A bare ::numeric/::date cast on such a row aborts the
+// entire query with a Postgres error instead of just excluding that row, so
+// the generated expression must guard the cast with a regex check. This
+// asserts the guard is present in the generated SQL text; the regex/cast
+// semantics themselves are Postgres-only and can't run against the SQLite
+// harness used elsewhere in this file.
+func TestApplyCustomFieldFilters_InvalidStoredValueDoesNotCrashQuery(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"due": {FieldType: "date", After: strPtr("2024-01-01")},
+	})
+	if len(b.whereClauses) != 1 {
+		t.Fatalf("expected 1 where clause, got %+v", b.whereClauses)
+	}
+	clause := b.whereClauses[0]
+	if !strings.Contains(clause, "CASE WHEN") || !strings.Contains(clause, "~") {
+		t.Fatalf("expected a regex-guarded CASE expression, got %q", clause)
+	}
+}
+
+func TestApplyCustomFieldFilters_TextContains(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"notes": {FieldType: "text", Contains: strPtr("100% done_now")},
+	})
+	wantClause := "(custom_fields->>$1) ILIKE $2"
+	if len(b.whereClauses) != 1 || b.whereClauses[0] != wantClause {
+		t.Fatalf("whereClauses = %+v, want [%q]", b.whereClauses, wantClause)
+	}
+	wantArgs := []interface{}{"notes", "%100\\% done\\_now%"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyCustomFieldFilters_UrlContains(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"link": {FieldType: "url", Contains: strPtr("example.com")},
+	})
+	if len(b.whereClauses) != 1 {
+		t.Fatalf("expected 1 where clause, got %+v", b.whereClauses)
+	}
+}
+
+func TestApplyCustomFieldFilters_EmptyOrBlankValuesSkipped(t *testing.T) {
+	blank := "   "
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"empty_select": {FieldType: "select"},
+		"empty_multi":  {FieldType: "multi_select"},
+		"empty_number": {FieldType: "number"},
+		"empty_date":   {FieldType: "date"},
+		"blank_text":   {FieldType: "text", Contains: &blank},
+	})
+	if len(b.whereClauses) != 0 || len(b.args) != 0 {
+		t.Fatalf("expected no-op for empty filter criteria, got clauses=%+v args=%+v", b.whereClauses, b.args)
+	}
+}
+
+func TestApplyCustomFieldFilters_MultipleFieldsAreSortedForDeterminism(t *testing.T) {
+	b := newQueryBuilder()
+	applyCustomFieldFilters(b, map[string]taskdom.CustomFieldFilterQuery{
+		"zeta":  {FieldType: "text", Contains: strPtr("z")},
+		"alpha": {FieldType: "text", Contains: strPtr("a")},
+	})
+	wantArgs := []interface{}{"alpha", "%a%", "zeta", "%z%"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v (alpha before zeta)", b.args, wantArgs)
+	}
+}
+
+func TestApplyCustomFieldFilters_ComposesWithBaseFilterClauses(t *testing.T) {
+	b := newQueryBuilder()
+	pidP := b.placeholder()
+	b.args = append(b.args, "proj-1")
+	b.whereClauses = append(b.whereClauses, "project_id = "+pidP)
+	applyTaskFilter(b, taskdom.TaskFilter{
+		CustomFieldFilters: map[string]taskdom.CustomFieldFilterQuery{
+			"priority": {FieldType: "select", Values: []string{"High"}},
+		},
+	})
+	wantClauses := []string{
+		"project_id = $1",
+		"(custom_fields->>$2) IN ($3)",
+	}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Built-in field filters: start_date, due_date, story_points, importance, tags
+// ---------------------------------------------------------------------------
+
+func intPtr(v int) *int { return &v }
+
+func TestApplyTaskFilter_DateRanges(t *testing.T) {
+	b := newQueryBuilder()
+	applyTaskFilter(b, taskdom.TaskFilter{
+		StartDateAfter:  strPtr("2024-01-01"),
+		StartDateBefore: strPtr("2024-06-01"),
+		DueDateAfter:    strPtr("2024-02-01"),
+		DueDateBefore:   strPtr("2024-07-01"),
+	})
+	wantClauses := []string{
+		"start_date >= $1",
+		"start_date <= $2",
+		"due_date >= $3",
+		"due_date <= $4",
+	}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+	wantArgs := []interface{}{"2024-01-01", "2024-06-01", "2024-02-01", "2024-07-01"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyTaskFilter_DateRanges_OnlyOneBoundSet(t *testing.T) {
+	b := newQueryBuilder()
+	applyTaskFilter(b, taskdom.TaskFilter{DueDateBefore: strPtr("2024-12-31")})
+	wantClauses := []string{"due_date <= $1"}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+}
+
+func TestApplyTaskFilter_StoryPointsRange(t *testing.T) {
+	b := newQueryBuilder()
+	applyTaskFilter(b, taskdom.TaskFilter{
+		StoryPointsMin: intPtr(2),
+		StoryPointsMax: intPtr(8),
+	})
+	wantClauses := []string{
+		"story_points >= $1",
+		"story_points <= $2",
+	}
+	if !reflect.DeepEqual(b.whereClauses, wantClauses) {
+		t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, wantClauses)
+	}
+	wantArgs := []interface{}{2, 8}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyTaskFilter_ImportanceRanges_ORsMultipleRanges(t *testing.T) {
+	b := newQueryBuilder()
+	applyTaskFilter(b, taskdom.TaskFilter{
+		// Non-contiguous selection (e.g. "Low" and "Critical" but not
+		// "Medium"/"High") must be representable as independent ranges.
+		ImportanceRanges: []taskdom.IntRange{
+			{Min: 1, Max: 19},
+			{Min: 100, Max: 2147483647},
+		},
+	})
+	wantClause := "((importance BETWEEN $1 AND $2) OR (importance BETWEEN $3 AND $4))"
+	if len(b.whereClauses) != 1 || b.whereClauses[0] != wantClause {
+		t.Fatalf("whereClauses = %+v, want [%q]", b.whereClauses, wantClause)
+	}
+	wantArgs := []interface{}{1, 19, 100, 2147483647}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
+	}
+}
+
+func TestApplyTaskFilter_ImportanceRanges_EmptyIsNoop(t *testing.T) {
+	b := newQueryBuilder()
+	applyTaskFilter(b, taskdom.TaskFilter{})
+	if len(b.whereClauses) != 0 {
+		t.Fatalf("expected no clauses, got %+v", b.whereClauses)
+	}
+}
+
+func TestApplyTaskFilter_Tags_ORsAnyMatch(t *testing.T) {
+	b := newQueryBuilder()
+	applyTaskFilter(b, taskdom.TaskFilter{Tags: []string{"urgent", "bug"}})
+	wantClause := "(tags @> to_jsonb($1::text) OR tags @> to_jsonb($2::text))"
+	if len(b.whereClauses) != 1 || b.whereClauses[0] != wantClause {
+		t.Fatalf("whereClauses = %+v, want [%q]", b.whereClauses, wantClause)
+	}
+	wantArgs := []interface{}{"urgent", "bug"}
+	if !reflect.DeepEqual(b.args, wantArgs) {
+		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
 	}
 }

@@ -357,6 +357,91 @@ func parseTaskSort(ctx context.Context, svc taskdom.Service, projectID uuid.UUID
 	}
 }
 
+// customFieldFilterParam is the wire shape of one entry in the
+// custom_field_filters query parameter (a JSON object keyed by field key).
+// Which members are meaningful is determined server-side from the field's
+// CustomFieldDefinition — see parseCustomFieldFilters.
+type customFieldFilterParam struct {
+	Values   []string `json:"values,omitempty"`
+	Min      *float64 `json:"min,omitempty"`
+	Max      *float64 `json:"max,omitempty"`
+	After    *string  `json:"after,omitempty"`
+	Before   *string  `json:"before,omitempty"`
+	Contains *string  `json:"contains,omitempty"`
+}
+
+// parseCustomFieldFilters decodes the custom_field_filters query parameter
+// (a JSON object keyed by custom field key) and resolves each entry's
+// FieldType against the project's custom field definitions — the field type
+// is never trusted from the client, since it determines how the value is
+// cast in SQL. Unknown field keys are silently ignored (e.g. a stale saved
+// view referencing a since-deleted custom field).
+func parseCustomFieldFilters(ctx context.Context, svc taskdom.Service, projectID uuid.UUID, raw string) (map[string]taskdom.CustomFieldFilterQuery, error) {
+	var parsed map[string]customFieldFilterParam
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, apierr.New(apierr.CodeBadRequest, "invalid custom_field_filters")
+	}
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+	cfs, err := svc.ListCustomFieldDefinitions(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	cfByKey := make(map[string]*taskdom.CustomFieldDefinition, len(cfs))
+	for _, cf := range cfs {
+		cfByKey[cf.FieldKey] = cf
+	}
+	resolved := make(map[string]taskdom.CustomFieldFilterQuery, len(parsed))
+	for key, p := range parsed {
+		cf, ok := cfByKey[key]
+		if !ok {
+			continue
+		}
+		resolved[key] = taskdom.CustomFieldFilterQuery{
+			FieldType: string(cf.FieldType),
+			Values:    p.Values,
+			Min:       p.Min,
+			Max:       p.Max,
+			After:     p.After,
+			Before:    p.Before,
+			Contains:  p.Contains,
+		}
+	}
+	return resolved, nil
+}
+
+// isValidDateString reports whether s is a valid "YYYY-MM-DD" date, matching
+// the format the start_date/due_date columns and their filter query params use.
+func isValidDateString(s string) bool {
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
+}
+
+// importanceRangeParam is the wire shape of one entry in the
+// importance_ranges query parameter (a JSON array of inclusive [min,max]
+// ranges, OR'd together — see taskdom.TaskFilter.ImportanceRanges).
+type importanceRangeParam struct {
+	Min int `json:"min"`
+	Max int `json:"max"`
+}
+
+// parseImportanceRanges decodes the importance_ranges query parameter.
+func parseImportanceRanges(raw string) ([]taskdom.IntRange, error) {
+	var parsed []importanceRangeParam
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, apierr.New(apierr.CodeBadRequest, "invalid importance_ranges")
+	}
+	ranges := make([]taskdom.IntRange, 0, len(parsed))
+	for _, p := range parsed {
+		if p.Min > p.Max {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid importance_ranges: min > max")
+		}
+		ranges = append(ranges, taskdom.IntRange{Min: p.Min, Max: p.Max})
+	}
+	return ranges, nil
+}
+
 // ListTasks handles GET /projects/:projectId/tasks.
 // Supported filter query params:
 //   - sprint_id=<uuid>|null or sprint_ids=<uuid,uuid>
@@ -365,6 +450,13 @@ func parseTaskSort(ctx context.Context, svc taskdom.Service, projectID uuid.UUID
 //   - task_type_ids=<uuid,uuid>
 //   - parent_task_id=<uuid>
 //   - search=<text> (matches title or "#<task_number>", case-insensitive)
+//   - custom_field_filters=<json> (object keyed by custom field key; see
+//     customFieldFilterParam for the shape of each entry)
+//   - start_date_after=<YYYY-MM-DD>, start_date_before=<YYYY-MM-DD>
+//   - due_date_after=<YYYY-MM-DD>, due_date_before=<YYYY-MM-DD>
+//   - story_points_min=<int>, story_points_max=<int>
+//   - importance_ranges=<json> (array of {"min":int,"max":int}, OR'd together)
+//   - tags=<tag,tag,...> (matches tasks with ANY of these tags)
 func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -458,6 +550,75 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("search")); raw != "" {
 		filter.Search = &raw
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("custom_field_filters")); raw != "" {
+		cfFilters, err := parseCustomFieldFilters(r.Context(), h.svc, projectID, raw)
+		if err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
+		filter.CustomFieldFilters = cfFilters
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("start_date_after")); raw != "" {
+		if !isValidDateString(raw) {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid start_date_after"))
+			return
+		}
+		filter.StartDateAfter = &raw
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("start_date_before")); raw != "" {
+		if !isValidDateString(raw) {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid start_date_before"))
+			return
+		}
+		filter.StartDateBefore = &raw
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("due_date_after")); raw != "" {
+		if !isValidDateString(raw) {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid due_date_after"))
+			return
+		}
+		filter.DueDateAfter = &raw
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("due_date_before")); raw != "" {
+		if !isValidDateString(raw) {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid due_date_before"))
+			return
+		}
+		filter.DueDateBefore = &raw
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("story_points_min")); raw != "" {
+		v, err := strconv.Atoi(raw)
+		if err != nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid story_points_min"))
+			return
+		}
+		filter.StoryPointsMin = &v
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("story_points_max")); raw != "" {
+		v, err := strconv.Atoi(raw)
+		if err != nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid story_points_max"))
+			return
+		}
+		filter.StoryPointsMax = &v
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("importance_ranges")); raw != "" {
+		ranges, err := parseImportanceRanges(raw)
+		if err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
+		filter.ImportanceRanges = ranges
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("tags")); raw != "" {
+		var tags []string
+		for _, tag := range strings.Split(raw, ",") {
+			if tag = strings.TrimSpace(tag); tag != "" {
+				tags = append(tags, tag)
+			}
+		}
+		filter.Tags = tags
 	}
 	if cursorRaw := r.URL.Query().Get("cursor"); cursorRaw != "" {
 		filter.CursorAfter = &cursorRaw
