@@ -500,3 +500,174 @@ func TestDelete_RepoError(t *testing.T) {
 		t.Fatalf("expected repo error, got %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Galaxy ADR-038 — identity-linked create / admin update
+// ---------------------------------------------------------------------------
+
+// stubRepoWithIdentity augments stubRepo with the OIDCIdentitySetter
+// capability the postgres repository provides.
+type stubRepoWithIdentity struct {
+	stubRepo
+	setOIDCIdentity func(ctx context.Context, userID uuid.UUID, email, sub string) error
+}
+
+func (r *stubRepoWithIdentity) SetOIDCIdentity(ctx context.Context, userID uuid.UUID, email, sub string) error {
+	if r.setOIDCIdentity != nil {
+		return r.setOIDCIdentity(ctx, userID, email, sub)
+	}
+	return nil
+}
+
+var _ usersvc.OIDCIdentitySetter = (*stubRepoWithIdentity)(nil)
+
+func TestCreate_CarriesIdentityAndServiceFlagIntoRepo(t *testing.T) {
+	roleID := uuid.New()
+	var created *userdom.User
+	repo := &stubRepo{
+		create: func(_ context.Context, u *userdom.User) error {
+			created = u
+			return nil
+		},
+	}
+	roles := &stubRoleRepo{findByName: func(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
+		return &globalroledom.GlobalRole{ID: roleID, Name: name}, nil
+	}}
+	svc := usersvc.New(repo, roles)
+
+	_, err := svc.Create(context.Background(), userdom.CreateInput{
+		Username:  "cao.phan",
+		Password:  "supersecret",
+		FullName:  "Cao Phan",
+		Email:     "cao.phan@example.com",
+		OIDCSub:   "sub-138",
+		IsService: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created == nil {
+		t.Fatal("expected repo.Create to be called")
+	}
+	if created.Email != "cao.phan@example.com" || created.OIDCSub != "sub-138" {
+		t.Fatalf("identity fields not carried into the entity: %+v", created)
+	}
+	if !created.IsService {
+		t.Fatal("IsService not carried into the entity")
+	}
+}
+
+func TestAdminUpdate_SetsIdentityViaSetterBeforeUpdate(t *testing.T) {
+	id := uuid.New()
+	calls := []string{}
+	repo := &stubRepoWithIdentity{
+		stubRepo: stubRepo{
+			findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+				return &userdom.User{ID: id, Username: "cao", Role: userdom.RoleUser}, nil
+			},
+			update: func(_ context.Context, _ *userdom.User) error {
+				calls = append(calls, "update")
+				return nil
+			},
+		},
+		setOIDCIdentity: func(_ context.Context, uid uuid.UUID, email, sub string) error {
+			if uid != id || email != "cao@example.com" || sub != "sub-9" {
+				t.Fatalf("unexpected setter args: %s %s %s", uid, email, sub)
+			}
+			calls = append(calls, "identity")
+			return nil
+		},
+	}
+	svc := usersvc.New(repo)
+
+	u, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{
+		Email:   "cao@example.com",
+		OIDCSub: "sub-9",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"identity", "update"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("expected identity to be set before update, got %v", calls)
+	}
+	if u.Email != "cao@example.com" || u.OIDCSub != "sub-9" {
+		t.Fatalf("returned entity missing identity fields: %+v", u)
+	}
+}
+
+func TestAdminUpdate_IdentityConflictAbortsBeforeUpdate(t *testing.T) {
+	id := uuid.New()
+	updated := false
+	repo := &stubRepoWithIdentity{
+		stubRepo: stubRepo{
+			findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+				return &userdom.User{ID: id, Username: "cao"}, nil
+			},
+			update: func(_ context.Context, _ *userdom.User) error {
+				updated = true
+				return nil
+			},
+		},
+		setOIDCIdentity: func(_ context.Context, _ uuid.UUID, _, _ string) error {
+			return userdom.ErrIdentityTaken
+		},
+	}
+	svc := usersvc.New(repo)
+
+	_, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{
+		FullName: "New Name",
+		OIDCSub:  "sub-dup",
+	})
+	if !errors.Is(err, userdom.ErrIdentityTaken) {
+		t.Fatalf("expected ErrIdentityTaken, got %v", err)
+	}
+	if updated {
+		t.Fatal("update must not run when the identity write conflicts")
+	}
+}
+
+func TestAdminUpdate_IdentityRequiresCapableRepo(t *testing.T) {
+	id := uuid.New()
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id, Username: "cao"}, nil
+		},
+	})
+
+	_, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{OIDCSub: "sub-1"})
+	if err == nil {
+		t.Fatal("expected an error when the repo cannot set oidc identity")
+	}
+}
+
+func TestAdminUpdate_IsServiceTriState(t *testing.T) {
+	id := uuid.New()
+	var saved *userdom.User
+	repo := &stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id, Username: "pm-bridge", IsService: true}, nil
+		},
+		update: func(_ context.Context, u *userdom.User) error {
+			saved = u
+			return nil
+		},
+	}
+	svc := usersvc.New(repo)
+
+	// nil leaves the flag alone.
+	if _, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{FullName: "PM Bridge"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if saved == nil || !saved.IsService {
+		t.Fatal("nil IsService must leave the stored flag unchanged")
+	}
+
+	// explicit false clears it.
+	f := false
+	if _, err := svc.AdminUpdate(context.Background(), id, userdom.AdminUpdateInput{IsService: &f}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if saved.IsService {
+		t.Fatal("IsService=false must clear the stored flag")
+	}
+}

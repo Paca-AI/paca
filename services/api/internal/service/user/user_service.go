@@ -25,6 +25,13 @@ type RoleByNameFinder interface {
 	FindByName(ctx context.Context, name string) (*globalroledom.GlobalRole, error)
 }
 
+// OIDCIdentitySetter is the optional repository capability for writing the
+// Galaxy identity-link columns (ADR-038). The postgres UserRepository
+// implements it; test stubs without it simply cannot service identity updates.
+type OIDCIdentitySetter interface {
+	SetOIDCIdentity(ctx context.Context, userID uuid.UUID, email, sub string) error
+}
+
 // Service is the concrete implementation of domain/user.Service.
 type Service struct {
 	repo                   userdom.Repository
@@ -143,8 +150,13 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 		RoleID:             roleID,
 		Role:               roleName,
 		MustChangePassword: in.MustChangePassword,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		// Galaxy (ADR-038): optional pre-linked Vortex identity; written in
+		// the same INSERT so creation stays atomic.
+		Email:     in.Email,
+		OIDCSub:   in.OIDCSub,
+		IsService: in.IsService,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := s.repo.Create(ctx, u); err != nil {
@@ -177,8 +189,31 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, in userdom.Admi
 		return nil, err
 	}
 
+	// Galaxy (ADR-038): identity-link update goes FIRST, through the dedicated
+	// setter (not the generic Update, which deliberately never writes these
+	// columns) — a conflicting email/subject then fails the whole PATCH before
+	// any other field is touched. Empty input = leave unchanged.
+	if in.Email != "" || in.OIDCSub != "" {
+		setter, ok := s.repo.(OIDCIdentitySetter)
+		if !ok {
+			return nil, errors.New("user svc: admin update: repository cannot set oidc identity")
+		}
+		if err := setter.SetOIDCIdentity(ctx, id, in.Email, in.OIDCSub); err != nil {
+			return nil, err
+		}
+		if in.Email != "" {
+			u.Email = in.Email
+		}
+		if in.OIDCSub != "" {
+			u.OIDCSub = in.OIDCSub
+		}
+	}
+
 	if in.FullName != "" {
 		u.FullName = in.FullName
+	}
+	if in.IsService != nil {
+		u.IsService = *in.IsService
 	}
 	if in.Role != "" {
 		if s.roleRepo == nil {

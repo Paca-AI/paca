@@ -181,3 +181,37 @@ func TestResolveOIDCUserRespectsAutoCreateOff(t *testing.T) {
 		t.Fatalf("expected ErrUserNotProvisioned, got %v", err)
 	}
 }
+
+// Galaxy ADR-038 user-directory sync — SSO-login safety: an account
+// pre-provisioned by the directory reconciler (email + oidc_sub already set,
+// random password) must resolve to the SAME row on first OIDC login. The
+// subject match short-circuits before the email/JIT paths, so no duplicate is
+// created even with auto-create enabled.
+func TestResolveOIDCUserReusesDirectorySyncedAccount(t *testing.T) {
+	store := newMemUserStore()
+	synced := &userdom.User{
+		ID:       uuid.New(),
+		Username: "cao.phan",
+		Email:    "cao.phan@galaxy.example",
+		OIDCSub:  "vortex-uuid-1",
+	}
+	store.users = append(store.users, synced)
+	store.oidcSub[synced.ID] = "vortex-uuid-1"
+	store.emails[synced.ID] = "cao.phan@galaxy.example"
+
+	svc := newTestService(store, true)
+	u, err := svc.ResolveOIDCUser(context.Background(), Identity{
+		Subject: "vortex-uuid-1",
+		Email:   "cao.phan@galaxy.example",
+		Name:    "Cao Phan",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if u.ID != synced.ID {
+		t.Fatalf("expected the directory-synced row to be reused, got %s", u.ID)
+	}
+	if len(store.users) != 1 {
+		t.Fatalf("no duplicate may be JIT-created for a synced account, have %d users", len(store.users))
+	}
+}

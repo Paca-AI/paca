@@ -97,6 +97,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeUserNotFound
 	case errors.Is(err, userdom.ErrUsernameTaken):
 		return http.StatusConflict, apierr.CodeUsernameTaken
+	case errors.Is(err, userdom.ErrIdentityTaken):
+		return http.StatusConflict, apierr.CodeIdentityTaken
 	case errors.Is(err, userdom.ErrForbidden):
 		return http.StatusForbidden, apierr.CodeForbidden
 	case errors.Is(err, userdom.ErrInvalidCurrentPassword):

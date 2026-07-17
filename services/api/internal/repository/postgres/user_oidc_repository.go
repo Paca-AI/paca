@@ -51,6 +51,33 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*userdo
 	return rowToEntity(&row), nil
 }
 
+// SetOIDCIdentity sets or corrects the identity link on an existing user
+// (admin/directory-sync path — ADR-038). Unlike LinkOIDC (the JIT login
+// linker, which never overwrites an existing email), this OVERWRITES the
+// stored values with the provided non-empty ones; an empty argument leaves
+// that column untouched. It can never clear a link. A unique-index conflict
+// (email or subject already on another row) maps to userdom.ErrIdentityTaken.
+func (r *UserRepository) SetOIDCIdentity(ctx context.Context, userID uuid.UUID, email, sub string) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET email = COALESCE(NULLIF($1, ''), email),
+		    oidc_sub = COALESCE(NULLIF($2, ''), oidc_sub),
+		    updated_at = $3
+		WHERE id = $4 AND deleted_at IS NULL`,
+		email, sub, time.Now(), userID.String(),
+	)
+	if err != nil {
+		if mapped := mapUserUniqueViolation(err); mapped != nil {
+			return mapped
+		}
+		return fmt.Errorf("user repo: set oidc identity: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return userdom.ErrNotFound
+	}
+	return nil
+}
+
 // LinkOIDC stores the OIDC subject (and email, when non-empty and not already
 // set) on an existing user, linking the local account to the identity
 // provider.

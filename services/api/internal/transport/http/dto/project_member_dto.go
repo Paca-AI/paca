@@ -31,6 +31,9 @@ type ProjectMemberResponse struct {
 	AgentID       *uuid.UUID `json:"agent_id,omitempty"`
 	AgentName     string     `json:"agent_name,omitempty"`
 	AgentHandle   string     `json:"agent_handle,omitempty"`
+	// IsService (Galaxy ADR-038): the member's user account is a non-human
+	// service/bridge account — UIs badge it, pickers may de-prioritize it.
+	IsService bool `json:"is_service"`
 }
 
 // ProjectMemberFromEntity maps a domain ProjectMember to a ProjectMemberResponse DTO.
@@ -45,6 +48,7 @@ func ProjectMemberFromEntity(m *projectdom.ProjectMember) ProjectMemberResponse 
 		AgentID:       m.AgentID,
 		AgentName:     m.AgentName,
 		AgentHandle:   m.AgentHandle,
+		IsService:     m.IsService,
 	}
 	if m.IsAgent() {
 		// For agent members, populate username/full_name from agent fields so
