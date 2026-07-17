@@ -8,16 +8,24 @@ events + turn status back, persisted through the same
 executor.persist_conversation_event() path cloud-sandboxed conversations use
 — so the frontend renders either source identically.
 
-The agent id and bridge token travel as connection headers (X-Paca-Agent-Id /
-X-Paca-Bridge-Token) rather than as a first WebSocket frame, so they can be
-verified *before* websocket.accept() — an invalid/missing token is rejected
-at the handshake without ever completing it, rather than accepting the
-connection first and validating a follow-up message (which would let an
-unauthenticated caller hold the connection open indefinitely).
+The agent id and bridge token travel as a first WebSocket frame ("hello"),
+sent right after the client completes the handshake — *not* as connection
+headers validated before accept(). Headers would let an invalid token be
+rejected slightly earlier, but the daemon (apps/acp-bridge) is distributed
+via `uvx paca-acp-bridge`, which always resolves the latest published
+package — a client on an older release than the server would never send
+those headers and would be rejected outright with no way to self-diagnose
+why (a bad token and a protocol mismatch both surface identically as the
+WebSocket library's generic "server rejected connection" error). The hello
+frame is a wire-compatible, self-describing handshake that doesn't have that
+failure mode; _HELLO_TIMEOUT_SECONDS bounds how long an unauthenticated
+socket can sit open waiting for one, which was the actual concern with
+accepting first.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -36,6 +44,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent-bridge")
 
+# How long to wait for the client's "hello" frame after accepting the
+# WebSocket before giving up — bounds how long an unauthenticated connection
+# can be held open (e.g. by a client that never sends anything).
+_HELLO_TIMEOUT_SECONDS = 10
+
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
@@ -43,22 +56,24 @@ def _hash_token(token: str) -> str:
 
 @router.websocket("/ws")
 async def bridge_ws(websocket: WebSocket) -> None:
-    hdr_agent_id = websocket.headers.get("x-paca-agent-id")
-    token = websocket.headers.get("x-paca-bridge-token")
-    if not hdr_agent_id or not token:
-        # Headers are available from the connection scope before accept(), so
-        # a malformed handshake can be rejected without ever accepting it.
+    await websocket.accept()
+
+    try:
+        hello = await asyncio.wait_for(websocket.receive_json(), timeout=_HELLO_TIMEOUT_SECONDS)
+    except Exception:
+        await websocket.close(code=4400)
+        return
+    if hello.get("type") != "hello" or not hello.get("agent_id") or not hello.get("token"):
         await websocket.close(code=4400)
         return
 
-    token_hash = _hash_token(token)
+    token_hash = _hash_token(hello["token"])
     resolved = await find_agent_by_bridge_token_hash(token_hash)
-    if resolved is None or resolved[0] != hdr_agent_id:
+    if resolved is None or resolved[0] != hello["agent_id"]:
         await websocket.close(code=4401)
         return
 
     agent_id, project_id = resolved
-    await websocket.accept()
     session_id = await acp_bridge.register(agent_id, project_id, websocket)
     logger.info("ACP bridge connected for agent %s", agent_id)
     await websocket.send_json({"type": "hello_ack"})

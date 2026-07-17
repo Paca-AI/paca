@@ -100,15 +100,11 @@ class BridgeClient:
 
     async def _connect_once(self) -> None:
         logger.info("Connecting to %s", self._url)
-        # Credentials travel as connection headers rather than a first frame
-        # so the server can reject an invalid/missing token before completing
-        # the WebSocket handshake at all (see services/ai-agent's
-        # routes/bridge.py) — an invalid token surfaces here as a failed
-        # handshake (websockets.connect raising), caught by run_forever's
-        # retry loop the same way a network failure would be.
-        headers = {"X-Paca-Agent-Id": self._agent_id, "X-Paca-Bridge-Token": self._token}
-        async with websockets.connect(self._url, additional_headers=headers) as ws:
+        async with websockets.connect(self._url) as ws:
             self._ws = ws
+            await ws.send(
+                json.dumps({"type": "hello", "agent_id": self._agent_id, "token": self._token})
+            )
             ack = json.loads(await ws.recv())
             if ack.get("type") != "hello_ack":
                 raise RuntimeError(f"Bridge rejected connection: {ack}")
