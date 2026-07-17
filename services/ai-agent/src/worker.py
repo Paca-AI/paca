@@ -73,8 +73,7 @@ async def _handle_control(msg: ControlMessage) -> None:
             await acp_bridge.dispatch(agent_id, {"type": "pause_turn", "conversation_id": cid})
             return
         logger.info(
-            "Received pause for conversation %s but no active run found on this "
-            "replica — no-op",
+            "Received pause for conversation %s but no active run found on this replica — no-op",
             cid,
         )
         return

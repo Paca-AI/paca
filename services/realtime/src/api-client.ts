@@ -56,7 +56,10 @@ export async function verifyTokenWithAPI(
 	});
 
 	if (!res.ok) {
-		throw new ApiRequestError(`API auth rejected token: HTTP ${res.status}`, res.status);
+		throw new ApiRequestError(
+			`API auth rejected token: HTTP ${res.status}`,
+			res.status,
+		);
 	}
 
 	const envelope = (await res.json()) as ApiEnvelope<GlobalPermissionsData>;

@@ -76,9 +76,7 @@ async def _forward_dispatched_messages(agent_id: str, ws: _SendsJSON) -> None:
                 try:
                     payload = json.loads(message["data"])
                 except (TypeError, ValueError, KeyError):
-                    logger.warning(
-                        "Dropping malformed ACP bridge dispatch for agent %s", agent_id
-                    )
+                    logger.warning("Dropping malformed ACP bridge dispatch for agent %s", agent_id)
                     continue
                 await ws.send_json(payload)
             return
@@ -86,8 +84,7 @@ async def _forward_dispatched_messages(agent_id: str, ws: _SendsJSON) -> None:
             raise
         except Exception:
             logger.exception(
-                "ACP bridge forwarder for agent %s lost its connection — "
-                "reconnecting in %ss",
+                "ACP bridge forwarder for agent %s lost its connection — reconnecting in %ss",
                 agent_id,
                 _RECONNECT_BACKOFF_SECONDS,
             )
@@ -138,9 +135,7 @@ async def _publish_status(agent_id: str, project_id: str, *, connected: bool) ->
             extra_payload={"agent_id": agent_id, "connected": connected},
         )
     except Exception:
-        logger.warning(
-            "Failed to publish ACP bridge status for agent %s", agent_id, exc_info=True
-        )
+        logger.warning("Failed to publish ACP bridge status for agent %s", agent_id, exc_info=True)
 
 
 async def heartbeat(agent_id: str) -> None:
