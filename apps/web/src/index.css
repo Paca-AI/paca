@@ -137,6 +137,46 @@
 	--sidebar-ring: #9ed957;
 }
 
+/*
+ * Custom scrollbars — applied globally via the universal selector so every
+ * scrollable element (tables, dropdowns, panels, chat panes, ...) gets the
+ * themed thin scrollbar without needing per-component classes. A component
+ * can still override width/colors with a more specific selector, or opt out
+ * entirely with `.no-scrollbar`.
+ */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in oklab, var(--border) 60%, transparent)
+		transparent;
+}
+
+*::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: color-mix(in oklab, var(--border) 60%, transparent);
+	border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: var(--border);
+}
+
+.no-scrollbar {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
 @theme inline {
 	--font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
 	--font-display: "Syne", ui-sans-serif, sans-serif;
