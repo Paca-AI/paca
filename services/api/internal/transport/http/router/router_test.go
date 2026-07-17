@@ -7,12 +7,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"testing"
 	"time"
 
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
@@ -70,6 +72,63 @@ func (m *mockGlobalRoleSvc) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.
 	return []*globalroledom.GlobalRole{}, nil
 }
 
+// stubProjectSvc is a minimal projectdom.Service with no projects, just
+// enough to exercise routing for the /projects collection endpoints.
+type stubProjectSvc struct{}
+
+func (s *stubProjectSvc) List(context.Context, int, int) ([]*projectdom.Project, int64, error) {
+	return nil, 0, nil
+}
+func (s *stubProjectSvc) ListAccessible(context.Context, uuid.UUID, int, int) ([]*projectdom.Project, int64, error) {
+	return nil, 0, nil
+}
+func (s *stubProjectSvc) GetByID(context.Context, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
+}
+func (s *stubProjectSvc) IsProjectPublic(context.Context, uuid.UUID) (bool, error) {
+	return false, nil
+}
+func (s *stubProjectSvc) Create(context.Context, projectdom.CreateProjectInput) (*projectdom.Project, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) Update(context.Context, uuid.UUID, projectdom.UpdateProjectInput) (*projectdom.Project, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) Delete(context.Context, uuid.UUID) error { return nil }
+func (s *stubProjectSvc) ListMembers(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) AddMember(context.Context, uuid.UUID, projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) UpdateMemberRole(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) RemoveMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (s *stubProjectSvc) UpdateMemberRoleByMemberID(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) RemoveMemberByMemberID(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+func (s *stubProjectSvc) GetMyProjectPermissions(context.Context, uuid.UUID, uuid.UUID, *uuid.UUID) (map[string]any, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) AddAgentMember(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+func (s *stubProjectSvc) RemoveAgentMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (s *stubProjectSvc) ListRoles(context.Context, uuid.UUID) ([]*projectdom.ProjectRole, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) CreateRole(context.Context, uuid.UUID, projectdom.CreateRoleInput) (*projectdom.ProjectRole, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) UpdateRole(context.Context, uuid.UUID, uuid.UUID, projectdom.UpdateRoleInput) (*projectdom.ProjectRole, error) {
+	return nil, nil
+}
+func (s *stubProjectSvc) DeleteRole(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+
 type allowAllPermissionStore struct{}
 
 func (s *allowAllPermissionStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
@@ -99,9 +158,10 @@ func newTestRouter(t *testing.T) http.Handler {
 func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Handler {
 	t.Helper()
 
+	authorizer := authz.NewAuthorizer(store)
 	deps := Deps{
 		TokenManager: jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
-		Authorizer:   authz.NewAuthorizer(store),
+		Authorizer:   authorizer,
 		Health:       handler.NewHealthHandler(),
 		Auth: handler.NewAuthHandler(&mockAuthSvc{}, handler.CookieConfig{
 			Secure:            false,
@@ -111,6 +171,7 @@ func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Hand
 		}),
 		User:       handler.NewUserHandler(&mockUserSvc{}),
 		GlobalRole: handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}),
+		Project:    handler.NewProjectHandler(&stubProjectSvc{}, authorizer),
 		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
@@ -298,5 +359,53 @@ func TestAdminRoute_AssignGlobalRoles_RequiresAssignPermission(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 without assign permission, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// TestProjectsRoute_WorkspaceStats_NotShadowedByProjectIDRoute guards against
+// a regression where "/projects" and "/projects/{projectId}" were registered
+// as two separate chi Route()/Mount() calls: chi treated the {projectId}
+// mount as matching ANY sub-path of "/projects", including the static
+// "/workspace-stats" route, so "workspace-stats" got bound to {projectId} and
+// failed uuid.Parse with "invalid project id". See router.go's Projects
+// collection block, which now uses r.Group instead of a separate r.Route.
+func TestProjectsRoute_WorkspaceStats_NotShadowedByProjectIDRoute(t *testing.T) {
+	r := newTestRouter(t)
+	tok := issueAccessTokenForRouterTests(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/projects/workspace-stats", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from GetWorkspaceStats, got %d (%s)", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "invalid project id") {
+		t.Fatalf("workspace-stats request was shadowed by the /projects/{projectId} route: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "open_task_count") {
+		t.Fatalf("expected WorkspaceStatsResponse body, got %s", w.Body.String())
+	}
+}
+
+// TestProjectsRoute_GetByID_StillParsesProjectID is the counterpart check:
+// the {projectId} route must still receive and parse a real project ID after
+// the r.Group fix, rather than always falling through to the collection
+// routes.
+func TestProjectsRoute_GetByID_StillParsesProjectID(t *testing.T) {
+	r := newTestRouter(t)
+	tok := issueAccessTokenForRouterTests(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/projects/"+uuid.NewString(), nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	r.ServeHTTP(w, req)
+
+	if strings.Contains(w.Body.String(), "invalid project id") {
+		t.Fatalf("valid project UUID was rejected as invalid: %s", w.Body.String())
+	}
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 (unknown project id from stub service), got %d (%s)", w.Code, w.Body.String())
 	}
 }
