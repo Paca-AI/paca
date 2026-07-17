@@ -33,6 +33,36 @@ docker compose -p galaxy-paca ps
 curl -fsS https://tasks.skyplatform.net/api/healthz
 ```
 
+## User-directory sync (ADR-038 T2 — từ 18/07)
+
+Mọi user Vortex tenant `galaxy` tồn tại sẵn trong Paca **pre-linked**
+(`email` + `oidc_sub`) — assign task / notify-bridge / dock-trigger hoạt động
+từ ngày 0, trước cả lần SSO đầu tiên. JIT login giữ nguyên: find-by-sub khớp
+đúng row đã sync, không bao giờ tạo trùng.
+
+- **Chạy ở đâu**: container `galaxy-app-admin-reconcile` (`~/Nexus/Galaxy-Authz`,
+  file `reconcile/paca_user_sync.py`), KHÔNG phải stack Paca. Nguồn: identity
+  `GET /internal/users-directory`; đích: admin API qua `PACA_ADMIN_API_KEY`.
+- **Env** (trong `~/Nexus/Galaxy-Authz/.app-admin-reconcile.env`):
+  `PACA_USER_SYNC=1` (bật), `PACA_USER_SYNC_TENANTS=galaxy` (**hard guard —
+  T7: cấm sync user tenant khác vào instance chung**),
+  `PACA_USER_SYNC_DEACTIVATE=0` (mặc định log-only; `=1` mới soft-delete user
+  có `oidc_sub` đã rời directory), `PACA_GROUP_PROJECT_MAP` JSON tùy chọn
+  (`{"<group-slug>": {"project_id": "<uuid>", "role_name": "Editor"}}`, add-only).
+- **Không bao giờ đụng** service accounts: `admin`, `pilot`, `sdd-sensor`,
+  `support-bridge`, `pm-bridge`, `galaxy-tasks-agent`, và mọi row
+  `is_service=true` (cột `users.is_service`, migration 000023 — Team UI badge
+  "Service").
+- **Dry-run trước khi bật**: sửa env `DRY_RUN=1` + `ONCE=1` rồi
+  `docker compose up -d --force-recreate galaxy-app-admin-reconcile`, đọc dòng
+  `[paca-user-sync] dir=… created=…`; ưng rồi bỏ 2 env đó và recreate lại.
+- **Verify**: log container có dòng summary mỗi chu kỳ (60s); chạy lần 2 phải
+  `created=0` (idempotent). User Vortex mới → có mặt trong
+  `GET /api/v1/admin/users` với `email`+`oidc_sub` trong ≤60s.
+- Migration 000023 (`is_service`) tự chạy khi api khởi động; đánh dấu 4 service
+  user hiện hữu bằng `PATCH /api/v1/admin/users/{id}` body `{"is_service": true}`
+  (một lần, đã làm 18/07).
+
 ## Plugins
 
 - `plugins/com.galaxy.sdd` — **SDD Sensor** (ADR-038 T6): nhúng dashboard SDD sensor (`nexus.8verse.games/sdd-server`) vào Paca qua iframe; v1 frontend-only, không secret, backend chỉ là stub WASM trơ (host bắt buộc phải có file).

@@ -15,6 +15,14 @@ type CreateInput struct {
 	FullName           string
 	Role               string
 	MustChangePassword bool
+	// Email / OIDCSub (Galaxy ADR-038): optionally pre-link the account to the
+	// Vortex identity provider at creation time (admin/directory-sync path).
+	// Empty means "not linked". The OIDC login path (galaxyauth) then finds
+	// this same row by subject — no duplicate is ever JIT-created.
+	Email   string
+	OIDCSub string
+	// IsService (Galaxy ADR-038): non-human service/bridge account marker.
+	IsService bool
 }
 
 // UpdateProfileInput carries the self-service fields a user may change on
@@ -24,9 +32,17 @@ type UpdateProfileInput struct {
 }
 
 // AdminUpdateInput carries the fields an admin may change on any user account.
+// All fields are optional; empty string means "leave unchanged".
 type AdminUpdateInput struct {
 	FullName string
 	Role     string
+	// Email / OIDCSub (Galaxy ADR-038): set or correct the Vortex identity
+	// link. Empty leaves the stored value untouched — this input can never
+	// CLEAR a link, only set/replace it.
+	Email   string
+	OIDCSub string
+	// IsService (Galaxy ADR-038): tri-state — nil leaves the flag unchanged.
+	IsService *bool
 }
 
 // Service defines the user use-case contract.

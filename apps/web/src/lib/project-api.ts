@@ -35,6 +35,9 @@ export interface ProjectMember {
 	agent_id?: string;
 	agent_name?: string;
 	agent_handle?: string;
+	// Galaxy (ADR-038): the member's user account is a non-human
+	// service/bridge account — badge it in team lists.
+	is_service?: boolean;
 }
 
 export interface ProjectRole {

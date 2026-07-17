@@ -23,6 +23,9 @@ type ProjectMember struct {
 	AgentID     *uuid.UUID
 	AgentName   string
 	AgentHandle string
+	// IsService (Galaxy ADR-038): the joined user is a non-human
+	// service/bridge account (users.is_service); display-only.
+	IsService bool
 }
 
 // IsAgent returns true if this member is an AI agent.

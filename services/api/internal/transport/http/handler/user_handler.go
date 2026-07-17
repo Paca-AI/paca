@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"net/http"
 
@@ -183,13 +184,25 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "password must be at least 8 characters"))
 		return
 	}
+	if req.Email != "" && !strings.Contains(req.Email, "@") {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "email must be a valid address"))
+		return
+	}
 
 	u, err := h.svc.Create(r.Context(), domainuser.CreateInput{
-		Username:           req.Username,
-		Password:           req.Password,
-		FullName:           req.FullName,
-		Role:               req.Role,
-		MustChangePassword: true,
+		Username: req.Username,
+		Password: req.Password,
+		FullName: req.FullName,
+		Role:     req.Role,
+		// Galaxy (ADR-038): an account created pre-linked to an OIDC subject
+		// is SSO-first — its password is a random throwaway, so forcing a
+		// password change would lock the user out of every route after SSO
+		// login (EnforceFreshPassword reads this flag from the JWT). Plain
+		// local accounts keep the upstream force-change behavior.
+		MustChangePassword: req.OIDCSub == "",
+		Email:              req.Email,
+		OIDCSub:            req.OIDCSub,
+		IsService:          req.IsService,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -211,10 +224,17 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	if req.Email != "" && !strings.Contains(req.Email, "@") {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "email must be a valid address"))
+		return
+	}
 
 	u, err := h.svc.AdminUpdate(r.Context(), id, domainuser.AdminUpdateInput{
-		FullName: req.FullName,
-		Role:     req.Role,
+		FullName:  req.FullName,
+		Role:      req.Role,
+		Email:     req.Email,
+		OIDCSub:   req.OIDCSub,
+		IsService: req.IsService,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)

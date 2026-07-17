@@ -49,6 +49,7 @@ type projectMemberReadRow struct {
 	RoleName      string     `db:"role_name"`
 	AgentName     string     `db:"agent_name"`
 	AgentHandle   string     `db:"agent_handle"`
+	IsService     bool       `db:"is_service"`
 	CreatedAt     time.Time  `db:"created_at"`
 	DeletedAt     *time.Time `db:"deleted_at"`
 }
@@ -334,7 +335,8 @@ func (r *ProjectRepository) CountMembersWithRole(ctx context.Context, roleID uui
 const projectMemberCols = `
 	pm.id, pm.project_id, pm.user_id, pm.project_role_id, pm.member_type, pm.agent_id, pm.created_at,
 	COALESCE(u.username, '') AS username, COALESCE(u.full_name, '') AS full_name, pr.role_name,
-	COALESCE(a.name, '') AS agent_name, COALESCE(a.handle, '') AS agent_handle`
+	COALESCE(a.name, '') AS agent_name, COALESCE(a.handle, '') AS agent_handle,
+	COALESCE(u.is_service, FALSE) AS is_service`
 
 // ListMembers returns all active (non-deleted) members of a project enriched with user and role info.
 func (r *ProjectRepository) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {
@@ -676,6 +678,7 @@ func toMemberEntity(row *projectMemberReadRow) *projectdom.ProjectMember {
 		MemberType:    row.MemberType,
 		AgentName:     row.AgentName,
 		AgentHandle:   row.AgentHandle,
+		IsService:     row.IsService,
 	}
 	if row.UserID != nil {
 		userID, _ := uuid.Parse(*row.UserID)

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -40,11 +41,16 @@ type userReadRow struct {
 	CreatedAt          time.Time  `db:"created_at"`
 	UpdatedAt          time.Time  `db:"updated_at"`
 	DeletedAt          *time.Time `db:"deleted_at"`
+	// Galaxy (ADR-038): nullable identity-link columns from migration 000022
+	// plus the service-account marker from migration 000023.
+	Email     sql.NullString `db:"email"`
+	OIDCSub   sql.NullString `db:"oidc_sub"`
+	IsService bool           `db:"is_service"`
 }
 
 // userReadCols and userReadJoin are shared by all read queries.
 const (
-	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.role_id, users.must_change_password, users.created_at, users.updated_at, users.deleted_at, gr.name AS role_name`
+	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.role_id, users.must_change_password, users.created_at, users.updated_at, users.deleted_at, users.email, users.oidc_sub, users.is_service, gr.name AS role_name`
 	userReadJoin = `JOIN global_roles gr ON gr.id = users.role_id`
 )
 
@@ -138,27 +144,42 @@ func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, use
 }
 
 // Create persists a new user record.
+//
+// Galaxy (ADR-038): the optional Email/OIDCSub identity links are written in
+// the same INSERT (NULLIF keeps empty = NULL so the partial unique indexes
+// never collide on ''), so an admin/directory-sync creation is atomic — a
+// conflicting email or subject fails the whole INSERT and leaves no
+// half-linked row behind.
 func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, password_hash, full_name, role_id, must_change_password, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		INSERT INTO users (id, username, password_hash, full_name, role_id, must_change_password, created_at, updated_at, deleted_at, email, oidc_sub, is_service)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), NULLIF($11, ''), $12)`,
 		u.ID.String(), u.Username, u.PasswordHash, u.FullName,
 		u.RoleID.String(), u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
+		u.Email, u.OIDCSub, u.IsService,
 	)
 	if err != nil {
+		if mapped := mapUserUniqueViolation(err); mapped != nil {
+			return mapped
+		}
 		return fmt.Errorf("user repo: create: %w", err)
 	}
 	return nil
 }
 
 // Update saves changes to an existing user record.
+//
+// Galaxy (ADR-038): is_service is included because every caller works on an
+// entity freshly loaded by FindByID (reads populate the flag), so the value
+// round-trips; email/oidc_sub stay EXCLUDED — those go through the dedicated
+// SetOIDCIdentity/LinkOIDC writers so a stale entity can never clear a link.
 func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE users SET username = $1, password_hash = $2, full_name = $3, role_id = $4,
-		  must_change_password = $5, updated_at = $6, deleted_at = $7
-		WHERE id = $8`,
+		  must_change_password = $5, updated_at = $6, deleted_at = $7, is_service = $8
+		WHERE id = $9`,
 		u.Username, u.PasswordHash, u.FullName, u.RoleID.String(),
-		u.MustChangePassword, u.UpdatedAt, u.DeletedAt, u.ID.String(),
+		u.MustChangePassword, u.UpdatedAt, u.DeletedAt, u.IsService, u.ID.String(),
 	)
 	if err != nil {
 		return fmt.Errorf("user repo: update: %w", err)
@@ -189,8 +210,27 @@ func rowToEntity(row *userReadRow) *userdom.User {
 		RoleID:             roleID,
 		Role:               row.RoleName,
 		MustChangePassword: row.MustChangePassword,
+		Email:              row.Email.String,
+		OIDCSub:            row.OIDCSub.String,
+		IsService:          row.IsService,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 		DeletedAt:          row.DeletedAt,
 	}
+}
+
+// mapUserUniqueViolation translates a users-table unique violation into the
+// matching domain sentinel, or nil when err is not one (Galaxy ADR-038).
+func mapUserUniqueViolation(err error) error {
+	if err == nil || !isUniqueViolation(err) {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "uni_users_email"), strings.Contains(msg, "uni_users_oidc_sub"):
+		return userdom.ErrIdentityTaken
+	case strings.Contains(msg, "username"):
+		return userdom.ErrUsernameTaken
+	}
+	return nil
 }

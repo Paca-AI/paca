@@ -601,7 +601,8 @@
 			"changeFailed": "Failed to change role."
 		},
 		"memberRow": {
-			"removeMember": "Remove member"
+			"removeMember": "Remove member",
+			"serviceBadge": "Service"
 		},
 		"removeDialog": {
 			"title": "Remove member",

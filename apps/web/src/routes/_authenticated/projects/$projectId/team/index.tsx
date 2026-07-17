@@ -81,6 +81,17 @@ function getInitials(name: string): string {
 		.slice(0, 2);
 }
 
+// Galaxy (ADR-038): neutral marker for non-human service/bridge accounts
+// (users.is_service). Badge only — service members are never hidden.
+function ServiceBadge() {
+	const { t } = useTranslation("projects");
+	return (
+		<span className="inline-flex shrink-0 items-center rounded-full border border-border/60 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+			{t("team.memberRow.serviceBadge", { defaultValue: "Service" })}
+		</span>
+	);
+}
+
 // ── Add Member Dialog ──────────────────────────────────────────────────────────
 
 function UserPickerItem({
@@ -105,7 +116,10 @@ function UserPickerItem({
 				</AvatarFallback>
 			</Avatar>
 			<div className="min-w-0 flex-1">
-				<span className="font-medium truncate block">{display}</span>
+				<span className="flex items-center gap-1.5">
+					<span className="font-medium truncate">{display}</span>
+					{user.is_service && <ServiceBadge />}
+				</span>
 				{user.full_name && (
 					<span className="text-xs text-muted-foreground truncate block">
 						@{user.username}
@@ -517,7 +531,10 @@ function MemberRow({
 				</AvatarFallback>
 			</Avatar>
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-medium truncate">{display}</p>
+				<span className="flex items-center gap-1.5">
+					<p className="text-sm font-medium truncate">{display}</p>
+					{member.is_service && <ServiceBadge />}
+				</span>
 				<p className="text-xs text-muted-foreground truncate">
 					@{member.username}
 				</p>

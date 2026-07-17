@@ -40,9 +40,14 @@ func openUserRepoTestDB(t *testing.T) (*sqlx.DB, uuid.UUID) {
 			must_change_password INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME,
 			updated_at DATETIME,
-			deleted_at DATETIME
+			deleted_at DATETIME,
+			email TEXT,
+			oidc_sub TEXT,
+			is_service INTEGER NOT NULL DEFAULT 0
 		);
-		CREATE UNIQUE INDEX uni_users_username_active ON users (username) WHERE deleted_at IS NULL;`
+		CREATE UNIQUE INDEX uni_users_username_active ON users (username) WHERE deleted_at IS NULL;
+		CREATE UNIQUE INDEX uni_users_email ON users (email) WHERE email IS NOT NULL;
+		CREATE UNIQUE INDEX uni_users_oidc_sub ON users (oidc_sub) WHERE oidc_sub IS NOT NULL;`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}

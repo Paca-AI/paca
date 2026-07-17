@@ -601,7 +601,8 @@
 			"changeFailed": "Đổi vai trò thất bại."
 		},
 		"memberRow": {
-			"removeMember": "Xóa thành viên"
+			"removeMember": "Xóa thành viên",
+			"serviceBadge": "Dịch vụ"
 		},
 		"removeDialog": {
 			"title": "Xóa thành viên",

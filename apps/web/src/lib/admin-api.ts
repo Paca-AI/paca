@@ -74,6 +74,10 @@ export interface User {
 	role: string;
 	must_change_password: boolean;
 	created_at: string;
+	// Galaxy (ADR-038): Vortex identity link + service-account marker.
+	email?: string;
+	oidc_sub?: string;
+	is_service?: boolean;
 }
 
 export interface PagedUsersResponse {

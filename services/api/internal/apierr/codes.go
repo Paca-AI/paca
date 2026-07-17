@@ -21,6 +21,9 @@ const (
 	CodeUserNotFound Code = "USER_NOT_FOUND"
 	// CodeUsernameTaken represents a username that is already taken.
 	CodeUsernameTaken Code = "USER_USERNAME_TAKEN"
+	// CodeIdentityTaken indicates the email or oidc_sub is already linked to
+	// another account (Galaxy ADR-038).
+	CodeIdentityTaken Code = "USER_IDENTITY_TAKEN"
 	// CodeForbidden represents a forbidden action.
 	CodeForbidden Code = "FORBIDDEN"
 	// CodeGlobalRoleNotFound represents a global role that was not found.
