@@ -11,7 +11,7 @@
   },
 
   "frontend": {
-    "remoteEntryUrl": "/plugins/com.galaxy.sdd/assets/remoteEntry.js",
+    "remoteEntryUrl": "/plugins/com.galaxy.sdd/assets/remoteEntry.js?v=2",
     "extensionPoints": [
       {
         "point": "view",
