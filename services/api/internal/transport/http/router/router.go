@@ -133,14 +133,19 @@ func New(deps Deps) http.Handler {
 					Put("/users/{userId}/global-roles", deps.GlobalRole.ReplaceUserRoles)
 			})
 
-			// Projects — collection routes
-			r.Route("/projects", func(r chi.Router) {
+			// Projects — collection routes.
+			// Registered via r.Group (not r.Route) so these stay in the same
+			// routing tree as the "/projects/{projectId}" mount below — chi
+			// treats two separate Route()/Mount() calls sharing the "projects"
+			// prefix as competing mounts, and the {projectId} one wins even for
+			// paths like /projects/workspace-stats, shadowing the static route.
+			r.Group(func(r chi.Router) {
 				r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
 				r.Use(httpmw.RequireFreshPassword())
-				r.Get("/", deps.Project.ListProjects)
-				r.Get("/workspace-stats", deps.Project.GetWorkspaceStats)
+				r.Get("/projects", deps.Project.ListProjects)
+				r.Get("/projects/workspace-stats", deps.Project.GetWorkspaceStats)
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsCreate)).
-					Post("/", deps.Project.CreateProject)
+					Post("/projects", deps.Project.CreateProject)
 			})
 
 			// LLM models — accessible to any authenticated user
