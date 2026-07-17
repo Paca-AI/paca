@@ -114,7 +114,7 @@ func (m *mockAgentRepo) SetAgentMemberID(ctx context.Context, agentID, memberID 
 	return nil
 }
 
-func (m *mockAgentRepo) SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error {
+func (m *mockAgentRepo) SetACPBridgeTokenHash(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
 
