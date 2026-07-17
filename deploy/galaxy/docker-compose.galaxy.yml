@@ -1,0 +1,70 @@
+# =============================================================================
+# Galaxy production overlay for the Paca stack (Galaxy-Paca fork)
+# =============================================================================
+#
+# Usage (on the prod host, from the repo root):
+#
+#   docker compose \
+#     --env-file deploy/galaxy/.env.galaxy \
+#     -f deploy/docker-compose.prod.yml \
+#     -f deploy/galaxy/docker-compose.galaxy.yml \
+#     up -d --scale ai-agent=0
+#
+# Design decisions:
+#   - NO host port bindings. The Caddy gateway joins the external
+#     galaxy_network under the alias `paca-gateway`; the Cloudflare tunnel
+#     (galaxy-cloudflared-tunnel, same network) routes
+#     https://tasks.skyplatform.net -> http://paca-gateway:80.
+#   - TLS terminates at the Cloudflare edge; Caddy serves plain HTTP
+#     (SITE_ADDRESS=:80). COOKIE_SECURE stays true because browsers only
+#     ever see the HTTPS origin.
+#   - Only the gateway is attached to galaxy_network; postgres/valkey/minio/
+#     api/web/realtime stay on the stack-private default network.
+#   - Database backups land on the host HDD via BACKUP_DIR=/backup/paca-postgres.
+#   - Memory limits on every service (mem_limit + memswap_limit together —
+#     see prod ops runbook).
+#   - ai-agent stays scaled to 0 until the identity rework (P1) lands; its
+#     pre-shared keys must still be set so the API side is never fail-open.
+
+name: galaxy-paca
+
+services:
+  postgres:
+    mem_limit: 1g
+    memswap_limit: 1g
+
+  valkey:
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  minio:
+    mem_limit: 1g
+    memswap_limit: 1g
+
+  api:
+    mem_limit: 1g
+    memswap_limit: 1g
+
+  web:
+    mem_limit: 256m
+    memswap_limit: 256m
+
+  realtime:
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  gateway:
+    # Reachable only through galaxy_network (Cloudflare tunnel), never via
+    # host ports — do not re-add port bindings here.
+    ports: !override []
+    networks:
+      default: {}
+      galaxy_network:
+        aliases:
+          - paca-gateway
+    mem_limit: 256m
+    memswap_limit: 256m
+
+networks:
+  galaxy_network:
+    external: true

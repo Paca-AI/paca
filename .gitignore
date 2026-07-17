@@ -41,3 +41,6 @@ plugins/local
 
 # Python artifacts
 __pycache__/
+
+# Galaxy production secrets
+deploy/galaxy/.env.galaxy
