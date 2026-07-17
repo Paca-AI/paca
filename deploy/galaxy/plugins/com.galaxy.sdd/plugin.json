@@ -1,7 +1,7 @@
 {
   "id": "com.galaxy.sdd",
   "displayName": "SDD Sensor",
-  "description": "Embeds the Galaxy SDD sensor fleet dashboard (nexus.8verse.games/sdd-server) inside Paca. v1 is a thin frontend-only plugin: the sensor UI enforces its own Vortex OIDC auth and task-level signals already arrive through the server-side bridge as comments (ADR-038 T6).",
+  "description": "Embeds the Galaxy SDD sensor fleet dashboard (ai.skyplatform.net/sdd-server) inside Paca. v1 is a thin frontend-only plugin: the sensor UI enforces its own Vortex OIDC auth and task-level signals already arrive through the server-side bridge as comments (ADR-038 T6).",
   "version": "0.1.0",
   "permissions": [],
 

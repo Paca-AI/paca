@@ -32,10 +32,16 @@ export function LoginFormPanel() {
 	// the local username/password form stays reachable only via ?local=1
 	// (admin break-glass). If the config fetch fails, the form renders as a
 	// fallback so a broken identity service never locks out break-glass.
-	const forceLocal =
-		typeof window !== "undefined" &&
-		new URLSearchParams(window.location.search).get("local") === "1";
-	const ssoRedirect = Boolean(authConfig?.oidc_enabled) && !forceLocal;
+	const searchParams =
+		typeof window !== "undefined"
+			? new URLSearchParams(window.location.search)
+			: new URLSearchParams();
+	const forceLocal = searchParams.get("local") === "1";
+	// SSO loop-breaker: right after logout the Vortex IdP session is usually
+	// still alive, so auto-redirecting would silently sign the user back in.
+	const justLoggedOut = searchParams.get("logged_out") === "1";
+	const ssoRedirect =
+		Boolean(authConfig?.oidc_enabled) && !forceLocal && !justLoggedOut;
 	useEffect(() => {
 		if (ssoRedirect) window.location.replace(OIDC_LOGIN_URL);
 	}, [ssoRedirect]);
@@ -49,6 +55,32 @@ export function LoginFormPanel() {
 				<img src={logoSrc} alt={t("brand.logoAlt")} className="h-auto w-10" />
 				<a href={OIDC_LOGIN_URL} className={cn(buttonVariants({ size: "lg" }))}>
 					{authConfig?.oidc_button_label || t("login.ssoSignIn")}
+				</a>
+			</div>
+		);
+	}
+
+	if (justLoggedOut && authConfig?.oidc_enabled) {
+		return (
+			<div className="relative flex flex-col items-center justify-center gap-4 px-8 py-16 text-center sm:px-10">
+				<img src={logoSrc} alt={t("brand.logoAlt")} className="h-auto w-10" />
+				<p className="text-sm text-(--sea-ink-soft)">
+					{t("login.loggedOut", "Bạn đã đăng xuất khỏi Galaxy Tasks.")}
+				</p>
+				<a href={OIDC_LOGIN_URL} className={cn(buttonVariants({ size: "lg" }))}>
+					{authConfig.oidc_button_label || t("login.ssoSignIn")}
+				</a>
+				{/* ADR-027 single logout — also ends the platform (Zitadel) session.
+				    TODO: derive the identity origin from server config for
+				    instance-per-tenant deploys (ADR-038 T7). */}
+				<a
+					href={`https://ai.skyplatform.net/api/identity/auth/logout?post_logout_redirect_uri=${encodeURIComponent("https://tasks.skyplatform.net/?logged_out=1")}`}
+					className="text-xs text-(--sea-ink-soft) underline underline-offset-2"
+				>
+					{t(
+						"login.logoutEverywhere",
+						"Đăng xuất khỏi toàn bộ Vortex (mọi ứng dụng)",
+					)}
 				</a>
 			</div>
 		);

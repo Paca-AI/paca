@@ -8,7 +8,10 @@
 // host grows a real config surface, changing the sensor URL means editing
 // this constant and rebuilding (see ../../README.md "Changing the sensor
 // URL"). Do NOT put secrets here: this file ships to every browser.
-export const SDD_URL = "https://nexus.8verse.games/sdd-server";
+// Portal path — same-site với tasks.skyplatform.net (*.skyplatform.net) nên
+// cookie phiên Vortex chảy được trong iframe; KHÔNG dùng nexus.8verse.games
+// (domain legacy, không còn trong tunnel ingress — chết từ ngoài, 17/07).
+export const SDD_URL = "https://ai.skyplatform.net/sdd-server";
 
 /** Hostname shown in operator-facing fallback copy. */
 export const SDD_HOST = new URL(SDD_URL).host;

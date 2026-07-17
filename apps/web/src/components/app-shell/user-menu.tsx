@@ -75,7 +75,11 @@ export function UserMenu() {
 			// projects, etc.) leaks into the next session. The login route will
 			// re-fetch everything from scratch.
 			queryClient.clear();
-			await navigate({ to: "/", replace: true });
+			// logged_out=1 is the SSO loop-breaker: without it the login screen
+			// (the index route) auto-redirects to Vortex, whose live IdP session
+			// silently signs the user straight back in — making logout appear to
+			// do nothing (ADR-038). Full page load also guarantees a clean slate.
+			window.location.assign("/?logged_out=1");
 		} finally {
 			setIsLoggingOut(false);
 		}
