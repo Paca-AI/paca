@@ -65,6 +65,17 @@ services:
       # Advertised on the public /auth/config endpoint; the SPA mounts the
       # dock after login. Empty keeps the dock disabled.
       GALAXY_DOCK_SRC: ${GALAXY_DOCK_SRC:-}
+    # Split-horizon OIDC (SỰ CỐ "invalid id_token" 17/07): identity mints
+    # iss=http://nexus-identity:8086 (OIDC_ISSUER nội bộ của identity), nên
+    # api phải fetch discovery/token/JWKS qua galaxy_network như RAGFlow.
+    # ⚠️ Compose thêm alias ngầm = tên service (`api`) trên network chung —
+    # đã scan 17/07: không container nào khác giữ alias `api`; nếu sau này
+    # đụng, đổi tên service như vụ paca-edge.
+    networks:
+      default: {}
+      galaxy_network:
+        aliases:
+          - paca-api
     mem_limit: 1g
     memswap_limit: 1g
 

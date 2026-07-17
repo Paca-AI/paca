@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Eye, EyeOff, KeyRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { buttonVariants } from "@/components/ui/button";
@@ -22,8 +22,37 @@ export function LoginFormPanel() {
 	const { t: tCommon } = useTranslation("common");
 	const { form, serverError } = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
-	const { data: authConfig } = useQuery(authConfigQueryOptions);
+	const { data: authConfig, isLoading: authConfigLoading } = useQuery(
+		authConfigQueryOptions,
+	);
 	const logoSrc = "/paca-logo.svg";
+
+	// ADR-038 T2 — platform-wide design: apps do NOT show their own login
+	// screen. When the server enables OIDC we bounce straight to Vortex SSO;
+	// the local username/password form stays reachable only via ?local=1
+	// (admin break-glass). If the config fetch fails, the form renders as a
+	// fallback so a broken identity service never locks out break-glass.
+	const forceLocal =
+		typeof window !== "undefined" &&
+		new URLSearchParams(window.location.search).get("local") === "1";
+	const ssoRedirect = Boolean(authConfig?.oidc_enabled) && !forceLocal;
+	useEffect(() => {
+		if (ssoRedirect) window.location.replace(OIDC_LOGIN_URL);
+	}, [ssoRedirect]);
+
+	// Avoid flashing the local form while the auth config is still loading.
+	if (authConfigLoading) return null;
+
+	if (ssoRedirect) {
+		return (
+			<div className="relative flex flex-col items-center justify-center gap-4 px-8 py-16 sm:px-10">
+				<img src={logoSrc} alt={t("brand.logoAlt")} className="h-auto w-10" />
+				<a href={OIDC_LOGIN_URL} className={cn(buttonVariants({ size: "lg" }))}>
+					{authConfig?.oidc_button_label || t("login.ssoSignIn")}
+				</a>
+			</div>
+		);
+	}
 
 	return (
 		<div className="relative flex flex-col justify-center px-8 py-10 sm:px-10">
