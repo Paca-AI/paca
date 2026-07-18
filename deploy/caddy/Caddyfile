@@ -161,6 +161,19 @@
 	# Forwards the /api prefix as-is to the upstream:
 	#   /api/v1/users  →  /api/v1/users
 	#   /api/healthz   →  /api/healthz
+	# -- SDD fleet data proxy (ADR-038) -------------------------------------------
+	#
+	# Same-origin /sdd-api/* for the NATIVE com.galaxy.sdd plugin. The prefix is
+	# stripped and forwarded to the sdd-proxy sidecar, which gates the request
+	# behind the caller's Paca session, injects a short-lived RS256 service token
+	# (identity mint, iss=galaxy-nexus), and reverse-proxies GET reads to the SDD
+	# Coordination Server (sdd-server:4830 /api/*) over galaxy_network. No iframe,
+	# no secret in the browser. See deploy/galaxy/sdd-proxy/. Distinct prefix
+	# (/sdd-api not /api) so it never collides with the /api/* handle below.
+	handle_path /sdd-api/* {
+		reverse_proxy sdd-proxy:8791
+	}
+
 	handle /api/* {
 		reverse_proxy api:8080
 	}
