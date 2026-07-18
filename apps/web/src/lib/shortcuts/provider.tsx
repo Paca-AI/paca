@@ -123,19 +123,23 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 			const action = matchShortcut(e);
 			if (!action) return;
 
-			e.preventDefault();
-
 			if (action === "general.help") {
+				e.preventDefault();
 				toggleHelp();
 				return;
 			}
 			if (action.startsWith("goto.")) {
+				e.preventDefault();
 				runGotoActionRef.current(action);
 				return;
 			}
 			if (action.startsWith("page.")) {
+				// Only claim the key when an interaction page actually registered a
+				// handler — otherwise leave the browser default (e.g. native
+				// find-in-page on Mod+F) alone on pages with no page-scope actions.
 				const page = usePageShortcutStore.getState().active;
 				if (!page) return;
+				e.preventDefault();
 				switch (action) {
 					case "page.prevView":
 						page.prevView();
@@ -157,8 +161,11 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 				}
 			}
 			if (action.startsWith("task.")) {
+				// Only claim the key while a task is actually hovered — otherwise
+				// leave the browser default (e.g. native Mod+O) alone everywhere else.
 				const task = useHoveredTaskStore.getState().active;
 				if (!task) return;
+				e.preventDefault();
 				switch (action) {
 					case "task.open":
 						task.open();

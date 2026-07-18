@@ -130,7 +130,6 @@ export function TaskContextMenu({
 					<ContextMenuSub>
 						<ContextMenuSubTrigger>
 							{t("board.taskContextMenu.status")}
-							<Hint actionId="task.status" />
 						</ContextMenuSubTrigger>
 						<ContextMenuSubContent className="w-44">
 							{statuses.map((s) => (
@@ -156,7 +155,6 @@ export function TaskContextMenu({
 					<ContextMenuSub>
 						<ContextMenuSubTrigger>
 							{t("board.taskContextMenu.assignee")}
-							<Hint actionId="task.assignee" />
 						</ContextMenuSubTrigger>
 						<ContextMenuSubContent className="w-48">
 							<ContextMenuItem
@@ -201,7 +199,6 @@ export function TaskContextMenu({
 					<ContextMenuSub>
 						<ContextMenuSubTrigger>
 							{t("board.taskContextMenu.type")}
-							<Hint actionId="task.type" />
 						</ContextMenuSubTrigger>
 						<ContextMenuSubContent className="w-44">
 							{taskTypes.map((tt) => {
@@ -232,7 +229,6 @@ export function TaskContextMenu({
 					<ContextMenuSub>
 						<ContextMenuSubTrigger>
 							{t("board.taskContextMenu.priority")}
-							<Hint actionId="task.priority" />
 						</ContextMenuSubTrigger>
 						<ContextMenuSubContent className="w-40">
 							{PRIORITY_LEVELS.map((level) => (

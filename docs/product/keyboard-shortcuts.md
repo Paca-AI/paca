@@ -26,6 +26,13 @@ overridable — would be bad UX. The keymap below was built by excluding:
   overridable, but claiming them page-wide breaks a near-universal
   expectation.
 
+`Mod+[` / `Mod+]` (previous/next view) knowingly overlap Safari's `⌘[`/`⌘]`
+back/forward-history shortcut on macOS. Accepted because the override only
+takes effect on an interaction page (see "Event handling rules" below —
+`page.*` shortcuts no-op, and leave the browser default alone, everywhere
+else), so it can only ever shadow history navigation while already on a
+backlog/sprint/timeline view.
+
 Two features from an earlier leader-key draft (`G` then a letter) were
 dropped once shortcuts moved to flat `Mod+key` combos, because they depend on
 digits, which are unusably reserved (`Mod+1`–`9` always switches browser
@@ -167,8 +174,15 @@ components/projects/interactions/task-context-menu.tsx
   *not* accidentally fire the plain `Mod+O` binding.
 - **No sequence/leader state** — every combo resolves in one keydown, so
   there's no pending-chord timeout or cancel-on-blur logic to maintain.
-- **`preventDefault`** only when a shortcut actually matches, so the browser
-  default is left alone for everything else.
+- **`preventDefault`** only once a shortcut both matches *and* resolves to a
+  live handler: `general.help`/`goto.*` always claim the key once matched
+  (they always do something), but `page.*`/`task.*` only call
+  `preventDefault` after confirming `usePageShortcutStore`/
+  `useHoveredTaskStore` actually has an active registration — otherwise the
+  browser default (e.g. native find-in-page on `Mod+F`) is left alone. This
+  keeps `page.*`/`task.*` scoped to interaction pages / a hovered task
+  instead of shadowing browser shortcuts app-wide on pages where they'd be a
+  no-op anyway.
 - **Scope dispatch**: `goto.*` handled inline (needs router/permissions/
   sprints); `page.*` reads `usePageShortcutStore.getState().active`; `task.*`
   reads `useHoveredTaskStore.getState().active`. Because the two scopes use
