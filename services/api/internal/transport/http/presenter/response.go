@@ -528,7 +528,8 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentACPCommandRequired,
 		apierr.CodeAgentEnvVarKeyInvalid,
 		apierr.CodeAgentEnvVarKeyReserved,
-		apierr.CodeAgentSkillNameReserved:
+		apierr.CodeAgentSkillNameReserved,
+		apierr.CodeAgentConversationInvalidCursor:
 		return http.StatusBadRequest
 	case apierr.CodeWorkflowNotFound,
 		apierr.CodeWorkflowNodeNotFound,
