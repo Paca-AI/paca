@@ -178,26 +178,42 @@ class ConversationRunner:
 
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:
+            event_type = type(event).__name__
             try:
                 payload = event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
                 message = {
                     "type": "event",
                     "conversation_id": conversation_id,
                     "project_id": project_id,
-                    "event_type": type(event).__name__,
+                    "event_type": event_type,
                     "event_source": str(getattr(event, "source", "agent")),
                     "payload": payload,
                 }
-                # ACPAgent streams mid-turn events from its own background
-                # ("portal") thread, not necessarily this callback's caller,
-                # so this still has to hop back onto the event loop
-                # threadsafe rather than assuming it's already there.
-                future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
-                future.result(timeout=10)
+                try:
+                    called_from_our_loop = asyncio.get_running_loop() is self._loop
+                except RuntimeError:
+                    called_from_our_loop = False
+                if called_from_our_loop:
+                    # Most on_event calls now happen this way: arun() runs as
+                    # a task directly on this daemon's own loop, and things
+                    # like finalizing a turn or emitting InterruptEvent on
+                    # cancellation call back into this callback synchronously
+                    # from that same task. Blocking here with
+                    # run_coroutine_threadsafe(...).result() would deadlock —
+                    # the loop can't run the coroutine it just scheduled
+                    # while its own thread is stuck waiting on it (always
+                    # timing out after the full 10s). Just schedule it.
+                    asyncio.get_running_loop().create_task(self._send(message))
+                else:
+                    # Mid-turn ACP streaming updates fire from ACPAgent's own
+                    # background ("portal") thread, so this hop really is
+                    # cross-thread there, and safe to wait on.
+                    future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
+                    future.result(timeout=10)
             except Exception:
                 logger.warning(
                     "Failed to report event %s for conversation %s",
-                    type(event).__name__,
+                    event_type,
                     conversation_id,
                     exc_info=True,
                 )

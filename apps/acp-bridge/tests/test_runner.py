@@ -6,6 +6,7 @@ than a real `openhands.sdk.Conversation`.
 """
 
 import asyncio
+import threading
 
 import pytest
 
@@ -185,3 +186,59 @@ async def test_start_turn_resume_drives_conversation_via_arun_and_reports_finish
             "status": "finished",
         }
     ]
+
+
+class _FakeEvent:
+    def model_dump_json(self):
+        return "{}"
+
+
+async def test_event_callback_schedules_without_blocking_when_called_on_loop():
+    """arun()'s own on_event calls (finalizing a turn, emitting InterruptEvent
+    on cancellation) happen synchronously on this daemon's own event-loop
+    thread. Blocking there with run_coroutine_threadsafe(...).result() would
+    make the loop wait on a coroutine it can only run once this call
+    returns — a guaranteed 10s self-deadlock. Calling the callback directly
+    (as arun() does) must return immediately instead."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner = ConversationRunner(workspace="/tmp", send=send)
+    runner._loop = asyncio.get_running_loop()
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    callback(_FakeEvent())  # must not block waiting for _send to run
+
+    await asyncio.sleep(0)  # let the scheduled task actually run
+
+    assert len(sent) == 1
+    assert sent[0]["conversation_id"] == "conv-1"
+    assert sent[0]["event_type"] == "_FakeEvent"
+
+
+async def test_event_callback_uses_threadsafe_dispatch_when_called_off_loop():
+    """ACPAgent streams some mid-turn updates from its own background
+    ("portal") thread — a genuinely different thread than this daemon's
+    loop — where the blocking run_coroutine_threadsafe(...).result() dispatch
+    is still correct and necessary."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner = ConversationRunner(workspace="/tmp", send=send)
+    runner._loop = asyncio.get_running_loop()
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    thread = threading.Thread(target=callback, args=(_FakeEvent(),))
+    thread.start()
+    for _ in range(200):
+        if not thread.is_alive():
+            break
+        await asyncio.sleep(0.01)
+
+    assert not thread.is_alive()
+    assert len(sent) == 1
+    assert sent[0]["conversation_id"] == "conv-1"
