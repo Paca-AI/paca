@@ -8,7 +8,8 @@
 		"goto": "이동",
 		"general": "일반",
 		"page": "페이지 및 보기",
-		"task": "포인터 아래 작업"
+		"task": "포인터 아래 작업",
+		"editor": "설명 및 문서"
 	},
 	"actions": {
 		"gotoHome": "홈 / 전체 프로젝트",
@@ -31,6 +32,7 @@
 		"open": "상세 정보 열기",
 		"epic": "에픽 설정",
 		"moveLeftRight": "열을 왼쪽 / 오른쪽으로 이동",
-		"delete": "작업 삭제"
+		"delete": "작업 삭제",
+		"save": "저장"
 	}
 }

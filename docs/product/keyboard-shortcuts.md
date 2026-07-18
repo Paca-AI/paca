@@ -124,12 +124,41 @@ were retired); items that do have a shortcut show it via `Hint`/`KbdChord`:
 Submenus reuse the same option lists the card popovers already render
 (statuses, members, types, priority levels, epics).
 
+### Rich-text editors (task description, docs)
+
+| Shortcut | Action |
+|---|---|
+| `Mod+S` | Save immediately, instead of waiting for blur/the 3s debounce |
+
+Handled locally by each BlockNote editor's own `onKeyDown` — not part of
+`matchShortcut`/`provider.tsx` — since it only makes sense while focus is
+inside one of them:
+
+- `components/projects/interactions/task-detail/description-section.tsx` —
+  task description. Calls the same `save()` already used by
+  `onBlur`; a no-op if there's nothing pending (`pendingRef.current`).
+- `components/projects/docs/doc-editor.tsx` — project docs. Pre-existing;
+  also duplicated as a `window` keydown listener in the `$docId.tsx` route
+  (not cleaned up here, out of scope for the description-editor addition).
+
+Both editors are `contentEditable`, so the global listener's
+`isTypingTarget` guard (see "Event handling rules" below) already skips
+them — there's no conflict with the rest of the keymap. This reuses the `S`
+key for an unrelated purpose from the retired `Mod+S` "Status picker"
+binding mentioned above; that binding no longer exists in `matchShortcut` at
+all, so there's nothing to collide with.
+
+Listed in the `Mod+/` help dialog under its own "Description & docs" group
+(`editor.save` in `SHORTCUT_DISPLAY`) purely for discoverability, the same
+way `general.sidebar`/`general.close` are listed despite not going through
+`matchShortcut` either.
+
 ## Discoverability
 
 1. **`Mod+/` help dialog** (`components/shortcuts/shortcut-help-dialog.tsx`) —
    lists every shortcut, grouped (Go to / General / Page and views / Task
-   under cursor), generated from `SHORTCUT_DISPLAY` in `keymap.ts`. Also
-   reachable from the user menu ("Keyboard shortcuts").
+   under cursor / Description & docs), generated from `SHORTCUT_DISPLAY` in
+   `keymap.ts`. Also reachable from the user menu ("Keyboard shortcuts").
 2. **Context menu hints** — every menu item shows its key via
    `ContextMenuShortcut` + `KbdChord`.
 3. **Search button tooltip** — shows the `Mod+F` hint.

@@ -8,7 +8,8 @@
 		"goto": "Đi tới",
 		"general": "Chung",
 		"page": "Trang và chế độ xem",
-		"task": "Tác vụ dưới con trỏ"
+		"task": "Tác vụ dưới con trỏ",
+		"editor": "Mô tả & tài liệu"
 	},
 	"actions": {
 		"gotoHome": "Trang chủ / tất cả dự án",
@@ -31,6 +32,7 @@
 		"open": "Mở chi tiết",
 		"epic": "Đặt epic",
 		"moveLeftRight": "Di chuyển cột sang trái / phải",
-		"delete": "Xóa tác vụ"
+		"delete": "Xóa tác vụ",
+		"save": "Lưu"
 	}
 }

@@ -8,7 +8,8 @@
 		"goto": "Aller à",
 		"general": "Général",
 		"page": "Page et vues",
-		"task": "Tâche sous le pointeur"
+		"task": "Tâche sous le pointeur",
+		"editor": "Description et documents"
 	},
 	"actions": {
 		"gotoHome": "Accueil / tous les projets",
@@ -31,6 +32,7 @@
 		"open": "Ouvrir les détails",
 		"epic": "Définir l'epic",
 		"moveLeftRight": "Déplacer la colonne à gauche / à droite",
-		"delete": "Supprimer la tâche"
+		"delete": "Supprimer la tâche",
+		"save": "Enregistrer"
 	}
 }

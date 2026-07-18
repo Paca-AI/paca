@@ -107,7 +107,7 @@ export interface DisplayChord {
 
 export interface ShortcutDisplayEntry {
 	id: string;
-	group: "goto" | "general" | "page" | "task";
+	group: "goto" | "general" | "page" | "task" | "editor";
 	/** Key inside the "shortcuts" i18n namespace, under "actions". */
 	labelKey: string;
 	/** Usually one chord; two only for a combined "left/right" style entry. */
@@ -248,9 +248,26 @@ export const SHORTCUT_DISPLAY: ShortcutDisplayEntry[] = [
 		labelKey: "delete",
 		chords: [{ mod: true, key: "⌫" }],
 	},
+	{
+		// Not dispatched through matchShortcut/provider.tsx — handled locally by
+		// each BlockNote editor's own onKeyDown (description-section.tsx,
+		// doc-editor.tsx), since it only makes sense while focus is inside one
+		// of them. Listed here purely for discoverability, same as
+		// general.sidebar/general.close.
+		id: "editor.save",
+		group: "editor",
+		labelKey: "save",
+		chords: [{ mod: true, key: "S" }],
+	},
 ];
 
-export const SHORTCUT_GROUPS = ["goto", "general", "page", "task"] as const;
+export const SHORTCUT_GROUPS = [
+	"goto",
+	"general",
+	"page",
+	"task",
+	"editor",
+] as const;
 
 // ── Key formatting ───────────────────────────────────────────────────────────
 

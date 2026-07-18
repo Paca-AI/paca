@@ -8,7 +8,8 @@
 		"goto": "Go to",
 		"general": "General",
 		"page": "Page and views",
-		"task": "Task under cursor"
+		"task": "Task under cursor",
+		"editor": "Description & docs"
 	},
 	"actions": {
 		"gotoHome": "Home / all projects",
@@ -31,6 +32,7 @@
 		"open": "Open details",
 		"epic": "Set epic",
 		"moveLeftRight": "Move column left / right",
-		"delete": "Delete task"
+		"delete": "Delete task",
+		"save": "Save"
 	}
 }

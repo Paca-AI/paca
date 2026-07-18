@@ -8,7 +8,8 @@
 		"goto": "前往",
 		"general": "通用",
 		"page": "页面与视图",
-		"task": "指针所在任务"
+		"task": "指针所在任务",
+		"editor": "描述与文档"
 	},
 	"actions": {
 		"gotoHome": "主页 / 所有项目",
@@ -31,6 +32,7 @@
 		"open": "打开详情",
 		"epic": "设置史诗",
 		"moveLeftRight": "向左 / 向右移动列",
-		"delete": "删除任务"
+		"delete": "删除任务",
+		"save": "保存"
 	}
 }
