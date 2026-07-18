@@ -1,8 +1,9 @@
+import type { InfiniteData } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
-	type AgentConversation,
+	type ConversationListResult,
 	conversationsQueryOptions,
 } from "@/lib/agent-api";
 
@@ -12,7 +13,9 @@ export const Route = createFileRoute(
 	// The parent `conversations` layout route's loader already populated the
 	// conversations list in the query cache, so this can read it synchronously
 	// instead of refetching — landing directly on the most recently created
-	// conversation instead of showing a bare "pick one" screen.
+	// conversation instead of showing a bare "pick one" screen. The list's
+	// first page is ordered newest-first, so its first item is the latest
+	// conversation without needing to scan every loaded page.
 	//
 	// `preload` is true when this loader runs speculatively (e.g. the sidebar
 	// nav Link's hover-intent preload, since the router defaults to
@@ -22,15 +25,12 @@ export const Route = createFileRoute(
 	loader: ({ context: { queryClient }, params: { projectId }, preload }) => {
 		if (preload) return;
 
-		const conversations =
-			queryClient.getQueryData<AgentConversation[]>(
-				conversationsQueryOptions(projectId).queryKey,
-			) ?? [];
-		if (conversations.length === 0) return;
-
-		const latest = conversations.reduce((a, b) =>
-			new Date(a.created_at) > new Date(b.created_at) ? a : b,
+		const data = queryClient.getQueryData<InfiniteData<ConversationListResult>>(
+			conversationsQueryOptions(projectId).queryKey,
 		);
+		const latest = data?.pages[0]?.items[0];
+		if (!latest) return;
+
 		throw redirect({
 			to: "/projects/$projectId/conversations/$conversationId",
 			params: { projectId, conversationId: latest.id },

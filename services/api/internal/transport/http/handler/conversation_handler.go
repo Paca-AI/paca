@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -30,11 +31,13 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	offset, limit := parseOffsetLimit(r)
+	pageSize, _ := strconv.Atoi(defaultQuery(r, "page_size", "20"))
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 20
+	}
+
 	filter := agentdom.ListConversationsFilter{
 		ProjectID: &projectID,
-		Limit:     limit,
-		Offset:    offset,
 	}
 	if agentIDStr := r.URL.Query().Get("agent_id"); agentIDStr != "" {
 		if id, err := uuid.Parse(agentIDStr); err == nil {
@@ -44,8 +47,11 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
 		filter.Status = &statusStr
 	}
+	if cursorRaw := r.URL.Query().Get("cursor"); cursorRaw != "" {
+		filter.CursorAfter = &cursorRaw
+	}
 
-	convs, total, err := h.svc.ListConversations(r.Context(), filter)
+	convs, hasMore, err := h.svc.ListConversations(r.Context(), filter, pageSize)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -54,7 +60,17 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	for _, conv := range convs {
 		resp = append(resp, dto.ConversationFromEntity(conv))
 	}
-	presenter.OK(w, r, map[string]any{"items": resp, "total": total})
+
+	var nextCursor *string
+	if hasMore && len(convs) > 0 {
+		s := agentdom.EncodeConversationCursor(convs[len(convs)-1])
+		nextCursor = &s
+	}
+	presenter.OK(w, r, map[string]any{
+		"items":       resp,
+		"page_size":   pageSize,
+		"next_cursor": nextCursor,
+	})
 }
 
 // GetConversation handles GET /projects/:projectId/conversations/:conversationId.

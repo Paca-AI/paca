@@ -288,6 +288,8 @@ const (
 	CodeAgentConversationAlreadyStopped Code = "AGENT_CONVERSATION_ALREADY_STOPPED"
 	// CodeAgentConversationBusy indicates a chat reply was sent while the agent is still responding to the previous one.
 	CodeAgentConversationBusy Code = "AGENT_CONVERSATION_BUSY"
+	// CodeAgentConversationInvalidCursor indicates a client-supplied pagination cursor failed to decode.
+	CodeAgentConversationInvalidCursor Code = "AGENT_CONVERSATION_INVALID_CURSOR"
 	// CodeAgentChatSessionNotFound indicates the requested chat session does not exist.
 	CodeAgentChatSessionNotFound Code = "AGENT_CHAT_SESSION_NOT_FOUND"
 	// CodeAgentEnvVarNotFound indicates the requested environment variable does not exist.

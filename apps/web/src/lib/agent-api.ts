@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
 
@@ -476,15 +476,25 @@ export async function deleteEnvVar(
 
 // ── Conversations ─────────────────────────────────────────────────────────────
 
+export interface ConversationListResult {
+	items: AgentConversation[];
+	page_size: number;
+	next_cursor: string | null;
+}
+
+export const CONVERSATIONS_PAGE_SIZE = 20;
+
 export async function listConversations(
 	projectId: string,
-	agentId?: string,
-): Promise<AgentConversation[]> {
-	const params = agentId ? { agent_id: agentId } : undefined;
+	options?: { agentId?: string; cursor?: string; pageSize?: number },
+): Promise<ConversationListResult> {
+	const { agentId, cursor, pageSize = CONVERSATIONS_PAGE_SIZE } = options ?? {};
 	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<{ items: AgentConversation[] }>
-	>(`/projects/${projectId}/conversations`, { params });
-	return data.data.items;
+		SuccessEnvelope<ConversationListResult>
+	>(`/projects/${projectId}/conversations`, {
+		params: { agent_id: agentId, cursor, page_size: pageSize },
+	});
+	return data.data;
 }
 
 export async function getConversation(
@@ -641,14 +651,23 @@ export const acpBridgeStatusQueryOptions = (
 
 // No refetchInterval: kept live via useProjectRealtime's socket-driven
 // invalidation of the ["projects", projectId, "conversations"] prefix on
-// every "agent.*" event instead of polling.
+// every "agent.*" event instead of polling. Cursor-paginated — each page
+// carries the opaque cursor to resume after its last item, so fetchNextPage
+// just forwards the backend's next_cursor until it comes back null.
 export const conversationsQueryOptions = (
 	projectId: string,
 	agentId?: string,
 ) =>
-	queryOptions({
+	infiniteQueryOptions({
 		queryKey: ["projects", projectId, "conversations", { agentId }],
-		queryFn: () => listConversations(projectId, agentId),
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listConversations(projectId, {
+				agentId,
+				cursor: pageParam,
+				pageSize: CONVERSATIONS_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 	});
 
 export const conversationQueryOptions = (

@@ -24,9 +24,10 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAgentSvc struct {
-	getAgent         func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
-	createAgent      func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
-	startChatSession func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
+	getAgent          func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
+	createAgent       func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
+	startChatSession  func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
+	listConversations func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 }
 
 func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID) ([]*agentdom.Agent, error) {
@@ -86,8 +87,11 @@ func (m *mockAgentSvc) UpdateEnvVar(_ context.Context, _, _ uuid.UUID, _ agentdo
 	return nil, errors.New("not found")
 }
 func (m *mockAgentSvc) DeleteEnvVar(_ context.Context, _, _ uuid.UUID) error { return nil }
-func (m *mockAgentSvc) ListConversations(_ context.Context, _ agentdom.ListConversationsFilter) ([]*agentdom.AgentConversation, int64, error) {
-	return nil, 0, nil
+func (m *mockAgentSvc) ListConversations(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
+	if m.listConversations != nil {
+		return m.listConversations(ctx, filter, limit)
+	}
+	return nil, false, nil
 }
 func (m *mockAgentSvc) GetConversation(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 	return nil, errors.New("not found")

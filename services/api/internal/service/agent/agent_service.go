@@ -600,9 +600,9 @@ func (s *Service) DeleteEnvVar(ctx context.Context, agentID, envVarID uuid.UUID)
 // Conversations
 // -------------------------------------------------------------------------
 
-// ListConversations returns a paginated list of conversations matching the filter.
-func (s *Service) ListConversations(ctx context.Context, in agentdom.ListConversationsFilter) ([]*agentdom.AgentConversation, int64, error) {
-	return s.repo.ListConversations(ctx, in)
+// ListConversations returns a page of conversations matching the filter.
+func (s *Service) ListConversations(ctx context.Context, in agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
+	return s.repo.ListConversations(ctx, in, limit)
 }
 
 // GetConversation returns a single conversation after verifying project ownership.
@@ -810,12 +810,9 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
 	// TODO: We'd need to aggregate events from all conversations in this session.
 	// For now, return events from the most recent conversation with this session_id.
-	filter := agentdom.ListConversationsFilter{
-		Limit:  1,
-		Offset: 0,
-	}
+	filter := agentdom.ListConversationsFilter{}
 	_ = sessionID
-	convs, _, err := s.repo.ListConversations(ctx, filter)
+	convs, _, err := s.repo.ListConversations(ctx, filter, 1)
 	if err != nil {
 		return nil, 0, err
 	}

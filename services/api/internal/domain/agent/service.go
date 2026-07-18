@@ -56,7 +56,7 @@ type EnvVarService interface {
 
 // ConversationService defines conversation management use cases.
 type ConversationService interface {
-	ListConversations(ctx context.Context, in ListConversationsFilter) ([]*AgentConversation, int64, error)
+	ListConversations(ctx context.Context, in ListConversationsFilter, limit int) (convs []*AgentConversation, hasMore bool, err error)
 	GetConversation(ctx context.Context, projectID, conversationID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
