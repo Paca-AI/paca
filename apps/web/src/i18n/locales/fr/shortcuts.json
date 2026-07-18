@@ -1,0 +1,38 @@
+{
+	"dialog": {
+		"title": "Raccourcis clavier",
+		"footer": "Les raccourcis de tâche s'appliquent à la carte ou à la ligne survolée par le pointeur. Faites un clic droit sur une tâche pour retrouver les mêmes actions.",
+		"menuLabel": "Raccourcis clavier"
+	},
+	"groups": {
+		"goto": "Aller à",
+		"general": "Général",
+		"page": "Page et vues",
+		"task": "Tâche sous le pointeur",
+		"editor": "Description et documents"
+	},
+	"actions": {
+		"gotoHome": "Accueil / tous les projets",
+		"gotoTimeline": "Chronologie",
+		"gotoBacklog": "Backlog produit",
+		"gotoActiveSprint": "Sprint actif",
+		"gotoAgents": "Agents",
+		"gotoConversations": "Conversations",
+		"gotoAutomation": "Automatisation",
+		"gotoTeam": "Équipe",
+		"gotoDocs": "Documents",
+		"gotoSettings": "Paramètres du projet",
+		"help": "Afficher cette aide",
+		"sidebar": "Afficher/masquer la barre latérale",
+		"close": "Fermer / annuler",
+		"prevNextView": "Vue précédente / suivante",
+		"search": "Rechercher des tâches",
+		"createTask": "Créer une tâche",
+		"viewSettings": "Paramètres de la vue",
+		"open": "Ouvrir les détails",
+		"epic": "Définir l'epic",
+		"moveLeftRight": "Déplacer la colonne à gauche / à droite",
+		"delete": "Supprimer la tâche",
+		"save": "Enregistrer"
+	}
+}

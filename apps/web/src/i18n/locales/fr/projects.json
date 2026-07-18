@@ -931,6 +931,20 @@
 			"noEpic": "Aucun epic",
 			"storyPointsTitle": "Story points"
 		},
+		"taskContextMenu": {
+			"open": "Ouvrir la tâche",
+			"moveTo": "Déplacer vers",
+			"status": "Statut",
+			"assignee": "Assigné à",
+			"unassigned": "Non attribué",
+			"type": "Type",
+			"priority": "Priorité",
+			"epic": "Epic",
+			"noEpic": "Aucun epic",
+			"copyId": "Copier l'ID de la tâche ({{id}})",
+			"copyLink": "Copier le lien",
+			"delete": "Supprimer la tâche"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

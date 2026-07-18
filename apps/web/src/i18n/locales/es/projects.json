@@ -931,6 +931,20 @@
 			"noEpic": "Sin épica",
 			"storyPointsTitle": "Puntos de historia"
 		},
+		"taskContextMenu": {
+			"open": "Abrir tarea",
+			"moveTo": "Mover a",
+			"status": "Estado",
+			"assignee": "Persona asignada",
+			"unassigned": "Sin asignar",
+			"type": "Tipo",
+			"priority": "Prioridad",
+			"epic": "Épica",
+			"noEpic": "Sin épica",
+			"copyId": "Copiar ID de tarea ({{id}})",
+			"copyLink": "Copiar enlace",
+			"delete": "Eliminar tarea"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

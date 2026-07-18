@@ -931,6 +931,20 @@
 			"noEpic": "No Epic",
 			"storyPointsTitle": "Story Points"
 		},
+		"taskContextMenu": {
+			"open": "Open task",
+			"moveTo": "Move to",
+			"status": "Status",
+			"assignee": "Assignee",
+			"unassigned": "Unassigned",
+			"type": "Type",
+			"priority": "Priority",
+			"epic": "Epic",
+			"noEpic": "No epic",
+			"copyId": "Copy task ID ({{id}})",
+			"copyLink": "Copy link",
+			"delete": "Delete task"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

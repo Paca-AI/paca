@@ -1,0 +1,38 @@
+{
+	"dialog": {
+		"title": "키보드 단축키",
+		"footer": "작업 단축키는 마우스 포인터 아래에 있는 카드나 행에 적용됩니다. 작업을 마우스 오른쪽 버튼으로 클릭하면 동일한 작업 메뉴가 표시됩니다.",
+		"menuLabel": "키보드 단축키"
+	},
+	"groups": {
+		"goto": "이동",
+		"general": "일반",
+		"page": "페이지 및 보기",
+		"task": "포인터 아래 작업",
+		"editor": "설명 및 문서"
+	},
+	"actions": {
+		"gotoHome": "홈 / 전체 프로젝트",
+		"gotoTimeline": "타임라인",
+		"gotoBacklog": "제품 백로그",
+		"gotoActiveSprint": "진행 중인 스프린트",
+		"gotoAgents": "에이전트",
+		"gotoConversations": "대화",
+		"gotoAutomation": "자동화",
+		"gotoTeam": "팀",
+		"gotoDocs": "문서",
+		"gotoSettings": "프로젝트 설정",
+		"help": "도움말 보기",
+		"sidebar": "사이드바 전환",
+		"close": "닫기 / 취소",
+		"prevNextView": "이전 / 다음 보기",
+		"search": "작업 검색",
+		"createTask": "작업 생성",
+		"viewSettings": "보기 설정",
+		"open": "상세 정보 열기",
+		"epic": "에픽 설정",
+		"moveLeftRight": "열을 왼쪽 / 오른쪽으로 이동",
+		"delete": "작업 삭제",
+		"save": "저장"
+	}
+}

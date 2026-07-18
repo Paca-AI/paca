@@ -204,6 +204,17 @@ export function DescriptionSection({
 		[save],
 	);
 
+	// Mod+S saves immediately instead of waiting for blur (mirrors doc-editor.tsx).
+	const handleKeyDown = useCallback(
+		(e: React.KeyboardEvent<HTMLDivElement>) => {
+			if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+				e.preventDefault();
+				save();
+			}
+		},
+		[save],
+	);
+
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between">
@@ -227,6 +238,7 @@ export function DescriptionSection({
 			<div
 				className="rounded-xl border border-border/25 bg-card/50 hover:border-border/50 transition-all duration-200 overflow-hidden [&_.bn-editor]:min-h-20 [&_.bn-editor]:py-3 [&_.bn-editor]:text-base [&_.bn-editor]:leading-relaxed"
 				onBlur={handleBlur}
+				onKeyDown={handleKeyDown}
 			>
 				<BlockNoteView
 					editor={editor}

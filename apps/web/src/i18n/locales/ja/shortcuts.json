@@ -1,0 +1,38 @@
+{
+	"dialog": {
+		"title": "キーボードショートカット",
+		"footer": "タスクのショートカットは、ポインターが乗っているカードまたは行に対して実行されます。タスクを右クリックすると同じ操作をメニューから選べます。",
+		"menuLabel": "キーボードショートカット"
+	},
+	"groups": {
+		"goto": "移動",
+		"general": "全般",
+		"page": "ページとビュー",
+		"task": "ポインター下のタスク",
+		"editor": "説明・ドキュメント"
+	},
+	"actions": {
+		"gotoHome": "ホーム / すべてのプロジェクト",
+		"gotoTimeline": "タイムライン",
+		"gotoBacklog": "プロダクトバックログ",
+		"gotoActiveSprint": "進行中のスプリント",
+		"gotoAgents": "エージェント",
+		"gotoConversations": "会話",
+		"gotoAutomation": "オートメーション",
+		"gotoTeam": "チーム",
+		"gotoDocs": "ドキュメント",
+		"gotoSettings": "プロジェクト設定",
+		"help": "このヘルプを表示",
+		"sidebar": "サイドバーの切り替え",
+		"close": "閉じる / キャンセル",
+		"prevNextView": "前 / 次のビュー",
+		"search": "タスクを検索",
+		"createTask": "タスクを作成",
+		"viewSettings": "ビュー設定",
+		"open": "詳細を開く",
+		"epic": "エピックを設定",
+		"moveLeftRight": "列を左 / 右に移動",
+		"delete": "タスクを削除",
+		"save": "保存"
+	}
+}

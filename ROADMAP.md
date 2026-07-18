@@ -70,8 +70,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - 📋 Helm chart for Kubernetes
 
 ### Core Platform
-- 📋 Keyboard shortcuts and command palette
-- 📋 OAuth token support for MCP Server (alongside API key)
+- ✅ Keyboard shortcuts and command palette
 - ✅ i18n foundation for the web UI
 
 ### Planning & Task Management
@@ -79,13 +78,12 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 ### AI Agent Collaboration
 - ✅ In-app chat with agents — send messages directly to an agent on a task, get replies in the activity feed
-- 📋 Agent-to-human handoff workflow (agent flags tasks it cannot complete, notifies assignee with context)
+- ✅ Agent-to-human handoff workflow (agent flags tasks it cannot complete, notifies assignee with context)
 
 ### Official Plugins
-- 📋 Slack plugin (notifications, task updates posted to channels)
 - ✅ Webhook plugin (outgoing webhooks for task and sprint events, configurable per project)
 - 📋 GitLab plugin (MR status on task cards, branch linking)
-- 📋 Time logging plugin (track time spent per task, per sprint)
+- ✅ Time logging plugin (track time spent per task, per sprint)
 - 📋 Burndown chart plugin (sprint burndown and velocity tracking)
 - 📋 One-click AI-generated sprint retrospective
 

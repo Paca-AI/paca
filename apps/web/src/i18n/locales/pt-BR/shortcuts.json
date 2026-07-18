@@ -1,0 +1,38 @@
+{
+	"dialog": {
+		"title": "Atalhos de teclado",
+		"footer": "Os atalhos de tarefa agem sobre o cartão ou linha sob o ponteiro. Clique com o botão direito em qualquer tarefa para ver as mesmas ações.",
+		"menuLabel": "Atalhos de teclado"
+	},
+	"groups": {
+		"goto": "Ir para",
+		"general": "Geral",
+		"page": "Página e visualizações",
+		"task": "Tarefa sob o ponteiro",
+		"editor": "Descrição e documentos"
+	},
+	"actions": {
+		"gotoHome": "Início / todos os projetos",
+		"gotoTimeline": "Linha do tempo",
+		"gotoBacklog": "Backlog do produto",
+		"gotoActiveSprint": "Sprint ativa",
+		"gotoAgents": "Agentes",
+		"gotoConversations": "Conversas",
+		"gotoAutomation": "Automação",
+		"gotoTeam": "Equipe",
+		"gotoDocs": "Documentos",
+		"gotoSettings": "Configurações do projeto",
+		"help": "Ver esta ajuda",
+		"sidebar": "Alternar barra lateral",
+		"close": "Fechar / descartar",
+		"prevNextView": "Visualização anterior / próxima",
+		"search": "Buscar tarefas",
+		"createTask": "Criar tarefa",
+		"viewSettings": "Configurações de visualização",
+		"open": "Abrir detalhes",
+		"epic": "Definir épico",
+		"moveLeftRight": "Mover coluna para a esquerda / direita",
+		"delete": "Excluir tarefa",
+		"save": "Salvar"
+	}
+}

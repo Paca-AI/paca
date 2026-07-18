@@ -93,6 +93,7 @@ export function AddTaskRow({
 			return (
 				<button
 					type="button"
+					data-shortcut="add-task-trigger"
 					onClick={openForm}
 					className="flex w-full items-center gap-1.5 rounded-lg bg-primary/8 text-primary/80 hover:bg-primary/15 hover:text-primary px-2.5 py-1.5 text-sm font-semibold transition-all duration-150"
 				>
@@ -104,6 +105,7 @@ export function AddTaskRow({
 		return (
 			<button
 				type="button"
+				data-shortcut="add-task-trigger"
 				onClick={openForm}
 				className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-muted-foreground/70 hover:text-foreground hover:bg-muted/30 transition-all duration-150 w-full"
 			>

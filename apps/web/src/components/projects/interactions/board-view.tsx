@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 import { AddTaskRow } from "./add-task-row";
 import { TaskCard } from "./task-card";
+import { TaskContextMenu } from "./task-context-menu";
 import {
 	applyStatusFilterToColumnDefs,
 	buildColumnDropUpdate,
@@ -56,6 +57,9 @@ interface BoardViewProps {
 	epics?: Task[];
 	onUpdateTask?: (taskId: string, payload: TaskFieldUpdate) => void;
 	onMoveToColumn?: (taskId: string, update: TaskFieldUpdate) => void;
+	/** Opens the delete-confirmation dialog for a task — wired to the
+	 * Mod+Backspace keyboard shortcut while a card is hovered. */
+	onDeleteTask?: (taskId: string) => void;
 	manualSort?: boolean;
 	onReorderTask?: (groupKey: string, taskId: string, newIndex: number) => void;
 	onCollapseChange?: (collapsedColumns: string[]) => void;
@@ -91,6 +95,7 @@ export function BoardView({
 	onTaskClick,
 	onUpdateTask,
 	onMoveToColumn,
+	onDeleteTask,
 	manualSort,
 	onReorderTask,
 	onCollapseChange,
@@ -215,6 +220,28 @@ export function BoardView({
 		setOverSwimKey(null);
 	};
 
+	/** Moves a task into `colDef` — shared by drag-and-drop and the
+	 * keyboard move-left/move-right shortcuts so both stay in sync. */
+	const moveTaskToColumnDef = (task: Task, colDef: ColumnGroupDef) => {
+		const currentKeys = getTaskColumnKeys(task, columnBy, viewCtx);
+		if (currentKeys.includes(colDef.key)) return;
+		const update = buildColumnDropUpdate(
+			columnBy,
+			colDef.fieldValue,
+			customFields,
+		);
+		// Preserve sprint_id when changing status so the task doesn't silently
+		// get moved to the product backlog.
+		if (isStatusGrouping) {
+			update.sprint_id = task.sprint_id;
+		}
+		if (onMoveToColumn) {
+			onMoveToColumn(task.id, update);
+		} else {
+			updateMutation.mutate({ taskId: task.id, update });
+		}
+	};
+
 	const handleDropOnColumn = (e: React.DragEvent, colDef: ColumnGroupDef) => {
 		e.preventDefault();
 		const taskId = e.dataTransfer.getData("text/plain");
@@ -227,25 +254,7 @@ export function BoardView({
 			return;
 		}
 
-		// Check if the task is already in this column
-		const currentKeys = getTaskColumnKeys(task, columnBy, viewCtx);
-		if (!currentKeys.includes(colDef.key)) {
-			const update = buildColumnDropUpdate(
-				columnBy,
-				colDef.fieldValue,
-				customFields,
-			);
-			// Preserve sprint_id when changing status so the task doesn't silently
-			// get moved to the product backlog.
-			if (isStatusGrouping) {
-				update.sprint_id = task.sprint_id;
-			}
-			if (onMoveToColumn) {
-				onMoveToColumn(taskId, update);
-			} else {
-				updateMutation.mutate({ taskId, update });
-			}
-		}
+		moveTaskToColumnDef(task, colDef);
 		setDraggingId(null);
 		setOverColumnKey(null);
 		setOverCardId(null);
@@ -478,6 +487,14 @@ export function BoardView({
 			overSwimKey === swimOverKey ||
 			(!hasSwimlanes && overColumnKey === colDef.key);
 
+		// Adjacent columns for the Mod+Left/Right "move column" shortcut.
+		const colIdx = effectiveColumnDefs.findIndex((c) => c.key === colDef.key);
+		const prevColDef = colIdx > 0 ? effectiveColumnDefs[colIdx - 1] : undefined;
+		const nextColDef =
+			colIdx !== -1 && colIdx < effectiveColumnDefs.length - 1
+				? effectiveColumnDefs[colIdx + 1]
+				: undefined;
+
 		return (
 			// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop drop zone
 			<div
@@ -537,22 +554,49 @@ export function BoardView({
 							)
 						}
 					>
-						<TaskCard
+						<TaskContextMenu
 							task={task}
-							taskIdPrefix={taskIdPrefix}
 							statuses={statuses}
 							taskTypes={taskTypes}
 							members={members}
-							customFields={customFields}
 							epics={epics}
-							visibleFields={visibleFields}
-							canEdit={canEdit}
-							isDragging={draggingId === task.id}
-							onDragStart={(e) => handleDragStart(e, task.id)}
-							onDragEnd={handleDragEnd}
-							onClick={() => onTaskClick(task)}
-							onUpdate={canEdit ? handleInlineUpdate : undefined}
-						/>
+							canEdit={!!canEdit}
+							onOpen={() => onTaskClick(task)}
+							onUpdate={handleInlineUpdate}
+							onDelete={canEdit ? onDeleteTask : undefined}
+							columnDefs={effectiveColumnDefs}
+							onMoveToColumnDef={moveTaskToColumnDef}
+							taskIdPrefix={taskIdPrefix}
+							projectId={projectId}
+						>
+							<TaskCard
+								task={task}
+								taskIdPrefix={taskIdPrefix}
+								statuses={statuses}
+								taskTypes={taskTypes}
+								members={members}
+								customFields={customFields}
+								epics={epics}
+								visibleFields={visibleFields}
+								canEdit={canEdit}
+								isDragging={draggingId === task.id}
+								onDragStart={(e) => handleDragStart(e, task.id)}
+								onDragEnd={handleDragEnd}
+								onClick={() => onTaskClick(task)}
+								onUpdate={canEdit ? handleInlineUpdate : undefined}
+								onDelete={canEdit ? onDeleteTask : undefined}
+								onMoveLeft={
+									canEdit && prevColDef
+										? () => moveTaskToColumnDef(task, prevColDef)
+										: undefined
+								}
+								onMoveRight={
+									canEdit && nextColDef
+										? () => moveTaskToColumnDef(task, nextColDef)
+										: undefined
+								}
+							/>
+						</TaskContextMenu>
 					</div>
 				))}
 				{(() => {

@@ -947,6 +947,20 @@
 			"noEpic": "Без эпика",
 			"storyPointsTitle": "Story Points"
 		},
+		"taskContextMenu": {
+			"open": "Открыть задачу",
+			"moveTo": "Переместить в",
+			"status": "Статус",
+			"assignee": "Исполнитель",
+			"unassigned": "Не назначено",
+			"type": "Тип",
+			"priority": "Приоритет",
+			"epic": "Эпик",
+			"noEpic": "Без эпика",
+			"copyId": "Скопировать ID задачи ({{id}})",
+			"copyLink": "Скопировать ссылку",
+			"delete": "Удалить задачу"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

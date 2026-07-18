@@ -1,0 +1,38 @@
+{
+	"dialog": {
+		"title": "Atajos de teclado",
+		"footer": "Los atajos de tarea actúan sobre la tarjeta o fila que tiene el puntero encima. Haz clic derecho en cualquier tarea para ver las mismas acciones.",
+		"menuLabel": "Atajos de teclado"
+	},
+	"groups": {
+		"goto": "Ir a",
+		"general": "General",
+		"page": "Página y vistas",
+		"task": "Tarea bajo el puntero",
+		"editor": "Descripción y documentos"
+	},
+	"actions": {
+		"gotoHome": "Inicio / todos los proyectos",
+		"gotoTimeline": "Cronograma",
+		"gotoBacklog": "Backlog del producto",
+		"gotoActiveSprint": "Sprint activo",
+		"gotoAgents": "Agentes",
+		"gotoConversations": "Conversaciones",
+		"gotoAutomation": "Automatización",
+		"gotoTeam": "Equipo",
+		"gotoDocs": "Documentos",
+		"gotoSettings": "Configuración del proyecto",
+		"help": "Ver esta ayuda",
+		"sidebar": "Alternar barra lateral",
+		"close": "Cerrar / descartar",
+		"prevNextView": "Vista anterior / siguiente",
+		"search": "Buscar tareas",
+		"createTask": "Crear tarea",
+		"viewSettings": "Configuración de vista",
+		"open": "Abrir detalles",
+		"epic": "Establecer épica",
+		"moveLeftRight": "Mover columna a la izquierda / derecha",
+		"delete": "Eliminar tarea",
+		"save": "Guardar"
+	}
+}
