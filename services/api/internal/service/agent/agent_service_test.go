@@ -921,6 +921,52 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+func TestListConversations_Success(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	convs := []*agentdom.AgentConversation{
+		{ID: uuid.New(), ProjectID: projectID, Status: "running"},
+		{ID: uuid.New(), ProjectID: projectID, Status: "queued"},
+	}
+
+	var gotFilter agentdom.ListConversationsFilter
+	var gotLimit int
+	repo := &mockAgentRepo{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			gotLimit = limit
+			return convs, true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	cursor := "some-cursor"
+	filter := agentdom.ListConversationsFilter{ProjectID: &projectID, AgentID: &agentID, CursorAfter: &cursor}
+	result, hasMore, err := svc.ListConversations(context.Background(), filter, 20)
+
+	assert.NoError(t, err)
+	assert.True(t, hasMore)
+	assert.Equal(t, convs, result)
+	assert.Equal(t, 20, gotLimit)
+	assert.Equal(t, &projectID, gotFilter.ProjectID)
+	assert.Equal(t, &agentID, gotFilter.AgentID)
+	assert.Equal(t, &cursor, gotFilter.CursorAfter)
+}
+
+func TestListConversations_PropagatesRepoError(t *testing.T) {
+	repo := &mockAgentRepo{
+		listConversations: func(_ context.Context, _ agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			return nil, false, agentdom.ErrConversationInvalidCursor
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, hasMore, err := svc.ListConversations(context.Background(), agentdom.ListConversationsFilter{}, 20)
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationInvalidCursor)
+	assert.False(t, hasMore)
+}
+
 func TestSendConversationMessage_Success(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()

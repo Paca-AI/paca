@@ -269,6 +269,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		APIKey:               handler.NewAPIKeyHandler(apiKeyService),
 		Workflow:             handler.NewWorkflowHandler(workflowService),
 		Agent:                handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
+		Conversation:         handler.NewConversationHandler(agentService),
 		Log:                  log,
 	})
 
