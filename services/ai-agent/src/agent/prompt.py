@@ -45,6 +45,16 @@ def build_initial_prompt(trigger: TriggerMessage) -> str:
     return trigger.message
 
 
+def build_project_context_suffix(project_id: str) -> str:
+    return (
+        f"\n\n## Current Project Context\n"
+        f"You are working inside project `{project_id}`.\n"
+        "**Always pass this value as `projectId` in every MCP tool call** "
+        "that requires it — never ask the user for the project ID and "
+        "never call `list_projects` to find it.\n"
+    )
+
+
 # ACP agents don't get Paca-managed skills injected via system context the
 # way the LLM/sandbox path does (see skills/paca/SKILL.md) — the only way to
 # route a local ACP CLI (Claude Code, Codex, ...) through the Paca skill is
@@ -53,8 +63,21 @@ _ACP_SKILL_TRIGGER = "/paca"
 
 
 def build_acp_message(trigger: TriggerMessage) -> str:
-    """Prefix the initial prompt with the `/paca` skill trigger for ACP agents."""
-    return f"{_ACP_SKILL_TRIGGER} {build_initial_prompt(trigger)}"
+    """Build the message sent to trigger an ACP agent.
+
+    The LLM/sandbox path (executor.py) carries project and trigger context in
+    AgentContext.system_message_suffix, a channel ACP agents don't have —
+    apps/acp-bridge's ConversationRunner only ever calls
+    conversation.send_message(message) on the plain local Conversation, with
+    no separate system-suffix argument. So instead of a suffix, that same
+    context (minus the repo section, which points at sandbox-only tools like
+    clone_repository — ACP agents already have local repo access) is folded
+    directly into this message, prefixed with the `/paca` skill trigger.
+    """
+    message = f"{_ACP_SKILL_TRIGGER} {build_initial_prompt(trigger)}"
+    message += build_project_context_suffix(trigger.project_id)
+    message += build_trigger_suffix(trigger)
+    return message
 
 
 def build_trigger_suffix(trigger: TriggerMessage, all_repos: list[dict] | None = None) -> str:

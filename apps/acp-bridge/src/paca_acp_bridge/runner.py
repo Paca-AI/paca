@@ -143,14 +143,36 @@ class ConversationRunner:
     def interrupt(self, conversation_id: str | None) -> None:
         """Handle a stop_turn/pause_turn message — both just interrupt the
         in-flight turn; there's no sandbox lifecycle to additionally tear
-        down (unlike the cloud path's full stop vs. pause distinction)."""
+        down (unlike the cloud path's full stop vs. pause distinction).
+
+        Dispatched onto its own thread rather than calling
+        `conversation.interrupt()` directly here on the event-loop thread:
+        this bridge only ever uses the synchronous `conversation.run()`, so
+        the SDK's `interrupt()` always falls back to `pause()`, which
+        acquires the conversation's state lock and can synchronously invoke
+        our event callback — which itself calls back into this same event
+        loop via `run_coroutine_threadsafe(...).result()`. Running that
+        chain directly on the loop's thread means the loop wants to wait on
+        itself (or contend the lock with the conversation's own background
+        thread, which is doing the same call-back-into-the-loop dance),
+        freezing every other conversation and the heartbeat for the full
+        10s timeout. The SDK documents `interrupt()` as safe to call from
+        any thread, so a dedicated one sidesteps the reentrancy entirely.
+        """
         if not conversation_id:
             return
         handle = self._conversations.get(conversation_id)
         if handle is None:
             return
+        threading.Thread(
+            target=self._interrupt_conversation,
+            args=(handle.conversation, conversation_id),
+            daemon=True,
+        ).start()
+
+    def _interrupt_conversation(self, conversation: Conversation, conversation_id: str) -> None:
         try:
-            handle.conversation.interrupt()
+            conversation.interrupt()
         except Exception:
             logger.exception("Failed to interrupt conversation %s", conversation_id)
 

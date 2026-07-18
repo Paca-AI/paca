@@ -5,6 +5,8 @@ Exercises the daemon's own logic without spawning a real ACP CLI subprocess —
 than a real `openhands.sdk.Conversation`.
 """
 
+import threading
+
 import pytest
 
 from paca_acp_bridge.runner import ConversationRunner, resolve_acp_command
@@ -41,10 +43,10 @@ async def test_interrupt_calls_conversation_interrupt_for_known_conversation():
 
     class _FakeConversation:
         def __init__(self):
-            self.interrupted = False
+            self.interrupted = threading.Event()
 
         def interrupt(self):
-            self.interrupted = True
+            self.interrupted.set()
 
     fake_conv = _FakeConversation()
     from paca_acp_bridge.runner import _ConversationHandle
@@ -54,9 +56,12 @@ async def test_interrupt_calls_conversation_interrupt_for_known_conversation():
         thread=None,  # type: ignore[arg-type]
     )
 
+    # interrupt() dispatches onto its own thread rather than calling
+    # conversation.interrupt() inline (see runner.py's docstring for why),
+    # so wait for that thread's effect instead of asserting immediately.
     runner.interrupt("conv-1")
 
-    assert fake_conv.interrupted is True
+    assert fake_conv.interrupted.wait(timeout=2) is True
 
 
 async def test_interrupt_is_a_no_op_for_unknown_conversation():
