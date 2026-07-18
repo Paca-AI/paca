@@ -94,7 +94,7 @@
 			"statusConnected": "已连接",
 			"statusDisconnected": "未连接",
 			"step1Title": "安装 ACP 桥接",
-			"step1Description": "需要 Python 3.12+。使用 pip 安装一次守护进程即可（或跳过此步骤 — 下方的运行命令使用 uvx，会自动获取）。",
+			"step1Description": "需要 Python 3.12+。使用 uv pip 安装一次守护进程即可（或跳过此步骤 — 下方的运行命令使用 uvx，会自动获取）。",
 			"step2Title": "运行本地桥接",
 			"step2Description": "生成一个令牌，然后在您的项目文件夹中运行此命令。",
 			"noTokenYet": "生成令牌以显示运行命令。",

@@ -15,7 +15,7 @@ import {
 // Fixed commands for the setup steps that don't depend on any
 // server-generated value — only the bridge run command (step 2) comes back
 // from the API, since it embeds the freshly generated token.
-const BRIDGE_INSTALL_COMMAND = "pip install paca-acp-bridge";
+const BRIDGE_INSTALL_COMMAND = "uv pip install paca-acp-bridge";
 
 const SKILL_INSTALL_COMMAND =
 	"curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-claude-skill.sh | bash";
