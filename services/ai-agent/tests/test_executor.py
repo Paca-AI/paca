@@ -10,7 +10,6 @@ import pytest
 from src.agent import executor
 from src.agent.executor import (
     _AtomicCounter,
-    _build_project_context_suffix,
     _find_idle_chat_sandboxes,
     _keep_sandbox_alive,
     _make_event_callback,
@@ -24,26 +23,6 @@ from src.core import streams as stream_store
 from src.core.registry import ChatSandboxState, chat_sandboxes, stop_events
 from src.core.streams import TriggerMessage
 from src.repositories import conversation_repository
-
-
-def test_project_id_appears_in_suffix():
-    result = _build_project_context_suffix("proj-123")
-    assert "proj-123" in result
-
-
-def test_suffix_instructs_agent_to_pass_project_id():
-    result = _build_project_context_suffix("proj-abc")
-    assert "projectId" in result
-
-
-def test_suffix_discourages_list_projects_call():
-    result = _build_project_context_suffix("proj-abc")
-    assert "list_projects" in result
-
-
-def test_different_project_ids_produce_different_suffixes():
-    assert _build_project_context_suffix("proj-1") != _build_project_context_suffix("proj-2")
-
 
 # ─── _AtomicCounter ─────────────────────────────────────────────────────────
 

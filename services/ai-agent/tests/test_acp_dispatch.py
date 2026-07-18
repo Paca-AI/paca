@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import src.agent.acp_dispatch as acp_dispatch
+from src.agent.prompt import build_acp_message
 from src.core.streams import TriggerMessage
 from src.models.agent import AgentConfig
 from src.models.conversation_status import ConversationStatus
@@ -83,7 +84,7 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
             "type": "start_turn",
             "conversation_id": "conv-1",
             "project_id": "proj-1",
-            "message": "/paca hello",
+            "message": build_acp_message(trigger),
             "trigger_type": "chat_message",
             "acp_provider": "claude-code",
             "acp_command": [],

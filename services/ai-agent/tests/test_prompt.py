@@ -1,6 +1,11 @@
 """Tests for the prompt and system-suffix builders."""
 
-from src.agent.prompt import build_acp_message, build_initial_prompt, build_trigger_suffix
+from src.agent.prompt import (
+    build_acp_message,
+    build_initial_prompt,
+    build_project_context_suffix,
+    build_trigger_suffix,
+)
 from src.core.streams import TriggerMessage
 
 
@@ -45,18 +50,61 @@ def test_initial_prompt_empty_stays_empty_for_other_triggers():
     assert result == ""
 
 
+# ── build_project_context_suffix ──────────────────────────────────────────────
+
+
+def test_project_id_appears_in_suffix():
+    result = build_project_context_suffix("proj-123")
+    assert "proj-123" in result
+
+
+def test_suffix_instructs_agent_to_pass_project_id():
+    result = build_project_context_suffix("proj-abc")
+    assert "projectId" in result
+
+
+def test_suffix_discourages_list_projects_call():
+    result = build_project_context_suffix("proj-abc")
+    assert "list_projects" in result
+
+
+def test_different_project_ids_produce_different_suffixes():
+    assert build_project_context_suffix("proj-1") != build_project_context_suffix("proj-2")
+
+
 # ── build_acp_message ─────────────────────────────────────────────────────────
 
 
 def test_acp_message_prefixes_paca_skill():
     result = build_acp_message(_trigger(message="Do something"))
-    assert result == "/paca Do something"
+    assert result.startswith("/paca Do something")
 
 
 def test_acp_message_uses_task_assigned_fallback():
     result = build_acp_message(_trigger(trigger_type="task_assigned", message=""))
     assert result.startswith("/paca ")
     assert "assigned" in result.lower()
+
+
+def test_acp_message_includes_project_context():
+    result = build_acp_message(_trigger(project_id="proj-789"))
+    assert "proj-789" in result
+    assert "projectId" in result
+
+
+def test_acp_message_includes_trigger_context():
+    result = build_acp_message(_trigger(trigger_type="task_assigned", task_id="task-42"))
+    assert "Action type: Task assignment" in result
+    assert "task-42" in result
+
+
+def test_acp_message_omits_repo_instructions():
+    """ACP agents already have local repo access — clone_repository is a
+    sandbox-only tool, so the repo section of build_trigger_suffix must not
+    be folded into the ACP message even when the trigger has linked repos."""
+    result = build_acp_message(_trigger(repo_plugin_ids=["plugin-1"]))
+    assert "clone_repository" not in result
+    assert "Repository" not in result
 
 
 def test_action_type_task_assigned():
