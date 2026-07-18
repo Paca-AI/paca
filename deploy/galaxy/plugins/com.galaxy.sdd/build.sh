@@ -34,8 +34,11 @@ jq -e '.backend | type == "object"' "$M" >/dev/null \
 jq -e '(.backend.routes // []) == [] and (.backend.eventSubscriptions // []) == []' "$M" >/dev/null \
   || fail "stub backend must not declare routes/eventSubscriptions"
 
-jq -e --arg u "/plugins/$ID/assets/remoteEntry.js" '.frontend.remoteEntryUrl == $u' "$M" >/dev/null \
-  || fail "frontend.remoteEntryUrl must be /plugins/$ID/assets/remoteEntry.js"
+# Allow an optional ?v=N cache-bust query (CF edge caches assets ~4h, so the
+# manifest URL is versioned to force a fresh fetch — see README "Cache busting").
+jq -e --arg u "/plugins/$ID/assets/remoteEntry.js" \
+  '.frontend.remoteEntryUrl == $u or (.frontend.remoteEntryUrl | startswith($u + "?"))' "$M" >/dev/null \
+  || fail "frontend.remoteEntryUrl must be /plugins/$ID/assets/remoteEntry.js[?v=N]"
 
 # Extension points known to the host (apps/web/src/lib/plugin-api.ts ExtensionPointId).
 jq -e '[.frontend.extensionPoints[].point] - ["sidebar.general.section","sidebar.project.section","task.detail.section","project.settings.tab","view","project.page","admin.page"] == []' "$M" >/dev/null \

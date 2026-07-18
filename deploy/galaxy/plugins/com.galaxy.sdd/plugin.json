@@ -1,8 +1,8 @@
 {
   "id": "com.galaxy.sdd",
-  "displayName": "SDD Sensor",
-  "description": "Embeds the Galaxy SDD sensor fleet dashboard (ai.skyplatform.net/sdd-server) inside Paca. v1 is a thin frontend-only plugin: the sensor UI enforces its own Vortex OIDC auth and task-level signals already arrive through the server-side bridge as comments (ADR-038 T6).",
-  "version": "0.1.0",
+  "displayName": "SDD Fleet",
+  "description": "Native Spec-Driven Development fleet dashboard inside Paca (ADR-038): eight team-wide views (overview, task board, sessions, activity, analytics, coordination, SDD phases, machine fleet) rendered as Module Federation components with a left sub-rail and dependency-free inline-SVG cards/tables/timelines. Reads the SDD Coordination Server same-origin through the /sdd-api gateway proxy — no iframe, no chart libraries, no secrets.",
+  "version": "0.2.0",
   "permissions": [],
 
   "backend": {
@@ -11,7 +11,7 @@
   },
 
   "frontend": {
-    "remoteEntryUrl": "/plugins/com.galaxy.sdd/assets/remoteEntry.js?v=2",
+    "remoteEntryUrl": "/plugins/com.galaxy.sdd/assets/remoteEntry.js?v=3",
     "extensionPoints": [
       {
         "point": "view",
@@ -23,12 +23,6 @@
         "point": "project.page",
         "component": "SddFleetView",
         "label": "SDD Fleet",
-        "order": 50
-      },
-      {
-        "point": "sidebar.project.section",
-        "component": "SddSidebarCard",
-        "label": "SDD Sensor",
         "order": 50
       }
     ],

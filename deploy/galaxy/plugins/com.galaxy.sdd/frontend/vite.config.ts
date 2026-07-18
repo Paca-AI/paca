@@ -18,7 +18,6 @@ export default defineConfig({
 			dts: false,
 			exposes: {
 				"./SddFleetView": "./src/SddFleetView.tsx",
-				"./SddSidebarCard": "./src/SddSidebarCard.tsx",
 			},
 			shared: {
 				// The host share scope registers exactly react@19.0.0 and
