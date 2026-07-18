@@ -14,4 +14,9 @@ var (
 	ErrRoleNameTaken      = errors.New("project: role name already in use")
 	ErrRoleNameInvalid    = errors.New("project: role name is empty or invalid")
 	ErrRoleHasMembers     = errors.New("project: role still has members assigned")
+	// ErrPermissionCeilingExceeded indicates the caller attempted to grant a
+	// member a project role whose permissions exceed the caller's own effective
+	// permissions for the project (a privilege-escalation attempt via the
+	// shared role templates, e.g. PROJECT_OWNER). Enforced as a grant ceiling.
+	ErrPermissionCeilingExceeded = errors.New("project: role grants permissions beyond the caller's own")
 )

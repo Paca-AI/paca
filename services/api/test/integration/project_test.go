@@ -456,7 +456,7 @@ func buildProjectTestRouterWithTaskRepo(repo *fakeProjectRepo, store *projectPer
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
+		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}, authz.NewAuthorizer(store)),
 		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
 		Task:                 handler.NewTaskHandler(tasksvc.New(taskRepo), sprintsvc.NewViewService(newFakeViewRepoIT()), tasksvc.NewActivityService(newFakeTaskActivityRepo(), &fakeActivityMemberRepo{}, nil)),
 		Log:                  log,
@@ -627,6 +627,11 @@ func TestIntegrationProjectRolesAndMembers_Flow(t *testing.T) {
 				authz.PermissionProjectRolesWrite,
 				authz.PermissionProjectMembersRead,
 				authz.PermissionProjectMembersWrite,
+				// The caller assigns a "developer" role granting tasks.read; the
+				// PACA-4 grant ceiling requires the caller to hold what it hands
+				// out, so it must itself have the task permissions.
+				authz.PermissionTasksRead,
+				authz.PermissionTasksWrite,
 			},
 		},
 	}

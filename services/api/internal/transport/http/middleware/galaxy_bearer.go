@@ -36,9 +36,10 @@ const authMethodGalaxyBearer = "galaxy_bearer"
 
 // GalaxyBearerAuthenticator verifies an RS256 bearer token from the trusted
 // issuer and resolves the effective principal to a local user.  Implemented
-// by galaxyauth.BearerAuthenticator.
+// by galaxyauth.BearerAuthenticator.  method is the request's HTTP method, used
+// for scope enforcement (a read-only token is denied on write methods).
 type GalaxyBearerAuthenticator interface {
-	AuthenticateBearer(ctx context.Context, rawToken string) (user *userdom.User, agentName string, err error)
+	AuthenticateBearer(ctx context.Context, rawToken, method string) (user *userdom.User, agentName string, err error)
 }
 
 // GalaxyBearer returns a middleware that authenticates RS256 bearer tokens
@@ -55,10 +56,10 @@ func GalaxyBearer(auth GalaxyBearerAuthenticator, log *slog.Logger) func(http.Ha
 				return
 			}
 
-			user, agentName, err := auth.AuthenticateBearer(r.Context(), rawToken)
+			user, agentName, err := auth.AuthenticateBearer(r.Context(), rawToken, r.Method)
 			if err != nil {
-				log.Warn("galaxy bearer: token rejected", "error", err, "path", r.URL.Path)
-				presenter.Error(w, r, apierr.New(apierr.CodeTokenInvalid, "platform bearer token rejected: invalid token or unknown principal"))
+				log.Warn("galaxy bearer: token rejected", "error", err, "path", r.URL.Path, "method", r.Method)
+				presenter.Error(w, r, apierr.New(apierr.CodeTokenInvalid, "platform bearer token rejected: invalid token, unknown principal, or insufficient scope"))
 				return
 			}
 

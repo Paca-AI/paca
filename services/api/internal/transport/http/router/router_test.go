@@ -59,14 +59,14 @@ type mockGlobalRoleSvc struct{}
 func (m *mockGlobalRoleSvc) List(context.Context) ([]*globalroledom.GlobalRole, error) {
 	return []*globalroledom.GlobalRole{{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}}, nil
 }
-func (m *mockGlobalRoleSvc) Create(context.Context, globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
+func (m *mockGlobalRoleSvc) Create(context.Context, globalroledom.CreateInput, authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
 }
-func (m *mockGlobalRoleSvc) Update(context.Context, uuid.UUID, globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+func (m *mockGlobalRoleSvc) Update(context.Context, uuid.UUID, globalroledom.UpdateInput, authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN", Permissions: map[string]any{}}, nil
 }
 func (m *mockGlobalRoleSvc) Delete(context.Context, uuid.UUID) error { return nil }
-func (m *mockGlobalRoleSvc) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+func (m *mockGlobalRoleSvc) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID, authz.PermissionSet) ([]*globalroledom.GlobalRole, error) {
 	return []*globalroledom.GlobalRole{}, nil
 }
 
@@ -110,7 +110,7 @@ func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Hand
 			RefreshSessionTTL: 12 * time.Hour,
 		}),
 		User:       handler.NewUserHandler(&mockUserSvc{}),
-		GlobalRole: handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}),
+		GlobalRole: handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}, authz.NewAuthorizer(store)),
 		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 

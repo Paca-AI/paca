@@ -9,6 +9,7 @@ import (
 
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -29,14 +30,14 @@ func (m *mockGlobalRoleSvc) List(ctx context.Context) ([]*globalroledom.GlobalRo
 	return []*globalroledom.GlobalRole{}, nil
 }
 
-func (m *mockGlobalRoleSvc) Create(ctx context.Context, in globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
+func (m *mockGlobalRoleSvc) Create(ctx context.Context, in globalroledom.CreateInput, _ authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	if m.create != nil {
 		return m.create(ctx, in)
 	}
 	return nil, errors.New("mock: create not configured")
 }
 
-func (m *mockGlobalRoleSvc) Update(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+func (m *mockGlobalRoleSvc) Update(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput, _ authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	if m.update != nil {
 		return m.update(ctx, id, in)
 	}
@@ -50,16 +51,23 @@ func (m *mockGlobalRoleSvc) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (m *mockGlobalRoleSvc) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+func (m *mockGlobalRoleSvc) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID, _ authz.PermissionSet) ([]*globalroledom.GlobalRole, error) {
 	if m.replaceUserRoles != nil {
 		return m.replaceUserRoles(ctx, userID, roleIDs)
 	}
 	return []*globalroledom.GlobalRole{}, nil
 }
 
+// ensure mockGlobalRoleSvc satisfies the domain service interface.
+var _ globalroledom.Service = (*mockGlobalRoleSvc)(nil)
+
 func newGlobalRoleRouter(svc globalroledom.Service) chi.Router {
 	r := chi.NewRouter()
-	h := handler.NewGlobalRoleHandler(svc)
+	// A nil-store authorizer resolves the injected ADMIN caller's legacy
+	// permissions to "*", so the grant ceiling never blocks these unit tests
+	// (they exercise handler wiring and error mapping, not the ceiling itself).
+	h := handler.NewGlobalRoleHandler(svc, authz.NewAuthorizer(nil))
+	r.Use(adminClaimsMiddleware())
 	r.Get("/admin/global-roles", h.List)
 	r.Post("/admin/global-roles", h.Create)
 	r.Patch("/admin/global-roles/{roleId}", h.Update)

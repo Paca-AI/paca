@@ -87,47 +87,13 @@ func (a *Authorizer) hasPermissionsForActor(
 		return true, nil
 	}
 
-	granted := make(map[Permission]struct{})
-	for _, p := range LegacyPermissionsForRole(legacyRole) {
-		granted[p] = struct{}{}
-	}
-
-	if a.store != nil {
-		if userID != uuid.Nil {
-			globalPerms, err := a.store.ListGlobalPermissions(ctx, userID)
-			if err != nil {
-				return false, fmt.Errorf("authz: list global permissions: %w", err)
-			}
-			for _, p := range globalPerms {
-				granted[p] = struct{}{}
-			}
-		}
-
-		if projectID != nil {
-			var projectPerms []Permission
-			var err error
-
-			if agentID != nil {
-				agentStore, ok := a.store.(AgentPermissionStore)
-				if !ok {
-					return false, fmt.Errorf("authz: agent project permissions not supported by store")
-				}
-				projectPerms, err = agentStore.ListAgentProjectPermissions(ctx, *agentID, *projectID)
-			} else {
-				projectPerms, err = a.store.ListProjectPermissions(ctx, userID, *projectID)
-			}
-
-			if err != nil {
-				return false, fmt.Errorf("authz: list project permissions: %w", err)
-			}
-			for _, p := range projectPerms {
-				granted[p] = struct{}{}
-			}
-		}
+	granted, err := a.effectivePermissionsForActor(ctx, userID, agentID, projectID, legacyRole)
+	if err != nil {
+		return false, err
 	}
 
 	for _, req := range required {
-		if !hasPermission(granted, req) {
+		if !hasPermission(map[Permission]struct{}(granted), req) {
 			return false, nil
 		}
 	}

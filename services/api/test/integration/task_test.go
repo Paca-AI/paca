@@ -737,7 +737,7 @@ func buildTaskTestRouterWithSprints(taskRepo *fakeTaskRepo, sprintRepo *fakeSpri
 		Health:               handler.NewHealthHandler(),
 		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
 		User:                 handler.NewUserHandler(userService),
-		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
+		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}, authz.NewAuthorizer(store)),
 		Project:              handler.NewProjectHandler(projectService, authz.NewAuthorizer(store)),
 		Task:                 handler.NewTaskHandler(taskService, viewService, activityService),
 		Sprint:               handler.NewSprintHandler(sprintService, viewService),

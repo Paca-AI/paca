@@ -104,7 +104,7 @@ func (m *mockProjectSvc) ListMembers(ctx context.Context, projectID uuid.UUID) (
 	return []*projectdom.ProjectMember{}, nil
 }
 
-func (m *mockProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
+func (m *mockProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput, _ authz.PermissionSet) (*projectdom.ProjectMember, error) {
 	if m.addMember != nil {
 		return m.addMember(ctx, projectID, in)
 	}
@@ -162,7 +162,7 @@ func (m *mockProjectSvc) GetMyProjectPermissions(ctx context.Context, projectID,
 
 func (m *mockProjectSvc) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
 func (m *mockProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
-func (m *mockProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+func (m *mockProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput, _ authz.PermissionSet) (*projectdom.ProjectMember, error) {
 	if m.updateMemberByMemberID != nil {
 		return m.updateMemberByMemberID(context.Background(), projectID, memberID, in)
 	}

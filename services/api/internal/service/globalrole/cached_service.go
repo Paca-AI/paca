@@ -6,6 +6,7 @@ import (
 	"time"
 
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/google/uuid"
 )
@@ -63,8 +64,8 @@ func (c *CachedService) List(ctx context.Context) ([]*globalroledom.GlobalRole, 
 }
 
 // Create delegates to the underlying service and invalidates the list cache.
-func (c *CachedService) Create(ctx context.Context, in globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
-	r, err := c.svc.Create(ctx, in)
+func (c *CachedService) Create(ctx context.Context, in globalroledom.CreateInput, caller authz.PermissionSet) (*globalroledom.GlobalRole, error) {
+	r, err := c.svc.Create(ctx, in, caller)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +76,8 @@ func (c *CachedService) Create(ctx context.Context, in globalroledom.CreateInput
 }
 
 // Update delegates to the underlying service and invalidates the list cache.
-func (c *CachedService) Update(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
-	r, err := c.svc.Update(ctx, id, in)
+func (c *CachedService) Update(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput, caller authz.PermissionSet) (*globalroledom.GlobalRole, error) {
+	r, err := c.svc.Update(ctx, id, in, caller)
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +99,8 @@ func (c *CachedService) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // ReplaceUserRoles delegates directly to the underlying service and invalidates the list cache.
-func (c *CachedService) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
-	rs, err := c.svc.ReplaceUserRoles(ctx, userID, roleIDs)
+func (c *CachedService) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID, caller authz.PermissionSet) ([]*globalroledom.GlobalRole, error) {
+	rs, err := c.svc.ReplaceUserRoles(ctx, userID, roleIDs, caller)
 	if err != nil {
 		return nil, err
 	}

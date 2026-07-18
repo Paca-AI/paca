@@ -8,6 +8,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -15,12 +16,31 @@ import (
 
 // GlobalRoleHandler handles super-admin global-role endpoints.
 type GlobalRoleHandler struct {
-	svc globalroledom.Service
+	svc        globalroledom.Service
+	authorizer *authz.Authorizer
 }
 
-// NewGlobalRoleHandler returns a GlobalRoleHandler wired to the service.
-func NewGlobalRoleHandler(svc globalroledom.Service) *GlobalRoleHandler {
-	return &GlobalRoleHandler{svc: svc}
+// NewGlobalRoleHandler returns a GlobalRoleHandler wired to the service and
+// authorizer. The authorizer resolves the caller's own effective global
+// permissions so the service can enforce a grant ceiling (PACA-3).
+func NewGlobalRoleHandler(svc globalroledom.Service, authorizer *authz.Authorizer) *GlobalRoleHandler {
+	return &GlobalRoleHandler{svc: svc, authorizer: authorizer}
+}
+
+// callerGlobalPermissions resolves the authenticated caller's own effective
+// GLOBAL permission set, used as the grant ceiling. It fails closed: a request
+// with no resolvable caller identity yields an error rather than an empty (and
+// therefore permissive-looking) set.
+func (h *GlobalRoleHandler) callerGlobalPermissions(r *http.Request) (authz.PermissionSet, error) {
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		return nil, apierr.New(apierr.CodeUnauthenticated, "unauthenticated")
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return nil, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+	}
+	return h.authorizer.EffectivePermissions(r.Context(), userID, nil, claims.Role)
 }
 
 // List handles GET /admin/global-roles.
@@ -48,10 +68,16 @@ func (h *GlobalRoleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	caller, err := h.callerGlobalPermissions(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	role, err := h.svc.Create(r.Context(), globalroledom.CreateInput{
 		Name:        req.Name,
 		Permissions: req.Permissions,
-	})
+	}, caller)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -76,10 +102,16 @@ func (h *GlobalRoleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	caller, err := h.callerGlobalPermissions(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	role, err := h.svc.Update(r.Context(), id, globalroledom.UpdateInput{
 		Name:        req.Name,
 		Permissions: req.Permissions,
-	})
+	}, caller)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -115,7 +147,13 @@ func (h *GlobalRoleHandler) ReplaceUserRoles(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	roles, err := h.svc.ReplaceUserRoles(r.Context(), userID, req.RoleIDs)
+	caller, err := h.callerGlobalPermissions(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	roles, err := h.svc.ReplaceUserRoles(r.Context(), userID, req.RoleIDs, caller)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

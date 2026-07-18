@@ -219,7 +219,7 @@ func newPluginTestEnv(t *testing.T, adminPerms bool) *pluginTestEnv {
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
-		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
+		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}, authz.NewAuthorizer(permStore)),
 		Plugin:       pluginHandler,
 		Log:          log,
 	})

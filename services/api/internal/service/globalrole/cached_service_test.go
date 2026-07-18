@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 )
@@ -51,6 +52,9 @@ type stubGlobalRoleSvc struct {
 	listCalls int
 }
 
+// ensure stubGlobalRoleSvc satisfies the domain service interface.
+var _ globalroledom.Service = (*stubGlobalRoleSvc)(nil)
+
 func (s *stubGlobalRoleSvc) List(ctx context.Context) ([]*globalroledom.GlobalRole, error) {
 	s.listCalls++
 	if s.list != nil {
@@ -59,14 +63,14 @@ func (s *stubGlobalRoleSvc) List(ctx context.Context) ([]*globalroledom.GlobalRo
 	return nil, nil
 }
 
-func (s *stubGlobalRoleSvc) Create(ctx context.Context, in globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
+func (s *stubGlobalRoleSvc) Create(ctx context.Context, in globalroledom.CreateInput, _ authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	if s.create != nil {
 		return s.create(ctx, in)
 	}
 	return &globalroledom.GlobalRole{ID: uuid.New(), Name: in.Name}, nil
 }
 
-func (s *stubGlobalRoleSvc) Update(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+func (s *stubGlobalRoleSvc) Update(ctx context.Context, id uuid.UUID, in globalroledom.UpdateInput, _ authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	if s.update != nil {
 		return s.update(ctx, id, in)
 	}
@@ -80,7 +84,7 @@ func (s *stubGlobalRoleSvc) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *stubGlobalRoleSvc) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+func (s *stubGlobalRoleSvc) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID, _ authz.PermissionSet) ([]*globalroledom.GlobalRole, error) {
 	if s.replaceUserRoles != nil {
 		return s.replaceUserRoles(ctx, userID, roleIDs)
 	}
@@ -178,7 +182,7 @@ func TestCachedGlobalRole_Create_InvalidatesList(t *testing.T) {
 	}
 
 	// Create a role → should evict the list key.
-	if _, err := svc.Create(ctx, globalroledom.CreateInput{Name: "NEW"}); err != nil {
+	if _, err := svc.Create(ctx, globalroledom.CreateInput{Name: "NEW"}, authz.PermissionSet{authz.PermissionAll: {}}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -204,7 +208,7 @@ func TestCachedGlobalRole_Update_InvalidatesList(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 
-	if _, err := svc.Update(ctx, uuid.New(), globalroledom.UpdateInput{Name: "X"}); err != nil {
+	if _, err := svc.Update(ctx, uuid.New(), globalroledom.UpdateInput{Name: "X"}, authz.PermissionSet{authz.PermissionAll: {}}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -255,7 +259,7 @@ func TestCachedGlobalRole_Create_ServiceErrorPropagated(t *testing.T) {
 	}
 	svc := globalrolesvc.NewCachedService(stub, newCacheStore(t), 5*time.Minute, discardLogger())
 
-	_, err := svc.Create(ctx, globalroledom.CreateInput{Name: "X"})
+	_, err := svc.Create(ctx, globalroledom.CreateInput{Name: "X"}, authz.PermissionSet{authz.PermissionAll: {}})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected sentinel error, got %v", err)
 	}
@@ -276,7 +280,7 @@ func TestCachedGlobalRole_ReplaceUserRoles_Passthrough(t *testing.T) {
 	}
 	svc := globalrolesvc.NewCachedService(stub, newCacheStore(t), 5*time.Minute, discardLogger())
 
-	if _, err := svc.ReplaceUserRoles(ctx, uuid.New(), nil); err != nil {
+	if _, err := svc.ReplaceUserRoles(ctx, uuid.New(), nil, authz.PermissionSet{authz.PermissionAll: {}}); err != nil {
 		t.Fatalf("ReplaceUserRoles: %v", err)
 	}
 	if !called {

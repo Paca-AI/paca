@@ -111,6 +111,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeGlobalRoleNameInvalid
 	case errors.Is(err, globalroledom.ErrHasAssignedUsers):
 		return http.StatusConflict, apierr.CodeGlobalRoleHasUsers
+	case errors.Is(err, globalroledom.ErrPermissionCeilingExceeded):
+		return http.StatusForbidden, apierr.CodeForbidden
 	case errors.Is(err, projectdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeProjectNotFound
 	case errors.Is(err, projectdom.ErrNameTaken):
@@ -131,6 +133,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeProjectMemberNotFound
 	case errors.Is(err, projectdom.ErrMemberAlreadyAdded):
 		return http.StatusConflict, apierr.CodeProjectMemberAlreadyAdded
+	case errors.Is(err, projectdom.ErrPermissionCeilingExceeded):
+		return http.StatusForbidden, apierr.CodeForbidden
 	case errors.Is(err, taskdom.ErrTaskNotFound):
 		return http.StatusNotFound, apierr.CodeTaskNotFound
 	case errors.Is(err, taskdom.ErrTaskTitleInvalid):

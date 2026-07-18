@@ -7,6 +7,7 @@ import (
 	"time"
 
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/google/uuid"
 )
@@ -164,8 +165,8 @@ func (c *CachedService) ListMembers(ctx context.Context, projectID uuid.UUID) ([
 }
 
 // AddMember delegates to the underlying service and invalidates the members cache.
-func (c *CachedService) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
-	m, err := c.svc.AddMember(ctx, projectID, in)
+func (c *CachedService) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput, caller authz.PermissionSet) (*projectdom.ProjectMember, error) {
+	m, err := c.svc.AddMember(ctx, projectID, in, caller)
 	if err != nil {
 		return nil, err
 	}
@@ -199,8 +200,8 @@ func (c *CachedService) RemoveMember(ctx context.Context, projectID, userID uuid
 }
 
 // UpdateMemberRoleByMemberID delegates to the underlying service and invalidates the members cache.
-func (c *CachedService) UpdateMemberRoleByMemberID(ctx context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
-	m, err := c.svc.UpdateMemberRoleByMemberID(ctx, projectID, memberID, in)
+func (c *CachedService) UpdateMemberRoleByMemberID(ctx context.Context, projectID, memberID uuid.UUID, in projectdom.UpdateMemberRoleInput, caller authz.PermissionSet) (*projectdom.ProjectMember, error) {
+	m, err := c.svc.UpdateMemberRoleByMemberID(ctx, projectID, memberID, in, caller)
 	if err != nil {
 		return nil, err
 	}

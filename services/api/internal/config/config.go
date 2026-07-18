@@ -218,4 +218,21 @@ type SecurityConfig struct {
 	// ADR-038 (identity must come from signed tokens, never headers).
 	// Configure via AGENT_HEADER_IMPERSONATION=enabled.
 	AgentHeaderImpersonation bool
+
+	// GalaxyBearerAudience is the resource/audience identifier Paca enforces on
+	// trusted-issuer bearer tokens (PACA-C1). When set, a bearer token whose
+	// aud claim does not include this value is rejected — closing the
+	// confused-deputy hole where a token minted for another audience could be
+	// replayed against Paca. Empty leaves aud enforcement off (backward
+	// compatible). Configure via GALAXY_BEARER_AUDIENCE.
+	GalaxyBearerAudience string
+
+	// GalaxyResourceScopePrefix is Paca's own OAuth resource-scope prefix (e.g.
+	// "mcp:paca:") used to enforce scope on trusted-issuer bearer tokens
+	// (PACA-C1): a token that carries resource-family scopes but none for Paca
+	// is rejected as a foreign-resource token, and a token whose Paca scopes are
+	// read-only is denied write methods. Only applies to tokens that actually
+	// carry a scope claim. Empty disables scope enforcement. Configure via
+	// GALAXY_RESOURCE_SCOPE_PREFIX (default "mcp:paca:").
+	GalaxyResourceScopePrefix string
 }

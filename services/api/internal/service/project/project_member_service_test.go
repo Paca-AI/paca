@@ -5,16 +5,53 @@ import (
 	"testing"
 
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
+// superAdminCaller is a permission set holding "*", which bypasses the grant
+// ceiling.
+func superAdminCaller() authz.PermissionSet {
+	return authz.PermissionSet{authz.PermissionAll: {}}
+}
+
+// callerWith builds a caller permission set from the given permission keys.
+func callerWith(perms ...authz.Permission) authz.PermissionSet {
+	s := authz.PermissionSet{}
+	for _, p := range perms {
+		s[p] = struct{}{}
+	}
+	return s
+}
+
+// ownerTemplateRole is a project-role template (project_id == nil) mirroring the
+// shared PROJECT_OWNER template: it grants the full project.* / members.* /
+// roles.* surface. It is the vehicle for the PACA-4 escalation.
+func ownerTemplateRole(id uuid.UUID) *projectdom.ProjectRole {
+	return &projectdom.ProjectRole{
+		ID:        id,
+		ProjectID: nil, // shared template, assignable across projects
+		RoleName:  "PROJECT_OWNER",
+		Permissions: map[string]any{
+			string(authz.PermissionProjectsAll):       true,
+			string(authz.PermissionProjectMembersAll): true,
+			string(authz.PermissionProjectRolesAll):   true,
+			string(authz.PermissionTasksAll):          true,
+			string(authz.PermissionAgentsAll):         true,
+		},
+	}
+}
+
 type memberServiceRepoMock struct {
-	findByID          func(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
-	findMember        func(ctx context.Context, projectID, userID uuid.UUID) (*projectdom.ProjectMember, error)
-	findMemberByAgent func(ctx context.Context, projectID, agentID uuid.UUID) (*projectdom.ProjectMember, error)
-	findRoleByID      func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
-	updateMemberRole  func(ctx context.Context, projectID, userID, roleID uuid.UUID) error
+	findByID                   func(ctx context.Context, id uuid.UUID) (*projectdom.Project, error)
+	findMember                 func(ctx context.Context, projectID, userID uuid.UUID) (*projectdom.ProjectMember, error)
+	findMemberByAgent          func(ctx context.Context, projectID, agentID uuid.UUID) (*projectdom.ProjectMember, error)
+	findMemberByID             func(ctx context.Context, memberID uuid.UUID) (*projectdom.ProjectMember, error)
+	findRoleByID               func(ctx context.Context, id uuid.UUID) (*projectdom.ProjectRole, error)
+	updateMemberRole           func(ctx context.Context, projectID, userID, roleID uuid.UUID) error
+	addMember                  func(ctx context.Context, m *projectdom.ProjectMember) error
+	updateMemberRoleByMemberID func(ctx context.Context, memberID, roleID uuid.UUID) error
 }
 
 func (m *memberServiceRepoMock) List(context.Context, int, int) ([]*projectdom.Project, int64, error) {
@@ -79,7 +116,10 @@ func (m *memberServiceRepoMock) FindMemberByUserProject(_ context.Context, _, _ 
 	return nil, projectdom.ErrMemberNotFound
 }
 
-func (m *memberServiceRepoMock) AddMember(context.Context, *projectdom.ProjectMember) error {
+func (m *memberServiceRepoMock) AddMember(ctx context.Context, member *projectdom.ProjectMember) error {
+	if m.addMember != nil {
+		return m.addMember(ctx, member)
+	}
 	return nil
 }
 
@@ -125,7 +165,10 @@ func (m *memberServiceRepoMock) CountMembersWithRole(context.Context, uuid.UUID)
 	return 0, nil
 }
 
-func (m *memberServiceRepoMock) FindMemberByID(_ context.Context, _ uuid.UUID) (*projectdom.ProjectMember, error) {
+func (m *memberServiceRepoMock) FindMemberByID(ctx context.Context, memberID uuid.UUID) (*projectdom.ProjectMember, error) {
+	if m.findMemberByID != nil {
+		return m.findMemberByID(ctx, memberID)
+	}
 	return nil, projectdom.ErrMemberNotFound
 }
 
@@ -137,7 +180,10 @@ func (m *memberServiceRepoMock) RemoveAgentMember(_ context.Context, _, _ uuid.U
 	return nil
 }
 
-func (m *memberServiceRepoMock) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID) error {
+func (m *memberServiceRepoMock) UpdateMemberRoleByMemberID(ctx context.Context, memberID, roleID uuid.UUID) error {
+	if m.updateMemberRoleByMemberID != nil {
+		return m.updateMemberRoleByMemberID(ctx, memberID, roleID)
+	}
 	return nil
 }
 
@@ -372,6 +418,149 @@ func TestGetMyProjectPermissions_Agent_RoleNotFound(t *testing.T) {
 	_, err := svc.GetMyProjectPermissions(context.Background(), projectID, uuid.Nil, &agentID)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, projectdom.ErrRoleNotFound)
+}
+
+// ---------------------------------------------------------------------------
+// PACA-4: grant ceiling on member role assignment
+// ---------------------------------------------------------------------------
+
+// TestAddMember_GrantCeiling_RejectsBroaderRole verifies PACA-4: a caller that
+// holds only project.members.write cannot assign the shared PROJECT_OWNER
+// template (which grants far more) to escalate. FAIL-BEFORE: before the fix
+// AddMember only checked the role belonged to the project/was a template and
+// never compared it to the caller's own permissions.
+func TestAddMember_GrantCeiling_RejectsBroaderRole(t *testing.T) {
+	projectID := uuid.New()
+	roleID := uuid.New()
+	added := false
+
+	repo := &memberServiceRepoMock{
+		findByID: func(_ context.Context, id uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id}, nil
+		},
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return ownerTemplateRole(id), nil
+		},
+		addMember: func(_ context.Context, _ *projectdom.ProjectMember) error {
+			added = true
+			return nil
+		},
+	}
+	svc := New(repo, nil)
+
+	caller := callerWith(authz.PermissionProjectMembersWrite)
+	_, err := svc.AddMember(context.Background(), projectID, projectdom.AddMemberInput{
+		UserID:        uuid.New(),
+		ProjectRoleID: roleID,
+	}, caller)
+
+	assert.ErrorIs(t, err, projectdom.ErrPermissionCeilingExceeded)
+	assert.False(t, added, "member must not be persisted when the ceiling is exceeded")
+}
+
+// TestAddMember_GrantCeiling_AllowsSubset verifies the ceiling permits a role
+// fully covered by the caller's own permissions.
+func TestAddMember_GrantCeiling_AllowsSubset(t *testing.T) {
+	projectID := uuid.New()
+	roleID := uuid.New()
+	userID := uuid.New()
+	findMemberCalls := 0
+
+	repo := &memberServiceRepoMock{
+		findByID: func(_ context.Context, id uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id}, nil
+		},
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return ownerTemplateRole(id), nil
+		},
+		findMember: func(_ context.Context, pid, uid uuid.UUID) (*projectdom.ProjectMember, error) {
+			findMemberCalls++
+			if findMemberCalls == 1 {
+				// existence check before insert
+				return nil, projectdom.ErrMemberNotFound
+			}
+			// re-fetch after insert
+			return &projectdom.ProjectMember{ID: uuid.New(), ProjectID: pid, UserID: uid, ProjectRoleID: roleID}, nil
+		},
+	}
+	svc := New(repo, nil)
+
+	// Caller covers the whole PROJECT_OWNER template surface.
+	caller := callerWith(
+		authz.PermissionProjectsAll,
+		authz.PermissionProjectMembersAll,
+		authz.PermissionProjectRolesAll,
+		authz.PermissionTasksAll,
+		authz.PermissionAgentsAll,
+	)
+	m, err := svc.AddMember(context.Background(), projectID, projectdom.AddMemberInput{
+		UserID:        userID,
+		ProjectRoleID: roleID,
+	}, caller)
+	assert.NoError(t, err)
+	assert.NotNil(t, m)
+}
+
+// TestUpdateMemberRoleByMemberID_GrantCeiling_RejectsBroaderRole verifies
+// PACA-4 on the promote path: a member.write-only caller cannot promote an
+// existing member into the PROJECT_OWNER template.
+func TestUpdateMemberRoleByMemberID_GrantCeiling_RejectsBroaderRole(t *testing.T) {
+	projectID := uuid.New()
+	memberID := uuid.New()
+	roleID := uuid.New()
+	updated := false
+
+	repo := &memberServiceRepoMock{
+		findByID: func(_ context.Context, id uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id}, nil
+		},
+		findMemberByID: func(_ context.Context, mid uuid.UUID) (*projectdom.ProjectMember, error) {
+			return &projectdom.ProjectMember{ID: mid, ProjectID: projectID}, nil
+		},
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return ownerTemplateRole(id), nil
+		},
+		updateMemberRoleByMemberID: func(_ context.Context, _, _ uuid.UUID) error {
+			updated = true
+			return nil
+		},
+	}
+	svc := New(repo, nil)
+
+	caller := callerWith(authz.PermissionProjectMembersWrite)
+	_, err := svc.UpdateMemberRoleByMemberID(context.Background(), projectID, memberID, projectdom.UpdateMemberRoleInput{
+		ProjectRoleID: roleID,
+	}, caller)
+
+	assert.ErrorIs(t, err, projectdom.ErrPermissionCeilingExceeded)
+	assert.False(t, updated, "role must not be changed when the ceiling is exceeded")
+}
+
+// TestUpdateMemberRoleByMemberID_GrantCeiling_SuperAdminBypass verifies a
+// caller holding "*" may assign any role.
+func TestUpdateMemberRoleByMemberID_GrantCeiling_SuperAdminBypass(t *testing.T) {
+	projectID := uuid.New()
+	memberID := uuid.New()
+	roleID := uuid.New()
+
+	repo := &memberServiceRepoMock{
+		findByID: func(_ context.Context, id uuid.UUID) (*projectdom.Project, error) {
+			return &projectdom.Project{ID: id}, nil
+		},
+		findMemberByID: func(_ context.Context, mid uuid.UUID) (*projectdom.ProjectMember, error) {
+			return &projectdom.ProjectMember{ID: mid, ProjectID: projectID, ProjectRoleID: roleID}, nil
+		},
+		findRoleByID: func(_ context.Context, id uuid.UUID) (*projectdom.ProjectRole, error) {
+			return ownerTemplateRole(id), nil
+		},
+	}
+	svc := New(repo, nil)
+
+	m, err := svc.UpdateMemberRoleByMemberID(context.Background(), projectID, memberID, projectdom.UpdateMemberRoleInput{
+		ProjectRoleID: roleID,
+	}, superAdminCaller())
+	assert.NoError(t, err)
+	assert.NotNil(t, m)
 }
 
 func TestGetMyProjectPermissions_Agent_NilPermissions(t *testing.T) {

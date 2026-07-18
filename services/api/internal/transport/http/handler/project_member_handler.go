@@ -8,10 +8,31 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
+
+// callerProjectPermissions resolves the authenticated caller's own effective
+// permission set for the given project, used as the grant ceiling when
+// assigning member roles (PACA-4). Agents are resolved via their project role;
+// human callers via their global + project roles. It fails closed: an
+// unresolvable caller yields an error rather than a permissive-looking set.
+func (h *ProjectHandler) callerProjectPermissions(r *http.Request, projectID uuid.UUID) (authz.PermissionSet, error) {
+	if agentID, ok := middleware.AgentIDFromRequest(r); ok {
+		return h.authorizer.EffectivePermissionsForAgent(r.Context(), agentID, projectID)
+	}
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		return nil, apierr.New(apierr.CodeUnauthenticated, "unauthenticated")
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return nil, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+	}
+	return h.authorizer.EffectivePermissions(r.Context(), userID, &projectID, claims.Role)
+}
 
 // ListMembers handles GET /projects/:projectId/members.
 func (h *ProjectHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
@@ -53,10 +74,16 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	caller, err := h.callerProjectPermissions(r, id)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	m, err := h.svc.AddMember(r.Context(), id, projectdom.AddMemberInput{
 		UserID:        req.UserID,
 		ProjectRoleID: req.ProjectRoleID,
-	})
+	}, caller)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -86,9 +113,15 @@ func (h *ProjectHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	caller, err := h.callerProjectPermissions(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
 	m, err := h.svc.UpdateMemberRoleByMemberID(r.Context(), projectID, memberID, projectdom.UpdateMemberRoleInput{
 		ProjectRoleID: req.ProjectRoleID,
-	})
+	}, caller)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

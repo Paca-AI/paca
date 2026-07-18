@@ -42,11 +42,11 @@ func (s *fakeGlobalRoleService) List(context.Context) ([]*globalroledom.GlobalRo
 	}}, nil
 }
 
-func (s *fakeGlobalRoleService) Create(context.Context, globalroledom.CreateInput) (*globalroledom.GlobalRole, error) {
+func (s *fakeGlobalRoleService) Create(context.Context, globalroledom.CreateInput, authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "CREATED", Permissions: map[string]any{}}, nil
 }
 
-func (s *fakeGlobalRoleService) Update(context.Context, uuid.UUID, globalroledom.UpdateInput) (*globalroledom.GlobalRole, error) {
+func (s *fakeGlobalRoleService) Update(context.Context, uuid.UUID, globalroledom.UpdateInput, authz.PermissionSet) (*globalroledom.GlobalRole, error) {
 	return &globalroledom.GlobalRole{ID: uuid.New(), Name: "UPDATED", Permissions: map[string]any{}}, nil
 }
 
@@ -54,7 +54,7 @@ func (s *fakeGlobalRoleService) Delete(context.Context, uuid.UUID) error {
 	return nil
 }
 
-func (s *fakeGlobalRoleService) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID) ([]*globalroledom.GlobalRole, error) {
+func (s *fakeGlobalRoleService) ReplaceUserRoles(context.Context, uuid.UUID, []uuid.UUID, authz.PermissionSet) ([]*globalroledom.GlobalRole, error) {
 	return []*globalroledom.GlobalRole{}, nil
 }
 
@@ -72,7 +72,7 @@ func buildAdminTestRouter(perms []authz.Permission) http.Handler {
 		Health:       handler.NewHealthHandler(),
 		Auth:         handler.NewAuthHandler(authService, testCookieCfg),
 		User:         handler.NewUserHandler(userService),
-		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
+		GlobalRole:   handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}, authz.NewAuthorizer(&integrationPermissionStore{globalPerms: perms})),
 		Log:          log,
 	})
 }

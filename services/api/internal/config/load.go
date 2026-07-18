@@ -212,6 +212,13 @@ func Load() (*Config, error) {
 			// Header impersonation stays off unless explicitly "enabled"
 			// (ADR-038 kill-switch; identity from signed tokens, not headers).
 			AgentHeaderImpersonation: strings.EqualFold(env("AGENT_HEADER_IMPERSONATION", "disabled"), "enabled"),
+			// Bearer-token audience/scope enforcement (PACA-C1). Audience is
+			// off unless configured; the resource-scope prefix defaults to
+			// "mcp:paca:" so foreign-resource tokens that carry scopes are
+			// rejected out of the box (tokens without a scope claim are
+			// unaffected).
+			GalaxyBearerAudience:      strings.TrimSpace(env("GALAXY_BEARER_AUDIENCE", "")),
+			GalaxyResourceScopePrefix: strings.TrimSpace(env("GALAXY_RESOURCE_SCOPE_PREFIX", "mcp:paca:")),
 		},
 		Plugins: PluginsConfig{
 			// PLUGINS_STORE controls where WASM binaries are loaded from.

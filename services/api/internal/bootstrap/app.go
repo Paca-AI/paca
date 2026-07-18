@@ -330,13 +330,21 @@ func New(cfg *config.Config) (*App, error) {
 	// local users via users.oidc_sub; unknown principals are rejected.
 	var galaxyBearer httpmw.GalaxyBearerAuthenticator
 	if cfg.Security.GalaxyTrustedIssuer != "" {
+		// Audience + scope enforcement (PACA-C1): the aud claim is checked
+		// against the configured resource id, and scope-bearing tokens must
+		// target Paca (foreign-resource tokens rejected; read-only tokens
+		// denied writes).
 		galaxyBearer = galaxyauthsvc.NewBearerAuthenticator(
 			oidcplatform.NewProviderWithIssuerClaims(
 				cfg.Security.GalaxyTrustedIssuer, cfg.Security.GalaxyTrustedIssuerClaims),
-			userRepo, log)
+			userRepo, log).
+			WithResourceAudience(cfg.Security.GalaxyBearerAudience).
+			WithResourceScopePrefix(cfg.Security.GalaxyResourceScopePrefix)
 		log.Info("Galaxy trusted-issuer bearer auth enabled",
 			"issuer", cfg.Security.GalaxyTrustedIssuer,
-			"extra_issuer_claims", cfg.Security.GalaxyTrustedIssuerClaims)
+			"extra_issuer_claims", cfg.Security.GalaxyTrustedIssuerClaims,
+			"audience_enforced", cfg.Security.GalaxyBearerAudience != "",
+			"resource_scope_prefix", cfg.Security.GalaxyResourceScopePrefix)
 	}
 
 	deps := router.Deps{
@@ -348,7 +356,7 @@ func New(cfg *config.Config) (*App, error) {
 		Auth:                 authHandler,
 		OIDC:                 oidcHandler,
 		User:                 handler.NewUserHandler(userService, authService),
-		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
+		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService, authorizer),
 		ProjectVisibilitySvc: projectService,
 		Project:              handler.NewProjectHandler(projectService, authorizer, handler.WithProjectDefaultViews(viewService, taskService)),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,

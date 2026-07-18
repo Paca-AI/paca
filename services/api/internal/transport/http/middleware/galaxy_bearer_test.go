@@ -25,7 +25,7 @@ type stubGalaxyBearerAuth struct {
 	called    bool
 }
 
-func (s *stubGalaxyBearerAuth) AuthenticateBearer(_ context.Context, _ string) (*userdom.User, string, error) {
+func (s *stubGalaxyBearerAuth) AuthenticateBearer(_ context.Context, _, _ string) (*userdom.User, string, error) {
 	s.called = true
 	if s.err != nil {
 		return nil, "", s.err

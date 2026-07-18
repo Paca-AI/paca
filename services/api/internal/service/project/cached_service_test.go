@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 )
@@ -125,7 +126,7 @@ func (s *stubProjectSvc) ListMembers(ctx context.Context, projectID uuid.UUID) (
 	return []*projectdom.ProjectMember{{ID: uuid.New(), ProjectID: projectID}}, nil
 }
 
-func (s *stubProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
+func (s *stubProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput, _ authz.PermissionSet) (*projectdom.ProjectMember, error) {
 	if s.addMember != nil {
 		return s.addMember(ctx, projectID, in)
 	}
@@ -184,7 +185,7 @@ func (s *stubProjectSvc) DeleteRole(ctx context.Context, projectID, roleID uuid.
 
 func (s *stubProjectSvc) AddAgentMember(_ context.Context, _, _, _, _ uuid.UUID) error { return nil }
 func (s *stubProjectSvc) RemoveAgentMember(_ context.Context, _, _ uuid.UUID) error    { return nil }
-func (s *stubProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error) {
+func (s *stubProjectSvc) UpdateMemberRoleByMemberID(_ context.Context, _, _ uuid.UUID, _ projectdom.UpdateMemberRoleInput, _ authz.PermissionSet) (*projectdom.ProjectMember, error) {
 	return nil, errors.New("not implemented in stub")
 }
 func (s *stubProjectSvc) RemoveMemberByMemberID(_ context.Context, _, _ uuid.UUID) error {
@@ -340,7 +341,7 @@ func TestCachedProject_AddMember_InvalidatesMembersList(t *testing.T) {
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
-	if _, err := svc.AddMember(ctx, projectID, projectdom.AddMemberInput{UserID: uuid.New(), ProjectRoleID: uuid.New()}); err != nil {
+	if _, err := svc.AddMember(ctx, projectID, projectdom.AddMemberInput{UserID: uuid.New(), ProjectRoleID: uuid.New()}, authz.PermissionSet{authz.PermissionAll: {}}); err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
 	if _, err := svc.ListMembers(ctx, projectID); err != nil {
