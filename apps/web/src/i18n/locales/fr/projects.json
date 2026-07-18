@@ -94,7 +94,7 @@
 			"statusConnected": "Connecté",
 			"statusDisconnected": "Non connecté",
 			"step1Title": "Installez le bridge ACP",
-			"step1Description": "Nécessite Python 3.12+. Installez le daemon une fois avec pip (ou ignorez cette étape — la commande d'exécution ci-dessous utilise uvx, qui le récupère automatiquement).",
+			"step1Description": "Nécessite Python 3.12+. Installez le daemon une fois avec uv pip (ou ignorez cette étape — la commande d'exécution ci-dessous utilise uvx, qui le récupère automatiquement).",
 			"step2Title": "Exécuter le bridge local",
 			"step2Description": "Générez un token, puis exécutez ceci dans le dossier de votre projet.",
 			"noTokenYet": "Générez un token pour afficher la commande d'exécution.",

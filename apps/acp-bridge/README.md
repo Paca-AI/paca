@@ -33,7 +33,7 @@ uvx paca-acp-bridge run \
   --server https://your-paca-instance.example.com
 ```
 
-(Or `pip install paca-acp-bridge` first, then run `paca-acp-bridge run ...` the same way.)
+(Or `uv pip install paca-acp-bridge` first, then run `paca-acp-bridge run ...` the same way.)
 
 `--agent-id`, `--token`, and `--server` can also be set via
 `PACA_ACP_AGENT_ID`, `PACA_ACP_TOKEN`, and `PACA_ACP_SERVER`. The agent id and

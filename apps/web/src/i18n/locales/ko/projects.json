@@ -94,7 +94,7 @@
 			"statusConnected": "연결됨",
 			"statusDisconnected": "연결되지 않음",
 			"step1Title": "ACP 브리지 설치",
-			"step1Description": "Python 3.12 이상이 필요합니다. pip로 데몬을 한 번 설치하세요(또는 이 단계를 건너뛰어도 됩니다 — 아래 실행 명령어는 uvx를 사용하여 자동으로 가져옵니다).",
+			"step1Description": "Python 3.12 이상이 필요합니다. uv pip로 데몬을 한 번 설치하세요(또는 이 단계를 건너뛰어도 됩니다 — 아래 실행 명령어는 uvx를 사용하여 자동으로 가져옵니다).",
 			"step2Title": "로컬 브리지 실행",
 			"step2Description": "토큰을 생성한 다음 프로젝트 폴더에서 이를 실행하세요.",
 			"noTokenYet": "토큰을 생성하면 실행 명령어가 표시됩니다.",
