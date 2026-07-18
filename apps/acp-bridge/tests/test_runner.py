@@ -6,6 +6,7 @@ than a real `openhands.sdk.Conversation`.
 """
 
 import asyncio
+import logging
 import threading
 
 import pytest
@@ -242,3 +243,54 @@ async def test_event_callback_uses_threadsafe_dispatch_when_called_off_loop():
     assert not thread.is_alive()
     assert len(sent) == 1
     assert sent[0]["conversation_id"] == "conv-1"
+
+
+async def test_run_conversation_survives_status_report_failure_after_success():
+    """A failure in the outbound _send/report path (e.g. the bridge's outbox
+    raising during shutdown) must not be conflated with the conversation
+    itself failing — see _report_status_safely in runner.py. Locks in that
+    a successful arun() only ever attempts one status report, even if that
+    report itself blows up."""
+    calls = []
+
+    async def send(message):
+        calls.append(message)
+        raise RuntimeError("outbox closed")
+
+    runner = ConversationRunner(workspace="/tmp", send=send)
+
+    class _FakeConversation:
+        def send_message(self, message):
+            pass
+
+        async def arun(self):
+            pass
+
+    # Must not raise, even though `send` always raises.
+    await runner._run_conversation(_FakeConversation(), "conv-1", "proj-1", "hi")
+
+    assert len(calls) == 1
+    assert calls[0]["status"] == "finished"
+
+
+async def test_event_callback_logs_when_send_fails_on_loop(caplog):
+    """The same-loop dispatch branch schedules _send as a fire-and-forget
+    task; a failure there must still surface as a logged warning instead of
+    silently becoming an unretrieved-task-exception."""
+
+    async def send(message):
+        raise RuntimeError("boom")
+
+    runner = ConversationRunner(workspace="/tmp", send=send)
+    runner._loop = asyncio.get_running_loop()
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    with caplog.at_level(logging.WARNING, logger="paca_acp_bridge.runner"):
+        callback(_FakeEvent())
+        # Two yields: one for the scheduled _send task to run and raise, a
+        # second for its add_done_callback (scheduled once the task becomes
+        # done) to actually fire.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    assert any("Failed to report event" in record.getMessage() for record in caplog.records)
