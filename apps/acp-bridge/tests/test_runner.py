@@ -5,7 +5,7 @@ Exercises the daemon's own logic without spawning a real ACP CLI subprocess —
 than a real `openhands.sdk.Conversation`.
 """
 
-import threading
+import asyncio
 
 import pytest
 
@@ -43,25 +43,24 @@ async def test_interrupt_calls_conversation_interrupt_for_known_conversation():
 
     class _FakeConversation:
         def __init__(self):
-            self.interrupted = threading.Event()
+            self.interrupted = False
 
         def interrupt(self):
-            self.interrupted.set()
+            self.interrupted = True
 
     fake_conv = _FakeConversation()
     from paca_acp_bridge.runner import _ConversationHandle
 
+    completed_task = asyncio.get_running_loop().create_future()
+    completed_task.set_result(None)
     runner._conversations["conv-1"] = _ConversationHandle(
         conversation=fake_conv,
-        thread=None,  # type: ignore[arg-type]
+        task=completed_task,  # type: ignore[arg-type]
     )
 
-    # interrupt() dispatches onto its own thread rather than calling
-    # conversation.interrupt() inline (see runner.py's docstring for why),
-    # so wait for that thread's effect instead of asserting immediately.
     runner.interrupt("conv-1")
 
-    assert fake_conv.interrupted.wait(timeout=2) is True
+    assert fake_conv.interrupted is True
 
 
 async def test_interrupt_is_a_no_op_for_unknown_conversation():
@@ -110,16 +109,16 @@ async def test_start_turn_rejects_resume_while_previous_turn_still_running():
     class _FakeConversation:
         pass
 
-    class _FakeAliveThread:
-        def is_alive(self):
-            return True
+    class _FakeRunningTask:
+        def done(self):
+            return False
 
     from paca_acp_bridge.runner import _ConversationHandle
 
     fake_conv = _FakeConversation()
     runner._conversations["conv-1"] = _ConversationHandle(
         conversation=fake_conv,
-        thread=_FakeAliveThread(),  # type: ignore[arg-type]
+        task=_FakeRunningTask(),  # type: ignore[arg-type]
     )
 
     await runner.start_turn(
@@ -134,5 +133,55 @@ async def test_start_turn_rejects_resume_while_previous_turn_still_running():
     assert sent[0]["type"] == "turn_status"
     assert sent[0]["status"] == "failed"
     # The still-running conversation's handle must be left untouched — no
-    # second thread should have been started against it.
+    # second task should have been started against it.
     assert runner._conversations["conv-1"].conversation is fake_conv
+
+
+async def test_start_turn_resume_drives_conversation_via_arun_and_reports_finished():
+    """Locks in the arun()-based (not run()-on-a-thread) execution path:
+    conversation.interrupt() can only cancel a turn immediately if the turn
+    is actually tracked as an asyncio Task via arun() — see runner.py's
+    module docstring for why the old thread+run() model couldn't do this."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner = ConversationRunner(workspace="/tmp", send=send)
+
+    class _FakeConversation:
+        def __init__(self):
+            self.sent_messages: list[str] = []
+            self.ran = False
+
+        def send_message(self, message):
+            self.sent_messages.append(message)
+
+        async def arun(self):
+            self.ran = True
+
+    fake_conv = _FakeConversation()
+    from paca_acp_bridge.runner import _ConversationHandle
+
+    done_task = asyncio.get_running_loop().create_future()
+    done_task.set_result(None)
+    runner._conversations["conv-1"] = _ConversationHandle(
+        conversation=fake_conv,
+        task=done_task,  # type: ignore[arg-type]
+    )
+
+    await runner.start_turn(
+        {"conversation_id": "conv-1", "project_id": "proj-1", "message": "a follow-up message"}
+    )
+    await runner._conversations["conv-1"].task
+
+    assert fake_conv.sent_messages == ["a follow-up message"]
+    assert fake_conv.ran is True
+    assert sent == [
+        {
+            "type": "turn_status",
+            "conversation_id": "conv-1",
+            "project_id": "proj-1",
+            "status": "finished",
+        }
+    ]

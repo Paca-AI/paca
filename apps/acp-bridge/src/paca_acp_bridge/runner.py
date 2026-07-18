@@ -11,6 +11,22 @@ means the CLI's own native tools (bash, git, gh, etc.) run with the user's own
 real credentials, so it can clone/push/open PRs exactly as if the user were
 driving it themselves — something a Paca-hosted sandbox can never do, since
 ACPAgent doesn't accept custom tools.
+
+Conversations are driven via `conversation.arun()` (the SDK's async run
+loop), scheduled as a plain `asyncio.Task` on this daemon's own event loop,
+rather than `conversation.run()` on a dedicated thread. `run()`/`pause()`
+only take effect *between* whole agent steps and can't cancel one already in
+flight — for `ACPAgent` a single step is the whole ACP turn (every tool call
+the coding CLI makes before replying), so pressing "stop" mid-turn wouldn't
+actually stop anything until that turn finished on its own. `arun()` tracks
+the run as a cancellable `asyncio.Task`, so `conversation.interrupt()` can
+cancel it immediately (mid-tool-call) and the SDK sends the coding CLI a
+real ACP `session/cancel` in response — see `LocalConversation.interrupt()`
+and `ACPAgent.astep()`'s `CancelledError` handling. It also sidesteps a
+cross-thread state-lock deadlock the SDK documents for the sync `run()` path
+(OpenHands SDK issues #3348/#3350): here, `interrupt()` never blocks waiting
+on the conversation's state lock, so it's safe to call directly from this
+event loop's own thread.
 """
 
 from __future__ import annotations
@@ -18,7 +34,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import threading
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -34,7 +49,7 @@ SendFn = Callable[[dict[str, Any]], Awaitable[None]]
 @dataclasses.dataclass
 class _ConversationHandle:
     conversation: Conversation
-    thread: threading.Thread
+    task: asyncio.Task[None]
 
 
 def resolve_acp_command(acp_provider: str | None, acp_command: list[str]) -> list[str]:
@@ -70,7 +85,8 @@ class ConversationRunner:
         # Captured lazily in start_turn() (always awaited from inside the
         # running loop) rather than here — __init__ runs before
         # asyncio.run() starts the loop that will actually be running when
-        # background threads need to schedule coroutines back onto it.
+        # ACPAgent's own background ("portal") thread needs to schedule
+        # coroutines back onto it (e.g. mid-turn streaming events).
         self._loop: asyncio.AbstractEventLoop | None = None
         self._conversations: dict[str, _ConversationHandle] = {}
 
@@ -82,14 +98,14 @@ class ConversationRunner:
 
         existing = self._conversations.get(conversation_id)
         if existing is not None:
-            if existing.thread.is_alive():
-                # A previous turn's thread is still driving this same
-                # Conversation object via .send_message()/.run() — starting
-                # a second thread on top of it would call into the SDK
-                # concurrently from two threads, which Conversation isn't
-                # built to handle. Reject explicitly rather than risking
-                # corrupted state, so the caller gets an immediate failure
-                # instead of waiting out acp_dispatch.py's watchdog timeout.
+            if not existing.task.done():
+                # A previous turn's task is still driving this same
+                # Conversation object via .send_message()/.arun() — starting
+                # a second one on top of it would call into the SDK
+                # concurrently, which Conversation isn't built to handle.
+                # Reject explicitly rather than risking corrupted state, so
+                # the caller gets an immediate failure instead of waiting
+                # out acp_dispatch.py's watchdog timeout.
                 logger.warning(
                     "Ignoring start_turn for conversation %s: a previous turn is still running",
                     conversation_id,
@@ -102,19 +118,10 @@ class ConversationRunner:
                 )
                 return
             # Resume — reply on the conversation object already running from
-            # an earlier turn in this same chat session. `.run()` is a
-            # blocking, synchronous SDK call for a local (non-remote)
-            # Conversation, so it must happen on its own thread here too —
-            # calling it directly from this coroutine would freeze the
-            # daemon's whole event loop (heartbeats, other conversations'
-            # events) until the turn finishes.
-            thread = threading.Thread(
-                target=self._run_conversation,
-                args=(existing.conversation, conversation_id, project_id, message),
-                daemon=True,
+            # an earlier turn in this same chat session.
+            existing.task = asyncio.create_task(
+                self._run_conversation(existing.conversation, conversation_id, project_id, message)
             )
-            existing.thread = thread
-            thread.start()
             return
 
         try:
@@ -130,62 +137,44 @@ class ConversationRunner:
             workspace=self.workspace,
             callbacks=[self._make_event_callback(conversation_id, project_id)],
         )
-        thread = threading.Thread(
-            target=self._run_conversation,
-            args=(conversation, conversation_id, project_id, message),
-            daemon=True,
+        task = asyncio.create_task(
+            self._run_conversation(conversation, conversation_id, project_id, message)
         )
         self._conversations[conversation_id] = _ConversationHandle(
-            conversation=conversation, thread=thread
+            conversation=conversation, task=task
         )
-        thread.start()
 
     def interrupt(self, conversation_id: str | None) -> None:
         """Handle a stop_turn/pause_turn message — both just interrupt the
         in-flight turn; there's no sandbox lifecycle to additionally tear
         down (unlike the cloud path's full stop vs. pause distinction).
 
-        Dispatched onto its own thread rather than calling
-        `conversation.interrupt()` directly here on the event-loop thread:
-        this bridge only ever uses the synchronous `conversation.run()`, so
-        the SDK's `interrupt()` always falls back to `pause()`, which
-        acquires the conversation's state lock and can synchronously invoke
-        our event callback — which itself calls back into this same event
-        loop via `run_coroutine_threadsafe(...).result()`. Running that
-        chain directly on the loop's thread means the loop wants to wait on
-        itself (or contend the lock with the conversation's own background
-        thread, which is doing the same call-back-into-the-loop dance),
-        freezing every other conversation and the heartbeat for the full
-        10s timeout. The SDK documents `interrupt()` as safe to call from
-        any thread, so a dedicated one sidesteps the reentrancy entirely.
+        Safe to call directly here, synchronously, on the event-loop thread:
+        `conversation.interrupt()` cancels the tracked `arun()` task via a
+        non-blocking `call_soon_threadsafe` — it never waits on the
+        conversation's state lock, so it can't stall this loop the way the
+        sync `run()` path's `pause()` fallback could (see module docstring).
         """
         if not conversation_id:
             return
         handle = self._conversations.get(conversation_id)
         if handle is None:
             return
-        threading.Thread(
-            target=self._interrupt_conversation,
-            args=(handle.conversation, conversation_id),
-            daemon=True,
-        ).start()
-
-    def _interrupt_conversation(self, conversation: Conversation, conversation_id: str) -> None:
         try:
-            conversation.interrupt()
+            handle.conversation.interrupt()
         except Exception:
             logger.exception("Failed to interrupt conversation %s", conversation_id)
 
-    def _run_conversation(
+    async def _run_conversation(
         self, conversation: Conversation, conversation_id: str, project_id: str, message: str
     ) -> None:
         try:
             conversation.send_message(message)
-            conversation.run()
-            self._report_status_threadsafe(conversation_id, project_id, "finished")
+            await conversation.arun()
+            await self._report_status(conversation_id, project_id, "finished")
         except Exception as exc:
             logger.exception("Conversation %s failed", conversation_id)
-            self._report_status_threadsafe(conversation_id, project_id, "failed", str(exc))
+            await self._report_status(conversation_id, project_id, "failed", str(exc))
 
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:
@@ -199,6 +188,10 @@ class ConversationRunner:
                     "event_source": str(getattr(event, "source", "agent")),
                     "payload": payload,
                 }
+                # ACPAgent streams mid-turn events from its own background
+                # ("portal") thread, not necessarily this callback's caller,
+                # so this still has to hop back onto the event loop
+                # threadsafe rather than assuming it's already there.
                 future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
                 future.result(timeout=10)
             except Exception:
@@ -210,19 +203,6 @@ class ConversationRunner:
                 )
 
         return callback
-
-    def _report_status_threadsafe(
-        self, conversation_id: str, project_id: str, status: str, error_message: str | None = None
-    ) -> None:
-        future = asyncio.run_coroutine_threadsafe(
-            self._report_status(conversation_id, project_id, status, error_message), self._loop
-        )
-        try:
-            future.result(timeout=10)
-        except Exception:
-            logger.warning(
-                "Failed to report status for conversation %s", conversation_id, exc_info=True
-            )
 
     async def _report_status(
         self, conversation_id: str, project_id: str, status: str, error_message: str | None = None
