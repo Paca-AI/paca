@@ -1,0 +1,36 @@
+{
+	"dialog": {
+		"title": "键盘快捷键",
+		"footer": "任务快捷键作用于鼠标指针所在的卡片或行。右键单击任意任务可查看相同的操作菜单。",
+		"menuLabel": "键盘快捷键"
+	},
+	"groups": {
+		"goto": "前往",
+		"general": "通用",
+		"page": "页面与视图",
+		"task": "指针所在任务"
+	},
+	"actions": {
+		"gotoHome": "主页 / 所有项目",
+		"gotoTimeline": "时间线",
+		"gotoBacklog": "产品待办列表",
+		"gotoActiveSprint": "当前冲刺",
+		"gotoAgents": "智能体",
+		"gotoConversations": "对话",
+		"gotoAutomation": "自动化",
+		"gotoTeam": "团队",
+		"gotoDocs": "文档",
+		"gotoSettings": "项目设置",
+		"help": "查看帮助",
+		"sidebar": "切换侧边栏",
+		"close": "关闭 / 取消",
+		"prevNextView": "上一个 / 下一个视图",
+		"search": "搜索任务",
+		"createTask": "创建任务",
+		"viewSettings": "视图设置",
+		"open": "打开详情",
+		"epic": "设置史诗",
+		"moveLeftRight": "向左 / 向右移动列",
+		"delete": "删除任务"
+	}
+}

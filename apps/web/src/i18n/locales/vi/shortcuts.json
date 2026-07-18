@@ -1,0 +1,36 @@
+{
+	"dialog": {
+		"title": "Phím tắt",
+		"footer": "Phím tắt cho tác vụ áp dụng cho thẻ hoặc dòng đang được trỏ chuột. Nhấp chuột phải vào bất kỳ tác vụ nào để xem các thao tác tương tự.",
+		"menuLabel": "Phím tắt"
+	},
+	"groups": {
+		"goto": "Đi tới",
+		"general": "Chung",
+		"page": "Trang và chế độ xem",
+		"task": "Tác vụ dưới con trỏ"
+	},
+	"actions": {
+		"gotoHome": "Trang chủ / tất cả dự án",
+		"gotoTimeline": "Dòng thời gian",
+		"gotoBacklog": "Backlog sản phẩm",
+		"gotoActiveSprint": "Sprint đang hoạt động",
+		"gotoAgents": "Tác nhân",
+		"gotoConversations": "Cuộc trò chuyện",
+		"gotoAutomation": "Tự động hóa",
+		"gotoTeam": "Nhóm",
+		"gotoDocs": "Tài liệu",
+		"gotoSettings": "Cài đặt dự án",
+		"help": "Trợ giúp này",
+		"sidebar": "Bật/tắt thanh bên",
+		"close": "Đóng / bỏ qua",
+		"prevNextView": "Chế độ xem trước / sau",
+		"search": "Tìm kiếm tác vụ",
+		"createTask": "Tạo tác vụ",
+		"viewSettings": "Cài đặt chế độ xem",
+		"open": "Mở chi tiết",
+		"epic": "Đặt epic",
+		"moveLeftRight": "Di chuyển cột sang trái / phải",
+		"delete": "Xóa tác vụ"
+	}
+}

@@ -931,6 +931,20 @@
 			"noEpic": "エピックなし",
 			"storyPointsTitle": "ストーリーポイント"
 		},
+		"taskContextMenu": {
+			"open": "タスクを開く",
+			"moveTo": "移動先",
+			"status": "ステータス",
+			"assignee": "担当者",
+			"unassigned": "未割り当て",
+			"type": "タイプ",
+			"priority": "優先度",
+			"epic": "エピック",
+			"noEpic": "エピックなし",
+			"copyId": "タスクIDをコピー ({{id}})",
+			"copyLink": "リンクをコピー",
+			"delete": "タスクを削除"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

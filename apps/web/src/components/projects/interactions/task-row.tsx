@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -21,6 +22,7 @@ import type {
 	TaskStatus,
 	TaskType,
 } from "@/lib/project-api";
+import { useHoveredTaskStore } from "@/lib/shortcuts/hovered-task-store";
 import { cn } from "@/lib/utils";
 
 import {
@@ -137,6 +139,12 @@ interface TaskRowProps {
 	isDragging?: boolean;
 	canEdit?: boolean;
 	onUpdateTaskField?: (taskId: string, update: TaskFieldUpdate) => void;
+	/** Keyboard-shortcut hooks (Mod+Backspace / Mod+Left / Mod+Right) — fire
+	 * only while this row is hovered. `onMoveLeft`/`onMoveRight` are omitted
+	 * by the caller when there's no adjacent group. */
+	onDelete?: (taskId: string) => void;
+	onMoveLeft?: () => void;
+	onMoveRight?: () => void;
 }
 
 export function TaskRow({
@@ -153,9 +161,30 @@ export function TaskRow({
 	isDragging,
 	canEdit,
 	onUpdateTaskField,
+	onDelete,
+	onMoveLeft,
+	onMoveRight,
 }: TaskRowProps) {
 	const { t } = useTranslation("projects");
 	const status = statuses.find((s) => s.id === task.status_id);
+	const [isHovered, setIsHovered] = useState(false);
+	const [epicOpen, setEpicOpen] = useState(false);
+
+	// Keyboard shortcuts act on whichever task is hovered — see
+	// hovered-task-store.ts and lib/shortcuts/provider.tsx.
+	useEffect(() => {
+		if (!isHovered) return;
+		useHoveredTaskStore.getState().setActive({
+			taskId: task.id,
+			canEdit: !!canEdit,
+			open: () => onClick?.(),
+			openEpic: () => setEpicOpen(true),
+			moveLeft: onMoveLeft,
+			moveRight: onMoveRight,
+			delete: () => onDelete?.(task.id),
+		});
+		return () => useHoveredTaskStore.getState().clearActive(task.id);
+	}, [isHovered, canEdit, task.id, onClick, onMoveLeft, onMoveRight, onDelete]);
 
 	/** Renders a single cell value for the given field key. */
 	const renderCell = (fieldKey: string) => {
@@ -559,7 +588,7 @@ export function TaskRow({
 						onClick={(e) => e.stopPropagation()}
 						onKeyDown={(e) => e.stopPropagation()}
 					>
-						<Popover>
+						<Popover open={epicOpen} onOpenChange={setEpicOpen}>
 							<PopoverTrigger
 								type="button"
 								className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium border border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:opacity-80 transition-opacity truncate max-w-full"
@@ -706,6 +735,8 @@ export function TaskRow({
 		// biome-ignore lint/a11y/useKeyWithClickEvents: drag-and-drop row; keyboard nav handled by parent
 		<div
 			onClick={onClick}
+			onMouseEnter={() => setIsHovered(true)}
+			onMouseLeave={() => setIsHovered(false)}
 			className={cn(
 				"group flex items-center gap-3 px-4 py-2.5 cursor-pointer",
 				"hover:bg-muted/30 transition-colors duration-150 border-b border-border/20 last:border-0",

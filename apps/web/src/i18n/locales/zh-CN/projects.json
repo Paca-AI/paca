@@ -931,6 +931,20 @@
 			"noEpic": "无史诗",
 			"storyPointsTitle": "故事点"
 		},
+		"taskContextMenu": {
+			"open": "打开任务",
+			"moveTo": "移动到",
+			"status": "状态",
+			"assignee": "指派人",
+			"unassigned": "未分配",
+			"type": "类型",
+			"priority": "优先级",
+			"epic": "史诗",
+			"noEpic": "无史诗",
+			"copyId": "复制任务 ID ({{id}})",
+			"copyLink": "复制链接",
+			"delete": "删除任务"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "编号",

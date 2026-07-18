@@ -1,5 +1,5 @@
 import { Check, GripVertical, Layers, Link, User } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
@@ -22,6 +22,7 @@ import type {
 	TaskStatus,
 	TaskType,
 } from "@/lib/project-api";
+import { useHoveredTaskStore } from "@/lib/shortcuts/hovered-task-store";
 import { cn } from "@/lib/utils";
 
 import {
@@ -52,6 +53,12 @@ interface TaskCardProps {
 	 *  its own pointer-based system and would conflict with native HTML5 DnD). */
 	draggable?: boolean;
 	onUpdate?: (taskId: string, payload: UpdatePayload) => void;
+	/** Keyboard-shortcut hooks (Mod+Backspace / Mod+Left / Mod+Right) — fire
+	 * only while this card is hovered. `onMoveLeft`/`onMoveRight` are omitted
+	 * by the caller when there's no adjacent column (e.g. Roadmap view). */
+	onDelete?: (taskId: string) => void;
+	onMoveLeft?: () => void;
+	onMoveRight?: () => void;
 }
 
 export function TaskCard({
@@ -70,11 +77,32 @@ export function TaskCard({
 	canEdit,
 	draggable = canEdit,
 	onUpdate,
+	onDelete,
+	onMoveLeft,
+	onMoveRight,
 }: TaskCardProps) {
 	const { t } = useTranslation("projects");
+	const [isHovered, setIsHovered] = useState(false);
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
+	const [epicOpen, setEpicOpen] = useState(false);
 	const taskType = taskTypes.find((t) => t.id === task.task_type_id);
 	const status = statuses.find((s) => s.id === task.status_id);
+
+	// Keyboard shortcuts act on whichever task is hovered — see
+	// hovered-task-store.ts and lib/shortcuts/provider.tsx.
+	useEffect(() => {
+		if (!isHovered) return;
+		useHoveredTaskStore.getState().setActive({
+			taskId: task.id,
+			canEdit: !!canEdit,
+			open: () => onClick?.(),
+			openEpic: () => setEpicOpen(true),
+			moveLeft: onMoveLeft,
+			moveRight: onMoveRight,
+			delete: () => onDelete?.(task.id),
+		});
+		return () => useHoveredTaskStore.getState().clearActive(task.id);
+	}, [isHovered, canEdit, task.id, onClick, onMoveLeft, onMoveRight, onDelete]);
 
 	/** Renders the chip/indicator for a single field key. */
 	const renderField = (fieldKey: string) => {
@@ -466,7 +494,7 @@ export function TaskCard({
 					? epics.find((e) => e.id === task.parent_task_id)
 					: undefined;
 				return canEdit ? (
-					<Popover key="epic">
+					<Popover key="epic" open={epicOpen} onOpenChange={setEpicOpen}>
 						<PopoverTrigger
 							type="button"
 							onClick={(e) => e.stopPropagation()}
@@ -626,6 +654,8 @@ export function TaskCard({
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
 			onClick={onClick}
+			onMouseEnter={() => setIsHovered(true)}
+			onMouseLeave={() => setIsHovered(false)}
 			className={cn(
 				"group relative rounded-xl border border-border/30 bg-card p-3 shadow-xs cursor-pointer transition-all duration-150 select-none",
 				"hover:border-border/50 hover:shadow-sm",

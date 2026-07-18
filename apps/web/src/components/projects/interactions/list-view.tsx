@@ -23,6 +23,7 @@ import {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface ListViewProps {
+	projectId: string;
 	tasks: Task[];
 	taskIdPrefix?: string;
 	statuses: TaskStatus[];
@@ -57,6 +58,8 @@ export interface ListViewProps {
 		},
 	) => Promise<void>;
 	onCreateSprint?: () => void;
+	/** Opens the delete-confirmation dialog — Mod+Backspace shortcut. */
+	onDeleteTask?: (taskId: string) => void;
 	onCollapseChange?: (collapsedColumns: string[]) => void;
 	columnPagination?: Record<
 		string,
@@ -73,6 +76,7 @@ export interface ListViewProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ListView({
+	projectId,
 	tasks,
 	taskIdPrefix = "",
 	statuses,
@@ -93,6 +97,7 @@ export function ListView({
 	sprints,
 	onStartSprint,
 	onCreateSprint,
+	onDeleteTask,
 	onCollapseChange,
 	columnPagination,
 }: ListViewProps) {
@@ -202,7 +207,7 @@ export function ListView({
 
 	return (
 		<div className="flex flex-col overflow-auto">
-			{effectiveGroupDefs.map((grp) => {
+			{effectiveGroupDefs.map((grp, idx) => {
 				const groupTasks = getGroupTasks(grp.key);
 				const status = isStatusGrouping
 					? statuses.find((s) => s.id === grp.key)
@@ -217,6 +222,15 @@ export function ListView({
 					<ListGroup
 						key={grp.key}
 						groupDef={grp}
+						prevGroupDef={idx > 0 ? effectiveGroupDefs[idx - 1] : undefined}
+						nextGroupDef={
+							idx < effectiveGroupDefs.length - 1
+								? effectiveGroupDefs[idx + 1]
+								: undefined
+						}
+						allGroupDefs={effectiveGroupDefs}
+						onDeleteTask={onDeleteTask}
+						projectId={projectId}
 						tasks={groupTasks}
 						statuses={statuses}
 						taskTypes={taskTypes}

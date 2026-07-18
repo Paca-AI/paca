@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 import { AddTaskRow } from "./add-task-row";
 import { StartSprintModal } from "./start-sprint-modal";
+import { TaskContextMenu } from "./task-context-menu";
 import { getRowColConfig, TaskRow } from "./task-row";
 import {
 	buildColumnDropUpdate,
@@ -68,6 +69,14 @@ export interface ListGroupProps {
 	/** Extra fields merged into the create-task payload (e.g. sprint_id) */
 	extraCreateFields?: TaskFieldUpdate;
 	columnBy?: string;
+	/** Adjacent groups for the Mod+Left/Right "move column" shortcut. */
+	prevGroupDef?: ColumnGroupDef;
+	nextGroupDef?: ColumnGroupDef;
+	/** All groups of the active view, for the context menu's "Move to" submenu. */
+	allGroupDefs?: ColumnGroupDef[];
+	/** Opens the delete-confirmation dialog — Mod+Backspace shortcut. */
+	onDeleteTask?: (taskId: string) => void;
+	projectId: string;
 	onCollapseChange?: (collapsed: boolean) => void;
 	groupPagination?: {
 		hasMore: boolean;
@@ -110,6 +119,11 @@ export function ListGroup({
 	onCreateSprint,
 	extraCreateFields,
 	columnBy,
+	prevGroupDef,
+	nextGroupDef,
+	allGroupDefs,
+	onDeleteTask,
+	projectId,
 	onCollapseChange,
 	groupPagination,
 	totalCount,
@@ -130,6 +144,23 @@ export function ListGroup({
 
 	const isDraggable = !!(canEdit || manualSort);
 	const getViewCtxTasks = () => orderedTasks;
+
+	/** Moves a task into `targetGroupDef` — mirrors the cross-group drop
+	 * branch below so the Mod+Left/Right shortcut behaves identically to
+	 * dragging a row into an adjacent group. */
+	const moveTaskToGroupDef = (task: Task, targetGroupDef: ColumnGroupDef) => {
+		if (isStatusGrouping) {
+			onStatusChange?.(task.id, targetGroupDef.key);
+			return;
+		}
+		const colUpdate = buildColumnDropUpdate(
+			columnBy,
+			targetGroupDef.fieldValue,
+			customFields,
+		);
+		if (Object.keys(colUpdate).length > 0)
+			onUpdateTaskField?.(task.id, colUpdate);
+	};
 
 	// Builds onCreateTask arguments for either grouping mode
 	const handleAdd = (title: string, typeId: string | null) => {
@@ -389,21 +420,48 @@ export function ListGroup({
 					: (e) => handleIntraGroupDrop(e, task, index)
 			}
 		>
-			<TaskRow
+			<TaskContextMenu
 				task={task}
-				taskIdPrefix={taskIdPrefix}
 				statuses={statuses}
 				taskTypes={taskTypes}
 				members={members}
 				epics={epics}
-				customFields={customFields}
-				visibleFields={visibleFields}
-				onClick={() => onTaskClick(task)}
-				showDragHandle={isDraggable}
-				isDragging={draggingId === task.id}
-				canEdit={canEdit}
-				onUpdateTaskField={onUpdateTaskField}
-			/>
+				canEdit={!!canEdit}
+				onOpen={() => onTaskClick(task)}
+				onUpdate={onUpdateTaskField}
+				onDelete={canEdit ? onDeleteTask : undefined}
+				columnDefs={allGroupDefs}
+				onMoveToColumnDef={moveTaskToGroupDef}
+				taskIdPrefix={taskIdPrefix}
+				projectId={projectId}
+			>
+				<TaskRow
+					task={task}
+					taskIdPrefix={taskIdPrefix}
+					statuses={statuses}
+					taskTypes={taskTypes}
+					members={members}
+					epics={epics}
+					customFields={customFields}
+					visibleFields={visibleFields}
+					onClick={() => onTaskClick(task)}
+					showDragHandle={isDraggable}
+					isDragging={draggingId === task.id}
+					canEdit={canEdit}
+					onUpdateTaskField={onUpdateTaskField}
+					onDelete={canEdit ? onDeleteTask : undefined}
+					onMoveLeft={
+						canEdit && prevGroupDef
+							? () => moveTaskToGroupDef(task, prevGroupDef)
+							: undefined
+					}
+					onMoveRight={
+						canEdit && nextGroupDef
+							? () => moveTaskToGroupDef(task, nextGroupDef)
+							: undefined
+					}
+				/>
+			</TaskContextMenu>
 		</div>
 	);
 

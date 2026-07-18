@@ -9,6 +9,7 @@ import plugins from "./locales/en/plugins.json";
 import profile from "./locales/en/profile.json";
 import projects from "./locales/en/projects.json";
 import shared from "./locales/en/shared.json";
+import shortcuts from "./locales/en/shortcuts.json";
 
 declare module "i18next" {
 	interface CustomTypeOptions {
@@ -23,6 +24,7 @@ declare module "i18next" {
 			profile: typeof profile;
 			projects: typeof projects;
 			shared: typeof shared;
+			shortcuts: typeof shortcuts;
 		};
 	}
 }

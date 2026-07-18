@@ -16,6 +16,7 @@ import {
 	currentUserQueryOptions,
 } from "@/lib/auth-api";
 import { PluginRegistryProvider } from "@/lib/plugins/registry";
+import { ShortcutProvider } from "@/lib/shortcuts/provider";
 import {
 	connectSocket,
 	disconnectSocket,
@@ -113,24 +114,26 @@ function AuthenticatedLayout() {
 
 	return (
 		<PluginRegistryProvider>
-			<SidebarProvider className="h-svh">
-				<AppSidebar />
-				<SidebarInset className="min-w-0 overflow-hidden">
-					<header className="flex h-12 shrink-0 items-center gap-2 bg-background border-b border-border/40 px-4 sticky top-0 z-10">
-						<div className="absolute inset-x-0 bottom-0 h-px bg-border/40" />
-						<SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground transition-colors" />
-						<div className="w-px h-4 bg-border/60" />
-						{user && (
-							<div className="ml-auto">
-								<NotificationBell />
-							</div>
-						)}
-					</header>
-					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-						<Outlet />
-					</div>
-				</SidebarInset>
-			</SidebarProvider>
+			<ShortcutProvider>
+				<SidebarProvider className="h-svh">
+					<AppSidebar />
+					<SidebarInset className="min-w-0 overflow-hidden">
+						<header className="flex h-12 shrink-0 items-center gap-2 bg-background border-b border-border/40 px-4 sticky top-0 z-10">
+							<div className="absolute inset-x-0 bottom-0 h-px bg-border/40" />
+							<SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground transition-colors" />
+							<div className="w-px h-4 bg-border/60" />
+							{user && (
+								<div className="ml-auto">
+									<NotificationBell />
+								</div>
+							)}
+						</header>
+						<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+							<Outlet />
+						</div>
+					</SidebarInset>
+				</SidebarProvider>
+			</ShortcutProvider>
 		</PluginRegistryProvider>
 	);
 }

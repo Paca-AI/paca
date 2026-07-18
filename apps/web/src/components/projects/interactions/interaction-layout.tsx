@@ -15,6 +15,7 @@ import {
 	ChevronDown,
 	KanbanSquare,
 	List,
+	Loader2,
 	Map as MapIcon,
 	Plus,
 	Puzzle,
@@ -25,6 +26,15 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -41,6 +51,7 @@ import {
 	createSprint,
 	createTask,
 	createViewByContext,
+	deleteTask,
 	deleteViewById,
 	epicTasksQueryOptions,
 	type FilterConfig,
@@ -73,6 +84,8 @@ import {
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
 } from "@/lib/project-api";
+import { formatChord, isMacPlatform } from "@/lib/shortcuts/keymap";
+import { usePageShortcutStore } from "@/lib/shortcuts/page-shortcut-store";
 import { cn } from "@/lib/utils";
 import { BoardView } from "./board-view";
 import { ListView } from "./list-view";
@@ -1267,6 +1280,24 @@ export function InteractionLayout({
 		[projectId, qc, tasksListQueryKey],
 	);
 
+	// ── Delete task (Mod+Backspace shortcut / context menu) ─────────────────
+	const [deleteConfirmTask, setDeleteConfirmTask] = useState<Task | null>(null);
+	const deleteTaskMutation = useMutation({
+		mutationFn: (taskId: string) => deleteTask(projectId, taskId),
+		onSuccess: (_, taskId) => {
+			qc.invalidateQueries({ queryKey: tasksListQueryKey });
+			setDeleteConfirmTask(null);
+			if (selectedTaskId === taskId) setSelectedTaskId(null);
+		},
+	});
+	const handleRequestDeleteTask = useCallback(
+		(taskId: string) => {
+			const task = tasks.find((t) => t.id === taskId);
+			if (task) setDeleteConfirmTask(task);
+		},
+		[tasks],
+	);
+
 	const createViewMutation = useMutation({
 		mutationFn: (payload: {
 			name: string;
@@ -1376,6 +1407,43 @@ export function InteractionLayout({
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
 		},
 	});
+
+	// ── Keyboard shortcuts (page scope) ─────────────────────────────────────
+	const viewContentRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		usePageShortcutStore.getState().setActive({
+			prevView: () => {
+				if (displayViews.length < 2) return;
+				const idx = displayViews.findIndex((v) => v.id === activeView?.id);
+				const prevIdx = idx <= 0 ? displayViews.length - 1 : idx - 1;
+				setPreferredViewId(displayViews[prevIdx].id);
+			},
+			nextView: () => {
+				if (displayViews.length < 2) return;
+				const idx = displayViews.findIndex((v) => v.id === activeView?.id);
+				const nextIdx =
+					idx === -1 || idx === displayViews.length - 1 ? 0 : idx + 1;
+				setPreferredViewId(displayViews[nextIdx].id);
+			},
+			focusSearch: () => {
+				setSearchOpen(true);
+				setTimeout(() => searchRef.current?.focus(), 0);
+			},
+			toggleViewSettings: () => {
+				if (!activeView || activeView.layout === "Plugin") return;
+				setSettingsOpen((prev) => !prev);
+			},
+			focusCreateTask: () => {
+				viewContentRef.current
+					?.querySelector<HTMLButtonElement>(
+						'[data-shortcut="add-task-trigger"]',
+					)
+					?.click();
+			},
+		});
+		return () => usePageShortcutStore.getState().clearActive();
+	}, [displayViews, activeView]);
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
@@ -1560,6 +1628,7 @@ export function InteractionLayout({
 						<button
 							type="button"
 							onClick={() => setSearchOpen(true)}
+							title={`${t("layout.shell.searchTasksPlaceholder")} (${formatChord({ mod: true, key: "F" }, isMacPlatform())})`}
 							className="flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 						>
 							<Search className="size-3.5" />
@@ -1583,7 +1652,10 @@ export function InteractionLayout({
 			</div>
 
 			{/* View content */}
-			<div className="flex flex-1 flex-col overflow-hidden">
+			<div
+				ref={viewContentRef}
+				className="flex flex-1 flex-col overflow-hidden"
+			>
 				{activePluginView ? (
 					<RemoteComponent
 						registration={activePluginView}
@@ -1629,6 +1701,7 @@ export function InteractionLayout({
 						onTaskClick={handleTaskClick}
 						onUpdateTask={canEdit ? handleMoveToColumn : undefined}
 						onMoveToColumn={canEdit ? handleMoveToColumn : undefined}
+						onDeleteTask={canEdit ? handleRequestDeleteTask : undefined}
 						manualSort={isManualSort}
 						onReorderTask={effectiveViewId ? handleReorderTask : undefined}
 						onCollapseChange={
@@ -1661,6 +1734,7 @@ export function InteractionLayout({
 					/>
 				) : (
 					<ListView
+						projectId={projectId}
 						tasks={tasks}
 						taskIdPrefix={taskIdPrefix}
 						statuses={statuses}
@@ -1679,6 +1753,7 @@ export function InteractionLayout({
 						canEdit={canEdit}
 						sortBy={activeViewConfig?.sort_by}
 						onUpdateTaskField={canEdit ? handleMoveToColumn : undefined}
+						onDeleteTask={canEdit ? handleRequestDeleteTask : undefined}
 						sprints={context === "backlog" ? sprints : undefined}
 						onStartSprint={
 							context === "backlog" && canCreate
@@ -1748,6 +1823,49 @@ export function InteractionLayout({
 				members={members}
 				canEdit={canEdit}
 			/>
+
+			<Dialog
+				open={!!deleteConfirmTask}
+				onOpenChange={(v) => {
+					if (!v) setDeleteConfirmTask(null);
+				}}
+			>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>
+							{t("taskDetail.header.deleteDialog.title")}
+						</DialogTitle>
+						<DialogDescription>
+							{t("taskDetail.header.deleteDialog.description", {
+								title: deleteConfirmTask?.title ?? "",
+							})}
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setDeleteConfirmTask(null)}
+							disabled={deleteTaskMutation.isPending}
+						>
+							{t("taskDetail.header.deleteDialog.cancel")}
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={() =>
+								deleteConfirmTask &&
+								deleteTaskMutation.mutate(deleteConfirmTask.id)
+							}
+							disabled={deleteTaskMutation.isPending}
+						>
+							{deleteTaskMutation.isPending ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								t("taskDetail.header.deleteDialog.delete")
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

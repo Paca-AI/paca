@@ -1,0 +1,36 @@
+{
+	"dialog": {
+		"title": "Keyboard shortcuts",
+		"footer": "Task shortcuts act on the card or row under your pointer. Right-click any task for the same actions.",
+		"menuLabel": "Keyboard shortcuts"
+	},
+	"groups": {
+		"goto": "Go to",
+		"general": "General",
+		"page": "Page and views",
+		"task": "Task under cursor"
+	},
+	"actions": {
+		"gotoHome": "Home / all projects",
+		"gotoTimeline": "Timeline",
+		"gotoBacklog": "Product backlog",
+		"gotoActiveSprint": "Active sprint",
+		"gotoAgents": "Agents",
+		"gotoConversations": "Conversations",
+		"gotoAutomation": "Automation",
+		"gotoTeam": "Team",
+		"gotoDocs": "Docs",
+		"gotoSettings": "Project settings",
+		"help": "This help",
+		"sidebar": "Toggle sidebar",
+		"close": "Close / dismiss",
+		"prevNextView": "Previous / next view",
+		"search": "Search tasks",
+		"createTask": "Create task",
+		"viewSettings": "View settings",
+		"open": "Open details",
+		"epic": "Set epic",
+		"moveLeftRight": "Move column left / right",
+		"delete": "Delete task"
+	}
+}

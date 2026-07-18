@@ -1,6 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDown, Key, Languages, LogOut, User } from "lucide-react";
+import {
+	ChevronsUpDown,
+	Key,
+	Keyboard,
+	Languages,
+	LogOut,
+	User,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -25,6 +32,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useLocale } from "@/hooks/use-locale";
 import { currentUserOptionalQueryOptions, logout } from "@/lib/auth-api";
+import { useShortcutHelpStore } from "@/lib/shortcuts/help-dialog-store";
 
 function getInitials(name: string): string {
 	return name
@@ -38,11 +46,13 @@ function getInitials(name: string): string {
 
 export function UserMenu() {
 	const { t } = useTranslation("appShell");
+	const { t: tShortcuts } = useTranslation("shortcuts");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { data: user } = useQuery(currentUserOptionalQueryOptions);
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const { locale, set: setLocale } = useLocale();
+	const openShortcutHelp = useShortcutHelpStore((s) => s.setOpen);
 
 	if (!user) {
 		return (
@@ -133,6 +143,10 @@ export function UserMenu() {
 						>
 							<Key className="size-4" />
 							{t("userMenu.apiKeys")}
+						</DropdownMenuItem>
+						<DropdownMenuItem onClick={() => openShortcutHelp(true)}>
+							<Keyboard className="size-4" />
+							{tShortcuts("dialog.menuLabel")}
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
 						<DropdownMenuSub>

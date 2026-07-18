@@ -931,6 +931,20 @@
 			"noEpic": "Không có Epic",
 			"storyPointsTitle": "Story Points"
 		},
+		"taskContextMenu": {
+			"open": "Mở tác vụ",
+			"moveTo": "Di chuyển đến",
+			"status": "Trạng thái",
+			"assignee": "Người được giao",
+			"unassigned": "Chưa giao",
+			"type": "Loại",
+			"priority": "Độ ưu tiên",
+			"epic": "Epic",
+			"noEpic": "Không có Epic",
+			"copyId": "Sao chép mã tác vụ ({{id}})",
+			"copyLink": "Sao chép liên kết",
+			"delete": "Xóa tác vụ"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

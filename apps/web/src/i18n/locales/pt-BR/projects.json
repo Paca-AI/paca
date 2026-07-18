@@ -931,6 +931,20 @@
 			"noEpic": "Sem épico",
 			"storyPointsTitle": "Story Points"
 		},
+		"taskContextMenu": {
+			"open": "Abrir tarefa",
+			"moveTo": "Mover para",
+			"status": "Status",
+			"assignee": "Responsável",
+			"unassigned": "Sem responsável",
+			"type": "Tipo",
+			"priority": "Prioridade",
+			"epic": "Épico",
+			"noEpic": "Sem épico",
+			"copyId": "Copiar ID da tarefa ({{id}})",
+			"copyLink": "Copiar link",
+			"delete": "Excluir tarefa"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",

@@ -931,6 +931,20 @@
 			"noEpic": "에픽 없음",
 			"storyPointsTitle": "스토리 포인트"
 		},
+		"taskContextMenu": {
+			"open": "작업 열기",
+			"moveTo": "이동",
+			"status": "상태",
+			"assignee": "담당자",
+			"unassigned": "담당자 없음",
+			"type": "유형",
+			"priority": "우선순위",
+			"epic": "에픽",
+			"noEpic": "에픽 없음",
+			"copyId": "작업 ID 복사 ({{id}})",
+			"copyLink": "링크 복사",
+			"delete": "작업 삭제"
+		},
 		"listGroup": {
 			"columnHeaders": {
 				"id": "ID",
