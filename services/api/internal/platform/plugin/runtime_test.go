@@ -340,6 +340,32 @@ func TestSensitiveColumnsForQuery_CoreTable(t *testing.T) {
 	})
 }
 
+// TestSensitiveColumnsForQuery_CommentBypass pins comment-stripping: since
+// PostgreSQL treats a comment as equivalent to whitespace during
+// tokenization, "FROM/*x*/table" parses identically to "FROM table" and
+// must not be able to slip past the FROM/JOIN detection regex just because
+// there's no literal whitespace character between the keyword and the
+// table name.
+func TestSensitiveColumnsForQuery_CommentBypass(t *testing.T) {
+	rt := &Runtime{plugins: map[string]*pluginInstance{}}
+
+	t.Run("block comment between FROM and table name is still detected", func(t *testing.T) {
+		sql := "SELECT * FROM/*x*/users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted despite comment obfuscation, got %v", got)
+		}
+	})
+
+	t.Run("line comment before FROM is still detected", func(t *testing.T) {
+		sql := "SELECT * -- x\nFROM users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted despite comment obfuscation, got %v", got)
+		}
+	})
+}
+
 // TestCheckWriteAllowed pins write-side protection: INSERT/UPDATE/DELETE
 // against a sensitive table (core or another plugin's) is rejected outright
 // unless caller has requested access to it, while writes to the caller's
@@ -374,6 +400,17 @@ func TestCheckWriteAllowed(t *testing.T) {
 		{"owner writing its own schema is unaffected", callerPlugin("com.paca.b"), "UPDATE plugin_data_com_paca_b.customers SET email = $1 WHERE id = $2", false},
 		{"write to own schema table is unaffected", callerPlugin("com.paca.a"), "INSERT INTO my_table (col) VALUES ($1)", false},
 		{"write to non-sensitive core table is unaffected", callerPlugin("com.paca.a"), "UPDATE tasks SET title = $1 WHERE id = $2", false},
+
+		// Regression cases: a pattern-based guard is only as strong as what
+		// it recognizes as a write. These previously bypassed detection
+		// entirely (checkWriteAllowed silently allowed them).
+		{"leading line comment before INSERT no longer bypasses detection", callerPlugin("com.paca.a"), "-- x\nINSERT INTO users (username, password_hash) VALUES ($1, $2)", true},
+		{"block comment between INTO and table no longer bypasses detection", callerPlugin("com.paca.a"), "INSERT INTO/*x*/users (username, password_hash) VALUES ($1, $2)", true},
+		{"INSERT...SELECT exfiltrating from a sensitive table is blocked", callerPlugin("com.paca.a"), "INSERT INTO my_table (stolen) SELECT password_hash FROM users", true},
+		{"UPDATE...FROM exfiltrating from a sensitive table is blocked", callerPlugin("com.paca.a"), "UPDATE my_table SET note = u.password_hash FROM users u WHERE u.id = my_table.uid", true},
+		{"DELETE...USING referencing a sensitive table is blocked", callerPlugin("com.paca.a"), "DELETE FROM my_table USING users WHERE my_table.uid = users.id", true},
+		{"requesting one sensitive column does not exempt a table's other sensitive columns", callerPlugin("com.paca.a", "agents.llm_api_key_secret"), "UPDATE agents SET acp_bridge_token_hash = $1 WHERE id = $2", true},
+		{"requesting every sensitive column of a table does exempt it", callerPlugin("com.paca.a", "agents.llm_api_key_secret", "agents.acp_bridge_token_hash"), "UPDATE agents SET acp_bridge_token_hash = $1 WHERE id = $2", false},
 	}
 
 	for _, tc := range cases {

@@ -744,16 +744,38 @@ var coreSensitiveFields = map[string][]string{
 	"agent_environment_variables": {"encrypted_value"},
 }
 
-// fromJoinTableRe extracts (schema, table) pairs referenced after FROM/JOIN
-// in a query's SQL text. Like paca-plugin-dashboard's own query guard, this
-// is a lightweight pattern match rather than a full SQL parser: adequate as
-// a defense-in-depth signal over plugin-authored SQL, not a guarantee for
-// arbitrarily obfuscated queries.
-var fromJoinTableRe = regexp.MustCompile(`(?i)\b(?:from|join)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+// sqlCommentRe matches SQL line comments (-- ...) and block comments
+// (/* ... */, including ones spanning multiple lines). PostgreSQL treats a
+// comment as equivalent to whitespace during tokenization — e.g.
+// "FROM/*x*/table" parses identically to "FROM table" — so comments must be
+// stripped (replaced with a space, to keep tokens from merging) before
+// running the table-reference regexes below. Otherwise a plugin could
+// trivially defeat both read redaction and write blocking by inserting a
+// comment between a keyword and the table name it introduces.
+var sqlCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/|--[^\n]*`)
 
-// writeTargetRe extracts the (schema, table) pair a single INSERT/UPDATE/
-// DELETE statement writes to.
-var writeTargetRe = regexp.MustCompile(`(?i)^\s*(?:insert\s+into|update|delete\s+from)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+func stripSQLComments(sqlStr string) string {
+	return sqlCommentRe.ReplaceAllString(sqlStr, " ")
+}
+
+// tableRefRe extracts (schema, table) pairs referenced after FROM, JOIN,
+// INTO, or USING anywhere in a query's SQL text — covering SELECT/DELETE's
+// FROM, JOIN, INSERT's INTO, the source side of UPDATE ... FROM ..., and
+// DELETE ... USING .... It is intentionally unanchored (not tied to
+// statement start or type), so it also matches table references nested
+// inside WITH-CTE bodies and INSERT ... SELECT ... FROM subqueries.
+//
+// Like paca-plugin-dashboard's own query guard, this is a lightweight
+// pattern match rather than a full SQL parser: adequate as a
+// defense-in-depth signal over plugin-authored SQL, not a guarantee for
+// arbitrarily obfuscated queries. Callers must run stripSQLComments on
+// sqlStr first.
+var tableRefRe = regexp.MustCompile(`(?i)\b(?:from|join|into|using)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+
+// updateTargetRe extracts the (schema, table) pair immediately following
+// UPDATE — the write target of an UPDATE statement, which (unlike INSERT
+// and DELETE) isn't introduced by FROM/INTO/USING.
+var updateTargetRe = regexp.MustCompile(`(?i)\bupdate\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
 
 // tableRef is a (possibly schema-qualified) table reference extracted from
 // SQL text. Schema is empty when the reference is unqualified.
@@ -762,28 +784,34 @@ type tableRef struct {
 	table  string
 }
 
-func referencedTables(sqlStr string) []tableRef {
-	matches := fromJoinTableRe.FindAllStringSubmatch(sqlStr, -1)
-	refs := make([]tableRef, 0, len(matches))
-	for _, m := range matches {
-		if m[2] != "" {
-			refs = append(refs, tableRef{schema: strings.ToLower(m[1]), table: strings.ToLower(m[2])})
-		} else {
-			refs = append(refs, tableRef{table: strings.ToLower(m[1])})
-		}
+// newTableRef builds a tableRef from a regex match's two capture groups:
+// first is always the leading identifier, second is only non-empty when the
+// reference was schema-qualified (first.second) — in which case first is
+// the schema, not the table.
+func newTableRef(first, second string) tableRef {
+	if second != "" {
+		return tableRef{schema: strings.ToLower(first), table: strings.ToLower(second)}
 	}
-	return refs
+	return tableRef{table: strings.ToLower(first)}
 }
 
-func writeTargetTable(sqlStr string) (tableRef, bool) {
-	m := writeTargetRe.FindStringSubmatch(sqlStr)
-	if m == nil {
-		return tableRef{}, false
+// referencedTables extracts every (schema, table) reference in sqlStr —
+// every FROM/JOIN/INTO/USING target plus every UPDATE target — regardless
+// of where in the statement it appears. It deliberately over-matches rather
+// than trying to identify a single "primary" table, since a single
+// statement (UPDATE ... FROM, DELETE ... USING, INSERT ... SELECT ... FROM)
+// can touch more than one table at once; every table it touches is treated
+// the same way by both read redaction and write blocking.
+func referencedTables(sqlStr string) []tableRef {
+	stripped := stripSQLComments(sqlStr)
+	var refs []tableRef
+	for _, m := range tableRefRe.FindAllStringSubmatch(stripped, -1) {
+		refs = append(refs, newTableRef(m[1], m[2]))
 	}
-	if m[2] != "" {
-		return tableRef{schema: strings.ToLower(m[1]), table: strings.ToLower(m[2])}, true
+	for _, m := range updateTargetRe.FindAllStringSubmatch(stripped, -1) {
+		refs = append(refs, newTableRef(m[1], m[2]))
 	}
-	return tableRef{table: strings.ToLower(m[1])}, true
+	return refs
 }
 
 // sensitiveTableColumns returns the sensitive columns declared for a
@@ -865,29 +893,33 @@ func (r *Runtime) sensitiveColumnsForQuery(caller plugindom.Plugin, sqlStr strin
 }
 
 // checkWriteAllowed rejects an INSERT/UPDATE/DELETE statement outright when
-// its target table has sensitive columns declared (core, or another
-// plugin's own SensitiveFields) that caller hasn't requested access to.
+// any table it references — its write target, or a source table pulled in
+// via UPDATE ... FROM, DELETE ... USING, or INSERT ... SELECT ... FROM —
+// has a declared-sensitive column (core, or another plugin's own
+// SensitiveFields) that caller hasn't requested access to. A table's
+// sensitive columns must *all* be individually requested for that table to
+// be exempted: requesting access to one sensitive column of a table does
+// not grant access to that table's other, unrequested sensitive columns.
+//
 // Unlike reads, sensitivity can't be masked away column-by-column for a
-// write, so the whole statement is blocked before it ever reaches Postgres.
-// A table with no declared sensitive columns is unaffected (out of scope,
-// same boundary as read redaction). funcName is used only in the returned
-// error to name the host function that rejected the call.
+// write — the value could already have been copied into another column, or
+// into the caller's own schema, by the time the statement finishes — so
+// the whole statement is rejected before it ever reaches Postgres. A table
+// with no declared sensitive columns is unaffected (out of scope, same
+// boundary as read redaction). funcName is used only in the returned error
+// to name the host function that rejected the call.
 func (r *Runtime) checkWriteAllowed(caller plugindom.Plugin, sqlStr, funcName string) error {
-	ref, ok := writeTargetTable(sqlStr)
-	if !ok {
-		return nil
-	}
 	callerSchema := schemaName(caller.Name)
-	owner, cols := r.sensitiveTableColumns(callerSchema, ref)
-	if len(cols) == 0 {
-		return nil
-	}
-	for _, col := range cols {
-		if isRequestedSensitiveField(caller, owner, ref.table, col) {
-			return nil
+	for _, ref := range referencedTables(sqlStr) {
+		owner, cols := r.sensitiveTableColumns(callerSchema, ref)
+		for _, col := range cols {
+			if isRequestedSensitiveField(caller, owner, ref.table, col) {
+				continue
+			}
+			return fmt.Errorf("%s: table %q has sensitive fields this plugin has not requested access to (declare requestedSensitiveFields in plugin.json)", funcName, ref.table)
 		}
 	}
-	return fmt.Errorf("%s: table %q has sensitive fields this plugin has not requested access to (declare requestedSensitiveFields in plugin.json)", funcName, ref.table)
+	return nil
 }
 
 // redactColumns overwrites every row's value with "***" at each column index
