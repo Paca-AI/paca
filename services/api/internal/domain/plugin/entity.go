@@ -211,6 +211,10 @@ type ExtensionPointRegistration struct {
 	Point string `json:"point"`
 	// Component is the exported React component name from the remote entry.
 	Component string `json:"component"`
+	// Label is the human-readable name shown where the host lists this
+	// registration as a user-facing choice (e.g. the "New view" picker for
+	// the "view" extension point). Falls back to Component when omitted.
+	Label string `json:"label,omitempty"`
 	// Order is the default display order within the extension point.
 	Order int `json:"order,omitempty"`
 }

@@ -12,9 +12,10 @@ import { myProjectPermissionsQueryOptions } from "@/lib/project-api";
  * without requiring access to the full members or roles lists.
  */
 export function useProjectPermissions(projectId: string) {
-	const { data: permissionsMap = {} } = useQuery(
-		myProjectPermissionsQueryOptions(projectId),
-	);
+	const { data: permissionsMap = {} } = useQuery({
+		...myProjectPermissionsQueryOptions(projectId),
+		enabled: !!projectId,
+	});
 
 	// Convert the {perm: boolean} map to the string[] form expected by the
 	// shared hasPermission helper.

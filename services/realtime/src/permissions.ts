@@ -6,14 +6,15 @@
 //   project:<projectId>:tasks      — receives all task.* events
 //   project:<projectId>:docs       — receives all doc.* events
 //   project:<projectId>:workflows  — receives all workflow.* graph events
+//   project:<projectId>:sprints    — receives all sprint.* events
 //
 // Room membership is determined once when the client emits "join": the server
 // fetches the user's project permissions, then joins only the rooms the user is
 // allowed to see.  The Pub/Sub subscriber routes events directly to the correct
 // room with a plain io.to(room).emit() — no per-socket checks needed.
 
-// EventNamespace identifies the three permission-gated sub-domains.
-export type EventNamespace = "tasks" | "docs" | "workflows";
+// EventNamespace identifies the permission-gated sub-domains.
+export type EventNamespace = "tasks" | "docs" | "workflows" | "sprints";
 
 // NAMESPACE_PERMISSIONS maps each namespace to the project permission required
 // to receive events in that namespace.
@@ -21,6 +22,7 @@ export const NAMESPACE_PERMISSIONS: Record<EventNamespace, string> = {
 	tasks: "tasks.read",
 	docs: "docs.read",
 	workflows: "workflows.read",
+	sprints: "sprints.read",
 };
 
 // projectRoomName returns the Socket.IO room name for a project + namespace pair.
@@ -50,6 +52,7 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// itself (nodes, edges, rules, transitions, lifecycle) and require
 	// workflows.read — a permission distinct from tasks.read.
 	if (type.startsWith("workflow.")) return "workflows";
+	if (type.startsWith("sprint.")) return "sprints";
 	return undefined;
 }
 

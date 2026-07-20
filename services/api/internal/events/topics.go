@@ -72,6 +72,12 @@ const (
 	TopicDocCommentUpdated = "doc.comment.updated"
 	TopicDocCommentDeleted = "doc.comment.deleted"
 
+	// --- Sprint events --------------------------------------------------------
+	TopicSprintCreated   = "sprint.created"
+	TopicSprintUpdated   = "sprint.updated"
+	TopicSprintDeleted   = "sprint.deleted"
+	TopicSprintCompleted = "sprint.completed"
+
 	// --- Notification events ------------------------------------------------
 	// TopicNotificationCreated is published to ChannelRealtime when a new
 	// notification is created.  The payload includes recipient_user_id so the
