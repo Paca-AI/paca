@@ -763,19 +763,38 @@ func stripSQLComments(sqlStr string) string {
 // FROM, JOIN, INSERT's INTO, the source side of UPDATE ... FROM ..., and
 // DELETE ... USING .... It is intentionally unanchored (not tied to
 // statement start or type), so it also matches table references nested
-// inside WITH-CTE bodies and INSERT ... SELECT ... FROM subqueries.
+// inside WITH-CTE bodies and INSERT ... SELECT ... FROM subqueries. The
+// optional ONLY keyword (e.g. "DELETE FROM ONLY users") is skipped so it
+// isn't mistaken for the table name itself.
 //
 // Like paca-plugin-dashboard's own query guard, this is a lightweight
 // pattern match rather than a full SQL parser: adequate as a
 // defense-in-depth signal over plugin-authored SQL, not a guarantee for
 // arbitrarily obfuscated queries. Callers must run stripSQLComments on
 // sqlStr first.
-var tableRefRe = regexp.MustCompile(`(?i)\b(?:from|join|into|using)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+var tableRefRe = regexp.MustCompile(`(?i)\b(?:from|join|into|using)\s+(?:only\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
 
 // updateTargetRe extracts the (schema, table) pair immediately following
 // UPDATE — the write target of an UPDATE statement, which (unlike INSERT
 // and DELETE) isn't introduced by FROM/INTO/USING.
-var updateTargetRe = regexp.MustCompile(`(?i)\bupdate\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+var updateTargetRe = regexp.MustCompile(`(?i)\bupdate\s+(?:only\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+
+// tableShorthandRe extracts the (schema, table) pair from PostgreSQL's
+// "TABLE name" shorthand for "SELECT * FROM name", which can appear as a
+// full statement or nested in a FROM clause (e.g. "FROM (TABLE users) u").
+var tableShorthandRe = regexp.MustCompile(`(?i)\btable\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+
+// fromClauseRe captures the full comma-separated table list following a
+// FROM keyword, stopping at the next clause keyword that can legally follow
+// one (or a closing paren/semicolon/end of string). It exists to catch
+// old-style implicit joins ("FROM a, b, c"), where every table after the
+// first is introduced by a comma rather than by FROM/JOIN/INTO/USING and so
+// wouldn't otherwise be matched by tableRefRe.
+var fromClauseRe = regexp.MustCompile(`(?i)\bfrom\s+(.+?)(?:\s+(?:where|group\s+by|order\s+by|having|limit|offset|on|join|returning|union|except|intersect|window|fetch|for)\b|\)|;|$)`)
+
+// leadingTableRefRe extracts the (schema, table) pair at the start of a
+// single comma-separated FROM-list item, ignoring any trailing alias.
+var leadingTableRefRe = regexp.MustCompile(`(?i)^\s*(?:only\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
 
 // tableRef is a (possibly schema-qualified) table reference extracted from
 // SQL text. Schema is empty when the reference is unqualified.
@@ -795,13 +814,45 @@ func newTableRef(first, second string) tableRef {
 	return tableRef{table: strings.ToLower(first)}
 }
 
+// commaJoinedTables splits a FROM clause's table list on top-level commas
+// (tracking paren depth, so a comma inside a nested subquery doesn't split
+// the list) and extracts the leading table reference from each item,
+// discarding any trailing alias.
+func commaJoinedTables(list string) []tableRef {
+	var refs []tableRef
+	depth, start := 0, 0
+	var items []string
+	for i, ch := range list {
+		switch ch {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				items = append(items, list[start:i])
+				start = i + 1
+			}
+		}
+	}
+	items = append(items, list[start:])
+	for _, item := range items {
+		if m := leadingTableRefRe.FindStringSubmatch(item); m != nil {
+			refs = append(refs, newTableRef(m[1], m[2]))
+		}
+	}
+	return refs
+}
+
 // referencedTables extracts every (schema, table) reference in sqlStr —
-// every FROM/JOIN/INTO/USING target plus every UPDATE target — regardless
-// of where in the statement it appears. It deliberately over-matches rather
-// than trying to identify a single "primary" table, since a single
-// statement (UPDATE ... FROM, DELETE ... USING, INSERT ... SELECT ... FROM)
-// can touch more than one table at once; every table it touches is treated
-// the same way by both read redaction and write blocking.
+// every FROM/JOIN/INTO/USING target, every UPDATE target, every TABLE
+// shorthand reference, and every table in a comma-separated FROM list —
+// regardless of where in the statement it appears. It deliberately
+// over-matches rather than trying to identify a single "primary" table,
+// since a single statement (UPDATE ... FROM, DELETE ... USING,
+// INSERT ... SELECT ... FROM, "FROM a, b, c") can touch more than one table
+// at once; every table it touches is treated the same way by both read
+// redaction and write blocking.
 func referencedTables(sqlStr string) []tableRef {
 	stripped := stripSQLComments(sqlStr)
 	var refs []tableRef
@@ -810,6 +861,12 @@ func referencedTables(sqlStr string) []tableRef {
 	}
 	for _, m := range updateTargetRe.FindAllStringSubmatch(stripped, -1) {
 		refs = append(refs, newTableRef(m[1], m[2]))
+	}
+	for _, m := range tableShorthandRe.FindAllStringSubmatch(stripped, -1) {
+		refs = append(refs, newTableRef(m[1], m[2]))
+	}
+	for _, m := range fromClauseRe.FindAllStringSubmatch(stripped, -1) {
+		refs = append(refs, commaJoinedTables(m[1])...)
 	}
 	return refs
 }
@@ -872,13 +929,31 @@ func isRequestedSensitiveField(caller plugindom.Plugin, owner, table, col string
 	return false
 }
 
+// sensitiveColumnAliasRe finds "<col> AS <alias>" for a specific sensitive
+// column name — built per-column since the name is interpolated into the
+// pattern — so that redaction can key on the result column's alias, not
+// just its un-aliased name. redactColumns only ever sees the query's output
+// column names, so "SELECT password_hash AS ph FROM users" would otherwise
+// return "ph" unredacted even though sensitiveColumnsForQuery correctly
+// identified users.password_hash as sensitive: it never connects "ph" back
+// to "password_hash" without this. Requires the explicit AS keyword — an
+// implicit alias ("password_hash ph") isn't distinguishable by pattern
+// match alone from "password_hash FROM ..." (FROM would parse as the
+// "alias") without a real parser, so it isn't covered.
+func sensitiveColumnAliasRe(col string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(col) + `\s+as\s+"?([A-Za-z_][A-Za-z0-9_]*)"?`)
+}
+
 // sensitiveColumnsForQuery returns the set of lowercased column names that
 // must be redacted in the result of sqlStr run by caller: for every
 // FROM/JOIN table the query references, any sensitive column declared for
 // it (core, or another plugin's own SensitiveFields) that caller hasn't
-// explicitly requested access to via its own RequestedSensitiveFields.
+// explicitly requested access to via its own RequestedSensitiveFields —
+// plus any "AS alias" the query renames that column to, so the alias is
+// redacted in the result under its own name too (see sensitiveColumnAliasRe).
 func (r *Runtime) sensitiveColumnsForQuery(caller plugindom.Plugin, sqlStr string) map[string]struct{} {
 	callerSchema := schemaName(caller.Name)
+	stripped := stripSQLComments(sqlStr)
 	sensitive := make(map[string]struct{})
 	for _, ref := range referencedTables(sqlStr) {
 		owner, cols := r.sensitiveTableColumns(callerSchema, ref)
@@ -887,6 +962,9 @@ func (r *Runtime) sensitiveColumnsForQuery(caller plugindom.Plugin, sqlStr strin
 				continue
 			}
 			sensitive[strings.ToLower(col)] = struct{}{}
+			for _, m := range sensitiveColumnAliasRe(col).FindAllStringSubmatch(stripped, -1) {
+				sensitive[strings.ToLower(m[1])] = struct{}{}
+			}
 		}
 	}
 	return sensitive

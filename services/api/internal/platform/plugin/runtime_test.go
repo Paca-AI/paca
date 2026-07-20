@@ -366,6 +366,57 @@ func TestSensitiveColumnsForQuery_CommentBypass(t *testing.T) {
 	})
 }
 
+// TestSensitiveColumnsForQuery_SyntaxVariants pins detection of standard
+// Postgres syntax that the original pattern set missed: old-style
+// comma-joins, the "TABLE name" shorthand, and result-column aliasing that
+// would otherwise let the aliased name slip past redaction untouched.
+func TestSensitiveColumnsForQuery_SyntaxVariants(t *testing.T) {
+	rt := &Runtime{plugins: map[string]*pluginInstance{}}
+
+	t.Run("comma-joined table beyond the first is detected", func(t *testing.T) {
+		sql := "SELECT password_hash FROM tasks, users WHERE tasks.user_id = users.id"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted for a comma-joined table, got %v", got)
+		}
+	})
+
+	t.Run("TABLE shorthand nested in a FROM clause is detected", func(t *testing.T) {
+		sql := "SELECT password_hash FROM (TABLE users) u"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted via TABLE shorthand, got %v", got)
+		}
+	})
+
+	t.Run("result column alias is redacted under its own name", func(t *testing.T) {
+		sql := "SELECT password_hash AS ph FROM users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["ph"]; !ok {
+			t.Fatalf("expected alias %q to be redacted, got %v", "ph", got)
+		}
+	})
+
+	t.Run("table-qualified column alias is redacted under its own name", func(t *testing.T) {
+		sql := "SELECT u.password_hash AS ph FROM users u"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["ph"]; !ok {
+			t.Fatalf("expected alias %q to be redacted, got %v", "ph", got)
+		}
+	})
+
+	t.Run("unrelated columns do not spuriously gain aliases", func(t *testing.T) {
+		sql := "SELECT id, username FROM users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["id"]; ok {
+			t.Fatalf("did not expect id redacted, got %v", got)
+		}
+		if _, ok := got["username"]; ok {
+			t.Fatalf("did not expect username redacted, got %v", got)
+		}
+	})
+}
+
 // TestCheckWriteAllowed pins write-side protection: INSERT/UPDATE/DELETE
 // against a sensitive table (core or another plugin's) is rejected outright
 // unless caller has requested access to it, while writes to the caller's
@@ -411,6 +462,9 @@ func TestCheckWriteAllowed(t *testing.T) {
 		{"DELETE...USING referencing a sensitive table is blocked", callerPlugin("com.paca.a"), "DELETE FROM my_table USING users WHERE my_table.uid = users.id", true},
 		{"requesting one sensitive column does not exempt a table's other sensitive columns", callerPlugin("com.paca.a", "agents.llm_api_key_secret"), "UPDATE agents SET acp_bridge_token_hash = $1 WHERE id = $2", true},
 		{"requesting every sensitive column of a table does exempt it", callerPlugin("com.paca.a", "agents.llm_api_key_secret", "agents.acp_bridge_token_hash"), "UPDATE agents SET acp_bridge_token_hash = $1 WHERE id = $2", false},
+		{"DELETE FROM ONLY a sensitive table is blocked", callerPlugin("com.paca.a"), "DELETE FROM ONLY users WHERE id = $1", true},
+		{"UPDATE ONLY a sensitive table is blocked", callerPlugin("com.paca.a"), "UPDATE ONLY users SET password_hash = $1 WHERE id = $2", true},
+		{"comma-joined sensitive table beyond the first is blocked", callerPlugin("com.paca.a"), "INSERT INTO my_table (stolen) SELECT password_hash FROM tasks, users", true},
 	}
 
 	for _, tc := range cases {
