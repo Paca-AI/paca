@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -483,7 +484,7 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 				return
 			}
 
-			result, err := r.execQuery(ctx, schema, sqlStr, paramsJSON)
+			result, err := r.execQuery(ctx, p, schema, sqlStr, paramsJSON)
 			if err != nil {
 				r.log.Error("paca.db_query: exec", "plugin", p.Name, "error", err)
 				return
@@ -518,7 +519,7 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 				return
 			}
 
-			result, err := r.execQuery(ctx, schema, sqlStr, paramsJSON)
+			result, err := r.execQuery(ctx, p, schema, sqlStr, paramsJSON)
 			if err != nil {
 				errPtrLen, writeErr := writeToMemory(m, []byte(err.Error()))
 				if writeErr != nil {
@@ -552,7 +553,7 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 				return
 			}
 
-			rows, err := r.execStatement(ctx, schema, sqlStr, paramsJSON)
+			rows, err := r.execStatement(ctx, p, schema, sqlStr, paramsJSON)
 			if err != nil {
 				errBytes := []byte(err.Error())
 				ptrLen, _ := writeToMemory(m, errBytes)
@@ -630,13 +631,21 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 }
 
 // execQuery runs a SELECT statement scoped to the plugin schema and returns a
-// dbQueryResult JSON-encoded result.
-func (r *Runtime) execQuery(ctx context.Context, schema, sqlStr, paramsJSON string) (*dbQueryResult, error) {
+// dbQueryResult JSON-encoded result. caller is the requesting plugin, used to
+// redact sensitive columns (core, or declared by other plugins) the query
+// reaches, and to gate DML-with-RETURNING writes to sensitive tables (see
+// sensitiveColumnsForQuery and checkWriteAllowed).
+func (r *Runtime) execQuery(ctx context.Context, caller plugindom.Plugin, schema, sqlStr, paramsJSON string) (*dbQueryResult, error) {
 	// Allow SELECT and DML statements that use RETURNING.
 	trimmed := strings.TrimSpace(strings.ToUpper(sqlStr))
 	isDML := strings.HasPrefix(trimmed, "INSERT") || strings.HasPrefix(trimmed, "UPDATE") || strings.HasPrefix(trimmed, "DELETE")
 	if !strings.HasPrefix(trimmed, "SELECT") && (!isDML || !strings.Contains(trimmed, "RETURNING")) {
 		return nil, fmt.Errorf("paca.db_query: only SELECT and DML with RETURNING statements are allowed")
+	}
+	if isDML {
+		if err := r.checkWriteAllowed(caller, sqlStr, "paca.db_query"); err != nil {
+			return nil, err
+		}
 	}
 
 	var queryParams []any
@@ -702,16 +711,208 @@ func (r *Runtime) execQuery(ctx context.Context, schema, sqlStr, paramsJSON stri
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("paca.db_query: commit: %w", err)
 	}
+
+	if sensitive := r.sensitiveColumnsForQuery(caller, sqlStr); len(sensitive) > 0 {
+		redactColumns(result.Columns, result.Rows, sensitive)
+	}
+
 	return result, nil
 }
 
+// coreSensitiveFields lists platform database columns that
+// db_query/db_query2/db_exec must always treat as sensitive, regardless of
+// which schema a plugin's search_path resolves them through. Nobody "owns"
+// this data the way a plugin owns its own schema (declared via
+// BackendManifest.SensitiveFields) — a plugin may only read or write it if
+// it explicitly lists the field in its own manifest's
+// RequestedSensitiveFields, which must be surfaced to admins in the plugin
+// marketplace before install so the request is visible, not silently
+// granted.
+//
+// github_integrations/github_repositories used to live here too (they
+// predate the per-plugin schema model and lived in core `public`), but
+// migrations/000007_remove_github_tables.sql dropped them from public and
+// paca-plugin-github/backend/migrations/0001_create_github_tables.sql
+// recreates them under its own plugin_data_com_paca_github schema — so
+// they're now an ordinary plugin-owned-schema case, protected via that
+// plugin's own BackendManifest.SensitiveFields instead of this registry.
+var coreSensitiveFields = map[string][]string{
+	"users":                       {"password_hash"},
+	"api_keys":                    {"key_hash"},
+	"agents":                      {"llm_api_key_secret", "acp_bridge_token_hash"},
+	"agent_mcp_servers":           {"env"},
+	"agent_environment_variables": {"encrypted_value"},
+}
+
+// fromJoinTableRe extracts (schema, table) pairs referenced after FROM/JOIN
+// in a query's SQL text. Like paca-plugin-dashboard's own query guard, this
+// is a lightweight pattern match rather than a full SQL parser: adequate as
+// a defense-in-depth signal over plugin-authored SQL, not a guarantee for
+// arbitrarily obfuscated queries.
+var fromJoinTableRe = regexp.MustCompile(`(?i)\b(?:from|join)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+
+// writeTargetRe extracts the (schema, table) pair a single INSERT/UPDATE/
+// DELETE statement writes to.
+var writeTargetRe = regexp.MustCompile(`(?i)^\s*(?:insert\s+into|update|delete\s+from)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?)?`)
+
+// tableRef is a (possibly schema-qualified) table reference extracted from
+// SQL text. Schema is empty when the reference is unqualified.
+type tableRef struct {
+	schema string
+	table  string
+}
+
+func referencedTables(sqlStr string) []tableRef {
+	matches := fromJoinTableRe.FindAllStringSubmatch(sqlStr, -1)
+	refs := make([]tableRef, 0, len(matches))
+	for _, m := range matches {
+		if m[2] != "" {
+			refs = append(refs, tableRef{schema: strings.ToLower(m[1]), table: strings.ToLower(m[2])})
+		} else {
+			refs = append(refs, tableRef{table: strings.ToLower(m[1])})
+		}
+	}
+	return refs
+}
+
+func writeTargetTable(sqlStr string) (tableRef, bool) {
+	m := writeTargetRe.FindStringSubmatch(sqlStr)
+	if m == nil {
+		return tableRef{}, false
+	}
+	if m[2] != "" {
+		return tableRef{schema: strings.ToLower(m[1]), table: strings.ToLower(m[2])}, true
+	}
+	return tableRef{table: strings.ToLower(m[1])}, true
+}
+
+// sensitiveTableColumns returns the sensitive columns declared for a
+// resolved (schema, table) reference and, when the table belongs to another
+// plugin's own schema rather than being a core table, that plugin's name
+// (owner is "" for core fields, since nobody owns those). callerSchema is
+// the calling plugin's own schema: a reference into it is never sensitive,
+// since a plugin always has full access to its own data.
+//
+// An unqualified table name (schema == "") can only ever resolve to the
+// caller's own schema or the core `public` schema (search_path never
+// reaches another plugin's schema without explicit qualification), so it's
+// checked against the core registry directly. This means a plugin that
+// happens to name one of its own tables identically to a core table (e.g.
+// "users") would have that column over-redacted/write-blocked too — a
+// fail-safe false positive, not a false negative.
+func (r *Runtime) sensitiveTableColumns(callerSchema string, ref tableRef) (owner string, cols []string) {
+	if ref.schema != "" && strings.EqualFold(ref.schema, callerSchema) {
+		return "", nil
+	}
+	if ref.schema == "" || strings.EqualFold(ref.schema, "public") {
+		return "", coreSensitiveFields[ref.table]
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for name, inst := range r.plugins {
+		if !strings.EqualFold(schemaName(name), ref.schema) {
+			continue
+		}
+		if inst.plugin.Manifest.Backend == nil {
+			return name, nil
+		}
+		return name, inst.plugin.Manifest.Backend.SensitiveFields[ref.table]
+	}
+	return "", nil
+}
+
+// isRequestedSensitiveField reports whether caller's own manifest declares
+// wanting access to table.column, where owner is "" for a core field or the
+// owning plugin's ID for a field declared sensitive in that plugin's own
+// SensitiveFields.
+func isRequestedSensitiveField(caller plugindom.Plugin, owner, table, col string) bool {
+	if caller.Manifest.Backend == nil {
+		return false
+	}
+	var key string
+	if owner == "" {
+		key = table + "." + col
+	} else {
+		key = owner + ":" + table + "." + col
+	}
+	for _, f := range caller.Manifest.Backend.RequestedSensitiveFields {
+		if strings.EqualFold(f, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// sensitiveColumnsForQuery returns the set of lowercased column names that
+// must be redacted in the result of sqlStr run by caller: for every
+// FROM/JOIN table the query references, any sensitive column declared for
+// it (core, or another plugin's own SensitiveFields) that caller hasn't
+// explicitly requested access to via its own RequestedSensitiveFields.
+func (r *Runtime) sensitiveColumnsForQuery(caller plugindom.Plugin, sqlStr string) map[string]struct{} {
+	callerSchema := schemaName(caller.Name)
+	sensitive := make(map[string]struct{})
+	for _, ref := range referencedTables(sqlStr) {
+		owner, cols := r.sensitiveTableColumns(callerSchema, ref)
+		for _, col := range cols {
+			if isRequestedSensitiveField(caller, owner, ref.table, col) {
+				continue
+			}
+			sensitive[strings.ToLower(col)] = struct{}{}
+		}
+	}
+	return sensitive
+}
+
+// checkWriteAllowed rejects an INSERT/UPDATE/DELETE statement outright when
+// its target table has sensitive columns declared (core, or another
+// plugin's own SensitiveFields) that caller hasn't requested access to.
+// Unlike reads, sensitivity can't be masked away column-by-column for a
+// write, so the whole statement is blocked before it ever reaches Postgres.
+// A table with no declared sensitive columns is unaffected (out of scope,
+// same boundary as read redaction). funcName is used only in the returned
+// error to name the host function that rejected the call.
+func (r *Runtime) checkWriteAllowed(caller plugindom.Plugin, sqlStr, funcName string) error {
+	ref, ok := writeTargetTable(sqlStr)
+	if !ok {
+		return nil
+	}
+	callerSchema := schemaName(caller.Name)
+	owner, cols := r.sensitiveTableColumns(callerSchema, ref)
+	if len(cols) == 0 {
+		return nil
+	}
+	for _, col := range cols {
+		if isRequestedSensitiveField(caller, owner, ref.table, col) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s: table %q has sensitive fields this plugin has not requested access to (declare requestedSensitiveFields in plugin.json)", funcName, ref.table)
+}
+
+// redactColumns overwrites every row's value with "***" at each column index
+// whose lowercased name is in sensitive.
+func redactColumns(cols []string, rows [][]any, sensitive map[string]struct{}) {
+	for i, col := range cols {
+		if _, ok := sensitive[strings.ToLower(col)]; !ok {
+			continue
+		}
+		for _, row := range rows {
+			row[i] = "***"
+		}
+	}
+}
+
 // execStatement runs a non-SELECT DML statement scoped to the plugin schema.
-func (r *Runtime) execStatement(ctx context.Context, schema, sqlStr, paramsJSON string) (int64, error) {
+func (r *Runtime) execStatement(ctx context.Context, caller plugindom.Plugin, schema, sqlStr, paramsJSON string) (int64, error) {
 	trimmed := strings.TrimSpace(strings.ToUpper(sqlStr))
 	for _, banned := range []string{"DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE"} {
 		if strings.HasPrefix(trimmed, banned) {
 			return 0, fmt.Errorf("paca.db_exec: DDL/DCL statements are not allowed")
 		}
+	}
+	if err := r.checkWriteAllowed(caller, sqlStr, "paca.db_exec"); err != nil {
+		return 0, err
 	}
 
 	var queryParams []any
