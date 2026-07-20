@@ -131,6 +131,23 @@ type BackendManifest struct {
 	// AllowedConfigKeys is the list of host config keys the plugin may read via
 	// paca.config_get. Keys not listed here are not exposed to the plugin.
 	AllowedConfigKeys []string `json:"allowedConfigKeys,omitempty"`
+	// SensitiveFields declares which columns in this plugin's own database
+	// schema contain sensitive data, keyed by unqualified table name. When a
+	// different plugin's db_query/db_query2 call reads from this plugin's
+	// schema (via an explicit schema-qualified table reference), the host
+	// replaces these columns' values with "***" in the result. Queries this
+	// plugin runs against its own schema are never redacted.
+	SensitiveFields map[string][]string `json:"sensitiveFields,omitempty"`
+	// RequestedSensitiveFields declares which sensitive fields outside this
+	// plugin's own schema it needs read/write access to via
+	// db_query/db_query2/db_exec. Entries are "table.column" for a core
+	// (platform-owned) field, or "<owningPluginID>:table.column" for a field
+	// another plugin declared in its own SensitiveFields. A field is exempt
+	// from redaction/write-blocking for this plugin only if it's listed
+	// here — everything else stays masked/blocked. This list must be
+	// surfaced to admins in the plugin marketplace before install, the same
+	// way an OAuth scope or mobile app permission prompt would be.
+	RequestedSensitiveFields []string `json:"requestedSensitiveFields,omitempty"`
 }
 
 // FrontendManifest describes the frontend (Module Federation) side of the plugin.

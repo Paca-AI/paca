@@ -195,6 +195,327 @@ func TestDispatchEvent_OversizedPayload_RejectedWithoutTouchingPlugin(t *testing
 	}
 }
 
+// callerPlugin builds a plugindom.Plugin for use as execQuery/execStatement's
+// caller argument, with an optional RequestedSensitiveFields declaration.
+func callerPlugin(name string, requested ...string) plugindom.Plugin {
+	return plugindom.Plugin{
+		Name: name,
+		Manifest: plugindom.PluginManifest{
+			Backend: &plugindom.BackendManifest{
+				RequestedSensitiveFields: requested,
+			},
+		},
+	}
+}
+
+// TestSensitiveColumnsForQuery_ForeignPluginSchema pins the detection logic
+// for cross-plugin schema access: a caller's SQL text referencing another
+// loaded plugin's schema (by its distinctive plugin_data_<name> name) should
+// pull in that plugin's declared sensitive columns for the specific table
+// referenced, while SQL that only touches the caller's own schema, an
+// unrelated table in that schema, or no foreign schema at all should not.
+func TestSensitiveColumnsForQuery_ForeignPluginSchema(t *testing.T) {
+	rt := &Runtime{
+		plugins: map[string]*pluginInstance{
+			"com.paca.a": {plugin: plugindom.Plugin{
+				Name: "com.paca.a",
+				Manifest: plugindom.PluginManifest{
+					Backend: &plugindom.BackendManifest{},
+				},
+			}},
+			"com.paca.b": {plugin: plugindom.Plugin{
+				Name: "com.paca.b",
+				Manifest: plugindom.PluginManifest{
+					Backend: &plugindom.BackendManifest{
+						SensitiveFields: map[string][]string{
+							"customers": {"Email", "phone"},
+							"orders":    {"internal_notes"},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	t.Run("references foreign schema unquoted", func(t *testing.T) {
+		sql := "SELECT * FROM plugin_data_com_paca_b.customers"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.a"), sql)
+		want := map[string]struct{}{"email": {}, "phone": {}}
+		if len(got) != len(want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+		for k := range want {
+			if _, ok := got[k]; !ok {
+				t.Fatalf("missing column %q in %v", k, got)
+			}
+		}
+	})
+
+	t.Run("references foreign schema quoted", func(t *testing.T) {
+		sql := `SELECT * FROM "plugin_data_com_paca_b".customers`
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.a"), sql)
+		if _, ok := got["email"]; !ok {
+			t.Fatalf("expected quoted schema reference to be detected, got %v", got)
+		}
+	})
+
+	t.Run("only pulls columns for the table actually referenced", func(t *testing.T) {
+		sql := "SELECT * FROM plugin_data_com_paca_b.orders"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.a"), sql)
+		if _, ok := got["internal_notes"]; !ok {
+			t.Fatalf("expected orders.internal_notes redacted, got %v", got)
+		}
+		if _, ok := got["email"]; ok {
+			t.Fatalf("customers.email should not be pulled in when only orders is referenced, got %v", got)
+		}
+	})
+
+	t.Run("caller's own schema is never redacted", func(t *testing.T) {
+		sql := "SELECT * FROM plugin_data_com_paca_b.customers"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.b"), sql)
+		if len(got) != 0 {
+			t.Fatalf("expected no redaction when the owning plugin queries its own schema, got %v", got)
+		}
+	})
+
+	t.Run("query touching only own schema or public", func(t *testing.T) {
+		sql := "SELECT * FROM my_table JOIN public.tasks ON true"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.a"), sql)
+		if len(got) != 0 {
+			t.Fatalf("expected no redaction for a query with no foreign schema reference, got %v", got)
+		}
+	})
+
+	t.Run("requested access exempts specific columns only", func(t *testing.T) {
+		sql := "SELECT * FROM plugin_data_com_paca_b.customers"
+		caller := callerPlugin("com.paca.a", "com.paca.b:customers.email")
+		got := rt.sensitiveColumnsForQuery(caller, sql)
+		if _, ok := got["email"]; ok {
+			t.Fatalf("expected email exempted by RequestedSensitiveFields, got %v", got)
+		}
+		if _, ok := got["phone"]; !ok {
+			t.Fatalf("expected phone to remain redacted (not requested), got %v", got)
+		}
+	})
+}
+
+// TestSensitiveColumnsForQuery_CoreTable pins core-table protection: an
+// unqualified reference to a core sensitive table (reachable via every
+// plugin's search_path through `public`) is redacted for every plugin
+// unless it explicitly requests that field.
+func TestSensitiveColumnsForQuery_CoreTable(t *testing.T) {
+	rt := &Runtime{plugins: map[string]*pluginInstance{}}
+
+	t.Run("unqualified core table is redacted by default", func(t *testing.T) {
+		sql := "SELECT id, password_hash FROM users WHERE id = $1"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted, got %v", got)
+		}
+	})
+
+	t.Run("explicit public-qualified core table is redacted", func(t *testing.T) {
+		sql := "SELECT encrypted_value FROM public.agent_environment_variables WHERE agent_id = $1"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.other"), sql)
+		if _, ok := got["encrypted_value"]; !ok {
+			t.Fatalf("expected agent_environment_variables.encrypted_value redacted by default, got %v", got)
+		}
+	})
+
+	t.Run("requested access exempts a core field for the requesting plugin", func(t *testing.T) {
+		sql := "SELECT encrypted_value FROM agent_environment_variables WHERE agent_id = $1"
+		caller := callerPlugin("com.paca.admin-tools", "agent_environment_variables.encrypted_value")
+		got := rt.sensitiveColumnsForQuery(caller, sql)
+		if len(got) != 0 {
+			t.Fatalf("expected no redaction once requested, got %v", got)
+		}
+	})
+
+	t.Run("non-sensitive core table is untouched", func(t *testing.T) {
+		sql := "SELECT id, title FROM tasks WHERE project_id = $1"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if len(got) != 0 {
+			t.Fatalf("expected no redaction for a table with no declared sensitive columns, got %v", got)
+		}
+	})
+}
+
+// TestSensitiveColumnsForQuery_CommentBypass pins comment-stripping: since
+// PostgreSQL treats a comment as equivalent to whitespace during
+// tokenization, "FROM/*x*/table" parses identically to "FROM table" and
+// must not be able to slip past the FROM/JOIN detection regex just because
+// there's no literal whitespace character between the keyword and the
+// table name.
+func TestSensitiveColumnsForQuery_CommentBypass(t *testing.T) {
+	rt := &Runtime{plugins: map[string]*pluginInstance{}}
+
+	t.Run("block comment between FROM and table name is still detected", func(t *testing.T) {
+		sql := "SELECT * FROM/*x*/users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted despite comment obfuscation, got %v", got)
+		}
+	})
+
+	t.Run("line comment before FROM is still detected", func(t *testing.T) {
+		sql := "SELECT * -- x\nFROM users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted despite comment obfuscation, got %v", got)
+		}
+	})
+}
+
+// TestSensitiveColumnsForQuery_SyntaxVariants pins detection of standard
+// Postgres syntax that the original pattern set missed: old-style
+// comma-joins, the "TABLE name" shorthand, and result-column aliasing that
+// would otherwise let the aliased name slip past redaction untouched.
+func TestSensitiveColumnsForQuery_SyntaxVariants(t *testing.T) {
+	rt := &Runtime{plugins: map[string]*pluginInstance{}}
+
+	t.Run("comma-joined table beyond the first is detected", func(t *testing.T) {
+		sql := "SELECT password_hash FROM tasks, users WHERE tasks.user_id = users.id"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted for a comma-joined table, got %v", got)
+		}
+	})
+
+	t.Run("TABLE shorthand nested in a FROM clause is detected", func(t *testing.T) {
+		sql := "SELECT password_hash FROM (TABLE users) u"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["password_hash"]; !ok {
+			t.Fatalf("expected users.password_hash redacted via TABLE shorthand, got %v", got)
+		}
+	})
+
+	t.Run("result column alias is redacted under its own name", func(t *testing.T) {
+		sql := "SELECT password_hash AS ph FROM users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["ph"]; !ok {
+			t.Fatalf("expected alias %q to be redacted, got %v", "ph", got)
+		}
+	})
+
+	t.Run("table-qualified column alias is redacted under its own name", func(t *testing.T) {
+		sql := "SELECT u.password_hash AS ph FROM users u"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["ph"]; !ok {
+			t.Fatalf("expected alias %q to be redacted, got %v", "ph", got)
+		}
+	})
+
+	t.Run("unrelated columns do not spuriously gain aliases", func(t *testing.T) {
+		sql := "SELECT id, username FROM users"
+		got := rt.sensitiveColumnsForQuery(callerPlugin("com.paca.dashboard"), sql)
+		if _, ok := got["id"]; ok {
+			t.Fatalf("did not expect id redacted, got %v", got)
+		}
+		if _, ok := got["username"]; ok {
+			t.Fatalf("did not expect username redacted, got %v", got)
+		}
+	})
+}
+
+// TestCheckWriteAllowed pins write-side protection: INSERT/UPDATE/DELETE
+// against a sensitive table (core or another plugin's) is rejected outright
+// unless caller has requested access to it, while writes to the caller's
+// own schema or to tables with no declared sensitive columns are untouched.
+func TestCheckWriteAllowed(t *testing.T) {
+	rt := &Runtime{
+		plugins: map[string]*pluginInstance{
+			"com.paca.b": {plugin: plugindom.Plugin{
+				Name: "com.paca.b",
+				Manifest: plugindom.PluginManifest{
+					Backend: &plugindom.BackendManifest{
+						SensitiveFields: map[string][]string{
+							"customers": {"email"},
+						},
+					},
+				},
+			}},
+		},
+	}
+
+	cases := []struct {
+		name      string
+		caller    plugindom.Plugin
+		sql       string
+		wantError bool
+	}{
+		{"insert into core users table blocked", callerPlugin("com.paca.a"), "INSERT INTO users (username, password_hash) VALUES ($1, $2)", true},
+		{"update core users table blocked", callerPlugin("com.paca.a"), "UPDATE users SET password_hash = $1 WHERE id = $2", true},
+		{"delete from core users table blocked", callerPlugin("com.paca.a"), "DELETE FROM users WHERE id = $1", true},
+		{"requested access allows the write", callerPlugin("com.paca.admin-tools", "agent_environment_variables.encrypted_value"), "INSERT INTO agent_environment_variables (agent_id, key, encrypted_value) VALUES ($1, $2, $3)", false},
+		{"write to foreign plugin's sensitive table blocked", callerPlugin("com.paca.a"), "UPDATE plugin_data_com_paca_b.customers SET email = $1 WHERE id = $2", true},
+		{"owner writing its own schema is unaffected", callerPlugin("com.paca.b"), "UPDATE plugin_data_com_paca_b.customers SET email = $1 WHERE id = $2", false},
+		{"write to own schema table is unaffected", callerPlugin("com.paca.a"), "INSERT INTO my_table (col) VALUES ($1)", false},
+		{"write to non-sensitive core table is unaffected", callerPlugin("com.paca.a"), "UPDATE tasks SET title = $1 WHERE id = $2", false},
+
+		// Regression cases: a pattern-based guard is only as strong as what
+		// it recognizes as a write. These previously bypassed detection
+		// entirely (checkWriteAllowed silently allowed them).
+		{"leading line comment before INSERT no longer bypasses detection", callerPlugin("com.paca.a"), "-- x\nINSERT INTO users (username, password_hash) VALUES ($1, $2)", true},
+		{"block comment between INTO and table no longer bypasses detection", callerPlugin("com.paca.a"), "INSERT INTO/*x*/users (username, password_hash) VALUES ($1, $2)", true},
+		{"INSERT...SELECT exfiltrating from a sensitive table is blocked", callerPlugin("com.paca.a"), "INSERT INTO my_table (stolen) SELECT password_hash FROM users", true},
+		{"UPDATE...FROM exfiltrating from a sensitive table is blocked", callerPlugin("com.paca.a"), "UPDATE my_table SET note = u.password_hash FROM users u WHERE u.id = my_table.uid", true},
+		{"DELETE...USING referencing a sensitive table is blocked", callerPlugin("com.paca.a"), "DELETE FROM my_table USING users WHERE my_table.uid = users.id", true},
+		{"requesting one sensitive column does not exempt a table's other sensitive columns", callerPlugin("com.paca.a", "agents.llm_api_key_secret"), "UPDATE agents SET acp_bridge_token_hash = $1 WHERE id = $2", true},
+		{"requesting every sensitive column of a table does exempt it", callerPlugin("com.paca.a", "agents.llm_api_key_secret", "agents.acp_bridge_token_hash"), "UPDATE agents SET acp_bridge_token_hash = $1 WHERE id = $2", false},
+		{"DELETE FROM ONLY a sensitive table is blocked", callerPlugin("com.paca.a"), "DELETE FROM ONLY users WHERE id = $1", true},
+		{"UPDATE ONLY a sensitive table is blocked", callerPlugin("com.paca.a"), "UPDATE ONLY users SET password_hash = $1 WHERE id = $2", true},
+		{"comma-joined sensitive table beyond the first is blocked", callerPlugin("com.paca.a"), "INSERT INTO my_table (stolen) SELECT password_hash FROM tasks, users", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := rt.checkWriteAllowed(tc.caller, tc.sql, "paca.db_exec")
+			if tc.wantError && err == nil {
+				t.Fatalf("expected write to be blocked, got no error")
+			}
+			if !tc.wantError && err != nil {
+				t.Fatalf("expected write to be allowed, got error: %v", err)
+			}
+		})
+	}
+}
+
+// TestRedactColumns replaces the declared sensitive columns' values with
+// "***" across every row, matching column names case-insensitively, and
+// leaves everything else untouched.
+func TestRedactColumns(t *testing.T) {
+	cols := []string{"id", "Email", "title"}
+	rows := [][]any{
+		{1, "a@example.com", "first"},
+		{2, "b@example.com", "second"},
+	}
+	sensitive := map[string]struct{}{"email": {}}
+
+	redactColumns(cols, rows, sensitive)
+
+	for i, row := range rows {
+		if row[1] != "***" {
+			t.Fatalf("row %d: expected email column redacted, got %v", i, row[1])
+		}
+	}
+	if rows[0][0] != 1 || rows[0][2] != "first" {
+		t.Fatalf("expected non-sensitive columns untouched, got %v", rows[0])
+	}
+	if rows[1][0] != 2 || rows[1][2] != "second" {
+		t.Fatalf("expected non-sensitive columns untouched, got %v", rows[1])
+	}
+}
+
+// TestRedactColumns_NoMatch is a no-op when no column name matches.
+func TestRedactColumns_NoMatch(t *testing.T) {
+	cols := []string{"id", "title"}
+	rows := [][]any{{1, "first"}}
+	redactColumns(cols, rows, map[string]struct{}{"email": {}})
+	if rows[0][0] != 1 || rows[0][1] != "first" {
+		t.Fatalf("expected rows untouched when no column matches, got %v", rows[0])
+	}
+}
+
 // TestHandleRequest_Concurrent_DoesNotCorruptSharedInstance pins the
 // lock-ordering fix: writeToMemory (which calls the plugin's malloc export)
 // must happen while holding the per-instance lock, not before acquiring it,
