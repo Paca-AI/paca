@@ -520,12 +520,15 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 
 			result, err := r.execQuery(ctx, schema, sqlStr, paramsJSON)
 			if err != nil {
-				errBytes := []byte(err.Error())
-				ptrLen, _ := writeToMemory(m, errBytes)
+				errPtrLen, writeErr := writeToMemory(m, []byte(err.Error()))
+				if writeErr != nil {
+					r.log.Error("paca.db_query2: write error", "plugin", p.Name, "error", writeErr)
+					errPtrLen = []uint64{0, 0}
+				}
 				m.Memory().WriteUint32Le(uint32(stack[4]), 0)
 				m.Memory().WriteUint32Le(uint32(stack[5]), 0)
-				m.Memory().WriteUint32Le(uint32(stack[6]), uint32(ptrLen[0]))
-				m.Memory().WriteUint32Le(uint32(stack[7]), uint32(ptrLen[1]))
+				m.Memory().WriteUint32Le(uint32(stack[6]), uint32(errPtrLen[0]))
+				m.Memory().WriteUint32Le(uint32(stack[7]), uint32(errPtrLen[1]))
 				return
 			}
 			resultPtrLen := writeJSONResult(m, result)

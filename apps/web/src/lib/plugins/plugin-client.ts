@@ -31,6 +31,18 @@ function pluginUrl(pluginId: string, path: string): string {
 	return `${API_BASE_URL}/plugins/${pluginId}${p}`;
 }
 
+// Project-scoped methods (listTasks/getTask/getProject/listMembers) are only
+// meaningful when the client was built with a projectId — admin/global-scope
+// pages build one without. Fail loudly instead of hitting a malformed
+// `/projects//...` URL, which otherwise surfaces as an opaque 404.
+function requireProjectId(projectId: string, method: string): void {
+	if (!projectId) {
+		throw new Error(
+			`[PluginApiClient] ${method}() requires a project-scoped client, but no projectId was provided — this plugin page is rendered without a project context (e.g. an admin/global-scope page).`,
+		);
+	}
+}
+
 async function request<T>(
 	method: string,
 	url: string,
@@ -69,6 +81,7 @@ export function createPluginApiClient(projectId = ""): HostPluginApiClient {
 	return {
 		projectId,
 		listTasks: (filters) => {
+			requireProjectId(projectId, "listTasks");
 			const params = new URLSearchParams();
 			for (const [key, value] of Object.entries(filters ?? {})) {
 				if (value !== undefined && value !== null && value !== "") {
@@ -82,11 +95,21 @@ export function createPluginApiClient(projectId = ""): HostPluginApiClient {
 				`${API_BASE_URL}/projects/${projectId}/tasks${qs ? `?${qs}` : ""}`,
 			).then((envelope) => envelope.items);
 		},
-		getTask: (taskId) =>
-			request("GET", `${API_BASE_URL}/projects/${projectId}/tasks/${taskId}`),
-		getProject: () => request("GET", `${API_BASE_URL}/projects/${projectId}`),
-		listMembers: () =>
-			request("GET", `${API_BASE_URL}/projects/${projectId}/members`),
+		getTask: (taskId) => {
+			requireProjectId(projectId, "getTask");
+			return request(
+				"GET",
+				`${API_BASE_URL}/projects/${projectId}/tasks/${taskId}`,
+			);
+		},
+		getProject: () => {
+			requireProjectId(projectId, "getProject");
+			return request("GET", `${API_BASE_URL}/projects/${projectId}`);
+		},
+		listMembers: () => {
+			requireProjectId(projectId, "listMembers");
+			return request("GET", `${API_BASE_URL}/projects/${projectId}/members`);
+		},
 		pluginGet: (pluginId, path) => request("GET", pluginUrl(pluginId, path)),
 		pluginPost: (pluginId, path, body) =>
 			request("POST", pluginUrl(pluginId, path), body),
