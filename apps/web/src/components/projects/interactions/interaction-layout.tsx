@@ -75,6 +75,7 @@ import {
 } from "@/lib/interaction-api";
 import type { PluginRegistration } from "@/lib/plugin-api";
 import { RemoteComponent } from "@/lib/plugins/loader";
+import { usePluginBaseProps } from "@/lib/plugins/plugin-props";
 import { usePluginRegistry } from "@/lib/plugins/registry";
 import {
 	customFieldsQueryOptions,
@@ -487,6 +488,13 @@ export function InteractionLayout({
 						r.component === activeView.config?.plugin_component,
 				) ?? null)
 			: null;
+
+	// BaseExtensionProps (api/ui/meta) for the active plugin view, if any —
+	// every ViewExtensionProps component expects these alongside projectId.
+	const activePluginViewBaseProps = usePluginBaseProps(
+		activePluginView ?? undefined,
+		projectId,
+	);
 
 	useEffect(() => {
 		if (!activeViewId) return;
@@ -1656,11 +1664,13 @@ export function InteractionLayout({
 				ref={viewContentRef}
 				className="flex flex-1 flex-col overflow-hidden"
 			>
-				{activePluginView ? (
+				{activePluginView && activeView ? (
 					<RemoteComponent
 						registration={activePluginView}
 						componentProps={{
+							...activePluginViewBaseProps,
 							projectId,
+							viewId: activeView.id,
 							tasks: tasks,
 							statuses,
 							taskTypes,

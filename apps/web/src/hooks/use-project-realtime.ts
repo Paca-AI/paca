@@ -20,6 +20,9 @@
 // doc.* events   → invalidate ["projects", projectId, "docs"]
 //                  This covers docFoldersQueryOptions, docListQueryOptions,
 //                  docQueryOptions, etc.
+// sprint.* events → invalidate ["projects", projectId, "sprints"]
+//                  This covers sprintsQueryOptions and sprintQueryOptions —
+//                  replaces the sidebar's old refetchInterval polling.
 // workflow.* events → invalidate ["projects", projectId, "workflows"] (the
 //                  automation list/graph queries) and ["projects", projectId,
 //                  "tasks"] (covers workflowsForTaskQueryOptions, which hangs
@@ -62,6 +65,13 @@ export function useProjectRealtime(projectId: string): void {
 			if (type.startsWith("doc.")) {
 				void queryClient.invalidateQueries({
 					queryKey: ["projects", projectId, "docs"],
+				});
+				return;
+			}
+
+			if (type.startsWith("sprint.")) {
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", projectId, "sprints"],
 				});
 				return;
 			}

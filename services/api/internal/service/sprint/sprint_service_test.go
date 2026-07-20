@@ -217,7 +217,7 @@ func (r *fakeTaskRepo) BulkMoveSprintTasks(_ context.Context, projectID, sourceS
 
 func TestCreateSprint_OK(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 
 	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
@@ -245,7 +245,7 @@ func TestCreateSprint_OK(t *testing.T) {
 
 func TestCreateSprint_DefaultStatus(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	sp, err := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
 		ProjectID: uuid.New(),
@@ -262,7 +262,7 @@ func TestCreateSprint_DefaultStatus(t *testing.T) {
 
 func TestCreateSprint_EmptyName(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	_, err := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
 		ProjectID: uuid.New(),
@@ -275,7 +275,7 @@ func TestCreateSprint_EmptyName(t *testing.T) {
 
 func TestCreateSprint_InvalidStatus(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	_, err := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
 		ProjectID: uuid.New(),
@@ -289,7 +289,7 @@ func TestCreateSprint_InvalidStatus(t *testing.T) {
 
 func TestUpdateSprint_ActivateSprint(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 
 	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
@@ -313,7 +313,7 @@ func TestUpdateSprint_ActivateSprint(t *testing.T) {
 
 func TestUpdateSprint_InvalidStatus(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
 		ProjectID: uuid.New(),
@@ -334,7 +334,7 @@ func TestUpdateSprint_InvalidStatus(t *testing.T) {
 // when the request omits them (nil outer pointer = absent, not "clear").
 func TestUpdateSprint_OmittedFieldsUnchanged(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -378,7 +378,7 @@ func TestUpdateSprint_OmittedFieldsUnchanged(t *testing.T) {
 // pointer) clears the field rather than being ignored.
 func TestUpdateSprint_ExplicitNullClearsGoal(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 
 	goal := "Ship the thing"
@@ -405,7 +405,7 @@ func TestUpdateSprint_ExplicitNullClearsGoal(t *testing.T) {
 
 func TestDeleteSprint_OK(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
 		ProjectID: uuid.New(),
@@ -422,7 +422,7 @@ func TestDeleteSprint_OK(t *testing.T) {
 
 func TestDeleteSprint_NotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	err := svc.DeleteSprint(ctx, uuid.New(), uuid.New())
 	if err != sprintdom.ErrSprintNotFound {
@@ -432,7 +432,7 @@ func TestDeleteSprint_NotFound(t *testing.T) {
 
 func TestGetSprint_OK(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 
 	sp, err := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
@@ -458,7 +458,7 @@ func TestGetSprint_OK(t *testing.T) {
 
 func TestGetSprint_NotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	_, err := svc.GetSprint(ctx, uuid.New(), uuid.New())
 	if err != sprintdom.ErrSprintNotFound {
@@ -468,7 +468,7 @@ func TestGetSprint_NotFound(t *testing.T) {
 
 func TestListSprints_ReturnsProjectSprints(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 	otherProjectID := uuid.New()
 
@@ -507,7 +507,7 @@ func TestListSprints_ReturnsProjectSprints(t *testing.T) {
 func TestCompleteSprint_MovesToBacklog(t *testing.T) {
 	ctx := context.Background()
 	taskRepo := newFakeTaskRepo()
-	svc := sprintsvc.New(newFakeSprintRepo(), taskRepo)
+	svc := sprintsvc.New(newFakeSprintRepo(), taskRepo, nil)
 	projectID := uuid.New()
 
 	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
@@ -550,7 +550,7 @@ func TestCompleteSprint_MovesToOtherSprint(t *testing.T) {
 	ctx := context.Background()
 	taskRepo := newFakeTaskRepo()
 	repo := newFakeSprintRepo()
-	svc := sprintsvc.New(repo, taskRepo)
+	svc := sprintsvc.New(repo, taskRepo, nil)
 	projectID := uuid.New()
 
 	source, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
@@ -588,7 +588,7 @@ func TestCompleteSprint_MovesToOtherSprint(t *testing.T) {
 func TestCompleteSprint_SkipsDoneTasks(t *testing.T) {
 	ctx := context.Background()
 	taskRepo := newFakeTaskRepo()
-	svc := sprintsvc.New(newFakeSprintRepo(), taskRepo)
+	svc := sprintsvc.New(newFakeSprintRepo(), taskRepo, nil)
 	projectID := uuid.New()
 
 	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
@@ -642,7 +642,7 @@ func TestCompleteSprint_SkipsDoneTasks(t *testing.T) {
 
 func TestCompleteSprint_AlreadyCompleted(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 	projectID := uuid.New()
 
 	sp, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
@@ -659,7 +659,7 @@ func TestCompleteSprint_AlreadyCompleted(t *testing.T) {
 
 func TestCompleteSprint_NotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo())
+	svc := sprintsvc.New(newFakeSprintRepo(), newFakeTaskRepo(), nil)
 
 	_, err := svc.CompleteSprint(ctx, uuid.New(), uuid.New(), sprintdom.CompleteSprintInput{})
 	if err != sprintdom.ErrSprintNotFound {

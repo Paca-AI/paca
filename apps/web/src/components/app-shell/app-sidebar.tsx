@@ -1168,11 +1168,13 @@ function ProjectInteractionsSection({
 		updateSprintMutation.mutate({ taskId, sprintId });
 	};
 
+	// No refetchInterval: kept live via useProjectRealtime's socket-driven
+	// sprint.* invalidation (see hooks/use-project-realtime.ts) instead of
+	// polling.
 	const { data: sprints = [] } = useQuery({
 		...sprintsQueryOptions(projectId),
 		enabled: canViewSprints,
 		retry: false,
-		refetchInterval: 30_000,
 	});
 
 	// Hide entire section if user lacks the "View Sprints" permission

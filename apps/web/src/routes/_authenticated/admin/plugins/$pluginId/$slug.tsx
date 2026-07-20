@@ -5,6 +5,7 @@ import { myPermissionsQueryOptions } from "@/lib/admin-api";
 import { hasPermission } from "@/lib/permissions";
 import { buildNavItems, pluginsQueryOptions } from "@/lib/plugin-api";
 import { RemoteComponent } from "@/lib/plugins/loader";
+import { usePluginBaseProps } from "@/lib/plugins/plugin-props";
 import { usePluginRegistry } from "@/lib/plugins/registry";
 
 export const Route = createFileRoute(
@@ -49,13 +50,12 @@ function AdminPluginPage() {
 	const { t } = useTranslation("errors");
 	const { pluginId, slug } = Route.useParams();
 	const { getNavItems, isLoading } = usePluginRegistry();
-
-	if (isLoading) return null;
-
 	const navItem = getNavItems("admin").find(
 		(item) => item.pluginId === pluginId && item.slug === slug,
 	);
+	const baseProps = usePluginBaseProps(navItem?.registration);
 
+	if (isLoading) return null;
 	if (!navItem) {
 		throw notFound();
 	}
@@ -64,6 +64,7 @@ function AdminPluginPage() {
 		<div className="flex flex-col h-full">
 			<RemoteComponent
 				registration={navItem.registration}
+				componentProps={baseProps}
 				fallback={
 					<div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive m-6">
 						<AlertCircle className="size-3.5 shrink-0" />

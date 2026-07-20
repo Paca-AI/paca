@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { hasPermission } from "@/lib/permissions";
 import { buildNavItems, pluginsQueryOptions } from "@/lib/plugin-api";
 import { RemoteComponent } from "@/lib/plugins/loader";
+import { usePluginBaseProps } from "@/lib/plugins/plugin-props";
 import { usePluginRegistry } from "@/lib/plugins/registry";
 import { myProjectPermissionsQueryOptions } from "@/lib/project-api";
 
@@ -53,13 +54,12 @@ function ProjectPluginPage() {
 	const { t } = useTranslation("errors");
 	const { projectId, pluginId, slug } = Route.useParams();
 	const { getNavItems, isLoading } = usePluginRegistry();
-
-	if (isLoading) return null;
-
 	const navItem = getNavItems("project").find(
 		(item) => item.pluginId === pluginId && item.slug === slug,
 	);
+	const baseProps = usePluginBaseProps(navItem?.registration, projectId);
 
+	if (isLoading) return null;
 	if (!navItem) {
 		throw notFound();
 	}
@@ -68,7 +68,7 @@ function ProjectPluginPage() {
 		<div className="flex flex-col h-full">
 			<RemoteComponent
 				registration={navItem.registration}
-				componentProps={{ projectId }}
+				componentProps={{ ...baseProps, projectId }}
 				fallback={
 					<div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive m-6">
 						<AlertCircle className="size-3.5 shrink-0" />

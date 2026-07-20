@@ -495,6 +495,48 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 			nil).
 		Export("db_query")
 
+	// paca.db_query2(sqlPtr, sqlLen, paramsPtr, paramsLen, resultPtrPtr, resultLenPtr, errPtrPtr, errLenPtr)
+	// Same as db_query but also reports execution errors back to the plugin.
+	// db_query's signature has no error channel, so a query that fails to
+	// execute (e.g. references a column that doesn't exist) silently looks
+	// like a zero-row success to the plugin — see the `return` with no
+	// output write in the error branch above. Exposed as a separate export
+	// rather than changing db_query in place: WASM import/export signatures
+	// are matched exactly at instantiation time, so widening db_query would
+	// break every already-compiled plugin binary that still imports the old
+	// 6-arg form. New/rebuilt plugins should call this one instead.
+	b.NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
+			sqlStr, err := readString(m, stack[0], stack[1])
+			if err != nil {
+				r.log.Error("paca.db_query2: read sql", "plugin", p.Name, "error", err)
+				return
+			}
+			paramsJSON, err := readString(m, stack[2], stack[3])
+			if err != nil {
+				r.log.Error("paca.db_query2: read params", "plugin", p.Name, "error", err)
+				return
+			}
+
+			result, err := r.execQuery(ctx, schema, sqlStr, paramsJSON)
+			if err != nil {
+				errBytes := []byte(err.Error())
+				ptrLen, _ := writeToMemory(m, errBytes)
+				m.Memory().WriteUint32Le(uint32(stack[4]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[5]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[6]), uint32(ptrLen[0]))
+				m.Memory().WriteUint32Le(uint32(stack[7]), uint32(ptrLen[1]))
+				return
+			}
+			resultPtrLen := writeJSONResult(m, result)
+			m.Memory().WriteUint32Le(uint32(stack[4]), uint32(resultPtrLen[0]))
+			m.Memory().WriteUint32Le(uint32(stack[5]), uint32(resultPtrLen[1]))
+			m.Memory().WriteUint32Le(uint32(stack[6]), 0)
+			m.Memory().WriteUint32Le(uint32(stack[7]), 0)
+		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},
+			nil).
+		Export("db_query2")
+
 	// paca.db_exec(sqlPtr, sqlLen, paramsPtr, paramsLen, rowsAffectedPtr, errPtrPtr, errLenPtr)
 	b.NewFunctionBuilder().
 		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {

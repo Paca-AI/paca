@@ -8,18 +8,36 @@ import (
 
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
+	"github.com/Paca-AI/api/internal/events"
+	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/google/uuid"
 )
 
 // Service is the concrete implementation of sprintdom.SprintService.
 type Service struct {
-	repo     sprintdom.SprintRepository
-	taskRepo taskdom.TaskRepository
+	repo      sprintdom.SprintRepository
+	taskRepo  taskdom.TaskRepository
+	publisher *messaging.Publisher
 }
 
-// New returns a configured sprint service.
-func New(repo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository) *Service {
-	return &Service{repo: repo, taskRepo: taskRepo}
+// New returns a configured sprint service. publisher may be nil; real-time
+// events are then skipped silently.
+func New(repo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository, publisher *messaging.Publisher) *Service {
+	return &Service{repo: repo, taskRepo: taskRepo, publisher: publisher}
+}
+
+// publish sends a real-time pub/sub notification for a sprint change.
+// Errors are silently swallowed so a messaging failure never blocks the
+// primary HTTP response — this is how the frontend now learns to refresh
+// its sprint list/detail instead of polling on an interval.
+func (s *Service) publish(ctx context.Context, topic string, payload map[string]any) {
+	if s.publisher == nil {
+		return
+	}
+	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
+		"type":    topic,
+		"payload": payload,
+	})
 }
 
 // ListSprints returns all sprints for a project.
@@ -70,6 +88,10 @@ func (s *Service) CreateSprint(ctx context.Context, in sprintdom.CreateSprintInp
 	if err := s.repo.CreateSprint(ctx, sp); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, events.TopicSprintCreated, map[string]any{
+		"project_id": sp.ProjectID.String(),
+		"sprint_id":  sp.ID.String(),
+	})
 	return sp, nil
 }
 
@@ -107,6 +129,10 @@ func (s *Service) UpdateSprint(ctx context.Context, projectID, id uuid.UUID, in 
 	if err := s.repo.UpdateSprint(ctx, sp); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, events.TopicSprintUpdated, map[string]any{
+		"project_id": sp.ProjectID.String(),
+		"sprint_id":  sp.ID.String(),
+	})
 	return sp, nil
 }
 
@@ -119,7 +145,14 @@ func (s *Service) DeleteSprint(ctx context.Context, projectID, id uuid.UUID) err
 	if sp.ProjectID != projectID {
 		return sprintdom.ErrSprintNotFound
 	}
-	return s.repo.DeleteSprint(ctx, id)
+	if err := s.repo.DeleteSprint(ctx, id); err != nil {
+		return err
+	}
+	s.publish(ctx, events.TopicSprintDeleted, map[string]any{
+		"project_id": sp.ProjectID.String(),
+		"sprint_id":  sp.ID.String(),
+	})
+	return nil
 }
 
 // CompleteSprint bulk-moves all non-done tasks out of the sprint and marks
@@ -148,5 +181,9 @@ func (s *Service) CompleteSprint(ctx context.Context, projectID, id uuid.UUID, i
 	if err := s.repo.UpdateSprint(ctx, sp); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, events.TopicSprintCompleted, map[string]any{
+		"project_id": sp.ProjectID.String(),
+		"sprint_id":  sp.ID.String(),
+	})
 	return sp, nil
 }
