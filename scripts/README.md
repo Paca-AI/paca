@@ -119,9 +119,11 @@ source ~/.bashrc
 4. **Populates backend store** - Copies WASM binary, migrations, and manifest to `plugins/local/backend/<plugin-id>/`
 5. **Builds frontend** - Runs `bun run build` to create frontend bundles
 6. **Populates frontend store** - Copies built assets to `plugins/local/frontend/<plugin-id>/`
-7. **Authenticates with API** - Validates API key
-8. **Checks for existing plugins** - Determines if the plugin is already installed
-9. **Installs or updates plugin** - Calls the Paca API to register the plugin
+7. **Builds and populates MCP store** (if a `mcp/` directory exists) - Runs `bun run build` and copies `dist/mcp.js` to `plugins/local/mcp/<plugin-id>/`
+8. **Populates skills store** (if a `skills/` directory exists) - Copies `SKILL.md` files as-is to `plugins/local/skills/<plugin-id>/` — no build step, since skills are plain markdown
+9. **Authenticates with API** - Validates API key
+10. **Checks for existing plugins** - Determines if the plugin is already installed
+11. **Installs or updates plugin** - Calls the Paca API to register the plugin
 
 ## Directory Structure
 
@@ -154,6 +156,12 @@ After running the script, artifacts are placed in:
 - **Frontend**: `plugins/local/frontend/<plugin-id>/`
   - `assets/` - Built JS/CSS bundles
   - `remoteEntry.js` - Module federation entry point
+
+- **MCP** (if the plugin has an `mcp/` directory): `plugins/local/mcp/<plugin-id>/`
+  - `mcp.js` - Built MCP tool bundle
+
+- **Skills** (if the plugin has a `skills/` directory): `plugins/local/skills/<plugin-id>/`
+  - `<skill-name>/SKILL.md` - one directory per skill, copied as-is
 
 ## Troubleshooting
 
@@ -235,6 +243,7 @@ export API_KEY=your-api-key
 - Backend artifacts (WASM binary, migrations, manifest)
 - Frontend artifacts (JS/CSS bundles)
 - MCP artifacts (if present)
+- Skills artifacts (if present)
 
 ### What Does NOT Get Removed
 

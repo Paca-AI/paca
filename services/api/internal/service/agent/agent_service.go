@@ -403,21 +403,8 @@ func (s *Service) DeleteMCPServer(ctx context.Context, agentID, serverID uuid.UU
 // Skills
 // -------------------------------------------------------------------------
 
-// reservedSkillNames are names the ai-agent service assigns itself, per
-// conversation trigger type, as fixed scaffolding (services/ai-agent/src/agent/trigger_skills.py).
-// They are always appended to an agent's skill list and are not meant to be
-// user-editable; a user-created skill with one of these names would collide
-// and fail conversation setup (AgentContext rejects duplicate skill names).
-// Keep in sync with trigger_skills.py's get_trigger_skill().
-var reservedSkillNames = map[string]bool{
-	"paca-trigger-task-assigned":     true,
-	"paca-trigger-doc-comment":       true,
-	"paca-trigger-chat":              true,
-	"paca-trigger-description-write": true,
-}
-
 func validateSkillName(name string) error {
-	if reservedSkillNames[name] {
+	if agentdom.IsReservedSkillName(name) {
 		return agentdom.ErrSkillNameReserved
 	}
 	return nil

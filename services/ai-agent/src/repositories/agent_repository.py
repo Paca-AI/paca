@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import ipaddress
 import json
 import logging
+from urllib.parse import urljoin, urlparse
 
 from ..config import settings
 from ..core.db import get_pool
-from ..models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow
+from ..models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow, PluginSkillRef
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,131 @@ def _decrypt_secret(ciphertext: str, label: str = "LLM API key") -> str:
             exc,
         )
         return ""
+
+
+def _is_localhost_hostname(hostname: str) -> bool:
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+async def _assert_not_private_host(hostname: str) -> None:
+    """Raise ValueError if hostname is, or resolves to, a private/internal IP.
+
+    Mirrors apps/mcp/src/plugin-loader.ts's assertNotPrivateHost (SSRF guard
+    for plugin-declared URLs) — see resolve_plugin_base_url for why this
+    matters here too.
+    """
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        ip = None
+
+    if ip is not None:
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError(f'hostname "{hostname}" is a private/internal IP address')
+        return
+
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(hostname, None)
+    except OSError as exc:
+        raise ValueError(f'failed to resolve hostname "{hostname}": {exc}') from None
+
+    for info in infos:
+        resolved_ip = ipaddress.ip_address(info[4][0])
+        if resolved_ip.is_private or resolved_ip.is_loopback or resolved_ip.is_link_local:
+            raise ValueError(
+                f'hostname "{hostname}" resolves to private/internal IP "{resolved_ip}"'
+            )
+
+
+async def resolve_plugin_base_url(base_url: str, gateway_base_url: str) -> str | None:
+    """Resolve a plugin-declared skills baseUrl against the gateway, or
+    return None (after logging a warning) if the URL is disallowed.
+
+    A plugin manifest is admin-installed but still untrusted input, and
+    content fetched from its skills baseUrl is injected into every
+    conversation — so this mirrors the safety rules
+    apps/mcp/src/plugin-loader.ts's resolveImportUrl already enforces for
+    plugin-declared MCP entry URLs: relative URLs resolve against the
+    gateway, https:// is allowed only for hosts that don't resolve to a
+    private/internal IP (SSRF protection), and http:// is allowed only for
+    localhost/loopback or the gateway's own host (e.g. the "gateway" Docker
+    service name in local/dev deployments). Unlike the MCP loader, there's no
+    file:// case here — this URL is fetched over plain HTTP, never imported
+    as code.
+    """
+    resolved = urljoin(gateway_base_url, base_url)
+    parsed = urlparse(resolved)
+    hostname = parsed.hostname or ""
+
+    if parsed.scheme == "https":
+        try:
+            await _assert_not_private_host(hostname)
+        except ValueError as exc:
+            logger.warning("Plugin skills baseUrl %r rejected: %s", base_url, exc)
+            return None
+        return resolved
+
+    if parsed.scheme == "http":
+        gateway_hostname = urlparse(gateway_base_url).hostname
+        if not (
+            _is_localhost_hostname(hostname)
+            or (gateway_hostname is not None and hostname == gateway_hostname)
+        ):
+            logger.warning(
+                "Plugin skills baseUrl %r uses http:// for host %r, which is neither "
+                "localhost nor the configured gateway host %r — rejected",
+                base_url,
+                hostname,
+                gateway_hostname,
+            )
+            return None
+        return resolved
+
+    logger.warning(
+        "Plugin skills baseUrl %r has disallowed scheme %r (only http/https are allowed)",
+        base_url,
+        parsed.scheme,
+    )
+    return None
+
+
+async def list_enabled_plugin_skills() -> list[PluginSkillRef]:
+    """List every skill declared by an enabled plugin, resolved to a fetchable URL.
+
+    Plugins are instance-global (the plugins table has no project scoping —
+    same as MCP tools, see apps/mcp/src/plugin-loader.ts), so this is not
+    scoped to a project or agent; every enabled plugin's skills are available
+    to every agent's conversations, layered in as an extra set of defaults
+    (see executor.run_conversation). Queried fresh on every call — no
+    caching, matching the fact the MCP side has none either (a fresh
+    apps/mcp subprocess re-fetches the plugin list on every spawn).
+    """
+    pool = await get_pool()
+    rows = await pool.fetch("SELECT name, manifest FROM plugins WHERE enabled = true")
+
+    refs: list[PluginSkillRef] = []
+    for row in rows:
+        manifest = json.loads(row["manifest"]) if row["manifest"] else {}
+        skills = manifest.get("skills")
+        if not skills:
+            continue
+        base_url = skills.get("baseUrl")
+        names = skills.get("names") or []
+        if not base_url or not names:
+            continue
+        resolved_base = await resolve_plugin_base_url(base_url, settings.gateway_base_url)
+        if resolved_base is None:
+            continue
+        for name in names:
+            url = f"{resolved_base.rstrip('/')}/{name}/SKILL.md"
+            refs.append(PluginSkillRef(plugin_name=row["name"], skill_name=name, url=url))
+    return refs
 
 
 async def load_agent_config(agent_id: str) -> AgentConfig | None:
@@ -157,6 +285,7 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
         acp_command=json.loads(row["acp_command"]) if row["acp_command"] else [],
         mcp_servers=mcp_servers,
         skills=skills,
+        plugin_skills=await list_enabled_plugin_skills(),
         env_vars=env_vars,
     )
 

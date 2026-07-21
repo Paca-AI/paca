@@ -44,6 +44,7 @@ type MarketplacePluginArtifact struct {
 	MigrationsTarGzURL string `json:"migrations_tar_gz_url,omitempty"`
 	ManifestTarGzURL   string `json:"manifest_tar_gz_url"`
 	MCPTarGzURL        string `json:"mcp_tar_gz_url,omitempty"`
+	SkillsTarGzURL     string `json:"skills_tar_gz_url,omitempty"`
 }
 
 // MarketplaceClient fetches the plugin catalog from a public URL.

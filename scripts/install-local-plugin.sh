@@ -173,6 +173,7 @@ fi
 BACKEND_DIR="$PACA_DIR/plugins/local/backend/$PLUGIN_ID"
 FRONTEND_DIR="$PACA_DIR/plugins/local/frontend/$PLUGIN_ID"
 MCP_DIR="$PACA_DIR/plugins/local/mcp/$PLUGIN_ID"
+SKILLS_DIR="$PACA_DIR/plugins/local/skills/$PLUGIN_ID"
 
 # Build backend
 if [[ "$SKIP_BUILD" = false ]]; then
@@ -286,6 +287,18 @@ if [[ -d "$PLUGIN_DIR/mcp" ]]; then
     print_success "MCP store populated"
 else
     print_info "No mcp directory found — skipping MCP bundle (plugin has no MCP tools)"
+fi
+
+# Populate skills store (optional — not every plugin has Agent Skills).
+# Skills are plain SKILL.md files, not compiled artifacts, so there's no
+# build step — just copy the directory tree as-is, unlike backend/frontend/mcp.
+if [[ -d "$PLUGIN_DIR/skills" ]]; then
+    print_step "Populating skills store..."
+    mkdir -p "$SKILLS_DIR"
+    cp -r "$PLUGIN_DIR/skills/." "$SKILLS_DIR/"
+    print_success "Skills store populated"
+else
+    print_info "No skills directory found — skipping skills (plugin has no Agent Skills)"
 fi
 
 # Install plugin via API
@@ -428,5 +441,8 @@ print_info "Backend artifacts: $BACKEND_DIR"
 print_info "Frontend artifacts: $FRONTEND_DIR"
 if [[ -d "$PLUGIN_DIR/mcp" ]]; then
     print_info "MCP artifacts: $MCP_DIR"
+fi
+if [[ -d "$PLUGIN_DIR/skills" ]]; then
+    print_info "Skills artifacts: $SKILLS_DIR"
 fi
 print_info "If the plugin is enabled, it will be available after restarting the Paca services"

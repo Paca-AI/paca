@@ -28,7 +28,13 @@ from ..models.agent import AgentConfig
 from ..models.conversation_status import ConversationStatus
 from ..repositories import conversation_repository
 from . import trigger_skills
-from .builder import build_llm, build_mcp_config, build_skills, load_default_skills
+from .builder import (
+    build_llm,
+    build_mcp_config,
+    build_skills,
+    load_default_skills,
+    load_plugin_skills,
+)
 from .docker_workspace import start_sandbox, stop_sandbox
 from .prompt import build_initial_prompt, build_project_context_suffix, build_trigger_suffix
 from .repo_tools import make_repository_tool_specs
@@ -502,8 +508,13 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
 
     try:
         llm = build_llm(agent_config)
-        # User-configured skills win on a name collision with a default.
-        skills = merge_skills_by_name(build_skills(agent_config.skills), load_default_skills())
+        # Precedence on a name collision: agent-configured skills win over
+        # plugin-contributed skills, which win over bundled defaults.
+        plugin_skills = await load_plugin_skills(agent_config.plugin_skills)
+        skills = merge_skills_by_name(
+            build_skills(agent_config.skills),
+            merge_skills_by_name(plugin_skills, load_default_skills()),
+        )
         trigger_skills.append_trigger_skill(
             skills, trigger.trigger_type, trigger.task_id, trigger.conversation_id
         )

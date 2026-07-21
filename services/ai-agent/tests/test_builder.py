@@ -2,10 +2,17 @@
 
 from unittest.mock import patch
 
+import httpx
 import pytest
 
-from src.agent.builder import build_llm, build_mcp_config, build_skills, load_default_skills
-from src.models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow
+from src.agent.builder import (
+    build_llm,
+    build_mcp_config,
+    build_skills,
+    load_default_skills,
+    load_plugin_skills,
+)
+from src.models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow, PluginSkillRef
 
 # ─── Fixtures / helpers ───────────────────────────────────────────────────────
 
@@ -309,3 +316,96 @@ def test_multiple_servers_all_included(no_paca_key):
 def test_empty_servers_returns_empty_dict(no_paca_key):
     cfg = build_mcp_config([], "a", "p")
     assert cfg == {}
+
+
+# ─── load_plugin_skills ────────────────────────────────────────────────────────
+
+
+class _FakeResponse:
+    def __init__(self, text: str, status_code: int = 200):
+        self.text = text
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPError(f"status {self.status_code}")
+
+
+class _FakeAsyncClient:
+    def __init__(self, responses: dict[str, _FakeResponse]):
+        self._responses = responses
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, url: str) -> _FakeResponse:
+        if url not in self._responses:
+            raise httpx.HTTPError(f"no mock response for {url}")
+        return self._responses[url]
+
+
+def _fake_httpx_client(responses: dict[str, _FakeResponse]):
+    return patch(
+        "src.agent.builder.httpx.AsyncClient",
+        return_value=_FakeAsyncClient(responses),
+    )
+
+
+def _skill_md(name: str = "pr-review", description: str = "Reviews PRs") -> str:
+    return f"---\nname: {name}\ndescription: {description}\n---\nDo the review.\n"
+
+
+async def test_load_plugin_skills_empty_refs_returns_empty():
+    assert await load_plugin_skills([]) == []
+
+
+async def test_load_plugin_skills_parses_valid_skill():
+    ref = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    responses = {ref.url: _FakeResponse(_skill_md("pr-review"))}
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([ref])
+    assert len(skills) == 1
+    assert skills[0].name == "pr-review"
+
+
+async def test_load_plugin_skills_skips_on_fetch_failure():
+    ref = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    responses = {ref.url: _FakeResponse("not found", status_code=404)}
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([ref])
+    assert skills == []
+
+
+async def test_load_plugin_skills_skips_on_name_mismatch():
+    # Frontmatter name disagrees with the ref's skill_name (which drives the
+    # on-disk directory name) — strict AgentSkills validation rejects this.
+    ref = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    responses = {ref.url: _FakeResponse(_skill_md("some-other-name"))}
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([ref])
+    assert skills == []
+
+
+async def test_load_plugin_skills_one_bad_skill_does_not_block_others():
+    good = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    bad = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="broken", url="http://gw/broken/SKILL.md"
+    )
+    responses = {
+        good.url: _FakeResponse(_skill_md("pr-review")),
+        bad.url: _FakeResponse("not found", status_code=500),
+    }
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([good, bad])
+    assert [s.name for s in skills] == ["pr-review"]

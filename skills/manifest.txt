@@ -1,0 +1,19 @@
+# List of Paca's bundled skill directory names under skills/, one per line.
+# Used by scripts/install-paca-skills.sh when installing from a remote
+# (curl | bash) checkout, where the skills/ directory can't be listed
+# directly. Local-clone installs discover skills dynamically instead and
+# don't need this file — but keep it in sync when adding or removing a
+# skill directory, or the remote install path will drift out of sync.
+# Lines starting with # and blank lines are ignored.
+paca
+paca-setup
+paca-breakdown
+paca-clarify
+paca-do
+paca-doc
+paca-epic
+paca-estimate
+paca-prioritize
+paca-sprint
+paca-test
+paca-workflow

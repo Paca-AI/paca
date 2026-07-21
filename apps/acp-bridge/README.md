@@ -51,6 +51,25 @@ it has full, native access to whatever git/`gh` credentials you already have
 configured locally, so it can clone, commit, push, and open pull requests
 exactly as if you were driving it yourself in a terminal.
 
+Since Paca doesn't inject anything into an ACP conversation, making your
+agent Paca-aware — so it uses Paca's MCP tools and task/doc workflow instead
+of local TODOs and stray markdown files — means installing that yourself
+into whichever CLI you're running. Paca's Agents UI walks through this for
+your specific agent (bridge install, skill install, MCP connection), or run
+it directly from a terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+```
+
+Run this from the same project directory you'll run the ACP bridge from —
+Claude Code and Gemini CLI pick the skills up globally either way, but
+Codex (and anything else that reads `AGENTS.md`) only sees them if the
+installer's `AGENTS.md` output landed in that project. Add
+`PACA_API_URL`/`PACA_API_KEY` (from Paca → Settings → API Keys) to also pull
+in skills contributed by any plugins enabled on your instance — see
+[docs/guides/install-skills.md](../../docs/guides/install-skills.md).
+
 ## How it works
 
 This daemon runs the OpenHands SDK's `ACPAgent` in its default local mode —

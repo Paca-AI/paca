@@ -107,7 +107,7 @@
 			"copied": "コピーしました！",
 			"step3Title": "Pacaスキルをインストール",
 			"step3Description": "CLIがPacaのMCPツール経由でリクエストをルーティングできるようにします — デフォルトで /paca が全プロンプトに追加されます。",
-			"step3NotAvailable": "自動インストールはClaude Codeのみで利用できます。{{provider}}には既知のカスタムプロンプトインストーラーがまだありません — 下記のPacaのMCPツールはこれがなくても機能します。",
+			"step3NotAvailable": "自動インストールはClaude Code、Gemini CLI、Codexで利用できます。{{provider}}には既知のカスタムプロンプトインストーラーがまだありません — 下記のPacaのMCPツールはこれがなくても機能します。",
 			"step3ViewContent": "スキルの内容を見る",
 			"step4Title": "MCPサーバーを接続",
 			"step4Description": "個人のAPIキーを使用して、CLIがPacaのツールを直接呼び出せるようにします。",

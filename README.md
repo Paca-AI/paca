@@ -23,7 +23,7 @@
   ·
   <a href="#mcp-server--connect-any-ai-agent-to-paca">MCP Server</a>
   ·
-  <a href="#claude-code--paca-skill">Claude Code Skill</a>
+  <a href="#paca-skills--claude-code-gemini-cli-cursor-and-more">Paca Skills</a>
   ·
   <a href="docs/architecture/overview.md">Architecture</a>
   ·
@@ -380,18 +380,18 @@ For a complete reference and advanced configuration (agent-mode, plugin tools, p
 
 ---
 
-## Claude Code — `/paca` skills
+## `/paca` skills — Claude Code, Gemini CLI, Cursor, and more
 
-If you use [Claude Code](https://claude.ai/code), install the Paca skill set and manage your entire Paca workspace through natural-language slash commands — without leaving your editor and without creating local files. Every command reads your Paca documentation first to understand the project before acting.
+Install the Paca skill set and manage your entire Paca workspace through natural-language slash commands — without leaving your editor and without creating local files. Every command reads your Paca documentation first to understand the project before acting.
 
-Skills are defined in the [`skills/`](skills/) directory using the [Agent Skills](https://agentskills.io/specification) format — one subdirectory per skill, each with a `SKILL.md` containing YAML frontmatter and instructions. The install script strips the frontmatter and writes the body to `~/.claude/commands/` for use as Claude Code slash commands.
+Skills are defined in the [`skills/`](skills/) directory using the [Agent Skills](https://agentskills.io/specification) format — one subdirectory per skill, each with a `SKILL.md` containing YAML frontmatter and instructions. The install script installs them to [Claude Code](https://claude.ai/code) (`~/.claude/commands/`), Gemini CLI (`~/.gemini/commands/`), Cursor (`.cursor/commands/`, project-scoped), and any AGENTS.md-reading tool (project-scoped) in one pass — and, if you point it at a running Paca instance, pulls in skills contributed by your installed plugins too. See [docs/guides/install-skills.md](docs/guides/install-skills.md) for details.
 
 ### Install
 
-Run this once in your terminal to install all skills globally:
+Run this once in your terminal to install all skills to every supported platform found on this machine:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-claude-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 ```
 
 Then connect the Paca MCP server to Claude Code:
@@ -421,7 +421,7 @@ Run `/paca-setup` inside a Claude Code session for a guided interactive walkthro
 | `/paca-doc <task-or-topic>` | Write or update documentation in Paca Docs |
 | `/paca-setup` | Interactive MCP connection wizard |
 
-For full setup options and command reference, see [docs/guides/claude-code-skill.md](docs/guides/claude-code-skill.md).
+For full setup options and command reference, see [docs/guides/install-skills.md](docs/guides/install-skills.md).
 
 ---
 
@@ -463,7 +463,7 @@ But Paca is built from conviction: human-AI collaboration in a real Scrum team s
 | [docs/guides/getting-started.md](docs/guides/getting-started.md) | Getting started (install, Docker, local dev) |
 | [docs/guides/local-development.md](docs/guides/local-development.md) | Contributor dev environment setup |
 | [docs/guides/mcp-server-setup.md](docs/guides/mcp-server-setup.md) | Connect AI agents via MCP |
-| [docs/guides/claude-code-skill.md](docs/guides/claude-code-skill.md) | `/paca` skill for Claude Code — manage Paca from your editor |
+| [docs/guides/install-skills.md](docs/guides/install-skills.md) | `/paca` skill for Claude Code — manage Paca from your editor |
 | [docs/plugins/](docs/plugins/) | Plugin system: backend (WASM) and frontend |
 | [deploy/README.md](deploy/README.md) | Full deployment reference |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |

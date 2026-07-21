@@ -122,6 +122,12 @@ type PluginsConfig struct {
 	// Each plugin is expected at {MCPDir}/{pluginName}/mcp.js.
 	MCPDir string
 
+	// SkillsDir is the local filesystem directory that contains extracted
+	// Agent Skills bundles for installed plugins.  Served at
+	// /plugins-skills/<pluginName>/.  Each skill is expected at
+	// {SkillsDir}/{pluginName}/{skillName}/SKILL.md.
+	SkillsDir string
+
 	// S3Prefix is the S3 key prefix used when Store is "s3".
 	// Plugin WASM binaries are fetched from {S3Prefix}/{pluginName}/backend.wasm.
 	S3Prefix string

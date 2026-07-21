@@ -107,7 +107,7 @@
 			"copied": "Copied!",
 			"step3Title": "Install the Paca skill",
 			"step3Description": "Lets your CLI route requests through Paca's MCP tools — added to every prompt via /paca by default.",
-			"step3NotAvailable": "Automatic installation is available for Claude Code only. {{provider}} doesn't have a known custom-prompt installer yet — Paca's MCP tools below still work without it.",
+			"step3NotAvailable": "Automatic installation is available for Claude Code, Gemini CLI, and Codex. {{provider}} doesn't have a known custom-prompt installer yet — Paca's MCP tools below still work without it.",
 			"step3ViewContent": "View skill instructions",
 			"step4Title": "Connect the MCP server",
 			"step4Description": "Uses a personal API key so the CLI can call Paca's tools directly.",

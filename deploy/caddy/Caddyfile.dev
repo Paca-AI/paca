@@ -20,6 +20,7 @@
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
+#   /plugins-skills/* → Plugin Agent Skills bundles (static files)
 #   /*              →  Web application         (SPA with client-side routing;
 #                       Vite HMR WebSocket proxied automatically)
 # =============================================================================
@@ -67,6 +68,12 @@
 
 	handle_path /plugins-mcp/* {
 		root * /var/www/plugins-mcp
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+
+	handle_path /plugins-skills/* {
+		root * /var/www/plugins-skills
 		header Cache-Control "public, max-age=900, immutable"
 		file_server
 	}

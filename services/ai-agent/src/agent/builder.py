@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
+import httpx
 from openhands.sdk import LLM
 from openhands.sdk.context import KeywordTrigger, Skill
 from openhands.sdk.skills import load_skills_from_dir
@@ -13,7 +15,7 @@ from pydantic import SecretStr
 
 from .. import llm_catalog
 from ..config import settings
-from ..models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow
+from ..models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow, PluginSkillRef
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,59 @@ def load_default_skills() -> tuple[Skill, ...]:
         + tuple(knowledge_skills.values())
         + tuple(agent_skills.values())
     )
+
+
+async def load_plugin_skills(refs: list[PluginSkillRef]) -> list[Skill]:
+    """Fetch and parse plugin-contributed skills for one conversation.
+
+    Each ref points at an enabled plugin's <skill-name>/SKILL.md, extracted
+    from the plugin's install artifact and served statically by the gateway
+    (see docs/plugins/skills-plugin-system.md). Fetched fresh on every call —
+    no caching, matching the fact the analogous MCP path has none either (a
+    fresh apps/mcp subprocess re-fetches the plugin list on every spawn). A
+    failure fetching or parsing any single skill is logged and skipped
+    rather than raised, so one broken plugin skill can't break every
+    conversation for every agent.
+    """
+    if not refs:
+        return []
+
+    result: list[Skill] = []
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for ref in refs:
+            try:
+                response = await client.get(ref.url)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "Failed to fetch plugin skill %s/%s from %s: %s",
+                    ref.plugin_name,
+                    ref.skill_name,
+                    ref.url,
+                    exc,
+                )
+                continue
+
+            try:
+                with tempfile.TemporaryDirectory(prefix="paca-plugin-skill-") as tmp_dir:
+                    # Skill.load derives the skill name from the parent
+                    # directory of SKILL.md, so the on-disk layout has to
+                    # match the AgentSkills convention even though the
+                    # content only lives in this temp dir for the duration
+                    # of the parse.
+                    skill_dir = Path(tmp_dir) / ref.skill_name
+                    skill_dir.mkdir(parents=True, exist_ok=True)
+                    skill_md_path = skill_dir / "SKILL.md"
+                    skill_md_path.write_text(response.text, encoding="utf-8")
+                    result.append(Skill.load(skill_md_path, strict=True))
+            except Exception as exc:
+                logger.warning(
+                    "Failed to parse plugin skill %s/%s: %s",
+                    ref.plugin_name,
+                    ref.skill_name,
+                    exc,
+                )
+    return result
 
 
 def build_llm(agent_config: AgentConfig) -> LLM:

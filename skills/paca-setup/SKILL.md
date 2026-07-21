@@ -76,15 +76,24 @@ If Paca tools appear and return results, setup is complete. If not, check:
 3. Paca API URL is reachable (`curl <PACA_API_URL>/api/v1/health`)
 4. Node.js / npx is in PATH
 
-### Step 6 — Install the Paca skill globally (optional)
+### Step 6 — Install the Paca skills globally (optional)
 
-Offer to run the global skill installer so `/paca` and related skills are always available:
+Offer to run the skill installer so `/paca` and related skills are always available — not just in Claude Code, but in Gemini CLI, Cursor, and any AGENTS.md-reading tool too:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-claude-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 ```
 
 Review the script before running it — `curl | bash` executes remote code directly.
+
+If the user is installing plugins on their Paca instance (or already has some enabled), offer to also pass through the `PACA_API_URL` / `PACA_API_KEY` collected in Step 1 so the installer pulls in each enabled plugin's contributed skills too, not just Paca's own bundled set:
+
+```bash
+PACA_API_URL=<their-paca-url> PACA_API_KEY=<their-api-key> \
+  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+```
+
+This step additionally requires `jq` to be installed — mention that if it's missing, the installer still succeeds but skips plugin-contributed skills.
 
 ---
 

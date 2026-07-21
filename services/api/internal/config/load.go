@@ -198,6 +198,7 @@ func Load() (*Config, error) {
 			WASMDir:               env("PLUGINS_WASM_DIR", "./plugins/local/backend"),
 			FrontendDir:           env("PLUGINS_FRONTEND_DIR", "./plugins/local/frontend"),
 			MCPDir:                env("PLUGINS_MCP_DIR", "./plugins/local/mcp"),
+			SkillsDir:             env("PLUGINS_SKILLS_DIR", "./plugins/local/skills"),
 			S3Prefix:              env("PLUGINS_S3_PREFIX", "plugins"),
 			MarketplaceCatalogURL: env("PLUGINS_MARKETPLACE_CATALOG_URL", "https://raw.githubusercontent.com/Paca-AI/paca-plugins/master/catalog/plugins.json"),
 			MarketplaceTimeout:    marketplaceTimeout,

@@ -7,10 +7,13 @@ package plugindom
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 )
 
 // Plugin represents one installed plugin in the registry.
@@ -43,6 +46,8 @@ type PluginManifest struct {
 	Frontend *FrontendManifest `json:"frontend,omitempty"`
 	// MCP holds MCP-server-specific manifest settings.
 	MCP *MCPManifest `json:"mcp,omitempty"`
+	// Skills holds Agent-Skills-specific manifest settings.
+	Skills *SkillsManifest `json:"skills,omitempty"`
 	// Permissions lists the host function scopes the plugin requires.
 	Permissions []string `json:"permissions,omitempty"`
 	// CustomPermissions lists project/global-scoped permission keys the
@@ -73,6 +78,11 @@ type CustomPermission struct {
 	Scope string `json:"scope,omitempty"`
 }
 
+// skillNamePattern mirrors the AgentSkills name convention enforced by the
+// OpenHands SDK (openhands/sdk/skills/utils.py's SKILL_NAME_PATTERN):
+// lowercase alphanumeric segments joined by single hyphens.
+var skillNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
 // pluginKeyNamespace derives the required custom-permission key prefix from a
 // plugin's reverse-DNS ID: its last dot-separated segment, snake_cased (e.g.
 // "com.paca.time-logging" -> "time_logging").
@@ -101,6 +111,11 @@ func (m PluginManifest) Validate() error {
 			return fmt.Errorf("customPermissions: key %q has invalid scope %q", perm.Key, perm.Scope)
 		}
 	}
+	if m.Skills != nil {
+		if err := m.Skills.validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -112,6 +127,56 @@ type MCPManifest struct {
 	// The module must be a Node.js-compatible ESM bundle that exports a
 	// PluginMCPEntry as its default export (see @paca-ai/plugin-sdk-mcp).
 	RemoteEntryURL string `json:"remoteEntryUrl"`
+}
+
+// SkillsManifest describes the Agent Skills a plugin contributes. When
+// present, the skills bundle is extracted from the plugin's install
+// artifact to a directory served statically at BaseURL, with each skill at
+// <BaseURL>/<name>/SKILL.md (AgentSkills format: YAML frontmatter +
+// markdown body) — the same format as services/ai-agent's default skills.
+// This mirrors MCPManifest's RemoteEntryURL pattern, adapted for a
+// directory of skills instead of a single JS module.
+type SkillsManifest struct {
+	// BaseURL is the root URL of the plugin's extracted skills bundle.
+	BaseURL string `json:"baseUrl"`
+	// Names lists the skill directory names available under BaseURL.
+	// Declared explicitly because the static file server does not support
+	// directory listing.
+	Names []string `json:"names"`
+}
+
+// validate checks that the skills manifest is well-formed: a base URL and at
+// least one uniquely-named skill, each name following the AgentSkills naming
+// convention and none colliding with a reserved trigger-skill name (see
+// agentdom.ReservedSkillNames).
+func (m SkillsManifest) validate() error {
+	if strings.TrimSpace(m.BaseURL) == "" {
+		return fmt.Errorf("skills: baseUrl is required")
+	}
+	if len(m.Names) == 0 {
+		return fmt.Errorf("skills: at least one name is required")
+	}
+	seen := make(map[string]bool, len(m.Names))
+	for _, name := range m.Names {
+		if !skillNamePattern.MatchString(name) {
+			return fmt.Errorf("skills: name %q must be lowercase alphanumeric with single hyphens (e.g. \"paca-my-skill\")", name)
+		}
+		// Every skill in the Paca ecosystem — bundled or plugin-contributed —
+		// shares the "paca-" namespace (see docs/plugins/skills-plugin-system.md),
+		// distinct from MCP tool naming, which prefixes with the plugin's own
+		// name instead to avoid inter-plugin tool collisions.
+		if !strings.HasPrefix(name, "paca-") {
+			return fmt.Errorf("skills: name %q must start with \"paca-\"", name)
+		}
+		if agentdom.IsReservedSkillName(name) {
+			return fmt.Errorf("skills: name %q is reserved", name)
+		}
+		if seen[name] {
+			return fmt.Errorf("skills: duplicate name %q", name)
+		}
+		seen[name] = true
+	}
+	return nil
 }
 
 // BackendManifest describes the backend (WASM) side of the plugin.

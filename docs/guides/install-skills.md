@@ -1,24 +1,44 @@
-# Paca Skill for Claude Code
+# Paca Skills
 
-Use Paca directly from Claude Code CLI with the `/paca` and `/paca-setup` slash commands. Once installed, Claude will use your Paca workspace for tasks, documentation, and sprint management — instead of creating local files.
+Use Paca directly from Claude Code, Gemini CLI, Cursor, or any AGENTS.md-reading tool, with `/paca` and related slash commands. Once installed, your AI coding tool will use your Paca workspace for tasks, documentation, and sprint management — instead of creating local files.
 
 ## Install
 
 Run the installer (works on macOS and Linux):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-claude-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 ```
 
-> **Security note:** Review the script before running it — `curl | bash` executes remote code directly. You can inspect it at the URL above, then run `bash scripts/install-claude-skill.sh` from a local clone instead.
+> **Security note:** Review the script before running it — `curl | bash` executes remote code directly. You can inspect it at the URL above, then run `bash scripts/install-paca-skills.sh` from a local clone instead.
 
 Or, from a local clone of this repo:
 
 ```bash
-bash scripts/install-claude-skill.sh
+bash scripts/install-paca-skills.sh
 ```
 
-The installer copies two skill files to `~/.claude/commands/`, making `/paca` and `/paca-setup` available in every Claude Code session.
+The installer copies all of Paca's bundled skills to every supported platform found on this machine:
+
+| Platform | Location | Scope |
+|---|---|---|
+| Claude Code | `~/.claude/commands/<name>.md` | Global — every session |
+| Gemini CLI | `~/.gemini/commands/<name>.toml` | Global — every session |
+| Cursor | `<project>/.cursor/commands/<name>.md` | Per-project (Cursor has no global commands directory) |
+| Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, …) | `<project>/AGENTS.md` | Per-project, merged into a marker-delimited section — re-running the installer refreshes only that section and leaves the rest of the file alone |
+
+The per-project targets (Cursor, AGENTS.md) are only written when the installer is run from inside a git working tree — run it from your project root to get those too.
+
+### Including plugin-contributed skills
+
+If your Paca instance has plugins installed that contribute their own skills, export `PACA_API_URL` (and `PACA_API_KEY`, optional — the plugin list is public, but send it in case your deployment locks the endpoint down further) before running the installer:
+
+```bash
+PACA_API_URL=http://localhost:8080 PACA_API_KEY=<your-api-key> \
+  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+```
+
+This also requires `jq` — the installer skips this step (with a message telling you why) if `jq` isn't installed or `PACA_API_URL` isn't set. `/paca-setup` (below) already collects both values interactively and can re-run the installer with them for you.
 
 ## Configure the MCP server
 
@@ -214,8 +234,15 @@ If Paca MCP tools are not available, say so and ask the user to run `/paca-setup
 ## Uninstall
 
 ```bash
-rm ~/.claude/commands/paca.md ~/.claude/commands/paca-setup.md
+# Claude Code
+rm ~/.claude/commands/paca*.md
+# Gemini CLI
+rm ~/.gemini/commands/paca*.toml
+# Cursor (run from the project root)
+rm .cursor/commands/paca*.md
 ```
+
+For AGENTS.md, remove the block between `<!-- BEGIN PACA SKILLS ... -->` and `<!-- END PACA SKILLS -->` — everything else in the file is untouched by the installer and safe to keep.
 
 ## Available tools
 

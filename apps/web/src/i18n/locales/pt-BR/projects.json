@@ -107,7 +107,7 @@
 			"copied": "Copiado!",
 			"step3Title": "Instalar a skill do Paca",
 			"step3Description": "Permite que sua CLI encaminhe solicitações pelas ferramentas MCP do Paca — adicionada a cada prompt via /paca por padrão.",
-			"step3NotAvailable": "A instalação automática está disponível apenas para o Claude Code. O {{provider}} ainda não tem um instalador de prompts personalizados conhecido — as ferramentas MCP do Paca abaixo funcionam mesmo sem ele.",
+			"step3NotAvailable": "A instalação automática está disponível para Claude Code, Gemini CLI e Codex. O {{provider}} ainda não tem um instalador de prompts personalizados conhecido — as ferramentas MCP do Paca abaixo funcionam mesmo sem ele.",
 			"step3ViewContent": "Ver instruções da skill",
 			"step4Title": "Conectar o servidor MCP",
 			"step4Description": "Usa uma chave de API pessoal para que a CLI possa chamar as ferramentas do Paca diretamente.",

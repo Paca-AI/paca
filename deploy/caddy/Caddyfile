@@ -10,6 +10,7 @@
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
+#   /plugins-skills/* → Plugin Agent Skills bundles (static files)
 #   /*              →  Web application         (SPA with client-side routing)
 #
 # This file is mounted at /etc/caddy/Caddyfile inside the gateway container.
@@ -115,6 +116,21 @@
 	#   ${PUBLIC_URL}/plugins-mcp/<plugin-id>/mcp.js
 	handle_path /plugins-mcp/* {
 		root * /var/www/plugins-mcp
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+
+	# -- Plugin Agent Skills bundles ----------------------------------------------
+	#
+	# SKILL.md directories loaded at conversation start by the ai-agent service.
+	# Kept on a separate path from frontend/MCP assets for the same reason as
+	# the MCP block above.
+	#
+	# Set baseUrl in each plugin's plugin.json skills section to an absolute
+	# URL, for example:
+	#   ${PUBLIC_URL}/plugins-skills/<plugin-id>
+	handle_path /plugins-skills/* {
+		root * /var/www/plugins-skills
 		header Cache-Control "public, max-age=900, immutable"
 		file_server
 	}

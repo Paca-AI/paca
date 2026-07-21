@@ -202,6 +202,7 @@ services:
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
+      PLUGINS_SKILLS_DIR: /plugins-skills
       # Pre-shared key matching PACA_API_KEY in the ai-agent service.
       AGENT_API_KEY: ${AGENT_API_KEY:-}
       # Authenticates the reverse direction: API calling into ai-agent's
@@ -226,6 +227,7 @@ services:
       - backend_plugins:/plugins
       - frontend_plugins:/plugins-frontend
       - mcp_plugins:/plugins-mcp
+      - skills_plugins:/plugins-skills
 
   # ── Web (React SPA served via Caddy) ────────────────────────────────────────
   web:
@@ -268,6 +270,7 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - frontend_plugins:/var/www/plugins:ro
       - mcp_plugins:/var/www/plugins-mcp:ro
+      - skills_plugins:/var/www/plugins-skills:ro
       # Persists issued TLS certificates/keys and Caddy's autosaved config
       # across container restarts and recreations.
       - caddy_data:/data
@@ -325,5 +328,6 @@ volumes:
   backend_plugins:
   frontend_plugins:
   mcp_plugins:
+  skills_plugins:
   caddy_data:
   caddy_config:

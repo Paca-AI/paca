@@ -75,6 +75,7 @@ services:
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
+      PLUGINS_SKILLS_DIR: /plugins-skills
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,6 +94,9 @@ services:
       # MCP plugin store — self-contained ESM bundles, served at /plugins-mcp/.
       # Writable for API marketplace installs; also mounted read-only by the gateway.
       - ../plugins/local/mcp:/plugins-mcp
+      # Skills plugin store — SKILL.md bundles, served at /plugins-skills/.
+      # Writable for API marketplace installs; also mounted read-only by the gateway.
+      - ../plugins/local/skills:/plugins-skills
     healthcheck:
       test: ["CMD-SHELL", "wget -qO/dev/null -T 3 --tries=1 http://127.0.0.1:8080/api/healthz || exit 1"]
       interval: 5s
@@ -150,6 +154,9 @@ services:
       # MCP plugin store — self-contained ESM bundles, served at /plugins-mcp/.
       # Layout: /var/www/plugins-mcp/<plugin-id>/mcp.js
       - ../plugins/local/mcp:/var/www/plugins-mcp:ro
+      # Skills plugin store — SKILL.md bundles, served at /plugins-skills/.
+      # Layout: /var/www/plugins-skills/<plugin-id>/<skill-name>/SKILL.md
+      - ../plugins/local/skills:/var/www/plugins-skills:ro
     depends_on:
       api:
         condition: service_healthy
