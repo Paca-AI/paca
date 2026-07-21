@@ -59,16 +59,20 @@ your specific agent (bridge install, skill install, MCP connection), or run
 it directly from a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+PACA_API_URL=<your-paca-url> \
+  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 ```
 
+`PACA_API_URL` is required here — the installer fetches skill content from
+that instance's API (matching the exact version it's running) rather than
+GitHub. `PACA_API_KEY` (from Paca → Settings → API Keys) is optional, but
+also pulls in skills contributed by any plugins enabled on that instance.
 Run this from the same project directory you'll run the ACP bridge from —
 Claude Code and Gemini CLI pick the skills up globally either way, but
 Codex (and anything else that reads `AGENTS.md`) only sees them if the
-installer's `AGENTS.md` output landed in that project. Add
-`PACA_API_URL`/`PACA_API_KEY` (from Paca → Settings → API Keys) to also pull
-in skills contributed by any plugins enabled on your instance — see
-[docs/guides/install-skills.md](../../docs/guides/install-skills.md).
+installer's `AGENTS.md` output landed in that project. See
+[docs/guides/install-skills.md](../../docs/guides/install-skills.md) for
+details.
 
 ## How it works
 

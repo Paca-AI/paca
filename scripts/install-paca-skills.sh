@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Paca Skills Installer
 #
-# Installs Paca's bundled skills — plus, optionally, skills contributed by
-# plugins enabled on a specific Paca instance — into every supported AI
-# coding tool found on this machine:
+# Installs Paca's bundled skills — plus skills contributed by plugins
+# enabled on your Paca instance — into every supported AI coding tool found
+# on this machine:
 #
 #   - Claude Code   → ~/.claude/commands/<name>.md          (global, slash commands)
 #   - Gemini CLI    → ~/.gemini/commands/<name>.toml         (global, slash commands)
@@ -17,27 +17,35 @@
 # The project-scoped targets (Cursor, AGENTS.md) are only written when this
 # script is run from inside a git working tree.
 #
-# Skills are stored in skills/<name>/SKILL.md (Agent Skills format: YAML
-# frontmatter + markdown body). This script strips the frontmatter for
-# Claude Code / Cursor / AGENTS.md, and re-shapes it into Gemini CLI's TOML
-# command format.
+# Skills are Agent Skills format (YAML frontmatter + markdown body). This
+# script strips the frontmatter for Claude Code / Cursor / AGENTS.md, and
+# re-shapes it into Gemini CLI's TOML command format.
+#
+# All skill content — both Paca's bundled defaults and anything contributed
+# by an installed plugin — is fetched from a running Paca instance's API
+# (GET /api/v1/skills, GET /api/v1/plugins), never from GitHub or any local
+# copy, so installed content always matches the exact version that instance
+# is running. This means PACA_API_URL is *required*; the script prompts for
+# it interactively if not already set via env var (see below), and errors
+# clearly if it's never provided.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 #   OR (from a local clone):
 #   bash scripts/install-paca-skills.sh
 #
-# To also install skills contributed by plugins enabled on your Paca
-# instance, export these first (both picked up automatically — no flags):
+# Export these first (both picked up automatically — no flags needed):
 #   PACA_API_URL=http://localhost:8080 PACA_API_KEY=<key> bash scripts/install-paca-skills.sh
-# PACA_API_KEY is optional — the plugin list is publicly readable — but send
-# it if you have one, in case your deployment locks the endpoint down further.
+# PACA_API_KEY is optional — both endpoints this script calls are publicly
+# readable — but send it if you have one, in case your deployment locks
+# things down further. If you don't export PACA_API_URL and are running
+# this interactively (i.e. there's a real terminal attached), the script
+# prompts for both.
 
 set -euo pipefail
 
 REPO="Paca-AI/paca"
 BRANCH="master"
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/skills"
 CLAUDE_DIR="${HOME}/.claude/commands"
 GEMINI_DIR="${HOME}/.gemini/commands"
 
@@ -46,12 +54,14 @@ PACA_API_KEY="${PACA_API_KEY:-}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
 info()    { echo -e "${CYAN}[paca]${NC} $*"; }
 success() { echo -e "${GREEN}[paca]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[paca]${NC} $*" >&2; }
+error()   { echo -e "${RED}[paca] ERROR:${NC} $*" >&2; }
 
 echo ""
 echo "  🦙 Paca Skills Installer"
@@ -60,17 +70,24 @@ echo ""
 
 # fetch_optional URL DEST [API_KEY] — best-effort download; returns nonzero
 # on failure instead of aborting, so callers decide what's fatal.
+#
+# The key is sent as X-API-Key, not "Authorization: Bearer" — a Paca API key
+# is never a valid JWT, and the API's optional-auth middleware only degrades
+# gracefully (silently ignoring a bad/unrecognized credential) for API-key-
+# shaped auth. An invalid Bearer token fails JWT verification and 401s
+# unconditionally, even on a route that otherwise allows anonymous access —
+# so sending it as Bearer would make providing *any* key always fail.
 fetch_optional() {
   local url="$1" dest="$2" key="${3:-}"
   if command -v curl &>/dev/null; then
     if [[ -n "$key" ]]; then
-      curl -fsSL -H "Authorization: Bearer ${key}" "$url" -o "$dest"
+      curl -fsSL -H "X-API-Key: ${key}" "$url" -o "$dest"
     else
       curl -fsSL "$url" -o "$dest"
     fi
   elif command -v wget &>/dev/null; then
     if [[ -n "$key" ]]; then
-      wget -q --header="Authorization: Bearer ${key}" -O "$dest" "$url"
+      wget -q --header="X-API-Key: ${key}" -O "$dest" "$url"
     else
       wget -q -O "$dest" "$url"
     fi
@@ -79,18 +96,44 @@ fetch_optional() {
   fi
 }
 
-# Detect if running from a local clone (the script lives in scripts/).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
-LOCAL_SKILLS=""
-if [[ -n "${SCRIPT_DIR}" && -d "${SCRIPT_DIR}/../skills" ]]; then
-  LOCAL_SKILLS="${SCRIPT_DIR}/../skills"
-  info "Local clone detected — installing bundled skills from ${LOCAL_SKILLS}"
-else
-  info "Installing bundled skills from GitHub (${REPO}@${BRANCH})"
-  if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
-    echo "Error: curl or wget is required. Install one and re-run." >&2
-    exit 1
+# fetch_with_status URL DEST [API_KEY] — like fetch_optional, but also
+# records the actual HTTP status code into LAST_FETCH_STATUS ("000" if no
+# response was received at all, e.g. connection refused). Used for the two
+# Paca API list calls (GET /api/v1/skills, GET /api/v1/plugins): unlike
+# every other fetch in this script, those responses tell us whether a
+# *provided* PACA_API_KEY was actually rejected (401) — a real problem worth
+# stopping for — versus the instance simply being unreachable, which is
+# otherwise treated as a soft/hard skip depending on the caller.
+LAST_FETCH_STATUS="000"
+fetch_with_status() {
+  local url="$1" dest="$2" key="${3:-}"
+  LAST_FETCH_STATUS="000"
+  if command -v curl &>/dev/null; then
+    if [[ -n "$key" ]]; then
+      LAST_FETCH_STATUS="$(curl -sSL -o "$dest" -w '%{http_code}' -H "X-API-Key: ${key}" "$url" 2>/dev/null || true)"
+    else
+      LAST_FETCH_STATUS="$(curl -sSL -o "$dest" -w '%{http_code}' "$url" 2>/dev/null || true)"
+    fi
+  elif command -v wget &>/dev/null; then
+    local stderr_log
+    stderr_log="$(mktemp)"
+    if [[ -n "$key" ]]; then
+      wget -S --header="X-API-Key: ${key}" -O "$dest" "$url" 2>"${stderr_log}" || true
+    else
+      wget -S -O "$dest" "$url" 2>"${stderr_log}" || true
+    fi
+    LAST_FETCH_STATUS="$(grep -m1 -oE 'HTTP/[0-9.]+ [0-9]{3}' "${stderr_log}" | awk '{print $2}' || true)"
+    [[ -z "${LAST_FETCH_STATUS}" ]] && LAST_FETCH_STATUS="000"
+    rm -f "${stderr_log}"
+  else
+    return 1
   fi
+  [[ "${LAST_FETCH_STATUS}" == 2* ]]
+}
+
+if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
+  echo "Error: curl or wget is required. Install one and re-run." >&2
+  exit 1
 fi
 
 mkdir -p "${CLAUDE_DIR}" "${GEMINI_DIR}"
@@ -114,6 +157,37 @@ if [[ -n "${PROJECT_ROOT}" ]]; then
 fi
 cleanup() { rm -f "${AGENTS_TMP:-}" "${SUMMARY_TMP}"; }
 trap cleanup EXIT
+
+# ─── PACA_API_URL / PACA_API_KEY (if not already set) ──────────────────────
+
+# Every skill this script installs — bundled and plugin-contributed alike —
+# comes from a running Paca instance's API, so PACA_API_URL is required.
+#
+# Piped runs (curl | bash) have stdin consumed by the pipe, not the user's
+# keyboard, so read from /dev/tty directly — the classic fix used by
+# rustup/nvm-style installers — and only if a controlling terminal actually
+# exists. A fully non-interactive run (CI, a Docker build, etc. with no tty
+# at all) falls straight through instead of hanging, and fails with a clear
+# error a few lines down instead of a `/dev/tty` crash. This has to actually
+# attempt to open /dev/tty (redirecting a no-op into it) rather than just
+# test `-r /dev/tty` — the device node's permission bits read as readable
+# even with no controlling terminal attached, so `-r` alone doesn't catch
+# that case.
+if [[ -z "${PACA_API_URL}" ]] && { : < /dev/tty; } 2>/dev/null; then
+  echo ""
+  info "No PACA_API_URL set. This installer needs a running Paca instance to"
+  info "fetch skills from."
+  read -r -p "  Paca instance URL (e.g. http://localhost:8080): " PACA_API_URL < /dev/tty
+  if [[ -n "${PACA_API_URL}" ]]; then
+    if [[ -z "${PACA_API_KEY}" ]]; then
+      info "API key is optional — both endpoints this script calls are publicly"
+      info "readable — but send one in case your deployment locks things down further."
+      read -rs -p "  Paca API key (press Enter to skip): " PACA_API_KEY < /dev/tty
+      echo ""
+    fi
+  fi
+  echo ""
+fi
 
 # ─── Frontmatter helpers ────────────────────────────────────────────────────
 
@@ -184,84 +258,113 @@ install_one_skill() {
 
 # ─── Bundled skills ─────────────────────────────────────────────────────────
 
-BUNDLED_NAMES=()
-if [[ -n "${LOCAL_SKILLS}" ]]; then
-  for d in "${LOCAL_SKILLS}"/*/; do
-    [[ -d "${d}" ]] || continue
-    BUNDLED_NAMES+=("$(basename "${d}")")
-  done
-else
-  manifest_tmp="$(mktemp)"
-  if ! fetch_optional "${BASE_URL}/manifest.txt" "${manifest_tmp}"; then
-    echo "Error: failed to download skill manifest from ${BASE_URL}/manifest.txt" >&2
-    exit 1
-  fi
-  while IFS= read -r line || [[ -n "${line}" ]]; do
-    case "${line}" in
-      ''|'#'*) continue ;;
-    esac
-    BUNDLED_NAMES+=("${line}")
-  done < "${manifest_tmp}"
-  rm -f "${manifest_tmp}"
+# Bundled skills come from the Paca instance's own API (GET /api/v1/skills),
+# not GitHub or a local copy, so the content installed always matches the
+# exact version that instance is running. There is nothing else to fall
+# back on if it's missing or fails.
+if [[ -z "${PACA_API_URL}" ]]; then
+  error "PACA_API_URL is required to install skills."
+  error "Export it (and optionally PACA_API_KEY), or answer the prompt above, and re-run."
+  exit 1
+fi
+if ! command -v jq &>/dev/null; then
+  error "jq is required to install skills from the Paca API — install it and re-run."
+  exit 1
 fi
 
-for name in "${BUNDLED_NAMES[@]}"; do
-  raw="$(mktemp)"
-  if [[ -n "${LOCAL_SKILLS}" ]]; then
-    cp "${LOCAL_SKILLS}/${name}/SKILL.md" "${raw}"
-  elif ! fetch_optional "${BASE_URL}/${name}/SKILL.md" "${raw}"; then
-    echo "Error: failed to download ${BASE_URL}/${name}/SKILL.md" >&2
-    exit 1
+info "Fetching bundled skills from ${PACA_API_URL}..."
+skills_json="$(mktemp)"
+if ! fetch_with_status "${PACA_API_URL%/}/api/v1/skills" "${skills_json}" "${PACA_API_KEY}"; then
+  if [[ "${LAST_FETCH_STATUS}" == "401" ]]; then
+    error "${PACA_API_URL}/api/v1/skills rejected the request (401 Unauthorized)."
+    error "Either PACA_API_KEY is wrong, or this deployment requires authentication that wasn't provided."
+    error "Check the key (Paca → Settings → API Keys) and re-run."
+  else
+    error "Could not fetch skills from ${PACA_API_URL}/api/v1/skills (status: ${LAST_FETCH_STATUS})."
+    error "Check the URL is correct and the instance is reachable, then re-run."
   fi
+  rm -f "${skills_json}"
+  exit 1
+fi
+
+bundled_count=0
+while IFS= read -r skill_obj; do
+  name="$(jq -r '.name' <<<"${skill_obj}")"
+  [[ -z "${name}" || "${name}" == "null" ]] && continue
+  raw="$(mktemp)"
+  jq -r '.content' <<<"${skill_obj}" > "${raw}"
   install_one_skill "${name}" "${raw}" "bundled"
   rm -f "${raw}"
-done
+  bundled_count=$((bundled_count + 1))
+done < <(jq -c '.data.skills[]' "${skills_json}")
+rm -f "${skills_json}"
 
-# ─── Plugin-contributed skills (optional) ──────────────────────────────────
-
-if [[ -z "${PACA_API_URL}" ]]; then
-  info "PACA_API_URL not set — skipping plugin-contributed skills."
-  info "Export PACA_API_URL (and optionally PACA_API_KEY) and re-run to also install skills from plugins enabled on your Paca instance."
-elif ! command -v jq &>/dev/null; then
-  warn "jq is not installed — skipping plugin-contributed skills (install jq to enable this)."
-elif ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
-  warn "curl or wget is required to fetch plugin skills — skipping."
-else
-  info "Checking ${PACA_API_URL} for plugin-contributed skills..."
-  plugins_json="$(mktemp)"
-  if fetch_optional "${PACA_API_URL%/}/api/v1/plugins" "${plugins_json}" "${PACA_API_KEY}"; then
-    plugin_skill_count=0
-    while IFS=$'\t' read -r plugin_name base_url skill_name; do
-      [[ -z "${skill_name}" ]] && continue
-      case "${base_url}" in
-        http://*|https://*) resolved_base="${base_url}" ;;
-        *) resolved_base="${PACA_API_URL%/}${base_url}" ;;
-      esac
-      skill_raw="$(mktemp)"
-      if fetch_optional "${resolved_base%/}/${skill_name}/SKILL.md" "${skill_raw}"; then
-        install_one_skill "${skill_name}" "${skill_raw}" "plugin:${plugin_name}"
-        plugin_skill_count=$((plugin_skill_count + 1))
-      else
-        warn "Failed to fetch skill '${skill_name}' from plugin '${plugin_name}' — skipping it."
-      fi
-      rm -f "${skill_raw}"
-    done < <(jq -r '
-      (.plugins // [])[]
-      | select(.enabled == true)
-      | select(.manifest.skills != null)
-      | .name as $p
-      | (.manifest.skills.baseUrl // "") as $b
-      | (.manifest.skills.names // [])[]
-      | [$p, $b, .] | @tsv
-    ' "${plugins_json}")
-    if [[ "${plugin_skill_count}" -eq 0 ]]; then
-      info "No plugin-contributed skills found (no enabled plugin declares a skills section)."
-    fi
-  else
-    warn "Could not reach ${PACA_API_URL}/api/v1/plugins — skipping plugin-contributed skills."
-  fi
-  rm -f "${plugins_json}"
+if [[ "${bundled_count}" -eq 0 ]]; then
+  error "${PACA_API_URL} returned no bundled skills — this looks like a bug on that instance, not something to retry."
+  exit 1
 fi
+
+# ─── Plugin-contributed skills ──────────────────────────────────────────────
+
+# Set whenever the fetch itself doesn't fully succeed (unreachable instance,
+# etc.) — printed as a caveat in the final summary instead of letting a
+# blanket "Installation complete!" imply everything succeeded. Not fatal:
+# bundled skills (above) are already independently complete by this point.
+PLUGIN_SKILLS_NOTE=""
+
+# Set only on a 401 from GET /api/v1/plugins — unlike every other failure
+# mode here (unreachable instance, missing jq, no plugin skills to install),
+# a 401 means the request *did* reach the server and was explicitly
+# rejected: either PACA_API_KEY is wrong, or this deployment requires
+# authentication that wasn't provided. That's worth stopping for rather than
+# quietly degrading like the rest of this script does — checked at the very
+# end, after bundled skills (already independently complete by this point)
+# get their normal summary, so a bad key doesn't also hide what did work.
+FATAL_ERROR=""
+
+# PACA_API_URL, jq, and curl/wget are all already confirmed present by this
+# point (checked above for bundled skills, which are never optional) — the
+# only thing that can still go wrong here is the /api/v1/plugins call itself.
+info "Checking ${PACA_API_URL} for plugin-contributed skills..."
+plugins_json="$(mktemp)"
+if fetch_with_status "${PACA_API_URL%/}/api/v1/plugins" "${plugins_json}" "${PACA_API_KEY}"; then
+  plugin_skill_count=0
+  while IFS=$'\t' read -r plugin_name base_url skill_name; do
+    [[ -z "${skill_name}" ]] && continue
+    case "${base_url}" in
+      http://*|https://*) resolved_base="${base_url}" ;;
+      *) resolved_base="${PACA_API_URL%/}${base_url}" ;;
+    esac
+    skill_raw="$(mktemp)"
+    if fetch_optional "${resolved_base%/}/${skill_name}/SKILL.md" "${skill_raw}"; then
+      install_one_skill "${skill_name}" "${skill_raw}" "plugin:${plugin_name}"
+      plugin_skill_count=$((plugin_skill_count + 1))
+    else
+      warn "Failed to fetch skill '${skill_name}' from plugin '${plugin_name}' — skipping it."
+    fi
+    rm -f "${skill_raw}"
+  done < <(jq -r '
+    (.data.plugins // [])[]
+    | select(.enabled == true)
+    | select(.manifest.skills != null)
+    | .name as $p
+    | (.manifest.skills.baseUrl // "") as $b
+    | (.manifest.skills.names // [])[]
+    | [$p, $b, .] | @tsv
+  ' "${plugins_json}")
+  if [[ "${plugin_skill_count}" -eq 0 ]]; then
+    info "No plugin-contributed skills found (no enabled plugin declares a skills section)."
+  fi
+elif [[ "${LAST_FETCH_STATUS}" == "401" ]]; then
+  error "${PACA_API_URL}/api/v1/plugins rejected the request (401 Unauthorized)."
+  error "Either PACA_API_KEY is wrong, or this deployment requires authentication that wasn't provided."
+  error "Check the key (Paca → Settings → API Keys) and re-run."
+  FATAL_ERROR="Authentication to ${PACA_API_URL} failed (401) — plugin-contributed skills were not installed."
+else
+  warn "Could not reach ${PACA_API_URL}/api/v1/plugins — skipping plugin-contributed skills."
+  PLUGIN_SKILLS_NOTE="Could not reach ${PACA_API_URL} — plugin-contributed skills were NOT installed, only bundled skills were. Check the URL (and API key, if your deployment needs one) and re-run."
+fi
+rm -f "${plugins_json}"
 
 # ─── AGENTS.md merge (project-scoped only) ─────────────────────────────────
 
@@ -297,7 +400,17 @@ fi
 # ─── Summary ────────────────────────────────────────────────────────────────
 
 echo ""
-success "Installation complete!"
+if [[ -n "${FATAL_ERROR}" ]]; then
+  error "${FATAL_ERROR}"
+  echo ""
+  warn "Bundled skills below still installed successfully — only the plugin-contributed step failed."
+elif [[ -n "${PLUGIN_SKILLS_NOTE}" ]]; then
+  warn "${PLUGIN_SKILLS_NOTE}"
+  echo ""
+  success "Bundled skills installed — see the warning above for what didn't complete."
+else
+  success "Installation complete!"
+fi
 echo ""
 echo "  Installed skills:"
 echo "  ──────────────────────────────────────────────────────────────────────"
@@ -321,10 +434,9 @@ echo "      --env PACA_API_KEY=<your-api-key> \\"
 echo "      --env PACA_API_URL=<your-paca-url> \\"
 echo "      -- npx -y @paca-ai/paca-mcp"
 echo ""
-if [[ -z "${PACA_API_URL}" ]]; then
-  echo "  To also install skills from plugins enabled on your instance next time:"
-  echo "    PACA_API_URL=<your-paca-url> PACA_API_KEY=<your-api-key> bash $0"
-  echo ""
-fi
 echo "  Docs: https://github.com/${REPO}/blob/${BRANCH}/docs/guides/install-skills.md"
 echo ""
+
+if [[ -n "${FATAL_ERROR}" ]]; then
+  exit 1
+fi

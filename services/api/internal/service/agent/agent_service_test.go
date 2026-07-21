@@ -10,6 +10,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// findAgentByIDReturning stubs mockAgentRepo.findAgentByID to return a
+// minimal agent of the given type, regardless of the requested id — used by
+// tests exercising MCP server / skill / env var writes, which now check the
+// owning agent's type via requireNonACPAgent before touching the repo.
+func findAgentByIDReturning(agentType string) func(context.Context, uuid.UUID) (*agentdom.Agent, error) {
+	return func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+		return &agentdom.Agent{ID: id, AgentType: agentType}, nil
+	}
+}
+
 type mockAgentRepo struct {
 	findAgentByID                   func(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error)
 	findAgentByHandle               func(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error)
@@ -764,6 +774,7 @@ func TestAddMCPServer_Success(t *testing.T) {
 	url := "http://localhost:8080"
 
 	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		createMCPServer: func(_ context.Context, server *agentdom.AgentMCPServer) error {
 			if server.AgentID != agentID {
 				t.Fatalf("unexpected agentID")
@@ -817,6 +828,7 @@ func TestAddSkill_Success(t *testing.T) {
 	agentID := uuid.New()
 
 	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		createSkill: func(_ context.Context, skill *agentdom.AgentSkill) error {
 			if skill.AgentID != agentID {
 				t.Fatalf("unexpected agentID")
@@ -1485,6 +1497,7 @@ func TestDeleteMCPServer_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		findMCPServerByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentMCPServer, error) {
 			return server, nil
 		},
@@ -1515,6 +1528,7 @@ func TestUpdateSkill_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		findSkillByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentSkill, error) {
 			return skill, nil
 		},
@@ -1754,4 +1768,197 @@ func TestGenerateACPBridgeToken_WrongProject(t *testing.T) {
 	_, err := svc.GenerateACPBridgeToken(context.Background(), projectID, agentID)
 
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// -------------------------------------------------------------------------
+// requireNonACPAgent — MCP servers / skills / env vars are meaningless for
+// ACP-type agents (services/ai-agent's acp_dispatch.py never reads any of
+// these tables), so every write path must reject them outright instead of
+// silently accepting a change that will never take effect.
+// -------------------------------------------------------------------------
+
+func TestAddMCPServer_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	command := "python"
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		createMCPServer: func(context.Context, *agentdom.AgentMCPServer) error {
+			t.Fatal("createMCPServer should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.AddMCPServer(context.Background(), agentID, agentdom.AddMCPServerInput{
+		ServerName: "Test Server",
+		Transport:  "stdio",
+		Command:    &command,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestUpdateMCPServer_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	serverID := uuid.New()
+	server := &agentdom.AgentMCPServer{ID: serverID, AgentID: agentID}
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findMCPServerByID: func(context.Context, uuid.UUID) (*agentdom.AgentMCPServer, error) {
+			return server, nil
+		},
+		updateMCPServer: func(context.Context, *agentdom.AgentMCPServer) error {
+			t.Fatal("updateMCPServer should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.UpdateMCPServer(context.Background(), agentID, serverID, agentdom.UpdateMCPServerInput{})
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestDeleteMCPServer_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	serverID := uuid.New()
+	server := &agentdom.AgentMCPServer{ID: serverID, AgentID: agentID}
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findMCPServerByID: func(context.Context, uuid.UUID) (*agentdom.AgentMCPServer, error) {
+			return server, nil
+		},
+		deleteMCPServer: func(context.Context, uuid.UUID) error {
+			t.Fatal("deleteMCPServer should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.DeleteMCPServer(context.Background(), agentID, serverID)
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestAddSkill_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		createSkill: func(context.Context, *agentdom.AgentSkill) error {
+			t.Fatal("createSkill should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.AddSkill(context.Background(), agentID, agentdom.AddSkillInput{
+		SkillName:    "Test Skill",
+		SkillSource:  "file",
+		SkillContent: "skill content",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestUpdateSkill_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	skillID := uuid.New()
+	skill := &agentdom.AgentSkill{ID: skillID, AgentID: agentID, SkillName: "Skill"}
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findSkillByID: func(context.Context, uuid.UUID) (*agentdom.AgentSkill, error) {
+			return skill, nil
+		},
+		updateSkill: func(context.Context, *agentdom.AgentSkill) error {
+			t.Fatal("updateSkill should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.UpdateSkill(context.Background(), agentID, skillID, agentdom.UpdateSkillInput{})
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestDeleteSkill_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	skillID := uuid.New()
+	skill := &agentdom.AgentSkill{ID: skillID, AgentID: agentID, SkillName: "Skill"}
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findSkillByID: func(context.Context, uuid.UUID) (*agentdom.AgentSkill, error) {
+			return skill, nil
+		},
+		deleteSkill: func(context.Context, uuid.UUID) error {
+			t.Fatal("deleteSkill should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.DeleteSkill(context.Background(), agentID, skillID)
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestAddEnvVar_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		createEnvVar: func(context.Context, *agentdom.AgentEnvironmentVariable) error {
+			t.Fatal("createEnvVar should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.AddEnvVar(context.Background(), agentID, agentdom.AddEnvVarInput{
+		Key:   "MY_VAR",
+		Value: "secret",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestUpdateEnvVar_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	envVarID := uuid.New()
+	v := &agentdom.AgentEnvironmentVariable{ID: envVarID, AgentID: agentID, Key: "MY_VAR"}
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findEnvVarByID: func(context.Context, uuid.UUID) (*agentdom.AgentEnvironmentVariable, error) {
+			return v, nil
+		},
+		updateEnvVar: func(context.Context, *agentdom.AgentEnvironmentVariable) error {
+			t.Fatal("updateEnvVar should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.UpdateEnvVar(context.Background(), agentID, envVarID, agentdom.UpdateEnvVarInput{Value: "new-secret"})
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+func TestDeleteEnvVar_ACPAgent_ReturnsError(t *testing.T) {
+	agentID := uuid.New()
+	envVarID := uuid.New()
+	v := &agentdom.AgentEnvironmentVariable{ID: envVarID, AgentID: agentID, Key: "MY_VAR"}
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findEnvVarByID: func(context.Context, uuid.UUID) (*agentdom.AgentEnvironmentVariable, error) {
+			return v, nil
+		},
+		deleteEnvVar: func(context.Context, uuid.UUID) error {
+			t.Fatal("deleteEnvVar should not be called for an ACP-type agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.DeleteEnvVar(context.Background(), agentID, envVarID)
+
+	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
 }

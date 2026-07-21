@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
-from functools import lru_cache
 from pathlib import Path
 
 import httpx
@@ -19,25 +19,66 @@ from ..models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow, Plugin
 
 logger = logging.getLogger(__name__)
 
-# services/ai-agent/src/skills — bundled into the Docker image by the
-# Dockerfile's existing `COPY src/ ./src/` line.
-_DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+_default_skills_cache: tuple[Skill, ...] | None = None
+_default_skills_lock = asyncio.Lock()
 
 
-@lru_cache(maxsize=1)
-def load_default_skills() -> tuple[Skill, ...]:
-    """Load Paca's default skill set, bundled under src/skills/.
+async def load_default_skills() -> tuple[Skill, ...]:
+    """Fetch and parse Paca's default ("agent" flavor) skill set from the
+    Paca API (GET /api/v1/skills?target=agent).
 
-    The directory is static per deployment, so this is cached after the
-    first call — safe to call on every conversation without re-parsing
-    disk each time.
+    ai-agent has no skills directory of its own — this content is hardcoded
+    directly in services/api's bundledskills package
+    (internal/platform/bundledskills/bundledskills.go), the same place the
+    CLI installer's "cli" flavor is served from, so there's a single place
+    skill content is authored and versioned instead of independently
+    maintained copies that could drift.
+
+    Cached after the first successful call for the lifetime of this worker
+    process — the content is static per deployed API version, so there's no
+    reason to re-fetch on every conversation. A failed fetch is *not*
+    cached, so a transient failure (e.g. racing an API restart) is retried
+    on the next conversation rather than permanently breaking every
+    subsequent one in this process.
     """
-    repo_skills, knowledge_skills, agent_skills = load_skills_from_dir(_DEFAULT_SKILLS_DIR)
-    return (
-        tuple(repo_skills.values())
-        + tuple(knowledge_skills.values())
-        + tuple(agent_skills.values())
-    )
+    global _default_skills_cache
+    if _default_skills_cache is not None:
+        return _default_skills_cache
+
+    async with _default_skills_lock:
+        if _default_skills_cache is not None:
+            return _default_skills_cache
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.api_base_url}/api/v1/skills", params={"target": "agent"}
+            )
+            response.raise_for_status()
+        entries = response.json()["data"]["skills"]
+
+        with tempfile.TemporaryDirectory(prefix="paca-default-skills-") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            for entry in entries:
+                # Written to the exact relative path the API reports (e.g.
+                # "paca-do/SKILL.md", or the one legacy exception "paca.md")
+                # rather than a fixed "<name>.md"/"<name>/SKILL.md" guess —
+                # load_skills_from_dir categorizes a skill as legacy
+                # (trigger=None, always active) vs AgentSkills-format purely
+                # from whether the file is literally named SKILL.md, so the
+                # on-disk layout has to match the source exactly.
+                dest = tmp_path / entry["path"]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(entry["content"], encoding="utf-8")
+
+            repo_skills, knowledge_skills, agent_skills = load_skills_from_dir(tmp_path)
+            skills = (
+                tuple(repo_skills.values())
+                + tuple(knowledge_skills.values())
+                + tuple(agent_skills.values())
+            )
+
+        _default_skills_cache = skills
+        return skills
 
 
 async def load_plugin_skills(refs: list[PluginSkillRef]) -> list[Skill]:

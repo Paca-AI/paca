@@ -2,7 +2,7 @@
 
 ## Overview
 
-Paca agents support **plugin-contributed Agent Skills**. Each installed Paca plugin can ship one or more `SKILL.md` files (the same [AgentSkills](https://agentskills.io/specification) format used by `services/ai-agent/src/skills`, Paca's own bundled default skills) as part of its install artifact. When an agent conversation starts, the ai-agent service fetches the skill content for every enabled plugin that declares a `skills` section in its manifest and merges it into that conversation's skill list.
+Paca agents support **plugin-contributed Agent Skills**. Each installed Paca plugin can ship one or more `SKILL.md` files (the same [AgentSkills](https://agentskills.io/specification) format used by Paca's own bundled default skills — see [default-skills.md](../ai-agent/default-skills.md)) as part of its install artifact. When an agent conversation starts, the ai-agent service fetches the skill content for every enabled plugin that declares a `skills` section in its manifest and merges it into that conversation's skill list.
 
 From the model's perspective, plugin skills appear alongside the agent's own configured skills and Paca's bundled defaults — there is no visible distinction beyond the name.
 

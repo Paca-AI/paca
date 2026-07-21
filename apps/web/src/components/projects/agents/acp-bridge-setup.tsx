@@ -17,8 +17,13 @@ import {
 // from the API, since it embeds the freshly generated token.
 const BRIDGE_INSTALL_COMMAND = "uv pip install paca-acp-bridge";
 
-const SKILL_INSTALL_COMMAND =
-	"curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash";
+// PACA_API_URL is required here, not just a nice-to-have — the installer
+// fetches bundled skill content from this instance's own API rather than
+// GitHub (so it always matches the exact version running here), and this
+// command is never run from a local clone of the Paca repo.
+function skillInstallCommand(): string {
+	return `PACA_API_URL=${window.location.origin} curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash`;
+}
 
 const SKILL_CONTENT_URL =
 	"https://github.com/Paca-AI/paca/blob/master/skills/paca/SKILL.md";
@@ -133,6 +138,7 @@ export function AcpBridgeSetup({
 	const hasAnyToken = hasToken || revealed !== null;
 	const isClaudeCode = acpProvider === "claude-code";
 	const canAutoInstallSkill = supportsSkillInstaller(acpProvider);
+	const skillCommand = skillInstallCommand();
 	const mcpCommand = isClaudeCode
 		? claudeMcpConnectCommand()
 		: genericMcpConnectCommand();
@@ -251,9 +257,9 @@ export function AcpBridgeSetup({
 				<div className="pl-7">
 					{canAutoInstallSkill ? (
 						<CommandBox
-							command={SKILL_INSTALL_COMMAND}
+							command={skillCommand}
 							copied={copiedField === "skill"}
-							onCopy={() => copy("skill", SKILL_INSTALL_COMMAND)}
+							onCopy={() => copy("skill", skillCommand)}
 						/>
 					) : (
 						<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">

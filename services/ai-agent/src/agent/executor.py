@@ -511,9 +511,10 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
         # Precedence on a name collision: agent-configured skills win over
         # plugin-contributed skills, which win over bundled defaults.
         plugin_skills = await load_plugin_skills(agent_config.plugin_skills)
+        default_skills = await load_default_skills()
         skills = merge_skills_by_name(
             build_skills(agent_config.skills),
-            merge_skills_by_name(plugin_skills, load_default_skills()),
+            merge_skills_by_name(plugin_skills, default_skills),
         )
         trigger_skills.append_trigger_skill(
             skills, trigger.trigger_type, trigger.task_id, trigger.conversation_id

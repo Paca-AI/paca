@@ -4,21 +4,18 @@ Use Paca directly from Claude Code, Gemini CLI, Cursor, or any AGENTS.md-reading
 
 ## Install
 
-Run the installer (works on macOS and Linux):
+The installer fetches all skill content — Paca's bundled set and anything contributed by your installed plugins — from a running Paca instance's API (`GET /api/v1/skills`, `GET /api/v1/plugins`) rather than GitHub or any local copy, so installed content always matches the exact version that instance is running. A reachable Paca instance is therefore required, whether you run it via `curl | bash` or from a local clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+PACA_API_URL=http://localhost:8080 \
+  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 ```
 
 > **Security note:** Review the script before running it — `curl | bash` executes remote code directly. You can inspect it at the URL above, then run `bash scripts/install-paca-skills.sh` from a local clone instead.
 
-Or, from a local clone of this repo:
+If `PACA_API_URL` isn't set and you're running the script interactively (a real terminal attached), it prompts for it instead of failing outright. `PACA_API_KEY` is optional — both endpoints are publicly readable — but the prompt offers to collect it too, in case your deployment locks things down further. Both endpoint calls require `jq`.
 
-```bash
-bash scripts/install-paca-skills.sh
-```
-
-The installer copies all of Paca's bundled skills to every supported platform found on this machine:
+The installer copies every bundled skill to every supported platform found on this machine:
 
 | Platform | Location | Scope |
 |---|---|---|
@@ -31,14 +28,9 @@ The per-project targets (Cursor, AGENTS.md) are only written when the installer 
 
 ### Including plugin-contributed skills
 
-If your Paca instance has plugins installed that contribute their own skills, export `PACA_API_URL` (and `PACA_API_KEY`, optional — the plugin list is public, but send it in case your deployment locks the endpoint down further) before running the installer:
+If your Paca instance also has plugins installed that contribute their own skills, no extra step is needed — the installer checks for those automatically alongside the bundled set, using the same `PACA_API_URL`/`PACA_API_KEY` above.
 
-```bash
-PACA_API_URL=http://localhost:8080 PACA_API_KEY=<your-api-key> \
-  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
-```
-
-This also requires `jq` — the installer skips this step (with a message telling you why) if `jq` isn't installed or `PACA_API_URL` isn't set. `/paca-setup` (below) already collects both values interactively and can re-run the installer with them for you.
+`/paca-setup` (below) already collects both values interactively and can re-run the installer with them for you.
 
 ## Configure the MCP server
 

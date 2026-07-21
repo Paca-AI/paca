@@ -384,14 +384,15 @@ For a complete reference and advanced configuration (agent-mode, plugin tools, p
 
 Install the Paca skill set and manage your entire Paca workspace through natural-language slash commands — without leaving your editor and without creating local files. Every command reads your Paca documentation first to understand the project before acting.
 
-Skills are defined in the [`skills/`](skills/) directory using the [Agent Skills](https://agentskills.io/specification) format — one subdirectory per skill, each with a `SKILL.md` containing YAML frontmatter and instructions. The install script installs them to [Claude Code](https://claude.ai/code) (`~/.claude/commands/`), Gemini CLI (`~/.gemini/commands/`), Cursor (`.cursor/commands/`, project-scoped), and any AGENTS.md-reading tool (project-scoped) in one pass — and, if you point it at a running Paca instance, pulls in skills contributed by your installed plugins too. See [docs/guides/install-skills.md](docs/guides/install-skills.md) for details.
+Skills use the [Agent Skills](https://agentskills.io/specification) format (YAML frontmatter + instructions) and are served by a running Paca instance's own API (`GET /api/v1/skills`), not read from a checked-out directory — so installed content always matches the exact version that instance runs. The install script fetches and installs them to [Claude Code](https://claude.ai/code) (`~/.claude/commands/`), Gemini CLI (`~/.gemini/commands/`), Cursor (`.cursor/commands/`, project-scoped), and any AGENTS.md-reading tool (project-scoped) in one pass, and also pulls in skills contributed by your installed plugins. See [docs/guides/install-skills.md](docs/guides/install-skills.md) for details.
 
 ### Install
 
-Run this once in your terminal to install all skills to every supported platform found on this machine:
+Point the installer at a running Paca instance and run this once in your terminal to install all skills to every supported platform found on this machine:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+PACA_API_URL=http://localhost:8080 \
+  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
 ```
 
 Then connect the Paca MCP server to Claude Code:
@@ -434,8 +435,6 @@ services/api      Go + Gin — core business logic and REST API
 services/realtime Node.js + Socket.IO — real-time event fan-out
 services/ai-agent Python + FastAPI + OpenHands SDK — AI agent orchestration
 apps/e2e          Playwright — end-to-end test suite
-
-skills/           Agent Skills — /paca slash commands for Claude Code
 
 PostgreSQL        Persistent store
 Valkey            Cache + async event streams between services
