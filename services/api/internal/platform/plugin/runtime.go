@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -648,8 +649,16 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 // standing in for that. p.Name is the caller identity fixed at host-module
 // registration time (one module per plugin instance), never plugin-supplied,
 // so a plugin cannot forge another plugin's prefix.
+//
+// The name is embedded length-prefixed ("plugin:<len>:<name>:") rather than
+// as a bare "plugin:<name>:" so that decoding is unambiguous even if a
+// plugin name itself contains a colon: the length tells a reader exactly
+// how many bytes to consume for the name, so "plugin:3:a:b:x" (name "a:b",
+// key "x") can never collide with "plugin:1:a:b:x" (name "a", key "b:x") —
+// the two encode to different strings even though a naive "plugin:"+name+":"
+// scheme would make them collide.
 func cacheKeyPrefix(pluginName string) string {
-	return "plugin:" + pluginName + ":"
+	return "plugin:" + strconv.Itoa(len(pluginName)) + ":" + pluginName + ":"
 }
 
 // registerCacheFunctions adds paca.cache_get, paca.cache_set, and
@@ -690,13 +699,15 @@ func (r *Runtime) registerCacheFunctions(b wazero.HostModuleBuilder, p plugindom
 		Export("cache_get")
 
 	// paca.cache_set(keyPtr, keyLen, valuePtr, valueLen, ttlSeconds i32) -> (ok i32)
-	// A ttlSeconds of 0 stores the value without expiry.
+	// A ttlSeconds of 0 stores the value without expiry. A negative
+	// ttlSeconds is rejected (ok=0) rather than forwarded to Redis, which
+	// would otherwise reject it as an invalid expire time.
 	b.NewFunctionBuilder().
 		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
 			key, _ := readString(m, stack[0], stack[1])
 			value, _ := readString(m, stack[2], stack[3])
 			ttlSeconds := int32(stack[4])
-			if key == "" || r.services.Cache == nil {
+			if key == "" || r.services.Cache == nil || ttlSeconds < 0 {
 				stack[0] = 0
 				return
 			}

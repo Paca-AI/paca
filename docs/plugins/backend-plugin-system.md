@@ -50,6 +50,16 @@ Each plugin gets a dedicated namespace in the database (`plugin_data_{pluginId}`
 | `paca.storage_set(key_ptr, key_len, val_ptr, val_len) → ok` | Set a value in the plugin's key-value store. |
 | `paca.storage_delete(key_ptr, key_len) → ok` | Delete a key from the plugin's key-value store. |
 
+#### Plugin Cache (TTL, Valkey/Redis-backed)
+
+Backed by the host's shared Valkey/Redis instance, keyed under a per-plugin namespace so plugins can't read or overwrite each other's entries. Unlike Plugin-Owned Storage above, entries can expire and there is no durability guarantee — treat the cache as recomputable data only. If the host has no cache backend configured, `cache_get` always misses and `cache_set`/`cache_delete` are no-ops, so plugins should always be able to fall back to recomputing a value on a miss.
+
+| Function | Description |
+|---|---|
+| `paca.cache_get(key_ptr, key_len, resp_ptr, max_len) → resp_len` | Get a value from the plugin's cache. A zero-length response means a miss (never cached, expired, or no cache backend configured). |
+| `paca.cache_set(key_ptr, key_len, val_ptr, val_len, ttl_seconds) → ok` | Set a value in the plugin's cache with the given TTL in seconds. `ttl_seconds = 0` stores the value with no expiry; negative values are rejected (`ok = 0`). |
+| `paca.cache_delete(key_ptr, key_len) → ok` | Delete a key from the plugin's cache. |
+
 #### Core Data Access (Read-Only, Scoped)
 
 | Function | Description |

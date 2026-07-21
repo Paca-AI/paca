@@ -277,6 +277,18 @@ func TestCacheHostFunctions(t *testing.T) {
 			t.Fatalf("expected CacheDelete to report failure with no Cache configured, got %d", ok)
 		}
 	})
+
+	// NegativeTTLRejected ensures cache_set refuses a negative ttlSeconds
+	// (which Redis would otherwise reject as an invalid expire time) up
+	// front, rather than forwarding it and surfacing a generic store error.
+	t.Run("NegativeTTLRejected", func(t *testing.T) {
+		if ok := callCacheSet(t, inst, "negative-ttl", "v", -1*time.Second); ok != 0 {
+			t.Fatalf("expected CacheSet to reject a negative TTL, got %d", ok)
+		}
+		if _, hit := callCacheGet(t, inst, "negative-ttl"); hit {
+			t.Fatal("expected no value to have been stored for a rejected negative-TTL set")
+		}
+	})
 }
 
 // TestCacheKeyPrefix_DifferentPluginsDoNotCollide pins the namespacing
@@ -286,7 +298,21 @@ func TestCacheKeyPrefix_DifferentPluginsDoNotCollide(t *testing.T) {
 	if cacheKeyPrefix("com.paca.a") == cacheKeyPrefix("com.paca.b") {
 		t.Fatal("expected different plugins to get different cache key prefixes")
 	}
-	if got, want := cacheKeyPrefix("com.paca.dashboard")+"k", "plugin:com.paca.dashboard:k"; got != want {
+	if got, want := cacheKeyPrefix("com.paca.dashboard")+"k", "plugin:18:com.paca.dashboard:k"; got != want {
 		t.Fatalf("cacheKeyPrefix: got %q, want %q", got, want)
+	}
+}
+
+// TestCacheKeyPrefix_ColonInPluginNameDoesNotCollide guards against the
+// namespacing scheme regressing to a bare "plugin:<name>:" concatenation,
+// under which a plugin named "a:b" using key "x" would land at the same
+// Redis key as a plugin named "a" using key "b:x". The length-prefixed
+// encoding in cacheKeyPrefix makes name/key boundaries unambiguous
+// regardless of what characters the plugin name contains.
+func TestCacheKeyPrefix_ColonInPluginNameDoesNotCollide(t *testing.T) {
+	a := cacheKeyPrefix("a:b") + "x"
+	b := cacheKeyPrefix("a") + "b:x"
+	if a == b {
+		t.Fatalf("expected no collision, but both encode to %q", a)
 	}
 }
