@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/google/uuid"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -75,6 +77,12 @@ type HostServices struct {
 	// map) for the paca.permission_check host function. May be nil, in which
 	// case permission_check always returns false.
 	Authorizer *authz.Authorizer
+	// Cache backs the paca.cache_get/cache_set/cache_delete host functions
+	// with the host's shared Valkey/Redis instance. May be nil, in which case
+	// cache_get always misses and cache_set/cache_delete are no-ops — a
+	// plugin's Cache is meant for recomputable data, so a missing cache
+	// backend degrades to "always recompute" rather than failing calls.
+	Cache *cache.Store
 }
 
 // EventPublisher abstracts the messaging.Publisher to avoid a circular import.
@@ -433,6 +441,9 @@ func (r *Runtime) registerHostModule(ctx context.Context, rt wazero.Runtime, p p
 	// --- DB host functions (PLUG-BE-04) ------------------------------------
 	r.registerDBFunctions(builder, p)
 
+	// --- Cache host functions (Valkey/Redis-backed, TTL) --------------------
+	r.registerCacheFunctions(builder, p)
+
 	// --- Core read-only functions (PLUG-BE-05) -----------------------------
 	r.registerCoreFunctions(builder, p)
 
@@ -588,7 +599,12 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 				}
 				return
 			}
-			ptrLen, _ := writeToMemory(m, []byte(value))
+			ptrLen, err := writeToMemory(m, []byte(value))
+			if err != nil {
+				m.Memory().WriteUint32Le(uint32(stack[2]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
+				return
+			}
 			m.Memory().WriteUint32Le(uint32(stack[2]), uint32(ptrLen[0]))
 			m.Memory().WriteUint32Le(uint32(stack[3]), uint32(ptrLen[1]))
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},
@@ -628,6 +644,112 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64},
 			[]api.ValueType{api.ValueTypeI32}).
 		Export("storage_delete")
+}
+
+// cacheKeyPrefix namespaces a plugin's cache entries within the shared
+// Valkey/Redis instance so two plugins can use the same logical key (e.g.
+// "view:abc123") without colliding. Unlike the DB/KV bridge, which gets
+// physical isolation for free from each plugin's own Postgres schema, Cache
+// has no per-plugin storage of its own — this prefix is the only thing
+// standing in for that. p.Name is the caller identity fixed at host-module
+// registration time (one module per plugin instance), never plugin-supplied,
+// so a plugin cannot forge another plugin's prefix.
+//
+// The name is embedded length-prefixed ("plugin:<len>:<name>:") rather than
+// as a bare "plugin:<name>:" so that decoding is unambiguous even if a
+// plugin name itself contains a colon: the length tells a reader exactly
+// how many bytes to consume for the name, so "plugin:3:a:b:x" (name "a:b",
+// key "x") can never collide with "plugin:1:a:b:x" (name "a", key "b:x") —
+// the two encode to different strings even though a naive "plugin:"+name+":"
+// scheme would make them collide.
+func cacheKeyPrefix(pluginName string) string {
+	return "plugin:" + strconv.Itoa(len(pluginName)) + ":" + pluginName + ":"
+}
+
+// registerCacheFunctions adds paca.cache_get, paca.cache_set, and
+// paca.cache_delete to the host module builder — a TTL-based cache backed by
+// the host's shared Valkey/Redis instance (see HostServices.Cache), as
+// opposed to storage_get/set/delete above which persist durably to the
+// plugin's own Postgres schema with no expiry. Intended for recomputable
+// data (e.g. expensive query results) that can tolerate being briefly stale;
+// callers must treat a miss as "not cached" rather than "does not exist".
+func (r *Runtime) registerCacheFunctions(b wazero.HostModuleBuilder, p plugindom.Plugin) {
+	prefix := cacheKeyPrefix(p.Name)
+
+	// paca.cache_get(keyPtr, keyLen, valuePtrPtr, valueLenPtr)
+	b.NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
+			key, err := readString(m, stack[0], stack[1])
+			if err != nil || key == "" || r.services.Cache == nil {
+				m.Memory().WriteUint32Le(uint32(stack[2]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
+				return
+			}
+
+			var value string
+			hit, err := r.services.Cache.Get(ctx, prefix+key, &value)
+			if err != nil {
+				r.log.Error("paca.cache_get", "plugin", p.Name, "error", err)
+			}
+			if !hit {
+				m.Memory().WriteUint32Le(uint32(stack[2]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
+				return
+			}
+			ptrLen, err := writeToMemory(m, []byte(value))
+			if err != nil {
+				m.Memory().WriteUint32Le(uint32(stack[2]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
+				return
+			}
+			m.Memory().WriteUint32Le(uint32(stack[2]), uint32(ptrLen[0]))
+			m.Memory().WriteUint32Le(uint32(stack[3]), uint32(ptrLen[1]))
+		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},
+			nil).
+		Export("cache_get")
+
+	// paca.cache_set(keyPtr, keyLen, valuePtr, valueLen, ttlSeconds i32) -> (ok i32)
+	// A ttlSeconds of 0 stores the value without expiry. A negative
+	// ttlSeconds is rejected (ok=0) rather than forwarded to Redis, which
+	// would otherwise reject it as an invalid expire time.
+	b.NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
+			key, _ := readString(m, stack[0], stack[1])
+			value, _ := readString(m, stack[2], stack[3])
+			ttlSeconds := int32(stack[4])
+			if key == "" || r.services.Cache == nil || ttlSeconds < 0 {
+				stack[0] = 0
+				return
+			}
+
+			ttl := time.Duration(ttlSeconds) * time.Second
+			if err := r.services.Cache.Set(ctx, prefix+key, value, ttl); err != nil {
+				r.log.Error("paca.cache_set", "plugin", p.Name, "error", err)
+				stack[0] = 0
+				return
+			}
+			stack[0] = 1
+		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI32},
+			[]api.ValueType{api.ValueTypeI32}).
+		Export("cache_set")
+
+	// paca.cache_delete(keyPtr, keyLen) -> (ok i32)
+	b.NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
+			key, _ := readString(m, stack[0], stack[1])
+			if key == "" || r.services.Cache == nil {
+				stack[0] = 0
+				return
+			}
+			if err := r.services.Cache.Delete(ctx, prefix+key); err != nil {
+				r.log.Error("paca.cache_delete", "plugin", p.Name, "error", err)
+				stack[0] = 0
+				return
+			}
+			stack[0] = 1
+		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64},
+			[]api.ValueType{api.ValueTypeI32}).
+		Export("cache_delete")
 }
 
 // execQuery runs a SELECT statement scoped to the plugin schema and returns a
