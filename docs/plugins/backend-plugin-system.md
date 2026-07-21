@@ -56,7 +56,7 @@ Backed by the host's shared Valkey/Redis instance, keyed under a per-plugin name
 
 | Function | Description |
 |---|---|
-| `paca.cache_get(key_ptr, key_len, resp_ptr, max_len) → resp_len` | Get a value from the plugin's cache. A zero-length response means a miss (never cached, expired, or no cache backend configured). |
+| `paca.cache_get(key_ptr, key_len, value_ptr_ptr, value_len_ptr)` | Get a value from the plugin's cache. A zero-length response means a miss (never cached, expired, or no cache backend configured). |
 | `paca.cache_set(key_ptr, key_len, val_ptr, val_len, ttl_seconds) → ok` | Set a value in the plugin's cache with the given TTL in seconds. `ttl_seconds = 0` stores the value with no expiry; negative values are rejected (`ok = 0`). |
 | `paca.cache_delete(key_ptr, key_len) → ok` | Delete a key from the plugin's cache. |
 
