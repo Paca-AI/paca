@@ -59,17 +59,6 @@ func buildCacheFixture(t *testing.T) string {
 	return cacheWasmPath
 }
 
-// newTestCacheStore starts an in-process miniredis instance and returns a
-// cache.Store backed by it, so these tests exercise the real cache.Store ->
-// go-redis -> Valkey-protocol path rather than a fake.
-func newTestCacheStore(t *testing.T) *cache.Store {
-	t.Helper()
-	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
-	return cache.NewStore(client, "paca:")
-}
-
 // loadCachePlugin compiles and loads the cache fixture into a fresh Runtime
 // wired to the given HostServices (in particular, HostServices.Cache).
 func loadCachePlugin(t *testing.T, services HostServices) *Runtime {
@@ -188,66 +177,24 @@ func resetFixture(t *testing.T, inst *pluginInstance) {
 	}
 }
 
-// TestCacheHostFunctions_SetThenGet exercises the full WASM<->host round
-// trip for paca.cache_set/cache_get against a real (miniredis-backed)
+// TestCacheHostFunctions exercises the full WASM<->host round trip for
+// paca.cache_get/cache_set/cache_delete against a real (miniredis-backed)
 // cache.Store — not just the SDK's in-memory test double — to prove the new
-// host functions actually reach Valkey/Redis with the right key and value.
-func TestCacheHostFunctions_SetThenGet(t *testing.T) {
-	store := newTestCacheStore(t)
-	rt := loadCachePlugin(t, HostServices{Cache: store})
-	inst := instanceFor(rt, cachePluginName)
-
-	if ok := callCacheSet(t, inst, "greeting", "hello", time.Minute); ok != 1 {
-		t.Fatalf("CacheSet: expected success, got %d", ok)
-	}
-
-	got, hit := callCacheGet(t, inst, "greeting")
-	if !hit || got != "hello" {
-		t.Fatalf("CacheGet: expected hit with %q, got hit=%v value=%q", "hello", hit, got)
-	}
-
-	// The value must actually be namespaced under this plugin's own prefix
-	// in the shared store, not some other key — read it back directly via
-	// cache.Store using the same prefix registerCacheFunctions applies.
-	var direct string
-	hit, err := store.Get(context.Background(), cacheKeyPrefix(cachePluginName)+"greeting", &direct)
-	if err != nil || !hit || direct != "hello" {
-		t.Fatalf("expected cache.Store to hold the namespaced key directly, hit=%v err=%v value=%q", hit, err, direct)
-	}
-}
-
-// TestCacheHostFunctions_GetMiss ensures an unset key reports a miss rather
-// than some zero-value placeholder.
-func TestCacheHostFunctions_GetMiss(t *testing.T) {
-	store := newTestCacheStore(t)
-	rt := loadCachePlugin(t, HostServices{Cache: store})
-	inst := instanceFor(rt, cachePluginName)
-
-	if _, hit := callCacheGet(t, inst, "never-set"); hit {
-		t.Fatal("expected a miss for a key that was never set")
-	}
-}
-
-// TestCacheHostFunctions_Delete verifies cache_delete actually removes the
-// entry from the shared store, not just returns success.
-func TestCacheHostFunctions_Delete(t *testing.T) {
-	store := newTestCacheStore(t)
-	rt := loadCachePlugin(t, HostServices{Cache: store})
-	inst := instanceFor(rt, cachePluginName)
-
-	callCacheSet(t, inst, "k", "v", time.Minute)
-	if ok := callCacheDelete(t, inst, "k"); ok != 1 {
-		t.Fatalf("CacheDelete: expected success, got %d", ok)
-	}
-	if _, hit := callCacheGet(t, inst, "k"); hit {
-		t.Fatal("expected key to be gone after CacheDelete")
-	}
-}
-
-// TestCacheHostFunctions_TTLExpiry proves the ttlSeconds argument actually
-// reaches Redis's EXPIRE mechanism (via cache.Store.Set), using miniredis's
-// FastForward instead of a real sleep.
-func TestCacheHostFunctions_TTLExpiry(t *testing.T) {
+// host functions actually reach Valkey/Redis with the right key/value/TTL.
+//
+// All subtests share one loadCachePlugin call (one wazero.CompileModule)
+// instead of loading a fresh Runtime per scenario: compiling this fixture
+// under `go test -race` costs ~7s each time (wazero's optimizing backend is
+// expensive under the race detector), and this package's other WASM-fixture
+// tests (testdata/poisonplugin) already spend ~30s of the CI job's 60s
+// budget — five separate loads here previously pushed the whole package
+// over that budget and timed the CI job out. Each data-bearing subtest uses
+// its own key so they stay independent without needing a shared store reset
+// between them. The nil-Cache subtest reuses the very same Runtime/instance
+// by temporarily clearing rt.services.Cache — Runtime.services is read live
+// by the registered host-function closures (see registerCacheFunctions), so
+// this in-package field mutation takes effect without any extra compile.
+func TestCacheHostFunctions(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
@@ -256,34 +203,80 @@ func TestCacheHostFunctions_TTLExpiry(t *testing.T) {
 	rt := loadCachePlugin(t, HostServices{Cache: store})
 	inst := instanceFor(rt, cachePluginName)
 
-	callCacheSet(t, inst, "k", "v", 5*time.Second)
-	if _, hit := callCacheGet(t, inst, "k"); !hit {
-		t.Fatal("expected key to be present before its TTL elapses")
-	}
+	t.Run("SetThenGet", func(t *testing.T) {
+		if ok := callCacheSet(t, inst, "greeting", "hello", time.Minute); ok != 1 {
+			t.Fatalf("CacheSet: expected success, got %d", ok)
+		}
 
-	mr.FastForward(10 * time.Second)
-	if _, hit := callCacheGet(t, inst, "k"); hit {
-		t.Fatal("expected key to be gone after its TTL elapses")
-	}
-}
+		got, hit := callCacheGet(t, inst, "greeting")
+		if !hit || got != "hello" {
+			t.Fatalf("CacheGet: expected hit with %q, got hit=%v value=%q", "hello", hit, got)
+		}
 
-// TestCacheHostFunctions_NilCacheDegradesGracefully ensures a Runtime with no
-// Cache configured (HostServices.Cache == nil) reports misses and failed
-// writes/deletes instead of panicking — a plugin whose Cache is unavailable
-// should fall back to "always recompute", not crash.
-func TestCacheHostFunctions_NilCacheDegradesGracefully(t *testing.T) {
-	rt := loadCachePlugin(t, HostServices{})
-	inst := instanceFor(rt, cachePluginName)
+		// The value must actually be namespaced under this plugin's own
+		// prefix in the shared store, not some other key — read it back
+		// directly via cache.Store using the same prefix
+		// registerCacheFunctions applies.
+		var direct string
+		hit, err := store.Get(context.Background(), cacheKeyPrefix(cachePluginName)+"greeting", &direct)
+		if err != nil || !hit || direct != "hello" {
+			t.Fatalf("expected cache.Store to hold the namespaced key directly, hit=%v err=%v value=%q", hit, err, direct)
+		}
+	})
 
-	if ok := callCacheSet(t, inst, "k", "v", time.Minute); ok != 0 {
-		t.Fatalf("expected CacheSet to report failure with no Cache configured, got %d", ok)
-	}
-	if _, hit := callCacheGet(t, inst, "k"); hit {
-		t.Fatal("expected CacheGet to miss with no Cache configured")
-	}
-	if ok := callCacheDelete(t, inst, "k"); ok != 0 {
-		t.Fatalf("expected CacheDelete to report failure with no Cache configured, got %d", ok)
-	}
+	t.Run("GetMiss", func(t *testing.T) {
+		if _, hit := callCacheGet(t, inst, "never-set"); hit {
+			t.Fatal("expected a miss for a key that was never set")
+		}
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		callCacheSet(t, inst, "to-delete", "v", time.Minute)
+		if ok := callCacheDelete(t, inst, "to-delete"); ok != 1 {
+			t.Fatalf("CacheDelete: expected success, got %d", ok)
+		}
+		if _, hit := callCacheGet(t, inst, "to-delete"); hit {
+			t.Fatal("expected key to be gone after CacheDelete")
+		}
+	})
+
+	// TTLExpiry proves the ttlSeconds argument actually reaches Redis's
+	// EXPIRE mechanism (via cache.Store.Set), using miniredis's FastForward
+	// instead of a real sleep. FastForward advances the shared miniredis
+	// clock for every key, but this subtest's own key is the only one with
+	// a TTL short enough to be affected by a 10s jump (SetThenGet/Delete
+	// above used a 1-minute TTL).
+	t.Run("TTLExpiry", func(t *testing.T) {
+		callCacheSet(t, inst, "expiring", "v", 5*time.Second)
+		if _, hit := callCacheGet(t, inst, "expiring"); !hit {
+			t.Fatal("expected key to be present before its TTL elapses")
+		}
+
+		mr.FastForward(10 * time.Second)
+		if _, hit := callCacheGet(t, inst, "expiring"); hit {
+			t.Fatal("expected key to be gone after its TTL elapses")
+		}
+	})
+
+	// NilCacheDegradesGracefully ensures a Runtime with no Cache configured
+	// (HostServices.Cache == nil) reports misses and failed writes/deletes
+	// instead of panicking — a plugin whose Cache is unavailable should fall
+	// back to "always recompute", not crash. Run last and restore the real
+	// store afterward in case tests are ever reordered.
+	t.Run("NilCacheDegradesGracefully", func(t *testing.T) {
+		rt.services.Cache = nil
+		t.Cleanup(func() { rt.services.Cache = store })
+
+		if ok := callCacheSet(t, inst, "k", "v", time.Minute); ok != 0 {
+			t.Fatalf("expected CacheSet to report failure with no Cache configured, got %d", ok)
+		}
+		if _, hit := callCacheGet(t, inst, "k"); hit {
+			t.Fatal("expected CacheGet to miss with no Cache configured")
+		}
+		if ok := callCacheDelete(t, inst, "k"); ok != 0 {
+			t.Fatalf("expected CacheDelete to report failure with no Cache configured, got %d", ok)
+		}
+	})
 }
 
 // TestCacheKeyPrefix_DifferentPluginsDoNotCollide pins the namespacing
