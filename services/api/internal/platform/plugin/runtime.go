@@ -599,7 +599,12 @@ func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Pl
 				}
 				return
 			}
-			ptrLen, _ := writeToMemory(m, []byte(value))
+			ptrLen, err := writeToMemory(m, []byte(value))
+			if err != nil {
+				m.Memory().WriteUint32Le(uint32(stack[2]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
+				return
+			}
 			m.Memory().WriteUint32Le(uint32(stack[2]), uint32(ptrLen[0]))
 			m.Memory().WriteUint32Le(uint32(stack[3]), uint32(ptrLen[1]))
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},
@@ -691,7 +696,12 @@ func (r *Runtime) registerCacheFunctions(b wazero.HostModuleBuilder, p plugindom
 				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
 				return
 			}
-			ptrLen, _ := writeToMemory(m, []byte(value))
+			ptrLen, err := writeToMemory(m, []byte(value))
+			if err != nil {
+				m.Memory().WriteUint32Le(uint32(stack[2]), 0)
+				m.Memory().WriteUint32Le(uint32(stack[3]), 0)
+				return
+			}
 			m.Memory().WriteUint32Le(uint32(stack[2]), uint32(ptrLen[0]))
 			m.Memory().WriteUint32Le(uint32(stack[3]), uint32(ptrLen[1]))
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},
