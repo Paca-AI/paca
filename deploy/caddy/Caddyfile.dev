@@ -25,6 +25,20 @@
 #                       Vite HMR WebSocket proxied automatically)
 # =============================================================================
 
+(mcp_skills_routes) {
+	handle_path /plugins-mcp/* {
+		root * /var/www/plugins-mcp
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+
+	handle_path /plugins-skills/* {
+		root * /var/www/plugins-skills
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+}
+
 :80 {
 	encode gzip
 
@@ -66,17 +80,7 @@
 		file_server
 	}
 
-	handle_path /plugins-mcp/* {
-		root * /var/www/plugins-mcp
-		header Cache-Control "public, max-age=900, immutable"
-		file_server
-	}
-
-	handle_path /plugins-skills/* {
-		root * /var/www/plugins-skills
-		header Cache-Control "public, max-age=900, immutable"
-		file_server
-	}
+	import mcp_skills_routes
 
 	handle /api/* {
 		reverse_proxy api:8080
@@ -91,4 +95,13 @@
 	handle {
 		reverse_proxy web:3000
 	}
+}
+
+# Internal-only port for GATEWAY_BASE_URL — see the matching block at the
+# bottom of ../caddy/Caddyfile for why this exists. Plain :80 here never gets
+# automatic HTTPS anyway, so this isn't strictly needed in dev, but is kept in
+# sync so GATEWAY_BASE_URL can point at the same http://gateway:8080 address
+# in every environment.
+:8080 {
+	import mcp_skills_routes
 }

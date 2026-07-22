@@ -200,7 +200,7 @@ services:
       # Gateway base URL — the MCP server uses this to resolve plugin MCP bundle
       # URLs (e.g. /plugins-mcp/<id>/mcp.js).  The gateway (Caddy) serves these
       # files, not the API service.
-      GATEWAY_BASE_URL: http://gateway
+      GATEWAY_BASE_URL: http://gateway:8080
       # Must match AGENT_API_KEY in the api service.
       PACA_API_KEY: e2e-agent-api-key
       DOCKER_SOCKET: /var/run/docker.sock

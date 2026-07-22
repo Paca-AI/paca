@@ -288,7 +288,7 @@ services:
       # Gateway base URL — the MCP server uses this to resolve plugin MCP bundle
       # URLs (e.g. /plugins-mcp/<id>/mcp.js).  The gateway (Caddy) serves these
       # files, not the API service.
-      GATEWAY_BASE_URL: http://gateway
+      GATEWAY_BASE_URL: http://gateway:8080
       # API key for the built-in Paca MCP server.  Must match AGENT_API_KEY in
       # the api service so the AI agent can authenticate via the MCP.
       PACA_API_KEY: dev-agent-api-key-change-in-production

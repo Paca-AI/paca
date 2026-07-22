@@ -297,8 +297,26 @@ export function PluginMarketplacePanel() {
 		return marketplace.filter((plugin) => matchesQuery(plugin, query));
 	}, [marketplace, query]);
 
+	const [installingNames, setInstallingNames] = useState<Set<string>>(
+		new Set(),
+	);
+	const [uninstallingIds, setUninstallingIds] = useState<Set<string>>(
+		new Set(),
+	);
+	const [upgradingIds, setUpgradingIds] = useState<Set<string>>(new Set());
+
 	const installMutation = useMutation({
 		mutationFn: installMarketplacePlugin,
+		onMutate: (variables) => {
+			setInstallingNames((prev) => new Set(prev).add(variables.name));
+		},
+		onSettled: (_data, _error, variables) => {
+			setInstallingNames((prev) => {
+				const next = new Set(prev);
+				next.delete(variables.name);
+				return next;
+			});
+		},
 		onSuccess: async () => {
 			await Promise.all([
 				qc.invalidateQueries({ queryKey: ["plugins"] }),
@@ -309,6 +327,16 @@ export function PluginMarketplacePanel() {
 
 	const uninstallMutation = useMutation({
 		mutationFn: uninstallPlugin,
+		onMutate: (pluginId) => {
+			setUninstallingIds((prev) => new Set(prev).add(pluginId));
+		},
+		onSettled: (_data, _error, pluginId) => {
+			setUninstallingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(pluginId);
+				return next;
+			});
+		},
 		onSuccess: async () => {
 			await Promise.all([
 				qc.invalidateQueries({ queryKey: ["plugins"] }),
@@ -319,6 +347,16 @@ export function PluginMarketplacePanel() {
 
 	const upgradeMutation = useMutation({
 		mutationFn: upgradePlugin,
+		onMutate: (pluginId) => {
+			setUpgradingIds((prev) => new Set(prev).add(pluginId));
+		},
+		onSettled: (_data, _error, pluginId) => {
+			setUpgradingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(pluginId);
+				return next;
+			});
+		},
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: ["plugins"] });
 		},
@@ -356,20 +394,15 @@ export function PluginMarketplacePanel() {
 							plugin={plugin}
 							isInstalled={installedByName.has(plugin.name)}
 							installedVersion={installedByName.get(plugin.name)?.version}
-							isInstalling={
-								installMutation.isPending &&
-								installMutation.variables?.name === plugin.name
-							}
-							isUninstalling={
-								uninstallMutation.isPending &&
-								uninstallMutation.variables ===
-									installedByName.get(plugin.name)?.id
-							}
-							isUpgrading={
-								upgradeMutation.isPending &&
-								upgradeMutation.variables ===
-									installedByName.get(plugin.name)?.id
-							}
+							isInstalling={installingNames.has(plugin.name)}
+							isUninstalling={(() => {
+								const pluginId = installedByName.get(plugin.name)?.id;
+								return !!pluginId && uninstallingIds.has(pluginId);
+							})()}
+							isUpgrading={(() => {
+								const pluginId = installedByName.get(plugin.name)?.id;
+								return !!pluginId && upgradingIds.has(pluginId);
+							})()}
 							onInstall={(name) =>
 								installMutation.mutate({ name, enabled: true })
 							}
