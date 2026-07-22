@@ -17,7 +17,8 @@
 				"backend": "后端",
 				"frontend": "前端",
 				"migrations": "数据库迁移",
-				"mcp": "MCP"
+				"mcp": "MCP",
+				"skills": "技能"
 			}
 		}
 	},

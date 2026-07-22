@@ -17,7 +17,8 @@
 				"backend": "Backend",
 				"frontend": "Frontend",
 				"migrations": "Migrations",
-				"mcp": "MCP"
+				"mcp": "MCP",
+				"skills": "Kỹ năng"
 			}
 		}
 	},

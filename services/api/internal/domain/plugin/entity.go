@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	"github.com/Paca-AI/api/internal/platform/bundledskills"
 )
 
 // Plugin represents one installed plugin in the registry.
@@ -148,7 +149,11 @@ type SkillsManifest struct {
 // validate checks that the skills manifest is well-formed: a base URL and at
 // least one uniquely-named skill, each name following the AgentSkills naming
 // convention and none colliding with a reserved trigger-skill name (see
-// agentdom.ReservedSkillNames).
+// agentdom.ReservedSkillNames) or one of Paca's own bundled skill names (see
+// bundledskills.IsBuiltinName) — the latter would otherwise let a plugin
+// silently shadow a bundled skill users already trust, since neither the
+// GET /api/v1/skills merge nor scripts/install-paca-skills.sh's by-name file
+// writes dedupe against that list.
 func (m SkillsManifest) validate() error {
 	if strings.TrimSpace(m.BaseURL) == "" {
 		return fmt.Errorf("skills: baseUrl is required")
@@ -170,6 +175,9 @@ func (m SkillsManifest) validate() error {
 		}
 		if agentdom.IsReservedSkillName(name) {
 			return fmt.Errorf("skills: name %q is reserved", name)
+		}
+		if bundledskills.IsBuiltinName(name) {
+			return fmt.Errorf("skills: name %q collides with a bundled Paca skill", name)
 		}
 		if seen[name] {
 			return fmt.Errorf("skills: duplicate name %q", name)

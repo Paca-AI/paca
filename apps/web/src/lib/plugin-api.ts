@@ -109,6 +109,7 @@ export interface MarketplacePluginArtifacts {
 	migrations_tar_gz_url?: string;
 	manifest_tar_gz_url: string;
 	mcp_tar_gz_url?: string;
+	skills_tar_gz_url?: string;
 }
 
 export interface MarketplacePlugin {

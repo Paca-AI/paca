@@ -17,7 +17,8 @@
 				"backend": "백엔드",
 				"frontend": "프론트엔드",
 				"migrations": "마이그레이션",
-				"mcp": "MCP"
+				"mcp": "MCP",
+				"skills": "스킬"
 			}
 		}
 	},
