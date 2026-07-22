@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/bundledskills"
 )
 
 type fakePluginLister struct {
@@ -130,6 +131,38 @@ func TestListSkills_SkipsUnreadableSkillFileRatherThanFailing(t *testing.T) {
 	}
 	if len(skills) != 1 || skills[0].Name != "paca-a" {
 		t.Fatalf("expected only paca-a to be returned, got %+v", skills)
+	}
+}
+
+func TestListSkills_SkipsNameCollidingWithBundledSkill(t *testing.T) {
+	dir := t.TempDir()
+	// Manifest validation should already reject this at install time (see
+	// entity_test.go's "collides with a bundled skill name" case), but this
+	// exercises ListSkills' own defense-in-depth for a plugin that was
+	// installed before that check existed.
+	builtinName := bundledskills.List(bundledskills.TargetCLI)[0].Name
+	writeSkillFile(t, dir, "com.paca.example", builtinName, "shadow content")
+	writeSkillFile(t, dir, "com.paca.example", "paca-example", "content")
+
+	svc := &fakePluginLister{plugins: []*plugindom.Plugin{
+		{
+			Name:    "com.paca.example",
+			Enabled: true,
+			Manifest: plugindom.PluginManifest{
+				Skills: &plugindom.SkillsManifest{
+					BaseURL: "/plugins-skills/com.paca.example",
+					Names:   []string{builtinName, "paca-example"},
+				},
+			},
+		},
+	}}
+
+	skills, err := ListSkills(context.Background(), svc, dir)
+	if err != nil {
+		t.Fatalf("ListSkills: %v", err)
+	}
+	if len(skills) != 1 || skills[0].Name != "paca-example" {
+		t.Fatalf("expected only the non-colliding skill to be returned, got %+v", skills)
 	}
 }
 

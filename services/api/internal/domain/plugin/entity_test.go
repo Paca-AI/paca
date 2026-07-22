@@ -1,6 +1,10 @@
 package plugindom
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Paca-AI/api/internal/platform/bundledskills"
+)
 
 func TestPluginManifestValidate_Skills(t *testing.T) {
 	base := func(skills *SkillsManifest) PluginManifest {
@@ -69,6 +73,17 @@ func TestPluginManifestValidate_Skills(t *testing.T) {
 			skills: &SkillsManifest{
 				BaseURL: "/plugins-skills/com.paca.example",
 				Names:   []string{"paca-trigger-chat"},
+			},
+			wantErr: true,
+		},
+		{
+			// A plugin declaring one of Paca's own bundled skill names (e.g.
+			// "paca-setup") would otherwise silently shadow it — see
+			// bundledskills.IsBuiltinName.
+			name: "collides with a bundled skill name",
+			skills: &SkillsManifest{
+				BaseURL: "/plugins-skills/com.paca.example",
+				Names:   []string{bundledskills.List(bundledskills.TargetCLI)[0].Name},
 			},
 			wantErr: true,
 		},

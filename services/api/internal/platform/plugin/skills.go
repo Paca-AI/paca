@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -30,6 +31,16 @@ type PluginLister interface {
 // whole list — the same per-skill isolation
 // docs/plugins/skills-plugin-system.md documents for services/ai-agent's
 // analogous (HTTP-based) load_plugin_skills.
+//
+// A declared name that collides with one of Paca's own bundled skills (see
+// bundledskills.IsBuiltinName) is skipped and logged rather than returned.
+// plugindom.SkillsManifest.validate() already rejects such a name at
+// install/update time, but this is a second line of defense against a
+// plugin installed before that check existed, or any other path that
+// bypassed it — nothing here dedupes by name against the bundled list the
+// caller (skills_handler.go) merges this result into, so letting a
+// collision through would silently shadow a bundled skill both in the API
+// response and in whatever scripts/install-paca-skills.sh writes to disk.
 func ListSkills(ctx context.Context, svc PluginLister, skillsDir string) ([]bundledskills.Skill, error) {
 	if skillsDir == "" || svc == nil {
 		return nil, nil
@@ -44,6 +55,11 @@ func ListSkills(ctx context.Context, svc PluginLister, skillsDir string) ([]bund
 			continue
 		}
 		for _, name := range p.Manifest.Skills.Names {
+			if bundledskills.IsBuiltinName(name) {
+				slog.Warn("skills: plugin skill name collides with a bundled skill, skipping",
+					"plugin", p.Name, "skill", name)
+				continue
+			}
 			skillPath := filepath.Join(skillsDir, p.Name, name, "SKILL.md")
 			content, err := os.ReadFile(skillPath)
 			if err != nil {

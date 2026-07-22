@@ -128,6 +128,23 @@ func List(target string) []Skill {
 	return result
 }
 
+// IsBuiltinName reports whether name matches one of Paca's own bundled
+// skills. A plugin declaring a skill with one of these names would collide
+// with — and silently shadow, since neither the API's merge nor
+// scripts/install-paca-skills.sh's by-name file writes dedupe against this
+// list — a skill users and conversations already trust as Paca's own.
+// plugindom.SkillsManifest.validate() calls this to reject such a name at
+// install/update time, and pluginrt.ListSkills calls it again at serving
+// time as a second line of defense.
+func IsBuiltinName(name string) bool {
+	for _, e := range skillEntries {
+		if e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 var skillEntries = []skillEntry{
 	{
 		Name: "paca",
