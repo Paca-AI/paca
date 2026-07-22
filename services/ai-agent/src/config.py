@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     api_base_url: str = "http://api:8080"
     # Gateway base URL — used by the MCP server to resolve plugin MCP bundle URLs.
     # The gateway (Caddy) serves /plugins-mcp/, not the API service, so this must
-    # point to the gateway's internal address.
-    gateway_base_url: str = "http://gateway"
+    # point to the gateway's internal address. Must use the internal :8080 port,
+    # not the public port — see the "Internal MCP/Skills bundle port" block in
+    # deploy/caddy/Caddyfile for why (auto-HTTPS redirect breaks internal fetches
+    # on the public port when SITE_ADDRESS is a real domain).
+    gateway_base_url: str = "http://gateway:8080"
 
     # Built-in Paca MCP — the API key used by the AI agent's hardcoded paca MCP
     # server.  Set this to the same value as AGENT_API_KEY on the api service.

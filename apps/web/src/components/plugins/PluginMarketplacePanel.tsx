@@ -388,36 +388,31 @@ export function PluginMarketplacePanel() {
 				</div>
 			) : (
 				<div className="grid grid-cols-1 gap-3">
-					{filtered.map((plugin) => (
-						<PluginCard
-							key={plugin.name}
-							plugin={plugin}
-							isInstalled={installedByName.has(plugin.name)}
-							installedVersion={installedByName.get(plugin.name)?.version}
-							isInstalling={installingNames.has(plugin.name)}
-							isUninstalling={(() => {
-								const pluginId = installedByName.get(plugin.name)?.id;
-								return !!pluginId && uninstallingIds.has(pluginId);
-							})()}
-							isUpgrading={(() => {
-								const pluginId = installedByName.get(plugin.name)?.id;
-								return !!pluginId && upgradingIds.has(pluginId);
-							})()}
-							onInstall={(name) =>
-								installMutation.mutate({ name, enabled: true })
-							}
-							onUninstall={(name) => {
-								const pluginId = installedByName.get(name)?.id;
-								if (!pluginId) return;
-								uninstallMutation.mutate(pluginId);
-							}}
-							onUpgrade={(name) => {
-								const pluginId = installedByName.get(name)?.id;
-								if (!pluginId) return;
-								upgradeMutation.mutate(pluginId);
-							}}
-						/>
-					))}
+					{filtered.map((plugin) => {
+						const pluginId = installedByName.get(plugin.name)?.id;
+						return (
+							<PluginCard
+								key={plugin.name}
+								plugin={plugin}
+								isInstalled={installedByName.has(plugin.name)}
+								installedVersion={installedByName.get(plugin.name)?.version}
+								isInstalling={installingNames.has(plugin.name)}
+								isUninstalling={!!pluginId && uninstallingIds.has(pluginId)}
+								isUpgrading={!!pluginId && upgradingIds.has(pluginId)}
+								onInstall={(name) =>
+									installMutation.mutate({ name, enabled: true })
+								}
+								onUninstall={() => {
+									if (!pluginId) return;
+									uninstallMutation.mutate(pluginId);
+								}}
+								onUpgrade={() => {
+									if (!pluginId) return;
+									upgradeMutation.mutate(pluginId);
+								}}
+							/>
+						);
+					})}
 				</div>
 			)}
 		</div>

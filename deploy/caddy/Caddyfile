@@ -180,9 +180,12 @@
 # -- Internal MCP/Skills bundle port ------------------------------------------
 #
 # The MCP server and ai-agent fetch plugin MCP/skills bundles via
-# GATEWAY_BASE_URL over plain http:// on the docker-internal network (see
-# apps/mcp/src/plugin-loader.ts and the skills-plugin-system docs). When
-# SITE_ADDRESS above is a real domain, Caddy enables automatic HTTPS for it,
+# GATEWAY_BASE_URL over plain http:// on the docker-internal network.
+# services/ai-agent/src/config.py reads GATEWAY_BASE_URL and forwards it to
+# the spawned MCP subprocess as PACA_GATEWAY_URL (see
+# services/ai-agent/src/agent/builder.py), which apps/mcp/src/plugin-loader.ts
+# then uses to resolve plugin bundle URLs. When SITE_ADDRESS above is a real
+# domain, Caddy enables automatic HTTPS for it,
 # which installs a catch-all HTTP→HTTPS redirect on port 80 for *any* Host
 # header — including these internal requests. Caddy has no certificate for
 # the "gateway" hostname, so the followed redirect's TLS handshake fails.
