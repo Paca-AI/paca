@@ -1,6 +1,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { PacaAPIViewsClient } from "../api/index.js";
+import type { ViewConfig } from "../types/index.js";
 import { formatList } from "../utils/index.js";
 
 const ListViewsSchema = z.object({
@@ -9,13 +10,35 @@ const ListViewsSchema = z.object({
 	sprintId: z.string().optional(),
 });
 
-const CreateViewSchema = z.object({
-	projectId: z.string(),
-	name: z.string(),
-	context: z.string(),
-	viewType: z.string(),
-	sprintId: z.string().optional(),
-});
+const CreateViewSchema = z
+	.object({
+		projectId: z.string(),
+		name: z.string(),
+		context: z.string(),
+		viewType: z.string(),
+		sprintId: z.string().optional(),
+		pluginManifestId: z.string().optional(),
+		pluginComponent: z.string().optional(),
+	})
+	.refine(
+		(data) =>
+			(data.pluginManifestId === undefined) ===
+			(data.pluginComponent === undefined),
+		{
+			message: "pluginManifestId and pluginComponent must be provided together",
+			path: ["pluginComponent"],
+		},
+	)
+	.refine(
+		(data) =>
+			data.viewType !== "plugin" ||
+			(!!data.pluginManifestId && !!data.pluginComponent),
+		{
+			message:
+				"pluginManifestId and pluginComponent are required when viewType is 'plugin'",
+			path: ["viewType"],
+		},
+	);
 
 const ReorderViewsSchema = z.object({
 	projectId: z.string(),
@@ -29,14 +52,38 @@ const GetViewSchema = z.object({
 	viewId: z.string(),
 });
 
-const UpdateViewSchema = z.object({
-	projectId: z.string(),
-	viewId: z.string(),
-	name: z.string().optional(),
-	context: z.string().optional(),
-	viewType: z.string().optional(),
-	sprintId: z.string().optional(),
-});
+const UpdateViewSchema = z
+	.object({
+		projectId: z.string(),
+		viewId: z.string(),
+		name: z.string().optional(),
+		context: z.string().optional(),
+		viewType: z.string().optional(),
+		sprintId: z.string().optional(),
+		// null explicitly clears an existing plugin binding (e.g. when
+		// changing viewType away from "plugin"); undefined leaves it untouched.
+		pluginManifestId: z.string().nullable().optional(),
+		pluginComponent: z.string().nullable().optional(),
+	})
+	.refine(
+		(data) =>
+			(data.pluginManifestId === undefined) ===
+			(data.pluginComponent === undefined),
+		{
+			message: "pluginManifestId and pluginComponent must be provided together",
+			path: ["pluginComponent"],
+		},
+	)
+	.refine(
+		(data) =>
+			data.viewType !== "plugin" ||
+			(!!data.pluginManifestId && !!data.pluginComponent),
+		{
+			message:
+				"pluginManifestId and pluginComponent are required when viewType is 'plugin'",
+			path: ["viewType"],
+		},
+	);
 
 const DeleteViewSchema = z.object({
 	projectId: z.string(),
@@ -129,7 +176,8 @@ export function getViewTools(): Tool[] {
 		},
 		{
 			name: "create_view",
-			description: "Create a new view",
+			description:
+				"Create a new view. For a plugin-provided view (e.g. a plugin's custom dashboard/board surfaced via its 'view' extension point), set viewType to 'plugin' and provide pluginManifestId + pluginComponent — check the target plugin's own docs/skill for its exact manifest ID and component name (e.g. the com.paca.dashboard plugin's Dashboard view uses pluginManifestId 'com.paca.dashboard' and pluginComponent 'DashboardIntegrationView'). The returned view's id is what that plugin then expects as its own 'host view id'.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -147,11 +195,23 @@ export function getViewTools(): Tool[] {
 					},
 					viewType: {
 						type: "string",
-						description: "The type of view (table, board, roadmap)",
+						enum: ["table", "board", "roadmap", "plugin"],
+						description:
+							"The type of view. Use 'table', 'board', or 'roadmap' for the built-in layouts, or 'plugin' to host a plugin-provided view (requires pluginManifestId and pluginComponent).",
 					},
 					sprintId: {
 						type: "string",
 						description: "The sprint ID (required for sprint context)",
+					},
+					pluginManifestId: {
+						type: "string",
+						description:
+							"Required (together with pluginComponent) when viewType is 'plugin'. The reverse-DNS manifest ID of the plugin that provides this view (e.g. 'com.paca.dashboard').",
+					},
+					pluginComponent: {
+						type: "string",
+						description:
+							"Required (together with pluginManifestId) when viewType is 'plugin'. The component name from that plugin's 'view' extension point (e.g. 'DashboardIntegrationView').",
 					},
 				},
 				required: ["projectId", "name", "context", "viewType"],
@@ -227,11 +287,23 @@ export function getViewTools(): Tool[] {
 					},
 					viewType: {
 						type: "string",
-						description: "The type of view (table, board, roadmap)",
+						enum: ["table", "board", "roadmap", "plugin"],
+						description:
+							"The type of view (table, board, roadmap, or plugin — plugin requires pluginManifestId and pluginComponent).",
 					},
 					sprintId: {
 						type: "string",
 						description: "The new sprint ID",
+					},
+					pluginManifestId: {
+						type: ["string", "null"],
+						description:
+							"Required (together with pluginComponent) when viewType is 'plugin'. The reverse-DNS manifest ID of the plugin that provides this view (e.g. 'com.paca.dashboard'). Pass null (together with pluginComponent: null) to clear an existing plugin binding, e.g. when changing viewType away from 'plugin'.",
+					},
+					pluginComponent: {
+						type: ["string", "null"],
+						description:
+							"Required (together with pluginManifestId) when viewType is 'plugin'. The component name from that plugin's 'view' extension point (e.g. 'DashboardIntegrationView'). Pass null (together with pluginManifestId: null) to clear an existing plugin binding.",
 					},
 				},
 				required: ["projectId", "viewId"],
@@ -474,12 +546,40 @@ export function getCustomFieldTools(): Tool[] {
 }
 
 function formatView(view: any): string {
-	return `View: ${view.name}
-ID: ${view.id}
-Context: ${view.context}
-Sprint ID: ${view.sprint_id || "None"}
-Position: ${view.position}
-Created: ${view.created_at}`;
+	const lines = [
+		`View: ${view.name}`,
+		`ID: ${view.id}`,
+		`Type: ${view.view_type}`,
+		`Context: ${view.context}`,
+		`Sprint ID: ${view.sprint_id || "None"}`,
+	];
+	if (view.config?.plugin_manifest_id) {
+		lines.push(
+			`Plugin: ${view.config.plugin_manifest_id} (component: ${view.config.plugin_component})`,
+		);
+	}
+	lines.push(`Position: ${view.position}`, `Created: ${view.created_at}`);
+	return lines.join("\n");
+}
+
+/**
+ * Builds the ViewConfig body sent for a plugin-backed view. Returns
+ * undefined when neither field is set, so non-plugin create/update calls
+ * don't send an empty config object. A field set to null (only possible on
+ * update_view) is passed through as null to explicitly clear an existing
+ * plugin binding.
+ */
+function buildViewConfig(
+	pluginManifestId?: string | null,
+	pluginComponent?: string | null,
+): ViewConfig | undefined {
+	if (pluginManifestId === undefined && pluginComponent === undefined) {
+		return undefined;
+	}
+	return {
+		plugin_manifest_id: pluginManifestId,
+		plugin_component: pluginComponent,
+	};
 }
 
 function formatCustomField(field: any): string {
@@ -522,8 +622,15 @@ export async function handleViewTool(
 		}
 
 		case "create_view": {
-			const { projectId, name, context, viewType, sprintId } =
-				CreateViewSchema.parse(args);
+			const {
+				projectId,
+				name,
+				context,
+				viewType,
+				sprintId,
+				pluginManifestId,
+				pluginComponent,
+			} = CreateViewSchema.parse(args);
 			const view = await client.createView(
 				projectId,
 				{
@@ -531,6 +638,7 @@ export async function handleViewTool(
 					context,
 					view_type: viewType as any,
 					sprint_id: sprintId ?? null,
+					config: buildViewConfig(pluginManifestId, pluginComponent),
 				},
 				context,
 				sprintId,
@@ -578,13 +686,22 @@ export async function handleViewTool(
 		}
 
 		case "update_view": {
-			const { projectId, viewId, name, context, viewType, sprintId } =
-				UpdateViewSchema.parse(args);
+			const {
+				projectId,
+				viewId,
+				name,
+				context,
+				viewType,
+				sprintId,
+				pluginManifestId,
+				pluginComponent,
+			} = UpdateViewSchema.parse(args);
 			const view = await client.updateView(projectId, viewId, {
 				name,
 				context,
 				view_type: viewType as any,
 				sprint_id: sprintId ?? null,
+				config: buildViewConfig(pluginManifestId, pluginComponent),
 			});
 			return {
 				content: [

@@ -767,7 +767,14 @@ async def teardown_paused_chat_sandbox(conversation_id: str) -> bool:
     entry = chat_sandboxes.pop(conversation_id, None)
     if entry is None:
         return False
-    stop_sandbox(entry.handle)
+    # stop_sandbox() blocks on container.stop(timeout=30) — a synchronous
+    # Docker Engine API call that can take several seconds. Unlike
+    # run_conversation's teardown (inside _run_sync, already offloaded via
+    # run_in_executor), this coroutine runs directly on the worker's shared
+    # event loop, so calling stop_sandbox() here inline would stall every
+    # other concurrent coroutine (including the trigger-stream Valkey read in
+    # worker.run_worker) for the container's full shutdown time.
+    await asyncio.get_event_loop().run_in_executor(None, stop_sandbox, entry.handle)
     await conversation_repository.update_conversation_status(
         conversation_id, ConversationStatus.STOPPED
     )

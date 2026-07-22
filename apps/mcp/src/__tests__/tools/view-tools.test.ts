@@ -162,6 +162,65 @@ describe("handleViewTool – create_view", () => {
 		);
 		expect(result.content[0].text).toContain("created successfully");
 	});
+
+	it("passes pluginManifestId/pluginComponent through as config.plugin_manifest_id/plugin_component for viewType 'plugin'", async () => {
+		const client = makeClient();
+		await handleViewTool(
+			"create_view",
+			{
+				projectId: "p1",
+				name: "Dashboard",
+				context: "sprint",
+				viewType: "plugin",
+				pluginManifestId: "com.paca.dashboard",
+				pluginComponent: "DashboardIntegrationView",
+			},
+			client,
+		);
+		expect(client.createView).toHaveBeenCalledWith(
+			"p1",
+			expect.objectContaining({
+				view_type: "plugin",
+				config: {
+					plugin_manifest_id: "com.paca.dashboard",
+					plugin_component: "DashboardIntegrationView",
+				},
+			}),
+			"sprint",
+			undefined,
+		);
+	});
+
+	it("rejects viewType 'plugin' without pluginManifestId/pluginComponent", async () => {
+		await expect(
+			handleViewTool(
+				"create_view",
+				{
+					projectId: "p1",
+					name: "Dashboard",
+					context: "sprint",
+					viewType: "plugin",
+				},
+				makeClient(),
+			),
+		).rejects.toThrow();
+	});
+
+	it("rejects pluginManifestId provided without pluginComponent", async () => {
+		await expect(
+			handleViewTool(
+				"create_view",
+				{
+					projectId: "p1",
+					name: "V",
+					context: "sprint",
+					viewType: "board",
+					pluginManifestId: "com.paca.dashboard",
+				},
+				makeClient(),
+			),
+		).rejects.toThrow();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -233,6 +292,37 @@ describe("handleViewTool – get_view", () => {
 		);
 		expect(result.content[0].text).toContain("Board View");
 	});
+
+	it("includes the plugin binding when the view's config has one", async () => {
+		const pluginView = {
+			...view,
+			view_type: "plugin",
+			config: {
+				plugin_manifest_id: "com.paca.dashboard",
+				plugin_component: "DashboardIntegrationView",
+			},
+		};
+		const client = makeClient({
+			getView: vi.fn().mockResolvedValue(pluginView),
+		});
+		const result = await handleViewTool(
+			"get_view",
+			{ projectId: "p1", viewId: "v1" },
+			client,
+		);
+		expect(result.content[0].text).toContain(
+			"Plugin: com.paca.dashboard (component: DashboardIntegrationView)",
+		);
+	});
+
+	it("omits the plugin line when the view's config has no plugin binding", async () => {
+		const result = await handleViewTool(
+			"get_view",
+			{ projectId: "p1", viewId: "v1" },
+			makeClient(),
+		);
+		expect(result.content[0].text).not.toContain("Plugin:");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -262,6 +352,79 @@ describe("handleViewTool – update_view", () => {
 			makeClient(),
 		);
 		expect(result.content[0].text).toContain("updated successfully");
+	});
+
+	it("passes pluginManifestId/pluginComponent through as config.plugin_manifest_id/plugin_component", async () => {
+		const client = makeClient();
+		await handleViewTool(
+			"update_view",
+			{
+				projectId: "p1",
+				viewId: "v1",
+				viewType: "plugin",
+				pluginManifestId: "com.paca.dashboard",
+				pluginComponent: "DashboardIntegrationView",
+			},
+			client,
+		);
+		expect(client.updateView).toHaveBeenCalledWith(
+			"p1",
+			"v1",
+			expect.objectContaining({
+				view_type: "plugin",
+				config: {
+					plugin_manifest_id: "com.paca.dashboard",
+					plugin_component: "DashboardIntegrationView",
+				},
+			}),
+		);
+	});
+
+	it("passes explicit nulls through to clear an existing plugin binding", async () => {
+		const client = makeClient();
+		await handleViewTool(
+			"update_view",
+			{
+				projectId: "p1",
+				viewId: "v1",
+				viewType: "table",
+				pluginManifestId: null,
+				pluginComponent: null,
+			},
+			client,
+		);
+		expect(client.updateView).toHaveBeenCalledWith(
+			"p1",
+			"v1",
+			expect.objectContaining({
+				view_type: "table",
+				config: { plugin_manifest_id: null, plugin_component: null },
+			}),
+		);
+	});
+
+	it("rejects viewType 'plugin' without pluginManifestId/pluginComponent", async () => {
+		await expect(
+			handleViewTool(
+				"update_view",
+				{ projectId: "p1", viewId: "v1", viewType: "plugin" },
+				makeClient(),
+			),
+		).rejects.toThrow();
+	});
+
+	it("rejects pluginComponent provided without pluginManifestId", async () => {
+		await expect(
+			handleViewTool(
+				"update_view",
+				{
+					projectId: "p1",
+					viewId: "v1",
+					pluginComponent: "DashboardIntegrationView",
+				},
+				makeClient(),
+			),
+		).rejects.toThrow();
 	});
 });
 
