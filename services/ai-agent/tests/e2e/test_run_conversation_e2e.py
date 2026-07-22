@@ -3,7 +3,8 @@
 Drives the real executor.run_conversation() against a REAL OpenHands
 agent-server sandbox container (the same image used in production) and a
 fake, scriptable OpenAI-compatible LLM server — only the Postgres/Valkey
-persistence calls are mocked. This exercises what a pure unit test can't:
+persistence calls and the default-skills fetch (which hits a real Paca API
+this suite doesn't spin up) are mocked. This exercises what a pure unit test can't:
 that openhands-sdk's RemoteConversation really does deliver events through
 the `callbacks` channel, since `token_callbacks` is never invoked for remote
 workspaces (confirmed by reading
@@ -118,6 +119,17 @@ def persistence(monkeypatch) -> MockedPersistence:
     monkeypatch.setattr(stream_store, "publish_event", AsyncMock())
     monkeypatch.setattr(stream_store, "publish_realtime", mocks.publish_realtime)
     return mocks
+
+
+@pytest.fixture(autouse=True)
+def stub_default_skills(monkeypatch):
+    """load_default_skills() fetches Paca's bundled skill set from the API
+    over HTTP (GET /api/v1/skills) — this suite runs only the sandbox and a
+    fake LLM, no real Paca API, so the real call would fail with a DNS/
+    connection error on every conversation. Skill content itself is covered
+    by tests/test_builder.py; this suite's subject is the conversation/
+    persistence pipeline, not skill fetching."""
+    monkeypatch.setattr(executor, "load_default_skills", AsyncMock(return_value=()))
 
 
 def _agent_config(

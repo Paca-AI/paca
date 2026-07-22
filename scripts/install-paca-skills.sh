@@ -81,15 +81,15 @@ fetch_optional() {
   local url="$1" dest="$2" key="${3:-}"
   if command -v curl &>/dev/null; then
     if [[ -n "$key" ]]; then
-      curl -fsSL -H "X-API-Key: ${key}" "$url" -o "$dest"
+      curl -fsSL --max-time 30 -H "X-API-Key: ${key}" "$url" -o "$dest"
     else
-      curl -fsSL "$url" -o "$dest"
+      curl -fsSL --max-time 30 "$url" -o "$dest"
     fi
   elif command -v wget &>/dev/null; then
     if [[ -n "$key" ]]; then
-      wget -q --header="X-API-Key: ${key}" -O "$dest" "$url"
+      wget -q --timeout=30 --header="X-API-Key: ${key}" -O "$dest" "$url"
     else
-      wget -q -O "$dest" "$url"
+      wget -q --timeout=30 -O "$dest" "$url"
     fi
   else
     return 1
@@ -110,17 +110,17 @@ fetch_with_status() {
   LAST_FETCH_STATUS="000"
   if command -v curl &>/dev/null; then
     if [[ -n "$key" ]]; then
-      LAST_FETCH_STATUS="$(curl -sSL -o "$dest" -w '%{http_code}' -H "X-API-Key: ${key}" "$url" 2>/dev/null || true)"
+      LAST_FETCH_STATUS="$(curl -sSL --max-time 30 -o "$dest" -w '%{http_code}' -H "X-API-Key: ${key}" "$url" 2>/dev/null || true)"
     else
-      LAST_FETCH_STATUS="$(curl -sSL -o "$dest" -w '%{http_code}' "$url" 2>/dev/null || true)"
+      LAST_FETCH_STATUS="$(curl -sSL --max-time 30 -o "$dest" -w '%{http_code}' "$url" 2>/dev/null || true)"
     fi
   elif command -v wget &>/dev/null; then
     local stderr_log
     stderr_log="$(mktemp)"
     if [[ -n "$key" ]]; then
-      wget -S --header="X-API-Key: ${key}" -O "$dest" "$url" 2>"${stderr_log}" || true
+      wget -S --timeout=30 --header="X-API-Key: ${key}" -O "$dest" "$url" 2>"${stderr_log}" || true
     else
-      wget -S -O "$dest" "$url" 2>"${stderr_log}" || true
+      wget -S --timeout=30 -O "$dest" "$url" 2>"${stderr_log}" || true
     fi
     LAST_FETCH_STATUS="$(grep -m1 -oE 'HTTP/[0-9.]+ [0-9]{3}' "${stderr_log}" | awk '{print $2}' || true)"
     [[ -z "${LAST_FETCH_STATUS}" ]] && LAST_FETCH_STATUS="000"
