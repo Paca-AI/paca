@@ -148,6 +148,7 @@ type MarketplacePluginArtifactResponse struct {
 	MigrationsTarGzURL string `json:"migrations_tar_gz_url,omitempty"`
 	ManifestTarGzURL   string `json:"manifest_tar_gz_url"`
 	MCPTarGzURL        string `json:"mcp_tar_gz_url,omitempty"`
+	SkillsTarGzURL     string `json:"skills_tar_gz_url,omitempty"`
 }
 
 // MarketplacePluginListResponse wraps marketplace plugin list payload.
@@ -172,6 +173,7 @@ func MarketplacePluginListResponseFromCatalog(catalog *pluginrt.MarketplaceCatal
 				MigrationsTarGzURL: p.Artifacts.MigrationsTarGzURL,
 				ManifestTarGzURL:   p.Artifacts.ManifestTarGzURL,
 				MCPTarGzURL:        p.Artifacts.MCPTarGzURL,
+				SkillsTarGzURL:     p.Artifacts.SkillsTarGzURL,
 			},
 		})
 	}
