@@ -321,11 +321,20 @@ if $INSTALL_CURSOR || $INSTALL_AGENTS; then
 fi
 
 AGENTS_TMP=""
+# Names already appended to AGENTS_TMP, one per line — guards against the
+# same skill being installed twice (once mislabeled "bundled" via
+# GET /api/v1/skills, which now also returns plugin skills, then again
+# correctly labeled "plugin:<name>" via GET /api/v1/plugins) from producing
+# a duplicate "## /{name}" section in the regenerated AGENTS.md. A plain
+# temp file, not a bash associative array, so this still works under
+# macOS's default bash 3.2.
+AGENTS_SEEN_TMP=""
 SUMMARY_TMP="$(mktemp)"
 if [[ -n "${PROJECT_ROOT}" ]] && $INSTALL_AGENTS; then
   AGENTS_TMP="$(mktemp)"
+  AGENTS_SEEN_TMP="$(mktemp)"
 fi
-cleanup() { rm -f "${AGENTS_TMP:-}" "${SUMMARY_TMP}"; }
+cleanup() { rm -f "${AGENTS_TMP:-}" "${AGENTS_SEEN_TMP:-}" "${SUMMARY_TMP}"; }
 trap cleanup EXIT
 
 # ─── PACA_API_URL / PACA_API_KEY (if not already set) ──────────────────────
@@ -421,8 +430,10 @@ install_one_skill() {
     printf '%s\n' "${body}" > "${PROJECT_ROOT}/.cursor/commands/${name}.md"
   fi
 
-  # AGENTS.md — project-scoped only.
-  if $INSTALL_AGENTS && [[ -n "${AGENTS_TMP}" ]]; then
+  # AGENTS.md — project-scoped only. Skip a name already appended (see
+  # AGENTS_SEEN_TMP above) instead of duplicating its section.
+  if $INSTALL_AGENTS && [[ -n "${AGENTS_TMP}" ]] && ! grep -qxF "${name}" "${AGENTS_SEEN_TMP}"; then
+    printf '%s\n' "${name}" >> "${AGENTS_SEEN_TMP}"
     {
       printf '## /%s\n\n' "${name}"
       [[ -n "${description}" ]] && printf '_%s_\n\n' "${description}"
