@@ -10,11 +10,11 @@ import (
 	"github.com/Paca-AI/api/internal/platform/bundledskills"
 )
 
-// PluginLister is the subset of plugindom.Service that ListSkills needs —
-// narrowed from the full service interface so callers (and tests) don't
-// need to satisfy install/update/delete/extension-setting methods just to
-// list skills.
-type PluginLister interface {
+// Lister is the subset of plugindom.Service that ListSkills needs — narrowed
+// from the full service interface so callers (and tests) don't need to
+// satisfy install/update/delete/extension-setting methods just to list
+// skills.
+type Lister interface {
 	ListPlugins(ctx context.Context) ([]*plugindom.Plugin, error)
 }
 
@@ -41,7 +41,7 @@ type PluginLister interface {
 // caller (skills_handler.go) merges this result into, so letting a
 // collision through would silently shadow a bundled skill both in the API
 // response and in whatever scripts/install-paca-skills.sh writes to disk.
-func ListSkills(ctx context.Context, svc PluginLister, skillsDir string) ([]bundledskills.Skill, error) {
+func ListSkills(ctx context.Context, svc Lister, skillsDir string) ([]bundledskills.Skill, error) {
 	if skillsDir == "" || svc == nil {
 		return nil, nil
 	}

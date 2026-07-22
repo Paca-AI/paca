@@ -15,14 +15,14 @@ import (
 // bundledskills package for why those are compiled into the binary) plus,
 // for the "cli" flavor only, skills contributed by enabled plugins.
 type SkillsHandler struct {
-	pluginSvc pluginrt.PluginLister
+	pluginSvc pluginrt.Lister
 	skillsDir string
 }
 
 // NewSkillsHandler returns a SkillsHandler. pluginSvc and skillsDir may be
 // left zero-valued (nil / ""), in which case ListSkills falls back to
 // bundled skills only.
-func NewSkillsHandler(pluginSvc pluginrt.PluginLister, skillsDir string) *SkillsHandler {
+func NewSkillsHandler(pluginSvc pluginrt.Lister, skillsDir string) *SkillsHandler {
 	return &SkillsHandler{pluginSvc: pluginSvc, skillsDir: skillsDir}
 }
 

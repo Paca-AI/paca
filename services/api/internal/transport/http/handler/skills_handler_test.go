@@ -75,7 +75,7 @@ func TestSkillsHandler_ListSkills_MergesPluginSkillsIntoCLIFlavor(t *testing.T) 
 	h := handler.NewSkillsHandler(svc, dir)
 
 	w := httptest.NewRecorder()
-	h.ListSkills(w, httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil))
+	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -109,7 +109,7 @@ func TestSkillsHandler_ListSkills_AgentFlavorExcludesPluginSkills(t *testing.T) 
 	h := handler.NewSkillsHandler(svc, dir)
 
 	w := httptest.NewRecorder()
-	h.ListSkills(w, httptest.NewRequest(http.MethodGet, "/api/v1/skills?target=agent", nil))
+	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills?target=agent", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -129,7 +129,7 @@ func TestSkillsHandler_ListSkills_FallsBackToBundledOnPluginListError(t *testing
 	h := handler.NewSkillsHandler(svc, t.TempDir())
 
 	w := httptest.NewRecorder()
-	h.ListSkills(w, httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil))
+	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 even when the plugin lister errors, got %d: %s", w.Code, w.Body.String())
@@ -145,7 +145,7 @@ func TestSkillsHandler_ListSkills_NoPluginServiceConfigured(t *testing.T) {
 	h := handler.NewSkillsHandler(nil, "")
 
 	w := httptest.NewRecorder()
-	h.ListSkills(w, httptest.NewRequest(http.MethodGet, "/api/v1/skills", nil))
+	h.ListSkills(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/skills", nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

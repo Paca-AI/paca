@@ -16,7 +16,7 @@ type fakePluginLister struct {
 	err     error
 }
 
-func (f *fakePluginLister) ListPlugins(ctx context.Context) ([]*plugindom.Plugin, error) {
+func (f *fakePluginLister) ListPlugins(_ context.Context) ([]*plugindom.Plugin, error) {
 	return f.plugins, f.err
 }
 
