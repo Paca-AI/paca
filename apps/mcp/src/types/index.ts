@@ -414,7 +414,7 @@ export interface UpdateTaskStatusInput {
 
 // ==================== Views ====================
 
-export type ViewType = "table" | "board" | "roadmap";
+export type ViewType = "table" | "board" | "roadmap" | "plugin";
 export type ViewLayout = "Board" | "Table" | "Roadmap";
 export type ViewsContext = "sprint" | "backlog" | "timeline";
 
@@ -450,6 +450,10 @@ export interface ViewConfig {
 	field_sum?: string;
 	slice_by?: string;
 	filters?: ViewFilters;
+	/** Required when view_type is "plugin": the reverse-DNS plugin manifest ID that provides this view (e.g. "com.paca.dashboard"). */
+	plugin_manifest_id?: string;
+	/** Required when view_type is "plugin": the component name from that plugin's "view" extension point (e.g. "DashboardIntegrationView"). */
+	plugin_component?: string;
 }
 
 export interface View {
