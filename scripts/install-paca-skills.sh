@@ -41,6 +41,15 @@
 # things down further. If you don't export PACA_API_URL and are running
 # this interactively (i.e. there's a real terminal attached), the script
 # prompts for both.
+#
+# By default, skills are installed to every platform listed above. To
+# install to only some of them, either set PACA_SKILL_PLATFORMS to a
+# comma/space-separated list of "claude", "gemini", "cursor", "agents"
+# (e.g. PACA_SKILL_PLATFORMS=claude,gemini), or pass --platforms=... as an
+# argument (works through a pipe too: curl ... | bash -s -- --platforms=claude).
+# If neither is set and there's a real terminal attached, the script prompts
+# for a selection — press Enter there to install to all of them, matching
+# the old default.
 
 set -euo pipefail
 
@@ -131,6 +140,13 @@ fetch_with_status() {
   [[ "${LAST_FETCH_STATUS}" == 2* ]]
 }
 
+# to_lower STR — portable lowercasing. `${var,,}` (bash 4+) would do this in
+# one step, but the system /bin/bash on macOS is still 3.2 (last GPLv2
+# release), and this script is meant to run via `curl | bash` there too.
+to_lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 # extract_host URL — the bare hostname (no scheme, userinfo, port, or path).
 # Handles bracketed IPv6 literals (e.g. "https://[::1]:8080/x" -> "[::1]").
 extract_host() {
@@ -160,7 +176,7 @@ plugin_baseurl_allowed() {
   local scheme host
   scheme="${url%%://*}"
   host="$(extract_host "${url}")"
-  host="${host,,}"
+  host="$(to_lower "${host}")"
 
   case "${scheme}" in
     https)
@@ -189,23 +205,124 @@ if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
   exit 1
 fi
 
-mkdir -p "${CLAUDE_DIR}" "${GEMINI_DIR}"
+# ─── Platform selection ─────────────────────────────────────────────────────
+
+ALL_PLATFORMS="claude gemini cursor agents"
+PACA_SKILL_PLATFORMS="${PACA_SKILL_PLATFORMS:-}"
+
+# --platforms=... overrides PACA_SKILL_PLATFORMS — only relevant when this
+# script is invoked with args, e.g. `bash scripts/install-paca-skills.sh
+# --platforms=claude,gemini` or, through a pipe, `curl ... | bash -s --
+# --platforms=claude,gemini` (args after `--` reach the piped script, not
+# the outer `bash` invocation).
+for arg in "$@"; do
+  case "${arg}" in
+    --platforms=*) PACA_SKILL_PLATFORMS="${arg#*=}" ;;
+  esac
+done
+
+# normalize_platforms LIST — validates and echoes a space-separated,
+# deduplicated subset of ALL_PLATFORMS; returns nonzero if LIST contains no
+# recognized platform at all (an unrecognized token alone, e.g. a typo, is
+# warned about rather than treated as fatal — the run still proceeds with
+# whatever else was recognized). Accepts "1"-"4" as aliases for
+# claude/gemini/cursor/agents too, matching the numbered menu the
+# interactive prompt shows — resolved per token here (not by substituting
+# digits in the raw string first), so e.g. "1,4" or "1 4" unambiguously
+# means claude+agents.
+normalize_platforms() {
+  local raw="$1" tok matched=false
+  local out=""
+  for tok in ${raw//,/ }; do
+    tok="$(to_lower "${tok}")"
+    case "${tok}" in
+      all) out="${ALL_PLATFORMS}"; matched=true; continue ;;
+      1) tok=claude ;;
+      2) tok=gemini ;;
+      3) tok=cursor ;;
+      4) tok=agents ;;
+      claude|gemini|cursor|agents) ;;
+      "") continue ;;
+      *)
+        warn "Unrecognized platform '${tok}' — ignoring it (valid: claude, gemini, cursor, agents, all, or 1-4)"
+        continue
+        ;;
+    esac
+    case " ${out} " in
+      *" ${tok} "*) ;; # already present — dedup without an associative array
+      *) out+="${out:+ }${tok}" ;;
+    esac
+    matched=true
+  done
+  $matched || return 1
+  printf '%s' "${out}"
+}
+
+if [[ -n "${PACA_SKILL_PLATFORMS}" ]]; then
+  if ! PACA_SKILL_PLATFORMS="$(normalize_platforms "${PACA_SKILL_PLATFORMS}")"; then
+    error "PACA_SKILL_PLATFORMS/--platforms contained no recognized platform (valid: claude, gemini, cursor, agents, all)."
+    exit 1
+  fi
+elif { : < /dev/tty; } 2>/dev/null; then
+  echo ""
+  info "Which platforms should skills be installed to?"
+  info "  1) claude  — Claude Code   (~/.claude/commands/)"
+  info "  2) gemini  — Gemini CLI    (~/.gemini/commands/)"
+  info "  3) cursor  — Cursor        (project-scoped, needs a git working tree)"
+  info "  4) agents  — AGENTS.md     (project-scoped, needs a git working tree)"
+  read -r -p "  Enter numbers or names, space/comma-separated (Enter for all): " platform_choice < /dev/tty
+  echo ""
+  if [[ -z "${platform_choice// /}" ]]; then
+    PACA_SKILL_PLATFORMS="${ALL_PLATFORMS}"
+  elif ! PACA_SKILL_PLATFORMS="$(normalize_platforms "${platform_choice}")"; then
+    error "No recognized platform in that selection — re-run and choose from: claude, gemini, cursor, agents (or 1-4)."
+    exit 1
+  fi
+else
+  PACA_SKILL_PLATFORMS="${ALL_PLATFORMS}"
+fi
+
+INSTALL_CLAUDE=false
+INSTALL_GEMINI=false
+INSTALL_CURSOR=false
+INSTALL_AGENTS=false
+for tok in ${PACA_SKILL_PLATFORMS}; do
+  case "${tok}" in
+    claude) INSTALL_CLAUDE=true ;;
+    gemini) INSTALL_GEMINI=true ;;
+    cursor) INSTALL_CURSOR=true ;;
+    agents) INSTALL_AGENTS=true ;;
+  esac
+done
+info "Installing to: ${PACA_SKILL_PLATFORMS// /, }"
+
+if $INSTALL_CLAUDE; then mkdir -p "${CLAUDE_DIR}"; fi
+if $INSTALL_GEMINI; then mkdir -p "${GEMINI_DIR}"; fi
 
 # Project-scope detection — Cursor has no global commands directory, and
 # AGENTS.md is a project-root convention, so both only make sense relative
-# to a specific working tree.
+# to a specific working tree, and only if the user actually selected one of
+# them.
 PROJECT_ROOT=""
-if git rev-parse --is-inside-work-tree &>/dev/null; then
-  PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-  mkdir -p "${PROJECT_ROOT}/.cursor/commands"
-  info "Project detected (${PROJECT_ROOT}) — also installing Cursor commands + AGENTS.md there"
-else
-  info "Not inside a git project — skipping Cursor commands + AGENTS.md (project-scoped only)"
+if $INSTALL_CURSOR || $INSTALL_AGENTS; then
+  if git rev-parse --is-inside-work-tree &>/dev/null; then
+    PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+    if $INSTALL_CURSOR; then mkdir -p "${PROJECT_ROOT}/.cursor/commands"; fi
+    project_targets="AGENTS.md"
+    if $INSTALL_CURSOR && $INSTALL_AGENTS; then
+      project_targets="Cursor commands + AGENTS.md"
+    elif $INSTALL_CURSOR; then
+      project_targets="Cursor commands"
+    fi
+    info "Project detected (${PROJECT_ROOT}) — also installing ${project_targets} there"
+  else
+    warn "cursor/agents selected, but not inside a git project — both are project-scoped, so they'll be skipped this run."
+  fi
 fi
 
 AGENTS_TMP=""
 SUMMARY_TMP="$(mktemp)"
-if [[ -n "${PROJECT_ROOT}" ]]; then
+if [[ -n "${PROJECT_ROOT}" ]] && $INSTALL_AGENTS; then
   AGENTS_TMP="$(mktemp)"
 fi
 cleanup() { rm -f "${AGENTS_TMP:-}" "${SUMMARY_TMP}"; }
@@ -280,24 +397,32 @@ install_one_skill() {
   body="$(strip_frontmatter "${raw}")"
 
   # Claude Code
-  printf '%s\n' "${body}" > "${CLAUDE_DIR}/${name}.md"
+  if $INSTALL_CLAUDE; then
+    printf '%s\n' "${body}" > "${CLAUDE_DIR}/${name}.md"
+  fi
 
   # Gemini CLI — TOML. `prompt` uses a literal '''...''' multi-line string
   # (zero escaping) since skill bodies routinely contain double quotes (JSON
   # snippets, etc.); `description` uses a basic "..." string since it's a
   # short single line where backslash/quote escaping is cheap and reliable.
-  if printf '%s' "${body}" | grep -qF "'''"; then
-    warn "Skill '${name}' body contains ''' — cannot safely embed as a TOML literal string, skipping Gemini CLI install for it"
-  else
-    {
-      printf 'description = "%s"\n' "$(toml_basic_string "${description}")"
-      printf "prompt = '''\n%s\n'''\n" "${body}"
-    } > "${GEMINI_DIR}/${name}.toml"
+  if $INSTALL_GEMINI; then
+    if printf '%s' "${body}" | grep -qF "'''"; then
+      warn "Skill '${name}' body contains ''' — cannot safely embed as a TOML literal string, skipping Gemini CLI install for it"
+    else
+      {
+        printf 'description = "%s"\n' "$(toml_basic_string "${description}")"
+        printf "prompt = '''\n%s\n'''\n" "${body}"
+      } > "${GEMINI_DIR}/${name}.toml"
+    fi
   fi
 
-  # Cursor + AGENTS.md — project-scoped only.
-  if [[ -n "${PROJECT_ROOT}" ]]; then
+  # Cursor — project-scoped only.
+  if $INSTALL_CURSOR && [[ -n "${PROJECT_ROOT}" ]]; then
     printf '%s\n' "${body}" > "${PROJECT_ROOT}/.cursor/commands/${name}.md"
+  fi
+
+  # AGENTS.md — project-scoped only.
+  if $INSTALL_AGENTS && [[ -n "${AGENTS_TMP}" ]]; then
     {
       printf '## /%s\n\n' "${name}"
       [[ -n "${description}" ]] && printf '_%s_\n\n' "${description}"
@@ -380,8 +505,7 @@ FATAL_ERROR=""
 # only thing that can still go wrong here is the /api/v1/plugins call itself.
 info "Checking ${PACA_API_URL} for plugin-contributed skills..."
 plugins_json="$(mktemp)"
-API_HOST="$(extract_host "${PACA_API_URL}")"
-API_HOST="${API_HOST,,}"
+API_HOST="$(to_lower "$(extract_host "${PACA_API_URL}")")"
 if fetch_with_status "${PACA_API_URL%/}/api/v1/plugins" "${plugins_json}" "${PACA_API_KEY}"; then
   plugin_skill_count=0
   while IFS=$'\t' read -r plugin_name base_url skill_name; do
@@ -478,11 +602,11 @@ echo "  ────────────────────────
 cat "${SUMMARY_TMP}"
 echo ""
 echo "  Where they went:"
-echo "    Claude Code   → ${CLAUDE_DIR}/"
-echo "    Gemini CLI    → ${GEMINI_DIR}/"
+$INSTALL_CLAUDE && echo "    Claude Code   → ${CLAUDE_DIR}/"
+$INSTALL_GEMINI && echo "    Gemini CLI    → ${GEMINI_DIR}/"
 if [[ -n "${PROJECT_ROOT}" ]]; then
-  echo "    Cursor        → ${PROJECT_ROOT}/.cursor/commands/"
-  echo "    AGENTS.md     → ${PROJECT_ROOT}/AGENTS.md"
+  $INSTALL_CURSOR && echo "    Cursor        → ${PROJECT_ROOT}/.cursor/commands/"
+  $INSTALL_AGENTS && echo "    AGENTS.md     → ${PROJECT_ROOT}/AGENTS.md"
 fi
 echo ""
 echo "  Next step: configure the Paca MCP server (needed for the /paca* commands to work)."

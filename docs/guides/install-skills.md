@@ -26,6 +26,23 @@ The installer copies every bundled skill to every supported platform found on th
 
 The per-project targets (Cursor, AGENTS.md) are only written when the installer is run from inside a git working tree — run it from your project root to get those too.
 
+### Choosing which platforms to install to
+
+By default the installer installs to every platform above. To install to only some of them, set `PACA_SKILL_PLATFORMS` to a comma/space-separated list of `claude`, `gemini`, `cursor`, `agents` (or `all`):
+
+```bash
+PACA_API_URL=http://localhost:8080 PACA_SKILL_PLATFORMS=claude,gemini \
+  curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash
+```
+
+Or pass `--platforms=...` as an argument — through a pipe, args go after `bash -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash -s -- --platforms=claude,gemini
+```
+
+If neither is set and a real terminal is attached, the installer prompts for a selection — press Enter there to install to all of them.
+
 ### Including plugin-contributed skills
 
 If your Paca instance also has plugins installed that contribute their own skills, no extra step is needed — the installer checks for those automatically alongside the bundled set, using the same `PACA_API_URL`/`PACA_API_KEY` above.
