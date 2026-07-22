@@ -60,7 +60,7 @@ func NewMarketplaceClient(catalogURL string, timeout time.Duration) *Marketplace
 	}
 	return &MarketplaceClient{
 		catalogURL: catalogURL,
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: &http.Client{Timeout: timeout, Transport: newSafeHTTPTransport()},
 	}
 }
 

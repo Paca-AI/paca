@@ -33,6 +33,14 @@ func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient 
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 5 * time.Minute}
 	}
+	// Enforce the private/internal IP guard at dial time so a caller-provided
+	// client (which typically only sets Timeout) can't silently skip the
+	// DNS-rebinding protection applied to the marketplace catalog client. A
+	// caller that supplies its own Transport (e.g. a test double) is left
+	// untouched.
+	if httpClient.Transport == nil {
+		httpClient.Transport = newSafeHTTPTransport()
+	}
 	return &Installer{
 		backendDir:  backendDir,
 		frontendDir: frontendDir,
