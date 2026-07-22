@@ -298,7 +298,7 @@ services:
       # An empty key disables authentication on the agent service endpoint.
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       API_BASE_URL: http://api:8080
-      GATEWAY_BASE_URL: http://gateway
+      GATEWAY_BASE_URL: http://gateway:8080
       # Must match AGENT_API_KEY in the api service.
       PACA_API_KEY: ${AGENT_API_KEY:-}
       DOCKER_SOCKET: /var/run/docker.sock

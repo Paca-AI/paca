@@ -36,6 +36,38 @@
 #   install.sh enables HTTPS by default and prompts for this address.
 # =============================================================================
 
+(mcp_skills_routes) {
+	# -- MCP plugin bundles -------------------------------------------------------
+	#
+	# Self-contained ESM bundles loaded at runtime by the MCP server. Kept on a
+	# separate path from frontend assets so WASM/CSS concerns from the
+	# /plugins/* block don't bleed into MCP serving.
+	#
+	# Set remoteEntryUrl in each plugin's plugin.json mcp section to an
+	# absolute URL, for example:
+	#   ${PUBLIC_URL}/plugins-mcp/<plugin-id>/mcp.js
+	handle_path /plugins-mcp/* {
+		root * /var/www/plugins-mcp
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+
+	# -- Plugin Agent Skills bundles ----------------------------------------------
+	#
+	# SKILL.md directories loaded at conversation start by the ai-agent service.
+	# Kept on a separate path from frontend/MCP assets for the same reason as
+	# the MCP block above.
+	#
+	# Set baseUrl in each plugin's plugin.json skills section to an absolute
+	# URL, for example:
+	#   ${PUBLIC_URL}/plugins-skills/<plugin-id>
+	handle_path /plugins-skills/* {
+		root * /var/www/plugins-skills
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+}
+
 {$SITE_ADDRESS::80} {
 	encode gzip
 
@@ -105,35 +137,12 @@
 		file_server
 	}
 
-	# -- MCP plugin bundles -------------------------------------------------------
+	# -- MCP plugin bundles + Plugin Agent Skills bundles -------------------------
 	#
-	# Self-contained ESM bundles loaded at runtime by the MCP server. Kept on a
-	# separate path from frontend assets so WASM/CSS concerns from the block
-	# above don't bleed into MCP serving.
-	#
-	# Set remoteEntryUrl in each plugin's plugin.json mcp section to an
-	# absolute URL, for example:
-	#   ${PUBLIC_URL}/plugins-mcp/<plugin-id>/mcp.js
-	handle_path /plugins-mcp/* {
-		root * /var/www/plugins-mcp
-		header Cache-Control "public, max-age=900, immutable"
-		file_server
-	}
-
-	# -- Plugin Agent Skills bundles ----------------------------------------------
-	#
-	# SKILL.md directories loaded at conversation start by the ai-agent service.
-	# Kept on a separate path from frontend/MCP assets for the same reason as
-	# the MCP block above.
-	#
-	# Set baseUrl in each plugin's plugin.json skills section to an absolute
-	# URL, for example:
-	#   ${PUBLIC_URL}/plugins-skills/<plugin-id>
-	handle_path /plugins-skills/* {
-		root * /var/www/plugins-skills
-		header Cache-Control "public, max-age=900, immutable"
-		file_server
-	}
+	# See the `mcp_skills_routes` snippet above. Also served on the internal
+	# :8080 block below, which the MCP server / ai-agent use instead of this
+	# public port for their own fetches — see that block for why.
+	import mcp_skills_routes
 
 	# -- API routes ---------------------------------------------------------------
 	#
@@ -166,4 +175,26 @@
 	handle {
 		reverse_proxy web:3000
 	}
+}
+
+# -- Internal MCP/Skills bundle port ------------------------------------------
+#
+# The MCP server and ai-agent fetch plugin MCP/skills bundles via
+# GATEWAY_BASE_URL over plain http:// on the docker-internal network.
+# services/ai-agent/src/config.py reads GATEWAY_BASE_URL and forwards it to
+# the spawned MCP subprocess as PACA_GATEWAY_URL (see
+# services/ai-agent/src/agent/builder.py), which apps/mcp/src/plugin-loader.ts
+# then uses to resolve plugin bundle URLs. When SITE_ADDRESS above is a real
+# domain, Caddy enables automatic HTTPS for it,
+# which installs a catch-all HTTP→HTTPS redirect on port 80 for *any* Host
+# header — including these internal requests. Caddy has no certificate for
+# the "gateway" hostname, so the followed redirect's TLS handshake fails.
+#
+# A bare port never gets automatic HTTPS (see the SITE_ADDRESS comment at the
+# top of this file), so this dedicated internal port sidesteps the redirect
+# entirely. It is not published to the host in docker-compose — only reachable
+# from other containers on the compose network. GATEWAY_BASE_URL must point
+# here (http://gateway:8080), not at the public port.
+:8080 {
+	import mcp_skills_routes
 }
