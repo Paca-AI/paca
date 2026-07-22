@@ -60,7 +60,7 @@ func NewMarketplaceClient(catalogURL string, timeout time.Duration) *Marketplace
 	}
 	return &MarketplaceClient{
 		catalogURL: catalogURL,
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: &http.Client{Timeout: timeout, Transport: newSafeHTTPTransport()},
 	}
 }
 
@@ -150,6 +150,11 @@ func validateMarketplacePlugin(ctx context.Context, p MarketplacePlugin) error {
 	if strings.TrimSpace(p.Artifacts.MCPTarGzURL) != "" {
 		if err := validateMarketplaceURL(ctx, p.Artifacts.MCPTarGzURL); err != nil {
 			return fmt.Errorf("artifacts.mcp_tar_gz_url: %w", err)
+		}
+	}
+	if strings.TrimSpace(p.Artifacts.SkillsTarGzURL) != "" {
+		if err := validateMarketplaceURL(ctx, p.Artifacts.SkillsTarGzURL); err != nil {
+			return fmt.Errorf("artifacts.skills_tar_gz_url: %w", err)
 		}
 	}
 	return nil
