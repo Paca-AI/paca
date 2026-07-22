@@ -311,7 +311,7 @@ func New(cfg *config.Config) (*App, error) {
 		DocFile:            handler.NewDocFileHandler(attachmentService),
 		Notification:       handler.NewNotificationHandler(notificationService),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
-		Skills:             handler.NewSkillsHandler(),
+		Skills:             handler.NewSkillsHandler(pluginService, cfg.Plugins.SkillsDir),
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
 		Conversation:       convHandler,

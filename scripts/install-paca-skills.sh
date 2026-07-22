@@ -599,7 +599,17 @@ fi
 echo ""
 echo "  Installed skills:"
 echo "  ──────────────────────────────────────────────────────────────────────"
-cat "${SUMMARY_TMP}"
+# GET /api/v1/skills (the "bundled" fetch above) now also returns plugin-
+# contributed skills alongside Paca's own, so a plugin skill gets installed
+# twice: once here labeled "bundled" (technically installed, but mislabeled
+# — it came from a plugin), then again below labeled "plugin:<name>" (the
+# correct label, from resolving it via GET /api/v1/plugins). Both writes are
+# identical content to the same file, so nothing is functionally wrong, but
+# printing both lines would be confusing. Keep the last (correctly labeled)
+# occurrence per skill name while preserving overall order — the classic
+# reverse/dedupe-first/reverse idiom, since `awk '!seen[$1]++'` alone would
+# keep the first (mislabeled) occurrence instead.
+tac "${SUMMARY_TMP}" | awk '!seen[$1]++' | tac
 echo ""
 echo "  Where they went:"
 $INSTALL_CLAUDE && echo "    Claude Code   → ${CLAUDE_DIR}/"

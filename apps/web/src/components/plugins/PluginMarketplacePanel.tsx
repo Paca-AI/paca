@@ -8,6 +8,7 @@ import {
 	Search,
 	Server,
 	Trash2,
+	Wand2,
 	Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -129,6 +130,7 @@ function PluginCard({
 	const hasFrontend = !!artifacts.frontend_tar_gz_url;
 	const hasMigrations = !!artifacts.migrations_tar_gz_url;
 	const hasMCP = !!artifacts.mcp_tar_gz_url;
+	const hasSkills = !!artifacts.skills_tar_gz_url;
 
 	let upgradeAvailable = false;
 	if (isInstalled && installedVersion) {
@@ -206,6 +208,12 @@ function PluginCard({
 						<FeatureBadge
 							icon={<Zap className="size-3" />}
 							label={t("marketplace.card.features.mcp")}
+						/>
+					)}
+					{hasSkills && (
+						<FeatureBadge
+							icon={<Wand2 className="size-3" />}
+							label={t("marketplace.card.features.skills")}
 						/>
 					)}
 				</div>
