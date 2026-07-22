@@ -11,6 +11,15 @@ var (
 	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp")
 	ErrACPProviderInvalid = errors.New("acp_provider must be one of: claude-code, codex, gemini-cli, custom")
 	ErrACPCommandRequired = errors.New("acp_command is required when acp_provider is custom")
+	// ErrNotSupportedForACPAgent is returned when a caller tries to manage
+	// an MCP server, skill, or environment variable on an ACP-type agent.
+	// ACP agents run entirely in the user's own local CLI via the
+	// paca-acp-bridge daemon — Paca never forwards any of that
+	// configuration into the ACP conversation (services/ai-agent's
+	// acp_dispatch.py never reads agent_mcp_servers/agent_skills/
+	// agent_environment_variables at all) — so accepting these calls for
+	// an ACP agent would silently no-op rather than do anything.
+	ErrNotSupportedForACPAgent = errors.New("not supported for ACP-type agents — the local ACP client owns its own tool/MCP/skill/environment configuration")
 )
 
 // MCP server errors

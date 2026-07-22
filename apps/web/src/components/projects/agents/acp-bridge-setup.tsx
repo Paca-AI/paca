@@ -17,11 +17,26 @@ import {
 // from the API, since it embeds the freshly generated token.
 const BRIDGE_INSTALL_COMMAND = "uv pip install paca-acp-bridge";
 
-const SKILL_INSTALL_COMMAND =
-	"curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-claude-skill.sh | bash";
+// PACA_API_URL is required here, not just a nice-to-have — the installer
+// fetches bundled skill content from this instance's own API rather than
+// GitHub (so it always matches the exact version running here), and this
+// command is never run from a local clone of the Paca repo.
+function skillInstallCommand(): string {
+	return `PACA_API_URL=${window.location.origin} curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/install-paca-skills.sh | bash`;
+}
 
 const SKILL_CONTENT_URL =
 	"https://github.com/Paca-AI/paca/blob/master/skills/paca/SKILL.md";
+
+// The installer has a known integration for these providers — Claude Code
+// and Gemini CLI both get their own global slash-command directory
+// (~/.claude/commands, ~/.gemini/commands), and Codex reads the installer's
+// project-scoped AGENTS.md output automatically since the ACP bridge runs
+// it from the project's own working directory. A custom ACP server's
+// command format is unknown, so it falls back to the raw-content link.
+function supportsSkillInstaller(provider: ACPProvider): boolean {
+	return provider !== "custom";
+}
 
 function claudeMcpConnectCommand(): string {
 	return `claude mcp add paca --env PACA_API_KEY=<your-api-key> --env PACA_API_URL=${window.location.origin} -- npx -y @paca-ai/paca-mcp`;
@@ -88,11 +103,12 @@ function CommandBox({
 }
 
 // Four-step guide for bringing an ACP agent's local bridge online: install
-// and run the bridge daemon, install the Paca skill, and connect the MCP
-// server. Steps 3 and 4 adapt to the agent's ACP provider — only Claude Code
-// has a known, tested skill installer and native "add MCP server" command;
-// other providers get an honest fallback (link to the skill content, a
-// provider-agnostic MCP command to adapt into that CLI's own config).
+// and run the bridge daemon, install Paca's skills, and connect the MCP
+// server. Steps 3 and 4 adapt to the agent's ACP provider — the skill
+// installer (step 3) covers every provider except "custom" (see
+// supportsSkillInstaller); only Claude Code has a native "add MCP server"
+// command (step 4), so other providers get a provider-agnostic MCP command
+// to adapt into that CLI's own config.
 // Shared between the post-creation setup dialog
 // (apps/web/.../agents/index.tsx) and the agent detail page's Overview tab,
 // so the two stay in sync.
@@ -121,6 +137,8 @@ export function AcpBridgeSetup({
 	const [copiedField, setCopiedField] = useState<CopyField | null>(null);
 	const hasAnyToken = hasToken || revealed !== null;
 	const isClaudeCode = acpProvider === "claude-code";
+	const canAutoInstallSkill = supportsSkillInstaller(acpProvider);
+	const skillCommand = skillInstallCommand();
 	const mcpCommand = isClaudeCode
 		? claudeMcpConnectCommand()
 		: genericMcpConnectCommand();
@@ -237,11 +255,11 @@ export function AcpBridgeSetup({
 					{t("agents.acpSetup.step3Description")}
 				</p>
 				<div className="pl-7">
-					{isClaudeCode ? (
+					{canAutoInstallSkill ? (
 						<CommandBox
-							command={SKILL_INSTALL_COMMAND}
+							command={skillCommand}
 							copied={copiedField === "skill"}
-							onCopy={() => copy("skill", SKILL_INSTALL_COMMAND)}
+							onCopy={() => copy("skill", skillCommand)}
 						/>
 					) : (
 						<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">

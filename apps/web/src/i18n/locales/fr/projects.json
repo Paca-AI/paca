@@ -107,7 +107,7 @@
 			"copied": "Copié !",
 			"step3Title": "Installer la compétence Paca",
 			"step3Description": "Permet à votre CLI d'acheminer les requêtes via les outils MCP de Paca — ajoutée à chaque invite via /paca par défaut.",
-			"step3NotAvailable": "L'installation automatique n'est disponible que pour Claude Code. {{provider}} n'a pas encore d'installateur de prompts personnalisés connu — les outils MCP de Paca ci-dessous fonctionnent quand même sans elle.",
+			"step3NotAvailable": "L'installation automatique est disponible pour Claude Code, Gemini CLI et Codex. {{provider}} n'a pas encore d'installateur de prompts personnalisés connu — les outils MCP de Paca ci-dessous fonctionnent quand même sans elle.",
 			"step3ViewContent": "Voir les instructions de la compétence",
 			"step4Title": "Connecter le serveur MCP",
 			"step4Description": "Utilise une clé API personnelle pour que la CLI puisse appeler directement les outils de Paca.",

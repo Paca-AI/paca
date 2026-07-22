@@ -315,6 +315,24 @@ func (s *Service) GenerateACPBridgeToken(ctx context.Context, projectID, agentID
 	return plaintext, nil
 }
 
+// requireNonACPAgent rejects MCP server / skill / environment variable
+// mutations targeting an ACP-type agent. ACP agents run entirely in the
+// user's own local CLI via paca-acp-bridge; services/ai-agent's
+// acp_dispatch.py never reads any of these tables when dispatching an ACP
+// turn, so accepting the write here would silently no-op rather than have
+// any effect — better to reject it outright. Read (List*) operations are
+// left permissive since returning an empty list is harmless.
+func (s *Service) requireNonACPAgent(ctx context.Context, agentID uuid.UUID) error {
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	if agent.AgentType == agentdom.AgentTypeACP {
+		return agentdom.ErrNotSupportedForACPAgent
+	}
+	return nil
+}
+
 // -------------------------------------------------------------------------
 // MCP Servers
 // -------------------------------------------------------------------------
@@ -328,6 +346,9 @@ func (s *Service) ListMCPServers(ctx context.Context, agentID uuid.UUID) ([]*age
 func (s *Service) AddMCPServer(ctx context.Context, agentID uuid.UUID, in agentdom.AddMCPServerInput) (*agentdom.AgentMCPServer, error) {
 	if in.Transport == "stdio" && (in.Command == nil || *in.Command == "") {
 		return nil, agentdom.ErrMCPServerCommandRequired
+	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
@@ -365,6 +386,9 @@ func (s *Service) UpdateMCPServer(ctx context.Context, agentID, serverID uuid.UU
 	if srv.AgentID != agentID {
 		return nil, agentdom.ErrMCPServerNotFound
 	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return nil, err
+	}
 	if in.Command != nil {
 		srv.Command = in.Command
 	}
@@ -396,6 +420,9 @@ func (s *Service) DeleteMCPServer(ctx context.Context, agentID, serverID uuid.UU
 	if srv.AgentID != agentID {
 		return agentdom.ErrMCPServerNotFound
 	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return err
+	}
 	return s.repo.DeleteMCPServer(ctx, serverID)
 }
 
@@ -403,21 +430,8 @@ func (s *Service) DeleteMCPServer(ctx context.Context, agentID, serverID uuid.UU
 // Skills
 // -------------------------------------------------------------------------
 
-// reservedSkillNames are names the ai-agent service assigns itself, per
-// conversation trigger type, as fixed scaffolding (services/ai-agent/src/agent/trigger_skills.py).
-// They are always appended to an agent's skill list and are not meant to be
-// user-editable; a user-created skill with one of these names would collide
-// and fail conversation setup (AgentContext rejects duplicate skill names).
-// Keep in sync with trigger_skills.py's get_trigger_skill().
-var reservedSkillNames = map[string]bool{
-	"paca-trigger-task-assigned":     true,
-	"paca-trigger-doc-comment":       true,
-	"paca-trigger-chat":              true,
-	"paca-trigger-description-write": true,
-}
-
 func validateSkillName(name string) error {
-	if reservedSkillNames[name] {
+	if agentdom.IsReservedSkillName(name) {
 		return agentdom.ErrSkillNameReserved
 	}
 	return nil
@@ -432,6 +446,9 @@ func (s *Service) ListSkills(ctx context.Context, agentID uuid.UUID) ([]*agentdo
 func (s *Service) AddSkill(ctx context.Context, agentID uuid.UUID, in agentdom.AddSkillInput) (*agentdom.AgentSkill, error) {
 	name := strings.TrimSpace(in.SkillName)
 	if err := validateSkillName(name); err != nil {
+		return nil, err
+	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	now := time.Now()
@@ -465,6 +482,9 @@ func (s *Service) UpdateSkill(ctx context.Context, agentID, skillID uuid.UUID, i
 	if skill.AgentID != agentID {
 		return nil, agentdom.ErrSkillNotFound
 	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return nil, err
+	}
 	if in.SkillContent != nil {
 		skill.SkillContent = *in.SkillContent
 	}
@@ -489,6 +509,9 @@ func (s *Service) DeleteSkill(ctx context.Context, agentID, skillID uuid.UUID) e
 	}
 	if skill.AgentID != agentID {
 		return agentdom.ErrSkillNotFound
+	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return err
 	}
 	return s.repo.DeleteSkill(ctx, skillID)
 }
@@ -541,6 +564,9 @@ func (s *Service) AddEnvVar(ctx context.Context, agentID uuid.UUID, in agentdom.
 	if err := validateEnvVarKey(key); err != nil {
 		return nil, err
 	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return nil, err
+	}
 	if existing, err := s.repo.FindEnvVarByKey(ctx, agentID, key); err == nil && existing != nil {
 		return nil, agentdom.ErrEnvVarKeyTaken
 	}
@@ -572,6 +598,9 @@ func (s *Service) UpdateEnvVar(ctx context.Context, agentID, envVarID uuid.UUID,
 	if v.AgentID != agentID {
 		return nil, agentdom.ErrEnvVarNotFound
 	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return nil, err
+	}
 	encryptedValue, err := s.encryptKey(in.Value)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt environment variable value: %w", err)
@@ -592,6 +621,9 @@ func (s *Service) DeleteEnvVar(ctx context.Context, agentID, envVarID uuid.UUID)
 	}
 	if v.AgentID != agentID {
 		return agentdom.ErrEnvVarNotFound
+	}
+	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+		return err
 	}
 	return s.repo.DeleteEnvVar(ctx, envVarID)
 }

@@ -2,10 +2,18 @@
 
 from unittest.mock import patch
 
+import httpx
 import pytest
 
-from src.agent.builder import build_llm, build_mcp_config, build_skills, load_default_skills
-from src.models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow
+import src.agent.builder as builder_module
+from src.agent.builder import (
+    build_llm,
+    build_mcp_config,
+    build_skills,
+    load_default_skills,
+    load_plugin_skills,
+)
+from src.models.agent import AgentConfig, AgentMCPServerRow, AgentSkillRow, PluginSkillRef
 
 # ─── Fixtures / helpers ───────────────────────────────────────────────────────
 
@@ -67,6 +75,23 @@ def _server(
         env=env or {},
         is_enabled=enabled,
     )
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_skills_cache():
+    # load_default_skills() caches its result in a module-level global (see
+    # builder.py) so a real worker process only fetches once — tests must
+    # reset it between runs or an earlier test's mocked response leaks into
+    # a later one via the cache.
+    builder_module._default_skills_cache = None
+    yield
+    builder_module._default_skills_cache = None
+
+
+@pytest.fixture
+def default_skills_api_url():
+    with patch("src.agent.builder.settings.api_base_url", "http://api:8080"):
+        yield "http://api:8080"
 
 
 @pytest.fixture
@@ -206,34 +231,94 @@ def test_skill_with_triggers_does_not_duplicate_slash_keyword():
 # ─── load_default_skills ──────────────────────────────────────────────────────
 
 
-def test_load_default_skills_is_non_empty():
-    skills = load_default_skills()
+_LEGACY_PACA_CONTENT = (
+    "You are Paca, an AI project management assistant embedded in this workspace.\n"
+)
+
+
+def _default_skills_payload(entries: list[dict]) -> dict:
+    return {"success": True, "data": {"skills": entries}}
+
+
+async def test_load_default_skills_is_non_empty(default_skills_api_url):
+    entries = [{"name": "paca", "path": "paca.md", "content": _LEGACY_PACA_CONTENT}]
+    responses = {
+        f"{default_skills_api_url}/api/v1/skills": _FakeResponse(
+            "", json_data=_default_skills_payload(entries)
+        )
+    }
+    with _fake_httpx_client(responses):
+        skills = await load_default_skills()
     assert len(skills) > 0
 
 
-def test_load_default_skills_paca_is_always_active():
-    skills = load_default_skills()
+async def test_load_default_skills_paca_is_always_active(default_skills_api_url):
+    entries = [{"name": "paca", "path": "paca.md", "content": _LEGACY_PACA_CONTENT}]
+    responses = {
+        f"{default_skills_api_url}/api/v1/skills": _FakeResponse(
+            "", json_data=_default_skills_payload(entries)
+        )
+    }
+    with _fake_httpx_client(responses):
+        skills = await load_default_skills()
     paca = next(s for s in skills if s.name == "paca")
     assert paca.trigger is None
     assert paca.is_agentskills_format is False
 
 
-def test_load_default_skills_specialized_skills_are_model_selectable():
-    skills = load_default_skills()
+async def test_load_default_skills_specialized_skills_are_model_selectable(
+    default_skills_api_url,
+):
+    entries = [
+        {
+            "name": "paca-do",
+            "path": "paca-do/SKILL.md",
+            "content": _skill_md("paca-do", "Do things", triggers=["/paca-do"]),
+        }
+    ]
+    responses = {
+        f"{default_skills_api_url}/api/v1/skills": _FakeResponse(
+            "", json_data=_default_skills_payload(entries)
+        )
+    }
+    with _fake_httpx_client(responses):
+        skills = await load_default_skills()
     paca_do = next(s for s in skills if s.name == "paca-do")
     assert paca_do.is_agentskills_format is True
     assert "/paca-do" in paca_do.trigger.keywords
 
 
-def test_load_default_skills_includes_workflow_skill():
-    skills = load_default_skills()
+async def test_load_default_skills_includes_workflow_skill(default_skills_api_url):
+    entries = [
+        {
+            "name": "paca-workflow",
+            "path": "paca-workflow/SKILL.md",
+            "content": _skill_md("paca-workflow", "Runs the workflow", triggers=["/paca-workflow"]),
+        }
+    ]
+    responses = {
+        f"{default_skills_api_url}/api/v1/skills": _FakeResponse(
+            "", json_data=_default_skills_payload(entries)
+        )
+    }
+    with _fake_httpx_client(responses):
+        skills = await load_default_skills()
     paca_workflow = next(s for s in skills if s.name == "paca-workflow")
     assert paca_workflow.is_agentskills_format is True
     assert "/paca-workflow" in paca_workflow.trigger.keywords
 
 
-def test_load_default_skills_is_cached():
-    assert load_default_skills() is load_default_skills()
+async def test_load_default_skills_is_cached(default_skills_api_url):
+    entries = [{"name": "paca", "path": "paca.md", "content": _LEGACY_PACA_CONTENT}]
+    responses = {
+        f"{default_skills_api_url}/api/v1/skills": _FakeResponse(
+            "", json_data=_default_skills_payload(entries)
+        )
+    }
+    with _fake_httpx_client(responses):
+        first = await load_default_skills()
+        second = await load_default_skills()
+    assert first is second
 
 
 # ─── build_mcp_config ─────────────────────────────────────────────────────────
@@ -309,3 +394,107 @@ def test_multiple_servers_all_included(no_paca_key):
 def test_empty_servers_returns_empty_dict(no_paca_key):
     cfg = build_mcp_config([], "a", "p")
     assert cfg == {}
+
+
+# ─── load_plugin_skills ────────────────────────────────────────────────────────
+
+
+class _FakeResponse:
+    def __init__(self, text: str, status_code: int = 200, json_data: object = None):
+        self.text = text
+        self.status_code = status_code
+        self._json_data = json_data
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPError(f"status {self.status_code}")
+
+    def json(self) -> object:
+        return self._json_data
+
+
+class _FakeAsyncClient:
+    def __init__(self, responses: dict[str, _FakeResponse]):
+        self._responses = responses
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, url: str, params: dict | None = None) -> _FakeResponse:
+        if url not in self._responses:
+            raise httpx.HTTPError(f"no mock response for {url}")
+        return self._responses[url]
+
+
+def _fake_httpx_client(responses: dict[str, _FakeResponse]):
+    return patch(
+        "src.agent.builder.httpx.AsyncClient",
+        return_value=_FakeAsyncClient(responses),
+    )
+
+
+def _skill_md(
+    name: str = "pr-review",
+    description: str = "Reviews PRs",
+    triggers: list[str] | None = None,
+) -> str:
+    trigger_lines = ""
+    if triggers:
+        trigger_lines = "triggers:\n" + "".join(f"  - {t}\n" for t in triggers)
+    return f"---\nname: {name}\ndescription: {description}\n{trigger_lines}---\nDo the review.\n"
+
+
+async def test_load_plugin_skills_empty_refs_returns_empty():
+    assert await load_plugin_skills([]) == []
+
+
+async def test_load_plugin_skills_parses_valid_skill():
+    ref = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    responses = {ref.url: _FakeResponse(_skill_md("pr-review"))}
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([ref])
+    assert len(skills) == 1
+    assert skills[0].name == "pr-review"
+
+
+async def test_load_plugin_skills_skips_on_fetch_failure():
+    ref = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    responses = {ref.url: _FakeResponse("not found", status_code=404)}
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([ref])
+    assert skills == []
+
+
+async def test_load_plugin_skills_skips_on_name_mismatch():
+    # Frontmatter name disagrees with the ref's skill_name (which drives the
+    # on-disk directory name) — strict AgentSkills validation rejects this.
+    ref = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    responses = {ref.url: _FakeResponse(_skill_md("some-other-name"))}
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([ref])
+    assert skills == []
+
+
+async def test_load_plugin_skills_one_bad_skill_does_not_block_others():
+    good = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="pr-review", url="http://gw/pr-review/SKILL.md"
+    )
+    bad = PluginSkillRef(
+        plugin_name="com.paca.example", skill_name="broken", url="http://gw/broken/SKILL.md"
+    )
+    responses = {
+        good.url: _FakeResponse(_skill_md("pr-review")),
+        bad.url: _FakeResponse("not found", status_code=500),
+    }
+    with _fake_httpx_client(responses):
+        skills = await load_plugin_skills([good, bad])
+    assert [s.name for s in skills] == ["pr-review"]

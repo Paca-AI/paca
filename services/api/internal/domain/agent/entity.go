@@ -113,6 +113,28 @@ type AgentSkill struct {
 	UpdatedAt    time.Time
 }
 
+// ReservedSkillNames are names the ai-agent service assigns itself, per
+// conversation trigger type, as fixed scaffolding (see
+// services/ai-agent/src/agent/trigger_skills.py). They are always appended
+// to an agent's skill list and are not meant to be user- or plugin-editable;
+// a skill with one of these names would collide and fail conversation setup
+// (AgentContext rejects duplicate skill names). Keep in sync with
+// trigger_skills.py's get_trigger_skill().
+var ReservedSkillNames = map[string]bool{
+	"paca-trigger-task-assigned":     true,
+	"paca-trigger-doc-comment":       true,
+	"paca-trigger-chat":              true,
+	"paca-trigger-description-write": true,
+}
+
+// IsReservedSkillName reports whether name is one of the fixed trigger-skill
+// names reserved by the ai-agent runtime (see ReservedSkillNames). Both
+// agent-owned skills and plugin-contributed skills are checked against this
+// at creation/validation time.
+func IsReservedSkillName(name string) bool {
+	return ReservedSkillNames[name]
+}
+
 // SkillTemplate is a reusable, hardcoded skill definition that users can
 // browse and apply when configuring their agents.  Templates are defined
 // in code (not in the database) so they are always available without

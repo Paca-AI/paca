@@ -56,9 +56,11 @@ def build_project_context_suffix(project_id: str) -> str:
 
 
 # ACP agents don't get Paca-managed skills injected via system context the
-# way the LLM/sandbox path does (see skills/paca/SKILL.md) — the only way to
-# route a local ACP CLI (Claude Code, Codex, ...) through the Paca skill is
-# the literal slash command, so prefix every dispatched message with it.
+# way the LLM/sandbox path does (see the "paca" entry in
+# services/api/internal/platform/bundledskills/bundledskills.go) — the only
+# way to route a local ACP CLI (Claude Code, Codex, ...) through the Paca
+# skill is the literal slash command, so prefix every dispatched message
+# with it.
 _ACP_SKILL_TRIGGER = "/paca"
 
 

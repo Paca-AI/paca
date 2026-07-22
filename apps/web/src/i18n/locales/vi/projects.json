@@ -107,7 +107,7 @@
 			"copied": "Đã sao chép!",
 			"step3Title": "Cài đặt skill Paca",
 			"step3Description": "Cho phép CLI của bạn định tuyến yêu cầu qua các công cụ MCP của Paca — được thêm vào mỗi prompt qua /paca theo mặc định.",
-			"step3NotAvailable": "Cài đặt tự động chỉ khả dụng cho Claude Code. {{provider}} chưa có trình cài đặt prompt tùy chỉnh nào được biết đến — các công cụ MCP của Paca bên dưới vẫn hoạt động mà không cần nó.",
+			"step3NotAvailable": "Cài đặt tự động khả dụng cho Claude Code, Gemini CLI và Codex. {{provider}} chưa có trình cài đặt prompt tùy chỉnh nào được biết đến — các công cụ MCP của Paca bên dưới vẫn hoạt động mà không cần nó.",
 			"step3ViewContent": "Xem hướng dẫn skill",
 			"step4Title": "Kết nối máy chủ MCP",
 			"step4Description": "Sử dụng khóa API cá nhân để CLI có thể gọi trực tiếp các công cụ của Paca.",

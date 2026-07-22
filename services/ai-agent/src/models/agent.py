@@ -25,6 +25,21 @@ class AgentSkillRow:
 
 
 @dataclass
+class PluginSkillRef:
+    """A plugin-declared skill's SKILL.md, not yet fetched.
+
+    Resolved from an enabled plugin's manifest.skills block (see
+    repositories.agent_repository.list_enabled_plugin_skills) into an
+    absolute, safety-checked URL — builder.load_plugin_skills fetches `url`
+    and parses it into an SDK Skill.
+    """
+
+    plugin_name: str
+    skill_name: str
+    url: str
+
+
+@dataclass
 class AgentConfig:
     agent_id: str
     project_id: str
@@ -50,4 +65,5 @@ class AgentConfig:
     acp_command: list[str] = field(default_factory=list)
     mcp_servers: list[AgentMCPServerRow] = field(default_factory=list)
     skills: list[AgentSkillRow] = field(default_factory=list)
+    plugin_skills: list[PluginSkillRef] = field(default_factory=list)
     env_vars: dict[str, str] = field(default_factory=dict)

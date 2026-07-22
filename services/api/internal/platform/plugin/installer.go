@@ -23,12 +23,13 @@ type Installer struct {
 	backendDir  string
 	frontendDir string
 	mcpDir      string
+	skillsDir   string
 	httpClient  *http.Client
 	log         *slog.Logger
 }
 
 // NewInstaller creates a marketplace installer.
-func NewInstaller(backendDir, frontendDir, mcpDir string, httpClient *http.Client, log *slog.Logger) *Installer {
+func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient *http.Client, log *slog.Logger) *Installer {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 5 * time.Minute}
 	}
@@ -36,6 +37,7 @@ func NewInstaller(backendDir, frontendDir, mcpDir string, httpClient *http.Clien
 		backendDir:  backendDir,
 		frontendDir: frontendDir,
 		mcpDir:      mcpDir,
+		skillsDir:   skillsDir,
 		httpClient:  httpClient,
 		log:         log,
 	}
@@ -62,6 +64,7 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin) (plugin
 	migrationsExtract := filepath.Join(tmpRoot, "migrations")
 	manifestExtract := filepath.Join(tmpRoot, "manifest")
 	mcpExtract := filepath.Join(tmpRoot, "mcp")
+	skillsExtract := filepath.Join(tmpRoot, "skills")
 
 	if err := i.downloadAndExtractTarGz(ctx, item.Artifacts.ManifestTarGzURL, manifestExtract); err != nil {
 		return plugindom.PluginManifest{}, fmt.Errorf("download manifest: %w", err)
@@ -189,6 +192,30 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin) (plugin
 		}
 	}
 
+	// Skills bundle — optional, installed to a dedicated skills store served at /plugins-skills/.
+	if strings.TrimSpace(item.Artifacts.SkillsTarGzURL) != "" {
+		if strings.TrimSpace(i.skillsDir) == "" {
+			return plugindom.PluginManifest{}, fmt.Errorf("plugin skills directory is not configured (PLUGINS_SKILLS_DIR)")
+		}
+		if err := i.downloadAndExtractTarGz(ctx, item.Artifacts.SkillsTarGzURL, skillsExtract); err != nil {
+			return plugindom.PluginManifest{}, fmt.Errorf("download skills: %w", err)
+		}
+		skillsContentRoot, err := resolveSingleRootDir(skillsExtract)
+		if err != nil {
+			return plugindom.PluginManifest{}, fmt.Errorf("resolve skills content root: %w", err)
+		}
+		skillsPluginDir := filepath.Join(i.skillsDir, item.Name)
+		if err := os.MkdirAll(i.skillsDir, 0o755); err != nil {
+			return plugindom.PluginManifest{}, fmt.Errorf("mkdir skills root: %w", err)
+		}
+		if err := os.RemoveAll(skillsPluginDir); err != nil {
+			return plugindom.PluginManifest{}, fmt.Errorf("clear skills dir: %w", err)
+		}
+		if err := copyDir(skillsContentRoot, skillsPluginDir); err != nil {
+			return plugindom.PluginManifest{}, fmt.Errorf("copy skills bundle: %w", err)
+		}
+	}
+
 	if i.log != nil {
 		i.log.Info("plugin artifacts installed", "name", item.Name, "backend_dir", backendPluginDir, "frontend_dir", frontendPluginDir)
 	}
@@ -197,11 +224,12 @@ func (i *Installer) Install(ctx context.Context, item MarketplacePlugin) (plugin
 }
 
 // Uninstall removes all installed files for a plugin from the backend,
-// frontend, and MCP stores. It does NOT touch the database.
+// frontend, MCP, and skills stores. It does NOT touch the database.
 func (i *Installer) Uninstall(name string) error {
 	backendPluginDir := filepath.Join(i.backendDir, name)
 	frontendPluginDir := filepath.Join(i.frontendDir, name)
 	mcpPluginDir := filepath.Join(i.mcpDir, name)
+	skillsPluginDir := filepath.Join(i.skillsDir, name)
 
 	var errs []error
 	if err := os.RemoveAll(backendPluginDir); err != nil {
@@ -213,6 +241,11 @@ func (i *Installer) Uninstall(name string) error {
 	if strings.TrimSpace(i.mcpDir) != "" {
 		if err := os.RemoveAll(mcpPluginDir); err != nil {
 			errs = append(errs, fmt.Errorf("remove mcp dir: %w", err))
+		}
+	}
+	if strings.TrimSpace(i.skillsDir) != "" {
+		if err := os.RemoveAll(skillsPluginDir); err != nil {
+			errs = append(errs, fmt.Errorf("remove skills dir: %w", err))
 		}
 	}
 

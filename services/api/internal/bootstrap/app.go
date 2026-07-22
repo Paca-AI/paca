@@ -237,7 +237,7 @@ func New(cfg *config.Config) (*App, error) {
 	}, log)
 	marketplaceClient := pluginrt.NewMarketplaceClient(cfg.Plugins.MarketplaceCatalogURL, cfg.Plugins.MarketplaceTimeout)
 	installerHTTPClient := &http.Client{Timeout: cfg.Plugins.MarketplaceTimeout}
-	pluginInstaller := pluginrt.NewInstaller(cfg.Plugins.WASMDir, cfg.Plugins.FrontendDir, cfg.Plugins.MCPDir, installerHTTPClient, log)
+	pluginInstaller := pluginrt.NewInstaller(cfg.Plugins.WASMDir, cfg.Plugins.FrontendDir, cfg.Plugins.MCPDir, cfg.Plugins.SkillsDir, installerHTTPClient, log)
 
 	pluginService := pluginsvc.New(pluginRepo)
 
@@ -311,6 +311,7 @@ func New(cfg *config.Config) (*App, error) {
 		DocFile:            handler.NewDocFileHandler(attachmentService),
 		Notification:       handler.NewNotificationHandler(notificationService),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
+		Skills:             handler.NewSkillsHandler(),
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
 		Conversation:       convHandler,

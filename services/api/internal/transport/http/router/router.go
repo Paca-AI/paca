@@ -36,6 +36,7 @@ type Deps struct {
 	Notification         *handler.NotificationHandler
 	APIKey               *handler.APIKeyHandler
 	Plugin               *handler.PluginHandler
+	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
 	Conversation         *handler.ConversationHandler
 	Workflow             *handler.WorkflowHandler
@@ -581,6 +582,15 @@ func New(deps Deps) http.Handler {
 					})
 				}
 			})
+
+			// Bundled skills — public listing, same policy as /plugins below.
+			if deps.Skills != nil {
+				r.Group(func(r chi.Router) {
+					r.Use(httpmw.OptionalAuthn(deps.TokenManager, deps.APIKeyAuth))
+					r.Use(httpmw.RequireFreshPassword())
+					r.Get("/skills", deps.Skills.ListSkills)
+				})
+			}
 
 			// Plugin routes
 			if deps.Plugin != nil {
