@@ -29,7 +29,7 @@ class PluginSkillRef:
     """A plugin-declared skill's SKILL.md, not yet fetched.
 
     Resolved from an enabled plugin's manifest.skills block (see
-    repositories.agent_repository.list_enabled_plugin_manifests) into an
+    repositories.agent_repository.list_enabled_plugin_skills) into an
     absolute, safety-checked URL — builder.load_plugin_skills fetches `url`
     and parses it into an SDK Skill.
     """

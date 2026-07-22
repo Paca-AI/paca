@@ -131,6 +131,59 @@ fetch_with_status() {
   [[ "${LAST_FETCH_STATUS}" == 2* ]]
 }
 
+# extract_host URL — the bare hostname (no scheme, userinfo, port, or path).
+# Handles bracketed IPv6 literals (e.g. "https://[::1]:8080/x" -> "[::1]").
+extract_host() {
+  local rest="${1#*://}"
+  rest="${rest#*@}"
+  rest="${rest%%/*}"
+  if [[ "${rest}" == \[* ]]; then
+    printf '%s' "${rest%%]*}]"
+  else
+    printf '%s' "${rest%%:*}"
+  fi
+}
+
+# plugin_baseurl_allowed URL API_HOST — mirrors the same-purpose SSRF guard
+# services/ai-agent's resolve_plugin_base_url and apps/mcp/src/plugin-loader.ts's
+# resolveImportUrl already apply server-side to this exact field
+# (manifest.skills.baseUrl): a plugin manifest is admin-installed but still
+# untrusted content, and what it points at here gets installed verbatim as a
+# local slash command — so an absolute baseUrl gets the same treatment here,
+# not just on the backends. https:// is rejected for loopback/private/
+# link-local hosts; http:// is allowed only for localhost/loopback or the
+# configured Paca instance's own host. This is a best-effort static check
+# (no DNS resolution, unlike the Python guard it mirrors), but it stops the
+# obvious case: a plugin declaring an arbitrary external baseUrl.
+plugin_baseurl_allowed() {
+  local url="$1" api_host="$2"
+  local scheme host
+  scheme="${url%%://*}"
+  host="$(extract_host "${url}")"
+  host="${host,,}"
+
+  case "${scheme}" in
+    https)
+      case "${host}" in
+        localhost|127.*|10.*|169.254.*|0.0.0.0|::1|\[::1\])
+          return 1 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*)
+          return 1 ;;
+        192.168.*)
+          return 1 ;;
+      esac
+      return 0
+      ;;
+    http)
+      [[ "${host}" == "localhost" || "${host}" == "127.0.0.1" || "${host}" == "::1" \
+        || "${host}" == "[::1]" || "${host}" == "${api_host}" ]]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
   echo "Error: curl or wget is required. Install one and re-run." >&2
   exit 1
@@ -327,12 +380,20 @@ FATAL_ERROR=""
 # only thing that can still go wrong here is the /api/v1/plugins call itself.
 info "Checking ${PACA_API_URL} for plugin-contributed skills..."
 plugins_json="$(mktemp)"
+API_HOST="$(extract_host "${PACA_API_URL}")"
+API_HOST="${API_HOST,,}"
 if fetch_with_status "${PACA_API_URL%/}/api/v1/plugins" "${plugins_json}" "${PACA_API_KEY}"; then
   plugin_skill_count=0
   while IFS=$'\t' read -r plugin_name base_url skill_name; do
     [[ -z "${skill_name}" ]] && continue
     case "${base_url}" in
-      http://*|https://*) resolved_base="${base_url}" ;;
+      http://*|https://*)
+        if ! plugin_baseurl_allowed "${base_url}" "${API_HOST}"; then
+          warn "Plugin '${plugin_name}' declares skills baseUrl '${base_url}', which resolves to a disallowed host — skipping its skills"
+          continue
+        fi
+        resolved_base="${base_url}"
+        ;;
       *) resolved_base="${PACA_API_URL%/}${base_url}" ;;
     esac
     skill_raw="$(mktemp)"

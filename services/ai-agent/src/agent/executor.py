@@ -509,9 +509,13 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
     try:
         llm = build_llm(agent_config)
         # Precedence on a name collision: agent-configured skills win over
-        # plugin-contributed skills, which win over bundled defaults.
-        plugin_skills = await load_plugin_skills(agent_config.plugin_skills)
-        default_skills = await load_default_skills()
+        # plugin-contributed skills, which win over bundled defaults. The two
+        # fetches are independent (different sources, no shared state), so
+        # run them concurrently rather than paying both round trips serially
+        # on every conversation start.
+        plugin_skills, default_skills = await asyncio.gather(
+            load_plugin_skills(agent_config.plugin_skills), load_default_skills()
+        )
         skills = merge_skills_by_name(
             build_skills(agent_config.skills),
             merge_skills_by_name(plugin_skills, default_skills),
