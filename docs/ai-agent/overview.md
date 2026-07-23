@@ -1,15 +1,16 @@
 # AI Agent Feature — Overview
 
-Paca AI Agents are first-class project members powered by the [OpenHands Software Agent SDK](https://docs.openhands.dev/sdk). Each agent runs in an isolated Docker container and can be triggered by task assignment, comment @mentions, or direct chat. Agents participate in the project exactly like human members — they appear in member lists, can be assigned tasks, and exchange messages in comments and chats.
+Paca AI Agents are first-class project members, triggered by task assignment, comment @mentions, or direct chat. Agents participate in the project exactly like human members — they appear in member lists, can be assigned tasks, and exchange messages in comments and chats. Depending on `agent_type`, an agent's conversations either run in an isolated Docker container managed by Paca (`llm`, powered by the [OpenHands Software Agent SDK](https://docs.openhands.dev/sdk)) or on a coding CLI the user runs locally themselves (`acp`) — see [Execution Models](#execution-models).
 
 ## Table of Contents
 
 - [Concepts](#concepts)
 - [Architecture](#architecture)
+- [Execution Models](#execution-models)
 - [Trigger Model](#trigger-model)
 - [Conversation Lifecycle](#conversation-lifecycle)
 - [Repository Access & PR Creation](#repository-access--pr-creation)
-- [Default Agent Types](#default-agent-types)
+- [Skill Templates](#skill-templates)
 - [Customization](#customization)
 - [Related Documents](#related-documents)
 
@@ -19,12 +20,13 @@ Paca AI Agents are first-class project members powered by the [OpenHands Softwar
 
 | Term | Meaning |
 |---|---|
-| **Agent** | A project-scoped AI entity with a role, LLM config, skills, MCP servers, and a system prompt. |
+| **Agent** | A project-scoped AI entity with a role, execution config, skills, MCP servers, and a system prompt. |
 | **Agent Member** | A `project_members` row with `member_type = 'agent'` and a reference to the `agents` table. Agents are treated identically to human members in all product surfaces. |
-| **Agent Type** | A template that pre-fills LLM, skills, and system prompt. Built-in types: PO Assistant, Business Analyst, Developer, Manual Tester. Users can create custom types. |
-| **Agent Conversation** | A single OpenHands SDK `Conversation` session, spawned in a dedicated Docker container for each trigger event. |
+| **Agent Type** | `llm` (default) or `acp` — determines *where and how* an agent's conversations execute. See [Execution Models](#execution-models) below. Not to be confused with the pre-refactor "Agent Type" template concept (PO Assistant, Business Analyst, etc.); those are now [Skill Templates](#skill-templates). |
+| **Skill Template** | A built-in, reusable skill (`developer`, `ba`, `manual-tester`, `po-assistant`) that any agent — `llm` or `acp` — can attach, instead of a full agent preset. See [Skill Templates](#skill-templates). |
+| **Agent Conversation** | A single execution session for one trigger event. For `llm` agents, an OpenHands SDK `Conversation` spawned in a dedicated Docker container; for `acp` agents, a turn dispatched to the user's own locally-run bridge. |
 | **Conversation Event** | An atomic action/observation within a conversation (LLM message, bash command, file edit, etc.). Persisted to the database for history and real-time monitoring. |
-| **Trigger** | An event that creates an agent conversation: task assignment, comment @mention, or direct chat message. |
+| **Trigger** | An event that creates an agent conversation: task assignment, comment @mention, or direct chat message. Applies identically to both agent types — only how the resulting conversation executes differs. |
 
 ---
 
@@ -77,6 +79,22 @@ Paca AI Agents are first-class project members powered by the [OpenHands Softwar
 | `services/ai-agent` | Executes agent conversations via OpenHands SDK, manages Docker container lifecycle, streams events back. |
 | `services/realtime` | Delivers real-time conversation events to the web client via Socket.IO (same existing Valkey→Socket.IO fan-out). |
 | Docker host | Provides container isolation. Agent containers cannot reach other Paca service containers on the internal network by default. |
+
+---
+
+## Execution Models
+
+Every agent has an `agent_type` of `llm` (default) or `acp`, fixed at creation. The trigger model, comment/chat surfaces, and conversation history all work identically for both — only *where the conversation actually runs* differs:
+
+| | `llm` | `acp` |
+|---|---|---|
+| Runs in | A Paca-managed Docker container (the architecture diagram above) | A coding CLI running as a real local process on the user's own machine |
+| LLM credential | `llm_api_key`, stored encrypted, managed by Paca | The user's own local CLI auth (e.g. `claude setup-token`, `OPENAI_API_KEY`) — Paca never sees, stores, or requests this |
+| MCP servers / skills / env vars | Configured on the agent in Paca, injected into the container at conversation start | Entirely the user's own local CLI configuration — Paca injects nothing |
+| Git / VCS access | Short-lived scoped token from a repository plugin (see [Repository Access & PR Creation](#repository-access--pr-creation)) | Whatever `git`/`gh` credentials are already configured on the user's machine |
+| Connection to Paca | N/A — the container is spawned and controlled by `services/ai-agent` directly | An authenticated WebSocket from the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon to `services/ai-agent`, using a per-agent bridge token generated in the Agents UI (`POST .../agents/:agentId/acp-bridge-token`) |
+
+`acp` exists for users who already have a coding CLI configured the way they want (auth, MCP servers, skills, git access) and would rather point Paca at that setup than duplicate it in a sandboxed container. See [api-design.md](api-design.md) for the full field-level split between the two types, and the bridge's own README for its local setup and auth model.
 
 ---
 
@@ -137,6 +155,8 @@ A dedicated chat API allows users to send messages to an agent member. Internall
 
 ## Conversation Lifecycle
 
+This describes the `llm` execution path (see [Execution Models](#execution-models)). `acp` conversations skip container spawning entirely — the trigger is dispatched as a `start_turn` message to the user's already-running bridge, which runs the turn locally and streams events back over the bridge's WebSocket instead.
+
 ```
 Trigger event published
         │
@@ -184,6 +204,8 @@ Container destroyed, conversation state archived
 
 ## Repository Access & PR Creation
 
+This describes the `llm` execution path. `acp` agents don't go through a repository plugin at all — they use whatever `git`/`gh` credentials are already configured on the user's own machine, exactly as if the user were driving the CLI themselves; see the [Execution Models](#execution-models) table.
+
 Agents must be able to read and write code without ever seeing VCS credentials directly.
 
 ### Clone Flow
@@ -208,29 +230,31 @@ This design means:
 
 ---
 
-## Default Agent Types
+## Skill Templates
 
-| Type | Role | Default LLM | Pre-loaded Skills |
-|---|---|---|---|
-| **PO Assistant** | Product Owner — backlog grooming, acceptance criteria, prioritization | `anthropic/claude-sonnet-4-6` | `po-assistant` skill with Agile PO guidelines |
-| **Business Analyst** | Requirements analysis, user story writing, gap analysis | `anthropic/claude-sonnet-4-6` | `ba-assistant` skill |
-| **Developer** | Coding, code review, PR creation, bug fixing | `anthropic/claude-sonnet-4-6` | `developer` skill + `github`/`gitlab` skills |
-| **Manual Tester** | Test case design, exploratory testing docs, defect analysis | `anthropic/claude-sonnet-4-6` | `manual-tester` skill |
+There is no longer a preset "agent type" that bundles an LLM, skills, and a system prompt together — every agent is configured individually (`llm` or `acp`, any LLM provider, any skills, any MCP servers). What used to be built-in agent types are now built-in **skill templates**: reusable skill content a user attaches to whichever agent they're configuring, listed via `GET /api/v1/agents/skill-templates` ([api-design.md](api-design.md#llm-models--skill-templates)).
 
-Users can create custom agent types with any combination of LLM provider, skills, MCP servers, and system prompt.
+| Slug | Name | Description |
+|---|---|---|
+| `developer` | Developer | Implements features, fixes bugs, writes tests, and creates pull requests. |
+| `ba` | Business Analyst | Requirements analysis, gap analysis, process modelling, functional specifications. |
+| `manual-tester` | Manual Tester | Test case design, test plans, defect report analysis, testing documentation. |
+| `po-assistant` | Product Owner Assistant | Backlog grooming, acceptance criteria, prioritization, roadmap questions. |
+
+Each template also carries a set of trigger keywords (e.g. `developer` triggers on "implement", "fix", "bug", "pr", ...) used to route `@mention`-less task assignments to the right skill context. Users can also write their own inline or GitHub-URL-sourced skills — templates are just a shortcut, not the only option.
 
 ---
 
 ## Customization
 
-Every agent exposes four customization axes:
+`llm` agents expose four customization axes; `acp` agents only the latter two, since MCP servers/skills for `acp` live in the user's own local CLI config rather than Paca (see [Execution Models](#execution-models)):
 
-| Axis | Description |
-|---|---|
-| **LLM Provider** | Any LiteLLM-supported provider: Anthropic, OpenAI, Azure, AWS Bedrock, Gemini, Groq, OpenRouter, local LLMs, etc. |
-| **System Prompt** | Free-form Jinja2 template or plain text, pre-filled from the agent type. |
-| **Skills** | AgentSkills-standard `SKILL.md` directories or inline text skills. Stored in the DB, mounted into the container at runtime. |
-| **MCP Servers** | JSON MCP config following the standard `mcpServers` format. Evaluated inside the container at conversation start. |
+| Axis | Applies to | Description |
+|---|---|---|
+| **LLM Provider** | `llm` only | Any LiteLLM-supported provider: Anthropic, OpenAI, Azure, AWS Bedrock, Gemini, Groq, OpenRouter, local LLMs, etc. |
+| **System Prompt** | both | Free-form Jinja2 template or plain text, optionally pre-filled from a skill template. |
+| **Skills** | `llm` only | AgentSkills-standard `SKILL.md` directories or inline text skills. Stored in the DB, mounted into the container at runtime. |
+| **MCP Servers** | `llm` only | JSON MCP config following the standard `mcpServers` format. Evaluated inside the container at conversation start. |
 
 ---
 
