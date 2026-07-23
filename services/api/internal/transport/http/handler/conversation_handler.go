@@ -3,7 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/google/uuid"
 
@@ -31,9 +30,10 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	pageSize, _ := strconv.Atoi(defaultQuery(r, "page_size", "20"))
-	if pageSize < 1 || pageSize > 200 {
-		pageSize = 20
+	pageSize, err := parsePageSize(r, 20, 200)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 
 	filter := agentdom.ListConversationsFilter{
@@ -101,7 +101,11 @@ func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *h
 		return
 	}
 
-	offset, limit := parseOffsetLimit(r)
+	offset, limit, err := parseOffsetLimit(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, offset, limit)
 	if err != nil {
 		presenter.Error(w, r, err)

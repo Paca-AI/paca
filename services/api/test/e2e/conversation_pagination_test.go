@@ -207,18 +207,26 @@ func TestE2EListConversationPagination_CursorBased(t *testing.T) {
 		}
 	})
 
-	t.Run("page_size_zero_is_clamped_to_default", func(t *testing.T) {
-		data := listConversationsPage(t, env, client, token, projID, url.Values{"page_size": {"0"}})
-		if ps, _ := data["page_size"].(float64); ps != 20 {
-			t.Errorf("expected page_size=20 when 0 requested (out-of-range clamped), got %v", ps)
-		}
+	t.Run("page_size_zero_is_rejected", func(t *testing.T) {
+		q := url.Values{"page_size": {"0"}}
+		reqURL := fmt.Sprintf("%s/api/v1/projects/%s/conversations?%s", env.base, projID, q.Encode())
+		req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
-	t.Run("page_size_over_max_is_clamped_to_default", func(t *testing.T) {
-		data := listConversationsPage(t, env, client, token, projID, url.Values{"page_size": {"201"}})
-		if ps, _ := data["page_size"].(float64); ps != 20 {
-			t.Errorf("expected page_size=20 when 201 requested (over max, clamped), got %v", ps)
-		}
+	t.Run("page_size_over_max_is_rejected", func(t *testing.T) {
+		q := url.Values{"page_size": {"201"}}
+		reqURL := fmt.Sprintf("%s/api/v1/projects/%s/conversations?%s", env.base, projID, q.Encode())
+		req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
 	t.Run("invalid_cursor_returns_error", func(t *testing.T) {
@@ -350,6 +358,58 @@ func TestE2EListConversationPagination_AgentIDFilter(t *testing.T) {
 		if !found {
 			t.Errorf("expected agent A conversation %q in filtered results", id)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestE2EListConversationEvents_OffsetLimitValidation
+// Mirrors the page_size validation coverage above, applied to this sibling
+// endpoint's offset/limit pair: an explicitly supplied out-of-range or
+// non-numeric value must be rejected rather than silently substituted, for
+// the same reason (a caller advancing offset by its requested limit would
+// otherwise skip or duplicate rows against its own math with no signal).
+// The conversation ID need not exist — invalid offset/limit is rejected
+// before the service layer is ever reached.
+// ---------------------------------------------------------------------------
+
+func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
+	env := newE2EEnv(t)
+	client, token, projID, _, _ := seedConversationFixture(t, env)
+	convID := uuid.NewString()
+
+	eventsURL := func(q url.Values) string {
+		u := fmt.Sprintf("%s/api/v1/projects/%s/conversations/%s/events", env.base, projID, convID)
+		if len(q) > 0 {
+			u += "?" + q.Encode()
+		}
+		return u
+	}
+
+	t.Run("absent_offset_and_limit_default", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(nil), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+	})
+
+	invalidCases := []url.Values{
+		{"offset": {"-1"}},
+		{"offset": {"abc"}},
+		{"limit": {"0"}},
+		{"limit": {"-5"}},
+		{"limit": {"201"}},
+		{"limit": {"abc"}},
+	}
+	for _, q := range invalidCases {
+		t.Run(q.Encode(), func(t *testing.T) {
+			req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(q), nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			resp := mustDo(t, client, req)
+			defer func() { _ = resp.Body.Close() }()
+			assertStatus(t, resp, http.StatusBadRequest)
+			assertErrorCode(t, resp, "BAD_REQUEST")
+		})
 	}
 }
 

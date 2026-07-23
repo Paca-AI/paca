@@ -24,10 +24,11 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAgentSvc struct {
-	getAgent          func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
-	createAgent       func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
-	startChatSession  func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
-	listConversations func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
+	getAgent               func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
+	createAgent            func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
+	startChatSession       func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
+	listConversations      func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
+	listConversationEvents func(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error)
 }
 
 func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID) ([]*agentdom.Agent, error) {
@@ -96,7 +97,10 @@ func (m *mockAgentSvc) ListConversations(ctx context.Context, filter agentdom.Li
 func (m *mockAgentSvc) GetConversation(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 	return nil, errors.New("not found")
 }
-func (m *mockAgentSvc) ListConversationEvents(_ context.Context, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
+func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
+	if m.listConversationEvents != nil {
+		return m.listConversationEvents(ctx, conversationID, offset, limit)
+	}
 	return nil, 0, nil
 }
 func (m *mockAgentSvc) StopConversation(_ context.Context, _, _ uuid.UUID) error  { return nil }

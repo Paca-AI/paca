@@ -42,7 +42,23 @@ The installer supports:
 | Self-hosted MinIO | Starts a MinIO container for S3-compatible file storage (default) |
 | AWS S3 | Supply AWS credentials; MinIO container is suppressed |
 | HTTPS | Enabled by default — Let's Encrypt for a real domain, Caddy's local CA otherwise; can be disabled for plain HTTP |
-| AI Agent | Enabled by default; can be skipped to reduce resource usage |
+| AI Agent | Enabled by default; can be skipped to reduce resource usage. See [docs/ai-agent/api-design.md](../docs/ai-agent/api-design.md) for the agent REST API once it's running. |
+
+**Non-interactive / CI install** — set `PACA_YES=1` to skip every prompt and use
+defaults plus freshly auto-generated secrets for all of the above (including
+`JWT_SECRET`, `ADMIN_PASSWORD`, `AGENT_API_KEY`, `INTERNAL_API_KEY`, and
+`ENCRYPTION_KEY`):
+
+```bash
+PACA_YES=1 bash install.sh
+# or, without a local copy of the script at all:
+PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
+```
+
+`PACA_DIR` (default `./paca`) and `PACA_VERSION` (default `latest`) are also
+read from the environment, so a fully unattended install needs no interactive
+input at all. See the comment header at the top of
+[`scripts/install.sh`](../scripts/install.sh) for the full list of variables.
 
 ### Manual setup
 
@@ -69,10 +85,20 @@ Create a `.env` with the required variables:
 JWT_SECRET=<strong-random-secret>
 ADMIN_PASSWORD=<strong-password>
 POSTGRES_PASSWORD=<strong-random-password>
-# Required when using AI agent: generate with 'openssl rand -hex 32'
-AGENT_API_KEY=<strong-random-secret>
+# Required even if you don't plan to use the AI agent (--scale ai-agent=0) —
+# the api service itself refuses to start without this set, since it's also
+# used to authenticate the api → ai-agent internal status/control calls.
+# Generate with: openssl rand -hex 32
 INTERNAL_API_KEY=<strong-random-secret>
-# Required for plugin secrets at rest: generate with 'openssl rand -hex 32'
+# Optional — only used by the AI agent to call back into the api service as
+# its own bot user. Leave unset if you're skipping the AI agent.
+# Generate with: openssl rand -hex 32
+AGENT_API_KEY=<strong-random-secret>
+# Required to encrypt LLM-type agents' API keys and plugin secrets at rest.
+# Not enforced at startup, but leaving it empty stores those values in
+# plaintext instead of failing — set it unless you're certain you don't need
+# it (e.g. ACP-only agents, no plugins with stored secrets).
+# Generate with: openssl rand -hex 32
 ENCRYPTION_KEY=<64-char-hex>
 PUBLIC_URL=http://your-domain-or-ip
 ```
@@ -130,6 +156,11 @@ docker compose --env-file .env up -d --scale minio=0
 ```bash
 docker compose --env-file .env up -d --scale ai-agent=0
 ```
+
+`INTERNAL_API_KEY` must still be set in `.env` even with the AI agent scaled
+to 0 — the api service requires it unconditionally at startup regardless of
+whether ai-agent is actually running (see above). `AGENT_API_KEY` can be left
+unset in this case.
 
 Flags can be combined:
 

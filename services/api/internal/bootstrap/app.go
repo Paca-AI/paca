@@ -157,6 +157,14 @@ func New(cfg *config.Config) (*App, error) {
 			agentService = agentService.WithEncryptor(enc)
 			log.Info("agent LLM API key at-rest encryption enabled")
 		}
+	} else {
+		// Not fatal — deployments using only ACP-type agents and no plugins
+		// with stored secrets have nothing to encrypt. But when this is
+		// unintentional, the effect is silent: encryptKey() falls back to
+		// storing the plaintext unchanged when no encryptor is configured, so
+		// LLM API keys and plugin secrets end up in the database in plaintext
+		// with no error or signal anywhere. Surface it once at startup.
+		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys and plugin secrets will be stored in plaintext, not encrypted")
 	}
 	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher).
 		WithNotificationService(notificationService).

@@ -4,6 +4,11 @@ This document describes the public REST endpoints added to `services/api` for AI
 
 All endpoints follow the existing Paca API conventions: JWT authentication, project-scoped authorization, and standard error envelope `{"error": "..."}`.
 
+Every agent has an `agent_type` of either `llm` or `acp` (default `llm` when omitted). The two types are mutually exclusive in both configuration and execution:
+
+- **`llm`** — Paca runs the conversation itself, in an isolated Docker container, using the `llm_provider`/`llm_model`/`llm_api_key`/`llm_base_url` fields. See [overview.md](overview.md) for the sandboxed execution model.
+- **`acp`** — the conversation runs on the user's own machine via the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon, connecting to a coding CLI (Claude Code, Codex, Gemini CLI, or a custom [ACP](https://docs.openhands.dev/sdk/guides/agent-acp) server) the user already has installed and authenticated there. Paca never sees, stores, or requests an LLM credential for `acp` agents — `llm_api_key` is neither required nor read for this type. The only credential Paca manages is the bridge connection token described below, which authenticates the WebSocket link, not the LLM.
+
 ---
 
 ## Agent Management
@@ -14,25 +19,28 @@ List all agents in a project.
 
 **Response:**
 ```json
-[
-  {
-    "id": "uuid",
-    "name": "Dev Bot",
-    "handle": "dev-bot",
-    "avatar_url": null,
-    "agent_type": {
+{
+  "items": [
+    {
       "id": "uuid",
-      "name": "Developer",
-      "slug": "developer"
-    },
-    "llm_provider": "anthropic",
-    "llm_model": "claude-sonnet-4-6",
-    "max_iterations": 50,
-    "timeout_minutes": 30,
-    "member_id": "uuid",
-    "created_at": "2026-05-19T00:00:00Z"
-  }
-]
+      "project_id": "uuid",
+      "member_id": "uuid",
+      "name": "Dev Bot",
+      "handle": "dev-bot",
+      "avatar_url": null,
+      "agent_type": "llm",
+      "llm_provider": "anthropic",
+      "llm_model": "claude-sonnet-4-6",
+      "llm_base_url": "",
+      "acp_provider": null,
+      "acp_command": [],
+      "has_acp_bridge_token": false,
+      "max_iterations": 50,
+      "timeout_minutes": 30,
+      "created_at": "2026-05-19T00:00:00Z"
+    }
+  ]
+}
 ```
 
 ---
@@ -41,12 +49,12 @@ List all agents in a project.
 
 Create a new agent. This also creates the corresponding `project_members` row with `member_type = 'agent'`.
 
-**Request body:**
+**Request body (`agent_type: "llm"`, the default):**
 ```json
 {
   "name": "Dev Bot",
   "handle": "dev-bot",
-  "agent_type_id": "uuid",
+  "agent_type": "llm",
   "llm_provider": "anthropic",
   "llm_model": "claude-sonnet-4-6",
   "llm_api_key": "sk-ant-...",
@@ -58,7 +66,21 @@ Create a new agent. This also creates the corresponding `project_members` row wi
 }
 ```
 
-The `llm_api_key` is stored in the secrets store (e.g., encrypted column or external vault); only a reference is kept in the `agents` table.
+`llm_provider`, `llm_model`, and `llm_api_key` are required when `agent_type` is `llm`. `llm_api_key` is stored in the secrets store; only a reference (`llm_api_key_secret`) is kept on the `agents` row.
+
+**Request body (`agent_type: "acp"`):**
+```json
+{
+  "name": "Local Claude Code",
+  "handle": "local-claude",
+  "agent_type": "acp",
+  "acp_provider": "claude-code",
+  "system_prompt": "You are a senior software engineer...",
+  "project_role_id": "uuid"
+}
+```
+
+`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command via the OpenHands SDK's own provider registry. None of the `llm_*` fields apply to `acp` agents.
 
 **Response:** `201 Created` with the created agent object.
 
@@ -74,6 +96,7 @@ Get a single agent, including its MCP servers and skills.
   "id": "uuid",
   "name": "Dev Bot",
   "handle": "dev-bot",
+  "agent_type": "llm",
   "system_prompt": "...",
   "mcp_servers": [
     {
@@ -101,7 +124,7 @@ Get a single agent, including its MCP servers and skills.
 
 ### `PATCH /api/v1/projects/:projectId/agents/:agentId`
 
-Update agent configuration (name, handle, LLM, system prompt, limits).
+Update agent configuration. `agent_type` itself is immutable after creation — only the fields belonging to the agent's existing type (`llm_*` or `acp_*`) can be updated.
 
 ---
 
@@ -111,7 +134,42 @@ Soft-delete the agent and its corresponding project member. Stops any running co
 
 ---
 
+## ACP Local Bridge
+
+Endpoints for `acp`-type agents only; return an error for `llm`-type agents.
+
+### `POST /api/v1/projects/:projectId/agents/:agentId/acp-bridge-token`
+
+Issue a new local-bridge connection token, invalidating any previous one. The plaintext token is returned once — only its hash is persisted, so it cannot be retrieved again after this response.
+
+**Response:**
+```json
+{
+  "token": "<plaintext-token>",
+  "run_command": "uvx paca-acp-bridge run --agent-id <agent-id> --token <plaintext-token> --server https://your-paca-instance.example.com"
+}
+```
+
+---
+
+### `GET /api/v1/projects/:projectId/agents/:agentId/acp-bridge-status`
+
+Live connected/disconnected status for the agent's local bridge, proxied from `services/ai-agent`'s presence check.
+
+**Response:**
+```json
+{ "connected": true }
+```
+
+---
+
 ## Agent MCP Servers
+
+### `GET /api/v1/projects/:projectId/agents/:agentId/mcp-servers`
+
+List MCP servers configured on an agent. **Response:** `{"items": [...]}`, each item shaped like the `mcp_servers` entries above.
+
+---
 
 ### `POST /api/v1/projects/:projectId/agents/:agentId/mcp-servers`
 
@@ -144,6 +202,12 @@ Remove an MCP server from an agent.
 
 ## Agent Skills
 
+### `GET /api/v1/projects/:projectId/agents/:agentId/skills`
+
+List skills attached to an agent. **Response:** `{"items": [...]}`, each item shaped like the `skills` entries above.
+
+---
+
 ### `POST /api/v1/projects/:projectId/agents/:agentId/skills`
 
 Add a skill to an agent.
@@ -168,6 +232,8 @@ Add a skill to an agent.
 }
 ```
 
+`skill_source` is one of `inline`, `marketplace`, or `github_url`.
+
 ---
 
 ### `PATCH /api/v1/projects/:projectId/agents/:agentId/skills/:skillId`
@@ -182,39 +248,89 @@ Remove a skill.
 
 ---
 
-## Agent Types
+## Agent Environment Variables
 
-### `GET /api/v1/agent-types`
+`llm`-type agents only — secret environment variables injected into the agent's sandbox container at conversation start (e.g., a repo-specific token an MCP server needs). Unsupported for `acp` agents, which run entirely in the user's own local environment instead.
 
-List built-in and project-scoped agent types.
+### `GET /api/v1/projects/:projectId/agents/:agentId/env-vars`
 
-**Query params:** `?project_id=<uuid>` — include project-scoped types.
+List env vars for an agent. **Response:** `{"items": [...]}`. Values are always redacted (`"***"`) — the plaintext is never returned once set.
 
 ---
 
-### `POST /api/v1/projects/:projectId/agent-types`
+### `POST /api/v1/projects/:projectId/agents/:agentId/env-vars`
 
-Create a custom agent type for a project.
+Add an env var.
+
+**Request body:**
+```json
+{ "key": "GITHUB_TOKEN", "value": "ghp_..." }
+```
+
+---
+
+### `PATCH /api/v1/projects/:projectId/agents/:agentId/env-vars/:envVarId`
+
+Replace an env var's value.
+
+---
+
+### `DELETE /api/v1/projects/:projectId/agents/:agentId/env-vars/:envVarId`
+
+Remove an env var.
+
+---
+
+## LLM Models & Skill Templates
+
+Two read-only, project-agnostic reference endpoints under `/api/v1/agents`, used by the agent creation/edit UI:
+
+### `GET /api/v1/agents/llm-models`
+
+Proxies to `services/ai-agent`'s `/llm/models`, returning the verified LLM models available, grouped by provider.
+
+---
+
+### `GET /api/v1/agents/skill-templates`
+
+Lists the built-in skill templates (`developer`, `ba`, `manual-tester`, `po-assistant`) that a new agent's skills can be seeded from — see [overview.md](overview.md#skill-templates).
+
+**Response:**
+```json
+[
+  {
+    "slug": "developer",
+    "name": "Developer",
+    "description": "...",
+    "content": "---\nname: developer\n...",
+    "triggers": ["implement", "fix", "refactor"]
+  }
+]
+```
 
 ---
 
 ## Conversations
 
-### `GET /api/v1/projects/:projectId/agents/:agentId/conversations`
+Conversations are project-scoped, not nested under a specific agent — a project's conversation history spans all of its agents.
 
-List all conversations for an agent. Sorted by `created_at DESC`.
+### `GET /api/v1/projects/:projectId/conversations`
 
-**Query params:** `?status=running&task_id=<uuid>&limit=20&offset=0`
+List conversations for the project, cursor-paginated (not offset-based).
+
+**Query params:** `?status=running&agent_id=<uuid>&cursor=<opaque>&page_size=20`
 
 **Response:**
 ```json
 {
-  "conversations": [
+  "items": [
     {
       "id": "uuid",
+      "agent_id": "uuid",
+      "agent_name": "Dev Bot",
+      "agent_handle": "dev-bot",
       "trigger_type": "task_assigned",
       "task_id": "uuid",
-      "task_title": "Implement OAuth login",
       "status": "running",
       "iteration_count": 12,
       "branch_name": "agent/implement-oauth-login",
@@ -223,7 +339,8 @@ List all conversations for an agent. Sorted by `created_at DESC`.
       "finished_at": null
     }
   ],
-  "total": 1
+  "page_size": 20,
+  "next_cursor": "<opaque-or-null>"
 }
 ```
 
@@ -231,20 +348,20 @@ List all conversations for an agent. Sorted by `created_at DESC`.
 
 ### `GET /api/v1/projects/:projectId/conversations/:conversationId`
 
-Get full conversation detail including events.
-
-**Query params:** `?include_events=true&event_limit=100&event_offset=0`
+Get full conversation detail.
 
 ---
 
 ### `GET /api/v1/projects/:projectId/conversations/:conversationId/events`
 
-Paginated list of conversation events.
+Offset-paginated list of conversation events.
+
+**Query params:** `?offset=0&limit=50` (`limit` capped at 200, defaults to 50)
 
 **Response:**
 ```json
 {
-  "events": [
+  "items": [
     {
       "id": "uuid",
       "event_index": 0,
@@ -262,8 +379,7 @@ Paginated list of conversation events.
       "created_at": "2026-05-19T10:00:03Z"
     }
   ],
-  "total": 45,
-  "has_more": true
+  "total": 45
 }
 ```
 
@@ -271,31 +387,31 @@ Paginated list of conversation events.
 
 ### `POST /api/v1/projects/:projectId/conversations/:conversationId/pause`
 
-Pause a running conversation.
+Interrupt the in-flight turn without tearing anything down — for `llm` agents the container keeps running; for `acp` agents a `pause_turn` message is forwarded to the bridge. A no-op if nothing is currently running. There is no `resume` endpoint.
 
-**Response:** `200 OK` `{"status": "paused"}`
-
----
-
-### `POST /api/v1/projects/:projectId/conversations/:conversationId/resume`
-
-Resume a paused conversation.
-
-**Response:** `200 OK` `{"status": "running"}`
+**Response:** `200 OK` `{"message": "conversation pause requested"}`
 
 ---
 
 ### `POST /api/v1/projects/:projectId/conversations/:conversationId/stop`
 
-Permanently stop a conversation and destroy its container.
+Permanently stop a conversation. For `llm` agents this also destroys the container; for `acp` agents a `stop_turn` message is forwarded to the bridge instead.
 
-**Response:** `200 OK` `{"status": "stopped"}`
+**Response:** `200 OK` `{"message": "conversation stopped"}`
 
 ---
 
-### `POST /api/v1/projects/:projectId/conversations/:conversationId/message`
+### `POST /api/v1/projects/:projectId/conversations/:conversationId/heartbeat`
 
-Send an additional message to an active conversation (running or paused).
+Keepalive ping (~30s interval) from a client actively viewing a conversation, refreshing its idle timer.
+
+**Response:** `200 OK` `{"status": "ok"}`
+
+---
+
+### `POST /api/v1/projects/:projectId/conversations/:conversationId/messages`
+
+Send an additional message to a conversation. Requires the conversation to already be in `running` status — sending to a `paused` conversation returns an error rather than resuming it.
 
 **Request body:**
 ```json
@@ -308,9 +424,11 @@ Send an additional message to an active conversation (running or paused).
 
 ## Agent Chat Sessions
 
+Chat sessions are nested under their agent, not the project — a session is always between one member and one agent.
+
 ### `GET /api/v1/projects/:projectId/agents/:agentId/chat-sessions`
 
-List chat sessions for a member+agent pair.
+List chat sessions for the calling member with this agent. **Response:** `{"items": [...]}`.
 
 ---
 
@@ -325,30 +443,10 @@ Start a new chat session with an agent.
 }
 ```
 
-**Response:** `201 Created` with the new session and the queued conversation.
+**Response:** `201 Created` `{"session": {...}, "conversation": {...}}`.
 
 ---
 
-### `POST /api/v1/projects/:projectId/chat-sessions/:sessionId/messages`
+### `POST /api/v1/projects/:projectId/agents/:agentId/chat-sessions/:sessionId/messages`
 
-Send a follow-up message in an existing chat session.
-
----
-
-### `GET /api/v1/projects/:projectId/chat-sessions/:sessionId/messages`
-
-List all messages in a chat session (human turns + agent replies).
-
----
-
-## Real-time Events (Socket.IO)
-
-The `services/realtime` service emits the following events to project rooms when conversation state changes:
-
-| Event | Payload | When |
-|---|---|---|
-| `agent:conversation:started` | `{ conversation_id, agent_id, trigger_type }` | Conversation begins |
-| `agent:conversation:event` | `{ conversation_id, event_type, event_source, event_index, payload }` | Each SDK event |
-| `agent:conversation:status` | `{ conversation_id, status }` | Status change (paused, resumed, finished, stopped, failed) |
-| `agent:conversation:pr_created` | `{ conversation_id, task_id, pr_url, branch_name }` | Agent created a PR |
-| `agent:chat:reply` | `{ session_id, message, conversation_id }` | Agent replied in chat |
+Send a follow-up message in an existing chat session. **Response:** `201 Created` `{"conversation": {...}}` — the (possibly new) conversation this message triggered. There is no separate "list messages" endpoint — a session's `conversation_id` links to its conversation, whose message history is read via the conversation events endpoint above.

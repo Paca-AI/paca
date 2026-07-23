@@ -29,6 +29,7 @@ func newConversationRouter(svc agentdom.Service) chi.Router {
 	r := chi.NewRouter()
 	r.Route("/projects/{projectId}/conversations", func(r chi.Router) {
 		r.Get("/", h.ListConversations)
+		r.Get("/{conversationId}/events", h.ListConversationEvents)
 	})
 	return r
 }
@@ -82,19 +83,16 @@ func TestListConversations_DefaultPageSize(t *testing.T) {
 	}
 }
 
-func TestListConversations_PageSizeClamping(t *testing.T) {
+func TestListConversations_PageSizeValid(t *testing.T) {
 	cases := []struct {
 		name      string
 		query     string
 		wantLimit int
 	}{
-		{"zero_clamped_to_default", "page_size=0", 20},
-		{"negative_clamped_to_default", "page_size=-5", 20},
-		{"over_max_clamped_to_default", "page_size=201", 20},
+		{"absent_defaults", "", 20},
 		{"valid_custom_size_kept", "page_size=50", 50},
 		{"max_boundary_kept", "page_size=200", 200},
 		{"min_boundary_kept", "page_size=1", 1},
-		{"non_numeric_clamped_to_default", "page_size=abc", 20},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,12 +103,125 @@ func TestListConversations_PageSizeClamping(t *testing.T) {
 					return nil, false, nil
 				},
 			}
-			_, resp := doListConversations(t, svc, uuid.New().String(), tc.query)
+			rec, resp := doListConversations(t, svc, uuid.New().String(), tc.query)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
 			if gotLimit != tc.wantLimit {
 				t.Errorf("expected service called with limit=%d, got %d", tc.wantLimit, gotLimit)
 			}
 			if resp.Data.PageSize != tc.wantLimit {
 				t.Errorf("expected response page_size=%d, got %d", tc.wantLimit, resp.Data.PageSize)
+			}
+		})
+	}
+}
+
+// TestListConversations_PageSizeInvalidRejected covers the fix for silent
+// page_size substitution: an explicitly supplied out-of-range or non-numeric
+// value now fails the request instead of quietly running with a different
+// page_size than the caller asked for (which broke offset math for callers
+// paginating by page_size).
+func TestListConversations_PageSizeInvalidRejected(t *testing.T) {
+	cases := []string{
+		"page_size=0",
+		"page_size=-5",
+		"page_size=201",
+		"page_size=abc",
+	}
+	for _, query := range cases {
+		t.Run(query, func(t *testing.T) {
+			svc := &mockAgentSvc{
+				listConversations: func(_ context.Context, _ agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
+					t.Fatalf("service should not be called for invalid page_size, got limit=%d", limit)
+					return nil, false, nil
+				},
+			}
+			rec, _ := doListConversations(t, svc, uuid.New().String(), query)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListConversationEvents: offset/limit handling
+// ---------------------------------------------------------------------------
+
+func doListConversationEvents(t *testing.T, svc agentdom.Service, projectID, conversationID, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := newConversationRouter(svc)
+	url := "/projects/" + projectID + "/conversations/" + conversationID + "/events"
+	if query != "" {
+		url += "?" + query
+	}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestListConversationEvents_OffsetLimitValid(t *testing.T) {
+	cases := []struct {
+		name       string
+		query      string
+		wantOffset int
+		wantLimit  int
+	}{
+		{"absent_defaults", "", 0, 50},
+		{"valid_custom_values_kept", "offset=10&limit=25", 10, 25},
+		{"limit_max_boundary_kept", "limit=200", 0, 200},
+		{"limit_min_boundary_kept", "limit=1", 0, 1},
+		{"offset_zero_kept", "offset=0", 0, 50},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotOffset, gotLimit int
+			svc := &mockAgentSvc{
+				listConversationEvents: func(_ context.Context, _ uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
+					gotOffset, gotLimit = offset, limit
+					return nil, 0, nil
+				},
+			}
+			rec := doListConversationEvents(t, svc, uuid.New().String(), uuid.New().String(), tc.query)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if gotOffset != tc.wantOffset || gotLimit != tc.wantLimit {
+				t.Errorf("expected service called with offset=%d limit=%d, got offset=%d limit=%d",
+					tc.wantOffset, tc.wantLimit, gotOffset, gotLimit)
+			}
+		})
+	}
+}
+
+// TestListConversationEvents_OffsetLimitInvalidRejected covers the same
+// silent-substitution fix as TestListConversations_PageSizeInvalidRejected,
+// applied to this endpoint's offset/limit pair: an explicitly supplied
+// out-of-range or non-numeric value now fails the request instead of quietly
+// running with a different limit than the caller asked for (which broke
+// offset math for callers advancing offset by their requested limit).
+func TestListConversationEvents_OffsetLimitInvalidRejected(t *testing.T) {
+	cases := []string{
+		"offset=-1",
+		"offset=abc",
+		"limit=0",
+		"limit=-5",
+		"limit=201",
+		"limit=abc",
+	}
+	for _, query := range cases {
+		t.Run(query, func(t *testing.T) {
+			svc := &mockAgentSvc{
+				listConversationEvents: func(_ context.Context, _ uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
+					t.Fatalf("service should not be called for invalid offset/limit, got offset=%d limit=%d", offset, limit)
+					return nil, 0, nil
+				},
+			}
+			rec := doListConversationEvents(t, svc, uuid.New().String(), uuid.New().String(), query)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 			}
 		})
 	}

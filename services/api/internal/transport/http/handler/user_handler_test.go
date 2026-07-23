@@ -216,6 +216,60 @@ func TestListUsers_ServiceError(t *testing.T) {
 	}
 }
 
+func TestListUsers_PageValid(t *testing.T) {
+	cases := []struct {
+		name     string
+		query    string
+		wantPage int
+	}{
+		{"absent_defaults", "", 1},
+		{"valid_custom_page_kept", "page=3", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotPage int
+			svc := &mockUserSvc{
+				list: func(_ context.Context, page, _ int) ([]*domainuser.User, int64, error) {
+					gotPage = page
+					return []*domainuser.User{}, 0, nil
+				},
+			}
+			r := newUserRouter(svc)
+
+			w := do(t, r, http.MethodGet, "/admin/users?"+tc.query, nil)
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			if gotPage != tc.wantPage {
+				t.Errorf("expected service called with page=%d, got %d", tc.wantPage, gotPage)
+			}
+		})
+	}
+}
+
+// TestListUsers_PageInvalidRejected covers the same silent-substitution fix
+// applied to page_size: an explicitly supplied invalid page value now fails
+// the request instead of quietly running with page=1.
+func TestListUsers_PageInvalidRejected(t *testing.T) {
+	cases := []string{"page=0", "page=-1", "page=abc"}
+	for _, query := range cases {
+		t.Run(query, func(t *testing.T) {
+			svc := &mockUserSvc{
+				list: func(_ context.Context, page, _ int) ([]*domainuser.User, int64, error) {
+					t.Fatalf("service should not be called for invalid page, got page=%d", page)
+					return nil, 0, nil
+				},
+			}
+			r := newUserRouter(svc)
+
+			w := do(t, r, http.MethodGet, "/admin/users?"+query, nil)
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // GetUserByID (admin)
 // ---------------------------------------------------------------------------
