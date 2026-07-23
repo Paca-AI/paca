@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"strconv"
 
 	"net/http"
 
@@ -121,9 +120,10 @@ func (h *UserHandler) GetMyGlobalPermissions(w http.ResponseWriter, r *http.Requ
 
 // ListUsers handles GET /admin/users — returns a paginated list of all users.
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(defaultQuery(r, "page", "1"))
-	if page < 1 {
-		page = 1
+	page, err := parsePage(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 	pageSize, err := parsePageSize(r, 20, 100)
 	if err != nil {

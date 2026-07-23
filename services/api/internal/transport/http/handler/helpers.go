@@ -36,15 +36,41 @@ func parsePageSize(r *http.Request, defaultSize, maxSize int) (int, error) {
 	return n, nil
 }
 
-// parseOffsetLimit reads offset and limit query parameters with sensible defaults.
-func parseOffsetLimit(r *http.Request) (offset, limit int) {
-	offset, _ = strconv.Atoi(defaultQuery(r, "offset", "0"))
-	limit, _ = strconv.Atoi(defaultQuery(r, "limit", "50"))
-	if offset < 0 {
+// parsePage reads the page query parameter (1-indexed). An absent param
+// silently falls back to 1 — only an explicitly supplied, invalid value
+// (non-numeric or less than 1) is rejected. See parsePageSize for why.
+func parsePage(r *http.Request) (int, error) {
+	raw := r.URL.Query().Get("page")
+	if raw == "" {
+		return 1, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, apierr.New(apierr.CodeBadRequest, "page must be a positive integer")
+	}
+	return n, nil
+}
+
+// parseOffsetLimit reads the offset and limit query parameters. Absent
+// params silently fall back to their defaults (0 and 50); only an explicitly
+// supplied, invalid value is rejected — for the same reason parsePageSize
+// rejects one: a caller advancing offset by the limit it requested (e.g.
+// offset += limit) would otherwise get a different limit back with no
+// signal, skipping or duplicating rows against its own math.
+func parseOffsetLimit(r *http.Request) (offset, limit int, err error) {
+	rawOffset := r.URL.Query().Get("offset")
+	if rawOffset == "" {
 		offset = 0
+	} else if offset, err = strconv.Atoi(rawOffset); err != nil || offset < 0 {
+		return 0, 0, apierr.New(apierr.CodeBadRequest, "offset must be a non-negative integer")
 	}
-	if limit < 1 || limit > 200 {
+
+	rawLimit := r.URL.Query().Get("limit")
+	if rawLimit == "" {
 		limit = 50
+	} else if limit, err = strconv.Atoi(rawLimit); err != nil || limit < 1 || limit > 200 {
+		return 0, 0, apierr.New(apierr.CodeBadRequest, "limit must be an integer between 1 and 200")
 	}
-	return offset, limit
+
+	return offset, limit, nil
 }

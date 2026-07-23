@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -349,9 +348,9 @@ func parseProjectID(r *http.Request) (uuid.UUID, error) {
 }
 
 func pagingParams(r *http.Request) (page, pageSize int, err error) {
-	page, _ = strconv.Atoi(defaultQuery(r, "page", "1"))
-	if page < 1 {
-		page = 1
+	page, err = parsePage(r)
+	if err != nil {
+		return 0, 0, err
 	}
 	pageSize, err = parsePageSize(r, 20, 100)
 	return page, pageSize, err

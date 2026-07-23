@@ -101,7 +101,11 @@ func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *h
 		return
 	}
 
-	offset, limit := parseOffsetLimit(r)
+	offset, limit, err := parseOffsetLimit(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, offset, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
