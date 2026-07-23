@@ -6,7 +6,7 @@
 //   project:<projectId>:tasks      — receives all task.* events
 //   project:<projectId>:docs       — receives all doc.* events
 //   project:<projectId>:workflows  — receives all workflow.* graph events
-//   project:<projectId>:sprints    — receives all sprint.* events
+//   project:<projectId>:sprints    — receives all sprint.* and view.* events
 //
 // Room membership is determined once when the client emits "join": the server
 // fetches the user's project permissions, then joins only the rooms the user is
@@ -53,6 +53,10 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// workflows.read — a permission distinct from tasks.read.
 	if (type.startsWith("workflow.")) return "workflows";
 	if (type.startsWith("sprint.")) return "sprints";
+	// view.* events cover sprint/backlog/timeline interaction views. They
+	// require the same sprints.read permission as sprint.* (see
+	// view_handler.go's route registration), so they share the room.
+	if (type.startsWith("view.")) return "sprints";
 	return undefined;
 }
 

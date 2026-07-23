@@ -105,6 +105,21 @@ describe("useProjectRealtime", () => {
 		});
 	});
 
+	it("invalidates views query key on view.* events", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({ type: "view.created", payload: {} });
+
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "views"],
+		});
+	});
+
 	it("invalidates workflows and tasks query keys on workflow.* events", () => {
 		renderHook(() => useProjectRealtime("proj-abc"));
 

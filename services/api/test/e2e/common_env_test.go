@@ -208,7 +208,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	sprintRepo := pgRepo.NewSprintRepository(db)
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
 	viewRepo := pgRepo.NewViewRepository(db)
-	viewService := sprintsvc.NewViewService(viewRepo)
+	viewService := sprintsvc.NewViewService(viewRepo, nil)
 	attachmentRepo := pgRepo.NewAttachmentRepository(db)
 	apiKeyRepo := pgRepo.NewAPIKeyRepository(db)
 	apiKeyService := apikeysvc.New(apiKeyRepo)

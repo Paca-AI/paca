@@ -78,6 +78,16 @@ const (
 	TopicSprintDeleted   = "sprint.deleted"
 	TopicSprintCompleted = "sprint.completed"
 
+	// --- Interaction view events ------------------------------------------------
+	// Published directly to ChannelRealtime by sprintsvc.ViewService whenever a
+	// sprint/backlog/timeline view (sprintdom.SprintView) is created, updated,
+	// deleted, or reordered, so every connected client viewing that project's
+	// interaction views stays in sync instead of relying on query staleTime.
+	TopicViewCreated   = "view.created"
+	TopicViewUpdated   = "view.updated"
+	TopicViewDeleted   = "view.deleted"
+	TopicViewReordered = "view.reordered"
+
 	// --- Notification events ------------------------------------------------
 	// TopicNotificationCreated is published to ChannelRealtime when a new
 	// notification is created.  The payload includes recipient_user_id so the
