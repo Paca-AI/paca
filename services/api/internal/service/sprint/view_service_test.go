@@ -173,7 +173,7 @@ func (r *fakeViewRepo) ReorderViews(_ context.Context, items []sprintdom.ViewReo
 func TestViewService_CreateView_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	sprintID := uuid.New()
 	v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
@@ -198,7 +198,7 @@ func TestViewService_CreateView_OK(t *testing.T) {
 
 func TestViewService_CreateView_DefaultTypeIsTable(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -215,7 +215,7 @@ func TestViewService_CreateView_DefaultTypeIsTable(t *testing.T) {
 
 func TestViewService_CreateView_EmptyNameReturnsError(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -230,7 +230,7 @@ func TestViewService_CreateView_EmptyNameReturnsError(t *testing.T) {
 
 func TestViewService_CreateView_InvalidTypeReturnsError(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -245,7 +245,7 @@ func TestViewService_CreateView_InvalidTypeReturnsError(t *testing.T) {
 
 func TestViewService_CreateView_PluginWithoutConfigReturnsError(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -260,7 +260,7 @@ func TestViewService_CreateView_PluginWithoutConfigReturnsError(t *testing.T) {
 
 func TestViewService_CreateView_PluginWithPartialConfigReturnsError(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -276,7 +276,7 @@ func TestViewService_CreateView_PluginWithPartialConfigReturnsError(t *testing.T
 
 func TestViewService_CreateView_PluginWithWhitespaceOnlyConfigReturnsError(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID: uuidPtr(uuid.New()),
@@ -295,7 +295,7 @@ func TestViewService_CreateView_PluginWithWhitespaceOnlyConfigReturnsError(t *te
 
 func TestViewService_CreateView_PluginWithConfig_OK(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID: uuidPtr(uuid.New()),
@@ -318,7 +318,7 @@ func TestViewService_CreateView_PluginWithConfig_OK(t *testing.T) {
 func TestViewService_UpdateView_ChangeToPluginWithoutConfigReturnsError(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -337,7 +337,7 @@ func TestViewService_UpdateView_ChangeToPluginWithoutConfigReturnsError(t *testi
 func TestViewService_UpdateView_ClearingPluginConfigWithoutTypeChangeReturnsError(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID: uuidPtr(uuid.New()),
@@ -360,7 +360,7 @@ func TestViewService_UpdateView_ClearingPluginConfigWithoutTypeChangeReturnsErro
 func TestViewService_UpdateView_RenameKeepsExistingPluginConfig(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID: uuidPtr(uuid.New()),
@@ -392,7 +392,7 @@ func TestViewService_UpdateView_RenameKeepsExistingPluginConfig(t *testing.T) {
 func TestViewService_GetView_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -412,7 +412,7 @@ func TestViewService_GetView_OK(t *testing.T) {
 
 func TestViewService_GetView_NotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	_, err := svc.GetView(ctx, uuid.New(), uuid.New())
 	if err != sprintdom.ErrViewNotFound {
@@ -423,7 +423,7 @@ func TestViewService_GetView_NotFound(t *testing.T) {
 func TestViewService_UpdateView_Name(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -445,7 +445,7 @@ func TestViewService_UpdateView_Name(t *testing.T) {
 func TestViewService_UpdateView_Config(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -467,7 +467,7 @@ func TestViewService_UpdateView_Config(t *testing.T) {
 func TestViewService_UpdateView_Config_PageSize(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -491,7 +491,7 @@ func TestViewService_UpdateView_Config_PageSize(t *testing.T) {
 
 func TestViewService_UpdateView_NotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	name := "Does not matter"
 	_, err := svc.UpdateView(ctx, uuid.New(), uuid.New(), sprintdom.UpdateViewInput{Name: &name})
@@ -503,7 +503,7 @@ func TestViewService_UpdateView_NotFound(t *testing.T) {
 func TestViewService_DeleteView_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	sprintID := uuid.New()
 	v1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{SprintID: &sprintID, Name: "V1", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextSprint})
@@ -522,7 +522,7 @@ func TestViewService_DeleteView_OK(t *testing.T) {
 func TestViewService_DeleteView_LastViewRejected(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	v, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -539,7 +539,7 @@ func TestViewService_DeleteView_LastViewRejected(t *testing.T) {
 
 func TestViewService_DeleteView_NotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	err := svc.DeleteView(ctx, uuid.New(), uuid.New())
 	if err != sprintdom.ErrViewNotFound {
@@ -550,7 +550,7 @@ func TestViewService_DeleteView_NotFound(t *testing.T) {
 func TestViewService_MoveTask_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	v, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
@@ -586,7 +586,7 @@ func TestViewService_MoveTask_OK(t *testing.T) {
 
 func TestViewService_MoveTask_ViewNotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	err := svc.MoveTask(ctx, uuid.New(), uuid.New(), sprintdom.MoveTaskInput{
 		TaskID:   uuid.New(),
@@ -600,7 +600,7 @@ func TestViewService_MoveTask_ViewNotFound(t *testing.T) {
 func TestViewService_ListViews_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	sprintID := uuid.New()
 	_, _ = svc.CreateView(ctx, sprintdom.CreateViewInput{SprintID: &sprintID, Name: "A", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextSprint})
@@ -621,7 +621,7 @@ func TestViewService_ListViews_OK(t *testing.T) {
 
 func TestViewService_ListBacklogViews_Empty(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	views, err := svc.ListProjectViews(ctx, uuid.New(), sprintdom.ViewContextBacklog)
 	if err != nil {
@@ -635,7 +635,7 @@ func TestViewService_ListBacklogViews_Empty(t *testing.T) {
 func TestViewService_ListBacklogViews_ReturnsOnlyBacklogViews(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	otherProjectID := uuid.New()
@@ -668,7 +668,7 @@ func TestViewService_ListBacklogViews_ReturnsOnlyBacklogViews(t *testing.T) {
 
 func TestViewService_CreateBacklogView_NilSprintID(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	projectID := uuid.New()
 	v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
@@ -691,7 +691,7 @@ func TestViewService_CreateBacklogView_NilSprintID(t *testing.T) {
 func TestViewService_DeleteBacklogView_LastViewRejected(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	v, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
@@ -710,7 +710,7 @@ func TestViewService_DeleteBacklogView_LastViewRejected(t *testing.T) {
 func TestViewService_DeleteBacklogView_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	v1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{ProjectID: projectID, Name: "BL1", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextBacklog})
@@ -728,7 +728,7 @@ func TestViewService_DeleteBacklogView_OK(t *testing.T) {
 func TestViewService_BacklogAndSprintViewsDontInterfere(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	sprintID := uuid.New()
@@ -768,7 +768,7 @@ func TestViewService_BacklogAndSprintViewsDontInterfere(t *testing.T) {
 func TestViewService_ReorderViews_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	sprintID := uuid.New()
 	v1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{SprintID: uuidPtr(sprintID), Name: "A", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextSprint})
@@ -797,7 +797,7 @@ func TestViewService_ReorderViews_OK(t *testing.T) {
 
 func TestViewService_ReorderViews_CountMismatch(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	sprintID := uuid.New()
 	v1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{SprintID: uuidPtr(sprintID), Name: "A", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextSprint})
@@ -812,7 +812,7 @@ func TestViewService_ReorderViews_CountMismatch(t *testing.T) {
 
 func TestViewService_ReorderViews_UnknownID(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	sprintID := uuid.New()
 	v1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{SprintID: uuidPtr(sprintID), Name: "A", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextSprint})
@@ -825,7 +825,7 @@ func TestViewService_ReorderViews_UnknownID(t *testing.T) {
 
 func TestViewService_ReorderViews_EmptyList(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	sprintID := uuid.New()
 	// No views exist; empty list should succeed (0 == 0)
@@ -837,7 +837,7 @@ func TestViewService_ReorderViews_EmptyList(t *testing.T) {
 func TestViewService_ReorderBacklogViews_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	b1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{ProjectID: projectID, Name: "X", ViewType: sprintdom.ViewTypeTable, ViewContext: sprintdom.ViewContextBacklog})
@@ -863,7 +863,7 @@ func TestViewService_ReorderBacklogViews_OK(t *testing.T) {
 
 func TestViewService_ListTimelineViews_Empty(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	views, err := svc.ListProjectViews(ctx, uuid.New(), sprintdom.ViewContextTimeline)
 	if err != nil {
@@ -877,7 +877,7 @@ func TestViewService_ListTimelineViews_Empty(t *testing.T) {
 func TestViewService_ListTimelineViews_ReturnsOnlyTimelineViews(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	otherID := uuid.New()
@@ -913,7 +913,7 @@ func TestViewService_ListTimelineViews_ReturnsOnlyTimelineViews(t *testing.T) {
 
 func TestViewService_CreateTimelineView_HasCorrectContext(t *testing.T) {
 	ctx := context.Background()
-	svc := sprintsvc.NewViewService(newFakeViewRepo())
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), nil)
 
 	projectID := uuid.New()
 	v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
@@ -936,7 +936,7 @@ func TestViewService_CreateTimelineView_HasCorrectContext(t *testing.T) {
 func TestViewService_DeleteTimelineView_LastViewRejected(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	v, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
@@ -954,7 +954,7 @@ func TestViewService_DeleteTimelineView_LastViewRejected(t *testing.T) {
 func TestViewService_DeleteTimelineView_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	v1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{ProjectID: projectID, Name: "TL1", ViewType: sprintdom.ViewTypeRoadmap, ViewContext: sprintdom.ViewContextTimeline})
@@ -974,7 +974,7 @@ func TestViewService_TimelineAndBacklogViewsDontInterfere(t *testing.T) {
 	// correctly blocked.
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	tv, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{ProjectID: projectID, Name: "Roadmap", ViewType: sprintdom.ViewTypeRoadmap, ViewContext: sprintdom.ViewContextTimeline})
@@ -1003,7 +1003,7 @@ func TestViewService_TimelineAndBacklogViewsDontInterfere(t *testing.T) {
 func TestViewService_ReorderTimelineViews_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	t1, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{ProjectID: projectID, Name: "A", ViewType: sprintdom.ViewTypeRoadmap, ViewContext: sprintdom.ViewContextTimeline})
@@ -1027,7 +1027,7 @@ func TestViewService_ReorderTimelineViews_OK(t *testing.T) {
 func TestViewService_ViewContextPreservedAfterUpdate(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
-	svc := sprintsvc.NewViewService(repo)
+	svc := sprintsvc.NewViewService(repo, nil)
 
 	projectID := uuid.New()
 	v, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{

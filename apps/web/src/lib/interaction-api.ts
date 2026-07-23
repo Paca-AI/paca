@@ -373,12 +373,12 @@ export const viewsByContextQueryOptions = (
 	context: ViewsContext,
 	sprintId?: string | null,
 ) => {
-	const queryKey =
-		context === "sprint" && sprintId
-			? (["projects", projectId, "sprints", sprintId, "views"] as const)
-			: context === "backlog"
-				? (["projects", projectId, "backlog-views"] as const)
-				: (["projects", projectId, "timeline-views"] as const);
+	const queryKey = [
+		"projects",
+		projectId,
+		"views",
+		{ context, sprintId: sprintId ?? undefined },
+	] as const;
 	return queryOptions({
 		queryKey,
 		queryFn: () => listViewsByContext(projectId, context, sprintId),

@@ -29,6 +29,12 @@
 // sprint.* events → invalidate ["projects", projectId, "sprints"]
 //                  This covers sprintsQueryOptions and sprintQueryOptions —
 //                  replaces the sidebar's old refetchInterval polling.
+// view.* events  → invalidate ["projects", projectId, "views"]
+//                  viewsByContextQueryOptions keys every context (sprint/
+//                  backlog/timeline) under this shared "views" prefix with a
+//                  trailing { context, sprintId } filter object, so one
+//                  prefix invalidation covers all three regardless of which
+//                  context changed.
 // workflow.* events → invalidate ["projects", projectId, "workflows"] (the
 //                  automation list/graph queries) and ["projects", projectId,
 //                  "tasks"] (covers workflowsForTaskQueryOptions, which hangs
@@ -79,6 +85,13 @@ export function useProjectRealtime(projectId: string): void {
 			if (type.startsWith("sprint.")) {
 				void queryClient.invalidateQueries({
 					queryKey: ["projects", projectId, "sprints"],
+				});
+				return;
+			}
+
+			if (type.startsWith("view.")) {
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", projectId, "views"],
 				});
 				return;
 			}

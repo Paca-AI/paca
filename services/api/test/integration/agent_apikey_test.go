@@ -58,7 +58,7 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	projectService := projectsvc.New(projectRepo, taskRepo)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
-	viewService := sprintsvc.NewViewService(newFakeViewRepoIT())
+	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)
 	var activityRepo *fakeTaskActivityRepo
 	if len(activityRepos) > 0 && activityRepos[0] != nil {
 		activityRepo = activityRepos[0]
