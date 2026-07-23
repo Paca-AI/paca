@@ -31,6 +31,7 @@ import {
 	getSocket,
 	joinProject,
 	leaveProject,
+	rejoinProject,
 } from "./socket-client";
 
 describe("socket-client", () => {
@@ -134,6 +135,71 @@ describe("socket-client", () => {
 
 		it("is a no-op when no socket is connected", () => {
 			leaveProject("proj-123");
+			expect(mockSocket.emit).not.toHaveBeenCalled();
+		});
+
+		it("does not emit leave while another subscriber is still joined (reference counting)", () => {
+			connectSocket();
+			// Two independent callers join the same project (e.g. the project
+			// layout and a nested conversations layout).
+			joinProject("proj-123");
+			joinProject("proj-123");
+			mockSocket.emit.mockClear();
+
+			// First caller unmounts and leaves — the second is still joined,
+			// so the socket must stay in the project's rooms.
+			leaveProject("proj-123");
+			expect(mockSocket.emit).not.toHaveBeenCalledWith(
+				"leave",
+				expect.anything(),
+			);
+
+			// Second caller leaves too — now it should actually emit leave.
+			leaveProject("proj-123");
+			expect(mockSocket.emit).toHaveBeenCalledWith("leave", {
+				projectId: "proj-123",
+			});
+		});
+
+		it("tracks subscriber counts independently per projectId", () => {
+			connectSocket();
+			joinProject("proj-a");
+			joinProject("proj-b");
+			mockSocket.emit.mockClear();
+
+			leaveProject("proj-a");
+			expect(mockSocket.emit).toHaveBeenCalledWith("leave", {
+				projectId: "proj-a",
+			});
+			expect(mockSocket.emit).not.toHaveBeenCalledWith("leave", {
+				projectId: "proj-b",
+			});
+		});
+	});
+
+	describe("rejoinProject", () => {
+		it("emits a join event without affecting the subscriber count", () => {
+			connectSocket();
+			joinProject("proj-123");
+			mockSocket.emit.mockClear();
+
+			// Simulate a socket reconnect re-joining an already-subscribed
+			// project — this must not require a second leaveProject call to
+			// actually release the room.
+			rejoinProject("proj-123");
+			expect(mockSocket.emit).toHaveBeenCalledWith("join", {
+				projectId: "proj-123",
+			});
+
+			mockSocket.emit.mockClear();
+			leaveProject("proj-123");
+			expect(mockSocket.emit).toHaveBeenCalledWith("leave", {
+				projectId: "proj-123",
+			});
+		});
+
+		it("is a no-op when no socket is connected", () => {
+			rejoinProject("proj-123");
 			expect(mockSocket.emit).not.toHaveBeenCalled();
 		});
 	});

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
 		connectSocket: vi.fn(() => socket),
 		joinProject: vi.fn(),
 		leaveProject: vi.fn(),
+		rejoinProject: vi.fn(),
 		invalidateQueries: vi.fn(),
 	};
 });
@@ -22,6 +23,7 @@ vi.mock("@/lib/socket-client", () => ({
 	connectSocket: mocks.connectSocket,
 	joinProject: mocks.joinProject,
 	leaveProject: mocks.leaveProject,
+	rejoinProject: mocks.rejoinProject,
 }));
 
 vi.mock("@tanstack/react-query", async () => {
@@ -213,7 +215,7 @@ describe("useProjectRealtime", () => {
 		);
 	});
 
-	it("re-joins the project room when the socket reconnects", () => {
+	it("re-joins the project room when the socket reconnects, without re-registering as a subscriber", () => {
 		renderHook(() => useProjectRealtime("proj-abc"));
 
 		mocks.joinProject.mockClear();
@@ -223,7 +225,11 @@ describe("useProjectRealtime", () => {
 		) as [string, () => void];
 		onConnect();
 
-		expect(mocks.joinProject).toHaveBeenCalledWith("proj-abc");
+		expect(mocks.rejoinProject).toHaveBeenCalledWith("proj-abc");
+		// Must not call joinProject again — that would bump the reference
+		// count that leaveProject decrements on unmount, since a reconnect
+		// isn't a new subscriber.
+		expect(mocks.joinProject).not.toHaveBeenCalled();
 	});
 
 	it("removes the connect listener on unmount", () => {
