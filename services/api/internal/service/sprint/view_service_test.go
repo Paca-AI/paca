@@ -274,6 +274,25 @@ func TestViewService_CreateView_PluginWithPartialConfigReturnsError(t *testing.T
 	}
 }
 
+func TestViewService_CreateView_PluginWithWhitespaceOnlyConfigReturnsError(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo())
+
+	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID: uuidPtr(uuid.New()),
+		Name:     "Dashboard",
+		ViewType: sprintdom.ViewTypePlugin,
+		Config: sprintdom.ViewConfig{
+			PluginID:        "  ",
+			PluginComponent: "  ",
+		},
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+	if err != sprintdom.ErrViewPluginConfigRequired {
+		t.Errorf("expected ErrViewPluginConfigRequired, got %v", err)
+	}
+}
+
 func TestViewService_CreateView_PluginWithConfig_OK(t *testing.T) {
 	ctx := context.Background()
 	svc := sprintsvc.NewViewService(newFakeViewRepo())
@@ -335,6 +354,38 @@ func TestViewService_UpdateView_ClearingPluginConfigWithoutTypeChangeReturnsErro
 	_, err := svc.UpdateView(ctx, created.ProjectID, created.ID, sprintdom.UpdateViewInput{Config: &emptyCfg})
 	if err != sprintdom.ErrViewPluginConfigRequired {
 		t.Errorf("expected ErrViewPluginConfigRequired, got %v", err)
+	}
+}
+
+func TestViewService_UpdateView_RenameKeepsExistingPluginConfig(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo)
+
+	created, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID: uuidPtr(uuid.New()),
+		Name:     "Dashboard",
+		ViewType: sprintdom.ViewTypePlugin,
+		Config: sprintdom.ViewConfig{
+			PluginID:        "com.paca.dashboard",
+			PluginComponent: "DashboardIntegrationView",
+		},
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error creating view: %v", err)
+	}
+
+	newName := "Dashboard (renamed)"
+	updated, err := svc.UpdateView(ctx, created.ProjectID, created.ID, sprintdom.UpdateViewInput{Name: &newName})
+	if err != nil {
+		t.Fatalf("unexpected error updating unrelated field on valid plugin view: %v", err)
+	}
+	if updated.Name != newName {
+		t.Errorf("Name: want %q, got %q", newName, updated.Name)
+	}
+	if updated.Config.PluginID != "com.paca.dashboard" || updated.Config.PluginComponent != "DashboardIntegrationView" {
+		t.Errorf("plugin config should be preserved untouched, got %+v", updated.Config)
 	}
 }
 

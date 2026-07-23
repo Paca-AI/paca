@@ -33,7 +33,10 @@ func hasPluginConfig(vt sprintdom.ViewType, cfg *sprintdom.ViewConfig) bool {
 	if vt != sprintdom.ViewTypePlugin {
 		return true
 	}
-	return cfg != nil && cfg.PluginID != "" && cfg.PluginComponent != ""
+	if cfg == nil {
+		return false
+	}
+	return strings.TrimSpace(cfg.PluginID) != "" && strings.TrimSpace(cfg.PluginComponent) != ""
 }
 
 // ListViews returns all views for a sprint.
