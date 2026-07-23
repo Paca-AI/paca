@@ -20,6 +20,25 @@ func NewViewService(repo sprintdom.ViewRepository) *ViewService {
 	return &ViewService{repo: repo}
 }
 
+// hasPluginConfig reports whether cfg carries the plugin binding required for
+// a "plugin" view_type. Non-plugin view types are always valid here — this
+// only guards against a "plugin" view being persisted without the
+// PluginID/PluginComponent pair the frontend needs to resolve its extension
+// point (see apps/web's InteractionLayout, which falls back to a "Plugin not
+// available" empty state when either is missing or doesn't match a
+// registered plugin). Enforced server-side so no caller — MCP client, stale
+// tool version, or otherwise — can persist a broken plugin view even when it
+// skips (or predates) the equivalent client-side check.
+func hasPluginConfig(vt sprintdom.ViewType, cfg *sprintdom.ViewConfig) bool {
+	if vt != sprintdom.ViewTypePlugin {
+		return true
+	}
+	if cfg == nil {
+		return false
+	}
+	return strings.TrimSpace(cfg.PluginID) != "" && strings.TrimSpace(cfg.PluginComponent) != ""
+}
+
 // ListViews returns all views for a sprint.
 func (s *ViewService) ListViews(ctx context.Context, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
 	return s.repo.ListViews(ctx, sprintID)
@@ -55,6 +74,9 @@ func (s *ViewService) CreateView(ctx context.Context, in sprintdom.CreateViewInp
 	}
 	if !sprintdom.ValidViewTypes[vt] {
 		return nil, sprintdom.ErrViewTypeInvalid
+	}
+	if !hasPluginConfig(vt, &in.Config) {
+		return nil, sprintdom.ErrViewPluginConfigRequired
 	}
 
 	now := time.Now()
@@ -106,6 +128,9 @@ func (s *ViewService) UpdateView(ctx context.Context, projectID, id uuid.UUID, i
 	}
 	if in.Position != nil {
 		v.Position = *in.Position
+	}
+	if !hasPluginConfig(v.ViewType, &v.Config) {
+		return nil, sprintdom.ErrViewPluginConfigRequired
 	}
 	v.UpdatedAt = time.Now()
 

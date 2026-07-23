@@ -116,6 +116,8 @@ const (
 	CodeViewIsLastView Code = "VIEW_IS_LAST_VIEW"
 	// CodeViewReorderInvalid indicates the provided view IDs do not match the interaction's views.
 	CodeViewReorderInvalid Code = "VIEW_REORDER_INVALID"
+	// CodeViewPluginConfigRequired indicates a view_type "plugin" was saved without a plugin_id/plugin_component pair.
+	CodeViewPluginConfigRequired Code = "VIEW_PLUGIN_CONFIG_REQUIRED"
 
 	// CodeCustomFieldNotFound indicates the requested custom field definition does not exist.
 	CodeCustomFieldNotFound Code = "CUSTOM_FIELD_NOT_FOUND"
