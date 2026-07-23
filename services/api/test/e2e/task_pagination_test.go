@@ -168,18 +168,26 @@ func TestE2EListTaskPagination_CursorBased(t *testing.T) {
 		}
 	})
 
-	t.Run("page_size_zero_is_clamped_to_default", func(t *testing.T) {
-		data := listTasksPage(t, env, client, token, projID, url.Values{"page_size": {"0"}})
-		if ps, _ := data["page_size"].(float64); ps != 20 {
-			t.Errorf("expected page_size=20 when 0 requested (out-of-range clamped), got %v", ps)
-		}
+	t.Run("page_size_zero_is_rejected", func(t *testing.T) {
+		q := url.Values{"page_size": {"0"}}
+		reqURL := fmt.Sprintf("%s/api/v1/projects/%s/tasks?%s", env.base, projID, q.Encode())
+		req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
-	t.Run("page_size_over_max_is_clamped_to_default", func(t *testing.T) {
-		data := listTasksPage(t, env, client, token, projID, url.Values{"page_size": {"201"}})
-		if ps, _ := data["page_size"].(float64); ps != 20 {
-			t.Errorf("expected page_size=20 when 201 requested (over max, clamped), got %v", ps)
-		}
+	t.Run("page_size_over_max_is_rejected", func(t *testing.T) {
+		q := url.Values{"page_size": {"201"}}
+		reqURL := fmt.Sprintf("%s/api/v1/projects/%s/tasks?%s", env.base, projID, q.Encode())
+		req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
 	})
 
 	t.Run("invalid_cursor_returns_error", func(t *testing.T) {
