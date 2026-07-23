@@ -293,10 +293,12 @@ func (s *ViewService) ReorderProjectViews(ctx context.Context, projectID uuid.UU
 	if err := s.validateAndReorder(ctx, existing, viewIDs); err != nil {
 		return err
 	}
-	s.publish(ctx, events.TopicViewReordered, map[string]any{
-		"project_id":   projectID.String(),
-		"view_context": string(viewCtx),
-	})
+	if len(existing) > 0 {
+		s.publish(ctx, events.TopicViewReordered, map[string]any{
+			"project_id":   projectID.String(),
+			"view_context": string(viewCtx),
+		})
+	}
 	return nil
 }
 
