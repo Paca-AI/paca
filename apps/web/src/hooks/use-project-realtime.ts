@@ -5,6 +5,12 @@
 //
 //   useProjectRealtime(projectId);
 //
+// It's safe to mount this hook more than once for the same projectId at the
+// same time (e.g. once in the persistent project layout and again in a
+// nested conversations layout) — `joinProject`/`leaveProject` in
+// socket-client.ts are reference-counted, so one instance unmounting won't
+// evict room membership that another mounted instance still needs.
+//
 // The hook:
 //   1. Joins the project rooms on mount (server grants tasks/docs room
 //      access based on the caller's permissions).
@@ -41,6 +47,7 @@ import {
 	joinProject,
 	leaveProject,
 	type RealtimeEvent,
+	rejoinProject,
 } from "@/lib/socket-client";
 
 export function useProjectRealtime(projectId: string): void {
@@ -161,9 +168,11 @@ export function useProjectRealtime(projectId: string): void {
 		// just the initial connection. A reconnect starts a new server-side
 		// session with no room membership until we "join" again — without
 		// this, a network blip silently stops delivering invalidations while
-		// the socket still reports connected.
+		// the socket still reports connected. Uses `rejoinProject` (not
+		// `joinProject`) since this isn't a new subscriber — it must not bump
+		// the reference count that `leaveProject` decrements on unmount.
 		function handleConnect() {
-			joinProject(projectId);
+			rejoinProject(projectId);
 		}
 		socket.on("connect", handleConnect);
 
