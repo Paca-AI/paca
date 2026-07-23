@@ -243,6 +243,101 @@ func TestViewService_CreateView_InvalidTypeReturnsError(t *testing.T) {
 	}
 }
 
+func TestViewService_CreateView_PluginWithoutConfigReturnsError(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo())
+
+	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID:    uuidPtr(uuid.New()),
+		Name:        "Dashboard",
+		ViewType:    sprintdom.ViewTypePlugin,
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+	if err != sprintdom.ErrViewPluginConfigRequired {
+		t.Errorf("expected ErrViewPluginConfigRequired, got %v", err)
+	}
+}
+
+func TestViewService_CreateView_PluginWithPartialConfigReturnsError(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo())
+
+	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID:    uuidPtr(uuid.New()),
+		Name:        "Dashboard",
+		ViewType:    sprintdom.ViewTypePlugin,
+		Config:      sprintdom.ViewConfig{PluginID: "com.paca.dashboard"}, // missing PluginComponent
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+	if err != sprintdom.ErrViewPluginConfigRequired {
+		t.Errorf("expected ErrViewPluginConfigRequired, got %v", err)
+	}
+}
+
+func TestViewService_CreateView_PluginWithConfig_OK(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo())
+
+	v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID: uuidPtr(uuid.New()),
+		Name:     "Dashboard",
+		ViewType: sprintdom.ViewTypePlugin,
+		Config: sprintdom.ViewConfig{
+			PluginID:        "com.paca.dashboard",
+			PluginComponent: "DashboardIntegrationView",
+		},
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v.Config.PluginID != "com.paca.dashboard" || v.Config.PluginComponent != "DashboardIntegrationView" {
+		t.Errorf("plugin config not persisted: %+v", v.Config)
+	}
+}
+
+func TestViewService_UpdateView_ChangeToPluginWithoutConfigReturnsError(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo)
+
+	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID:    uuidPtr(uuid.New()),
+		Name:        "Table",
+		ViewType:    sprintdom.ViewTypeTable,
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+
+	newType := sprintdom.ViewTypePlugin
+	_, err := svc.UpdateView(ctx, created.ProjectID, created.ID, sprintdom.UpdateViewInput{ViewType: &newType})
+	if err != sprintdom.ErrViewPluginConfigRequired {
+		t.Errorf("expected ErrViewPluginConfigRequired, got %v", err)
+	}
+}
+
+func TestViewService_UpdateView_ClearingPluginConfigWithoutTypeChangeReturnsError(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo)
+
+	created, _ := svc.CreateView(ctx, sprintdom.CreateViewInput{
+		SprintID: uuidPtr(uuid.New()),
+		Name:     "Dashboard",
+		ViewType: sprintdom.ViewTypePlugin,
+		Config: sprintdom.ViewConfig{
+			PluginID:        "com.paca.dashboard",
+			PluginComponent: "DashboardIntegrationView",
+		},
+		ViewContext: sprintdom.ViewContextSprint,
+	})
+
+	emptyCfg := sprintdom.ViewConfig{}
+	_, err := svc.UpdateView(ctx, created.ProjectID, created.ID, sprintdom.UpdateViewInput{Config: &emptyCfg})
+	if err != sprintdom.ErrViewPluginConfigRequired {
+		t.Errorf("expected ErrViewPluginConfigRequired, got %v", err)
+	}
+}
+
 func TestViewService_GetView_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeViewRepo()
