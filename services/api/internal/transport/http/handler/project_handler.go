@@ -81,12 +81,15 @@ func NewProjectHandler(svc projectdom.Service, authorizer *authz.Authorizer, opt
 // All other authenticated users receive only the projects they are a member of.
 func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFrom(r)
-	page, pageSize := pagingParams(r)
+	page, pageSize, err := pagingParams(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 
 	var (
 		projects []*projectdom.Project
 		total    int64
-		err      error
 	)
 
 	userID, parseErr := uuid.Parse(claims.Subject)
@@ -345,14 +348,11 @@ func parseProjectID(r *http.Request) (uuid.UUID, error) {
 	return id, nil
 }
 
-func pagingParams(r *http.Request) (page, pageSize int) {
+func pagingParams(r *http.Request) (page, pageSize int, err error) {
 	page, _ = strconv.Atoi(defaultQuery(r, "page", "1"))
-	pageSize, _ = strconv.Atoi(defaultQuery(r, "page_size", "20"))
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-	return page, pageSize
+	pageSize, err = parsePageSize(r, 20, 100)
+	return page, pageSize, err
 }

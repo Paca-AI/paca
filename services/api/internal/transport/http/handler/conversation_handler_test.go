@@ -82,19 +82,16 @@ func TestListConversations_DefaultPageSize(t *testing.T) {
 	}
 }
 
-func TestListConversations_PageSizeClamping(t *testing.T) {
+func TestListConversations_PageSizeValid(t *testing.T) {
 	cases := []struct {
 		name      string
 		query     string
 		wantLimit int
 	}{
-		{"zero_clamped_to_default", "page_size=0", 20},
-		{"negative_clamped_to_default", "page_size=-5", 20},
-		{"over_max_clamped_to_default", "page_size=201", 20},
+		{"absent_defaults", "", 20},
 		{"valid_custom_size_kept", "page_size=50", 50},
 		{"max_boundary_kept", "page_size=200", 200},
 		{"min_boundary_kept", "page_size=1", 1},
-		{"non_numeric_clamped_to_default", "page_size=abc", 20},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,12 +102,43 @@ func TestListConversations_PageSizeClamping(t *testing.T) {
 					return nil, false, nil
 				},
 			}
-			_, resp := doListConversations(t, svc, uuid.New().String(), tc.query)
+			rec, resp := doListConversations(t, svc, uuid.New().String(), tc.query)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
 			if gotLimit != tc.wantLimit {
 				t.Errorf("expected service called with limit=%d, got %d", tc.wantLimit, gotLimit)
 			}
 			if resp.Data.PageSize != tc.wantLimit {
 				t.Errorf("expected response page_size=%d, got %d", tc.wantLimit, resp.Data.PageSize)
+			}
+		})
+	}
+}
+
+// TestListConversations_PageSizeInvalidRejected covers the fix for silent
+// page_size substitution: an explicitly supplied out-of-range or non-numeric
+// value now fails the request instead of quietly running with a different
+// page_size than the caller asked for (which broke offset math for callers
+// paginating by page_size).
+func TestListConversations_PageSizeInvalidRejected(t *testing.T) {
+	cases := []string{
+		"page_size=0",
+		"page_size=-5",
+		"page_size=201",
+		"page_size=abc",
+	}
+	for _, query := range cases {
+		t.Run(query, func(t *testing.T) {
+			svc := &mockAgentSvc{
+				listConversations: func(_ context.Context, _ agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
+					t.Fatalf("service should not be called for invalid page_size, got limit=%d", limit)
+					return nil, false, nil
+				},
+			}
+			rec, _ := doListConversations(t, svc, uuid.New().String(), query)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 			}
 		})
 	}

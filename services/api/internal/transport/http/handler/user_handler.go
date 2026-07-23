@@ -122,15 +122,13 @@ func (h *UserHandler) GetMyGlobalPermissions(w http.ResponseWriter, r *http.Requ
 // ListUsers handles GET /admin/users — returns a paginated list of all users.
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(defaultQuery(r, "page", "1"))
-	pageSize, _ := strconv.Atoi(defaultQuery(r, "page_size", "20"))
-
-	// Normalize to match the service's clamping logic so response metadata
-	// reflects the actual query that was executed.
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	pageSize, err := parsePageSize(r, 20, 100)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 
 	users, total, err := h.svc.List(r.Context(), page, pageSize)
