@@ -537,16 +537,24 @@ const UserActionBar: FC = () => {
 			autohide="not-last"
 			className="aui-user-action-bar-root flex flex-col items-end"
 		>
-			<ActionBarPrimitive.Edit
-				render={
-					<TooltipIconButton
-						tooltip={t("agents.thread.edit")}
-						className="aui-user-action-edit"
-					/>
-				}
-			>
-				<PencilIcon />
-			</ActionBarPrimitive.Edit>
+			{/* assistant-ui's edit button doesn't check the runtime's `edit`
+			 * capability on its own — it renders whenever a message isn't
+			 * already being edited. Our runtimes never wire up `onEdit`
+			 * (see conversation-view.tsx / ai-chat-float.tsx), so without this
+			 * gate the pencil shows up on every message and throws
+			 * "Runtime does not support editing messages" when clicked. */}
+			<AuiIf condition={(s) => s.thread.capabilities.edit}>
+				<ActionBarPrimitive.Edit
+					render={
+						<TooltipIconButton
+							tooltip={t("agents.thread.edit")}
+							className="aui-user-action-edit"
+						/>
+					}
+				>
+					<PencilIcon />
+				</ActionBarPrimitive.Edit>
+			</AuiIf>
 		</ActionBarPrimitive.Root>
 	);
 };
@@ -592,27 +600,35 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
 }) => {
 	const { t } = useTranslation("projects");
 	return (
-		<BranchPickerPrimitive.Root
-			hideWhenSingleBranch
-			className={cn(
-				"aui-branch-picker-root text-muted-foreground -ms-2 me-2 inline-flex items-center text-xs",
-				className,
-			)}
-			{...rest}
-		>
-			<BranchPickerPrimitive.Previous
-				render={<TooltipIconButton tooltip={t("agents.thread.previous")} />}
+		// `hideWhenSingleBranch` only hides per-message when a message
+		// happens to have one branch; it doesn't know the runtime can't
+		// switch branches at all. Our runtimes never wire up `setMessages`
+		// (see conversation-view.tsx / ai-chat-float.tsx), so gate on the
+		// capability too — otherwise Previous/Next render and throw "Runtime
+		// does not support switching branches" when clicked.
+		<AuiIf condition={(s) => s.thread.capabilities.switchToBranch}>
+			<BranchPickerPrimitive.Root
+				hideWhenSingleBranch
+				className={cn(
+					"aui-branch-picker-root text-muted-foreground -ms-2 me-2 inline-flex items-center text-xs",
+					className,
+				)}
+				{...rest}
 			>
-				<ChevronLeftIcon />
-			</BranchPickerPrimitive.Previous>
-			<span className="aui-branch-picker-state font-medium">
-				<BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
-			</span>
-			<BranchPickerPrimitive.Next
-				render={<TooltipIconButton tooltip={t("agents.thread.next")} />}
-			>
-				<ChevronRightIcon />
-			</BranchPickerPrimitive.Next>
-		</BranchPickerPrimitive.Root>
+				<BranchPickerPrimitive.Previous
+					render={<TooltipIconButton tooltip={t("agents.thread.previous")} />}
+				>
+					<ChevronLeftIcon />
+				</BranchPickerPrimitive.Previous>
+				<span className="aui-branch-picker-state font-medium">
+					<BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
+				</span>
+				<BranchPickerPrimitive.Next
+					render={<TooltipIconButton tooltip={t("agents.thread.next")} />}
+				>
+					<ChevronRightIcon />
+				</BranchPickerPrimitive.Next>
+			</BranchPickerPrimitive.Root>
+		</AuiIf>
 	);
 };
