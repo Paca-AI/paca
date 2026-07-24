@@ -57,6 +57,11 @@ func WithTaskPublisher(p *messaging.Publisher) TaskHandlerOption {
 	}
 }
 
+// assignedToMeMemberLookupConcurrency caps how many per-project ListMembers
+// lookups ListAssignedToMe issues concurrently while resolving the caller's
+// member IDs.
+const assignedToMeMemberLookupConcurrency = 20
+
 // projectServiceForAssigned is the minimal project-service surface used by
 // ListAssignedToMe to resolve which projects the caller belongs to and their
 // per-project member ID — task_assignees references project_members.id, not
@@ -790,8 +795,10 @@ func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve the caller's project_members.id in each project — task
-	// assignment is stored by member ID, not user ID.
+	// assignment is stored by member ID, not user ID. Capped so a caller
+	// belonging to many projects can't fan out unbounded concurrent lookups.
 	g, gctx := errgroup.WithContext(r.Context())
+	g.SetLimit(assignedToMeMemberLookupConcurrency)
 	var mu sync.Mutex
 	var memberIDs []uuid.UUID
 	for _, p := range projects {

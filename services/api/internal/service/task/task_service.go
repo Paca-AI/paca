@@ -304,7 +304,7 @@ func (s *Service) SumTaskField(ctx context.Context, projectID uuid.UUID, filter 
 // their respective projects — see taskdom.Repository.ListAssignedTasks.
 func (s *Service) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
 	if limit < 1 {
-		limit = 20
+		limit = 10
 	}
 	return s.repo.ListAssignedTasks(ctx, memberIDs, limit, cursorAfter)
 }

@@ -587,8 +587,8 @@ export const ASSIGNED_TASKS_PAGE_SIZE = 10;
 
 /** Open tasks assigned to the current user across every project they belong
  *  to — backs the home page "My Tasks" widget. Cursor-paginated the same way
- *  as listAllTasks; the server always sorts by due_date (soonest first,
- *  nulls last) and excludes done-category tasks. */
+ *  as listAllTasks; the server always sorts by importance (highest first,
+ *  ties broken by created_at ascending) and excludes done-category tasks. */
 export async function listAssignedTasks(
 	opts: { cursor?: string; pageSize?: number } = {},
 ): Promise<TaskListResult> {
