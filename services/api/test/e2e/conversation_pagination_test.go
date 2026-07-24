@@ -455,14 +455,11 @@ func createConversationEvent(t *testing.T, env *e2eEnv, convID string, index int
 	}
 }
 
-// Regression coverage for https://github.com/Paca-AI/paca/issues/314: the
-// "N iterations" pill rendered agent_conversations.iteration_count, a
-// column no runtime path ever wrote (only AgentRepository.UpdateConversation
-// did, and that's only called from tests), so it stayed at its default 0
-// forever. The fix computes the count live from persisted ActionEvent rows
-// instead of trusting a stored counter — this test seeds events directly,
-// the same way the ai-agent service would, and asserts both the list and
-// single-conversation endpoints reflect the real count.
+// Regression coverage for https://github.com/Paca-AI/paca/issues/314 — see
+// conversationCols in agent_repository.go for the fix. Asserts the list and
+// single-conversation endpoints, plus the two other conversationCols call
+// sites, all reflect the live ActionEvent count rather than a stale stored
+// counter.
 func TestE2EConversationIterationCount(t *testing.T) {
 	env := newE2EEnv(t)
 	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
@@ -498,6 +495,67 @@ func TestE2EConversationIterationCount(t *testing.T) {
 		data := assertDataMap(t, envResp)
 		if got := data["iteration_count"]; got != float64(3) {
 			t.Errorf("expected iteration_count=3, got %v", got)
+		}
+	})
+
+	// FindLatestConversationByChatSession has no lightweight read-only HTTP
+	// endpoint of its own (it backs SendChatMessage's resume path, which
+	// needs a running conversation to resume), so it's checked directly
+	// against the repository instead — it shares conversationCols with the
+	// two HTTP-backed cases above, but exercises the WHERE chat_session_id
+	// = ... path rather than WHERE id = ... .
+	t.Run("find_latest_by_chat_session_reflects_action_event_count", func(t *testing.T) {
+		session := &agentdom.AgentChatSession{
+			ID:        uuid.New(),
+			AgentID:   agentID,
+			ProjectID: uuid.MustParse(projID),
+			MemberID:  memberID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if err := env.agentRepo.CreateChatSession(env.ctx, session); err != nil {
+			t.Fatalf("create chat session: %v", err)
+		}
+
+		conv := &agentdom.AgentConversation{
+			ID:            uuid.New(),
+			AgentID:       agentID,
+			ProjectID:     uuid.MustParse(projID),
+			TriggerType:   "chat_message",
+			ChatSessionID: &session.ID,
+			Status:        "paused",
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+		if err := env.agentRepo.CreateConversation(env.ctx, conv); err != nil {
+			t.Fatalf("create conversation: %v", err)
+		}
+		createConversationEvent(t, env, conv.ID.String(), 0, "ActionEvent")
+		createConversationEvent(t, env, conv.ID.String(), 1, "ObservationEvent")
+		createConversationEvent(t, env, conv.ID.String(), 2, "ActionEvent")
+
+		got, err := env.agentRepo.FindLatestConversationByChatSession(env.ctx, session.ID)
+		if err != nil {
+			t.Fatalf("find latest by chat session: %v", err)
+		}
+		if got == nil {
+			t.Fatal("expected a conversation, got nil")
+		}
+		if got.IterationCount != 2 {
+			t.Errorf("expected iteration_count=2, got %d", got.IterationCount)
+		}
+	})
+
+	t.Run("conversation_with_no_action_events_has_zero_iteration_count", func(t *testing.T) {
+		zeroConvID := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Now())
+		createConversationEvent(t, env, zeroConvID, 0, "SystemPromptEvent")
+
+		got, err := env.agentRepo.FindConversationByID(env.ctx, uuid.MustParse(zeroConvID))
+		if err != nil {
+			t.Fatalf("find conversation: %v", err)
+		}
+		if got.IterationCount != 0 {
+			t.Errorf("expected iteration_count=0, got %d", got.IterationCount)
 		}
 	})
 }

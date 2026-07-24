@@ -91,7 +91,7 @@ type agentConversationRecord struct {
 	Status              string     `db:"status"`
 	ContainerID         *string    `db:"container_id"`
 	HostPort            *int       `db:"host_port"`
-	IterationCount      int        `db:"iteration_count"`
+	IterationCount      int64      `db:"iteration_count"`
 	ErrorMessage        *string    `db:"error_message"`
 	RepoPluginID        *string    `db:"repo_plugin_id"`
 	RepoCloneURL        *string    `db:"repo_clone_url"`
@@ -576,11 +576,9 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // Conversations
 // -------------------------------------------------------------------------
 
-// iteration_count is computed live from agent_conversation_events rather
-// than stored: one ActionEvent == one agent reasoning step/action, and
-// counting them here means the "N iterations" pill can never drift out of
-// sync the way a separately-incremented counter did (see migration
-// 000026_drop_conversation_iteration_count.sql).
+// iteration_count is computed live from agent_conversation_events (one
+// ActionEvent per agent step) rather than stored: see #314 and migration
+// 000026_drop_conversation_iteration_count.sql for why.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
 	triggered_by_member_id, status, container_id, host_port,
 	(SELECT COUNT(*) FROM agent_conversation_events e
@@ -1030,7 +1028,7 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		Status:         rec.Status,
 		ContainerID:    rec.ContainerID,
 		HostPort:       rec.HostPort,
-		IterationCount: rec.IterationCount,
+		IterationCount: int(rec.IterationCount),
 		ErrorMessage:   rec.ErrorMessage,
 		RepoCloneURL:   rec.RepoCloneURL,
 		BranchName:     rec.BranchName,
