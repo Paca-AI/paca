@@ -55,6 +55,15 @@
 				"sub": "Nenhum configurado"
 			}
 		},
+		"myTasks": {
+			"title": "Minhas Tarefas",
+			"subtitle": "Tarefas abertas atribuídas a você, em todos os projetos",
+			"emptyTitle": "Você está em dia",
+			"emptyDescription": "Nenhuma tarefa aberta está atribuída a você no momento.",
+			"loadError": "Não foi possível carregar suas tarefas. Tente novamente.",
+			"loadMore": "Carregar mais",
+			"loading": "Carregando…"
+		},
 		"projectsSection": {
 			"title": "Projetos",
 			"countInWorkspace_one": "{{count}} projeto no seu workspace",

@@ -1042,6 +1042,73 @@ func (r *TaskRepository) ListTasks(ctx context.Context, projectID uuid.UUID, fil
 	return tasks, hasMore, nil
 }
 
+// ListAssignedTasks returns open (non-done) tasks assigned to any of
+// memberIDs, ordered by importance descending then created_at ascending.
+// member_id already scopes each task_assignees row to a single project (via
+// project_members), so unlike ListTasks this needs no project_id filter —
+// the caller resolves memberIDs from whichever projects it wants included.
+func (r *TaskRepository) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
+	if len(memberIDs) == 0 {
+		return nil, false, nil
+	}
+
+	b := newQueryBuilder()
+
+	memberPlaceholders := make([]string, len(memberIDs))
+	for i, id := range memberIDs {
+		memberPlaceholders[i] = fmt.Sprintf("$%d", b.idx)
+		b.args = append(b.args, id.String())
+		b.idx++
+	}
+	baseWhere := "tasks.deleted_at IS NULL" +
+		" AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.member_id IN (" + strings.Join(memberPlaceholders, ",") + "))" +
+		" AND NOT EXISTS (SELECT 1 FROM task_statuses ts WHERE ts.id = tasks.status_id AND ts.category = 'done')"
+
+	sort := taskdom.TaskSort{By: "importance"}
+	fromClause, orderByClause, selectCols := applyTaskSort(sort, b)
+
+	if cursorAfter != nil {
+		cur, err := taskdom.DecodeTaskCursor(*cursorAfter)
+		if err != nil {
+			return nil, false, fmt.Errorf("task repo: invalid cursor: %w", err)
+		}
+		applyCursorWhere(b, cur, sort)
+	}
+
+	limitP := b.placeholder()
+	b.args = append(b.args, limit+1)
+
+	whereSQL := baseWhere
+	if len(b.whereClauses) > 0 {
+		whereSQL += " AND " + strings.Join(b.whereClauses, " AND ")
+	}
+
+	query := fmt.Sprintf(`SELECT %s %s WHERE %s ORDER BY %s LIMIT %s`, selectCols, fromClause, whereSQL, orderByClause, limitP)
+
+	var records []taskRecord
+	if err := r.db.SelectContext(ctx, &records, query, b.args...); err != nil {
+		return nil, false, fmt.Errorf("task repo: list assigned: %w", err)
+	}
+
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+
+	tasks := make([]*taskdom.Task, 0, len(records))
+	for i := range records {
+		t, err := toTaskEntity(&records[i])
+		if err != nil {
+			return nil, false, err
+		}
+		tasks = append(tasks, t)
+	}
+	if err := r.attachAssigneeIDs(ctx, tasks); err != nil {
+		return nil, false, err
+	}
+	return tasks, hasMore, nil
+}
+
 // CountTasks returns the total number of tasks matching filter for a project.
 func (r *TaskRepository) CountTasks(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter) (int64, error) {
 	b := newQueryBuilder()

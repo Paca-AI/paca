@@ -239,6 +239,11 @@ func (c *CachedService) SumTaskField(ctx context.Context, projectID uuid.UUID, f
 	return c.svc.SumTaskField(ctx, projectID, filter, fieldKey)
 }
 
+// ListAssignedTasks delegates directly to the underlying service (not cached).
+func (c *CachedService) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
+	return c.svc.ListAssignedTasks(ctx, memberIDs, limit, cursorAfter)
+}
+
 // GetTask delegates directly to the underlying service (not cached).
 func (c *CachedService) GetTask(ctx context.Context, projectID, id uuid.UUID) (*taskdom.Task, error) {
 	return c.svc.GetTask(ctx, projectID, id)

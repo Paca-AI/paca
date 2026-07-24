@@ -56,6 +56,15 @@
 				"subActive": "{{count}} configured"
 			}
 		},
+		"myTasks": {
+			"title": "My Tasks",
+			"subtitle": "Open tasks assigned to you, across all projects",
+			"emptyTitle": "You're all caught up",
+			"emptyDescription": "No open tasks are assigned to you right now.",
+			"loadError": "Couldn't load your tasks. Please try again.",
+			"loadMore": "Load more",
+			"loading": "Loading…"
+		},
 		"projectsSection": {
 			"title": "Projects",
 			"countInWorkspace_one": "{{count}} project in your workspace",

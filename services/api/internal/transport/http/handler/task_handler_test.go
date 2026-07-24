@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -28,12 +29,13 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeTaskSvc struct {
-	mu            sync.RWMutex
-	tasks         map[uuid.UUID]*taskdom.Task
-	types         map[uuid.UUID]*taskdom.TaskType
-	lastProjectID uuid.UUID
-	lastFilter    taskdom.TaskFilter
-	customFields  []*taskdom.CustomFieldDefinition
+	mu                    sync.RWMutex
+	tasks                 map[uuid.UUID]*taskdom.Task
+	types                 map[uuid.UUID]*taskdom.TaskType
+	lastProjectID         uuid.UUID
+	lastFilter            taskdom.TaskFilter
+	customFields          []*taskdom.CustomFieldDefinition
+	lastAssignedMemberIDs []uuid.UUID
 }
 
 func newFakeTaskSvc() *fakeTaskSvc {
@@ -155,6 +157,33 @@ func (f *fakeTaskSvc) SumTaskField(_ context.Context, projectID uuid.UUID, _ tas
 	return sum, nil
 }
 
+func (f *fakeTaskSvc) ListAssignedTasks(_ context.Context, memberIDs []uuid.UUID, limit int, _ *string) ([]*taskdom.Task, bool, error) {
+	f.mu.Lock()
+	f.lastAssignedMemberIDs = memberIDs
+	f.mu.Unlock()
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	want := make(map[uuid.UUID]bool, len(memberIDs))
+	for _, id := range memberIDs {
+		want[id] = true
+	}
+	var out []*taskdom.Task
+	for _, t := range f.tasks {
+		for _, a := range t.AssigneeIDs {
+			if want[a] {
+				cp := *t
+				out = append(out, &cp)
+				break
+			}
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, false, nil
+}
+
 func (f *fakeTaskSvc) GetTask(_ context.Context, _, id uuid.UUID) (*taskdom.Task, error) {
 	f.mu.RLock()
 	t, ok := f.tasks[id]
@@ -193,6 +222,7 @@ func (f *fakeTaskSvc) CreateTask(_ context.Context, in taskdom.CreateTaskInput) 
 		Title:        in.Title,
 		SprintID:     in.SprintID,
 		StatusID:     in.StatusID,
+		AssigneeIDs:  in.AssigneeIDs,
 		CustomFields: map[string]any{},
 		Tags:         []string{},
 		CreatedAt:    now,
@@ -845,6 +875,132 @@ func TestTaskHandler_ListTasks_ResponseIncludesTotalCount(t *testing.T) {
 	}
 	if env.Data.TotalCount != 3 {
 		t.Errorf("expected total_count=3, got %v", env.Data.TotalCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListAssignedToMe
+// ---------------------------------------------------------------------------
+
+func buildAssignedToMeRouter(taskSvc *fakeTaskSvc, projectSvc *mockProjectSvc, userID uuid.UUID) chi.Router {
+	h := handler.NewTaskHandler(taskSvc, &fakeViewSvcTask{}, newFakeActivitySvc(),
+		handler.WithTaskAssignedProjectService(projectSvc))
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(userID.String()))
+	r.Get("/users/me/tasks", h.ListAssignedToMe)
+	return r
+}
+
+func TestTaskHandler_ListAssignedToMe_ResolvesMemberIDsAcrossProjects(t *testing.T) {
+	userID := uuid.New()
+	projectA := &projectdom.Project{ID: uuid.New(), Name: "A"}
+	projectB := &projectdom.Project{ID: uuid.New(), Name: "B"}
+	memberInA := uuid.New()
+	memberInB := uuid.New()
+
+	projectSvc := &mockProjectSvc{
+		listAccessible: func(_ context.Context, uid uuid.UUID, _, _ int) ([]*projectdom.Project, int64, error) {
+			if uid != userID {
+				t.Fatalf("unexpected userID passed to ListAccessible: %s", uid)
+			}
+			return []*projectdom.Project{projectA, projectB}, 2, nil
+		},
+		listMembers: func(_ context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {
+			switch projectID {
+			case projectA.ID:
+				return []*projectdom.ProjectMember{
+					{ID: memberInA, ProjectID: projectA.ID, UserID: userID},
+					{ID: uuid.New(), ProjectID: projectA.ID, UserID: uuid.New()},
+				}, nil
+			case projectB.ID:
+				return []*projectdom.ProjectMember{
+					{ID: memberInB, ProjectID: projectB.ID, UserID: userID},
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	taskSvc := newFakeTaskSvc()
+	// Assigned to the caller (via their per-project member ID) — should be returned.
+	_, _ = taskSvc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+		ProjectID: projectA.ID, Title: "Mine in A", AssigneeIDs: []uuid.UUID{memberInA},
+	})
+	_, _ = taskSvc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+		ProjectID: projectB.ID, Title: "Mine in B", AssigneeIDs: []uuid.UUID{memberInB},
+	})
+	// Assigned to someone else — should NOT be returned.
+	_, _ = taskSvc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+		ProjectID: projectA.ID, Title: "Not mine", AssigneeIDs: []uuid.UUID{uuid.New()},
+	})
+
+	r := buildAssignedToMeRouter(taskSvc, projectSvc, userID)
+	w := doTaskRequest(r, http.MethodGet, "/users/me/tasks", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var env struct {
+		Data struct {
+			Items []struct {
+				Title string `json:"title"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(env.Data.Items) != 2 {
+		t.Fatalf("expected 2 assigned tasks, got %d: %+v", len(env.Data.Items), env.Data.Items)
+	}
+
+	gotMemberIDs := taskSvc.lastAssignedMemberIDs
+	if len(gotMemberIDs) != 2 {
+		t.Fatalf("expected 2 resolved member ids, got %+v", gotMemberIDs)
+	}
+	want := map[uuid.UUID]bool{memberInA: true, memberInB: true}
+	for _, id := range gotMemberIDs {
+		if !want[id] {
+			t.Errorf("unexpected member id resolved: %s", id)
+		}
+	}
+}
+
+func TestTaskHandler_ListAssignedToMe_NoProjectsReturnsEmptyList(t *testing.T) {
+	userID := uuid.New()
+	projectSvc := &mockProjectSvc{
+		listAccessible: func(context.Context, uuid.UUID, int, int) ([]*projectdom.Project, int64, error) {
+			return nil, 0, nil
+		},
+	}
+	taskSvc := newFakeTaskSvc()
+	r := buildAssignedToMeRouter(taskSvc, projectSvc, userID)
+
+	w := doTaskRequest(r, http.MethodGet, "/users/me/tasks", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Data struct {
+			Items []any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(env.Data.Items) != 0 {
+		t.Fatalf("expected empty items, got %+v", env.Data.Items)
+	}
+}
+
+func TestTaskHandler_ListAssignedToMe_UnauthenticatedReturns401(t *testing.T) {
+	h := handler.NewTaskHandler(newFakeTaskSvc(), &fakeViewSvcTask{}, newFakeActivitySvc())
+	r := chi.NewRouter()
+	r.Get("/users/me/tasks", h.ListAssignedToMe)
+
+	w := doTaskRequest(r, http.MethodGet, "/users/me/tasks", nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

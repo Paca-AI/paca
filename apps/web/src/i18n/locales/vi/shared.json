@@ -55,6 +55,15 @@
 				"sub": "Chưa cấu hình"
 			}
 		},
+		"myTasks": {
+			"title": "Nhiệm vụ của tôi",
+			"subtitle": "Nhiệm vụ đang mở được giao cho bạn, trên tất cả dự án",
+			"emptyTitle": "Bạn đã xử lý xong hết",
+			"emptyDescription": "Hiện không có nhiệm vụ đang mở nào được giao cho bạn.",
+			"loadError": "Không thể tải nhiệm vụ của bạn. Vui lòng thử lại.",
+			"loadMore": "Tải thêm",
+			"loading": "Đang tải…"
+		},
 		"projectsSection": {
 			"title": "Dự án",
 			"countInWorkspace_one": "{{count}} dự án trong không gian làm việc của bạn",

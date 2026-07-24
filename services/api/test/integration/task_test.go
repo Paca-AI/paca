@@ -617,6 +617,10 @@ func (r *fakeTaskRepo) DeleteTaskLink(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
 
+func (r *fakeTaskRepo) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int, _ *string) ([]*taskdom.Task, bool, error) {
+	return nil, false, nil
+}
+
 // ---------------------------------------------------------------------------
 // In-memory fake activity repository
 // ---------------------------------------------------------------------------

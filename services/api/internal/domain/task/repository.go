@@ -79,6 +79,14 @@ type TaskRepository interface {
 	// targetSprintID. A nil targetSprintID moves tasks to the backlog (sprint_id = NULL).
 	// Tasks whose status has category "done" are not moved.
 	BulkMoveSprintTasks(ctx context.Context, projectID, sourceSprintID uuid.UUID, targetSprintID *uuid.UUID) error
+	// ListAssignedTasks returns open (non-done) tasks assigned to any of
+	// memberIDs, across whatever projects those members belong to — each
+	// project_members.id already scopes a member to a single project, so no
+	// separate project filter is needed. Results are ordered by importance
+	// descending then created_at ascending, keyset-paginated via cursorAfter
+	// (same cursor format as the "importance" ListTasks sort).
+	// Used by the cross-project "assigned to me" home page widget.
+	ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*Task, bool, error)
 }
 
 // TaskSort carries resolved sort configuration for ListTasks.

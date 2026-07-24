@@ -83,6 +83,11 @@ func New(deps Deps) http.Handler {
 					r.Patch("/me", deps.User.UpdateMe)
 					r.Get("/me/global-permissions", deps.User.GetMyGlobalPermissions)
 
+					// Cross-project "assigned to me" tasks — home page widget.
+					if deps.Task != nil {
+						r.Get("/me/tasks", deps.Task.ListAssignedToMe)
+					}
+
 					// API key management — JWT/cookie auth only.
 					if deps.APIKey != nil {
 						r.Group(func(r chi.Router) {

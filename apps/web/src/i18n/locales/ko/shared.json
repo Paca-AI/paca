@@ -55,6 +55,15 @@
 				"sub": "설정된 에이전트 없음"
 			}
 		},
+		"myTasks": {
+			"title": "내 작업",
+			"subtitle": "모든 프로젝트에서 나에게 할당된 열린 작업",
+			"emptyTitle": "모두 처리했습니다",
+			"emptyDescription": "현재 나에게 할당된 열린 작업이 없습니다.",
+			"loadError": "작업을 불러오지 못했습니다. 다시 시도해 주세요.",
+			"loadMore": "더 보기",
+			"loading": "불러오는 중…"
+		},
 		"projectsSection": {
 			"title": "프로젝트",
 			"countInWorkspace_one": "워크스페이스에 프로젝트 {{count}}개",
