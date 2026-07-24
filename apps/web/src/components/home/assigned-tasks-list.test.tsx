@@ -148,6 +148,18 @@ beforeEach(() => {
 });
 
 describe("AssignedTasksList", () => {
+	it("shows an error state instead of the empty state when the fetch fails", async () => {
+		mocks.listAssignedTasksMock.mockRejectedValue(new Error("network error"));
+
+		renderWidget();
+
+		expect(
+			await screen.findByText("Couldn't load your tasks. Please try again."),
+		).toBeInTheDocument();
+		expect(screen.queryByText("You're all caught up")).not.toBeInTheDocument();
+		expect(screen.queryByTestId(/^list-group-/)).not.toBeInTheDocument();
+	});
+
 	it("shows the empty state when there are no assigned tasks", async () => {
 		mocks.listAssignedTasksMock.mockResolvedValue({
 			items: [],

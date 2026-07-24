@@ -60,6 +60,7 @@
 			"subtitle": "分配给你的未完成任务，覆盖所有项目",
 			"emptyTitle": "全部处理完毕",
 			"emptyDescription": "目前没有分配给你的未完成任务。",
+			"loadError": "无法加载你的任务，请重试。",
 			"loadMore": "加载更多",
 			"loading": "加载中…"
 		},

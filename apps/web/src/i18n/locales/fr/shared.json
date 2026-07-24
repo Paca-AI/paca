@@ -60,6 +60,7 @@
 			"subtitle": "Tâches ouvertes qui vous sont assignées, tous projets confondus",
 			"emptyTitle": "Vous êtes à jour",
 			"emptyDescription": "Aucune tâche ouverte ne vous est actuellement assignée.",
+			"loadError": "Impossible de charger vos tâches. Veuillez réessayer.",
 			"loadMore": "Charger plus",
 			"loading": "Chargement…"
 		},

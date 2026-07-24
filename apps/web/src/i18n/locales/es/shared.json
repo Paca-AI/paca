@@ -60,6 +60,7 @@
 			"subtitle": "Tareas abiertas asignadas a ti, en todos los proyectos",
 			"emptyTitle": "Estás al día",
 			"emptyDescription": "No tienes tareas abiertas asignadas en este momento.",
+			"loadError": "No se pudieron cargar tus tareas. Inténtalo de nuevo.",
 			"loadMore": "Cargar más",
 			"loading": "Cargando…"
 		},

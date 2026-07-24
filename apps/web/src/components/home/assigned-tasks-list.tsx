@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -47,8 +47,14 @@ export function AssignedTasksList() {
 	const { t } = useTranslation("shared");
 	const navigate = useNavigate();
 
-	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-		useInfiniteQuery(assignedTasksQueryOptions());
+	const {
+		data,
+		isLoading,
+		isError,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery(assignedTasksQueryOptions());
 	const { data: projectsResult } = useQuery(projectsQueryOptions());
 
 	const tasks = useMemo(
@@ -88,6 +94,17 @@ export function AssignedTasksList() {
 
 	if (isLoading) {
 		return <AssignedTasksListSkeleton />;
+	}
+
+	if (isError) {
+		return (
+			<div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-destructive/20 bg-destructive/5 py-10 text-center">
+				<AlertCircle className="size-6 text-destructive/40" />
+				<p className="text-sm font-medium text-destructive">
+					{t("home.myTasks.loadError")}
+				</p>
+			</div>
+		);
 	}
 
 	if (tasks.length === 0) {
