@@ -433,3 +433,71 @@ func TestE2EListConversationPagination_EmptyProject(t *testing.T) {
 		t.Error("expected no next_cursor for an empty result set")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TestE2EConversationIterationCount
+// ---------------------------------------------------------------------------
+
+// createConversationEvent inserts a conversation event directly via the
+// repository, mirroring how the ai-agent service persists SDK events.
+func createConversationEvent(t *testing.T, env *e2eEnv, convID string, index int, eventType string) {
+	t.Helper()
+	e := &agentdom.AgentConversationEvent{
+		ID:             uuid.New(),
+		ConversationID: uuid.MustParse(convID),
+		EventIndex:     index,
+		EventType:      eventType,
+		EventSource:    "agent",
+		Payload:        map[string]any{},
+	}
+	if err := env.agentRepo.CreateConversationEvent(env.ctx, e); err != nil {
+		t.Fatalf("create conversation event: %v", err)
+	}
+}
+
+// Regression coverage for https://github.com/Paca-AI/paca/issues/314: the
+// "N iterations" pill rendered agent_conversations.iteration_count, a
+// column no runtime path ever wrote (only AgentRepository.UpdateConversation
+// did, and that's only called from tests), so it stayed at its default 0
+// forever. The fix computes the count live from persisted ActionEvent rows
+// instead of trusting a stored counter — this test seeds events directly,
+// the same way the ai-agent service would, and asserts both the list and
+// single-conversation endpoints reflect the real count.
+func TestE2EConversationIterationCount(t *testing.T) {
+	env := newE2EEnv(t)
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+
+	convID := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Now())
+	createConversationEvent(t, env, convID, 0, "SystemPromptEvent")
+	createConversationEvent(t, env, convID, 1, "ActionEvent")
+	createConversationEvent(t, env, convID, 2, "ObservationEvent")
+	createConversationEvent(t, env, convID, 3, "ActionEvent")
+	createConversationEvent(t, env, convID, 4, "ActionEvent")
+
+	t.Run("list_endpoint_reflects_action_event_count", func(t *testing.T) {
+		data := listConversationsPage(t, env, client, token, projID, nil)
+		items, _ := data["items"].([]any)
+		if len(items) != 1 {
+			t.Fatalf("expected 1 conversation, got %d", len(items))
+		}
+		item, _ := items[0].(map[string]any)
+		if got := item["iteration_count"]; got != float64(3) {
+			t.Errorf("expected iteration_count=3, got %v", got)
+		}
+	})
+
+	t.Run("get_endpoint_reflects_action_event_count", func(t *testing.T) {
+		reqURL := fmt.Sprintf("%s/api/v1/projects/%s/conversations/%s", env.base, projID, convID)
+		req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+		var envResp envelope
+		decodeJSON(t, resp, &envResp)
+		data := assertDataMap(t, envResp)
+		if got := data["iteration_count"]; got != float64(3) {
+			t.Errorf("expected iteration_count=3, got %v", got)
+		}
+	})
+}

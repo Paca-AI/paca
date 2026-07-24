@@ -576,8 +576,16 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // Conversations
 // -------------------------------------------------------------------------
 
+// iteration_count is computed live from agent_conversation_events rather
+// than stored: one ActionEvent == one agent reasoning step/action, and
+// counting them here means the "N iterations" pill can never drift out of
+// sync the way a separately-incremented counter did (see migration
+// 000026_drop_conversation_iteration_count.sql).
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-	triggered_by_member_id, status, container_id, host_port, iteration_count, error_message,
+	triggered_by_member_id, status, container_id, host_port,
+	(SELECT COUNT(*) FROM agent_conversation_events e
+	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'ActionEvent') AS iteration_count,
+	error_message,
 	repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
 	started_at, finished_at, created_at, updated_at`
 
@@ -676,12 +684,12 @@ func (r *AgentRepository) CreateConversation(ctx context.Context, c *agentdom.Ag
 	rec := conversationToRecord(c)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO agent_conversations (id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-		  triggered_by_member_id, status, container_id, host_port, iteration_count, error_message,
+		  triggered_by_member_id, status, container_id, host_port, error_message,
 		  repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
 		  started_at, finished_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
 		rec.ID, rec.AgentID, rec.ProjectID, rec.TriggerType, rec.TaskID, rec.CommentID, rec.ChatSessionID,
-		rec.TriggeredByMemberID, rec.Status, rec.ContainerID, rec.HostPort, rec.IterationCount, rec.ErrorMessage,
+		rec.TriggeredByMemberID, rec.Status, rec.ContainerID, rec.HostPort, rec.ErrorMessage,
 		rec.RepoPluginID, rec.RepoCloneURL, rec.BranchName, rec.PRUrl, rec.PersistenceDir,
 		rec.StartedAt, rec.FinishedAt, rec.CreatedAt, rec.UpdatedAt,
 	)
@@ -717,12 +725,12 @@ func (r *AgentRepository) UpdateConversation(ctx context.Context, c *agentdom.Ag
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE agent_conversations SET
 		  agent_id=$1, project_id=$2, trigger_type=$3, task_id=$4, comment_id=$5, chat_session_id=$6,
-		  triggered_by_member_id=$7, status=$8, container_id=$9, host_port=$10, iteration_count=$11,
-		  error_message=$12, repo_plugin_id=$13, repo_clone_url=$14, branch_name=$15, pr_url=$16,
-		  persistence_dir=$17, started_at=$18, finished_at=$19, updated_at=$20
-		WHERE id=$21`,
+		  triggered_by_member_id=$7, status=$8, container_id=$9, host_port=$10,
+		  error_message=$11, repo_plugin_id=$12, repo_clone_url=$13, branch_name=$14, pr_url=$15,
+		  persistence_dir=$16, started_at=$17, finished_at=$18, updated_at=$19
+		WHERE id=$20`,
 		rec.AgentID, rec.ProjectID, rec.TriggerType, rec.TaskID, rec.CommentID, rec.ChatSessionID,
-		rec.TriggeredByMemberID, rec.Status, rec.ContainerID, rec.HostPort, rec.IterationCount,
+		rec.TriggeredByMemberID, rec.Status, rec.ContainerID, rec.HostPort,
 		rec.ErrorMessage, rec.RepoPluginID, rec.RepoCloneURL, rec.BranchName, rec.PRUrl,
 		rec.PersistenceDir, rec.StartedAt, rec.FinishedAt, rec.UpdatedAt, rec.ID,
 	)
@@ -1065,7 +1073,6 @@ func conversationToRecord(c *agentdom.AgentConversation) agentConversationRecord
 		Status:         c.Status,
 		ContainerID:    c.ContainerID,
 		HostPort:       c.HostPort,
-		IterationCount: c.IterationCount,
 		ErrorMessage:   c.ErrorMessage,
 		RepoCloneURL:   c.RepoCloneURL,
 		BranchName:     c.BranchName,
