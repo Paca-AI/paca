@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
@@ -31,6 +33,7 @@ type TaskHandler struct {
 	viewSvc     sprintdom.ViewService
 	activitySvc taskdom.ActivityService
 	publisher   *messaging.Publisher
+	projectSvc  projectServiceForAssigned
 }
 
 // NewTaskHandler returns a TaskHandler wired to the task service, view service,
@@ -51,6 +54,25 @@ type TaskHandlerOption func(*TaskHandler)
 func WithTaskPublisher(p *messaging.Publisher) TaskHandlerOption {
 	return func(h *TaskHandler) {
 		h.publisher = p
+	}
+}
+
+// projectServiceForAssigned is the minimal project-service surface used by
+// ListAssignedToMe to resolve which projects the caller belongs to and their
+// per-project member ID — task_assignees references project_members.id, not
+// the global user ID, so a membership lookup is required before the tasks
+// can be queried.
+type projectServiceForAssigned interface {
+	ListAccessible(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*projectdom.Project, int64, error)
+	ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
+}
+
+// WithTaskAssignedProjectService wires the project service used by
+// ListAssignedToMe. Omitting this option makes ListAssignedToMe respond with
+// an empty list.
+func WithTaskAssignedProjectService(svc projectServiceForAssigned) TaskHandlerOption {
+	return func(h *TaskHandler) {
+		h.projectSvc = svc
 	}
 }
 
@@ -714,6 +736,111 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		"next_cursor": nextCursor,
 		"total_count": totalCount,
 		"field_sum":   fieldSum,
+	})
+}
+
+// ListAssignedToMe handles GET /users/me/tasks. It returns open (non-done)
+// tasks assigned to the authenticated user across every project they belong
+// to, ordered by importance (most important first) then created_at (oldest
+// first), keyset-paginated via the same opaque "cursor" query param used by
+// ListTasks. Powers the cross-project "assigned to me" widget on the home page.
+func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	pageSize, err := parsePageSize(r, 10, 100)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var cursor *string
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		cursor = &raw
+	}
+
+	empty := func() {
+		presenter.OK(w, r, map[string]any{
+			"items":       []dto.TaskResponse{},
+			"page_size":   pageSize,
+			"next_cursor": nil,
+		})
+	}
+
+	if h.projectSvc == nil {
+		empty()
+		return
+	}
+
+	projects, _, err := h.projectSvc.ListAccessible(r.Context(), userID, 1, 10000)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if len(projects) == 0 {
+		empty()
+		return
+	}
+
+	// Resolve the caller's project_members.id in each project — task
+	// assignment is stored by member ID, not user ID.
+	g, gctx := errgroup.WithContext(r.Context())
+	var mu sync.Mutex
+	var memberIDs []uuid.UUID
+	for _, p := range projects {
+		projectID := p.ID
+		g.Go(func() error {
+			members, listErr := h.projectSvc.ListMembers(gctx, projectID)
+			if listErr != nil {
+				return listErr
+			}
+			for _, m := range members {
+				if m.UserID == userID {
+					mu.Lock()
+					memberIDs = append(memberIDs, m.ID)
+					mu.Unlock()
+					break
+				}
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if len(memberIDs) == 0 {
+		empty()
+		return
+	}
+
+	tasks, hasMore, err := h.svc.ListAssignedTasks(r.Context(), memberIDs, pageSize, cursor)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	resp := make([]dto.TaskResponse, 0, len(tasks))
+	for _, t := range tasks {
+		resp = append(resp, dto.TaskFromEntity(t))
+	}
+
+	var nextCursor *string
+	if hasMore && len(tasks) > 0 {
+		s := taskdom.EncodeTaskCursor(tasks[len(tasks)-1], taskdom.TaskSort{By: "importance"})
+		nextCursor = &s
+	}
+	presenter.OK(w, r, map[string]any{
+		"items":       resp,
+		"page_size":   pageSize,
+		"next_cursor": nextCursor,
 	})
 }
 

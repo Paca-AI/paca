@@ -448,6 +448,12 @@ func (r *fakeTaskRepo) BulkMoveSprintTasks(_ context.Context, _, _ uuid.UUID, _ 
 	return nil
 }
 
+// ListAssignedTasks is not exercised by task service tests but must satisfy
+// the taskdom.TaskRepository interface.
+func (r *fakeTaskRepo) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int, _ *string) ([]*taskdom.Task, bool, error) {
+	return nil, false, nil
+}
+
 // ---------------------------------------------------------------------------
 // Task Type tests
 // ---------------------------------------------------------------------------

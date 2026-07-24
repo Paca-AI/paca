@@ -156,6 +156,10 @@ func (s *stubTaskSvc) SumTaskField(ctx context.Context, projectID uuid.UUID, fil
 	return 0, nil
 }
 
+func (s *stubTaskSvc) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int, _ *string) ([]*taskdom.Task, bool, error) {
+	return nil, false, nil
+}
+
 func (s *stubTaskSvc) GetTask(_ context.Context, _, id uuid.UUID) (*taskdom.Task, error) {
 	return &taskdom.Task{ID: id}, nil
 }

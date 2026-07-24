@@ -55,6 +55,14 @@
 				"sub": "尚未配置"
 			}
 		},
+		"myTasks": {
+			"title": "我的任务",
+			"subtitle": "分配给你的未完成任务，覆盖所有项目",
+			"emptyTitle": "全部处理完毕",
+			"emptyDescription": "目前没有分配给你的未完成任务。",
+			"loadMore": "加载更多",
+			"loading": "加载中…"
+		},
 		"projectsSection": {
 			"title": "项目",
 			"countInWorkspace_one": "您的工作区中有 {{count}} 个项目",

@@ -300,6 +300,15 @@ func (s *Service) SumTaskField(ctx context.Context, projectID uuid.UUID, filter 
 	return s.repo.SumTaskField(ctx, projectID, filter, fieldKey)
 }
 
+// ListAssignedTasks returns open tasks assigned to any of memberIDs, across
+// their respective projects — see taskdom.Repository.ListAssignedTasks.
+func (s *Service) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*taskdom.Task, bool, error) {
+	if limit < 1 {
+		limit = 20
+	}
+	return s.repo.ListAssignedTasks(ctx, memberIDs, limit, cursorAfter)
+}
+
 // GetTask returns the task with the given ID, verifying it belongs to projectID.
 func (s *Service) GetTask(ctx context.Context, projectID, id uuid.UUID) (*taskdom.Task, error) {
 	t, err := s.repo.FindTaskByID(ctx, id)

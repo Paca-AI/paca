@@ -127,6 +127,10 @@ type TaskService interface {
 	UpdateTask(ctx context.Context, projectID, id uuid.UUID, in UpdateTaskInput) (*Task, error)
 	// DeleteTask removes the task identified by id, verifying it belongs to projectID.
 	DeleteTask(ctx context.Context, projectID, id uuid.UUID) error
+	// ListAssignedTasks returns open (non-done) tasks assigned to any of
+	// memberIDs, across their respective projects — see
+	// Repository.ListAssignedTasks for the keyset-pagination contract.
+	ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*Task, bool, error)
 }
 
 // CreateTaskInput carries fields required to create a task.

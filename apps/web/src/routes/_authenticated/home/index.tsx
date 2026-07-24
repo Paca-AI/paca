@@ -17,6 +17,7 @@ import {
 import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
+import { assignedTasksQueryOptions } from "@/lib/interaction-api";
 import {
 	createProject,
 	type Project,
@@ -50,6 +52,7 @@ export const Route = createFileRoute("/_authenticated/home/")({
 		await Promise.all([
 			queryClient.ensureQueryData(projectsQueryOptions()),
 			queryClient.ensureQueryData(workspaceStatsQueryOptions()),
+			queryClient.ensureInfiniteQueryData(assignedTasksQueryOptions()),
 		]);
 	},
 	component: HomePage,
@@ -569,6 +572,21 @@ function HomePage() {
 						iconClass="bg-muted text-muted-foreground"
 					/>
 				</div>
+
+				{/* My Tasks — assigned to the current user across every project */}
+				{projectCount > 0 ? (
+					<div>
+						<div className="mb-4">
+							<h2 className="font-[Syne] text-base font-bold tracking-tight">
+								{t("home.myTasks.title")}
+							</h2>
+							<p className="text-xs text-muted-foreground mt-0.5">
+								{t("home.myTasks.subtitle")}
+							</p>
+						</div>
+						<AssignedTasksList />
+					</div>
+				) : null}
 
 				{/* Projects section or empty state */}
 				{projectCount > 0 ? (

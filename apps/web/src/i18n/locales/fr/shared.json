@@ -55,6 +55,14 @@
 				"sub": "Aucun configuré"
 			}
 		},
+		"myTasks": {
+			"title": "Mes tâches",
+			"subtitle": "Tâches ouvertes qui vous sont assignées, tous projets confondus",
+			"emptyTitle": "Vous êtes à jour",
+			"emptyDescription": "Aucune tâche ouverte ne vous est actuellement assignée.",
+			"loadMore": "Charger plus",
+			"loading": "Chargement…"
+		},
 		"projectsSection": {
 			"title": "Projets",
 			"countInWorkspace_one": "{{count}} projet dans votre espace de travail",

@@ -55,6 +55,14 @@
 				"sub": "Ninguno configurado"
 			}
 		},
+		"myTasks": {
+			"title": "Mis tareas",
+			"subtitle": "Tareas abiertas asignadas a ti, en todos los proyectos",
+			"emptyTitle": "Estás al día",
+			"emptyDescription": "No tienes tareas abiertas asignadas en este momento.",
+			"loadMore": "Cargar más",
+			"loading": "Cargando…"
+		},
 		"projectsSection": {
 			"title": "Proyectos",
 			"countInWorkspace_one": "{{count}} proyecto en tu espacio de trabajo",

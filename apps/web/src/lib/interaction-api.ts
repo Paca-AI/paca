@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
@@ -582,6 +582,37 @@ export async function listSprintTasks(
 		sprintId,
 	});
 }
+
+export const ASSIGNED_TASKS_PAGE_SIZE = 10;
+
+/** Open tasks assigned to the current user across every project they belong
+ *  to — backs the home page "My Tasks" widget. Cursor-paginated the same way
+ *  as listAllTasks; the server always sorts by due_date (soonest first,
+ *  nulls last) and excludes done-category tasks. */
+export async function listAssignedTasks(
+	opts: { cursor?: string; pageSize?: number } = {},
+): Promise<TaskListResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<TaskListResult>
+	>("/users/me/tasks", {
+		params: {
+			cursor: opts.cursor,
+			page_size: opts.pageSize ?? ASSIGNED_TASKS_PAGE_SIZE,
+		},
+	});
+	return data.data;
+}
+
+// No refetchInterval — the home page is a landing spot, not a live board;
+// the query just re-fetches on next visit/focus like the rest of the page.
+export const assignedTasksQueryOptions = () =>
+	infiniteQueryOptions({
+		queryKey: ["users", "me", "tasks"],
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listAssignedTasks({ cursor: pageParam }),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
 
 export async function createTask(
 	projectId: string,
