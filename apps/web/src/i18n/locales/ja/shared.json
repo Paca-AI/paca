@@ -18,6 +18,8 @@
 	"contentDiff": {
 		"emptyLine": "（空行）",
 		"noDifferences": "テキストの差分はありません",
+		"diffTooLarge": "差分が大きすぎてプレビューできません（{{lines}} 行）",
+		"collapsedLines": "変更のない{{count}}行を非表示",
 		"changeDiff": "変更差分",
 		"removed": "削除",
 		"added": "追加"

@@ -85,3 +85,52 @@ export function diffBlockNoteContent(
 		blockNoteToLines(newContent),
 	);
 }
+
+export type DiffRow = DiffLine | { type: "collapsed"; count: number };
+
+const DEFAULT_CONTEXT_LINES = 3;
+
+/**
+ * Collapses long runs of unchanged lines into a single `{type: "collapsed"}`
+ * marker, keeping `contextLines` of surrounding context around each change —
+ * the same "hunk" convention as `git diff`/unified diff. Without this, a
+ * one-line edit to a large file renders every unchanged line in the file,
+ * which buries the actual change and (for very large files) is a real
+ * rendering cost on its own.
+ */
+export function collapseUnchangedContext(
+	lines: DiffLine[],
+	contextLines: number = DEFAULT_CONTEXT_LINES,
+): DiffRow[] {
+	const rows: DiffRow[] = [];
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		if (line.type !== "unchanged") {
+			rows.push(line);
+			i++;
+			continue;
+		}
+
+		let j = i;
+		while (j < lines.length && lines[j].type === "unchanged") j++;
+		const runLength = j - i;
+		// No change before this run (start of file) or after it (end of
+		// file) means there's nothing to provide context for on that side.
+		const keepBefore = i === 0 ? 0 : contextLines;
+		const keepAfter = j === lines.length ? 0 : contextLines;
+
+		if (runLength <= keepBefore + keepAfter) {
+			rows.push(...lines.slice(i, j));
+		} else {
+			rows.push(...lines.slice(i, i + keepBefore));
+			rows.push({
+				type: "collapsed",
+				count: runLength - keepBefore - keepAfter,
+			});
+			rows.push(...lines.slice(j - keepAfter, j));
+		}
+		i = j;
+	}
+	return rows;
+}

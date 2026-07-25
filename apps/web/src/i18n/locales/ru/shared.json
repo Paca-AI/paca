@@ -18,6 +18,8 @@
 	"contentDiff": {
 		"emptyLine": "(пустая строка)",
 		"noDifferences": "Текстовых отличий нет",
+		"diffTooLarge": "Слишком большой diff для предпросмотра ({{lines}} строк)",
+		"collapsedLines": "Скрыто {{count}} неизменённых строк",
 		"changeDiff": "Diff изменений",
 		"removed": "Удалено",
 		"added": "Добавлено"

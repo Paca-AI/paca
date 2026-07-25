@@ -19,14 +19,17 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DiffLineRow } from "@/components/shared/content-diff";
+import {
+	DiffCollapsedRow,
+	DiffLineRow,
+} from "@/components/shared/content-diff";
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { computeLineDiff } from "@/lib/diff-utils";
+import { collapseUnchangedContext, computeLineDiff } from "@/lib/diff-utils";
 import { cn } from "@/lib/utils";
 
 const ANIMATION_DURATION = 200;
@@ -269,6 +272,15 @@ interface ToolFallbackDiffBlock {
 	newText: string;
 }
 
+// computeLineDiff is O(oldLines * newLines) time and space (a full DP
+// matrix) — fine for the small BlockNote documents content-diff.tsx was
+// originally written for, but file_editor/ACP diffs can carry a full
+// multi-thousand-line file as old/new text. Skip the computation above this
+// threshold rather than risk freezing the tab or spiking memory on a large
+// file edit; capping the inputs also bounds the number of rendered rows,
+// since diff output length can't exceed oldLines.length + newLines.length.
+const MAX_DIFF_LINES_PER_SIDE = 2000;
+
 // `artifact` is assistant-ui's generic "UI-only" side channel on a tool-call
 // part (not part of the model-visible args/result) — untyped at the library
 // level, so the shape produced by conversation-to-thread-messages.ts for ACP
@@ -293,15 +305,24 @@ function getToolDiffs(artifact: unknown): ToolFallbackDiffBlock[] | undefined {
 
 function ToolFallbackDiffBlockView({ diff }: { diff: ToolFallbackDiffBlock }) {
 	const { t } = useTranslation("shared");
-	const lines = useMemo(
-		() =>
-			computeLineDiff(
-				(diff.oldText ?? "").split("\n"),
-				diff.newText.split("\n"),
-			),
-		[diff.oldText, diff.newText],
+	const oldLines = useMemo(
+		() => (diff.oldText ?? "").split("\n"),
+		[diff.oldText],
 	);
-	const hasChanges = lines.some((line) => line.type !== "unchanged");
+	const newLines = useMemo(() => diff.newText.split("\n"), [diff.newText]);
+	const isTooLarge =
+		oldLines.length > MAX_DIFF_LINES_PER_SIDE ||
+		newLines.length > MAX_DIFF_LINES_PER_SIDE;
+	const lines = useMemo(
+		() => (isTooLarge ? [] : computeLineDiff(oldLines, newLines)),
+		[isTooLarge, oldLines, newLines],
+	);
+	const hasChanges =
+		!isTooLarge && lines.some((line) => line.type !== "unchanged");
+	// Collapse long unchanged runs down to a few lines of context around each
+	// change, the way `git diff` hunks do — a single-line edit to a large
+	// file should not render every unchanged line around it.
+	const rows = useMemo(() => collapseUnchangedContext(lines), [lines]);
 
 	return (
 		<div className="aui-tool-fallback-diff-block flex flex-col gap-1">
@@ -310,12 +331,23 @@ function ToolFallbackDiffBlockView({ diff }: { diff: ToolFallbackDiffBlock }) {
 					{diff.path}
 				</p>
 			)}
-			{hasChanges ? (
+			{isTooLarge ? (
+				<p className="text-muted-foreground/40 text-xs italic">
+					{t("contentDiff.diffTooLarge", {
+						lines: Math.max(oldLines.length, newLines.length),
+					})}
+				</p>
+			) : hasChanges ? (
 				<div className="rounded-md border border-border/30 overflow-hidden bg-muted/5">
-					{lines.map((line, idx) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
-						<DiffLineRow key={idx} line={line} />
-					))}
+					{rows.map((row, idx) =>
+						row.type === "collapsed" ? (
+							// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
+							<DiffCollapsedRow key={idx} count={row.count} />
+						) : (
+							// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
+							<DiffLineRow key={idx} line={row} />
+						),
+					)}
 				</div>
 			) : (
 				<p className="text-muted-foreground/40 text-xs italic">
@@ -342,7 +374,8 @@ function ToolFallbackDiffs({
 			{...props}
 		>
 			{diffs.map((diff, idx) => (
-				<ToolFallbackDiffBlockView key={diff.path ?? idx} diff={diff} />
+				// biome-ignore lint/suspicious/noArrayIndexKey: diff order is stable per render; path alone isn't guaranteed unique/present
+				<ToolFallbackDiffBlockView key={idx} diff={diff} />
 			))}
 		</div>
 	);

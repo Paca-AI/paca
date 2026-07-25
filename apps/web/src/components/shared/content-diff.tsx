@@ -7,12 +7,25 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { type DiffLine, diffBlockNoteContent } from "@/lib/diff-utils";
+import {
+	collapseUnchangedContext,
+	type DiffLine,
+	diffBlockNoteContent,
+} from "@/lib/diff-utils";
 import { cn } from "@/lib/utils";
 
 interface ContentDiffProps {
 	oldContent: unknown;
 	newContent: unknown;
+}
+
+export function DiffCollapsedRow({ count }: { count: number }) {
+	const { t } = useTranslation("shared");
+	return (
+		<div className="flex items-center justify-center px-3 py-1 font-mono text-[11px] text-muted-foreground/40 bg-muted/10 border-y border-border/20">
+			{t("contentDiff.collapsedLines", { count })}
+		</div>
+	);
 }
 
 export function DiffLineRow({ line }: { line: DiffLine }) {
@@ -48,8 +61,11 @@ export function ContentDiff({ oldContent, newContent }: ContentDiffProps) {
 		() => diffBlockNoteContent(oldContent, newContent),
 		[oldContent, newContent],
 	);
-
 	const hasChanges = lines.some((l) => l.type !== "unchanged");
+	// Collapse long unchanged runs down to a few lines of context around each
+	// change — a small edit to a long doc/task description shouldn't render
+	// every unchanged paragraph around it.
+	const rows = useMemo(() => collapseUnchangedContext(lines), [lines]);
 
 	if (!hasChanges) {
 		return (
@@ -62,10 +78,15 @@ export function ContentDiff({ oldContent, newContent }: ContentDiffProps) {
 
 	return (
 		<div className="rounded-lg border border-border/30 overflow-hidden bg-muted/5">
-			{lines.map((line, idx) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
-				<DiffLineRow key={idx} line={line} />
-			))}
+			{rows.map((row, idx) =>
+				row.type === "collapsed" ? (
+					// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
+					<DiffCollapsedRow key={idx} count={row.count} />
+				) : (
+					// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
+					<DiffLineRow key={idx} line={row} />
+				),
+			)}
 		</div>
 	);
 }
