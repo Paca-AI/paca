@@ -15,7 +15,7 @@ interface ContentDiffProps {
 	newContent: unknown;
 }
 
-function DiffLineRow({ line }: { line: DiffLine }) {
+export function DiffLineRow({ line }: { line: DiffLine }) {
 	const { t } = useTranslation("shared");
 	return (
 		<div

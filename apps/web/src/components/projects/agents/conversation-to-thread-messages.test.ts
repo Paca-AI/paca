@@ -70,6 +70,39 @@ function observationEvent(opts: {
 	};
 }
 
+function fileEditorObservationEvent(opts: {
+	toolCallId: string;
+	path: string;
+	command: string;
+	oldContent?: string | null;
+	newContent?: string | null;
+	prevExist?: boolean;
+	isError?: boolean;
+}): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "ObservationEvent",
+		event_source: "agent",
+		payload: {
+			tool_call_id: opts.toolCallId,
+			tool_name: "file_editor",
+			observation: {
+				kind: "FileEditorObservation",
+				command: opts.command,
+				path: opts.path,
+				prev_exist: opts.prevExist ?? true,
+				old_content: opts.oldContent ?? null,
+				new_content: opts.newContent ?? null,
+				is_error: opts.isError ?? false,
+				content: "edited",
+			},
+		},
+		created_at: "2026-01-01T00:00:03.000Z",
+	};
+}
+
 function agentErrorEvent(opts: {
 	toolCallId: string;
 	toolName: string;
@@ -156,6 +189,7 @@ function acpToolCallEvent(opts: {
 	status?: string;
 	rawInput?: unknown;
 	rawOutput?: unknown;
+	content?: unknown;
 	isError?: boolean;
 }): AgentConversationEvent {
 	return {
@@ -170,7 +204,7 @@ function acpToolCallEvent(opts: {
 			status: opts.status ?? null,
 			raw_input: opts.rawInput ?? null,
 			raw_output: opts.rawOutput ?? null,
-			content: null,
+			content: opts.content ?? null,
 			is_error: opts.isError ?? false,
 		},
 		created_at: "2026-01-01T00:00:06.000Z",
@@ -505,5 +539,236 @@ describe("eventsToThreadMessages", () => {
 			result: "No such file or directory",
 			isError: true,
 		});
+	});
+
+	it("extracts a patch-edit diff block into the tool-call's artifact", () => {
+		const events = [
+			acpToolCallEvent({
+				toolCallId: "acp-edit-1",
+				title: "Edit: src/foo.ts",
+				status: "completed",
+				content: [
+					{
+						type: "diff",
+						path: "src/foo.ts",
+						old_text: "const a = 1;",
+						new_text: "const a = 2;",
+					},
+				],
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "acp-edit-1",
+			artifact: {
+				diffs: [
+					{
+						path: "src/foo.ts",
+						oldText: "const a = 1;",
+						newText: "const a = 2;",
+					},
+				],
+			},
+		});
+	});
+
+	it("extracts a full-file write diff block with a null oldText", () => {
+		const events = [
+			acpToolCallEvent({
+				toolCallId: "acp-write-1",
+				title: "Write: src/new-file.ts",
+				status: "completed",
+				content: [
+					{
+						type: "diff",
+						path: "src/new-file.ts",
+						old_text: null,
+						new_text: "export const x = 1;",
+					},
+				],
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "acp-write-1",
+			artifact: {
+				diffs: [
+					{
+						path: "src/new-file.ts",
+						oldText: null,
+						newText: "export const x = 1;",
+					},
+				],
+			},
+		});
+	});
+
+	it("keeps a diff captured on an earlier update when a later update carries no content", () => {
+		const events = [
+			acpToolCallEvent({
+				toolCallId: "acp-edit-2",
+				title: "Edit: src/bar.ts",
+				status: "pending",
+				content: [
+					{
+						type: "diff",
+						path: "src/bar.ts",
+						old_text: "old",
+						new_text: "new",
+					},
+				],
+			}),
+			acpToolCallEvent({
+				toolCallId: "acp-edit-2",
+				title: "Edit: src/bar.ts",
+				status: "completed",
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "acp-edit-2",
+			artifact: {
+				diffs: [{ path: "src/bar.ts", oldText: "old", newText: "new" }],
+			},
+		});
+	});
+
+	it("does not attach an artifact for non-edit ACP tool calls", () => {
+		const events = [
+			acpToolCallEvent({
+				toolCallId: "acp-1",
+				title: "Bash: ls -la",
+				status: "completed",
+				rawOutput: "file1\nfile2",
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).not.toHaveProperty("artifact");
+	});
+
+	it("extracts a diff for a native file_editor str_replace call", () => {
+		const events = [
+			actionEvent({ toolCallId: "fe-1", toolName: "file_editor" }),
+			fileEditorObservationEvent({
+				toolCallId: "fe-1",
+				path: "/workspace/repo/app/models/user.py",
+				command: "str_replace",
+				oldContent: "old body",
+				newContent: "new body",
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "fe-1",
+			artifact: {
+				diffs: [
+					{
+						path: "/workspace/repo/app/models/user.py",
+						oldText: "old body",
+						newText: "new body",
+					},
+				],
+			},
+		});
+	});
+
+	it("extracts a diff with a null oldText for a native file_editor create call", () => {
+		const events = [
+			actionEvent({ toolCallId: "fe-2", toolName: "file_editor" }),
+			fileEditorObservationEvent({
+				toolCallId: "fe-2",
+				path: "/workspace/repo/app/new_file.py",
+				command: "create",
+				newContent: "file body",
+				prevExist: false,
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).toMatchObject({
+			type: "tool-call",
+			toolCallId: "fe-2",
+			artifact: {
+				diffs: [
+					{
+						path: "/workspace/repo/app/new_file.py",
+						oldText: null,
+						newText: "file body",
+					},
+				],
+			},
+		});
+	});
+
+	it("does not attach an artifact for a native file_editor view call", () => {
+		const events = [
+			actionEvent({ toolCallId: "fe-3", toolName: "file_editor" }),
+			fileEditorObservationEvent({
+				toolCallId: "fe-3",
+				path: "/workspace/repo",
+				command: "view",
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).not.toHaveProperty("artifact");
+	});
+
+	it("does not attach an artifact for a failed file_editor edit", () => {
+		const events = [
+			actionEvent({ toolCallId: "fe-4", toolName: "file_editor" }),
+			fileEditorObservationEvent({
+				toolCallId: "fe-4",
+				path: "/workspace/repo/app/models/user.py",
+				command: "str_replace",
+				oldContent: "old body",
+				newContent: "new body",
+				isError: true,
+			}),
+		];
+
+		const messages = eventsToThreadMessages(events, false);
+
+		const parts = messages[0].content as unknown as Array<
+			Record<string, unknown>
+		>;
+		expect(parts[0]).not.toHaveProperty("artifact");
 	});
 });

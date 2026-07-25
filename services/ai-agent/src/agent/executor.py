@@ -92,14 +92,16 @@ def _wait_for_done_or_stop(
     reconcile,
     poll_interval: float = 2.0,
     timeout: float = 3600.0,
-) -> tuple[bool, bool, bool]:
+) -> tuple[bool, bool, bool, str | None]:
     """Poll the remote conversation until it finishes or a stop/pause is signaled.
 
-    Returns (stopped, errored, shutdown):
-      stopped  — True if the loop exited because stop_event or pause_event fired.
-      errored  — True if the conversation ended with ERROR or STUCK status.
-      shutdown — True if it was stop_event (full shutdown) rather than
-                 pause_event (interrupt-only) that fired.
+    Returns (stopped, errored, shutdown, error_detail):
+      stopped      — True if the loop exited because stop_event or pause_event fired.
+      errored      — True if the conversation ended with ERROR or STUCK status.
+      shutdown     — True if it was stop_event (full shutdown) rather than
+                     pause_event (interrupt-only) that fired.
+      error_detail — The ConversationErrorEvent detail when errored is True,
+                     else None.
     """
     start = time.monotonic()
     last_reconcile = start
@@ -125,13 +127,13 @@ def _wait_for_done_or_stop(
             # Catch up on anything the dead WS thread missed before we stop
             # watching this conversation entirely.
             reconcile(conversation)
-            return True, False, shutdown
+            return True, False, shutdown, None
 
         now = time.monotonic()
         if now - start > timeout:
             logger.warning("Conversation polling timed out after %.0f seconds", timeout)
             reconcile(conversation)
-            return False, False, False
+            return False, False, False, None
 
         if now - last_status_check < poll_interval:
             continue
@@ -160,8 +162,8 @@ def _wait_for_done_or_stop(
 
             if status.is_terminal():
                 errored = status in _ERROR_STATUSES
+                detail = _get_conversation_error_detail(conversation) if errored else None
                 if errored:
-                    detail = _get_conversation_error_detail(conversation)
                     logger.error(
                         "Conversation ended with status %s — %s",
                         status.value,
@@ -170,7 +172,7 @@ def _wait_for_done_or_stop(
                 # Final catch-up so the run never ends with an un-persisted
                 # tail from the last reconcile_interval stretch.
                 reconcile(conversation)
-                return False, errored, False
+                return False, errored, False, detail
         except Exception as exc:
             logger.debug("Failed to read conversation execution status: %s", exc)
 
@@ -599,8 +601,8 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
             system_suffix += build_trigger_suffix(trigger, all_repos_info)
         agent_context = AgentContext(skills=skills, system_message_suffix=system_suffix)
 
-        def _run_sync() -> tuple[bool, bool, bool]:
-            """Returns (stopped, errored, shutdown) — see `_wait_for_done_or_stop`."""
+        def _run_sync() -> tuple[bool, bool, bool, str | None]:
+            """Returns (stopped, errored, shutdown, error_detail) — see `_wait_for_done_or_stop`."""
             if resume_state is not None:
                 handle = resume_state.handle
             else:
@@ -670,7 +672,7 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                     # SDK timeout.
                     conversation.run(blocking=False)
                     reconcile = _make_reconciler(trigger, loop, counter, seen_events)
-                    stopped, errored, shutdown = _wait_for_done_or_stop(
+                    stopped, errored, shutdown, error_detail = _wait_for_done_or_stop(
                         conversation, stop_event, pause_event, reconcile
                     )
                 finally:
@@ -708,14 +710,18 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                 chat_sandboxes.pop(trigger.conversation_id, None)
                 stop_sandbox(handle)
 
-            return stopped, errored, shutdown
+            return stopped, errored, shutdown, error_detail
 
-        stopped, errored, shutdown = await asyncio.get_event_loop().run_in_executor(None, _run_sync)
+        stopped, errored, shutdown, error_detail = await asyncio.get_event_loop().run_in_executor(
+            None, _run_sync
+        )
         result = _post_turn_status(is_chat, stopped, errored, shutdown)
         if result is not None:
             status, event_type = result
             await conversation_repository.update_conversation_status(
-                trigger.conversation_id, status
+                trigger.conversation_id,
+                status,
+                error_message=error_detail if errored else None,
             )
             await stream_store.publish_realtime(
                 project_id=trigger.project_id,
