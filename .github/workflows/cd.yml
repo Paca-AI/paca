@@ -23,6 +23,7 @@ name: cd
 #     upgrade.sh         — upgrades an existing installation in place
 #     docker-compose.yml — standalone compose (no source tree required)
 #     Caddyfile          — Caddy gateway configuration
+#     .env.production.example — environment variable template
 
 on:
   release:
@@ -448,6 +449,7 @@ jobs:
           # Rename files to the names end-users will download.
           cp deploy/docker-compose.prod.yml        docker-compose.yml
           cp deploy/caddy/Caddyfile                Caddyfile
+          cp deploy/.env.production.example        .env.production.example
           cp scripts/install.sh                    install.sh
           cp scripts/upgrade.sh                    upgrade.sh
           chmod +x install.sh upgrade.sh
@@ -461,4 +463,5 @@ jobs:
             upgrade.sh \
             docker-compose.yml \
             Caddyfile \
+            .env.production.example \
             --clobber
