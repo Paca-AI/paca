@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { collapseUnchangedContext, type DiffLine } from "./diff-utils";
 
 function unchanged(texts: string[]): DiffLine[] {
