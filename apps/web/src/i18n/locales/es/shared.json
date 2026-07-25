@@ -18,6 +18,8 @@
 	"contentDiff": {
 		"emptyLine": "(línea vacía)",
 		"noDifferences": "No hay diferencias de texto",
+		"diffTooLarge": "Diferencia demasiado grande para previsualizar ({{lines}} líneas)",
+		"collapsedLines": "{{count}} líneas sin cambios ocultas",
 		"changeDiff": "Diferencias del cambio",
 		"removed": "Eliminado",
 		"added": "Añadido"

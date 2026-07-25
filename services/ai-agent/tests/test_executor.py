@@ -445,11 +445,11 @@ def test_wait_for_done_or_stop_pause_event_interrupts_without_shutdown():
     pause_event.set()
     reconcile = Mock()
 
-    stopped, errored, shutdown = _wait_for_done_or_stop(
+    stopped, errored, shutdown, error_detail = _wait_for_done_or_stop(
         conversation, stop_event, pause_event, reconcile
     )
 
-    assert (stopped, errored, shutdown) == (True, False, False)
+    assert (stopped, errored, shutdown, error_detail) == (True, False, False, None)
     conversation.interrupt.assert_called_once()
     reconcile.assert_called_once_with(conversation)
 
@@ -462,9 +462,58 @@ def test_wait_for_done_or_stop_stop_event_signals_shutdown():
     stop_event.set()
     reconcile = Mock()
 
-    stopped, errored, shutdown = _wait_for_done_or_stop(
+    stopped, errored, shutdown, error_detail = _wait_for_done_or_stop(
         conversation, stop_event, pause_event, reconcile
     )
 
-    assert (stopped, errored, shutdown) == (True, False, True)
+    assert (stopped, errored, shutdown, error_detail) == (True, False, True, None)
     conversation.interrupt.assert_called_once()
+
+
+class _FakeStateForError:
+    def __init__(self, events: list) -> None:
+        from openhands.sdk.conversation.state import ConversationExecutionStatus
+
+        self.execution_status = ConversationExecutionStatus.ERROR
+        self.events = events
+
+    def refresh_from_server(self) -> None:
+        pass
+
+
+class _FakeConversationForError:
+    def __init__(self, events: list) -> None:
+        self.state = _FakeStateForError(events)
+        self.interrupt = Mock()
+
+
+def test_wait_for_done_or_stop_returns_error_detail_on_terminal_error():
+    """When the remote conversation ends in ERROR status, the detail from its
+    ConversationErrorEvent must be returned so callers (run_conversation) can
+    persist it as agent_conversations.error_message — regressed by a bug
+    where this detail was only ever logged, never propagated, leaving
+    error_message NULL for every conversation that failed this way."""
+    from openhands.sdk.event.conversation_error import ConversationErrorEvent
+
+    error_event = ConversationErrorEvent(
+        source="environment",
+        code="LLMBadRequestError",
+        detail=(
+            "litellm.BadRequestError: MistralException - Assistant message must "
+            "have either content or tool_calls, but not none."
+        ),
+    )
+    conversation = _FakeConversationForError([error_event])
+    stop_event = threading.Event()
+    pause_event = threading.Event()
+    reconcile = Mock()
+
+    stopped, errored, shutdown, error_detail = _wait_for_done_or_stop(
+        conversation, stop_event, pause_event, reconcile, poll_interval=0.0
+    )
+
+    assert (stopped, errored, shutdown) == (False, True, False)
+    assert error_detail == (
+        "LLMBadRequestError: litellm.BadRequestError: MistralException - "
+        "Assistant message must have either content or tool_calls, but not none."
+    )

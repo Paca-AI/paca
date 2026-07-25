@@ -17,14 +17,19 @@ import {
 	LoaderIcon,
 	XCircleIcon,
 } from "lucide-react";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	DiffCollapsedRow,
+	DiffLineRow,
+} from "@/components/shared/content-diff";
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { collapseUnchangedContext, computeLineDiff } from "@/lib/diff-utils";
 import { cn } from "@/lib/utils";
 
 const ANIMATION_DURATION = 200;
@@ -257,6 +262,121 @@ function ToolFallbackArgs({
 			<pre className="aui-tool-fallback-args-value bg-muted/50 text-foreground/90 rounded-md p-2.5 text-xs whitespace-pre-wrap">
 				{argsText}
 			</pre>
+		</div>
+	);
+}
+
+interface ToolFallbackDiffBlock {
+	path?: string;
+	oldText: string | null;
+	newText: string;
+}
+
+// computeLineDiff is O(oldLines * newLines) time and space (a full DP
+// matrix) — fine for the small BlockNote documents content-diff.tsx was
+// originally written for, but file_editor/ACP diffs can carry a full
+// multi-thousand-line file as old/new text. Skip the computation above this
+// threshold rather than risk freezing the tab or spiking memory on a large
+// file edit; capping the inputs also bounds the number of rendered rows,
+// since diff output length can't exceed oldLines.length + newLines.length.
+const MAX_DIFF_LINES_PER_SIDE = 2000;
+
+// `artifact` is assistant-ui's generic "UI-only" side channel on a tool-call
+// part (not part of the model-visible args/result) — untyped at the library
+// level, so the shape produced by conversation-to-thread-messages.ts for ACP
+// edit/write tool calls has to be verified at runtime rather than assumed.
+function getToolDiffs(artifact: unknown): ToolFallbackDiffBlock[] | undefined {
+	if (typeof artifact !== "object" || artifact === null) return undefined;
+	const diffs = (artifact as { diffs?: unknown }).diffs;
+	if (!Array.isArray(diffs)) return undefined;
+	const result: ToolFallbackDiffBlock[] = [];
+	for (const d of diffs) {
+		if (typeof d !== "object" || d === null) continue;
+		const { path, oldText, newText } = d as Record<string, unknown>;
+		if (typeof newText !== "string") continue;
+		result.push({
+			path: typeof path === "string" ? path : undefined,
+			oldText: typeof oldText === "string" ? oldText : null,
+			newText,
+		});
+	}
+	return result.length > 0 ? result : undefined;
+}
+
+function ToolFallbackDiffBlockView({ diff }: { diff: ToolFallbackDiffBlock }) {
+	const { t } = useTranslation("shared");
+	const oldLines = useMemo(
+		() => (diff.oldText ?? "").split("\n"),
+		[diff.oldText],
+	);
+	const newLines = useMemo(() => diff.newText.split("\n"), [diff.newText]);
+	const isTooLarge =
+		oldLines.length > MAX_DIFF_LINES_PER_SIDE ||
+		newLines.length > MAX_DIFF_LINES_PER_SIDE;
+	const lines = useMemo(
+		() => (isTooLarge ? [] : computeLineDiff(oldLines, newLines)),
+		[isTooLarge, oldLines, newLines],
+	);
+	const hasChanges =
+		!isTooLarge && lines.some((line) => line.type !== "unchanged");
+	// Collapse long unchanged runs down to a few lines of context around each
+	// change, the way `git diff` hunks do — a single-line edit to a large
+	// file should not render every unchanged line around it.
+	const rows = useMemo(() => collapseUnchangedContext(lines), [lines]);
+
+	return (
+		<div className="aui-tool-fallback-diff-block flex flex-col gap-1">
+			{diff.path && (
+				<p className="aui-tool-fallback-diff-path text-muted-foreground/70 font-mono text-[11px]">
+					{diff.path}
+				</p>
+			)}
+			{isTooLarge ? (
+				<p className="text-muted-foreground/40 text-xs italic">
+					{t("contentDiff.diffTooLarge", {
+						lines: Math.max(oldLines.length, newLines.length),
+					})}
+				</p>
+			) : hasChanges ? (
+				<div className="rounded-md border border-border/30 overflow-hidden bg-muted/5">
+					{rows.map((row, idx) =>
+						row.type === "collapsed" ? (
+							// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
+							<DiffCollapsedRow key={idx} count={row.count} />
+						) : (
+							// biome-ignore lint/suspicious/noArrayIndexKey: stable diff output
+							<DiffLineRow key={idx} line={row} />
+						),
+					)}
+				</div>
+			) : (
+				<p className="text-muted-foreground/40 text-xs italic">
+					{t("contentDiff.noDifferences")}
+				</p>
+			)}
+		</div>
+	);
+}
+
+function ToolFallbackDiffs({
+	diffs,
+	className,
+	...props
+}: React.ComponentProps<"div"> & {
+	diffs: ToolFallbackDiffBlock[];
+}) {
+	if (diffs.length === 0) return null;
+
+	return (
+		<div
+			data-slot="tool-fallback-diffs"
+			className={cn("aui-tool-fallback-diffs flex flex-col gap-3", className)}
+			{...props}
+		>
+			{diffs.map((diff, idx) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: diff order is stable per render; path alone isn't guaranteed unique/present
+				<ToolFallbackDiffBlockView key={idx} diff={diff} />
+			))}
 		</div>
 	);
 }
@@ -576,6 +696,7 @@ function ToolFallbackApproval({
 const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 	toolName,
 	argsText,
+	artifact,
 	result,
 	isError,
 	status,
@@ -588,6 +709,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 	const isCancelled =
 		status?.type === "incomplete" && status.reason === "cancelled";
 	const isRequiresAction = status?.type === "requires-action";
+	const diffs = getToolDiffs(artifact);
 
 	const [open, setOpen] = useState(isRequiresAction);
 	const [prevRequiresAction, setPrevRequiresAction] =
@@ -606,10 +728,17 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 			/>
 			<ToolFallbackContent>
 				<ToolFallbackError status={status} />
-				<ToolFallbackArgs
-					argsText={argsText}
-					className={cn(isCancelled && "opacity-60")}
-				/>
+				{diffs ? (
+					<ToolFallbackDiffs
+						diffs={diffs}
+						className={cn(isCancelled && "opacity-60")}
+					/>
+				) : (
+					<ToolFallbackArgs
+						argsText={argsText}
+						className={cn(isCancelled && "opacity-60")}
+					/>
+				)}
 				{isRequiresAction && (
 					<ToolFallbackApproval
 						addResult={addResult}
@@ -634,6 +763,7 @@ const ToolFallback = memo(
 	Trigger: typeof ToolFallbackTrigger;
 	Content: typeof ToolFallbackContent;
 	Args: typeof ToolFallbackArgs;
+	Diffs: typeof ToolFallbackDiffs;
 	Result: typeof ToolFallbackResult;
 	Error: typeof ToolFallbackError;
 	Approval: typeof ToolFallbackApproval;
@@ -644,6 +774,7 @@ ToolFallback.Root = ToolFallbackRoot;
 ToolFallback.Trigger = ToolFallbackTrigger;
 ToolFallback.Content = ToolFallbackContent;
 ToolFallback.Args = ToolFallbackArgs;
+ToolFallback.Diffs = ToolFallbackDiffs;
 ToolFallback.Result = ToolFallbackResult;
 ToolFallback.Error = ToolFallbackError;
 ToolFallback.Approval = ToolFallbackApproval;
@@ -653,6 +784,7 @@ export {
 	ToolFallbackApproval,
 	ToolFallbackArgs,
 	ToolFallbackContent,
+	ToolFallbackDiffs,
 	ToolFallbackError,
 	ToolFallbackResult,
 	ToolFallbackRoot,

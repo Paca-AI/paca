@@ -18,6 +18,8 @@
 	"contentDiff": {
 		"emptyLine": "(dòng trống)",
 		"noDifferences": "Không có khác biệt về văn bản",
+		"diffTooLarge": "Khác biệt quá lớn để xem trước ({{lines}} dòng)",
+		"collapsedLines": "Đã ẩn {{count}} dòng không thay đổi",
 		"changeDiff": "Thay đổi nội dung",
 		"removed": "Đã xóa",
 		"added": "Đã thêm"

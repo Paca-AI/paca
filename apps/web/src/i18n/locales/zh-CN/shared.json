@@ -18,6 +18,8 @@
 	"contentDiff": {
 		"emptyLine": "（空行）",
 		"noDifferences": "无文本差异",
+		"diffTooLarge": "差异过大，无法预览（{{lines}} 行）",
+		"collapsedLines": "已隐藏 {{count}} 行未更改内容",
 		"changeDiff": "更改差异",
 		"removed": "已删除",
 		"added": "已添加"

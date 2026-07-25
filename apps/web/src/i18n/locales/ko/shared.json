@@ -18,6 +18,8 @@
 	"contentDiff": {
 		"emptyLine": "(빈 줄)",
 		"noDifferences": "텍스트 차이가 없습니다",
+		"diffTooLarge": "차이가 너무 커서 미리볼 수 없습니다 ({{lines}}줄)",
+		"collapsedLines": "변경되지 않은 {{count}}줄 숨김",
 		"changeDiff": "변경 내용 차이",
 		"removed": "삭제됨",
 		"added": "추가됨"

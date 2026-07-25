@@ -21,6 +21,84 @@ export function extractContentText(content: unknown): string | null {
 	return null;
 }
 
+export interface ToolDiffBlock {
+	path?: string;
+	oldText: string | null;
+	newText: string;
+}
+
+// ACP-spec edit tools (Claude Code / Codex / Gemini CLI) report file changes as
+// `{type: "diff", path, old_text, new_text}` content blocks rather than
+// exposing before/after text through `raw_input` directly — see
+// ACPToolCallEvent.is_patch_edit in the SDK. `old_text` is snake_case as
+// written by the backend's `model_dump(mode="json")` (no alias), but ACP's own
+// JSON wire format uses camelCase, so both are checked for robustness.
+function extractDiffBlocks(content: unknown): ToolDiffBlock[] | null {
+	if (!Array.isArray(content)) return null;
+	const diffs: ToolDiffBlock[] = [];
+	for (const block of content) {
+		if (typeof block !== "object" || block === null) continue;
+		const b = block as Record<string, unknown>;
+		if (b.type !== "diff") continue;
+		const newText =
+			typeof b.new_text === "string"
+				? b.new_text
+				: typeof b.newText === "string"
+					? b.newText
+					: null;
+		if (newText === null) continue;
+		const oldText =
+			typeof b.old_text === "string"
+				? b.old_text
+				: typeof b.oldText === "string"
+					? b.oldText
+					: null;
+		diffs.push({
+			path: typeof b.path === "string" ? b.path : undefined,
+			oldText,
+			newText,
+		});
+	}
+	return diffs.length > 0 ? diffs : null;
+}
+
+// Native OpenHands SDK `file_editor` tool (regular, non-ACP agent
+// conversations) reports edits via `old_content`/`new_content` on the
+// FileEditorObservation that follows the ActionEvent, not through a
+// diff-type content block the way ACPToolCallEvent does. Mirrors the SDK's
+// own FileEditorObservation._has_meaningful_diff so `view` calls, errors,
+// and no-op edits don't render an empty/misleading diff.
+function extractFileEditorDiff(
+	obs: Record<string, unknown> | undefined,
+): ToolDiffBlock | null {
+	if (!obs || obs.kind !== "FileEditorObservation") return null;
+	if (obs.is_error === true) return null;
+	const path = typeof obs.path === "string" ? obs.path : null;
+	if (!path) return null;
+
+	const oldContent =
+		typeof obs.old_content === "string" ? obs.old_content : null;
+	const newContent =
+		typeof obs.new_content === "string" ? obs.new_content : null;
+
+	if (obs.command === "create") {
+		if (!newContent || obs.prev_exist === true) return null;
+		return { path, oldText: null, newText: newContent };
+	}
+
+	if (
+		obs.command === "str_replace" ||
+		obs.command === "insert" ||
+		obs.command === "undo_edit"
+	) {
+		if (oldContent === null || newContent === null) return null;
+		if (oldContent === newContent) return null;
+		return { path, oldText: oldContent, newText: newContent };
+	}
+
+	return null;
+}
+
 type MutableToolCallPart = {
 	type: "tool-call";
 	toolCallId: string;
@@ -28,6 +106,9 @@ type MutableToolCallPart = {
 	argsText: string;
 	result?: unknown;
 	isError?: boolean;
+	// UI-only: lets ToolFallback render a real diff instead of the raw args
+	// JSON for ACP edit/write tool calls.
+	artifact?: { diffs: ToolDiffBlock[] };
 };
 
 type MutablePart =
@@ -209,9 +290,13 @@ export function eventsToThreadMessages(
 					? current.openToolCalls.get(toolCallId)
 					: undefined;
 
+			const fileEditorDiff =
+				p.tool_name === "file_editor" ? extractFileEditorDiff(obs) : null;
+
 			if (openPart) {
 				openPart.result = resultText;
 				if (isError) openPart.isError = true;
+				if (fileEditorDiff) openPart.artifact = { diffs: [fileEditorDiff] };
 			} else {
 				// No matching open tool-call in this turn (history gap) — append
 				// a standalone, already-complete tool-call part.
@@ -225,6 +310,7 @@ export function eventsToThreadMessages(
 					argsText: "",
 					result: resultText,
 					...(isError ? { isError: true } : {}),
+					...(fileEditorDiff ? { artifact: { diffs: [fileEditorDiff] } } : {}),
 				});
 			}
 			continue;
@@ -255,14 +341,22 @@ export function eventsToThreadMessages(
 						? JSON.stringify(rawInput, null, 2)
 						: "";
 
+			// Diff content can arrive on the initial notification (edit tools
+			// typically propose the full diff upfront) or only once the call
+			// completes, depending on provider — check on every update but
+			// never clear a diff already captured from an earlier update.
+			const diffs = extractDiffBlocks(p.content);
+
 			let part = current.openToolCalls.get(toolCallId);
 			if (!part) {
 				part = { type: "tool-call", toolCallId, toolName, argsText };
+				if (diffs) part.artifact = { diffs };
 				current.parts.push(part);
 				current.openToolCalls.set(toolCallId, part);
 			} else {
 				part.toolName = toolName;
 				if (argsText) part.argsText = argsText;
+				if (diffs) part.artifact = { diffs };
 			}
 
 			const status = typeof p.status === "string" ? p.status : null;

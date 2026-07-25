@@ -189,7 +189,9 @@ async def test_agent_reply_is_persisted_through_real_sandbox(make_fake_llm, pers
 
         # Chat conversations pause (not finish) after a natural per-turn
         # completion — the sandbox stays alive for the next reply.
-        persistence.update_status.assert_any_call(trigger.conversation_id, "paused")
+        persistence.update_status.assert_any_call(
+            trigger.conversation_id, "paused", error_message=None
+        )
     finally:
         await executor.teardown_paused_chat_sandbox(trigger.conversation_id)
 
@@ -228,7 +230,9 @@ async def test_agent_tool_call_then_reply_persists_full_flow(make_fake_llm, pers
 
         # Chat conversations pause (not finish) after a natural per-turn
         # completion — the sandbox stays alive for the next reply.
-        persistence.update_status.assert_any_call(trigger.conversation_id, "paused")
+        persistence.update_status.assert_any_call(
+            trigger.conversation_id, "paused", error_message=None
+        )
     finally:
         await executor.teardown_paused_chat_sandbox(trigger.conversation_id)
 
@@ -242,7 +246,19 @@ async def test_llm_failure_marks_conversation_failed(make_fake_llm, persistence)
 
     await executor.run_conversation(trigger, _agent_config(base_url))
 
-    persistence.update_status.assert_any_call(trigger.conversation_id, "failed")
+    failed_calls = [
+        call
+        for call in persistence.update_status.call_args_list
+        if call.args[:2] == (trigger.conversation_id, "failed")
+    ]
+    assert failed_calls, (
+        f"no 'failed' status update recorded: {persistence.update_status.call_args_list}"
+    )
+    error_message = failed_calls[0].kwargs.get("error_message")
+    assert error_message and "fake upstream failure" in error_message, (
+        f"error detail was not propagated to error_message: {error_message!r}"
+    )
+
     failed_events = [
         call
         for call in persistence.publish_realtime.call_args_list
