@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM oven/bun:1-alpine AS builder
+# Runs on the build platform (not the target platform): the output is
+# architecture-independent static assets, so cross-arch runs would otherwise
+# execute bun under QEMU emulation for no benefit, which has been known to
+# corrupt native-binary tarball extraction (e.g. @biomejs/cli-linux-arm64).
+FROM --platform=$BUILDPLATFORM oven/bun:1-alpine AS builder
 
 WORKDIR /build
 
