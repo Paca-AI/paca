@@ -4,8 +4,16 @@ import {
 	type DefaultReactSuggestionItem,
 	SuggestionMenuController,
 } from "@blocknote/react";
+import { useDebouncedAsyncCallback } from "@/hooks/use-debounced-callback";
 import { searchMentionableTasks } from "@/lib/mention-api";
 import type { customSchema } from "./blocknote-schema";
+
+/** BlockNote calls getItems on every keystroke after "#" — debounce the
+ *  actual network call so a fast typist doesn't fire one request per
+ *  character. BlockNote's own stale-response check (comparing the query
+ *  active when a call resolves) still discards results for a query the
+ *  user has since typed past. */
+const TASK_SEARCH_DEBOUNCE_MS = 300;
 
 interface MentionSuggestionMenuProps {
 	editor: BlockNoteEditor<
@@ -32,6 +40,11 @@ export function MentionSuggestionMenus({
 	projectId,
 	documents,
 }: MentionSuggestionMenuProps) {
+	const debouncedSearchMentionableTasks = useDebouncedAsyncCallback(
+		searchMentionableTasks,
+		TASK_SEARCH_DEBOUNCE_MS,
+	);
+
 	const getTeamMentionItems = (): DefaultReactSuggestionItem[] => {
 		return teamMembers.map((member) => ({
 			title: member.name,
@@ -56,7 +69,7 @@ export function MentionSuggestionMenus({
 		query: string,
 	): Promise<DefaultReactSuggestionItem[]> => {
 		if (!projectId) return [];
-		const tasks = await searchMentionableTasks(projectId, query);
+		const tasks = await debouncedSearchMentionableTasks(projectId, query);
 		return tasks.map((task) => ({
 			title: task.title,
 			subtext: `#${task.task_number}`,
