@@ -739,8 +739,6 @@
 			"epic": "Epic",
 			"viewEpic": "Voir l'epic",
 			"removeEpic": "Retirer l'epic",
-			"loadMoreEpics": "Charger plus d'épopées",
-			"loadingEpics": "Chargement…",
 			"parent": "Parent",
 			"viewParent": "Voir le parent",
 			"removeParent": "Retirer le parent",
@@ -913,6 +911,12 @@
 			"madeChange": "a effectué une modification",
 			"descriptionChangeDiff": "Différences des modifications de la description"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Rechercher des epics…",
+		"noEpicsFound": "Aucun epic correspondant",
+		"noEpicsYet": "Aucun epic dans ce projet pour l'instant",
+		"loadingMore": "Chargement…"
 	},
 	"board": {
 		"common": {

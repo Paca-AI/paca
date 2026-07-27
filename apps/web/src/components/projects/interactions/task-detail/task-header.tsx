@@ -91,7 +91,7 @@ export function TaskHeader({
 	};
 
 	return (
-		<div className="flex shrink-0 items-center gap-2 lg:gap-3 border-b border-border/30 px-4 lg:px-6 py-2.5 bg-muted/20">
+		<div className="flex shrink-0 items-center gap-2 lg:gap-3 border-b border-border/30 px-4 py-2.5 bg-muted/20">
 			{/* Breadcrumb (page mode only) */}
 			{mode === "page" && projectName && (
 				<nav className="hidden md:flex items-center gap-1.5 text-sm text-muted-foreground/80 mr-2">

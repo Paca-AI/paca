@@ -792,6 +792,27 @@ export const epicTasksInfiniteQueryOptions = (
 		enabled: !!projectId && !!epicTypeId,
 	});
 
+/** Cursor-paginated search backing the epic picker's search box — queried
+ *  directly (outside the shared useInfiniteQuery above) against the same
+ *  `search` param used elsewhere for task lookup, since a project can have
+ *  far more epics than the picker keeps paginated locally and filtering
+ *  only the loaded page would silently miss most of them. Callers debounce
+ *  input before calling this, and page through matches the same way
+ *  listEpicTasks does. */
+export async function searchEpicTasks(
+	projectId: string,
+	epicTypeId: string,
+	query: string,
+	opts: { cursor?: string } = {},
+): Promise<TaskListResult> {
+	return listAllTasks(projectId, {
+		taskTypeIds: [epicTypeId],
+		search: query,
+		pageSize: EPIC_TASKS_PAGE_SIZE,
+		cursor: opts.cursor,
+	});
+}
+
 /** Fetches child tasks of an epic (tasks with parent_task_id = epicId). */
 export const epicChildTasksQueryOptions = (projectId: string, epicId: string) =>
 	queryOptions({

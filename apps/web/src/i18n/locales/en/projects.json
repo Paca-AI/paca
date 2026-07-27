@@ -739,8 +739,6 @@
 			"epic": "Epic",
 			"viewEpic": "View epic",
 			"removeEpic": "Remove epic",
-			"loadMoreEpics": "Load more epics",
-			"loadingEpics": "Loading…",
 			"parent": "Parent",
 			"viewParent": "View parent",
 			"removeParent": "Remove parent",
@@ -913,6 +911,12 @@
 			"madeChange": "made a change",
 			"descriptionChangeDiff": "Description change diff"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Search epics…",
+		"noEpicsFound": "No matching epics",
+		"noEpicsYet": "No epics in this project yet",
+		"loadingMore": "Loading…"
 	},
 	"board": {
 		"common": {

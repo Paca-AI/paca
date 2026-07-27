@@ -739,8 +739,6 @@
 			"epic": "史诗",
 			"viewEpic": "查看史诗",
 			"removeEpic": "移除史诗",
-			"loadMoreEpics": "加载更多史诗任务",
-			"loadingEpics": "加载中…",
 			"parent": "父任务",
 			"viewParent": "查看父任务",
 			"removeParent": "移除父任务",
@@ -913,6 +911,12 @@
 			"madeChange": "进行了更改",
 			"descriptionChangeDiff": "描述更改差异"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "搜索史诗…",
+		"noEpicsFound": "未找到匹配的史诗",
+		"noEpicsYet": "该项目暂无史诗",
+		"loadingMore": "加载中…"
 	},
 	"board": {
 		"common": {

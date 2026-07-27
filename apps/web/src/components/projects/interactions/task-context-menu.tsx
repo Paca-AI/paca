@@ -1,4 +1,12 @@
-import { Check, Copy, Layers, Link2, Trash2, User } from "lucide-react";
+import {
+	Check,
+	Copy,
+	Layers,
+	Link2,
+	Loader2,
+	Trash2,
+	User,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -24,10 +32,11 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
-import type {
-	ColumnGroupDef,
-	EpicsPagination,
-	TaskFieldUpdate,
+import {
+	type ColumnGroupDef,
+	createEpicScrollHandler,
+	type EpicsPagination,
+	type TaskFieldUpdate,
 } from "./view-utils";
 
 const shortcutChord = (id: string) =>
@@ -285,34 +294,34 @@ export function TaskContextMenu({
 									<Check className="size-3.5 text-primary shrink-0" />
 								)}
 							</ContextMenuItem>
-							{epics.map((e) => (
-								<ContextMenuItem
-									key={e.id}
-									onClick={() => onUpdate?.(task.id, { parent_task_id: e.id })}
-								>
-									<Layers className="size-3.5 shrink-0 text-violet-500 opacity-70" />
-									<span className="flex-1 truncate">{e.title}</span>
-									{e.id === task.parent_task_id && (
-										<Check className="size-3.5 text-primary shrink-0" />
-									)}
-								</ContextMenuItem>
-							))}
-						{epicsPagination?.hasMore && (
-							<ContextMenuItem
-								closeOnClick={false}
-								onClick={() => epicsPagination.onLoadMore()}
-								disabled={epicsPagination.isLoadingMore}
+							<div
+								className="max-h-64 overflow-y-auto"
+								onScroll={createEpicScrollHandler(epicsPagination)}
 							>
-								<span className="flex-1 truncate text-muted-foreground">
-									{epicsPagination.isLoadingMore
-										? t("board.taskContextMenu.loadingEpics")
-										: t("board.taskContextMenu.loadMoreEpics")}
-								</span>
-							</ContextMenuItem>
-						)}
-					</ContextMenuSubContent>
-				</ContextMenuSub>
-			)}
+								{epics.map((e) => (
+									<ContextMenuItem
+										key={e.id}
+										onClick={() =>
+											onUpdate?.(task.id, { parent_task_id: e.id })
+										}
+									>
+										<Layers className="size-3.5 shrink-0 text-violet-500 opacity-70" />
+										<span className="flex-1 truncate">{e.title}</span>
+										{e.id === task.parent_task_id && (
+											<Check className="size-3.5 text-primary shrink-0" />
+										)}
+									</ContextMenuItem>
+								))}
+								{epicsPagination?.isLoadingMore && (
+									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+										<Loader2 className="size-3 animate-spin" />
+										{t("epicPicker.loadingMore")}
+									</div>
+								)}
+							</div>
+						</ContextMenuSubContent>
+					</ContextMenuSub>
+				)}
 
 				<ContextMenuSeparator />
 

@@ -5,7 +5,9 @@ import {
 	ExternalLink,
 	KanbanSquare,
 	Layers,
+	Loader2,
 	Plus,
+	Search,
 	X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,7 +20,12 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Sprint, Task } from "@/lib/interaction-api";
-import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
+import {
+	findEpicType,
+	type ProjectMember,
+	type TaskStatus,
+	type TaskType,
+} from "@/lib/project-api";
 import { getTaskTypeIconComponent } from "../../task-types/task-type-icons";
 import type { PriorityMeta } from "../priority";
 import {
@@ -28,7 +35,8 @@ import {
 	PRIORITY_LEVELS,
 } from "../priority";
 import { TaskTypeSelector } from "../task-type-selector";
-import type { EpicsPagination } from "../view-utils";
+import { useEpicSearch } from "../use-epic-search";
+import { createEpicScrollHandler, type EpicsPagination } from "../view-utils";
 import { AddFieldDialog } from "./add-field-dialog";
 import { FieldRow } from "./primitives";
 import type { SelectOption, UserOption } from "./property-field";
@@ -111,6 +119,16 @@ export function PropertiesPanel({
 	const [localCustomFields, setLocalCustomFields] =
 		useState<CustomFieldDef[]>(initialCustomFields);
 	const [addFieldOpen, setAddFieldOpen] = useState(false);
+	const [epicMenuOpen, setEpicMenuOpen] = useState(false);
+	const epicTypeId = findEpicType(taskTypes)?.id;
+	const {
+		search: epicSearch,
+		setSearch: setEpicSearch,
+		isSearching: isEpicSearching,
+		results: epicSearchResults,
+		isLoading: epicSearchLoading,
+		pagination: epicSearchPagination,
+	} = useEpicSearch(task.project_id, epicTypeId, epicMenuOpen);
 
 	useEffect(() => {
 		setLocalCustomFields(initialCustomFields);
@@ -322,11 +340,20 @@ export function PropertiesPanel({
 						const otherEpics = epicTasks.filter(
 							(e) => e.id !== task.parent_task_id,
 						);
+						const displayedEpics = isEpicSearching
+							? epicSearchResults.filter((e) => e.id !== task.parent_task_id)
+							: otherEpics;
+						const activeEpicsPagination = isEpicSearching
+							? epicSearchPagination
+							: epicsPagination;
 						const hasActions =
 							(epic && onNavigateToTask) || (!!task.parent_task_id && canEdit);
 						return (
 							<FieldRow label={t("taskDetail.properties.epic")}>
-								<DropdownMenu>
+								<DropdownMenu
+									open={epicMenuOpen}
+									onOpenChange={setEpicMenuOpen}
+								>
 									<DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-muted/50 transition-colors duration-150 cursor-pointer -ml-2 max-w-52 truncate">
 										{epic ? (
 											<>
@@ -359,32 +386,63 @@ export function PropertiesPanel({
 												{t("taskDetail.properties.removeEpic")}
 											</DropdownMenuItem>
 										)}
-										{hasActions && otherEpics.length > 0 && (
-											<DropdownMenuSeparator />
-										)}
-										{otherEpics.map((e) => (
-											<DropdownMenuItem
-												key={e.id}
-												onClick={() => onUpdate?.({ parent_task_id: e.id })}
-											>
-												<Layers className="size-3.5 mr-2 shrink-0 text-violet-500/80" />
-												<span className="truncate">{e.title}</span>
-											</DropdownMenuItem>
-										))}
-										{epicsPagination?.hasMore && (
-											<DropdownMenuItem
-												closeOnClick={false}
-												onClick={() => epicsPagination.onLoadMore()}
-												disabled={epicsPagination.isLoadingMore}
-											>
-												<span className="flex-1 truncate text-muted-foreground">
-													{epicsPagination.isLoadingMore
-														? t("taskDetail.properties.loadingEpics")
-														: t("taskDetail.properties.loadMoreEpics")}
-												</span>
-											</DropdownMenuItem>
-										)}
-										</DropdownMenuContent>
+										{hasActions && <DropdownMenuSeparator />}
+										<div className="px-1 pb-1">
+											<div className="relative">
+												<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+												<input
+													type="text"
+													value={epicSearch}
+													onChange={(e) => setEpicSearch(e.target.value)}
+													onKeyDown={(e) => {
+														// Let Escape still close the menu; swallow everything
+														// else so typing doesn't trigger the menu's own arrow-key
+														// navigation / type-ahead item selection.
+														if (e.key !== "Escape") e.stopPropagation();
+													}}
+													placeholder={t("epicPicker.searchPlaceholder")}
+													className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+												/>
+											</div>
+										</div>
+										<div
+											className="max-h-56 overflow-y-auto"
+											onScroll={createEpicScrollHandler(activeEpicsPagination)}
+										>
+											{isEpicSearching && epicSearchLoading ? (
+												<div className="flex items-center justify-center py-4">
+													<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+												</div>
+											) : (
+												<>
+													{displayedEpics.map((e) => (
+														<DropdownMenuItem
+															key={e.id}
+															onClick={() =>
+																onUpdate?.({ parent_task_id: e.id })
+															}
+														>
+															<Layers className="size-3.5 mr-2 shrink-0 text-violet-500/80" />
+															<span className="truncate">{e.title}</span>
+														</DropdownMenuItem>
+													))}
+													{displayedEpics.length === 0 && (
+														<p className="px-2 py-4 text-center text-xs text-muted-foreground/50">
+															{isEpicSearching
+																? t("epicPicker.noEpicsFound")
+																: t("epicPicker.noEpicsYet")}
+														</p>
+													)}
+												</>
+											)}
+											{activeEpicsPagination?.isLoadingMore && (
+												<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+													<Loader2 className="size-3 animate-spin" />
+													{t("epicPicker.loadingMore")}
+												</div>
+											)}
+										</div>
+									</DropdownMenuContent>
 								</DropdownMenu>
 							</FieldRow>
 						);

@@ -739,8 +739,6 @@
 			"epic": "エピック",
 			"viewEpic": "エピックを表示",
 			"removeEpic": "エピックを削除",
-			"loadMoreEpics": "エピックをさらに読み込む",
-			"loadingEpics": "読み込み中…",
 			"parent": "親タスク",
 			"viewParent": "親タスクを表示",
 			"removeParent": "親タスクを削除",
@@ -913,6 +911,12 @@
 			"madeChange": "変更を加えました",
 			"descriptionChangeDiff": "説明の変更差分"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "エピックを検索…",
+		"noEpicsFound": "一致するエピックがありません",
+		"noEpicsYet": "このプロジェクトにはまだエピックがありません",
+		"loadingMore": "読み込み中…"
 	},
 	"board": {
 		"common": {

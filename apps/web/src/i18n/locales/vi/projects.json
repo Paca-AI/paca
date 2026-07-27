@@ -739,8 +739,6 @@
 			"epic": "Epic",
 			"viewEpic": "Xem epic",
 			"removeEpic": "Gỡ epic",
-			"loadMoreEpics": "Tải thêm epic",
-			"loadingEpics": "Đang tải…",
 			"parent": "Nhiệm vụ cha",
 			"viewParent": "Xem nhiệm vụ cha",
 			"removeParent": "Gỡ nhiệm vụ cha",
@@ -913,6 +911,12 @@
 			"madeChange": "đã thực hiện một thay đổi",
 			"descriptionChangeDiff": "Thay đổi mô tả"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Tìm kiếm epic…",
+		"noEpicsFound": "Không tìm thấy epic phù hợp",
+		"noEpicsYet": "Dự án này chưa có epic nào",
+		"loadingMore": "Đang tải…"
 	},
 	"board": {
 		"common": {

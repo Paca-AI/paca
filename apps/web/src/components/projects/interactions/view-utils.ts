@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import type { UIEvent } from "react";
 import {
 	type FilterConfig,
 	resolveFilterConfig,
@@ -449,6 +450,26 @@ export interface EpicsPagination {
 	hasMore: boolean;
 	isLoadingMore: boolean;
 	onLoadMore: () => void;
+}
+
+const EPIC_SCROLL_LOAD_THRESHOLD_PX = 48;
+
+/** Builds an onScroll handler that fires `pagination.onLoadMore()` once the
+ *  epic picker's list is scrolled within EPIC_SCROLL_LOAD_THRESHOLD_PX of its
+ *  bottom, instead of requiring an explicit "Load more" click. */
+export function createEpicScrollHandler(
+	pagination: EpicsPagination | undefined,
+): (e: UIEvent<HTMLDivElement>) => void {
+	return (e) => {
+		if (!pagination?.hasMore || pagination.isLoadingMore) return;
+		const el = e.currentTarget;
+		if (
+			el.scrollHeight - el.scrollTop - el.clientHeight <
+			EPIC_SCROLL_LOAD_THRESHOLD_PX
+		) {
+			pagination.onLoadMore();
+		}
+	};
 }
 
 export type TaskFieldUpdate = Partial<{

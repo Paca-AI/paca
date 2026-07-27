@@ -739,8 +739,6 @@
 			"epic": "Épica",
 			"viewEpic": "Ver épica",
 			"removeEpic": "Eliminar épica",
-			"loadMoreEpics": "Cargar más épicas",
-			"loadingEpics": "Cargando…",
 			"parent": "Tarea principal",
 			"viewParent": "Ver tarea principal",
 			"removeParent": "Eliminar tarea principal",
@@ -913,6 +911,12 @@
 			"madeChange": "hizo un cambio",
 			"descriptionChangeDiff": "Diferencias del cambio de descripción"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Buscar épicas…",
+		"noEpicsFound": "No se encontraron épicas",
+		"noEpicsYet": "Aún no hay épicas en este proyecto",
+		"loadingMore": "Cargando…"
 	},
 	"board": {
 		"common": {
