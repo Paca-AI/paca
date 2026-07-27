@@ -14,12 +14,35 @@ type Config struct {
 	Storage    StorageConfig
 	Security   SecurityConfig
 	Plugins    PluginsConfig
+	Release    ReleaseConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
 	// AIAgentInternalKey authenticates server-to-server calls into ai-agent's
 	// internal-only routes (see services/ai-agent's _require_internal_key) —
 	// must match ai-agent's own INTERNAL_API_KEY.
 	AIAgentInternalKey string
 	Env                string // development | production
+}
+
+// ReleaseConfig holds settings for the "new version available" check that the
+// home screen surfaces. The API queries the GitHub releases/latest endpoint of
+// the upstream project and (optionally) the fork, caching the result.
+type ReleaseConfig struct {
+	// Version is the version of the running build, e.g. "v0.9.4".
+	// Injected via the PACA_VERSION env var; unset builds report "dev" and
+	// never show an update banner.
+	Version string
+	// UpstreamRepo is the "owner/name" whose releases represent the original
+	// project's evolution (default: "Paca-AI/paca").
+	UpstreamRepo string
+	// ForkRepo is the "owner/name" of the fork whose releases represent the
+	// deployer's own versions. Empty disables the fork check.
+	ForkRepo string
+	// CacheTTL is how long a GitHub releases/latest response is cached in
+	// Valkey before a fresh request is made (keeps well under the unauthenticated
+	// rate limit).
+	CacheTTL time.Duration
+	// Timeout is the HTTP timeout for each GitHub request.
+	Timeout time.Duration
 }
 
 // ServerConfig holds HTTP server settings.

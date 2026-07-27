@@ -261,5 +261,12 @@
 			"title": "Extension Point Layout",
 			"description": "Drag to reorder plugin panels within each extension point. Toggle visibility to show or hide panels for all users."
 		}
+	},
+	"changelog": {
+		"title": "What's New",
+		"description": "Follow the improvements and highlights from the latest Paca releases.",
+		"current": "Current version",
+		"error": "Couldn't load the changelog right now. Please try again later.",
+		"empty": "No release notes available yet."
 	}
 }

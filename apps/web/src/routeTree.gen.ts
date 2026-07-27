@@ -20,6 +20,7 @@ import { Route as AuthenticatedProjectsProjectIdIndexRouteImport } from './route
 import { Route as AuthenticatedAdminUsersIndexRouteImport } from './routes/_authenticated/admin/users/index'
 import { Route as AuthenticatedAdminPluginsIndexRouteImport } from './routes/_authenticated/admin/plugins/index'
 import { Route as AuthenticatedAdminGlobalRolesIndexRouteImport } from './routes/_authenticated/admin/global-roles/index'
+import { Route as AuthenticatedAdminChangelogIndexRouteImport } from './routes/_authenticated/admin/changelog/index'
 import { Route as AuthenticatedProjectsProjectIdConversationsRouteImport } from './routes/_authenticated/projects/$projectId/conversations'
 import { Route as AuthenticatedProjectsProjectIdTeamIndexRouteImport } from './routes/_authenticated/projects/$projectId/team/index'
 import { Route as AuthenticatedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authenticated/projects/$projectId/settings/index'
@@ -97,6 +98,12 @@ const AuthenticatedAdminGlobalRolesIndexRoute =
   AuthenticatedAdminGlobalRolesIndexRouteImport.update({
     id: '/admin/global-roles/',
     path: '/admin/global-roles/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminChangelogIndexRoute =
+  AuthenticatedAdminChangelogIndexRouteImport.update({
+    id: '/admin/changelog/',
+    path: '/admin/changelog/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedProjectsProjectIdConversationsRoute =
@@ -210,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/home/': typeof AuthenticatedHomeIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
+  '/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
   '/admin/global-roles/': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/admin/plugins/': typeof AuthenticatedAdminPluginsIndexRoute
   '/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
@@ -237,6 +245,7 @@ export interface FileRoutesByTo {
   '/profile/api-keys': typeof AuthenticatedProfileApiKeysRoute
   '/home': typeof AuthenticatedHomeIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
+  '/admin/changelog': typeof AuthenticatedAdminChangelogIndexRoute
   '/admin/global-roles': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/admin/plugins': typeof AuthenticatedAdminPluginsIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
@@ -268,6 +277,7 @@ export interface FileRoutesById {
   '/_authenticated/home/': typeof AuthenticatedHomeIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
+  '/_authenticated/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
   '/_authenticated/admin/global-roles/': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/_authenticated/admin/plugins/': typeof AuthenticatedAdminPluginsIndexRoute
   '/_authenticated/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
@@ -299,6 +309,7 @@ export interface FileRouteTypes {
     | '/home/'
     | '/profile/'
     | '/projects/$projectId/conversations'
+    | '/admin/changelog/'
     | '/admin/global-roles/'
     | '/admin/plugins/'
     | '/admin/users/'
@@ -326,6 +337,7 @@ export interface FileRouteTypes {
     | '/profile/api-keys'
     | '/home'
     | '/profile'
+    | '/admin/changelog'
     | '/admin/global-roles'
     | '/admin/plugins'
     | '/admin/users'
@@ -356,6 +368,7 @@ export interface FileRouteTypes {
     | '/_authenticated/home/'
     | '/_authenticated/profile/'
     | '/_authenticated/projects/$projectId/conversations'
+    | '/_authenticated/admin/changelog/'
     | '/_authenticated/admin/global-roles/'
     | '/_authenticated/admin/plugins/'
     | '/_authenticated/admin/users/'
@@ -461,6 +474,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/global-roles'
       fullPath: '/admin/global-roles/'
       preLoaderRoute: typeof AuthenticatedAdminGlobalRolesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/changelog/': {
+      id: '/_authenticated/admin/changelog/'
+      path: '/admin/changelog'
+      fullPath: '/admin/changelog/'
+      preLoaderRoute: typeof AuthenticatedAdminChangelogIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/projects/$projectId/conversations': {
@@ -665,6 +685,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProjectsProjectIdRoute: typeof AuthenticatedProjectsProjectIdRouteWithChildren
   AuthenticatedHomeIndexRoute: typeof AuthenticatedHomeIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
+  AuthenticatedAdminChangelogIndexRoute: typeof AuthenticatedAdminChangelogIndexRoute
   AuthenticatedAdminGlobalRolesIndexRoute: typeof AuthenticatedAdminGlobalRolesIndexRoute
   AuthenticatedAdminPluginsIndexRoute: typeof AuthenticatedAdminPluginsIndexRoute
   AuthenticatedAdminUsersIndexRoute: typeof AuthenticatedAdminUsersIndexRoute
@@ -677,6 +698,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedProjectsProjectIdRouteWithChildren,
   AuthenticatedHomeIndexRoute: AuthenticatedHomeIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
+  AuthenticatedAdminChangelogIndexRoute: AuthenticatedAdminChangelogIndexRoute,
   AuthenticatedAdminGlobalRolesIndexRoute:
     AuthenticatedAdminGlobalRolesIndexRoute,
   AuthenticatedAdminPluginsIndexRoute: AuthenticatedAdminPluginsIndexRoute,

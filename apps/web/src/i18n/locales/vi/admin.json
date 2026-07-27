@@ -261,5 +261,12 @@
 			"title": "Bố cục điểm mở rộng",
 			"description": "Kéo để sắp xếp lại các bảng plugin trong từng điểm mở rộng. Bật/tắt khả năng hiển thị để hiện hoặc ẩn bảng cho tất cả người dùng."
 		}
+	},
+	"changelog": {
+		"title": "Có gì mới",
+		"description": "Theo dõi các cải tiến và điểm nổi bật từ những phiên bản Paca mới nhất.",
+		"current": "Phiên bản hiện tại",
+		"error": "Hiện không thể tải nhật ký thay đổi. Vui lòng thử lại sau.",
+		"empty": "Chưa có ghi chú phát hành nào."
 	}
 }

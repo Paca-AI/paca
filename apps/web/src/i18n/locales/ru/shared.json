@@ -25,6 +25,14 @@
 		"added": "Добавлено"
 	},
 	"home": {
+		"updateBanner": {
+			"title": "Доступно обновление",
+			"upstream": "Paca выпустил версию {{version}}.",
+			"fork": "Доступна ваша версия {{version}}.",
+			"current": "У вас установлена {{version}}.",
+			"viewRelease": "Посмотреть выпуск",
+			"dismiss": "Закрыть"
+		},
 		"greeting": {
 			"morning": "Доброе утро",
 			"afternoon": "Добрый день",

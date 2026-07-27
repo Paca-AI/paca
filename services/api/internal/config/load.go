@@ -82,6 +82,15 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: PLUGINS_MARKETPLACE_TIMEOUT: %w", err)
 	}
 
+	releaseCacheTTL, err := parseDuration(env("RELEASE_CHECK_CACHE_TTL", "1h"))
+	if err != nil {
+		return nil, fmt.Errorf("config: RELEASE_CHECK_CACHE_TTL: %w", err)
+	}
+	releaseTimeout, err := parseDuration(env("RELEASE_CHECK_TIMEOUT", "5s"))
+	if err != nil {
+		return nil, fmt.Errorf("config: RELEASE_CHECK_TIMEOUT: %w", err)
+	}
+
 	// Defaults here must match pluginrt.DefaultResourceLimits().
 	pluginMaxCallDuration, err := parseDuration(env("PLUGINS_MAX_CALL_DURATION", "5s"))
 	if err != nil {
@@ -207,6 +216,13 @@ func Load() (*Config, error) {
 				MaxMemoryPages:      pluginMaxMemoryPages,
 				MaxRequestBodyBytes: pluginMaxRequestBodyBytes,
 			},
+		},
+		Release: ReleaseConfig{
+			Version:      env("PACA_VERSION", "dev"),
+			UpstreamRepo: env("RELEASE_UPSTREAM_REPO", "Paca-AI/paca"),
+			ForkRepo:     env("RELEASE_FORK_REPO", ""),
+			CacheTTL:     releaseCacheTTL,
+			Timeout:      releaseTimeout,
 		},
 		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
 		AIAgentInternalKey: aiAgentInternalKey,

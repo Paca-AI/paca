@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
+import { UpdateBanner } from "@/components/home/UpdateBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -475,6 +475,7 @@ function HomePage() {
 
 	return (
 		<div className="flex flex-col">
+			<UpdateBanner />
 			{/* Hero banner */}
 			<div className="relative overflow-hidden border-b border-border/50">
 				<div

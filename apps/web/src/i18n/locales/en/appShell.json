@@ -27,7 +27,8 @@
 		"conversations": "Conversations",
 		"automation": "Automation",
 		"team": "Team",
-		"settings": "Settings"
+		"settings": "Settings",
+		"changelog": "What's New"
 	},
 	"projectSwitcher": {
 		"projects": "Projects",

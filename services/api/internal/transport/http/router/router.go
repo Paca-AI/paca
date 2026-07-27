@@ -23,6 +23,7 @@ type Deps struct {
 	Authorizer           *authz.Authorizer
 	ProjectVisibilitySvc httpmw.ProjectVisibilityChecker
 	Health               *handler.HealthHandler
+	Version              *handler.VersionHandler
 	Auth                 *handler.AuthHandler
 	User                 *handler.UserHandler
 	GlobalRole           *handler.GlobalRoleHandler
@@ -63,6 +64,12 @@ func New(deps Deps) http.Handler {
 		r.Get("/healthz", deps.Health.Check)
 
 		r.Route("/v1", func(r chi.Router) {
+			// Version / update check — public, no auth required.
+			if deps.Version != nil {
+				r.Get("/version", deps.Version.Check)
+				r.Get("/releases", deps.Version.ListReleases)
+			}
+
 			// Auth
 			r.Route("/auth", func(r chi.Router) {
 				r.Post("/login", deps.Auth.Login)

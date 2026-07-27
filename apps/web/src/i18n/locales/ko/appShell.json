@@ -27,7 +27,8 @@
 		"conversations": "대화",
 		"automation": "자동화",
 		"team": "팀",
-		"settings": "설정"
+		"settings": "설정",
+		"changelog": "새로운 소식"
 	},
 	"projectSwitcher": {
 		"projects": "프로젝트",
