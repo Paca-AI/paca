@@ -66,6 +66,7 @@ import {
 	sprintsQueryOptions,
 	type Task,
 	type TaskListResult,
+	taskQueryOptions,
 	updateSprint,
 	updateTask,
 	updateViewById,
@@ -1022,6 +1023,42 @@ export function InteractionLayout({
 		globalExtraTasks,
 	]);
 
+	// Epics referenced by tasks currently on screen but not yet among the
+	// paginated epicTasks pages (the picker loads 20 at a time — a task's
+	// epic may sort past that window even though it hasn't been "loaded
+	// more" by anyone). Fetch those specific epics directly so the epic
+	// badge on cards/rows resolves instead of silently rendering as unset.
+	const loadedEpicIds = useMemo(
+		() => new Set(epicTasks.map((e) => e.id)),
+		[epicTasks],
+	);
+	const missingEpicIds = useMemo(() => {
+		const ids = new Set<string>();
+		for (const task of tasks) {
+			if (task.parent_task_id && !loadedEpicIds.has(task.parent_task_id)) {
+				ids.add(task.parent_task_id);
+			}
+		}
+		return Array.from(ids);
+	}, [tasks, loadedEpicIds]);
+	const missingEpicQueries = useQueries({
+		queries: missingEpicIds.map((epicId) => ({
+			...taskQueryOptions(projectId, epicId),
+			enabled: !!epicType?.id,
+		})),
+	});
+	const displayEpics = useMemo(() => {
+		// parent_task_id also links non-epic parents (story/task nesting), so
+		// only fold fetched tasks in here when they're actually Epic-typed —
+		// otherwise a task's non-epic parent could render as its "epic".
+		const extra = missingEpicQueries
+			.map((q) => q.data)
+			.filter(
+				(task): task is Task => !!task && task.task_type_id === epicType?.id,
+			);
+		return extra.length > 0 ? [...epicTasks, ...extra] : epicTasks;
+	}, [epicTasks, missingEpicQueries, epicType?.id]);
+
 	const tasksLoading =
 		viewsQuery.isLoading ||
 		(colQueriesEnabled
@@ -1724,7 +1761,7 @@ export function InteractionLayout({
 						members={members}
 						customFields={customFields}
 						sprints={sprints}
-						epics={epicTasks}
+						epics={displayEpics}
 						epicsPagination={epicsPagination}
 						viewConfig={activeViewConfig}
 						canCreate={canCreate}
@@ -1775,7 +1812,7 @@ export function InteractionLayout({
 						taskTypes={creatableTaskTypes}
 						members={members}
 						customFields={customFields}
-						epics={epicTasks}
+						epics={displayEpics}
 						epicsPagination={epicsPagination}
 						viewConfig={activeViewConfig}
 						canCreate={canCreate}
