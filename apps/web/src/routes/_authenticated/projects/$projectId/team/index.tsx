@@ -18,7 +18,7 @@ import {
 	UserRound,
 	Users,
 } from "lucide-react";
-import { type UIEvent, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ import {
 	removeProjectMember,
 	updateProjectMemberRole,
 } from "@/lib/project-api";
+import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/team/",
@@ -161,13 +162,11 @@ function AddMemberDialog({
 		[usersPages],
 	);
 
-	function handleUsersListScroll(e: UIEvent<HTMLDivElement>) {
-		if (!hasNextPage || isFetchingNextPage) return;
-		const el = e.currentTarget;
-		if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
-			fetchNextPage();
-		}
-	}
+	const handleUsersListScroll = createLoadMoreScrollHandler({
+		hasMore: !!hasNextPage,
+		isLoadingMore: isFetchingNextPage,
+		onLoadMore: () => void fetchNextPage(),
+	});
 
 	const filteredUsers = useMemo<User[]>(() => {
 		const items: User[] = usersData;

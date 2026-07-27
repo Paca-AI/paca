@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export function useDebouncedCallback<Args extends unknown[]>(
 	callback: (...args: Args) => void,
@@ -7,6 +7,15 @@ export function useDebouncedCallback<Args extends unknown[]>(
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const callbackRef = useRef(callback);
 	callbackRef.current = callback;
+
+	// Without this, a timer scheduled just before unmount still fires and
+	// invokes callbackRef.current — harmless for a plain state setter, but
+	// wasteful (or worse, a network call nobody reads) for heavier callbacks.
+	useEffect(() => {
+		return () => {
+			if (timerRef.current) clearTimeout(timerRef.current);
+		};
+	}, []);
 
 	return useCallback(
 		(...args: Args) => {

@@ -6,11 +6,17 @@ import type { EpicsPagination } from "./view-utils";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+// Below this length, `search` does a leading-wildcard ILIKE scan server-side
+// (no trigram index backs it) — cheap enough per-project at 2+ chars, but a
+// single character is broad enough to be worth avoiding.
+const MIN_SEARCH_LENGTH = 2;
+
 interface UseEpicSearchResult {
 	search: string;
 	setSearch: (value: string) => void;
-	/** True once the user has typed a non-empty query — callers should swap
-	 *  in `results` for their normal paginated epic list while this holds. */
+	/** True once the user has typed a query of at least MIN_SEARCH_LENGTH —
+	 *  callers should swap in `results` for their normal paginated epic list
+	 *  while this holds. */
 	isSearching: boolean;
 	/** Server-searched matches; only meaningful while isSearching is true. */
 	results: Task[];
@@ -54,7 +60,7 @@ export function useEpicSearch(
 		}
 	}, [enabled]);
 
-	const isSearching = search.trim().length > 0;
+	const isSearching = search.trim().length >= MIN_SEARCH_LENGTH;
 
 	const { data, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage } =
 		useInfiniteQuery({
@@ -74,7 +80,10 @@ export function useEpicSearch(
 			initialPageParam: undefined as string | undefined,
 			getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 			enabled:
-				enabled && !!projectId && !!epicTypeId && debouncedSearch.length > 0,
+				enabled &&
+				!!projectId &&
+				!!epicTypeId &&
+				debouncedSearch.length >= MIN_SEARCH_LENGTH,
 			staleTime: 15_000,
 		});
 

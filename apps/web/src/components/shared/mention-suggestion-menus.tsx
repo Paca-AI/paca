@@ -15,6 +15,11 @@ import type { customSchema } from "./blocknote-schema";
  *  user has since typed past. */
 const TASK_SEARCH_DEBOUNCE_MS = 300;
 
+// Below this length, `search` does a leading-wildcard ILIKE scan server-side
+// (no trigram index backs it) — treat a too-short query the same as no query
+// (unfiltered first page) rather than firing a broad single-character scan.
+const MIN_TASK_SEARCH_LENGTH = 2;
+
 interface MentionSuggestionMenuProps {
 	editor: BlockNoteEditor<
 		typeof customSchema.blockSchema,
@@ -69,7 +74,12 @@ export function MentionSuggestionMenus({
 		query: string,
 	): Promise<DefaultReactSuggestionItem[]> => {
 		if (!projectId) return [];
-		const tasks = await debouncedSearchMentionableTasks(projectId, query);
+		const effectiveQuery =
+			query.trim().length >= MIN_TASK_SEARCH_LENGTH ? query : "";
+		const tasks = await debouncedSearchMentionableTasks(
+			projectId,
+			effectiveQuery,
+		);
 		return tasks.map((task) => ({
 			title: task.title,
 			subtext: `#${task.task_number}`,

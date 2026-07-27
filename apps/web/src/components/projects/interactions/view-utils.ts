@@ -1,5 +1,4 @@
 import type { TFunction } from "i18next";
-import type { UIEvent } from "react";
 import {
 	type FilterConfig,
 	resolveFilterConfig,
@@ -13,6 +12,10 @@ import type {
 	TaskStatus,
 	TaskType,
 } from "@/lib/project-api";
+import {
+	createLoadMoreScrollHandler,
+	type LoadMorePagination,
+} from "@/lib/scroll-pagination";
 
 import {
 	getImportanceBucket,
@@ -445,32 +448,12 @@ export function buildAllFieldOptions(
  * epic query. Threaded from the view/layout root, which owns the single
  * `useInfiniteQuery`, down to whichever picker UI (Popover/DropdownMenu/
  * ContextMenu) is currently rendering the epic list, so every epic picker
- * app-wide shares one "Load more" affordance instead of duplicating queries. */
-export interface EpicsPagination {
-	hasMore: boolean;
-	isLoadingMore: boolean;
-	onLoadMore: () => void;
-}
-
-const EPIC_SCROLL_LOAD_THRESHOLD_PX = 48;
-
-/** Builds an onScroll handler that fires `pagination.onLoadMore()` once the
- *  epic picker's list is scrolled within EPIC_SCROLL_LOAD_THRESHOLD_PX of its
- *  bottom, instead of requiring an explicit "Load more" click. */
-export function createEpicScrollHandler(
-	pagination: EpicsPagination | undefined,
-): (e: UIEvent<HTMLDivElement>) => void {
-	return (e) => {
-		if (!pagination?.hasMore || pagination.isLoadingMore) return;
-		const el = e.currentTarget;
-		if (
-			el.scrollHeight - el.scrollTop - el.clientHeight <
-			EPIC_SCROLL_LOAD_THRESHOLD_PX
-		) {
-			pagination.onLoadMore();
-		}
-	};
-}
+ * app-wide shares one "Load more" affordance instead of duplicating queries.
+ * Re-exported from the generic scroll-pagination helper — kept as a named
+ * alias here since every epic-picker call site already imports it by this
+ * name from "./view-utils". */
+export type EpicsPagination = LoadMorePagination;
+export const createEpicScrollHandler = createLoadMoreScrollHandler;
 
 export type TaskFieldUpdate = Partial<{
 	status_id: string | null;

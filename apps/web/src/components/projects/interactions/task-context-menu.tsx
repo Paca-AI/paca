@@ -4,10 +4,11 @@ import {
 	Layers,
 	Link2,
 	Loader2,
+	Search,
 	Trash2,
 	User,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
@@ -24,7 +25,12 @@ import {
 } from "@/components/ui/context-menu";
 import { KbdChord } from "@/components/ui/kbd";
 import type { Task } from "@/lib/interaction-api";
-import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
+import {
+	findEpicType,
+	type ProjectMember,
+	type TaskStatus,
+	type TaskType,
+} from "@/lib/project-api";
 import { isMacPlatform, SHORTCUT_DISPLAY } from "@/lib/shortcuts/keymap";
 
 import {
@@ -32,6 +38,7 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
+import { useEpicSearch } from "./use-epic-search";
 import {
 	type ColumnGroupDef,
 	createEpicScrollHandler,
@@ -98,6 +105,21 @@ export function TaskContextMenu({
 	const taskLabel = taskIdPrefix
 		? `${taskIdPrefix}-${task.task_number}`
 		: `#${task.task_number}`;
+
+	const [epicSubOpen, setEpicSubOpen] = useState(false);
+	const epicTypeId = findEpicType(taskTypes)?.id;
+	const {
+		search: epicSearch,
+		setSearch: setEpicSearch,
+		isSearching: isEpicSearching,
+		results: epicSearchResults,
+		isLoading: epicSearchLoading,
+		pagination: epicSearchPagination,
+	} = useEpicSearch(task.project_id, epicTypeId, epicSubOpen);
+	const displayedEpics = isEpicSearching ? epicSearchResults : epics;
+	const activeEpicsPagination = isEpicSearching
+		? epicSearchPagination
+		: epicsPagination;
 
 	const copyId = () => {
 		navigator.clipboard?.writeText(taskLabel)?.catch(() => {});
@@ -278,12 +300,12 @@ export function TaskContextMenu({
 				)}
 
 				{canEdit && epics.length > 0 && (
-					<ContextMenuSub>
+					<ContextMenuSub open={epicSubOpen} onOpenChange={setEpicSubOpen}>
 						<ContextMenuSubTrigger>
 							{t("board.taskContextMenu.epic")}
 							<Hint actionId="task.epic" />
 						</ContextMenuSubTrigger>
-						<ContextMenuSubContent className="w-56">
+						<ContextMenuSubContent className="w-64 p-1.5">
 							<ContextMenuItem
 								onClick={() => onUpdate?.(task.id, { parent_task_id: null })}
 							>
@@ -294,25 +316,57 @@ export function TaskContextMenu({
 									<Check className="size-3.5 text-primary shrink-0" />
 								)}
 							</ContextMenuItem>
+							<div className="relative px-1 pt-1 pb-1.5">
+								<Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+								<input
+									type="text"
+									value={epicSearch}
+									onClick={(e) => e.stopPropagation()}
+									onKeyDown={(e) => {
+										// Let Escape still close the menu; swallow everything
+										// else so typing doesn't trigger the menu's own arrow-key
+										// navigation / type-ahead item selection.
+										if (e.key !== "Escape") e.stopPropagation();
+									}}
+									onChange={(e) => setEpicSearch(e.target.value)}
+									placeholder={t("epicPicker.searchPlaceholder")}
+									className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+								/>
+							</div>
 							<div
 								className="max-h-64 overflow-y-auto"
-								onScroll={createEpicScrollHandler(epicsPagination)}
+								onScroll={createEpicScrollHandler(activeEpicsPagination)}
 							>
-								{epics.map((e) => (
-									<ContextMenuItem
-										key={e.id}
-										onClick={() =>
-											onUpdate?.(task.id, { parent_task_id: e.id })
-										}
-									>
-										<Layers className="size-3.5 shrink-0 text-violet-500 opacity-70" />
-										<span className="flex-1 truncate">{e.title}</span>
-										{e.id === task.parent_task_id && (
-											<Check className="size-3.5 text-primary shrink-0" />
+								{isEpicSearching && epicSearchLoading ? (
+									<div className="flex items-center justify-center py-4">
+										<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+									</div>
+								) : (
+									<>
+										{displayedEpics.map((e) => (
+											<ContextMenuItem
+												key={e.id}
+												onClick={() =>
+													onUpdate?.(task.id, { parent_task_id: e.id })
+												}
+											>
+												<Layers className="size-3.5 shrink-0 text-violet-500 opacity-70" />
+												<span className="flex-1 truncate">{e.title}</span>
+												{e.id === task.parent_task_id && (
+													<Check className="size-3.5 text-primary shrink-0" />
+												)}
+											</ContextMenuItem>
+										))}
+										{displayedEpics.length === 0 && (
+											<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+												{isEpicSearching
+													? t("epicPicker.noEpicsFound")
+													: t("epicPicker.noEpicsYet")}
+											</p>
 										)}
-									</ContextMenuItem>
-								))}
-								{epicsPagination?.isLoadingMore && (
+									</>
+								)}
+								{activeEpicsPagination?.isLoadingMore && (
 									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
 										<Loader2 className="size-3 animate-spin" />
 										{t("epicPicker.loadingMore")}

@@ -542,3 +542,39 @@ a {
 	padding-left: 0;
 	padding-right: 0;
 }
+
+/*
+ * Suggestion menu ("/" slash commands, "@" mentions, "#" task/doc references)
+ * — @blocknote/shadcn renders item titles at text-base (16px), a size larger
+ * than every other dropdown/menu in this app (shadcn's own DropdownMenuItem/
+ * ContextMenuItem use text-sm/14px). The title and subtext divs both carry
+ * the item's own "bn-suggestion-menu-item" class alongside their Tailwind
+ * text-size class, so a compound selector targets just those, not the item's
+ * outer row or its icon.
+ */
+.bn-suggestion-menu .bn-suggestion-menu-item.text-base {
+	font-size: 0.8125rem;
+	line-height: 1.15rem;
+}
+
+/*
+ * The loading spinner shown while a debounced/server-searched suggestion
+ * menu (e.g. the "#" reference search) is fetching has two bugs upstream:
+ * its SVG hardcodes fill="#e8eaed" instead of currentColor, so it's nearly
+ * invisible against a light-mode popover background and never follows the
+ * app's theme; and the row itself has no padding/centering, so it renders
+ * flush against the item list above it instead of lining up with it.
+ */
+.bn-suggestion-menu .bn-suggestion-menu-loader {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.375rem 0;
+	color: var(--muted-foreground);
+}
+
+.bn-suggestion-menu .bn-suggestion-menu-loader svg {
+	width: 14px;
+	height: 14px;
+	fill: currentColor;
+}
