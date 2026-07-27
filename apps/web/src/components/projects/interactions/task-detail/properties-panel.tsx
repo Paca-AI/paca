@@ -334,8 +334,16 @@ export function PropertiesPanel({
 				{taskRole === "normal" &&
 					(epicTasks.length > 0 || task.parent_task_id) &&
 					(() => {
+						// epicTasks is paginated 20-per-page, so a task's own epic may
+						// not be loaded into it yet — fall back to parentTask (fetched
+						// directly for this task regardless of pagination) when it's
+						// actually Epic-typed, so the field doesn't render as unset.
 						const epic = task.parent_task_id
-							? epicTasks.find((e) => e.id === task.parent_task_id)
+							? (epicTasks.find((e) => e.id === task.parent_task_id) ??
+								(parentTask?.id === task.parent_task_id &&
+								parentTask.task_type_id === epicTypeId
+									? parentTask
+									: undefined))
 							: undefined;
 						const otherEpics = epicTasks.filter(
 							(e) => e.id !== task.parent_task_id,
@@ -447,11 +455,14 @@ export function PropertiesPanel({
 							</FieldRow>
 						);
 					})()}
-				{/* Parent field – shown when the parent task is not an epic (story/task/bug nesting) */}
+				{/* Parent field – shown when the parent task is not an epic (story/task/bug nesting).
+				 * Checked against parentTask's own type rather than epicTasks membership —
+				 * epicTasks is paginated, so an actual epic parent can be legitimately
+				 * absent from it without meaning "this parent isn't an epic". */}
 				{taskRole === "normal" &&
 					task.parent_task_id &&
 					parentTask &&
-					!epicTasks.find((e) => e.id === task.parent_task_id) && (
+					parentTask.task_type_id !== epicTypeId && (
 						<FieldRow label={t("taskDetail.properties.parent")}>
 							{(() => {
 								const parentType = taskTypes.find(
