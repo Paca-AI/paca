@@ -631,6 +631,7 @@
 			"searchPlaceholder": "按姓名或用户名搜索…",
 			"noUsersMatch": "没有符合搜索条件的用户。",
 			"noUsersAvailable": "没有可添加的用户。",
+			"loadingMore": "加载中…",
 			"roleLabel": "角色",
 			"rolePlaceholder": "选择一个角色…",
 			"cancel": "取消",

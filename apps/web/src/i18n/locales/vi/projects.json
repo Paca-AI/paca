@@ -631,6 +631,7 @@
 			"searchPlaceholder": "Tìm theo tên hoặc tên đăng nhập…",
 			"noUsersMatch": "Không có người dùng nào khớp với tìm kiếm của bạn.",
 			"noUsersAvailable": "Không có người dùng nào để thêm.",
+			"loadingMore": "Đang tải…",
 			"roleLabel": "Vai trò",
 			"rolePlaceholder": "Chọn một vai trò…",
 			"cancel": "Hủy",

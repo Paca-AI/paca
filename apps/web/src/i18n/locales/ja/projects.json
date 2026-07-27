@@ -631,6 +631,7 @@
 			"searchPlaceholder": "名前またはユーザー名で検索…",
 			"noUsersMatch": "検索条件に一致するユーザーがいません。",
 			"noUsersAvailable": "追加できるユーザーがいません。",
+			"loadingMore": "読み込み中…",
 			"roleLabel": "ロール",
 			"rolePlaceholder": "ロールを選択…",
 			"cancel": "キャンセル",

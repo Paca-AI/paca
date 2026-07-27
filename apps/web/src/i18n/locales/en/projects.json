@@ -631,6 +631,7 @@
 			"searchPlaceholder": "Search by name or username…",
 			"noUsersMatch": "No users match your search.",
 			"noUsersAvailable": "No users available to add.",
+			"loadingMore": "Loading…",
 			"roleLabel": "Role",
 			"rolePlaceholder": "Select a role…",
 			"cancel": "Cancel",

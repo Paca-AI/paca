@@ -645,6 +645,7 @@
 			"searchPlaceholder": "Поиск по имени или username…",
 			"noUsersMatch": "Пользователи по запросу не найдены.",
 			"noUsersAvailable": "Нет пользователей, которых можно добавить.",
+			"loadingMore": "Загрузка…",
 			"roleLabel": "Роль",
 			"rolePlaceholder": "Выберите роль…",
 			"cancel": "Отмена",
