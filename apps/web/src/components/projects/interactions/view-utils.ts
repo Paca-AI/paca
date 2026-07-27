@@ -12,6 +12,10 @@ import type {
 	TaskStatus,
 	TaskType,
 } from "@/lib/project-api";
+import {
+	createLoadMoreScrollHandler,
+	type LoadMorePagination,
+} from "@/lib/scroll-pagination";
 
 import {
 	getImportanceBucket,
@@ -439,6 +443,17 @@ export function buildAllFieldOptions(
 }
 
 // ── Task update payload builder for column drag ───────────────────────────────
+
+/** Load-more state/handler for an epic picker fed by a paginated (20-per-page)
+ * epic query. Threaded from the view/layout root, which owns the single
+ * `useInfiniteQuery`, down to whichever picker UI (Popover/DropdownMenu/
+ * ContextMenu) is currently rendering the epic list, so every epic picker
+ * app-wide shares one "Load more" affordance instead of duplicating queries.
+ * Re-exported from the generic scroll-pagination helper — kept as a named
+ * alias here since every epic-picker call site already imports it by this
+ * name from "./view-utils". */
+export type EpicsPagination = LoadMorePagination;
+export const createEpicScrollHandler = createLoadMoreScrollHandler;
 
 export type TaskFieldUpdate = Partial<{
 	status_id: string | null;

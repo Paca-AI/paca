@@ -1,8 +1,20 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
 import { TaskCard } from "./task-card";
+
+// TaskCard's epic-picker field now calls useEpicSearch (useInfiniteQuery)
+// unconditionally, so it needs a QueryClientProvider ancestor even though the
+// query stays disabled (epicOpen is never toggled true) in these tests.
+function wrapper({ children }: { children: ReactNode }) {
+	const qc = new QueryClient({
+		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+	});
+	return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +63,7 @@ describe("TaskCard", () => {
 				statuses={NO_STATUSES}
 				taskTypes={NO_TYPES}
 			/>,
+			{ wrapper },
 		);
 		expect(screen.getByText("Fix the login bug")).toBeInTheDocument();
 	});
@@ -62,6 +75,7 @@ describe("TaskCard", () => {
 				statuses={NO_STATUSES}
 				taskTypes={[bugType]}
 			/>,
+			{ wrapper },
 		);
 		expect(screen.queryByText("Bug")).not.toBeInTheDocument();
 	});
@@ -73,6 +87,7 @@ describe("TaskCard", () => {
 				statuses={NO_STATUSES}
 				taskTypes={[bugType]}
 			/>,
+			{ wrapper },
 		);
 		expect(screen.getByText("Bug")).toBeInTheDocument();
 	});
@@ -86,6 +101,7 @@ describe("TaskCard", () => {
 				taskTypes={NO_TYPES}
 				onClick={onClick}
 			/>,
+			{ wrapper },
 		);
 		fireEvent.click(screen.getByText("Fix the login bug"));
 		expect(onClick).toHaveBeenCalledOnce();
@@ -99,6 +115,7 @@ describe("TaskCard", () => {
 				taskTypes={NO_TYPES}
 				canEdit={true}
 			/>,
+			{ wrapper },
 		);
 		const card = container.querySelector("[data-task-id='task-1']");
 		expect(card).toHaveAttribute("draggable", "true");
@@ -112,6 +129,7 @@ describe("TaskCard", () => {
 				taskTypes={NO_TYPES}
 				canEdit={false}
 			/>,
+			{ wrapper },
 		);
 		const card = container.querySelector("[data-task-id='task-1']");
 		expect(card).toHaveAttribute("draggable", "false");
@@ -127,6 +145,7 @@ describe("TaskCard", () => {
 				canEdit={true}
 				onDragStart={onDragStart}
 			/>,
+			{ wrapper },
 		);
 		const card = container.querySelector("[data-task-id='task-1']") as Element;
 		fireEvent.dragStart(card);
@@ -143,6 +162,7 @@ describe("TaskCard", () => {
 				canEdit={true}
 				onDragEnd={onDragEnd}
 			/>,
+			{ wrapper },
 		);
 		const card = container.querySelector("[data-task-id='task-1']") as Element;
 		fireEvent.dragEnd(card);
@@ -157,6 +177,7 @@ describe("TaskCard", () => {
 				taskTypes={NO_TYPES}
 				isDragging={true}
 			/>,
+			{ wrapper },
 		);
 		const card = container.querySelector("[data-task-id='task-1']") as Element;
 		// isDragging adds opacity-50 class
@@ -170,6 +191,7 @@ describe("TaskCard", () => {
 				statuses={NO_STATUSES}
 				taskTypes={NO_TYPES}
 			/>,
+			{ wrapper },
 		);
 		// assigned state: filled avatar circle with the primary gradient
 		const assigneeEl = container.querySelector(".from-primary\\/20");

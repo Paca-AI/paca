@@ -631,6 +631,7 @@
 			"searchPlaceholder": "Rechercher par nom ou nom d'utilisateur…",
 			"noUsersMatch": "Aucun utilisateur ne correspond à votre recherche.",
 			"noUsersAvailable": "Aucun utilisateur disponible à ajouter.",
+			"loadingMore": "Chargement…",
 			"roleLabel": "Rôle",
 			"rolePlaceholder": "Sélectionner un rôle…",
 			"cancel": "Annuler",
@@ -911,6 +912,12 @@
 			"madeChange": "a effectué une modification",
 			"descriptionChangeDiff": "Différences des modifications de la description"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Rechercher des epics…",
+		"noEpicsFound": "Aucun epic correspondant",
+		"noEpicsYet": "Aucun epic dans ce projet pour l'instant",
+		"loadingMore": "Chargement…"
 	},
 	"board": {
 		"common": {

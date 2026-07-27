@@ -631,6 +631,7 @@
 			"searchPlaceholder": "Search by name or username…",
 			"noUsersMatch": "No users match your search.",
 			"noUsersAvailable": "No users available to add.",
+			"loadingMore": "Loading…",
 			"roleLabel": "Role",
 			"rolePlaceholder": "Select a role…",
 			"cancel": "Cancel",
@@ -911,6 +912,12 @@
 			"madeChange": "made a change",
 			"descriptionChangeDiff": "Description change diff"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Search epics…",
+		"noEpicsFound": "No matching epics",
+		"noEpicsYet": "No epics in this project yet",
+		"loadingMore": "Loading…"
 	},
 	"board": {
 		"common": {

@@ -631,6 +631,7 @@
 			"searchPlaceholder": "Tìm theo tên hoặc tên đăng nhập…",
 			"noUsersMatch": "Không có người dùng nào khớp với tìm kiếm của bạn.",
 			"noUsersAvailable": "Không có người dùng nào để thêm.",
+			"loadingMore": "Đang tải…",
 			"roleLabel": "Vai trò",
 			"rolePlaceholder": "Chọn một vai trò…",
 			"cancel": "Hủy",
@@ -911,6 +912,12 @@
 			"madeChange": "đã thực hiện một thay đổi",
 			"descriptionChangeDiff": "Thay đổi mô tả"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Tìm kiếm epic…",
+		"noEpicsFound": "Không tìm thấy epic phù hợp",
+		"noEpicsYet": "Dự án này chưa có epic nào",
+		"loadingMore": "Đang tải…"
 	},
 	"board": {
 		"common": {

@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
@@ -136,3 +136,22 @@ export function usersQueryOptions(page = 1, pageSize = 20) {
 		queryFn: () => getUsers(page, pageSize),
 	});
 }
+
+export const ADMIN_USERS_PAGE_SIZE = 20;
+
+/** Infinite-query version of the user list — backs pickers that need to
+ *  page through every user (e.g. the "add team member" dialog), since the
+ *  backend caps page_size at 100 and there's no server-side search to
+ *  narrow the result set. Pages accumulate as the caller scrolls, same
+ *  pattern as the epic picker's infinite query. */
+export const usersInfiniteQueryOptions = () =>
+	infiniteQueryOptions({
+		queryKey: ["admin", "users", "all"],
+		queryFn: ({ pageParam }: { pageParam: number }) =>
+			getUsers(pageParam, ADMIN_USERS_PAGE_SIZE),
+		initialPageParam: 1,
+		getNextPageParam: (lastPage) =>
+			lastPage.page * lastPage.page_size < lastPage.total
+				? lastPage.page + 1
+				: undefined,
+	});

@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
 	Bot,
@@ -46,7 +51,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
-import { getUsers, type User } from "@/lib/admin-api";
+import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	addProjectMember,
@@ -58,6 +63,7 @@ import {
 	removeProjectMember,
 	updateProjectMemberRole,
 } from "@/lib/project-api";
+import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/team/",
@@ -140,14 +146,30 @@ function AddMemberDialog({
 	const searchRef = useRef<HTMLInputElement>(null);
 	const canReadUsers = can("users.read");
 
-	const { data: usersData, isLoading: isLoadingUsers } = useQuery({
-		queryKey: ["admin", "users", "all"],
-		queryFn: () => getUsers(1, 500),
+	const {
+		data: usersPages,
+		isLoading: isLoadingUsers,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery({
+		...usersInfiniteQueryOptions(),
 		enabled: open && canReadUsers,
 	});
 
+	const usersData = useMemo(
+		() => usersPages?.pages.flatMap((page) => page.items) ?? [],
+		[usersPages],
+	);
+
+	const handleUsersListScroll = createLoadMoreScrollHandler({
+		hasMore: !!hasNextPage,
+		isLoadingMore: isFetchingNextPage,
+		onLoadMore: () => void fetchNextPage(),
+	});
+
 	const filteredUsers = useMemo<User[]>(() => {
-		const items: User[] = usersData?.items ?? [];
+		const items: User[] = usersData;
 		const q = userSearch.toLowerCase();
 		return items
 			.filter((u) => !existingMemberIds.has(u.id))
@@ -262,7 +284,10 @@ function AddMemberDialog({
 										autoFocus
 									/>
 								</div>
-								<div className="max-h-44 overflow-y-auto p-1">
+								<div
+									className="max-h-44 overflow-y-auto p-1"
+									onScroll={handleUsersListScroll}
+								>
 									{isLoadingUsers ? (
 										<div className="flex items-center justify-center py-4">
 											<Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -282,6 +307,12 @@ function AddMemberDialog({
 												onSelect={setSelectedUser}
 											/>
 										))
+									)}
+									{isFetchingNextPage && (
+										<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
+											<Loader2 className="size-3 animate-spin" />
+											{t("team.addMemberDialog.loadingMore")}
+										</div>
 									)}
 								</div>
 							</div>

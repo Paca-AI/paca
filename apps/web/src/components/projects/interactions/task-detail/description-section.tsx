@@ -54,7 +54,7 @@ export function DescriptionSection({
 }: DescriptionSectionProps) {
 	const { t } = useTranslation("projects");
 	const { resolvedMode } = useThemeMode();
-	const { teamMembers, tasks, documents } = useMentionData(projectId);
+	const { teamMembers, documents } = useMentionData(projectId);
 	const qc = useQueryClient();
 	const [writeWithAIOpen, setWriteWithAIOpen] = useState(false);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -253,7 +253,7 @@ export function DescriptionSection({
 						<MentionSuggestionMenus
 							editor={editor}
 							teamMembers={teamMembers}
-							tasks={tasks}
+							projectId={projectId}
 							documents={documents}
 						/>
 					)}

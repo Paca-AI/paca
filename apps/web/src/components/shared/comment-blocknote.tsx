@@ -29,7 +29,7 @@ export const CommentEditor = forwardRef<
 >(function CommentEditor({ initialBlocks, onSubmit, projectId }, ref) {
 	const { resolvedMode } = useThemeMode();
 	const initializedRef = useRef(false);
-	const { teamMembers, tasks, documents } = useMentionData(projectId);
+	const { teamMembers, documents } = useMentionData(projectId);
 
 	const editor = useCreateBlockNote({
 		schema: customSchema,
@@ -82,7 +82,7 @@ export const CommentEditor = forwardRef<
 			<MentionSuggestionMenus
 				editor={editor}
 				teamMembers={teamMembers}
-				tasks={tasks}
+				projectId={projectId}
 				documents={documents}
 			/>
 		</BlockNoteView>

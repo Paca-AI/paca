@@ -18,6 +18,7 @@ import { getRowColConfig, TaskRow } from "./task-row";
 import {
 	buildColumnDropUpdate,
 	type ColumnGroupDef,
+	type EpicsPagination,
 	getTaskSwimlaneKey,
 	type TaskFieldUpdate,
 } from "./view-utils";
@@ -32,6 +33,8 @@ export interface ListGroupProps {
 	members: ProjectMember[];
 	customFields: CustomFieldDefinition[];
 	epics?: Task[];
+	/** Load-more state for the epic picker, shared by every row in this group. */
+	epicsPagination?: EpicsPagination;
 	canCreate: boolean;
 	defaultCollapsed?: boolean;
 	fieldSum?: string;
@@ -99,6 +102,7 @@ export function ListGroup({
 	members,
 	customFields,
 	epics = [],
+	epicsPagination,
 	canCreate,
 	defaultCollapsed,
 	fieldSum,
@@ -426,6 +430,7 @@ export function ListGroup({
 				taskTypes={taskTypes}
 				members={members}
 				epics={epics}
+				epicsPagination={epicsPagination}
 				canEdit={!!canEdit}
 				onOpen={() => onTaskClick(task)}
 				onUpdate={onUpdateTaskField}
@@ -442,6 +447,7 @@ export function ListGroup({
 					taskTypes={taskTypes}
 					members={members}
 					epics={epics}
+					epicsPagination={epicsPagination}
 					customFields={customFields}
 					visibleFields={visibleFields}
 					onClick={() => onTaskClick(task)}

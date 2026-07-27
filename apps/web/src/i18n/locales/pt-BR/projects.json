@@ -631,6 +631,7 @@
 			"searchPlaceholder": "Buscar por nome ou usuário…",
 			"noUsersMatch": "Nenhum usuário corresponde à sua busca.",
 			"noUsersAvailable": "Nenhum usuário disponível para adicionar.",
+			"loadingMore": "Carregando…",
 			"roleLabel": "Papel",
 			"rolePlaceholder": "Selecione um papel…",
 			"cancel": "Cancelar",
@@ -911,6 +912,12 @@
 			"madeChange": "fez uma alteração",
 			"descriptionChangeDiff": "Diferença de alteração da descrição"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Buscar épicos…",
+		"noEpicsFound": "Nenhum épico encontrado",
+		"noEpicsYet": "Ainda não há épicos neste projeto",
+		"loadingMore": "Carregando…"
 	},
 	"board": {
 		"common": {

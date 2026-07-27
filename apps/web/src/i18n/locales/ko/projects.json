@@ -631,6 +631,7 @@
 			"searchPlaceholder": "이름 또는 사용자 이름으로 검색…",
 			"noUsersMatch": "검색과 일치하는 사용자가 없습니다.",
 			"noUsersAvailable": "추가할 수 있는 사용자가 없습니다.",
+			"loadingMore": "불러오는 중…",
 			"roleLabel": "역할",
 			"rolePlaceholder": "역할을 선택하세요…",
 			"cancel": "취소",
@@ -911,6 +912,12 @@
 			"madeChange": "변경했습니다",
 			"descriptionChangeDiff": "설명 변경 차이"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "에픽 검색…",
+		"noEpicsFound": "일치하는 에픽이 없습니다",
+		"noEpicsYet": "이 프로젝트에는 아직 에픽이 없습니다",
+		"loadingMore": "불러오는 중…"
 	},
 	"board": {
 		"common": {

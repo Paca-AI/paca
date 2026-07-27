@@ -645,6 +645,7 @@
 			"searchPlaceholder": "Поиск по имени или username…",
 			"noUsersMatch": "Пользователи по запросу не найдены.",
 			"noUsersAvailable": "Нет пользователей, которых можно добавить.",
+			"loadingMore": "Загрузка…",
 			"roleLabel": "Роль",
 			"rolePlaceholder": "Выберите роль…",
 			"cancel": "Отмена",
@@ -927,6 +928,12 @@
 			"madeChange": "внёс(ла) изменение",
 			"descriptionChangeDiff": "Diff изменения описания"
 		}
+	},
+	"epicPicker": {
+		"searchPlaceholder": "Поиск эпиков…",
+		"noEpicsFound": "Эпики не найдены",
+		"noEpicsYet": "В этом проекте пока нет эпиков",
+		"loadingMore": "Загрузка…"
 	},
 	"board": {
 		"common": {

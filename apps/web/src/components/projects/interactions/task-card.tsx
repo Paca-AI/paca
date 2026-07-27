@@ -1,4 +1,12 @@
-import { Check, GripVertical, Layers, Link, User } from "lucide-react";
+import {
+	Check,
+	GripVertical,
+	Layers,
+	Link,
+	Loader2,
+	Search,
+	User,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -16,11 +24,12 @@ import {
 } from "@/components/ui/popover";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
-import type {
-	CustomFieldDefinition,
-	ProjectMember,
-	TaskStatus,
-	TaskType,
+import {
+	type CustomFieldDefinition,
+	findEpicType,
+	type ProjectMember,
+	type TaskStatus,
+	type TaskType,
 } from "@/lib/project-api";
 import { useHoveredTaskStore } from "@/lib/shortcuts/hovered-task-store";
 import { cn } from "@/lib/utils";
@@ -30,7 +39,13 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
-import { DEFAULT_VISIBLE_FIELDS, type TaskFieldUpdate } from "./view-utils";
+import { useEpicSearch } from "./use-epic-search";
+import {
+	createEpicScrollHandler,
+	DEFAULT_VISIBLE_FIELDS,
+	type EpicsPagination,
+	type TaskFieldUpdate,
+} from "./view-utils";
 
 type UpdatePayload = TaskFieldUpdate;
 
@@ -41,6 +56,9 @@ interface TaskCardProps {
 	taskTypes: TaskType[];
 	members?: ProjectMember[];
 	epics?: Task[];
+	/** Load-more state for the epic picker Popover — omitted when the caller
+	 * doesn't paginate epics (e.g. fewer than one page's worth). */
+	epicsPagination?: EpicsPagination;
 	visibleFields?: string[];
 	customFields?: CustomFieldDefinition[];
 	onClick?: () => void;
@@ -68,6 +86,7 @@ export function TaskCard({
 	taskTypes,
 	members = [],
 	epics = [],
+	epicsPagination,
 	visibleFields = DEFAULT_VISIBLE_FIELDS,
 	customFields = [],
 	onClick,
@@ -85,6 +104,15 @@ export function TaskCard({
 	const [isHovered, setIsHovered] = useState(false);
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);
+	const epicTypeId = findEpicType(taskTypes)?.id;
+	const {
+		search: epicSearch,
+		setSearch: setEpicSearch,
+		isSearching: isEpicSearching,
+		results: epicSearchResults,
+		isLoading: epicSearchLoading,
+		pagination: epicSearchPagination,
+	} = useEpicSearch(task.project_id, epicTypeId, epicOpen);
 	const taskType = taskTypes.find((t) => t.id === task.task_type_id);
 	const status = statuses.find((s) => s.id === task.status_id);
 
@@ -493,6 +521,10 @@ export function TaskCard({
 				const epic = task.parent_task_id
 					? epics.find((e) => e.id === task.parent_task_id)
 					: undefined;
+				const displayedEpics = isEpicSearching ? epicSearchResults : epics;
+				const activeEpicsPagination = isEpicSearching
+					? epicSearchPagination
+					: epicsPagination;
 				return canEdit ? (
 					<Popover key="epic" open={epicOpen} onOpenChange={setEpicOpen}>
 						<PopoverTrigger
@@ -510,41 +542,80 @@ export function TaskCard({
 							)}
 						</PopoverTrigger>
 						<PopoverContent
-							className="w-56 p-1 rounded-xl border border-border/40 shadow-lg"
+							className="w-64 p-1.5 rounded-xl border border-border/40 shadow-lg"
 							align="start"
 						>
-							<button
-								type="button"
-								className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 transition-colors duration-100"
-								onClick={(e) => {
-									e.stopPropagation();
-									onUpdate?.(task.id, { parent_task_id: null });
-								}}
+							<div className="relative mb-1">
+								<Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+								<input
+									type="text"
+									value={epicSearch}
+									onClick={(e) => e.stopPropagation()}
+									onChange={(e) => setEpicSearch(e.target.value)}
+									placeholder={t("epicPicker.searchPlaceholder")}
+									className="w-full rounded-lg border border-border/30 bg-muted/25 py-1.5 pr-2 pl-8 text-sm placeholder:text-muted-foreground/50 transition-all duration-150 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+								/>
+							</div>
+							<div
+								className="max-h-64 overflow-y-auto"
+								onScroll={createEpicScrollHandler(activeEpicsPagination)}
 							>
-								<span className="flex-1 text-left">
-									{t("board.taskCard.noEpic")}
-								</span>
-								{!task.parent_task_id && (
-									<Check className="size-3.5 text-primary" />
-								)}
-							</button>
-							{epics.map((e) => (
 								<button
-									key={e.id}
 									type="button"
-									className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted/60 transition-colors duration-100"
-									onClick={(ev) => {
-										ev.stopPropagation();
-										onUpdate?.(task.id, { parent_task_id: e.id });
+									className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted/60 transition-colors duration-100"
+									onClick={(e) => {
+										e.stopPropagation();
+										onUpdate?.(task.id, { parent_task_id: null });
 									}}
 								>
-									<Layers className="size-3.5 shrink-0 text-violet-500 opacity-70" />
-									<span className="flex-1 text-left truncate">{e.title}</span>
-									{e.id === task.parent_task_id && (
+									<span className="flex-1 text-left">
+										{t("board.taskCard.noEpic")}
+									</span>
+									{!task.parent_task_id && (
 										<Check className="size-3.5 text-primary" />
 									)}
 								</button>
-							))}
+								{isEpicSearching && epicSearchLoading ? (
+									<div className="flex items-center justify-center py-4">
+										<Loader2 className="size-4 animate-spin text-muted-foreground/50" />
+									</div>
+								) : (
+									<>
+										{displayedEpics.map((e) => (
+											<button
+												key={e.id}
+												type="button"
+												className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-muted/60 transition-colors duration-100"
+												onClick={(ev) => {
+													ev.stopPropagation();
+													onUpdate?.(task.id, { parent_task_id: e.id });
+												}}
+											>
+												<Layers className="size-3.5 shrink-0 text-violet-500 opacity-70" />
+												<span className="flex-1 text-left truncate">
+													{e.title}
+												</span>
+												{e.id === task.parent_task_id && (
+													<Check className="size-3.5 text-primary" />
+												)}
+											</button>
+										))}
+										{displayedEpics.length === 0 && (
+											<p className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+												{isEpicSearching
+													? t("epicPicker.noEpicsFound")
+													: t("epicPicker.noEpicsYet")}
+											</p>
+										)}
+									</>
+								)}
+								{activeEpicsPagination?.isLoadingMore && (
+									<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+										<Loader2 className="size-3 animate-spin" />
+										{t("epicPicker.loadingMore")}
+									</div>
+								)}
+							</div>
 						</PopoverContent>
 					</Popover>
 				) : epic ? (

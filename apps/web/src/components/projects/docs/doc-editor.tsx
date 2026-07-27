@@ -48,7 +48,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 		ref,
 	) {
 		const { resolvedMode } = useThemeMode();
-		const { teamMembers, tasks, documents } = useMentionData(projectId);
+		const { teamMembers, documents } = useMentionData(projectId);
 
 		const lastSavedRef = useRef<string | null>(null);
 		const initializedRef = useRef(false);
@@ -188,7 +188,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 						<MentionSuggestionMenus
 							editor={editor}
 							teamMembers={teamMembers}
-							tasks={tasks}
+							projectId={projectId}
 							documents={documents}
 						/>
 					)}
