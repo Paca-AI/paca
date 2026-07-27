@@ -84,6 +84,8 @@ jobs:
           context: services/api
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            PACA_VERSION=${{ github.event.release.tag_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
