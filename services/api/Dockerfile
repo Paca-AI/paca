@@ -17,6 +17,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOMAXPROCS=1 GOMEMLIMIT=768MiB \
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM alpine:3.21
 
+# Release tag this image was built from (e.g. "v1.2.3"), baked in by CD via
+# --build-arg. Read at startup as PACA_VERSION; defaults to "dev" for local
+# builds. See internal/config/load.go and internal/transport/http/handler/version_handler.go.
+ARG PACA_VERSION=dev
+ENV PACA_VERSION=$PACA_VERSION
+
 RUN apk add --no-cache ca-certificates tzdata su-exec
 
 # Create a dedicated non-root user and group for running the API
