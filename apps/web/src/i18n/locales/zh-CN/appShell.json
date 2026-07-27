@@ -27,7 +27,8 @@
 		"conversations": "对话",
 		"automation": "自动化",
 		"team": "团队",
-		"settings": "设置"
+		"settings": "设置",
+		"changelog": "最新动态"
 	},
 	"projectSwitcher": {
 		"projects": "项目",

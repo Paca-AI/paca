@@ -25,6 +25,14 @@
 		"added": "추가됨"
 	},
 	"home": {
+		"updateBanner": {
+			"title": "업데이트 사용 가능",
+			"upstream": "Paca가 {{version}}을(를) 출시했습니다.",
+			"fork": "버전 {{version}}을(를) 사용할 수 있습니다.",
+			"current": "현재 {{version}}을(를) 사용 중입니다.",
+			"viewRelease": "릴리스 보기",
+			"dismiss": "닫기"
+		},
 		"greeting": {
 			"morning": "좋은 아침이에요",
 			"afternoon": "안녕하세요",

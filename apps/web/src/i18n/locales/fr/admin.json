@@ -261,5 +261,12 @@
 			"title": "Disposition des points d'extension",
 			"description": "Faites glisser pour réorganiser les panneaux de plugins au sein de chaque point d'extension. Activez ou désactivez la visibilité pour afficher ou masquer les panneaux pour tous les utilisateurs."
 		}
+	},
+	"changelog": {
+		"title": "Nouveautés",
+		"description": "Suivez les améliorations et les nouveautés des dernières versions de Paca.",
+		"current": "Version actuelle",
+		"error": "Impossible de charger les nouveautés pour le moment. Veuillez réessayer plus tard.",
+		"empty": "Aucune note de version disponible pour le moment."
 	}
 }

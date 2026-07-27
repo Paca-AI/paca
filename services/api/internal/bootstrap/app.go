@@ -297,6 +297,7 @@ func New(cfg *config.Config) (*App, error) {
 		APIKeyAuth:           apiKeyService,
 		Authorizer:           authorizer,
 		Health:               handler.NewHealthHandler(),
+		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
 		User:                 handler.NewUserHandler(userService, authService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),

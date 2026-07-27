@@ -25,6 +25,14 @@
 		"added": "追加"
 	},
 	"home": {
+		"updateBanner": {
+			"title": "アップデートがあります",
+			"upstream": "Paca が {{version}} をリリースしました。",
+			"fork": "あなたのバージョン {{version}} が利用可能です。",
+			"current": "現在 {{version}} を使用中です。",
+			"viewRelease": "リリースを見る",
+			"dismiss": "閉じる"
+		},
 		"greeting": {
 			"morning": "おはようございます",
 			"afternoon": "こんにちは",

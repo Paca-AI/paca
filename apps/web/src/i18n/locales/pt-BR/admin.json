@@ -261,5 +261,12 @@
 			"title": "Layout de Pontos de Extensão",
 			"description": "Arraste para reordenar os painéis de plugins dentro de cada ponto de extensão. Alterne a visibilidade para mostrar ou ocultar painéis para todos os usuários."
 		}
+	},
+	"changelog": {
+		"title": "Novidades",
+		"description": "Acompanhe as melhorias e novidades das últimas versões do Paca.",
+		"current": "Versão atual",
+		"error": "Não foi possível carregar as novidades agora. Tente novamente mais tarde.",
+		"empty": "Nenhuma novidade disponível no momento."
 	}
 }

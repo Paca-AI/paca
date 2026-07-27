@@ -25,6 +25,14 @@
 		"added": "已添加"
 	},
 	"home": {
+		"updateBanner": {
+			"title": "有可用更新",
+			"upstream": "Paca 发布了 {{version}}。",
+			"fork": "您的版本 {{version}} 已可用。",
+			"current": "您当前使用 {{version}}。",
+			"viewRelease": "查看发布",
+			"dismiss": "关闭"
+		},
 		"greeting": {
 			"morning": "早上好",
 			"afternoon": "下午好",

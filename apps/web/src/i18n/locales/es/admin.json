@@ -261,5 +261,12 @@
 			"title": "Diseño de puntos de extensión",
 			"description": "Arrastra para reordenar los paneles de plugins dentro de cada punto de extensión. Activa o desactiva la visibilidad para mostrar u ocultar paneles para todos los usuarios."
 		}
+	},
+	"changelog": {
+		"title": "Novedades",
+		"description": "Sigue las mejoras y novedades de las últimas versiones de Paca.",
+		"current": "Versión actual",
+		"error": "No se pudieron cargar las novedades en este momento. Inténtalo de nuevo más tarde.",
+		"empty": "Aún no hay notas de versión disponibles."
 	}
 }

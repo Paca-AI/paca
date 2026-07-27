@@ -25,6 +25,14 @@
 		"added": "Đã thêm"
 	},
 	"home": {
+		"updateBanner": {
+			"title": "Có bản cập nhật",
+			"upstream": "Paca đã phát hành {{version}}.",
+			"fork": "Phiên bản {{version}} của bạn đã có sẵn.",
+			"current": "Bạn đang dùng {{version}}.",
+			"viewRelease": "Xem bản phát hành",
+			"dismiss": "Bỏ qua"
+		},
 		"greeting": {
 			"morning": "Chào buổi sáng",
 			"afternoon": "Chào buổi chiều",

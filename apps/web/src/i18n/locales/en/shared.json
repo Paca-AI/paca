@@ -25,6 +25,14 @@
 		"added": "Added"
 	},
 	"home": {
+		"updateBanner": {
+			"title": "Update available",
+			"upstream": "Paca released {{version}}.",
+			"fork": "Your version {{version}} is available.",
+			"current": "You're on {{version}}.",
+			"viewRelease": "View release",
+			"dismiss": "Dismiss"
+		},
 		"greeting": {
 			"morning": "Good morning",
 			"afternoon": "Good afternoon",

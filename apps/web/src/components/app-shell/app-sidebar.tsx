@@ -28,6 +28,7 @@ import {
 	Puzzle,
 	Settings,
 	Shield,
+	Sparkles,
 	Sun,
 	Trash2,
 	Users,
@@ -1502,6 +1503,11 @@ export function AppSidebar() {
 													exact
 												/>
 											) : null}
+											<NavItem
+												to="/admin/changelog"
+												icon={Sparkles}
+												label={t("nav.changelog")}
+											/>
 											<PluginAdminPages navItems={adminPluginNavItems} />
 										</SidebarMenu>
 									</SidebarGroupContent>
