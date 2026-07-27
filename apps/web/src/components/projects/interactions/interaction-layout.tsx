@@ -1,4 +1,5 @@
 import {
+	useInfiniteQuery,
 	useMutation,
 	useQueries,
 	useQuery,
@@ -53,7 +54,7 @@ import {
 	createViewByContext,
 	deleteTask,
 	deleteViewById,
-	epicTasksQueryOptions,
+	epicTasksInfiniteQueryOptions,
 	type FilterConfig,
 	type InteractionView,
 	type ListTasksOptions,
@@ -97,6 +98,7 @@ import { RoadmapView } from "./roadmap-view";
 import { TaskDetailModal } from "./task-detail-modal";
 import { UNASSIGNED_FILTER_ID, ViewSettingsPanel } from "./view-settings-panel";
 import {
+	type EpicsPagination,
 	getColumnGroupDefs,
 	getDefaultInitialPageSize,
 	getDefaultPageSize,
@@ -550,12 +552,33 @@ export function InteractionLayout({
 
 	const { data: sprints = [] } = useQuery(sprintsQueryOptions(projectId));
 
-	// Fetch Epic tasks for display in the epic field on task cards/rows
+	// Fetch Epic tasks for display in the epic field on task cards/rows.
+	// Paginated 20-per-page (see epicTasksInfiniteQueryOptions) — every epic
+	// picker app-wide (task detail, board/list-view cards & rows, the
+	// right-click context menu) shares this single query and its
+	// fetchNextPage/hasNextPage via the epicsPagination object below.
 	const epicType = findEpicType(taskTypes);
-	const { data: epicTasks = [] } = useQuery({
-		...epicTasksQueryOptions(projectId, epicType?.id ?? ""),
+	const {
+		data: epicPages,
+		fetchNextPage: fetchNextEpicsPage,
+		hasNextPage: hasMoreEpics,
+		isFetchingNextPage: isFetchingMoreEpics,
+	} = useInfiniteQuery({
+		...epicTasksInfiniteQueryOptions(projectId, epicType?.id ?? ""),
 		enabled: !!epicType?.id,
 	});
+	const epicTasks = useMemo(
+		() => epicPages?.pages.flatMap((page) => page.items) ?? [],
+		[epicPages],
+	);
+	const epicsPagination: EpicsPagination = useMemo(
+		() => ({
+			hasMore: !!hasMoreEpics,
+			isLoadingMore: isFetchingMoreEpics,
+			onLoadMore: () => void fetchNextEpicsPage(),
+		}),
+		[hasMoreEpics, isFetchingMoreEpics, fetchNextEpicsPage],
+	);
 
 	const isRealView = !!activeViewId && !activeViewId.startsWith("__default-");
 	const effectiveViewId = isManualSort && isRealView ? activeViewId : undefined;
@@ -1702,6 +1725,7 @@ export function InteractionLayout({
 						customFields={customFields}
 						sprints={sprints}
 						epics={epicTasks}
+						epicsPagination={epicsPagination}
 						viewConfig={activeViewConfig}
 						canCreate={canCreate}
 						canEdit={canEdit}
@@ -1752,6 +1776,7 @@ export function InteractionLayout({
 						members={members}
 						customFields={customFields}
 						epics={epicTasks}
+						epicsPagination={epicsPagination}
 						viewConfig={activeViewConfig}
 						canCreate={canCreate}
 						columnPagination={columnPagination}

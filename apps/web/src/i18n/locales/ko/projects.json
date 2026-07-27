@@ -739,6 +739,8 @@
 			"epic": "에픽",
 			"viewEpic": "에픽 보기",
 			"removeEpic": "에픽 제거",
+			"loadMoreEpics": "에픽 더 불러오기",
+			"loadingEpics": "로딩 중…",
 			"parent": "상위 항목",
 			"viewParent": "상위 항목 보기",
 			"removeParent": "상위 항목 제거",

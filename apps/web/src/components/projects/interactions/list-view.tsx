@@ -14,6 +14,7 @@ import {
 	applyStatusFilterToColumnDefs,
 	type ColumnGroupDef,
 	DEFAULT_VISIBLE_FIELDS,
+	type EpicsPagination,
 	getColumnGroupDefs,
 	getSwimlaneDefs,
 	getTaskColumnKeys,
@@ -31,6 +32,8 @@ export interface ListViewProps {
 	members?: ProjectMember[];
 	customFields?: CustomFieldDefinition[];
 	epics?: Task[];
+	/** Load-more state for the epic picker, shared by every group/row/card. */
+	epicsPagination?: EpicsPagination;
 	viewConfig?: ViewConfig;
 	canCreate: boolean;
 	onCreateTask: (
@@ -84,6 +87,7 @@ export function ListView({
 	members = [],
 	customFields = [],
 	epics = [],
+	epicsPagination,
 	viewConfig,
 	canCreate,
 	onCreateTask,
@@ -237,6 +241,7 @@ export function ListView({
 						members={members}
 						customFields={customFields}
 						epics={epics}
+						epicsPagination={epicsPagination}
 						canCreate={canCreate}
 						defaultCollapsed={defaultCollapsed}
 						fieldSum={fieldSum}

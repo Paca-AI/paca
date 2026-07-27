@@ -755,22 +755,39 @@ export const sprintTasksQueryOptions = (projectId: string, sprintId: string) =>
 		staleTime: 15_000,
 	});
 
-/** Fetches all tasks whose task_type is "Epic" for a project. */
+export const EPIC_TASKS_PAGE_SIZE = 20;
+
+/** Fetches one page of tasks whose task_type is "Epic" for a project.
+ *  Cursor-paginated at EPIC_TASKS_PAGE_SIZE (well under the backend's 200
+ *  max page size) — callers that need every epic should page through with
+ *  epicTasksInfiniteQueryOptions rather than requesting one giant page. */
 export async function listEpicTasks(
 	projectId: string,
 	epicTypeId: string,
-): Promise<Task[]> {
-	const result = await listAllTasks(projectId, {
+	opts: { cursor?: string } = {},
+): Promise<TaskListResult> {
+	return listAllTasks(projectId, {
 		taskTypeIds: [epicTypeId],
-		pageSize: 500,
+		pageSize: EPIC_TASKS_PAGE_SIZE,
+		cursor: opts.cursor,
 	});
-	return result.items;
 }
 
-export const epicTasksQueryOptions = (projectId: string, epicTypeId: string) =>
-	queryOptions({
+/** Infinite-query version of the epic-task fetch — backs every epic picker
+ *  (task detail Epic field, board/list-view quick-pick popovers, the
+ *  right-click "Epic" submenu). Pages load 20 at a time via next_cursor;
+ *  consumers flatten `data.pages` into a flat epic list and expose
+ *  fetchNextPage/hasNextPage as "Load more" affordances in the picker UI. */
+export const epicTasksInfiniteQueryOptions = (
+	projectId: string,
+	epicTypeId: string,
+) =>
+	infiniteQueryOptions({
 		queryKey: ["projects", projectId, "tasks", "epics", epicTypeId],
-		queryFn: () => listEpicTasks(projectId, epicTypeId),
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listEpicTasks(projectId, epicTypeId, { cursor: pageParam }),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 		staleTime: 30_000,
 		enabled: !!projectId && !!epicTypeId,
 	});

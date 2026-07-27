@@ -31,7 +31,11 @@ import {
 	PRIORITY_LEVELS,
 } from "./priority";
 import { TaskTypeSelector } from "./task-type-selector";
-import { DEFAULT_VISIBLE_FIELDS, type TaskFieldUpdate } from "./view-utils";
+import {
+	DEFAULT_VISIBLE_FIELDS,
+	type EpicsPagination,
+	type TaskFieldUpdate,
+} from "./view-utils";
 
 // ── Column config ──────────────────────────────────────────────────────────────
 
@@ -132,6 +136,9 @@ interface TaskRowProps {
 	taskTypes: TaskType[];
 	members?: ProjectMember[];
 	epics?: Task[];
+	/** Load-more state for the epic picker Popover — omitted when the caller
+	 * doesn't paginate epics (e.g. fewer than one page's worth). */
+	epicsPagination?: EpicsPagination;
 	customFields?: CustomFieldDefinition[];
 	visibleFields?: string[];
 	onClick?: () => void;
@@ -154,6 +161,7 @@ export function TaskRow({
 	taskTypes,
 	members = [],
 	epics = [],
+	epicsPagination,
 	customFields = [],
 	visibleFields = DEFAULT_VISIBLE_FIELDS,
 	onClick,
@@ -636,6 +644,18 @@ export function TaskRow({
 										)}
 									</button>
 								))}
+								{epicsPagination?.hasMore && (
+									<button
+										type="button"
+										className="flex w-full items-center justify-center rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground/60 hover:bg-muted/60 hover:text-primary transition-colors duration-100 disabled:opacity-50"
+										onClick={() => epicsPagination.onLoadMore()}
+										disabled={epicsPagination.isLoadingMore}
+									>
+										{epicsPagination.isLoadingMore
+											? t("board.taskRow.loadingEpics")
+											: t("board.taskRow.loadMoreEpics")}
+									</button>
+								)}
 							</PopoverContent>
 						</Popover>
 					</div>

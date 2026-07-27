@@ -25,6 +25,7 @@ import {
 	buildColumnDropUpdate,
 	type ColumnGroupDef,
 	DEFAULT_VISIBLE_FIELDS,
+	type EpicsPagination,
 	getColumnGroupDefs,
 	getSwimlaneDefs,
 	getTaskColumnKeys,
@@ -55,6 +56,8 @@ interface BoardViewProps {
 	) => Promise<void>;
 	onTaskClick: (task: Task) => void;
 	epics?: Task[];
+	/** Load-more state for the epic picker, shared by every card in this view. */
+	epicsPagination?: EpicsPagination;
 	onUpdateTask?: (taskId: string, payload: TaskFieldUpdate) => void;
 	onMoveToColumn?: (taskId: string, update: TaskFieldUpdate) => void;
 	/** Opens the delete-confirmation dialog for a task — wired to the
@@ -91,6 +94,7 @@ export function BoardView({
 	canEdit,
 	tasksQueryKey,
 	epics = [],
+	epicsPagination,
 	onCreateTask,
 	onTaskClick,
 	onUpdateTask,
@@ -560,6 +564,7 @@ export function BoardView({
 							taskTypes={taskTypes}
 							members={members}
 							epics={epics}
+							epicsPagination={epicsPagination}
 							canEdit={!!canEdit}
 							onOpen={() => onTaskClick(task)}
 							onUpdate={handleInlineUpdate}
@@ -577,6 +582,7 @@ export function BoardView({
 								members={members}
 								customFields={customFields}
 								epics={epics}
+								epicsPagination={epicsPagination}
 								visibleFields={visibleFields}
 								canEdit={canEdit}
 								isDragging={draggingId === task.id}

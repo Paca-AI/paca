@@ -440,6 +440,17 @@ export function buildAllFieldOptions(
 
 // ── Task update payload builder for column drag ───────────────────────────────
 
+/** Load-more state/handler for an epic picker fed by a paginated (20-per-page)
+ * epic query. Threaded from the view/layout root, which owns the single
+ * `useInfiniteQuery`, down to whichever picker UI (Popover/DropdownMenu/
+ * ContextMenu) is currently rendering the epic list, so every epic picker
+ * app-wide shares one "Load more" affordance instead of duplicating queries. */
+export interface EpicsPagination {
+	hasMore: boolean;
+	isLoadingMore: boolean;
+	onLoadMore: () => void;
+}
+
 export type TaskFieldUpdate = Partial<{
 	status_id: string | null;
 	assignee_ids: string[];

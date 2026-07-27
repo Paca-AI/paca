@@ -28,6 +28,7 @@ import {
 	PRIORITY_LEVELS,
 } from "../priority";
 import { TaskTypeSelector } from "../task-type-selector";
+import type { EpicsPagination } from "../view-utils";
 import { AddFieldDialog } from "./add-field-dialog";
 import { FieldRow } from "./primitives";
 import type { SelectOption, UserOption } from "./property-field";
@@ -69,6 +70,8 @@ interface PropertiesPanelProps {
 	taskRole?: "epic" | "normal";
 	/** All epic tasks in the project, for the epic picker on normal tasks */
 	epicTasks?: Task[];
+	/** Load-more state for the epic picker's paginated (20-per-page) query */
+	epicsPagination?: EpicsPagination;
 	/** The resolved parent task object (when parent_task_id is set) */
 	parentTask?: Task;
 	onUpdate?: (payload: UpdatePayload) => void;
@@ -99,6 +102,7 @@ export function PropertiesPanel({
 	canEdit = true,
 	taskRole = "normal",
 	epicTasks = [],
+	epicsPagination,
 	parentTask,
 	onUpdate,
 	onNavigateToTask,
@@ -367,7 +371,20 @@ export function PropertiesPanel({
 												<span className="truncate">{e.title}</span>
 											</DropdownMenuItem>
 										))}
-									</DropdownMenuContent>
+										{epicsPagination?.hasMore && (
+											<DropdownMenuItem
+												closeOnClick={false}
+												onClick={() => epicsPagination.onLoadMore()}
+												disabled={epicsPagination.isLoadingMore}
+											>
+												<span className="flex-1 truncate text-muted-foreground">
+													{epicsPagination.isLoadingMore
+														? t("taskDetail.properties.loadingEpics")
+														: t("taskDetail.properties.loadMoreEpics")}
+												</span>
+											</DropdownMenuItem>
+										)}
+										</DropdownMenuContent>
 								</DropdownMenu>
 							</FieldRow>
 						);

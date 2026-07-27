@@ -739,6 +739,8 @@
 			"epic": "Épico",
 			"viewEpic": "Ver épico",
 			"removeEpic": "Remover épico",
+			"loadMoreEpics": "Carregar mais épicos",
+			"loadingEpics": "Carregando…",
 			"parent": "Pai",
 			"viewParent": "Ver pai",
 			"removeParent": "Remover pai",

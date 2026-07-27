@@ -24,7 +24,11 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
-import type { ColumnGroupDef, TaskFieldUpdate } from "./view-utils";
+import type {
+	ColumnGroupDef,
+	EpicsPagination,
+	TaskFieldUpdate,
+} from "./view-utils";
 
 const shortcutChord = (id: string) =>
 	SHORTCUT_DISPLAY.find((e) => e.id === id)?.chords[0];
@@ -45,6 +49,9 @@ interface TaskContextMenuProps {
 	taskTypes: TaskType[];
 	members: ProjectMember[];
 	epics: Task[];
+	/** Load-more state for the epic submenu — omitted when the caller
+	 * doesn't paginate epics (e.g. fewer than one page's worth). */
+	epicsPagination?: EpicsPagination;
 	canEdit: boolean;
 	onOpen: () => void;
 	onUpdate?: (taskId: string, update: TaskFieldUpdate) => void;
@@ -66,6 +73,7 @@ export function TaskContextMenu({
 	taskTypes,
 	members,
 	epics,
+	epicsPagination,
 	canEdit,
 	onOpen,
 	onUpdate,
@@ -289,9 +297,22 @@ export function TaskContextMenu({
 									)}
 								</ContextMenuItem>
 							))}
-						</ContextMenuSubContent>
-					</ContextMenuSub>
-				)}
+						{epicsPagination?.hasMore && (
+							<ContextMenuItem
+								closeOnClick={false}
+								onClick={() => epicsPagination.onLoadMore()}
+								disabled={epicsPagination.isLoadingMore}
+							>
+								<span className="flex-1 truncate text-muted-foreground">
+									{epicsPagination.isLoadingMore
+										? t("board.taskContextMenu.loadingEpics")
+										: t("board.taskContextMenu.loadMoreEpics")}
+								</span>
+							</ContextMenuItem>
+						)}
+					</ContextMenuSubContent>
+				</ContextMenuSub>
+			)}
 
 				<ContextMenuSeparator />
 

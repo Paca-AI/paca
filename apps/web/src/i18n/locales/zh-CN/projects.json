@@ -739,6 +739,8 @@
 			"epic": "史诗",
 			"viewEpic": "查看史诗",
 			"removeEpic": "移除史诗",
+			"loadMoreEpics": "加载更多史诗任务",
+			"loadingEpics": "加载中…",
 			"parent": "父任务",
 			"viewParent": "查看父任务",
 			"removeParent": "移除父任务",

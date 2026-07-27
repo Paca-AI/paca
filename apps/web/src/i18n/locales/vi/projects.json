@@ -739,6 +739,8 @@
 			"epic": "Epic",
 			"viewEpic": "Xem epic",
 			"removeEpic": "Gỡ epic",
+			"loadMoreEpics": "Tải thêm epic",
+			"loadingEpics": "Đang tải…",
 			"parent": "Nhiệm vụ cha",
 			"viewParent": "Xem nhiệm vụ cha",
 			"removeParent": "Gỡ nhiệm vụ cha",

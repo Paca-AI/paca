@@ -30,7 +30,11 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
-import { DEFAULT_VISIBLE_FIELDS, type TaskFieldUpdate } from "./view-utils";
+import {
+	DEFAULT_VISIBLE_FIELDS,
+	type EpicsPagination,
+	type TaskFieldUpdate,
+} from "./view-utils";
 
 type UpdatePayload = TaskFieldUpdate;
 
@@ -41,6 +45,9 @@ interface TaskCardProps {
 	taskTypes: TaskType[];
 	members?: ProjectMember[];
 	epics?: Task[];
+	/** Load-more state for the epic picker Popover — omitted when the caller
+	 * doesn't paginate epics (e.g. fewer than one page's worth). */
+	epicsPagination?: EpicsPagination;
 	visibleFields?: string[];
 	customFields?: CustomFieldDefinition[];
 	onClick?: () => void;
@@ -68,6 +75,7 @@ export function TaskCard({
 	taskTypes,
 	members = [],
 	epics = [],
+	epicsPagination,
 	visibleFields = DEFAULT_VISIBLE_FIELDS,
 	customFields = [],
 	onClick,
@@ -545,6 +553,21 @@ export function TaskCard({
 									)}
 								</button>
 							))}
+							{epicsPagination?.hasMore && (
+								<button
+									type="button"
+									className="flex w-full items-center justify-center rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground/60 hover:bg-muted/60 hover:text-primary transition-colors duration-100 disabled:opacity-50"
+									onClick={(ev) => {
+										ev.stopPropagation();
+										epicsPagination.onLoadMore();
+									}}
+									disabled={epicsPagination.isLoadingMore}
+								>
+									{epicsPagination.isLoadingMore
+										? t("board.taskCard.loadingEpics")
+										: t("board.taskCard.loadMoreEpics")}
+								</button>
+							)}
 						</PopoverContent>
 					</Popover>
 				) : epic ? (

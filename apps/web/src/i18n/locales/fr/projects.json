@@ -739,6 +739,8 @@
 			"epic": "Epic",
 			"viewEpic": "Voir l'epic",
 			"removeEpic": "Retirer l'epic",
+			"loadMoreEpics": "Charger plus d'épopées",
+			"loadingEpics": "Chargement…",
 			"parent": "Parent",
 			"viewParent": "Voir le parent",
 			"removeParent": "Retirer le parent",

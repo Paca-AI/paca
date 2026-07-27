@@ -1,11 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	createTask,
-	epicTasksQueryOptions,
+	epicTasksInfiniteQueryOptions,
 	sprintsQueryOptions,
 	subtasksQueryOptions,
 	taskQueryOptions,
@@ -22,6 +22,7 @@ import {
 import { cleanBlocks, cn } from "@/lib/utils";
 import { getTaskTypeIconComponent } from "../../task-types/task-type-icons";
 import { getPriority } from "../priority";
+import type { EpicsPagination } from "../view-utils";
 import { TaskActivityPane as ActivityPane } from "./activity-pane";
 import { AttachmentsSection } from "./attachments-section";
 import { DescriptionSection } from "./description-section";
@@ -113,15 +114,33 @@ export function TaskDetailModal({
 	const epicType = findEpicType(taskTypes);
 	const normalTaskTypes = getNormalTaskTypes(taskTypes);
 
-	// For normal tasks: fetch all epics to populate the Epic picker
-	const { data: epicTasks = [] } = useQuery({
-		...epicTasksQueryOptions(projectId ?? "", epicType?.id ?? ""),
+	// For normal tasks: fetch epics (paginated 20-per-page) to populate the
+	// Epic picker, with a "Load more" affordance for projects with >20 epics.
+	const {
+		data: epicPages,
+		fetchNextPage: fetchNextEpicsPage,
+		hasNextPage: hasMoreEpics,
+		isFetchingNextPage: isFetchingMoreEpics,
+	} = useInfiniteQuery({
+		...epicTasksInfiniteQueryOptions(projectId ?? "", epicType?.id ?? ""),
 		enabled:
 			!!projectId &&
 			!!epicType?.id &&
 			taskRole === "normal" &&
 			(open || mode === "page"),
 	});
+	const epicTasks = useMemo(
+		() => epicPages?.pages.flatMap((page) => page.items) ?? [],
+		[epicPages],
+	);
+	const epicsPagination: EpicsPagination = useMemo(
+		() => ({
+			hasMore: !!hasMoreEpics,
+			isLoadingMore: isFetchingMoreEpics,
+			onLoadMore: () => void fetchNextEpicsPage(),
+		}),
+		[hasMoreEpics, isFetchingMoreEpics, fetchNextEpicsPage],
+	);
 
 	// Fetch parent task to display its title/icon (for non-epic parents)
 	const { data: parentTask } = useQuery({
@@ -378,6 +397,7 @@ export function TaskDetailModal({
 								canEdit={canEdit}
 								taskRole={taskRole}
 								epicTasks={epicTasks}
+								epicsPagination={epicsPagination}
 								parentTask={parentTask}
 								onUpdate={handleUpdate}
 								onNavigateToTask={navigateToTask}
