@@ -707,14 +707,40 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID uuid.
 	})
 }
 
-// SendConversationMessage publishes a chat message to an active conversation.
+// SendConversationMessage posts a message into a conversation. A conversation that
+// is mid-turn takes the message straight away; one whose previous turn has ENDED is
+// resumed for another turn, so a chat can continue past a single exchange instead of
+// dead-ending with AGENT_CONVERSATION_NOT_RUNNING.
+//
+// This mirrors SendChatMessage's turn model, but keyed by conversation_id rather than
+// chat session: the agent runtimes hold their session keyed by conversation_id (the
+// ACP bridge keeps the conversation object alive across turns; an LLM chat sandbox
+// stays warm while paused), so re-dispatching the SAME conversation_id resumes with
+// prior context where it is still available and continues cleanly otherwise.
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID)
 	if err != nil {
 		return err
 	}
-	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
-		return agentdom.ErrConversationNotRunning
+	switch agentdom.ConversationStatus(c.Status) {
+	case agentdom.ConversationStatusRunning:
+		// Mid-turn: the message joins the turn already in flight (unchanged).
+	case agentdom.ConversationStatusQueued:
+		// Dispatched but not yet picked up by a worker — don't race a second turn
+		// onto the same conversation; the caller should retry shortly.
+		return agentdom.ErrConversationBusy
+	default:
+		// Paused or terminal (finished / failed / stopped): RESUME for another turn.
+		// Claim the status atomically (→ running) so two concurrent replies can't both
+		// re-dispatch the same conversation_id; the loser is told to retry as busy.
+		claimed, err := s.repo.ClaimConversationStatus(ctx, conversationID,
+			c.Status, string(agentdom.ConversationStatusRunning))
+		if err != nil {
+			return err
+		}
+		if !claimed {
+			return agentdom.ErrConversationBusy
+		}
 	}
 	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
 		"conversation_id": conversationID.String(),

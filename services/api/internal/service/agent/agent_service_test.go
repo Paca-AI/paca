@@ -1002,28 +1002,75 @@ func TestSendConversationMessage_Success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestSendConversationMessage_NotRunning(t *testing.T) {
+// A conversation whose previous turn has ENDED (finished/failed/stopped/paused) is
+// resumed for another turn: the status is claimed atomically and the trigger is
+// re-published, rather than dead-ending with AGENT_CONVERSATION_NOT_RUNNING.
+func TestSendConversationMessage_ResumesEndedConversation(t *testing.T) {
+	for _, status := range []string{"finished", "failed", "stopped", "paused"} {
+		t.Run(status, func(t *testing.T) {
+			projectID := uuid.New()
+			conversationID := uuid.New()
+			conversation := &agentdom.AgentConversation{
+				ID: conversationID, ProjectID: projectID, Status: status,
+			}
+			var claimedFrom, claimedTo string
+			repo := &mockAgentRepo{
+				findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+					return conversation, nil
+				},
+				claimConversationStatus: func(_ context.Context, _ uuid.UUID, from, to string) (bool, error) {
+					claimedFrom, claimedTo = from, to
+					return true, nil
+				},
+			}
+			svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+			err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "another turn", uuid.New())
+
+			assert.NoError(t, err)
+			assert.Equal(t, status, claimedFrom)  // claimed FROM the ended status…
+			assert.Equal(t, "running", claimedTo) // …TO running, ready to re-dispatch
+		})
+	}
+}
+
+// If the atomic claim loses the race (another reply already resumed the same
+// conversation), the caller is told to retry rather than double-dispatching.
+func TestSendConversationMessage_BusyWhenClaimLost(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
-	conversation := &agentdom.AgentConversation{
-		ID:        conversationID,
-		ProjectID: projectID,
-		Status:    "finished",
+	conversation := &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID, Status: "finished"}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			return false, nil // lost the CAS
+		},
 	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "msg", uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
+}
+
+// A queued conversation (dispatched but not yet picked up) is reported busy, so we
+// never race a second turn onto it.
+func TestSendConversationMessage_BusyWhenQueued(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID, Status: "queued"}
 	repo := &mockAgentRepo{
 		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return conversation, nil
 		},
 	}
-	projRepo := &mockProjectRepo{}
-	pluginRepo := &mockPluginRepo{}
-	svc := New(repo, projRepo, nil, pluginRepo)
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New())
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "msg", uuid.New())
 
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, agentdom.ErrConversationNotRunning)
+	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
 
 func TestStopConversation_Success(t *testing.T) {
