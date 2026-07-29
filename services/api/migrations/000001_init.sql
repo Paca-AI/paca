@@ -40,7 +40,13 @@ CREATE TABLE IF NOT EXISTS users (
         ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uni_users_username ON users (username);
+-- Scoped to ACTIVE users (deleted_at IS NULL) so this init migration is safe to
+-- re-run on every boot (RunMigrations replays all files, relying on idempotency)
+-- once a username has a soft-deleted duplicate — which becomes legal at 000016.
+-- A FULL unique index here instead fails with 23505 the moment a user is deleted
+-- and the name reused, crash-looping the API on its next restart. This matches the
+-- final state 000016 (scope_username_unique_to_active) establishes anyway.
+CREATE UNIQUE INDEX IF NOT EXISTS uni_users_username ON users (username) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users (deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role_id    ON users (role_id);
 
