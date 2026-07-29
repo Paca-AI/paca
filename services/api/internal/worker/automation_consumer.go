@@ -120,6 +120,8 @@ type AutomationConsumer struct {
 	publisher      *messaging.Publisher
 	httpClient     *http.Client
 	log            *slog.Logger
+	groupName      string
+	groupStartID   string
 	consumerName   string
 	stopCh         chan struct{}
 	doneCh         chan struct{}
@@ -153,6 +155,25 @@ func (c *AutomationConsumer) WithAgentMessaging(memberRepo automationMemberReade
 	return c
 }
 
+// WithConsumerGroup overrides the Redis Streams consumer group this consumer
+// joins (default: automationConsumerGroup, one shared group for the whole
+// process). Production has no reason to call this — one persistent group is
+// what makes a restart resume from its own pending entries instead of
+// replaying history. It exists for e2e tests that share one physical Redis
+// instance and stream across many parallel, otherwise fully DB-isolated
+// tests: without a group of its own, every test's consumer would compete for
+// the same group's cursor and pending-entries list, delivering one test's
+// events to another test's consumer instance. The group is created starting
+// from "$" (now) rather than "0" (the constructor's default), so a fresh
+// per-test group never replays the ever-growing shared stream's history from
+// earlier tests.
+func (c *AutomationConsumer) WithConsumerGroup(name string) *AutomationConsumer {
+	c.groupName = name
+	c.groupStartID = "$"
+	c.consumerName = fmt.Sprintf("%s.%s", name, uuid.New().String())
+	return c
+}
+
 // NewAutomationConsumer creates a consumer that is ready to be started.
 func NewAutomationConsumer(
 	client *redis.Client,
@@ -176,6 +197,8 @@ func NewAutomationConsumer(
 		publisher:    publisher,
 		httpClient:   netguard.NewSafeHTTPClient(30 * time.Second),
 		log:          log,
+		groupName:    automationConsumerGroup,
+		groupStartID: "0",
 		consumerName: fmt.Sprintf("%s.%s", automationConsumerGroup, hostname),
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
@@ -193,7 +216,7 @@ func (c *AutomationConsumer) Start(ctx context.Context) {
 
 func (c *AutomationConsumer) ensureGroup(ctx context.Context) error {
 	for _, stream := range []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers} {
-		err := c.client.XGroupCreateMkStream(ctx, stream, automationConsumerGroup, "0").Err()
+		err := c.client.XGroupCreateMkStream(ctx, stream, c.groupName, c.groupStartID).Err()
 		if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 			return err
 		}
@@ -223,7 +246,7 @@ func (c *AutomationConsumer) run() {
 
 		ctx, cancel := context.WithTimeout(context.Background(), automationReadBlock+time.Second)
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    automationConsumerGroup,
+			Group:    c.groupName,
 			Consumer: c.consumerName,
 			Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, ">", ">"},
 			Count:    automationReadCount,
@@ -268,7 +291,7 @@ func (c *AutomationConsumer) dispatchMessages(msgs []redis.XStream) {
 
 func (c *AutomationConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-		Group:    automationConsumerGroup,
+		Group:    c.groupName,
 		Consumer: c.consumerName,
 		Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, "0", "0"},
 		Count:    automationReadCount,
@@ -294,7 +317,7 @@ type taskUpdatedContent struct {
 }
 
 func (c *AutomationConsumer) ack(ctx context.Context, stream, id string) {
-	if err := c.client.XAck(ctx, stream, automationConsumerGroup, id).Err(); err != nil {
+	if err := c.client.XAck(ctx, stream, c.groupName, id).Err(); err != nil {
 		c.log.Warn("automation consumer: xack failed", "stream", stream, "id", id, "err", err)
 	}
 }

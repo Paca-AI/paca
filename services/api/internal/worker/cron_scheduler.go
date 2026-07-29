@@ -27,24 +27,26 @@ const (
 // per-tick "is it due" check: due-date is a one-shot event per (node, task),
 // cron is a recurring schedule anchored to its own last-fired timestamp.
 type CronScheduler struct {
-	client   *redis.Client
-	consumer *AutomationConsumer
-	interval time.Duration
-	log      *slog.Logger
-	stopCh   chan struct{}
-	doneCh   chan struct{}
+	client    *redis.Client
+	consumer  *AutomationConsumer
+	interval  time.Duration
+	leaderKey string
+	log       *slog.Logger
+	stopCh    chan struct{}
+	doneCh    chan struct{}
 }
 
 // NewCronScheduler creates a scheduler that fires due cron nodes through
 // consumer's graph-walk engine.
 func NewCronScheduler(client *redis.Client, consumer *AutomationConsumer, log *slog.Logger) *CronScheduler {
 	return &CronScheduler{
-		client:   client,
-		consumer: consumer,
-		interval: cronSchedulerInterval,
-		log:      log,
-		stopCh:   make(chan struct{}),
-		doneCh:   make(chan struct{}),
+		client:    client,
+		consumer:  consumer,
+		interval:  cronSchedulerInterval,
+		leaderKey: cronSchedulerLeaderKey,
+		log:       log,
+		stopCh:    make(chan struct{}),
+		doneCh:    make(chan struct{}),
 	}
 }
 
@@ -52,6 +54,18 @@ func NewCronScheduler(client *redis.Client, consumer *AutomationConsumer, log *s
 // on the real one-minute cadence).
 func (s *CronScheduler) WithInterval(d time.Duration) *CronScheduler {
 	s.interval = d
+	return s
+}
+
+// WithLeaderKey overrides the Redis leader-lock key (default:
+// cronSchedulerLeaderKey, shared by every replica in production so only one
+// polls per tick). Production has no reason to call this. It exists for e2e
+// tests: every test shares one physical Redis instance, so two schedulers
+// running in parallel tests would otherwise contend for the same lock and
+// one could silently skip firing, not because of a real conflict but
+// because it lost the race to an unrelated test's tick.
+func (s *CronScheduler) WithLeaderKey(key string) *CronScheduler {
+	s.leaderKey = key
 	return s
 }
 
@@ -86,7 +100,7 @@ func (s *CronScheduler) run() {
 }
 
 func (s *CronScheduler) tick(ctx context.Context) {
-	err := s.client.SetArgs(ctx, cronSchedulerLeaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
+	err := s.client.SetArgs(ctx, s.leaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
 	if errors.Is(err, redis.Nil) {
 		return // another replica holds the lock this tick
 	}

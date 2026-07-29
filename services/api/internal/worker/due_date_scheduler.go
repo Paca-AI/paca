@@ -29,24 +29,26 @@ const (
 // nothing this tick — harmless, since the leader is presumably ticking on
 // schedule.
 type DueDateScheduler struct {
-	client   *redis.Client
-	consumer *AutomationConsumer
-	interval time.Duration
-	log      *slog.Logger
-	stopCh   chan struct{}
-	doneCh   chan struct{}
+	client    *redis.Client
+	consumer  *AutomationConsumer
+	interval  time.Duration
+	leaderKey string
+	log       *slog.Logger
+	stopCh    chan struct{}
+	doneCh    chan struct{}
 }
 
 // NewDueDateScheduler creates a scheduler that fires due-date candidates
 // through consumer's graph-walk engine.
 func NewDueDateScheduler(client *redis.Client, consumer *AutomationConsumer, log *slog.Logger) *DueDateScheduler {
 	return &DueDateScheduler{
-		client:   client,
-		consumer: consumer,
-		interval: dueDateSchedulerInterval,
-		log:      log,
-		stopCh:   make(chan struct{}),
-		doneCh:   make(chan struct{}),
+		client:    client,
+		consumer:  consumer,
+		interval:  dueDateSchedulerInterval,
+		leaderKey: dueDateSchedulerLeaderKey,
+		log:       log,
+		stopCh:    make(chan struct{}),
+		doneCh:    make(chan struct{}),
 	}
 }
 
@@ -54,6 +56,18 @@ func NewDueDateScheduler(client *redis.Client, consumer *AutomationConsumer, log
 // on the real one-minute cadence).
 func (s *DueDateScheduler) WithInterval(d time.Duration) *DueDateScheduler {
 	s.interval = d
+	return s
+}
+
+// WithLeaderKey overrides the Redis leader-lock key (default:
+// dueDateSchedulerLeaderKey, shared by every replica in production so only
+// one polls per tick). Production has no reason to call this. It exists for
+// e2e tests: every test shares one physical Redis instance, so two
+// schedulers running in parallel tests would otherwise contend for the same
+// lock and one could silently skip firing, not because of a real conflict
+// but because it lost the race to an unrelated test's tick.
+func (s *DueDateScheduler) WithLeaderKey(key string) *DueDateScheduler {
+	s.leaderKey = key
 	return s
 }
 
@@ -88,7 +102,7 @@ func (s *DueDateScheduler) run() {
 }
 
 func (s *DueDateScheduler) tick(ctx context.Context) {
-	err := s.client.SetArgs(ctx, dueDateSchedulerLeaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
+	err := s.client.SetArgs(ctx, s.leaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
 	if errors.Is(err, redis.Nil) {
 		return // another replica holds the lock this tick
 	}

@@ -455,6 +455,15 @@ func setupDockerEnvForMain() bool {
 	return false
 }
 
+// checkDockerAvailable is a read-only reachability guard: it never mutates
+// the environment. TestMain's setupDockerEnvForMain already exported
+// DOCKER_HOST/TESTCONTAINERS_RYUK_DISABLED process-wide (via os.Setenv,
+// before any test starts) if Docker was found at all, and no test creates
+// its own containers — Postgres/Valkey/MinIO are shared, started once in
+// TestMain — so there is nothing left for an individual test to configure.
+// This also matters for parallel tests specifically: t.Setenv panics if
+// called after t.Parallel(), since env vars are process-global and unsafe
+// to mutate concurrently.
 func checkDockerAvailable(t *testing.T) {
 	t.Helper()
 
@@ -462,7 +471,6 @@ func checkDockerAvailable(t *testing.T) {
 		if !strings.Contains(dh, "://") || strings.HasPrefix(dh, "unix://") {
 			socket := strings.TrimPrefix(dh, "unix://")
 			if _, err := os.Stat(socket); err == nil {
-				t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 				return
 			}
 			t.Skipf("DOCKER_HOST=%s set but socket not found; is Docker running?", dh)
@@ -472,8 +480,6 @@ func checkDockerAvailable(t *testing.T) {
 
 	if socket := socketFromDockerContext(); socket != "" {
 		if _, err := os.Stat(socket); err == nil {
-			t.Setenv("DOCKER_HOST", "unix://"+socket)
-			t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 			return
 		}
 	}
@@ -488,8 +494,6 @@ func checkDockerAvailable(t *testing.T) {
 	}
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
-			t.Setenv("DOCKER_HOST", "unix://"+p)
-			t.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 			return
 		}
 	}

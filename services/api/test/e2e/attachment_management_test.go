@@ -79,6 +79,7 @@ func attachmentPath(base, projectID, taskID, suffix string) string {
 // ---------------------------------------------------------------------------
 
 func TestE2EAttachmentManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	if env.attachmentSvc == nil {
 		t.Skip("attachment service not available (MinIO container did not start)")
@@ -275,6 +276,7 @@ func TestE2EAttachmentManagement_CRUD(t *testing.T) {
 }
 
 func TestE2EAttachmentManagement_Unauthenticated(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	if env.attachmentSvc == nil {
 		t.Skip("attachment service not available (MinIO container did not start)")

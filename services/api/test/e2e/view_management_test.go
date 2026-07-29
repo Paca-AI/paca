@@ -68,6 +68,7 @@ func deleteViewViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, pro
 }
 
 func TestE2EViewManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "view-crud-user", "viewpass1")
 	client, token := taskMemberLogin(t, env, "view-crud-user", "viewpass1")
@@ -190,6 +191,7 @@ func TestE2EViewManagement_CRUD(t *testing.T) {
 }
 
 func TestE2ETaskPositionManagement(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "view-pos-user", "pospass1")
 	client, token := taskMemberLogin(t, env, "view-pos-user", "pospass1")
@@ -342,6 +344,7 @@ func deleteBacklogViewViaAPI(t *testing.T, env *e2eEnv, client *http.Client, tok
 // ---------------------------------------------------------------------------
 
 func TestE2EBacklogViewManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "backlog-view-crud-user", "backlogpass1")
 	client, token := taskMemberLogin(t, env, "backlog-view-crud-user", "backlogpass1")
@@ -429,6 +432,7 @@ func TestE2EBacklogViewManagement_CRUD(t *testing.T) {
 }
 
 func TestE2EBacklogTaskPositionManagement(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "backlog-pos-user", "backlogpospass1")
 	client, token := taskMemberLogin(t, env, "backlog-pos-user", "backlogpospass1")
@@ -509,6 +513,7 @@ func TestE2EBacklogTaskPositionManagement(t *testing.T) {
 }
 
 func TestE2EBulkTaskPositionManagement(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "bulk-pos-user", "bulkpass1")
 	client, token := taskMemberLogin(t, env, "bulk-pos-user", "bulkpass1")
@@ -603,6 +608,7 @@ func TestE2EBulkTaskPositionManagement(t *testing.T) {
 }
 
 func TestE2EBulkBacklogTaskPositionManagement(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "bulk-backlog-user", "bulkblpass1")
 	client, token := taskMemberLogin(t, env, "bulk-backlog-user", "bulkblpass1")
@@ -716,6 +722,7 @@ func deleteTimelineViewViaAPI(t *testing.T, env *e2eEnv, client *http.Client, to
 // ---------------------------------------------------------------------------
 
 func TestE2ETimelineViewManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "timeline-crud-user", "timelinepass1")
 	client, token := taskMemberLogin(t, env, "timeline-crud-user", "timelinepass1")
@@ -802,6 +809,7 @@ func TestE2ETimelineViewManagement_CRUD(t *testing.T) {
 }
 
 func TestE2ETimelineViewManagement_DeleteLastViewRejected(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "timeline-last-user", "timelinepass2")
 	client, token := taskMemberLogin(t, env, "timeline-last-user", "timelinepass2")
@@ -848,6 +856,7 @@ func TestE2ETimelineViewManagement_DeleteLastViewRejected(t *testing.T) {
 }
 
 func TestE2ETimelineViewManagement_ContextIsolation(t *testing.T) {
+	t.Parallel()
 	// Verifies that creating timeline and backlog views for the same project
 	// does not mix them up in their respective list endpoints.
 	env := newE2EEnv(t)
@@ -903,6 +912,7 @@ func TestE2ETimelineViewManagement_ContextIsolation(t *testing.T) {
 // config.filters.task_types FilterConfig (using the "normal" virtual group)
 // persists through PATCH and is returned by a subsequent GET.
 func TestE2EViewFilters_TaskTypesRoundtrip(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "vf-mode-user", "vfmodepass1")
 	client, token := taskMemberLogin(t, env, "vf-mode-user", "vfmodepass1")
@@ -962,6 +972,7 @@ func TestE2EViewFilters_TaskTypesRoundtrip(t *testing.T) {
 // config.filters persist correctly (covers the previously-missing SprintIDs
 // DTO field serialisation bug).
 func TestE2EViewFilters_SprintIDsRoundtrip(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "vf-sprintids-user", "vfsprintpass1")
 	client, token := taskMemberLogin(t, env, "vf-sprintids-user", "vfsprintpass1")

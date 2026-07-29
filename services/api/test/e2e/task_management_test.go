@@ -88,6 +88,7 @@ func createSprintViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, p
 // ---------------------------------------------------------------------------
 
 func TestE2ESprintManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sprint-crud-user", "sprintpass1")
 	client, token := taskMemberLogin(t, env, "sprint-crud-user", "sprintpass1")
@@ -162,6 +163,7 @@ func TestE2ESprintManagement_CRUD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ESprintManagement_PartialUpdatePreservesFields(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sprint-patch-user", "sprintpatchpass1")
 	client, token := taskMemberLogin(t, env, "sprint-patch-user", "sprintpatchpass1")
@@ -261,6 +263,7 @@ func TestE2ESprintManagement_PartialUpdatePreservesFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskTypeManagement_PartialUpdatePreservesFields(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "task-type-patch-user", "tasktypepass1")
 	client, token := taskMemberLogin(t, env, "task-type-patch-user", "tasktypepass1")
@@ -354,6 +357,7 @@ func TestE2ETaskTypeManagement_PartialUpdatePreservesFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "task-crud-user", "taskpass1")
 	client, token := taskMemberLogin(t, env, "task-crud-user", "taskpass1")
@@ -501,6 +505,7 @@ func TestE2ETaskManagement_CRUD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETask_Unauthenticated(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	projID := uuid.New().String()
 	req := mustRequest(env.ctx, t, http.MethodGet,
@@ -511,6 +516,7 @@ func TestE2ETask_Unauthenticated(t *testing.T) {
 }
 
 func TestE2ESprint_Unauthenticated(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	projID := uuid.New().String()
 	req := mustRequest(env.ctx, t, http.MethodGet,
@@ -525,6 +531,7 @@ func TestE2ESprint_Unauthenticated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETask_InsufficientPermissions(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	// Seed a plain user with no task permissions.
 	seedUser(t, env, "no-task-perm-user", "plainpass1", "No Task Perm")
@@ -554,6 +561,7 @@ func TestE2ETask_InsufficientPermissions(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ESprintManagement_GetSprint(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "get-sprint-user", "getsprintpass1")
 	client, token := taskMemberLogin(t, env, "get-sprint-user", "getsprintpass1")
@@ -591,6 +599,7 @@ func TestE2ESprintManagement_GetSprint(t *testing.T) {
 }
 
 func TestE2ESprintView_SprintTasks(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sprint-tasks-user", "sprinttaskspass1")
 	client, token := taskMemberLogin(t, env, "sprint-tasks-user", "sprinttaskspass1")
@@ -646,6 +655,7 @@ func TestE2ESprintView_SprintTasks(t *testing.T) {
 }
 
 func TestE2ESprintView_Backlog(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "backlog-view-user", "backlogpass1")
 	client, token := taskMemberLogin(t, env, "backlog-view-user", "backlogpass1")
@@ -701,6 +711,7 @@ func TestE2ESprintView_Backlog(t *testing.T) {
 // view_position and view_group_key on each task that has a recorded manual
 // position in that view.
 func TestE2ETaskList_WithViewID(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "view-task-pos-user", "viewpospass1")
 	client, token := taskMemberLogin(t, env, "view-task-pos-user", "viewpospass1")
@@ -843,6 +854,7 @@ func TestE2ETaskList_WithViewID(t *testing.T) {
 // GET /sprints/:sprintId/tasks?view_id=<id> returns view_position and
 // view_group_key for tasks that have a recorded position in that view.
 func TestE2ESprintTasks_WithViewID(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sprint-viewid-user", "sprintviewpass1")
 	client, token := taskMemberLogin(t, env, "sprint-viewid-user", "sprintviewpass1")
@@ -972,6 +984,7 @@ func TestE2ESprintTasks_WithViewID(t *testing.T) {
 // GET /tasks?sprint_id=null&view_id=<id> returns view_position and view_group_key
 // for backlog tasks that have a recorded position in that view.
 func TestE2EBacklog_WithViewID(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "backlog-viewid-user", "backlogviewpass1")
 	client, token := taskMemberLogin(t, env, "backlog-viewid-user", "backlogviewpass1")
@@ -1097,6 +1110,7 @@ func TestE2EBacklog_WithViewID(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskManagement_DatesAndTags(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "dates-tags-user", "datestagpass1")
 	client, token := taskMemberLogin(t, env, "dates-tags-user", "datestagpass1")
@@ -1215,6 +1229,7 @@ func TestE2ETaskManagement_DatesAndTags(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskManagement_MultipleAssignees(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "multi-assignee-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "multiassigneeowner1")
@@ -1399,6 +1414,7 @@ func createCustomFieldViaAPI(t *testing.T, env *e2eEnv, client *http.Client, tok
 // ---------------------------------------------------------------------------
 
 func TestE2ECustomFieldManagement_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-crud-user", "cfcrudpass1")
 	client, token := taskMemberLogin(t, env, "cf-crud-user", "cfcrudpass1")
@@ -1561,6 +1577,7 @@ func TestE2ECustomFieldManagement_CRUD(t *testing.T) {
 }
 
 func TestE2ECustomFieldManagement_Unauthorized(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "cf-noperm-user", "cfnopermpass1", "No Perm CF")
 	jar, _ := cookiejar.New(nil)
@@ -1591,6 +1608,7 @@ func TestE2ECustomFieldManagement_Unauthorized(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ECompleteSprint_MovesToBacklog(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "complete-sprint-user", "completepass1")
 	client, token := taskMemberLogin(t, env, "complete-sprint-user", "completepass1")
@@ -1649,6 +1667,7 @@ func TestE2ECompleteSprint_MovesToBacklog(t *testing.T) {
 }
 
 func TestE2ECompleteSprint_AlreadyCompleted(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "complete-sprint-dup-user", "completepass2")
 	client, token := taskMemberLogin(t, env, "complete-sprint-dup-user", "completepass2")

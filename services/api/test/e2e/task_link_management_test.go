@@ -41,6 +41,7 @@ func createTaskViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, pro
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskLinkManagement_TaskLinkingLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	username := "tasklink-user-" + uuid.NewString()
 	seedTaskMemberUser(t, env, username, "tasklinkpass1")
@@ -202,6 +203,7 @@ func TestE2ETaskLinkManagement_TaskLinkingLifecycle(t *testing.T) {
 
 // TestE2ETaskLinkManagement_ErrorCases tests various error scenarios
 func TestE2ETaskLinkManagement_ErrorCases(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	username := "tasklink-error-user-" + uuid.NewString()
 	seedTaskMemberUser(t, env, username, "tasklinkerror1")
@@ -377,6 +379,7 @@ func TestE2ETaskLinkManagement_ErrorCases(t *testing.T) {
 
 // TestE2ETaskLinkManagement_Authorization tests permission requirements
 func TestE2ETaskLinkManagement_Authorization(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	// Create two users: one with write access, one with read-only access
@@ -480,6 +483,7 @@ func TestE2ETaskLinkManagement_Authorization(t *testing.T) {
 
 // TestE2ETaskLinkManagement_AllLinkTypes tests that all valid link types work correctly
 func TestE2ETaskLinkManagement_AllLinkTypes(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	username := "tasklink-alltypes-" + uuid.NewString()
 	seedTaskMemberUser(t, env, username, "tasklinkalltypes1")
@@ -544,6 +548,7 @@ func TestE2ETaskLinkManagement_AllLinkTypes(t *testing.T) {
 
 // TestE2ETaskLinkManagement_BidirectionalLinks tests that links can be viewed from both source and target
 func TestE2ETaskLinkManagement_BidirectionalLinks(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	username := "tasklink-bi-" + uuid.NewString()
 	seedTaskMemberUser(t, env, username, "tasklinkbi1")

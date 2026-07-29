@@ -12,6 +12,7 @@ import (
 )
 
 func TestAdminGlobalRolesAuthorization(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	const username = "rolecheck"

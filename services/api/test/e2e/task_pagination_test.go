@@ -61,6 +61,7 @@ func itemIDs(data map[string]any) []string {
 // ---------------------------------------------------------------------------
 
 func TestE2EListTaskPagination_CursorBased(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cursor-pag-user", "cursorpagpass1")
 	client, token := taskMemberLogin(t, env, "cursor-pag-user", "cursorpagpass1")
@@ -210,6 +211,7 @@ func TestE2EListTaskPagination_CursorBased(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListTaskPagination_CursorWithSprintFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cursor-sprint-filter-user", "cursorsprintfilterpass1")
 	client, token := taskMemberLogin(t, env, "cursor-sprint-filter-user", "cursorsprintfilterpass1")
@@ -304,6 +306,7 @@ func TestE2EListTaskPagination_CursorWithSprintFilter(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListTaskPagination_CursorWithBacklogFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cursor-backlog-filter-user", "cursorbacklogfilterpass1")
 	client, token := taskMemberLogin(t, env, "cursor-backlog-filter-user", "cursorbacklogfilterpass1")
@@ -394,6 +397,7 @@ func TestE2EListTaskPagination_CursorWithBacklogFilter(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListTaskTotalCount_NoFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "total-count-basic-user", "totalcountpass1")
 	client, token := taskMemberLogin(t, env, "total-count-basic-user", "totalcountpass1")
@@ -417,6 +421,7 @@ func TestE2EListTaskTotalCount_NoFilter(t *testing.T) {
 }
 
 func TestE2EListTaskTotalCount_SprintFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "total-count-sprint-user", "totalcountpass2")
 	client, token := taskMemberLogin(t, env, "total-count-sprint-user", "totalcountpass2")
@@ -458,6 +463,7 @@ func TestE2EListTaskTotalCount_SprintFilter(t *testing.T) {
 }
 
 func TestE2EListTaskTotalCount_BacklogFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "total-count-backlog-user", "totalcountpass3")
 	client, token := taskMemberLogin(t, env, "total-count-backlog-user", "totalcountpass3")
@@ -499,6 +505,7 @@ func TestE2EListTaskTotalCount_BacklogFilter(t *testing.T) {
 }
 
 func TestE2EListTaskTotalCount_ExcludesDeleted(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "total-count-delete-user", "totalcountpass4")
 	client, token := taskMemberLogin(t, env, "total-count-delete-user", "totalcountpass4")
@@ -540,6 +547,7 @@ func TestE2EListTaskTotalCount_ExcludesDeleted(t *testing.T) {
 }
 
 func TestE2EListTaskTotalCount_CursorDoesNotAffectCount(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "total-count-cursor-user", "totalcountpass5")
 	client, token := taskMemberLogin(t, env, "total-count-cursor-user", "totalcountpass5")
@@ -610,6 +618,7 @@ func createTaskWithCustomFieldViaAPI(t *testing.T, env *e2eEnv, client *http.Cli
 // ---------------------------------------------------------------------------
 
 func TestE2EFieldSum_CustomField_BasicSum(t *testing.T) {
+	t.Parallel()
 	// Verifies that sum_field=<custom_key> returns the correct aggregate sum
 	// across all matching tasks in the project.
 	env := newE2EEnv(t)
@@ -641,6 +650,7 @@ func TestE2EFieldSum_CustomField_BasicSum(t *testing.T) {
 }
 
 func TestE2EFieldSum_CustomField_FilterBySprint(t *testing.T) {
+	t.Parallel()
 	// Verifies that sum_field=<custom_key> respects sprint_id filter.
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sum-field-sprint-user", "sumfieldpass2")
@@ -690,6 +700,7 @@ func TestE2EFieldSum_CustomField_FilterBySprint(t *testing.T) {
 }
 
 func TestE2EFieldSum_CustomField_BacklogOnly(t *testing.T) {
+	t.Parallel()
 	// Verifies that sum_field=<custom_key> respects sprint_id=null (backlog) filter.
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sum-field-backlog-user", "sumfieldpass3")
@@ -738,6 +749,7 @@ func TestE2EFieldSum_CustomField_BacklogOnly(t *testing.T) {
 }
 
 func TestE2EFieldSum_CustomField_IgnoresCursor(t *testing.T) {
+	t.Parallel()
 	// Verifies that sum_field reflects all matching tasks regardless of cursor pagination.
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sum-field-cursor-user", "sumfieldpass4")
@@ -789,6 +801,7 @@ func TestE2EFieldSum_CustomField_IgnoresCursor(t *testing.T) {
 }
 
 func TestE2EFieldSum_CustomField_AbsentWhenNotRequested(t *testing.T) {
+	t.Parallel()
 	// Verifies that field_sum is null when sum_field query param is not provided.
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "sum-field-absent-user", "sumfieldpass5")
@@ -812,6 +825,7 @@ func TestE2EFieldSum_CustomField_AbsentWhenNotRequested(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListTaskPagination_ViewPositionSort(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "view-pos-sort-user", "viewpossort1")
 	client, token := taskMemberLogin(t, env, "view-pos-sort-user", "viewpossort1")
@@ -1011,6 +1025,7 @@ func TestE2EListTaskPagination_ViewPositionSort(t *testing.T) {
 // query with a Postgres cast error (SQLSTATE 22007: invalid input syntax for
 // type date) on the leftover value, instead of just excluding that task.
 func TestE2ECustomFieldFilters_FieldKeyReuseAfterDeleteDoesNotCrash(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-reuse-user", "cfreusepass1")
 	client, token := taskMemberLogin(t, env, "cf-reuse-user", "cfreusepass1")
@@ -1065,6 +1080,7 @@ func TestE2ECustomFieldFilters_FieldKeyReuseAfterDeleteDoesNotCrash(t *testing.T
 // just field deletion + key reuse. Filtering or sorting by that field must
 // exclude the invalid row instead of crashing the whole query.
 func TestE2ECustomFieldFilters_InvalidStoredValueDoesNotCrash(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-invalid-user", "cfinvalidpass1")
 	client, token := taskMemberLogin(t, env, "cf-invalid-user", "cfinvalidpass1")

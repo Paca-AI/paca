@@ -83,6 +83,7 @@ func getTasksExpectBadRequest(t *testing.T, env *e2eEnv, client *http.Client, to
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldSelect(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-select-filter-user", "cfselectpass1")
 	client, token := taskMemberLogin(t, env, "cf-select-filter-user", "cfselectpass1")
@@ -157,6 +158,7 @@ func TestE2ETaskFilters_CustomFieldSelect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldMultiSelect(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-multiselect-filter-user", "cfmultipass1")
 	client, token := taskMemberLogin(t, env, "cf-multiselect-filter-user", "cfmultipass1")
@@ -210,6 +212,7 @@ func TestE2ETaskFilters_CustomFieldMultiSelect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldBoolean(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-boolean-filter-user", "cfboolpass1")
 	client, token := taskMemberLogin(t, env, "cf-boolean-filter-user", "cfboolpass1")
@@ -260,6 +263,7 @@ func TestE2ETaskFilters_CustomFieldBoolean(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldNumber(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-number-filter-user", "cfnumberpass1")
 	client, token := taskMemberLogin(t, env, "cf-number-filter-user", "cfnumberpass1")
@@ -336,6 +340,7 @@ func TestE2ETaskFilters_CustomFieldNumber(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldDate(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-date-filter-user", "cfdatepass1")
 	client, token := taskMemberLogin(t, env, "cf-date-filter-user", "cfdatepass1")
@@ -386,6 +391,7 @@ func TestE2ETaskFilters_CustomFieldDate(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldTextAndURL(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-text-filter-user", "cftextpass1")
 	client, token := taskMemberLogin(t, env, "cf-text-filter-user", "cftextpass1")
@@ -438,6 +444,7 @@ func TestE2ETaskFilters_CustomFieldTextAndURL(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CustomFieldsCombinedAND(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "cf-combined-filter-user", "cfcombinedpass1")
 	client, token := taskMemberLogin(t, env, "cf-combined-filter-user", "cfcombinedpass1")
@@ -476,6 +483,7 @@ func TestE2ETaskFilters_CustomFieldsCombinedAND(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_StartDateRange(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "startdate-filter-user", "startdatepass1")
 	client, token := taskMemberLogin(t, env, "startdate-filter-user", "startdatepass1")
@@ -538,6 +546,7 @@ func TestE2ETaskFilters_StartDateRange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_DueDateRange(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "duedate-filter-user", "duedatepass1")
 	client, token := taskMemberLogin(t, env, "duedate-filter-user", "duedatepass1")
@@ -580,6 +589,7 @@ func TestE2ETaskFilters_DueDateRange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_StoryPointsRange(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "storypoints-filter-user", "spfilterpass1")
 	client, token := taskMemberLogin(t, env, "storypoints-filter-user", "spfilterpass1")
@@ -634,6 +644,7 @@ func TestE2ETaskFilters_StoryPointsRange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_ImportanceRanges(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "importance-filter-user", "importancepass1")
 	client, token := taskMemberLogin(t, env, "importance-filter-user", "importancepass1")
@@ -698,6 +709,7 @@ func TestE2ETaskFilters_ImportanceRanges(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_Tags(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "tags-filter-user", "tagsfilterpass1")
 	client, token := taskMemberLogin(t, env, "tags-filter-user", "tagsfilterpass1")
@@ -751,6 +763,7 @@ func TestE2ETaskFilters_Tags(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_CombinedAcrossDimensions(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "combined-filter-user", "combinedpass1")
 	client, token := taskMemberLogin(t, env, "combined-filter-user", "combinedpass1")
@@ -807,6 +820,7 @@ func TestE2ETaskFilters_CombinedAcrossDimensions(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_TotalCountAndFieldSumRespectFilters(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "count-sum-filter-user", "countsumpass1")
 	client, token := taskMemberLogin(t, env, "count-sum-filter-user", "countsumpass1")
@@ -855,6 +869,7 @@ func TestE2ETaskFilters_TotalCountAndFieldSumRespectFilters(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskFilters_ValidationErrors(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedTaskMemberUser(t, env, "validation-filter-user", "validationpass1")
 	client, token := taskMemberLogin(t, env, "validation-filter-user", "validationpass1")

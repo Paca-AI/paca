@@ -96,6 +96,7 @@ func createProjectRoleViaAPI(t *testing.T, env *e2eEnv, client *http.Client, tok
 // ---------------------------------------------------------------------------
 
 func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "crud-admin", "crudpass1")
 	client, token := projectAdminLogin(t, env, "crud-admin", "crudpass1")
@@ -184,6 +185,7 @@ func TestE2EProjectManagement_AdminProjectCRUD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProject_Unauthenticated(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	req := mustRequest(env.ctx, t, http.MethodGet, env.base+"/api/v1/projects", nil)
 	resp := mustDo(t, env.client, req)
@@ -196,6 +198,7 @@ func TestE2EProject_Unauthenticated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProject_InsufficientPermission(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	// A plain USER has no projects.create permission. They can list projects
 	// (receiving an empty list) but cannot create one.
@@ -238,6 +241,7 @@ func TestE2EProject_InsufficientPermission(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProjectRoles_FullLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "roles-admin", "rolespass1")
 	client, token := projectAdminLogin(t, env, "roles-admin", "rolespass1")
@@ -331,6 +335,7 @@ func TestE2EProjectRoles_FullLifecycle(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProjectRoles_DeleteRoleWithMembersConflict(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "roles-conflict-admin", "rcpass123")
 	client, token := projectAdminLogin(t, env, "roles-conflict-admin", "rcpass123")
@@ -370,6 +375,7 @@ func TestE2EProjectRoles_DeleteRoleWithMembersConflict(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "members-admin", "mbrpass1")
 	client, token := projectAdminLogin(t, env, "members-admin", "mbrpass1")
@@ -492,6 +498,7 @@ func TestE2EProjectMembers_FullLifecycle(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProject_DeleteCascadesRolesAndMembers(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "cascade-admin", "cascadepass1")
 	client, token := projectAdminLogin(t, env, "cascade-admin", "cascadepass1")
@@ -587,6 +594,7 @@ func addMemberViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, proj
 // viewer-only role (projects.read) can GET the project but cannot update or
 // delete it, and that the project appears in their accessible list.
 func TestE2EProject_ProjectViewerAccess(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	seedProjectAdminUser(t, env, "viewer-access-admin", "adminpass1")
@@ -665,6 +673,7 @@ func TestE2EProject_ProjectViewerAccess(t *testing.T) {
 // not a project member and has no global projects.read cannot access any
 // project-specific endpoint.
 func TestE2EProject_NonMemberForbidden(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	seedProjectAdminUser(t, env, "non-member-admin", "adminpass2")
@@ -729,6 +738,7 @@ func TestE2EProject_NonMemberForbidden(t *testing.T) {
 // (with members.write, roles.write, projects.write) is compared against a
 // "viewer" role (projects.read only).
 func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	seedProjectAdminUser(t, env, "perm-test-admin", "adminpass3")
@@ -882,6 +892,7 @@ func TestE2EProject_MemberRolePermissionsEnforced(t *testing.T) {
 // projects.read permission can see ALL projects (not just their own) in the
 // list, as well as access individual project details.
 func TestE2EProject_GlobalReadSeesAllProjects(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	// Admin A creates a project.
@@ -952,6 +963,7 @@ func TestE2EProject_GlobalReadSeesAllProjects(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProjectCreation_DefaultTaskRecords(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "defaults-admin", "defaultspass1")
 	client, token := projectAdminLogin(t, env, "defaults-admin", "defaultspass1")
@@ -1048,6 +1060,7 @@ func TestE2EProjectCreation_DefaultTaskRecords(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2ETaskTypes_SetDefault(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "setdefault-admin", "setdefaultpass1")
 	client, token := projectAdminLogin(t, env, "setdefault-admin", "setdefaultpass1")
@@ -1161,6 +1174,7 @@ func getMyProjectPermissionsViaAPI(t *testing.T, env *e2eEnv, client *http.Clien
 // TestE2EGetMyProjectPermissions_Success verifies that an authenticated project
 // member receives their role's permissions from the endpoint.
 func TestE2EGetMyProjectPermissions_Success(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	seedProjectAdminUser(t, env, "perms-admin", "permspass1")
@@ -1195,6 +1209,7 @@ func TestE2EGetMyProjectPermissions_Success(t *testing.T) {
 // TestE2EGetMyProjectPermissions_NotMember verifies that an authenticated user
 // who is not a project member receives a 404 PROJECT_MEMBER_NOT_FOUND.
 func TestE2EGetMyProjectPermissions_NotMember(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	seedProjectAdminUser(t, env, "perms-nm-admin", "permspass2")
@@ -1217,6 +1232,7 @@ func TestE2EGetMyProjectPermissions_NotMember(t *testing.T) {
 // TestE2EGetMyProjectPermissions_Unauthenticated verifies that requests without
 // a valid token receive a 401 Unauthorized.
 func TestE2EGetMyProjectPermissions_Unauthenticated(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	seedProjectAdminUser(t, env, "perms-unauth-admin", "permspass3")
@@ -1236,6 +1252,7 @@ func TestE2EGetMyProjectPermissions_Unauthenticated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EProject_PublicProjectAnonymousAccess(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "pub-anon-admin", "pubpass1")
 	adminClient, adminToken := projectAdminLogin(t, env, "pub-anon-admin", "pubpass1")
@@ -1274,6 +1291,7 @@ func TestE2EProject_PublicProjectAnonymousAccess(t *testing.T) {
 }
 
 func TestE2EProject_PrivateProjectAnonymousAccessDenied(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "priv-anon-admin", "privpass1")
 	adminClient, adminToken := projectAdminLogin(t, env, "priv-anon-admin", "privpass1")
@@ -1290,6 +1308,7 @@ func TestE2EProject_PrivateProjectAnonymousAccessDenied(t *testing.T) {
 }
 
 func TestE2EProject_UpdateProjectVisibility(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedProjectAdminUser(t, env, "vis-admin", "vispass1")
 	adminClient, adminToken := projectAdminLogin(t, env, "vis-admin", "vispass1")

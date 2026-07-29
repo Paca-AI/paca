@@ -301,6 +301,7 @@ func authnRoute(method, path string) map[string]any {
 // ---------------------------------------------------------------------------
 
 func TestE2EPluginRuntime_InstallAndLoad_ServesRequest(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	token := p.issueAdminToken(t)
 
@@ -324,6 +325,7 @@ func TestE2EPluginRuntime_InstallAndLoad_ServesRequest(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EPluginRuntime_APICall_EchoesRequestBody(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	token := p.issueAdminToken(t)
 
@@ -351,6 +353,7 @@ func TestE2EPluginRuntime_APICall_EchoesRequestBody(t *testing.T) {
 // of what the caller sent. Query-string-driven filtering/pagination on any
 // plugin route was silently a no-op until this was fixed.
 func TestE2EPluginRuntime_APICall_QueryParamsPropagate(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	token := p.issueAdminToken(t)
 
@@ -374,6 +377,7 @@ func TestE2EPluginRuntime_APICall_QueryParamsPropagate(t *testing.T) {
 }
 
 func TestE2EPluginRuntime_APICall_CallerIdentityPropagates(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	adminToken := p.issueAdminToken(t)
 
@@ -397,6 +401,7 @@ func TestE2EPluginRuntime_APICall_CallerIdentityPropagates(t *testing.T) {
 }
 
 func TestE2EPluginRuntime_APICall_AuthnRoute_RequiresToken(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	token := p.issueAdminToken(t)
 
@@ -410,6 +415,7 @@ func TestE2EPluginRuntime_APICall_AuthnRoute_RequiresToken(t *testing.T) {
 }
 
 func TestE2EPluginRuntime_APICall_UnmatchedPath_PluginReturns404(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	token := p.issueAdminToken(t)
 
@@ -427,6 +433,7 @@ func TestE2EPluginRuntime_APICall_UnmatchedPath_PluginReturns404(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EPluginRuntime_DisabledPlugin_Returns404(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 	token := p.issueAdminToken(t)
 
@@ -441,6 +448,7 @@ func TestE2EPluginRuntime_DisabledPlugin_Returns404(t *testing.T) {
 }
 
 func TestE2EPluginRuntime_NonexistentPlugin_Returns404(t *testing.T) {
+	t.Parallel()
 	p := newPluginRuntimeE2EEnv(t, pluginrt.DefaultResourceLimits())
 
 	resp := p.doPlugin(t, http.MethodGet, "/api/v1/plugins/com.paca.does-not-exist/hello", "", nil)
@@ -458,6 +466,7 @@ func TestE2EPluginRuntime_NonexistentPlugin_Returns404(t *testing.T) {
 // with 413 before it ever reaches the plugin, and the plugin keeps serving
 // normal requests afterward.
 func TestE2EPluginRuntime_OversizedBody_Returns413AndStaysHealthy(t *testing.T) {
+	t.Parallel()
 	limits := pluginrt.DefaultResourceLimits()
 	limits.MaxRequestBodyBytes = 1024
 	p := newPluginRuntimeE2EEnv(t, limits)
@@ -488,6 +497,7 @@ func TestE2EPluginRuntime_OversizedBody_Returns413AndStaysHealthy(t *testing.T) 
 // request after, even a tiny one, failed the same way. This test fails
 // against the pre-fix runtime.go and passes against the fix.
 func TestE2EPluginRuntime_AllocatorRecovery_AfterOversizedWrite(t *testing.T) {
+	t.Parallel()
 	limits := pluginrt.ResourceLimits{
 		MaxCallDuration: 5 * time.Second,
 		// The echoplugin's actual WASM memory is ~7.25 MiB (116 pages) once

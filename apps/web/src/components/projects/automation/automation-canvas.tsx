@@ -126,7 +126,7 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 						e.stopPropagation();
 						onDelete();
 					}}
-					className="nodrag absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded-full border border-border/40 bg-card text-muted-foreground/60 shadow-sm hover:text-destructive hover:bg-destructive/10 transition-all"
+					className="nodrag absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 flex size-5 shrink-0 items-center justify-center rounded-full border border-border/40 bg-card text-muted-foreground/60 shadow-sm hover:text-destructive-foreground hover:bg-destructive hover:border-destructive transition-all"
 				>
 					<Trash2 className="size-3" />
 				</button>
@@ -348,7 +348,7 @@ export function AutomationCanvas({
 							onDeleteEdge(selectedEdgeId);
 							setSelectedEdgeId(null);
 						}}
-						className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-card px-3 py-1.5 text-xs font-medium text-destructive shadow-lg hover:bg-destructive/10 transition-colors"
+						className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-card px-3 py-1.5 text-xs font-medium text-destructive shadow-lg hover:bg-destructive hover:text-destructive-foreground transition-colors"
 					>
 						<Trash2 className="size-3.5" />
 						{t("automation.canvas.deleteEdge")}

@@ -36,7 +36,16 @@ func startAutomationConsumer(t *testing.T, env *e2eEnv) *worker.AutomationConsum
 		WithHTTPClient(http.DefaultClient).
 		// Same wiring as bootstrap/app.go — lets a task-less trigger_ai_agent
 		// node fire a direct message instead of a task assignment.
-		WithAgentMessaging(env.projectRepo, env.agentSvc)
+		WithAgentMessaging(env.projectRepo, env.agentSvc).
+		// Every test shares one physical Redis instance and stream (see
+		// TestMain), but each gets its own Postgres database — without a
+		// consumer group of its own, parallel tests (t.Parallel()) would
+		// compete for the SAME group's cursor, and one test's events could
+		// be delivered to a different test's consumer, which would fail to
+		// find the referenced task in its own isolated database. A unique
+		// group per test, created starting from "$" (now), isolates it from
+		// both other tests' events and the stream's growing history.
+		WithConsumerGroup("e2e." + uuid.NewString())
 	ac.Start(env.ctx)
 	t.Cleanup(ac.Stop)
 	return ac
@@ -395,6 +404,7 @@ func taskHasTag(data map[string]any, want string) bool {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomation_CreateNodesEdgesAndFetchGraph(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	ownerUsername := "automation-crud-owner-" + uuid.NewString()
@@ -428,6 +438,7 @@ func TestE2EAutomation_CreateNodesEdgesAndFetchGraph(t *testing.T) {
 }
 
 func TestE2EAutomation_EdgeIntoTriggerRejected(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	ownerUsername := "automation-edge-owner-" + uuid.NewString()
@@ -447,6 +458,7 @@ func TestE2EAutomation_EdgeIntoTriggerRejected(t *testing.T) {
 }
 
 func TestE2EAutomation_CycleRejected(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	ownerUsername := "automation-cycle-owner-" + uuid.NewString()
@@ -466,6 +478,7 @@ func TestE2EAutomation_CycleRejected(t *testing.T) {
 }
 
 func TestE2EAutomation_ActivateRequiresTriggerAndAction(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	ownerUsername := "automation-activate-owner-" + uuid.NewString()
@@ -498,6 +511,7 @@ func TestE2EAutomation_ActivateRequiresTriggerAndAction(t *testing.T) {
 // separate update. AddNode must not require the type's fields up front, but
 // Activate must still refuse to go live while a node is left unconfigured.
 func TestE2EAutomation_CreateEmptyActionNodeThenConfigure(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	ownerUsername := "automation-empty-node-owner-" + uuid.NewString()
@@ -528,6 +542,7 @@ func TestE2EAutomation_CreateEmptyActionNodeThenConfigure(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_StatusChangedReassignsTask(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -564,6 +579,7 @@ func TestE2EAutomationEngine_StatusChangedReassignsTask(t *testing.T) {
 // more than one trigger node, and EITHER firing starts the same downstream
 // chain.
 func TestE2EAutomationEngine_MultipleTriggersShareOneChain(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -610,6 +626,7 @@ func TestE2EAutomationEngine_MultipleTriggersShareOneChain(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ConditionBranchesToCorrectAction(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -670,6 +687,7 @@ func TestE2EAutomationEngine_ConditionBranchesToCorrectAction(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_PredecessorDoneWaitsForAllWatchedTasks(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -717,6 +735,7 @@ func TestE2EAutomationEngine_PredecessorDoneWaitsForAllWatchedTasks(t *testing.T
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_CronTriggerFiresOnSchedule(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	consumer := startAutomationConsumer(t, env)
 
@@ -760,7 +779,8 @@ func TestE2EAutomationEngine_CronTriggerFiresOnSchedule(t *testing.T) {
 	}
 
 	scheduler := worker.NewCronScheduler(env.redisClient, consumer, slog.New(slog.NewTextHandler(os.Stdout, nil))).
-		WithInterval(200 * time.Millisecond)
+		WithInterval(200 * time.Millisecond).
+		WithLeaderKey("e2e." + uuid.NewString())
 	scheduler.Start(env.ctx)
 	t.Cleanup(scheduler.Stop)
 
@@ -772,6 +792,7 @@ func TestE2EAutomationEngine_CronTriggerFiresOnSchedule(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomation_WebhookTriggerTokenLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -822,6 +843,7 @@ func TestE2EAutomation_WebhookTriggerTokenLifecycle(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_CallAPIActionMakesOutboundRequest(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -920,6 +942,7 @@ func TestE2EAutomationEngine_CallAPIActionMakesOutboundRequest(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomation_AddEdge_TaskLessTriggerToConditionRejected(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "automation-nulltask-cond-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "automationnulltaskcond1")
@@ -938,6 +961,7 @@ func TestE2EAutomation_AddEdge_TaskLessTriggerToConditionRejected(t *testing.T) 
 }
 
 func TestE2EAutomation_AddEdge_TaskLessTriggerToCallAPIAllowedAndActivatable(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "automation-nulltask-callapi-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "automationnulltaskcallapi1")
@@ -957,6 +981,7 @@ func TestE2EAutomation_AddEdge_TaskLessTriggerToCallAPIAllowedAndActivatable(t *
 }
 
 func TestE2EAutomation_AddEdge_TaskLessTriggerToTriggerAIAgentAllowedAndActivatable(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "automation-nulltask-aiagent-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "automationnulltaskaiagent1")
@@ -982,6 +1007,7 @@ func TestE2EAutomation_AddEdge_TaskLessTriggerToTriggerAIAgentAllowedAndActivata
 }
 
 func TestE2EAutomation_UpdateNode_ClearingTargetTaskRejectedWhenDownstreamNeedsTask(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "automation-nulltask-update-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "automationnulltaskupdate1")
@@ -1008,6 +1034,7 @@ func TestE2EAutomation_UpdateNode_ClearingTargetTaskRejectedWhenDownstreamNeedsT
 }
 
 func TestE2EAutomationEngine_CronTriggerWithNoTargetTask_FiresCallAPIOnlyWithNilRunTask(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	consumer := startAutomationConsumer(t, env)
 
@@ -1049,7 +1076,8 @@ func TestE2EAutomationEngine_CronTriggerWithNoTargetTask_FiresCallAPIOnlyWithNil
 	}
 
 	scheduler := worker.NewCronScheduler(env.redisClient, consumer, slog.New(slog.NewTextHandler(os.Stdout, nil))).
-		WithInterval(200 * time.Millisecond)
+		WithInterval(200 * time.Millisecond).
+		WithLeaderKey("e2e." + uuid.NewString())
 	scheduler.Start(env.ctx)
 	t.Cleanup(scheduler.Stop)
 
@@ -1085,6 +1113,7 @@ func TestE2EAutomationEngine_CronTriggerWithNoTargetTask_FiresCallAPIOnlyWithNil
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ActionRetargetedToChildren_FansOutToEveryChild(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1133,6 +1162,7 @@ func TestE2EAutomationEngine_ActionRetargetedToChildren_FansOutToEveryChild(t *t
 }
 
 func TestE2EAutomationEngine_ConditionRetargetedToBlockingTask(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1209,6 +1239,7 @@ func TestE2EAutomationEngine_ConditionRetargetedToBlockingTask(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_TaskCreatedTriggerFires(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1234,6 +1265,7 @@ func TestE2EAutomationEngine_TaskCreatedTriggerFires(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_AssigneeChangedTriggerFires(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1264,6 +1296,7 @@ func TestE2EAutomationEngine_AssigneeChangedTriggerFires(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_PriorityChangedTriggerFiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1291,6 +1324,7 @@ func TestE2EAutomationEngine_PriorityChangedTriggerFiresOnItsOwn(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_DueDateReachedTriggerFires(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	consumer := startAutomationConsumer(t, env)
 
@@ -1319,7 +1353,8 @@ func TestE2EAutomationEngine_DueDateReachedTriggerFires(t *testing.T) {
 	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
 
 	scheduler := worker.NewDueDateScheduler(env.redisClient, consumer, slog.New(slog.NewTextHandler(os.Stdout, nil))).
-		WithInterval(200 * time.Millisecond)
+		WithInterval(200 * time.Millisecond).
+		WithLeaderKey("e2e." + uuid.NewString())
 	scheduler.Start(env.ctx)
 	t.Cleanup(scheduler.Stop)
 
@@ -1333,6 +1368,7 @@ func TestE2EAutomationEngine_DueDateReachedTriggerFires(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_SetPriorityActionApplies(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1366,6 +1402,7 @@ func TestE2EAutomationEngine_SetPriorityActionApplies(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_SetCustomFieldActionApplies(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1402,6 +1439,7 @@ func TestE2EAutomationEngine_SetCustomFieldActionApplies(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_TriggerAIAgentAssignsTaskWhenTaskIsPresent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1445,6 +1483,7 @@ func TestE2EAutomationEngine_TriggerAIAgentAssignsTaskWhenTaskIsPresent(t *testi
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ConditionOnTaskType(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1494,6 +1533,7 @@ func TestE2EAutomationEngine_ConditionOnTaskType(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ConditionOnAssigneeContains(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1540,6 +1580,7 @@ func TestE2EAutomationEngine_ConditionOnAssigneeContains(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ConditionOnTagsContains(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1584,6 +1625,7 @@ func TestE2EAutomationEngine_ConditionOnTagsContains(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ConditionOnCustomFieldEquals(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1631,6 +1673,7 @@ func TestE2EAutomationEngine_ConditionOnCustomFieldEquals(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ConditionIsEmptyOperator(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1671,6 +1714,7 @@ func TestE2EAutomationEngine_ConditionIsEmptyOperator(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ConditionElseBranchFiresWhenNoBranchMatches(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1729,6 +1773,7 @@ func TestE2EAutomationEngine_ConditionElseBranchFiresWhenNoBranchMatches(t *test
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ActionChainContinuesPastFirstAction(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1765,6 +1810,7 @@ func TestE2EAutomationEngine_ActionChainContinuesPastFirstAction(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_IdempotentAssignSkipsRunStepOnSecondFire(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1831,6 +1877,7 @@ func TestE2EAutomationEngine_IdempotentAssignSkipsRunStepOnSecondFire(t *testing
 }
 
 func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1868,6 +1915,7 @@ func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
 }
 
 func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1912,6 +1960,7 @@ func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.
 }
 
 func TestE2EAutomation_DeletingEdgeStopsDownstreamFiring(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1949,6 +1998,7 @@ func TestE2EAutomation_DeletingEdgeStopsDownstreamFiring(t *testing.T) {
 }
 
 func TestE2EAutomation_UpdatingActiveActionConfigAffectsNextFire(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -1998,6 +2048,7 @@ func TestE2EAutomation_UpdatingActiveActionConfigAffectsNextFire(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ActionRetargetedToParent(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -2042,6 +2093,7 @@ func TestE2EAutomationEngine_ActionRetargetedToParent(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ActionRetargetedToOtherExplicitTask(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
@@ -2082,6 +2134,7 @@ func TestE2EAutomationEngine_ActionRetargetedToOtherExplicitTask(t *testing.T) {
 }
 
 func TestE2EAutomationEngine_ConditionMatchModeAllRequiresEveryChildToMatch(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 

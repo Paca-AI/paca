@@ -24,6 +24,7 @@ import (
 // read correctly preserve position/category), but there was previously no
 // test exercising UpdateTaskStatus through the cache decorator at all.
 func TestE2ETaskStatus_CachedUpdatePreservesPositionAndCategory(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	cacheStore := cache.NewStore(env.redisClient, "paca:")
