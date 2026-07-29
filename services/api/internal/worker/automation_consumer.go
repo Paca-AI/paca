@@ -338,7 +338,7 @@ func (c *AutomationConsumer) handle(msg redis.XMessage) {
 				case "status":
 					candidates = append(candidates, automationdom.TriggerStatusChanged)
 					checkPredecessors = true
-				case "assignee_ids":
+				case "assignee":
 					candidates = append(candidates, automationdom.TriggerAssigneeChanged)
 				case "importance":
 					candidates = append(candidates, automationdom.TriggerPriorityChanged)
