@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
+
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
-	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/google/uuid"
 )
 
 // Deps holds all handler and middleware dependencies.

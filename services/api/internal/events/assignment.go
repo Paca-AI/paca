@@ -3,8 +3,9 @@ package events
 import (
 	"context"
 
-	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/google/uuid"
+
+	"github.com/Paca-AI/api/internal/platform/messaging"
 )
 
 // PublishAssignmentChanged appends a task.assigned event to

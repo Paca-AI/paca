@@ -8,10 +8,11 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
+
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
-	"github.com/google/uuid"
 )
 
 // prefixRe validates that a task ID prefix contains only uppercase letters and digits.

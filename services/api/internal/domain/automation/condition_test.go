@@ -3,8 +3,9 @@ package automationdom
 import (
 	"testing"
 
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/google/uuid"
+
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 func leaf(field Field, op Operator, value any) *ConditionLeaf {

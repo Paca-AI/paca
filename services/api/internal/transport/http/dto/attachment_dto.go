@@ -3,9 +3,10 @@ package dto
 import (
 	"time"
 
+	"github.com/google/uuid"
+
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	"github.com/Paca-AI/api/internal/platform/storage"
-	"github.com/google/uuid"
 )
 
 // --- Requests ---------------------------------------------------------------

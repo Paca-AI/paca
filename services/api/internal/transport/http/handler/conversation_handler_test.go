@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
-	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
 
 // fixedTime returns a stable timestamp for building test conversations —

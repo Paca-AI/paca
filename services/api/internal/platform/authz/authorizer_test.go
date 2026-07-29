@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/google/uuid"
+
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 type stubPermissionStore struct {

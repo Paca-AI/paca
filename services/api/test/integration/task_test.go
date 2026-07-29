@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
@@ -29,7 +31,6 @@ import (
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/router"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

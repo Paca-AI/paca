@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

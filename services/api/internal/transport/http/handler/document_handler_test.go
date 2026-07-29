@@ -8,11 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

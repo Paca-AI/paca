@@ -3,13 +3,15 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
 
-	automationdom "github.com/Paca-AI/api/internal/domain/automation"
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
+
+	automationdom "github.com/Paca-AI/api/internal/domain/automation"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 const (
@@ -84,13 +86,13 @@ func (s *CronScheduler) run() {
 }
 
 func (s *CronScheduler) tick(ctx context.Context) {
-	acquired, err := s.client.SetNX(ctx, cronSchedulerLeaderKey, "1", s.interval*2).Result()
+	err := s.client.SetArgs(ctx, cronSchedulerLeaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
+	if errors.Is(err, redis.Nil) {
+		return // another replica holds the lock this tick
+	}
 	if err != nil {
 		s.log.Warn("cron scheduler: leader lock error", "err", err)
 		return
-	}
-	if !acquired {
-		return // another replica holds the lock this tick
 	}
 
 	candidates, err := s.consumer.repo.ListCronCandidates(ctx)

@@ -11,12 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/secret"
-	"github.com/google/uuid"
 )
 
 // projectMemberWriter is the minimal interface this service needs to bust the

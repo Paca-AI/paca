@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
@@ -14,7 +16,6 @@ import (
 	"github.com/Paca-AI/api/internal/events"
 	mentionpkg "github.com/Paca-AI/api/internal/pkg/mention"
 	"github.com/Paca-AI/api/internal/platform/messaging"
-	"github.com/google/uuid"
 )
 
 // memberLookup is the minimal interface ActivitySvc needs to resolve an actor

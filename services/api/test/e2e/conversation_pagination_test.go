@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	"github.com/google/uuid"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 )
 
 // ---------------------------------------------------------------------------

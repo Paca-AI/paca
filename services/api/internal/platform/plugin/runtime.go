@@ -16,15 +16,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/Paca-AI/api/internal/platform/netguard"
-	"github.com/google/uuid"
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
 // ResourceLimits controls per-plugin execution constraints.

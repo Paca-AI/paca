@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -24,7 +26,6 @@ import (
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/router"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

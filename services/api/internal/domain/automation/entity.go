@@ -52,6 +52,7 @@ var ValidStatuses = map[Status]bool{
 // Kind discriminates the three node kinds a graph can contain.
 type Kind string
 
+// The three node kinds.
 const (
 	KindTrigger   Kind = "trigger"
 	KindCondition Kind = "condition"
@@ -70,6 +71,7 @@ var ValidKinds = map[Kind]bool{
 // here — see the plugin automation bridge.
 type TriggerType string
 
+// Built-in trigger types.
 const (
 	TriggerStatusChanged   TriggerType = "status_changed"
 	TriggerTaskCreated     TriggerType = "task_created"
@@ -116,6 +118,7 @@ const ConditionNodeType = "condition"
 // here — see the plugin automation bridge.
 type ActionType string
 
+// Built-in action types.
 const (
 	ActionAssign         ActionType = "assign"
 	ActionSetStatus      ActionType = "set_status"
@@ -230,6 +233,7 @@ type Graph struct {
 // RunStatus is the lifecycle state of one graph execution.
 type RunStatus string
 
+// The three run lifecycle states.
 const (
 	RunStatusRunning   RunStatus = "running"
 	RunStatusCompleted RunStatus = "completed"
@@ -255,6 +259,7 @@ type Run struct {
 // RunStepStatus is the outcome of a single node visited during a Run.
 type RunStepStatus string
 
+// The three outcomes a visited node's run step can record.
 const (
 	RunStepCompleted RunStepStatus = "completed"
 	RunStepFailed    RunStepStatus = "failed"
@@ -322,14 +327,15 @@ type TriggerConfig struct {
 // existed. The rest resolve relative to that task.
 type TaskTargetKind string
 
+// Recognized TaskTargetKind values.
 const (
 	TaskTargetSelf     TaskTargetKind = "self"
 	TaskTargetParent   TaskTargetKind = "parent"
 	TaskTargetChildren TaskTargetKind = "children"
-	// The four TaskTargetKind link types mirror task_link's DisplayLinkType
-	// vocabulary exactly (see domain/task/entity.go's TaskLink) — blocks and
-	// duplicates are directional (hence the "is_x_by" inverse), relates_to
-	// is symmetric.
+	// TaskTargetBlocks and the three link kinds below it mirror task_link's
+	// DisplayLinkType vocabulary exactly (see domain/task/entity.go's
+	// TaskLink) — blocks and duplicates are directional (hence the
+	// "is_x_by" inverse), relates_to is symmetric.
 	TaskTargetBlocks         TaskTargetKind = "blocks"
 	TaskTargetIsBlockedBy    TaskTargetKind = "is_blocked_by"
 	TaskTargetRelatesTo      TaskTargetKind = "relates_to"

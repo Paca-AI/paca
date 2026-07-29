@@ -5,12 +5,13 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	"github.com/Paca-AI/api/internal/apierr"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // ScopeResolver resolves a scope-specific project ID for permission checks.

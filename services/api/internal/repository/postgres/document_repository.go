@@ -7,9 +7,10 @@ import (
 	"errors"
 	"time"
 
-	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	docdom "github.com/Paca-AI/api/internal/domain/doc"
 )
 
 // =============================================================================

@@ -9,12 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
-	projectdom "github.com/Paca-AI/api/internal/domain/project"
-	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 func discardLogger() *slog.Logger {

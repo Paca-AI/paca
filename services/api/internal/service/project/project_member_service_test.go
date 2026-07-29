@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 )
 
 type memberServiceRepoMock struct {

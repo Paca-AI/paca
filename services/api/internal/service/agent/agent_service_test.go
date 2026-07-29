@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
-	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 )
 
 // findAgentByIDReturning stubs mockAgentRepo.findAgentByID to return a

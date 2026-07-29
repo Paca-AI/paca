@@ -14,12 +14,11 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.18.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/tetratelabs/wazero v1.11.0
 	golang.org/x/crypto v0.52.0
 )
-
-require github.com/robfig/cron/v3 v3.0.1 // indirect
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

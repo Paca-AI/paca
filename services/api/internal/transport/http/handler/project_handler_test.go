@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
@@ -18,9 +22,6 @@ import (
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
-	"github.com/go-chi/chi/v5"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

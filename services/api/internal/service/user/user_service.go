@@ -8,11 +8,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // GlobalPermissionReader resolves global permissions for a user.

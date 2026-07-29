@@ -6,9 +6,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/cache"
-	"github.com/google/uuid"
 )
 
 // CachedService decorates a taskdom.Service with a Valkey/Redis-backed cache.

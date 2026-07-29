@@ -9,11 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/google/uuid"
 )
 
 // fakeTaskUpdater records every UpdateTask call so tests can assert whether

@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 )
 
 // --- sqlx models -------------------------------------------------------------
@@ -263,6 +264,7 @@ func NewAutomationRepository(db *sqlx.DB) *AutomationRepository {
 
 // --- Automation ---------------------------------------------------------------
 
+// CreateAutomation implements automationdom.Repository.CreateAutomation.
 func (r *AutomationRepository) CreateAutomation(ctx context.Context, a *automationdom.Automation) error {
 	var createdBy *string
 	if a.CreatedBy != nil {
@@ -284,6 +286,7 @@ func (r *AutomationRepository) CreateAutomation(ctx context.Context, a *automati
 	return nil
 }
 
+// FindAutomationByID implements automationdom.Repository.FindAutomationByID.
 func (r *AutomationRepository) FindAutomationByID(ctx context.Context, id uuid.UUID) (*automationdom.Automation, error) {
 	const q = `
 		SELECT id, project_id, name, description, status, created_by, created_at, updated_at, deleted_at
@@ -298,6 +301,7 @@ func (r *AutomationRepository) FindAutomationByID(ctx context.Context, id uuid.U
 	return rec.toDomain()
 }
 
+// ListAutomations implements automationdom.Repository.ListAutomations.
 func (r *AutomationRepository) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status) ([]*automationdom.Automation, error) {
 	q := `
 		SELECT id, project_id, name, description, status, created_by, created_at, updated_at, deleted_at
@@ -324,6 +328,7 @@ func (r *AutomationRepository) ListAutomations(ctx context.Context, projectID uu
 	return out, nil
 }
 
+// UpdateAutomation implements automationdom.Repository.UpdateAutomation.
 func (r *AutomationRepository) UpdateAutomation(ctx context.Context, a *automationdom.Automation) error {
 	var description *string
 	if a.Description != "" {
@@ -337,6 +342,7 @@ func (r *AutomationRepository) UpdateAutomation(ctx context.Context, a *automati
 	return err
 }
 
+// DeleteAutomation implements automationdom.Repository.DeleteAutomation.
 func (r *AutomationRepository) DeleteAutomation(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE automations SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, id.String())
 	return err
@@ -344,6 +350,7 @@ func (r *AutomationRepository) DeleteAutomation(ctx context.Context, id uuid.UUI
 
 // --- Graph ----------------------------------------------------------------
 
+// LoadGraph implements automationdom.Repository.LoadGraph.
 func (r *AutomationRepository) LoadGraph(ctx context.Context, automationID uuid.UUID) (*automationdom.Graph, error) {
 	nodes, err := r.ListNodesByAutomation(ctx, automationID)
 	if err != nil {
@@ -358,6 +365,7 @@ func (r *AutomationRepository) LoadGraph(ctx context.Context, automationID uuid.
 
 // --- Nodes ------------------------------------------------------------------
 
+// CreateNode implements automationdom.Repository.CreateNode.
 func (r *AutomationRepository) CreateNode(ctx context.Context, n *automationdom.Node) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO automation_nodes (id, automation_id, kind, type, config, pos_x, pos_y, created_at, updated_at)
@@ -367,6 +375,7 @@ func (r *AutomationRepository) CreateNode(ctx context.Context, n *automationdom.
 	return err
 }
 
+// FindNodeByID implements automationdom.Repository.FindNodeByID.
 func (r *AutomationRepository) FindNodeByID(ctx context.Context, id uuid.UUID) (*automationdom.Node, error) {
 	const q = `
 		SELECT id, automation_id, kind, type, config, pos_x, pos_y, created_at, updated_at
@@ -381,6 +390,7 @@ func (r *AutomationRepository) FindNodeByID(ctx context.Context, id uuid.UUID) (
 	return rec.toDomain()
 }
 
+// ListNodesByAutomation implements automationdom.Repository.ListNodesByAutomation.
 func (r *AutomationRepository) ListNodesByAutomation(ctx context.Context, automationID uuid.UUID) ([]*automationdom.Node, error) {
 	const q = `
 		SELECT id, automation_id, kind, type, config, pos_x, pos_y, created_at, updated_at
@@ -400,6 +410,7 @@ func (r *AutomationRepository) ListNodesByAutomation(ctx context.Context, automa
 	return out, nil
 }
 
+// UpdateNode implements automationdom.Repository.UpdateNode.
 func (r *AutomationRepository) UpdateNode(ctx context.Context, n *automationdom.Node) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE automation_nodes SET config = $1, pos_x = $2, pos_y = $3, updated_at = $4 WHERE id = $5`,
@@ -408,6 +419,7 @@ func (r *AutomationRepository) UpdateNode(ctx context.Context, n *automationdom.
 	return err
 }
 
+// DeleteNode implements automationdom.Repository.DeleteNode.
 func (r *AutomationRepository) DeleteNode(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM automation_nodes WHERE id = $1`, id.String())
 	return err
@@ -415,6 +427,7 @@ func (r *AutomationRepository) DeleteNode(ctx context.Context, id uuid.UUID) err
 
 // --- Edges ------------------------------------------------------------------
 
+// CreateEdge implements automationdom.Repository.CreateEdge.
 func (r *AutomationRepository) CreateEdge(ctx context.Context, e *automationdom.Edge) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO automation_edges (id, automation_id, source_node_id, source_handle, target_node_id, created_at)
@@ -424,6 +437,7 @@ func (r *AutomationRepository) CreateEdge(ctx context.Context, e *automationdom.
 	return err
 }
 
+// FindEdgeByID implements automationdom.Repository.FindEdgeByID.
 func (r *AutomationRepository) FindEdgeByID(ctx context.Context, id uuid.UUID) (*automationdom.Edge, error) {
 	const q = `
 		SELECT id, automation_id, source_node_id, source_handle, target_node_id, created_at
@@ -438,6 +452,7 @@ func (r *AutomationRepository) FindEdgeByID(ctx context.Context, id uuid.UUID) (
 	return rec.toDomain()
 }
 
+// ListEdgesByAutomation implements automationdom.Repository.ListEdgesByAutomation.
 func (r *AutomationRepository) ListEdgesByAutomation(ctx context.Context, automationID uuid.UUID) ([]*automationdom.Edge, error) {
 	const q = `
 		SELECT id, automation_id, source_node_id, source_handle, target_node_id, created_at
@@ -457,6 +472,7 @@ func (r *AutomationRepository) ListEdgesByAutomation(ctx context.Context, automa
 	return out, nil
 }
 
+// DeleteEdge implements automationdom.Repository.DeleteEdge.
 func (r *AutomationRepository) DeleteEdge(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM automation_edges WHERE id = $1`, id.String())
 	return err
@@ -464,6 +480,7 @@ func (r *AutomationRepository) DeleteEdge(ctx context.Context, id uuid.UUID) err
 
 // --- Execution-engine read paths ---------------------------------------------
 
+// ListEnabledTriggerNodesByType implements automationdom.Repository.ListEnabledTriggerNodesByType.
 func (r *AutomationRepository) ListEnabledTriggerNodesByType(ctx context.Context, projectID uuid.UUID, triggerType automationdom.TriggerType) ([]*automationdom.Node, error) {
 	const q = `
 		SELECT n.id, n.automation_id, n.kind, n.type, n.config, n.pos_x, n.pos_y, n.created_at, n.updated_at
@@ -486,6 +503,7 @@ func (r *AutomationRepository) ListEnabledTriggerNodesByType(ctx context.Context
 	return out, nil
 }
 
+// ListPredecessorTriggersWatching implements automationdom.Repository.ListPredecessorTriggersWatching.
 func (r *AutomationRepository) ListPredecessorTriggersWatching(ctx context.Context, taskID uuid.UUID) ([]*automationdom.Node, error) {
 	const q = `
 		SELECT n.id, n.automation_id, n.kind, n.type, n.config, n.pos_x, n.pos_y, n.created_at, n.updated_at
@@ -510,6 +528,7 @@ func (r *AutomationRepository) ListPredecessorTriggersWatching(ctx context.Conte
 	return out, nil
 }
 
+// ListOutgoingEdges implements automationdom.Repository.ListOutgoingEdges.
 func (r *AutomationRepository) ListOutgoingEdges(ctx context.Context, sourceNodeID uuid.UUID) ([]*automationdom.Edge, error) {
 	const q = `
 		SELECT id, automation_id, source_node_id, source_handle, target_node_id, created_at
@@ -529,6 +548,7 @@ func (r *AutomationRepository) ListOutgoingEdges(ctx context.Context, sourceNode
 	return out, nil
 }
 
+// FindAutomationByNodeID implements automationdom.Repository.FindAutomationByNodeID.
 func (r *AutomationRepository) FindAutomationByNodeID(ctx context.Context, nodeID uuid.UUID) (*automationdom.Automation, error) {
 	const q = `
 		SELECT a.id, a.project_id, a.name, a.description, a.status, a.created_by, a.created_at, a.updated_at, a.deleted_at
@@ -547,6 +567,7 @@ func (r *AutomationRepository) FindAutomationByNodeID(ctx context.Context, nodeI
 
 // --- Runs / run steps ---------------------------------------------------------
 
+// CreateRun implements automationdom.Repository.CreateRun.
 func (r *AutomationRepository) CreateRun(ctx context.Context, run *automationdom.Run) error {
 	var taskID any
 	if run.TaskID != nil {
@@ -560,6 +581,7 @@ func (r *AutomationRepository) CreateRun(ctx context.Context, run *automationdom
 	return err
 }
 
+// UpdateRun implements automationdom.Repository.UpdateRun.
 func (r *AutomationRepository) UpdateRun(ctx context.Context, run *automationdom.Run) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE automation_runs SET status = $1, finished_at = $2 WHERE id = $3`,
@@ -568,6 +590,7 @@ func (r *AutomationRepository) UpdateRun(ctx context.Context, run *automationdom
 	return err
 }
 
+// ListRunsByAutomation implements automationdom.Repository.ListRunsByAutomation.
 func (r *AutomationRepository) ListRunsByAutomation(ctx context.Context, automationID uuid.UUID, limit int) ([]*automationdom.Run, error) {
 	if limit <= 0 {
 		limit = 50
@@ -590,6 +613,7 @@ func (r *AutomationRepository) ListRunsByAutomation(ctx context.Context, automat
 	return out, nil
 }
 
+// CreateRunStep implements automationdom.Repository.CreateRunStep.
 func (r *AutomationRepository) CreateRunStep(ctx context.Context, s *automationdom.RunStep) error {
 	var errText *string
 	if s.Error != "" {
@@ -603,6 +627,7 @@ func (r *AutomationRepository) CreateRunStep(ctx context.Context, s *automationd
 	return err
 }
 
+// ListRunStepsByRun implements automationdom.Repository.ListRunStepsByRun.
 func (r *AutomationRepository) ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*automationdom.RunStep, error) {
 	const q = `
 		SELECT id, run_id, node_id, status, input_snapshot, output_snapshot, error, executed_at
@@ -624,6 +649,7 @@ func (r *AutomationRepository) ListRunStepsByRun(ctx context.Context, runID uuid
 
 // --- Due-date scheduling -------------------------------------------------------
 
+// ListDueDateCandidates implements automationdom.Repository.ListDueDateCandidates.
 func (r *AutomationRepository) ListDueDateCandidates(ctx context.Context) ([]automationdom.DueDateCandidate, error) {
 	const q = `
 		SELECT n.id, n.automation_id, n.kind, n.type, n.config, n.pos_x, n.pos_y, n.created_at, n.updated_at,
@@ -648,7 +674,7 @@ func (r *AutomationRepository) ListDueDateCandidates(ctx context.Context) ([]aut
 	}
 	out := make([]automationdom.DueDateCandidate, 0, len(rows))
 	for i := range rows {
-		n, err := rows[i].nodeRecord.toDomain()
+		n, err := rows[i].toDomain()
 		if err != nil {
 			return nil, err
 		}
@@ -661,6 +687,7 @@ func (r *AutomationRepository) ListDueDateCandidates(ctx context.Context) ([]aut
 	return out, nil
 }
 
+// HasDueDateFired implements automationdom.Repository.HasDueDateFired.
 func (r *AutomationRepository) HasDueDateFired(ctx context.Context, nodeID, taskID uuid.UUID) (bool, error) {
 	const q = `SELECT EXISTS(SELECT 1 FROM automation_due_date_fires WHERE node_id = $1 AND task_id = $2)`
 	var exists bool
@@ -670,6 +697,7 @@ func (r *AutomationRepository) HasDueDateFired(ctx context.Context, nodeID, task
 	return exists, nil
 }
 
+// RecordDueDateFire implements automationdom.Repository.RecordDueDateFire.
 func (r *AutomationRepository) RecordDueDateFire(ctx context.Context, automationID, nodeID, taskID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO automation_due_date_fires (automation_id, node_id, task_id, fired_at)
@@ -681,6 +709,7 @@ func (r *AutomationRepository) RecordDueDateFire(ctx context.Context, automation
 
 // --- Cron scheduling ------------------------------------------------------------
 
+// ListCronCandidates implements automationdom.Repository.ListCronCandidates.
 func (r *AutomationRepository) ListCronCandidates(ctx context.Context) ([]automationdom.CronCandidate, error) {
 	const q = `
 		SELECT n.id, n.automation_id, n.kind, n.type, n.config, n.pos_x, n.pos_y, n.created_at, n.updated_at,
@@ -700,7 +729,7 @@ func (r *AutomationRepository) ListCronCandidates(ctx context.Context) ([]automa
 	}
 	out := make([]automationdom.CronCandidate, 0, len(rows))
 	for i := range rows {
-		n, err := rows[i].nodeRecord.toDomain()
+		n, err := rows[i].toDomain()
 		if err != nil {
 			return nil, err
 		}
@@ -709,6 +738,7 @@ func (r *AutomationRepository) ListCronCandidates(ctx context.Context) ([]automa
 	return out, nil
 }
 
+// RecordCronFire implements automationdom.Repository.RecordCronFire.
 func (r *AutomationRepository) RecordCronFire(ctx context.Context, automationID, nodeID uuid.UUID, firedAt time.Time) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO automation_cron_fires (node_id, automation_id, last_fired_at, updated_at)
@@ -752,6 +782,7 @@ func (r *AutomationRepository) CreateOrRotateWebhookToken(ctx context.Context, t
 	return r.FindActiveWebhookTokenByNodeID(ctx, tok.NodeID)
 }
 
+// FindActiveWebhookTokenByNodeID implements automationdom.Repository.FindActiveWebhookTokenByNodeID.
 func (r *AutomationRepository) FindActiveWebhookTokenByNodeID(ctx context.Context, nodeID uuid.UUID) (*automationdom.WebhookToken, error) {
 	const q = `
 		SELECT id, node_id, automation_id, token_prefix, created_by, created_at, last_used_at, revoked_at
@@ -783,6 +814,7 @@ func (r *AutomationRepository) VerifyWebhookToken(ctx context.Context, nodeID uu
 	return rec.toDomain()
 }
 
+// RecordWebhookTokenUsed implements automationdom.Repository.RecordWebhookTokenUsed.
 func (r *AutomationRepository) RecordWebhookTokenUsed(ctx context.Context, tokenID uuid.UUID, at time.Time) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE automation_webhook_tokens SET last_used_at = $1 WHERE id = $2`,

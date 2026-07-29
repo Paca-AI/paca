@@ -13,6 +13,10 @@ import (
 
 	"database/sql"
 
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/Paca-AI/api/internal/config"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -44,9 +48,6 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/router"
 	"github.com/Paca-AI/api/internal/worker"
 	"github.com/Paca-AI/api/migrations"
-	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // agentBotUserID is the fixed UUID of the built-in agent bot user seeded on

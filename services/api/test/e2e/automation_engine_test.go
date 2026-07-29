@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Paca-AI/api/internal/worker"
 	"github.com/google/uuid"
+
+	"github.com/Paca-AI/api/internal/worker"
 )
 
 // ---------------------------------------------------------------------------

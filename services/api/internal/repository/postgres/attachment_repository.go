@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 )
 
 // --- sqlx models -----------------------------------------------------------

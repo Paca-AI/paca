@@ -6,11 +6,12 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/uuid"
+
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

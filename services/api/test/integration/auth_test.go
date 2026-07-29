@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -18,8 +21,6 @@ import (
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/router"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // -- fakes -------------------------------------------------------------------

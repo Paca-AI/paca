@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // ---------------------------------------------------------------------------

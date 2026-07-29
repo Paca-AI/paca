@@ -8,11 +8,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

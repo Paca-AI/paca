@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -87,13 +88,13 @@ func (s *DueDateScheduler) run() {
 }
 
 func (s *DueDateScheduler) tick(ctx context.Context) {
-	acquired, err := s.client.SetNX(ctx, dueDateSchedulerLeaderKey, "1", s.interval*2).Result()
+	err := s.client.SetArgs(ctx, dueDateSchedulerLeaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
+	if errors.Is(err, redis.Nil) {
+		return // another replica holds the lock this tick
+	}
 	if err != nil {
 		s.log.Warn("due-date scheduler: leader lock error", "err", err)
 		return
-	}
-	if !acquired {
-		return // another replica holds the lock this tick
 	}
 
 	candidates, err := s.consumer.repo.ListDueDateCandidates(ctx)

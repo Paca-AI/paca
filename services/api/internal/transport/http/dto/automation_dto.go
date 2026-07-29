@@ -4,22 +4,26 @@ import (
 	"encoding/json"
 	"time"
 
-	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	"github.com/google/uuid"
+
+	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 )
 
 // --- Requests ------------------------------------------------------------------
 
+// CreateAutomationRequest is the body of POST .../automations.
 type CreateAutomationRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
+// UpdateAutomationRequest is the body of PATCH .../automations/:automationId.
 type UpdateAutomationRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 }
 
+// AddAutomationNodeRequest is the body of POST .../automations/:automationId/nodes.
 type AddAutomationNodeRequest struct {
 	Kind   string          `json:"kind"`
 	Type   string          `json:"type"`
@@ -28,12 +32,14 @@ type AddAutomationNodeRequest struct {
 	PosY   float64         `json:"pos_y"`
 }
 
+// UpdateAutomationNodeRequest is the body of PATCH .../nodes/:nodeId.
 type UpdateAutomationNodeRequest struct {
 	Config *json.RawMessage `json:"config"`
 	PosX   *float64         `json:"pos_x"`
 	PosY   *float64         `json:"pos_y"`
 }
 
+// AddAutomationEdgeRequest is the body of POST .../automations/:automationId/edges.
 type AddAutomationEdgeRequest struct {
 	SourceNodeID uuid.UUID `json:"source_node_id"`
 	SourceHandle *string   `json:"source_handle"`
@@ -42,6 +48,7 @@ type AddAutomationEdgeRequest struct {
 
 // --- Responses -------------------------------------------------------------
 
+// AutomationResponse is the public representation of an automationdom.Automation.
 type AutomationResponse struct {
 	ID          uuid.UUID  `json:"id"`
 	ProjectID   uuid.UUID  `json:"project_id"`
@@ -53,6 +60,7 @@ type AutomationResponse struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+// NewAutomationResponse builds an AutomationResponse from a domain Automation.
 func NewAutomationResponse(a *automationdom.Automation) AutomationResponse {
 	return AutomationResponse{
 		ID:          a.ID,
@@ -66,6 +74,7 @@ func NewAutomationResponse(a *automationdom.Automation) AutomationResponse {
 	}
 }
 
+// AutomationNodeResponse is the public representation of an automationdom.Node.
 type AutomationNodeResponse struct {
 	ID           uuid.UUID       `json:"id"`
 	AutomationID uuid.UUID       `json:"automation_id"`
@@ -76,6 +85,7 @@ type AutomationNodeResponse struct {
 	PosY         float64         `json:"pos_y"`
 }
 
+// NewAutomationNodeResponse builds an AutomationNodeResponse from a domain Node.
 func NewAutomationNodeResponse(n *automationdom.Node) AutomationNodeResponse {
 	return AutomationNodeResponse{
 		ID:           n.ID,
@@ -88,6 +98,7 @@ func NewAutomationNodeResponse(n *automationdom.Node) AutomationNodeResponse {
 	}
 }
 
+// AutomationEdgeResponse is the public representation of an automationdom.Edge.
 type AutomationEdgeResponse struct {
 	ID           uuid.UUID `json:"id"`
 	AutomationID uuid.UUID `json:"automation_id"`
@@ -96,6 +107,7 @@ type AutomationEdgeResponse struct {
 	TargetNodeID uuid.UUID `json:"target_node_id"`
 }
 
+// NewAutomationEdgeResponse builds an AutomationEdgeResponse from a domain Edge.
 func NewAutomationEdgeResponse(e *automationdom.Edge) AutomationEdgeResponse {
 	return AutomationEdgeResponse{
 		ID:           e.ID,
@@ -106,12 +118,15 @@ func NewAutomationEdgeResponse(e *automationdom.Edge) AutomationEdgeResponse {
 	}
 }
 
+// AutomationGraphResponse bundles an automation with its full node/edge set,
+// as returned by the single-fetch "get automation" endpoint.
 type AutomationGraphResponse struct {
 	Automation AutomationResponse       `json:"automation"`
 	Nodes      []AutomationNodeResponse `json:"nodes"`
 	Edges      []AutomationEdgeResponse `json:"edges"`
 }
 
+// NewAutomationGraphResponse builds an AutomationGraphResponse from a domain Graph.
 func NewAutomationGraphResponse(g *automationdom.Graph) AutomationGraphResponse {
 	nodes := make([]AutomationNodeResponse, len(g.Nodes))
 	for i, n := range g.Nodes {
@@ -128,6 +143,7 @@ func NewAutomationGraphResponse(g *automationdom.Graph) AutomationGraphResponse 
 	}
 }
 
+// AutomationRunResponse is the public representation of an automationdom.Run.
 type AutomationRunResponse struct {
 	ID            uuid.UUID `json:"id"`
 	AutomationID  uuid.UUID `json:"automation_id"`
@@ -141,6 +157,7 @@ type AutomationRunResponse struct {
 	FinishedAt *time.Time `json:"finished_at"`
 }
 
+// NewAutomationRunResponse builds an AutomationRunResponse from a domain Run.
 func NewAutomationRunResponse(r *automationdom.Run) AutomationRunResponse {
 	return AutomationRunResponse{
 		ID:            r.ID,
@@ -153,6 +170,7 @@ func NewAutomationRunResponse(r *automationdom.Run) AutomationRunResponse {
 	}
 }
 
+// AutomationRunStepResponse is the public representation of an automationdom.RunStep.
 type AutomationRunStepResponse struct {
 	ID             uuid.UUID       `json:"id"`
 	RunID          uuid.UUID       `json:"run_id"`
@@ -164,6 +182,7 @@ type AutomationRunStepResponse struct {
 	ExecutedAt     time.Time       `json:"executed_at"`
 }
 
+// NewAutomationRunStepResponse builds an AutomationRunStepResponse from a domain RunStep.
 func NewAutomationRunStepResponse(s *automationdom.RunStep) AutomationRunStepResponse {
 	return AutomationRunStepResponse{
 		ID:             s.ID,
@@ -177,6 +196,8 @@ func NewAutomationRunStepResponse(s *automationdom.RunStep) AutomationRunStepRes
 	}
 }
 
+// DependencyMapEntryResponse is one row of the read-only, auto-generated
+// dependency view surfacing a predecessor_done trigger's config.
 type DependencyMapEntryResponse struct {
 	AutomationID   uuid.UUID   `json:"automation_id"`
 	AutomationName string      `json:"automation_name"`
@@ -185,6 +206,8 @@ type DependencyMapEntryResponse struct {
 	WatchedTaskIDs []uuid.UUID `json:"watched_task_ids"`
 }
 
+// NewDependencyMapEntryResponse builds a DependencyMapEntryResponse from a
+// domain DependencyMapEntry.
 func NewDependencyMapEntryResponse(e automationdom.DependencyMapEntry) DependencyMapEntryResponse {
 	return DependencyMapEntryResponse{
 		AutomationID:   e.AutomationID,
@@ -213,6 +236,8 @@ type CreateWebhookTokenResponse struct {
 	Token string `json:"token"`
 }
 
+// NewWebhookTokenResponse builds a WebhookTokenResponse from a domain
+// WebhookToken, never including the raw token value.
 func NewWebhookTokenResponse(t *automationdom.WebhookToken) WebhookTokenResponse {
 	return WebhookTokenResponse{
 		ID:          t.ID,

@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	"github.com/google/uuid"
+
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
 // createTaskViaAPI is a helper to create a task via the API

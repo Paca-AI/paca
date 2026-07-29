@@ -1,8 +1,9 @@
 package dto
 
 import (
-	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/google/uuid"
+
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 )
 
 // --- Project Member DTOs ----------------------------------------------------

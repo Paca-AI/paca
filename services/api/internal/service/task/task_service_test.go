@@ -14,9 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

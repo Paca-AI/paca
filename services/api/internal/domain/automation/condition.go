@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"strings"
 
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/google/uuid"
+
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // Operator is a leaf comparison operator.
 type Operator string
 
+// Built-in comparison operators.
 const (
 	OpEquals      Operator = "equals"
 	OpNotEquals   Operator = "not_equals"
@@ -24,6 +26,7 @@ const (
 // Field is a leaf's comparison target on the task.
 type Field string
 
+// Built-in comparison targets.
 const (
 	FieldStatus      Field = "status_id"
 	FieldTaskType    Field = "task_type_id"

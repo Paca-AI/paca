@@ -7,9 +7,10 @@ import (
 	"errors"
 	"time"
 
-	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 )
 
 // -------------------------------------------------------------------------

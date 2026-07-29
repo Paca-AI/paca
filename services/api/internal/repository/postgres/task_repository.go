@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // --- sqlx models ------------------------------------------------------------

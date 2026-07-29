@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
-	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 func openGlobalRoleRepoTestDB(t *testing.T) *sqlx.DB {

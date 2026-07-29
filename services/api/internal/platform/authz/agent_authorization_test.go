@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 type mockAgentRoleResolver struct {

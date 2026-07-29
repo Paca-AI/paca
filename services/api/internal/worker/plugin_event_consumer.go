@@ -8,9 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/Paca-AI/api/internal/events"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/Paca-AI/api/internal/events"
 )
 
 const (

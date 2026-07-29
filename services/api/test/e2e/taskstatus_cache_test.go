@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
-	"github.com/google/uuid"
 )
 
 // TestE2ETaskStatus_CachedUpdatePreservesPositionAndCategory exercises the

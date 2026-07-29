@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
-	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 type globalRoleRecord struct {

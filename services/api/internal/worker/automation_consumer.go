@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
@@ -20,8 +23,6 @@ import (
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/netguard"
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -1019,7 +1020,7 @@ func (c *AutomationConsumer) applyCallAPI(ctx context.Context, cfg automationdom
 	if err != nil {
 		return false, nil, fmt.Errorf("call_api: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxCallAPIResponseBody+1))
 	respBody := string(raw)

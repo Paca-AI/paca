@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/google/uuid"
+
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/google/uuid"
 )
 
 func newNode(kind automationdom.Kind, nodeType string, config string) *automationdom.Node {
@@ -202,12 +203,12 @@ func TestService_ValidateNodeTypeAndConfig_PluginActionFallthrough(t *testing.T)
 	svc := &Service{}
 	svc.WithPluginNodeResolver(&stubPluginResolver{actions: map[string]bool{"com.acme.github.comment_on_pr": true}})
 
-	err := svc.validateNodeTypeAndConfig(nil, uuid.Nil, automationdom.KindAction, "com.acme.github.comment_on_pr", json.RawMessage(`{"template":"lgtm"}`), true)
+	err := svc.validateNodeTypeAndConfig(context.TODO(), uuid.Nil, automationdom.KindAction, "com.acme.github.comment_on_pr", json.RawMessage(`{"template":"lgtm"}`), true)
 	if err != nil {
 		t.Fatalf("expected a registered plugin action type to validate, got %v", err)
 	}
 
-	err = svc.validateNodeTypeAndConfig(nil, uuid.Nil, automationdom.KindAction, "com.acme.unregistered.action", json.RawMessage(`{}`), true)
+	err = svc.validateNodeTypeAndConfig(context.TODO(), uuid.Nil, automationdom.KindAction, "com.acme.unregistered.action", json.RawMessage(`{}`), true)
 	if err != automationdom.ErrNodeInvalidType {
 		t.Fatalf("expected ErrNodeInvalidType for an unregistered action type, got %v", err)
 	}
@@ -217,12 +218,12 @@ func TestService_ValidateNodeTypeAndConfig_PluginConditionFallthrough(t *testing
 	svc := &Service{}
 	svc.WithPluginNodeResolver(&stubPluginResolver{conditions: map[string]bool{"com.acme.github.pr_status": true}})
 
-	err := svc.validateNodeTypeAndConfig(nil, uuid.Nil, automationdom.KindCondition, "com.acme.github.pr_status", json.RawMessage(`{"status":"open"}`), true)
+	err := svc.validateNodeTypeAndConfig(context.TODO(), uuid.Nil, automationdom.KindCondition, "com.acme.github.pr_status", json.RawMessage(`{"status":"open"}`), true)
 	if err != nil {
 		t.Fatalf("expected a registered plugin condition type to validate, got %v", err)
 	}
 
-	err = svc.validateNodeTypeAndConfig(nil, uuid.Nil, automationdom.KindCondition, "com.acme.unregistered.condition", json.RawMessage(`{}`), true)
+	err = svc.validateNodeTypeAndConfig(context.TODO(), uuid.Nil, automationdom.KindCondition, "com.acme.unregistered.condition", json.RawMessage(`{}`), true)
 	if err != automationdom.ErrNodeInvalidType {
 		t.Fatalf("expected ErrNodeInvalidType for an unregistered condition type, got %v", err)
 	}
@@ -230,7 +231,7 @@ func TestService_ValidateNodeTypeAndConfig_PluginConditionFallthrough(t *testing
 
 func TestService_ValidateNodeTypeAndConfig_NoPluginResolverRejectsUnknownTypes(t *testing.T) {
 	svc := &Service{}
-	err := svc.validateNodeTypeAndConfig(nil, uuid.Nil, automationdom.KindAction, "com.acme.github.comment_on_pr", json.RawMessage(`{}`), true)
+	err := svc.validateNodeTypeAndConfig(context.TODO(), uuid.Nil, automationdom.KindAction, "com.acme.github.comment_on_pr", json.RawMessage(`{}`), true)
 	if err != automationdom.ErrNodeInvalidType {
 		t.Fatalf("expected ErrNodeInvalidType when no plugin resolver is configured, got %v", err)
 	}
@@ -241,21 +242,21 @@ func TestService_ValidateNodeTypeAndConfig_NoPluginResolverRejectsUnknownTypes(t
 func TestValidateTriggerConfig_Cron_InvalidExpressionRejectedRegardlessOfStrict(t *testing.T) {
 	svc := &Service{}
 	cfg, _ := json.Marshal(automationdom.TriggerConfig{CronExpression: "not a cron expression"})
-	if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerCron, cfg, false); err == nil {
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerCron, cfg, false); err == nil {
 		t.Fatal("expected an invalid cron expression to be rejected even in non-strict mode")
 	}
 }
 
 func TestValidateTriggerConfig_Cron_NonStrictAllowsEmptyConfig(t *testing.T) {
 	svc := &Service{}
-	if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerCron, json.RawMessage(`{}`), false); err != nil {
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerCron, json.RawMessage(`{}`), false); err != nil {
 		t.Fatalf("expected an empty cron config to pass non-strict (create-time) validation, got %v", err)
 	}
 }
 
 func TestValidateTriggerConfig_Cron_StrictRequiresExpressionButNotTargetTask(t *testing.T) {
 	svc := &Service{}
-	if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerCron, json.RawMessage(`{}`), true); err == nil {
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerCron, json.RawMessage(`{}`), true); err == nil {
 		t.Fatal("expected strict validation to require a cron_expression")
 	}
 	// target_task_id is optional — a valid cron_expression with no target
@@ -263,7 +264,7 @@ func TestValidateTriggerConfig_Cron_StrictRequiresExpressionButNotTargetTask(t *
 	// function) is what enforces such a node can only reach call_api
 	// actions downstream.
 	cfg, _ := json.Marshal(automationdom.TriggerConfig{CronExpression: "*/5 * * * *"})
-	if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerCron, cfg, true); err != nil {
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerCron, cfg, true); err != nil {
 		t.Fatalf("expected strict validation to allow an unset target_task_id, got %v", err)
 	}
 }
@@ -272,7 +273,7 @@ func TestValidateTriggerConfig_Cron_ValidExpressionPassesNonStrict(t *testing.T)
 	svc := &Service{}
 	for _, expr := range []string{"* * * * *", "*/15 * * * *", "0 9 * * 1-5"} {
 		cfg, _ := json.Marshal(automationdom.TriggerConfig{CronExpression: expr})
-		if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerCron, cfg, false); err != nil {
+		if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerCron, cfg, false); err != nil {
 			t.Fatalf("expected %q to be a valid cron expression, got %v", expr, err)
 		}
 	}
@@ -280,10 +281,10 @@ func TestValidateTriggerConfig_Cron_ValidExpressionPassesNonStrict(t *testing.T)
 
 func TestValidateTriggerConfig_APITrigger_TargetTaskIDOptionalInBothModes(t *testing.T) {
 	svc := &Service{}
-	if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerAPITrigger, json.RawMessage(`{}`), true); err != nil {
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerAPITrigger, json.RawMessage(`{}`), true); err != nil {
 		t.Fatalf("expected strict validation to allow an unset target_task_id, got %v", err)
 	}
-	if err := svc.validateTriggerConfig(nil, uuid.Nil, automationdom.TriggerAPITrigger, json.RawMessage(`{}`), false); err != nil {
+	if err := svc.validateTriggerConfig(context.TODO(), uuid.Nil, automationdom.TriggerAPITrigger, json.RawMessage(`{}`), false); err != nil {
 		t.Fatalf("expected non-strict (create-time) validation to allow an empty api_trigger config, got %v", err)
 	}
 }
@@ -291,22 +292,22 @@ func TestValidateTriggerConfig_APITrigger_TargetTaskIDOptionalInBothModes(t *tes
 func TestValidateActionConfig_CallAPI_FormatChecksApplyRegardlessOfStrict(t *testing.T) {
 	svc := &Service{}
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Method: "TRACE", URL: "https://example.com"})
-	if err := svc.validateActionConfig(nil, uuid.Nil, automationdom.ActionCallAPI, cfg, false); err == nil {
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionCallAPI, cfg, false); err == nil {
 		t.Fatal("expected an unsupported HTTP method to be rejected even in non-strict mode")
 	}
 
 	cfg, _ = json.Marshal(automationdom.ActionConfig{Method: "GET", URL: "ftp://example.com/file"})
-	if err := svc.validateActionConfig(nil, uuid.Nil, automationdom.ActionCallAPI, cfg, false); err == nil {
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionCallAPI, cfg, false); err == nil {
 		t.Fatal("expected a non-http(s) URL scheme to be rejected even in non-strict mode")
 	}
 }
 
 func TestValidateActionConfig_CallAPI_StrictRequiresMethodAndURL(t *testing.T) {
 	svc := &Service{}
-	if err := svc.validateActionConfig(nil, uuid.Nil, automationdom.ActionCallAPI, json.RawMessage(`{}`), false); err != nil {
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionCallAPI, json.RawMessage(`{}`), false); err != nil {
 		t.Fatalf("expected an empty call_api config to pass non-strict (create-time) validation, got %v", err)
 	}
-	if err := svc.validateActionConfig(nil, uuid.Nil, automationdom.ActionCallAPI, json.RawMessage(`{}`), true); err == nil {
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionCallAPI, json.RawMessage(`{}`), true); err == nil {
 		t.Fatal("expected strict validation to require method and url")
 	}
 }
@@ -314,7 +315,7 @@ func TestValidateActionConfig_CallAPI_StrictRequiresMethodAndURL(t *testing.T) {
 func TestValidateActionConfig_CallAPI_ValidConfigPasses(t *testing.T) {
 	svc := &Service{}
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Method: "post", URL: "https://example.com/webhook"})
-	if err := svc.validateActionConfig(nil, uuid.Nil, automationdom.ActionCallAPI, cfg, true); err != nil {
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionCallAPI, cfg, true); err != nil {
 		t.Fatalf("expected a valid call_api config to pass, got %v", err)
 	}
 }

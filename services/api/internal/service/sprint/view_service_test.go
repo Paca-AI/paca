@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
+
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

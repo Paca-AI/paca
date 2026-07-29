@@ -13,13 +13,14 @@ import (
 
 	"context"
 
+	"github.com/google/uuid"
+	"github.com/robfig/cron/v3"
+
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
-	"github.com/google/uuid"
-	"github.com/robfig/cron/v3"
 )
 
 // taskLookup is the minimal task-domain surface the automation service needs.
@@ -75,10 +76,12 @@ func (s *Service) publish(ctx context.Context, topic string, payload map[string]
 
 // --- Automation lifecycle ------------------------------------------------------
 
+// ListAutomations returns a project's automations, optionally filtered by status.
 func (s *Service) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status) ([]*automationdom.Automation, error) {
 	return s.repo.ListAutomations(ctx, projectID, status)
 }
 
+// GetAutomation returns one automation together with its full node/edge graph.
 func (s *Service) GetAutomation(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Graph, error) {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -92,6 +95,7 @@ func (s *Service) GetAutomation(ctx context.Context, projectID, automationID uui
 	return graph, nil
 }
 
+// CreateAutomation creates a new draft automation.
 func (s *Service) CreateAutomation(ctx context.Context, in automationdom.CreateAutomationInput) (*automationdom.Automation, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -118,6 +122,7 @@ func (s *Service) CreateAutomation(ctx context.Context, in automationdom.CreateA
 	return a, nil
 }
 
+// UpdateAutomation updates an automation's name/description.
 func (s *Service) UpdateAutomation(ctx context.Context, projectID, automationID uuid.UUID, in automationdom.UpdateAutomationInput) (*automationdom.Automation, error) {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -144,6 +149,7 @@ func (s *Service) UpdateAutomation(ctx context.Context, projectID, automationID 
 	return a, nil
 }
 
+// DeleteAutomation soft-deletes an automation and its graph.
 func (s *Service) DeleteAutomation(ctx context.Context, projectID, automationID uuid.UUID) error {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -182,6 +188,8 @@ func (s *Service) Activate(ctx context.Context, projectID, automationID uuid.UUI
 			hasTrigger = true
 		case automationdom.KindAction:
 			hasAction = true
+		case automationdom.KindCondition:
+			// Neither required nor sufficient on its own; nothing to record.
 		}
 	}
 	if !hasTrigger {
@@ -219,6 +227,8 @@ func (s *Service) Activate(ctx context.Context, projectID, automationID uuid.UUI
 	return a, nil
 }
 
+// Archive transitions an active automation to archived, stopping it from
+// firing without deleting its graph.
 func (s *Service) Archive(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -239,6 +249,8 @@ func (s *Service) Archive(ctx context.Context, projectID, automationID uuid.UUID
 	return a, nil
 }
 
+// RevertToDraft transitions an active automation back to draft so its graph
+// can be edited again. A no-op if it's already draft.
 func (s *Service) RevertToDraft(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -264,6 +276,7 @@ func (s *Service) RevertToDraft(ctx context.Context, projectID, automationID uui
 
 // --- Nodes --------------------------------------------------------------------
 
+// AddNode adds a new Trigger/Condition/Action node to an editable automation.
 func (s *Service) AddNode(ctx context.Context, projectID, automationID uuid.UUID, in automationdom.AddNodeInput) (*automationdom.Node, error) {
 	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -296,6 +309,7 @@ func (s *Service) AddNode(ctx context.Context, projectID, automationID uuid.UUID
 	return n, nil
 }
 
+// UpdateNode updates a node's config and/or canvas position.
 func (s *Service) UpdateNode(ctx context.Context, projectID, automationID, nodeID uuid.UUID, in automationdom.UpdateNodeInput) (*automationdom.Node, error) {
 	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -358,6 +372,7 @@ func (s *Service) UpdateNode(ctx context.Context, projectID, automationID, nodeI
 	return n, nil
 }
 
+// RemoveNode deletes a node and its connected edges from an editable automation.
 func (s *Service) RemoveNode(ctx context.Context, projectID, automationID, nodeID uuid.UUID) error {
 	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -380,6 +395,9 @@ func (s *Service) RemoveNode(ctx context.Context, projectID, automationID, nodeI
 
 // --- Edges ----------------------------------------------------------------
 
+// AddEdge connects two nodes in an editable automation, rejecting self-loops,
+// cycles, duplicates, edges into a Trigger, and edges that would make a
+// downstream node unreachable from a task.
 func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID, in automationdom.AddEdgeInput) (*automationdom.Edge, error) {
 	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -420,7 +438,9 @@ func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	tentativeEdges := append(edges, &automationdom.Edge{SourceNodeID: source.ID, TargetNodeID: target.ID})
+	tentativeEdges := make([]*automationdom.Edge, len(edges), len(edges)+1)
+	copy(tentativeEdges, edges)
+	tentativeEdges = append(tentativeEdges, &automationdom.Edge{SourceNodeID: source.ID, TargetNodeID: target.ID})
 	if err := validateTaskReachability(nodes, tentativeEdges); err != nil {
 		return nil, err
 	}
@@ -446,6 +466,7 @@ func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID
 	return e, nil
 }
 
+// RemoveEdge deletes one edge from an editable automation.
 func (s *Service) RemoveEdge(ctx context.Context, projectID, automationID, edgeID uuid.UUID) error {
 	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
@@ -471,6 +492,7 @@ func (s *Service) RemoveEdge(ctx context.Context, projectID, automationID, edgeI
 
 // --- Runs -------------------------------------------------------------------
 
+// ListRuns returns an automation's most recent executions, newest first.
 func (s *Service) ListRuns(ctx context.Context, projectID, automationID uuid.UUID, limit int) ([]*automationdom.Run, error) {
 	if _, err := s.findOwnedAutomation(ctx, projectID, automationID); err != nil {
 		return nil, err
@@ -478,6 +500,7 @@ func (s *Service) ListRuns(ctx context.Context, projectID, automationID uuid.UUI
 	return s.repo.ListRunsByAutomation(ctx, automationID, limit)
 }
 
+// ListRunSteps returns every node visited during one run, in execution order.
 func (s *Service) ListRunSteps(ctx context.Context, projectID, automationID, runID uuid.UUID) ([]*automationdom.RunStep, error) {
 	if _, err := s.findOwnedAutomation(ctx, projectID, automationID); err != nil {
 		return nil, err

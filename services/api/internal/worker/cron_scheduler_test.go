@@ -9,9 +9,10 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/google/uuid"
+
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/google/uuid"
 )
 
 // fakeCronRepo implements automationGraphReader with just enough behavior to
@@ -103,7 +104,7 @@ func TestCronScheduler_Tick_FiresOverdueNodeExactlyOnce(t *testing.T) {
 		automation: &automationdom.Automation{ID: uuid.New(), ProjectID: uuid.New(), Status: automationdom.StatusActive},
 	}
 	scheduler, client := newTestCronScheduler(t, repo, &fakeCronTaskReader{task: &taskdom.Task{ID: targetTaskID}})
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler.tick(context.Background())
 
@@ -125,7 +126,7 @@ func TestCronScheduler_Tick_SkipsNodeNotYetDue(t *testing.T) {
 		automation: &automationdom.Automation{ID: uuid.New(), ProjectID: uuid.New(), Status: automationdom.StatusActive},
 	}
 	scheduler, client := newTestCronScheduler(t, repo, &fakeCronTaskReader{task: &taskdom.Task{ID: targetTaskID}})
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler.tick(context.Background())
 
@@ -145,7 +146,7 @@ func TestCronScheduler_Tick_SkipsMisconfiguredNode(t *testing.T) {
 		automation: &automationdom.Automation{ID: uuid.New(), ProjectID: uuid.New(), Status: automationdom.StatusActive},
 	}
 	scheduler, client := newTestCronScheduler(t, repo, &fakeCronTaskReader{task: &taskdom.Task{ID: targetTaskID}})
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	scheduler.tick(context.Background())
 
@@ -162,7 +163,7 @@ func TestCronScheduler_Tick_LeaderLockPreventsDoubleFireWithinSameTTLWindow(t *t
 		automation: &automationdom.Automation{ID: uuid.New(), ProjectID: uuid.New(), Status: automationdom.StatusActive},
 	}
 	scheduler, client := newTestCronScheduler(t, repo, &fakeCronTaskReader{task: &taskdom.Task{ID: targetTaskID}})
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Two ticks in immediate succession simulate two replicas (or one
 	// replica ticking faster than the lock's TTL) racing for the same

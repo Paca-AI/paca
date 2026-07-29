@@ -104,10 +104,10 @@ const (
 
 	// --- Agent trigger events -----------------------------------------------
 	// These are appended to StreamAgentTriggers and consumed by services/ai-agent.
-	TopicAgentTaskAssigned      = "agent.task_assigned"
-	TopicAgentCommentMention    = "agent.comment_mention"
-	TopicAgentChatMessage       = "agent.chat_message"
-	TopicAgentDescriptionWrite  = "agent.description_write"
+	TopicAgentTaskAssigned     = "agent.task_assigned"
+	TopicAgentCommentMention   = "agent.comment_mention"
+	TopicAgentChatMessage      = "agent.chat_message"
+	TopicAgentDescriptionWrite = "agent.description_write"
 	// TopicAgentAutomationMessage fires a standalone message at an agent, no
 	// task involved — used by the automation engine's trigger_ai_agent
 	// action when its trigger has no target task (nothing to assign).
