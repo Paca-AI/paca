@@ -392,12 +392,12 @@
 				"description": "创建、配置和删除 AI 智能体"
 			},
 			"workflowsRead": {
-				"label": "查看工作流",
-				"description": "浏览自动化工作流及其配置"
+				"label": "查看自动化",
+				"description": "浏览自动化及其配置"
 			},
 			"workflowsWrite": {
-				"label": "管理工作流",
-				"description": "创建、编辑、启用和删除自动化工作流"
+				"label": "管理自动化",
+				"description": "创建、编辑、启用和删除自动化"
 			}
 		},
 		"permissionGroups": {
@@ -769,11 +769,6 @@
 			"openTask": "打开任务",
 			"removeLink": "移除关联",
 			"empty": "暂无关联任务"
-		},
-		"workflows": {
-			"title": "工作流",
-			"open": "打开工作流",
-			"empty": "暂无工作流"
 		},
 		"attachments": {
 			"title": "附件",
@@ -1219,12 +1214,12 @@
 	"automation": {
 		"list": {
 			"title": "自动化",
-			"subtitle": "随着工作推进自动完成任务交接",
-			"newWorkflow": "新建工作流",
+			"subtitle": "通过触发器、条件和操作对任务事件做出响应",
+			"newAutomation": "新建自动化",
 			"empty": {
-				"title": "暂无工作流",
-				"description": "创建一个工作流，随着工作推进自动完成任务交接。",
-				"createFirstWorkflow": "创建您的第一个工作流"
+				"title": "暂无自动化",
+				"description": "创建一个自动化，通过条件和操作对任务事件做出响应。",
+				"createFirst": "创建你的第一个自动化"
 			},
 			"noDescription": "暂无描述",
 			"updated": "更新于 {{time}}"
@@ -1235,61 +1230,207 @@
 			"archived": "已归档"
 		},
 		"createDialog": {
-			"title": "新建自动化工作流",
+			"title": "新建自动化",
 			"nameLabel": "名称",
-			"namePlaceholder": "例如：发布流水线",
+			"namePlaceholder": "例如：Bug 分诊",
 			"descriptionLabel": "描述",
-			"descriptionPlaceholder": "关于此工作流的可选详细信息…",
+			"descriptionPlaceholder": "关于此自动化的可选说明…",
 			"cancel": "取消",
 			"create": "创建"
 		},
 		"deleteDialog": {
-			"title": "删除工作流",
+			"title": "删除自动化",
 			"body": "确定要删除“{{name}}”吗？此操作无法撤销。",
 			"cancel": "取消",
 			"confirm": "删除"
 		},
 		"builder": {
-			"addTask": "添加任务",
 			"activate": "启用",
 			"archive": "归档",
 			"deactivate": "停用",
-			"readOnlyNoticeArchived": "该工作流已归档，为只读状态 — 已归档的工作流无法编辑。",
+			"readOnlyNoticeArchived": "该自动化已归档，为只读状态 — 已归档的自动化无法编辑。",
 			"genericError": "出了点问题，请重试。",
-			"collapseSidebar": "收起侧边栏",
-			"expandSidebar": "展开侧边栏"
+			"taskLessTriggerConnectionError": "该触发器未设置目标任务，因此只能连接到“调用 API”或“触发 AI 代理”操作 — 条件和其他操作都需要一个任务才能运行。",
+			"collapseSidebar": "收起面板",
+			"expandSidebar": "展开面板",
+			"tabGraph": "图谱",
+			"tabRuns": "运行历史",
+			"tabDependencyMap": "依赖关系图"
+		},
+		"palette": {
+			"title": "添加节点",
+			"addTrigger": "添加触发器",
+			"addCondition": "添加条件",
+			"addAction": "添加操作",
+			"builtIn": "内置",
+			"plugins": "插件"
+		},
+		"nodeKind": {
+			"trigger": "触发器",
+			"condition": "条件",
+			"action": "操作"
 		},
 		"canvas": {
-			"unknownTask": "未知任务",
-			"deleteEdge": "删除连接"
+			"deleteEdge": "删除连接",
+			"deleteNode": "删除节点"
 		},
-		"addNodeModal": {
-			"title": "将任务添加到工作流",
-			"searchPlaceholder": "搜索任务...",
-			"loadingTasks": "正在加载任务...",
-			"noTasksFound": "未找到任务"
+		"triggerTypes": {
+			"status_changed": "状态变更时",
+			"task_created": "任务创建时",
+			"assignee_changed": "负责人变更时",
+			"priority_changed": "优先级变更时",
+			"tag_added": "添加标签时",
+			"due_date_reached": "到达截止日期时",
+			"predecessor_done": "前置任务完成时",
+			"cron": "定时计划",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "任务",
-			"removeNode": "从工作流中移除",
-			"removeConfirmTitle": "从工作流中移除任务",
-			"removeConfirmBody": "此操作会将任务从工作流图谱中移除，包括其所有连接。任务本身不受影响。",
+		"actionTypes": {
+			"assign": "指派",
+			"set_status": "设置状态",
+			"set_priority": "设置优先级",
+			"add_tag": "添加标签",
+			"set_custom_field": "设置自定义字段",
+			"trigger_ai_agent": "触发 AI 代理",
+			"call_api": "调用 API"
+		},
+		"nodeConfig": {
+			"save": "保存",
 			"cancel": "取消",
-			"removeConfirmAction": "移除"
+			"remove": "删除节点",
+			"removeConfirmTitle": "删除节点",
+			"removeConfirmBody": "这将从图谱中删除该节点及其所有连接。",
+			"removeConfirmAction": "删除",
+			"genericFormHint": "此节点类型来自插件。请以 JSON 格式编辑其配置 — 未来版本中插件将可以在此注册更完善的编辑器。",
+			"trigger": {
+				"anyStatus": "任意状态",
+				"statusLabel": "状态",
+				"tagLabel": "标签",
+				"anyTag": "任意标签",
+				"dueDateOffsetLabel": "偏移量（分钟）",
+				"dueDateOffsetHint": "0 = 截止日期当天，负数 = 提前，正数 = 延后",
+				"watchedTasksLabel": "关注的任务",
+				"watchedTasksHint": "当这些任务全部进入“已完成”状态时触发",
+				"addWatchedTaskPlaceholder": "添加要关注的任务…",
+				"targetTaskLabel": "目标任务（可选）",
+				"targetTaskHint": "当上方所有关注任务都完成后，该自动化所作用的任务 — 与其前置任务不同，会根据自身当前状态重新评估。如果只需连接到不需要任务的“调用 API”或“触发 AI 代理”操作，可以留空。",
+				"selectTaskPlaceholder": "选择一个任务…",
+				"searchTaskPlaceholder": "搜索任务…",
+				"noTasksFound": "未找到匹配的任务",
+				"noTasksYet": "该项目中暂无任务",
+				"loadingMore": "加载中…",
+				"clearTargetTask": "清除目标任务",
+				"cronExpressionLabel": "Cron 表达式",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "标准 5 段式 Cron（分 时 日 月 星期），按 UTC 计算",
+				"cronTargetTaskHint": "每次按计划触发时，该自动化所作用的任务。如果只需连接到不需要任务的“调用 API”或“触发 AI 代理”操作，可以留空。",
+				"apiTriggerTargetTaskHint": "每次调用下方 Webhook 时，该自动化所作用的任务。如果只需连接到不需要任务的“调用 API”或“触发 AI 代理”操作，可以留空。",
+				"webhookUrlLabel": "Webhook 地址",
+				"webhookTokenLabel": "Webhook 令牌",
+				"generateTokenButton": "生成令牌",
+				"regenerateTokenButton": "重新生成令牌",
+				"tokenShownOnceWarning": "请立即复制此令牌 — 之后将不再显示。",
+				"copy": "复制",
+				"copied": "已复制",
+				"noTokenYet": "尚未生成令牌"
+			},
+			"condition": {
+				"branchesTitle": "分支",
+				"addBranch": "添加分支",
+				"branchLabel": "分支标签",
+				"elseLabel": "否则（未匹配任何分支）",
+				"removeBranch": "删除分支",
+				"field": "字段",
+				"operator": "运算符",
+				"value": "值",
+				"addGroup": "添加组",
+				"addCondition": "添加条件",
+				"removeCondition": "删除",
+				"logicAnd": "与",
+				"logicOr": "或",
+				"logicNot": "非",
+				"fields": {
+					"status_id": "状态",
+					"task_type_id": "任务类型",
+					"importance": "优先级",
+					"assignee_ids": "负责人",
+					"tags": "标签",
+					"custom_field": "自定义字段"
+				}
+			},
+			"action": {
+				"memberLabel": "负责人",
+				"statusLabel": "状态",
+				"importanceLabel": "优先级",
+				"tagLabel": "标签",
+				"fieldKeyLabel": "字段",
+				"valueLabel": "值",
+				"messageLabel": "给代理的指示",
+				"messagePlaceholder": "例如：总结此任务并建议一个优先级。",
+				"methodLabel": "方法",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://example.com/webhook",
+				"headersLabel": "请求头",
+				"headerKeyPlaceholder": "请求头名称",
+				"headerValuePlaceholder": "值",
+				"addHeader": "添加请求头",
+				"bodyLabel": "请求体"
+			},
+			"target": {
+				"label": "作用对象",
+				"kinds": {
+					"self": "此任务",
+					"parent": "父任务",
+					"children": "子任务",
+					"blocks": "阻塞的任务",
+					"is_blocked_by": "被阻塞的任务",
+					"relates_to": "相关任务",
+					"duplicates": "重复的任务",
+					"is_duplicated_by": "被重复的任务",
+					"other": "其他任务…"
+				},
+				"matchMode": {
+					"any": "任意匹配",
+					"all": "全部匹配"
+				}
+			},
+			"description": {
+				"dueDateAt": "截止日期当天",
+				"dueDateBefore": "截止日期前 {{minutes}} 分钟",
+				"dueDateAfter": "截止日期后 {{minutes}} 分钟",
+				"branches": "{{count}} 个分支",
+				"priority": "优先级：{{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "未指派",
+				"notConfigured": "未配置",
+				"elseShort": "否则",
+				"branchFallback": "分支 {{n}}",
+				"cronSchedule": "运行时间：{{expression}}",
+				"webhookReady": "已配置 Webhook",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "状态 → 负责人规则",
-			"hint": "当任务变为以下任一状态时，自动将其分配给相应成员。这适用于此工作流中的任何任务 — 无论是有人直接更改任务状态，还是前置任务完成后下游任务按其当前状态重新评估。",
-			"noRules": "暂无规则",
-			"statusPlaceholder": "状态",
-			"memberPlaceholder": "负责人"
+		"runHistory": {
+			"title": "运行历史",
+			"empty": "暂无运行记录",
+			"status": {
+				"running": "运行中",
+				"completed": "已完成",
+				"failed": "失败"
+			},
+			"stepStatus": {
+				"completed": "已完成",
+				"failed": "失败",
+				"skipped": "已跳过（已应用）"
+			},
+			"startedAt": "开始于 {{time}}",
+			"viewSteps": "查看步骤"
 		},
-		"statusTransitions": {
-			"title": "状态工作流",
-			"hint": "定义每个状态的工作完成后接下来进入哪个状态。这可以解锁下游任务，并明确告知 AI 代理负责人接下来应设置的状态，而不必猜测。创建工作流时会根据项目的状态自动生成默认链。",
-			"nextStatusLabel": "下一个状态",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "必须有且只有一个状态没有下一个状态（该状态将成为工作流的 __END__ 状态）。当前已配置：{{count}} 个。"
+		"dependencyMap": {
+			"title": "依赖关系图",
+			"subtitle": "只读视图，展示所有等待其他任务完成的自动化",
+			"empty": "尚未配置前置任务依赖关系",
+			"watchedTasks": "等待 {{count}} 个任务"
 		}
 	}
 }

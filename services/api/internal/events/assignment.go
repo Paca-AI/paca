@@ -10,9 +10,9 @@ import (
 // PublishAssignmentChanged appends a task.assigned event to
 // StreamTaskAssignments — the single payload shape the NotificationConsumer
 // and the AI-agent trigger pipeline both read, regardless of whether a
-// human PATCH, task creation, or the automation-workflow engine changed the
-// assignee. extra merges in caller-specific attribution (e.g. workflow_id /
-// workflow_name / next_status_name) on top of the shared fields; pass nil
+// human PATCH, task creation, or the automation engine changed the
+// assignee. extra merges in caller-specific attribution (e.g.
+// automation_name / agent_message) on top of the shared fields; pass nil
 // when there is none. No-op if publisher is nil, matching how every other
 // best-effort event in this package is published.
 func PublishAssignmentChanged(ctx context.Context, publisher *messaging.Publisher, taskID, projectID, newAssigneeMemberID uuid.UUID, oldAssigneeMemberID *uuid.UUID, actorUserID uuid.UUID, extra map[string]any) error {

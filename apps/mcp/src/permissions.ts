@@ -315,24 +315,26 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		requiresProject: true,
 	},
 
-	// Automation workflow tools
+	// Automation tools (still gated by the workflows.* permission keys — see
+	// the backend's automation router registration for why those key names
+	// were kept rather than renamed to automations.*)
 	{
-		toolName: "get_workflow",
+		toolName: "get_automation",
 		permissionKey: "workflows.read",
 		requiresProject: true,
 	},
 	{
-		toolName: "create_workflow",
+		toolName: "create_automation",
 		permissionKey: "workflows.write",
 		requiresProject: true,
 	},
 	{
-		toolName: "update_workflow",
+		toolName: "update_automation",
 		permissionKey: "workflows.write",
 		requiresProject: true,
 	},
 	{
-		toolName: "delete_workflow",
+		toolName: "delete_automation",
 		permissionKey: "workflows.write",
 		requiresProject: true,
 	},

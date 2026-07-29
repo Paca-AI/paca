@@ -40,7 +40,7 @@ type Deps struct {
 	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
 	Conversation         *handler.ConversationHandler
-	Workflow             *handler.WorkflowHandler
+	Automation           *handler.AutomationHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
 	// or empty slice (the zero value, so every existing caller of this
@@ -249,48 +249,52 @@ func New(deps Deps) http.Handler {
 						Put("/{statusId}/set-default", deps.Task.SetDefaultTaskStatus)
 				})
 
-				// Automation workflows
-				if deps.Workflow != nil {
-					r.Route("/workflows", func(r chi.Router) {
+				// Automation graph — reuses the workflows.read/write permission
+				// keys (already seeded on every default/project role) rather
+				// than introducing automations.* and a permission-backfill
+				// migration.
+				if deps.Automation != nil {
+					r.Route("/automations", func(r chi.Router) {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsRead)).
-							Get("/", deps.Workflow.ListWorkflows)
+							Get("/", deps.Automation.ListAutomations)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/", deps.Workflow.CreateWorkflow)
+							Post("/", deps.Automation.CreateAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsRead)).
-							Get("/{workflowId}", deps.Workflow.GetWorkflow)
+							Get("/{automationId}", deps.Automation.GetAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Patch("/{workflowId}", deps.Workflow.UpdateWorkflow)
+							Patch("/{automationId}", deps.Automation.UpdateAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Delete("/{workflowId}", deps.Workflow.DeleteWorkflow)
+							Delete("/{automationId}", deps.Automation.DeleteAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/activate", deps.Workflow.ActivateWorkflow)
+							Post("/{automationId}/activate", deps.Automation.ActivateAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/archive", deps.Workflow.ArchiveWorkflow)
+							Post("/{automationId}/archive", deps.Automation.ArchiveAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/revert-to-draft", deps.Workflow.RevertWorkflowToDraft)
+							Post("/{automationId}/revert-to-draft", deps.Automation.RevertAutomationToDraft)
 
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/nodes", deps.Workflow.AddWorkflowNode)
+							Post("/{automationId}/nodes", deps.Automation.AddAutomationNode)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Patch("/{workflowId}/nodes/{nodeId}", deps.Workflow.UpdateWorkflowNode)
+							Patch("/{automationId}/nodes/{nodeId}", deps.Automation.UpdateAutomationNode)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Delete("/{workflowId}/nodes/{nodeId}", deps.Workflow.RemoveWorkflowNode)
+							Delete("/{automationId}/nodes/{nodeId}", deps.Automation.RemoveAutomationNode)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
+							Post("/{automationId}/nodes/{nodeId}/webhook-token", deps.Automation.GenerateWebhookToken)
 
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/status-rules", deps.Workflow.SetWorkflowStatusRule)
+							Post("/{automationId}/edges", deps.Automation.AddAutomationEdge)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Delete("/{workflowId}/status-rules/{ruleId}", deps.Workflow.RemoveWorkflowStatusRule)
+							Delete("/{automationId}/edges/{edgeId}", deps.Automation.RemoveAutomationEdge)
 
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/status-transitions", deps.Workflow.SetWorkflowStatusTransition)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Delete("/{workflowId}/status-transitions/{transitionId}", deps.Workflow.RemoveWorkflowStatusTransition)
-
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{workflowId}/edges", deps.Workflow.AddWorkflowEdge)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Delete("/{workflowId}/edges/{edgeId}", deps.Workflow.RemoveWorkflowEdge)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsRead)).
+							Get("/{automationId}/runs", deps.Automation.ListAutomationRuns)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsRead)).
+							Get("/{automationId}/runs/{runId}/steps", deps.Automation.ListAutomationRunSteps)
 					})
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsRead)).
+						Get("/automation-dependency-map", deps.Automation.GetAutomationDependencyMap)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsRead)).
+						Get("/automation-plugin-node-types", deps.Automation.ListPluginNodeTypes)
 				}
 
 				// Sprints
@@ -393,14 +397,6 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
 							Delete("/{linkId}", deps.Task.DeleteTaskLink)
 					})
-
-					// Workflows this task belongs to (read-only, for the task detail view)
-					if deps.Workflow != nil {
-						r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
-							httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-							httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionWorkflowsRead}},
-						)).Get("/{taskId}/workflows", deps.Workflow.ListWorkflowsForTask)
-					}
 
 					// Attachments
 					r.Route("/{taskId}/attachments", func(r chi.Router) {
@@ -637,6 +633,16 @@ func New(deps Deps) http.Handler {
 					r.Use(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionUsersWrite))
 					r.Patch("/", deps.Plugin.UpdateExtensionSetting)
 				})
+			}
+
+			// Automation webhook receiver — registered outside the
+			// authenticated /projects/{projectId} group (same reasoning as
+			// the plugin proxy above): the caller is an external system, not
+			// a logged-in user, so it authenticates with its own secret
+			// token (X-Webhook-Token header) checked inline by the handler
+			// rather than router-level session/API-key middleware.
+			if deps.Automation != nil {
+				r.Post("/webhooks/automations/{nodeId}", deps.Automation.ReceiveWebhook)
 			}
 		})
 	})

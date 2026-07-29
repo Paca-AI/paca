@@ -1619,21 +1619,21 @@ func TestDeleteTaskStatus_NotFound(t *testing.T) {
 	}
 }
 
-// stubWorkflowStatusChecker lets tests control whether a status looks
-// referenced by a workflow without depending on the workflow package.
-type stubWorkflowStatusChecker struct {
+// stubAutomationStatusChecker lets tests control whether a status looks
+// referenced by an automation without depending on the automation package.
+type stubAutomationStatusChecker struct {
 	used bool
 	err  error
 }
 
-func (s *stubWorkflowStatusChecker) StatusUsedByWorkflow(_ context.Context, _ uuid.UUID) (bool, error) {
+func (s *stubAutomationStatusChecker) StatusUsedByAutomation(_ context.Context, _ uuid.UUID) (bool, error) {
 	return s.used, s.err
 }
 
-func TestDeleteTaskStatus_InUseByWorkflow_Blocked(t *testing.T) {
+func TestDeleteTaskStatus_InUseByAutomation_Blocked(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeTaskRepo()
-	svc := tasksvc.New(repo).WithWorkflowStatusChecker(&stubWorkflowStatusChecker{used: true})
+	svc := tasksvc.New(repo).WithAutomationStatusChecker(&stubAutomationStatusChecker{used: true})
 	projectID := uuid.New()
 
 	st, _ := svc.CreateTaskStatus(ctx, taskdom.CreateTaskStatusInput{
@@ -1644,8 +1644,8 @@ func TestDeleteTaskStatus_InUseByWorkflow_Blocked(t *testing.T) {
 	})
 
 	err := svc.DeleteTaskStatus(ctx, st.ProjectID, st.ID)
-	if err != taskdom.ErrStatusInUseByWorkflow {
-		t.Fatalf("expected ErrStatusInUseByWorkflow, got %v", err)
+	if err != taskdom.ErrStatusInUseByAutomation {
+		t.Fatalf("expected ErrStatusInUseByAutomation, got %v", err)
 	}
 
 	if _, getErr := svc.GetTaskStatus(ctx, st.ID); getErr != nil {
@@ -1653,10 +1653,10 @@ func TestDeleteTaskStatus_InUseByWorkflow_Blocked(t *testing.T) {
 	}
 }
 
-func TestDeleteTaskStatus_NotUsedByWorkflow_Allowed(t *testing.T) {
+func TestDeleteTaskStatus_NotUsedByAutomation_Allowed(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeTaskRepo()
-	svc := tasksvc.New(repo).WithWorkflowStatusChecker(&stubWorkflowStatusChecker{used: false})
+	svc := tasksvc.New(repo).WithAutomationStatusChecker(&stubAutomationStatusChecker{used: false})
 	projectID := uuid.New()
 
 	st, _ := svc.CreateTaskStatus(ctx, taskdom.CreateTaskStatusInput{

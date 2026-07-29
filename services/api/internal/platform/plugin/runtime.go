@@ -20,6 +20,7 @@ import (
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/cache"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 	"github.com/google/uuid"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -108,6 +109,28 @@ type Runtime struct {
 
 	mu      sync.RWMutex
 	plugins map[string]*pluginInstance // keyed by plugin.Name
+
+	// automationIndex maps a plugin-contributed automation node type
+	// (already reverse-DNS namespaced, so globally unique) to the plugin
+	// name that owns it, populated at Load time and pruned at Unload time.
+	// Consulted by the automation engine's dispatch switches (action
+	// executor, condition evaluator, trigger-topic matcher) as a fallback
+	// after their built-in cases.
+	automationIndex map[string]automationIndexEntry
+}
+
+type automationKind int
+
+const (
+	automationKindTrigger automationKind = iota
+	automationKindCondition
+	automationKindAction
+)
+
+type automationIndexEntry struct {
+	pluginName string
+	kind       automationKind
+	manifest   plugindom.AutomationNodeManifest
 }
 
 // Keep fetch response cap aligned with existing plugin artifact per-file limit.
@@ -140,11 +163,12 @@ var disallowedFetchHeaders = map[string]struct{}{
 // NewRuntime creates a Runtime wired to the given store and host services.
 func NewRuntime(store *Store, services HostServices, limits ResourceLimits, log *slog.Logger) *Runtime {
 	return &Runtime{
-		store:    store,
-		limits:   limits,
-		services: services,
-		log:      log,
-		plugins:  make(map[string]*pluginInstance),
+		store:           store,
+		limits:          limits,
+		services:        services,
+		log:             log,
+		plugins:         make(map[string]*pluginInstance),
+		automationIndex: make(map[string]automationIndexEntry),
 	}
 }
 
@@ -234,10 +258,39 @@ func (r *Runtime) Load(ctx context.Context, p plugindom.Plugin) error {
 		r.unloadLocked(ctx, existing)
 	}
 	r.plugins[p.Name] = inst
+	r.registerAutomationNodesLocked(p)
 	r.mu.Unlock()
 
 	r.log.Info("plugin loaded", "name", p.Name, "version", p.Version)
 	return nil
+}
+
+// registerAutomationNodesLocked adds p's manifest.Automation entries to the
+// automation index. Caller must hold r.mu.
+func (r *Runtime) registerAutomationNodesLocked(p plugindom.Plugin) {
+	auto := p.Manifest.Automation
+	if auto == nil {
+		return
+	}
+	for _, t := range auto.Triggers {
+		r.automationIndex[t.Type] = automationIndexEntry{pluginName: p.Name, kind: automationKindTrigger, manifest: t}
+	}
+	for _, c := range auto.Conditions {
+		r.automationIndex[c.Type] = automationIndexEntry{pluginName: p.Name, kind: automationKindCondition, manifest: c}
+	}
+	for _, act := range auto.Actions {
+		r.automationIndex[act.Type] = automationIndexEntry{pluginName: p.Name, kind: automationKindAction, manifest: act}
+	}
+}
+
+// unregisterAutomationNodesLocked removes every automation index entry
+// belonging to pluginName. Caller must hold r.mu.
+func (r *Runtime) unregisterAutomationNodesLocked(pluginName string) {
+	for nodeType, entry := range r.automationIndex {
+		if entry.pluginName == pluginName {
+			delete(r.automationIndex, nodeType)
+		}
+	}
 }
 
 // Unload shuts down and removes the plugin with the given name.
@@ -247,6 +300,7 @@ func (r *Runtime) Unload(ctx context.Context, name string) {
 	if inst, ok := r.plugins[name]; ok {
 		r.unloadLocked(ctx, inst)
 		delete(r.plugins, name)
+		r.unregisterAutomationNodesLocked(name)
 	}
 }
 
@@ -265,6 +319,37 @@ func (r *Runtime) unloadLocked(ctx context.Context, inst *pluginInstance) {
 // HandleRequest dispatches an HTTP request payload to the named plugin's
 // HandleRequest export, returning the serialised response bytes.
 func (r *Runtime) HandleRequest(ctx context.Context, pluginName string, reqPayload []byte) ([]byte, error) {
+	return r.callExport(ctx, pluginName, "HandleRequest", reqPayload)
+}
+
+// EvaluateCondition dispatches a plugin-contributed automation Condition
+// node's evaluation to the named plugin's EvaluateCondition export. payload
+// is the node's config plus enough task context for the plugin to decide;
+// the plugin returns JSON such as {"matched": true}. Uses the exact same
+// calling convention as HandleRequest — same memory protocol, same
+// per-instance mutex, same timeout, same allocator reset — so a
+// plugin-contributed Condition node inherits the same trust/resource
+// boundary as everything else a plugin already does.
+func (r *Runtime) EvaluateCondition(ctx context.Context, pluginName string, payload []byte) ([]byte, error) {
+	return r.callExport(ctx, pluginName, "EvaluateCondition", payload)
+}
+
+// RunAction dispatches a plugin-contributed automation Action node's
+// execution to the named plugin's RunAction export. payload is the node's
+// config plus enough task context (and a stable idempotency key — the
+// automation_run_step id — since a plugin action isn't automatically
+// idempotent the way built-in actions are); the plugin returns JSON such as
+// {"applied": true} or {"applied": false, "error": "..."}. Same calling
+// convention as HandleRequest.
+func (r *Runtime) RunAction(ctx context.Context, pluginName string, payload []byte) ([]byte, error) {
+	return r.callExport(ctx, pluginName, "RunAction", payload)
+}
+
+// callExport is the shared dispatch used by HandleRequest, EvaluateCondition,
+// and RunAction: write payload into the plugin's linear memory, call the
+// named export with (ptr, len), decode its packed (ptr<<32)|len result, read
+// the response back out, and best-effort reset the plugin's bump allocator.
+func (r *Runtime) callExport(ctx context.Context, pluginName, exportName string, payload []byte) ([]byte, error) {
 	r.mu.RLock()
 	inst, ok := r.plugins[pluginName]
 	r.mu.RUnlock()
@@ -272,13 +357,13 @@ func (r *Runtime) HandleRequest(ctx context.Context, pluginName string, reqPaylo
 		return nil, fmt.Errorf("plugin %q not loaded", pluginName)
 	}
 
-	if maxBytes := r.limits.MaxRequestBodyBytes; maxBytes > 0 && int64(len(reqPayload)) > maxBytes {
-		return nil, fmt.Errorf("plugin %q: request payload of %d bytes exceeds limit of %d bytes", pluginName, len(reqPayload), maxBytes)
+	if maxBytes := r.limits.MaxRequestBodyBytes; maxBytes > 0 && int64(len(payload)) > maxBytes {
+		return nil, fmt.Errorf("plugin %q: %s payload of %d bytes exceeds limit of %d bytes", pluginName, exportName, len(payload), maxBytes)
 	}
 
-	fn := inst.mod.ExportedFunction("HandleRequest")
+	fn := inst.mod.ExportedFunction(exportName)
 	if fn == nil {
-		return nil, fmt.Errorf("plugin %q: HandleRequest not exported", pluginName)
+		return nil, fmt.Errorf("plugin %q: %s not exported", pluginName, exportName)
 	}
 
 	// Hold the per-instance lock for the entire interaction, including the
@@ -307,9 +392,9 @@ func (r *Runtime) HandleRequest(ctx context.Context, pluginName string, reqPaylo
 	}()
 
 	// Write the request payload into the plugin's linear memory.
-	ptrLen, err := writeToMemory(inst.mod, reqPayload)
+	ptrLen, err := writeToMemory(inst.mod, payload)
 	if err != nil {
-		return nil, fmt.Errorf("plugin %q: write request: %w", pluginName, err)
+		return nil, fmt.Errorf("plugin %q: write %s payload: %w", pluginName, exportName, err)
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, r.limits.MaxCallDuration)
@@ -317,10 +402,10 @@ func (r *Runtime) HandleRequest(ctx context.Context, pluginName string, reqPaylo
 	cancel()
 
 	if callErr != nil {
-		return nil, fmt.Errorf("plugin %q: HandleRequest: %w", pluginName, callErr)
+		return nil, fmt.Errorf("plugin %q: %s: %w", pluginName, exportName, callErr)
 	}
 	if len(results) < 1 {
-		return nil, fmt.Errorf("plugin %q: HandleRequest returned wrong number of values", pluginName)
+		return nil, fmt.Errorf("plugin %q: %s returned wrong number of values", pluginName, exportName)
 	}
 
 	combined := results[0]
@@ -416,6 +501,94 @@ func (r *Runtime) PluginRoutes(name string) []plugindom.PluginRoute {
 		return nil
 	}
 	return inst.plugin.Manifest.Backend.Routes
+}
+
+// AutomationNodeTypes returns every plugin-contributed automation node type
+// currently loaded, grouped by kind — the node palette's data source for
+// merging plugin nodes alongside the built-in ones.
+func (r *Runtime) AutomationNodeTypes() (triggers, conditions, actions []plugindom.AutomationNodeManifest) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, entry := range r.automationIndex {
+		switch entry.kind {
+		case automationKindTrigger:
+			triggers = append(triggers, entry.manifest)
+		case automationKindCondition:
+			conditions = append(conditions, entry.manifest)
+		case automationKindAction:
+			actions = append(actions, entry.manifest)
+		}
+	}
+	return triggers, conditions, actions
+}
+
+// IsPluginTrigger reports whether nodeType is a plugin-registered Trigger
+// type. Satisfies automationdom.PluginNodeResolver.
+func (r *Runtime) IsPluginTrigger(nodeType string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, ok := r.automationIndex[nodeType]
+	return ok && entry.kind == automationKindTrigger
+}
+
+// IsPluginCondition reports whether nodeType is a plugin-registered
+// Condition type. Satisfies automationdom.PluginNodeResolver.
+func (r *Runtime) IsPluginCondition(nodeType string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, ok := r.automationIndex[nodeType]
+	return ok && entry.kind == automationKindCondition
+}
+
+// IsPluginAction reports whether nodeType is a plugin-registered Action
+// type. Satisfies automationdom.PluginNodeResolver.
+func (r *Runtime) IsPluginAction(nodeType string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, ok := r.automationIndex[nodeType]
+	return ok && entry.kind == automationKindAction
+}
+
+// ResolveAutomationCondition returns the plugin name that owns nodeType, if
+// any plugin registered it as a Condition node — consulted by the automation
+// engine's condition leaf evaluator as a fallback after its built-in fields.
+func (r *Runtime) ResolveAutomationCondition(nodeType string) (pluginName string, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, found := r.automationIndex[nodeType]
+	if !found || entry.kind != automationKindCondition {
+		return "", false
+	}
+	return entry.pluginName, true
+}
+
+// ResolveAutomationAction returns the plugin name that owns nodeType, if any
+// plugin registered it as an Action node — consulted by the automation
+// engine's action executor as a fallback after its built-in switch.
+func (r *Runtime) ResolveAutomationAction(nodeType string) (pluginName string, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	entry, found := r.automationIndex[nodeType]
+	if !found || entry.kind != automationKindAction {
+		return "", false
+	}
+	return entry.pluginName, true
+}
+
+// TriggersForTopic returns every plugin-contributed Trigger node whose
+// declared EventTopic matches topic — consulted when a plugin-sourced event
+// arrives, to find which automations should be considered for a matching
+// run, exactly like a built-in trigger's topic-based matching.
+func (r *Runtime) TriggersForTopic(topic string) []plugindom.AutomationNodeManifest {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []plugindom.AutomationNodeManifest
+	for _, entry := range r.automationIndex {
+		if entry.kind == automationKindTrigger && entry.manifest.EventTopic == topic {
+			out = append(out, entry.manifest)
+		}
+	}
+	return out
 }
 
 // LoadedNames returns the names of all currently loaded plugins.
@@ -1883,7 +2056,7 @@ func isAllowedFetchDomain(ctx context.Context, rawURL string, allowed []string) 
 	}
 
 	for _, ipAddr := range ips {
-		if isPrivateOrInternalIP(ipAddr.IP) {
+		if netguard.IsPrivateOrInternalIP(ipAddr.IP) {
 			return false
 		}
 	}

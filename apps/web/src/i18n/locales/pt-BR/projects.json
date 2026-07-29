@@ -392,12 +392,12 @@
 				"description": "Criar, configurar e excluir agentes de IA"
 			},
 			"workflowsRead": {
-				"label": "Ver workflows",
-				"description": "Navegar pelos workflows de automação e suas configurações"
+				"label": "Ver automação",
+				"description": "Navegar pelas automações e suas configurações"
 			},
 			"workflowsWrite": {
-				"label": "Gerenciar workflows",
-				"description": "Criar, editar, ativar e excluir workflows de automação"
+				"label": "Gerenciar automação",
+				"description": "Criar, editar, ativar e excluir automações"
 			}
 		},
 		"permissionGroups": {
@@ -769,11 +769,6 @@
 			"openTask": "Abrir tarefa",
 			"removeLink": "Remover vínculo",
 			"empty": "Nenhuma tarefa vinculada"
-		},
-		"workflows": {
-			"title": "Workflows",
-			"open": "Abrir workflow",
-			"empty": "Nenhum workflow ainda"
 		},
 		"attachments": {
 			"title": "Anexos",
@@ -1219,12 +1214,12 @@
 	"automation": {
 		"list": {
 			"title": "Automação",
-			"subtitle": "Automatize repasses de tarefas conforme o trabalho avança pelo seu projeto",
-			"newWorkflow": "Novo workflow",
+			"subtitle": "Reaja a eventos de tarefas com gatilhos, condições e ações",
+			"newAutomation": "Nova automação",
 			"empty": {
-				"title": "Nenhum workflow ainda",
-				"description": "Crie um workflow para automatizar repasses de tarefas conforme o trabalho avança pelo seu projeto.",
-				"createFirstWorkflow": "Crie seu primeiro workflow"
+				"title": "Nenhuma automação ainda",
+				"description": "Crie uma automação para reagir a eventos de tarefas com condições e ações.",
+				"createFirst": "Crie sua primeira automação"
 			},
 			"noDescription": "Sem descrição",
 			"updated": "Atualizado {{time}}"
@@ -1235,61 +1230,207 @@
 			"archived": "Arquivado"
 		},
 		"createDialog": {
-			"title": "Novo workflow de automação",
+			"title": "Nova automação",
 			"nameLabel": "Nome",
-			"namePlaceholder": "ex.: Pipeline de release",
+			"namePlaceholder": "ex.: Triagem de bugs",
 			"descriptionLabel": "Descrição",
-			"descriptionPlaceholder": "Detalhes opcionais sobre este workflow…",
+			"descriptionPlaceholder": "Detalhes opcionais sobre esta automação…",
 			"cancel": "Cancelar",
 			"create": "Criar"
 		},
 		"deleteDialog": {
-			"title": "Excluir workflow",
+			"title": "Excluir automação",
 			"body": "Tem certeza de que deseja excluir \"{{name}}\"? Isso não pode ser desfeito.",
 			"cancel": "Cancelar",
 			"confirm": "Excluir"
 		},
 		"builder": {
-			"addTask": "Adicionar tarefa",
 			"activate": "Ativar",
 			"archive": "Arquivar",
 			"deactivate": "Desativar",
-			"readOnlyNoticeArchived": "Este workflow está arquivado e é somente leitura — workflows arquivados não podem ser editados.",
+			"readOnlyNoticeArchived": "Esta automação está arquivada e é somente leitura — automações arquivadas não podem ser editadas.",
 			"genericError": "Algo deu errado. Tente novamente.",
-			"collapseSidebar": "Recolher barra lateral",
-			"expandSidebar": "Expandir barra lateral"
+			"taskLessTriggerConnectionError": "Este gatilho não tem uma tarefa alvo definida, então só pode se conectar a uma ação Chamar API ou Acionar agente de IA — condições e as demais ações precisam de uma tarefa para agir.",
+			"collapseSidebar": "Recolher painel",
+			"expandSidebar": "Expandir painel",
+			"tabGraph": "Gráfico",
+			"tabRuns": "Histórico de execuções",
+			"tabDependencyMap": "Mapa de dependências"
+		},
+		"palette": {
+			"title": "Adicionar nó",
+			"addTrigger": "Adicionar gatilho",
+			"addCondition": "Adicionar condição",
+			"addAction": "Adicionar ação",
+			"builtIn": "Nativo",
+			"plugins": "Plugins"
+		},
+		"nodeKind": {
+			"trigger": "Gatilho",
+			"condition": "Condição",
+			"action": "Ação"
 		},
 		"canvas": {
-			"unknownTask": "Tarefa desconhecida",
-			"deleteEdge": "Excluir conexão"
+			"deleteEdge": "Excluir conexão",
+			"deleteNode": "Excluir nó"
 		},
-		"addNodeModal": {
-			"title": "Adicionar tarefa ao workflow",
-			"searchPlaceholder": "Buscar tarefas...",
-			"loadingTasks": "Carregando tarefas...",
-			"noTasksFound": "Nenhuma tarefa encontrada"
+		"triggerTypes": {
+			"status_changed": "Status alterado",
+			"task_created": "Tarefa criada",
+			"assignee_changed": "Responsável alterado",
+			"priority_changed": "Prioridade alterada",
+			"tag_added": "Tag adicionada",
+			"due_date_reached": "Prazo atingido",
+			"predecessor_done": "Predecessora(s) concluída(s)",
+			"cron": "Agendamento cron",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "Tarefa",
-			"removeNode": "Remover do workflow",
-			"removeConfirmTitle": "Remover tarefa do workflow",
-			"removeConfirmBody": "Isso remove a tarefa do grafo do workflow, junto com todas as suas conexões. A tarefa em si não é afetada.",
+		"actionTypes": {
+			"assign": "Atribuir",
+			"set_status": "Definir status",
+			"set_priority": "Definir prioridade",
+			"add_tag": "Adicionar tag",
+			"set_custom_field": "Definir campo personalizado",
+			"trigger_ai_agent": "Acionar agente de IA",
+			"call_api": "Chamar API"
+		},
+		"nodeConfig": {
+			"save": "Salvar",
 			"cancel": "Cancelar",
-			"removeConfirmAction": "Remover"
+			"remove": "Remover nó",
+			"removeConfirmTitle": "Remover nó",
+			"removeConfirmBody": "Isso remove o nó do gráfico, junto com todas as suas conexões.",
+			"removeConfirmAction": "Remover",
+			"genericFormHint": "Este tipo de nó vem de um plugin. Edite sua configuração como JSON — plugins poderão registrar um editor mais completo aqui em uma versão futura.",
+			"trigger": {
+				"anyStatus": "Qualquer status",
+				"statusLabel": "Status",
+				"tagLabel": "Tag",
+				"anyTag": "Qualquer tag",
+				"dueDateOffsetLabel": "Deslocamento (minutos)",
+				"dueDateOffsetHint": "0 = no prazo, negativo = antes, positivo = depois",
+				"watchedTasksLabel": "Tarefas observadas",
+				"watchedTasksHint": "Dispara quando TODAS estas tarefas estiverem em um status \"concluído\"",
+				"addWatchedTaskPlaceholder": "Adicionar uma tarefa para observar…",
+				"targetTaskLabel": "Tarefa alvo (opcional)",
+				"targetTaskHint": "A tarefa em que esta automação atua assim que todas as tarefas observadas acima estiverem concluídas — uma tarefa diferente de suas predecessoras, reavaliada com base em seu próprio estado atual. Deixe em branco se isso deve alcançar apenas uma ação Chamar API ou Acionar agente de IA, que não precisam de uma tarefa.",
+				"selectTaskPlaceholder": "Selecione uma tarefa…",
+				"searchTaskPlaceholder": "Buscar tarefas…",
+				"noTasksFound": "Nenhuma tarefa correspondente",
+				"noTasksYet": "Ainda não há tarefas neste projeto",
+				"loadingMore": "Carregando…",
+				"clearTargetTask": "Limpar tarefa alvo",
+				"cronExpressionLabel": "Expressão cron",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "Cron padrão de 5 campos (minuto hora dia-do-mês mês dia-da-semana), avaliado em UTC",
+				"cronTargetTaskHint": "A tarefa em que esta automação atua a cada disparo agendado. Deixe em branco se isso deve alcançar apenas uma ação Chamar API ou Acionar agente de IA, que não precisam de uma tarefa.",
+				"apiTriggerTargetTaskHint": "A tarefa em que esta automação atua sempre que o webhook abaixo é chamado. Deixe em branco se isso deve alcançar apenas uma ação Chamar API ou Acionar agente de IA, que não precisam de uma tarefa.",
+				"webhookUrlLabel": "URL do webhook",
+				"webhookTokenLabel": "Token do webhook",
+				"generateTokenButton": "Gerar token",
+				"regenerateTokenButton": "Regenerar token",
+				"tokenShownOnceWarning": "Copie este token agora — ele não será mostrado novamente.",
+				"copy": "Copiar",
+				"copied": "Copiado",
+				"noTokenYet": "Nenhum token gerado ainda"
+			},
+			"condition": {
+				"branchesTitle": "Ramificações",
+				"addBranch": "Adicionar ramificação",
+				"branchLabel": "Rótulo da ramificação",
+				"elseLabel": "Senão (nenhuma ramificação correspondeu)",
+				"removeBranch": "Remover ramificação",
+				"field": "Campo",
+				"operator": "Operador",
+				"value": "Valor",
+				"addGroup": "Adicionar grupo",
+				"addCondition": "Adicionar condição",
+				"removeCondition": "Remover",
+				"logicAnd": "E",
+				"logicOr": "OU",
+				"logicNot": "NÃO",
+				"fields": {
+					"status_id": "Status",
+					"task_type_id": "Tipo de tarefa",
+					"importance": "Prioridade",
+					"assignee_ids": "Responsável",
+					"tags": "Tags",
+					"custom_field": "Campo personalizado"
+				}
+			},
+			"action": {
+				"memberLabel": "Responsável",
+				"statusLabel": "Status",
+				"importanceLabel": "Prioridade",
+				"tagLabel": "Tag",
+				"fieldKeyLabel": "Campo",
+				"valueLabel": "Valor",
+				"messageLabel": "Instrução para o agente",
+				"messagePlaceholder": "ex.: Resuma esta tarefa e sugira uma prioridade.",
+				"methodLabel": "Método",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://exemplo.com/webhook",
+				"headersLabel": "Cabeçalhos",
+				"headerKeyPlaceholder": "Nome do cabeçalho",
+				"headerValuePlaceholder": "Valor",
+				"addHeader": "Adicionar cabeçalho",
+				"bodyLabel": "Corpo"
+			},
+			"target": {
+				"label": "Aplica-se a",
+				"kinds": {
+					"self": "Esta tarefa",
+					"parent": "Tarefa pai",
+					"children": "Tarefas filhas",
+					"blocks": "Bloqueia",
+					"is_blocked_by": "É bloqueada por",
+					"relates_to": "Tarefa relacionada",
+					"duplicates": "Duplica",
+					"is_duplicated_by": "É duplicada por",
+					"other": "Outra tarefa…"
+				},
+				"matchMode": {
+					"any": "Qualquer correspondência",
+					"all": "Todas correspondem"
+				}
+			},
+			"description": {
+				"dueDateAt": "No prazo",
+				"dueDateBefore": "{{minutes}} min antes do prazo",
+				"dueDateAfter": "{{minutes}} min depois do prazo",
+				"branches": "{{count}} ramificação(ões)",
+				"priority": "Prioridade: {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "Sem responsável",
+				"notConfigured": "Não configurado",
+				"elseShort": "Senão",
+				"branchFallback": "Ramificação {{n}}",
+				"cronSchedule": "Executa {{expression}}",
+				"webhookReady": "Webhook configurado",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "Regras de status → responsável",
-			"hint": "Atribua automaticamente uma tarefa a um membro sempre que ela mudar para um destes status. Isso se aplica a qualquer tarefa neste workflow — quando alguém altera o status de uma tarefa diretamente, ou quando uma tarefa predecessora é concluída e uma tarefa subsequente é reavaliada no seu status atual.",
-			"noRules": "Nenhuma regra ainda",
-			"statusPlaceholder": "Status",
-			"memberPlaceholder": "Responsável"
+		"runHistory": {
+			"title": "Histórico de execuções",
+			"empty": "Nenhuma execução ainda",
+			"status": {
+				"running": "Em execução",
+				"completed": "Concluído",
+				"failed": "Falhou"
+			},
+			"stepStatus": {
+				"completed": "Concluído",
+				"failed": "Falhou",
+				"skipped": "Ignorado (já aplicado)"
+			},
+			"startedAt": "Iniciado {{time}}",
+			"viewSteps": "Ver etapas"
 		},
-		"statusTransitions": {
-			"title": "Fluxo de status",
-			"hint": "Defina qual status vem em seguida assim que o trabalho em cada status é concluído. Isso desbloqueia tarefas subsequentes e informa a um agente de IA responsável exatamente qual status definir a seguir, em vez de adivinhar. Uma cadeia padrão é gerada automaticamente a partir dos status do seu projeto quando o workflow é criado.",
-			"nextStatusLabel": "Próximo status",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "Exatamente um status não deve ter próximo status (este se torna o status __END__ do workflow). Atualmente: {{count}} configurados."
+		"dependencyMap": {
+			"title": "Mapa de dependências",
+			"subtitle": "Visão somente leitura de cada automação aguardando outras tarefas terminarem",
+			"empty": "Nenhuma dependência de predecessora configurada ainda",
+			"watchedTasks": "Aguardando {{count}} tarefa(s)"
 		}
 	}
 }

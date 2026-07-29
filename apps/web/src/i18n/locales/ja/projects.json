@@ -392,12 +392,12 @@
 				"description": "AIエージェントの作成・設定・削除を行います"
 			},
 			"workflowsRead": {
-				"label": "ワークフローを表示",
-				"description": "自動化ワークフローとその設定を閲覧します"
+				"label": "自動化を表示",
+				"description": "自動化とその設定を閲覧する"
 			},
 			"workflowsWrite": {
-				"label": "ワークフローを管理",
-				"description": "自動化ワークフローの作成、編集、有効化、削除を行います"
+				"label": "自動化を管理",
+				"description": "自動化の作成、編集、有効化、削除を行う"
 			}
 		},
 		"permissionGroups": {
@@ -769,11 +769,6 @@
 			"openTask": "タスクを開く",
 			"removeLink": "リンクを削除",
 			"empty": "関連タスクはありません"
-		},
-		"workflows": {
-			"title": "ワークフロー",
-			"open": "ワークフローを開く",
-			"empty": "ワークフローはまだありません"
 		},
 		"attachments": {
 			"title": "添付ファイル",
@@ -1219,12 +1214,12 @@
 	"automation": {
 		"list": {
 			"title": "自動化",
-			"subtitle": "作業が進むにつれてタスクの引き継ぎを自動化します",
-			"newWorkflow": "新しいワークフロー",
+			"subtitle": "トリガー、条件、アクションでタスクイベントに反応させる",
+			"newAutomation": "新規自動化",
 			"empty": {
-				"title": "ワークフローはまだありません",
-				"description": "ワークフローを作成して、作業が進むにつれてタスクの引き継ぎを自動化しましょう。",
-				"createFirstWorkflow": "最初のワークフローを作成"
+				"title": "自動化はまだありません",
+				"description": "条件とアクションでタスクイベントに反応する自動化を作成しましょう。",
+				"createFirst": "最初の自動化を作成"
 			},
 			"noDescription": "説明なし",
 			"updated": "{{time}}に更新"
@@ -1235,61 +1230,207 @@
 			"archived": "アーカイブ済み"
 		},
 		"createDialog": {
-			"title": "新しい自動化ワークフロー",
+			"title": "新規自動化",
 			"nameLabel": "名前",
-			"namePlaceholder": "例: リリースパイプライン",
+			"namePlaceholder": "例：バグトリアージ",
 			"descriptionLabel": "説明",
-			"descriptionPlaceholder": "このワークフローに関する任意の詳細…",
+			"descriptionPlaceholder": "この自動化に関する任意の詳細…",
 			"cancel": "キャンセル",
 			"create": "作成"
 		},
 		"deleteDialog": {
-			"title": "ワークフローを削除",
+			"title": "自動化を削除",
 			"body": "「{{name}}」を削除してもよろしいですか？この操作は元に戻せません。",
 			"cancel": "キャンセル",
 			"confirm": "削除"
 		},
 		"builder": {
-			"addTask": "タスクを追加",
 			"activate": "有効化",
 			"archive": "アーカイブ",
 			"deactivate": "無効化",
-			"readOnlyNoticeArchived": "このワークフローはアーカイブ済みで読み取り専用です — アーカイブされたワークフローは編集できません。",
+			"readOnlyNoticeArchived": "この自動化はアーカイブ済みで読み取り専用です — アーカイブされた自動化は編集できません。",
 			"genericError": "問題が発生しました。もう一度お試しください。",
-			"collapseSidebar": "サイドバーを折りたたむ",
-			"expandSidebar": "サイドバーを展開する"
+			"taskLessTriggerConnectionError": "このトリガーには対象タスクが設定されていないため、「API呼び出し」または「AIエージェントを起動」アクションにしか接続できません — 条件やその他のアクションは実行対象となるタスクが必要です。",
+			"collapseSidebar": "パネルを折りたたむ",
+			"expandSidebar": "パネルを展開する",
+			"tabGraph": "グラフ",
+			"tabRuns": "実行履歴",
+			"tabDependencyMap": "依存関係マップ"
+		},
+		"palette": {
+			"title": "ノードを追加",
+			"addTrigger": "トリガーを追加",
+			"addCondition": "条件を追加",
+			"addAction": "アクションを追加",
+			"builtIn": "組み込み",
+			"plugins": "プラグイン"
+		},
+		"nodeKind": {
+			"trigger": "トリガー",
+			"condition": "条件",
+			"action": "アクション"
 		},
 		"canvas": {
-			"unknownTask": "不明なタスク",
-			"deleteEdge": "接続を削除"
+			"deleteEdge": "接続を削除",
+			"deleteNode": "ノードを削除"
 		},
-		"addNodeModal": {
-			"title": "ワークフローにタスクを追加",
-			"searchPlaceholder": "タスクを検索...",
-			"loadingTasks": "タスクを読み込み中...",
-			"noTasksFound": "タスクが見つかりません"
+		"triggerTypes": {
+			"status_changed": "ステータス変更時",
+			"task_created": "タスク作成時",
+			"assignee_changed": "担当者変更時",
+			"priority_changed": "優先度変更時",
+			"tag_added": "タグ追加時",
+			"due_date_reached": "期日到達時",
+			"predecessor_done": "先行タスク完了時",
+			"cron": "Cronスケジュール",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "タスク",
-			"removeNode": "ワークフローから削除",
-			"removeConfirmTitle": "ワークフローからタスクを削除",
-			"removeConfirmBody": "タスクをワークフローグラフから、関連する接続とともに削除します。タスク自体には影響しません。",
+		"actionTypes": {
+			"assign": "担当者を割り当て",
+			"set_status": "ステータスを設定",
+			"set_priority": "優先度を設定",
+			"add_tag": "タグを追加",
+			"set_custom_field": "カスタムフィールドを設定",
+			"trigger_ai_agent": "AIエージェントを起動",
+			"call_api": "APIを呼び出し"
+		},
+		"nodeConfig": {
+			"save": "保存",
 			"cancel": "キャンセル",
-			"removeConfirmAction": "削除"
+			"remove": "ノードを削除",
+			"removeConfirmTitle": "ノードを削除",
+			"removeConfirmBody": "グラフからこのノードと、そのすべての接続が削除されます。",
+			"removeConfirmAction": "削除",
+			"genericFormHint": "このノードタイプはプラグインによって提供されています。設定はJSONとして編集してください — 将来のリリースでプラグインがより高度なエディタを登録できるようになります。",
+			"trigger": {
+				"anyStatus": "任意のステータス",
+				"statusLabel": "ステータス",
+				"tagLabel": "タグ",
+				"anyTag": "任意のタグ",
+				"dueDateOffsetLabel": "オフセット（分）",
+				"dueDateOffsetHint": "0 = 期日当日、負の値 = 期日より前、正の値 = 期日より後",
+				"watchedTasksLabel": "監視対象タスク",
+				"watchedTasksHint": "これらのタスクがすべて「完了」ステータスになったときに発火します",
+				"addWatchedTaskPlaceholder": "監視するタスクを追加…",
+				"targetTaskLabel": "対象タスク（任意）",
+				"targetTaskHint": "上記の監視対象タスクがすべて完了した時点でこの自動化が実行対象とするタスク — 先行タスクとは別のタスクで、そのタスク自身の現在の状態に基づいて再評価されます。「API呼び出し」または「AIエージェントを起動」アクションのみに到達させたい場合は未設定のままにしてください（これらはタスクを必要としません）。",
+				"selectTaskPlaceholder": "タスクを選択…",
+				"searchTaskPlaceholder": "タスクを検索…",
+				"noTasksFound": "一致するタスクがありません",
+				"noTasksYet": "このプロジェクトにはまだタスクがありません",
+				"loadingMore": "読み込み中…",
+				"clearTargetTask": "対象タスクをクリア",
+				"cronExpressionLabel": "Cron式",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "標準の5フィールドCron形式（分 時 日 月 曜日）。UTCで評価されます",
+				"cronTargetTaskHint": "スケジュールされた発火のたびにこの自動化が実行対象とするタスク。「API呼び出し」または「AIエージェントを起動」アクションのみに到達させたい場合は未設定のままにしてください（これらはタスクを必要としません）。",
+				"apiTriggerTargetTaskHint": "下記のWebhookが呼び出されるたびにこの自動化が実行対象とするタスク。「API呼び出し」または「AIエージェントを起動」アクションのみに到達させたい場合は未設定のままにしてください（これらはタスクを必要としません）。",
+				"webhookUrlLabel": "Webhook URL",
+				"webhookTokenLabel": "Webhookトークン",
+				"generateTokenButton": "トークンを生成",
+				"regenerateTokenButton": "トークンを再生成",
+				"tokenShownOnceWarning": "このトークンを今すぐコピーしてください — 二度と表示されません。",
+				"copy": "コピー",
+				"copied": "コピーしました",
+				"noTokenYet": "トークンはまだ生成されていません"
+			},
+			"condition": {
+				"branchesTitle": "分岐",
+				"addBranch": "分岐を追加",
+				"branchLabel": "分岐ラベル",
+				"elseLabel": "それ以外（どの分岐にも一致しない場合）",
+				"removeBranch": "分岐を削除",
+				"field": "フィールド",
+				"operator": "演算子",
+				"value": "値",
+				"addGroup": "グループを追加",
+				"addCondition": "条件を追加",
+				"removeCondition": "削除",
+				"logicAnd": "AND",
+				"logicOr": "OR",
+				"logicNot": "NOT",
+				"fields": {
+					"status_id": "ステータス",
+					"task_type_id": "タスクタイプ",
+					"importance": "優先度",
+					"assignee_ids": "担当者",
+					"tags": "タグ",
+					"custom_field": "カスタムフィールド"
+				}
+			},
+			"action": {
+				"memberLabel": "担当者",
+				"statusLabel": "ステータス",
+				"importanceLabel": "優先度",
+				"tagLabel": "タグ",
+				"fieldKeyLabel": "フィールド",
+				"valueLabel": "値",
+				"messageLabel": "エージェントへの指示",
+				"messagePlaceholder": "例：このタスクを要約し、優先度を提案してください。",
+				"methodLabel": "メソッド",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://example.com/webhook",
+				"headersLabel": "ヘッダー",
+				"headerKeyPlaceholder": "ヘッダー名",
+				"headerValuePlaceholder": "値",
+				"addHeader": "ヘッダーを追加",
+				"bodyLabel": "本文"
+			},
+			"target": {
+				"label": "適用先",
+				"kinds": {
+					"self": "このタスク",
+					"parent": "親タスク",
+					"children": "子タスク",
+					"blocks": "ブロックしているタスク",
+					"is_blocked_by": "ブロックされているタスク",
+					"relates_to": "関連タスク",
+					"duplicates": "重複しているタスク",
+					"is_duplicated_by": "重複されているタスク",
+					"other": "別のタスク…"
+				},
+				"matchMode": {
+					"any": "いずれかが一致",
+					"all": "すべてが一致"
+				}
+			},
+			"description": {
+				"dueDateAt": "期日に実行",
+				"dueDateBefore": "期日の{{minutes}}分前",
+				"dueDateAfter": "期日の{{minutes}}分後",
+				"branches": "{{count}}件の分岐",
+				"priority": "優先度：{{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "未割り当て",
+				"notConfigured": "未設定",
+				"elseShort": "それ以外",
+				"branchFallback": "分岐{{n}}",
+				"cronSchedule": "{{expression}} に実行",
+				"webhookReady": "Webhook設定済み",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "ステータス → 担当者ルール",
-			"hint": "タスクがこれらのいずれかのステータスに変わるたびに、自動的にメンバーに割り当てます。これはこのワークフロー内のどのタスクにも適用されます — 誰かがタスクのステータスを直接変更した場合も、先行タスクが完了して後続タスクが現在のステータスで再評価された場合も同様です。",
-			"noRules": "ルールはまだありません",
-			"statusPlaceholder": "ステータス",
-			"memberPlaceholder": "担当者"
+		"runHistory": {
+			"title": "実行履歴",
+			"empty": "実行履歴はまだありません",
+			"status": {
+				"running": "実行中",
+				"completed": "完了",
+				"failed": "失敗"
+			},
+			"stepStatus": {
+				"completed": "完了",
+				"failed": "失敗",
+				"skipped": "スキップ（適用済み）"
+			},
+			"startedAt": "{{time}}に開始",
+			"viewSteps": "ステップを表示"
 		},
-		"statusTransitions": {
-			"title": "ステータスワークフロー",
-			"hint": "各ステータスでの作業が完了したときに次に来るステータスを定義します。これにより後続タスクが解除され、AIエージェントの担当者に次に設定すべきステータスを推測ではなく正確に伝えられます。ワークフロー作成時にプロジェクトのステータスからデフォルトのチェーンが自動生成されます。",
-			"nextStatusLabel": "次のステータス",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "次のステータスがないステータスがちょうど1つ必要です（それがワークフローの __END__ ステータスになります）。現在: {{count}} 件設定済み。"
+		"dependencyMap": {
+			"title": "依存関係マップ",
+			"subtitle": "他のタスクの完了を待っているすべての自動化を表示する読み取り専用ビュー",
+			"empty": "先行タスクの依存関係はまだ設定されていません",
+			"watchedTasks": "{{count}}件のタスクの完了待ち"
 		}
 	}
 }

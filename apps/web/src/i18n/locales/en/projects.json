@@ -392,12 +392,12 @@
 				"description": "Create, configure, and delete AI agents"
 			},
 			"workflowsRead": {
-				"label": "View Workflows",
-				"description": "Browse automation workflows and their configuration"
+				"label": "View Automation",
+				"description": "Browse automations and their configuration"
 			},
 			"workflowsWrite": {
-				"label": "Manage Workflows",
-				"description": "Create, edit, activate, and delete automation workflows"
+				"label": "Manage Automation",
+				"description": "Create, edit, activate, and delete automations"
 			}
 		},
 		"permissionGroups": {
@@ -769,11 +769,6 @@
 			"openTask": "Open task",
 			"removeLink": "Remove link",
 			"empty": "No linked tasks"
-		},
-		"workflows": {
-			"title": "Workflows",
-			"open": "Open workflow",
-			"empty": "No workflows yet"
 		},
 		"attachments": {
 			"title": "Attachments",
@@ -1219,12 +1214,12 @@
 	"automation": {
 		"list": {
 			"title": "Automation",
-			"subtitle": "Automate task hand-offs as work moves through your project",
-			"newWorkflow": "New Workflow",
+			"subtitle": "React to task events with triggers, conditions, and actions",
+			"newAutomation": "New Automation",
 			"empty": {
-				"title": "No workflows yet",
-				"description": "Create a workflow to automate task hand-offs as work moves through your project.",
-				"createFirstWorkflow": "Create your first workflow"
+				"title": "No automations yet",
+				"description": "Create an automation to react to task events with conditions and actions.",
+				"createFirst": "Create your first automation"
 			},
 			"noDescription": "No description",
 			"updated": "Updated {{time}}"
@@ -1235,61 +1230,207 @@
 			"archived": "Archived"
 		},
 		"createDialog": {
-			"title": "New automation workflow",
+			"title": "New automation",
 			"nameLabel": "Name",
-			"namePlaceholder": "e.g. Release pipeline",
+			"namePlaceholder": "e.g. Bug triage",
 			"descriptionLabel": "Description",
-			"descriptionPlaceholder": "Optional details about this workflow…",
+			"descriptionPlaceholder": "Optional details about this automation…",
 			"cancel": "Cancel",
 			"create": "Create"
 		},
 		"deleteDialog": {
-			"title": "Delete workflow",
+			"title": "Delete automation",
 			"body": "Are you sure you want to delete \"{{name}}\"? This cannot be undone.",
 			"cancel": "Cancel",
 			"confirm": "Delete"
 		},
 		"builder": {
-			"addTask": "Add task",
 			"activate": "Activate",
 			"archive": "Archive",
 			"deactivate": "Deactivate",
-			"readOnlyNoticeArchived": "This workflow is archived and read-only — archived workflows can't be edited.",
+			"readOnlyNoticeArchived": "This automation is archived and read-only — archived automations can't be edited.",
 			"genericError": "Something went wrong. Please try again.",
-			"collapseSidebar": "Collapse sidebar",
-			"expandSidebar": "Expand sidebar"
+			"taskLessTriggerConnectionError": "This trigger has no target task set, so it can only connect to a Call API or Trigger AI agent action — conditions and every other action need a task to run against.",
+			"collapseSidebar": "Collapse panel",
+			"expandSidebar": "Expand panel",
+			"tabGraph": "Graph",
+			"tabRuns": "Run history",
+			"tabDependencyMap": "Dependency map"
+		},
+		"palette": {
+			"title": "Add node",
+			"addTrigger": "Add Trigger",
+			"addCondition": "Add Condition",
+			"addAction": "Add Action",
+			"builtIn": "Built-in",
+			"plugins": "Plugins"
+		},
+		"nodeKind": {
+			"trigger": "Trigger",
+			"condition": "Condition",
+			"action": "Action"
 		},
 		"canvas": {
-			"unknownTask": "Unknown task",
-			"deleteEdge": "Delete connection"
+			"deleteEdge": "Delete connection",
+			"deleteNode": "Delete node"
 		},
-		"addNodeModal": {
-			"title": "Add task to workflow",
-			"searchPlaceholder": "Search tasks...",
-			"loadingTasks": "Loading tasks...",
-			"noTasksFound": "No tasks found"
+		"triggerTypes": {
+			"status_changed": "Status changed",
+			"task_created": "Task created",
+			"assignee_changed": "Assignee changed",
+			"priority_changed": "Priority changed",
+			"tag_added": "Tag added",
+			"due_date_reached": "Due date reached",
+			"predecessor_done": "Predecessor(s) done",
+			"cron": "Cron schedule",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "Task",
-			"removeNode": "Remove from workflow",
-			"removeConfirmTitle": "Remove task from workflow",
-			"removeConfirmBody": "This removes the task from the workflow graph, along with any of its connections. The task itself is not affected.",
+		"actionTypes": {
+			"assign": "Assign",
+			"set_status": "Set status",
+			"set_priority": "Set priority",
+			"add_tag": "Add tag",
+			"set_custom_field": "Set custom field",
+			"trigger_ai_agent": "Trigger AI agent",
+			"call_api": "Call API"
+		},
+		"nodeConfig": {
+			"save": "Save",
 			"cancel": "Cancel",
-			"removeConfirmAction": "Remove"
+			"remove": "Remove node",
+			"removeConfirmTitle": "Remove node",
+			"removeConfirmBody": "This removes the node from the graph, along with any of its connections.",
+			"removeConfirmAction": "Remove",
+			"genericFormHint": "This node type comes from a plugin. Edit its config as JSON — plugins can register a richer editor here in a future release.",
+			"trigger": {
+				"anyStatus": "Any status",
+				"statusLabel": "Status",
+				"tagLabel": "Tag",
+				"anyTag": "Any tag",
+				"dueDateOffsetLabel": "Offset (minutes)",
+				"dueDateOffsetHint": "0 = at due date, negative = before, positive = after",
+				"watchedTasksLabel": "Watched tasks",
+				"watchedTasksHint": "Fires once ALL of these tasks are in a \"done\" status",
+				"addWatchedTaskPlaceholder": "Add a task to watch…",
+				"targetTaskLabel": "Target task (optional)",
+				"targetTaskHint": "The task this automation runs against once every watched task above is done — a different task from its predecessors, re-evaluated using its own current state. Leave unset if this should only reach a Call API or Trigger AI agent action, which don't need a task.",
+				"selectTaskPlaceholder": "Select a task…",
+				"searchTaskPlaceholder": "Search tasks…",
+				"noTasksFound": "No matching tasks",
+				"noTasksYet": "No tasks in this project yet",
+				"loadingMore": "Loading…",
+				"clearTargetTask": "Clear target task",
+				"cronExpressionLabel": "Cron expression",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "Standard 5-field cron (minute hour day-of-month month day-of-week), evaluated in UTC",
+				"cronTargetTaskHint": "The task this automation runs against on every scheduled fire. Leave unset if this should only reach a Call API or Trigger AI agent action, which don't need a task.",
+				"apiTriggerTargetTaskHint": "The task this automation runs against whenever the webhook below is called. Leave unset if this should only reach a Call API or Trigger AI agent action, which don't need a task.",
+				"webhookUrlLabel": "Webhook URL",
+				"webhookTokenLabel": "Webhook token",
+				"generateTokenButton": "Generate token",
+				"regenerateTokenButton": "Regenerate token",
+				"tokenShownOnceWarning": "Copy this token now — it won't be shown again.",
+				"copy": "Copy",
+				"copied": "Copied",
+				"noTokenYet": "No token generated yet"
+			},
+			"condition": {
+				"branchesTitle": "Branches",
+				"addBranch": "Add branch",
+				"branchLabel": "Branch label",
+				"elseLabel": "Else (no branch matched)",
+				"removeBranch": "Remove branch",
+				"field": "Field",
+				"operator": "Operator",
+				"value": "Value",
+				"addGroup": "Add group",
+				"addCondition": "Add condition",
+				"removeCondition": "Remove",
+				"logicAnd": "AND",
+				"logicOr": "OR",
+				"logicNot": "NOT",
+				"fields": {
+					"status_id": "Status",
+					"task_type_id": "Task type",
+					"importance": "Priority",
+					"assignee_ids": "Assignee",
+					"tags": "Tags",
+					"custom_field": "Custom field"
+				}
+			},
+			"action": {
+				"memberLabel": "Assignee",
+				"statusLabel": "Status",
+				"importanceLabel": "Priority",
+				"tagLabel": "Tag",
+				"fieldKeyLabel": "Field",
+				"valueLabel": "Value",
+				"messageLabel": "Instruction for the agent",
+				"messagePlaceholder": "e.g. Summarize this task and suggest a priority.",
+				"methodLabel": "Method",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://example.com/webhook",
+				"headersLabel": "Headers",
+				"headerKeyPlaceholder": "Header name",
+				"headerValuePlaceholder": "Value",
+				"addHeader": "Add header",
+				"bodyLabel": "Body"
+			},
+			"target": {
+				"label": "Applies to",
+				"kinds": {
+					"self": "This task",
+					"parent": "Parent task",
+					"children": "Children tasks",
+					"blocks": "Blocks",
+					"is_blocked_by": "Is blocked by",
+					"relates_to": "Related task",
+					"duplicates": "Duplicates",
+					"is_duplicated_by": "Is duplicated by",
+					"other": "Another task…"
+				},
+				"matchMode": {
+					"any": "Any match",
+					"all": "All match"
+				}
+			},
+			"description": {
+				"dueDateAt": "At due date",
+				"dueDateBefore": "{{minutes}}m before due date",
+				"dueDateAfter": "{{minutes}}m after due date",
+				"branches": "{{count}} branch(es)",
+				"priority": "Priority: {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "Unassigned",
+				"notConfigured": "Not configured",
+				"elseShort": "Else",
+				"branchFallback": "Branch {{n}}",
+				"cronSchedule": "Runs {{expression}}",
+				"webhookReady": "Webhook configured",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "Status → assignee rules",
-			"hint": "Automatically assign a task to a member whenever it changes to one of these statuses. This applies to any task in this workflow — when someone changes a task's status directly, or when a predecessor task finishes and a downstream task is re-evaluated at its current status.",
-			"noRules": "No rules yet",
-			"statusPlaceholder": "Status",
-			"memberPlaceholder": "Assignee"
+		"runHistory": {
+			"title": "Run history",
+			"empty": "No runs yet",
+			"status": {
+				"running": "Running",
+				"completed": "Completed",
+				"failed": "Failed"
+			},
+			"stepStatus": {
+				"completed": "Completed",
+				"failed": "Failed",
+				"skipped": "Skipped (already applied)"
+			},
+			"startedAt": "Started {{time}}",
+			"viewSteps": "View steps"
 		},
-		"statusTransitions": {
-			"title": "Status workflow",
-			"hint": "Define what status comes next once work at each status is done. This unlocks downstream tasks and tells an AI-agent assignee exactly what status to set next, instead of guessing. A default chain is generated automatically from your project's statuses when the workflow is created.",
-			"nextStatusLabel": "Next status",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "Exactly one status must have no next status (this becomes the workflow's __END__ status). Currently: {{count}} configured."
+		"dependencyMap": {
+			"title": "Dependency map",
+			"subtitle": "Read-only view of every automation waiting on other tasks to finish",
+			"empty": "No predecessor dependencies configured yet",
+			"watchedTasks": "Waiting on {{count}} task(s)"
 		}
 	}
 }

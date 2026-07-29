@@ -88,7 +88,9 @@ describe("PacaAPITaskExtendedClient", () => {
 	it("resolves on 204 No Content without parsing JSON", async () => {
 		fetchMock.mockResolvedValue(noContentResponse());
 		const client = new PacaAPITaskExtendedClient(CONFIG);
-		await expect(client.deleteTaskComment("p1", "t1", "c1")).resolves.toBeUndefined();
+		await expect(
+			client.deleteTaskComment("p1", "t1", "c1"),
+		).resolves.toBeUndefined();
 	});
 
 	// ---------------------------------------------------------------------------

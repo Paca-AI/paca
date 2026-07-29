@@ -63,7 +63,9 @@ describe("getDocActivityTools", () => {
 	});
 
 	it("warns in add_doc_comment's description that mentions don't notify", () => {
-		const tool = getDocActivityTools().find((t) => t.name === "add_doc_comment");
+		const tool = getDocActivityTools().find(
+			(t) => t.name === "add_doc_comment",
+		);
 		expect(tool?.description).toContain("does not send a notification");
 	});
 });
@@ -181,7 +183,11 @@ describe("handleDocActivityTool – delete_doc_comment", () => {
 			{ projectId: "p1", docId: "d1", commentId: "cmt-1" },
 			client,
 		);
-		expect(client.deleteDocumentComment).toHaveBeenCalledWith("p1", "d1", "cmt-1");
+		expect(client.deleteDocumentComment).toHaveBeenCalledWith(
+			"p1",
+			"d1",
+			"cmt-1",
+		);
 	});
 
 	it("includes 'deleted successfully' and commentId in the response", async () => {
@@ -206,7 +212,11 @@ describe("handleDocActivityTool – error handling", () => {
 		// throws — a bare `return handleDocActivityTool(...)` there does not
 		// catch this function's own async rejections. Every error path here
 		// must resolve to a normal tool result, never reject.
-		const result = await handleDocActivityTool("not_a_real_tool", {}, makeClient());
+		const result = await handleDocActivityTool(
+			"not_a_real_tool",
+			{},
+			makeClient(),
+		);
 		expect(result.isError).toBe(true);
 		expect(result.content[0].text).toContain("Unknown document activity tool");
 	});

@@ -94,8 +94,8 @@ const (
 	CodeTaskStatusCategoryInvalid Code = "TASK_STATUS_CATEGORY_INVALID"
 	// CodeTaskStatusReorderInvalid indicates the provided status IDs do not match the project's statuses.
 	CodeTaskStatusReorderInvalid Code = "TASK_STATUS_REORDER_INVALID"
-	// CodeTaskStatusInUseByWorkflow indicates the status is still referenced by an automation workflow.
-	CodeTaskStatusInUseByWorkflow Code = "TASK_STATUS_IN_USE_BY_WORKFLOW"
+	// CodeTaskStatusInUseByAutomation indicates the status is still referenced by an automation.
+	CodeTaskStatusInUseByAutomation Code = "TASK_STATUS_IN_USE_BY_AUTOMATION"
 
 	// CodeSprintNotFound indicates the requested sprint does not exist.
 	CodeSprintNotFound Code = "SPRINT_NOT_FOUND"
@@ -305,56 +305,53 @@ const (
 	// CodeAgentEnvVarKeyReserved indicates the environment variable key collides with an internal sandbox variable.
 	CodeAgentEnvVarKeyReserved Code = "AGENT_ENV_VAR_KEY_RESERVED"
 
-	// --- Automation workflow errors ------------------------------------------
+	// --- Automation errors -----------------------------------------------------
 
-	// CodeWorkflowNotFound indicates the requested workflow does not exist.
-	CodeWorkflowNotFound Code = "WORKFLOW_NOT_FOUND"
-	// CodeWorkflowNameInvalid indicates an empty or invalid workflow name.
-	CodeWorkflowNameInvalid Code = "WORKFLOW_NAME_INVALID"
-	// CodeWorkflowNodeNotFound indicates the requested workflow node does not exist.
-	CodeWorkflowNodeNotFound Code = "WORKFLOW_NODE_NOT_FOUND"
-	// CodeWorkflowNodeDuplicateTask indicates the task is already a node in this workflow.
-	CodeWorkflowNodeDuplicateTask Code = "WORKFLOW_NODE_DUPLICATE_TASK"
-	// CodeWorkflowNodeTaskCrossProject indicates the task does not belong to the workflow's project.
-	CodeWorkflowNodeTaskCrossProject Code = "WORKFLOW_NODE_TASK_CROSS_PROJECT"
-	// CodeWorkflowStatusRuleNotFound indicates the requested status rule does not exist.
-	CodeWorkflowStatusRuleNotFound Code = "WORKFLOW_STATUS_RULE_NOT_FOUND"
-	// CodeWorkflowStatusRuleCrossProject indicates the status or member does not belong to the workflow's project.
-	CodeWorkflowStatusRuleCrossProject Code = "WORKFLOW_STATUS_RULE_CROSS_PROJECT"
-	// CodeWorkflowStatusRuleConflict indicates a concurrent request already set this status rule.
-	CodeWorkflowStatusRuleConflict Code = "WORKFLOW_STATUS_RULE_CONFLICT"
-	// CodeWorkflowStatusTransitionNotFound indicates the requested status transition does not exist.
-	CodeWorkflowStatusTransitionNotFound Code = "WORKFLOW_STATUS_TRANSITION_NOT_FOUND"
-	// CodeWorkflowStatusTransitionCrossProject indicates the status does not belong to the workflow's project.
-	CodeWorkflowStatusTransitionCrossProject Code = "WORKFLOW_STATUS_TRANSITION_CROSS_PROJECT"
-	// CodeWorkflowStatusTransitionSelfLoop indicates an attempt to make a status transition to itself.
-	CodeWorkflowStatusTransitionSelfLoop Code = "WORKFLOW_STATUS_TRANSITION_SELF_LOOP"
-	// CodeWorkflowStatusTransitionConflict indicates a concurrent request already set this status transition.
-	CodeWorkflowStatusTransitionConflict Code = "WORKFLOW_STATUS_TRANSITION_CONFLICT"
-	// CodeWorkflowEdgeNotFound indicates the requested edge does not exist.
-	CodeWorkflowEdgeNotFound Code = "WORKFLOW_EDGE_NOT_FOUND"
-	// CodeWorkflowEdgeSelfLoop indicates an attempt to link a node to itself.
-	CodeWorkflowEdgeSelfLoop Code = "WORKFLOW_EDGE_SELF_LOOP"
-	// CodeWorkflowEdgeCrossWorkflow indicates source and target nodes belong to different workflows.
-	CodeWorkflowEdgeCrossWorkflow Code = "WORKFLOW_EDGE_CROSS_WORKFLOW"
-	// CodeWorkflowEdgeCycle indicates the edge would create a cycle in the dependency graph.
-	CodeWorkflowEdgeCycle Code = "WORKFLOW_EDGE_CYCLE"
-	// CodeWorkflowEdgeDuplicate indicates the edge already exists.
-	CodeWorkflowEdgeDuplicate Code = "WORKFLOW_EDGE_DUPLICATE"
-	// CodeWorkflowNotDraft indicates the workflow can only be activated while in draft.
-	CodeWorkflowNotDraft Code = "WORKFLOW_NOT_DRAFT"
-	// CodeWorkflowNotActive indicates the workflow is not active.
-	CodeWorkflowNotActive Code = "WORKFLOW_NOT_ACTIVE"
-	// CodeWorkflowArchived indicates the workflow's graph can no longer be edited once archived.
-	CodeWorkflowArchived Code = "WORKFLOW_ARCHIVED"
-	// CodeWorkflowActivateNoNodes indicates an empty workflow cannot be activated.
-	CodeWorkflowActivateNoNodes Code = "WORKFLOW_ACTIVATE_NO_NODES"
-	// CodeWorkflowActivateDoneStatusUndetermined indicates the workflow's status-transition chain doesn't have exactly one terminal (done) status.
-	CodeWorkflowActivateDoneStatusUndetermined Code = "WORKFLOW_ACTIVATE_DONE_STATUS_UNDETERMINED"
-	// CodeWorkflowActivateTaskMissing indicates a node references a task that no longer exists in the project.
-	CodeWorkflowActivateTaskMissing Code = "WORKFLOW_ACTIVATE_TASK_MISSING"
-	// CodeWorkflowActivateNoStatusRules indicates the workflow has no status rules, so activating it would never reassign anything.
-	CodeWorkflowActivateNoStatusRules Code = "WORKFLOW_ACTIVATE_NO_STATUS_RULES"
+	// CodeAutomationNotFound indicates the requested automation does not exist.
+	CodeAutomationNotFound Code = "AUTOMATION_NOT_FOUND"
+	// CodeAutomationNameInvalid indicates an empty or invalid automation name.
+	CodeAutomationNameInvalid Code = "AUTOMATION_NAME_INVALID"
+	// CodeAutomationNodeNotFound indicates the requested node does not exist.
+	CodeAutomationNodeNotFound Code = "AUTOMATION_NODE_NOT_FOUND"
+	// CodeAutomationNodeInvalidKind indicates the node kind is not trigger/condition/action.
+	CodeAutomationNodeInvalidKind Code = "AUTOMATION_NODE_INVALID_KIND"
+	// CodeAutomationNodeInvalidType indicates the node type is not recognized for its kind.
+	CodeAutomationNodeInvalidType Code = "AUTOMATION_NODE_INVALID_TYPE"
+	// CodeAutomationNodeConfigInvalid indicates the node's config failed validation.
+	CodeAutomationNodeConfigInvalid Code = "AUTOMATION_NODE_CONFIG_INVALID"
+	// CodeAutomationNodeCrossProject indicates the node config references an entity outside the automation's project.
+	CodeAutomationNodeCrossProject Code = "AUTOMATION_NODE_CROSS_PROJECT"
+	// CodeAutomationEdgeNotFound indicates the requested edge does not exist.
+	CodeAutomationEdgeNotFound Code = "AUTOMATION_EDGE_NOT_FOUND"
+	// CodeAutomationEdgeSelfLoop indicates an attempt to link a node to itself.
+	CodeAutomationEdgeSelfLoop Code = "AUTOMATION_EDGE_SELF_LOOP"
+	// CodeAutomationEdgeCrossAutomation indicates source and target nodes belong to different automations.
+	CodeAutomationEdgeCrossAutomation Code = "AUTOMATION_EDGE_CROSS_AUTOMATION"
+	// CodeAutomationEdgeCycle indicates the edge would create a cycle in the graph.
+	CodeAutomationEdgeCycle Code = "AUTOMATION_EDGE_CYCLE"
+	// CodeAutomationEdgeIntoTrigger indicates an edge would target a trigger node.
+	CodeAutomationEdgeIntoTrigger Code = "AUTOMATION_EDGE_INTO_TRIGGER"
+	// CodeAutomationEdgeDuplicate indicates the edge already exists.
+	CodeAutomationEdgeDuplicate Code = "AUTOMATION_EDGE_DUPLICATE"
+	// CodeAutomationEdgeRequiresTargetTask indicates a task-less trigger (no
+	// target_task_id) would reach a node that needs a task to run.
+	CodeAutomationEdgeRequiresTargetTask Code = "AUTOMATION_EDGE_REQUIRES_TARGET_TASK"
+	// CodeAutomationEdgeHandleRequired indicates an edge from a condition node is missing its branch handle.
+	CodeAutomationEdgeHandleRequired Code = "AUTOMATION_EDGE_HANDLE_REQUIRED"
+	// CodeAutomationEdgeHandleNotAllowed indicates an edge from a trigger/action node specified a branch handle.
+	CodeAutomationEdgeHandleNotAllowed Code = "AUTOMATION_EDGE_HANDLE_NOT_ALLOWED"
+	// CodeAutomationNotDraft indicates the automation can only be activated while in draft.
+	CodeAutomationNotDraft Code = "AUTOMATION_NOT_DRAFT"
+	// CodeAutomationNotActive indicates the automation is not active.
+	CodeAutomationNotActive Code = "AUTOMATION_NOT_ACTIVE"
+	// CodeAutomationArchived indicates the automation's graph can no longer be edited once archived.
+	CodeAutomationArchived Code = "AUTOMATION_ARCHIVED"
+	// CodeAutomationActivateNoTrigger indicates the automation has no trigger node.
+	CodeAutomationActivateNoTrigger Code = "AUTOMATION_ACTIVATE_NO_TRIGGER"
+	// CodeAutomationActivateNoAction indicates the automation has no action node, so activating it would never do anything.
+	CodeAutomationActivateNoAction Code = "AUTOMATION_ACTIVATE_NO_ACTION"
+	// CodeAutomationWebhookTokenInvalid indicates a webhook trigger POST presented a missing, wrong, or revoked token.
+	CodeAutomationWebhookTokenInvalid Code = "AUTOMATION_WEBHOOK_TOKEN_INVALID"
 )
 
 // Error carries a machine-readable Code alongside a human-readable Message.

@@ -34,6 +34,14 @@ const StreamTaskAssignments = "paca.task_assignments"
 // directly.
 const StreamPluginEvents = "paca.plugin_events"
 
+// StreamAutomationExternalTriggers is the Valkey Stream key the webhook
+// receiver endpoint appends to once it has verified an inbound POST's
+// token, so worker.AutomationConsumer can execute the matched api_trigger
+// node's graph walk asynchronously — the HTTP handler returns as soon as
+// the token is verified and the event is durably queued, without waiting on
+// the walk to finish.
+const StreamAutomationExternalTriggers = "paca.automation_external_triggers"
+
 // Event type constants used in both Pub/Sub messages and Stream entries.
 const (
 	// --- Auth events --------------------------------------------------------
@@ -96,10 +104,14 @@ const (
 
 	// --- Agent trigger events -----------------------------------------------
 	// These are appended to StreamAgentTriggers and consumed by services/ai-agent.
-	TopicAgentTaskAssigned     = "agent.task_assigned"
-	TopicAgentCommentMention   = "agent.comment_mention"
-	TopicAgentChatMessage      = "agent.chat_message"
-	TopicAgentDescriptionWrite = "agent.description_write"
+	TopicAgentTaskAssigned      = "agent.task_assigned"
+	TopicAgentCommentMention    = "agent.comment_mention"
+	TopicAgentChatMessage       = "agent.chat_message"
+	TopicAgentDescriptionWrite  = "agent.description_write"
+	// TopicAgentAutomationMessage fires a standalone message at an agent, no
+	// task involved — used by the automation engine's trigger_ai_agent
+	// action when its trigger has no target task (nothing to assign).
+	TopicAgentAutomationMessage = "agent.automation_message"
 	// TopicAgentStop interrupts (if running) and tears the sandbox down for
 	// good — unchanged from before. TopicAgentPause interrupts the in-flight
 	// turn only, leaving the sandbox running so the conversation can be
@@ -122,27 +134,28 @@ const (
 	TopicAgentObservationEvent     = "agent.observation"
 	TopicAgentMessageEvent         = "agent.message"
 
-	// --- Automation workflow events ------------------------------------------
-	// Published directly to ChannelRealtime by workflowsvc.Service whenever a
-	// workflow's graph or lifecycle changes, so every connected client viewing
-	// that project's automation builder stays in sync. Note: workflow.assigned
-	// (the automation engine reassigning a task) is a separate, task-scoped
-	// event defined as taskdom.ActivityTypeWorkflowAssigned, not here.
-	TopicWorkflowCreated                 = "workflow.created"
-	TopicWorkflowUpdated                 = "workflow.updated"
-	TopicWorkflowDeleted                 = "workflow.deleted"
-	TopicWorkflowActivated               = "workflow.activated"
-	TopicWorkflowArchived                = "workflow.archived"
-	TopicWorkflowRevertedToDraft         = "workflow.reverted_to_draft"
-	TopicWorkflowNodeAdded               = "workflow.node.added"
-	TopicWorkflowNodeUpdated             = "workflow.node.updated"
-	TopicWorkflowNodeRemoved             = "workflow.node.removed"
-	TopicWorkflowEdgeAdded               = "workflow.edge.added"
-	TopicWorkflowEdgeRemoved             = "workflow.edge.removed"
-	TopicWorkflowStatusRuleSet           = "workflow.status_rule.set"
-	TopicWorkflowStatusRuleRemoved       = "workflow.status_rule.removed"
-	TopicWorkflowStatusTransitionSet     = "workflow.status_transition.set"
-	TopicWorkflowStatusTransitionRemoved = "workflow.status_transition.removed"
+	// --- Automation graph events ----------------------------------------------
+	// Published directly to ChannelRealtime by automationsvc.Service whenever
+	// an automation's graph or lifecycle changes, so every connected client
+	// viewing that project's automation builder stays in sync. Note:
+	// automation.applied (the engine mutating a task) is a separate,
+	// task-scoped event defined as taskdom.ActivityTypeAutomationApplied, not
+	// here.
+	TopicAutomationCreated         = "automation.created"
+	TopicAutomationUpdated         = "automation.updated"
+	TopicAutomationDeleted         = "automation.deleted"
+	TopicAutomationActivated       = "automation.activated"
+	TopicAutomationArchived        = "automation.archived"
+	TopicAutomationRevertedToDraft = "automation.reverted_to_draft"
+	TopicAutomationNodeAdded       = "automation.node.added"
+	TopicAutomationNodeUpdated     = "automation.node.updated"
+	TopicAutomationNodeRemoved     = "automation.node.removed"
+	TopicAutomationEdgeAdded       = "automation.edge.added"
+	TopicAutomationEdgeRemoved     = "automation.edge.removed"
+	// TopicAutomationAPITriggerFired is appended to
+	// StreamAutomationExternalTriggers by the webhook receiver handler once
+	// a POST's token has been verified.
+	TopicAutomationAPITriggerFired = "automation.api_trigger.fired"
 )
 
 // Streams for AI Agent pipeline.

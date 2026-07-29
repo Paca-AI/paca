@@ -1,17 +1,21 @@
 import type { CallToolRequest, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type {
+	PacaAPIAutomationClient,
 	PacaAPIClient,
 	PacaAPIDocClient,
 	PacaAPIExtendedClient,
 	PacaAPITaskExtendedClient,
 	PacaAPIViewsClient,
-	PacaAPIWorkflowClient,
 } from "../api/index.js";
 import { formatToolError } from "../utils/index.js";
 import {
 	getAttachmentTools,
 	handleAttachmentTool,
 } from "./attachment-tools.js";
+import {
+	getAutomationTools,
+	handleAutomationTool,
+} from "./automation-tools.js";
 import {
 	getDocActivityTools,
 	handleDocActivityTool,
@@ -43,7 +47,6 @@ import {
 	getViewTools,
 	handleViewTool,
 } from "./view-tools.js";
-import { getWorkflowTools, handleWorkflowTool } from "./workflow-tools.js";
 
 /**
  * Returns all available MCP tools.
@@ -63,7 +66,7 @@ export function getAllTools(): Tool[] {
 		...getAttachmentTools(),
 		...getTaskActivityTools(),
 		...getTaskLinkTools(),
-		...getWorkflowTools(),
+		...getAutomationTools(),
 		...getDocActivityTools(),
 	];
 }
@@ -80,7 +83,7 @@ export async function handleToolCall(
 		viewsClient: PacaAPIViewsClient;
 		taskExtendedClient: PacaAPITaskExtendedClient;
 		docClient: PacaAPIDocClient;
-		workflowClient: PacaAPIWorkflowClient;
+		automationClient: PacaAPIAutomationClient;
 	},
 ): Promise<any> {
 	const { name, arguments: args } = request.params;
@@ -222,14 +225,14 @@ export async function handleToolCall(
 			return handleTaskLinkTool(name, args, clients.taskExtendedClient);
 		}
 
-		// Automation workflow tools
+		// Automation tools
 		if (
-			name === "get_workflow" ||
-			name === "create_workflow" ||
-			name === "update_workflow" ||
-			name === "delete_workflow"
+			name === "get_automation" ||
+			name === "create_automation" ||
+			name === "update_automation" ||
+			name === "delete_automation"
 		) {
-			return handleWorkflowTool(name, args, clients.workflowClient);
+			return handleAutomationTool(name, args, clients.automationClient);
 		}
 
 		// Document activity tools

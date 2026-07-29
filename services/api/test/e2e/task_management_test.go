@@ -1220,9 +1220,9 @@ func TestE2ETaskManagement_MultipleAssignees(t *testing.T) {
 	client, token := taskMemberLogin(t, env, ownerUsername, "multiassigneeowner1")
 	projID := createProjectForTasksViaAPI(t, env, client, token)
 
-	memberA := addProjectMemberWithWorkflowPerms(t, env, client, token, projID, "multi-assignee-a-"+uuid.NewString(), "multiassigneea1")
-	memberB := addProjectMemberWithWorkflowPerms(t, env, client, token, projID, "multi-assignee-b-"+uuid.NewString(), "multiassigneeb1")
-	memberC := addProjectMemberWithWorkflowPerms(t, env, client, token, projID, "multi-assignee-c-"+uuid.NewString(), "multiassigneec1")
+	memberA := addProjectMemberWithAutomationPerms(t, env, client, token, projID, "multi-assignee-a-"+uuid.NewString(), "multiassigneea1")
+	memberB := addProjectMemberWithAutomationPerms(t, env, client, token, projID, "multi-assignee-b-"+uuid.NewString(), "multiassigneeb1")
+	memberC := addProjectMemberWithAutomationPerms(t, env, client, token, projID, "multi-assignee-c-"+uuid.NewString(), "multiassigneec1")
 
 	var taskID string
 

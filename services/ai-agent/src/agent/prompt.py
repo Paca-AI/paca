@@ -8,6 +8,7 @@ _ACTION_TYPE_LABELS = {
     "task_assigned": "Task assignment",
     "chat_message": "Direct chat message",
     "description_write": "Write task description",
+    "automation_message": "Automation-triggered message",
 }
 
 

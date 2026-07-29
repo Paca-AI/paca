@@ -14,16 +14,16 @@ var reservedSystemTypeNames = map[string]bool{
 	"Epic": true,
 }
 
-// workflowStatusChecker is the minimal workflow-domain surface the task
+// automationStatusChecker is the minimal automation-domain surface the task
 // service needs to refuse deleting a status that automation still depends on.
-type workflowStatusChecker interface {
-	StatusUsedByWorkflow(ctx context.Context, statusID uuid.UUID) (bool, error)
+type automationStatusChecker interface {
+	StatusUsedByAutomation(ctx context.Context, statusID uuid.UUID) (bool, error)
 }
 
 // Service is the concrete implementation of taskdom.Service.
 type Service struct {
-	repo            taskdom.Repository
-	workflowChecker workflowStatusChecker
+	repo              taskdom.Repository
+	automationChecker automationStatusChecker
 }
 
 // New returns a configured task service.
@@ -31,11 +31,11 @@ func New(repo taskdom.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// WithWorkflowStatusChecker configures a check that refuses to delete a task
-// status still referenced by an automation workflow's rules or transitions.
-// Without it, DeleteTaskStatus does not guard against this (e.g. in tests).
-func (s *Service) WithWorkflowStatusChecker(checker workflowStatusChecker) *Service {
-	s.workflowChecker = checker
+// WithAutomationStatusChecker configures a check that refuses to delete a
+// task status still referenced by an automation's node config. Without it,
+// DeleteTaskStatus does not guard against this (e.g. in tests).
+func (s *Service) WithAutomationStatusChecker(checker automationStatusChecker) *Service {
+	s.automationChecker = checker
 	return s
 }
 
@@ -218,13 +218,13 @@ func (s *Service) DeleteTaskStatus(ctx context.Context, projectID, id uuid.UUID)
 	if st.ProjectID != projectID {
 		return taskdom.ErrStatusNotFound
 	}
-	if s.workflowChecker != nil {
-		used, err := s.workflowChecker.StatusUsedByWorkflow(ctx, id)
+	if s.automationChecker != nil {
+		used, err := s.automationChecker.StatusUsedByAutomation(ctx, id)
 		if err != nil {
 			return err
 		}
 		if used {
-			return taskdom.ErrStatusInUseByWorkflow
+			return taskdom.ErrStatusInUseByAutomation
 		}
 	}
 	return s.repo.DeleteTaskStatus(ctx, id)

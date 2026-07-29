@@ -959,6 +959,17 @@ func applyCFCursorWhere(b *queryBuilder, cur *taskdom.TaskCursor, sort taskdom.T
 	}
 }
 
+// ListChildTasks returns every task whose parent_task_id is parentTaskID —
+// a thin convenience wrapper around ListTasks for callers (e.g. the
+// automation engine's "children" retarget) that just want "this task's
+// children" without building a full TaskFilter. Capped at 200 like the
+// frontend's own subtask fetch (apps/web's listSubtasks) — no further
+// pagination, same existing limitation, not a new one.
+func (r *TaskRepository) ListChildTasks(ctx context.Context, projectID, parentTaskID uuid.UUID) ([]*taskdom.Task, error) {
+	tasks, _, err := r.ListTasks(ctx, projectID, taskdom.TaskFilter{ParentTaskID: &parentTaskID}, 200, taskdom.TaskSort{})
+	return tasks, err
+}
+
 // ListTasks returns a page of tasks with optional filter.
 func (r *TaskRepository) ListTasks(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, limit int, sort taskdom.TaskSort) ([]*taskdom.Task, bool, error) {
 	b := newQueryBuilder()

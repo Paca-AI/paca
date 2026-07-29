@@ -57,7 +57,7 @@ func TestE2EAssignedToMeTasks_CrossProjectExcludesDoneAndUnassigned(t *testing.T
 		t.Fatalf("expected owner to resolve to a project member in projB, got %+v", membersB)
 	}
 
-	otherMemberInA := addProjectMemberWithWorkflowPerms(t, env, client, token, projA,
+	otherMemberInA := addProjectMemberWithAutomationPerms(t, env, client, token, projA,
 		"assigned-to-me-other-"+uuid.NewString(), "assignedtomeother1")
 
 	statusesA := listTaskStatusesViaAPI(t, env, client, token, projA)

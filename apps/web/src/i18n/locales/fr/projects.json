@@ -392,12 +392,12 @@
 				"description": "Créer, configurer et supprimer des agents IA"
 			},
 			"workflowsRead": {
-				"label": "Voir les workflows",
-				"description": "Parcourir les workflows d'automatisation et leur configuration"
+				"label": "Voir l'automatisation",
+				"description": "Parcourir les automatisations et leur configuration"
 			},
 			"workflowsWrite": {
-				"label": "Gérer les workflows",
-				"description": "Créer, modifier, activer et supprimer des workflows d'automatisation"
+				"label": "Gérer l'automatisation",
+				"description": "Créer, modifier, activer et supprimer des automatisations"
 			}
 		},
 		"permissionGroups": {
@@ -769,11 +769,6 @@
 			"openTask": "Ouvrir la tâche",
 			"removeLink": "Retirer le lien",
 			"empty": "Aucune tâche liée"
-		},
-		"workflows": {
-			"title": "Workflows",
-			"open": "Ouvrir le workflow",
-			"empty": "Aucun workflow pour le moment"
 		},
 		"attachments": {
 			"title": "Pièces jointes",
@@ -1219,12 +1214,12 @@
 	"automation": {
 		"list": {
 			"title": "Automatisation",
-			"subtitle": "Automatisez la transmission des tâches au fil de leur avancement",
-			"newWorkflow": "Nouveau workflow",
+			"subtitle": "Réagissez aux événements des tâches avec des déclencheurs, des conditions et des actions",
+			"newAutomation": "Nouvelle automatisation",
 			"empty": {
-				"title": "Aucun workflow pour le moment",
-				"description": "Créez un workflow pour automatiser la transmission des tâches au fil de leur avancement.",
-				"createFirstWorkflow": "Créer votre premier workflow"
+				"title": "Aucune automatisation pour l'instant",
+				"description": "Créez une automatisation pour réagir aux événements des tâches avec des conditions et des actions.",
+				"createFirst": "Créer votre première automatisation"
 			},
 			"noDescription": "Aucune description",
 			"updated": "Mis à jour {{time}}"
@@ -1235,61 +1230,207 @@
 			"archived": "Archivé"
 		},
 		"createDialog": {
-			"title": "Nouveau workflow d'automatisation",
+			"title": "Nouvelle automatisation",
 			"nameLabel": "Nom",
-			"namePlaceholder": "ex. Pipeline de publication",
+			"namePlaceholder": "ex. Tri des bugs",
 			"descriptionLabel": "Description",
-			"descriptionPlaceholder": "Détails facultatifs sur ce workflow…",
+			"descriptionPlaceholder": "Détails facultatifs sur cette automatisation…",
 			"cancel": "Annuler",
 			"create": "Créer"
 		},
 		"deleteDialog": {
-			"title": "Supprimer le workflow",
+			"title": "Supprimer l'automatisation",
 			"body": "Voulez-vous vraiment supprimer « {{name}} » ? Cette action est irréversible.",
 			"cancel": "Annuler",
 			"confirm": "Supprimer"
 		},
 		"builder": {
-			"addTask": "Ajouter une tâche",
 			"activate": "Activer",
 			"archive": "Archiver",
 			"deactivate": "Désactiver",
-			"readOnlyNoticeArchived": "Ce workflow est archivé et en lecture seule — les workflows archivés ne peuvent pas être modifiés.",
+			"readOnlyNoticeArchived": "Cette automatisation est archivée et en lecture seule — les automatisations archivées ne peuvent pas être modifiées.",
 			"genericError": "Une erreur est survenue. Veuillez réessayer.",
-			"collapseSidebar": "Réduire la barre latérale",
-			"expandSidebar": "Déployer la barre latérale"
+			"taskLessTriggerConnectionError": "Ce déclencheur n'a pas de tâche cible définie ; il ne peut donc se connecter qu'à une action Appeler l'API ou Déclencher l'agent IA — les conditions et les autres actions ont besoin d'une tâche pour s'exécuter.",
+			"collapseSidebar": "Réduire le panneau",
+			"expandSidebar": "Déployer le panneau",
+			"tabGraph": "Graphe",
+			"tabRuns": "Historique des exécutions",
+			"tabDependencyMap": "Carte des dépendances"
+		},
+		"palette": {
+			"title": "Ajouter un nœud",
+			"addTrigger": "Ajouter un déclencheur",
+			"addCondition": "Ajouter une condition",
+			"addAction": "Ajouter une action",
+			"builtIn": "Intégré",
+			"plugins": "Plugins"
+		},
+		"nodeKind": {
+			"trigger": "Déclencheur",
+			"condition": "Condition",
+			"action": "Action"
 		},
 		"canvas": {
-			"unknownTask": "Tâche inconnue",
-			"deleteEdge": "Supprimer la connexion"
+			"deleteEdge": "Supprimer la connexion",
+			"deleteNode": "Supprimer le nœud"
 		},
-		"addNodeModal": {
-			"title": "Ajouter une tâche au workflow",
-			"searchPlaceholder": "Rechercher des tâches...",
-			"loadingTasks": "Chargement des tâches...",
-			"noTasksFound": "Aucune tâche trouvée"
+		"triggerTypes": {
+			"status_changed": "Statut modifié",
+			"task_created": "Tâche créée",
+			"assignee_changed": "Assigné modifié",
+			"priority_changed": "Priorité modifiée",
+			"tag_added": "Étiquette ajoutée",
+			"due_date_reached": "Échéance atteinte",
+			"predecessor_done": "Prédécesseur(s) terminé(s)",
+			"cron": "Planification cron",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "Tâche",
-			"removeNode": "Retirer du workflow",
-			"removeConfirmTitle": "Retirer la tâche du workflow",
-			"removeConfirmBody": "Cela retire la tâche du graphe du workflow, ainsi que ses connexions. La tâche elle-même n'est pas affectée.",
+		"actionTypes": {
+			"assign": "Assigner",
+			"set_status": "Définir le statut",
+			"set_priority": "Définir la priorité",
+			"add_tag": "Ajouter une étiquette",
+			"set_custom_field": "Définir un champ personnalisé",
+			"trigger_ai_agent": "Déclencher l'agent IA",
+			"call_api": "Appeler l'API"
+		},
+		"nodeConfig": {
+			"save": "Enregistrer",
 			"cancel": "Annuler",
-			"removeConfirmAction": "Retirer"
+			"remove": "Supprimer le nœud",
+			"removeConfirmTitle": "Supprimer le nœud",
+			"removeConfirmBody": "Cela supprime le nœud du graphe, ainsi que toutes ses connexions.",
+			"removeConfirmAction": "Supprimer",
+			"genericFormHint": "Ce type de nœud provient d'un plugin. Modifiez sa configuration en JSON — les plugins pourront proposer un éditeur plus riche ici dans une future version.",
+			"trigger": {
+				"anyStatus": "N'importe quel statut",
+				"statusLabel": "Statut",
+				"tagLabel": "Étiquette",
+				"anyTag": "N'importe quelle étiquette",
+				"dueDateOffsetLabel": "Décalage (minutes)",
+				"dueDateOffsetHint": "0 = à l'échéance, négatif = avant, positif = après",
+				"watchedTasksLabel": "Tâches surveillées",
+				"watchedTasksHint": "Se déclenche une fois que TOUTES ces tâches sont dans un statut « terminé »",
+				"addWatchedTaskPlaceholder": "Ajouter une tâche à surveiller…",
+				"targetTaskLabel": "Tâche cible (facultatif)",
+				"targetTaskHint": "La tâche sur laquelle porte cette automatisation une fois que chaque tâche surveillée ci-dessus est terminée — une tâche différente de ses prédécesseurs, réévaluée selon son propre état actuel. Laissez vide si cela ne doit atteindre qu'une action Appeler l'API ou Déclencher l'agent IA, qui n'ont pas besoin de tâche.",
+				"selectTaskPlaceholder": "Sélectionner une tâche…",
+				"searchTaskPlaceholder": "Rechercher des tâches…",
+				"noTasksFound": "Aucune tâche correspondante",
+				"noTasksYet": "Aucune tâche dans ce projet pour l'instant",
+				"loadingMore": "Chargement…",
+				"clearTargetTask": "Effacer la tâche cible",
+				"cronExpressionLabel": "Expression cron",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "Cron standard à 5 champs (minute heure jour-du-mois mois jour-de-la-semaine), évalué en UTC",
+				"cronTargetTaskHint": "La tâche sur laquelle porte cette automatisation à chaque déclenchement programmé. Laissez vide si cela ne doit atteindre qu'une action Appeler l'API ou Déclencher l'agent IA, qui n'ont pas besoin de tâche.",
+				"apiTriggerTargetTaskHint": "La tâche sur laquelle porte cette automatisation à chaque appel du webhook ci-dessous. Laissez vide si cela ne doit atteindre qu'une action Appeler l'API ou Déclencher l'agent IA, qui n'ont pas besoin de tâche.",
+				"webhookUrlLabel": "URL du webhook",
+				"webhookTokenLabel": "Jeton du webhook",
+				"generateTokenButton": "Générer un jeton",
+				"regenerateTokenButton": "Régénérer le jeton",
+				"tokenShownOnceWarning": "Copiez ce jeton maintenant — il ne sera plus jamais affiché.",
+				"copy": "Copier",
+				"copied": "Copié",
+				"noTokenYet": "Aucun jeton généré pour l'instant"
+			},
+			"condition": {
+				"branchesTitle": "Branches",
+				"addBranch": "Ajouter une branche",
+				"branchLabel": "Libellé de la branche",
+				"elseLabel": "Sinon (aucune branche ne correspond)",
+				"removeBranch": "Supprimer la branche",
+				"field": "Champ",
+				"operator": "Opérateur",
+				"value": "Valeur",
+				"addGroup": "Ajouter un groupe",
+				"addCondition": "Ajouter une condition",
+				"removeCondition": "Supprimer",
+				"logicAnd": "ET",
+				"logicOr": "OU",
+				"logicNot": "NON",
+				"fields": {
+					"status_id": "Statut",
+					"task_type_id": "Type de tâche",
+					"importance": "Priorité",
+					"assignee_ids": "Assigné",
+					"tags": "Étiquettes",
+					"custom_field": "Champ personnalisé"
+				}
+			},
+			"action": {
+				"memberLabel": "Assigné",
+				"statusLabel": "Statut",
+				"importanceLabel": "Priorité",
+				"tagLabel": "Étiquette",
+				"fieldKeyLabel": "Champ",
+				"valueLabel": "Valeur",
+				"messageLabel": "Instruction pour l'agent",
+				"messagePlaceholder": "ex. Résume cette tâche et suggère une priorité.",
+				"methodLabel": "Méthode",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://exemple.com/webhook",
+				"headersLabel": "En-têtes",
+				"headerKeyPlaceholder": "Nom de l'en-tête",
+				"headerValuePlaceholder": "Valeur",
+				"addHeader": "Ajouter un en-tête",
+				"bodyLabel": "Corps"
+			},
+			"target": {
+				"label": "S'applique à",
+				"kinds": {
+					"self": "Cette tâche",
+					"parent": "Tâche parente",
+					"children": "Tâches enfants",
+					"blocks": "Bloque",
+					"is_blocked_by": "Est bloquée par",
+					"relates_to": "Tâche associée",
+					"duplicates": "Duplique",
+					"is_duplicated_by": "Est dupliquée par",
+					"other": "Une autre tâche…"
+				},
+				"matchMode": {
+					"any": "Au moins une correspondance",
+					"all": "Toutes correspondent"
+				}
+			},
+			"description": {
+				"dueDateAt": "À l'échéance",
+				"dueDateBefore": "{{minutes}} min avant l'échéance",
+				"dueDateAfter": "{{minutes}} min après l'échéance",
+				"branches": "{{count}} branche(s)",
+				"priority": "Priorité : {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "Non assigné",
+				"notConfigured": "Non configuré",
+				"elseShort": "Sinon",
+				"branchFallback": "Branche {{n}}",
+				"cronSchedule": "S'exécute {{expression}}",
+				"webhookReady": "Webhook configuré",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "Règles statut → assigné",
-			"hint": "Assigne automatiquement une tâche à un membre lorsqu'elle passe à l'un de ces statuts. Cela s'applique à toute tâche de ce workflow — que quelqu'un change directement le statut d'une tâche, ou qu'une tâche prédécesseure se termine et qu'une tâche en aval soit réévaluée selon son statut actuel.",
-			"noRules": "Aucune règle pour le moment",
-			"statusPlaceholder": "Statut",
-			"memberPlaceholder": "Assigné"
+		"runHistory": {
+			"title": "Historique des exécutions",
+			"empty": "Aucune exécution pour l'instant",
+			"status": {
+				"running": "En cours",
+				"completed": "Terminé",
+				"failed": "Échoué"
+			},
+			"stepStatus": {
+				"completed": "Terminé",
+				"failed": "Échoué",
+				"skipped": "Ignoré (déjà appliqué)"
+			},
+			"startedAt": "Démarré {{time}}",
+			"viewSteps": "Voir les étapes"
 		},
-		"statusTransitions": {
-			"title": "Workflow de statuts",
-			"hint": "Définit quel statut vient ensuite une fois le travail terminé à chaque statut. Cela débloque les tâches suivantes et indique à un agent IA assigné exactement quel statut définir ensuite, au lieu de deviner. Une chaîne par défaut est générée automatiquement à partir des statuts du projet à la création du workflow.",
-			"nextStatusLabel": "Statut suivant",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "Exactement un statut doit n'avoir aucun statut suivant (il devient le statut de fin du workflow). Actuellement : {{count}} configuré(s)."
+		"dependencyMap": {
+			"title": "Carte des dépendances",
+			"subtitle": "Vue en lecture seule de chaque automatisation en attente d'autres tâches",
+			"empty": "Aucune dépendance de prédécesseur configurée pour l'instant",
+			"watchedTasks": "En attente de {{count}} tâche(s)"
 		}
 	}
 }

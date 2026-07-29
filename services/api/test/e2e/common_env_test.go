@@ -36,12 +36,12 @@ import (
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
+	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
-	workflowsvc "github.com/Paca-AI/api/internal/service/workflow"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/router"
 	"github.com/google/uuid"
@@ -100,8 +100,8 @@ type e2eEnv struct {
 	attachmentSvc  *attachmentsvc.Service
 	apiKeyRepo     *pgRepo.APIKeyRepository
 	apiKeySvc      *apikeysvc.Service
-	workflowRepo   *pgRepo.WorkflowRepository
-	workflowSvc    *workflowsvc.Service
+	automationRepo *pgRepo.AutomationRepository
+	automationSvc  *automationsvc.Service
 	agentRepo      *pgRepo.AgentRepository
 	agentSvc       *agentsvc.Service
 	activitySvc    *tasksvc.ActivitySvc
@@ -214,15 +214,15 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	apiKeyService := apikeysvc.New(apiKeyRepo)
 	// A real (non-nil) publisher is required so that task.updated activity
 	// events actually reach StreamTaskActivities — otherwise a per-test
-	// worker.WorkflowConsumer would never observe task status changes made
+	// worker.AutomationConsumer would never observe task status changes made
 	// through the HTTP API. This is a cheap, fire-and-forget XAdd for every
 	// other e2e test too (no consumer group drains it unless a test starts
 	// one), so it doesn't affect their behavior or teardown time.
 	publisher := messaging.NewPublisher(redisClient, log)
 	activityRepo := pgRepo.NewTaskActivityRepository(db)
 	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher)
-	workflowRepo := pgRepo.NewWorkflowRepository(db)
-	workflowService := workflowsvc.New(workflowRepo, taskRepo, projectRepo, publisher)
+	automationRepo := pgRepo.NewAutomationRepository(db)
+	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
 	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{}, publisher, pluginRepoForAgent)
@@ -267,7 +267,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		View:                 handler.NewViewHandler(viewService),
 		Attachment:           handler.NewAttachmentHandler(attachmentService),
 		APIKey:               handler.NewAPIKeyHandler(apiKeyService),
-		Workflow:             handler.NewWorkflowHandler(workflowService),
+		Automation:           handler.NewAutomationHandler(automationService),
 		Agent:                handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo),
 		Conversation:         handler.NewConversationHandler(agentService),
 		Log:                  log,
@@ -303,8 +303,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		attachmentSvc:  attachmentService,
 		apiKeyRepo:     apiKeyRepo,
 		apiKeySvc:      apiKeyService,
-		workflowRepo:   workflowRepo,
-		workflowSvc:    workflowService,
+		automationRepo: automationRepo,
+		automationSvc:  automationService,
 		agentRepo:      agentRepo,
 		agentSvc:       agentService,
 		activitySvc:    activityService,

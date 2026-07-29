@@ -31,6 +31,7 @@ import (
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
+	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
@@ -39,7 +40,6 @@ import (
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
-	workflowsvc "github.com/Paca-AI/api/internal/service/workflow"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	"github.com/Paca-AI/api/internal/transport/http/router"
 	"github.com/Paca-AI/api/internal/worker"
@@ -64,7 +64,9 @@ type App struct {
 	docActivityConsumer  *worker.DocActivityConsumer
 	notificationConsumer *worker.NotificationConsumer
 	pluginEventConsumer  *worker.PluginEventConsumer
-	workflowConsumer     *worker.WorkflowConsumer
+	automationConsumer   *worker.AutomationConsumer
+	dueDateScheduler     *worker.DueDateScheduler
+	cronScheduler        *worker.CronScheduler
 	log                  *slog.Logger
 }
 
@@ -106,14 +108,14 @@ func New(cfg *config.Config) (*App, error) {
 	docRepo := pgRepo.NewDocumentRepository(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	pluginRepo := pgRepo.NewPluginRepository(db)
-	rawWorkflowRepo := pgRepo.NewWorkflowRepository(db)
-	// Wraps rawWorkflowRepo with a cache for status-rule reads, invalidated
-	// on writes — shared between workflowService and workflowConsumer below
-	// so a rule edited via the API is visible to the very next automation
-	// event. rawWorkflowRepo itself is kept around only for
-	// StatusUsedByWorkflow, a Postgres-specific check outside the
-	// workflowdom.Repository interface this decorator implements.
-	workflowRepo := workflowsvc.NewCachedRepository(rawWorkflowRepo, cacheStore, cfg.Cache.ConfigTTL, log)
+	rawAutomationRepo := pgRepo.NewAutomationRepository(db)
+	// Wraps rawAutomationRepo with a cache for graph reads, invalidated on
+	// writes — shared between automationService and automationConsumer
+	// below so a node/edge edited via the API is visible to the very next
+	// automation event. rawAutomationRepo itself is kept around only for
+	// StatusUsedByAutomation, a Postgres-specific check outside the
+	// automationdom.Repository interface this decorator implements.
+	automationRepo := automationsvc.NewCachedRepository(rawAutomationRepo, cacheStore, cfg.Cache.ConfigTTL, log)
 
 	// --- Schema migration ---------------------------------------------------
 	// All statements use CREATE TABLE IF NOT EXISTS / INSERT … ON CONFLICT so
@@ -141,7 +143,7 @@ func New(cfg *config.Config) (*App, error) {
 	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectService := projectsvc.NewCachedService(projectsvc.New(projectRepo, taskRepo), cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
-	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithWorkflowStatusChecker(rawWorkflowRepo), cacheStore, cfg.Cache.ConfigTTL, log)
+	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher)
@@ -176,8 +178,10 @@ func New(cfg *config.Config) (*App, error) {
 	docActivityService := docsvc.NewActivityService(docRepo, projectRepo, publisher).
 		WithNotificationService(notificationService)
 	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
-	workflowService := workflowsvc.New(workflowRepo, taskRepo, projectRepo, publisher)
-	workflowConsumer := worker.NewWorkflowConsumer(redisClient, workflowRepo, taskRepo, taskService, activityService, publisher, log)
+	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
+	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
+	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
+	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 
 	// Object storage — defaults to MinIO; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
@@ -267,6 +271,21 @@ func New(cfg *config.Config) (*App, error) {
 		log.Error("plugin: some plugins failed to load", "error", err)
 	}
 
+	// Wire the plugin runtime into the automation engine so
+	// plugin-contributed trigger/condition/action node types validate and
+	// execute: automationService.WithPluginNodeResolver gates node
+	// creation/update (rejecting unrecognized types), automationConsumer.
+	// WithPluginRuntime dispatches plugin condition/action nodes mid-walk via
+	// the same EvaluateCondition/RunAction WASM bridge HandleRequest uses.
+	automationService.WithPluginNodeResolver(pluginRuntime)
+	automationConsumer.WithPluginRuntime(pluginRuntime)
+	// trigger_ai_agent normally assigns the task to fire the agent, but with
+	// no target task (a cron/api_trigger/predecessor_done trigger with none
+	// configured) it instead fires a standalone message — projectRepo
+	// resolves the configured member to its AgentID, agentService dispatches
+	// the message (see agentService.TriggerDirectMessage).
+	automationConsumer.WithAgentMessaging(projectRepo, agentService)
+
 	// Forward every recorded activity (task created/updated/deleted, comments,
 	// links, etc.) to subscribed plugins. ActivitySvc appends to the
 	// StreamPluginEvents Valkey stream; this consumer reads it back and
@@ -282,7 +301,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithActivityRecorder(activityService).
 		WithMemberRepo(projectRepo)
 	convHandler := handler.NewConversationHandler(agentService)
-	workflowHandler := handler.NewWorkflowHandler(workflowService)
+	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 
 	// --- Handlers -----------------------------------------------------------
 	cookieCfg := handler.CookieConfig{
@@ -325,7 +344,7 @@ func New(cfg *config.Config) (*App, error) {
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
 		Conversation:       convHandler,
-		Workflow:           workflowHandler,
+		Automation:         automationHandler,
 		Log:                log,
 		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
 	}
@@ -340,7 +359,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, workflowConsumer: workflowConsumer, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -351,7 +370,9 @@ func (a *App) Run() error {
 	a.docActivityConsumer.Start(context.Background())
 	a.notificationConsumer.Start(context.Background())
 	a.pluginEventConsumer.Start(context.Background())
-	a.workflowConsumer.Start(context.Background())
+	a.automationConsumer.Start(context.Background())
+	a.dueDateScheduler.Start(context.Background())
+	a.cronScheduler.Start(context.Background())
 	return a.server.ListenAndServe()
 }
 
@@ -362,7 +383,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.docActivityConsumer.Stop()
 	a.notificationConsumer.Stop()
 	a.pluginEventConsumer.Stop()
-	a.workflowConsumer.Stop()
+	a.automationConsumer.Stop()
+	a.dueDateScheduler.Stop()
+	a.cronScheduler.Stop()
 	if a.publisher != nil {
 		a.publisher.Close()
 	}
