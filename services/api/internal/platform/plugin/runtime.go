@@ -228,8 +228,16 @@ func (r *Runtime) Load(ctx context.Context, p plugindom.Plugin) error {
 		_ = wasmRT.Close(ctx)
 		return fmt.Errorf("runtime load %q: compile: %w", p.Name, err)
 	}
-	// For WASI reactor builds, _initialize must be called before exported functions
-	mod, err := wasmRT.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().WithName(p.Name).WithStartFunctions("_initialize"))
+	// For WASI reactor builds, _initialize must be called before exported functions.
+	// WithSysWalltime/WithSysNanotime wire the module's clock to the real OS
+	// clock; without them wazero silently falls back to a fake clock frozen at
+	// 1970-01-01 (nanotime) / 2022-01-01 (walltime), which is what plugins would
+	// otherwise observe from time.Now() — see issue #339.
+	mod, err := wasmRT.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
+		WithName(p.Name).
+		WithStartFunctions("_initialize").
+		WithSysWalltime().
+		WithSysNanotime())
 	if err != nil {
 		_ = wasmRT.Close(ctx)
 		return fmt.Errorf("runtime load %q: instantiate: %w", p.Name, err)
