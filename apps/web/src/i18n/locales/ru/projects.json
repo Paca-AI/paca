@@ -1009,6 +1009,7 @@
 		"triggerChat": "Чат",
 		"triggerWriteDescription": "Написать описание",
 		"triggerTask": "Задача",
+		"triggerAutomation": "Автоматизация",
 		"iterations_one": "{{count}} итерация",
 		"iterations_few": "{{count}} итерации",
 		"iterations_many": "{{count}} итераций",
@@ -1380,6 +1381,7 @@
 			},
 			"action": {
 				"memberLabel": "Исполнитель",
+				"agentLabel": "Агент",
 				"statusLabel": "Статус",
 				"importanceLabel": "Приоритет",
 				"tagLabel": "Тег",

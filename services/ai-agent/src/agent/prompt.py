@@ -16,6 +16,10 @@ def _action_type_label(trigger: TriggerMessage) -> str:
     if trigger.trigger_type == "comment_mention":
         # task_id is set for task-comment mentions; absent for doc-comment mentions.
         return "Task comment mention" if trigger.task_id else "Document comment mention"
+    # actor_member_id is None when the automation-workflow engine fired this
+    # trigger rather than a human — see agent_service.go's TriggerTaskAssigned.
+    if trigger.trigger_type == "task_assigned" and trigger.actor_member_id is None:
+        return "Automation-triggered task assignment"
     return _ACTION_TYPE_LABELS.get(trigger.trigger_type, trigger.trigger_type)
 
 

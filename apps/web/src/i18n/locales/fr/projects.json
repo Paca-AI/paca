@@ -993,6 +993,7 @@
 		"triggerChat": "Discussion",
 		"triggerWriteDescription": "Rédaction de description",
 		"triggerTask": "Tâche",
+		"triggerAutomation": "Automatisation",
 		"iterations_one": "{{count}} itération",
 		"iterations_other": "{{count}} itérations",
 		"prOpened": "PR ouverte",
@@ -1360,6 +1361,7 @@
 			},
 			"action": {
 				"memberLabel": "Assigné",
+				"agentLabel": "Agent",
 				"statusLabel": "Statut",
 				"importanceLabel": "Priorité",
 				"tagLabel": "Étiquette",

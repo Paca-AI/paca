@@ -993,6 +993,7 @@
 		"triggerChat": "Chat",
 		"triggerWriteDescription": "Escrever descrição",
 		"triggerTask": "Tarefa",
+		"triggerAutomation": "Automação",
 		"iterations_one": "{{count}} iteração",
 		"iterations_other": "{{count}} iterações",
 		"prOpened": "PR aberto",
@@ -1360,6 +1361,7 @@
 			},
 			"action": {
 				"memberLabel": "Responsável",
+				"agentLabel": "Agente",
 				"statusLabel": "Status",
 				"importanceLabel": "Prioridade",
 				"tagLabel": "Tag",

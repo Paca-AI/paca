@@ -148,13 +148,13 @@ var ValidBuiltinActionTypes = map[ActionType]bool{
 // execute: true for every condition node (built-in or plugin — both
 // evaluate task fields) and every built-in action except call_api and
 // trigger_ai_agent. call_api operates on static config with no task
-// involved; trigger_ai_agent normally assigns the task to the configured
-// agent member (which is how it invokes the agent), but with no task it
-// instead fires a standalone message at the agent (see the worker's
-// applyDirectAgentMessage and agentsvc.TriggerDirectMessage), so it works
-// either way. A plugin-contributed action is conservatively treated as
-// requiring a task, since there's no manifest flag today declaring
-// otherwise.
+// involved; trigger_ai_agent starts an agent conversation either way, task
+// bound (see the worker's applyTriggerAIAgentOnTask and
+// agentsvc.TriggerTaskAssigned) or, with no task, as a standalone message
+// (see applyDirectAgentMessage and agentsvc.TriggerDirectMessage) — so it
+// works either way, and neither path touches the task's assignee. A
+// plugin-contributed action is conservatively treated as requiring a task,
+// since there's no manifest flag today declaring otherwise.
 //
 // This is the single source of truth for two enforcement points that must
 // agree: the service layer rejects an edge/node-update that would let a

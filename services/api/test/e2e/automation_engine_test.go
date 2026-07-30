@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"sync"
 	"testing"
@@ -312,6 +313,43 @@ func memberIDForAgent(members []map[string]any, agentID string) string {
 		}
 	}
 	return ""
+}
+
+// memberIDForHuman finds the project_members.id of the first human member
+// (member_type == "human") among members already fetched via
+// listProjectMembersViaAPI.
+func memberIDForHuman(members []map[string]any) string {
+	for _, m := range members {
+		if mt, _ := m["member_type"].(string); mt == "human" {
+			id, _ := m["id"].(string)
+			return id
+		}
+	}
+	return ""
+}
+
+// waitForAgentConversation polls GET /projects/:id/conversations, filtered
+// to agentID, until check reports true for at least one item — used to
+// confirm trigger_ai_agent started a conversation without relying on any
+// task-state side effect (it has none; see applyTriggerAIAgentOnTask).
+func waitForAgentConversation(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, agentID string, timeout time.Duration, check func(map[string]any) bool) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var lastItems []any
+	for time.Now().Before(deadline) {
+		data := listConversationsPage(t, env, client, token, projectID, url.Values{"agent_id": {agentID}})
+		items, _ := data["items"].([]any)
+		lastItems = items
+		for _, raw := range items {
+			item, _ := raw.(map[string]any)
+			if item != nil && check(item) {
+				return item
+			}
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for a matching conversation for agent %s; last observed items: %v", agentID, lastItems)
+	return nil
 }
 
 func listTaskTypesViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID string) []map[string]any {
@@ -1438,7 +1476,14 @@ func TestE2EAutomationEngine_SetCustomFieldActionApplies(t *testing.T) {
 	})
 }
 
-func TestE2EAutomationEngine_TriggerAIAgentAssignsTaskWhenTaskIsPresent(t *testing.T) {
+// TestE2EAutomationEngine_TriggerAIAgentStartsConversationWithoutReassigning
+// pins down a deliberate behavior change: trigger_ai_agent used to reuse the
+// "assign" action's code path, reassigning the triggering task to the agent
+// as a side effect of starting its conversation. That silently overwrote
+// whoever the task was actually assigned to. trigger_ai_agent's job is only
+// to get the agent looking at the task — ownership is unaffected, same as
+// before the automation fired.
+func TestE2EAutomationEngine_TriggerAIAgentStartsConversationWithoutReassigning(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
@@ -1458,10 +1503,19 @@ func TestE2EAutomationEngine_TriggerAIAgentAssignsTaskWhenTaskIsPresent(t *testi
 	if agentMemberID == "" {
 		t.Fatalf("expected agent %q to resolve to a project member", agentID)
 	}
+	ownerMemberID := memberIDForHuman(members)
+	if ownerMemberID == "" {
+		t.Fatalf("expected the project owner to resolve to a human project member")
+	}
 
 	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
 	inProgressID := statusIDByName(statuses, "In Progress")
-	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "AI Agent Assign Task")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "AI Agent Trigger Task")
+	// Pre-assign the task to a human before the automation fires, so a
+	// regression back to the old reassign-on-trigger behavior would be
+	// unmistakable: the assignee would flip from ownerMemberID to
+	// agentMemberID instead of staying put.
+	patchTaskFieldsViaAPI(t, env, ownerClient, ownerToken, projID, task, map[string]any{"assignee_ids": []string{ownerMemberID}})
 
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Trigger AI Agent Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
@@ -1475,7 +1529,24 @@ func TestE2EAutomationEngine_TriggerAIAgentAssignsTaskWhenTaskIsPresent(t *testi
 
 	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
 
-	waitForAutomationAssignee(t, env, ownerClient, ownerToken, projID, task, agentMemberID, 20*time.Second)
+	// The conversation is the only expected side effect...
+	conv := waitForAgentConversation(t, env, ownerClient, ownerToken, projID, agentID, 20*time.Second, func(item map[string]any) bool {
+		return item["task_id"] == task
+	})
+	if got, _ := conv["trigger_type"].(string); got != "task_assigned" {
+		t.Fatalf("expected trigger_type=task_assigned, got %q", got)
+	}
+	if _, hasActor := conv["triggered_by_member_id"]; hasActor {
+		t.Fatalf("expected no triggered_by_member_id on an automation-started conversation, got %v", conv["triggered_by_member_id"])
+	}
+
+	// ...the task's assignee must not have moved off the human it was
+	// pre-assigned to.
+	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
+	assignees, _ := data["assignee_ids"].([]any)
+	if len(assignees) != 1 || assignees[0] != ownerMemberID {
+		t.Fatalf("expected assignee_ids to remain [%s] (unchanged by trigger_ai_agent), got %v", ownerMemberID, assignees)
+	}
 }
 
 // ---------------------------------------------------------------------------

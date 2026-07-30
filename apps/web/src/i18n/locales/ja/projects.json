@@ -993,6 +993,7 @@
 		"triggerChat": "チャット",
 		"triggerWriteDescription": "説明の作成",
 		"triggerTask": "タスク",
+		"triggerAutomation": "自動化",
 		"iterations_one": "{{count}}回の反復",
 		"iterations_other": "{{count}}回の反復",
 		"prOpened": "PRを作成しました",
@@ -1360,6 +1361,7 @@
 			},
 			"action": {
 				"memberLabel": "担当者",
+				"agentLabel": "エージェント",
 				"statusLabel": "ステータス",
 				"importanceLabel": "優先度",
 				"tagLabel": "タグ",

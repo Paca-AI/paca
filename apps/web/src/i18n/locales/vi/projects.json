@@ -993,6 +993,7 @@
 		"triggerChat": "Trò chuyện",
 		"triggerWriteDescription": "Viết mô tả",
 		"triggerTask": "Nhiệm vụ",
+		"triggerAutomation": "Tự động hóa",
 		"iterations_one": "{{count}} lượt lặp",
 		"iterations_other": "{{count}} lượt lặp",
 		"prOpened": "PR đã mở",
@@ -1360,6 +1361,7 @@
 			},
 			"action": {
 				"memberLabel": "Người được giao",
+				"agentLabel": "Tác nhân",
 				"statusLabel": "Trạng thái",
 				"importanceLabel": "Độ ưu tiên",
 				"tagLabel": "Nhãn",

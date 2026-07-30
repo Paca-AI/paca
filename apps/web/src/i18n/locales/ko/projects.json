@@ -993,6 +993,7 @@
 		"triggerChat": "채팅",
 		"triggerWriteDescription": "설명 작성",
 		"triggerTask": "작업",
+		"triggerAutomation": "자동화",
 		"iterations_one": "{{count}}회 반복",
 		"iterations_other": "{{count}}회 반복",
 		"prOpened": "PR 열림",
@@ -1360,6 +1361,7 @@
 			},
 			"action": {
 				"memberLabel": "담당자",
+				"agentLabel": "에이전트",
 				"statusLabel": "상태",
 				"importanceLabel": "우선순위",
 				"tagLabel": "태그",

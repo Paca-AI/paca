@@ -993,6 +993,7 @@
 		"triggerChat": "聊天",
 		"triggerWriteDescription": "编写描述",
 		"triggerTask": "任务",
+		"triggerAutomation": "自动化",
 		"iterations_one": "{{count}} 次迭代",
 		"iterations_other": "{{count}} 次迭代",
 		"prOpened": "PR 已创建",
@@ -1360,6 +1361,7 @@
 			},
 			"action": {
 				"memberLabel": "负责人",
+				"agentLabel": "代理",
 				"statusLabel": "状态",
 				"importanceLabel": "优先级",
 				"tagLabel": "标签",

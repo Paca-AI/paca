@@ -125,6 +125,7 @@ var ReservedSkillNames = map[string]bool{
 	"paca-trigger-doc-comment":       true,
 	"paca-trigger-chat":              true,
 	"paca-trigger-description-write": true,
+	"paca-trigger-automation":        true,
 }
 
 // IsReservedSkillName reports whether name is one of the fixed trigger-skill
@@ -152,7 +153,7 @@ type AgentConversation struct {
 	ID            uuid.UUID
 	AgentID       uuid.UUID
 	ProjectID     uuid.UUID
-	TriggerType   string // task_assigned | comment_mention | chat_message | description_write
+	TriggerType   string // task_assigned | comment_mention | chat_message | description_write | automation_message
 	TaskID        *uuid.UUID
 	CommentID     *uuid.UUID
 	ChatSessionID *uuid.UUID

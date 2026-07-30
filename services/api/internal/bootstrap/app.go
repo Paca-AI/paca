@@ -280,11 +280,12 @@ func New(cfg *config.Config) (*App, error) {
 	// the same EvaluateCondition/RunAction WASM bridge HandleRequest uses.
 	automationService.WithPluginNodeResolver(pluginRuntime)
 	automationConsumer.WithPluginRuntime(pluginRuntime)
-	// trigger_ai_agent normally assigns the task to fire the agent, but with
-	// no target task (a cron/api_trigger/predecessor_done trigger with none
-	// configured) it instead fires a standalone message — projectRepo
-	// resolves the configured member to its AgentID, agentService dispatches
-	// the message (see agentService.TriggerDirectMessage).
+	// trigger_ai_agent starts an agent conversation without ever touching the
+	// task's assignee: task-bound, it dispatches straight to
+	// agentService.TriggerTaskAssigned; task-less (a cron/api_trigger/
+	// predecessor_done trigger with no target task configured) it instead
+	// fires a standalone message via agentService.TriggerDirectMessage.
+	// Either way, projectRepo resolves the configured member to its AgentID.
 	automationConsumer.WithAgentMessaging(projectRepo, agentService)
 
 	// Forward every recorded activity (task created/updated/deleted, comments,

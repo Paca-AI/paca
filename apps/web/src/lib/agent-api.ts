@@ -151,7 +151,8 @@ export interface AgentConversation {
 		| "task_assigned"
 		| "comment_mention"
 		| "chat_message"
-		| "description_write";
+		| "description_write"
+		| "automation_message";
 	task_id?: string | null;
 	comment_id?: string | null;
 	chat_session_id?: string | null;

@@ -90,7 +90,7 @@ func TestApplyAssign_IdempotentWhenAlreadyAssigned(t *testing.T) {
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{memberID}}
 
-	applied, err := c.applyAssign(context.Background(), uuid.New(), task, memberID, "test-automation", "")
+	applied, err := c.applyAssign(context.Background(), uuid.New(), task, memberID, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestApplyAssign_AppliesWhenNotAssigned(t *testing.T) {
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: nil}
 
-	applied, err := c.applyAssign(context.Background(), uuid.New(), task, memberID, "test-automation", "")
+	applied, err := c.applyAssign(context.Background(), uuid.New(), task, memberID, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -142,6 +142,12 @@ type fakeAgentMessenger struct {
 	lastAgentID uuid.UUID
 	lastMessage string
 	err         error
+
+	taskCalls     int
+	lastTaskID    uuid.UUID
+	lastTaskNote  string
+	lastTaskAgent uuid.UUID
+	taskErr       error
 }
 
 func (f *fakeAgentMessenger) TriggerDirectMessage(_ context.Context, _, agentID uuid.UUID, _ *uuid.UUID, message string) (*agentdom.AgentConversation, error) {
@@ -152,6 +158,17 @@ func (f *fakeAgentMessenger) TriggerDirectMessage(_ context.Context, _, agentID 
 		return nil, f.err
 	}
 	return &agentdom.AgentConversation{ID: uuid.New(), TriggerType: "automation_message"}, nil
+}
+
+func (f *fakeAgentMessenger) TriggerTaskAssigned(_ context.Context, _, agentID, taskID uuid.UUID, _ *uuid.UUID, note string) (*agentdom.AgentConversation, error) {
+	f.taskCalls++
+	f.lastTaskAgent = agentID
+	f.lastTaskID = taskID
+	f.lastTaskNote = note
+	if f.taskErr != nil {
+		return nil, f.taskErr
+	}
+	return &agentdom.AgentConversation{ID: uuid.New(), TriggerType: "task_assigned", TaskID: &taskID}, nil
 }
 
 func TestApplyDirectAgentMessage_NotConfigured(t *testing.T) {
@@ -206,6 +223,128 @@ func TestApplyDirectAgentMessage_Success(t *testing.T) {
 	}
 	if messenger.calls != 1 || messenger.lastAgentID != agentID || messenger.lastMessage != "do the thing" {
 		t.Fatalf("expected TriggerDirectMessage called once with the resolved agentID and message, got %+v", messenger)
+	}
+}
+
+// --- applyTriggerAIAgentOnTask / trigger_ai_agent with a task ----------------
+//
+// Regression coverage: trigger_ai_agent used to reuse applyAssign, reassigning
+// the triggering task to the agent as a side effect of starting its
+// conversation. Per product feedback that's wrong — the task should keep
+// whatever assignee it already has; trigger_ai_agent should only start a
+// conversation. These tests assert the task is never touched.
+
+func TestApplyTriggerAIAgentOnTask_NotConfigured(t *testing.T) {
+	c := &AutomationConsumer{log: discardLogger()}
+	task := &taskdom.Task{ID: uuid.New()}
+	_, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, uuid.New(), "test-automation", "please help")
+	if err == nil {
+		t.Fatal("expected an error when memberRepo/agentMessenger aren't configured")
+	}
+}
+
+func TestApplyTriggerAIAgentOnTask_NonAgentMemberRejected(t *testing.T) {
+	c := &AutomationConsumer{
+		memberRepo:     &fakeAutomationMemberReader{member: &projectdom.ProjectMember{MemberType: "human"}},
+		agentMessenger: &fakeAgentMessenger{},
+		log:            discardLogger(),
+	}
+	task := &taskdom.Task{ID: uuid.New()}
+	_, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, uuid.New(), "test-automation", "please help")
+	if err == nil {
+		t.Fatal("expected an error when the configured member is not an agent")
+	}
+}
+
+func TestApplyTriggerAIAgentOnTask_StartsConversationWithoutReassigningTask(t *testing.T) {
+	agentID := uuid.New()
+	member := &projectdom.ProjectMember{MemberType: "agent", AgentID: &agentID}
+	messenger := &fakeAgentMessenger{}
+	updater := &fakeTaskUpdater{}
+	c := &AutomationConsumer{
+		taskSvc:        updater,
+		memberRepo:     &fakeAutomationMemberReader{member: member},
+		agentMessenger: messenger,
+		log:            discardLogger(),
+	}
+	memberID := uuid.New()
+	existingAssignee := uuid.New()
+	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{existingAssignee}}
+
+	applied, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, memberID, "test-automation", "please help")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied {
+		t.Fatal("expected applyTriggerAIAgentOnTask to report applied")
+	}
+	if updater.calls != 0 {
+		t.Fatalf("expected no UpdateTask call — trigger_ai_agent must not reassign the task, got %d calls", updater.calls)
+	}
+	if len(task.AssigneeIDs) != 1 || task.AssigneeIDs[0] != existingAssignee {
+		t.Fatalf("expected task.AssigneeIDs left untouched at [%v], got %v", existingAssignee, task.AssigneeIDs)
+	}
+	if messenger.taskCalls != 1 || messenger.lastTaskAgent != agentID || messenger.lastTaskID != task.ID {
+		t.Fatalf("expected TriggerTaskAssigned called once with the resolved agentID and task ID, got %+v", messenger)
+	}
+	if !strings.Contains(messenger.lastTaskNote, "please help") {
+		t.Fatalf("expected the agent message threaded through as the conversation note, got %q", messenger.lastTaskNote)
+	}
+}
+
+func TestTriggerAIAgentNote_MessageTakesPriorityOverAutomationName(t *testing.T) {
+	note := triggerAIAgentNote("Test", "Check the suitable next task and assign it to Admin")
+	if !strings.Contains(note, "Check the suitable next task") {
+		t.Fatalf("expected the agent message in the note, got %q", note)
+	}
+	if !strings.Contains(note, `via automation "Test"`) {
+		t.Fatalf("expected the automation name attributed in the note, got %q", note)
+	}
+}
+
+func TestTriggerAIAgentNote_FallsBackToAutomationNameWhenMessageEmpty(t *testing.T) {
+	note := triggerAIAgentNote("Test", "")
+	if !strings.Contains(note, "automation_name: Test") {
+		t.Fatalf("expected a fallback note labeling the automation name, got %q", note)
+	}
+}
+
+func TestWalk_TaskPresentReachingTriggerAIAgent_DoesNotReassignTask(t *testing.T) {
+	agentID := uuid.New()
+	member := &projectdom.ProjectMember{MemberType: "agent", AgentID: &agentID}
+	memberID := uuid.New()
+	messenger := &fakeAgentMessenger{}
+	updater := &fakeTaskUpdater{}
+	existingAssignee := uuid.New()
+	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{existingAssignee}}
+
+	cfg, _ := json.Marshal(automationdom.ActionConfig{MemberID: &memberID, Message: "please help"})
+	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionTriggerAIAgent), Config: cfg}
+	w := &walker{
+		consumer: &AutomationConsumer{
+			repo:           &fakeCronRepo{},
+			taskSvc:        updater,
+			memberRepo:     &fakeAutomationMemberReader{member: member},
+			agentMessenger: messenger,
+			log:            discardLogger(),
+		},
+		task:      task,
+		nodesByID: map[uuid.UUID]*automationdom.Node{action.ID: action},
+		outgoing:  map[uuid.UUID][]*automationdom.Edge{},
+		visited:   map[uuid.UUID]bool{},
+	}
+	w.walk(context.Background(), action.ID)
+	if w.failed {
+		t.Fatal("expected trigger_ai_agent with a task to succeed via the task-conversation path")
+	}
+	if messenger.taskCalls != 1 {
+		t.Fatalf("expected TriggerTaskAssigned to be called once, got %d", messenger.taskCalls)
+	}
+	if updater.calls != 0 {
+		t.Fatalf("expected no UpdateTask call — trigger_ai_agent must not reassign the task, got %d calls", updater.calls)
+	}
+	if len(task.AssigneeIDs) != 1 || task.AssigneeIDs[0] != existingAssignee {
+		t.Fatalf("expected task.AssigneeIDs left untouched at [%v], got %v", existingAssignee, task.AssigneeIDs)
 	}
 }
 

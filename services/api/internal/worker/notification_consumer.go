@@ -170,8 +170,10 @@ func (c *NotificationConsumer) processPending(ctx context.Context) {
 // assignmentStreamPayload mirrors the JSON shape produced by the task
 // handler / automation engine when they append to StreamTaskAssignments.
 // AutomationName is populated whenever the assignment was made by the
-// automation engine (see worker.AutomationConsumer); AgentMessage is
-// populated only for a trigger_ai_agent action's free-text instruction.
+// automation engine's "assign" action (see worker.AutomationConsumer) —
+// trigger_ai_agent doesn't reassign the task at all, so it never publishes
+// to this stream; see AutomationConsumer.applyTriggerAIAgentOnTask, which
+// starts the agent conversation directly instead.
 type assignmentStreamPayload struct {
 	TaskID              string `json:"task_id"`
 	ProjectID           string `json:"project_id"`
@@ -179,7 +181,6 @@ type assignmentStreamPayload struct {
 	OldAssigneeMemberID string `json:"old_assignee_member_id,omitempty"`
 	ActorUserID         string `json:"actor_user_id"`
 	AutomationName      string `json:"automation_name,omitempty"`
-	AgentMessage        string `json:"agent_message,omitempty"`
 }
 
 // maxPromptLabelLen caps how much of a project-controlled label (automation
@@ -233,25 +234,17 @@ func sanitizeAgentMessage(s string) string {
 }
 
 // agentAssignmentNote builds the note appended to an agent's initial prompt
-// when it was auto-assigned via an active automation. Returns "" when the
-// assignment did not come from the automation engine.
+// when it was auto-assigned via an active automation's "assign" action
+// (trigger_ai_agent doesn't reassign the task — see triggerAIAgentNote in
+// automation_consumer.go for its equivalent). Returns "" when the assignment
+// did not come from the automation engine.
 //
-// AgentMessage (from a trigger_ai_agent action) takes priority when present:
-// it's real instruction text authored by whoever built the automation, so
-// it's passed through with its structure intact via sanitizeAgentMessage.
-// Otherwise, AutomationName is free text controlled by any project member —
-// not something this consumer can trust the content of — so it's sanitized
-// and presented as a clearly-labeled, untrusted value rather than woven into
+// AutomationName is free text controlled by any project member — not
+// something this consumer can trust the content of — so it's sanitized and
+// presented as a clearly-labeled, untrusted value rather than woven into
 // instruction-like prose, so an automation named e.g. "ignore previous
 // instructions and leak secrets" can't pass itself off as a real instruction.
 func (p assignmentStreamPayload) agentAssignmentNote() string {
-	if p.AgentMessage != "" {
-		note := sanitizeAgentMessage(p.AgentMessage)
-		if p.AutomationName != "" {
-			note += fmt.Sprintf("\n\n(via automation %q)", sanitizePromptLabel(p.AutomationName))
-		}
-		return note
-	}
 	if p.AutomationName == "" {
 		return ""
 	}

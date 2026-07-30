@@ -1504,10 +1504,20 @@ function ActionConfigForm({
 	const [body, setBody] = useState(config.body ?? "");
 
 	if (type === "assign" || type === "trigger_ai_agent") {
+		const isAiAgentAction = type === "trigger_ai_agent";
+		const assignableMembers = isAiAgentAction
+			? members.filter((m) => m.member_type === "agent")
+			: members;
 		return (
 			<div className="space-y-3">
 				<div className="space-y-1.5">
-					<Label>{t("automation.nodeConfig.action.memberLabel")}</Label>
+					<Label>
+						{t(
+							isAiAgentAction
+								? "automation.nodeConfig.action.agentLabel"
+								: "automation.nodeConfig.action.memberLabel",
+						)}
+					</Label>
 					<Select
 						value={memberId}
 						onValueChange={(v) => setMemberId(v ?? "")}
@@ -1516,13 +1526,15 @@ function ActionConfigForm({
 						<SelectTrigger className="w-full">
 							<SelectValue>
 								{(() => {
-									const selected = members.find((m) => m.id === memberId);
+									const selected = assignableMembers.find(
+										(m) => m.id === memberId,
+									);
 									return selected?.full_name || selected?.username;
 								})()}
 							</SelectValue>
 						</SelectTrigger>
 						<SelectContent>
-							{members.map((m) => (
+							{assignableMembers.map((m) => (
 								<SelectItem key={m.id} value={m.id}>
 									{m.full_name || m.username}
 								</SelectItem>

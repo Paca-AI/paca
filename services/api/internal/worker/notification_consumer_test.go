@@ -51,28 +51,12 @@ func TestAgentAssignmentNote_NeutralizesInjectionAttempt(t *testing.T) {
 	}
 }
 
-// TestAgentAssignmentNote_AgentMessageTakesPriority verifies a
-// trigger_ai_agent action's free-text message is used verbatim (structure
-// preserved) as a real instruction, with the automation name only appended
-// as parenthetical provenance, not the untrusted-label framing used when no
-// message is present.
-func TestAgentAssignmentNote_AgentMessageTakesPriority(t *testing.T) {
-	p := assignmentStreamPayload{
-		AutomationName: "Triage new bugs",
-		AgentMessage:   "Summarize this task.\nThen suggest a priority.",
-	}
-	note := p.agentAssignmentNote()
-
-	if !strings.Contains(note, "Summarize this task.\nThen suggest a priority.") {
-		t.Fatalf("expected the agent message verbatim (newline preserved), got: %q", note)
-	}
-	if !strings.Contains(note, `"Triage new bugs"`) {
-		t.Fatalf("expected the automation name quoted in the note for provenance, got: %q", note)
-	}
-	if strings.Contains(note, "untrusted") {
-		t.Fatalf("expected no untrusted-label framing when a real agent message is present, got: %q", note)
-	}
-}
+// Coverage for a trigger_ai_agent action's free-text message taking
+// priority over the automation-name fallback moved to
+// TestTriggerAIAgentNote_MessageTakesPriorityOverAutomationName in
+// automation_consumer_test.go — trigger_ai_agent no longer publishes to
+// this stream at all (see triggerAIAgentNote / applyTriggerAIAgentOnTask),
+// so assignmentStreamPayload has no AgentMessage field to carry it.
 
 func TestSanitizePromptLabel_StripsControlCharsAndCollapsesWhitespace(t *testing.T) {
 	got := sanitizePromptLabel("hello\nworld\x00!")
