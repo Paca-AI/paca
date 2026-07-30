@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"testing"
 	"time"
 
@@ -64,11 +65,18 @@ func seedConversationFixture(t *testing.T, env *e2eEnv) (client *http.Client, to
 // deterministically instead of relying on wall-clock timing.
 func createConversationAt(t *testing.T, env *e2eEnv, projID string, agentID, memberID uuid.UUID, status string, createdAt time.Time) string {
 	t.Helper()
+	return createConversationWithTriggerAt(t, env, projID, agentID, memberID, status, "chat_message", createdAt)
+}
+
+// createConversationWithTriggerAt is createConversationAt with an explicit
+// trigger_type, for tests exercising the trigger_type ("type") filter.
+func createConversationWithTriggerAt(t *testing.T, env *e2eEnv, projID string, agentID, memberID uuid.UUID, status, triggerType string, createdAt time.Time) string {
+	t.Helper()
 	conv := &agentdom.AgentConversation{
 		ID:                  uuid.New(),
 		AgentID:             agentID,
 		ProjectID:           uuid.MustParse(projID),
-		TriggerType:         "chat_message",
+		TriggerType:         triggerType,
 		TriggeredByMemberID: &memberID,
 		Status:              status,
 		CreatedAt:           createdAt,
@@ -366,6 +374,284 @@ func TestE2EListConversationPagination_AgentIDFilter(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestE2EListConversationPagination_TriggerTypeFilter
+// Verifies cursor pagination works correctly when combined with the
+// trigger_type ("type") filter.
+// ---------------------------------------------------------------------------
+
+func TestE2EListConversationPagination_TriggerTypeFilter(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+
+	base := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	var taskAssignedIDs []string
+	for i := 0; i < 4; i++ {
+		id := createConversationWithTriggerAt(t, env, projID, agentID, memberID, "finished", "task_assigned", base.Add(time.Duration(i)*time.Minute))
+		taskAssignedIDs = append(taskAssignedIDs, id)
+	}
+	// Noise: conversations of a different type must not appear in filtered results.
+	for i := 0; i < 2; i++ {
+		createConversationWithTriggerAt(t, env, projID, agentID, memberID, "finished", "chat_message", base.Add(time.Duration(10+i)*time.Minute))
+	}
+
+	t.Run("first_page_has_cursor_when_more_exist", func(t *testing.T) {
+		data := listConversationsPage(t, env, client, token, projID, url.Values{
+			"trigger_type": {"task_assigned"},
+			"page_size":    {"2"},
+		})
+		items, _ := data["items"].([]any)
+		if len(items) != 2 {
+			t.Errorf("expected 2 task_assigned conversations on first page, got %d", len(items))
+		}
+		if nextCursorStr(data) == "" {
+			t.Error("expected next_cursor when more task_assigned conversations exist beyond first page")
+		}
+	})
+
+	t.Run("full_traversal_returns_only_matching_type_without_duplicates", func(t *testing.T) {
+		seen := make(map[string]int)
+		cursor := ""
+		for {
+			q := url.Values{"trigger_type": {"task_assigned"}, "page_size": {"2"}}
+			if cursor != "" {
+				q.Set("cursor", cursor)
+			}
+			data := listConversationsPage(t, env, client, token, projID, q)
+			for _, id := range itemIDs(data) {
+				seen[id]++
+			}
+			cursor = nextCursorStr(data)
+			if cursor == "" {
+				break
+			}
+		}
+		if len(seen) != 4 {
+			t.Errorf("expected 4 task_assigned conversations from full traversal, got %d", len(seen))
+		}
+		for _, id := range taskAssignedIDs {
+			if seen[id] != 1 {
+				t.Errorf("task_assigned conversation %q appeared %d times (expected exactly once)", id, seen[id])
+			}
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestE2EListConversationPagination_MultiValueFilters
+// Verifies agent_id and status accept comma-separated lists, combined via IN
+// clauses (agent IN (...) AND status IN (...)), and still page correctly.
+// ---------------------------------------------------------------------------
+
+func TestE2EListConversationPagination_MultiValueFilters(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, agentA, memberID := seedConversationFixture(t, env)
+
+	editorRoleID := projectRoleIDByName(t, env, client, token, projID, "Editor")
+	status, resp := createAgentRequest(t, env, client, token, projID,
+		llmAgentBody(editorRoleID, "conv-pag-agent-c-"+uuid.NewString(), nil))
+	if status != http.StatusCreated {
+		t.Fatalf("create second agent: expected 201, got %d: %+v", status, resp)
+	}
+	data, _ := resp.Data.(map[string]any)
+	agentBIDStr, _ := data["id"].(string)
+	agentB, err := uuid.Parse(agentBIDStr)
+	if err != nil {
+		t.Fatalf("parse second agent id: %v", err)
+	}
+
+	base := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	var wantIDs []string
+	wantIDs = append(wantIDs, createConversationAt(t, env, projID, agentA, memberID, "running", base))
+	wantIDs = append(wantIDs, createConversationAt(t, env, projID, agentB, memberID, "paused", base.Add(time.Minute)))
+	// Noise: right agents wrong status, right status wrong agent, and a third agent entirely.
+	createConversationAt(t, env, projID, agentA, memberID, "finished", base.Add(2*time.Minute))
+	createConversationAt(t, env, projID, agentB, memberID, "finished", base.Add(3*time.Minute))
+
+	q := url.Values{
+		"agent_id":  {agentA.String() + "," + agentB.String()},
+		"status":    {"running,paused"},
+		"page_size": {"10"},
+	}
+	got := itemIDs(listConversationsPage(t, env, client, token, projID, q))
+	if len(got) != 2 {
+		t.Fatalf("expected 2 conversations matching agent IN (A,B) AND status IN (running,paused), got %d: %v", len(got), got)
+	}
+	for _, id := range wantIDs {
+		if !slices.Contains(got, id) {
+			t.Errorf("expected conversation %q in multi-value filtered results, got %v", id, got)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestE2EListConversationPagination_DateRangeFilter
+// Verifies created_after/created_before filter conversations by created_at,
+// with an inclusive whole-day upper bound (created_before=2026-03-15 must
+// include a conversation created at 23:59:59 that day but exclude one created
+// at 00:00:00 the next day) — see the ::date + INTERVAL '1 day' comparison in
+// ListConversations.
+// ---------------------------------------------------------------------------
+
+func TestE2EListConversationPagination_DateRangeFilter(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+
+	tooEarly := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC))
+	inRangeStart := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC))
+	inRangeEnd := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 15, 23, 59, 59, 0, time.UTC))
+	tooLate := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC))
+
+	got := itemIDs(listConversationsPage(t, env, client, token, projID, url.Values{
+		"created_after":  {"2026-03-11"},
+		"created_before": {"2026-03-15"},
+		"page_size":      {"10"},
+	}))
+
+	if !slices.Contains(got, inRangeStart) || !slices.Contains(got, inRangeEnd) {
+		t.Errorf("expected both boundary-inclusive conversations in range, got %v", got)
+	}
+	if slices.Contains(got, tooEarly) {
+		t.Errorf("expected conversation before created_after to be excluded, got %v", got)
+	}
+	if slices.Contains(got, tooLate) {
+		t.Errorf("expected conversation on the day after created_before to be excluded (whole-day inclusive upper bound), got %v", got)
+	}
+}
+
+// TestE2EListConversationPagination_DateRangeFilterRFC3339 verifies that a
+// full RFC3339 timestamp (as the frontend sends, computed from the user's
+// local calendar day) is used as the exact instant boundary rather than
+// being reinterpreted as a UTC calendar day — see parseCreatedAfterBound/
+// parseCreatedBeforeBound in the handler.
+func TestE2EListConversationPagination_DateRangeFilterRFC3339(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+
+	before := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 15, 7, 59, 59, 0, time.UTC))
+	atBound := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 15, 8, 0, 0, 0, time.UTC))
+	after := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Date(2026, 3, 15, 8, 0, 1, 0, time.UTC))
+
+	got := itemIDs(listConversationsPage(t, env, client, token, projID, url.Values{
+		"created_after": {"2026-03-15T08:00:00Z"},
+		"page_size":     {"10"},
+	}))
+
+	if !slices.Contains(got, atBound) || !slices.Contains(got, after) {
+		t.Errorf("expected conversations at/after the exact instant boundary, got %v", got)
+	}
+	if slices.Contains(got, before) {
+		t.Errorf("expected conversation just before the exact instant boundary to be excluded, got %v", got)
+	}
+}
+
+func TestE2EListConversations_InvalidDateFilterRejected(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, _, _ := seedConversationFixture(t, env)
+
+	reqURL := fmt.Sprintf("%s/api/v1/projects/%s/conversations?created_after=not-a-date", env.base, projID)
+	req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusBadRequest)
+	assertErrorCode(t, resp, "BAD_REQUEST")
+}
+
+// ---------------------------------------------------------------------------
+// TestE2EListConversationPagination_SearchFilter
+// Verifies the search filter matches conversations by text extracted from
+// their events' JSONB payloads, and that it composes correctly with cursor
+// pagination (a search matching more than one page of conversations still
+// traverses cleanly with no duplicates/gaps).
+// ---------------------------------------------------------------------------
+
+func TestE2EListConversationPagination_SearchFilter(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+
+	base := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+
+	var loginBugIDs []string
+	for i := 0; i < 3; i++ {
+		id := createConversationAt(t, env, projID, agentID, memberID, "finished", base.Add(time.Duration(i)*time.Minute))
+		createConversationEventWithPayload(t, env, id, 0, "MessageEvent", map[string]any{
+			"content": "please investigate the login bug on the auth page",
+		})
+		loginBugIDs = append(loginBugIDs, id)
+	}
+
+	// Noise: an unrelated conversation whose event text shouldn't match, and
+	// one with no events at all (must not false-positive via a NULL EXISTS).
+	unrelatedID := createConversationAt(t, env, projID, agentID, memberID, "finished", base.Add(10*time.Minute))
+	createConversationEventWithPayload(t, env, unrelatedID, 0, "MessageEvent", map[string]any{
+		"content": "please update the dependency versions in package.json",
+	})
+	createConversationAt(t, env, projID, agentID, memberID, "finished", base.Add(11*time.Minute))
+
+	t.Run("matches_conversations_by_event_text", func(t *testing.T) {
+		got := itemIDs(listConversationsPage(t, env, client, token, projID, url.Values{
+			"search":    {"login bug"},
+			"page_size": {"10"},
+		}))
+		if len(got) != 3 {
+			t.Fatalf("expected 3 conversations matching search, got %d: %v", len(got), got)
+		}
+		for _, id := range loginBugIDs {
+			if !slices.Contains(got, id) {
+				t.Errorf("expected conversation %q in search results", id)
+			}
+		}
+		if slices.Contains(got, unrelatedID) {
+			t.Errorf("expected unrelated conversation to be excluded from search results")
+		}
+	})
+
+	t.Run("full_traversal_with_search_active_has_no_duplicates", func(t *testing.T) {
+		seen := make(map[string]int)
+		cursor := ""
+		for {
+			q := url.Values{"search": {"login"}, "page_size": {"2"}}
+			if cursor != "" {
+				q.Set("cursor", cursor)
+			}
+			data := listConversationsPage(t, env, client, token, projID, q)
+			for _, id := range itemIDs(data) {
+				seen[id]++
+			}
+			cursor = nextCursorStr(data)
+			if cursor == "" {
+				break
+			}
+		}
+		if len(seen) != 3 {
+			t.Errorf("expected 3 unique conversations from full traversal with search active, got %d", len(seen))
+		}
+		for _, id := range loginBugIDs {
+			if seen[id] != 1 {
+				t.Errorf("conversation %q appeared %d times during search traversal (expected exactly once)", id, seen[id])
+			}
+		}
+	})
+
+	t.Run("no_matches_returns_empty_page_and_no_cursor", func(t *testing.T) {
+		data := listConversationsPage(t, env, client, token, projID, url.Values{"search": {"nonexistent-term-xyz"}})
+		items, _ := data["items"].([]any)
+		if len(items) != 0 {
+			t.Errorf("expected 0 items for a search term with no matches, got %d", len(items))
+		}
+		if nextCursorStr(data) != "" {
+			t.Error("expected no next_cursor when search matches nothing")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // TestE2EListConversationEvents_OffsetLimitValidation
 // Mirrors the page_size validation coverage above, applied to this sibling
 // endpoint's offset/limit pair: an explicitly supplied out-of-range or
@@ -448,13 +734,22 @@ func TestE2EListConversationPagination_EmptyProject(t *testing.T) {
 // repository, mirroring how the ai-agent service persists SDK events.
 func createConversationEvent(t *testing.T, env *e2eEnv, convID string, index int, eventType string) {
 	t.Helper()
+	createConversationEventWithPayload(t, env, convID, index, eventType, map[string]any{})
+}
+
+// createConversationEventWithPayload is createConversationEvent with an
+// explicit payload, for tests exercising the search filter (which matches
+// against text extracted from payload — see agent_conversation_event_search_text
+// in migration 000028).
+func createConversationEventWithPayload(t *testing.T, env *e2eEnv, convID string, index int, eventType string, payload map[string]any) {
+	t.Helper()
 	e := &agentdom.AgentConversationEvent{
 		ID:             uuid.New(),
 		ConversationID: uuid.MustParse(convID),
 		EventIndex:     index,
 		EventType:      eventType,
 		EventSource:    "agent",
-		Payload:        map[string]any{},
+		Payload:        payload,
 	}
 	if err := env.agentRepo.CreateConversationEvent(env.ctx, e); err != nil {
 		t.Fatalf("create conversation event: %v", err)

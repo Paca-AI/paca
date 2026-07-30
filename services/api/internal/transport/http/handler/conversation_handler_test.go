@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"testing"
 	"time"
 
@@ -249,11 +251,11 @@ func TestListConversations_FiltersPassedToService(t *testing.T) {
 	if gotFilter.ProjectID == nil || *gotFilter.ProjectID != projectID {
 		t.Errorf("expected ProjectID filter %v, got %v", projectID, gotFilter.ProjectID)
 	}
-	if gotFilter.AgentID == nil || *gotFilter.AgentID != agentID {
-		t.Errorf("expected AgentID filter %v, got %v", agentID, gotFilter.AgentID)
+	if !slices.Equal(gotFilter.AgentIDs, []uuid.UUID{agentID}) {
+		t.Errorf("expected AgentIDs filter [%v], got %v", agentID, gotFilter.AgentIDs)
 	}
-	if gotFilter.Status == nil || *gotFilter.Status != "running" {
-		t.Errorf("expected Status filter %q, got %v", "running", gotFilter.Status)
+	if !slices.Equal(gotFilter.Statuses, []string{"running"}) {
+		t.Errorf("expected Statuses filter [%q], got %v", "running", gotFilter.Statuses)
 	}
 	if gotFilter.CursorAfter == nil || *gotFilter.CursorAfter != "some-opaque-cursor" {
 		t.Errorf("expected CursorAfter filter %q, got %v", "some-opaque-cursor", gotFilter.CursorAfter)
@@ -262,7 +264,7 @@ func TestListConversations_FiltersPassedToService(t *testing.T) {
 
 func TestListConversations_InvalidAgentIDIgnored(t *testing.T) {
 	// A malformed agent_id query param should be silently dropped rather than
-	// erroring the request — only a valid UUID sets the filter.
+	// erroring the request — only valid UUIDs are added to the filter.
 	var gotFilter agentdom.ListConversationsFilter
 	svc := &mockAgentSvc{
 		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
@@ -274,8 +276,170 @@ func TestListConversations_InvalidAgentIDIgnored(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if gotFilter.AgentID != nil {
-		t.Errorf("expected AgentID filter to remain nil for malformed input, got %v", *gotFilter.AgentID)
+	if len(gotFilter.AgentIDs) != 0 {
+		t.Errorf("expected AgentIDs filter to remain empty for malformed input, got %v", gotFilter.AgentIDs)
+	}
+}
+
+func TestListConversations_MultiValueAgentIDAndStatus(t *testing.T) {
+	agent1, agent2 := uuid.New(), uuid.New()
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			return nil, false, nil
+		},
+	}
+	_, _ = doListConversations(t, svc, uuid.New().String(),
+		"agent_id="+agent1.String()+","+agent2.String()+"&status=running,paused")
+
+	if !slices.Equal(gotFilter.AgentIDs, []uuid.UUID{agent1, agent2}) {
+		t.Errorf("expected AgentIDs filter [%v, %v], got %v", agent1, agent2, gotFilter.AgentIDs)
+	}
+	if !slices.Equal(gotFilter.Statuses, []string{"running", "paused"}) {
+		t.Errorf("expected Statuses filter [running paused], got %v", gotFilter.Statuses)
+	}
+}
+
+func TestListConversations_TriggerTypeFilterPassedToService(t *testing.T) {
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			return nil, false, nil
+		},
+	}
+	_, _ = doListConversations(t, svc, uuid.New().String(), "trigger_type=task_assigned,chat_message")
+
+	if !slices.Equal(gotFilter.TriggerTypes, []string{"task_assigned", "chat_message"}) {
+		t.Errorf("expected TriggerTypes filter [task_assigned chat_message], got %v", gotFilter.TriggerTypes)
+	}
+}
+
+func TestListConversations_SearchFilterPassedToService(t *testing.T) {
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			return nil, false, nil
+		},
+	}
+	_, _ = doListConversations(t, svc, uuid.New().String(), "search=%20fix+the+bug%20")
+
+	if gotFilter.Search == nil || *gotFilter.Search != "fix the bug" {
+		t.Errorf("expected trimmed Search filter %q, got %v", "fix the bug", gotFilter.Search)
+	}
+}
+
+func TestListConversations_SearchAbsentWhenBlank(t *testing.T) {
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			return nil, false, nil
+		},
+	}
+	_, _ = doListConversations(t, svc, uuid.New().String(), "search=%20%20")
+
+	if gotFilter.Search != nil {
+		t.Errorf("expected nil Search filter for blank input, got %q", *gotFilter.Search)
+	}
+}
+
+func TestListConversations_DateRangeFilterPassedToService(t *testing.T) {
+	// A bare "YYYY-MM-DD" date is treated as a whole UTC day, inclusive on
+	// both ends — so created_before=2026-01-31 becomes an exclusive bound of
+	// UTC midnight on 2026-02-01. See parseCreatedAfterBound/
+	// parseCreatedBeforeBound.
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			return nil, false, nil
+		},
+	}
+	_, _ = doListConversations(t, svc, uuid.New().String(), "created_after=2026-01-01&created_before=2026-01-31")
+
+	wantAfter := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	wantBefore := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	if gotFilter.CreatedAfter == nil || !gotFilter.CreatedAfter.Equal(wantAfter) {
+		t.Errorf("expected CreatedAfter filter %v, got %v", wantAfter, gotFilter.CreatedAfter)
+	}
+	if gotFilter.CreatedBefore == nil || !gotFilter.CreatedBefore.Equal(wantBefore) {
+		t.Errorf("expected CreatedBefore filter %v, got %v", wantBefore, gotFilter.CreatedBefore)
+	}
+}
+
+func TestListConversations_DateRangeFilterAcceptsRFC3339Timestamp(t *testing.T) {
+	// The frontend sends precise RFC3339 instants (computed from the user's
+	// local calendar day) rather than bare dates, to avoid the UTC-day
+	// mismatch a bare date would have for non-UTC users. Those must be used
+	// exactly as given, with no additional whole-day adjustment.
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotFilter = filter
+			return nil, false, nil
+		},
+	}
+	_, _ = doListConversations(t, svc, uuid.New().String(),
+		"created_after="+url.QueryEscape("2026-01-01T08:00:00Z")+"&created_before="+url.QueryEscape("2026-01-31T08:00:00Z"))
+
+	wantAfter := time.Date(2026, 1, 1, 8, 0, 0, 0, time.UTC)
+	wantBefore := time.Date(2026, 1, 31, 8, 0, 0, 0, time.UTC)
+	if gotFilter.CreatedAfter == nil || !gotFilter.CreatedAfter.Equal(wantAfter) {
+		t.Errorf("expected CreatedAfter filter %v, got %v", wantAfter, gotFilter.CreatedAfter)
+	}
+	if gotFilter.CreatedBefore == nil || !gotFilter.CreatedBefore.Equal(wantBefore) {
+		t.Errorf("expected CreatedBefore filter %v, got %v", wantBefore, gotFilter.CreatedBefore)
+	}
+}
+
+func TestListConversations_InvalidDateRangeRejected(t *testing.T) {
+	cases := []string{
+		"created_after=not-a-date",
+		"created_after=2026-13-40",
+		"created_before=not-a-date",
+	}
+	for _, query := range cases {
+		t.Run(query, func(t *testing.T) {
+			svc := &mockAgentSvc{
+				listConversations: func(_ context.Context, _ agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+					t.Fatal("service should not be called for an invalid date filter")
+					return nil, false, nil
+				},
+			}
+			rec, _ := doListConversations(t, svc, uuid.New().String(), query)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestListConversations_InvalidStatusRejected(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, _ agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			t.Fatal("service should not be called for an invalid status filter")
+			return nil, false, nil
+		},
+	}
+	rec, _ := doListConversations(t, svc, uuid.New().String(), "status=running,not-a-real-status")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListConversations_InvalidTriggerTypeRejected(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversations: func(_ context.Context, _ agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			t.Fatal("service should not be called for an invalid trigger_type filter")
+			return nil, false, nil
+		},
+	}
+	rec, _ := doListConversations(t, svc, uuid.New().String(), "trigger_type=not-a-real-type")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

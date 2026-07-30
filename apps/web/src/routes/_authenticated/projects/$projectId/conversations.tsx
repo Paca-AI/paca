@@ -6,8 +6,9 @@ import {
 	useParams,
 } from "@tanstack/react-router";
 import { Clock, MessageSquare, Zap } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ConversationFilters } from "@/components/projects/agents/conversation-filters";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ import {
 	agentsQueryOptions,
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
+	type ConversationFilters as ConversationFiltersState,
 	conversationsQueryOptions,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
@@ -126,8 +128,10 @@ function ConversationsLayout() {
 
 	useProjectRealtime(projectId);
 
+	const [filters, setFilters] = useState<ConversationFiltersState>({});
+
 	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-		useInfiniteQuery(conversationsQueryOptions(projectId));
+		useInfiniteQuery(conversationsQueryOptions(projectId, filters));
 	const { data: agents = [] } = useQuery(agentsQueryOptions(projectId));
 	const agentsById = new Map(agents.map((a) => [a.id, a]));
 
@@ -135,6 +139,9 @@ function ConversationsLayout() {
 	// DESC on the backend), so concatenating them in fetch order already
 	// yields the correct display order — no client-side re-sort needed.
 	const conversations = data?.pages.flatMap((page) => page.items) ?? [];
+	const hasActiveFilters = Object.values(filters).some((v) =>
+		Array.isArray(v) ? v.length > 0 : !!v,
+	);
 
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 	const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -164,6 +171,11 @@ function ConversationsLayout() {
 						{t("conversationsPage.title")}
 					</h2>
 				</div>
+				<ConversationFilters
+					agents={agents}
+					filters={filters}
+					onFiltersChange={setFilters}
+				/>
 				<div
 					ref={scrollContainerRef}
 					className="flex-1 overflow-y-auto p-2 space-y-1.5"
@@ -177,10 +189,14 @@ function ConversationsLayout() {
 						<div className="flex flex-col items-center justify-center gap-3 py-14 px-3 text-center">
 							<MessageSquare className="size-8 text-muted-foreground/40" />
 							<p className="text-sm text-muted-foreground">
-								{t("conversationsPage.list.empty.title")}
+								{hasActiveFilters
+									? t("conversationsPage.list.emptyFiltered.title")
+									: t("conversationsPage.list.empty.title")}
 							</p>
 							<p className="text-xs text-muted-foreground max-w-xs">
-								{t("conversationsPage.list.empty.description")}
+								{hasActiveFilters
+									? t("conversationsPage.list.emptyFiltered.description")
+									: t("conversationsPage.list.empty.description")}
 							</p>
 						</div>
 					) : (

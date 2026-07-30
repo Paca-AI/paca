@@ -997,10 +997,25 @@
 		"iterations_one": "{{count}}回の反復",
 		"iterations_other": "{{count}}回の反復",
 		"prOpened": "PRを作成しました",
+		"filters": {
+			"title": "フィルター",
+			"agent": "エージェント",
+			"status": "ステータス",
+			"type": "タイプ",
+			"dateRange": "日付範囲",
+			"searchPlaceholder": "メッセージを検索…",
+			"dateFrom": "開始日",
+			"dateTo": "終了日",
+			"clearAll": "フィルターをクリア"
+		},
 		"list": {
 			"empty": {
 				"title": "会話はまだありません",
 				"description": "タスクがエージェントに割り当てられるか、誰かがメッセージを送ると会話が始まります。"
+			},
+			"emptyFiltered": {
+				"title": "一致する会話がありません",
+				"description": "フィルターを調整するかクリアしてみてください。"
 			}
 		},
 		"detail": {

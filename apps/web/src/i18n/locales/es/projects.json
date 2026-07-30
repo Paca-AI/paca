@@ -997,10 +997,25 @@
 		"iterations_one": "{{count}} iteración",
 		"iterations_other": "{{count}} iteraciones",
 		"prOpened": "PR abierto",
+		"filters": {
+			"title": "Filtros",
+			"agent": "Agente",
+			"status": "Estado",
+			"type": "Tipo",
+			"dateRange": "Rango de fechas",
+			"searchPlaceholder": "Buscar mensajes…",
+			"dateFrom": "Desde",
+			"dateTo": "Hasta",
+			"clearAll": "Borrar filtros"
+		},
 		"list": {
 			"empty": {
 				"title": "Aún no hay conversaciones",
 				"description": "Las conversaciones comienzan cuando se asigna una tarea a un agente o alguien le envía un mensaje."
+			},
+			"emptyFiltered": {
+				"title": "No hay conversaciones que coincidan",
+				"description": "Intenta ajustar o borrar tus filtros."
 			}
 		},
 		"detail": {

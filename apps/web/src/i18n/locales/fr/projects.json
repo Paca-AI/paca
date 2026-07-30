@@ -997,10 +997,25 @@
 		"iterations_one": "{{count}} itération",
 		"iterations_other": "{{count}} itérations",
 		"prOpened": "PR ouverte",
+		"filters": {
+			"title": "Filtres",
+			"agent": "Agent",
+			"status": "Statut",
+			"type": "Type",
+			"dateRange": "Plage de dates",
+			"searchPlaceholder": "Rechercher des messages…",
+			"dateFrom": "Du",
+			"dateTo": "Au",
+			"clearAll": "Effacer les filtres"
+		},
 		"list": {
 			"empty": {
 				"title": "Aucune conversation pour le moment",
 				"description": "Les conversations démarrent lorsqu'une tâche est attribuée à un agent ou que quelqu'un lui envoie un message."
+			},
+			"emptyFiltered": {
+				"title": "Aucune conversation correspondante",
+				"description": "Essayez d'ajuster ou d'effacer vos filtres."
 			}
 		},
 		"detail": {

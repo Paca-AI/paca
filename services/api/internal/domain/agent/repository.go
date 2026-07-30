@@ -2,6 +2,7 @@ package agentdom
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -96,9 +97,22 @@ type ChatSessionRepository interface {
 
 // ListConversationsFilter carries optional filters for listing conversations.
 type ListConversationsFilter struct {
-	AgentID     *uuid.UUID
-	ProjectID   *uuid.UUID
-	TaskID      *uuid.UUID
-	Status      *string
+	AgentIDs     []uuid.UUID
+	ProjectID    *uuid.UUID
+	TaskID       *uuid.UUID
+	Statuses     []string
+	TriggerTypes []string
+	// CreatedAfter/CreatedBefore bound created_at as [CreatedAfter,
+	// CreatedBefore) — inclusive lower bound, exclusive upper bound. Both are
+	// resolved to absolute instants by the handler (see
+	// parseCreatedAfterBound/parseCreatedBeforeBound) before reaching here,
+	// so the query can compare them directly against the TIMESTAMPTZ column
+	// without any date-cast/timezone ambiguity.
+	CreatedAfter  *time.Time
+	CreatedBefore *time.Time
+	// Search matches conversations that have at least one event whose
+	// extracted text (see agent_conversation_event_search_text in migration
+	// 000028) contains this text.
+	Search      *string
 	CursorAfter *string // opaque base64 cursor; when set, resumes after this conversation
 }
