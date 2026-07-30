@@ -826,7 +826,7 @@ func (c *AutomationConsumer) resolveTargetTasks(ctx context.Context, projectID u
 // logic as the built-in condition node, just with exactly two possible
 // outcomes instead of N branches.
 func (w *walker) walkPluginCondition(ctx context.Context, node *automationdom.Node) {
-	input, _ := json.Marshal(pluginNodePayload(node.Config, w.task, ""))
+	input, _ := json.Marshal(pluginNodePayload(node.Type, node.Config, w.task, ""))
 	matched, err := w.consumer.evaluatePluginCondition(ctx, node, input)
 	if err != nil {
 		w.failed = true
@@ -1081,7 +1081,7 @@ func (c *AutomationConsumer) runPluginAction(ctx context.Context, node *automati
 		return false, fmt.Errorf("unknown action type %q", node.Type)
 	}
 	idempotencyKey := fmt.Sprintf("%s:%s", runID, node.ID)
-	payload, _ := json.Marshal(pluginNodePayload(node.Config, task, idempotencyKey))
+	payload, _ := json.Marshal(pluginNodePayload(node.Type, node.Config, task, idempotencyKey))
 	resp, err := c.pluginRuntime.RunAction(ctx, pluginName, payload)
 	if err != nil {
 		return false, fmt.Errorf("plugin action %q: %w", node.Type, err)
@@ -1123,13 +1123,15 @@ func (c *AutomationConsumer) evaluatePluginCondition(ctx context.Context, node *
 }
 
 // pluginNodePayload builds the JSON bundle handed to a plugin's
-// EvaluateCondition/RunAction export: the node's own config plus enough task
-// context for the plugin to decide, plus an idempotency key (RunAction
-// only; empty for EvaluateCondition since evaluation has no side effects to
-// dedupe).
-func pluginNodePayload(config json.RawMessage, task *taskdom.Task, idempotencyKey string) map[string]any {
+// EvaluateCondition/RunAction export: the node's own type (so a plugin
+// declaring more than one Condition/Action node type can dispatch
+// internally) and config, plus enough task context for the plugin to
+// decide, plus an idempotency key (RunAction only; empty for
+// EvaluateCondition since evaluation has no side effects to dedupe).
+func pluginNodePayload(nodeType string, config json.RawMessage, task *taskdom.Task, idempotencyKey string) map[string]any {
 	payload := map[string]any{
-		"config": json.RawMessage(config),
+		"node_type": nodeType,
+		"config":    json.RawMessage(config),
 		"task": map[string]any{
 			"id":            task.ID,
 			"status_id":     task.StatusID,
