@@ -49,6 +49,8 @@ type PluginManifest struct {
 	MCP *MCPManifest `json:"mcp,omitempty"`
 	// Skills holds Agent-Skills-specific manifest settings.
 	Skills *SkillsManifest `json:"skills,omitempty"`
+	// Automation holds automation-graph node types the plugin contributes.
+	Automation *AutomationManifest `json:"automation,omitempty"`
 	// Permissions lists the host function scopes the plugin requires.
 	Permissions []string `json:"permissions,omitempty"`
 	// CustomPermissions lists project/global-scoped permission keys the
@@ -114,6 +116,82 @@ func (m PluginManifest) Validate() error {
 	}
 	if m.Skills != nil {
 		if err := m.Skills.validate(); err != nil {
+			return err
+		}
+	}
+	if m.Automation != nil {
+		if err := m.Automation.validate(m.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AutomationManifest declares the automation-graph node types a plugin
+// contributes: Trigger, Condition, and Action nodes that appear in the
+// canvas node palette alongside the built-in types, dispatched through the
+// same WASM bridge as HandleRequest/HandleEvent (see Runtime.EvaluateCondition
+// and Runtime.RunAction) — no new execution path, just two new exported
+// function contracts a plugin's WASM module can implement.
+type AutomationManifest struct {
+	Triggers   []AutomationNodeManifest `json:"triggers,omitempty"`
+	Conditions []AutomationNodeManifest `json:"conditions,omitempty"`
+	Actions    []AutomationNodeManifest `json:"actions,omitempty"`
+}
+
+// AutomationNodeManifest describes one plugin-contributed node type.
+type AutomationNodeManifest struct {
+	// Type is the node's stable identifier, reverse-DNS namespaced under the
+	// plugin's own ID (e.g. "com.paca.github.pr_merged") — this doubles as
+	// the node's own collision-proof registry key, so no separate ID field
+	// is needed.
+	Type string `json:"type"`
+	// Label is the human-readable name shown in the node palette.
+	Label string `json:"label"`
+	// ConfigSchema is a JSON Schema describing the node's config shape, used
+	// by the frontend's generic config-form renderer. Plugins wanting a
+	// richer custom UI can additionally register a component at the
+	// "automation.node.config" frontend extension point, keyed by Type.
+	ConfigSchema json.RawMessage `json:"configSchema,omitempty"`
+	// EventTopic is the event topic that sources this trigger — only
+	// meaningful for entries in AutomationManifest.Triggers. The engine
+	// matches on topic alone (no WASM call needed); a plugin wanting
+	// per-instance refinement beyond "this topic fired" contributes a
+	// Condition node instead, placed right after the trigger in the graph.
+	EventTopic string `json:"eventTopic,omitempty"`
+}
+
+// validate enforces that every declared node Type is namespaced under the
+// plugin's own ID, mirroring CustomPermission's namespacing rule — a node
+// type string is its own registry key, so collisions here are exactly as
+// dangerous as a CustomPermission key collision.
+func (a *AutomationManifest) validate(pluginID string) error {
+	namespace := pluginKeyNamespace(pluginID)
+	prefix := namespace + "."
+	checkType := func(kind, nodeType string) error {
+		if nodeType == "" {
+			return fmt.Errorf("automation.%s: type is required", kind)
+		}
+		if !strings.HasPrefix(nodeType, prefix) {
+			return fmt.Errorf("automation.%s: type %q must be namespaced under %q (expected prefix %q)", kind, nodeType, pluginID, prefix)
+		}
+		return nil
+	}
+	for _, t := range a.Triggers {
+		if err := checkType("triggers", t.Type); err != nil {
+			return err
+		}
+		if t.EventTopic == "" {
+			return fmt.Errorf("automation.triggers: %q requires an eventTopic", t.Type)
+		}
+	}
+	for _, c := range a.Conditions {
+		if err := checkType("conditions", c.Type); err != nil {
+			return err
+		}
+	}
+	for _, act := range a.Actions {
+		if err := checkType("actions", act.Type); err != nil {
 			return err
 		}
 	}

@@ -13,38 +13,38 @@ linters:
     - noctx          # http requests without context
     - exhaustive     # missing switch cases on enums
     - gocritic       # code style and performance suggestions
+  settings:
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+        - name: var-naming
+          severity: warning
+    exhaustive:
+      default-signifies-exhaustive: true
+  exclusions:
+    rules:
+      # Test files: relax some rules
+      - path: "_test\\.go$"
+        linters:
+          - errcheck
+          - gocritic
+      # Migration runner reads entire files — SA1019 false positive
+      - path: "internal/platform/database/migrations\\.go"
+        linters:
+          - gosec
 
 formatters:
   enable:
     - gofmt
     - goimports
-
-formatters-settings:
-  gofmt:
-    simplify: true
-  goimports:
-    local-prefixes: github.com/Paca-AI/api
-
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        severity: warning
-      - name: var-naming
-        severity: warning
-  exhaustive:
-    default-signifies-exhaustive: true
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/Paca-AI/api
 
 issues:
-  exclude-rules:
-    # Test files: relax some rules
-    - path: "_test\\.go$"
-      linters:
-        - errcheck
-        - gocritic
-    # Migration runner reads entire files — SA1019 false positive
-    - path: "internal/platform/database/migrations\\.go"
-      linters:
-        - gosec
   max-issues-per-linter: 50
   max-same-issues: 10

@@ -4,8 +4,9 @@ package dto
 import (
 	"time"
 
-	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	"github.com/google/uuid"
+
+	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 )
 
 // CreateAPIKeyRequest is the body for POST /users/me/api-keys.

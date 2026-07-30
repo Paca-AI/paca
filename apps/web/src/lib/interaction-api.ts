@@ -813,6 +813,49 @@ export async function searchEpicTasks(
 	});
 }
 
+export const TASK_PICKER_PAGE_SIZE = 20;
+
+/** Fetches one page of any task in the project (no type filter) — backs
+ *  generic "pick a task" pickers (e.g. an automation trigger's fixed target
+ *  task), same shape and page size as listEpicTasks minus the type filter. */
+export async function listTasksForPicker(
+	projectId: string,
+	opts: { cursor?: string } = {},
+): Promise<TaskListResult> {
+	return listAllTasks(projectId, {
+		pageSize: TASK_PICKER_PAGE_SIZE,
+		cursor: opts.cursor,
+	});
+}
+
+/** Infinite-query version of listTasksForPicker — mirrors
+ *  epicTasksInfiniteQueryOptions for pickers that choose from any task
+ *  rather than epics only. */
+export const tasksPickerInfiniteQueryOptions = (projectId: string) =>
+	infiniteQueryOptions({
+		queryKey: ["projects", projectId, "tasks", "picker"],
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listTasksForPicker(projectId, { cursor: pageParam }),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+		staleTime: 30_000,
+		enabled: !!projectId,
+	});
+
+/** Cursor-paginated search backing a generic task picker's search box — same
+ *  shape as searchEpicTasks minus the epic type filter. */
+export async function searchTasksForPicker(
+	projectId: string,
+	query: string,
+	opts: { cursor?: string } = {},
+): Promise<TaskListResult> {
+	return listAllTasks(projectId, {
+		search: query,
+		pageSize: TASK_PICKER_PAGE_SIZE,
+		cursor: opts.cursor,
+	});
+}
+
 /** Fetches child tasks of an epic (tasks with parent_task_id = epicId). */
 export const epicChildTasksQueryOptions = (projectId: string, epicId: string) =>
 	queryOptions({

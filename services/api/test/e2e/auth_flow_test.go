@@ -8,6 +8,7 @@ import (
 )
 
 func TestAuthFlow(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "alice", "supersecret", "Alice Tester")
 
@@ -254,6 +255,7 @@ func TestAuthFlow(t *testing.T) {
 }
 
 func TestAuthFlow_RememberMe(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "bob", "supersecret", "Bob Tester")
 

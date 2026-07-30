@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 func openAuthzStoreTestDB(t *testing.T) *sqlx.DB {

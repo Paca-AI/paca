@@ -33,6 +33,7 @@ func listAssignedToMeViaAPI(t *testing.T, env *e2eEnv, client *http.Client, toke
 // caller's per-project member ID under the hood), excludes tasks whose
 // status has category "done", and excludes tasks assigned to someone else.
 func TestE2EAssignedToMeTasks_CrossProjectExcludesDoneAndUnassigned(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "assigned-to-me-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "assignedtomeowner1")
@@ -57,7 +58,7 @@ func TestE2EAssignedToMeTasks_CrossProjectExcludesDoneAndUnassigned(t *testing.T
 		t.Fatalf("expected owner to resolve to a project member in projB, got %+v", membersB)
 	}
 
-	otherMemberInA := addProjectMemberWithWorkflowPerms(t, env, client, token, projA,
+	otherMemberInA := addProjectMemberWithAutomationPerms(t, env, client, token, projA,
 		"assigned-to-me-other-"+uuid.NewString(), "assignedtomeother1")
 
 	statusesA := listTaskStatusesViaAPI(t, env, client, token, projA)
@@ -102,6 +103,7 @@ func TestE2EAssignedToMeTasks_CrossProjectExcludesDoneAndUnassigned(t *testing.T
 // paginates via next_cursor without skipping or repeating tasks, across
 // several pages of a single page_size.
 func TestE2EAssignedToMeTasks_CursorPagination(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	ownerUsername := "assigned-to-me-page-owner-" + uuid.NewString()
 	seedTaskMemberUser(t, env, ownerUsername, "assignedtomepageowner1")

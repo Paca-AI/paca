@@ -11,12 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/secret"
-	"github.com/google/uuid"
 )
 
 // projectMemberWriter is the minimal interface this service needs to bust the
@@ -943,6 +944,48 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 		payload["actor_member_id"] = triggeredByMemberID.String()
 	}
 	_ = s.publishTrigger(ctx, events.TopicAgentTaskAssigned, payload)
+	return conv, nil
+}
+
+// TriggerDirectMessage fires message straight at agentID, with no task
+// involved at all — used by the automation engine's trigger_ai_agent action
+// when its trigger has no target task (cron/api_trigger/predecessor_done
+// with no target_task_id configured, so there's nothing to assign, unlike
+// TriggerTaskAssigned). triggeredByMemberID is nil, same as
+// TriggerTaskAssigned's automation-triggered case — there's no human actor
+// behind an automation firing.
+func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID uuid.UUID, triggeredByMemberID *uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	repoPlugins := s.gatherRepoPlugins(ctx)
+	repoPluginIDs := make([]string, 0, len(repoPlugins))
+	for _, p := range repoPlugins {
+		repoPluginIDs = append(repoPluginIDs, p.Name)
+	}
+
+	var repoPluginID *uuid.UUID
+	if len(repoPlugins) > 0 {
+		id := repoPlugins[0].ID
+		repoPluginID = &id
+	}
+
+	conv, err := s.createConversation(ctx, projectID, agentID, triggeredByMemberID, agentdom.AgentConversation{
+		TriggerType:  "automation_message",
+		RepoPluginID: repoPluginID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]any{
+		"conversation_id": conv.ID.String(),
+		"project_id":      projectID.String(),
+		"agent_id":        agentID.String(),
+		"trigger_type":    "automation_message",
+		"message":         message,
+		"repo_plugin_ids": strings.Join(repoPluginIDs, ","),
+	}
+	if triggeredByMemberID != nil {
+		payload["actor_member_id"] = triggeredByMemberID.String()
+	}
+	_ = s.publishTrigger(ctx, events.TopicAgentAutomationMessage, payload)
 	return conv, nil
 }
 

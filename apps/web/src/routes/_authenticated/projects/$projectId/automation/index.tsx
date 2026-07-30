@@ -1,14 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+	Workflow as AutomationIcon,
 	Clock,
+	GitBranch,
 	Loader2,
 	Plus,
 	Trash2,
-	Workflow as WorkflowIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AutomationDependencyMap } from "@/components/projects/automation/automation-dependency-map";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,20 +25,20 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import {
+	type Automation,
+	automationsQueryOptions,
+	createAutomation,
+	deleteAutomation,
+} from "@/lib/automation-api";
 import { projectQueryOptions } from "@/lib/project-api";
 import { timeAgo } from "@/lib/time-ago";
-import {
-	createWorkflow,
-	deleteWorkflow,
-	type Workflow,
-	workflowsQueryOptions,
-} from "@/lib/workflow-api";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/automation/",
 )({
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
-		await queryClient.ensureQueryData(workflowsQueryOptions(projectId));
+		await queryClient.ensureQueryData(automationsQueryOptions(projectId));
 	},
 	component: AutomationListPage,
 });
@@ -60,30 +62,36 @@ function AutomationListPage() {
 	const canManage = hasProjectPermission("workflows.write");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
-	const { data: workflows = [], isLoading } = useQuery(
-		workflowsQueryOptions(projectId),
+	const { data: automations = [], isLoading } = useQuery(
+		automationsQueryOptions(projectId),
 	);
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
-	const [deleteTarget, setDeleteTarget] = useState<Workflow | null>(null);
+	const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
+	const [showDependencyMap, setShowDependencyMap] = useState(false);
 
-	const listKey = workflowsQueryOptions(projectId).queryKey;
+	const listKey = automationsQueryOptions(projectId).queryKey;
 
 	const createMutation = useMutation({
 		mutationFn: () =>
-			createWorkflow(projectId, { name: name.trim(), description }),
-		onSuccess: () => {
+			createAutomation(projectId, { name: name.trim(), description }),
+		onSuccess: (created) => {
 			setCreateOpen(false);
 			setName("");
 			setDescription("");
 			qc.invalidateQueries({ queryKey: listKey });
+			navigate({
+				to: "/projects/$projectId/automation/$automationId",
+				params: { projectId, automationId: created.id },
+			});
 		},
 	});
 
 	const deleteMutation = useMutation({
-		mutationFn: (workflowId: string) => deleteWorkflow(projectId, workflowId),
+		mutationFn: (automationId: string) =>
+			deleteAutomation(projectId, automationId),
 		onSuccess: () => {
 			setDeleteTarget(null);
 			qc.invalidateQueries({ queryKey: listKey });
@@ -112,20 +120,36 @@ function AutomationListPage() {
 							{project?.name} · {t("automation.list.subtitle")}
 						</p>
 					</div>
-					{canManage ? (
+					<div className="flex items-center gap-2">
 						<Button
+							variant="outline"
 							size="sm"
-							className="gap-1.5 shadow-sm shadow-primary/20"
-							onClick={() => setCreateOpen(true)}
+							className="gap-1.5"
+							onClick={() => setShowDependencyMap((v) => !v)}
 						>
-							<Plus className="size-3.5" />
-							{t("automation.list.newWorkflow")}
+							<GitBranch className="size-3.5" />
+							{t("automation.dependencyMap.title")}
 						</Button>
-					) : null}
+						{canManage ? (
+							<Button
+								size="sm"
+								className="gap-1.5 shadow-sm shadow-primary/20"
+								onClick={() => setCreateOpen(true)}
+							>
+								<Plus className="size-3.5" />
+								{t("automation.list.newAutomation")}
+							</Button>
+						) : null}
+					</div>
 				</div>
 			</div>
 
 			<div className="p-6">
+				{showDependencyMap && (
+					<div className="mb-6">
+						<AutomationDependencyMap projectId={projectId} />
+					</div>
+				)}
 				{isLoading ? (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 						{Array.from({ length: 3 }).map((_, i) => (
@@ -133,10 +157,10 @@ function AutomationListPage() {
 							<Skeleton key={i} className="h-40 rounded-xl" />
 						))}
 					</div>
-				) : workflows.length === 0 ? (
+				) : automations.length === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
 						<div className="flex size-16 items-center justify-center rounded-2xl bg-muted/50">
-							<WorkflowIcon className="size-8 text-muted-foreground/50" />
+							<AutomationIcon className="size-8 text-muted-foreground/50" />
 						</div>
 						<div>
 							<p className="font-medium text-sm">
@@ -149,21 +173,21 @@ function AutomationListPage() {
 						{canManage && (
 							<Button size="sm" onClick={() => setCreateOpen(true)}>
 								<Plus className="size-4 mr-1.5" />
-								{t("automation.list.empty.createFirstWorkflow")}
+								{t("automation.list.empty.createFirst")}
 							</Button>
 						)}
 					</div>
 				) : (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-						{workflows.map((wf) => (
-							// biome-ignore lint/a11y/noStaticElementInteractions: card navigates to the workflow builder; the delete button below stays keyboard-reachable on its own
+						{automations.map((a) => (
+							// biome-ignore lint/a11y/noStaticElementInteractions: card navigates to the automation builder; the delete button below stays keyboard-reachable on its own
 							// biome-ignore lint/a11y/useKeyWithClickEvents: click-to-navigate card, consistent with the agent list cards
 							<div
-								key={wf.id}
+								key={a.id}
 								onClick={() =>
 									navigate({
-										to: "/projects/$projectId/automation/$workflowId",
-										params: { projectId, workflowId: wf.id },
+										to: "/projects/$projectId/automation/$automationId",
+										params: { projectId, automationId: a.id },
 									})
 								}
 								className="group relative flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-5 transition-all hover:border-border hover:shadow-sm cursor-pointer"
@@ -171,30 +195,30 @@ function AutomationListPage() {
 								<div className="flex items-start justify-between gap-3">
 									<div className="flex items-center gap-3 min-w-0">
 										<div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-											<WorkflowIcon className="size-4 text-primary" />
+											<AutomationIcon className="size-4 text-primary" />
 										</div>
 										<div className="min-w-0">
 											<p className="font-semibold text-sm leading-tight truncate">
-												{wf.name}
+												{a.name}
 											</p>
 											<p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-												{wf.description || t("automation.list.noDescription")}
+												{a.description || t("automation.list.noDescription")}
 											</p>
 										</div>
 									</div>
 
 									<div className="flex items-center gap-1.5 shrink-0">
 										<Badge
-											variant={STATUS_BADGE_VARIANT[wf.status] ?? "outline"}
+											variant={STATUS_BADGE_VARIANT[a.status] ?? "outline"}
 										>
-											{t(`automation.status.${wf.status}`)}
+											{t(`automation.status.${a.status}`)}
 										</Badge>
 										{canManage && (
 											<button
 												type="button"
 												onClick={(e) => {
 													e.stopPropagation();
-													setDeleteTarget(wf);
+													setDeleteTarget(a);
 												}}
 												className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
 											>
@@ -208,7 +232,7 @@ function AutomationListPage() {
 								<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
 									<Clock className="size-3" />
 									{t("automation.list.updated", {
-										time: timeAgo(wf.updated_at, tCommon),
+										time: timeAgo(a.updated_at, tCommon),
 									})}
 								</div>
 							</div>
@@ -224,22 +248,22 @@ function AutomationListPage() {
 					</DialogHeader>
 					<div className="space-y-4">
 						<div className="space-y-1.5">
-							<Label htmlFor="workflow-name">
+							<Label htmlFor="automation-name">
 								{t("automation.createDialog.nameLabel")}
 							</Label>
 							<Input
-								id="workflow-name"
+								id="automation-name"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
 								placeholder={t("automation.createDialog.namePlaceholder")}
 							/>
 						</div>
 						<div className="space-y-1.5">
-							<Label htmlFor="workflow-description">
+							<Label htmlFor="automation-description">
 								{t("automation.createDialog.descriptionLabel")}
 							</Label>
 							<Textarea
-								id="workflow-description"
+								id="automation-description"
 								value={description}
 								onChange={(e) => setDescription(e.target.value)}
 								rows={3}

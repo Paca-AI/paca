@@ -265,7 +265,13 @@ export function getProjectRoleTools(): Tool[] {
 }
 
 function formatProjectMember(member: any): string {
+	// Member ID (member.id) is what task/automation assignment tools expect
+	// (assigneeId, trigger_ai_agent's member_id, ...) — it is NOT the same
+	// value as User ID, and only agent members even have a User ID. Every
+	// assignment-taking tool's description points back here for "the member
+	// ID", so this field must actually be present in the output.
 	return `Member: ${member.username} (${member.full_name})
+Member ID: ${member.id}
 User ID: ${member.user_id}
 Role: ${member.role_name}
 Role ID: ${member.project_role_id}

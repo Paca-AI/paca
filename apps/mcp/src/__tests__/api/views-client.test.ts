@@ -80,7 +80,9 @@ describe("PacaAPIViewsClient", () => {
 	it("resolves on 204 No Content without parsing JSON", async () => {
 		fetchMock.mockResolvedValue(noContentResponse());
 		const client = new PacaAPIViewsClient(CONFIG);
-		await expect(client.deleteTaskAttachment("p1", "t1", "att1")).resolves.toBeUndefined();
+		await expect(
+			client.deleteTaskAttachment("p1", "t1", "att1"),
+		).resolves.toBeUndefined();
 	});
 
 	it("returns raw JSON when not a SuccessEnvelope", async () => {

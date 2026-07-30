@@ -9,12 +9,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 const (

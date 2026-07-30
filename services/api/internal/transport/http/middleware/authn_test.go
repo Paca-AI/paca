@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
-	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
+	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 )
 
 // stubAPIKeyAuth is a minimal APIKeyAuthenticator for unit tests.

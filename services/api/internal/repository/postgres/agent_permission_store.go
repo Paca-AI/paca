@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/google/uuid"
+
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 // GetAgentProjectRoleName returns the role name for an agent member in a project.

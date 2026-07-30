@@ -392,12 +392,12 @@
 				"description": "Tạo, cấu hình và xóa AI agent"
 			},
 			"workflowsRead": {
-				"label": "Xem quy trình",
-				"description": "Xem các quy trình tự động hóa và cấu hình của chúng"
+				"label": "Xem tự động hóa",
+				"description": "Xem các tự động hóa và cấu hình của chúng"
 			},
 			"workflowsWrite": {
-				"label": "Quản lý quy trình",
-				"description": "Tạo, chỉnh sửa, kích hoạt và xóa các quy trình tự động hóa"
+				"label": "Quản lý tự động hóa",
+				"description": "Tạo, chỉnh sửa, kích hoạt và xóa tự động hóa"
 			}
 		},
 		"permissionGroups": {
@@ -770,11 +770,6 @@
 			"removeLink": "Gỡ liên kết",
 			"empty": "Không có nhiệm vụ liên kết"
 		},
-		"workflows": {
-			"title": "Quy trình",
-			"open": "Mở quy trình",
-			"empty": "Chưa có quy trình nào"
-		},
 		"attachments": {
 			"title": "Tệp đính kèm",
 			"uploadLabel": "Tải lên tệp đính kèm",
@@ -998,6 +993,7 @@
 		"triggerChat": "Trò chuyện",
 		"triggerWriteDescription": "Viết mô tả",
 		"triggerTask": "Nhiệm vụ",
+		"triggerAutomation": "Tự động hóa",
 		"iterations_one": "{{count}} lượt lặp",
 		"iterations_other": "{{count}} lượt lặp",
 		"prOpened": "PR đã mở",
@@ -1219,12 +1215,12 @@
 	"automation": {
 		"list": {
 			"title": "Tự động hóa",
-			"subtitle": "Tự động hóa việc bàn giao công việc khi tiến trình dự án thay đổi",
-			"newWorkflow": "Quy trình mới",
+			"subtitle": "Phản ứng với các sự kiện công việc bằng trình kích hoạt, điều kiện và hành động",
+			"newAutomation": "Tự động hóa mới",
 			"empty": {
-				"title": "Chưa có quy trình nào",
-				"description": "Tạo một quy trình để tự động hóa việc bàn giao công việc khi tiến trình dự án thay đổi.",
-				"createFirstWorkflow": "Tạo quy trình đầu tiên của bạn"
+				"title": "Chưa có tự động hóa nào",
+				"description": "Tạo một tự động hóa để phản ứng với các sự kiện công việc bằng điều kiện và hành động.",
+				"createFirst": "Tạo tự động hóa đầu tiên của bạn"
 			},
 			"noDescription": "Không có mô tả",
 			"updated": "Đã cập nhật {{time}}"
@@ -1235,61 +1231,208 @@
 			"archived": "Đã lưu trữ"
 		},
 		"createDialog": {
-			"title": "Quy trình tự động mới",
+			"title": "Tự động hóa mới",
 			"nameLabel": "Tên",
-			"namePlaceholder": "vd: Quy trình phát hành",
+			"namePlaceholder": "vd: Phân loại lỗi",
 			"descriptionLabel": "Mô tả",
-			"descriptionPlaceholder": "Chi tiết tùy chọn về quy trình này…",
+			"descriptionPlaceholder": "Chi tiết tùy chọn về tự động hóa này…",
 			"cancel": "Hủy",
 			"create": "Tạo"
 		},
 		"deleteDialog": {
-			"title": "Xóa quy trình",
+			"title": "Xóa tự động hóa",
 			"body": "Bạn có chắc muốn xóa \"{{name}}\" không? Hành động này không thể hoàn tác.",
 			"cancel": "Hủy",
 			"confirm": "Xóa"
 		},
 		"builder": {
-			"addTask": "Thêm công việc",
 			"activate": "Kích hoạt",
 			"archive": "Lưu trữ",
 			"deactivate": "Hủy kích hoạt",
-			"readOnlyNoticeArchived": "Quy trình này đã được lưu trữ và ở chế độ chỉ xem — quy trình đã lưu trữ không thể chỉnh sửa.",
+			"readOnlyNoticeArchived": "Tự động hóa này đã được lưu trữ và ở chế độ chỉ xem — tự động hóa đã lưu trữ không thể chỉnh sửa.",
 			"genericError": "Đã xảy ra lỗi. Vui lòng thử lại.",
-			"collapseSidebar": "Thu gọn thanh bên",
-			"expandSidebar": "Mở rộng thanh bên"
+			"taskLessTriggerConnectionError": "Trình kích hoạt này chưa đặt công việc mục tiêu nên chỉ có thể kết nối với hành động Gọi API hoặc Kích hoạt tác nhân AI — điều kiện và các hành động khác cần một công việc để thực hiện.",
+			"collapseSidebar": "Thu gọn bảng",
+			"expandSidebar": "Mở rộng bảng",
+			"tabGraph": "Sơ đồ",
+			"tabRuns": "Lịch sử chạy",
+			"tabDependencyMap": "Bản đồ phụ thuộc"
+		},
+		"palette": {
+			"title": "Thêm nút",
+			"addTrigger": "Thêm trình kích hoạt",
+			"addCondition": "Thêm điều kiện",
+			"addAction": "Thêm hành động",
+			"builtIn": "Tích hợp sẵn",
+			"plugins": "Plugin"
+		},
+		"nodeKind": {
+			"trigger": "Trình kích hoạt",
+			"condition": "Điều kiện",
+			"action": "Hành động"
 		},
 		"canvas": {
-			"unknownTask": "Công việc không xác định",
-			"deleteEdge": "Xóa kết nối"
+			"deleteEdge": "Xóa kết nối",
+			"deleteNode": "Xóa nút"
 		},
-		"addNodeModal": {
-			"title": "Thêm công việc vào quy trình",
-			"searchPlaceholder": "Tìm kiếm công việc...",
-			"loadingTasks": "Đang tải công việc...",
-			"noTasksFound": "Không tìm thấy công việc nào"
+		"triggerTypes": {
+			"status_changed": "Trạng thái thay đổi",
+			"task_created": "Công việc được tạo",
+			"assignee_changed": "Người được giao thay đổi",
+			"priority_changed": "Độ ưu tiên thay đổi",
+			"tag_added": "Nhãn được thêm",
+			"due_date_reached": "Đến hạn chót",
+			"predecessor_done": "(Các) công việc trước đã xong",
+			"cron": "Lịch cron",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "Công việc",
-			"removeNode": "Xóa khỏi quy trình",
-			"removeConfirmTitle": "Xóa công việc khỏi quy trình",
-			"removeConfirmBody": "Thao tác này xóa công việc khỏi sơ đồ quy trình, cùng với các kết nối của nó. Bản thân công việc không bị ảnh hưởng.",
+		"actionTypes": {
+			"assign": "Giao việc",
+			"set_status": "Đặt trạng thái",
+			"set_priority": "Đặt độ ưu tiên",
+			"add_tag": "Thêm nhãn",
+			"set_custom_field": "Đặt trường tùy chỉnh",
+			"trigger_ai_agent": "Kích hoạt tác nhân AI",
+			"call_api": "Gọi API"
+		},
+		"nodeConfig": {
+			"save": "Lưu",
 			"cancel": "Hủy",
-			"removeConfirmAction": "Xóa"
+			"remove": "Xóa nút",
+			"removeConfirmTitle": "Xóa nút",
+			"removeConfirmBody": "Thao tác này sẽ xóa nút khỏi sơ đồ, cùng với tất cả các kết nối của nó.",
+			"removeConfirmAction": "Xóa",
+			"genericFormHint": "Loại nút này đến từ một plugin. Hãy chỉnh sửa cấu hình của nó dưới dạng JSON — các plugin có thể đăng ký một trình chỉnh sửa phong phú hơn ở đây trong bản phát hành tương lai.",
+			"trigger": {
+				"anyStatus": "Bất kỳ trạng thái nào",
+				"statusLabel": "Trạng thái",
+				"tagLabel": "Nhãn",
+				"anyTag": "Bất kỳ nhãn nào",
+				"dueDateOffsetLabel": "Độ lệch (phút)",
+				"dueDateOffsetHint": "0 = đúng hạn chót, âm = trước, dương = sau",
+				"watchedTasksLabel": "Công việc đang theo dõi",
+				"watchedTasksHint": "Kích hoạt khi TẤT CẢ các công việc này đều ở trạng thái \"hoàn thành\"",
+				"addWatchedTaskPlaceholder": "Thêm công việc cần theo dõi…",
+				"targetTaskLabel": "Công việc mục tiêu (tùy chọn)",
+				"targetTaskHint": "Công việc mà tự động hóa này tác động khi tất cả công việc theo dõi ở trên đã hoàn thành — một công việc khác với các công việc trước đó, được đánh giá lại theo trạng thái hiện tại của chính nó. Để trống nếu chỉ nên kết nối tới hành động Gọi API hoặc Kích hoạt tác nhân AI, vốn không cần công việc.",
+				"selectTaskPlaceholder": "Chọn một công việc…",
+				"searchTaskPlaceholder": "Tìm kiếm công việc…",
+				"noTasksFound": "Không tìm thấy công việc phù hợp",
+				"noTasksYet": "Dự án này chưa có công việc nào",
+				"loadingMore": "Đang tải…",
+				"clearTargetTask": "Xóa công việc mục tiêu",
+				"cronExpressionLabel": "Biểu thức cron",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "Cron chuẩn 5 trường (phút giờ ngày-trong-tháng tháng ngày-trong-tuần), tính theo UTC",
+				"cronTargetTaskHint": "Công việc mà tự động hóa này tác động mỗi khi kích hoạt theo lịch. Để trống nếu chỉ nên kết nối tới hành động Gọi API hoặc Kích hoạt tác nhân AI, vốn không cần công việc.",
+				"apiTriggerTargetTaskHint": "Công việc mà tự động hóa này tác động mỗi khi webhook bên dưới được gọi. Để trống nếu chỉ nên kết nối tới hành động Gọi API hoặc Kích hoạt tác nhân AI, vốn không cần công việc.",
+				"webhookUrlLabel": "URL webhook",
+				"webhookTokenLabel": "Token webhook",
+				"generateTokenButton": "Tạo token",
+				"regenerateTokenButton": "Tạo lại token",
+				"tokenShownOnceWarning": "Hãy sao chép token này ngay — nó sẽ không hiển thị lại nữa.",
+				"copy": "Sao chép",
+				"copied": "Đã sao chép",
+				"noTokenYet": "Chưa có token nào được tạo"
+			},
+			"condition": {
+				"branchesTitle": "Nhánh",
+				"addBranch": "Thêm nhánh",
+				"branchLabel": "Nhãn nhánh",
+				"elseLabel": "Trường hợp khác (không nhánh nào khớp)",
+				"removeBranch": "Xóa nhánh",
+				"field": "Trường",
+				"operator": "Toán tử",
+				"value": "Giá trị",
+				"addGroup": "Thêm nhóm",
+				"addCondition": "Thêm điều kiện",
+				"removeCondition": "Xóa",
+				"logicAnd": "VÀ",
+				"logicOr": "HOẶC",
+				"logicNot": "KHÔNG",
+				"fields": {
+					"status_id": "Trạng thái",
+					"task_type_id": "Loại công việc",
+					"importance": "Độ ưu tiên",
+					"assignee_ids": "Người được giao",
+					"tags": "Nhãn",
+					"custom_field": "Trường tùy chỉnh"
+				}
+			},
+			"action": {
+				"memberLabel": "Người được giao",
+				"agentLabel": "Tác nhân",
+				"statusLabel": "Trạng thái",
+				"importanceLabel": "Độ ưu tiên",
+				"tagLabel": "Nhãn",
+				"fieldKeyLabel": "Trường",
+				"valueLabel": "Giá trị",
+				"messageLabel": "Hướng dẫn cho tác nhân",
+				"messagePlaceholder": "vd: Tóm tắt công việc này và đề xuất mức độ ưu tiên.",
+				"methodLabel": "Phương thức",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://example.com/webhook",
+				"headersLabel": "Tiêu đề",
+				"headerKeyPlaceholder": "Tên tiêu đề",
+				"headerValuePlaceholder": "Giá trị",
+				"addHeader": "Thêm tiêu đề",
+				"bodyLabel": "Nội dung"
+			},
+			"target": {
+				"label": "Áp dụng cho",
+				"kinds": {
+					"self": "Công việc này",
+					"parent": "Công việc cha",
+					"children": "Công việc con",
+					"blocks": "Chặn",
+					"is_blocked_by": "Bị chặn bởi",
+					"relates_to": "Công việc liên quan",
+					"duplicates": "Trùng lặp với",
+					"is_duplicated_by": "Bị trùng lặp bởi",
+					"other": "Công việc khác…"
+				},
+				"matchMode": {
+					"any": "Khớp bất kỳ",
+					"all": "Khớp tất cả"
+				}
+			},
+			"description": {
+				"dueDateAt": "Đúng hạn chót",
+				"dueDateBefore": "{{minutes}} phút trước hạn chót",
+				"dueDateAfter": "{{minutes}} phút sau hạn chót",
+				"branches": "{{count}} nhánh",
+				"priority": "Độ ưu tiên: {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "Chưa giao",
+				"notConfigured": "Chưa cấu hình",
+				"elseShort": "Trường hợp khác",
+				"branchFallback": "Nhánh {{n}}",
+				"cronSchedule": "Chạy {{expression}}",
+				"webhookReady": "Đã cấu hình webhook",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "Quy tắc trạng thái → người được giao",
-			"hint": "Tự động giao một công việc cho thành viên bất cứ khi nào nó chuyển sang một trong các trạng thái này. Điều này áp dụng cho bất kỳ công việc nào trong quy trình này — dù ai đó thay đổi trực tiếp trạng thái của công việc, hay một công việc tiền nhiệm hoàn tất khiến công việc kế tiếp được đánh giá lại theo trạng thái hiện tại của nó.",
-			"noRules": "Chưa có quy tắc nào",
-			"statusPlaceholder": "Trạng thái",
-			"memberPlaceholder": "Người được giao"
+		"runHistory": {
+			"title": "Lịch sử chạy",
+			"empty": "Chưa có lần chạy nào",
+			"status": {
+				"running": "Đang chạy",
+				"completed": "Hoàn thành",
+				"failed": "Thất bại"
+			},
+			"stepStatus": {
+				"completed": "Hoàn thành",
+				"failed": "Thất bại",
+				"skipped": "Đã bỏ qua (đã áp dụng)"
+			},
+			"startedAt": "Bắt đầu {{time}}",
+			"viewSteps": "Xem các bước"
 		},
-		"statusTransitions": {
-			"title": "Quy trình trạng thái",
-			"hint": "Xác định trạng thái nào sẽ đến tiếp theo khi công việc ở mỗi trạng thái hoàn tất. Điều này mở khóa các công việc kế tiếp và cho agent AI được giao biết chính xác trạng thái cần đặt tiếp theo, thay vì phải đoán. Một chuỗi mặc định được tự động tạo từ các trạng thái của dự án khi quy trình được tạo.",
-			"nextStatusLabel": "Trạng thái tiếp theo",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "Phải có chính xác một trạng thái không có trạng thái tiếp theo (đây sẽ là trạng thái __END__ của quy trình). Hiện tại: {{count}} được cấu hình."
+		"dependencyMap": {
+			"title": "Bản đồ phụ thuộc",
+			"subtitle": "Chế độ xem chỉ đọc về mọi tự động hóa đang chờ các công việc khác hoàn thành",
+			"empty": "Chưa có phụ thuộc công việc trước nào được cấu hình",
+			"watchedTasks": "Đang chờ {{count}} công việc"
 		}
 	}
 }

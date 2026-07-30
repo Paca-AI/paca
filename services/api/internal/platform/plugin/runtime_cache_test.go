@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
-	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
-	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/cache"
 )
 
 const cachePluginName = "test.cache"

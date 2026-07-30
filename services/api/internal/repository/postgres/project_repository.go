@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"time"
 
-	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 )
 
 // --- sqlx models ------------------------------------------------------------

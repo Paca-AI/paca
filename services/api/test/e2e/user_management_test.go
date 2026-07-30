@@ -60,6 +60,7 @@ func createUserViaAPI(t *testing.T, env *e2eEnv, adminToken, username, password,
 // ---------------------------------------------------------------------------
 
 func TestUserManagement_AdminCRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "crud-admin", "adminpass1", "CRUD Admin")
 	assignGlobalRolesByName(t, env, "crud-admin", "ADMIN")
@@ -200,6 +201,7 @@ func TestUserManagement_AdminCRUD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserManagement_SelfService(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "self-user", "selfpass1", "Self User")
 
@@ -252,6 +254,7 @@ func TestUserManagement_SelfService(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserManagement_ChangeMyPassword(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "pwchange-user", "oldpass123", "PW Change User")
 
@@ -312,6 +315,7 @@ func TestUserManagement_ChangeMyPassword(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserManagement_AdminResetPassword(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "reset-admin", "adminpass1", "Reset Admin")
 	assignGlobalRolesByName(t, env, "reset-admin", "ADMIN")
@@ -336,6 +340,7 @@ func TestUserManagement_AdminResetPassword(t *testing.T) {
 }
 
 func TestUserManagement_MustChangePasswordFlow(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	seedUser(t, env, "flow-admin", "adminpass1", "Flow Admin")
 	assignGlobalRolesByName(t, env, "flow-admin", "ADMIN")

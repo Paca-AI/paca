@@ -392,12 +392,12 @@
 				"description": "Crear, configurar y eliminar agentes de IA"
 			},
 			"workflowsRead": {
-				"label": "Ver flujos de trabajo",
-				"description": "Explorar los flujos de automatización y su configuración"
+				"label": "Ver automatización",
+				"description": "Explorar las automatizaciones y su configuración"
 			},
 			"workflowsWrite": {
-				"label": "Gestionar flujos de trabajo",
-				"description": "Crear, editar, activar y eliminar flujos de automatización"
+				"label": "Gestionar automatización",
+				"description": "Crear, editar, activar y eliminar automatizaciones"
 			}
 		},
 		"permissionGroups": {
@@ -770,11 +770,6 @@
 			"removeLink": "Eliminar vínculo",
 			"empty": "No hay tareas vinculadas"
 		},
-		"workflows": {
-			"title": "Flujos de trabajo",
-			"open": "Abrir flujo de trabajo",
-			"empty": "Aún no hay flujos de trabajo"
-		},
 		"attachments": {
 			"title": "Archivos adjuntos",
 			"uploadLabel": "Subir archivo adjunto",
@@ -998,6 +993,7 @@
 		"triggerChat": "Chat",
 		"triggerWriteDescription": "Redactar descripción",
 		"triggerTask": "Tarea",
+		"triggerAutomation": "Automatización",
 		"iterations_one": "{{count}} iteración",
 		"iterations_other": "{{count}} iteraciones",
 		"prOpened": "PR abierto",
@@ -1219,12 +1215,12 @@
 	"automation": {
 		"list": {
 			"title": "Automatización",
-			"subtitle": "Automatiza la entrega de tareas a medida que avanza el trabajo en tu proyecto",
-			"newWorkflow": "Nuevo flujo de trabajo",
+			"subtitle": "Reacciona a eventos de tareas con disparadores, condiciones y acciones",
+			"newAutomation": "Nueva automatización",
 			"empty": {
-				"title": "Aún no hay flujos de trabajo",
-				"description": "Crea un flujo de trabajo para automatizar la entrega de tareas a medida que avanza el trabajo en tu proyecto.",
-				"createFirstWorkflow": "Crea tu primer flujo de trabajo"
+				"title": "Aún no hay automatizaciones",
+				"description": "Crea una automatización para reaccionar a eventos de tareas con condiciones y acciones.",
+				"createFirst": "Crea tu primera automatización"
 			},
 			"noDescription": "Sin descripción",
 			"updated": "Actualizado {{time}}"
@@ -1235,61 +1231,208 @@
 			"archived": "Archivado"
 		},
 		"createDialog": {
-			"title": "Nuevo flujo de automatización",
+			"title": "Nueva automatización",
 			"nameLabel": "Nombre",
-			"namePlaceholder": "p. ej. Pipeline de lanzamiento",
+			"namePlaceholder": "p. ej. Triaje de errores",
 			"descriptionLabel": "Descripción",
-			"descriptionPlaceholder": "Detalles opcionales sobre este flujo de trabajo…",
+			"descriptionPlaceholder": "Detalles opcionales sobre esta automatización…",
 			"cancel": "Cancelar",
 			"create": "Crear"
 		},
 		"deleteDialog": {
-			"title": "Eliminar flujo de trabajo",
+			"title": "Eliminar automatización",
 			"body": "¿Seguro que quieres eliminar \"{{name}}\"? Esta acción no se puede deshacer.",
 			"cancel": "Cancelar",
 			"confirm": "Eliminar"
 		},
 		"builder": {
-			"addTask": "Añadir tarea",
 			"activate": "Activar",
 			"archive": "Archivar",
 			"deactivate": "Desactivar",
-			"readOnlyNoticeArchived": "Este flujo está archivado y es de solo lectura — los flujos archivados no se pueden editar.",
+			"readOnlyNoticeArchived": "Esta automatización está archivada y es de solo lectura — las automatizaciones archivadas no se pueden editar.",
 			"genericError": "Algo salió mal. Inténtalo de nuevo.",
-			"collapseSidebar": "Contraer barra lateral",
-			"expandSidebar": "Expandir barra lateral"
+			"taskLessTriggerConnectionError": "Este disparador no tiene una tarea objetivo definida, por lo que solo puede conectarse a una acción de Llamar API o Activar agente de IA — las condiciones y el resto de las acciones necesitan una tarea sobre la que actuar.",
+			"collapseSidebar": "Contraer panel",
+			"expandSidebar": "Expandir panel",
+			"tabGraph": "Gráfico",
+			"tabRuns": "Historial de ejecuciones",
+			"tabDependencyMap": "Mapa de dependencias"
+		},
+		"palette": {
+			"title": "Añadir nodo",
+			"addTrigger": "Añadir disparador",
+			"addCondition": "Añadir condición",
+			"addAction": "Añadir acción",
+			"builtIn": "Integrado",
+			"plugins": "Plugins"
+		},
+		"nodeKind": {
+			"trigger": "Disparador",
+			"condition": "Condición",
+			"action": "Acción"
 		},
 		"canvas": {
-			"unknownTask": "Tarea desconocida",
-			"deleteEdge": "Eliminar conexión"
+			"deleteEdge": "Eliminar conexión",
+			"deleteNode": "Eliminar nodo"
 		},
-		"addNodeModal": {
-			"title": "Añadir tarea al flujo",
-			"searchPlaceholder": "Buscar tareas...",
-			"loadingTasks": "Cargando tareas...",
-			"noTasksFound": "No se encontraron tareas"
+		"triggerTypes": {
+			"status_changed": "Estado cambiado",
+			"task_created": "Tarea creada",
+			"assignee_changed": "Asignado cambiado",
+			"priority_changed": "Prioridad cambiada",
+			"tag_added": "Etiqueta añadida",
+			"due_date_reached": "Fecha límite alcanzada",
+			"predecessor_done": "Predecesora(s) terminada(s)",
+			"cron": "Programación cron",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "Tarea",
-			"removeNode": "Quitar del flujo",
-			"removeConfirmTitle": "Quitar tarea del flujo",
-			"removeConfirmBody": "Esto quita la tarea del gráfico del flujo, junto con sus conexiones. La tarea en sí no se ve afectada.",
+		"actionTypes": {
+			"assign": "Asignar",
+			"set_status": "Establecer estado",
+			"set_priority": "Establecer prioridad",
+			"add_tag": "Añadir etiqueta",
+			"set_custom_field": "Establecer campo personalizado",
+			"trigger_ai_agent": "Activar agente de IA",
+			"call_api": "Llamar API"
+		},
+		"nodeConfig": {
+			"save": "Guardar",
 			"cancel": "Cancelar",
-			"removeConfirmAction": "Quitar"
+			"remove": "Eliminar nodo",
+			"removeConfirmTitle": "Eliminar nodo",
+			"removeConfirmBody": "Esto elimina el nodo del gráfico, junto con todas sus conexiones.",
+			"removeConfirmAction": "Eliminar",
+			"genericFormHint": "Este tipo de nodo proviene de un plugin. Edita su configuración como JSON — los plugins podrán registrar un editor más completo aquí en una futura versión.",
+			"trigger": {
+				"anyStatus": "Cualquier estado",
+				"statusLabel": "Estado",
+				"tagLabel": "Etiqueta",
+				"anyTag": "Cualquier etiqueta",
+				"dueDateOffsetLabel": "Desfase (minutos)",
+				"dueDateOffsetHint": "0 = en la fecha límite, negativo = antes, positivo = después",
+				"watchedTasksLabel": "Tareas observadas",
+				"watchedTasksHint": "Se dispara cuando TODAS estas tareas están en un estado \"terminado\"",
+				"addWatchedTaskPlaceholder": "Añadir una tarea a observar…",
+				"targetTaskLabel": "Tarea objetivo (opcional)",
+				"targetTaskHint": "La tarea sobre la que actúa esta automatización una vez que todas las tareas observadas están terminadas — una tarea distinta de sus predecesoras, reevaluada según su propio estado actual. Déjalo sin definir si esto solo debe llegar a una acción de Llamar API o Activar agente de IA, que no necesitan una tarea.",
+				"selectTaskPlaceholder": "Selecciona una tarea…",
+				"searchTaskPlaceholder": "Buscar tareas…",
+				"noTasksFound": "No se encontraron tareas coincidentes",
+				"noTasksYet": "Aún no hay tareas en este proyecto",
+				"loadingMore": "Cargando…",
+				"clearTargetTask": "Quitar tarea objetivo",
+				"cronExpressionLabel": "Expresión cron",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "Cron estándar de 5 campos (minuto hora día-del-mes mes día-de-la-semana), evaluado en UTC",
+				"cronTargetTaskHint": "La tarea sobre la que actúa esta automatización en cada disparo programado. Déjalo sin definir si esto solo debe llegar a una acción de Llamar API o Activar agente de IA, que no necesitan una tarea.",
+				"apiTriggerTargetTaskHint": "La tarea sobre la que actúa esta automatización cada vez que se llama al webhook de abajo. Déjalo sin definir si esto solo debe llegar a una acción de Llamar API o Activar agente de IA, que no necesitan una tarea.",
+				"webhookUrlLabel": "URL del webhook",
+				"webhookTokenLabel": "Token del webhook",
+				"generateTokenButton": "Generar token",
+				"regenerateTokenButton": "Regenerar token",
+				"tokenShownOnceWarning": "Copia este token ahora — no se volverá a mostrar.",
+				"copy": "Copiar",
+				"copied": "Copiado",
+				"noTokenYet": "Aún no se ha generado ningún token"
+			},
+			"condition": {
+				"branchesTitle": "Ramas",
+				"addBranch": "Añadir rama",
+				"branchLabel": "Etiqueta de la rama",
+				"elseLabel": "Si no (ninguna rama coincidió)",
+				"removeBranch": "Eliminar rama",
+				"field": "Campo",
+				"operator": "Operador",
+				"value": "Valor",
+				"addGroup": "Añadir grupo",
+				"addCondition": "Añadir condición",
+				"removeCondition": "Eliminar",
+				"logicAnd": "Y",
+				"logicOr": "O",
+				"logicNot": "NO",
+				"fields": {
+					"status_id": "Estado",
+					"task_type_id": "Tipo de tarea",
+					"importance": "Prioridad",
+					"assignee_ids": "Asignado",
+					"tags": "Etiquetas",
+					"custom_field": "Campo personalizado"
+				}
+			},
+			"action": {
+				"memberLabel": "Asignado",
+				"agentLabel": "Agente",
+				"statusLabel": "Estado",
+				"importanceLabel": "Prioridad",
+				"tagLabel": "Etiqueta",
+				"fieldKeyLabel": "Campo",
+				"valueLabel": "Valor",
+				"messageLabel": "Instrucción para el agente",
+				"messagePlaceholder": "p. ej. Resume esta tarea y sugiere una prioridad.",
+				"methodLabel": "Método",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://ejemplo.com/webhook",
+				"headersLabel": "Cabeceras",
+				"headerKeyPlaceholder": "Nombre de la cabecera",
+				"headerValuePlaceholder": "Valor",
+				"addHeader": "Añadir cabecera",
+				"bodyLabel": "Cuerpo"
+			},
+			"target": {
+				"label": "Se aplica a",
+				"kinds": {
+					"self": "Esta tarea",
+					"parent": "Tarea principal",
+					"children": "Tareas secundarias",
+					"blocks": "Bloquea",
+					"is_blocked_by": "Está bloqueada por",
+					"relates_to": "Tarea relacionada",
+					"duplicates": "Duplica",
+					"is_duplicated_by": "Está duplicada por",
+					"other": "Otra tarea…"
+				},
+				"matchMode": {
+					"any": "Cualquier coincidencia",
+					"all": "Todas coinciden"
+				}
+			},
+			"description": {
+				"dueDateAt": "En la fecha límite",
+				"dueDateBefore": "{{minutes}} min antes de la fecha límite",
+				"dueDateAfter": "{{minutes}} min después de la fecha límite",
+				"branches": "{{count}} rama(s)",
+				"priority": "Prioridad: {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "Sin asignar",
+				"notConfigured": "Sin configurar",
+				"elseShort": "Si no",
+				"branchFallback": "Rama {{n}}",
+				"cronSchedule": "Se ejecuta {{expression}}",
+				"webhookReady": "Webhook configurado",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "Reglas estado → asignado",
-			"hint": "Asigna automáticamente una tarea a un miembro cuando cambie a alguno de estos estados. Esto se aplica a cualquier tarea de este flujo — ya sea que alguien cambie el estado de una tarea directamente, o que una tarea predecesora termine y una tarea posterior se reevalúe según su estado actual.",
-			"noRules": "Aún no hay reglas",
-			"statusPlaceholder": "Estado",
-			"memberPlaceholder": "Asignado"
+		"runHistory": {
+			"title": "Historial de ejecuciones",
+			"empty": "Aún no hay ejecuciones",
+			"status": {
+				"running": "En curso",
+				"completed": "Completado",
+				"failed": "Fallido"
+			},
+			"stepStatus": {
+				"completed": "Completado",
+				"failed": "Fallido",
+				"skipped": "Omitido (ya aplicado)"
+			},
+			"startedAt": "Iniciado {{time}}",
+			"viewSteps": "Ver pasos"
 		},
-		"statusTransitions": {
-			"title": "Flujo de estados",
-			"hint": "Define qué estado viene después una vez que el trabajo en cada estado está terminado. Esto desbloquea tareas posteriores y le dice a un agente de IA asignado exactamente qué estado establecer a continuación, en lugar de adivinar. Se genera automáticamente una cadena predeterminada a partir de los estados del proyecto al crear el flujo.",
-			"nextStatusLabel": "Siguiente estado",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "Exactamente un estado debe no tener siguiente estado (se convierte en el estado de finalización del flujo). Actualmente: {{count}} configurado(s)."
+		"dependencyMap": {
+			"title": "Mapa de dependencias",
+			"subtitle": "Vista de solo lectura de cada automatización a la espera de que terminen otras tareas",
+			"empty": "Aún no hay dependencias de predecesoras configuradas",
+			"watchedTasks": "Esperando {{count}} tarea(s)"
 		}
 	}
 }

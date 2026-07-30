@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 // AuthzPermissionStore resolves effective permissions from persisted roles.

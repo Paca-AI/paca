@@ -87,6 +87,21 @@ describe("handleProjectMemberTool – list_project_members", () => {
 		expect(result.content[0].text).toContain("Project Members:");
 		expect(result.content[0].text).toContain("alice");
 	});
+
+	it("surfaces the member ID distinctly from the user ID", async () => {
+		// Regression test: assigneeId (task assignment) and trigger_ai_agent's
+		// member_id both expect member.id, not member.user_id — the two differ
+		// per member, and this formatted text is the only place an agent can
+		// look them up. Losing this line silently breaks every "use
+		// list_project_members to get the member ID" tool description.
+		const result = await handleProjectMemberTool(
+			"list_project_members",
+			{ projectId: "p1" },
+			makeClient(),
+		);
+		expect(result.content[0].text).toContain("Member ID: m1");
+		expect(result.content[0].text).toContain("User ID: u1");
+	});
 });
 
 // ---------------------------------------------------------------------------

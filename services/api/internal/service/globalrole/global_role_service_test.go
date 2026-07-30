@@ -5,9 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
-	"github.com/google/uuid"
 )
 
 type stubRepo struct {

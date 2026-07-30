@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Paca-AI/api/internal/apierr"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
-	"github.com/google/uuid"
 )
 
 // Service implements plugindom.Service.

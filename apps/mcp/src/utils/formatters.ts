@@ -141,7 +141,10 @@ export function formatTaskDetail(
 		);
 	}
 
-	if ((assignees && assignees.length > 0) || (task.assignee_ids && task.assignee_ids.length > 0)) {
+	if (
+		(assignees && assignees.length > 0) ||
+		(task.assignee_ids && task.assignee_ids.length > 0)
+	) {
 		const label =
 			assignees && assignees.length > 0
 				? assignees

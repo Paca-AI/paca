@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
-	"github.com/google/uuid"
 )
 
 // TestE2ETaskStatus_CachedUpdatePreservesPositionAndCategory exercises the
@@ -23,6 +24,7 @@ import (
 // read correctly preserve position/category), but there was previously no
 // test exercising UpdateTaskStatus through the cache decorator at all.
 func TestE2ETaskStatus_CachedUpdatePreservesPositionAndCategory(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	cacheStore := cache.NewStore(env.redisClient, "paca:")

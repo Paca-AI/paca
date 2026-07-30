@@ -523,7 +523,11 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
             merge_skills_by_name(plugin_skills, default_skills),
         )
         trigger_skills.append_trigger_skill(
-            skills, trigger.trigger_type, trigger.task_id, trigger.conversation_id
+            skills,
+            trigger.trigger_type,
+            trigger.task_id,
+            trigger.conversation_id,
+            is_automation=trigger.actor_member_id is None,
         )
         mcp_config = build_mcp_config(
             agent_config.mcp_servers, agent_config.agent_id, trigger.project_id

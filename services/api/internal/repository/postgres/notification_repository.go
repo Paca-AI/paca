@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 )
 
 // --- sqlx model -------------------------------------------------------------

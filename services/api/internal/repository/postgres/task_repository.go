@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // --- sqlx models ------------------------------------------------------------
@@ -957,6 +958,17 @@ func applyCFCursorWhere(b *queryBuilder, cur *taskdom.TaskCursor, sort taskdom.T
 		b.args = append(b.args, id)
 		b.whereClauses = append(b.whereClauses, fmt.Sprintf("((created_at, id) > (%s, %s))", p1, p2))
 	}
+}
+
+// ListChildTasks returns every task whose parent_task_id is parentTaskID —
+// a thin convenience wrapper around ListTasks for callers (e.g. the
+// automation engine's "children" retarget) that just want "this task's
+// children" without building a full TaskFilter. Capped at 200 like the
+// frontend's own subtask fetch (apps/web's listSubtasks) — no further
+// pagination, same existing limitation, not a new one.
+func (r *TaskRepository) ListChildTasks(ctx context.Context, projectID, parentTaskID uuid.UUID) ([]*taskdom.Task, error) {
+	tasks, _, err := r.ListTasks(ctx, projectID, taskdom.TaskFilter{ParentTaskID: &parentTaskID}, 200, taskdom.TaskSort{})
+	return tasks, err
 }
 
 // ListTasks returns a page of tasks with optional filter.

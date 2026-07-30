@@ -402,12 +402,12 @@
 				"description": "Создавать, настраивать и удалять AI-агентов"
 			},
 			"workflowsRead": {
-				"label": "Просмотр workflow",
-				"description": "Просмотр workflow автоматизации и их настроек"
+				"label": "Просмотр автоматизации",
+				"description": "Просмотр автоматизаций и их настроек"
 			},
 			"workflowsWrite": {
-				"label": "Управление workflow",
-				"description": "Создание, редактирование, активация и удаление workflow автоматизации"
+				"label": "Управление автоматизацией",
+				"description": "Создание, редактирование, активация и удаление автоматизаций"
 			}
 		},
 		"permissionGroups": {
@@ -784,11 +784,6 @@
 			"removeLink": "Удалить связь",
 			"empty": "Связанных задач нет"
 		},
-		"workflows": {
-			"title": "Автоматизация",
-			"open": "Открыть workflow",
-			"empty": "Пока нет workflow"
-		},
 		"attachments": {
 			"title": "Вложения",
 			"uploadLabel": "Загрузить вложение",
@@ -1014,6 +1009,7 @@
 		"triggerChat": "Чат",
 		"triggerWriteDescription": "Написать описание",
 		"triggerTask": "Задача",
+		"triggerAutomation": "Автоматизация",
 		"iterations_one": "{{count}} итерация",
 		"iterations_few": "{{count}} итерации",
 		"iterations_many": "{{count}} итераций",
@@ -1239,77 +1235,224 @@
 	"automation": {
 		"list": {
 			"title": "Автоматизация",
-			"subtitle": "Автоматизируйте передачу задач по мере продвижения работы в проекте",
-			"newWorkflow": "Новый workflow",
+			"subtitle": "Реагируйте на события задач с помощью триггеров, условий и действий",
+			"newAutomation": "Новая автоматизация",
 			"empty": {
-				"title": "Пока нет workflow",
-				"description": "Создайте workflow, чтобы автоматизировать передачу задач по мере продвижения работы в проекте.",
-				"createFirstWorkflow": "Создать первый workflow"
+				"title": "Автоматизаций пока нет",
+				"description": "Создайте автоматизацию, чтобы реагировать на события задач с помощью условий и действий.",
+				"createFirst": "Создать первую автоматизацию"
 			},
-			"noDescription": "Без описания",
+			"noDescription": "Нет описания",
 			"updated": "Обновлено {{time}}"
 		},
 		"status": {
 			"draft": "Черновик",
-			"active": "Активен",
+			"active": "Активна",
 			"archived": "В архиве"
 		},
 		"createDialog": {
-			"title": "Новый workflow автоматизации",
+			"title": "Новая автоматизация",
 			"nameLabel": "Название",
-			"namePlaceholder": "напр. Конвейер релиза",
+			"namePlaceholder": "напр. Сортировка багов",
 			"descriptionLabel": "Описание",
-			"descriptionPlaceholder": "Необязательные детали об этом workflow…",
+			"descriptionPlaceholder": "Необязательные сведения об этой автоматизации…",
 			"cancel": "Отмена",
 			"create": "Создать"
 		},
 		"deleteDialog": {
-			"title": "Удалить workflow",
+			"title": "Удалить автоматизацию",
 			"body": "Вы уверены, что хотите удалить «{{name}}»? Это действие нельзя отменить.",
 			"cancel": "Отмена",
 			"confirm": "Удалить"
 		},
 		"builder": {
-			"addTask": "Добавить задачу",
 			"activate": "Активировать",
 			"archive": "Архивировать",
 			"deactivate": "Деактивировать",
-			"readOnlyNoticeArchived": "Этот workflow в архиве и доступен только для чтения — архивные workflow нельзя редактировать.",
+			"readOnlyNoticeArchived": "Эта автоматизация в архиве и доступна только для чтения — архивные автоматизации нельзя редактировать.",
 			"genericError": "Что-то пошло не так. Попробуйте ещё раз.",
-			"collapseSidebar": "Свернуть боковую панель",
-			"expandSidebar": "Развернуть боковую панель"
+			"taskLessTriggerConnectionError": "У этого триггера не задана целевая задача, поэтому он может подключаться только к действию «Вызвать API» или «Запустить ИИ-агента» — условиям и остальным действиям для работы нужна задача.",
+			"collapseSidebar": "Свернуть панель",
+			"expandSidebar": "Развернуть панель",
+			"tabGraph": "Граф",
+			"tabRuns": "История запусков",
+			"tabDependencyMap": "Карта зависимостей"
+		},
+		"palette": {
+			"title": "Добавить узел",
+			"addTrigger": "Добавить триггер",
+			"addCondition": "Добавить условие",
+			"addAction": "Добавить действие",
+			"builtIn": "Встроенные",
+			"plugins": "Плагины"
+		},
+		"nodeKind": {
+			"trigger": "Триггер",
+			"condition": "Условие",
+			"action": "Действие"
 		},
 		"canvas": {
-			"unknownTask": "Неизвестная задача",
-			"deleteEdge": "Удалить связь"
+			"deleteEdge": "Удалить связь",
+			"deleteNode": "Удалить узел"
 		},
-		"addNodeModal": {
-			"title": "Добавить задачу в workflow",
-			"searchPlaceholder": "Поиск задач...",
-			"loadingTasks": "Загрузка задач...",
-			"noTasksFound": "Задачи не найдены"
+		"triggerTypes": {
+			"status_changed": "Статус изменён",
+			"task_created": "Задача создана",
+			"assignee_changed": "Исполнитель изменён",
+			"priority_changed": "Приоритет изменён",
+			"tag_added": "Добавлен тег",
+			"due_date_reached": "Наступил срок",
+			"predecessor_done": "Предшествующая(ие) задача(и) завершена(ы)",
+			"cron": "Расписание cron",
+			"api_trigger": "Webhook"
 		},
-		"nodePanel": {
-			"title": "Задача",
-			"removeNode": "Убрать из workflow",
-			"removeConfirmTitle": "Убрать задачу из workflow",
-			"removeConfirmBody": "Задача будет убрана из графа workflow вместе со всеми её связями. Сама задача при этом не изменится.",
+		"actionTypes": {
+			"assign": "Назначить",
+			"set_status": "Установить статус",
+			"set_priority": "Установить приоритет",
+			"add_tag": "Добавить тег",
+			"set_custom_field": "Установить настраиваемое поле",
+			"trigger_ai_agent": "Запустить ИИ-агента",
+			"call_api": "Вызвать API"
+		},
+		"nodeConfig": {
+			"save": "Сохранить",
 			"cancel": "Отмена",
-			"removeConfirmAction": "Убрать"
+			"remove": "Удалить узел",
+			"removeConfirmTitle": "Удалить узел",
+			"removeConfirmBody": "Это удалит узел из графа вместе со всеми его связями.",
+			"removeConfirmAction": "Удалить",
+			"genericFormHint": "Этот тип узла предоставлен плагином. Редактируйте его настройки как JSON — в будущих версиях плагины смогут регистрировать здесь более удобный редактор.",
+			"trigger": {
+				"anyStatus": "Любой статус",
+				"statusLabel": "Статус",
+				"tagLabel": "Тег",
+				"anyTag": "Любой тег",
+				"dueDateOffsetLabel": "Смещение (минуты)",
+				"dueDateOffsetHint": "0 = в срок, отрицательное = раньше, положительное = позже",
+				"watchedTasksLabel": "Отслеживаемые задачи",
+				"watchedTasksHint": "Срабатывает, когда ВСЕ эти задачи получают статус «выполнено»",
+				"addWatchedTaskPlaceholder": "Добавить задачу для отслеживания…",
+				"targetTaskLabel": "Целевая задача (необязательно)",
+				"targetTaskHint": "Задача, для которой выполняется эта автоматизация после завершения всех отслеживаемых задач выше — задача, отличная от предшествующих, повторно оцениваемая по её собственному текущему состоянию. Оставьте пустым, если это должно достигать только действия «Вызвать API» или «Запустить ИИ-агента», которым задача не нужна.",
+				"selectTaskPlaceholder": "Выберите задачу…",
+				"searchTaskPlaceholder": "Поиск задач…",
+				"noTasksFound": "Совпадающих задач не найдено",
+				"noTasksYet": "В этом проекте пока нет задач",
+				"loadingMore": "Загрузка…",
+				"clearTargetTask": "Очистить целевую задачу",
+				"cronExpressionLabel": "Cron-выражение",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "Стандартный cron из 5 полей (минута час день-месяца месяц день-недели), вычисляется по UTC",
+				"cronTargetTaskHint": "Задача, для которой выполняется эта автоматизация при каждом срабатывании по расписанию. Оставьте пустым, если это должно достигать только действия «Вызвать API» или «Запустить ИИ-агента», которым задача не нужна.",
+				"apiTriggerTargetTaskHint": "Задача, для которой выполняется эта автоматизация при каждом вызове указанного ниже webhook. Оставьте пустым, если это должно достигать только действия «Вызвать API» или «Запустить ИИ-агента», которым задача не нужна.",
+				"webhookUrlLabel": "URL webhook",
+				"webhookTokenLabel": "Токен webhook",
+				"generateTokenButton": "Сгенерировать токен",
+				"regenerateTokenButton": "Перегенерировать токен",
+				"tokenShownOnceWarning": "Скопируйте этот токен сейчас — он больше не будет показан.",
+				"copy": "Копировать",
+				"copied": "Скопировано",
+				"noTokenYet": "Токен ещё не сгенерирован"
+			},
+			"condition": {
+				"branchesTitle": "Ветви",
+				"addBranch": "Добавить ветвь",
+				"branchLabel": "Метка ветви",
+				"elseLabel": "Иначе (ни одна ветвь не совпала)",
+				"removeBranch": "Удалить ветвь",
+				"field": "Поле",
+				"operator": "Оператор",
+				"value": "Значение",
+				"addGroup": "Добавить группу",
+				"addCondition": "Добавить условие",
+				"removeCondition": "Удалить",
+				"logicAnd": "И",
+				"logicOr": "ИЛИ",
+				"logicNot": "НЕ",
+				"fields": {
+					"status_id": "Статус",
+					"task_type_id": "Тип задачи",
+					"importance": "Приоритет",
+					"assignee_ids": "Исполнитель",
+					"tags": "Теги",
+					"custom_field": "Настраиваемое поле"
+				}
+			},
+			"action": {
+				"memberLabel": "Исполнитель",
+				"agentLabel": "Агент",
+				"statusLabel": "Статус",
+				"importanceLabel": "Приоритет",
+				"tagLabel": "Тег",
+				"fieldKeyLabel": "Поле",
+				"valueLabel": "Значение",
+				"messageLabel": "Инструкция для агента",
+				"messagePlaceholder": "напр. Опиши эту задачу и предложи приоритет.",
+				"methodLabel": "Метод",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://example.com/webhook",
+				"headersLabel": "Заголовки",
+				"headerKeyPlaceholder": "Имя заголовка",
+				"headerValuePlaceholder": "Значение",
+				"addHeader": "Добавить заголовок",
+				"bodyLabel": "Тело запроса"
+			},
+			"target": {
+				"label": "Применяется к",
+				"kinds": {
+					"self": "Эта задача",
+					"parent": "Родительская задача",
+					"children": "Дочерние задачи",
+					"blocks": "Блокирует",
+					"is_blocked_by": "Заблокирована задачей",
+					"relates_to": "Связанная задача",
+					"duplicates": "Дублирует",
+					"is_duplicated_by": "Дублируется задачей",
+					"other": "Другая задача…"
+				},
+				"matchMode": {
+					"any": "Совпадает хотя бы одна",
+					"all": "Совпадают все"
+				}
+			},
+			"description": {
+				"dueDateAt": "В срок",
+				"dueDateBefore": "за {{minutes}} мин до срока",
+				"dueDateAfter": "через {{minutes}} мин после срока",
+				"branches": "Ветвей: {{count}}",
+				"priority": "Приоритет: {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "Не назначено",
+				"notConfigured": "Не настроено",
+				"elseShort": "Иначе",
+				"branchFallback": "Ветвь {{n}}",
+				"cronSchedule": "Выполняется {{expression}}",
+				"webhookReady": "Webhook настроен",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "Правила «статус → исполнитель»",
-			"hint": "Автоматически назначает задачу участнику при переходе в один из этих статусов. Правило применяется к любой задаче в этом workflow — когда кто-то напрямую меняет статус задачи или когда предшествующая задача завершается и последующая задача повторно оценивается в её текущем статусе.",
-			"noRules": "Пока нет правил",
-			"statusPlaceholder": "Статус",
-			"memberPlaceholder": "Исполнитель"
+		"runHistory": {
+			"title": "История запусков",
+			"empty": "Запусков пока нет",
+			"status": {
+				"running": "Выполняется",
+				"completed": "Завершено",
+				"failed": "Ошибка"
+			},
+			"stepStatus": {
+				"completed": "Завершено",
+				"failed": "Ошибка",
+				"skipped": "Пропущено (уже применено)"
+			},
+			"startedAt": "Запущено {{time}}",
+			"viewSteps": "Просмотреть шаги"
 		},
-		"statusTransitions": {
-			"title": "Workflow статусов",
-			"hint": "Определите, какой статус наступает следующим после завершения работы в каждом статусе. Это открывает последующие задачи и точно указывает агенту-исполнителю ИИ, какой статус установить далее, вместо того чтобы гадать. При создании workflow цепочка по умолчанию формируется автоматически на основе статусов проекта.",
-			"nextStatusLabel": "Следующий статус",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "Ровно один статус не должен иметь следующего статуса (он становится статусом __END__ workflow). Сейчас настроено: {{count}}."
+		"dependencyMap": {
+			"title": "Карта зависимостей",
+			"subtitle": "Доступный только для чтения обзор всех автоматизаций, ожидающих завершения других задач",
+			"empty": "Зависимости от предшествующих задач пока не настроены",
+			"watchedTasks": "Ожидание {{count}} задач(и)"
 		}
 	}
 }

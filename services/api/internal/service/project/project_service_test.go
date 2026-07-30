@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

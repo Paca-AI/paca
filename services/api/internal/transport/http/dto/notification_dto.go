@@ -3,8 +3,9 @@ package dto
 import (
 	"time"
 
-	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	"github.com/google/uuid"
+
+	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 )
 
 // NotificationResponse is the API representation of a notification.

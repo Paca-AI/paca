@@ -9,9 +9,10 @@ import (
 	"fmt"
 	"time"
 
-	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 )
 
 // --- sqlx models ------------------------------------------------------------

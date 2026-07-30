@@ -53,6 +53,7 @@ func createAPIKey(t *testing.T, env *e2eEnv, client *http.Client, token, name st
 // ---------------------------------------------------------------------------
 
 func TestE2EAPIKey_CRUD(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token := apiKeyUserLogin(t, env, "apikey-crud-user", "keypass1!")
 
@@ -156,6 +157,7 @@ func TestE2EAPIKey_CRUD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAPIKey_AuthMethods(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token := apiKeyUserLogin(t, env, "apikey-auth-user", "keypass2!")
 	_, rawKey := createAPIKey(t, env, client, token, "sdk-key")
@@ -182,6 +184,7 @@ func TestE2EAPIKey_AuthMethods(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAPIKey_Validation(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token := apiKeyUserLogin(t, env, "apikey-val-user", "keypass3!")
 
@@ -230,6 +233,7 @@ func TestE2EAPIKey_Validation(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAPIKey_Authorization(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	ownerClient, ownerToken := apiKeyUserLogin(t, env, "apikey-owner", "keypass4!")
@@ -283,6 +287,7 @@ func TestE2EAPIKey_Authorization(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EAPIKey_MultipleKeys(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token := apiKeyUserLogin(t, env, "apikey-multi-user", "keypass6!")
 

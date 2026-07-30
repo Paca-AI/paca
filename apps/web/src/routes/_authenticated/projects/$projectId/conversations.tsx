@@ -50,8 +50,17 @@ function ConversationListItem({
 	const { t } = useTranslation("projects");
 	const statusColor = CONVERSATION_STATUS_COLORS[conv.status];
 	const statusLabel = CONVERSATION_STATUS_LABELS[conv.status];
-	const triggerLabel =
-		conv.trigger_type === "chat_message"
+	// A conversation with no human actor was fired by the automation-workflow
+	// engine (see agent_service.go's TriggerTaskAssigned/TriggerDirectMessage:
+	// triggeredByMemberID is nil for automation-triggered runs), not by
+	// someone assigning a task or messaging the agent by hand.
+	const isAutomationTriggered =
+		!conv.triggered_by_member_id &&
+		(conv.trigger_type === "task_assigned" ||
+			conv.trigger_type === "automation_message");
+	const triggerLabel = isAutomationTriggered
+		? t("conversationsPage.triggerAutomation")
+		: conv.trigger_type === "chat_message"
 			? t("conversationsPage.triggerChat")
 			: conv.trigger_type === "description_write"
 				? t("conversationsPage.triggerWriteDescription")

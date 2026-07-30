@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	"github.com/google/uuid"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 )
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,7 @@ func listConversationsPage(t *testing.T, env *e2eEnv, client *http.Client, token
 // ---------------------------------------------------------------------------
 
 func TestE2EListConversationPagination_CursorBased(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
 
@@ -250,6 +252,7 @@ func TestE2EListConversationPagination_CursorBased(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListConversationPagination_StatusFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
 
@@ -313,6 +316,7 @@ func TestE2EListConversationPagination_StatusFilter(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListConversationPagination_AgentIDFilter(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, agentA, memberID := seedConversationFixture(t, env)
 
@@ -373,6 +377,7 @@ func TestE2EListConversationPagination_AgentIDFilter(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, _, _ := seedConversationFixture(t, env)
 	convID := uuid.NewString()
@@ -418,6 +423,7 @@ func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EListConversationPagination_EmptyProject(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	username := "conv-empty-user-" + uuid.NewString()
 	seedTaskMemberUser(t, env, username, "convemptypass1")
@@ -461,6 +467,7 @@ func createConversationEvent(t *testing.T, env *e2eEnv, convID string, index int
 // sites, all reflect the live ActionEvent count rather than a stale stored
 // counter.
 func TestE2EConversationIterationCount(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
 

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
@@ -19,7 +21,6 @@ import (
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
-	"github.com/google/uuid"
 )
 
 type mockAuthSvc struct{}

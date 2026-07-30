@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
-	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 )
 
 // findAgentByIDReturning stubs mockAgentRepo.findAgentByID to return a
@@ -1576,6 +1577,30 @@ func TestTriggerTaskAssigned_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, "task_assigned", result.TriggerType)
+}
+
+func TestTriggerDirectMessage_Success(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	repo := &mockAgentRepo{
+		createConversation: func(_ context.Context, conv *agentdom.AgentConversation) error {
+			if conv.AgentID != agentID || conv.ProjectID != projectID || conv.TaskID != nil {
+				t.Fatalf("unexpected conversation fields: %+v", conv)
+			}
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	result, err := svc.TriggerDirectMessage(context.Background(), projectID, agentID, nil, "do the thing")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, "automation_message", result.TriggerType)
+	assert.Nil(t, result.TaskID)
 }
 
 func TestTriggerCommentMention_Success(t *testing.T) {

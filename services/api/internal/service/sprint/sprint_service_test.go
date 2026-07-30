@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

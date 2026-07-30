@@ -3,8 +3,9 @@ package dto
 import (
 	"time"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	"github.com/google/uuid"
+
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
 // CreateGlobalRoleRequest is the body for POST /admin/global-roles.

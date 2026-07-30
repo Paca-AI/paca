@@ -8,13 +8,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+
 	"github.com/Paca-AI/api/internal/apierr"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 // claimsContextKey is the unexported key used to store JWT claims in the Go request context.

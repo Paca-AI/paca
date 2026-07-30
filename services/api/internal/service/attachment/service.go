@@ -11,10 +11,11 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
+
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/storage"
-	"github.com/google/uuid"
 )
 
 const (

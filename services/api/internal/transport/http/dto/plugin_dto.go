@@ -3,9 +3,10 @@ package dto
 import (
 	"time"
 
+	"github.com/google/uuid"
+
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
-	"github.com/google/uuid"
 )
 
 // -------------------------------------------------------------------------

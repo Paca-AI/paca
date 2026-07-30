@@ -135,8 +135,14 @@ jobs:
           cache-dependency-path: services/api/go.sum
 
       - name: Run E2E tests
-        # 300s: Postgres + Valkey testcontainer startup + full migration set can
-        # take 60-90s on cold CI runners, leaving ~210s for the actual tests.
+        # Every test gets its own Postgres database and, for automation
+        # tests, its own Redis consumer group/leader-lock key (see
+        # worker.AutomationConsumer.WithConsumerGroup /
+        # CronScheduler.WithLeaderKey) — so the whole package is safe to run
+        # with -parallel, cutting wall-clock time roughly 4-5x versus fully
+        # sequential. 450s still leaves headroom over the ~100-110s this
+        # takes locally, plus the 60-90s testcontainer/migration startup on
+        # cold CI runners.
         env:
           PACA_E2E: "1"
-        run: go test -v -timeout 300s ./test/e2e/...
+        run: go test -v -timeout 450s -parallel 8 ./test/e2e/...

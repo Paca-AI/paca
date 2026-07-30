@@ -4,12 +4,12 @@ import {
 	ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
+	PacaAPIAutomationClient,
 	PacaAPIClient,
 	PacaAPIDocClient,
 	PacaAPIExtendedClient,
 	PacaAPITaskExtendedClient,
 	PacaAPIViewsClient,
-	PacaAPIWorkflowClient,
 } from "./api/index.js";
 import {
 	fetchAgentPermissions,
@@ -35,7 +35,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	const viewsClient = new PacaAPIViewsClient(config);
 	const taskExtendedClient = new PacaAPITaskExtendedClient(config);
 	const docClient = new PacaAPIDocClient(config);
-	const workflowClient = new PacaAPIWorkflowClient(config);
+	const automationClient = new PacaAPIAutomationClient(config);
 
 	const clients = {
 		apiClient,
@@ -43,7 +43,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		viewsClient,
 		taskExtendedClient,
 		docClient,
-		workflowClient,
+		automationClient,
 	};
 
 	// Load plugin MCP modules from the Paca API.

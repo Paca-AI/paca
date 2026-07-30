@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
-	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	"github.com/google/uuid"
+
+	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
 func TestAdminGlobalRolesAuthorization(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	const username = "rolecheck"

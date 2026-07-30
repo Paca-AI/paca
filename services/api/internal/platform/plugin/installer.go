@@ -16,6 +16,7 @@ import (
 	"time"
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 )
 
 // Installer downloads and installs marketplace plugin artifacts into local stores.
@@ -39,7 +40,7 @@ func NewInstaller(backendDir, frontendDir, mcpDir, skillsDir string, httpClient 
 	// caller that supplies its own Transport (e.g. a test double) is left
 	// untouched.
 	if httpClient.Transport == nil {
-		httpClient.Transport = newSafeHTTPTransport()
+		httpClient.Transport = netguard.NewSafeHTTPTransport()
 	}
 	return &Installer{
 		backendDir:  backendDir,

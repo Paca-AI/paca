@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 // openUserRepoTestDB sets up an in-memory SQLite DB for user repository tests.

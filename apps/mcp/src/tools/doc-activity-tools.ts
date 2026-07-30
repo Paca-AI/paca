@@ -142,16 +142,25 @@ export async function handleDocActivityTool(
 		switch (toolName) {
 			case "list_doc_activities": {
 				const { projectId, docId } = ListDocActivitiesSchema.parse(args);
-				const activities = await client.listDocumentActivities(projectId, docId);
+				const activities = await client.listDocumentActivities(
+					projectId,
+					docId,
+				);
 				const formatted = activities.map(formatDocActivity).join("\n\n---\n\n");
 				return {
-					content: [{ type: "text", text: `Document Activities:\n\n${formatted}` }],
+					content: [
+						{ type: "text", text: `Document Activities:\n\n${formatted}` },
+					],
 				};
 			}
 
 			case "add_doc_comment": {
 				const { projectId, docId, content } = AddDocCommentSchema.parse(args);
-				const comment = await client.addDocumentComment(projectId, docId, content);
+				const comment = await client.addDocumentComment(
+					projectId,
+					docId,
+					content,
+				);
 				return {
 					content: [
 						{
@@ -182,7 +191,8 @@ export async function handleDocActivityTool(
 			}
 
 			case "delete_doc_comment": {
-				const { projectId, docId, commentId } = DeleteDocCommentSchema.parse(args);
+				const { projectId, docId, commentId } =
+					DeleteDocCommentSchema.parse(args);
 				await client.deleteDocumentComment(projectId, docId, commentId);
 				return {
 					content: [

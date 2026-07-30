@@ -731,98 +731,100 @@ export interface CreateTaskLinkInput {
 	link_type: LinkType;
 }
 
-// ==================== Automation Workflows ====================
+// ==================== Automation ====================
+// A project-scoped graph of Trigger/Condition/Action nodes connected by
+// edges — replaces the old task-dependency workflow canvas and the flat
+// trigger/condition/action rule list with one unified model.
 
-export type WorkflowStatus = "draft" | "active" | "archived";
+export type AutomationStatus = "draft" | "active" | "archived";
+export type AutomationNodeKind = "trigger" | "condition" | "action";
 
-export interface Workflow {
+export interface Automation {
 	id: string;
 	project_id: string;
 	name: string;
 	description: string;
-	status: WorkflowStatus;
+	status: AutomationStatus;
 	created_by?: string | null;
 	created_at: string;
 	updated_at: string;
 }
 
-export interface WorkflowStatusRule {
+export interface AutomationNode {
 	id: string;
-	workflow_id: string;
-	status_id: string;
-	assignee_member_id: string;
-	created_at: string;
-	updated_at: string;
-}
-
-export interface WorkflowStatusTransition {
-	id: string;
-	workflow_id: string;
-	status_id: string;
-	next_status_id?: string | null;
-	created_at: string;
-	updated_at: string;
-}
-
-export interface WorkflowNode {
-	id: string;
-	workflow_id: string;
-	task_id: string;
+	automation_id: string;
+	kind: AutomationNodeKind;
+	type: string;
+	config: Record<string, unknown>;
 	pos_x: number;
 	pos_y: number;
-	created_at: string;
-	updated_at: string;
 }
 
-export interface WorkflowEdge {
+export interface AutomationEdge {
 	id: string;
-	workflow_id: string;
+	automation_id: string;
 	source_node_id: string;
+	source_handle?: string | null;
 	target_node_id: string;
-	created_at: string;
 }
 
-export interface WorkflowGraph {
-	workflow: Workflow;
-	nodes: WorkflowNode[];
-	edges: WorkflowEdge[];
-	status_rules: WorkflowStatusRule[];
-	status_transitions: WorkflowStatusTransition[];
+export interface AutomationGraph {
+	automation: Automation;
+	nodes: AutomationNode[];
+	edges: AutomationEdge[];
 }
 
-export interface CreateWorkflowInput {
+export type AutomationRunStatus = "running" | "completed" | "failed";
+export type AutomationRunStepStatus = "completed" | "failed" | "skipped";
+
+export interface AutomationRun {
+	id: string;
+	automation_id: string;
+	trigger_node_id: string;
+	task_id: string;
+	status: AutomationRunStatus;
+	started_at: string;
+	finished_at?: string | null;
+}
+
+export interface AutomationRunStep {
+	id: string;
+	run_id: string;
+	node_id: string;
+	status: AutomationRunStepStatus;
+	input_snapshot?: Record<string, unknown> | null;
+	output_snapshot?: Record<string, unknown> | null;
+	error?: string;
+	executed_at: string;
+}
+
+export interface CreateAutomationInput {
 	name: string;
 	description?: string;
 }
 
-export interface UpdateWorkflowInput {
+export interface UpdateAutomationInput {
 	name?: string;
 	description?: string;
 }
 
-export interface AddWorkflowNodeInput {
-	task_id: string;
+export interface AddAutomationNodeInput {
+	kind: AutomationNodeKind;
+	type: string;
+	config?: Record<string, unknown>;
 	pos_x?: number;
 	pos_y?: number;
 }
 
-export interface UpdateWorkflowNodeInput {
+export interface UpdateAutomationNodeInput {
+	config?: Record<string, unknown>;
 	pos_x?: number;
 	pos_y?: number;
 }
 
-export interface SetWorkflowStatusRuleInput {
-	status_id: string;
-	assignee_member_id: string;
-}
-
-export interface SetWorkflowStatusTransitionInput {
-	status_id: string;
-	next_status_id?: string | null;
-}
-
-export interface AddWorkflowEdgeInput {
+export interface AddAutomationEdgeInput {
 	source_node_id: string;
+	source_handle?: string | null;
 	target_node_id: string;
 }
 

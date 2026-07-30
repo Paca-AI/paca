@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"time"
 
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 )
 
 // -------------------------------------------------------------------------

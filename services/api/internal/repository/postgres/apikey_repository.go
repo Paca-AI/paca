@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 )
 
 // apiKeyRecord is the sqlx write model for the api_keys table.

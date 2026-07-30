@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/google/uuid"
+
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 func TestUserFromEntity(t *testing.T) {

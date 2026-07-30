@@ -105,7 +105,8 @@ export function getTaskTools(): Tool[] {
 					},
 					assigneeId: {
 						type: "string",
-						description: "Filter tasks by assignee user ID.",
+						description:
+							"Filter tasks by assignee. This is the project MEMBER ID (not the user ID) — use list_project_members and read its 'Member ID' field.",
 					},
 					taskTypeIds: {
 						type: "array",
@@ -199,7 +200,7 @@ export function getTaskTools(): Tool[] {
 					assigneeId: {
 						type: "string",
 						description:
-							"The technical UUID of the user to assign the task to (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_project_members to get user IDs.",
+							"The technical UUID of the project MEMBER to assign the task to (e.g., '550e8400-e29b-41d4-a716-446655440000') — NOT the user ID; a member has both, and they differ. Use list_project_members and read the 'Member ID' field (works for both human and agent members). Never assume or reuse an ID seen elsewhere for a named person without confirming it there first.",
 					},
 					parentTaskId: {
 						type: "string",
@@ -275,7 +276,7 @@ export function getTaskTools(): Tool[] {
 					assigneeId: {
 						type: "string",
 						description:
-							"The technical UUID of the user to assign the task to (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_project_members to get user IDs.",
+							"The technical UUID of the project MEMBER to assign the task to (e.g., '550e8400-e29b-41d4-a716-446655440000') — NOT the user ID; a member has both, and they differ. Use list_project_members and read the 'Member ID' field (works for both human and agent members). Never assume or reuse an ID seen elsewhere for a named person without confirming it there first.",
 					},
 					parentTaskId: {
 						type: ["string", "null"],

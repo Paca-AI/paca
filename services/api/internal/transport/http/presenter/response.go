@@ -12,6 +12,7 @@ import (
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
@@ -20,7 +21,6 @@ import (
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
-	workflowdom "github.com/Paca-AI/api/internal/domain/workflow"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
 )
 
@@ -54,6 +54,17 @@ func Created(w http.ResponseWriter, r *http.Request, data any) {
 // NoContent writes a 204 No Content response with no body.
 func NoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Accepted writes a 202 Accepted response — used by endpoints that queue
+// work for asynchronous processing rather than completing it inline before
+// responding (e.g. the automation webhook receiver).
+func Accepted(w http.ResponseWriter, r *http.Request, data any) {
+	httpx.WriteJSON(w, http.StatusAccepted, envelope{
+		Success:   true,
+		Data:      data,
+		RequestID: httpx.RequestIDFromContext(r.Context()),
+	})
 }
 
 // Error maps a domain/service error to an HTTP status + error code and writes
@@ -155,8 +166,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeTaskStatusCategoryInvalid
 	case errors.Is(err, taskdom.ErrStatusReorderInvalid):
 		return http.StatusBadRequest, apierr.CodeTaskStatusReorderInvalid
-	case errors.Is(err, taskdom.ErrStatusInUseByWorkflow):
-		return http.StatusConflict, apierr.CodeTaskStatusInUseByWorkflow
+	case errors.Is(err, taskdom.ErrStatusInUseByAutomation):
+		return http.StatusConflict, apierr.CodeTaskStatusInUseByAutomation
 	case errors.Is(err, sprintdom.ErrSprintNotFound):
 		return http.StatusNotFound, apierr.CodeSprintNotFound
 	case errors.Is(err, sprintdom.ErrSprintNameInvalid):
@@ -312,55 +323,51 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentEnvVarKeyInvalid
 	case errors.Is(err, agentdom.ErrEnvVarKeyReserved):
 		return http.StatusBadRequest, apierr.CodeAgentEnvVarKeyReserved
-	// --- Workflow errors ------------------------------------------------------
-	case errors.Is(err, workflowdom.ErrNotFound):
-		return http.StatusNotFound, apierr.CodeWorkflowNotFound
-	case errors.Is(err, workflowdom.ErrNameInvalid):
-		return http.StatusBadRequest, apierr.CodeWorkflowNameInvalid
-	case errors.Is(err, workflowdom.ErrNodeNotFound):
-		return http.StatusNotFound, apierr.CodeWorkflowNodeNotFound
-	case errors.Is(err, workflowdom.ErrNodeDuplicateTask):
-		return http.StatusConflict, apierr.CodeWorkflowNodeDuplicateTask
-	case errors.Is(err, workflowdom.ErrNodeTaskCrossProject):
-		return http.StatusBadRequest, apierr.CodeWorkflowNodeTaskCrossProject
-	case errors.Is(err, workflowdom.ErrStatusRuleNotFound):
-		return http.StatusNotFound, apierr.CodeWorkflowStatusRuleNotFound
-	case errors.Is(err, workflowdom.ErrStatusRuleCrossProject):
-		return http.StatusBadRequest, apierr.CodeWorkflowStatusRuleCrossProject
-	case errors.Is(err, workflowdom.ErrStatusRuleConflict):
-		return http.StatusConflict, apierr.CodeWorkflowStatusRuleConflict
-	case errors.Is(err, workflowdom.ErrStatusTransitionNotFound):
-		return http.StatusNotFound, apierr.CodeWorkflowStatusTransitionNotFound
-	case errors.Is(err, workflowdom.ErrStatusTransitionCrossProject):
-		return http.StatusBadRequest, apierr.CodeWorkflowStatusTransitionCrossProject
-	case errors.Is(err, workflowdom.ErrStatusTransitionSelfLoop):
-		return http.StatusBadRequest, apierr.CodeWorkflowStatusTransitionSelfLoop
-	case errors.Is(err, workflowdom.ErrStatusTransitionConflict):
-		return http.StatusConflict, apierr.CodeWorkflowStatusTransitionConflict
-	case errors.Is(err, workflowdom.ErrEdgeNotFound):
-		return http.StatusNotFound, apierr.CodeWorkflowEdgeNotFound
-	case errors.Is(err, workflowdom.ErrEdgeSelfLoop):
-		return http.StatusBadRequest, apierr.CodeWorkflowEdgeSelfLoop
-	case errors.Is(err, workflowdom.ErrEdgeCrossWorkflow):
-		return http.StatusBadRequest, apierr.CodeWorkflowEdgeCrossWorkflow
-	case errors.Is(err, workflowdom.ErrEdgeCycle):
-		return http.StatusBadRequest, apierr.CodeWorkflowEdgeCycle
-	case errors.Is(err, workflowdom.ErrEdgeDuplicate):
-		return http.StatusConflict, apierr.CodeWorkflowEdgeDuplicate
-	case errors.Is(err, workflowdom.ErrNotDraft):
-		return http.StatusConflict, apierr.CodeWorkflowNotDraft
-	case errors.Is(err, workflowdom.ErrNotActive):
-		return http.StatusConflict, apierr.CodeWorkflowNotActive
-	case errors.Is(err, workflowdom.ErrArchived):
-		return http.StatusConflict, apierr.CodeWorkflowArchived
-	case errors.Is(err, workflowdom.ErrActivateNoNodes):
-		return http.StatusBadRequest, apierr.CodeWorkflowActivateNoNodes
-	case errors.Is(err, workflowdom.ErrActivateDoneStatusUndetermined):
-		return http.StatusBadRequest, apierr.CodeWorkflowActivateDoneStatusUndetermined
-	case errors.Is(err, workflowdom.ErrActivateTaskMissing):
-		return http.StatusBadRequest, apierr.CodeWorkflowActivateTaskMissing
-	case errors.Is(err, workflowdom.ErrActivateNoStatusRules):
-		return http.StatusBadRequest, apierr.CodeWorkflowActivateNoStatusRules
+	// --- Automation errors -----------------------------------------------------
+	case errors.Is(err, automationdom.ErrNotFound):
+		return http.StatusNotFound, apierr.CodeAutomationNotFound
+	case errors.Is(err, automationdom.ErrNameInvalid):
+		return http.StatusBadRequest, apierr.CodeAutomationNameInvalid
+	case errors.Is(err, automationdom.ErrNodeNotFound):
+		return http.StatusNotFound, apierr.CodeAutomationNodeNotFound
+	case errors.Is(err, automationdom.ErrNodeInvalidKind):
+		return http.StatusBadRequest, apierr.CodeAutomationNodeInvalidKind
+	case errors.Is(err, automationdom.ErrNodeInvalidType):
+		return http.StatusBadRequest, apierr.CodeAutomationNodeInvalidType
+	case errors.Is(err, automationdom.ErrNodeConfigInvalid):
+		return http.StatusBadRequest, apierr.CodeAutomationNodeConfigInvalid
+	case errors.Is(err, automationdom.ErrNodeCrossProject):
+		return http.StatusBadRequest, apierr.CodeAutomationNodeCrossProject
+	case errors.Is(err, automationdom.ErrEdgeNotFound):
+		return http.StatusNotFound, apierr.CodeAutomationEdgeNotFound
+	case errors.Is(err, automationdom.ErrEdgeSelfLoop):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeSelfLoop
+	case errors.Is(err, automationdom.ErrEdgeCrossAutomation):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeCrossAutomation
+	case errors.Is(err, automationdom.ErrEdgeCycle):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeCycle
+	case errors.Is(err, automationdom.ErrEdgeIntoTrigger):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeIntoTrigger
+	case errors.Is(err, automationdom.ErrEdgeDuplicate):
+		return http.StatusConflict, apierr.CodeAutomationEdgeDuplicate
+	case errors.Is(err, automationdom.ErrEdgeRequiresTargetTask):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeRequiresTargetTask
+	case errors.Is(err, automationdom.ErrEdgeHandleRequired):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeHandleRequired
+	case errors.Is(err, automationdom.ErrEdgeHandleNotAllowed):
+		return http.StatusBadRequest, apierr.CodeAutomationEdgeHandleNotAllowed
+	case errors.Is(err, automationdom.ErrNotDraft):
+		return http.StatusConflict, apierr.CodeAutomationNotDraft
+	case errors.Is(err, automationdom.ErrNotActive):
+		return http.StatusConflict, apierr.CodeAutomationNotActive
+	case errors.Is(err, automationdom.ErrArchived):
+		return http.StatusConflict, apierr.CodeAutomationArchived
+	case errors.Is(err, automationdom.ErrActivateNoTrigger):
+		return http.StatusBadRequest, apierr.CodeAutomationActivateNoTrigger
+	case errors.Is(err, automationdom.ErrActivateNoAction):
+		return http.StatusBadRequest, apierr.CodeAutomationActivateNoAction
+	case errors.Is(err, automationdom.ErrWebhookTokenInvalid):
+		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -456,7 +463,7 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeTaskLinkDuplicate,
 		apierr.CodeCustomFieldKeyTaken,
 		apierr.CodeTaskTypeNameReserved,
-		apierr.CodeTaskStatusInUseByWorkflow:
+		apierr.CodeTaskStatusInUseByAutomation:
 		return http.StatusConflict
 	case apierr.CodeTaskTypeIsSystem:
 		return http.StatusForbidden
@@ -537,32 +544,28 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentNotSupportedForACPAgent,
 		apierr.CodeAgentConversationInvalidCursor:
 		return http.StatusBadRequest
-	case apierr.CodeWorkflowNotFound,
-		apierr.CodeWorkflowNodeNotFound,
-		apierr.CodeWorkflowStatusRuleNotFound,
-		apierr.CodeWorkflowStatusTransitionNotFound,
-		apierr.CodeWorkflowEdgeNotFound:
+	case apierr.CodeAutomationNotFound,
+		apierr.CodeAutomationNodeNotFound,
+		apierr.CodeAutomationEdgeNotFound:
 		return http.StatusNotFound
-	case apierr.CodeWorkflowNodeDuplicateTask,
-		apierr.CodeWorkflowEdgeDuplicate,
-		apierr.CodeWorkflowNotDraft,
-		apierr.CodeWorkflowNotActive,
-		apierr.CodeWorkflowArchived,
-		apierr.CodeWorkflowStatusRuleConflict,
-		apierr.CodeWorkflowStatusTransitionConflict:
+	case apierr.CodeAutomationEdgeDuplicate,
+		apierr.CodeAutomationNotDraft,
+		apierr.CodeAutomationNotActive,
+		apierr.CodeAutomationArchived:
 		return http.StatusConflict
-	case apierr.CodeWorkflowNameInvalid,
-		apierr.CodeWorkflowNodeTaskCrossProject,
-		apierr.CodeWorkflowStatusRuleCrossProject,
-		apierr.CodeWorkflowStatusTransitionCrossProject,
-		apierr.CodeWorkflowStatusTransitionSelfLoop,
-		apierr.CodeWorkflowEdgeSelfLoop,
-		apierr.CodeWorkflowEdgeCrossWorkflow,
-		apierr.CodeWorkflowEdgeCycle,
-		apierr.CodeWorkflowActivateNoNodes,
-		apierr.CodeWorkflowActivateDoneStatusUndetermined,
-		apierr.CodeWorkflowActivateTaskMissing,
-		apierr.CodeWorkflowActivateNoStatusRules:
+	case apierr.CodeAutomationNameInvalid,
+		apierr.CodeAutomationNodeInvalidKind,
+		apierr.CodeAutomationNodeInvalidType,
+		apierr.CodeAutomationNodeConfigInvalid,
+		apierr.CodeAutomationNodeCrossProject,
+		apierr.CodeAutomationEdgeSelfLoop,
+		apierr.CodeAutomationEdgeCrossAutomation,
+		apierr.CodeAutomationEdgeCycle,
+		apierr.CodeAutomationEdgeIntoTrigger,
+		apierr.CodeAutomationEdgeHandleRequired,
+		apierr.CodeAutomationEdgeHandleNotAllowed,
+		apierr.CodeAutomationActivateNoTrigger,
+		apierr.CodeAutomationActivateNoAction:
 		return http.StatusBadRequest
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest

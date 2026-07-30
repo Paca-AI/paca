@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -241,6 +242,14 @@ func (c *S3Client) EnsureBucket(ctx context.Context, bucket string) error {
 	input := &s3.CreateBucketInput{Bucket: aws.String(bucket)}
 
 	if _, err := c.s3.CreateBucket(ctx, input); err != nil {
+		// Another caller may have won a concurrent create race between our
+		// HeadBucket check and this call; both outcomes mean the bucket is
+		// now present, so they aren't real errors.
+		var alreadyOwned *s3types.BucketAlreadyOwnedByYou
+		var alreadyExists *s3types.BucketAlreadyExists
+		if errors.As(err, &alreadyOwned) || errors.As(err, &alreadyExists) {
+			return nil
+		}
 		return fmt.Errorf("storage: create bucket %q: %w", bucket, err)
 	}
 	return nil

@@ -392,12 +392,12 @@
 				"description": "AI 에이전트 생성, 구성, 삭제"
 			},
 			"workflowsRead": {
-				"label": "워크플로우 보기",
-				"description": "자동화 워크플로우와 그 구성을 조회합니다"
+				"label": "자동화 보기",
+				"description": "자동화 및 해당 설정 조회"
 			},
 			"workflowsWrite": {
-				"label": "워크플로우 관리",
-				"description": "자동화 워크플로우를 생성, 편집, 활성화 및 삭제합니다"
+				"label": "자동화 관리",
+				"description": "자동화 생성, 편집, 활성화 및 삭제"
 			}
 		},
 		"permissionGroups": {
@@ -770,11 +770,6 @@
 			"removeLink": "링크 제거",
 			"empty": "연결된 작업이 없습니다"
 		},
-		"workflows": {
-			"title": "워크플로우",
-			"open": "워크플로우 열기",
-			"empty": "아직 워크플로우가 없습니다"
-		},
 		"attachments": {
 			"title": "첨부 파일",
 			"uploadLabel": "첨부 파일 업로드",
@@ -998,6 +993,7 @@
 		"triggerChat": "채팅",
 		"triggerWriteDescription": "설명 작성",
 		"triggerTask": "작업",
+		"triggerAutomation": "자동화",
 		"iterations_one": "{{count}}회 반복",
 		"iterations_other": "{{count}}회 반복",
 		"prOpened": "PR 열림",
@@ -1219,77 +1215,224 @@
 	"automation": {
 		"list": {
 			"title": "자동화",
-			"subtitle": "작업이 진행됨에 따라 태스크 인계를 자동화하세요",
-			"newWorkflow": "새 워크플로우",
+			"subtitle": "트리거, 조건, 액션으로 태스크 이벤트에 반응하세요",
+			"newAutomation": "새 자동화",
 			"empty": {
-				"title": "아직 워크플로우가 없습니다",
-				"description": "워크플로우를 만들어 작업이 진행됨에 따라 태스크 인계를 자동화하세요.",
-				"createFirstWorkflow": "첫 워크플로우 만들기"
+				"title": "아직 자동화가 없습니다",
+				"description": "조건과 액션으로 태스크 이벤트에 반응하는 자동화를 만들어 보세요.",
+				"createFirst": "첫 자동화 만들기"
 			},
 			"noDescription": "설명 없음",
-			"updated": "{{time}} 업데이트됨"
+			"updated": "{{time}}에 업데이트됨"
 		},
 		"status": {
-			"draft": "초안",
+			"draft": "임시 저장",
 			"active": "활성",
 			"archived": "보관됨"
 		},
 		"createDialog": {
-			"title": "새 자동화 워크플로우",
+			"title": "새 자동화",
 			"nameLabel": "이름",
-			"namePlaceholder": "예: 릴리스 파이프라인",
+			"namePlaceholder": "예: 버그 트리아지",
 			"descriptionLabel": "설명",
-			"descriptionPlaceholder": "이 워크플로우에 대한 선택적 설명…",
+			"descriptionPlaceholder": "이 자동화에 대한 선택적 세부 정보…",
 			"cancel": "취소",
-			"create": "생성"
+			"create": "만들기"
 		},
 		"deleteDialog": {
-			"title": "워크플로우 삭제",
+			"title": "자동화 삭제",
 			"body": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
 			"cancel": "취소",
 			"confirm": "삭제"
 		},
 		"builder": {
-			"addTask": "태스크 추가",
 			"activate": "활성화",
 			"archive": "보관",
 			"deactivate": "비활성화",
-			"readOnlyNoticeArchived": "이 워크플로우는 보관되어 읽기 전용입니다 — 보관된 워크플로우는 편집할 수 없습니다.",
+			"readOnlyNoticeArchived": "이 자동화는 보관되어 읽기 전용입니다 — 보관된 자동화는 편집할 수 없습니다.",
 			"genericError": "문제가 발생했습니다. 다시 시도해 주세요.",
-			"collapseSidebar": "사이드바 접기",
-			"expandSidebar": "사이드바 펼치기"
+			"taskLessTriggerConnectionError": "이 트리거에는 대상 태스크가 설정되어 있지 않아 API 호출 또는 AI 에이전트 실행 액션에만 연결할 수 있습니다 — 조건과 그 외 액션은 실행할 태스크가 필요합니다.",
+			"collapseSidebar": "패널 접기",
+			"expandSidebar": "패널 펼치기",
+			"tabGraph": "그래프",
+			"tabRuns": "실행 기록",
+			"tabDependencyMap": "종속성 맵"
+		},
+		"palette": {
+			"title": "노드 추가",
+			"addTrigger": "트리거 추가",
+			"addCondition": "조건 추가",
+			"addAction": "액션 추가",
+			"builtIn": "기본 제공",
+			"plugins": "플러그인"
+		},
+		"nodeKind": {
+			"trigger": "트리거",
+			"condition": "조건",
+			"action": "액션"
 		},
 		"canvas": {
-			"unknownTask": "알 수 없는 태스크",
-			"deleteEdge": "연결 삭제"
+			"deleteEdge": "연결 삭제",
+			"deleteNode": "노드 삭제"
 		},
-		"addNodeModal": {
-			"title": "워크플로우에 태스크 추가",
-			"searchPlaceholder": "태스크 검색...",
-			"loadingTasks": "태스크 불러오는 중...",
-			"noTasksFound": "태스크를 찾을 수 없습니다"
+		"triggerTypes": {
+			"status_changed": "상태 변경",
+			"task_created": "태스크 생성",
+			"assignee_changed": "담당자 변경",
+			"priority_changed": "우선순위 변경",
+			"tag_added": "태그 추가",
+			"due_date_reached": "마감일 도달",
+			"predecessor_done": "선행 태스크 완료",
+			"cron": "Cron 일정",
+			"api_trigger": "웹훅"
 		},
-		"nodePanel": {
-			"title": "태스크",
-			"removeNode": "워크플로우에서 제거",
-			"removeConfirmTitle": "워크플로우에서 태스크 제거",
-			"removeConfirmBody": "이 태스크를 워크플로우 그래프와 관련 연결에서 제거합니다. 태스크 자체는 영향을 받지 않습니다.",
+		"actionTypes": {
+			"assign": "담당자 지정",
+			"set_status": "상태 설정",
+			"set_priority": "우선순위 설정",
+			"add_tag": "태그 추가",
+			"set_custom_field": "사용자 지정 필드 설정",
+			"trigger_ai_agent": "AI 에이전트 실행",
+			"call_api": "API 호출"
+		},
+		"nodeConfig": {
+			"save": "저장",
 			"cancel": "취소",
-			"removeConfirmAction": "제거"
+			"remove": "노드 삭제",
+			"removeConfirmTitle": "노드 삭제",
+			"removeConfirmBody": "그래프에서 이 노드와 그에 연결된 모든 연결이 삭제됩니다.",
+			"removeConfirmAction": "삭제",
+			"genericFormHint": "이 노드 유형은 플러그인에서 제공됩니다. 설정을 JSON으로 편집하세요 — 향후 릴리스에서 플러그인이 더 풍부한 편집기를 여기에 등록할 수 있게 됩니다.",
+			"trigger": {
+				"anyStatus": "모든 상태",
+				"statusLabel": "상태",
+				"tagLabel": "태그",
+				"anyTag": "모든 태그",
+				"dueDateOffsetLabel": "오프셋(분)",
+				"dueDateOffsetHint": "0 = 마감일 당일, 음수 = 이전, 양수 = 이후",
+				"watchedTasksLabel": "관찰 중인 태스크",
+				"watchedTasksHint": "이 태스크들이 모두 \"완료\" 상태가 되면 실행됩니다",
+				"addWatchedTaskPlaceholder": "관찰할 태스크 추가…",
+				"targetTaskLabel": "대상 태스크 (선택 사항)",
+				"targetTaskHint": "위의 관찰 대상 태스크가 모두 완료되면 이 자동화가 실행되는 대상 태스크입니다 — 선행 태스크와는 다른 태스크로, 자신의 현재 상태를 기준으로 다시 평가됩니다. API 호출 또는 AI 에이전트 실행 액션에만 연결하려면 비워 두세요 (해당 액션들은 태스크가 필요하지 않습니다).",
+				"selectTaskPlaceholder": "태스크 선택…",
+				"searchTaskPlaceholder": "태스크 검색…",
+				"noTasksFound": "일치하는 태스크가 없습니다",
+				"noTasksYet": "이 프로젝트에는 아직 태스크가 없습니다",
+				"loadingMore": "불러오는 중…",
+				"clearTargetTask": "대상 태스크 지우기",
+				"cronExpressionLabel": "Cron 표현식",
+				"cronExpressionPlaceholder": "*/15 * * * *",
+				"cronExpressionHint": "표준 5필드 Cron (분 시 일 월 요일), UTC 기준으로 평가됩니다",
+				"cronTargetTaskHint": "예약된 실행마다 이 자동화가 실행되는 대상 태스크입니다. API 호출 또는 AI 에이전트 실행 액션에만 연결하려면 비워 두세요 (해당 액션들은 태스크가 필요하지 않습니다).",
+				"apiTriggerTargetTaskHint": "아래 웹훅이 호출될 때마다 이 자동화가 실행되는 대상 태스크입니다. API 호출 또는 AI 에이전트 실행 액션에만 연결하려면 비워 두세요 (해당 액션들은 태스크가 필요하지 않습니다).",
+				"webhookUrlLabel": "웹훅 URL",
+				"webhookTokenLabel": "웹훅 토큰",
+				"generateTokenButton": "토큰 생성",
+				"regenerateTokenButton": "토큰 재생성",
+				"tokenShownOnceWarning": "지금 이 토큰을 복사해 두세요 — 다시 표시되지 않습니다.",
+				"copy": "복사",
+				"copied": "복사됨",
+				"noTokenYet": "아직 생성된 토큰이 없습니다"
+			},
+			"condition": {
+				"branchesTitle": "분기",
+				"addBranch": "분기 추가",
+				"branchLabel": "분기 레이블",
+				"elseLabel": "그 외 (일치하는 분기 없음)",
+				"removeBranch": "분기 삭제",
+				"field": "필드",
+				"operator": "연산자",
+				"value": "값",
+				"addGroup": "그룹 추가",
+				"addCondition": "조건 추가",
+				"removeCondition": "삭제",
+				"logicAnd": "AND",
+				"logicOr": "OR",
+				"logicNot": "NOT",
+				"fields": {
+					"status_id": "상태",
+					"task_type_id": "태스크 유형",
+					"importance": "우선순위",
+					"assignee_ids": "담당자",
+					"tags": "태그",
+					"custom_field": "사용자 지정 필드"
+				}
+			},
+			"action": {
+				"memberLabel": "담당자",
+				"agentLabel": "에이전트",
+				"statusLabel": "상태",
+				"importanceLabel": "우선순위",
+				"tagLabel": "태그",
+				"fieldKeyLabel": "필드",
+				"valueLabel": "값",
+				"messageLabel": "에이전트 지시사항",
+				"messagePlaceholder": "예: 이 태스크를 요약하고 우선순위를 제안해 주세요.",
+				"methodLabel": "메서드",
+				"urlLabel": "URL",
+				"urlPlaceholder": "https://example.com/webhook",
+				"headersLabel": "헤더",
+				"headerKeyPlaceholder": "헤더 이름",
+				"headerValuePlaceholder": "값",
+				"addHeader": "헤더 추가",
+				"bodyLabel": "본문"
+			},
+			"target": {
+				"label": "적용 대상",
+				"kinds": {
+					"self": "이 태스크",
+					"parent": "상위 태스크",
+					"children": "하위 태스크",
+					"blocks": "차단하는 태스크",
+					"is_blocked_by": "차단받는 태스크",
+					"relates_to": "관련 태스크",
+					"duplicates": "중복하는 태스크",
+					"is_duplicated_by": "중복되는 태스크",
+					"other": "다른 태스크…"
+				},
+				"matchMode": {
+					"any": "하나라도 일치",
+					"all": "모두 일치"
+				}
+			},
+			"description": {
+				"dueDateAt": "마감일에 실행",
+				"dueDateBefore": "마감일 {{minutes}}분 전",
+				"dueDateAfter": "마감일 {{minutes}}분 후",
+				"branches": "분기 {{count}}개",
+				"priority": "우선순위: {{level}}",
+				"fieldValue": "{{field}} = {{value}}",
+				"unassigned": "담당자 없음",
+				"notConfigured": "설정되지 않음",
+				"elseShort": "그 외",
+				"branchFallback": "분기 {{n}}",
+				"cronSchedule": "{{expression}} 에 실행",
+				"webhookReady": "웹훅 설정됨",
+				"callApiSummary": "{{method}} {{host}}"
+			}
 		},
-		"statusRules": {
-			"title": "상태 → 담당자 규칙",
-			"hint": "태스크가 다음 상태 중 하나로 변경될 때마다 자동으로 멤버에게 할당합니다. 이는 이 워크플로우의 모든 태스크에 적용됩니다 — 누군가 태스크의 상태를 직접 변경하거나, 선행 태스크가 완료되어 후속 태스크가 현재 상태로 재평가될 때 모두 해당합니다.",
-			"noRules": "아직 규칙 없음",
-			"statusPlaceholder": "상태",
-			"memberPlaceholder": "담당자"
+		"runHistory": {
+			"title": "실행 기록",
+			"empty": "아직 실행 기록이 없습니다",
+			"status": {
+				"running": "실행 중",
+				"completed": "완료",
+				"failed": "실패"
+			},
+			"stepStatus": {
+				"completed": "완료",
+				"failed": "실패",
+				"skipped": "건너뜀 (이미 적용됨)"
+			},
+			"startedAt": "{{time}}에 시작됨",
+			"viewSteps": "단계 보기"
 		},
-		"statusTransitions": {
-			"title": "상태 워크플로우",
-			"hint": "각 상태에서 작업이 완료되었을 때 다음에 올 상태를 정의합니다. 이는 후속 태스크의 잠금을 해제하고, AI 에이전트 담당자에게 추측 대신 다음에 설정해야 할 상태를 정확히 알려줍니다. 워크플로우 생성 시 프로젝트의 상태로부터 기본 체인이 자동으로 생성됩니다.",
-			"nextStatusLabel": "다음 상태",
-			"terminalOption": "__END__",
-			"ambiguousWarning": "다음 상태가 없는 상태가 정확히 하나여야 합니다(이것이 워크플로우의 __END__ 상태가 됩니다). 현재 {{count}}개 구성됨."
+		"dependencyMap": {
+			"title": "종속성 맵",
+			"subtitle": "다른 태스크의 완료를 기다리는 모든 자동화를 보여주는 읽기 전용 화면",
+			"empty": "아직 설정된 선행 태스크 종속성이 없습니다",
+			"watchedTasks": "{{count}}개 태스크 대기 중"
 		}
 	}
 }

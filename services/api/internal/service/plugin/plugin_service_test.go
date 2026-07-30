@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------

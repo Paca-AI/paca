@@ -3,9 +3,10 @@ package handler
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
-	"github.com/google/uuid"
 )
 
 // taskTypeLister is the minimal task-service surface needed to seed default

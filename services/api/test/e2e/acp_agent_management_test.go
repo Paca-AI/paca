@@ -236,6 +236,7 @@ func newFakeAIAgentBridgeStatusServer(t *testing.T, internalKey string, statusBy
 // ---------------------------------------------------------------------------
 
 func TestE2EACPAgent_CreateValidation(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
@@ -318,6 +319,7 @@ func TestE2EACPAgent_CreateValidation(t *testing.T) {
 // column defaults to ” and several LLM providers resolve their own default,
 // so requiring it here would reject otherwise-valid requests.
 func TestE2EACPAgent_LLMBaseURLNotRequired(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
@@ -333,6 +335,7 @@ func TestE2EACPAgent_LLMBaseURLNotRequired(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EACPAgent_UpdateDoesNotCrossContaminateFields(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
@@ -402,6 +405,7 @@ func TestE2EACPAgent_UpdateDoesNotCrossContaminateFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EACPAgent_BridgeTokenLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
@@ -480,6 +484,7 @@ func TestE2EACPAgent_BridgeTokenLifecycle(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestE2EACPAgent_BridgeStatusProxy(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
@@ -554,6 +559,7 @@ func TestE2EACPAgent_BridgeStatusProxy(t *testing.T) {
 // provider has no such constraint on acp_command, so it still reaches
 // Postgres as a bare column write.
 func TestE2EACPAgent_MalformedACPCommandSurfacesAsError(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 	client, token, projID, roleID := seedACPUser(t, env)
 
@@ -581,6 +587,7 @@ func TestE2EACPAgent_MalformedACPCommandSurfacesAsError(t *testing.T) {
 // looked up on every ACP bridge WebSocket handshake and needs an index to
 // avoid a full table scan per connection attempt.
 func TestE2EACPAgent_BridgeTokenHashIndexExists(t *testing.T) {
+	t.Parallel()
 	env := newE2EEnv(t)
 
 	var count int

@@ -15,11 +15,11 @@ var (
 	ErrTypeIsSystem     = errors.New("task type: system types cannot be modified")
 	ErrTypeNameReserved = errors.New("task type: name is reserved for system types")
 
-	ErrStatusNotFound        = errors.New("task status: not found")
-	ErrStatusNameInvalid     = errors.New("task status: name is empty or invalid")
-	ErrStatusCategoryInvalid = errors.New("task status: invalid category value")
-	ErrStatusReorderInvalid  = errors.New("task status: provided status IDs do not match the project's statuses")
-	ErrStatusInUseByWorkflow = errors.New("task status: still referenced by an automation workflow")
+	ErrStatusNotFound          = errors.New("task status: not found")
+	ErrStatusNameInvalid       = errors.New("task status: name is empty or invalid")
+	ErrStatusCategoryInvalid   = errors.New("task status: invalid category value")
+	ErrStatusReorderInvalid    = errors.New("task status: provided status IDs do not match the project's statuses")
+	ErrStatusInUseByAutomation = errors.New("task status: still referenced by an automation")
 
 	ErrCustomFieldNotFound    = errors.New("custom field: not found")
 	ErrCustomFieldKeyInvalid  = errors.New("custom field: key is empty or invalid")

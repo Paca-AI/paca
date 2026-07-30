@@ -74,12 +74,12 @@ vi.mock("../../tools/task-activity-tools.js", () => ({
 		.fn()
 		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
 }));
-vi.mock("../../tools/workflow-tools.js", () => ({
-	getWorkflowTools: vi.fn(() => [
-		{ name: "get_workflow" },
-		{ name: "create_workflow" },
+vi.mock("../../tools/automation-tools.js", () => ({
+	getAutomationTools: vi.fn(() => [
+		{ name: "get_automation" },
+		{ name: "create_automation" },
 	]),
-	handleWorkflowTool: vi
+	handleAutomationTool: vi
 		.fn()
 		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
 }));
@@ -94,6 +94,7 @@ vi.mock("../../tools/doc-activity-tools.js", () => ({
 }));
 
 import { handleAttachmentTool } from "../../tools/attachment-tools.js";
+import { handleAutomationTool } from "../../tools/automation-tools.js";
 import { handleDocActivityTool } from "../../tools/doc-activity-tools.js";
 import { handleFilesystemDocTool } from "../../tools/filesystem-doc-tools.js";
 import { getAllTools, handleToolCall } from "../../tools/index.js";
@@ -104,7 +105,6 @@ import { handleTaskActivityTool } from "../../tools/task-activity-tools.js";
 import { handleTaskTool } from "../../tools/task-tools.js";
 import { handleTaskTypeTool } from "../../tools/task-type-tools.js";
 import { handleViewTool } from "../../tools/view-tools.js";
-import { handleWorkflowTool } from "../../tools/workflow-tools.js";
 
 // Stub clients – these are only passed through to domain handlers (which are mocked)
 const stubClients = {
@@ -113,7 +113,7 @@ const stubClients = {
 	viewsClient: {} as any,
 	taskExtendedClient: {} as any,
 	docClient: {} as any,
-	workflowClient: {} as any,
+	automationClient: {} as any,
 };
 
 function makeRequest(name: string, args: Record<string, unknown> = {}) {
@@ -142,7 +142,7 @@ describe("getAllTools", () => {
 		expect(names).toContain("list_views");
 		expect(names).toContain("list_task_attachments");
 		expect(names).toContain("list_task_activities");
-		expect(names).toContain("get_workflow");
+		expect(names).toContain("get_automation");
 		expect(names).toContain("list_doc_activities");
 	});
 });
@@ -324,40 +324,40 @@ describe("handleToolCall – activity routing", () => {
 	});
 });
 
-describe("handleToolCall – workflow tool routing", () => {
-	it("routes get_workflow to handleWorkflowTool", async () => {
-		await handleToolCall(makeRequest("get_workflow"), stubClients);
-		expect(handleWorkflowTool).toHaveBeenCalledWith(
-			"get_workflow",
+describe("handleToolCall – automation tool routing", () => {
+	it("routes get_automation to handleAutomationTool", async () => {
+		await handleToolCall(makeRequest("get_automation"), stubClients);
+		expect(handleAutomationTool).toHaveBeenCalledWith(
+			"get_automation",
 			{},
-			stubClients.workflowClient,
+			stubClients.automationClient,
 		);
 	});
 
-	it("routes create_workflow to handleWorkflowTool", async () => {
-		await handleToolCall(makeRequest("create_workflow"), stubClients);
-		expect(handleWorkflowTool).toHaveBeenCalledWith(
-			"create_workflow",
+	it("routes create_automation to handleAutomationTool", async () => {
+		await handleToolCall(makeRequest("create_automation"), stubClients);
+		expect(handleAutomationTool).toHaveBeenCalledWith(
+			"create_automation",
 			{},
-			stubClients.workflowClient,
+			stubClients.automationClient,
 		);
 	});
 
-	it("routes update_workflow to handleWorkflowTool", async () => {
-		await handleToolCall(makeRequest("update_workflow"), stubClients);
-		expect(handleWorkflowTool).toHaveBeenCalledWith(
-			"update_workflow",
+	it("routes update_automation to handleAutomationTool", async () => {
+		await handleToolCall(makeRequest("update_automation"), stubClients);
+		expect(handleAutomationTool).toHaveBeenCalledWith(
+			"update_automation",
 			{},
-			stubClients.workflowClient,
+			stubClients.automationClient,
 		);
 	});
 
-	it("routes delete_workflow to handleWorkflowTool", async () => {
-		await handleToolCall(makeRequest("delete_workflow"), stubClients);
-		expect(handleWorkflowTool).toHaveBeenCalledWith(
-			"delete_workflow",
+	it("routes delete_automation to handleAutomationTool", async () => {
+		await handleToolCall(makeRequest("delete_automation"), stubClients);
+		expect(handleAutomationTool).toHaveBeenCalledWith(
+			"delete_automation",
 			{},
-			stubClients.workflowClient,
+			stubClients.automationClient,
 		);
 	});
 });

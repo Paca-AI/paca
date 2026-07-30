@@ -37,7 +37,6 @@ import { SubtasksSection } from "./subtasks-section";
 import { TaskHeader } from "./task-header";
 import { TaskLinksSection } from "./task-links-section";
 import type { TaskDetailModalProps } from "./types";
-import { WorkflowsSection } from "./workflows-section";
 
 // Re-exports for consumers
 export type {
@@ -164,14 +163,6 @@ export function TaskDetailModal({
 		navigate({
 			to: "/projects/$projectId/tasks/$taskId",
 			params: { projectId, taskId },
-		});
-	}
-
-	function navigateToWorkflow(workflowId: string) {
-		if (!projectId) return;
-		navigate({
-			to: "/projects/$projectId/automation/$workflowId",
-			params: { projectId, workflowId },
 		});
 	}
 
@@ -462,15 +453,6 @@ export function TaskDetailModal({
 								taskIdPrefix={taskIdPrefix}
 								canEdit={canEdit}
 								onNavigateToTask={navigateToTask}
-							/>
-						)}
-
-						{/* Workflows this task belongs to */}
-						{projectId && (
-							<WorkflowsSection
-								projectId={projectId}
-								taskId={task.id}
-								onNavigateToWorkflow={navigateToWorkflow}
 							/>
 						)}
 

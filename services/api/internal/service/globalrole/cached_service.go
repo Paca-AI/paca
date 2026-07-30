@@ -5,9 +5,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	"github.com/Paca-AI/api/internal/platform/cache"
-	"github.com/google/uuid"
 )
 
 const globalRolesKey = "global-roles"
