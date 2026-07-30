@@ -84,7 +84,7 @@ _AUTOMATION_MESSAGE_PROMPT = (
     "1. If the instruction references a task, load it (`get_task` / "
     "`get_task_by_number` / `list_tasks`) and use `paca`'s Step 0.5 "
     "status-routing table to pick the specialized skill that fits, then "
-    "`invoke_skill(name=\"...\")` immediately.\n"
+    '`invoke_skill(name="...")` immediately.\n'
     "2. If it doesn't reference a task, act directly with the appropriate "
     "Paca MCP tools — there's nothing to route on.\n"
     "3. If you get stuck without enough information: add a task comment "
