@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -592,47 +593,73 @@ const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comme
 // the filter, ordered newest-first. It fetches one row beyond limit to detect
 // whether more pages remain, without a separate COUNT query.
 func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
-	// Build dynamic WHERE clause
-	where := "WHERE 1=1"
-	args := []interface{}{}
-	idx := 1
+	b := newQueryBuilder()
 
-	if in.AgentID != nil {
-		where += fmt.Sprintf(" AND agent_id = $%d", idx)
-		args = append(args, in.AgentID.String())
-		idx++
+	if len(in.AgentIDs) > 0 {
+		b.addInClause("agent_id", uuidSliceToStrSlice(in.AgentIDs))
 	}
 	if in.ProjectID != nil {
-		where += fmt.Sprintf(" AND project_id = $%d", idx)
-		args = append(args, in.ProjectID.String())
-		idx++
+		p := b.placeholder()
+		b.args = append(b.args, in.ProjectID.String())
+		b.whereClauses = append(b.whereClauses, "project_id = "+p)
 	}
 	if in.TaskID != nil {
-		where += fmt.Sprintf(" AND task_id = $%d", idx)
-		args = append(args, in.TaskID.String())
-		idx++
+		p := b.placeholder()
+		b.args = append(b.args, in.TaskID.String())
+		b.whereClauses = append(b.whereClauses, "task_id = "+p)
 	}
-	if in.Status != nil {
-		where += fmt.Sprintf(" AND status = $%d", idx)
-		args = append(args, *in.Status)
-		idx++
+	if len(in.Statuses) > 0 {
+		b.addInClause("status", in.Statuses)
+	}
+	if len(in.TriggerTypes) > 0 {
+		b.addInClause("trigger_type", in.TriggerTypes)
+	}
+	if in.CreatedAfter != nil {
+		p := b.placeholder()
+		b.args = append(b.args, *in.CreatedAfter)
+		b.whereClauses = append(b.whereClauses, "created_at >= "+p)
+	}
+	if in.CreatedBefore != nil {
+		p := b.placeholder()
+		b.args = append(b.args, *in.CreatedBefore)
+		b.whereClauses = append(b.whereClauses, "created_at < "+p)
+	}
+	if in.Search != nil {
+		if q := strings.TrimSpace(*in.Search); q != "" {
+			p := b.placeholder()
+			b.args = append(b.args, q)
+			// Matches conversations with at least one event whose extracted
+			// text (agent_conversation_event_search_text, migration 000028)
+			// contains the search terms. plainto_tsquery (not to_tsquery) so
+			// arbitrary user input never raises a tsquery syntax error.
+			b.whereClauses = append(b.whereClauses,
+				"EXISTS (SELECT 1 FROM agent_conversation_events e WHERE e.conversation_id = agent_conversations.id "+
+					"AND to_tsvector('simple', agent_conversation_event_search_text(e.payload)) @@ plainto_tsquery('simple', "+p+"))")
+		}
 	}
 	if in.CursorAfter != nil {
 		cur, err := agentdom.DecodeConversationCursor(*in.CursorAfter)
 		if err != nil {
 			return nil, false, fmt.Errorf("%w: %s", agentdom.ErrConversationInvalidCursor, err)
 		}
-		where += fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)", idx, idx+1)
-		args = append(args, cur.CreatedAt, cur.ID)
-		idx += 2
+		p1 := b.placeholder()
+		p2 := b.placeholder()
+		b.args = append(b.args, cur.CreatedAt, cur.ID)
+		b.whereClauses = append(b.whereClauses, fmt.Sprintf("(created_at, id) < (%s, %s)", p1, p2))
 	}
 
-	limitP := idx
-	args = append(args, limit+1)
+	limitP := b.placeholder()
+	b.args = append(b.args, limit+1)
+
+	whereSQL := "1=1"
+	if len(b.whereClauses) > 0 {
+		whereSQL += " AND " + strings.Join(b.whereClauses, " AND ")
+	}
 
 	var recs []agentConversationRecord
-	if err := r.db.SelectContext(ctx, &recs, `SELECT `+conversationCols+` FROM agent_conversations `+where+
-		fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT $%d`, limitP), args...); err != nil {
+	query := `SELECT ` + conversationCols + ` FROM agent_conversations WHERE ` + whereSQL +
+		fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT %s`, limitP)
+	if err := r.db.SelectContext(ctx, &recs, query, b.args...); err != nil {
 		return nil, false, err
 	}
 

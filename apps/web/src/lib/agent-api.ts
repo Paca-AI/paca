@@ -143,16 +143,18 @@ export type ConversationStatus =
 	| "failed"
 	| "stopped";
 
+export type ConversationTriggerType =
+	| "task_assigned"
+	| "comment_mention"
+	| "chat_message"
+	| "description_write"
+	| "automation_message";
+
 export interface AgentConversation {
 	id: string;
 	agent_id: string;
 	project_id: string;
-	trigger_type:
-		| "task_assigned"
-		| "comment_mention"
-		| "chat_message"
-		| "description_write"
-		| "automation_message";
+	trigger_type: ConversationTriggerType;
 	task_id?: string | null;
 	comment_id?: string | null;
 	chat_session_id?: string | null;
@@ -485,15 +487,68 @@ export interface ConversationListResult {
 
 export const CONVERSATIONS_PAGE_SIZE = 20;
 
+export interface ListConversationsOptions {
+	agentIds?: string[];
+	statuses?: ConversationStatus[];
+	triggerTypes?: ConversationTriggerType[];
+	/**
+	 * Inclusive/exclusive created_at range, as local calendar dates
+	 * ("YYYY-MM-DD") in the browser's own timezone — e.g. from the date
+	 * picker. Converted to precise UTC-instant boundaries for the request
+	 * (see localDateStartISO/localDateExclusiveEndISO) so the filtered range
+	 * matches the user's local day rather than a UTC calendar day.
+	 */
+	createdAfter?: string;
+	createdBefore?: string;
+	/** Free-text search matched server-side against conversation event content. */
+	search?: string;
+	cursor?: string;
+	pageSize?: number;
+}
+
+/** Start of the local calendar day `dateStr` ("YYYY-MM-DD"), as a UTC instant. */
+function localDateStartISO(dateStr: string): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+}
+
+/**
+ * Exclusive end of the local calendar day `dateStr` — i.e. the start of the
+ * next local day — as a UTC instant. Sending this (rather than the bare
+ * date) means a range picked in the user's local timezone covers the same
+ * wall-clock day server-side, instead of being reinterpreted as a UTC day.
+ */
+function localDateExclusiveEndISO(dateStr: string): string {
+	const [y, m, d] = dateStr.split("-").map(Number);
+	return new Date(y, m - 1, d + 1, 0, 0, 0, 0).toISOString();
+}
+
+function buildConversationQueryParams(opts: ListConversationsOptions = {}) {
+	const params: Record<string, string | number> = {};
+	params.page_size = opts.pageSize ?? CONVERSATIONS_PAGE_SIZE;
+	if (opts.cursor) params.cursor = opts.cursor;
+	if (opts.agentIds && opts.agentIds.length > 0)
+		params.agent_id = opts.agentIds.join(",");
+	if (opts.statuses && opts.statuses.length > 0)
+		params.status = opts.statuses.join(",");
+	if (opts.triggerTypes && opts.triggerTypes.length > 0)
+		params.trigger_type = opts.triggerTypes.join(",");
+	if (opts.createdAfter)
+		params.created_after = localDateStartISO(opts.createdAfter);
+	if (opts.createdBefore)
+		params.created_before = localDateExclusiveEndISO(opts.createdBefore);
+	if (opts.search?.trim()) params.search = opts.search.trim();
+	return params;
+}
+
 export async function listConversations(
 	projectId: string,
-	options?: { agentId?: string; cursor?: string; pageSize?: number },
+	options?: ListConversationsOptions,
 ): Promise<ConversationListResult> {
-	const { agentId, cursor, pageSize = CONVERSATIONS_PAGE_SIZE } = options ?? {};
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<ConversationListResult>
 	>(`/projects/${projectId}/conversations`, {
-		params: { agent_id: agentId, cursor, page_size: pageSize },
+		params: buildConversationQueryParams(options),
 	});
 	return data.data;
 }
@@ -655,15 +710,20 @@ export const acpBridgeStatusQueryOptions = (
 // every "agent.*" event instead of polling. Cursor-paginated — each page
 // carries the opaque cursor to resume after its last item, so fetchNextPage
 // just forwards the backend's next_cursor until it comes back null.
+export type ConversationFilters = Omit<
+	ListConversationsOptions,
+	"cursor" | "pageSize"
+>;
+
 export const conversationsQueryOptions = (
 	projectId: string,
-	agentId?: string,
+	filters: ConversationFilters = {},
 ) =>
 	infiniteQueryOptions({
-		queryKey: ["projects", projectId, "conversations", { agentId }],
+		queryKey: ["projects", projectId, "conversations", filters],
 		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
 			listConversations(projectId, {
-				agentId,
+				...filters,
 				cursor: pageParam,
 				pageSize: CONVERSATIONS_PAGE_SIZE,
 			}),
@@ -742,4 +802,15 @@ export const CONVERSATION_STATUS_COLORS: Record<ConversationStatus, string> = {
 	finished: "text-emerald-500",
 	failed: "text-destructive",
 	stopped: "text-muted-foreground",
+};
+
+export const CONVERSATION_TRIGGER_TYPE_LABELS: Record<
+	ConversationTriggerType,
+	string
+> = {
+	task_assigned: "Task Assigned",
+	comment_mention: "Comment Mention",
+	chat_message: "Chat Message",
+	description_write: "Description Write",
+	automation_message: "Automation",
 };

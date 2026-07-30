@@ -954,7 +954,7 @@ func TestListConversations_Success(t *testing.T) {
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
 	cursor := "some-cursor"
-	filter := agentdom.ListConversationsFilter{ProjectID: &projectID, AgentID: &agentID, CursorAfter: &cursor}
+	filter := agentdom.ListConversationsFilter{ProjectID: &projectID, AgentIDs: []uuid.UUID{agentID}, CursorAfter: &cursor}
 	result, hasMore, err := svc.ListConversations(context.Background(), filter, 20)
 
 	assert.NoError(t, err)
@@ -962,7 +962,7 @@ func TestListConversations_Success(t *testing.T) {
 	assert.Equal(t, convs, result)
 	assert.Equal(t, 20, gotLimit)
 	assert.Equal(t, &projectID, gotFilter.ProjectID)
-	assert.Equal(t, &agentID, gotFilter.AgentID)
+	assert.Equal(t, []uuid.UUID{agentID}, gotFilter.AgentIDs)
 	assert.Equal(t, &cursor, gotFilter.CursorAfter)
 }
 

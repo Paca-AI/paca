@@ -997,10 +997,25 @@
 		"iterations_one": "{{count}}회 반복",
 		"iterations_other": "{{count}}회 반복",
 		"prOpened": "PR 열림",
+		"filters": {
+			"title": "필터",
+			"agent": "에이전트",
+			"status": "상태",
+			"type": "유형",
+			"dateRange": "날짜 범위",
+			"searchPlaceholder": "메시지 검색…",
+			"dateFrom": "시작일",
+			"dateTo": "종료일",
+			"clearAll": "필터 초기화"
+		},
 		"list": {
 			"empty": {
 				"title": "아직 대화가 없습니다",
 				"description": "에이전트에게 작업이 배정되거나 누군가 메시지를 보내면 대화가 시작됩니다."
+			},
+			"emptyFiltered": {
+				"title": "일치하는 대화가 없습니다",
+				"description": "필터를 조정하거나 초기화해 보세요."
 			}
 		},
 		"detail": {

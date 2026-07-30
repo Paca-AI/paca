@@ -997,10 +997,25 @@
 		"iterations_one": "{{count}} iteration",
 		"iterations_other": "{{count}} iterations",
 		"prOpened": "PR opened",
+		"filters": {
+			"title": "Filters",
+			"agent": "Agent",
+			"status": "Status",
+			"type": "Type",
+			"dateRange": "Date range",
+			"searchPlaceholder": "Search messages…",
+			"dateFrom": "From",
+			"dateTo": "To",
+			"clearAll": "Clear filters"
+		},
 		"list": {
 			"empty": {
 				"title": "No conversations yet",
 				"description": "Conversations start when a task is assigned to an agent or someone messages one."
+			},
+			"emptyFiltered": {
+				"title": "No matching conversations",
+				"description": "Try adjusting or clearing your filters."
 			}
 		},
 		"detail": {

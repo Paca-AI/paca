@@ -997,10 +997,25 @@
 		"iterations_one": "{{count}} lượt lặp",
 		"iterations_other": "{{count}} lượt lặp",
 		"prOpened": "PR đã mở",
+		"filters": {
+			"title": "Bộ lọc",
+			"agent": "Tác nhân",
+			"status": "Trạng thái",
+			"type": "Loại",
+			"dateRange": "Khoảng thời gian",
+			"searchPlaceholder": "Tìm kiếm tin nhắn…",
+			"dateFrom": "Từ ngày",
+			"dateTo": "Đến ngày",
+			"clearAll": "Xóa bộ lọc"
+		},
 		"list": {
 			"empty": {
 				"title": "Chưa có hội thoại nào",
 				"description": "Hội thoại bắt đầu khi một nhiệm vụ được giao cho agent hoặc khi có ai đó nhắn tin cho agent đó."
+			},
+			"emptyFiltered": {
+				"title": "Không có hội thoại phù hợp",
+				"description": "Hãy thử điều chỉnh hoặc xóa bộ lọc của bạn."
 			}
 		},
 		"detail": {
