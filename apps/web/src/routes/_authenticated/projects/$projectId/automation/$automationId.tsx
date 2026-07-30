@@ -646,6 +646,7 @@ function AutomationBuilderPage() {
 					/>
 					{selectedNode && (
 						<AutomationNodeConfigPanel
+							key={selectedNode.id}
 							node={selectedNode}
 							projectId={projectId}
 							automationId={automationId}
