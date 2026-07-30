@@ -117,8 +117,26 @@ func (l *ConditionLeaf) EvaluateAgainstTasks(tasks []*taskdom.Task, matchMode st
 	return false
 }
 
-// Validate reports whether the leaf is well-formed: it has a field, a
-// field_key when the field is custom_field, and a recognized operator.
+// validOperatorsByField is the set of operators each field's compare
+// function (below) actually implements. Kept in sync with compareUUIDPtr,
+// compareInt, compareStringSlice, and compareAny — an operator not listed
+// here for a given field falls to that function's `default: return false`
+// case, silently and permanently evaluating false rather than erroring, so
+// Validate rejects the combination up front instead of letting it through
+// to a defense-in-depth-only runtime no-op.
+var validOperatorsByField = map[Field]map[Operator]bool{
+	FieldStatus:      {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldTaskType:    {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldPriority:    {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true},
+	FieldAssignee:    {OpContains: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldTag:         {OpContains: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldCustomField: {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true, OpGreaterThan: true, OpLessThan: true},
+}
+
+// Validate reports whether the leaf is well-formed: it has a recognized
+// field, a field_key when the field is custom_field, a recognized operator,
+// and that operator is actually implemented for that field (see
+// validOperatorsByField).
 func (l *ConditionLeaf) Validate() error {
 	if l == nil {
 		return nil
@@ -133,6 +151,13 @@ func (l *ConditionLeaf) Validate() error {
 	case OpEquals, OpNotEquals, OpContains, OpGreaterThan, OpLessThan, OpIsEmpty, OpIsNotEmpty:
 	default:
 		return fmt.Errorf("automation: unknown condition operator %q", l.Operator)
+	}
+	allowed, ok := validOperatorsByField[l.Field]
+	if !ok {
+		return fmt.Errorf("automation: unknown condition field %q", l.Field)
+	}
+	if !allowed[l.Operator] {
+		return fmt.Errorf("automation: operator %q is not valid for field %q", l.Operator, l.Field)
 	}
 	return nil
 }

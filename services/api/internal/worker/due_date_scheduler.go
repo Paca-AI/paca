@@ -110,6 +110,17 @@ func (s *DueDateScheduler) tick(ctx context.Context) {
 		s.log.Warn("due-date scheduler: leader lock error", "err", err)
 		return
 	}
+	// Release the lock as soon as this tick's work is done rather than
+	// waiting out the full TTL: the TTL is a crash-safety net (so a replica
+	// that dies mid-tick doesn't wedge the lock forever), not the intended
+	// holding period — leaving it held for its full 2x-interval TTL would
+	// block every replica's (including this one's) next real tick, one
+	// interval later, from ever acquiring the lock at all.
+	defer func() {
+		if delErr := s.client.Del(ctx, s.leaderKey).Err(); delErr != nil {
+			s.log.Warn("due-date scheduler: release leader lock", "err", delErr)
+		}
+	}()
 
 	candidates, err := s.consumer.repo.ListDueDateCandidates(ctx)
 	if err != nil {

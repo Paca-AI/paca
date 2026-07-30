@@ -123,6 +123,36 @@ func TestConditionLeaf_Validate(t *testing.T) {
 	}
 }
 
+func TestConditionLeaf_Validate_RejectsUnknownField(t *testing.T) {
+	if err := leaf(Field("bogus"), OpEquals, "x").Validate(); err == nil {
+		t.Fatal("expected error for unrecognized field")
+	}
+}
+
+func TestConditionLeaf_Validate_RejectsOperatorNotImplementedForField(t *testing.T) {
+	// compareStringSlice (tags/assignee_ids) has no OpEquals case — it would
+	// silently and permanently evaluate false rather than erroring, so
+	// Validate must reject the combination instead of letting it through.
+	if err := leaf(FieldTag, OpEquals, "urgent").Validate(); err == nil {
+		t.Fatal("expected error for tags + equals (not implemented by compareStringSlice)")
+	}
+	if err := leaf(FieldAssignee, OpEquals, "x").Validate(); err == nil {
+		t.Fatal("expected error for assignee_ids + equals (not implemented by compareStringSlice)")
+	}
+	// compareInt (importance) has no is_empty/is_not_empty/contains case.
+	if err := leaf(FieldPriority, OpIsEmpty, nil).Validate(); err == nil {
+		t.Fatal("expected error for importance + is_empty (not implemented by compareInt)")
+	}
+	// Sanity check: the combinations each compare function DOES implement
+	// still pass.
+	if err := leaf(FieldTag, OpContains, "urgent").Validate(); err != nil {
+		t.Fatalf("expected tags + contains to be valid, got %v", err)
+	}
+	if err := leaf(FieldPriority, OpGreaterThan, 1).Validate(); err != nil {
+		t.Fatalf("expected importance + greater_than to be valid, got %v", err)
+	}
+}
+
 func TestConditionLeaf_EvaluateAgainstTasks_EmptyIsAlwaysFalse(t *testing.T) {
 	n := leaf(FieldTag, OpIsEmpty, nil)
 	if n.EvaluateAgainstTasks(nil, "any") {

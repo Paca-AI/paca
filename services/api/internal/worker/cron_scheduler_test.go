@@ -155,7 +155,7 @@ func TestCronScheduler_Tick_SkipsMisconfiguredNode(t *testing.T) {
 	}
 }
 
-func TestCronScheduler_Tick_LeaderLockPreventsDoubleFireWithinSameTTLWindow(t *testing.T) {
+func TestCronScheduler_Tick_SkipsWhenAnotherReplicaHoldsTheLock(t *testing.T) {
 	targetTaskID := uuid.New()
 	node := newCronNode("* * * * *", targetTaskID, time.Now().Add(-time.Hour))
 	repo := &fakeCronRepo{
@@ -165,13 +165,36 @@ func TestCronScheduler_Tick_LeaderLockPreventsDoubleFireWithinSameTTLWindow(t *t
 	scheduler, client := newTestCronScheduler(t, repo, &fakeCronTaskReader{task: &taskdom.Task{ID: targetTaskID}})
 	defer func() { _ = client.Close() }()
 
-	// Two ticks in immediate succession simulate two replicas (or one
-	// replica ticking faster than the lock's TTL) racing for the same
-	// window — only the first should actually acquire the lock and fire.
+	// Simulate another replica already holding the lock for this tick.
+	if err := client.SetArgs(context.Background(), cronSchedulerLeaderKey, "1", redis.SetArgs{TTL: time.Minute, Mode: "NX"}).Err(); err != nil {
+		t.Fatalf("setup: seed leader lock: %v", err)
+	}
+
+	scheduler.tick(context.Background())
+
+	if len(repo.recordFireCalls) != 0 {
+		t.Fatalf("expected tick to skip while another replica holds the lock, got %d fires", len(repo.recordFireCalls))
+	}
+}
+
+func TestCronScheduler_Tick_ReleasesLockAfterProcessingSoTheNextTickCanFire(t *testing.T) {
+	targetTaskID := uuid.New()
+	node := newCronNode("* * * * *", targetTaskID, time.Now().Add(-time.Hour))
+	repo := &fakeCronRepo{
+		candidates: []automationdom.CronCandidate{{Node: node, LastFiredAt: nil}},
+		automation: &automationdom.Automation{ID: uuid.New(), ProjectID: uuid.New(), Status: automationdom.StatusActive},
+	}
+	scheduler, client := newTestCronScheduler(t, repo, &fakeCronTaskReader{task: &taskdom.Task{ID: targetTaskID}})
+	defer func() { _ = client.Close() }()
+
+	// Two sequential ticks, one interval apart, is exactly what production
+	// looks like with a single replica: the lock's TTL (2x interval) must
+	// not survive past the tick that acquired it, or every subsequent real
+	// tick would find the key still present and skip forever.
 	scheduler.tick(context.Background())
 	scheduler.tick(context.Background())
 
-	if len(repo.recordFireCalls) != 1 {
-		t.Fatalf("expected the leader lock to block the second tick's fire, got %d fires", len(repo.recordFireCalls))
+	if len(repo.recordFireCalls) != 2 {
+		t.Fatalf("expected the lock to be released after each tick so the next tick can also fire, got %d fires", len(repo.recordFireCalls))
 	}
 }

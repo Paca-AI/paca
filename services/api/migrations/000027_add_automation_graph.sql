@@ -184,14 +184,11 @@ CREATE INDEX IF NOT EXISTS idx_automation_webhook_tokens_node ON automation_webh
 -- agentsvc.TriggerDirectMessage) instead of assigning a task, using a new
 -- agent_conversations.trigger_type value this constraint must allow.
 --
--- Note: 000011_add_description_write_trigger.sql (re-executed on every
--- boot, no migration-tracking table) re-asserts this same constraint by
--- name with an older value list, and always runs before this file. If an
--- automation_message row already exists by the time these run again on a
--- later boot, 000011's own DROP+ADD will fail outright before reaching
--- this statement — the constraint can only safely keep growing if a value
--- added here is folded into 000011 directly once that's a problem in
--- practice.
+-- 'automation_message' is also listed in 000011_add_description_write_trigger.sql's
+-- copy of this same constraint, which always runs first on every boot (see
+-- that file's comment) — this ADD CONSTRAINT here is therefore a no-op
+-- re-assertion of a constraint 000011 already established with the right
+-- value list, kept for this file's own readability/self-containedness.
 -- -------------------------------------------------------------------------
 
 ALTER TABLE agent_conversations

@@ -15,13 +15,15 @@ import (
 	"time"
 )
 
-// IsPrivateOrInternalIP reports whether ip is a loopback, link-local, or
-// private-range address (RFC 1918 IPv4 ranges, IPv6 unique local addresses).
+// IsPrivateOrInternalIP reports whether ip is a loopback, link-local,
+// private-range, unspecified, or otherwise non-publicly-routable address
+// (RFC 1918 and CGNAT IPv4 ranges, IPv6 unique local and multicast
+// addresses).
 func IsPrivateOrInternalIP(ip net.IP) bool {
-	if ip.IsLoopback() {
+	if ip.IsLoopback() || ip.IsUnspecified() {
 		return true
 	}
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip.IsLinkLocalUnicast() || ip.IsMulticast() {
 		return true
 	}
 
@@ -30,6 +32,7 @@ func IsPrivateOrInternalIP(ip net.IP) bool {
 		"172.16.0.0/12",
 		"192.168.0.0/16",
 		"169.254.0.0/16", // link-local
+		"100.64.0.0/10",  // CGNAT shared address space (RFC 6598) — some cloud metadata endpoints live here
 	}
 	for _, cidr := range privateIPv4Ranges {
 		_, ipNet, _ := net.ParseCIDR(cidr)
