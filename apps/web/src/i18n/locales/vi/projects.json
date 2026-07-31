@@ -661,7 +661,6 @@
 		"chatWithAgent": "Trò chuyện với AI Agent",
 		"newConversation": "Hội thoại mới",
 		"agentLabel": "Agent",
-		"noAgentsConfigured": "Chưa có agent nào được cấu hình cho dự án này.",
 		"selectAgentPlaceholder": "Chọn một agent…",
 		"selectAgentFirst": "Vui lòng chọn một agent trước."
 	},

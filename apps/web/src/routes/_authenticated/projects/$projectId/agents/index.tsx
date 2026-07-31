@@ -81,6 +81,9 @@ const CUSTOM = "__custom__";
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/agents/",
 )({
+	validateSearch: (search: Record<string, unknown>) => ({
+		create: search.create === true || search.create === "true",
+	}),
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
 		await Promise.all([
 			queryClient.ensureQueryData(agentsQueryOptions(projectId)),
@@ -1014,6 +1017,7 @@ function AgentCard({
 function AgentsPage() {
 	const { t } = useTranslation("projects");
 	const { projectId } = Route.useParams();
+	const { create } = Route.useSearch();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
 
@@ -1021,7 +1025,7 @@ function AgentsPage() {
 	const { data: agents = [], isLoading } = useQuery(
 		agentsQueryOptions(projectId),
 	);
-	const [createOpen, setCreateOpen] = useState(false);
+	const [createOpen, setCreateOpen] = useState(create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);
 	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(
 		null,

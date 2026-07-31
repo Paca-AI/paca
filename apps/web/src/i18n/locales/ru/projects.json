@@ -675,7 +675,6 @@
 		"chatWithAgent": "Чат с AI-агентом",
 		"newConversation": "Новый диалог",
 		"agentLabel": "Агент",
-		"noAgentsConfigured": "Для этого проекта агенты не настроены.",
 		"selectAgentPlaceholder": "Выберите агента…",
 		"selectAgentFirst": "Сначала выберите агента."
 	},

@@ -1,58 +1,97 @@
-import type { InfiniteData } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { MessageSquare } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import type { ThreadMessageLike } from "@assistant-ui/react";
 import {
-	type ConversationListResult,
-	conversationsQueryOptions,
+	type AppendMessage,
+	AssistantRuntimeProvider,
+	useExternalStoreRuntime,
+} from "@assistant-ui/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Thread } from "@/components/assistant-ui/thread";
+import {
+	AgentPickerContext,
+	AgentPickerInline,
+	type AgentPickerState,
+} from "@/components/projects/agents/agent-picker";
+import {
+	agentsQueryOptions,
+	conversationQueryOptions,
+	startChatSession,
 } from "@/lib/agent-api";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/conversations/",
 )({
-	// The parent `conversations` layout route's loader already populated the
-	// conversations list in the query cache, so this can read it synchronously
-	// instead of refetching — landing directly on the most recently created
-	// conversation instead of showing a bare "pick one" screen. The list's
-	// first page is ordered newest-first, so its first item is the latest
-	// conversation without needing to scan every loaded page.
-	//
-	// `preload` is true when this loader runs speculatively (e.g. the sidebar
-	// nav Link's hover-intent preload, since the router defaults to
-	// `defaultPreload: "intent"`) rather than for a real navigation — must not
-	// redirect in that case, or merely hovering the nav item silently
-	// navigates the page away from wherever the user actually is.
-	loader: ({ context: { queryClient }, params: { projectId }, preload }) => {
-		if (preload) return;
-
-		const data = queryClient.getQueryData<InfiniteData<ConversationListResult>>(
-			conversationsQueryOptions(projectId).queryKey,
-		);
-		const latest = data?.pages[0]?.items[0];
-		if (!latest) return;
-
-		throw redirect({
-			to: "/projects/$projectId/conversations/$conversationId",
-			params: { projectId, conversationId: latest.id },
-			replace: true,
-		});
-	},
-	component: EmptyConversationState,
+	component: NewConversationThread,
 });
 
-function EmptyConversationState() {
+// No conversation is selected — landing on `/conversations` directly (via the
+// sidebar nav item or the "New conversation" button) always shows this blank
+// composer, never an existing conversation. Render a live assistant-ui
+// Thread with the agent picker docked in the composer itself
+// (`ComposerStart`) — same box as the message input, no separate step
+// before you can type. Same component used by the floating chat widget.
+function NewConversationThread() {
 	const { t } = useTranslation("projects");
+	const { projectId } = Route.useParams();
+	const qc = useQueryClient();
+	const navigate = useNavigate();
+
+	const [agentId, setAgentId] = useState("");
+	const { data: agents = [], isLoading: agentsLoading } = useQuery(
+		agentsQueryOptions(projectId),
+	);
+
+	const onNew = async (message: AppendMessage) => {
+		if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
+		if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+			throw new Error(t("agents.conversationView.textOnlyMessage"));
+		}
+		const text = message.content[0].text;
+
+		const result = await startChatSession(projectId, agentId, {
+			message: text,
+		});
+		qc.setQueryData(
+			conversationQueryOptions(projectId, result.conversation.id).queryKey,
+			result.conversation,
+		);
+		void qc.invalidateQueries({
+			queryKey: ["projects", projectId, "conversations"],
+		});
+		navigate({
+			to: "/projects/$projectId/conversations/$conversationId",
+			params: { projectId, conversationId: result.conversation.id },
+		});
+	};
+
+	const messages: ThreadMessageLike[] = [];
+
+	const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+		messages,
+		isRunning: false,
+		convertMessage: (m) => m,
+		onNew,
+		isSendDisabled: !agentId,
+	});
+
+	const pickerState = useMemo<AgentPickerState>(
+		() => ({
+			agents,
+			agentsLoading,
+			agentId,
+			onAgentChange: setAgentId,
+			projectId,
+		}),
+		[agents, agentsLoading, agentId, projectId],
+	);
+
 	return (
-		<div className="flex flex-col h-full items-center justify-center gap-3 text-center px-6">
-			<MessageSquare className="size-10 text-muted-foreground/40" />
-			<div>
-				<p className="text-sm font-medium">
-					{t("conversationsPage.detail.empty.title")}
-				</p>
-				<p className="text-xs text-muted-foreground mt-1 max-w-xs">
-					{t("conversationsPage.detail.empty.description")}
-				</p>
-			</div>
-		</div>
+		<AgentPickerContext.Provider value={pickerState}>
+			<AssistantRuntimeProvider runtime={runtime}>
+				<Thread components={{ ComposerStart: AgentPickerInline }} />
+			</AssistantRuntimeProvider>
+		</AgentPickerContext.Provider>
 	);
 }

@@ -661,7 +661,6 @@
 		"chatWithAgent": "AIエージェントとチャット",
 		"newConversation": "新しい会話",
 		"agentLabel": "エージェント",
-		"noAgentsConfigured": "このプロジェクトにはエージェントが設定されていません。",
 		"selectAgentPlaceholder": "エージェントを選択…",
 		"selectAgentFirst": "まずエージェントを選択してください。"
 	},

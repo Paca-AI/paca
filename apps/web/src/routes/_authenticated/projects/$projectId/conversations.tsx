@@ -5,12 +5,13 @@ import {
 	Outlet,
 	useParams,
 } from "@tanstack/react-router";
-import { Clock, MessageSquare, Zap } from "lucide-react";
+import { Clock, MessageSquare, Plus, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ConversationFilters } from "@/components/projects/agents/conversation-filters";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import {
@@ -166,10 +167,23 @@ function ConversationsLayout() {
 	return (
 		<div className="flex flex-1 min-h-0">
 			<div className="w-80 shrink-0 border-r border-border/50 flex flex-col min-h-0">
-				<div className="shrink-0 border-b border-border/50 px-4 py-3">
+				<div className="shrink-0 border-b border-border/50 px-4 py-3 flex items-center justify-between gap-2">
 					<h2 className="text-sm font-semibold">
 						{t("conversationsPage.title")}
 					</h2>
+					<Button
+						size="sm"
+						className="gap-1.5"
+						render={
+							<Link
+								to="/projects/$projectId/conversations"
+								params={{ projectId }}
+							/>
+						}
+					>
+						<Plus className="size-3.5" />
+						{t("aiChat.newConversation")}
+					</Button>
 				</div>
 				<ConversationFilters
 					agents={agents}

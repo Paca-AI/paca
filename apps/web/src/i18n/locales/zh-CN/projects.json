@@ -661,7 +661,6 @@
 		"chatWithAgent": "与 AI 智能体聊天",
 		"newConversation": "新建对话",
 		"agentLabel": "智能体",
-		"noAgentsConfigured": "此项目尚未配置智能体。",
 		"selectAgentPlaceholder": "选择一个智能体…",
 		"selectAgentFirst": "请先选择一个智能体。"
 	},

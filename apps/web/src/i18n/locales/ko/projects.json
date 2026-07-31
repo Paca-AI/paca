@@ -661,7 +661,6 @@
 		"chatWithAgent": "AI 에이전트와 채팅",
 		"newConversation": "새 대화",
 		"agentLabel": "에이전트",
-		"noAgentsConfigured": "이 프로젝트에 구성된 에이전트가 없습니다.",
 		"selectAgentPlaceholder": "에이전트를 선택하세요…",
 		"selectAgentFirst": "먼저 에이전트를 선택해 주세요."
 	},

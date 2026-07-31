@@ -5,17 +5,15 @@ import {
 } from "@assistant-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bot, Plus, X } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
-import { Button } from "@/components/ui/button";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+	AgentPickerContext,
+	AgentPickerInline,
+	type AgentPickerState,
+} from "@/components/projects/agents/agent-picker";
+import { Button } from "@/components/ui/button";
 import {
 	type AgentConversation,
 	agentsQueryOptions,
@@ -35,63 +33,13 @@ interface AIChatFloatProps {
 	projectId: string;
 }
 
-// ── Agent picker ──────────────────────────────────────────────────────────────
-//
-// Shown in Thread's empty-state Welcome slot so picking an agent is the first
-// thing the user sees. `ThreadComponents.Welcome` takes no props, so the
-// picker's data is passed down via this small context instead.
-
-interface AgentPickerState {
-	agents: { id: string; name: string }[];
-	agentsLoading: boolean;
-	agentId: string;
-	onAgentChange: (id: string) => void;
-}
-
-const AgentPickerContext = createContext<AgentPickerState | null>(null);
-
-function FloatingChatWelcome() {
-	const { t } = useTranslation("projects");
-	const picker = useContext(AgentPickerContext);
-	if (!picker) return null;
-	const { agents, agentsLoading, agentId, onAgentChange } = picker;
-
-	return (
-		<div className="mb-4 flex flex-col items-center gap-3">
-			<div className="w-full space-y-1.5 text-left">
-				<p className="text-xs font-medium text-muted-foreground">
-					{t("aiChat.agentLabel")}
-				</p>
-				{agentsLoading ? (
-					<div className="h-9 animate-pulse rounded-md bg-muted" />
-				) : agents.length === 0 ? (
-					<p className="text-xs text-muted-foreground">
-						{t("aiChat.noAgentsConfigured")}
-					</p>
-				) : (
-					<Select
-						value={agentId}
-						onValueChange={(v) => v && onAgentChange(v)}
-						items={agents.map((a) => ({ value: a.id, label: a.name }))}
-					>
-						<SelectTrigger className="h-9 text-sm">
-							<SelectValue placeholder={t("aiChat.selectAgentPlaceholder")} />
-						</SelectTrigger>
-						<SelectContent>
-							{agents.map((agent) => (
-								<SelectItem key={agent.id} value={agent.id}>
-									{agent.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				)}
-			</div>
-		</div>
-	);
-}
-
-const THREAD_COMPONENTS = { Welcome: FloatingChatWelcome };
+// Floating chatbox is a compact overlay — no room for (and no need for) the
+// full-page welcome heading, so suppress it here; the conversation page's
+// blank composer still shows it via Thread's default.
+const THREAD_COMPONENTS = {
+	ComposerStart: AgentPickerInline,
+	Welcome: () => null,
+};
 
 // ── Failed conversation banner ────────────────────────────────────────────────
 
@@ -284,8 +232,17 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	}, [conversationId, isTerminal, projectId]);
 
 	const pickerState = useMemo<AgentPickerState>(
-		() => ({ agents, agentsLoading, agentId, onAgentChange: setAgentId }),
-		[agents, agentsLoading, agentId],
+		() => ({
+			agents,
+			agentsLoading,
+			agentId,
+			onAgentChange: setAgentId,
+			// Locked once a conversation exists — the agent is fixed for its
+			// lifetime; switching it here would silently do nothing useful.
+			disabled: !!conversationId,
+			projectId,
+		}),
+		[agents, agentsLoading, agentId, conversationId, projectId],
 	);
 
 	return (
