@@ -106,19 +106,16 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 
 	now := time.Now()
 	a := &agentdom.Agent{
-		ID:                uuid.New(),
-		ProjectID:         projectID,
-		Name:              name,
-		Handle:            handle,
-		AgentType:         agentType,
-		SystemPrompt:      in.SystemPrompt,
-		MaxIterations:     in.MaxIterations,
-		TimeoutMinutes:    in.TimeoutMinutes,
-		GitCommitterName:  in.GitCommitterName,
-		GitCommitterEmail: in.GitCommitterEmail,
-		CreatedBy:         in.CreatedBy,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:             uuid.New(),
+		ProjectID:      projectID,
+		Name:           name,
+		Handle:         handle,
+		AgentType:      agentType,
+		MaxIterations:  in.MaxIterations,
+		TimeoutMinutes: in.TimeoutMinutes,
+		CreatedBy:      in.CreatedBy,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if agentType == agentdom.AgentTypeACP {
@@ -140,6 +137,19 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.LLMModel = in.LLMModel
 		a.LLMAPIKeySecret = encryptedKey
 		a.LLMBaseURL = in.LLMBaseURL
+		// System prompt and git committer identity are LLM-only (see the
+		// doc comment on Agent.SystemPrompt) — an ACP agent's local CLI
+		// owns both of these itself, so they're left unset for ACP agents
+		// rather than accepting values that would never take effect.
+		a.SystemPrompt = in.SystemPrompt
+		a.GitCommitterName = in.GitCommitterName
+		a.GitCommitterEmail = in.GitCommitterEmail
+		if a.GitCommitterName == "" {
+			a.GitCommitterName = "paca-agent"
+		}
+		if a.GitCommitterEmail == "" {
+			a.GitCommitterEmail = "280579135+paca-agent@users.noreply.github.com"
+		}
 	}
 	const maxIterationsLimit = 500
 	const defaultMaxIterations = 500
@@ -154,12 +164,6 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.TimeoutMinutes = 30
 	} else if a.TimeoutMinutes > timeoutMinutesLimit {
 		a.TimeoutMinutes = timeoutMinutesLimit
-	}
-	if a.GitCommitterName == "" {
-		a.GitCommitterName = "paca-agent"
-	}
-	if a.GitCommitterEmail == "" {
-		a.GitCommitterEmail = "280579135+paca-agent@users.noreply.github.com"
 	}
 
 	// Atomically create the agent and its project membership in one transaction.
@@ -203,7 +207,11 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 	// erroring, matching CreateAgent's per-type field selection. Anything
 	// other than the explicit ACP type is treated as LLM (its default, as
 	// in CreateAgent) so an agent loaded with an unset AgentType isn't
-	// silently locked out of updating its LLM fields.
+	// silently locked out of updating its LLM fields. SystemPrompt and the
+	// git committer identity fields ride along in this same block — like
+	// the LLM fields, they're meaningless on an ACP agent (see the doc
+	// comment on Agent.SystemPrompt), so a request that sets them on one is
+	// silently ignored too.
 	if a.AgentType != agentdom.AgentTypeACP {
 		if in.LLMProvider != nil {
 			a.LLMProvider = *in.LLMProvider
@@ -221,6 +229,15 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if in.LLMBaseURL != nil {
 			a.LLMBaseURL = *in.LLMBaseURL
 		}
+		if in.SystemPrompt != nil {
+			a.SystemPrompt = *in.SystemPrompt
+		}
+		if in.GitCommitterName != nil {
+			a.GitCommitterName = *in.GitCommitterName
+		}
+		if in.GitCommitterEmail != nil {
+			a.GitCommitterEmail = *in.GitCommitterEmail
+		}
 	}
 	if a.AgentType == agentdom.AgentTypeACP {
 		if in.ACPProvider != nil {
@@ -235,9 +252,6 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired
 		}
-	}
-	if in.SystemPrompt != nil {
-		a.SystemPrompt = *in.SystemPrompt
 	}
 	const maxIterationsLimit = 500
 	const defaultMaxIterations = 500
@@ -260,12 +274,6 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			v = timeoutMinutesLimit
 		}
 		a.TimeoutMinutes = v
-	}
-	if in.GitCommitterName != nil {
-		a.GitCommitterName = *in.GitCommitterName
-	}
-	if in.GitCommitterEmail != nil {
-		a.GitCommitterEmail = *in.GitCommitterEmail
 	}
 	a.UpdatedAt = time.Now()
 

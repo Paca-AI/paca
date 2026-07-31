@@ -33,15 +33,20 @@ type Agent struct {
 	// ACPBridgeTokenHash is the SHA-256 hex digest of the current bridge
 	// token, used only for verification — never serialized to API responses.
 	ACPBridgeTokenHash string
-	SystemPrompt       string
-	MaxIterations      int
-	TimeoutMinutes     int
-	GitCommitterName   string
-	GitCommitterEmail  string
-	CreatedBy          *uuid.UUID
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	DeletedAt          *time.Time
+	// SystemPrompt, GitCommitterName, and GitCommitterEmail are LLM-only —
+	// an ACP agent runs via the user's own local ACP client (see
+	// ACPProvider), which owns its own system prompt and git identity, so
+	// Paca never forwards these; they stay zero-valued on acp-type agents
+	// (see CreateAgent/UpdateAgent in service/agent).
+	SystemPrompt      string
+	MaxIterations     int
+	TimeoutMinutes    int
+	GitCommitterName  string
+	GitCommitterEmail string
+	CreatedBy         *uuid.UUID
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	DeletedAt         *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer
