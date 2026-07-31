@@ -599,6 +599,24 @@ export async function pauseConversation(
 	return data.data;
 }
 
+// sendConversationMessage replies to a conversation directly by id, rather
+// than through a chat session — used for ACP conversations of any trigger
+// type (task_assigned, comment_mention, etc.), which stay resumable straight
+// through a terminal status since the user's local bridge daemon keeps them
+// alive regardless of why they were started. LLM conversations don't use
+// this path today; that flow is still the chat-session-based sendChatMessage
+// above.
+export async function sendConversationMessage(
+	projectId: string,
+	conversationId: string,
+	message: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/projects/${projectId}/conversations/${conversationId}/messages`,
+		{ message },
+	);
+}
+
 // heartbeatConversation refreshes a chat conversation's idle timer on the
 // ai-agent service — pinged periodically while a conversation is loaded in a
 // browser tab so its sandbox isn't reclaimed as long as the tab stays open.

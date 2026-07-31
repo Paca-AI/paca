@@ -709,11 +709,28 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID uuid.
 }
 
 // SendConversationMessage publishes a chat message to an active conversation.
+//
+// ACP-type agents route through sendACPConversationMessage instead: unlike an
+// LLM agent (where a follow-up message only ever makes sense while a turn is
+// actually running), an ACP agent's local bridge daemon keeps a conversation
+// alive by conversation_id regardless of which trigger type started it
+// (task_assigned, comment_mention, description_write, automation_message —
+// not just chat_message), so it can always be resumed here too — mirroring
+// SendChatMessage's terminal-status resume for chat sessions.
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID)
 	if err != nil {
 		return err
 	}
+
+	agent, err := s.repo.FindAgentByID(ctx, c.AgentID)
+	if err != nil {
+		return err
+	}
+	if agent.AgentType == agentdom.AgentTypeACP {
+		return s.sendACPConversationMessage(ctx, c, message, memberID)
+	}
+
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
 		return agentdom.ErrConversationNotRunning
 	}
@@ -722,6 +739,39 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 		"project_id":      projectID.String(),
 		"message":         message,
 		"member_id":       memberID.String(),
+	})
+}
+
+// sendACPConversationMessage resumes an ACP conversation of any trigger type
+// so it can be continued from the chat box, not just chat_message ones.
+func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, memberID uuid.UUID) error {
+	status := agentdom.ConversationStatus(c.Status)
+	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
+		// Still mid-turn (or not yet picked up by the worker) — reject
+		// instead of dispatching a second start_turn on top of one the
+		// bridge hasn't finished: ConversationRunner.start_turn's own
+		// "still running" guard would report the *in-flight* turn as
+		// failed, not queue this message behind it.
+		return agentdom.ErrConversationBusy
+	}
+	// Claim atomically so two concurrent replies can't both win and
+	// double-publish a resume trigger for the same conversation_id — same
+	// race guard as SendChatMessage's resume paths.
+	claimed, err := s.repo.ClaimConversationStatus(ctx, c.ID, string(status), string(agentdom.ConversationStatusRunning))
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return agentdom.ErrConversationBusy
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+		"conversation_id": c.ID.String(),
+		"project_id":      c.ProjectID.String(),
+		"agent_id":        c.AgentID.String(),
+		"trigger_type":    c.TriggerType,
+		"actor_member_id": memberID.String(),
+		"message":         message,
+		"repo_plugin_ids": strings.Join(s.gatherRepoPluginIDs(ctx), ","),
 	})
 }
 

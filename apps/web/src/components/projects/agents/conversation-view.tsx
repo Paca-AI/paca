@@ -29,6 +29,7 @@ import {
 	heartbeatConversation,
 	pauseConversation,
 	sendChatMessage,
+	sendConversationMessage,
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
@@ -42,9 +43,11 @@ import {
 function ConversationControls({
 	projectId,
 	conversation,
+	isACP,
 }: {
 	projectId: string;
 	conversation: AgentConversation;
+	isACP: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -69,11 +72,16 @@ function ConversationControls({
 	// otherwise have no way to stop a running conversation at all. Show this
 	// control for every non-terminal status (queued, running, paused) so a
 	// stop action is always available, regardless of trigger type.
+	//
+	// ACP is the exception: its composer is now shown for every trigger type
+	// (see canReply below), so the composer's own Cancel/pause button is
+	// always reachable there — this header Stop button (a full teardown,
+	// distinct from pause) would just be redundant.
 	const isTerminal =
 		conversation.status === "finished" ||
 		conversation.status === "failed" ||
 		conversation.status === "stopped";
-	if (isTerminal) return null;
+	if (isTerminal || isACP) return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -139,16 +147,18 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	// ACP conversations never really end server-side — the user's local
-	// bridge daemon keeps the underlying conversation alive in memory (see
-	// SendChatMessage's ACP resume path in services/api), so a reply can
-	// always continue the same conversation_id regardless of status. LLM
-	// conversations still need a fresh conversation once terminal (handled
+	const isChatMessage = conversation?.trigger_type === "chat_message";
+	// ACP conversations stay replyable for every trigger type (task_assigned,
+	// comment_mention, etc.), not just chat_message ones — the user's local
+	// bridge daemon keeps a conversation alive by conversation_id regardless
+	// of why it started, and regardless of status (see
+	// SendConversationMessage's ACP branch in services/api), so a reply can
+	// always continue it. LLM conversations are unchanged: only chat_message
+	// ones with a live session, and never once terminal (handled
 	// transparently by onNew below via the returned conversation id).
-	const canReply =
-		conversation?.trigger_type === "chat_message" &&
-		!!conversation.chat_session_id &&
-		(!isTerminal || isACP);
+	const canReply = isACP
+		? !isChatMessage || !!conversation?.chat_session_id
+		: isChatMessage && !!conversation?.chat_session_id && !isTerminal;
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -165,13 +175,23 @@ export function ConversationView({
 	};
 
 	const onNew = async (message: AppendMessage) => {
-		if (!conversation?.chat_session_id) {
+		if (!conversation) {
 			throw new Error(t("agents.conversationView.conversationEnded"));
 		}
 		const text = extractTextOnlyContent(message);
 		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+
+		if (!conversation.chat_session_id) {
+			// ACP conversation of a non-chat trigger type (task_assigned,
+			// comment_mention, etc.) — reply in place on the same
+			// conversation_id rather than through a chat session.
+			await sendConversationMessage(projectId, conversation.id, text);
+			invalidate();
+			return;
+		}
+
 		const result = await sendChatMessage(
 			projectId,
 			conversation.agent_id,
@@ -259,9 +279,9 @@ export function ConversationView({
 	// no visible messages. When messages exist, render the Thread normally so
 	// the user can trace what happened before the failure — the header's
 	// status badge and the bottom error footer already convey the failure.
-	// Skipped when canReply is true (an ACP chat conversation, which stays
-	// replyable straight through a failure) so the user can retry instead of
-	// hitting a dead end.
+	// Skipped when canReply is true (an ACP conversation, which stays
+	// replyable straight through a failure regardless of trigger type) so
+	// the user can retry instead of hitting a dead end.
 	if (
 		isError ||
 		(conversation.status === "failed" && messages.length === 0 && !canReply)
@@ -327,6 +347,7 @@ export function ConversationView({
 					<ConversationControls
 						projectId={projectId}
 						conversation={conversation}
+						isACP={isACP}
 					/>
 				</div>
 			</div>

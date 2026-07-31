@@ -990,6 +990,7 @@ func TestSendConversationMessage_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return conversation, nil
 		},
@@ -1013,6 +1014,7 @@ func TestSendConversationMessage_NotRunning(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
 		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return conversation, nil
 		},
@@ -1025,6 +1027,135 @@ func TestSendConversationMessage_NotRunning(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotRunning)
+}
+
+// TestSendConversationMessage_ACPResumesAnyTriggerType covers ACP agents'
+// exception: a message can resume a conversation of *any* trigger type
+// (task_assigned, comment_mention, etc.), not just chat_message, once it's
+// no longer actively running — the local bridge daemon keeps it alive by
+// conversation_id regardless of what started it.
+func TestSendConversationMessage_ACPResumesAnyTriggerType(t *testing.T) {
+	for _, status := range []string{"paused", "finished", "failed", "stopped"} {
+		t.Run(status, func(t *testing.T) {
+			projectID := uuid.New()
+			conversationID := uuid.New()
+			conversation := &agentdom.AgentConversation{
+				ID:          conversationID,
+				ProjectID:   projectID,
+				TriggerType: "task_assigned",
+				Status:      status,
+			}
+
+			var claimedFrom, claimedTo string
+			repo := &mockAgentRepo{
+				findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+				findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+					return conversation, nil
+				},
+				claimConversationStatus: func(_ context.Context, id uuid.UUID, from, to string) (bool, error) {
+					if id != conversationID {
+						t.Fatalf("unexpected conversation id claimed: %s", id)
+					}
+					claimedFrom, claimedTo = from, to
+					return true, nil
+				},
+			}
+			projRepo := &mockProjectRepo{}
+			pluginRepo := &mockPluginRepo{}
+			svc := New(repo, projRepo, nil, pluginRepo)
+
+			err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New())
+
+			assert.NoError(t, err)
+			assert.Equal(t, status, claimedFrom)
+			assert.Equal(t, "running", claimedTo)
+		})
+	}
+}
+
+func TestSendConversationMessage_ACPBusyWhenRunning(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ProjectID:   projectID,
+		TriggerType: "comment_mention",
+		Status:      "running",
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
+	assert.False(t, claimCalled, "must not attempt to claim/dispatch on top of an in-flight turn")
+}
+
+func TestSendConversationMessage_ACPBusyWhenQueued(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ProjectID:   projectID,
+		TriggerType: "task_assigned",
+		Status:      "queued",
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
+}
+
+func TestSendConversationMessage_ACPResumeRaceLoses(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ProjectID:   projectID,
+		TriggerType: "task_assigned",
+		Status:      "finished",
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			// Another concurrent request already claimed the resume.
+			return false, nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
 
 func TestStopConversation_Success(t *testing.T) {
