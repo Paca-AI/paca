@@ -774,6 +774,14 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 // finish is left with status "paused" rather than "finished". A reply while
 // paused resumes that same conversation (same conversation_id, so the agent
 // keeps the sandbox/history) instead of cold-starting a new one.
+//
+// ACP-type agents get the same treatment even once a conversation goes
+// terminal (finished/failed/stopped): unlike an LLM agent's cloud sandbox,
+// which is gone for good once its chat conversation ends, an ACP agent's
+// local bridge daemon (apps/acp-bridge) keeps the underlying Conversation
+// object alive in memory for as long as the daemon keeps running. So a reply
+// can always continue the *same* conversation_id, no matter how long ago it
+// went terminal — see runner.ConversationRunner.start_turn's resume branch.
 func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
@@ -810,8 +818,27 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 				return nil, agentdom.ErrConversationBusy
 			}
 		case agentdom.ConversationStatusFinished, agentdom.ConversationStatusFailed, agentdom.ConversationStatusStopped:
-			// Terminal status — fall through to create a new conversation.
-			conv = nil
+			agent, err := s.repo.FindAgentByID(ctx, session.AgentID)
+			if err != nil {
+				return nil, err
+			}
+			if agent.AgentType == agentdom.AgentTypeACP {
+				// Resume — same atomic-claim treatment as the paused case
+				// above, just starting from a terminal status instead of
+				// "paused" (ACP conversations never reach "paused" — see the
+				// doc comment above).
+				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
+					latest.Status, string(agentdom.ConversationStatusRunning))
+				if err != nil {
+					return nil, err
+				}
+				if !claimed {
+					return nil, agentdom.ErrConversationBusy
+				}
+			} else {
+				// Terminal status — fall through to create a new conversation.
+				conv = nil
+			}
 		}
 	}
 

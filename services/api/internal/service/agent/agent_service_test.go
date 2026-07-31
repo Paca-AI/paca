@@ -1352,6 +1352,174 @@ func TestSendChatMessage_ResumesPausedConversation(t *testing.T) {
 	assert.Equal(t, "running", claimedTo)
 }
 
+// TestSendChatMessage_ACPResumesTerminalConversation covers the ACP-specific
+// exception to IsTerminal: replying to a finished/failed/stopped
+// conversation must resume the same conversation_id (the local bridge daemon
+// keeps it alive indefinitely) instead of creating a new one.
+func TestSendChatMessage_ACPResumesTerminalConversation(t *testing.T) {
+	for _, status := range []string{"finished", "failed", "stopped"} {
+		t.Run(status, func(t *testing.T) {
+			projectID := uuid.New()
+			agentID := uuid.New()
+			memberID := uuid.New()
+			sessionID := uuid.New()
+			terminalConvID := uuid.New()
+			session := &agentdom.AgentChatSession{
+				ID:        sessionID,
+				AgentID:   agentID,
+				ProjectID: projectID,
+			}
+			terminal := &agentdom.AgentConversation{
+				ID:            terminalConvID,
+				AgentID:       agentID,
+				ProjectID:     projectID,
+				ChatSessionID: &sessionID,
+				Status:        status,
+			}
+
+			createCalled := false
+			var claimedFrom, claimedTo string
+			repo := &mockAgentRepo{
+				findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+				findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+					return session, nil
+				},
+				findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+					return terminal, nil
+				},
+				claimConversationStatus: func(_ context.Context, id uuid.UUID, from, to string) (bool, error) {
+					if id != terminalConvID {
+						t.Fatalf("unexpected conversation id claimed: %s", id)
+					}
+					claimedFrom, claimedTo = from, to
+					return true, nil
+				},
+				createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+					createCalled = true
+					return nil
+				},
+				updateChatSession: func(_ context.Context, _ *agentdom.AgentChatSession) error {
+					return nil
+				},
+			}
+			projRepo := &mockProjectRepo{}
+			pluginRepo := &mockPluginRepo{}
+			svc := New(repo, projRepo, nil, pluginRepo)
+
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+
+			assert.NoError(t, err)
+			assert.False(t, createCalled, "resuming a terminal ACP conversation must not create a new one")
+			assert.Equal(t, terminalConvID, resultConv.ID)
+			assert.Equal(t, status, claimedFrom)
+			assert.Equal(t, "running", claimedTo)
+		})
+	}
+}
+
+// TestSendChatMessage_ACPResumeRaceLoses mirrors
+// TestSendChatMessage_ResumeRaceLoses for the terminal-ACP resume path: two
+// concurrent replies to the same terminal conversation must not both win.
+func TestSendChatMessage_ACPResumeRaceLoses(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	memberID := uuid.New()
+	sessionID := uuid.New()
+	terminalConvID := uuid.New()
+	session := &agentdom.AgentChatSession{
+		ID:        sessionID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+	}
+	terminal := &agentdom.AgentConversation{
+		ID:            terminalConvID,
+		AgentID:       agentID,
+		ProjectID:     projectID,
+		ChatSessionID: &sessionID,
+		Status:        "finished",
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeACP),
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+		findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return terminal, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			// Another concurrent request already claimed the resume.
+			return false, nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+
+	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
+}
+
+// TestSendChatMessage_LLMTerminalCreatesNewConversation is a regression guard
+// for the non-ACP path: an LLM agent's terminal conversation must still
+// create a brand new conversation, unlike the ACP resume behavior above.
+func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	memberID := uuid.New()
+	sessionID := uuid.New()
+	oldConvID := uuid.New()
+	session := &agentdom.AgentChatSession{
+		ID:        sessionID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+	}
+	finished := &agentdom.AgentConversation{
+		ID:            oldConvID,
+		AgentID:       agentID,
+		ProjectID:     projectID,
+		ChatSessionID: &sessionID,
+		Status:        "finished",
+	}
+
+	createCalled := false
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+		findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return finished, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+		createConversation: func(_ context.Context, conv *agentdom.AgentConversation) error {
+			createCalled = true
+			if conv.ID == oldConvID {
+				t.Fatalf("expected a freshly generated conversation id, got the old one")
+			}
+			return nil
+		},
+		updateChatSession: func(_ context.Context, _ *agentdom.AgentChatSession) error {
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello again")
+
+	assert.NoError(t, err)
+	assert.True(t, createCalled, "a terminal LLM conversation must create a new conversation")
+	assert.False(t, claimCalled, "must not attempt to claim/resume a terminal LLM conversation")
+	assert.NotEqual(t, oldConvID, resultConv.ID)
+}
+
 func TestSendChatMessage_ResumeRaceLoses(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
