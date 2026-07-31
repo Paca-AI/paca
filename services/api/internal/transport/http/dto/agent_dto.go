@@ -45,6 +45,8 @@ type AgentResponse struct {
 // LLM fields are required when agent_type is "llm" (the default when
 // omitted); ACP fields are required when agent_type is "acp" — validated in
 // the handler since it depends on the value of AgentType itself.
+// SystemPrompt, GitCommitterName, and GitCommitterEmail are LLM-only too —
+// the service silently drops them for "acp" agents (see agent.CreateAgent).
 type CreateAgentRequest struct {
 	Name              string    `json:"name" binding:"required"`
 	Handle            string    `json:"handle" binding:"required"`

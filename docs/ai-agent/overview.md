@@ -247,12 +247,13 @@ Each template also carries a set of trigger keywords (e.g. `developer` triggers 
 
 ## Customization
 
-`llm` agents expose four customization axes; `acp` agents only the latter two, since MCP servers/skills for `acp` live in the user's own local CLI config rather than Paca (see [Execution Models](#execution-models)):
+`llm` agents expose the customization axes below; none of them apply to `acp` agents, since the system prompt, git committer identity, MCP servers, and skills for `acp` all live in the user's own local CLI config rather than Paca (see [Execution Models](#execution-models)):
 
 | Axis | Applies to | Description |
 |---|---|---|
 | **LLM Provider** | `llm` only | Any LiteLLM-supported provider: Anthropic, OpenAI, Azure, AWS Bedrock, Gemini, Groq, OpenRouter, local LLMs, etc. |
-| **System Prompt** | both | Free-form Jinja2 template or plain text, optionally pre-filled from a skill template. |
+| **System Prompt** | `llm` only | Free-form Jinja2 template or plain text, optionally pre-filled from a skill template. |
+| **Git Committer Identity** | `llm` only | Name/email used for `GIT_AUTHOR_*`/`GIT_COMMITTER_*` in the sandbox container. |
 | **Skills** | `llm` only | AgentSkills-standard `SKILL.md` directories or inline text skills. Stored in the DB, mounted into the container at runtime. |
 | **MCP Servers** | `llm` only | JSON MCP config following the standard `mcpServers` format. Evaluated inside the container at conversation start. |
 

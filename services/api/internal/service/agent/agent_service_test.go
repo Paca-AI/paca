@@ -630,17 +630,26 @@ func TestUpdateAgent_ACPAgentIgnoresLLMFields(t *testing.T) {
 	newModel := "gpt-4"
 	newAPIKey := "sk-leaked-onto-acp-agent"
 	newBaseURL := "https://api.openai.com/v1"
+	newSystemPrompt := "you are a helpful assistant"
+	newCommitterName := "someone"
+	newCommitterEmail := "someone@example.com"
 
 	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
-		LLMModel:   &newModel,
-		LLMAPIKey:  &newAPIKey,
-		LLMBaseURL: &newBaseURL,
+		LLMModel:          &newModel,
+		LLMAPIKey:         &newAPIKey,
+		LLMBaseURL:        &newBaseURL,
+		SystemPrompt:      &newSystemPrompt,
+		GitCommitterName:  &newCommitterName,
+		GitCommitterEmail: &newCommitterEmail,
 	})
 
 	assert.NoError(t, err)
 	assert.Empty(t, result.LLMModel)
 	assert.Empty(t, result.LLMAPIKeySecret)
 	assert.Empty(t, result.LLMBaseURL)
+	assert.Empty(t, result.SystemPrompt)
+	assert.Empty(t, result.GitCommitterName)
+	assert.Empty(t, result.GitCommitterEmail)
 }
 
 func TestUpdateAgent_LLMAgentIgnoresACPFields(t *testing.T) {
@@ -2012,6 +2021,37 @@ func TestCreateAgent_ACPCustomProviderSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, agentdom.AgentTypeACP, result.AgentType)
 	assert.Equal(t, []string{"npx", "-y", "my-acp-server"}, result.ACPCommand)
+}
+
+func TestCreateAgent_ACPIgnoresSystemPromptAndGitCommitterFields(t *testing.T) {
+	projectID := uuid.New()
+	projectRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(_ context.Context, _ *agentdom.Agent, _ uuid.UUID, _, _ uuid.UUID) error {
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:              "ACP Agent",
+		Handle:            "acp-agent",
+		AgentType:         agentdom.AgentTypeACP,
+		ACPProvider:       agentdom.ACPProviderClaudeCode,
+		ProjectRoleID:     projectRoleID,
+		SystemPrompt:      "you are a helpful assistant",
+		GitCommitterName:  "someone",
+		GitCommitterEmail: "someone@example.com",
+	})
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.SystemPrompt)
+	assert.Empty(t, result.GitCommitterName)
+	assert.Empty(t, result.GitCommitterEmail)
 }
 
 func TestGenerateACPBridgeToken_Success(t *testing.T) {
