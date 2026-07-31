@@ -661,7 +661,6 @@
 		"chatWithAgent": "Conversar com o agente de IA",
 		"newConversation": "Nova conversa",
 		"agentLabel": "Agente",
-		"noAgentsConfigured": "Nenhum agente configurado para este projeto.",
 		"selectAgentPlaceholder": "Selecione um agente…",
 		"selectAgentFirst": "Selecione um agente primeiro."
 	},
@@ -997,10 +996,25 @@
 		"iterations_one": "{{count}} iteração",
 		"iterations_other": "{{count}} iterações",
 		"prOpened": "PR aberto",
+		"filters": {
+			"title": "Filtros",
+			"agent": "Agente",
+			"status": "Status",
+			"type": "Tipo",
+			"dateRange": "Intervalo de datas",
+			"searchPlaceholder": "Pesquisar mensagens…",
+			"dateFrom": "De",
+			"dateTo": "Até",
+			"clearAll": "Limpar filtros"
+		},
 		"list": {
 			"empty": {
 				"title": "Nenhuma conversa ainda",
 				"description": "As conversas começam quando uma tarefa é atribuída a um agente ou quando alguém envia uma mensagem a ele."
+			},
+			"emptyFiltered": {
+				"title": "Nenhuma conversa correspondente",
+				"description": "Tente ajustar ou limpar seus filtros."
 			}
 		},
 		"detail": {

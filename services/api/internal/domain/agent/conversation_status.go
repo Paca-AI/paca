@@ -21,9 +21,13 @@ const (
 )
 
 // IsTerminal reports whether this status ends the conversation's lifecycle.
-// Terminal conversations cannot be resumed — a new conversation must be
-// created instead (see SendChatMessage, which only reuses a conversation
-// when its status is ConversationStatusPaused).
+// For an LLM agent, a terminal conversation cannot be resumed — a new
+// conversation must be created instead (see SendChatMessage, which normally
+// only reuses a conversation when its status is ConversationStatusPaused).
+// ACP-type agents are the exception: SendChatMessage resumes the same
+// conversation_id even from a terminal status, since the local bridge
+// daemon keeps the underlying conversation alive independent of Paca's own
+// status bookkeeping.
 func (s ConversationStatus) IsTerminal() bool {
 	return s == ConversationStatusFinished || s == ConversationStatusFailed || s == ConversationStatusStopped
 }

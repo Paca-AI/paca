@@ -69,6 +69,9 @@ export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
 export type ThreadComponents = {
 	AssistantMessage?: ComponentType | undefined;
 	Welcome?: ComponentType | undefined;
+	/** Rendered at the start of the composer's action row (left of the mic/send
+	 * controls) — e.g. an agent picker shown inline while starting a new chat. */
+	ComposerStart?: ComponentType | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
 	ToolGroup?:
 		| ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
@@ -124,7 +127,7 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 			>
 				<div
 					className={cn(
-						"mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
+						"mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col pl-4 pr-1 pt-4",
 						isEmpty && "justify-center",
 					)}
 				>
@@ -143,7 +146,7 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(
-							"aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+							"aui-thread-viewport-footer bg-background flex flex-col overflow-visible pb-4",
 							!isEmpty &&
 								"sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
 						)}
@@ -260,8 +263,10 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
 	const { t } = useTranslation("projects");
+	const { ComposerStart } = useContext(ThreadComponentsContext);
 	return (
-		<div className="aui-composer-action-wrapper relative flex items-center justify-end">
+		<div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
+			{ComposerStart ? <ComposerStart /> : <div />}
 			<div className="flex items-center gap-1.5">
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>

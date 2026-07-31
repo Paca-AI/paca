@@ -5,20 +5,18 @@ import {
 } from "@assistant-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bot, Plus, X } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
+import {
+	AgentPickerContext,
+	AgentPickerInline,
+	useAgentPicker,
+} from "@/components/projects/agents/agent-picker";
 import { Button } from "@/components/ui/button";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import {
 	type AgentConversation,
-	agentsQueryOptions,
+	agentQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
 	conversationEventsQueryOptions,
 	conversationQueryOptions,
@@ -29,69 +27,22 @@ import {
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
-import { eventsToThreadMessages } from "./agents/conversation-to-thread-messages";
+import {
+	eventsToThreadMessages,
+	extractTextOnlyContent,
+} from "./agents/conversation-to-thread-messages";
 
 interface AIChatFloatProps {
 	projectId: string;
 }
 
-// ── Agent picker ──────────────────────────────────────────────────────────────
-//
-// Shown in Thread's empty-state Welcome slot so picking an agent is the first
-// thing the user sees. `ThreadComponents.Welcome` takes no props, so the
-// picker's data is passed down via this small context instead.
-
-interface AgentPickerState {
-	agents: { id: string; name: string }[];
-	agentsLoading: boolean;
-	agentId: string;
-	onAgentChange: (id: string) => void;
-}
-
-const AgentPickerContext = createContext<AgentPickerState | null>(null);
-
-function FloatingChatWelcome() {
-	const { t } = useTranslation("projects");
-	const picker = useContext(AgentPickerContext);
-	if (!picker) return null;
-	const { agents, agentsLoading, agentId, onAgentChange } = picker;
-
-	return (
-		<div className="mb-4 flex flex-col items-center gap-3">
-			<div className="w-full space-y-1.5 text-left">
-				<p className="text-xs font-medium text-muted-foreground">
-					{t("aiChat.agentLabel")}
-				</p>
-				{agentsLoading ? (
-					<div className="h-9 animate-pulse rounded-md bg-muted" />
-				) : agents.length === 0 ? (
-					<p className="text-xs text-muted-foreground">
-						{t("aiChat.noAgentsConfigured")}
-					</p>
-				) : (
-					<Select
-						value={agentId}
-						onValueChange={(v) => v && onAgentChange(v)}
-						items={agents.map((a) => ({ value: a.id, label: a.name }))}
-					>
-						<SelectTrigger className="h-9 text-sm">
-							<SelectValue placeholder={t("aiChat.selectAgentPlaceholder")} />
-						</SelectTrigger>
-						<SelectContent>
-							{agents.map((agent) => (
-								<SelectItem key={agent.id} value={agent.id}>
-									{agent.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				)}
-			</div>
-		</div>
-	);
-}
-
-const THREAD_COMPONENTS = { Welcome: FloatingChatWelcome };
+// Floating chatbox is a compact overlay — no room for (and no need for) the
+// full-page welcome heading, so suppress it here; the conversation page's
+// blank composer still shows it via Thread's default.
+const THREAD_COMPONENTS = {
+	ComposerStart: AgentPickerInline,
+	Welcome: () => null,
+};
 
 // ── Failed conversation banner ────────────────────────────────────────────────
 
@@ -128,13 +79,15 @@ function FloatingChatFailedBanner({
 export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	const { t } = useTranslation("projects");
 	const [open, setOpen] = useState(false);
-	const [agentId, setAgentId] = useState("");
 	const [conversationId, setConversationId] = useState<string | null>(null);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 	const qc = useQueryClient();
 
-	const { data: agents = [], isLoading: agentsLoading } = useQuery(
-		agentsQueryOptions(projectId),
-	);
+	// Locked once a conversation exists — the agent is fixed for its
+	// lifetime; switching it here would silently do nothing useful.
+	const { agentId, pickerState } = useAgentPicker(projectId, {
+		disabled: !!conversationId,
+	});
 
 	const { data: conversation } = useQuery({
 		...conversationQueryOptions(projectId, conversationId ?? ""),
@@ -144,6 +97,11 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		...conversationEventsQueryOptions(projectId, conversationId ?? ""),
 		enabled: !!conversationId,
 	});
+	const { data: agent } = useQuery({
+		...agentQueryOptions(projectId, conversation?.agent_id ?? ""),
+		enabled: !!conversation?.agent_id,
+	});
+	const isACP = agent?.agent_type === "acp";
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -169,51 +127,58 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	};
 
 	const onNew = async (message: AppendMessage) => {
-		if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+		const text = extractTextOnlyContent(message);
+		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
-		const text = message.content[0].text;
 
-		if (!conversationId) {
-			if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
-			const result = await startChatSession(projectId, agentId, {
-				message: text,
-			});
-			// Seed the cache before flipping conversationId so the Thread
-			// doesn't flash a "can't reply" state while the query resolves.
-			qc.setQueryData(
-				conversationQueryOptions(projectId, result.conversation.id).queryKey,
-				result.conversation,
-			);
-			setConversationId(result.conversation.id);
-			void qc.invalidateQueries({
-				queryKey: ["projects", projectId, "conversations"],
-			});
-			return;
-		}
+		// Guards against a fast double-Enter firing two requests (e.g. two
+		// chat sessions) before the first one resolves and flips isRunning.
+		setIsSubmitting(true);
+		try {
+			if (!conversationId) {
+				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
+				const result = await startChatSession(projectId, agentId, {
+					message: text,
+				});
+				// Seed the cache before flipping conversationId so the Thread
+				// doesn't flash a "can't reply" state while the query resolves.
+				qc.setQueryData(
+					conversationQueryOptions(projectId, result.conversation.id).queryKey,
+					result.conversation,
+				);
+				setConversationId(result.conversation.id);
+				void qc.invalidateQueries({
+					queryKey: ["projects", projectId, "conversations"],
+				});
+				return;
+			}
 
-		if (!conversation?.chat_session_id) {
-			throw new Error(t("agents.conversationView.conversationEnded"));
-		}
-		const result = await sendChatMessage(
-			projectId,
-			conversation.agent_id,
-			conversation.chat_session_id,
-			{ message: text },
-		);
-		// The previous conversation may have already ended (explicitly
-		// stopped, or reaped after 3 minutes with no heartbeat) — replying
-		// then silently starts a fresh conversation server-side. Follow it,
-		// otherwise the UI keeps polling the old (now terminal) conversation
-		// and the reply appears to vanish.
-		if (result.id !== conversationId) {
-			qc.setQueryData(
-				conversationQueryOptions(projectId, result.id).queryKey,
-				result,
+			if (!conversation?.chat_session_id) {
+				throw new Error(t("agents.conversationView.conversationEnded"));
+			}
+			const result = await sendChatMessage(
+				projectId,
+				conversation.agent_id,
+				conversation.chat_session_id,
+				{ message: text },
 			);
-			setConversationId(result.id);
+			// The previous conversation may have already ended (explicitly
+			// stopped, or reaped after 3 minutes with no heartbeat) — replying
+			// then silently starts a fresh conversation server-side. Follow it,
+			// otherwise the UI keeps polling the old (now terminal) conversation
+			// and the reply appears to vanish.
+			if (result.id !== conversationId) {
+				qc.setQueryData(
+					conversationQueryOptions(projectId, result.id).queryKey,
+					result,
+				);
+				setConversationId(result.id);
+			}
+			invalidate(result.id);
+		} finally {
+			setIsSubmitting(false);
 		}
-		invalidate(result.id);
 	};
 
 	const onCancel = async () => {
@@ -222,10 +187,16 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		invalidate();
 	};
 
+	// ACP conversations stay replyable straight through a terminal status —
+	// the user's local bridge daemon keeps the underlying conversation alive
+	// independent of Paca's own status bookkeeping (see SendChatMessage's ACP
+	// resume path in services/api), so "finished"/"failed"/"stopped" doesn't
+	// mean dead-ended the way it does for an LLM chat conversation.
 	const canReply =
 		!conversationId ||
 		(conversation?.trigger_type === "chat_message" &&
-			!!conversation.chat_session_id);
+			!!conversation.chat_session_id &&
+			(!isTerminal || isACP));
 
 	const runtime = useExternalStoreRuntime({
 		messages,
@@ -233,8 +204,8 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		convertMessage: (m) => m,
 		onNew,
 		onCancel,
-		isDisabled: !canReply || isTerminal,
-		isSendDisabled: !conversationId && !agentId,
+		isDisabled: !canReply,
+		isSendDisabled: (!conversationId && !agentId) || isSubmitting,
 	});
 
 	// Chat sandboxes are kept alive between replies (see conversation-view's
@@ -273,20 +244,18 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	// the tab closes (or the network drops), heartbeats simply stop and the
 	// ai-agent idle reaper reclaims the sandbox once ~3 minutes pass with no
 	// heartbeat — this replaces the old pagehide-triggered immediate stop.
+	// ACP conversations skip this entirely: there's no cloud sandbox to keep
+	// alive (the user's local bridge daemon owns that lifecycle instead), so
+	// heartbeating one would just be a wasted round trip.
 	useEffect(() => {
-		if (!conversationId || isTerminal) return;
+		if (!conversationId || isTerminal || isACP) return;
 		const id = conversationId;
 		void heartbeatConversation(projectId, id).catch(() => {});
 		const interval = setInterval(() => {
 			void heartbeatConversation(projectId, id).catch(() => {});
 		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [conversationId, isTerminal, projectId]);
-
-	const pickerState = useMemo<AgentPickerState>(
-		() => ({ agents, agentsLoading, agentId, onAgentChange: setAgentId }),
-		[agents, agentsLoading, agentId],
-	);
+	}, [conversationId, isTerminal, isACP, projectId]);
 
 	return (
 		<>
@@ -338,7 +307,8 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 						{conversationId &&
 						isTerminal &&
 						conversation?.status === "failed" &&
-						messages.length === 0 ? (
+						messages.length === 0 &&
+						!canReply ? (
 							<FloatingChatFailedBanner message={conversation?.error_message} />
 						) : (
 							<AgentPickerContext.Provider value={pickerState}>

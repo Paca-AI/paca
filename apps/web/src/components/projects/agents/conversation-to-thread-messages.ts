@@ -1,5 +1,18 @@
-import type { ThreadMessageLike } from "@assistant-ui/react";
+import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import type { AgentConversationEvent } from "@/lib/agent-api";
+
+// Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
+// Conversations page's new-conversation composer) only ever send a single
+// text part — there's no attachment UI wired up to any of them (see
+// thread.tsx's Composer comment) — so reject anything else instead of
+// silently dropping it. Returns null rather than throwing so each call site
+// can raise its own translated error message.
+export function extractTextOnlyContent(message: AppendMessage): string | null {
+	if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+		return null;
+	}
+	return message.content[0].text;
+}
 
 // Extract plain text from a content block array [{type:"text", text:"..."}] or a bare string.
 export function extractContentText(content: unknown): string | null {

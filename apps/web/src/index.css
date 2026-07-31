@@ -257,26 +257,6 @@ body::after {
 	content: none; /* dot grid removed — pure surfaces only */
 }
 
-a {
-	color: var(--lagoon);
-	text-decoration-color: rgba(94, 143, 24, 0.35);
-	text-decoration-thickness: 1px;
-	text-underline-offset: 2px;
-}
-
-a:hover {
-	color: var(--lagoon-deep);
-}
-
-.dark a {
-	color: var(--lagoon);
-	text-decoration-color: rgba(158, 217, 87, 0.35);
-}
-
-.dark a:hover {
-	color: var(--lagoon-deep);
-}
-
 code {
 	font-size: 0.9em;
 	border: 1px solid var(--line);
@@ -437,6 +417,26 @@ a {
 	body {
 		background-color: var(--background);
 		color: var(--foreground);
+	}
+	/* Default anchor color — scoped to this layer so Tailwind utility classes
+	 * (e.g. `text-primary-foreground` on a Button rendered as a Link) still
+	 * win per cascade-layer order, instead of this unconditionally
+	 * overriding them. */
+	a {
+		color: var(--lagoon);
+		text-decoration-color: rgba(94, 143, 24, 0.35);
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+	}
+	a:hover {
+		color: var(--lagoon-deep);
+	}
+	.dark a {
+		color: var(--lagoon);
+		text-decoration-color: rgba(158, 217, 87, 0.35);
+	}
+	.dark a:hover {
+		color: var(--lagoon-deep);
 	}
 	/* BlockNote shadcn integration — required border styles */
 	.bn-shadcn * {

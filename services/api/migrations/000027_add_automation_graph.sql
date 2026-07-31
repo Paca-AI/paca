@@ -201,14 +201,15 @@ ALTER TABLE agent_conversations
 -- -------------------------------------------------------------------------
 -- DROP the old workflow feature outright (early-stage product, no
 -- production data worth migrating — see the redesign's explicit "totally
--- remove, don't migrate" decision). FK-safe order: edges/rules/transitions
--- before nodes before the parent table.
+-- remove, don't migrate" decision). CASCADE ensures any FK constraints or
+-- other dependent objects are dropped automatically, regardless of what
+-- partial state the database may be in from a previous migration attempt.
 -- -------------------------------------------------------------------------
 
-DROP TABLE IF EXISTS workflow_edges;
-DROP TABLE IF EXISTS workflow_status_transitions;
-DROP TABLE IF EXISTS workflow_status_rules;
-DROP TABLE IF EXISTS workflow_nodes;
-DROP TABLE IF EXISTS workflows;
+DROP TABLE IF EXISTS workflow_edges CASCADE;
+DROP TABLE IF EXISTS workflow_status_transitions CASCADE;
+DROP TABLE IF EXISTS workflow_status_rules CASCADE;
+DROP TABLE IF EXISTS workflow_nodes CASCADE;
+DROP TABLE IF EXISTS workflows CASCADE;
 
 COMMIT;

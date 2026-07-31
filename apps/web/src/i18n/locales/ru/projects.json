@@ -675,7 +675,6 @@
 		"chatWithAgent": "Чат с AI-агентом",
 		"newConversation": "Новый диалог",
 		"agentLabel": "Агент",
-		"noAgentsConfigured": "Для этого проекта агенты не настроены.",
 		"selectAgentPlaceholder": "Выберите агента…",
 		"selectAgentFirst": "Сначала выберите агента."
 	},
@@ -1015,10 +1014,25 @@
 		"iterations_many": "{{count}} итераций",
 		"iterations_other": "{{count}} итерации",
 		"prOpened": "PR открыт",
+		"filters": {
+			"title": "Фильтры",
+			"agent": "Агент",
+			"status": "Статус",
+			"type": "Тип",
+			"dateRange": "Диапазон дат",
+			"searchPlaceholder": "Поиск сообщений…",
+			"dateFrom": "С",
+			"dateTo": "По",
+			"clearAll": "Сбросить фильтры"
+		},
 		"list": {
 			"empty": {
 				"title": "Диалогов пока нет",
 				"description": "Диалоги начинаются, когда задача назначена агенту или кто-то пишет ему сообщение."
+			},
+			"emptyFiltered": {
+				"title": "Нет подходящих диалогов",
+				"description": "Попробуйте изменить или сбросить фильтры."
 			}
 		},
 		"detail": {

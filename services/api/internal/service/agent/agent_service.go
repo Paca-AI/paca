@@ -106,19 +106,16 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 
 	now := time.Now()
 	a := &agentdom.Agent{
-		ID:                uuid.New(),
-		ProjectID:         projectID,
-		Name:              name,
-		Handle:            handle,
-		AgentType:         agentType,
-		SystemPrompt:      in.SystemPrompt,
-		MaxIterations:     in.MaxIterations,
-		TimeoutMinutes:    in.TimeoutMinutes,
-		GitCommitterName:  in.GitCommitterName,
-		GitCommitterEmail: in.GitCommitterEmail,
-		CreatedBy:         in.CreatedBy,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:             uuid.New(),
+		ProjectID:      projectID,
+		Name:           name,
+		Handle:         handle,
+		AgentType:      agentType,
+		MaxIterations:  in.MaxIterations,
+		TimeoutMinutes: in.TimeoutMinutes,
+		CreatedBy:      in.CreatedBy,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if agentType == agentdom.AgentTypeACP {
@@ -140,6 +137,19 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.LLMModel = in.LLMModel
 		a.LLMAPIKeySecret = encryptedKey
 		a.LLMBaseURL = in.LLMBaseURL
+		// System prompt and git committer identity are LLM-only (see the
+		// doc comment on Agent.SystemPrompt) — an ACP agent's local CLI
+		// owns both of these itself, so they're left unset for ACP agents
+		// rather than accepting values that would never take effect.
+		a.SystemPrompt = in.SystemPrompt
+		a.GitCommitterName = in.GitCommitterName
+		a.GitCommitterEmail = in.GitCommitterEmail
+		if a.GitCommitterName == "" {
+			a.GitCommitterName = "paca-agent"
+		}
+		if a.GitCommitterEmail == "" {
+			a.GitCommitterEmail = "280579135+paca-agent@users.noreply.github.com"
+		}
 	}
 	const maxIterationsLimit = 500
 	const defaultMaxIterations = 500
@@ -154,12 +164,6 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.TimeoutMinutes = 30
 	} else if a.TimeoutMinutes > timeoutMinutesLimit {
 		a.TimeoutMinutes = timeoutMinutesLimit
-	}
-	if a.GitCommitterName == "" {
-		a.GitCommitterName = "paca-agent"
-	}
-	if a.GitCommitterEmail == "" {
-		a.GitCommitterEmail = "280579135+paca-agent@users.noreply.github.com"
 	}
 
 	// Atomically create the agent and its project membership in one transaction.
@@ -203,7 +207,11 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 	// erroring, matching CreateAgent's per-type field selection. Anything
 	// other than the explicit ACP type is treated as LLM (its default, as
 	// in CreateAgent) so an agent loaded with an unset AgentType isn't
-	// silently locked out of updating its LLM fields.
+	// silently locked out of updating its LLM fields. SystemPrompt and the
+	// git committer identity fields ride along in this same block — like
+	// the LLM fields, they're meaningless on an ACP agent (see the doc
+	// comment on Agent.SystemPrompt), so a request that sets them on one is
+	// silently ignored too.
 	if a.AgentType != agentdom.AgentTypeACP {
 		if in.LLMProvider != nil {
 			a.LLMProvider = *in.LLMProvider
@@ -221,6 +229,15 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if in.LLMBaseURL != nil {
 			a.LLMBaseURL = *in.LLMBaseURL
 		}
+		if in.SystemPrompt != nil {
+			a.SystemPrompt = *in.SystemPrompt
+		}
+		if in.GitCommitterName != nil {
+			a.GitCommitterName = *in.GitCommitterName
+		}
+		if in.GitCommitterEmail != nil {
+			a.GitCommitterEmail = *in.GitCommitterEmail
+		}
 	}
 	if a.AgentType == agentdom.AgentTypeACP {
 		if in.ACPProvider != nil {
@@ -235,9 +252,6 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired
 		}
-	}
-	if in.SystemPrompt != nil {
-		a.SystemPrompt = *in.SystemPrompt
 	}
 	const maxIterationsLimit = 500
 	const defaultMaxIterations = 500
@@ -260,12 +274,6 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			v = timeoutMinutesLimit
 		}
 		a.TimeoutMinutes = v
-	}
-	if in.GitCommitterName != nil {
-		a.GitCommitterName = *in.GitCommitterName
-	}
-	if in.GitCommitterEmail != nil {
-		a.GitCommitterEmail = *in.GitCommitterEmail
 	}
 	a.UpdatedAt = time.Now()
 
@@ -709,11 +717,28 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID uuid.
 }
 
 // SendConversationMessage publishes a chat message to an active conversation.
+//
+// ACP-type agents route through sendACPConversationMessage instead: unlike an
+// LLM agent (where a follow-up message only ever makes sense while a turn is
+// actually running), an ACP agent's local bridge daemon keeps a conversation
+// alive by conversation_id regardless of which trigger type started it
+// (task_assigned, comment_mention, description_write, automation_message —
+// not just chat_message), so it can always be resumed here too — mirroring
+// SendChatMessage's terminal-status resume for chat sessions.
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID)
 	if err != nil {
 		return err
 	}
+
+	agent, err := s.repo.FindAgentByID(ctx, c.AgentID)
+	if err != nil {
+		return err
+	}
+	if agent.AgentType == agentdom.AgentTypeACP {
+		return s.sendACPConversationMessage(ctx, c, message, memberID)
+	}
+
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
 		return agentdom.ErrConversationNotRunning
 	}
@@ -722,6 +747,39 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 		"project_id":      projectID.String(),
 		"message":         message,
 		"member_id":       memberID.String(),
+	})
+}
+
+// sendACPConversationMessage resumes an ACP conversation of any trigger type
+// so it can be continued from the chat box, not just chat_message ones.
+func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, memberID uuid.UUID) error {
+	status := agentdom.ConversationStatus(c.Status)
+	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
+		// Still mid-turn (or not yet picked up by the worker) — reject
+		// instead of dispatching a second start_turn on top of one the
+		// bridge hasn't finished: ConversationRunner.start_turn's own
+		// "still running" guard would report the *in-flight* turn as
+		// failed, not queue this message behind it.
+		return agentdom.ErrConversationBusy
+	}
+	// Claim atomically so two concurrent replies can't both win and
+	// double-publish a resume trigger for the same conversation_id — same
+	// race guard as SendChatMessage's resume paths.
+	claimed, err := s.repo.ClaimConversationStatus(ctx, c.ID, string(status), string(agentdom.ConversationStatusRunning))
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return agentdom.ErrConversationBusy
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+		"conversation_id": c.ID.String(),
+		"project_id":      c.ProjectID.String(),
+		"agent_id":        c.AgentID.String(),
+		"trigger_type":    c.TriggerType,
+		"actor_member_id": memberID.String(),
+		"message":         message,
+		"repo_plugin_ids": strings.Join(s.gatherRepoPluginIDs(ctx), ","),
 	})
 }
 
@@ -774,6 +832,14 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 // finish is left with status "paused" rather than "finished". A reply while
 // paused resumes that same conversation (same conversation_id, so the agent
 // keeps the sandbox/history) instead of cold-starting a new one.
+//
+// ACP-type agents get the same treatment even once a conversation goes
+// terminal (finished/failed/stopped): unlike an LLM agent's cloud sandbox,
+// which is gone for good once its chat conversation ends, an ACP agent's
+// local bridge daemon (apps/acp-bridge) keeps the underlying Conversation
+// object alive in memory for as long as the daemon keeps running. So a reply
+// can always continue the *same* conversation_id, no matter how long ago it
+// went terminal — see runner.ConversationRunner.start_turn's resume branch.
 func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
@@ -810,8 +876,27 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 				return nil, agentdom.ErrConversationBusy
 			}
 		case agentdom.ConversationStatusFinished, agentdom.ConversationStatusFailed, agentdom.ConversationStatusStopped:
-			// Terminal status — fall through to create a new conversation.
-			conv = nil
+			agent, err := s.repo.FindAgentByID(ctx, session.AgentID)
+			if err != nil {
+				return nil, err
+			}
+			if agent.AgentType == agentdom.AgentTypeACP {
+				// Resume — same atomic-claim treatment as the paused case
+				// above, just starting from a terminal status instead of
+				// "paused" (ACP conversations never reach "paused" — see the
+				// doc comment above).
+				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
+					latest.Status, string(agentdom.ConversationStatusRunning))
+				if err != nil {
+					return nil, err
+				}
+				if !claimed {
+					return nil, agentdom.ErrConversationBusy
+				}
+			} else {
+				// Terminal status — fall through to create a new conversation.
+				conv = nil
+			}
 		}
 	}
 

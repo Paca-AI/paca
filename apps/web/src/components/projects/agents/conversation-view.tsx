@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	type AgentConversation,
+	agentQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
@@ -28,19 +29,25 @@ import {
 	heartbeatConversation,
 	pauseConversation,
 	sendChatMessage,
+	sendConversationMessage,
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
-import { eventsToThreadMessages } from "./conversation-to-thread-messages";
+import {
+	eventsToThreadMessages,
+	extractTextOnlyContent,
+} from "./conversation-to-thread-messages";
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
 function ConversationControls({
 	projectId,
 	conversation,
+	isACP,
 }: {
 	projectId: string;
 	conversation: AgentConversation;
+	isACP: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -65,11 +72,16 @@ function ConversationControls({
 	// otherwise have no way to stop a running conversation at all. Show this
 	// control for every non-terminal status (queued, running, paused) so a
 	// stop action is always available, regardless of trigger type.
+	//
+	// ACP is the exception: its composer is now shown for every trigger type
+	// (see canReply below), so the composer's own Cancel/pause button is
+	// always reachable there — this header Stop button (a full teardown,
+	// distinct from pause) would just be redundant.
 	const isTerminal =
 		conversation.status === "finished" ||
 		conversation.status === "failed" ||
 		conversation.status === "stopped";
-	if (isTerminal) return null;
+	if (isTerminal || isACP) return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -123,6 +135,11 @@ export function ConversationView({
 	const { data: events = [], isLoading: eventsLoading } = useQuery(
 		conversationEventsQueryOptions(projectId, conversationId),
 	);
+	const { data: agent } = useQuery({
+		...agentQueryOptions(projectId, conversation?.agent_id ?? ""),
+		enabled: !!conversation?.agent_id,
+	});
+	const isACP = agent?.agent_type === "acp";
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -130,9 +147,18 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	const canReply =
-		conversation?.trigger_type === "chat_message" &&
-		!!conversation.chat_session_id;
+	const isChatMessage = conversation?.trigger_type === "chat_message";
+	// ACP conversations stay replyable for every trigger type (task_assigned,
+	// comment_mention, etc.), not just chat_message ones — the user's local
+	// bridge daemon keeps a conversation alive by conversation_id regardless
+	// of why it started, and regardless of status (see
+	// SendConversationMessage's ACP branch in services/api), so a reply can
+	// always continue it. LLM conversations are unchanged: only chat_message
+	// ones with a live session, and never once terminal (handled
+	// transparently by onNew below via the returned conversation id).
+	const canReply = isACP
+		? !isChatMessage || !!conversation?.chat_session_id
+		: isChatMessage && !!conversation?.chat_session_id && !isTerminal;
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -149,17 +175,28 @@ export function ConversationView({
 	};
 
 	const onNew = async (message: AppendMessage) => {
-		if (!conversation?.chat_session_id) {
+		if (!conversation) {
 			throw new Error(t("agents.conversationView.conversationEnded"));
 		}
-		if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+		const text = extractTextOnlyContent(message);
+		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+
+		if (!conversation.chat_session_id) {
+			// ACP conversation of a non-chat trigger type (task_assigned,
+			// comment_mention, etc.) — reply in place on the same
+			// conversation_id rather than through a chat session.
+			await sendConversationMessage(projectId, conversation.id, text);
+			invalidate();
+			return;
+		}
+
 		const result = await sendChatMessage(
 			projectId,
 			conversation.agent_id,
 			conversation.chat_session_id,
-			{ message: message.content[0].text },
+			{ message: text },
 		);
 		// The previous conversation may have already ended (explicitly
 		// stopped, or reaped after 3 minutes with no heartbeat) — replying
@@ -188,22 +225,32 @@ export function ConversationView({
 		convertMessage: (m) => m,
 		onNew,
 		onCancel,
-		isDisabled: !canReply || isTerminal,
+		isDisabled: !canReply,
 	});
 
 	// Pings the ai-agent service every ~30s while this chat conversation is
 	// loaded, so its sandbox's idle timer never trips as long as this view
 	// stays open — mirrors the heartbeat in ai-chat-float.tsx. Only chat
 	// conversations have a sandbox that pauses between turns; task/comment
-	// triggered ones would just be a pointless no-op server-side.
+	// triggered ones would just be a pointless no-op server-side. ACP
+	// conversations have no cloud sandbox to keep alive either (the user's
+	// local bridge daemon owns their lifecycle instead), so heartbeating one
+	// would just be a wasted round trip.
 	useEffect(() => {
-		if (conversation?.trigger_type !== "chat_message" || isTerminal) return;
+		if (conversation?.trigger_type !== "chat_message" || isTerminal || isACP)
+			return;
 		void heartbeatConversation(projectId, conversationId).catch(() => {});
 		const interval = setInterval(() => {
 			void heartbeatConversation(projectId, conversationId).catch(() => {});
 		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [conversation?.trigger_type, isTerminal, projectId, conversationId]);
+	}, [
+		conversation?.trigger_type,
+		isTerminal,
+		isACP,
+		projectId,
+		conversationId,
+	]);
 
 	if (convLoading || eventsLoading) {
 		return (
@@ -232,7 +279,13 @@ export function ConversationView({
 	// no visible messages. When messages exist, render the Thread normally so
 	// the user can trace what happened before the failure — the header's
 	// status badge and the bottom error footer already convey the failure.
-	if (isError || (conversation.status === "failed" && messages.length === 0)) {
+	// Skipped when canReply is true (an ACP conversation, which stays
+	// replyable straight through a failure regardless of trigger type) so
+	// the user can retry instead of hitting a dead end.
+	if (
+		isError ||
+		(conversation.status === "failed" && messages.length === 0 && !canReply)
+	) {
 		return (
 			<div className="flex flex-col h-full items-center justify-center gap-4 p-6">
 				<div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
@@ -294,6 +347,7 @@ export function ConversationView({
 					<ConversationControls
 						projectId={projectId}
 						conversation={conversation}
+						isACP={isACP}
 					/>
 				</div>
 			</div>

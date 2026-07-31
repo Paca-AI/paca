@@ -170,16 +170,16 @@ function OverviewTab({
 
 	const isDirty =
 		name !== agent.name ||
-		systemPrompt !== agent.system_prompt ||
-		committerName !== agent.git_committer_name ||
-		committerEmail !== agent.git_committer_email ||
 		(isAcp
 			? acpProviderSelect !== (agent.acp_provider ?? "claude-code") ||
 				acpCommandParts.join(" ") !== (agent.acp_command ?? []).join(" ")
 			: llmProvider !== agent.llm_provider ||
 				llmModel !== agent.llm_model ||
 				llmApiKey !== "" ||
-				llmBaseUrl !== (agent.llm_base_url ?? ""));
+				llmBaseUrl !== (agent.llm_base_url ?? "") ||
+				systemPrompt !== agent.system_prompt ||
+				committerName !== agent.git_committer_name ||
+				committerEmail !== agent.git_committer_email);
 
 	const saveMutation = useMutation({
 		mutationFn: () =>
@@ -197,10 +197,10 @@ function OverviewTab({
 							llm_model: llmModel,
 							...(llmApiKey ? { llm_api_key: llmApiKey } : {}),
 							llm_base_url: llmBaseUrl,
+							system_prompt: systemPrompt,
+							git_committer_name: committerName.trim(),
+							git_committer_email: committerEmail.trim(),
 						}),
-				system_prompt: systemPrompt,
-				git_committer_name: committerName.trim(),
-				git_committer_email: committerEmail.trim(),
 			}),
 		onSuccess: (updated) => {
 			qc.setQueryData(["projects", projectId, "agents", agent.id], updated);
@@ -413,48 +413,54 @@ function OverviewTab({
 				</>
 			)}
 
-			<div className="space-y-1.5">
-				<Label>{t("agents.detail.overview.systemPromptLabel")}</Label>
-				<Textarea
-					value={systemPrompt}
-					onChange={(e) => setSystemPrompt(e.target.value)}
-					rows={5}
-					disabled={!canWrite}
-					className="font-mono text-xs"
-				/>
-			</div>
-
-			<Separator />
-
-			<div>
-				<p className="text-sm font-medium mb-1">
-					{t("agents.detail.overview.gitCommitterIdentity")}
-				</p>
-				<p className="text-xs text-muted-foreground mb-3">
-					{t("agents.detail.overview.gitCommitterHint")}
-				</p>
-				<div className="grid grid-cols-2 gap-3">
+			{/* System prompt and git committer identity are LLM-only — an ACP
+			    agent's local CLI owns its own prompt and git identity. */}
+			{!isAcp && (
+				<>
 					<div className="space-y-1.5">
-						<Label>{t("agents.detail.overview.committerNameLabel")}</Label>
-						<Input
-							value={committerName}
-							onChange={(e) => setCommitterName(e.target.value)}
+						<Label>{t("agents.detail.overview.systemPromptLabel")}</Label>
+						<Textarea
+							value={systemPrompt}
+							onChange={(e) => setSystemPrompt(e.target.value)}
+							rows={5}
 							disabled={!canWrite}
-							placeholder="paca-agent"
+							className="font-mono text-xs"
 						/>
 					</div>
-					<div className="space-y-1.5">
-						<Label>{t("agents.detail.overview.committerEmailLabel")}</Label>
-						<Input
-							type="email"
-							value={committerEmail}
-							onChange={(e) => setCommitterEmail(e.target.value)}
-							disabled={!canWrite}
-							placeholder="paca-agent@users.noreply.github.com"
-						/>
+
+					<Separator />
+
+					<div>
+						<p className="text-sm font-medium mb-1">
+							{t("agents.detail.overview.gitCommitterIdentity")}
+						</p>
+						<p className="text-xs text-muted-foreground mb-3">
+							{t("agents.detail.overview.gitCommitterHint")}
+						</p>
+						<div className="grid grid-cols-2 gap-3">
+							<div className="space-y-1.5">
+								<Label>{t("agents.detail.overview.committerNameLabel")}</Label>
+								<Input
+									value={committerName}
+									onChange={(e) => setCommitterName(e.target.value)}
+									disabled={!canWrite}
+									placeholder="paca-agent"
+								/>
+							</div>
+							<div className="space-y-1.5">
+								<Label>{t("agents.detail.overview.committerEmailLabel")}</Label>
+								<Input
+									type="email"
+									value={committerEmail}
+									onChange={(e) => setCommitterEmail(e.target.value)}
+									disabled={!canWrite}
+									placeholder="paca-agent@users.noreply.github.com"
+								/>
+							</div>
+						</div>
 					</div>
-				</div>
-			</div>
+				</>
+			)}
 
 			{canWrite && (
 				<div className="flex items-center gap-3 pt-2">

@@ -75,12 +75,11 @@ Create a new agent. This also creates the corresponding `project_members` row wi
   "handle": "local-claude",
   "agent_type": "acp",
   "acp_provider": "claude-code",
-  "system_prompt": "You are a senior software engineer...",
   "project_role_id": "uuid"
 }
 ```
 
-`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command via the OpenHands SDK's own provider registry. None of the `llm_*` fields apply to `acp` agents.
+`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command via the OpenHands SDK's own provider registry. None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
 
 **Response:** `201 Created` with the created agent object.
 

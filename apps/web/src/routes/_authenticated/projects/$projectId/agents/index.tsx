@@ -81,6 +81,9 @@ const CUSTOM = "__custom__";
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/agents/",
 )({
+	validateSearch: (search: Record<string, unknown>) => ({
+		create: search.create === true || search.create === "true",
+	}),
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
 		await Promise.all([
 			queryClient.ensureQueryData(agentsQueryOptions(projectId)),
@@ -214,6 +217,7 @@ function CreateAgentDialog({
 							llm_model: llmModel,
 							llm_api_key: llmApiKey,
 							llm_base_url: llmBaseUrl,
+							system_prompt: systemPrompt,
 						}
 					: {
 							acp_provider: acpProvider,
@@ -221,7 +225,6 @@ function CreateAgentDialog({
 								? { acp_command: acpCommandParts }
 								: {}),
 						}),
-				system_prompt: systemPrompt,
 			});
 			if (agent.agent_type !== "acp") {
 				return { agent, token: null };
@@ -325,50 +328,90 @@ function CreateAgentDialog({
 				{/* ── Step 1: Identity ─────────────────────────────────────────── */}
 				{step === 1 && (
 					<div className="overflow-y-auto max-h-[62vh] px-6 py-5 space-y-5">
-						{/* Preset grid */}
-						<div className="space-y-2">
-							<Label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-								{t("agents.createDialog.startFromPreset")}
-							</Label>
+						{/* Agent Type */}
+						<div className="space-y-1.5">
+							<Label>{t("agents.createDialog.agentTypeLabel")}</Label>
 							<div className="grid grid-cols-2 gap-2">
-								{AGENT_PRESETS.map((preset) => {
-									const Icon = PRESET_ICON_MAP[preset.id] ?? Bot;
-									const isSelected = presetId === preset.id;
+								{(["llm", "acp"] as const).map((type) => {
+									const isSelected = agentType === type;
 									return (
 										<button
-											key={preset.id}
+											key={type}
 											type="button"
-											onClick={() => onPresetChange(preset.id)}
+											onClick={() => setAgentType(type)}
 											className={cn(
-												"flex items-start gap-2.5 rounded-lg border p-3 text-left transition-all",
+												"rounded-lg border p-3 text-left transition-all",
 												isSelected
 													? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
 													: "border-border/60 hover:border-border hover:bg-muted/30",
 											)}
 										>
-											<div
-												className={cn(
-													"flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
-													isSelected
-														? "bg-primary/15 text-primary"
-														: "bg-muted text-muted-foreground",
+											<p className="text-xs font-semibold leading-tight">
+												{t(
+													type === "llm"
+														? "agents.createDialog.agentTypeLLM"
+														: "agents.createDialog.agentTypeACP",
 												)}
-											>
-												<Icon className="size-3.5" />
-											</div>
-											<div className="min-w-0">
-												<p className="text-xs font-semibold leading-tight">
-													{preset.label}
-												</p>
-												<p className="mt-0.5 line-clamp-2 text-xs leading-tight text-muted-foreground">
-													{preset.description}
-												</p>
-											</div>
+											</p>
+											<p className="mt-0.5 text-xs leading-tight text-muted-foreground">
+												{t(
+													type === "llm"
+														? "agents.createDialog.agentTypeLLMHint"
+														: "agents.createDialog.agentTypeACPHint",
+												)}
+											</p>
 										</button>
 									);
 								})}
 							</div>
 						</div>
+
+						{/* Preset grid — LLM-only; an ACP agent has no model/prompt to preset */}
+						{agentType === "llm" && (
+							<div className="space-y-2">
+								<Label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+									{t("agents.createDialog.startFromPreset")}
+								</Label>
+								<div className="grid grid-cols-2 gap-2">
+									{AGENT_PRESETS.map((preset) => {
+										const Icon = PRESET_ICON_MAP[preset.id] ?? Bot;
+										const isSelected = presetId === preset.id;
+										return (
+											<button
+												key={preset.id}
+												type="button"
+												onClick={() => onPresetChange(preset.id)}
+												className={cn(
+													"flex items-start gap-2.5 rounded-lg border p-3 text-left transition-all",
+													isSelected
+														? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
+														: "border-border/60 hover:border-border hover:bg-muted/30",
+												)}
+											>
+												<div
+													className={cn(
+														"flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+														isSelected
+															? "bg-primary/15 text-primary"
+															: "bg-muted text-muted-foreground",
+													)}
+												>
+													<Icon className="size-3.5" />
+												</div>
+												<div className="min-w-0">
+													<p className="text-xs font-semibold leading-tight">
+														{preset.label}
+													</p>
+													<p className="mt-0.5 line-clamp-2 text-xs leading-tight text-muted-foreground">
+														{preset.description}
+													</p>
+												</div>
+											</button>
+										);
+									})}
+								</div>
+							</div>
+						)}
 
 						{/* Name + Handle */}
 						<div className="space-y-3">
@@ -442,44 +485,6 @@ function CreateAgentDialog({
 				{/* ── Step 2: AI Configuration ─────────────────────────────────── */}
 				{step === 2 && (
 					<div className="overflow-y-auto max-h-[62vh] px-6 py-5 space-y-5">
-						{/* Agent Type */}
-						<div className="space-y-1.5">
-							<Label>{t("agents.createDialog.agentTypeLabel")}</Label>
-							<div className="grid grid-cols-2 gap-2">
-								{(["llm", "acp"] as const).map((type) => {
-									const isSelected = agentType === type;
-									return (
-										<button
-											key={type}
-											type="button"
-											onClick={() => setAgentType(type)}
-											className={cn(
-												"rounded-lg border p-3 text-left transition-all",
-												isSelected
-													? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
-													: "border-border/60 hover:border-border hover:bg-muted/30",
-											)}
-										>
-											<p className="text-xs font-semibold leading-tight">
-												{t(
-													type === "llm"
-														? "agents.createDialog.agentTypeLLM"
-														: "agents.createDialog.agentTypeACP",
-												)}
-											</p>
-											<p className="mt-0.5 text-xs leading-tight text-muted-foreground">
-												{t(
-													type === "llm"
-														? "agents.createDialog.agentTypeLLMHint"
-														: "agents.createDialog.agentTypeACPHint",
-												)}
-											</p>
-										</button>
-									);
-								})}
-							</div>
-						</div>
-
 						{agentType === "acp" && (
 							<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
 								<div className="flex items-center gap-1.5">
@@ -679,32 +684,34 @@ function CreateAgentDialog({
 							</>
 						)}
 
-						{/* System Prompt */}
-						<div className="space-y-1.5">
-							<div className="flex items-center justify-between">
-								<Label htmlFor="agent-system-prompt">
-									{t("agents.createDialog.systemPromptLabel")}{" "}
-									<span className="text-muted-foreground font-normal text-xs">
-										{t("agents.createDialog.optional")}
-									</span>
-								</Label>
-								{systemPrompt.length > 0 && (
-									<span className="text-xs text-muted-foreground">
-										{t("agents.createDialog.charsCount", {
-											count: systemPrompt.length,
-										})}
-									</span>
-								)}
+						{/* System Prompt — LLM-only; an ACP agent's local CLI owns its own prompt */}
+						{agentType === "llm" && (
+							<div className="space-y-1.5">
+								<div className="flex items-center justify-between">
+									<Label htmlFor="agent-system-prompt">
+										{t("agents.createDialog.systemPromptLabel")}{" "}
+										<span className="text-muted-foreground font-normal text-xs">
+											{t("agents.createDialog.optional")}
+										</span>
+									</Label>
+									{systemPrompt.length > 0 && (
+										<span className="text-xs text-muted-foreground">
+											{t("agents.createDialog.charsCount", {
+												count: systemPrompt.length,
+											})}
+										</span>
+									)}
+								</div>
+								<Textarea
+									id="agent-system-prompt"
+									placeholder={t("agents.createDialog.systemPromptPlaceholder")}
+									value={systemPrompt}
+									onChange={(e) => setSystemPrompt(e.target.value)}
+									rows={4}
+									className="resize-none text-sm"
+								/>
 							</div>
-							<Textarea
-								id="agent-system-prompt"
-								placeholder={t("agents.createDialog.systemPromptPlaceholder")}
-								value={systemPrompt}
-								onChange={(e) => setSystemPrompt(e.target.value)}
-								rows={4}
-								className="resize-none text-sm"
-							/>
-						</div>
+						)}
 
 						{createMutation.isError && (
 							<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
@@ -1014,6 +1021,8 @@ function AgentCard({
 function AgentsPage() {
 	const { t } = useTranslation("projects");
 	const { projectId } = Route.useParams();
+	const { create } = Route.useSearch();
+	const navigate = Route.useNavigate();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
 
@@ -1021,11 +1030,25 @@ function AgentsPage() {
 	const { data: agents = [], isLoading } = useQuery(
 		agentsQueryOptions(projectId),
 	);
-	const [createOpen, setCreateOpen] = useState(false);
+	const [createOpen, setCreateOpen] = useState(create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);
 	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(
 		null,
 	);
+
+	// `?create=true` (from the agent picker's "no agents yet" empty state)
+	// only needs to open the dialog once — leaving it in the URL would
+	// reopen the dialog on every refresh/back-navigation after the user
+	// closes it, so strip it once the dialog's opened state is consumed.
+	function handleCreateOpenChange(nextOpen: boolean) {
+		setCreateOpen(nextOpen);
+		if (!nextOpen && create) {
+			navigate({
+				search: (prev) => ({ ...prev, create: false }),
+				replace: true,
+			});
+		}
+	}
 
 	return (
 		<div className="flex flex-col">
@@ -1109,7 +1132,7 @@ function AgentsPage() {
 			<CreateAgentDialog
 				projectId={projectId}
 				open={createOpen}
-				onOpenChange={setCreateOpen}
+				onOpenChange={handleCreateOpenChange}
 				onAcpAgentCreated={(agent, token) => {
 					setAcpSetupAgent(agent);
 					setAcpSetupToken(token);

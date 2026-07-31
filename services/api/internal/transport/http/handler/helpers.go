@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Paca-AI/api/internal/apierr"
 )
@@ -73,4 +74,16 @@ func parseOffsetLimit(r *http.Request) (offset, limit int, err error) {
 	}
 
 	return offset, limit, nil
+}
+
+// splitCommaList splits a comma-separated query param into its trimmed,
+// non-empty parts (e.g. "running, paused" -> ["running", "paused"]).
+func splitCommaList(raw string) []string {
+	var out []string
+	for _, s := range strings.Split(raw, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
