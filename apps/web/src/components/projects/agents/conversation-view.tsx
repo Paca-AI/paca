@@ -31,7 +31,10 @@ import {
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
-import { eventsToThreadMessages } from "./conversation-to-thread-messages";
+import {
+	eventsToThreadMessages,
+	extractTextOnlyContent,
+} from "./conversation-to-thread-messages";
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
@@ -152,14 +155,15 @@ export function ConversationView({
 		if (!conversation?.chat_session_id) {
 			throw new Error(t("agents.conversationView.conversationEnded"));
 		}
-		if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+		const text = extractTextOnlyContent(message);
+		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
 		const result = await sendChatMessage(
 			projectId,
 			conversation.agent_id,
 			conversation.chat_session_id,
-			{ message: message.content[0].text },
+			{ message: text },
 		);
 		// The previous conversation may have already ended (explicitly
 		// stopped, or reaped after 3 minutes with no heartbeat) — replying

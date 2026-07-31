@@ -81,6 +81,9 @@ const CUSTOM = "__custom__";
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/agents/",
 )({
+	validateSearch: (search: Record<string, unknown>) => ({
+		create: search.create === true || search.create === "true",
+	}),
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
 		await Promise.all([
 			queryClient.ensureQueryData(agentsQueryOptions(projectId)),
@@ -1014,6 +1017,8 @@ function AgentCard({
 function AgentsPage() {
 	const { t } = useTranslation("projects");
 	const { projectId } = Route.useParams();
+	const { create } = Route.useSearch();
+	const navigate = Route.useNavigate();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
 
@@ -1021,11 +1026,25 @@ function AgentsPage() {
 	const { data: agents = [], isLoading } = useQuery(
 		agentsQueryOptions(projectId),
 	);
-	const [createOpen, setCreateOpen] = useState(false);
+	const [createOpen, setCreateOpen] = useState(create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);
 	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(
 		null,
 	);
+
+	// `?create=true` (from the agent picker's "no agents yet" empty state)
+	// only needs to open the dialog once — leaving it in the URL would
+	// reopen the dialog on every refresh/back-navigation after the user
+	// closes it, so strip it once the dialog's opened state is consumed.
+	function handleCreateOpenChange(nextOpen: boolean) {
+		setCreateOpen(nextOpen);
+		if (!nextOpen && create) {
+			navigate({
+				search: (prev) => ({ ...prev, create: false }),
+				replace: true,
+			});
+		}
+	}
 
 	return (
 		<div className="flex flex-col">
@@ -1109,7 +1128,7 @@ function AgentsPage() {
 			<CreateAgentDialog
 				projectId={projectId}
 				open={createOpen}
-				onOpenChange={setCreateOpen}
+				onOpenChange={handleCreateOpenChange}
 				onAcpAgentCreated={(agent, token) => {
 					setAcpSetupAgent(agent);
 					setAcpSetupToken(token);

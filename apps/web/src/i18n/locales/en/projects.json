@@ -661,7 +661,6 @@
 		"chatWithAgent": "Chat with AI Agent",
 		"newConversation": "New conversation",
 		"agentLabel": "Agent",
-		"noAgentsConfigured": "No agents configured for this project.",
 		"selectAgentPlaceholder": "Select an agent…",
 		"selectAgentFirst": "Please select an agent first."
 	},
