@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
 	type AgentConversation,
+	agentQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
 	conversationEventsQueryOptions,
 	conversationQueryOptions,
@@ -96,6 +97,11 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		...conversationEventsQueryOptions(projectId, conversationId ?? ""),
 		enabled: !!conversationId,
 	});
+	const { data: agent } = useQuery({
+		...agentQueryOptions(projectId, conversation?.agent_id ?? ""),
+		enabled: !!conversation?.agent_id,
+	});
+	const isACP = agent?.agent_type === "acp";
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -181,10 +187,16 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		invalidate();
 	};
 
+	// ACP conversations stay replyable straight through a terminal status —
+	// the user's local bridge daemon keeps the underlying conversation alive
+	// independent of Paca's own status bookkeeping (see SendChatMessage's ACP
+	// resume path in services/api), so "finished"/"failed"/"stopped" doesn't
+	// mean dead-ended the way it does for an LLM chat conversation.
 	const canReply =
 		!conversationId ||
 		(conversation?.trigger_type === "chat_message" &&
-			!!conversation.chat_session_id);
+			!!conversation.chat_session_id &&
+			(!isTerminal || isACP));
 
 	const runtime = useExternalStoreRuntime({
 		messages,
@@ -192,7 +204,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		convertMessage: (m) => m,
 		onNew,
 		onCancel,
-		isDisabled: !canReply || isTerminal,
+		isDisabled: !canReply,
 		isSendDisabled: (!conversationId && !agentId) || isSubmitting,
 	});
 
@@ -232,15 +244,18 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	// the tab closes (or the network drops), heartbeats simply stop and the
 	// ai-agent idle reaper reclaims the sandbox once ~3 minutes pass with no
 	// heartbeat — this replaces the old pagehide-triggered immediate stop.
+	// ACP conversations skip this entirely: there's no cloud sandbox to keep
+	// alive (the user's local bridge daemon owns that lifecycle instead), so
+	// heartbeating one would just be a wasted round trip.
 	useEffect(() => {
-		if (!conversationId || isTerminal) return;
+		if (!conversationId || isTerminal || isACP) return;
 		const id = conversationId;
 		void heartbeatConversation(projectId, id).catch(() => {});
 		const interval = setInterval(() => {
 			void heartbeatConversation(projectId, id).catch(() => {});
 		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [conversationId, isTerminal, projectId]);
+	}, [conversationId, isTerminal, isACP, projectId]);
 
 	return (
 		<>
@@ -292,7 +307,8 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 						{conversationId &&
 						isTerminal &&
 						conversation?.status === "failed" &&
-						messages.length === 0 ? (
+						messages.length === 0 &&
+						!canReply ? (
 							<FloatingChatFailedBanner message={conversation?.error_message} />
 						) : (
 							<AgentPickerContext.Provider value={pickerState}>

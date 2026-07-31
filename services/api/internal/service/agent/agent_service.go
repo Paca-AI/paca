@@ -709,11 +709,28 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID uuid.
 }
 
 // SendConversationMessage publishes a chat message to an active conversation.
+//
+// ACP-type agents route through sendACPConversationMessage instead: unlike an
+// LLM agent (where a follow-up message only ever makes sense while a turn is
+// actually running), an ACP agent's local bridge daemon keeps a conversation
+// alive by conversation_id regardless of which trigger type started it
+// (task_assigned, comment_mention, description_write, automation_message —
+// not just chat_message), so it can always be resumed here too — mirroring
+// SendChatMessage's terminal-status resume for chat sessions.
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID)
 	if err != nil {
 		return err
 	}
+
+	agent, err := s.repo.FindAgentByID(ctx, c.AgentID)
+	if err != nil {
+		return err
+	}
+	if agent.AgentType == agentdom.AgentTypeACP {
+		return s.sendACPConversationMessage(ctx, c, message, memberID)
+	}
+
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
 		return agentdom.ErrConversationNotRunning
 	}
@@ -722,6 +739,39 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 		"project_id":      projectID.String(),
 		"message":         message,
 		"member_id":       memberID.String(),
+	})
+}
+
+// sendACPConversationMessage resumes an ACP conversation of any trigger type
+// so it can be continued from the chat box, not just chat_message ones.
+func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, memberID uuid.UUID) error {
+	status := agentdom.ConversationStatus(c.Status)
+	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
+		// Still mid-turn (or not yet picked up by the worker) — reject
+		// instead of dispatching a second start_turn on top of one the
+		// bridge hasn't finished: ConversationRunner.start_turn's own
+		// "still running" guard would report the *in-flight* turn as
+		// failed, not queue this message behind it.
+		return agentdom.ErrConversationBusy
+	}
+	// Claim atomically so two concurrent replies can't both win and
+	// double-publish a resume trigger for the same conversation_id — same
+	// race guard as SendChatMessage's resume paths.
+	claimed, err := s.repo.ClaimConversationStatus(ctx, c.ID, string(status), string(agentdom.ConversationStatusRunning))
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return agentdom.ErrConversationBusy
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+		"conversation_id": c.ID.String(),
+		"project_id":      c.ProjectID.String(),
+		"agent_id":        c.AgentID.String(),
+		"trigger_type":    c.TriggerType,
+		"actor_member_id": memberID.String(),
+		"message":         message,
+		"repo_plugin_ids": strings.Join(s.gatherRepoPluginIDs(ctx), ","),
 	})
 }
 
@@ -774,6 +824,14 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 // finish is left with status "paused" rather than "finished". A reply while
 // paused resumes that same conversation (same conversation_id, so the agent
 // keeps the sandbox/history) instead of cold-starting a new one.
+//
+// ACP-type agents get the same treatment even once a conversation goes
+// terminal (finished/failed/stopped): unlike an LLM agent's cloud sandbox,
+// which is gone for good once its chat conversation ends, an ACP agent's
+// local bridge daemon (apps/acp-bridge) keeps the underlying Conversation
+// object alive in memory for as long as the daemon keeps running. So a reply
+// can always continue the *same* conversation_id, no matter how long ago it
+// went terminal — see runner.ConversationRunner.start_turn's resume branch.
 func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
@@ -810,8 +868,27 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 				return nil, agentdom.ErrConversationBusy
 			}
 		case agentdom.ConversationStatusFinished, agentdom.ConversationStatusFailed, agentdom.ConversationStatusStopped:
-			// Terminal status — fall through to create a new conversation.
-			conv = nil
+			agent, err := s.repo.FindAgentByID(ctx, session.AgentID)
+			if err != nil {
+				return nil, err
+			}
+			if agent.AgentType == agentdom.AgentTypeACP {
+				// Resume — same atomic-claim treatment as the paused case
+				// above, just starting from a terminal status instead of
+				// "paused" (ACP conversations never reach "paused" — see the
+				// doc comment above).
+				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
+					latest.Status, string(agentdom.ConversationStatusRunning))
+				if err != nil {
+					return nil, err
+				}
+				if !claimed {
+					return nil, agentdom.ErrConversationBusy
+				}
+			} else {
+				// Terminal status — fall through to create a new conversation.
+				conv = nil
+			}
 		}
 	}
 
