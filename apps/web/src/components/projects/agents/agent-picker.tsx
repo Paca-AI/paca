@@ -1,6 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { agentsQueryOptions } from "@/lib/agent-api";
 
 // ── Agent picker ──────────────────────────────────────────────────────────────
 //
@@ -34,6 +36,44 @@ export interface AgentPickerState {
 
 export const AgentPickerContext = createContext<AgentPickerState | null>(null);
 
+// Fetches the project's agents and owns the selected-agent state that feeds
+// `AgentPickerState` — shared by the floating chat widget and the
+// Conversations page's inline "new conversation" thread so neither duplicates
+// the query + selection wiring (or the single-agent auto-select behavior
+// below) on its own.
+export function useAgentPicker(
+	projectId: string,
+	options?: { disabled?: boolean },
+) {
+	const { data: agents = [], isLoading: agentsLoading } = useQuery(
+		agentsQueryOptions(projectId),
+	);
+	const [agentId, setAgentId] = useState("");
+
+	// Nothing to actually pick between — auto-select the project's only agent
+	// instead of forcing an explicit choice before the composer will send.
+	useEffect(() => {
+		if (!agentId && agents.length === 1 && agents[0]) {
+			setAgentId(agents[0].id);
+		}
+	}, [agents, agentId]);
+
+	const disabled = options?.disabled;
+	const pickerState = useMemo<AgentPickerState>(
+		() => ({
+			agents,
+			agentsLoading,
+			agentId,
+			onAgentChange: setAgentId,
+			disabled,
+			projectId,
+		}),
+		[agents, agentsLoading, agentId, disabled, projectId],
+	);
+
+	return { agentId, setAgentId, agents, agentsLoading, pickerState };
+}
+
 export function AgentPickerInline() {
 	const { t } = useTranslation("projects");
 	const picker = useContext(AgentPickerContext);
@@ -50,6 +90,7 @@ export function AgentPickerInline() {
 				size="sm"
 				variant="outline"
 				className="h-7 gap-1.5 rounded-full text-xs"
+				nativeButton={false}
 				render={
 					<Link
 						to="/projects/$projectId/agents"

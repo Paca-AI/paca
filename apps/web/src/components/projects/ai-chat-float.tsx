@@ -11,12 +11,11 @@ import { Thread } from "@/components/assistant-ui/thread";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
-	type AgentPickerState,
+	useAgentPicker,
 } from "@/components/projects/agents/agent-picker";
 import { Button } from "@/components/ui/button";
 import {
 	type AgentConversation,
-	agentsQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
 	conversationEventsQueryOptions,
 	conversationQueryOptions,
@@ -27,7 +26,10 @@ import {
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
-import { eventsToThreadMessages } from "./agents/conversation-to-thread-messages";
+import {
+	eventsToThreadMessages,
+	extractTextOnlyContent,
+} from "./agents/conversation-to-thread-messages";
 
 interface AIChatFloatProps {
 	projectId: string;
@@ -76,13 +78,15 @@ function FloatingChatFailedBanner({
 export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	const { t } = useTranslation("projects");
 	const [open, setOpen] = useState(false);
-	const [agentId, setAgentId] = useState("");
 	const [conversationId, setConversationId] = useState<string | null>(null);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 	const qc = useQueryClient();
 
-	const { data: agents = [], isLoading: agentsLoading } = useQuery(
-		agentsQueryOptions(projectId),
-	);
+	// Locked once a conversation exists — the agent is fixed for its
+	// lifetime; switching it here would silently do nothing useful.
+	const { agentId, pickerState } = useAgentPicker(projectId, {
+		disabled: !!conversationId,
+	});
 
 	const { data: conversation } = useQuery({
 		...conversationQueryOptions(projectId, conversationId ?? ""),
@@ -117,51 +121,58 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	};
 
 	const onNew = async (message: AppendMessage) => {
-		if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+		const text = extractTextOnlyContent(message);
+		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
-		const text = message.content[0].text;
 
-		if (!conversationId) {
-			if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
-			const result = await startChatSession(projectId, agentId, {
-				message: text,
-			});
-			// Seed the cache before flipping conversationId so the Thread
-			// doesn't flash a "can't reply" state while the query resolves.
-			qc.setQueryData(
-				conversationQueryOptions(projectId, result.conversation.id).queryKey,
-				result.conversation,
-			);
-			setConversationId(result.conversation.id);
-			void qc.invalidateQueries({
-				queryKey: ["projects", projectId, "conversations"],
-			});
-			return;
-		}
+		// Guards against a fast double-Enter firing two requests (e.g. two
+		// chat sessions) before the first one resolves and flips isRunning.
+		setIsSubmitting(true);
+		try {
+			if (!conversationId) {
+				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
+				const result = await startChatSession(projectId, agentId, {
+					message: text,
+				});
+				// Seed the cache before flipping conversationId so the Thread
+				// doesn't flash a "can't reply" state while the query resolves.
+				qc.setQueryData(
+					conversationQueryOptions(projectId, result.conversation.id).queryKey,
+					result.conversation,
+				);
+				setConversationId(result.conversation.id);
+				void qc.invalidateQueries({
+					queryKey: ["projects", projectId, "conversations"],
+				});
+				return;
+			}
 
-		if (!conversation?.chat_session_id) {
-			throw new Error(t("agents.conversationView.conversationEnded"));
-		}
-		const result = await sendChatMessage(
-			projectId,
-			conversation.agent_id,
-			conversation.chat_session_id,
-			{ message: text },
-		);
-		// The previous conversation may have already ended (explicitly
-		// stopped, or reaped after 3 minutes with no heartbeat) — replying
-		// then silently starts a fresh conversation server-side. Follow it,
-		// otherwise the UI keeps polling the old (now terminal) conversation
-		// and the reply appears to vanish.
-		if (result.id !== conversationId) {
-			qc.setQueryData(
-				conversationQueryOptions(projectId, result.id).queryKey,
-				result,
+			if (!conversation?.chat_session_id) {
+				throw new Error(t("agents.conversationView.conversationEnded"));
+			}
+			const result = await sendChatMessage(
+				projectId,
+				conversation.agent_id,
+				conversation.chat_session_id,
+				{ message: text },
 			);
-			setConversationId(result.id);
+			// The previous conversation may have already ended (explicitly
+			// stopped, or reaped after 3 minutes with no heartbeat) — replying
+			// then silently starts a fresh conversation server-side. Follow it,
+			// otherwise the UI keeps polling the old (now terminal) conversation
+			// and the reply appears to vanish.
+			if (result.id !== conversationId) {
+				qc.setQueryData(
+					conversationQueryOptions(projectId, result.id).queryKey,
+					result,
+				);
+				setConversationId(result.id);
+			}
+			invalidate(result.id);
+		} finally {
+			setIsSubmitting(false);
 		}
-		invalidate(result.id);
 	};
 
 	const onCancel = async () => {
@@ -182,7 +193,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		onNew,
 		onCancel,
 		isDisabled: !canReply || isTerminal,
-		isSendDisabled: !conversationId && !agentId,
+		isSendDisabled: (!conversationId && !agentId) || isSubmitting,
 	});
 
 	// Chat sandboxes are kept alive between replies (see conversation-view's
@@ -230,20 +241,6 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
 	}, [conversationId, isTerminal, projectId]);
-
-	const pickerState = useMemo<AgentPickerState>(
-		() => ({
-			agents,
-			agentsLoading,
-			agentId,
-			onAgentChange: setAgentId,
-			// Locked once a conversation exists — the agent is fixed for its
-			// lifetime; switching it here would silently do nothing useful.
-			disabled: !!conversationId,
-			projectId,
-		}),
-		[agents, agentsLoading, agentId, conversationId, projectId],
-	);
 
 	return (
 		<>

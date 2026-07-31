@@ -4,21 +4,18 @@ import {
 	AssistantRuntimeProvider,
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
-	type AgentPickerState,
+	useAgentPicker,
 } from "@/components/projects/agents/agent-picker";
-import {
-	agentsQueryOptions,
-	conversationQueryOptions,
-	startChatSession,
-} from "@/lib/agent-api";
+import { extractTextOnlyContent } from "@/components/projects/agents/conversation-to-thread-messages";
+import { conversationQueryOptions, startChatSession } from "@/lib/agent-api";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/conversations/",
@@ -38,32 +35,37 @@ function NewConversationThread() {
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
-	const [agentId, setAgentId] = useState("");
-	const { data: agents = [], isLoading: agentsLoading } = useQuery(
-		agentsQueryOptions(projectId),
-	);
+	const { agentId, pickerState } = useAgentPicker(projectId);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const onNew = async (message: AppendMessage) => {
 		if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
-		if (message.content.length !== 1 || message.content[0]?.type !== "text") {
+		const text = extractTextOnlyContent(message);
+		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
-		const text = message.content[0].text;
 
-		const result = await startChatSession(projectId, agentId, {
-			message: text,
-		});
-		qc.setQueryData(
-			conversationQueryOptions(projectId, result.conversation.id).queryKey,
-			result.conversation,
-		);
-		void qc.invalidateQueries({
-			queryKey: ["projects", projectId, "conversations"],
-		});
-		navigate({
-			to: "/projects/$projectId/conversations/$conversationId",
-			params: { projectId, conversationId: result.conversation.id },
-		});
+		// Guards against a fast double-Enter firing two chat sessions before
+		// the first request resolves and this component navigates away.
+		setIsSubmitting(true);
+		try {
+			const result = await startChatSession(projectId, agentId, {
+				message: text,
+			});
+			qc.setQueryData(
+				conversationQueryOptions(projectId, result.conversation.id).queryKey,
+				result.conversation,
+			);
+			void qc.invalidateQueries({
+				queryKey: ["projects", projectId, "conversations"],
+			});
+			navigate({
+				to: "/projects/$projectId/conversations/$conversationId",
+				params: { projectId, conversationId: result.conversation.id },
+			});
+		} finally {
+			setIsSubmitting(false);
+		}
 	};
 
 	const messages: ThreadMessageLike[] = [];
@@ -73,19 +75,8 @@ function NewConversationThread() {
 		isRunning: false,
 		convertMessage: (m) => m,
 		onNew,
-		isSendDisabled: !agentId,
+		isSendDisabled: !agentId || isSubmitting,
 	});
-
-	const pickerState = useMemo<AgentPickerState>(
-		() => ({
-			agents,
-			agentsLoading,
-			agentId,
-			onAgentChange: setAgentId,
-			projectId,
-		}),
-		[agents, agentsLoading, agentId, projectId],
-	);
 
 	return (
 		<AgentPickerContext.Provider value={pickerState}>

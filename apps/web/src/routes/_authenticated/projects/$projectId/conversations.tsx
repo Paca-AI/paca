@@ -174,6 +174,7 @@ function ConversationsLayout() {
 					<Button
 						size="sm"
 						className="gap-1.5"
+						nativeButton={false}
 						render={
 							<Link
 								to="/projects/$projectId/conversations"
