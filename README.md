@@ -125,19 +125,21 @@ Plan  →  Act  →  Check  →  Adapt
 
 ---
 
+## What's New in v0.11.0
+
+- **Event-driven automation engine** — a complete redesign of the automation system into a visual, n8n-style graph builder. Compose **Trigger → Condition → Action** flows on an interactive canvas with multi-branch switch logic, an `Else` fallback path, and nine built-in trigger types — including UTC cron schedules, due-date offsets, task-dependency gates, and inbound webhooks with secret-token auth. Actions can **retarget linked tasks** (parent, children, blockers, or explicit picks) with automatic fan-out, **dispatch AI agents** with custom prompts, or **call external APIs**. Every run is traced step-by-step in a new **Run History** panel, and a project-wide **Dependency Map** visualizes cross-task automation relationships. Plugins can contribute custom trigger, condition, and action node types via WASM.
+
+<p align="center">
+  <img src="docs/assets/demo-automation-workflow.png" width="720" alt="Paca v0.11.0 — Event-Driven Automation Engine with Visual Graph Builder" />
+</p>
+
+---
+
 ## What's New in v0.10.0
 
 - **ACP agent support** — connect any [Agent Client Protocol](https://docs.openhands.dev/sdk/guides/agent-acp) coding CLI as a Paca AI agent: Claude Code, Codex, Gemini CLI, or a custom ACP server. A lightweight local bridge (`paca-acp-bridge`) runs from your project's source directory and streams the conversation back to Paca over an authenticated WebSocket — no code is cloned into a cloud sandbox, and the agent uses your own local auth, git/`gh` credentials, and whatever MCP servers or skills you've already set up for that CLI. See [apps/acp-bridge/README.md](apps/acp-bridge/README.md) for setup.
 
 ---
-
-## What's New in v0.9.0
-
-- **Automation workflows** — build visual, status-driven automation on a canvas: define nodes and edges so tasks auto-assign or reassign as they move through statuses, with AND-join support for gates that wait on multiple predecessors. AI agents can create and edit workflows too, via dedicated MCP tools.
-
-<p align="center">
-  <img src="docs/assets/demo-automation-workflow.png" width="720" alt="Paca v0.9.0 — Automation Workflows" />
-</p>
 
 ---
 
