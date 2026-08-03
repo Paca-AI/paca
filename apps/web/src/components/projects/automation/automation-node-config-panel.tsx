@@ -124,6 +124,19 @@ function taskLabel(task: Task): string {
 	return `#${task.task_number} ${task.title}`;
 }
 
+// <input type="date"> exchanges bare "YYYY-MM-DD" values, but every date
+// leaving this form (start_date/due_date on a condition leaf or an
+// update_task field) is stored as RFC 3339 — matching how dates travel
+// everywhere else in this API (see compareTimePtr's doc comment in
+// condition.go) and the same convention task-detail/property-field/
+// helpers.ts's toISODate uses for the task detail page's own date editor.
+function toDateInputValue(iso?: string): string {
+	return iso ? iso.slice(0, 10) : "";
+}
+function fromDateInputValue(value: string): string {
+	return value ? `${value}T00:00:00Z` : "";
+}
+
 // Field choices for a condition leaf's Select — matches the domain's Field
 // enum in condition.go. Plugin-contributed conditions are their own
 // standalone condition node type (see AutomationNodeConfigPanel's dispatch
@@ -1854,8 +1867,10 @@ function ConditionConfigForm({
 							) : field === "start_date" || field === "due_date" ? (
 								<Input
 									type="date"
-									value={(leaf?.value as string) ?? ""}
-									onChange={(e) => updateLeaf(i, { value: e.target.value })}
+									value={toDateInputValue(leaf?.value as string)}
+									onChange={(e) =>
+										updateLeaf(i, { value: fromDateInputValue(e.target.value) })
+									}
 									disabled={!canEdit}
 									className="h-7 text-xs"
 								/>
@@ -2431,8 +2446,10 @@ function ActionConfigForm({
 				return (
 					<Input
 						type="date"
-						value={fields.start_date ?? ""}
-						onChange={(e) => setFieldValue("start_date", e.target.value)}
+						value={toDateInputValue(fields.start_date)}
+						onChange={(e) =>
+							setFieldValue("start_date", fromDateInputValue(e.target.value))
+						}
 						disabled={!canEdit}
 						className="h-7 text-xs"
 					/>
@@ -2441,8 +2458,10 @@ function ActionConfigForm({
 				return (
 					<Input
 						type="date"
-						value={fields.due_date ?? ""}
-						onChange={(e) => setFieldValue("due_date", e.target.value)}
+						value={toDateInputValue(fields.due_date)}
+						onChange={(e) =>
+							setFieldValue("due_date", fromDateInputValue(e.target.value))
+						}
 						disabled={!canEdit}
 						className="h-7 text-xs"
 					/>

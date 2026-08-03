@@ -354,8 +354,8 @@ function AutomationBuilderPage() {
 						"sprint_id",
 						sprints.find((s) => s.id === fields.sprint_id)?.name,
 					);
-					pushField("start_date", fields.start_date);
-					pushField("due_date", fields.due_date);
+					pushField("start_date", fields.start_date?.slice(0, 10));
+					pushField("due_date", fields.due_date?.slice(0, 10));
 					return parts.length > 0
 						? parts.join("\n")
 						: t("automation.nodeConfig.description.notConfigured");

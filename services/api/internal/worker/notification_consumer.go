@@ -170,10 +170,11 @@ func (c *NotificationConsumer) processPending(ctx context.Context) {
 // assignmentStreamPayload mirrors the JSON shape produced by the task
 // handler / automation engine when they append to StreamTaskAssignments.
 // AutomationName is populated whenever the assignment was made by the
-// automation engine's "assign" action (see worker.AutomationConsumer) —
-// trigger_ai_agent doesn't reassign the task at all, so it never publishes
-// to this stream; see AutomationConsumer.applyTriggerAIAgentOnTask, which
-// starts the agent conversation directly instead.
+// automation engine's update_task action setting AssigneeIDs (see
+// worker.AutomationConsumer.applyUpdateTask) — trigger_ai_agent doesn't
+// reassign the task at all, so it never publishes to this stream; see
+// AutomationConsumer.applyTriggerAIAgentOnTask, which starts the agent
+// conversation directly instead.
 type assignmentStreamPayload struct {
 	TaskID              string `json:"task_id"`
 	ProjectID           string `json:"project_id"`
@@ -234,7 +235,7 @@ func sanitizeAgentMessage(s string) string {
 }
 
 // agentAssignmentNote builds the note appended to an agent's initial prompt
-// when it was auto-assigned via an active automation's "assign" action
+// when it was auto-assigned via an active automation's update_task action
 // (trigger_ai_agent doesn't reassign the task — see triggerAIAgentNote in
 // automation_consumer.go for its equivalent). Returns "" when the assignment
 // did not come from the automation engine.

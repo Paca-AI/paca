@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -103,7 +104,8 @@ type automationMemberReader interface {
 // TriggerTaskAssigned for a task-bound trigger (see
 // applyTriggerAIAgentOnTask). Neither method touches the task's assignee —
 // trigger_ai_agent's job is to get the agent looking at the task, not to
-// transfer ownership of it; that's what the separate "assign" action is for.
+// transfer ownership of it; that's what update_task's AssigneeIDs field is
+// for.
 type automationAgentMessenger interface {
 	TriggerDirectMessage(ctx context.Context, projectID, agentID uuid.UUID, triggeredByMemberID *uuid.UUID, message string) (*agentdom.AgentConversation, error)
 	TriggerTaskAssigned(ctx context.Context, projectID, agentID, taskID uuid.UUID, triggeredByMemberID *uuid.UUID, note string) (*agentdom.AgentConversation, error)
@@ -1288,13 +1290,6 @@ func pluginNodePayload(nodeType string, config json.RawMessage, projectID uuid.U
 	return payload
 }
 
-// applyAssign reassigns task to memberID, recording an activity and
-// publishing the shared task.assigned event so the existing
-// notification/agent-trigger pipeline picks it up uniformly (including
-// triggering an agent conversation, when memberID resolves to an agent —
-// this is the "assign" action; trigger_ai_agent uses
-// applyTriggerAIAgentOnTask instead, which starts a conversation without
-// this reassignment).
 // applyTriggerAIAgentOnTask starts an agent conversation scoped to task,
 // without changing its assignee. trigger_ai_agent's job is to get the agent
 // looking at the task — not to transfer ownership of it, which is what the
@@ -1376,7 +1371,7 @@ func triggerAIAgentNote(automationName, agentMessage string) string {
 // applyDirectAgentMessage fires message straight at the agent behind
 // memberID, no task involved — used when trigger_ai_agent's walk has no
 // task (a cron/api_trigger/predecessor_done trigger with no
-// target_task_id), since there's nothing to assign. Unlike applyAssign,
+// target_task_id), since there's nothing to assign. Unlike applyUpdateTask,
 // there's no "already in target state" check to make — every visit sends a
 // fresh message, and it always reports "applied" on success.
 func (c *AutomationConsumer) applyDirectAgentMessage(ctx context.Context, projectID uuid.UUID, memberID uuid.UUID, message string) (bool, error) {
@@ -1440,7 +1435,7 @@ func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid
 		in.Title = title
 		changed["title"] = title
 	}
-	if len(upd.Description) > 0 {
+	if len(upd.Description) > 0 && !bytes.Equal(upd.Description, task.Description) {
 		desc := upd.Description
 		in.Description = &desc
 		changed["description"] = true

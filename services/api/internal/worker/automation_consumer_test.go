@@ -491,6 +491,85 @@ func TestApplyUpdateTask_CustomField_AppliesWhenValueDiffers(t *testing.T) {
 	}
 }
 
+func TestApplyUpdateTask_DueDate_IdempotentWhenAlreadySet(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	due := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	task := &taskdom.Task{ID: uuid.New(), DueDate: &due}
+
+	sameDue := due
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &sameDue}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if applied || updater.calls != 0 {
+		t.Fatalf("expected no-op, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
+func TestApplyUpdateTask_DueDate_AppliesWhenDifferent(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	oldDue := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	newDue := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	task := &taskdom.Task{ID: uuid.New(), DueDate: &oldDue}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &newDue}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied || updater.calls != 1 {
+		t.Fatalf("expected applied=true, 1 call, got applied=%v calls=%d", applied, updater.calls)
+	}
+	if !task.DueDate.Equal(newDue) {
+		t.Fatalf("expected due date updated in place, got %v", task.DueDate)
+	}
+}
+
+// TestApplyUpdateTask_DueDate_JSONRoundTrip guards the exact regression this
+// once had: TaskFieldUpdate.DueDate is a *time.Time, whose JSON unmarshaling
+// requires a full RFC 3339 string — the config-panel's date picker must
+// produce that shape (e.g. "2026-08-03T00:00:00Z"), not the bare
+// "YYYY-MM-DD" a native <input type="date"> emits, or saving an update_task
+// action with a due date set fails to unmarshal entirely.
+func TestApplyUpdateTask_DueDate_JSONRoundTrip(t *testing.T) {
+	var cfg automationdom.TaskFieldUpdate
+	if err := json.Unmarshal([]byte(`{"due_date":"2026-08-03T00:00:00Z"}`), &cfg); err != nil {
+		t.Fatalf("expected RFC 3339 due_date to unmarshal cleanly, got %v", err)
+	}
+	if cfg.DueDate == nil || cfg.DueDate.UTC().Format("2006-01-02") != "2026-08-03" {
+		t.Fatalf("expected due_date 2026-08-03, got %v", cfg.DueDate)
+	}
+}
+
+func TestApplyUpdateTask_Description_IdempotentWhenAlreadyMatches(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"hello"}`)}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"hello"}`)}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if applied || updater.calls != 0 {
+		t.Fatalf("expected no-op when description already matches, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
+func TestApplyUpdateTask_Description_AppliesWhenDifferent(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"old"}`)}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"new"}`)}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied || updater.calls != 1 {
+		t.Fatalf("expected applied=true, 1 call, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
 // --- Plugin action dispatch --------------------------------------------------
 
 type fakePluginRuntime struct {
