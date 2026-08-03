@@ -315,6 +315,9 @@ func compareTimePtr(field *time.Time, op Operator, value any) bool {
 		return field == nil
 	case OpIsNotEmpty:
 		return field != nil
+	default:
+		// Handled below: OpEquals/OpNotEquals/OpGreaterThan/OpLessThan all
+		// need the parsed target time first.
 	}
 	if field == nil {
 		return false
