@@ -1718,6 +1718,17 @@ func (r *Runtime) registerEventFunctions(b wazero.HostModuleBuilder, p plugindom
 					stack[0] = 0
 					return
 				}
+				// Also durably queue this event for the automation engine,
+				// but only when some loaded plugin actually declared a
+				// Trigger for this topic — TriggersForTopic is the exact
+				// same lookup worker.AutomationConsumer uses when it reads
+				// this entry back, so a plugin emitting an event nobody
+				// automates on never touches this stream.
+				if len(r.TriggersForTopic(topic)) > 0 {
+					if err := r.services.Publisher.Append(ctx, events.StreamPluginTriggerEvents, topic, v); err != nil {
+						r.log.Error("paca.event_emit: append to automation trigger stream", "plugin", p.Name, "topic", topic, "error", err)
+					}
+				}
 			}
 			stack[0] = 1
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64, api.ValueTypeI64},

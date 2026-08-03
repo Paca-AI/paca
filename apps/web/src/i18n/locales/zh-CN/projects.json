@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "指派",
-			"set_status": "设置状态",
-			"set_priority": "设置优先级",
-			"add_tag": "添加标签",
-			"set_custom_field": "设置自定义字段",
+			"update_task": "更新任务",
 			"trigger_ai_agent": "触发 AI 代理",
 			"call_api": "调用 API"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "删除节点",
 			"removeConfirmBody": "这将从图谱中删除该节点及其所有连接。",
 			"removeConfirmAction": "删除",
-			"genericFormHint": "此节点类型来自插件。请以 JSON 格式编辑其配置 — 未来版本中插件将可以在此注册更完善的编辑器。",
+			"genericFormHint": "此节点类型来自尚未声明配置架构的插件，因此其设置以原始 JSON 形式编辑。若插件在其清单中声明了 configSchema，则会在此显示界面字段。",
 			"trigger": {
 				"anyStatus": "任意状态",
+				"noConfigNeeded": "此触发器无需配置——事件发生时会自动触发。",
 				"statusLabel": "状态",
 				"tagLabel": "标签",
 				"anyTag": "任意标签",
@@ -1370,7 +1367,14 @@
 					"importance": "优先级",
 					"assignee_ids": "负责人",
 					"tags": "标签",
-					"custom_field": "自定义字段"
+					"custom_field": "自定义字段",
+					"title": "标题",
+					"story_points": "故事点",
+					"sprint_id": "冲刺",
+					"parent_task_id": "父任务",
+					"reporter_id": "报告人",
+					"start_date": "开始日期",
+					"due_date": "截止日期"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "请求头名称",
 				"headerValuePlaceholder": "值",
 				"addHeader": "添加请求头",
-				"bodyLabel": "请求体"
+				"bodyLabel": "请求体",
+				"updateTaskHint": "只有下方启用的字段会被更改——任务的其余部分保持不变。",
+				"addFieldToUpdate": "添加要更新的字段…",
+				"customFieldsLabel": "自定义字段",
+				"enableField": "设置{{field}}",
+				"titleLabel": "标题",
+				"storyPointsLabel": "故事点",
+				"sprintLabel": "冲刺",
+				"parentTaskLabel": "父任务",
+				"reporterLabel": "报告人",
+				"startDateLabel": "开始日期",
+				"dueDateLabel": "截止日期",
+				"tagsLabel": "标签",
+				"tagsPlaceholder": "添加标签…",
+				"assigneesLabel": "负责人",
+				"noSprint": "无冲刺",
+				"pluginConditionLabel": "插件条件",
+				"pluginConditionHint": "将此分支的匹配委托给插件提供的条件，而不是比较任务字段。",
+				"selectPluginPlaceholder": "选择插件条件…",
+				"addCustomField": "添加自定义字段…"
 			},
 			"target": {
 				"label": "作用对象",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "截止日期后 {{minutes}} 分钟",
 				"branches": "{{count}} 个分支",
 				"priority": "优先级：{{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "未指派",
 				"notConfigured": "未配置",
 				"elseShort": "否则",
+				"pluginConditionMatched": "匹配",
 				"branchFallback": "分支 {{n}}",
 				"cronSchedule": "运行时间：{{expression}}",
 				"webhookReady": "已配置 Webhook",

@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -76,14 +78,17 @@ type automationActivityRecorder interface {
 }
 
 // automationPluginRuntime is the minimal plugin-runtime surface the engine
-// needs to dispatch plugin-contributed condition/action nodes. Both calls
+// needs to dispatch plugin-contributed condition/action nodes (both calls
 // use the exact same WASM calling convention as HandleRequest — see
-// platform/plugin.Runtime.EvaluateCondition/RunAction.
+// platform/plugin.Runtime.EvaluateCondition/RunAction) plus resolve a
+// plugin-contributed Trigger node type for a plugin-emitted event's topic
+// (see TriggersForTopic and handlePluginTriggerEvent).
 type automationPluginRuntime interface {
 	ResolveAutomationCondition(nodeType string) (pluginName string, ok bool)
 	ResolveAutomationAction(nodeType string) (pluginName string, ok bool)
 	EvaluateCondition(ctx context.Context, pluginName string, payload []byte) ([]byte, error)
 	RunAction(ctx context.Context, pluginName string, payload []byte) ([]byte, error)
+	TriggersForTopic(topic string) []plugindom.AutomationNodeManifest
 }
 
 // automationMemberReader resolves a project_members.id to its full record —
@@ -99,7 +104,8 @@ type automationMemberReader interface {
 // TriggerTaskAssigned for a task-bound trigger (see
 // applyTriggerAIAgentOnTask). Neither method touches the task's assignee —
 // trigger_ai_agent's job is to get the agent looking at the task, not to
-// transfer ownership of it; that's what the separate "assign" action is for.
+// transfer ownership of it; that's what update_task's AssigneeIDs field is
+// for.
 type automationAgentMessenger interface {
 	TriggerDirectMessage(ctx context.Context, projectID, agentID uuid.UUID, triggeredByMemberID *uuid.UUID, message string) (*agentdom.AgentConversation, error)
 	TriggerTaskAssigned(ctx context.Context, projectID, agentID, taskID uuid.UUID, triggeredByMemberID *uuid.UUID, note string) (*agentdom.AgentConversation, error)
@@ -220,7 +226,7 @@ func (c *AutomationConsumer) Start(ctx context.Context) {
 }
 
 func (c *AutomationConsumer) ensureGroup(ctx context.Context) error {
-	for _, stream := range []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers} {
+	for _, stream := range []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents} {
 		err := c.client.XGroupCreateMkStream(ctx, stream, c.groupName, c.groupStartID).Err()
 		if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 			return err
@@ -253,7 +259,7 @@ func (c *AutomationConsumer) run() {
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    c.groupName,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, ">", ">"},
+			Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, ">", ">", ">"},
 			Count:    automationReadCount,
 			Block:    automationReadBlock,
 		}).Result()
@@ -280,14 +286,18 @@ func (c *AutomationConsumer) run() {
 // dispatchMessages routes each message to the right handler based on which
 // stream it came from — StreamAutomationExternalTriggers messages already
 // know exactly which node/task to run (resolved by the webhook handler
-// before publishing), everything else goes through the task-activity
-// trigger-matching path.
+// before publishing); StreamPluginTriggerEvents messages carry a plugin's
+// own event topic, matched against plugin-declared Trigger nodes by topic;
+// everything else goes through the task-activity trigger-matching path.
 func (c *AutomationConsumer) dispatchMessages(msgs []redis.XStream) {
 	for _, stream := range msgs {
 		for _, msg := range stream.Messages {
-			if stream.Stream == events.StreamAutomationExternalTriggers {
+			switch stream.Stream {
+			case events.StreamAutomationExternalTriggers:
 				c.handleExternalTrigger(msg)
-			} else {
+			case events.StreamPluginTriggerEvents:
+				c.handlePluginTriggerEvent(msg)
+			default:
 				c.handle(msg)
 			}
 		}
@@ -298,7 +308,7 @@ func (c *AutomationConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.groupName,
 		Consumer: c.consumerName,
-		Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, "0", "0"},
+		Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, "0", "0", "0"},
 		Count:    automationReadCount,
 	}).Result()
 	if err != nil && err != redis.Nil {
@@ -456,6 +466,96 @@ func (c *AutomationConsumer) handleExternalTrigger(msg redis.XMessage) {
 		return
 	}
 	c.ack(ctx, events.StreamAutomationExternalTriggers, msg.ID)
+}
+
+// pluginTriggerEventPayload is the payload contract a plugin's own
+// EmitEvent call must satisfy when its topic is declared as a Trigger
+// node's eventTopic in the plugin's manifest: project_id (which project's
+// automations to consider — plugin trigger types are namespaced per plugin,
+// not per project, so every project with a matching enabled trigger node
+// runs) and, when the event concerns a specific task, task_id to bind the
+// walk to. task_id is optional the same way api_trigger's is (see
+// automationExternalTriggerPayload above): absent means this run may only
+// reach a Call API or Trigger AI agent action downstream
+// (validateTaskReachability enforces that at edge-creation time). Every
+// plugin trigger emitted so far (time_logging.entry_created,
+// github.pr_linked, github.branch_linked, github.pr_state_changed) includes
+// both fields — see each plugin's EmitEvent call sites.
+type pluginTriggerEventPayload struct {
+	ProjectID string `json:"project_id"`
+	TaskID    string `json:"task_id"`
+}
+
+// handlePluginTriggerEvent matches a plugin-emitted event's topic against
+// every plugin-declared Trigger node type sharing that eventTopic
+// (Runtime.TriggersForTopic — the same lookup event_emit itself used to
+// decide whether to append this message at all), then within the event's
+// own project, every enabled node of each matching type — exactly like a
+// built-in trigger's topic-based matching, just sourced from a plugin's own
+// event instead of the task-activity stream.
+func (c *AutomationConsumer) handlePluginTriggerEvent(msg redis.XMessage) {
+	ctx := context.Background()
+
+	topic, _ := msg.Values["type"].(string)
+	raw, ok := msg.Values["payload"].(string)
+	if topic == "" || !ok {
+		c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
+		return
+	}
+
+	if c.pluginRuntime == nil {
+		c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
+		return
+	}
+	manifests := c.pluginRuntime.TriggersForTopic(topic)
+	if len(manifests) == 0 {
+		// The set of loaded plugins/declared triggers can change between
+		// event_emit's own check and this read (a plugin unloaded, a
+		// trigger type renamed) — drop rather than retry forever.
+		c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
+		return
+	}
+
+	var p pluginTriggerEventPayload
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		c.log.Warn("automation consumer: failed to decode plugin trigger payload", "id", msg.ID, "topic", topic, "err", err)
+		c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
+		return
+	}
+	projectID, err := uuid.Parse(p.ProjectID)
+	if err != nil {
+		c.log.Warn("automation consumer: plugin trigger event missing/invalid project_id", "id", msg.ID, "topic", topic)
+		c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
+		return
+	}
+
+	var task *taskdom.Task
+	if p.TaskID != "" {
+		taskID, err := uuid.Parse(p.TaskID)
+		if err != nil {
+			c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
+			return
+		}
+		task, err = c.taskRepo.FindTaskByID(ctx, taskID)
+		if err != nil {
+			c.log.Error("automation consumer: plugin trigger find task", "id", msg.ID, "task_id", taskID, "err", err)
+			return // not acked — retried via processPending
+		}
+	}
+
+	for _, manifest := range manifests {
+		nodes, err := c.repo.ListEnabledTriggerNodesByType(ctx, projectID, automationdom.TriggerType(manifest.Type))
+		if err != nil {
+			c.log.Error("automation consumer: list plugin trigger nodes", "type", manifest.Type, "err", err)
+			continue
+		}
+		for _, node := range nodes {
+			if err := c.executeRun(ctx, projectID, node, task); err != nil {
+				c.log.Error("automation consumer: plugin trigger run failed", "node_id", node.ID, "err", err)
+			}
+		}
+	}
+	c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
 }
 
 // processEvent fetches the authoritative task once, then matches it against
@@ -695,14 +795,6 @@ func (w *walker) walk(ctx context.Context, nodeID uuid.UUID) {
 	}
 }
 
-// pluginConditionTrueHandle / pluginConditionFalseHandle are the two
-// branch handles a plugin-contributed condition node's edges use — a
-// plugin condition is a simple boolean gate, not an N-branch switch, so it
-// doesn't need the built-in condition node's Branches config shape.
-const (
-	pluginConditionTrueHandle = "true"
-)
-
 func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
 	if node.Type != automationdom.ConditionNodeType {
 		w.walkPluginCondition(ctx, node)
@@ -820,14 +912,43 @@ func (c *AutomationConsumer) resolveTargetTasks(ctx context.Context, projectID u
 	}
 }
 
+// pluginConditionTarget is the subset of a plugin condition node's config
+// this package reads directly — the "applies to" target/match_mode fields
+// SchemaConfigForm adds alongside whatever the plugin's own configSchema
+// declares (automation-node-config-panel.tsx), same JSON shape as
+// ConditionLeaf.Target/MatchMode. The plugin's own handler never sees these
+// two keys reinterpreted — Config is still forwarded to it verbatim,
+// unchanged from before Target existed — this is purely how the walker
+// decides *which task(s)* to ask the plugin to evaluate against.
+type pluginConditionTarget struct {
+	Target    *automationdom.TaskTarget `json:"target,omitempty"`
+	MatchMode string                    `json:"match_mode,omitempty"`
+}
+
 // walkPluginCondition dispatches a plugin-contributed condition node via
 // the plugin runtime's EvaluateCondition bridge, then follows the "true"
 // edge if matched or the "else" edge otherwise — the same edge-following
 // logic as the built-in condition node, just with exactly two possible
 // outcomes instead of N branches.
+//
+// cfg.Target (nil/self = every plugin condition's behavior before Target
+// existed) retargets the evaluation onto a task other than the walk's own
+// bound task, exactly like a built-in condition leaf: resolved via the same
+// resolveTargetTasks, then combined across however many tasks that resolves
+// to via cfg.MatchMode (mirrors ConditionLeaf.EvaluateAgainstTasks) — "all"
+// requires every resolved task to match, anything else requires only one.
 func (w *walker) walkPluginCondition(ctx context.Context, node *automationdom.Node) {
-	input, _ := json.Marshal(pluginNodePayload(node.Config, w.task, ""))
-	matched, err := w.consumer.evaluatePluginCondition(ctx, node, input)
+	var cfg pluginConditionTarget
+	_ = json.Unmarshal(node.Config, &cfg)
+
+	tasks, err := w.consumer.resolveTargetTasks(ctx, w.projectID, w.task, cfg.Target)
+	if err != nil {
+		w.failed = true
+		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, err.Error())
+		return
+	}
+
+	matched, input, err := w.consumer.evaluatePluginConditionAgainstTasks(ctx, w.projectID, node, tasks, cfg.MatchMode)
 	if err != nil {
 		w.failed = true
 		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, input, nil, err.Error())
@@ -835,7 +956,7 @@ func (w *walker) walkPluginCondition(ctx context.Context, node *automationdom.No
 	}
 	matchedHandle := automationdom.ElseHandle
 	if matched {
-		matchedHandle = pluginConditionTrueHandle
+		matchedHandle = automationdom.PluginConditionTrueHandle
 	}
 	output, _ := json.Marshal(map[string]any{"matched_handle": matchedHandle})
 	w.recordStep(ctx, node.ID, automationdom.RunStepCompleted, input, output, "")
@@ -991,32 +1112,15 @@ func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID,
 // ever reached, since neither operates on a task at all.
 func (c *AutomationConsumer) applyActionForTask(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, actionType automationdom.ActionType, cfg automationdom.ActionConfig, task *taskdom.Task, automationName string, runID uuid.UUID) (bool, error) {
 	switch actionType {
-	case automationdom.ActionAssign:
-		if cfg.MemberID == nil {
-			return false, fmt.Errorf("assign: missing member_id")
-		}
-		return c.applyAssign(ctx, projectID, task, *cfg.MemberID, automationName)
+	case automationdom.ActionUpdateTask:
+		return c.applyUpdateTask(ctx, projectID, task, cfg.Update, automationName)
 	case automationdom.ActionTriggerAIAgent:
 		if cfg.MemberID == nil {
 			return false, fmt.Errorf("trigger_ai_agent: missing member_id")
 		}
 		return c.applyTriggerAIAgentOnTask(ctx, projectID, task, *cfg.MemberID, automationName, cfg.Message)
-	case automationdom.ActionSetStatus:
-		if cfg.StatusID == nil {
-			return false, fmt.Errorf("set_status: missing status_id")
-		}
-		return c.applySetStatus(ctx, projectID, task, *cfg.StatusID)
-	case automationdom.ActionSetPriority:
-		if cfg.Importance == nil {
-			return false, fmt.Errorf("set_priority: missing importance")
-		}
-		return c.applySetPriority(ctx, projectID, task, *cfg.Importance)
-	case automationdom.ActionAddTag:
-		return c.applyAddTag(ctx, projectID, task, cfg.Tag)
-	case automationdom.ActionSetCustomField:
-		return c.applySetCustomField(ctx, projectID, task, cfg.FieldKey, cfg.Value)
 	default:
-		return c.runPluginAction(ctx, node, task, runID)
+		return c.runPluginAction(ctx, projectID, node, task, runID)
 	}
 }
 
@@ -1072,7 +1176,7 @@ func (c *AutomationConsumer) applyCallAPI(ctx context.Context, cfg automationdom
 // something stable to dedupe against in their own schema-isolated tables if
 // they choose to, since the platform can't enforce idempotency inside
 // someone else's WASM code.
-func (c *AutomationConsumer) runPluginAction(ctx context.Context, node *automationdom.Node, task *taskdom.Task, runID uuid.UUID) (bool, error) {
+func (c *AutomationConsumer) runPluginAction(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, task *taskdom.Task, runID uuid.UUID) (bool, error) {
 	if c.pluginRuntime == nil {
 		return false, fmt.Errorf("unknown action type %q", node.Type)
 	}
@@ -1081,7 +1185,7 @@ func (c *AutomationConsumer) runPluginAction(ctx context.Context, node *automati
 		return false, fmt.Errorf("unknown action type %q", node.Type)
 	}
 	idempotencyKey := fmt.Sprintf("%s:%s", runID, node.ID)
-	payload, _ := json.Marshal(pluginNodePayload(node.Config, task, idempotencyKey))
+	payload, _ := json.Marshal(pluginNodePayload(node.Type, node.Config, projectID, task, idempotencyKey))
 	resp, err := c.pluginRuntime.RunAction(ctx, pluginName, payload)
 	if err != nil {
 		return false, fmt.Errorf("plugin action %q: %w", node.Type, err)
@@ -1122,14 +1226,55 @@ func (c *AutomationConsumer) evaluatePluginCondition(ctx context.Context, node *
 	return result.Matched, nil
 }
 
+// evaluatePluginConditionAgainstTasks evaluates node's plugin condition once
+// per task in tasks — a plugin condition's Matched result is inherently
+// per-task (each dispatch gets its own TaskSnapshot), unlike a built-in
+// ConditionLeaf, which evaluates client-side against a task struct already
+// in memory — then combines the results the same way
+// ConditionLeaf.EvaluateAgainstTasks does: matchMode "all" requires every
+// task to match, anything else (including "" and "any") requires only one.
+// An empty tasks slice is always false regardless of matchMode, same
+// reasoning as EvaluateAgainstTasks — nothing to check, so the condition
+// can't be considered satisfied either way. Returns the last dispatched
+// payload alongside the result, for the run step's audit trail — mirrors
+// evaluatePluginCondition's caller already recording its own input.
+func (c *AutomationConsumer) evaluatePluginConditionAgainstTasks(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, tasks []*taskdom.Task, matchMode string) (bool, []byte, error) {
+	if len(tasks) == 0 {
+		return false, nil, nil
+	}
+	var lastInput []byte
+	requireAll := matchMode == "all"
+	for _, t := range tasks {
+		input, _ := json.Marshal(pluginNodePayload(node.Type, node.Config, projectID, t, ""))
+		lastInput = input
+		matched, err := c.evaluatePluginCondition(ctx, node, input)
+		if err != nil {
+			return false, input, err
+		}
+		if requireAll && !matched {
+			return false, input, nil
+		}
+		if !requireAll && matched {
+			return true, input, nil
+		}
+	}
+	return requireAll, lastInput, nil
+}
+
 // pluginNodePayload builds the JSON bundle handed to a plugin's
-// EvaluateCondition/RunAction export: the node's own config plus enough task
-// context for the plugin to decide, plus an idempotency key (RunAction
-// only; empty for EvaluateCondition since evaluation has no side effects to
-// dedupe).
-func pluginNodePayload(config json.RawMessage, task *taskdom.Task, idempotencyKey string) map[string]any {
+// EvaluateCondition/RunAction export: the node's own type (so a plugin
+// declaring more than one Condition/Action node type can dispatch
+// internally), config, enough task context for the plugin to decide, the
+// project the automation run belongs to (so a plugin never has to ask a
+// user to type a project_id into its node config just to know its own
+// scope — see plugin-sdk-go's ConditionRequest.ProjectID/
+// ActionRequest.ProjectID), plus an idempotency key (RunAction only; empty
+// for EvaluateCondition since evaluation has no side effects to dedupe).
+func pluginNodePayload(nodeType string, config json.RawMessage, projectID uuid.UUID, task *taskdom.Task, idempotencyKey string) map[string]any {
 	payload := map[string]any{
-		"config": json.RawMessage(config),
+		"node_type":  nodeType,
+		"config":     json.RawMessage(config),
+		"project_id": projectID,
 		"task": map[string]any{
 			"id":            task.ID,
 			"status_id":     task.StatusID,
@@ -1145,44 +1290,14 @@ func pluginNodePayload(config json.RawMessage, task *taskdom.Task, idempotencyKe
 	return payload
 }
 
-// applyAssign reassigns task to memberID, recording an activity and
-// publishing the shared task.assigned event so the existing
-// notification/agent-trigger pipeline picks it up uniformly (including
-// triggering an agent conversation, when memberID resolves to an agent —
-// this is the "assign" action; trigger_ai_agent uses
-// applyTriggerAIAgentOnTask instead, which starts a conversation without
-// this reassignment).
-func (c *AutomationConsumer) applyAssign(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, memberID uuid.UUID, automationName string) (bool, error) {
-	if len(task.AssigneeIDs) == 1 && task.AssigneeIDs[0] == memberID {
-		return false, nil
-	}
-	oldAssignees := task.AssigneeIDs
-	newIDs := []uuid.UUID{memberID}
-	if _, err := c.taskSvc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{AssigneeIDs: &newIDs}); err != nil {
-		return false, fmt.Errorf("update assignee: %w", err)
-	}
-	task.AssigneeIDs = newIDs
-
-	c.recordAppliedActivity(ctx, projectID, task.ID, automationName, map[string]any{
-		"old_assignees": oldAssignees,
-		"new_assignee":  memberID,
-	})
-
-	if !slices.Contains(oldAssignees, memberID) {
-		extra := map[string]any{"automation_name": automationName}
-		_ = events.PublishAssignmentChanged(ctx, c.publisher, task.ID, projectID, memberID, nil, userdom.SystemActorUserID, extra)
-	}
-	return true, nil
-}
-
 // applyTriggerAIAgentOnTask starts an agent conversation scoped to task,
 // without changing its assignee. trigger_ai_agent's job is to get the agent
 // looking at the task — not to transfer ownership of it, which is what the
-// separate "assign" action is for and which would otherwise clobber whoever
-// the task is actually assigned to just to route it to an agent. Unlike
-// applyAssign there's no "already in target state" check to make: no task
-// state is being mutated here, so — same as applyDirectAgentMessage — every
-// visit starts a fresh conversation.
+// update_task action's AssigneeIDs field is for and which would otherwise
+// clobber whoever the task is actually assigned to just to route it to an
+// agent. Unlike applyUpdateTask there's no "already in target state" check
+// to make: no task state is being mutated here, so — same as
+// applyDirectAgentMessage — every visit starts a fresh conversation.
 func (c *AutomationConsumer) applyTriggerAIAgentOnTask(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, memberID uuid.UUID, automationName, agentMessage string) (bool, error) {
 	if c.memberRepo == nil || c.agentMessenger == nil {
 		return false, fmt.Errorf("trigger_ai_agent: agent dispatch not configured")
@@ -1256,7 +1371,7 @@ func triggerAIAgentNote(automationName, agentMessage string) string {
 // applyDirectAgentMessage fires message straight at the agent behind
 // memberID, no task involved — used when trigger_ai_agent's walk has no
 // task (a cron/api_trigger/predecessor_done trigger with no
-// target_task_id), since there's nothing to assign. Unlike applyAssign,
+// target_task_id), since there's nothing to assign. Unlike applyUpdateTask,
 // there's no "already in target state" check to make — every visit sends a
 // fresh message, and it always reports "applied" on success.
 func (c *AutomationConsumer) applyDirectAgentMessage(ctx context.Context, projectID uuid.UUID, memberID uuid.UUID, message string) (bool, error) {
@@ -1283,59 +1398,190 @@ func (c *AutomationConsumer) applyDirectAgentMessage(ctx context.Context, projec
 	return true, nil
 }
 
-func (c *AutomationConsumer) applySetStatus(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, statusID uuid.UUID) (bool, error) {
-	if task.StatusID != nil && *task.StatusID == statusID {
+func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, upd *automationdom.TaskFieldUpdate, automationName string) (bool, error) {
+	if upd == nil {
+		return false, fmt.Errorf("update_task: missing update config")
+	}
+	in := taskdom.UpdateTaskInput{}
+	changed := map[string]any{}
+	oldAssignees := task.AssigneeIDs
+
+	if upd.TaskTypeID != nil && (task.TaskTypeID == nil || *task.TaskTypeID != *upd.TaskTypeID) {
+		id := *upd.TaskTypeID
+		ptr := &id
+		in.TaskTypeID = &ptr
+		changed["task_type_id"] = id
+	}
+	if upd.StatusID != nil && (task.StatusID == nil || *task.StatusID != *upd.StatusID) {
+		id := *upd.StatusID
+		ptr := &id
+		in.StatusID = &ptr
+		changed["status_id"] = id
+	}
+	if upd.SprintID != nil && (task.SprintID == nil || *task.SprintID != *upd.SprintID) {
+		id := *upd.SprintID
+		ptr := &id
+		in.SprintID = &ptr
+		changed["sprint_id"] = id
+	}
+	if upd.ParentTaskID != nil && (task.ParentTaskID == nil || *task.ParentTaskID != *upd.ParentTaskID) {
+		id := *upd.ParentTaskID
+		ptr := &id
+		in.ParentTaskID = &ptr
+		changed["parent_task_id"] = id
+	}
+	if upd.Title != "" && upd.Title != task.Title {
+		title := upd.Title
+		in.Title = title
+		changed["title"] = title
+	}
+	if len(upd.Description) > 0 && !bytes.Equal(upd.Description, task.Description) {
+		desc := upd.Description
+		in.Description = &desc
+		changed["description"] = true
+	}
+	if upd.Importance != nil && *upd.Importance != task.Importance {
+		importance := *upd.Importance
+		in.Importance = &importance
+		changed["importance"] = importance
+	}
+	if upd.StoryPoints != nil && (task.StoryPoints == nil || *task.StoryPoints != *upd.StoryPoints) {
+		sp := *upd.StoryPoints
+		ptr := &sp
+		in.StoryPoints = &ptr
+		changed["story_points"] = sp
+	}
+	if upd.AssigneeIDs != nil && !slices.Equal(sortedUUIDs(task.AssigneeIDs), sortedUUIDs(upd.AssigneeIDs)) {
+		ids := upd.AssigneeIDs
+		in.AssigneeIDs = &ids
+		changed["assignee_ids"] = ids
+	}
+	if upd.ReporterID != nil && (task.ReporterID == nil || *task.ReporterID != *upd.ReporterID) {
+		id := *upd.ReporterID
+		ptr := &id
+		in.ReporterID = &ptr
+		changed["reporter_id"] = id
+	}
+	if len(upd.CustomFields) > 0 {
+		newFields := make(map[string]any, len(task.CustomFields)+len(upd.CustomFields))
+		for k, v := range task.CustomFields {
+			newFields[k] = v
+		}
+		anyDiff := false
+		for k, v := range upd.CustomFields {
+			if existing, ok := task.CustomFields[k]; !ok || fmt.Sprintf("%v", existing) != fmt.Sprintf("%v", v) {
+				anyDiff = true
+			}
+			newFields[k] = v
+		}
+		if anyDiff {
+			in.CustomFields = &newFields
+			changed["custom_fields"] = upd.CustomFields
+		}
+	}
+	if upd.StartDate != nil && (task.StartDate == nil || !task.StartDate.Equal(*upd.StartDate)) {
+		d := *upd.StartDate
+		ptr := &d
+		in.StartDate = &ptr
+		changed["start_date"] = d
+	}
+	if upd.DueDate != nil && (task.DueDate == nil || !task.DueDate.Equal(*upd.DueDate)) {
+		d := *upd.DueDate
+		ptr := &d
+		in.DueDate = &ptr
+		changed["due_date"] = d
+	}
+	if len(upd.Tags) > 0 && !slices.Equal(sortedStrings(task.Tags), sortedStrings(upd.Tags)) {
+		tags := upd.Tags
+		in.Tags = &tags
+		changed["tags"] = tags
+	}
+
+	if len(changed) == 0 {
 		return false, nil
 	}
-	id := statusID
-	ptr := &id
-	if _, err := c.taskSvc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{StatusID: &ptr}); err != nil {
-		return false, fmt.Errorf("update status: %w", err)
+	updated, err := c.taskSvc.UpdateTask(ctx, projectID, task.ID, in)
+	if err != nil {
+		return false, fmt.Errorf("update_task: %w", err)
 	}
-	task.StatusID = &id
+	_ = updated
+
+	// Mutate task's fields directly from what we asked for (mirrors the old
+	// per-field actions' behavior of updating the in-memory task themselves
+	// rather than trusting whatever UpdateTask happens to return) — later
+	// leaves/actions in the same walk see these changes immediately.
+	if in.TaskTypeID != nil {
+		task.TaskTypeID = *in.TaskTypeID
+	}
+	if in.StatusID != nil {
+		task.StatusID = *in.StatusID
+	}
+	if in.SprintID != nil {
+		task.SprintID = *in.SprintID
+	}
+	if in.ParentTaskID != nil {
+		task.ParentTaskID = *in.ParentTaskID
+	}
+	if in.Title != "" {
+		task.Title = in.Title
+	}
+	if in.Description != nil {
+		task.Description = *in.Description
+	}
+	if in.Importance != nil {
+		task.Importance = *in.Importance
+	}
+	if in.StoryPoints != nil {
+		task.StoryPoints = *in.StoryPoints
+	}
+	if in.AssigneeIDs != nil {
+		task.AssigneeIDs = *in.AssigneeIDs
+	}
+	if in.ReporterID != nil {
+		task.ReporterID = *in.ReporterID
+	}
+	if in.CustomFields != nil {
+		task.CustomFields = *in.CustomFields
+	}
+	if in.StartDate != nil {
+		task.StartDate = *in.StartDate
+	}
+	if in.DueDate != nil {
+		task.DueDate = *in.DueDate
+	}
+	if in.Tags != nil {
+		task.Tags = *in.Tags
+	}
+
+	c.recordAppliedActivity(ctx, projectID, task.ID, automationName, changed)
+	if in.AssigneeIDs != nil {
+		for _, memberID := range *in.AssigneeIDs {
+			if !slices.Contains(oldAssignees, memberID) {
+				extra := map[string]any{"automation_name": automationName}
+				_ = events.PublishAssignmentChanged(ctx, c.publisher, task.ID, projectID, memberID, nil, userdom.SystemActorUserID, extra)
+			}
+		}
+	}
 	return true, nil
 }
 
-func (c *AutomationConsumer) applySetPriority(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, importance int) (bool, error) {
-	if task.Importance == importance {
-		return false, nil
-	}
-	if _, err := c.taskSvc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{Importance: &importance}); err != nil {
-		return false, fmt.Errorf("update priority: %w", err)
-	}
-	task.Importance = importance
-	return true, nil
+// sortedUUIDs and sortedStrings give applyUpdateTask a stable comparison
+// order — the task's current AssigneeIDs/Tags and an update's requested
+// values are semantically sets, but []uuid.UUID/[]string equality (via
+// slices.Equal) is order-sensitive, so an update carrying the same members
+// in a different order would otherwise register as a "change" and fire a
+// no-op UpdateTask + a spurious assignment-changed event every time this
+// action re-runs.
+func sortedUUIDs(ids []uuid.UUID) []uuid.UUID {
+	out := append([]uuid.UUID{}, ids...)
+	slices.SortFunc(out, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	return out
 }
 
-func (c *AutomationConsumer) applyAddTag(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, tag string) (bool, error) {
-	if tag == "" || slices.Contains(task.Tags, tag) {
-		return false, nil
-	}
-	newTags := append(append([]string{}, task.Tags...), tag)
-	if _, err := c.taskSvc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{Tags: &newTags}); err != nil {
-		return false, fmt.Errorf("add tag: %w", err)
-	}
-	task.Tags = newTags
-	return true, nil
-}
-
-func (c *AutomationConsumer) applySetCustomField(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, fieldKey string, value any) (bool, error) {
-	if fieldKey == "" {
-		return false, fmt.Errorf("set_custom_field: missing field_key")
-	}
-	if existing, ok := task.CustomFields[fieldKey]; ok && fmt.Sprintf("%v", existing) == fmt.Sprintf("%v", value) {
-		return false, nil
-	}
-	newFields := make(map[string]any, len(task.CustomFields)+1)
-	for k, v := range task.CustomFields {
-		newFields[k] = v
-	}
-	newFields[fieldKey] = value
-	if _, err := c.taskSvc.UpdateTask(ctx, projectID, task.ID, taskdom.UpdateTaskInput{CustomFields: &newFields}); err != nil {
-		return false, fmt.Errorf("set custom field: %w", err)
-	}
-	task.CustomFields = newFields
-	return true, nil
+func sortedStrings(s []string) []string {
+	out := append([]string{}, s...)
+	slices.Sort(out)
+	return out
 }
 
 func (c *AutomationConsumer) recordAppliedActivity(ctx context.Context, projectID, taskID uuid.UUID, automationName string, extra map[string]any) {

@@ -458,7 +458,7 @@ func TestE2EAutomation_CreateNodesEdgesAndFetchGraph(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": todoID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "todo-reached"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"todo-reached"}}})
 
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -485,7 +485,7 @@ func TestE2EAutomation_EdgeIntoTriggerRejected(t *testing.T) {
 	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
 
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Edge Validation Automation")
-	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "add_tag", map[string]any{"tag": "x"})
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"x"}}})
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "trigger", "task_created", nil)
 
 	actionID, _ := action["id"].(string)
@@ -505,8 +505,8 @@ func TestE2EAutomation_CycleRejected(t *testing.T) {
 	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
 
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Cycle Test Automation")
-	a1 := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "add_tag", map[string]any{"tag": "a"})
-	a2 := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "add_tag", map[string]any{"tag": "b"})
+	a1 := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"a"}}})
+	a2 := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"b"}}})
 	a1ID, _ := a1["id"].(string)
 	a2ID, _ := a2["id"].(string)
 
@@ -536,7 +536,7 @@ func TestE2EAutomation_ActivateRequiresTriggerAndAction(t *testing.T) {
 	// Trigger + action, connected — must succeed.
 	completeID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Complete Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, completeID, "trigger", "task_created", nil)
-	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, completeID, "action", "add_tag", map[string]any{"tag": "new"})
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, completeID, "action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"new"}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, completeID, triggerID, actionID)
@@ -559,10 +559,10 @@ func TestE2EAutomation_CreateEmptyActionNodeThenConfigure(t *testing.T) {
 
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Empty Then Configure")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "trigger", "task_created", nil)
-	// Creating an add_tag action with no config must succeed — this used to
+	// Creating an update_task action with no config must succeed — this used to
 	// fail with AUTOMATION_NODE_CONFIG_INVALID ("add_tag requires tag"),
 	// which made it impossible to ever add this node type from the canvas.
-	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "add_tag", nil)
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "action", "update_task", nil)
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -571,7 +571,7 @@ func TestE2EAutomation_CreateEmptyActionNodeThenConfigure(t *testing.T) {
 	activateAutomationViaAPIExpect(t, env, ownerClient, ownerToken, projID, automationID, http.StatusBadRequest)
 
 	// Configure it for real, then Activate should succeed.
-	updateAutomationNodeConfigViaAPIExpect(t, env, ownerClient, ownerToken, projID, automationID, actionID, map[string]any{"tag": "ready"}, http.StatusOK)
+	updateAutomationNodeConfigViaAPIExpect(t, env, ownerClient, ownerToken, projID, automationID, actionID, map[string]any{"update": map[string]any{"tags": []string{"ready"}}}, http.StatusOK)
 	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
 }
 
@@ -601,7 +601,7 @@ func TestE2EAutomationEngine_StatusChangedReassignsTask(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": secondMemberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{secondMemberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -637,7 +637,7 @@ func TestE2EAutomationEngine_MultipleTriggersShareOneChain(t *testing.T) {
 	tagTrigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "tag_added", map[string]any{"tag": "urgent"})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 
 	priorityTriggerID, _ := priorityTrigger["id"].(string)
 	tagTriggerID, _ := tagTrigger["id"].(string)
@@ -699,9 +699,9 @@ func TestE2EAutomationEngine_ConditionBranchesToCorrectAction(t *testing.T) {
 			},
 		})
 	highPriorityAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": bugMemberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{bugMemberID}}})
 	elseAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": elseMemberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{elseMemberID}}})
 
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
@@ -748,7 +748,7 @@ func TestE2EAutomationEngine_PredecessorDoneWaitsForAllWatchedTasks(t *testing.T
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "predecessor_done", map[string]any{"watched_task_ids": []string{taskA, taskB}, "target_task_id": taskC})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -792,7 +792,7 @@ func TestE2EAutomationEngine_CronTriggerFiresOnSchedule(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "cron", map[string]any{"cron_expression": "* * * * *", "target_task_id": taskID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -849,7 +849,7 @@ func TestE2EAutomation_WebhookTriggerTokenLifecycle(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "api_trigger", map[string]any{"target_task_id": taskID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1059,12 +1059,12 @@ func TestE2EAutomation_UpdateNode_ClearingTargetTaskRejectedWhenDownstreamNeedsT
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "cron", map[string]any{"cron_expression": "* * * * *", "target_task_id": taskID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "x"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"x"}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 
-	// add_tag needs a task — clearing this trigger's target_task_id now
+	// update_task needs a task — clearing this trigger's target_task_id now
 	// (omitting it from the replacement config entirely) would leave that
 	// edge unrunnable, so it must be rejected.
 	updateAutomationNodeConfigViaAPIExpect(t, env, ownerClient, ownerToken, projID, automationID, triggerID,
@@ -1174,9 +1174,9 @@ func TestE2EAutomationEngine_ActionRetargetedToChildren_FansOutToEveryChild(t *t
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "set_status", map[string]any{
-			"status_id": doneID,
-			"target":    map[string]any{"kind": "children"},
+		"action", "update_task", map[string]any{
+			"update": map[string]any{"status_id": doneID},
+			"target": map[string]any{"kind": "children"},
 		})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1247,7 +1247,7 @@ func TestE2EAutomationEngine_ConditionRetargetedToBlockingTask(t *testing.T) {
 			},
 		})
 	tagAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "unblocked"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"unblocked"}}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	tagActionID, _ := tagAction["id"].(string)
@@ -1292,7 +1292,7 @@ func TestE2EAutomationEngine_TaskCreatedTriggerFires(t *testing.T) {
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Task Created Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "trigger", "task_created", nil)
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1320,7 +1320,7 @@ func TestE2EAutomationEngine_AssigneeChangedTriggerFires(t *testing.T) {
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Assignee Changed Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "trigger", "assignee_changed", nil)
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "reassigned"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"reassigned"}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1348,7 +1348,7 @@ func TestE2EAutomationEngine_PriorityChangedTriggerFiresOnItsOwn(t *testing.T) {
 	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Priority Changed Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, "trigger", "priority_changed", nil)
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "priority-touched"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"priority-touched"}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1384,7 +1384,7 @@ func TestE2EAutomationEngine_DueDateReachedTriggerFires(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "due_date_reached", map[string]any{"due_date_offset_minutes": 0})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1401,8 +1401,9 @@ func TestE2EAutomationEngine_DueDateReachedTriggerFires(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Engine: every remaining built-in action type actually applies
-// (assign, add_tag, and call_api are covered above; this fills in
-// set_priority, set_custom_field, and trigger_ai_agent's task-bound path)
+// (assignee_ids, tags, and call_api are covered above; this fills in
+// importance, custom_fields, and trigger_ai_agent's task-bound path — all via
+// the unified update_task action type)
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_SetPriorityActionApplies(t *testing.T) {
@@ -1425,7 +1426,7 @@ func TestE2EAutomationEngine_SetPriorityActionApplies(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "set_priority", map[string]any{"importance": 9})
+		"action", "update_task", map[string]any{"update": map[string]any{"importance": 9}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1462,7 +1463,7 @@ func TestE2EAutomationEngine_SetCustomFieldActionApplies(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "set_custom_field", map[string]any{"field_key": "triage", "value": "reviewed"})
+		"action", "update_task", map[string]any{"update": map[string]any{"custom_fields": map[string]any{"triage": "reviewed"}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -1478,7 +1479,7 @@ func TestE2EAutomationEngine_SetCustomFieldActionApplies(t *testing.T) {
 
 // TestE2EAutomationEngine_TriggerAIAgentStartsConversationWithoutReassigning
 // pins down a deliberate behavior change: trigger_ai_agent used to reuse the
-// "assign" action's code path, reassigning the triggering task to the agent
+// update_task's assignee_ids code path, reassigning the triggering task to the agent
 // as a side effect of starting its conversation. That silently overwrote
 // whoever the task was actually assigned to. trigger_ai_agent's job is only
 // to get the agent looking at the task — ownership is unaffected, same as
@@ -1587,7 +1588,7 @@ func TestE2EAutomationEngine_ConditionOnTaskType(t *testing.T) {
 			},
 		})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "bug-flagged"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"bug-flagged"}}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1634,7 +1635,7 @@ func TestE2EAutomationEngine_ConditionOnAssigneeContains(t *testing.T) {
 			},
 		})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "watched-assignee"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"watched-assignee"}}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1678,7 +1679,7 @@ func TestE2EAutomationEngine_ConditionOnTagsContains(t *testing.T) {
 			},
 		})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "set_priority", map[string]any{"importance": 10})
+		"action", "update_task", map[string]any{"update": map[string]any{"importance": 10}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1727,7 +1728,7 @@ func TestE2EAutomationEngine_ConditionOnCustomFieldEquals(t *testing.T) {
 			},
 		})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "critical-flagged"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"critical-flagged"}}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1768,7 +1769,7 @@ func TestE2EAutomationEngine_ConditionIsEmptyOperator(t *testing.T) {
 			},
 		})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "needs-owner"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"needs-owner"}}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1818,9 +1819,9 @@ func TestE2EAutomationEngine_ConditionElseBranchFiresWhenNoBranchMatches(t *test
 			},
 		})
 	highPriorityAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": bugMemberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{bugMemberID}}})
 	elseAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": elseMemberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{elseMemberID}}})
 
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
@@ -1862,9 +1863,9 @@ func TestE2EAutomationEngine_ActionChainContinuesPastFirstAction(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	firstAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "step1"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"step1"}}})
 	secondAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "set_priority", map[string]any{"importance": 10})
+		"action", "update_task", map[string]any{"update": map[string]any{"importance": 10}})
 	triggerID, _ := trigger["id"].(string)
 	firstActionID, _ := firstAction["id"].(string)
 	secondActionID, _ := secondAction["id"].(string)
@@ -1904,7 +1905,7 @@ func TestE2EAutomationEngine_IdempotentAssignSkipsRunStepOnSecondFire(t *testing
 	priorityTrigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "priority_changed", nil)
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	statusTriggerID, _ := statusTrigger["id"].(string)
 	priorityTriggerID, _ := priorityTrigger["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -1968,7 +1969,7 @@ func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -2008,7 +2009,7 @@ func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": memberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{memberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -2049,7 +2050,7 @@ func TestE2EAutomation_DeletingEdgeStopsDownstreamFiring(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "should-not-appear"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"should-not-appear"}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	edge := addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -2093,7 +2094,7 @@ func TestE2EAutomation_UpdatingActiveActionConfigAffectsNextFire(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "assign", map[string]any{"member_id": firstMemberID})
+		"action", "update_task", map[string]any{"update": map[string]any{"assignee_ids": []string{firstMemberID}}})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
@@ -2104,7 +2105,7 @@ func TestE2EAutomation_UpdatingActiveActionConfigAffectsNextFire(t *testing.T) {
 
 	// Edit the action's config WHILE the automation stays active.
 	updateAutomationNodeConfigViaAPIExpect(t, env, ownerClient, ownerToken, projID, automationID, actionID,
-		map[string]any{"member_id": secondMemberID}, http.StatusOK)
+		map[string]any{"update": map[string]any{"assignee_ids": []string{secondMemberID}}}, http.StatusOK)
 
 	// A fresh status transition (Done -> In Progress again) must now assign
 	// the NEW member, proving the live edit took effect.
@@ -2141,8 +2142,8 @@ func TestE2EAutomationEngine_ActionRetargetedToParent(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{
-			"tag": "child-touched-parent", "target": map[string]any{"kind": "parent"},
+		"action", "update_task", map[string]any{
+			"update": map[string]any{"tags": []string{"child-touched-parent"}}, "target": map[string]any{"kind": "parent"},
 		})
 	triggerID, _ := trigger["id"].(string)
 	actionID, _ := action["id"].(string)
@@ -2183,8 +2184,8 @@ func TestE2EAutomationEngine_ActionRetargetedToOtherExplicitTask(t *testing.T) {
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{
-			"tag":    "touched-via-other",
+		"action", "update_task", map[string]any{
+			"update": map[string]any{"tags": []string{"touched-via-other"}},
 			"target": map[string]any{"kind": "other", "other_task_id": otherTask},
 		})
 	triggerID, _ := trigger["id"].(string)
@@ -2239,9 +2240,9 @@ func TestE2EAutomationEngine_ConditionMatchModeAllRequiresEveryChildToMatch(t *t
 			},
 		})
 	allDoneAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "all-done"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"all-done"}}})
 	notAllAction := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
-		"action", "add_tag", map[string]any{"tag": "not-all-done"})
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"not-all-done"}}})
 	triggerID, _ := trigger["id"].(string)
 	conditionID, _ := condition["id"].(string)
 	allDoneActionID, _ := allDoneAction["id"].(string)

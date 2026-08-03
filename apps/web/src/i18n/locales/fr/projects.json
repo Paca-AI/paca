@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "Assigner",
-			"set_status": "Définir le statut",
-			"set_priority": "Définir la priorité",
-			"add_tag": "Ajouter une étiquette",
-			"set_custom_field": "Définir un champ personnalisé",
+			"update_task": "Mettre à jour la tâche",
 			"trigger_ai_agent": "Déclencher l'agent IA",
 			"call_api": "Appeler l'API"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "Supprimer le nœud",
 			"removeConfirmBody": "Cela supprime le nœud du graphe, ainsi que toutes ses connexions.",
 			"removeConfirmAction": "Supprimer",
-			"genericFormHint": "Ce type de nœud provient d'un plugin. Modifiez sa configuration en JSON — les plugins pourront proposer un éditeur plus riche ici dans une future version.",
+			"genericFormHint": "Ce type de nœud provient d'un plugin qui n'a pas déclaré de schéma de configuration, ses paramètres sont donc modifiés en JSON brut. Les plugins qui déclarent un configSchema dans leur manifeste affichent plutôt des champs d'interface ici.",
 			"trigger": {
 				"anyStatus": "N'importe quel statut",
+				"noConfigNeeded": "Ce déclencheur ne nécessite aucune configuration : il se déclenche automatiquement dès que l'événement se produit.",
 				"statusLabel": "Statut",
 				"tagLabel": "Étiquette",
 				"anyTag": "N'importe quelle étiquette",
@@ -1370,7 +1367,14 @@
 					"importance": "Priorité",
 					"assignee_ids": "Assigné",
 					"tags": "Étiquettes",
-					"custom_field": "Champ personnalisé"
+					"custom_field": "Champ personnalisé",
+					"title": "Titre",
+					"story_points": "Story points",
+					"sprint_id": "Sprint",
+					"parent_task_id": "Tâche parente",
+					"reporter_id": "Rapporteur",
+					"start_date": "Date de début",
+					"due_date": "Date d'échéance"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "Nom de l'en-tête",
 				"headerValuePlaceholder": "Valeur",
 				"addHeader": "Ajouter un en-tête",
-				"bodyLabel": "Corps"
+				"bodyLabel": "Corps",
+				"updateTaskHint": "Seuls les champs que vous activez ci-dessous sont modifiés — le reste de la tâche n'est pas touché.",
+				"addFieldToUpdate": "Ajouter un champ à mettre à jour…",
+				"customFieldsLabel": "Champ personnalisé",
+				"enableField": "Définir {{field}}",
+				"titleLabel": "Titre",
+				"storyPointsLabel": "Story points",
+				"sprintLabel": "Sprint",
+				"parentTaskLabel": "Tâche parente",
+				"reporterLabel": "Rapporteur",
+				"startDateLabel": "Date de début",
+				"dueDateLabel": "Date d'échéance",
+				"tagsLabel": "Étiquettes",
+				"tagsPlaceholder": "Ajouter une étiquette…",
+				"assigneesLabel": "Assignés",
+				"noSprint": "Aucun sprint",
+				"pluginConditionLabel": "Condition de plugin",
+				"pluginConditionHint": "Délègue la correspondance de cette branche à une condition fournie par un plugin plutôt qu'à une comparaison de champ de tâche.",
+				"selectPluginPlaceholder": "Sélectionner une condition de plugin…",
+				"addCustomField": "Ajouter un champ personnalisé…"
 			},
 			"target": {
 				"label": "S'applique à",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "{{minutes}} min après l'échéance",
 				"branches": "{{count}} branche(s)",
 				"priority": "Priorité : {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "Non assigné",
 				"notConfigured": "Non configuré",
 				"elseShort": "Sinon",
+				"pluginConditionMatched": "Correspond",
 				"branchFallback": "Branche {{n}}",
 				"cronSchedule": "S'exécute {{expression}}",
 				"webhookReady": "Webhook configuré",

@@ -120,11 +120,11 @@ type ActionType string
 
 // Built-in action types.
 const (
-	ActionAssign         ActionType = "assign"
-	ActionSetStatus      ActionType = "set_status"
-	ActionSetPriority    ActionType = "set_priority"
-	ActionAddTag         ActionType = "add_tag"
-	ActionSetCustomField ActionType = "set_custom_field"
+	// ActionUpdateTask sets one or more task fields at once (ActionConfig's
+	// Update) — replaces the old one-node-per-field actions (assign,
+	// set_status, set_priority, add_tag, set_custom_field), each of which
+	// could only ever touch a single field per node.
+	ActionUpdateTask     ActionType = "update_task"
 	ActionTriggerAIAgent ActionType = "trigger_ai_agent"
 	// ActionCallAPI makes an outbound HTTP request (ActionConfig's
 	// Method/URL/Headers/Body) when the graph walk reaches it. Unlike every
@@ -135,11 +135,7 @@ const (
 
 // ValidBuiltinActionTypes is the set of built-in action type values.
 var ValidBuiltinActionTypes = map[ActionType]bool{
-	ActionAssign:         true,
-	ActionSetStatus:      true,
-	ActionSetPriority:    true,
-	ActionAddTag:         true,
-	ActionSetCustomField: true,
+	ActionUpdateTask:     true,
 	ActionTriggerAIAgent: true,
 	ActionCallAPI:        true,
 }
@@ -209,6 +205,16 @@ type Node struct {
 // ElseHandle is the reserved branch handle a Condition node's fallback edge
 // uses when none of its branches match.
 const ElseHandle = "else"
+
+// PluginConditionTrueHandle is the source handle a plugin-contributed
+// condition node's "matched" edge uses. Unlike the built-in Condition node
+// (an N-branch switch backed by ConditionConfig.Branches), a plugin
+// condition is a simple boolean gate — EvaluateCondition returns
+// Matched: true/false — so it only ever needs this one handle plus the
+// shared ElseHandle fallback. Used by both the worker (walkPluginCondition
+// in automation_consumer.go) and edge-handle validation (validateEdgeHandle
+// in automation_service.go), which must agree on the same string.
+const PluginConditionTrueHandle = "true"
 
 // Edge is a directed link between two nodes in the same automation.
 // SourceHandle is nil for Trigger/Action sources (a single outgoing path)
@@ -387,21 +393,26 @@ type TaskTarget struct {
 // relevant to a node's Type are set. Marshaled into Node.Config for
 // kind=action nodes.
 type ActionConfig struct {
-	MemberID   *uuid.UUID `json:"member_id,omitempty"`  // assign, trigger_ai_agent
-	StatusID   *uuid.UUID `json:"status_id,omitempty"`  // set_status
-	Importance *int       `json:"importance,omitempty"` // set_priority
-	Tag        string     `json:"tag,omitempty"`        // add_tag
-	FieldKey   string     `json:"field_key,omitempty"`  // set_custom_field
-	Value      any        `json:"value,omitempty"`      // set_custom_field
-	Message    string     `json:"message,omitempty"`    // trigger_ai_agent: free-text instruction for the agent
+	// Message is trigger_ai_agent's free-text instruction for the agent.
+	Message string `json:"message,omitempty"`
+	// MemberID is trigger_ai_agent's target agent — who runs the agent
+	// conversation, unrelated to Update.AssigneeIDs (which reassigns the
+	// task itself when Type is ActionUpdateTask).
+	MemberID *uuid.UUID `json:"member_id,omitempty"`
+
+	// Update carries every task-field change to apply when Type is
+	// ActionUpdateTask — one node settable across any number of fields at
+	// once (see TaskFieldUpdate), replacing the old one-node-per-field
+	// actions (assign/set_status/set_priority/add_tag/set_custom_field).
+	Update *TaskFieldUpdate `json:"update,omitempty"`
 
 	// call_api: the outbound request to make when the walk reaches this
 	// node. Headers/Body are stored and returned verbatim like every other
-	// config field today (e.g. set_custom_field's Value) — anyone with
-	// project read access to the automation can see them, including any
-	// secret a user puts in an Authorization header. Not a new gap, but
-	// worth noting since this is the first action whose config plausibly
-	// holds a live secret.
+	// config field today (e.g. TaskFieldUpdate's CustomFields values) —
+	// anyone with project read access to the automation can see them,
+	// including any secret a user puts in an Authorization header. Not a
+	// new gap, but worth noting since this is the first action whose
+	// config plausibly holds a live secret.
 	Method  string            `json:"method,omitempty"`  // call_api: GET/POST/PUT/PATCH/DELETE
 	URL     string            `json:"url,omitempty"`     // call_api
 	Headers map[string]string `json:"headers,omitempty"` // call_api
@@ -413,6 +424,31 @@ type ActionConfig struct {
 	// resolves more than one task, the action fans out — applied once per
 	// resolved task (see the worker's runAction).
 	Target *TaskTarget `json:"target,omitempty"`
+}
+
+// TaskFieldUpdate is the sparse "which fields to set" payload for
+// ActionUpdateTask — same field set as taskdom's UpdateTaskInput (see
+// services/api/internal/domain/task/service.go), minus its **T
+// explicit-clear plumbing: a nil field here means "leave this field
+// alone," matching how every one of the old single-field actions already
+// worked (set_status could set a status but never clear one, etc.) — this
+// merge doesn't add or remove that capability, just lets one action node
+// touch several fields instead of exactly one.
+type TaskFieldUpdate struct {
+	TaskTypeID   *uuid.UUID      `json:"task_type_id,omitempty"`
+	StatusID     *uuid.UUID      `json:"status_id,omitempty"`
+	SprintID     *uuid.UUID      `json:"sprint_id,omitempty"`
+	ParentTaskID *uuid.UUID      `json:"parent_task_id,omitempty"`
+	Title        string          `json:"title,omitempty"`
+	Description  json.RawMessage `json:"description,omitempty"`
+	Importance   *int            `json:"importance,omitempty"`
+	StoryPoints  *int            `json:"story_points,omitempty"`
+	AssigneeIDs  []uuid.UUID     `json:"assignee_ids,omitempty"`
+	ReporterID   *uuid.UUID      `json:"reporter_id,omitempty"`
+	CustomFields map[string]any  `json:"custom_fields,omitempty"`
+	StartDate    *time.Time      `json:"start_date,omitempty"`
+	DueDate      *time.Time      `json:"due_date,omitempty"`
+	Tags         []string        `json:"tags,omitempty"`
 }
 
 // ConditionConfig holds a Condition node's ordered branches. Marshaled into

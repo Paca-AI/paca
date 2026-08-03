@@ -118,22 +118,25 @@ func TestValidateEdgeHandle_ConditionSourceRejectsUndeclaredHandle(t *testing.T)
 	}
 }
 
-// TestValidateEdgeHandle_PluginConditionSourceHasNoBranchesToCheck covers a
-// plugin-contributed condition node (Type != ConditionNodeType): its config
-// is opaque to this package, so the only two valid handles are "true" and
-// "else" — anything else should still be rejected the same way a bogus
-// built-in branch handle would be, since the branch-list check silently no-ops
-// (an empty ConditionConfig unmarshal) rather than special-casing plugin
-// node types.
+// TestValidateEdgeHandle_PluginConditionSource covers a plugin-contributed
+// condition node (Type != ConditionNodeType): its config is opaque to this
+// package (no Branches to check against, unlike the built-in switch), so the
+// only two valid handles are PluginConditionTrueHandle ("true") — the handle
+// walker.walkPluginCondition follows on a match — and the shared ElseHandle
+// fallback. Anything else must still be rejected.
 func TestValidateEdgeHandle_PluginConditionSource(t *testing.T) {
 	source := newNode(automationdom.KindCondition, "com.acme.github.pr_status", `{"repo":"acme/widgets"}`)
-	trueHandle := "true"
-	if err := validateEdgeHandle(source, &trueHandle); err == nil {
-		t.Fatal("expected 'true' to be rejected since it isn't a declared branch in the (empty) ConditionConfig for a plugin node's opaque config")
+	trueHandle := automationdom.PluginConditionTrueHandle
+	if err := validateEdgeHandle(source, &trueHandle); err != nil {
+		t.Fatalf("expected the plugin condition's true handle to be valid, got %v", err)
 	}
 	elseHandle := automationdom.ElseHandle
 	if err := validateEdgeHandle(source, &elseHandle); err != nil {
 		t.Fatalf("expected else handle to remain valid for a plugin condition node, got %v", err)
+	}
+	bogusHandle := "not_a_real_handle"
+	if err := validateEdgeHandle(source, &bogusHandle); err == nil {
+		t.Fatal("expected an arbitrary, undeclared handle to be rejected for a plugin condition node")
 	}
 }
 
@@ -214,6 +217,10 @@ func TestService_ValidateNodeTypeAndConfig_PluginActionFallthrough(t *testing.T)
 	}
 }
 
+// TestService_ValidateNodeTypeAndConfig_PluginConditionFallthrough covers a
+// plugin-contributed condition node: its own node type (KindCondition, not
+// the built-in ConditionNodeType), validated opaquely once the resolver
+// confirms it's registered.
 func TestService_ValidateNodeTypeAndConfig_PluginConditionFallthrough(t *testing.T) {
 	svc := &Service{}
 	svc.WithPluginNodeResolver(&stubPluginResolver{conditions: map[string]bool{"com.acme.github.pr_status": true}})
@@ -373,11 +380,11 @@ func TestValidateTaskReachability_TaskLessTriggerToCondition_Rejected(t *testing
 
 func TestValidateTaskReachability_TaskLessTriggerToNonCallAPIAction_Rejected(t *testing.T) {
 	trigger := taskLessTriggerNode(t, automationdom.TriggerAPITrigger)
-	action := newNode(automationdom.KindAction, string(automationdom.ActionSetStatus), "{}")
+	action := newNode(automationdom.KindAction, string(automationdom.ActionUpdateTask), "{}")
 	nodes := []*automationdom.Node{trigger, action}
 	edges := []*automationdom.Edge{newEdge(trigger.ID, action.ID)}
 	if err := validateTaskReachability(nodes, edges); err == nil {
-		t.Fatal("expected a task-less api_trigger reaching a set_status action to be rejected")
+		t.Fatal("expected a task-less api_trigger reaching an update_task action to be rejected")
 	}
 }
 
@@ -498,14 +505,14 @@ func TestValidateActionConfig_CallAPI_RejectsTarget(t *testing.T) {
 	}
 }
 
-func TestValidateActionConfig_AddTag_AcceptsTarget(t *testing.T) {
+func TestValidateActionConfig_UpdateTask_AcceptsTarget(t *testing.T) {
 	svc := &Service{}
 	cfg, _ := json.Marshal(automationdom.ActionConfig{
-		Tag:    "x",
+		Update: &automationdom.TaskFieldUpdate{Tags: []string{"x"}},
 		Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren},
 	})
-	if err := svc.validateActionConfig(context.Background(), uuid.New(), automationdom.ActionAddTag, cfg, true); err != nil {
-		t.Fatalf("expected add_tag to accept a children target, got %v", err)
+	if err := svc.validateActionConfig(context.Background(), uuid.New(), automationdom.ActionUpdateTask, cfg, true); err != nil {
+		t.Fatalf("expected update_task to accept a children target, got %v", err)
 	}
 }
 

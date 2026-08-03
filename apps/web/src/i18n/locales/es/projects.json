@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "Asignar",
-			"set_status": "Establecer estado",
-			"set_priority": "Establecer prioridad",
-			"add_tag": "Añadir etiqueta",
-			"set_custom_field": "Establecer campo personalizado",
+			"update_task": "Actualizar tarea",
 			"trigger_ai_agent": "Activar agente de IA",
 			"call_api": "Llamar API"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "Eliminar nodo",
 			"removeConfirmBody": "Esto elimina el nodo del gráfico, junto con todas sus conexiones.",
 			"removeConfirmAction": "Eliminar",
-			"genericFormHint": "Este tipo de nodo proviene de un plugin. Edita su configuración como JSON — los plugins podrán registrar un editor más completo aquí en una futura versión.",
+			"genericFormHint": "Este tipo de nodo proviene de un plugin que no ha declarado un esquema de configuración, por lo que su configuración se edita como JSON en bruto. Los plugins que declaran un configSchema en su manifiesto muestran campos de interfaz aquí en su lugar.",
 			"trigger": {
 				"anyStatus": "Cualquier estado",
+				"noConfigNeeded": "Este disparador no necesita configuración: se activa automáticamente cuando ocurre el evento.",
 				"statusLabel": "Estado",
 				"tagLabel": "Etiqueta",
 				"anyTag": "Cualquier etiqueta",
@@ -1370,7 +1367,14 @@
 					"importance": "Prioridad",
 					"assignee_ids": "Asignado",
 					"tags": "Etiquetas",
-					"custom_field": "Campo personalizado"
+					"custom_field": "Campo personalizado",
+					"title": "Título",
+					"story_points": "Puntos de historia",
+					"sprint_id": "Sprint",
+					"parent_task_id": "Tarea principal",
+					"reporter_id": "Reportero",
+					"start_date": "Fecha de inicio",
+					"due_date": "Fecha de vencimiento"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "Nombre de la cabecera",
 				"headerValuePlaceholder": "Valor",
 				"addHeader": "Añadir cabecera",
-				"bodyLabel": "Cuerpo"
+				"bodyLabel": "Cuerpo",
+				"updateTaskHint": "Solo se cambian los campos que habilites a continuación; el resto de la tarea permanece intacto.",
+				"addFieldToUpdate": "Añadir campo para actualizar…",
+				"customFieldsLabel": "Campo personalizado",
+				"enableField": "Establecer {{field}}",
+				"titleLabel": "Título",
+				"storyPointsLabel": "Puntos de historia",
+				"sprintLabel": "Sprint",
+				"parentTaskLabel": "Tarea principal",
+				"reporterLabel": "Reportero",
+				"startDateLabel": "Fecha de inicio",
+				"dueDateLabel": "Fecha de vencimiento",
+				"tagsLabel": "Etiquetas",
+				"tagsPlaceholder": "Añadir una etiqueta…",
+				"assigneesLabel": "Asignados",
+				"noSprint": "Sin sprint",
+				"pluginConditionLabel": "Condición de plugin",
+				"pluginConditionHint": "Delega la coincidencia de esta rama a una condición de plugin en lugar de comparar un campo de la tarea.",
+				"selectPluginPlaceholder": "Selecciona una condición de plugin…",
+				"addCustomField": "Añadir campo personalizado…"
 			},
 			"target": {
 				"label": "Se aplica a",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "{{minutes}} min después de la fecha límite",
 				"branches": "{{count}} rama(s)",
 				"priority": "Prioridad: {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "Sin asignar",
 				"notConfigured": "Sin configurar",
 				"elseShort": "Si no",
+				"pluginConditionMatched": "Coincide",
 				"branchFallback": "Rama {{n}}",
 				"cronSchedule": "Se ejecuta {{expression}}",
 				"webhookReady": "Webhook configurado",

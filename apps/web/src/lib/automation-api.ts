@@ -21,11 +21,7 @@ export const TRIGGER_TYPES = [
 export type TriggerType = (typeof TRIGGER_TYPES)[number];
 
 export const ACTION_TYPES = [
-	"assign",
-	"set_status",
-	"set_priority",
-	"add_tag",
-	"set_custom_field",
+	"update_task",
 	"trigger_ai_agent",
 	"call_api",
 ] as const;
@@ -103,12 +99,41 @@ export interface DependencyMapEntry {
 	watched_task_ids: string[];
 }
 
+// A single field within a plugin node's configSchema (JSON Schema, draft-07
+// subset). Only the shape the config-panel's SchemaConfigForm knows how to
+// render is modeled here — plugins are expected to stick to this subset for
+// their automation node configSchema (see paca-plugin-github/time-logging's
+// plugin.json for real examples).
+export interface PluginNodeConfigSchemaProperty {
+	type?: "string" | "integer" | "number" | "boolean";
+	title?: string;
+	/** Rendered as a Select dropdown when present. */
+	enum?: string[];
+	/** "textarea" -> multi-line Textarea, "date" -> <input type="date">,
+	 * "member" -> a project-member picker Select (options come from the
+	 * config panel's own members list, not this schema — the plugin just
+	 * asks for a member ID instead of asking the user to type one in). */
+	format?: string;
+	minimum?: number;
+	default?: string | number | boolean;
+}
+
+// A plugin node's config shape, declared under plugin.json's
+// automation.{triggers,conditions,actions}[].configSchema. Drives
+// SchemaConfigForm's UI-field rendering in automation-node-config-panel.tsx
+// instead of the raw-JSON fallback.
+export interface PluginNodeConfigSchema {
+	type?: string;
+	required?: string[];
+	properties?: Record<string, PluginNodeConfigSchemaProperty>;
+}
+
 // A plugin-contributed node type — Type is reverse-DNS namespaced (e.g.
 // "com.acme.github.pr_merged") and doubles as its own registry key.
 export interface PluginNodeType {
 	type: string;
 	label: string;
-	configSchema?: Record<string, unknown>;
+	configSchema?: PluginNodeConfigSchema;
 	eventTopic?: string;
 }
 
@@ -152,7 +177,14 @@ export type ConditionField =
 	| "importance"
 	| "assignee_ids"
 	| "tags"
-	| "custom_field";
+	| "custom_field"
+	| "title"
+	| "story_points"
+	| "sprint_id"
+	| "parent_task_id"
+	| "reporter_id"
+	| "start_date"
+	| "due_date";
 
 /** Which task a condition leaf or action operates on, relative to the
  * walk's own bound task — "self" (or omitted) is the walk's own task, the
@@ -192,7 +224,7 @@ export interface TaskTarget {
 export interface ConditionLeaf {
 	field: ConditionField;
 	field_key?: string;
-	operator: ConditionOperator;
+	operator?: ConditionOperator;
 	value?: unknown;
 	/** Retargets this leaf onto a task other than the walk's own bound task
 	 * (omitted/self = evaluated against the walk's task directly). */
@@ -206,6 +238,13 @@ export interface ConditionLeaf {
 
 export const ELSE_HANDLE = "else";
 
+// PLUGIN_CONDITION_TRUE_HANDLE is the source handle a plugin-contributed
+// condition node's "matched" edge uses — mirrors the worker's
+// pluginConditionTrueHandle (automation_consumer.go): a plugin condition is
+// a boolean gate (Matched: true/false), not an N-branch switch, so it only
+// ever needs this one handle plus the shared ELSE_HANDLE fallback.
+export const PLUGIN_CONDITION_TRUE_HANDLE = "true";
+
 export interface ConditionBranch {
 	handle: string;
 	label?: string;
@@ -216,14 +255,35 @@ export interface ConditionConfig {
 	branches: ConditionBranch[];
 }
 
-export interface ActionConfig {
-	member_id?: string;
+/** ActionUpdateTask's config: every field change to apply, in one node —
+ * replaces the old one-node-per-field actions (assign/set_status/
+ * set_priority/add_tag/set_custom_field). A field left unset means "don't
+ * touch it"; tags/custom_fields are full replacements, not merges (mirrors
+ * the Go worker's TaskFieldUpdate). */
+export interface TaskFieldUpdate {
+	task_type_id?: string;
 	status_id?: string;
+	sprint_id?: string;
+	parent_task_id?: string;
+	title?: string;
+	description?: unknown;
 	importance?: number;
-	tag?: string;
-	field_key?: string;
-	value?: unknown;
+	story_points?: number;
+	assignee_ids?: string[];
+	reporter_id?: string;
+	custom_fields?: Record<string, unknown>;
+	start_date?: string;
+	due_date?: string;
+	tags?: string[];
+}
+
+export interface ActionConfig {
+	/** trigger_ai_agent: who runs the agent conversation — distinct from
+	 * update.assignee_ids, which reassigns the task itself. */
+	member_id?: string;
 	message?: string;
+	/** update_task: every task-field change to apply, in one node. */
+	update?: TaskFieldUpdate;
 	/** call_api: the outbound request to make when the walk reaches this node. */
 	method?: string;
 	url?: string;

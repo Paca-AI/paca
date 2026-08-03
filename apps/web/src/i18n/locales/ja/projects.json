@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "担当者を割り当て",
-			"set_status": "ステータスを設定",
-			"set_priority": "優先度を設定",
-			"add_tag": "タグを追加",
-			"set_custom_field": "カスタムフィールドを設定",
+			"update_task": "タスクを更新",
 			"trigger_ai_agent": "AIエージェントを起動",
 			"call_api": "APIを呼び出し"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "ノードを削除",
 			"removeConfirmBody": "グラフからこのノードと、そのすべての接続が削除されます。",
 			"removeConfirmAction": "削除",
-			"genericFormHint": "このノードタイプはプラグインによって提供されています。設定はJSONとして編集してください — 将来のリリースでプラグインがより高度なエディタを登録できるようになります。",
+			"genericFormHint": "このノードタイプは設定スキーマを宣言していないプラグインによって提供されているため、設定は生のJSONとして編集します。マニフェストでconfigSchemaを宣言しているプラグインは、代わりにUIフィールドをここに表示します。",
 			"trigger": {
 				"anyStatus": "任意のステータス",
+				"noConfigNeeded": "このトリガーに設定は不要です。イベントが発生すると自動的に実行されます。",
 				"statusLabel": "ステータス",
 				"tagLabel": "タグ",
 				"anyTag": "任意のタグ",
@@ -1370,7 +1367,14 @@
 					"importance": "優先度",
 					"assignee_ids": "担当者",
 					"tags": "タグ",
-					"custom_field": "カスタムフィールド"
+					"custom_field": "カスタムフィールド",
+					"title": "タイトル",
+					"story_points": "ストーリーポイント",
+					"sprint_id": "スプリント",
+					"parent_task_id": "親タスク",
+					"reporter_id": "報告者",
+					"start_date": "開始日",
+					"due_date": "期日"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "ヘッダー名",
 				"headerValuePlaceholder": "値",
 				"addHeader": "ヘッダーを追加",
-				"bodyLabel": "本文"
+				"bodyLabel": "本文",
+				"updateTaskHint": "以下で有効にしたフィールドのみが変更されます。その他のタスクの内容は変更されません。",
+				"addFieldToUpdate": "更新するフィールドを追加…",
+				"customFieldsLabel": "カスタムフィールド",
+				"enableField": "{{field}} を設定",
+				"titleLabel": "タイトル",
+				"storyPointsLabel": "ストーリーポイント",
+				"sprintLabel": "スプリント",
+				"parentTaskLabel": "親タスク",
+				"reporterLabel": "報告者",
+				"startDateLabel": "開始日",
+				"dueDateLabel": "期日",
+				"tagsLabel": "タグ",
+				"tagsPlaceholder": "タグを追加…",
+				"assigneesLabel": "担当者",
+				"noSprint": "スプリントなし",
+				"pluginConditionLabel": "プラグイン条件",
+				"pluginConditionHint": "タスクフィールドの比較の代わりに、このブランチの判定をプラグイン提供の条件に委任します。",
+				"selectPluginPlaceholder": "プラグイン条件を選択…",
+				"addCustomField": "カスタムフィールドを追加…"
 			},
 			"target": {
 				"label": "適用先",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "期日の{{minutes}}分後",
 				"branches": "{{count}}件の分岐",
 				"priority": "優先度：{{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "未割り当て",
 				"notConfigured": "未設定",
 				"elseShort": "それ以外",
+				"pluginConditionMatched": "一致",
 				"branchFallback": "分岐{{n}}",
 				"cronSchedule": "{{expression}} に実行",
 				"webhookReady": "Webhook設定済み",

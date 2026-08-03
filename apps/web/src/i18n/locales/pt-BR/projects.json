@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "Atribuir",
-			"set_status": "Definir status",
-			"set_priority": "Definir prioridade",
-			"add_tag": "Adicionar tag",
-			"set_custom_field": "Definir campo personalizado",
+			"update_task": "Atualizar tarefa",
 			"trigger_ai_agent": "Acionar agente de IA",
 			"call_api": "Chamar API"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "Remover nó",
 			"removeConfirmBody": "Isso remove o nó do gráfico, junto com todas as suas conexões.",
 			"removeConfirmAction": "Remover",
-			"genericFormHint": "Este tipo de nó vem de um plugin. Edite sua configuração como JSON — plugins poderão registrar um editor mais completo aqui em uma versão futura.",
+			"genericFormHint": "Este tipo de nó vem de um plugin que não declarou um esquema de configuração, então suas configurações são editadas como JSON bruto. Plugins que declaram um configSchema em seu manifesto exibem campos de interface aqui.",
 			"trigger": {
 				"anyStatus": "Qualquer status",
+				"noConfigNeeded": "Este gatilho não precisa de configuração — ele é acionado automaticamente quando o evento ocorre.",
 				"statusLabel": "Status",
 				"tagLabel": "Tag",
 				"anyTag": "Qualquer tag",
@@ -1370,7 +1367,14 @@
 					"importance": "Prioridade",
 					"assignee_ids": "Responsável",
 					"tags": "Tags",
-					"custom_field": "Campo personalizado"
+					"custom_field": "Campo personalizado",
+					"title": "Título",
+					"story_points": "Story points",
+					"sprint_id": "Sprint",
+					"parent_task_id": "Tarefa pai",
+					"reporter_id": "Relator",
+					"start_date": "Data de início",
+					"due_date": "Data de entrega"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "Nome do cabeçalho",
 				"headerValuePlaceholder": "Valor",
 				"addHeader": "Adicionar cabeçalho",
-				"bodyLabel": "Corpo"
+				"bodyLabel": "Corpo",
+				"updateTaskHint": "Somente os campos habilitados abaixo são alterados — o restante da tarefa permanece intacto.",
+				"addFieldToUpdate": "Adicionar campo para atualizar…",
+				"customFieldsLabel": "Campo personalizado",
+				"enableField": "Definir {{field}}",
+				"titleLabel": "Título",
+				"storyPointsLabel": "Story points",
+				"sprintLabel": "Sprint",
+				"parentTaskLabel": "Tarefa pai",
+				"reporterLabel": "Relator",
+				"startDateLabel": "Data de início",
+				"dueDateLabel": "Data de entrega",
+				"tagsLabel": "Tags",
+				"tagsPlaceholder": "Adicionar uma tag…",
+				"assigneesLabel": "Responsáveis",
+				"noSprint": "Sem sprint",
+				"pluginConditionLabel": "Condição de plugin",
+				"pluginConditionHint": "Delega a correspondência deste ramo a uma condição fornecida por um plugin em vez de comparar um campo da tarefa.",
+				"selectPluginPlaceholder": "Selecione uma condição de plugin…",
+				"addCustomField": "Adicionar campo personalizado…"
 			},
 			"target": {
 				"label": "Aplica-se a",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "{{minutes}} min depois do prazo",
 				"branches": "{{count}} ramificação(ões)",
 				"priority": "Prioridade: {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "Sem responsável",
 				"notConfigured": "Não configurado",
 				"elseShort": "Senão",
+				"pluginConditionMatched": "Corresponde",
 				"branchFallback": "Ramificação {{n}}",
 				"cronSchedule": "Executa {{expression}}",
 				"webhookReady": "Webhook configurado",

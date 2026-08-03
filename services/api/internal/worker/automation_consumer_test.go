@@ -8,11 +8,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
@@ -84,36 +88,36 @@ func TestTriggerMatches_UnconditionalTypesAlwaysMatch(t *testing.T) {
 	}
 }
 
-func TestApplyAssign_IdempotentWhenAlreadyAssigned(t *testing.T) {
+func TestApplyUpdateTask_Assign_IdempotentWhenAlreadyAssigned(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{memberID}}
 
-	applied, err := c.applyAssign(context.Background(), uuid.New(), task, memberID, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if applied {
-		t.Fatal("expected applyAssign to be a no-op when already assigned to memberID")
+		t.Fatal("expected applyUpdateTask to be a no-op when already assigned to memberID")
 	}
 	if updater.calls != 0 {
 		t.Fatalf("expected no UpdateTask call, got %d", updater.calls)
 	}
 }
 
-func TestApplyAssign_AppliesWhenNotAssigned(t *testing.T) {
+func TestApplyUpdateTask_Assign_AppliesWhenNotAssigned(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: nil}
 
-	applied, err := c.applyAssign(context.Background(), uuid.New(), task, memberID, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !applied {
-		t.Fatal("expected applyAssign to apply when not already assigned")
+		t.Fatal("expected applyUpdateTask to apply when not already assigned")
 	}
 	if updater.calls != 1 {
 		t.Fatalf("expected exactly one UpdateTask call, got %d", updater.calls)
@@ -377,13 +381,13 @@ func TestWalk_NilTaskReachingTriggerAIAgent_ProceedsAndSucceeds(t *testing.T) {
 	}
 }
 
-func TestApplySetStatus_IdempotentWhenAlreadySet(t *testing.T) {
+func TestApplyUpdateTask_Status_IdempotentWhenAlreadySet(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	statusID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), StatusID: &statusID}
 
-	applied, err := c.applySetStatus(context.Background(), uuid.New(), task, statusID)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &statusID}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -392,13 +396,13 @@ func TestApplySetStatus_IdempotentWhenAlreadySet(t *testing.T) {
 	}
 }
 
-func TestApplySetStatus_AppliesWhenDifferent(t *testing.T) {
+func TestApplyUpdateTask_Status_AppliesWhenDifferent(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	oldStatus, newStatus := uuid.New(), uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), StatusID: &oldStatus}
 
-	applied, err := c.applySetStatus(context.Background(), uuid.New(), task, newStatus)
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &newStatus}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -410,12 +414,13 @@ func TestApplySetStatus_AppliesWhenDifferent(t *testing.T) {
 	}
 }
 
-func TestApplySetPriority_IdempotentWhenAlreadySet(t *testing.T) {
+func TestApplyUpdateTask_Priority_IdempotentWhenAlreadySet(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Importance: 5}
 
-	applied, err := c.applySetPriority(context.Background(), uuid.New(), task, 5)
+	importance := 5
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Importance: &importance}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -424,12 +429,12 @@ func TestApplySetPriority_IdempotentWhenAlreadySet(t *testing.T) {
 	}
 }
 
-func TestApplyAddTag_IdempotentWhenTagAlreadyPresent(t *testing.T) {
+func TestApplyUpdateTask_Tags_IdempotentWhenSameSet(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Tags: []string{"urgent"}}
 
-	applied, err := c.applyAddTag(context.Background(), uuid.New(), task, "urgent")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"urgent"}}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -438,12 +443,12 @@ func TestApplyAddTag_IdempotentWhenTagAlreadyPresent(t *testing.T) {
 	}
 }
 
-func TestApplyAddTag_AppliesWhenTagMissing(t *testing.T) {
+func TestApplyUpdateTask_Tags_AppliesWhenDifferent(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Tags: []string{"bug"}}
 
-	applied, err := c.applyAddTag(context.Background(), uuid.New(), task, "urgent")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"bug", "urgent"}}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -451,16 +456,16 @@ func TestApplyAddTag_AppliesWhenTagMissing(t *testing.T) {
 		t.Fatalf("expected applied=true, 1 call, got applied=%v calls=%d", applied, updater.calls)
 	}
 	if len(task.Tags) != 2 {
-		t.Fatalf("expected tag appended in place, got %v", task.Tags)
+		t.Fatalf("expected tags replaced in place, got %v", task.Tags)
 	}
 }
 
-func TestApplySetCustomField_IdempotentWhenValueAlreadyMatches(t *testing.T) {
+func TestApplyUpdateTask_CustomField_IdempotentWhenValueAlreadyMatches(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"release_tag": "v2"}}
 
-	applied, err := c.applySetCustomField(context.Background(), uuid.New(), task, "release_tag", "v2")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -469,12 +474,12 @@ func TestApplySetCustomField_IdempotentWhenValueAlreadyMatches(t *testing.T) {
 	}
 }
 
-func TestApplySetCustomField_AppliesWhenValueDiffers(t *testing.T) {
+func TestApplyUpdateTask_CustomField_AppliesWhenValueDiffers(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"release_tag": "v1"}}
 
-	applied, err := c.applySetCustomField(context.Background(), uuid.New(), task, "release_tag", "v2")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -486,13 +491,109 @@ func TestApplySetCustomField_AppliesWhenValueDiffers(t *testing.T) {
 	}
 }
 
+func TestApplyUpdateTask_DueDate_IdempotentWhenAlreadySet(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	due := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	task := &taskdom.Task{ID: uuid.New(), DueDate: &due}
+
+	sameDue := due
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &sameDue}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if applied || updater.calls != 0 {
+		t.Fatalf("expected no-op, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
+func TestApplyUpdateTask_DueDate_AppliesWhenDifferent(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	oldDue := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	newDue := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	task := &taskdom.Task{ID: uuid.New(), DueDate: &oldDue}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &newDue}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied || updater.calls != 1 {
+		t.Fatalf("expected applied=true, 1 call, got applied=%v calls=%d", applied, updater.calls)
+	}
+	if !task.DueDate.Equal(newDue) {
+		t.Fatalf("expected due date updated in place, got %v", task.DueDate)
+	}
+}
+
+// TestApplyUpdateTask_DueDate_JSONRoundTrip guards the exact regression this
+// once had: TaskFieldUpdate.DueDate is a *time.Time, whose JSON unmarshaling
+// requires a full RFC 3339 string — the config-panel's date picker must
+// produce that shape (e.g. "2026-08-03T00:00:00Z"), not the bare
+// "YYYY-MM-DD" a native <input type="date"> emits, or saving an update_task
+// action with a due date set fails to unmarshal entirely.
+func TestApplyUpdateTask_DueDate_JSONRoundTrip(t *testing.T) {
+	var cfg automationdom.TaskFieldUpdate
+	if err := json.Unmarshal([]byte(`{"due_date":"2026-08-03T00:00:00Z"}`), &cfg); err != nil {
+		t.Fatalf("expected RFC 3339 due_date to unmarshal cleanly, got %v", err)
+	}
+	if cfg.DueDate == nil || cfg.DueDate.UTC().Format("2006-01-02") != "2026-08-03" {
+		t.Fatalf("expected due_date 2026-08-03, got %v", cfg.DueDate)
+	}
+}
+
+func TestApplyUpdateTask_Description_IdempotentWhenAlreadyMatches(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"hello"}`)}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"hello"}`)}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if applied || updater.calls != 0 {
+		t.Fatalf("expected no-op when description already matches, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
+func TestApplyUpdateTask_Description_AppliesWhenDifferent(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"old"}`)}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"new"}`)}, "test-automation")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied || updater.calls != 1 {
+		t.Fatalf("expected applied=true, 1 call, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
 // --- Plugin action dispatch --------------------------------------------------
 
 type fakePluginRuntime struct {
 	conditionPlugin, actionPlugin string
 	hasCondition, hasAction       bool
 	conditionResp, actionResp     []byte
-	err                           error
+	// conditionResponses, when non-empty, overrides conditionResp: each
+	// call to EvaluateCondition returns the next entry in order (clamped to
+	// the last one past the end) — lets a test drive
+	// evaluatePluginConditionAgainstTasks through more than one task with a
+	// different Matched result per task.
+	conditionResponses [][]byte
+	conditionCalls     int
+	err                error
+	// triggerManifests backs TriggersForTopic — keyed by topic, mirroring
+	// how the real Runtime looks up plugin-declared Trigger manifests by
+	// their eventTopic.
+	triggerManifests map[string][]plugindom.AutomationNodeManifest
+	// lastConditionPayload/lastActionPayload capture the raw JSON most
+	// recently dispatched to EvaluateCondition/RunAction, so a test can
+	// assert on payload contents (e.g. node_type) rather than only on the
+	// plugin's response.
+	lastConditionPayload []byte
+	lastActionPayload    []byte
 }
 
 func (f *fakePluginRuntime) ResolveAutomationCondition(nodeType string) (string, bool) {
@@ -501,11 +602,27 @@ func (f *fakePluginRuntime) ResolveAutomationCondition(nodeType string) (string,
 func (f *fakePluginRuntime) ResolveAutomationAction(nodeType string) (string, bool) {
 	return f.actionPlugin, f.hasAction
 }
-func (f *fakePluginRuntime) EvaluateCondition(_ context.Context, _ string, _ []byte) ([]byte, error) {
-	return f.conditionResp, f.err
+func (f *fakePluginRuntime) EvaluateCondition(_ context.Context, _ string, payload []byte) ([]byte, error) {
+	f.lastConditionPayload = payload
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.conditionResponses) > 0 {
+		i := f.conditionCalls
+		if i >= len(f.conditionResponses) {
+			i = len(f.conditionResponses) - 1
+		}
+		f.conditionCalls++
+		return f.conditionResponses[i], nil
+	}
+	return f.conditionResp, nil
 }
-func (f *fakePluginRuntime) RunAction(_ context.Context, _ string, _ []byte) ([]byte, error) {
+func (f *fakePluginRuntime) RunAction(_ context.Context, _ string, payload []byte) ([]byte, error) {
+	f.lastActionPayload = payload
 	return f.actionResp, f.err
+}
+func (f *fakePluginRuntime) TriggersForTopic(topic string) []plugindom.AutomationNodeManifest {
+	return f.triggerManifests[topic]
 }
 
 func TestRunAction_UnknownTypeWithoutPluginRuntimeFails(t *testing.T) {
@@ -519,11 +636,12 @@ func TestRunAction_UnknownTypeWithoutPluginRuntimeFails(t *testing.T) {
 
 func TestRunAction_DispatchesToRegisteredPluginAction(t *testing.T) {
 	c := newTestConsumer(&fakeTaskUpdater{})
-	c.pluginRuntime = &fakePluginRuntime{
+	runtime := &fakePluginRuntime{
 		actionPlugin: "com.acme.github",
 		hasAction:    true,
 		actionResp:   []byte(`{"applied":true}`),
 	}
+	c.pluginRuntime = runtime
 	node := &automationdom.Node{Type: "com.acme.github.comment_on_pr", Config: json.RawMessage(`{"template":"lgtm"}`)}
 	applied, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: uuid.New()}, "automation", uuid.New())
 	if err != nil {
@@ -531,6 +649,15 @@ func TestRunAction_DispatchesToRegisteredPluginAction(t *testing.T) {
 	}
 	if !applied {
 		t.Fatal("expected applied=true from the plugin's response")
+	}
+	var sent struct {
+		NodeType string `json:"node_type"`
+	}
+	if err := json.Unmarshal(runtime.lastActionPayload, &sent); err != nil {
+		t.Fatalf("decode payload dispatched to RunAction: %v", err)
+	}
+	if sent.NodeType != node.Type {
+		t.Fatalf("expected node_type %q in the payload dispatched to RunAction, got %q", node.Type, sent.NodeType)
 	}
 }
 
@@ -548,6 +675,298 @@ func TestEvaluatePluginCondition_DispatchesToRegisteredPlugin(t *testing.T) {
 	}
 	if !matched {
 		t.Fatal("expected matched=true from the plugin's response")
+	}
+}
+
+func TestEvaluatePluginConditionAgainstTasks_PayloadIncludesNodeType(t *testing.T) {
+	c := newTestConsumer(&fakeTaskUpdater{})
+	runtime := &fakePluginRuntime{
+		conditionPlugin: "com.acme.github",
+		hasCondition:    true,
+		conditionResp:   []byte(`{"matched":true}`),
+	}
+	c.pluginRuntime = runtime
+	node := &automationdom.Node{Type: "com.acme.github.pr_status", Config: json.RawMessage(`{}`)}
+	tasks := []*taskdom.Task{{ID: uuid.New()}}
+	if _, _, err := c.evaluatePluginConditionAgainstTasks(context.Background(), uuid.New(), node, tasks, "any"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var sent struct {
+		NodeType string `json:"node_type"`
+	}
+	if err := json.Unmarshal(runtime.lastConditionPayload, &sent); err != nil {
+		t.Fatalf("decode payload dispatched to EvaluateCondition: %v", err)
+	}
+	if sent.NodeType != node.Type {
+		t.Fatalf("expected node_type %q in the payload dispatched to EvaluateCondition, got %q", node.Type, sent.NodeType)
+	}
+}
+
+// --- Plugin condition "applies to" target/match_mode -------------------------
+//
+// These exercise evaluatePluginConditionAgainstTasks directly against a
+// hand-built tasks slice, the same combination logic
+// ConditionLeaf.EvaluateAgainstTasks already has tests for — walkPluginCondition
+// itself only adds resolveTargetTasks in front of this, which is exercised
+// by the built-in condition's own target tests.
+
+func TestEvaluatePluginConditionAgainstTasks_EmptyTasksIsFalse(t *testing.T) {
+	c := newTestConsumer(&fakeTaskUpdater{})
+	c.pluginRuntime = &fakePluginRuntime{conditionPlugin: "com.acme.github", hasCondition: true}
+	node := &automationdom.Node{Type: "com.acme.github.pr_status", Config: json.RawMessage(`{}`)}
+	matched, _, err := c.evaluatePluginConditionAgainstTasks(context.Background(), uuid.New(), node, nil, "any")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if matched {
+		t.Fatal("expected an empty tasks slice to never match, regardless of match_mode")
+	}
+}
+
+func TestEvaluatePluginConditionAgainstTasks_AnyModeMatchesOnFirstHit(t *testing.T) {
+	c := newTestConsumer(&fakeTaskUpdater{})
+	c.pluginRuntime = &fakePluginRuntime{
+		conditionPlugin: "com.acme.github",
+		hasCondition:    true,
+		conditionResponses: [][]byte{
+			[]byte(`{"matched":false}`),
+			[]byte(`{"matched":true}`),
+		},
+	}
+	node := &automationdom.Node{Type: "com.acme.github.pr_status", Config: json.RawMessage(`{}`)}
+	tasks := []*taskdom.Task{{ID: uuid.New()}, {ID: uuid.New()}, {ID: uuid.New()}}
+	matched, _, err := c.evaluatePluginConditionAgainstTasks(context.Background(), uuid.New(), node, tasks, "any")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !matched {
+		t.Fatal("expected any-mode to match once the second task matches, without needing the third")
+	}
+}
+
+func TestEvaluatePluginConditionAgainstTasks_AllModeRequiresEveryMatch(t *testing.T) {
+	c := newTestConsumer(&fakeTaskUpdater{})
+	c.pluginRuntime = &fakePluginRuntime{
+		conditionPlugin: "com.acme.github",
+		hasCondition:    true,
+		conditionResponses: [][]byte{
+			[]byte(`{"matched":true}`),
+			[]byte(`{"matched":false}`),
+		},
+	}
+	node := &automationdom.Node{Type: "com.acme.github.pr_status", Config: json.RawMessage(`{}`)}
+	tasks := []*taskdom.Task{{ID: uuid.New()}, {ID: uuid.New()}}
+	matched, _, err := c.evaluatePluginConditionAgainstTasks(context.Background(), uuid.New(), node, tasks, "all")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if matched {
+		t.Fatal("expected all-mode to fail as soon as one task doesn't match")
+	}
+}
+
+func TestEvaluatePluginConditionAgainstTasks_AllModeTrueWhenEveryTaskMatches(t *testing.T) {
+	c := newTestConsumer(&fakeTaskUpdater{})
+	c.pluginRuntime = &fakePluginRuntime{
+		conditionPlugin:    "com.acme.github",
+		hasCondition:       true,
+		conditionResponses: [][]byte{[]byte(`{"matched":true}`)},
+	}
+	node := &automationdom.Node{Type: "com.acme.github.pr_status", Config: json.RawMessage(`{}`)}
+	tasks := []*taskdom.Task{{ID: uuid.New()}, {ID: uuid.New()}}
+	matched, _, err := c.evaluatePluginConditionAgainstTasks(context.Background(), uuid.New(), node, tasks, "all")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !matched {
+		t.Fatal("expected all-mode to succeed when every resolved task matches")
+	}
+}
+
+// --- Plugin-emitted trigger events --------------------------------------------
+
+// fakePluginTriggerRepo implements automationGraphReader with just enough
+// behavior to drive handlePluginTriggerEvent and the executeRun call it
+// makes on a match: ListEnabledTriggerNodesByType is keyed by the requested
+// trigger type (mirrors how the real repo filters by n.type), everything
+// else is a single fixed automation/no-op run bookkeeping, same shape as
+// fakeCronRepo/fakeDueDateRepo in the sibling scheduler test files.
+type fakePluginTriggerRepo struct {
+	nodesByType map[string][]*automationdom.Node
+	automation  *automationdom.Automation
+	listCalls   []string
+	createRuns  int
+}
+
+func (f *fakePluginTriggerRepo) ListEnabledTriggerNodesByType(_ context.Context, _ uuid.UUID, triggerType automationdom.TriggerType) ([]*automationdom.Node, error) {
+	f.listCalls = append(f.listCalls, string(triggerType))
+	return f.nodesByType[string(triggerType)], nil
+}
+func (f *fakePluginTriggerRepo) ListPredecessorTriggersWatching(context.Context, uuid.UUID) ([]*automationdom.Node, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerRepo) FindAutomationByNodeID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
+	return f.automation, nil
+}
+func (f *fakePluginTriggerRepo) FindNodeByID(context.Context, uuid.UUID) (*automationdom.Node, error) {
+	return nil, automationdom.ErrNodeNotFound
+}
+func (f *fakePluginTriggerRepo) LoadGraph(context.Context, uuid.UUID) (*automationdom.Graph, error) {
+	return &automationdom.Graph{Automation: f.automation}, nil
+}
+func (f *fakePluginTriggerRepo) CreateRun(context.Context, *automationdom.Run) error {
+	f.createRuns++
+	return nil
+}
+func (f *fakePluginTriggerRepo) UpdateRun(context.Context, *automationdom.Run) error { return nil }
+func (f *fakePluginTriggerRepo) CreateRunStep(context.Context, *automationdom.RunStep) error {
+	return nil
+}
+func (f *fakePluginTriggerRepo) ListDueDateCandidates(context.Context) ([]automationdom.DueDateCandidate, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerRepo) RecordDueDateFire(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+func (f *fakePluginTriggerRepo) ListCronCandidates(context.Context) ([]automationdom.CronCandidate, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerRepo) RecordCronFire(context.Context, uuid.UUID, uuid.UUID, time.Time) error {
+	return nil
+}
+
+type fakePluginTriggerTaskReader struct {
+	task      *taskdom.Task
+	findCalls int
+}
+
+func (f *fakePluginTriggerTaskReader) FindTaskByID(context.Context, uuid.UUID) (*taskdom.Task, error) {
+	f.findCalls++
+	return f.task, nil
+}
+func (f *fakePluginTriggerTaskReader) FindTaskStatusByID(context.Context, uuid.UUID) (*taskdom.TaskStatus, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerTaskReader) ListChildTasks(context.Context, uuid.UUID, uuid.UUID) ([]*taskdom.Task, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerTaskReader) ListTaskLinks(context.Context, uuid.UUID) ([]*taskdom.TaskLink, error) {
+	return nil, nil
+}
+
+// newTestConsumerWithRedis builds a real *AutomationConsumer backed by a
+// miniredis instance (handlePluginTriggerEvent's ack path calls c.client.XAck,
+// unlike the plugin-condition/action tests above which never touch Redis).
+func newTestConsumerWithRedis(t *testing.T, repo automationGraphReader, taskReader automationTaskReader, pluginRuntime automationPluginRuntime) (*AutomationConsumer, *redis.Client) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	c := NewAutomationConsumer(client, repo, taskReader, &fakeTaskUpdater{}, nil, nil, discardLogger())
+	c.pluginRuntime = pluginRuntime
+	return c, client
+}
+
+func TestHandlePluginTriggerEvent_NoMatchingManifestsSkipsRepoLookup(t *testing.T) {
+	repo := &fakePluginTriggerRepo{}
+	runtime := &fakePluginRuntime{} // triggerManifests left empty: no plugin declares this topic
+	c, client := newTestConsumerWithRedis(t, repo, &fakePluginTriggerTaskReader{}, runtime)
+	defer func() { _ = client.Close() }()
+
+	msg := redis.XMessage{ID: "1-1", Values: map[string]any{
+		"type":    "github.pr_linked",
+		"payload": `{"project_id":"` + uuid.New().String() + `","task_id":"` + uuid.New().String() + `"}`,
+	}}
+	c.handlePluginTriggerEvent(msg)
+
+	if len(repo.listCalls) != 0 {
+		t.Fatalf("expected no repo lookups when no plugin declares a trigger for this topic, got %v", repo.listCalls)
+	}
+}
+
+func TestHandlePluginTriggerEvent_ExecutesMatchingNodeWithTaskFromPayload(t *testing.T) {
+	projectID := uuid.New()
+	taskID := uuid.New()
+	node := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindTrigger, Type: "github.pr_linked", Config: json.RawMessage(`{}`)}
+	repo := &fakePluginTriggerRepo{
+		nodesByType: map[string][]*automationdom.Node{"github.pr_linked": {node}},
+		automation:  &automationdom.Automation{ID: uuid.New(), ProjectID: projectID, Status: automationdom.StatusActive},
+	}
+	taskReader := &fakePluginTriggerTaskReader{task: &taskdom.Task{ID: taskID}}
+	runtime := &fakePluginRuntime{
+		triggerManifests: map[string][]plugindom.AutomationNodeManifest{
+			"github.pr_linked": {{Type: "github.pr_linked", EventTopic: "github.pr_linked"}},
+		},
+	}
+	c, client := newTestConsumerWithRedis(t, repo, taskReader, runtime)
+	defer func() { _ = client.Close() }()
+
+	msg := redis.XMessage{ID: "1-1", Values: map[string]any{
+		"type":    "github.pr_linked",
+		"payload": fmt.Sprintf(`{"project_id":%q,"task_id":%q}`, projectID, taskID),
+	}}
+	c.handlePluginTriggerEvent(msg)
+
+	if len(repo.listCalls) != 1 || repo.listCalls[0] != "github.pr_linked" {
+		t.Fatalf("expected exactly one lookup for type github.pr_linked, got %v", repo.listCalls)
+	}
+	if repo.createRuns != 1 {
+		t.Fatalf("expected the matched node to execute exactly once, got %d runs", repo.createRuns)
+	}
+	if taskReader.findCalls != 1 {
+		t.Fatalf("expected the walk to resolve the task named in the event payload, got %d lookups", taskReader.findCalls)
+	}
+}
+
+func TestHandlePluginTriggerEvent_MissingTaskIDRunsWithNilTask(t *testing.T) {
+	projectID := uuid.New()
+	node := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindTrigger, Type: "github.pr_linked", Config: json.RawMessage(`{}`)}
+	repo := &fakePluginTriggerRepo{
+		nodesByType: map[string][]*automationdom.Node{"github.pr_linked": {node}},
+		automation:  &automationdom.Automation{ID: uuid.New(), ProjectID: projectID, Status: automationdom.StatusActive},
+	}
+	taskReader := &fakePluginTriggerTaskReader{}
+	runtime := &fakePluginRuntime{
+		triggerManifests: map[string][]plugindom.AutomationNodeManifest{
+			"github.pr_linked": {{Type: "github.pr_linked", EventTopic: "github.pr_linked"}},
+		},
+	}
+	c, client := newTestConsumerWithRedis(t, repo, taskReader, runtime)
+	defer func() { _ = client.Close() }()
+
+	msg := redis.XMessage{ID: "1-1", Values: map[string]any{
+		"type":    "github.pr_linked",
+		"payload": fmt.Sprintf(`{"project_id":%q}`, projectID),
+	}}
+	c.handlePluginTriggerEvent(msg)
+
+	if repo.createRuns != 1 {
+		t.Fatalf("expected the run to still execute without a task_id, got %d runs", repo.createRuns)
+	}
+	if taskReader.findCalls != 0 {
+		t.Fatalf("expected no task lookup when the event payload has no task_id, got %d", taskReader.findCalls)
+	}
+}
+
+func TestHandlePluginTriggerEvent_MissingProjectIDSkipsWithoutRunning(t *testing.T) {
+	repo := &fakePluginTriggerRepo{
+		nodesByType: map[string][]*automationdom.Node{"github.pr_linked": {{ID: uuid.New(), Kind: automationdom.KindTrigger, Type: "github.pr_linked"}}},
+	}
+	runtime := &fakePluginRuntime{
+		triggerManifests: map[string][]plugindom.AutomationNodeManifest{
+			"github.pr_linked": {{Type: "github.pr_linked", EventTopic: "github.pr_linked"}},
+		},
+	}
+	c, client := newTestConsumerWithRedis(t, repo, &fakePluginTriggerTaskReader{}, runtime)
+	defer func() { _ = client.Close() }()
+
+	msg := redis.XMessage{ID: "1-1", Values: map[string]any{
+		"type":    "github.pr_linked",
+		"payload": `{"task_id":"` + uuid.New().String() + `"}`,
+	}}
+	c.handlePluginTriggerEvent(msg)
+
+	if repo.createRuns != 0 {
+		t.Fatalf("expected no run when the event payload has no project_id, got %d", repo.createRuns)
 	}
 }
 
@@ -689,7 +1108,7 @@ func TestWalk_NilTaskReachingCondition_FailsStepInsteadOfPanicking(t *testing.T)
 }
 
 func TestWalk_NilTaskReachingNonCallAPIAction_FailsStepInsteadOfPanicking(t *testing.T) {
-	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionSetStatus), Config: json.RawMessage(`{}`)}
+	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateTask), Config: json.RawMessage(`{}`)}
 	w := &walker{
 		consumer:  &AutomationConsumer{repo: &fakeCronRepo{}, log: discardLogger()},
 		task:      nil,
@@ -699,7 +1118,7 @@ func TestWalk_NilTaskReachingNonCallAPIAction_FailsStepInsteadOfPanicking(t *tes
 	}
 	w.walk(context.Background(), action.ID)
 	if !w.failed {
-		t.Fatal("expected a nil task reaching a set_status action to mark the walk failed")
+		t.Fatal("expected a nil task reaching an update_task action to mark the walk failed")
 	}
 }
 
@@ -857,8 +1276,8 @@ func TestRunAction_NoTarget_BehavesExactlyAsBeforeWithNilDetail(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := &AutomationConsumer{taskSvc: updater, taskRepo: &fakeAutomationTaskReader{}, log: discardLogger()}
 	tag := "x"
-	cfg, _ := json.Marshal(automationdom.ActionConfig{Tag: tag})
-	node := &automationdom.Node{Type: string(automationdom.ActionAddTag), Config: cfg}
+	cfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{tag}}})
+	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 	task := &taskdom.Task{ID: uuid.New()}
 
 	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, task, "test", uuid.New())
@@ -878,8 +1297,8 @@ func TestRunAction_FanOut_AppliesToEveryResolvedChild(t *testing.T) {
 		},
 		log: discardLogger(),
 	}
-	cfg, _ := json.Marshal(automationdom.ActionConfig{Tag: "x", Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
-	node := &automationdom.Node{Type: string(automationdom.ActionAddTag), Config: cfg}
+	cfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"x"}}, Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
+	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 
 	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, "test", uuid.New())
 	if err != nil {
@@ -911,8 +1330,8 @@ func TestRunAction_FanOut_EmptyTargetsSkipsWithoutError(t *testing.T) {
 		taskRepo: &fakeAutomationTaskReader{children: map[uuid.UUID][]*taskdom.Task{}},
 		log:      discardLogger(),
 	}
-	cfg, _ := json.Marshal(automationdom.ActionConfig{Tag: "x", Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
-	node := &automationdom.Node{Type: string(automationdom.ActionAddTag), Config: cfg}
+	cfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"x"}}, Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
+	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 
 	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, "test", uuid.New())
 	if err != nil || applied || detail != nil {
@@ -928,10 +1347,10 @@ func TestRunAction_FanOut_StopsAtFirstError(t *testing.T) {
 		},
 		log: discardLogger(),
 	}
-	// set_status with no status_id configured — applyActionForTask errors
-	// immediately for every resolved task.
+	// update_task with no fields set at all — applyActionForTask errors
+	// immediately for every resolved task (missing update config).
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
-	node := &automationdom.Node{Type: string(automationdom.ActionSetStatus), Config: cfg}
+	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 
 	_, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, "test", uuid.New())
 	if err == nil {

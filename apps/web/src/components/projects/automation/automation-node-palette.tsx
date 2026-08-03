@@ -74,47 +74,40 @@ export function AutomationNodePalette({
 				</DropdownMenuContent>
 			</DropdownMenu>
 
-			{pluginConditions.length > 0 ? (
-				<DropdownMenu>
-					<DropdownMenuTrigger
-						render={
-							<Button variant="outline" size="sm" className="gap-1.5">
-								<GitBranch className="size-3.5" />
-								{t("automation.palette.addCondition")}
-							</Button>
-						}
-					/>
-					<DropdownMenuContent align="start" className="w-56">
-						<DropdownMenuGroup>
+			{/* The built-in N-branch switch is the only "built-in" condition node
+			type — plugin-contributed conditions are their own separate
+			condition node type, listed in a "Plugins" section below it,
+			exactly like plugin triggers/actions. */}
+			<DropdownMenu>
+				<DropdownMenuTrigger
+					render={
+						<Button variant="outline" size="sm" className="gap-1.5">
+							<GitBranch className="size-3.5" />
+							{t("automation.palette.addCondition")}
+						</Button>
+					}
+				/>
+				<DropdownMenuContent align="start" className="w-56">
+					<DropdownMenuGroup>
+						{pluginConditions.length > 0 && (
 							<DropdownMenuLabel>
 								{t("automation.palette.builtIn")}
 							</DropdownMenuLabel>
-							<DropdownMenuItem
-								onClick={() => onAddCondition(CONDITION_NODE_TYPE)}
-							>
-								{t("automation.nodeKind.condition")}
-							</DropdownMenuItem>
-						</DropdownMenuGroup>
+						)}
+						<DropdownMenuItem
+							onClick={() => onAddCondition(CONDITION_NODE_TYPE)}
+						>
+							{t("automation.nodeKind.condition")}
+						</DropdownMenuItem>
+					</DropdownMenuGroup>
+					{pluginConditions.length > 0 && (
 						<PluginTypeGroup
 							items={pluginConditions}
 							onSelect={onAddCondition}
 						/>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			) : (
-				// Exactly one built-in condition type exists (the N-branch switch)
-				// and no plugin has contributed another, so there's nothing to
-				// choose between — a dropdown here would just be a single-item menu.
-				<Button
-					variant="outline"
-					size="sm"
-					className="gap-1.5"
-					onClick={() => onAddCondition(CONDITION_NODE_TYPE)}
-				>
-					<GitBranch className="size-3.5" />
-					{t("automation.palette.addCondition")}
-				</Button>
-			)}
+					)}
+				</DropdownMenuContent>
+			</DropdownMenu>
 
 			<DropdownMenu>
 				<DropdownMenuTrigger

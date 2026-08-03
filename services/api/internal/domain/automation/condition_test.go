@@ -2,6 +2,7 @@ package automationdom
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -103,6 +104,66 @@ func TestConditionLeaf_Evaluate_CustomField(t *testing.T) {
 	missing := &ConditionLeaf{Field: FieldCustomField, FieldKey: "not_set", Operator: OpIsEmpty}
 	if !missing.Evaluate(task) {
 		t.Fatal("expected is_empty true for a custom field key that isn't set")
+	}
+}
+
+// Dates travel over the wire as RFC 3339 strings everywhere else in this
+// API (see compareTimePtr's doc comment) — the automation config panel's
+// start_date/due_date pickers must send that shape, not a bare
+// "YYYY-MM-DD" (what a plain <input type="date"> produces), or every
+// comparison here silently evaluates false.
+func TestConditionLeaf_Evaluate_DueDateComparisons(t *testing.T) {
+	due := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	task := &taskdom.Task{DueDate: &due}
+
+	cases := []struct {
+		op    Operator
+		value string
+		want  bool
+	}{
+		{OpEquals, "2026-08-03T00:00:00Z", true},
+		{OpEquals, "2026-08-04T00:00:00Z", false},
+		{OpNotEquals, "2026-08-04T00:00:00Z", true},
+		{OpGreaterThan, "2026-08-02T00:00:00Z", true},
+		{OpGreaterThan, "2026-08-04T00:00:00Z", false},
+		{OpLessThan, "2026-08-04T00:00:00Z", true},
+		{OpLessThan, "2026-08-02T00:00:00Z", false},
+	}
+	for _, c := range cases {
+		got := leaf(FieldDueDate, c.op, c.value).Evaluate(task)
+		if got != c.want {
+			t.Errorf("due_date=2026-08-03 %s %v: got %v, want %v", c.op, c.value, got, c.want)
+		}
+	}
+}
+
+func TestConditionLeaf_Evaluate_DueDateIsEmpty(t *testing.T) {
+	task := &taskdom.Task{DueDate: nil}
+	if !leaf(FieldDueDate, OpIsEmpty, nil).Evaluate(task) {
+		t.Fatal("expected is_empty true for nil due_date")
+	}
+	if leaf(FieldDueDate, OpIsNotEmpty, nil).Evaluate(task) {
+		t.Fatal("expected is_not_empty false for nil due_date")
+	}
+
+	due := time.Now()
+	set := &taskdom.Task{DueDate: &due}
+	if leaf(FieldDueDate, OpIsEmpty, nil).Evaluate(set) {
+		t.Fatal("expected is_empty false when due_date is set")
+	}
+}
+
+// TestConditionLeaf_Evaluate_DateFieldRejectsNonRFC3339Value guards against
+// the exact regression this once had: a bare "YYYY-MM-DD" value (what a
+// native <input type="date"> produces) must not silently match — it isn't
+// a valid RFC 3339 string, so time.Parse fails and the comparator falls
+// back to its documented not-found-not-panic false, same as a mistyped
+// numeric value would for compareInt.
+func TestConditionLeaf_Evaluate_DateFieldRejectsNonRFC3339Value(t *testing.T) {
+	due := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	task := &taskdom.Task{DueDate: &due}
+	if leaf(FieldDueDate, OpEquals, "2026-08-03").Evaluate(task) {
+		t.Fatal("expected a bare date-only value (not RFC 3339) to fail to match, not silently succeed")
 	}
 }
 
