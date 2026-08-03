@@ -897,14 +897,8 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 		return err
 	}
 	switch t {
-	case automationdom.ActionAssign:
-		if cfg.MemberID == nil {
-			if strict {
-				return fmt.Errorf("%w: assign requires member_id", automationdom.ErrNodeConfigInvalid)
-			}
-			return nil
-		}
-		return s.assertMemberInProject(ctx, projectID, *cfg.MemberID)
+	case automationdom.ActionUpdateTask:
+		return s.validateTaskFieldUpdate(ctx, projectID, cfg.Update, strict)
 	case automationdom.ActionTriggerAIAgent:
 		if cfg.MemberID == nil {
 			if strict {
@@ -913,26 +907,6 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 			return nil
 		}
 		return s.assertMemberInProject(ctx, projectID, *cfg.MemberID)
-	case automationdom.ActionSetStatus:
-		if cfg.StatusID == nil {
-			if strict {
-				return fmt.Errorf("%w: set_status requires status_id", automationdom.ErrNodeConfigInvalid)
-			}
-			return nil
-		}
-		return s.assertStatusInProject(ctx, projectID, *cfg.StatusID)
-	case automationdom.ActionSetPriority:
-		if strict && cfg.Importance == nil {
-			return fmt.Errorf("%w: set_priority requires importance", automationdom.ErrNodeConfigInvalid)
-		}
-	case automationdom.ActionAddTag:
-		if strict && strings.TrimSpace(cfg.Tag) == "" {
-			return fmt.Errorf("%w: add_tag requires tag", automationdom.ErrNodeConfigInvalid)
-		}
-	case automationdom.ActionSetCustomField:
-		if strict && strings.TrimSpace(cfg.FieldKey) == "" {
-			return fmt.Errorf("%w: set_custom_field requires field_key", automationdom.ErrNodeConfigInvalid)
-		}
 	case automationdom.ActionCallAPI:
 		if cfg.Method != "" && !validCallAPIMethods[strings.ToUpper(cfg.Method)] {
 			return fmt.Errorf("%w: call_api method must be one of GET, POST, PUT, PATCH, DELETE", automationdom.ErrNodeConfigInvalid)
@@ -953,6 +927,72 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 		}
 	}
 	return nil
+}
+
+// validateTaskFieldUpdate validates ActionUpdateTask's config: a
+// referenced status/reporter/assignee/parent-task must exist and belong to
+// projectID, and in strict mode at least one field must actually be set —
+// an update_task node with nothing to update is almost certainly an
+// author mistake (no built-in action before this one could be created
+// config-less and silently do nothing). task_type_id and sprint_id aren't
+// FK-checked here, matching this package's existing precedent (e.g.
+// validateTriggerConfig never checks a trigger's task_type_id either) —
+// an invalid ID just fails later at the task service's own FK layer when
+// the action actually runs.
+func (s *Service) validateTaskFieldUpdate(ctx context.Context, projectID uuid.UUID, upd *automationdom.TaskFieldUpdate, strict bool) error {
+	if upd == nil {
+		if strict {
+			return fmt.Errorf("%w: update_task requires at least one field to update", automationdom.ErrNodeConfigInvalid)
+		}
+		return nil
+	}
+	if strict && !taskFieldUpdateHasAnyField(upd) {
+		return fmt.Errorf("%w: update_task requires at least one field to update", automationdom.ErrNodeConfigInvalid)
+	}
+	if upd.StatusID != nil {
+		if err := s.assertStatusInProject(ctx, projectID, *upd.StatusID); err != nil {
+			return err
+		}
+	}
+	for _, memberID := range upd.AssigneeIDs {
+		if err := s.assertMemberInProject(ctx, projectID, memberID); err != nil {
+			return err
+		}
+	}
+	if upd.ReporterID != nil {
+		if err := s.assertMemberInProject(ctx, projectID, *upd.ReporterID); err != nil {
+			return err
+		}
+	}
+	if upd.ParentTaskID != nil {
+		parent, err := s.taskRepo.FindTaskByID(ctx, *upd.ParentTaskID)
+		if err != nil {
+			return err
+		}
+		if parent.ProjectID != projectID {
+			return automationdom.ErrNodeCrossProject
+		}
+	}
+	return nil
+}
+
+// taskFieldUpdateHasAnyField reports whether upd sets at least one field —
+// used only to reject a config-less update_task node in strict mode.
+func taskFieldUpdateHasAnyField(upd *automationdom.TaskFieldUpdate) bool {
+	return upd.TaskTypeID != nil ||
+		upd.StatusID != nil ||
+		upd.SprintID != nil ||
+		upd.ParentTaskID != nil ||
+		upd.Title != "" ||
+		len(upd.Description) > 0 ||
+		upd.Importance != nil ||
+		upd.StoryPoints != nil ||
+		len(upd.AssigneeIDs) > 0 ||
+		upd.ReporterID != nil ||
+		len(upd.CustomFields) > 0 ||
+		upd.StartDate != nil ||
+		upd.DueDate != nil ||
+		len(upd.Tags) > 0
 }
 
 var validCallAPIMethods = map[string]bool{
@@ -989,9 +1029,15 @@ func handlesEqual(a, b *string) bool {
 }
 
 // validateEdgeHandle enforces: a condition-sourced edge must specify a
-// handle that is one of the source's declared branches or the reserved
-// "else" fallback; a trigger/action-sourced edge must not specify a handle
-// at all (it has exactly one outgoing path).
+// handle that is valid for that condition node, or the reserved "else"
+// fallback; a trigger/action-sourced edge must not specify a handle at all
+// (it has exactly one outgoing path). A condition node's valid non-else
+// handles depend on its Type: the built-in N-branch switch (Type ==
+// ConditionNodeType) accepts any handle declared in its own
+// ConditionConfig.Branches, while a plugin-contributed condition — a
+// boolean gate, not a switch — accepts exactly one, PluginConditionTrueHandle
+// (mirrors walker.walkPluginCondition in automation_consumer.go, which is
+// the only handle it ever follows on a match).
 func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 	if source.Kind != automationdom.KindCondition {
 		if handle != nil {
@@ -1004,6 +1050,12 @@ func validateEdgeHandle(source *automationdom.Node, handle *string) error {
 	}
 	if *handle == automationdom.ElseHandle {
 		return nil
+	}
+	if source.Type != automationdom.ConditionNodeType {
+		if *handle == automationdom.PluginConditionTrueHandle {
+			return nil
+		}
+		return fmt.Errorf("%w: %q is not a valid handle for a plugin condition node", automationdom.ErrNodeConfigInvalid, *handle)
 	}
 	var cfg automationdom.ConditionConfig
 	if len(source.Config) > 0 {

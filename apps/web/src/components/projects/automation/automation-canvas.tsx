@@ -28,7 +28,11 @@ import type {
 	AutomationNode,
 	ConditionConfig,
 } from "@/lib/automation-api";
-import { ELSE_HANDLE } from "@/lib/automation-api";
+import {
+	CONDITION_NODE_TYPE,
+	ELSE_HANDLE,
+	PLUGIN_CONDITION_TRUE_HANDLE,
+} from "@/lib/automation-api";
 import { cn } from "@/lib/utils";
 
 interface BaseNodeData extends Record<string, unknown> {
@@ -110,10 +114,18 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 						</div>
 						{description && (
 							<div
-								className="truncate text-sm font-semibold text-foreground"
+								className="space-y-0.5 text-sm font-semibold text-foreground"
 								title={description}
 							>
-								{description}
+								{description.split("\n").map((line, i) => (
+									<div
+										// biome-ignore lint/suspicious/noArrayIndexKey: lines are a stable ordered render of a description string, no natural key
+										key={i}
+										className="truncate"
+									>
+										{line}
+									</div>
+								))}
 							</div>
 						)}
 					</div>
@@ -147,8 +159,24 @@ function NodeShell({ data }: NodeProps<Node<BaseNodeData>>) {
 
 function ConditionBranchRows({ node }: { node: AutomationNode }) {
 	const { t } = useTranslation("projects");
+	// A plugin-contributed condition node (e.g. time_logging's
+	// total_minutes_exceeds) isn't the built-in N-branch switch — its config
+	// holds the plugin's own fields, not a Branches array — but the worker
+	// still follows a "matched" edge for it (walkPluginCondition in
+	// automation_consumer.go), via the fixed PLUGIN_CONDITION_TRUE_HANDLE
+	// handle. Render that single synthetic branch here so it has somewhere
+	// to connect to; without it, only the ELSE_HANDLE row below existed and
+	// a plugin condition's "matched" path could never be wired up.
+	const isBuiltinCondition = node.type === CONDITION_NODE_TYPE;
 	const config = node.config as unknown as ConditionConfig;
-	const branches = config?.branches ?? [];
+	const branches: { handle: string; label?: string }[] = isBuiltinCondition
+		? (config?.branches ?? [])
+		: [
+				{
+					handle: PLUGIN_CONDITION_TRUE_HANDLE,
+					label: t("automation.nodeConfig.description.pluginConditionMatched"),
+				},
+			];
 	const updateNodeInternals = useUpdateNodeInternals();
 	// React Flow caches each node's handle positions on mount and only
 	// re-measures when told to — a Condition node's branch handles are added

@@ -42,6 +42,20 @@ const StreamPluginEvents = "paca.plugin_events"
 // the walk to finish.
 const StreamAutomationExternalTriggers = "paca.automation_external_triggers"
 
+// StreamPluginTriggerEvents is the Valkey Stream key a plugin's own
+// EmitEvent call (the plugin SDK's event_emit host function) appends to,
+// but only when at least one loaded plugin has actually declared a Trigger
+// node for that event's topic (platform/plugin.Runtime.TriggersForTopic) —
+// a plugin emitting some other, non-trigger-sourcing event never touches
+// this stream, keeping its volume proportional to automation-relevant
+// topics only. worker.AutomationConsumer reads it the same way it reads
+// StreamAutomationExternalTriggers: resolve which project's automations to
+// consider and which task (if any) to bind the walk to from the event's own
+// payload (every plugin trigger's payload is expected to carry project_id,
+// and task_id when the event concerns a specific task — see
+// pluginTriggerEventPayload in automation_consumer.go), then execute.
+const StreamPluginTriggerEvents = "paca.plugin_trigger_events"
+
 // Event type constants used in both Pub/Sub messages and Stream entries.
 const (
 	// --- Auth events --------------------------------------------------------

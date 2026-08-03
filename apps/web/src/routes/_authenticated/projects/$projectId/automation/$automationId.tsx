@@ -35,6 +35,7 @@ import {
 	automationQueryOptions,
 	automationRunsQueryOptions,
 	type ConditionConfig,
+	type PluginNodeConfigSchema,
 	pluginNodeTypesQueryOptions,
 	removeAutomationEdge,
 	removeAutomationNode,
@@ -45,6 +46,7 @@ import {
 	updateAutomation,
 	updateAutomationNode,
 } from "@/lib/automation-api";
+import { sprintsQueryOptions } from "@/lib/interaction-api";
 import {
 	customFieldsQueryOptions,
 	projectMembersQueryOptions,
@@ -96,6 +98,7 @@ function AutomationBuilderPage() {
 		customFieldsQueryOptions(projectId),
 	);
 	const { data: taskTypes = [] } = useQuery(taskTypesQueryOptions(projectId));
+	const { data: sprints = [] } = useQuery(sprintsQueryOptions(projectId));
 	const { data: runs = [] } = useQuery(
 		automationRunsQueryOptions(projectId, automationId),
 	);
@@ -154,6 +157,23 @@ function AutomationBuilderPage() {
 		const node = graph?.nodes.find((n) => n.id === nodeId);
 		if (!node) return nodeId;
 		return labelForType(node.kind, node.type);
+	}
+
+	// Looks up the plugin-declared configSchema for a plugin-contributed
+	// node type — undefined for built-in node types (which use their own
+	// dedicated config forms, not the plugin schema path) or plugin types
+	// that declare no configSchema.
+	function configSchemaForType(
+		kind: "trigger" | "condition" | "action",
+		type: string,
+	): PluginNodeConfigSchema | undefined {
+		const pluginList =
+			kind === "trigger"
+				? pluginTypes?.triggers
+				: kind === "condition"
+					? pluginTypes?.conditions
+					: pluginTypes?.actions;
+		return pluginList?.find((p) => p.type === type)?.configSchema;
 	}
 
 	// Mirrors the backend's NodeRequiresTask/validateTaskReachability
@@ -266,7 +286,6 @@ function AutomationBuilderPage() {
 		if (node.kind === "action") {
 			const cfg = node.config as ActionConfig;
 			switch (node.type) {
-				case "assign":
 				case "trigger_ai_agent": {
 					if (!cfg.member_id) {
 						return t("automation.nodeConfig.description.unassigned");
@@ -274,27 +293,72 @@ function AutomationBuilderPage() {
 					const member = members.find((m) => m.id === cfg.member_id);
 					return member?.full_name || member?.username;
 				}
-				case "set_status":
-					return cfg.status_id
-						? statuses.find((s) => s.id === cfg.status_id)?.name
-						: t("automation.nodeConfig.description.notConfigured");
-				case "set_priority":
-					return t("automation.nodeConfig.description.priority", {
-						level: t(getPriority(cfg.importance ?? 0).labelKey),
-					});
-				case "add_tag":
-					return cfg.tag
-						? `#${cfg.tag}`
-						: t("automation.nodeConfig.description.notConfigured");
-				case "set_custom_field": {
-					if (!cfg.field_key) {
-						return t("automation.nodeConfig.description.notConfigured");
+				case "update_task": {
+					const fields = cfg.update ?? {};
+					const parts: string[] = [];
+					const FIELD_LABEL_KEYS = {
+						title: "automation.nodeConfig.condition.fields.title",
+						status_id: "automation.nodeConfig.condition.fields.status_id",
+						task_type_id: "automation.nodeConfig.condition.fields.task_type_id",
+						assignee_ids: "automation.nodeConfig.condition.fields.assignee_ids",
+						importance: "automation.nodeConfig.condition.fields.importance",
+						story_points: "automation.nodeConfig.condition.fields.story_points",
+						tags: "automation.nodeConfig.condition.fields.tags",
+						reporter_id: "automation.nodeConfig.condition.fields.reporter_id",
+						sprint_id: "automation.nodeConfig.condition.fields.sprint_id",
+						start_date: "automation.nodeConfig.condition.fields.start_date",
+						due_date: "automation.nodeConfig.condition.fields.due_date",
+					} as const;
+					const pushField = (
+						fieldKey: keyof typeof FIELD_LABEL_KEYS,
+						value: string | undefined,
+					) => {
+						if (!value) return;
+						parts.push(
+							t("automation.nodeConfig.description.fieldValue", {
+								field: t(FIELD_LABEL_KEYS[fieldKey]),
+								value,
+							}),
+						);
+					};
+					pushField("title", fields.title);
+					pushField(
+						"status_id",
+						statuses.find((s) => s.id === fields.status_id)?.name,
+					);
+					pushField(
+						"task_type_id",
+						taskTypes.find((tt) => tt.id === fields.task_type_id)?.name,
+					);
+					if (fields.assignee_ids?.length) {
+						const member = members.find(
+							(m) => m.id === fields.assignee_ids?.[0],
+						);
+						pushField("assignee_ids", member?.full_name || member?.username);
 					}
-					const field = customFields.find((f) => f.field_key === cfg.field_key);
-					return t("automation.nodeConfig.description.fieldValue", {
-						field: field?.display_name ?? cfg.field_key,
-						value: String(cfg.value ?? ""),
-					});
+					if (fields.importance !== undefined) {
+						pushField("importance", t(getPriority(fields.importance).labelKey));
+					}
+					if (fields.story_points !== undefined) {
+						pushField("story_points", String(fields.story_points));
+					}
+					if (fields.tags?.length) {
+						pushField("tags", fields.tags.map((tag) => `#${tag}`).join(" "));
+					}
+					pushField(
+						"reporter_id",
+						members.find((m) => m.id === fields.reporter_id)?.full_name ||
+							members.find((m) => m.id === fields.reporter_id)?.username,
+					);
+					pushField(
+						"sprint_id",
+						sprints.find((s) => s.id === fields.sprint_id)?.name,
+					);
+					pushField("start_date", fields.start_date);
+					pushField("due_date", fields.due_date);
+					return parts.length > 0
+						? parts.join("\n")
+						: t("automation.nodeConfig.description.notConfigured");
 				}
 				case "call_api": {
 					if (!cfg.method || !cfg.url) {
@@ -657,6 +721,10 @@ function AutomationBuilderPage() {
 							canEdit={canEditGraph}
 							saving={updateNodeMutation.isPending}
 							pluginLabel={labelForType(selectedNode.kind, selectedNode.type)}
+							pluginConfigSchema={configSchemaForType(
+								selectedNode.kind,
+								selectedNode.type,
+							)}
 							onSave={(config) =>
 								updateNodeMutation.mutate({ nodeId: selectedNode.id, config })
 							}

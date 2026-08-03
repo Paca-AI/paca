@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "Giao việc",
-			"set_status": "Đặt trạng thái",
-			"set_priority": "Đặt độ ưu tiên",
-			"add_tag": "Thêm nhãn",
-			"set_custom_field": "Đặt trường tùy chỉnh",
+			"update_task": "Cập nhật công việc",
 			"trigger_ai_agent": "Kích hoạt tác nhân AI",
 			"call_api": "Gọi API"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "Xóa nút",
 			"removeConfirmBody": "Thao tác này sẽ xóa nút khỏi sơ đồ, cùng với tất cả các kết nối của nó.",
 			"removeConfirmAction": "Xóa",
-			"genericFormHint": "Loại nút này đến từ một plugin. Hãy chỉnh sửa cấu hình của nó dưới dạng JSON — các plugin có thể đăng ký một trình chỉnh sửa phong phú hơn ở đây trong bản phát hành tương lai.",
+			"genericFormHint": "Loại nút này đến từ một plugin chưa khai báo schema cấu hình, nên cài đặt của nó được chỉnh sửa dưới dạng JSON thô. Các plugin khai báo configSchema trong manifest sẽ hiển thị các trường giao diện ở đây thay vào đó.",
 			"trigger": {
 				"anyStatus": "Bất kỳ trạng thái nào",
+				"noConfigNeeded": "Trình kích hoạt này không cần cấu hình — nó tự động chạy khi sự kiện xảy ra.",
 				"statusLabel": "Trạng thái",
 				"tagLabel": "Nhãn",
 				"anyTag": "Bất kỳ nhãn nào",
@@ -1370,7 +1367,14 @@
 					"importance": "Độ ưu tiên",
 					"assignee_ids": "Người được giao",
 					"tags": "Nhãn",
-					"custom_field": "Trường tùy chỉnh"
+					"custom_field": "Trường tùy chỉnh",
+					"title": "Tiêu đề",
+					"story_points": "Story points",
+					"sprint_id": "Sprint",
+					"parent_task_id": "Công việc cha",
+					"reporter_id": "Người báo cáo",
+					"start_date": "Ngày bắt đầu",
+					"due_date": "Ngày đến hạn"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "Tên tiêu đề",
 				"headerValuePlaceholder": "Giá trị",
 				"addHeader": "Thêm tiêu đề",
-				"bodyLabel": "Nội dung"
+				"bodyLabel": "Nội dung",
+				"updateTaskHint": "Chỉ những trường bạn bật dưới đây mới bị thay đổi — phần còn lại của công việc không bị ảnh hưởng.",
+				"addFieldToUpdate": "Thêm trường cần cập nhật…",
+				"customFieldsLabel": "Trường tùy chỉnh",
+				"enableField": "Đặt {{field}}",
+				"titleLabel": "Tiêu đề",
+				"storyPointsLabel": "Story points",
+				"sprintLabel": "Sprint",
+				"parentTaskLabel": "Công việc cha",
+				"reporterLabel": "Người báo cáo",
+				"startDateLabel": "Ngày bắt đầu",
+				"dueDateLabel": "Ngày đến hạn",
+				"tagsLabel": "Nhãn",
+				"tagsPlaceholder": "Thêm nhãn…",
+				"assigneesLabel": "Người được giao",
+				"noSprint": "Không có sprint",
+				"pluginConditionLabel": "Điều kiện plugin",
+				"pluginConditionHint": "Giao việc khớp của nhánh này cho một điều kiện do plugin cung cấp thay vì so sánh trường công việc.",
+				"selectPluginPlaceholder": "Chọn điều kiện plugin…",
+				"addCustomField": "Thêm trường tùy chỉnh…"
 			},
 			"target": {
 				"label": "Áp dụng cho",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "{{minutes}} phút sau hạn chót",
 				"branches": "{{count}} nhánh",
 				"priority": "Độ ưu tiên: {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "Chưa giao",
 				"notConfigured": "Chưa cấu hình",
 				"elseShort": "Trường hợp khác",
+				"pluginConditionMatched": "Khớp",
 				"branchFallback": "Nhánh {{n}}",
 				"cronSchedule": "Chạy {{expression}}",
 				"webhookReady": "Đã cấu hình webhook",

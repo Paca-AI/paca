@@ -40,6 +40,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useTaskPickerSearch } from "@/hooks/use-task-picker-search";
 import {
@@ -50,9 +51,13 @@ import {
 	type ConditionBranch,
 	type ConditionConfig,
 	type ConditionField,
+	type ConditionLeaf,
 	type ConditionOperator,
 	generateWebhookToken,
 	MULTI_VALUED_TARGET_KINDS,
+	type PluginNodeConfigSchema,
+	type PluginNodeConfigSchemaProperty,
+	type TaskFieldUpdate,
 	type TaskTarget,
 	type TaskTargetKind,
 	TRIGGER_TYPES,
@@ -60,6 +65,7 @@ import {
 } from "@/lib/automation-api";
 import {
 	listAllTasks,
+	sprintsQueryOptions,
 	type Task,
 	taskQueryOptions,
 	tasksPickerInfiniteQueryOptions,
@@ -89,6 +95,12 @@ interface AutomationNodeConfigPanelProps {
 	 * plugin's own manifest — used instead of an i18n lookup when the
 	 * node's type isn't one of the built-ins. */
 	pluginLabel?: string;
+	/** JSON Schema for a plugin-contributed node type's config, from the
+	 * plugin's own manifest (plugin.json's
+	 * automation.{triggers,conditions,actions}[].configSchema). When
+	 * present with properties, drives SchemaConfigForm's UI-field
+	 * rendering instead of GenericConfigForm's raw JSON textarea. */
+	pluginConfigSchema?: PluginNodeConfigSchema;
 }
 
 // The task list API caps page_size at 200, so a full project task picker has
@@ -112,23 +124,98 @@ function taskLabel(task: Task): string {
 	return `#${task.task_number} ${task.title}`;
 }
 
+// Field choices for a condition leaf's Select — matches the domain's Field
+// enum in condition.go. Plugin-contributed conditions are their own
+// standalone condition node type (see AutomationNodeConfigPanel's dispatch
+// on node.type), not a leaf field choice here.
+// Ordered to match how these fields read on the task itself — title first
+// (what a task is), then status/type/assignee (classification & ownership),
+// importance/story_points (planning), tags, reporter, sprint/epic
+// (organization), the two dates, and custom_field last since it's the
+// generic catch-all that needs a second field_key picker.
 const CONDITION_FIELDS: ConditionField[] = [
+	"title",
 	"status_id",
 	"task_type_id",
-	"importance",
 	"assignee_ids",
+	"importance",
+	"story_points",
 	"tags",
+	"reporter_id",
+	"sprint_id",
+	"parent_task_id",
+	"start_date",
+	"due_date",
 	"custom_field",
 ];
 
+// Mirrors validOperatorsByField in domain/automation/condition.go exactly —
+// keep the two in sync.
 const OPERATORS_BY_FIELD: Record<ConditionField, ConditionOperator[]> = {
-	status_id: ["equals", "not_equals"],
-	task_type_id: ["equals", "not_equals"],
+	status_id: ["equals", "not_equals", "is_empty", "is_not_empty"],
+	task_type_id: ["equals", "not_equals", "is_empty", "is_not_empty"],
 	importance: ["equals", "not_equals", "greater_than", "less_than"],
 	assignee_ids: ["contains", "not_equals", "is_empty", "is_not_empty"],
 	tags: ["contains", "not_equals", "is_empty", "is_not_empty"],
-	custom_field: ["equals", "not_equals", "is_empty", "is_not_empty"],
+	custom_field: [
+		"equals",
+		"not_equals",
+		"is_empty",
+		"is_not_empty",
+		"greater_than",
+		"less_than",
+	],
+	title: ["equals", "not_equals", "contains", "is_empty", "is_not_empty"],
+	story_points: [
+		"equals",
+		"not_equals",
+		"greater_than",
+		"less_than",
+		"is_empty",
+		"is_not_empty",
+	],
+	sprint_id: ["equals", "not_equals", "is_empty", "is_not_empty"],
+	parent_task_id: ["equals", "not_equals", "is_empty", "is_not_empty"],
+	reporter_id: ["equals", "not_equals", "is_empty", "is_not_empty"],
+	start_date: [
+		"equals",
+		"not_equals",
+		"greater_than",
+		"less_than",
+		"is_empty",
+		"is_not_empty",
+	],
+	due_date: [
+		"equals",
+		"not_equals",
+		"greater_than",
+		"less_than",
+		"is_empty",
+		"is_not_empty",
+	],
 };
+
+// UpdatableField enumerates every TaskFieldUpdate key with an editor in
+// this form — the same set the "add field" picker offers. Excludes
+// description (rich text, no dedicated editor here). Ordered to match
+// CONDITION_FIELDS above for a consistent field-picking experience across
+// conditions and actions.
+type UpdatableField = Exclude<keyof TaskFieldUpdate, "description">;
+const FIELD_UPDATE_ORDER: UpdatableField[] = [
+	"title",
+	"status_id",
+	"task_type_id",
+	"assignee_ids",
+	"importance",
+	"story_points",
+	"tags",
+	"reporter_id",
+	"sprint_id",
+	"parent_task_id",
+	"start_date",
+	"due_date",
+	"custom_fields",
+];
 
 export function AutomationNodeConfigPanel({
 	node,
@@ -144,6 +231,7 @@ export function AutomationNodeConfigPanel({
 	onRemove,
 	saving,
 	pluginLabel,
+	pluginConfigSchema,
 }: AutomationNodeConfigPanelProps) {
 	const { t } = useTranslation("projects");
 	const [removeOpen, setRemoveOpen] = useState(false);
@@ -183,13 +271,20 @@ export function AutomationNodeConfigPanel({
 						onSave={onSave}
 						saving={saving}
 					/>
-				) : (
-					<GenericConfigForm
+				) : pluginConfigSchema?.properties &&
+					Object.keys(pluginConfigSchema.properties).length > 0 ? (
+					<SchemaConfigForm
+						schema={pluginConfigSchema}
 						config={node.config}
+						projectId={projectId}
+						members={members}
+						nodeKind="trigger"
 						canEdit={canEdit}
 						onSave={onSave}
 						saving={saving}
 					/>
+				) : (
+					<PluginTriggerNoConfigNotice />
 				)}
 				<RemoveDialog
 					open={removeOpen}
@@ -221,6 +316,18 @@ export function AutomationNodeConfigPanel({
 						members={members}
 						customFields={customFields}
 						taskTypes={taskTypes}
+						canEdit={canEdit}
+						onSave={onSave}
+						saving={saving}
+					/>
+				) : pluginConfigSchema?.properties &&
+					Object.keys(pluginConfigSchema.properties).length > 0 ? (
+					<SchemaConfigForm
+						schema={pluginConfigSchema}
+						config={node.config}
+						projectId={projectId}
+						members={members}
+						nodeKind="condition"
 						canEdit={canEdit}
 						onSave={onSave}
 						saving={saving}
@@ -264,6 +371,19 @@ export function AutomationNodeConfigPanel({
 					statuses={statuses}
 					members={members}
 					customFields={customFields}
+					taskTypes={taskTypes}
+					canEdit={canEdit}
+					onSave={onSave}
+					saving={saving}
+				/>
+			) : pluginConfigSchema?.properties &&
+				Object.keys(pluginConfigSchema.properties).length > 0 ? (
+				<SchemaConfigForm
+					schema={pluginConfigSchema}
+					config={node.config}
+					projectId={projectId}
+					members={members}
+					nodeKind="action"
 					canEdit={canEdit}
 					onSave={onSave}
 					saving={saving}
@@ -285,12 +405,341 @@ export function AutomationNodeConfigPanel({
 	);
 }
 
-// GenericConfigForm is the fallback config editor for any plugin-contributed
-// node type: a raw JSON editor. Plugins that want a real UI (a live picker,
-// not a bare textarea) can register a component at the
-// "automation.node.config" frontend extension point once one exists — see
-// the design note in the plugin automation bridge; until then, this is the
-// only surface available for editing a plugin node's config.
+// SchemaConfigForm renders real UI fields (text/number inputs, dropdowns,
+// textareas, date pickers, member pickers) for a plugin-contributed node's
+// config, driven by the JSON Schema the plugin declares at plugin.json's
+// automation.{triggers,conditions,actions}[].configSchema. This is the
+// primary editor for any plugin node that declares a configSchema with
+// properties — GenericConfigForm's raw JSON textarea remains only as a
+// fallback for plugin nodes that declare no schema at all (or one with no
+// properties), so an older/minimal plugin never loses the ability to be
+// configured.
+//
+// Condition and action nodes also get the same "applies to" target picker
+// the built-in condition leaf/action forms have (TaskTargetSelector, plus
+// MatchModeSelector for a condition whose target can resolve to more than
+// one task) — stored as config.target/config.match_mode alongside the
+// plugin's own declared fields, the same JSON shape ConditionLeaf/
+// ActionConfig already use, so the engine picks it up with no
+// plugin-specific handling required. Triggers don't get one: a
+// plugin-contributed trigger fires from whatever task its own eventTopic
+// payload names, not something a user can retarget from the canvas.
+function SchemaConfigForm({
+	schema,
+	config,
+	projectId,
+	members,
+	nodeKind,
+	canEdit,
+	onSave,
+	saving,
+}: {
+	schema: PluginNodeConfigSchema;
+	config: Record<string, unknown>;
+	projectId: string;
+	members: ProjectMember[];
+	nodeKind: "trigger" | "condition" | "action";
+	canEdit: boolean;
+	onSave: (config: Record<string, unknown>) => void;
+	saving?: boolean;
+}) {
+	const { t } = useTranslation("projects");
+	const properties = schema.properties ?? {};
+	const required = useMemo(() => new Set(schema.required ?? []), [schema]);
+	const fieldNames = Object.keys(properties);
+	const showTarget = nodeKind !== "trigger";
+
+	const [values, setValues] = useState<Record<string, string | boolean>>(() => {
+		const initial: Record<string, string | boolean> = {};
+		for (const name of fieldNames) {
+			const prop = properties[name];
+			const raw = config[name];
+			if (prop.type === "boolean") {
+				initial[name] =
+					typeof raw === "boolean" ? raw : Boolean(prop.default ?? false);
+			} else {
+				initial[name] =
+					raw != null
+						? String(raw)
+						: prop.default != null
+							? String(prop.default)
+							: "";
+			}
+		}
+		return initial;
+	});
+	const [target, setTarget] = useState<TaskTarget | undefined>(
+		config.target as TaskTarget | undefined,
+	);
+	const [matchMode, setMatchMode] = useState<"any" | "all" | undefined>(
+		config.match_mode as "any" | "all" | undefined,
+	);
+
+	function setField(name: string, value: string | boolean) {
+		setValues((prev) => ({ ...prev, [name]: value }));
+	}
+
+	const missingRequired = fieldNames.some((name) => {
+		if (!required.has(name)) return false;
+		const prop = properties[name];
+		if (prop.type === "boolean") return false;
+		return !String(values[name] ?? "").trim();
+	});
+
+	function buildConfig(): Record<string, unknown> {
+		const out: Record<string, unknown> = {};
+		for (const name of fieldNames) {
+			const prop = properties[name];
+			const raw = values[name];
+			if (prop.type === "boolean") {
+				out[name] = Boolean(raw);
+				continue;
+			}
+			const strVal = String(raw ?? "").trim();
+			if (!strVal) {
+				if (required.has(name)) out[name] = strVal;
+				continue;
+			}
+			if (prop.type === "integer" || prop.type === "number") {
+				const num = Number(strVal);
+				out[name] = Number.isFinite(num) ? num : strVal;
+			} else {
+				out[name] = strVal;
+			}
+		}
+		if (showTarget) {
+			out.target = target;
+			if (nodeKind === "condition") out.match_mode = matchMode;
+		}
+		return out;
+	}
+
+	if (fieldNames.length === 0 && !showTarget) {
+		return (
+			<GenericConfigForm
+				config={config}
+				canEdit={canEdit}
+				onSave={onSave}
+				saving={saving}
+			/>
+		);
+	}
+
+	return (
+		<div className="space-y-3">
+			<SchemaFields
+				properties={properties}
+				required={required}
+				values={values}
+				setField={setField}
+				members={members}
+				canEdit={canEdit}
+			/>
+			{showTarget && (
+				<div className="space-y-1">
+					<Label className="text-[10px] text-muted-foreground">
+						{t("automation.nodeConfig.target.label")}
+					</Label>
+					<TaskTargetSelector
+						projectId={projectId}
+						target={target}
+						onChange={setTarget}
+						canEdit={canEdit}
+					/>
+					{nodeKind === "condition" &&
+						target &&
+						MULTI_VALUED_TARGET_KINDS.includes(target.kind) && (
+							<MatchModeSelector
+								value={matchMode}
+								onChange={setMatchMode}
+								canEdit={canEdit}
+							/>
+						)}
+				</div>
+			)}
+			{canEdit && (
+				<SaveButton
+					saving={saving}
+					disabled={missingRequired}
+					onClick={() => onSave(buildConfig())}
+				/>
+			)}
+		</div>
+	);
+}
+
+// SchemaFields renders one input per JSON-Schema property — shared by
+// SchemaConfigForm and GenericConfigForm's schema-aware sibling for any
+// plugin-contributed node (trigger, condition, or action), so both stay in
+// sync with configSchema's supported shapes (boolean/enum/textarea/date/
+// member/number/text) automatically.
+function SchemaFields({
+	properties,
+	required,
+	values,
+	setField,
+	members,
+	canEdit,
+}: {
+	properties: Record<string, PluginNodeConfigSchemaProperty>;
+	required: Set<string>;
+	values: Record<string, string | boolean>;
+	setField: (name: string, value: string | boolean) => void;
+	members: ProjectMember[];
+	canEdit: boolean;
+}) {
+	const fieldNames = Object.keys(properties);
+	return (
+		<>
+			{fieldNames.map((name) => {
+				const prop = properties[name];
+				const label = prop.title ?? name;
+				const isRequired = required.has(name);
+				const value = values[name];
+
+				if (prop.type === "boolean") {
+					return (
+						<div key={name} className="flex items-center justify-between gap-2">
+							<Label>{label}</Label>
+							<Switch
+								checked={Boolean(value)}
+								onCheckedChange={(checked) => setField(name, checked)}
+								disabled={!canEdit}
+							/>
+						</div>
+					);
+				}
+
+				if (prop.format === "member") {
+					const selected = members.find((m) => m.id === value);
+					return (
+						<div key={name} className="space-y-1.5">
+							<Label>
+								{label}
+								{isRequired && <span className="text-destructive"> *</span>}
+							</Label>
+							<Select
+								value={String(value ?? "")}
+								onValueChange={(v) => v && setField(name, v)}
+								disabled={!canEdit}
+							>
+								<SelectTrigger className="w-full">
+									<SelectValue>
+										{selected?.full_name || selected?.username}
+									</SelectValue>
+								</SelectTrigger>
+								<SelectContent>
+									{members.map((m) => (
+										<SelectItem key={m.id} value={m.id}>
+											{m.full_name || m.username}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					);
+				}
+
+				if (prop.enum && prop.enum.length > 0) {
+					return (
+						<div key={name} className="space-y-1.5">
+							<Label>
+								{label}
+								{isRequired && <span className="text-destructive"> *</span>}
+							</Label>
+							<Select
+								value={String(value ?? "")}
+								onValueChange={(v) => v && setField(name, v)}
+								disabled={!canEdit}
+							>
+								<SelectTrigger className="w-full">
+									<SelectValue>{String(value ?? "")}</SelectValue>
+								</SelectTrigger>
+								<SelectContent>
+									{prop.enum.map((option: string) => (
+										<SelectItem key={option} value={option}>
+											{option}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					);
+				}
+
+				if (prop.format === "textarea") {
+					return (
+						<div key={name} className="space-y-1.5">
+							<Label>
+								{label}
+								{isRequired && <span className="text-destructive"> *</span>}
+							</Label>
+							<Textarea
+								value={String(value ?? "")}
+								onChange={(e) => setField(name, e.target.value)}
+								rows={4}
+								disabled={!canEdit}
+							/>
+						</div>
+					);
+				}
+
+				const inputType =
+					prop.format === "date"
+						? "date"
+						: prop.type === "integer" || prop.type === "number"
+							? "number"
+							: "text";
+
+				return (
+					<div key={name} className="space-y-1.5">
+						<Label>
+							{label}
+							{isRequired && <span className="text-destructive"> *</span>}
+						</Label>
+						<Input
+							type={inputType}
+							value={String(value ?? "")}
+							onChange={(e) => setField(name, e.target.value)}
+							min={prop.minimum}
+							disabled={!canEdit}
+						/>
+					</div>
+				);
+			})}
+		</>
+	);
+}
+
+// PluginTriggerNoConfigNotice replaces GenericConfigForm's raw-JSON editor
+// for a plugin-contributed trigger that declares no configSchema (or one
+// with no properties). Unlike a condition or action, a trigger's config is
+// never read by the automation engine at all — it matches purely on the
+// manifest's declared eventTopic (see AutomationNodeManifest.EventTopic and
+// validateTriggerConfig's plugin-trigger branch in the core's
+// domain/plugin/entity.go and service/automation/automation_service.go). A
+// plugin wanting per-instance filtering contributes a Condition node
+// instead, placed right after the trigger in the graph — so offering a JSON
+// editor here would just invite the user to configure something that can
+// never take effect. Mirrors the "no config fields" message
+// TriggerConfigForm shows for the built-in task_created/assignee_changed/
+// priority_changed triggers.
+function PluginTriggerNoConfigNotice() {
+	const { t } = useTranslation("projects");
+	return (
+		<p className="text-xs text-muted-foreground">
+			{t("automation.nodeConfig.trigger.noConfigNeeded")}
+		</p>
+	);
+}
+
+// GenericConfigForm is the fallback config editor for a plugin-contributed
+// condition or action node type that declares no configSchema (or one with
+// no properties): a raw JSON editor. Any plugin node with a real
+// configSchema renders through SchemaConfigForm above instead — this
+// remains reachable only so an older or minimal plugin never loses the
+// ability to be configured at all. Not used for triggers — see
+// PluginTriggerNoConfigNotice above.
 function GenericConfigForm({
 	config,
 	canEdit,
@@ -738,7 +1187,7 @@ function TriggerConfigForm({
 	// task_created, assignee_changed, priority_changed — no config fields.
 	return (
 		<p className="text-xs text-muted-foreground">
-			{t("automation.nodeConfig.trigger.anyStatus")}
+			{t("automation.nodeConfig.trigger.noConfigNeeded")}
 		</p>
 	);
 }
@@ -1155,6 +1604,10 @@ function ConditionConfigForm({
 	const [branches, setBranches] = useState<ConditionBranch[]>(
 		config.branches ?? [],
 	);
+	const { data: sprints } = useQuery({
+		...sprintsQueryOptions(projectId),
+		enabled: !!projectId,
+	});
 
 	useEffect(() => {
 		setBranches(config.branches ?? []);
@@ -1166,23 +1619,13 @@ function ConditionConfigForm({
 		);
 	}
 
-	function updateLeaf(
-		index: number,
-		patch: Partial<{
-			field: ConditionField;
-			field_key: string;
-			operator: ConditionOperator;
-			value: unknown;
-			target: TaskTarget | undefined;
-			match_mode: "any" | "all";
-		}>,
-	) {
+	function updateLeaf(index: number, patch: Partial<ConditionLeaf>) {
 		setBranches((prev) =>
 			prev.map((b, i) => {
 				if (i !== index) return b;
-				const current = b.tree ?? {
-					field: "status_id" as ConditionField,
-					operator: "equals" as ConditionOperator,
+				const current: ConditionLeaf = b.tree ?? {
+					field: "status_id",
+					operator: "equals",
 				};
 				return { ...b, tree: { ...current, ...patch } };
 			}),
@@ -1354,7 +1797,7 @@ function ConditionConfigForm({
 										))}
 									</SelectContent>
 								</Select>
-							) : field === "assignee_ids" ? (
+							) : field === "assignee_ids" || field === "reporter_id" ? (
 								<Select
 									value={(leaf?.value as string) ?? ""}
 									onValueChange={(v) => updateLeaf(i, { value: v ?? "" })}
@@ -1380,6 +1823,51 @@ function ConditionConfigForm({
 										))}
 									</SelectContent>
 								</Select>
+							) : field === "sprint_id" ? (
+								<Select
+									value={(leaf?.value as string) ?? ""}
+									onValueChange={(v) => updateLeaf(i, { value: v ?? "" })}
+									disabled={!canEdit}
+								>
+									<SelectTrigger className="h-7 w-full text-xs">
+										<SelectValue
+											placeholder={t("automation.nodeConfig.condition.value")}
+										>
+											{(sprints ?? []).find((s) => s.id === leaf?.value)?.name}
+										</SelectValue>
+									</SelectTrigger>
+									<SelectContent>
+										{(sprints ?? []).map((s) => (
+											<SelectItem key={s.id} value={s.id}>
+												{s.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							) : field === "parent_task_id" ? (
+								<TargetTaskPicker
+									projectId={projectId}
+									value={(leaf?.value as string) ?? ""}
+									onChange={(taskId) => updateLeaf(i, { value: taskId })}
+									canEdit={canEdit}
+								/>
+							) : field === "start_date" || field === "due_date" ? (
+								<Input
+									type="date"
+									value={(leaf?.value as string) ?? ""}
+									onChange={(e) => updateLeaf(i, { value: e.target.value })}
+									disabled={!canEdit}
+									className="h-7 text-xs"
+								/>
+							) : field === "story_points" ? (
+								<Input
+									type="number"
+									value={(leaf?.value as string) ?? ""}
+									onChange={(e) => updateLeaf(i, { value: e.target.value })}
+									placeholder={t("automation.nodeConfig.condition.value")}
+									disabled={!canEdit}
+									className="h-7 text-xs"
+								/>
 							) : field === "custom_field" &&
 								selectedCustomField &&
 								selectedCustomField.options.length > 0 ? (
@@ -1464,6 +1952,7 @@ function ActionConfigForm({
 	statuses,
 	members,
 	customFields,
+	taskTypes,
 	canEdit,
 	onSave,
 	saving,
@@ -1474,20 +1963,13 @@ function ActionConfigForm({
 	statuses: TaskStatus[];
 	members: ProjectMember[];
 	customFields: CustomFieldDefinition[];
+	taskTypes: TaskType[];
 	canEdit: boolean;
 	onSave: (config: Record<string, unknown>) => void;
 	saving?: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const [target, setTarget] = useState<TaskTarget | undefined>(config.target);
-	const [memberId, setMemberId] = useState(config.member_id ?? "");
-	const [statusId, setStatusId] = useState(config.status_id ?? "");
-	const [priorityBucket, setPriorityBucket] = useState(
-		getImportanceBucket(config.importance ?? 0).toString(),
-	);
-	const [tag, setTag] = useState(config.tag ?? "");
-	const [fieldKey, setFieldKey] = useState(config.field_key ?? "");
-	const [value, setValue] = useState((config.value as string) ?? "");
 	const [message, setMessage] = useState(config.message ?? "");
 	const [method, setMethod] = useState(config.method ?? "GET");
 	const [url, setUrl] = useState(config.url ?? "");
@@ -1503,21 +1985,41 @@ function ActionConfigForm({
 	);
 	const [body, setBody] = useState(config.body ?? "");
 
-	if (type === "assign" || type === "trigger_ai_agent") {
-		const isAiAgentAction = type === "trigger_ai_agent";
-		const assignableMembers = isAiAgentAction
-			? members.filter((m) => m.member_type === "agent")
-			: members;
+	// update_task's fields, each independently enabled — an unset field is
+	// left untouched on the task; only enabled fields are sent.
+	const initialFields = config.update ?? {};
+	const [memberId, setMemberId] = useState(config.member_id ?? "");
+	const [enabled, setEnabled] = useState<Set<keyof TaskFieldUpdate>>(
+		() => new Set(Object.keys(initialFields) as (keyof TaskFieldUpdate)[]),
+	);
+	const [fields, setFields] = useState<TaskFieldUpdate>(initialFields);
+	const { data: sprints } = useQuery({
+		...sprintsQueryOptions(projectId),
+		enabled: !!projectId,
+	});
+
+	function toggleField(key: keyof TaskFieldUpdate, on: boolean) {
+		setEnabled((prev) => {
+			const next = new Set(prev);
+			if (on) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	}
+
+	function setFieldValue<K extends keyof TaskFieldUpdate>(
+		key: K,
+		value: TaskFieldUpdate[K],
+	) {
+		setFields((prev) => ({ ...prev, [key]: value }));
+	}
+
+	if (type === "trigger_ai_agent") {
+		const assignableMembers = members.filter((m) => m.member_type === "agent");
 		return (
 			<div className="space-y-3">
 				<div className="space-y-1.5">
-					<Label>
-						{t(
-							isAiAgentAction
-								? "automation.nodeConfig.action.agentLabel"
-								: "automation.nodeConfig.action.memberLabel",
-						)}
-					</Label>
+					<Label>{t("automation.nodeConfig.action.agentLabel")}</Label>
 					<Select
 						value={memberId}
 						onValueChange={(v) => setMemberId(v ?? "")}
@@ -1542,18 +2044,16 @@ function ActionConfigForm({
 						</SelectContent>
 					</Select>
 				</div>
-				{type === "trigger_ai_agent" && (
-					<div className="space-y-1.5">
-						<Label>{t("automation.nodeConfig.action.messageLabel")}</Label>
-						<Textarea
-							value={message}
-							onChange={(e) => setMessage(e.target.value)}
-							placeholder={t("automation.nodeConfig.action.messagePlaceholder")}
-							rows={4}
-							disabled={!canEdit}
-						/>
-					</div>
-				)}
+				<div className="space-y-1.5">
+					<Label>{t("automation.nodeConfig.action.messageLabel")}</Label>
+					<Textarea
+						value={message}
+						onChange={(e) => setMessage(e.target.value)}
+						placeholder={t("automation.nodeConfig.action.messagePlaceholder")}
+						rows={4}
+						disabled={!canEdit}
+					/>
+				</div>
 				<div className="space-y-1">
 					<Label className="text-[10px] text-muted-foreground">
 						{t("automation.nodeConfig.target.label")}
@@ -1569,148 +2069,7 @@ function ActionConfigForm({
 					<SaveButton
 						saving={saving}
 						disabled={!memberId}
-						onClick={() =>
-							onSave(
-								type === "trigger_ai_agent"
-									? { member_id: memberId, message, target }
-									: { member_id: memberId, target },
-							)
-						}
-					/>
-				)}
-			</div>
-		);
-	}
-
-	if (type === "set_status") {
-		return (
-			<div className="space-y-3">
-				<div className="space-y-1.5">
-					<Label>{t("automation.nodeConfig.action.statusLabel")}</Label>
-					<Select
-						value={statusId}
-						onValueChange={(v) => setStatusId(v ?? "")}
-						disabled={!canEdit}
-					>
-						<SelectTrigger className="w-full">
-							<SelectValue>
-								{statuses.find((s) => s.id === statusId)?.name}
-							</SelectValue>
-						</SelectTrigger>
-						<SelectContent>
-							{statuses.map((s) => (
-								<SelectItem key={s.id} value={s.id}>
-									{s.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-				<div className="space-y-1">
-					<Label className="text-[10px] text-muted-foreground">
-						{t("automation.nodeConfig.target.label")}
-					</Label>
-					<TaskTargetSelector
-						projectId={projectId}
-						target={target}
-						onChange={setTarget}
-						canEdit={canEdit}
-					/>
-				</div>
-				{canEdit && (
-					<SaveButton
-						saving={saving}
-						disabled={!statusId}
-						onClick={() => onSave({ status_id: statusId, target })}
-					/>
-				)}
-			</div>
-		);
-	}
-
-	if (type === "set_priority") {
-		return (
-			<div className="space-y-3">
-				<div className="space-y-1.5">
-					<Label>{t("automation.nodeConfig.action.importanceLabel")}</Label>
-					<Select
-						value={priorityBucket}
-						onValueChange={(v) => v && setPriorityBucket(v)}
-						disabled={!canEdit}
-					>
-						<SelectTrigger className="w-full">
-							<SelectValue>
-								{(() => {
-									const level = PRIORITY_LEVELS.find(
-										(l) => l.value.toString() === priorityBucket,
-									);
-									return level ? t(level.labelKey) : undefined;
-								})()}
-							</SelectValue>
-						</SelectTrigger>
-						<SelectContent>
-							{PRIORITY_LEVELS.map((level) => (
-								<SelectItem key={level.value} value={level.value.toString()}>
-									{t(level.labelKey)}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-				<div className="space-y-1">
-					<Label className="text-[10px] text-muted-foreground">
-						{t("automation.nodeConfig.target.label")}
-					</Label>
-					<TaskTargetSelector
-						projectId={projectId}
-						target={target}
-						onChange={setTarget}
-						canEdit={canEdit}
-					/>
-				</div>
-				{canEdit && (
-					<SaveButton
-						saving={saving}
-						onClick={() =>
-							onSave({
-								importance:
-									IMPORTANCE_BUCKET_VALUES[Number(priorityBucket)] ?? 0,
-								target,
-							})
-						}
-					/>
-				)}
-			</div>
-		);
-	}
-
-	if (type === "add_tag") {
-		return (
-			<div className="space-y-3">
-				<div className="space-y-1.5">
-					<Label>{t("automation.nodeConfig.action.tagLabel")}</Label>
-					<Input
-						value={tag}
-						onChange={(e) => setTag(e.target.value)}
-						disabled={!canEdit}
-					/>
-				</div>
-				<div className="space-y-1">
-					<Label className="text-[10px] text-muted-foreground">
-						{t("automation.nodeConfig.target.label")}
-					</Label>
-					<TaskTargetSelector
-						projectId={projectId}
-						target={target}
-						onChange={setTarget}
-						canEdit={canEdit}
-					/>
-				</div>
-				{canEdit && (
-					<SaveButton
-						saving={saving}
-						disabled={!tag.trim()}
-						onClick={() => onSave({ tag: tag.trim(), target })}
+						onClick={() => onSave({ member_id: memberId, message, target })}
 					/>
 				)}
 			</div>
@@ -1850,56 +2209,353 @@ function ActionConfigForm({
 		);
 	}
 
-	// set_custom_field
-	const selectedField = customFields.find((cf) => cf.field_key === fieldKey);
-	return (
-		<div className="space-y-3">
-			<div className="space-y-1.5">
-				<Label>{t("automation.nodeConfig.action.fieldKeyLabel")}</Label>
-				<Select
-					value={fieldKey}
-					onValueChange={(v) => setFieldKey(v ?? "")}
-					disabled={!canEdit}
-				>
-					<SelectTrigger className="w-full">
-						<SelectValue>{selectedField?.display_name}</SelectValue>
-					</SelectTrigger>
-					<SelectContent>
-						{customFields.map((cf) => (
-							<SelectItem key={cf.id} value={cf.field_key}>
-								{cf.display_name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
-			<div className="space-y-1.5">
-				<Label>{t("automation.nodeConfig.action.valueLabel")}</Label>
-				{selectedField && selectedField.options.length > 0 ? (
+	// update_task: dynamic field-update rows. Add a field via the picker,
+	// which pairs it with a type-appropriate value editor below; remove it
+	// via the trash icon. Fields never added here are left untouched on
+	// the task (see TaskFieldUpdate — unset ≠ cleared).
+	const selectedCustomFieldKeys = Object.keys(fields.custom_fields ?? {});
+	const addableFields = FIELD_UPDATE_ORDER.filter((k) => !enabled.has(k));
+
+	function fieldLabel(key: UpdatableField): string {
+		if (key === "custom_fields") {
+			return t("automation.nodeConfig.action.customFieldsLabel");
+		}
+		return t(`automation.nodeConfig.condition.fields.${key}`);
+	}
+
+	function renderFieldEditor(key: UpdatableField) {
+		switch (key) {
+			case "title":
+				return (
+					<Input
+						value={fields.title ?? ""}
+						onChange={(e) => setFieldValue("title", e.target.value)}
+						disabled={!canEdit}
+						className="h-7 text-xs"
+					/>
+				);
+			case "status_id":
+				return (
 					<Select
-						value={value}
-						onValueChange={(v) => setValue(v ?? "")}
+						value={fields.status_id ?? ""}
+						onValueChange={(v) => setFieldValue("status_id", v ?? undefined)}
 						disabled={!canEdit}
 					>
-						<SelectTrigger className="w-full">
-							<SelectValue>{value}</SelectValue>
+						<SelectTrigger className="h-7 w-full text-xs">
+							<SelectValue>
+								{statuses.find((s) => s.id === fields.status_id)?.name}
+							</SelectValue>
 						</SelectTrigger>
 						<SelectContent>
-							{selectedField.options.map((opt) => (
-								<SelectItem key={opt} value={opt}>
-									{opt}
+							{statuses.map((s) => (
+								<SelectItem key={s.id} value={s.id}>
+									{s.name}
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
-				) : (
-					<Input
-						value={value}
-						onChange={(e) => setValue(e.target.value)}
+				);
+			case "task_type_id":
+				return (
+					<Select
+						value={fields.task_type_id ?? ""}
+						onValueChange={(v) => setFieldValue("task_type_id", v ?? undefined)}
 						disabled={!canEdit}
+					>
+						<SelectTrigger className="h-7 w-full text-xs">
+							<SelectValue>
+								{taskTypes.find((tt) => tt.id === fields.task_type_id)?.name}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							{taskTypes.map((tt) => (
+								<SelectItem key={tt.id} value={tt.id}>
+									{tt.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				);
+			case "assignee_ids":
+				return (
+					<Select
+						value={fields.assignee_ids?.[0] ?? ""}
+						onValueChange={(v) =>
+							setFieldValue("assignee_ids", v ? [v] : undefined)
+						}
+						disabled={!canEdit}
+					>
+						<SelectTrigger className="h-7 w-full text-xs">
+							<SelectValue>
+								{(() => {
+									const m = members.find(
+										(mem) => mem.id === fields.assignee_ids?.[0],
+									);
+									return m?.full_name || m?.username;
+								})()}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							{members.map((m) => (
+								<SelectItem key={m.id} value={m.id}>
+									{m.full_name || m.username}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				);
+			case "importance":
+				return (
+					<Select
+						value={getImportanceBucket(fields.importance ?? 0).toString()}
+						onValueChange={(v) =>
+							v &&
+							setFieldValue(
+								"importance",
+								IMPORTANCE_BUCKET_VALUES[Number(v)] ?? 0,
+							)
+						}
+						disabled={!canEdit}
+					>
+						<SelectTrigger className="h-7 w-full text-xs">
+							<SelectValue>
+								{(() => {
+									const level = PRIORITY_LEVELS.find(
+										(l) =>
+											l.value.toString() ===
+											getImportanceBucket(fields.importance ?? 0).toString(),
+									);
+									return level ? t(level.labelKey) : undefined;
+								})()}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							{PRIORITY_LEVELS.map((level) => (
+								<SelectItem key={level.value} value={level.value.toString()}>
+									{t(level.labelKey)}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				);
+			case "story_points":
+				return (
+					<Input
+						type="number"
+						value={fields.story_points ?? ""}
+						onChange={(e) =>
+							setFieldValue(
+								"story_points",
+								e.target.value ? Number(e.target.value) : undefined,
+							)
+						}
+						disabled={!canEdit}
+						className="h-7 text-xs"
 					/>
-				)}
-			</div>
+				);
+			case "tags":
+				return (
+					<Input
+						value={(fields.tags ?? []).join(", ")}
+						onChange={(e) =>
+							setFieldValue(
+								"tags",
+								e.target.value
+									.split(",")
+									.map((s) => s.trim())
+									.filter(Boolean),
+							)
+						}
+						placeholder={t("automation.nodeConfig.action.tagLabel")}
+						disabled={!canEdit}
+						className="h-7 text-xs"
+					/>
+				);
+			case "reporter_id":
+				return (
+					<Select
+						value={fields.reporter_id ?? ""}
+						onValueChange={(v) => setFieldValue("reporter_id", v ?? undefined)}
+						disabled={!canEdit}
+					>
+						<SelectTrigger className="h-7 w-full text-xs">
+							<SelectValue>
+								{(() => {
+									const m = members.find(
+										(mem) => mem.id === fields.reporter_id,
+									);
+									return m?.full_name || m?.username;
+								})()}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							{members.map((m) => (
+								<SelectItem key={m.id} value={m.id}>
+									{m.full_name || m.username}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				);
+			case "sprint_id":
+				return (
+					<Select
+						value={fields.sprint_id ?? ""}
+						onValueChange={(v) => setFieldValue("sprint_id", v ?? undefined)}
+						disabled={!canEdit}
+					>
+						<SelectTrigger className="h-7 w-full text-xs">
+							<SelectValue>
+								{(sprints ?? []).find((s) => s.id === fields.sprint_id)?.name}
+							</SelectValue>
+						</SelectTrigger>
+						<SelectContent>
+							{(sprints ?? []).map((s) => (
+								<SelectItem key={s.id} value={s.id}>
+									{s.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				);
+			case "parent_task_id":
+				return (
+					<TargetTaskPicker
+						projectId={projectId}
+						value={fields.parent_task_id ?? ""}
+						onChange={(taskId) => setFieldValue("parent_task_id", taskId)}
+						canEdit={canEdit}
+					/>
+				);
+			case "start_date":
+				return (
+					<Input
+						type="date"
+						value={fields.start_date ?? ""}
+						onChange={(e) => setFieldValue("start_date", e.target.value)}
+						disabled={!canEdit}
+						className="h-7 text-xs"
+					/>
+				);
+			case "due_date":
+				return (
+					<Input
+						type="date"
+						value={fields.due_date ?? ""}
+						onChange={(e) => setFieldValue("due_date", e.target.value)}
+						disabled={!canEdit}
+						className="h-7 text-xs"
+					/>
+				);
+			case "custom_fields":
+				return (
+					<div className="space-y-1.5">
+						<Select
+							value=""
+							onValueChange={(v) => {
+								if (!v) return;
+								setFieldValue("custom_fields", {
+									...fields.custom_fields,
+									[v]: "",
+								});
+							}}
+							disabled={!canEdit}
+						>
+							<SelectTrigger className="h-7 w-full text-xs">
+								<SelectValue
+									placeholder={t("automation.nodeConfig.action.addCustomField")}
+								/>
+							</SelectTrigger>
+							<SelectContent>
+								{customFields
+									.filter(
+										(cf) => !selectedCustomFieldKeys.includes(cf.field_key),
+									)
+									.map((cf) => (
+										<SelectItem key={cf.id} value={cf.field_key}>
+											{cf.display_name}
+										</SelectItem>
+									))}
+							</SelectContent>
+						</Select>
+						{selectedCustomFieldKeys.map((key) => {
+							const def = customFields.find((cf) => cf.field_key === key);
+							return (
+								<div key={key} className="flex items-center gap-1.5">
+									<span className="w-1/3 shrink-0 truncate text-[10px] text-muted-foreground">
+										{def?.display_name ?? key}
+									</span>
+									<Input
+										value={String(fields.custom_fields?.[key] ?? "")}
+										onChange={(e) =>
+											setFieldValue("custom_fields", {
+												...fields.custom_fields,
+												[key]: e.target.value,
+											})
+										}
+										disabled={!canEdit}
+										className="h-7 text-xs"
+									/>
+									{canEdit && (
+										<button
+											type="button"
+											onClick={() => {
+												const next = { ...fields.custom_fields };
+												delete next[key];
+												setFieldValue("custom_fields", next);
+											}}
+											className="shrink-0 text-muted-foreground hover:text-destructive"
+										>
+											<Trash2 className="size-3.5" />
+										</button>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				);
+			default:
+				return null;
+		}
+	}
+
+	return (
+		<div className="space-y-3">
+			<p className="text-xs text-muted-foreground">
+				{t("automation.nodeConfig.action.updateTaskHint")}
+			</p>
+			{canEdit && addableFields.length > 0 && (
+				<Select
+					value=""
+					onValueChange={(v) => {
+						if (!v) return;
+						toggleField(v as UpdatableField, true);
+					}}
+				>
+					<SelectTrigger className="h-7 w-full text-xs">
+						<SelectValue
+							placeholder={t("automation.nodeConfig.action.addFieldToUpdate")}
+						/>
+					</SelectTrigger>
+					<SelectContent>
+						{addableFields.map((key) => (
+							<SelectItem key={key} value={key}>
+								{fieldLabel(key)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			)}
+			{FIELD_UPDATE_ORDER.filter((key) => enabled.has(key)).map((key) => (
+				<DynamicFieldRow
+					key={key}
+					label={fieldLabel(key)}
+					onRemove={() => toggleField(key, false)}
+					canEdit={canEdit}
+				>
+					{renderFieldEditor(key)}
+				</DynamicFieldRow>
+			))}
 			<div className="space-y-1">
 				<Label className="text-[10px] text-muted-foreground">
 					{t("automation.nodeConfig.target.label")}
@@ -1914,10 +2570,52 @@ function ActionConfigForm({
 			{canEdit && (
 				<SaveButton
 					saving={saving}
-					disabled={!fieldKey}
-					onClick={() => onSave({ field_key: fieldKey, value, target })}
+					disabled={enabled.size === 0}
+					onClick={() => {
+						const savedFields: TaskFieldUpdate = {};
+						for (const key of enabled) {
+							// biome-ignore lint/suspicious/noExplicitAny: TaskFieldUpdate values are heterogeneous per key
+							(savedFields as any)[key] = fields[key];
+						}
+						onSave({ update: savedFields, target });
+					}}
 				/>
 			)}
+		</div>
+	);
+}
+
+// DynamicFieldRow pairs a field's label + value editor with a remove
+// button — matches TaskFieldUpdate's "unset = untouched" semantics: a
+// removed field is never sent, not sent-as-empty. Styled as a small card
+// (mirrors the condition-branch cards above) so a multi-field update
+// reads as a stack of distinct edits rather than a flat form.
+function DynamicFieldRow({
+	label,
+	onRemove,
+	canEdit,
+	children,
+}: {
+	label: string;
+	onRemove: () => void;
+	canEdit: boolean;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className="group space-y-1.5 rounded-lg border border-border/60 bg-muted/20 p-2.5 transition-colors hover:border-border">
+			<div className="flex items-center justify-between gap-2">
+				<Label className="text-xs font-medium">{label}</Label>
+				{canEdit && (
+					<button
+						type="button"
+						onClick={onRemove}
+						className="shrink-0 rounded-md p-1 text-muted-foreground opacity-60 transition-opacity hover:bg-destructive/10 hover:text-destructive hover:opacity-100 group-hover:opacity-100"
+					>
+						<Trash2 className="size-3.5" />
+					</button>
+				)}
+			</div>
+			{children}
 		</div>
 	);
 }

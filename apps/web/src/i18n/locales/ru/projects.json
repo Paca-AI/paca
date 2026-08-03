@@ -1321,11 +1321,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "Назначить",
-			"set_status": "Установить статус",
-			"set_priority": "Установить приоритет",
-			"add_tag": "Добавить тег",
-			"set_custom_field": "Установить настраиваемое поле",
+			"update_task": "Обновить задачу",
 			"trigger_ai_agent": "Запустить ИИ-агента",
 			"call_api": "Вызвать API"
 		},
@@ -1336,9 +1332,10 @@
 			"removeConfirmTitle": "Удалить узел",
 			"removeConfirmBody": "Это удалит узел из графа вместе со всеми его связями.",
 			"removeConfirmAction": "Удалить",
-			"genericFormHint": "Этот тип узла предоставлен плагином. Редактируйте его настройки как JSON — в будущих версиях плагины смогут регистрировать здесь более удобный редактор.",
+			"genericFormHint": "Этот тип узла предоставлен плагином, который не объявил схему настроек, поэтому его параметры редактируются как необработанный JSON. Плагины, объявляющие configSchema в манифесте, вместо этого показывают здесь поля интерфейса.",
 			"trigger": {
 				"anyStatus": "Любой статус",
+				"noConfigNeeded": "Этот триггер не требует настройки — он срабатывает автоматически при наступлении события.",
 				"statusLabel": "Статус",
 				"tagLabel": "Тег",
 				"anyTag": "Любой тег",
@@ -1390,7 +1387,14 @@
 					"importance": "Приоритет",
 					"assignee_ids": "Исполнитель",
 					"tags": "Теги",
-					"custom_field": "Настраиваемое поле"
+					"custom_field": "Настраиваемое поле",
+					"title": "Название",
+					"story_points": "Story points",
+					"sprint_id": "Спринт",
+					"parent_task_id": "Родительская задача",
+					"reporter_id": "Автор",
+					"start_date": "Дата начала",
+					"due_date": "Срок"
 				}
 			},
 			"action": {
@@ -1410,7 +1414,26 @@
 				"headerKeyPlaceholder": "Имя заголовка",
 				"headerValuePlaceholder": "Значение",
 				"addHeader": "Добавить заголовок",
-				"bodyLabel": "Тело запроса"
+				"bodyLabel": "Тело запроса",
+				"updateTaskHint": "Изменяются только поля, включённые ниже — остальная часть задачи остаётся без изменений.",
+				"addFieldToUpdate": "Добавить поле для обновления…",
+				"customFieldsLabel": "Пользовательское поле",
+				"enableField": "Установить {{field}}",
+				"titleLabel": "Название",
+				"storyPointsLabel": "Story points",
+				"sprintLabel": "Спринт",
+				"parentTaskLabel": "Родительская задача",
+				"reporterLabel": "Автор",
+				"startDateLabel": "Дата начала",
+				"dueDateLabel": "Срок",
+				"tagsLabel": "Теги",
+				"tagsPlaceholder": "Добавить тег…",
+				"assigneesLabel": "Исполнители",
+				"noSprint": "Без спринта",
+				"pluginConditionLabel": "Условие плагина",
+				"pluginConditionHint": "Передаёт проверку этой ветки условию из плагина вместо сравнения поля задачи.",
+				"selectPluginPlaceholder": "Выберите условие плагина…",
+				"addCustomField": "Добавить настраиваемое поле…"
 			},
 			"target": {
 				"label": "Применяется к",
@@ -1436,10 +1459,11 @@
 				"dueDateAfter": "через {{minutes}} мин после срока",
 				"branches": "Ветвей: {{count}}",
 				"priority": "Приоритет: {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "Не назначено",
 				"notConfigured": "Не настроено",
 				"elseShort": "Иначе",
+				"pluginConditionMatched": "Совпадает",
 				"branchFallback": "Ветвь {{n}}",
 				"cronSchedule": "Выполняется {{expression}}",
 				"webhookReady": "Webhook настроен",

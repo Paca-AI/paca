@@ -1301,11 +1301,7 @@
 			"api_trigger": "Webhook"
 		},
 		"actionTypes": {
-			"assign": "Assign",
-			"set_status": "Set status",
-			"set_priority": "Set priority",
-			"add_tag": "Add tag",
-			"set_custom_field": "Set custom field",
+			"update_task": "Update task",
 			"trigger_ai_agent": "Trigger AI agent",
 			"call_api": "Call API"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "Remove node",
 			"removeConfirmBody": "This removes the node from the graph, along with any of its connections.",
 			"removeConfirmAction": "Remove",
-			"genericFormHint": "This node type comes from a plugin. Edit its config as JSON — plugins can register a richer editor here in a future release.",
+			"genericFormHint": "This node type comes from a plugin that hasn't declared a config schema, so its settings are edited as raw JSON. Plugins that declare a configSchema in their manifest show UI fields here instead.",
 			"trigger": {
 				"anyStatus": "Any status",
+				"noConfigNeeded": "This trigger needs no configuration — it fires automatically whenever the event occurs.",
 				"statusLabel": "Status",
 				"tagLabel": "Tag",
 				"anyTag": "Any tag",
@@ -1370,7 +1367,14 @@
 					"importance": "Priority",
 					"assignee_ids": "Assignee",
 					"tags": "Tags",
-					"custom_field": "Custom field"
+					"custom_field": "Custom field",
+					"title": "Title",
+					"story_points": "Story points",
+					"sprint_id": "Sprint",
+					"parent_task_id": "Parent task",
+					"reporter_id": "Reporter",
+					"start_date": "Start date",
+					"due_date": "Due date"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "Header name",
 				"headerValuePlaceholder": "Value",
 				"addHeader": "Add header",
-				"bodyLabel": "Body"
+				"bodyLabel": "Body",
+				"updateTaskHint": "Only the fields you enable below are changed — everything else on the task is left untouched.",
+				"addFieldToUpdate": "Add field to update…",
+				"customFieldsLabel": "Custom field",
+				"enableField": "Set {{field}}",
+				"titleLabel": "Title",
+				"storyPointsLabel": "Story points",
+				"sprintLabel": "Sprint",
+				"parentTaskLabel": "Parent task",
+				"reporterLabel": "Reporter",
+				"startDateLabel": "Start date",
+				"dueDateLabel": "Due date",
+				"tagsLabel": "Tags",
+				"tagsPlaceholder": "Add a tag…",
+				"assigneesLabel": "Assignees",
+				"noSprint": "No sprint",
+				"pluginConditionLabel": "Plugin condition",
+				"pluginConditionHint": "Delegates this branch's match to a plugin-contributed condition instead of comparing a task field.",
+				"selectPluginPlaceholder": "Select a plugin condition…",
+				"addCustomField": "Add custom field…"
 			},
 			"target": {
 				"label": "Applies to",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "{{minutes}}m after due date",
 				"branches": "{{count}} branch(es)",
 				"priority": "Priority: {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "Unassigned",
 				"notConfigured": "Not configured",
 				"elseShort": "Else",
+				"pluginConditionMatched": "Matched",
 				"branchFallback": "Branch {{n}}",
 				"cronSchedule": "Runs {{expression}}",
 				"webhookReady": "Webhook configured",

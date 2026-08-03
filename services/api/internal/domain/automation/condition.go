@@ -3,6 +3,7 @@ package automationdom
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -26,7 +27,10 @@ const (
 // Field is a leaf's comparison target on the task.
 type Field string
 
-// Built-in comparison targets.
+// Built-in comparison targets. A plugin-contributed condition is its own
+// standalone condition node type (see ConditionNodeType's doc comment and
+// the plugin automation bridge) — never one of these Field values — so no
+// "plugin" sentinel exists here.
 const (
 	FieldStatus      Field = "status_id"
 	FieldTaskType    Field = "task_type_id"
@@ -34,6 +38,13 @@ const (
 	FieldAssignee    Field = "assignee_ids"
 	FieldTag         Field = "tags"
 	FieldCustomField Field = "custom_field"
+	FieldTitle       Field = "title"
+	FieldStoryPoints Field = "story_points"
+	FieldSprint      Field = "sprint_id"
+	FieldParentTask  Field = "parent_task_id"
+	FieldReporter    Field = "reporter_id"
+	FieldStartDate   Field = "start_date"
+	FieldDueDate     Field = "due_date"
 )
 
 // ConditionLeaf is a single comparison against one field of the task — the
@@ -43,7 +54,7 @@ type ConditionLeaf struct {
 	// FieldKey names the custom-field definition key when Field is
 	// FieldCustomField; unused otherwise.
 	FieldKey string   `json:"field_key,omitempty"`
-	Operator Operator `json:"operator"`
+	Operator Operator `json:"operator,omitempty"`
 	Value    any      `json:"value,omitempty"`
 	// Target retargets this leaf onto a task other than the walk's own
 	// bound task (nil/self = today's behavior, evaluated via Evaluate
@@ -84,6 +95,23 @@ func (l *ConditionLeaf) Evaluate(task *taskdom.Task) bool {
 			return l.Operator == OpIsEmpty
 		}
 		return compareAny(v, l.Operator, l.Value)
+	case FieldTitle:
+		return compareAny(task.Title, l.Operator, l.Value)
+	case FieldStoryPoints:
+		if task.StoryPoints == nil {
+			return l.Operator == OpIsEmpty
+		}
+		return compareInt(*task.StoryPoints, l.Operator, l.Value)
+	case FieldSprint:
+		return compareUUIDPtr(task.SprintID, l.Operator, l.Value)
+	case FieldParentTask:
+		return compareUUIDPtr(task.ParentTaskID, l.Operator, l.Value)
+	case FieldReporter:
+		return compareUUIDPtr(task.ReporterID, l.Operator, l.Value)
+	case FieldStartDate:
+		return compareTimePtr(task.StartDate, l.Operator, l.Value)
+	case FieldDueDate:
+		return compareTimePtr(task.DueDate, l.Operator, l.Value)
 	default:
 		return false
 	}
@@ -119,11 +147,11 @@ func (l *ConditionLeaf) EvaluateAgainstTasks(tasks []*taskdom.Task, matchMode st
 
 // validOperatorsByField is the set of operators each field's compare
 // function (below) actually implements. Kept in sync with compareUUIDPtr,
-// compareInt, compareStringSlice, and compareAny — an operator not listed
-// here for a given field falls to that function's `default: return false`
-// case, silently and permanently evaluating false rather than erroring, so
-// Validate rejects the combination up front instead of letting it through
-// to a defense-in-depth-only runtime no-op.
+// compareInt, compareStringSlice, compareAny, and compareTimePtr — an
+// operator not listed here for a given field falls to that function's
+// `default: return false` case, silently and permanently evaluating false
+// rather than erroring, so Validate rejects the combination up front
+// instead of letting it through to a defense-in-depth-only runtime no-op.
 var validOperatorsByField = map[Field]map[Operator]bool{
 	FieldStatus:      {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldTaskType:    {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
@@ -131,6 +159,13 @@ var validOperatorsByField = map[Field]map[Operator]bool{
 	FieldAssignee:    {OpContains: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldTag:         {OpContains: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldCustomField: {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true, OpGreaterThan: true, OpLessThan: true},
+	FieldTitle:       {OpEquals: true, OpNotEquals: true, OpContains: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldStoryPoints: {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldSprint:      {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldParentTask:  {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldReporter:    {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldStartDate:   {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldDueDate:     {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
 }
 
 // Validate reports whether the leaf is well-formed: it has a recognized
@@ -266,5 +301,42 @@ func toFloat(v any) (float64, bool) {
 		return float64(n), true
 	default:
 		return 0, false
+	}
+}
+
+// compareTimePtr compares field (nil = unset) against value, which must be
+// an RFC 3339 string (matching how dates travel over JSON everywhere else
+// in this API) — anything else fails every comparator except is_empty/
+// is_not_empty, same defensive-false-not-panic posture as compareInt for a
+// mistyped numeric value.
+func compareTimePtr(field *time.Time, op Operator, value any) bool {
+	switch op {
+	case OpIsEmpty:
+		return field == nil
+	case OpIsNotEmpty:
+		return field != nil
+	}
+	if field == nil {
+		return false
+	}
+	s, ok := value.(string)
+	if !ok {
+		return false
+	}
+	target, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return false
+	}
+	switch op {
+	case OpEquals:
+		return field.Equal(target)
+	case OpNotEquals:
+		return !field.Equal(target)
+	case OpGreaterThan:
+		return field.After(target)
+	case OpLessThan:
+		return field.Before(target)
+	default:
+		return false
 	}
 }

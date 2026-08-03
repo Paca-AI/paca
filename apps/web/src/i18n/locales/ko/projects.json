@@ -1301,11 +1301,7 @@
 			"api_trigger": "웹훅"
 		},
 		"actionTypes": {
-			"assign": "담당자 지정",
-			"set_status": "상태 설정",
-			"set_priority": "우선순위 설정",
-			"add_tag": "태그 추가",
-			"set_custom_field": "사용자 지정 필드 설정",
+			"update_task": "작업 업데이트",
 			"trigger_ai_agent": "AI 에이전트 실행",
 			"call_api": "API 호출"
 		},
@@ -1316,9 +1312,10 @@
 			"removeConfirmTitle": "노드 삭제",
 			"removeConfirmBody": "그래프에서 이 노드와 그에 연결된 모든 연결이 삭제됩니다.",
 			"removeConfirmAction": "삭제",
-			"genericFormHint": "이 노드 유형은 플러그인에서 제공됩니다. 설정을 JSON으로 편집하세요 — 향후 릴리스에서 플러그인이 더 풍부한 편집기를 여기에 등록할 수 있게 됩니다.",
+			"genericFormHint": "이 노드 유형은 구성 스키마를 선언하지 않은 플러그인에서 제공되므로, 설정을 원시 JSON으로 편집합니다. 매니페스트에 configSchema를 선언한 플러그인은 대신 여기에 UI 필드를 표시합니다.",
 			"trigger": {
 				"anyStatus": "모든 상태",
+				"noConfigNeeded": "이 트리거는 구성이 필요하지 않습니다. 이벤트가 발생하면 자동으로 실행됩니다.",
 				"statusLabel": "상태",
 				"tagLabel": "태그",
 				"anyTag": "모든 태그",
@@ -1370,7 +1367,14 @@
 					"importance": "우선순위",
 					"assignee_ids": "담당자",
 					"tags": "태그",
-					"custom_field": "사용자 지정 필드"
+					"custom_field": "사용자 지정 필드",
+					"title": "제목",
+					"story_points": "스토리 포인트",
+					"sprint_id": "스프린트",
+					"parent_task_id": "상위 작업",
+					"reporter_id": "보고자",
+					"start_date": "시작일",
+					"due_date": "마감일"
 				}
 			},
 			"action": {
@@ -1390,7 +1394,26 @@
 				"headerKeyPlaceholder": "헤더 이름",
 				"headerValuePlaceholder": "값",
 				"addHeader": "헤더 추가",
-				"bodyLabel": "본문"
+				"bodyLabel": "본문",
+				"updateTaskHint": "아래에서 활성화한 필드만 변경됩니다. 나머지 작업 내용은 그대로 유지됩니다.",
+				"addFieldToUpdate": "업데이트할 필드 추가…",
+				"customFieldsLabel": "사용자 지정 필드",
+				"enableField": "{{field}} 설정",
+				"titleLabel": "제목",
+				"storyPointsLabel": "스토리 포인트",
+				"sprintLabel": "스프린트",
+				"parentTaskLabel": "상위 작업",
+				"reporterLabel": "보고자",
+				"startDateLabel": "시작일",
+				"dueDateLabel": "마감일",
+				"tagsLabel": "태그",
+				"tagsPlaceholder": "태그 추가…",
+				"assigneesLabel": "담당자",
+				"noSprint": "스프린트 없음",
+				"pluginConditionLabel": "플러그인 조건",
+				"pluginConditionHint": "작업 필드를 비교하는 대신 이 분기의 일치 여부를 플러그인 제공 조건에 위임합니다.",
+				"selectPluginPlaceholder": "플러그인 조건 선택…",
+				"addCustomField": "사용자 지정 필드 추가…"
 			},
 			"target": {
 				"label": "적용 대상",
@@ -1416,10 +1439,11 @@
 				"dueDateAfter": "마감일 {{minutes}}분 후",
 				"branches": "분기 {{count}}개",
 				"priority": "우선순위: {{level}}",
-				"fieldValue": "{{field}} = {{value}}",
+				"fieldValue": "{{field}} → {{value}}",
 				"unassigned": "담당자 없음",
 				"notConfigured": "설정되지 않음",
 				"elseShort": "그 외",
+				"pluginConditionMatched": "일치",
 				"branchFallback": "분기 {{n}}",
 				"cronSchedule": "{{expression}} 에 실행",
 				"webhookReady": "웹훅 설정됨",

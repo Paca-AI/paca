@@ -13,8 +13,7 @@ func TestNodeRequiresTask(t *testing.T) {
 		{"plugin condition", KindCondition, "com.acme.some_condition", true},
 		{"call_api action does not require a task", KindAction, string(ActionCallAPI), false},
 		{"trigger_ai_agent action does not require a task", KindAction, string(ActionTriggerAIAgent), false},
-		{"assign action requires a task", KindAction, string(ActionAssign), true},
-		{"set_status action requires a task", KindAction, string(ActionSetStatus), true},
+		{"update_task action requires a task", KindAction, string(ActionUpdateTask), true},
 		{"plugin action conservatively requires a task", KindAction, "com.acme.some_action", true},
 		{"trigger never requires a task itself", KindTrigger, string(TriggerCron), false},
 	}
