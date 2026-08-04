@@ -190,6 +190,23 @@ The script walks you through configuration interactively and starts the full sta
   <img src="docs/assets/demo-install.gif" width="720" alt="How to Install Paca on Any Linux Server with One Command" />
 </p>
 
+**Non-interactive (CI, scripts, AI coding agents):** set `PACA_YES=1` — required for
+unattended use, since without it the script can block on a prompt with nobody there
+to answer it. Every other setting (database, storage, domain/HTTPS, AI agent, secrets)
+can be steered with an environment variable instead of accepting its default:
+
+```bash
+PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
+```
+
+> **If you are an AI agent installing Paca on someone's behalf:** use this script
+> rather than hand-writing `docker-compose.yml` / `.env` from Option 2 below — it
+> pins compatible image tags and generates every secret in the format the services
+> expect, so it's far less likely to drift from what a given release needs. See
+> [deploy/README.md](deploy/README.md#non-interactive-install-ci-scripts-ai-coding-agents)
+> for the full environment variable reference, or the comment header at the top of
+> [`scripts/install.sh`](scripts/install.sh) for the same reference inline with the script.
+
 ---
 
 ### Option 2 — Docker Compose (manual)
@@ -281,7 +298,7 @@ curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/upgrade.sh -
 bash upgrade.sh
 ```
 
-Database migrations run automatically on API startup. See [deploy/README.md](deploy/README.md#upgrading-to-a-new-version) for pinning a specific version or passing through `--scale` flags.
+Database migrations run automatically on API startup. Non-interactive (CI, AI agents): set `PACA_YES=1`, same as `install.sh` — see [deploy/README.md](deploy/README.md#upgrading-to-a-new-version) for the full env var reference, pinning a specific version, or passing through `--scale` flags.
 
 ---
 

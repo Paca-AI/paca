@@ -7,6 +7,12 @@
 # specific version is requested, backfills any .env variables introduced
 # since the install was created, then pulls and restarts the stack.
 #
+# Service scaling from install time (external Postgres, external S3, an
+# externally hosted web app, a disabled AI agent) is detected from .env and
+# re-applied automatically — no need to re-pass the same --scale flags on
+# every upgrade. See "Extra arguments" below for scaling that isn't one of
+# these.
+#
 # Run this from the directory that holds your docker-compose.yml and .env
 # (the directory install.sh created, or wherever you set things up manually).
 #
@@ -15,17 +21,45 @@
 #   curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/upgrade.sh -o upgrade.sh
 #   bash upgrade.sh
 #
-# ── One-liner (non-interactive, upgrades to latest) ───────────────────────────
-#   bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/upgrade.sh)
+# ── Non-interactive (CI, scripts, AI coding agents) ──────────────────────────
+#   Set PACA_YES=1. This is REQUIRED for unattended use — without it, any
+#   prompt this script reaches will block on a `read`, and in a sandbox that
+#   provides a pty but no human to type into it, that read never returns.
+#   PACA_YES=1 alone is enough to guarantee zero prompts: it proceeds with
+#   the upgrade and takes the default (yes) on any conditional .env
+#   migration prompt.
 #
-# ── Environment variable overrides ───────────────────────────────────────────
-#   PACA_DIR         Installation directory to upgrade   (default: .)
-#   PACA_VERSION     Release tag to upgrade to           (default: latest)
-#   PACA_YES         Skip prompts, use defaults          (set to 1)
+#   cd /path/to/your/paca/install
+#   PACA_YES=1 bash upgrade.sh
+#   # or, without a local copy of the script at all:
+#   PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/upgrade.sh)
+#
+# ── AI agents: use this script, not a manual `docker compose pull && up` ────
+#   This script backs up docker-compose.yml / Caddyfile / .env before
+#   overwriting them, only re-pins image tags when you actually asked for a
+#   specific version, and backfills any .env variables introduced since the
+#   install was created (gateway migration, db-backup service, etc.). A
+#   manual pull + restart skips all of that and can leave an installation
+#   half-migrated in a way that's hard to diagnose from outside the repo.
+#
+# ── Environment variable reference ───────────────────────────────────────────
+#   PACA_DIR                    Installation directory to upgrade       (default: .)
+#   PACA_VERSION                Release tag to upgrade to               (default: latest)
+#   PACA_YES                    Skip prompts, use defaults              (set to 1)
+#   PACA_PROCEED                Actually run the upgrade (yes/no).      (default: yes)
+#                                "no" prints the current vs. target
+#                                version and exits without changing
+#                                anything — a lightweight version check.
+#   PACA_UPDATE_AGENT_IMAGE     Switch AGENT_SERVER_IMAGE off the old   (default: yes)
+#                                upstream default when found (yes/no).
+#                                Only asked for installs that predate
+#                                Paca's own agent-server image.
 #
 # Extra arguments are passed through to the final `docker compose up -d`,
-# e.g. to keep the same service scaling you used originally:
-#   bash upgrade.sh --scale web=0 --scale minio=0
+# for any --scale (or other compose flag) beyond what's already inferred
+# from .env above, e.g.:
+#   bash upgrade.sh --scale <service>=<n>
+#   PACA_YES=1 bash upgrade.sh --scale <service>=<n>
 
 set -euo pipefail
 
@@ -43,6 +77,15 @@ heading() { echo -e "\n${BOLD}${CYAN}── $* ${RESET}${DIM}$(printf '─%.0s' 
 bold()    { echo -e "${BOLD}$*${RESET}"; }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+# has_ctty
+# /dev/tty is a device node that exists on disk regardless of whether this
+# process actually has a controlling terminal to open — `[[ -e /dev/tty ]]`
+# is therefore always true on Linux and doesn't tell us anything. Actually
+# attempting to open it is the only reliable test, and it must be the
+# condition of an if/elif so a failure (no ctty: ENXIO) doesn't trip
+# `set -e` and kill the whole script.
+has_ctty() { { : </dev/tty; } 2>/dev/null; }
 
 # ask VAR "Question" "default"
 # Reads from /dev/tty when stdin is a pipe (curl | bash).
@@ -65,7 +108,7 @@ ask() {
     fi
     if [[ -t 0 ]]; then
         read -r -p "$(echo -e "$prompt")" _input
-    elif [[ -e /dev/tty ]]; then
+    elif has_ctty; then
         read -r -p "$(echo -e "$prompt")" _input </dev/tty
     else
         printf -v "$_var" %s "${default}"
@@ -122,6 +165,14 @@ set_env_var() {
 # has_env_var FILE VAR
 has_env_var() {
     grep -q "^${2}=" "$1" 2>/dev/null
+}
+
+# service_has_container SERVICE
+# True if this compose project currently has a container for SERVICE, in any
+# state (running, stopped, created) — i.e. some previous `up` actually
+# created one, as opposed to it having been scaled to 0.
+service_has_container() {
+    $COMPOSE_CMD --env-file .env ps -a --services 2>/dev/null | grep -qx "$1"
 }
 
 # get_env_var FILE VAR
@@ -197,7 +248,7 @@ if [[ -f nginx/gateway.conf ]]; then
 fi
 
 PROCEED="yes"
-yes_no PROCEED "Proceed with upgrade?" "y"
+yes_no PROCEED "Proceed with upgrade?" "${PACA_PROCEED:-y}"
 if [[ "$PROCEED" != "yes" ]]; then
     warn "Upgrade cancelled."
     exit 0
@@ -261,7 +312,7 @@ if [[ "$(get_env_var .env AGENT_SERVER_IMAGE)" == "$OLD_AGENT_SERVER_IMAGE_DEFAU
     info "AGENT_SERVER_IMAGE is still set to the upstream OpenHands image (${OLD_AGENT_SERVER_IMAGE_DEFAULT})."
     info "Paca now ships its own agent-server image (ghcr.io/paca-ai/paca-agent-server:latest) with the Paca MCP server pre-installed, avoiding a cold npm download on every new sandbox."
     UPDATE_AGENT_IMAGE="yes"
-    yes_no UPDATE_AGENT_IMAGE "Switch AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:latest?" "y"
+    yes_no UPDATE_AGENT_IMAGE "Switch AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:latest?" "${PACA_UPDATE_AGENT_IMAGE:-y}"
     if [[ "$UPDATE_AGENT_IMAGE" == "yes" ]]; then
         backup_env_once
         set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server:latest"
@@ -300,6 +351,29 @@ if [[ "$GATEWAY_VARS_ADDED" == "1" ]]; then
     info "Already behind another TLS terminator (a load balancer, Cloudflare, etc.)? Set SITE_ADDRESS=:80 in .env to keep this gateway on plain HTTP."
 fi
 
+# Which optional services should stay scaled to 0 on this upgrade, so you
+# don't have to remember and re-pass the same --scale flags you used at
+# install time on every single upgrade. Anything not covered below (a custom
+# scaling choice of your own) still needs to be passed through via "$@" as
+# before.
+SCALE_OPTS=()
+
+# Postgres: external DB means the bundled container must never run. This is
+# derived purely from DATABASE_URL — the same signal install.sh itself used
+# to decide whether to start postgres in the first place — so unlike the
+# services below, it needs no separate .env marker or backfill.
+if [[ -n "$(get_env_var .env DATABASE_URL)" ]]; then
+    SCALE_OPTS+=(--scale postgres=0)
+    info "Using an external database (DATABASE_URL is set) — skipping the postgres service."
+fi
+
+# Storage: S3 means the bundled MinIO container must never run — same
+# reasoning as postgres above, derived from STORAGE_PROVIDER.
+if [[ "$(get_env_var .env STORAGE_PROVIDER)" == "s3" ]]; then
+    SCALE_OPTS+=(--scale minio=0)
+    info "Using AWS S3 (STORAGE_PROVIDER=s3 in .env) — skipping the minio service."
+fi
+
 # Backfill variables for the db-backup service introduced after this install
 # was created. Installations from before that release have none of these in
 # .env.
@@ -311,7 +385,6 @@ fi
 # deriving a default from DATABASE_URL, mirroring the bundled-vs-external
 # check in install.sh, and then record that derived choice so future upgrades
 # read it back instead of re-deriving it.
-SCALE_OPTS=()
 if has_env_var .env BACKUP_ENABLED; then
     if [[ "$(get_env_var .env BACKUP_ENABLED)" == "false" ]]; then
         SCALE_OPTS+=(--scale db-backup=0)
@@ -341,6 +414,53 @@ else
     set_env_var .env BACKUP_ENABLED "false"
     SCALE_OPTS+=(--scale db-backup=0)
     info "Using an external database (DATABASE_URL is set) — skipping the automated db-backup service."
+fi
+
+# Used by the web/ai-agent inference below: distinguishes "some services were
+# intentionally scaled to 0" from "the whole stack simply isn't running right
+# now" (e.g. after `docker compose down`) — in the latter case NO service has
+# a container, and without this check everything would look scaled to 0 and
+# an upgrade would silently bring nothing back up.
+PROJECT_EVER_STARTED=0
+[[ -n "$($COMPOSE_CMD --env-file .env ps -a --services 2>/dev/null)" ]] && PROJECT_EVER_STARTED=1
+
+# Web app: PACA_WEB (written to .env by install.sh since this release) is the
+# source of truth when present. Installs that predate it get a best-effort
+# guess from whether a 'web' container currently exists — only attempted when
+# the project has been started before at all, per PROJECT_EVER_STARTED above.
+# Either way, the value is written back so future upgrades read it instead of
+# re-guessing.
+if has_env_var .env PACA_WEB; then
+    if [[ "$(get_env_var .env PACA_WEB)" == "external" ]]; then
+        SCALE_OPTS+=(--scale web=0)
+        info "Web app is externally hosted (PACA_WEB=external in .env) — skipping the web service."
+    fi
+elif [[ "$PROJECT_EVER_STARTED" == "1" ]]; then
+    backup_env_once
+    if service_has_container web; then
+        set_env_var .env PACA_WEB "bundled"
+    else
+        set_env_var .env PACA_WEB "external"
+        SCALE_OPTS+=(--scale web=0)
+        warn "No existing 'web' container found, and this install predates PACA_WEB being tracked in .env — assuming the web app is hosted externally and recording PACA_WEB=external. Wrong? Pass --scale web=1 on this run, then set PACA_WEB=bundled in .env so future upgrades stop guessing."
+    fi
+fi
+
+# AI agent: same reasoning as the web app above, via PACA_AI_AGENT.
+if has_env_var .env PACA_AI_AGENT; then
+    if [[ "$(get_env_var .env PACA_AI_AGENT)" == "no" ]]; then
+        SCALE_OPTS+=(--scale ai-agent=0)
+        info "AI agent is disabled (PACA_AI_AGENT=no in .env) — skipping the ai-agent service."
+    fi
+elif [[ "$PROJECT_EVER_STARTED" == "1" ]]; then
+    backup_env_once
+    if service_has_container ai-agent; then
+        set_env_var .env PACA_AI_AGENT "yes"
+    else
+        set_env_var .env PACA_AI_AGENT "no"
+        SCALE_OPTS+=(--scale ai-agent=0)
+        warn "No existing 'ai-agent' container found, and this install predates PACA_AI_AGENT being tracked in .env — assuming the AI agent is disabled and recording PACA_AI_AGENT=no. Wrong? Pass --scale ai-agent=1 on this run, then set PACA_AI_AGENT=yes in .env so future upgrades stop guessing."
+    fi
 fi
 
 # ── Pull and restart ──────────────────────────────────────────────────────────

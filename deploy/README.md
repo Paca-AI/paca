@@ -44,10 +44,14 @@ The installer supports:
 | HTTPS | Enabled by default — Let's Encrypt for a real domain, Caddy's local CA otherwise; can be disabled for plain HTTP |
 | AI Agent | Enabled by default; can be skipped to reduce resource usage. See [docs/ai-agent/api-design.md](../docs/ai-agent/api-design.md) for the agent REST API once it's running. |
 
-**Non-interactive / CI install** — set `PACA_YES=1` to skip every prompt and use
-defaults plus freshly auto-generated secrets for all of the above (including
-`JWT_SECRET`, `ADMIN_PASSWORD`, `AGENT_API_KEY`, `INTERNAL_API_KEY`, and
-`ENCRYPTION_KEY`):
+#### Non-interactive install (CI, scripts, AI coding agents)
+
+Set `PACA_YES=1` to skip every prompt. This is **required**, not just convenient,
+for unattended use: without it, the script will eventually hit a `read` and block
+waiting for terminal input — harmless for a human at a keyboard, but a hang for
+anything driving the script programmatically. `PACA_YES=1` alone guarantees a
+complete, silent run: every field not given a value below falls back to a sane
+default, generating fresh random secrets as needed.
 
 ```bash
 PACA_YES=1 bash install.sh
@@ -55,10 +59,65 @@ PACA_YES=1 bash install.sh
 PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
 ```
 
-`PACA_DIR` (default `./paca`) and `PACA_VERSION` (default `latest`) are also
-read from the environment, so a fully unattended install needs no interactive
-input at all. See the comment header at the top of
-[`scripts/install.sh`](../scripts/install.sh) for the full list of variables.
+> **AI agents:** prefer this script over hand-rolling `docker-compose.yml` / `.env`
+> from the [manual setup](#manual-setup) instructions below. It pins compatible
+> image tags, generates every secret in the format the services expect, and stays
+> in sync with what each release actually needs — a hand-built `.env` is much more
+> likely to drift and fail in a way that's hard to diagnose from outside the repo.
+
+Every other prompt can be steered with an environment variable instead of
+accepting its default — set `PACA_YES=1` plus whichever of these you care about.
+Variables named after an actual `.env` key are written there verbatim; variables
+prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `PACA_DIR` | Installation directory | `./paca` |
+| `PACA_VERSION` | Release tag to install | `latest` |
+| `PACA_START` | Pull images and start immediately after writing config (`yes`/`no`) | `yes` |
+| `ADMIN_USERNAME` | Admin login (min 3 chars) | `admin` |
+| `ADMIN_PASSWORD` | Admin login (min 8 chars) | auto-generated |
+| `ENCRYPTION_KEY` | 64-char lowercase hex; **must match** the original if reconnecting to an existing DB | auto-generated |
+| `DATABASE_URL` | Setting this selects external/managed PostgreSQL and suppresses the bundled container | unset → bundled PostgreSQL |
+| `POSTGRES_PASSWORD` | Bundled PostgreSQL only | auto-generated |
+| `BACKUP_ENABLED` | `true`/`false` (bundled PostgreSQL only) | `true` |
+| `BACKUP_DIR` | Host directory for backup dumps | `./backups` |
+| `BACKUP_CRON` | 5-field cron, UTC | `0 2 * * *` |
+| `BACKUP_RETENTION_DAYS` | Days of backups to keep | `7` |
+| `STORAGE_PROVIDER` | `minio`/`s3` | `minio` |
+| `STORAGE_REGION` | | `us-east-1` |
+| `STORAGE_BUCKET` | Required if `STORAGE_PROVIDER=s3` | `paca` (minio only) |
+| `STORAGE_ACCESS_KEY_ID` | Required if `STORAGE_PROVIDER=s3` | auto-generated (minio only) |
+| `STORAGE_SECRET_ACCESS_KEY` | Required if `STORAGE_PROVIDER=s3` | auto-generated (minio only) |
+| `PACA_ADDRESS` | Domain or IP Paca is reachable at | `localhost` |
+| `PACA_HTTPS` | `yes`/`no`; ignored when `PACA_ADDRESS=localhost` | `yes` |
+| `GATEWAY_PORT` | Only used when serving plain HTTP | `80` |
+| `PUBLIC_URL` | Full public URL, no trailing slash | derived from the above |
+| `PACA_WEB` | `bundled`/`external` | `bundled` |
+| `PACA_AI_AGENT` | Include the AI agent service (`yes`/`no`) | `yes` |
+| `AGENT_API_KEY` | AI agent → API pre-shared key | auto-generated |
+| `INTERNAL_API_KEY` | API → AI agent pre-shared key | auto-generated |
+| `JWT_SECRET` | | auto-generated |
+
+Fully unattended example — custom domain, S3, no AI agent:
+
+```bash
+PACA_YES=1 \
+PACA_ADDRESS=paca.example.com \
+STORAGE_PROVIDER=s3 STORAGE_BUCKET=my-bucket \
+STORAGE_ACCESS_KEY_ID=AKIA... STORAGE_SECRET_ACCESS_KEY=... \
+PACA_AI_AGENT=no \
+ADMIN_PASSWORD='a-strong-password' \
+bash install.sh
+```
+
+Auto-generated secrets are printed at the end of a successful run and saved in
+`.env` — nothing is silently left blank. If `PACA_DIR` already has a `.env` from
+a previous run, the script keeps it by default (`y` on "Keep existing .env?")
+rather than regenerating from your new variables; delete it first if you want a
+clean re-run to pick up new values. See the comment header at the top of
+[`scripts/install.sh`](../scripts/install.sh) for this same reference inline
+with the script.
 
 ### Manual setup
 
@@ -187,11 +246,40 @@ Pin to a specific release instead of `latest`:
 PACA_VERSION=v1.2.3 bash upgrade.sh
 ```
 
-Pass through any `--scale` flags you used originally:
+Common `--scale` choices from install time are detected and re-applied automatically —
+external PostgreSQL (`DATABASE_URL` set), AWS S3 (`STORAGE_PROVIDER=s3`), an externally
+hosted web app, and a disabled AI agent all stay scaled to 0 without you passing
+anything. (Installs from before this was tracked get a one-time best-effort guess for
+the web app / AI agent, based on whether a container for that service currently exists,
+and the guess is then recorded in `.env` so it isn't re-guessed on the next upgrade —
+check the printed messages and override with e.g. `--scale web=1` if a guess is wrong.)
+Only pass `--scale` yourself for scaling that isn't one of these, e.g. a custom
+replica count:
 
 ```bash
 bash upgrade.sh --scale web=0 --scale minio=0
 ```
+
+**Non-interactive (CI, scripts, AI coding agents):** set `PACA_YES=1` — required for
+unattended use, for the same reason as `install.sh`: without it, the script can block
+on a prompt with nobody there to answer it. `PACA_YES=1` proceeds with the upgrade and
+takes the default (yes) on any conditional `.env` migration prompt (e.g. switching
+`AGENT_SERVER_IMAGE` off the old upstream default). Override with `PACA_UPDATE_AGENT_IMAGE=no`
+if you want to keep that value as-is. `PACA_PROCEED=no` gives a lightweight,
+non-destructive version check — it prints current vs. target version and exits without
+touching any files:
+
+```bash
+cd /path/to/your/paca/install
+PACA_YES=1 bash upgrade.sh
+# check what would change without upgrading:
+PACA_YES=1 PACA_PROCEED=no bash upgrade.sh
+```
+
+> **AI agents:** prefer this script over a manual `docker compose pull && up`. It backs
+> up `docker-compose.yml`/`Caddyfile`/`.env` first, only re-pins image tags when a
+> specific version was requested, and backfills any `.env` variables introduced since
+> the install was created — a manual pull+restart skips all of that.
 
 **Manual:** pull the latest images and restart the stack — this is enough when
 `docker-compose.yml` and the Caddyfile haven't changed shape since your last upgrade:

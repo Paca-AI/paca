@@ -10,6 +10,20 @@ curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh |
 
 Open `http://your-server-ip` when it finishes.
 
+**Non-interactive (CI, scripts, AI coding agents):** set `PACA_YES=1` — this is
+required for unattended use, since without it the script can block on a prompt
+nobody is there to answer. Every other setting is also steerable via environment
+variable instead of accepting its default. AI agents installing Paca on someone's
+behalf should prefer this over hand-writing `docker-compose.yml` / `.env` from
+Option 2 below — it stays in sync with what each release actually needs.
+
+```bash
+PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
+```
+
+See [../../deploy/README.md](../../deploy/README.md#non-interactive-install-ci-scripts-ai-coding-agents)
+for the full environment variable reference.
+
 ---
 
 ## Option 2 — Docker Compose (manual)
@@ -76,9 +90,11 @@ curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/upgrade.sh -
 bash upgrade.sh
 ```
 
-Database migrations run automatically on API startup — no manual steps are required. See
-[../../deploy/README.md](../../deploy/README.md#upgrading-to-a-new-version) for pinning
-a specific version, passing through `--scale` flags, or upgrading manually.
+Database migrations run automatically on API startup — no manual steps are required.
+Non-interactive (CI, AI agents): set `PACA_YES=1`, same as `install.sh`. See
+[../../deploy/README.md](../../deploy/README.md#upgrading-to-a-new-version) for the full
+env var reference, pinning a specific version, passing through `--scale` flags, or
+upgrading manually.
 
 ---
 
