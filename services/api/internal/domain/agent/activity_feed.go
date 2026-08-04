@@ -13,6 +13,7 @@ import (
 // doc_activities, which have no common parent table.
 type ActivitySourceType string
 
+// The two ActivitySourceType values, one per unioned activity table.
 const (
 	ActivitySourceTask ActivitySourceType = "task"
 	ActivitySourceDoc  ActivitySourceType = "doc"
