@@ -14,12 +14,22 @@ import (
 
 // Service implements plugindom.Service.
 type Service struct {
-	repo plugindom.Repository
+	repo        plugindom.Repository
+	hostVersion string
 }
 
 // New creates a Service wired to the given repository.
 func New(repo plugindom.Repository) *Service {
 	return &Service{repo: repo}
+}
+
+// WithHostVersion sets the running Paca build's version, used to enforce each
+// manifest's declared MinCoreVersion at install/update time. Left unset (or
+// set to a non-release string like "dev"), the check never rejects a plugin
+// — see plugindom.PluginManifest.CheckMinCoreVersion.
+func (s *Service) WithHostVersion(v string) *Service {
+	s.hostVersion = v
+	return s
 }
 
 // ListPlugins returns all installed plugins.
@@ -34,6 +44,13 @@ func (s *Service) InstallPlugin(ctx context.Context, input plugindom.InstallInpu
 	}
 	if err := input.Manifest.Validate(); err != nil {
 		return nil, apierr.New(apierr.CodeBadRequest, "invalid plugin manifest: "+err.Error())
+	}
+	if err := input.Manifest.CheckMinCoreVersion(s.hostVersion); err != nil {
+		return nil, apierr.NewWithDetails(apierr.CodePluginIncompatibleHostVersion, err.Error(), map[string]string{
+			"plugin_id":        input.Manifest.ID,
+			"required_version": input.Manifest.MinCoreVersion,
+			"host_version":     s.hostVersion,
+		})
 	}
 	now := time.Now()
 	p := &plugindom.Plugin{
@@ -63,6 +80,13 @@ func (s *Service) UpdatePlugin(ctx context.Context, id uuid.UUID, input plugindo
 	if input.Manifest != nil {
 		if err := input.Manifest.Validate(); err != nil {
 			return nil, apierr.New(apierr.CodeBadRequest, "invalid plugin manifest: "+err.Error())
+		}
+		if err := input.Manifest.CheckMinCoreVersion(s.hostVersion); err != nil {
+			return nil, apierr.NewWithDetails(apierr.CodePluginIncompatibleHostVersion, err.Error(), map[string]string{
+				"plugin_id":        input.Manifest.ID,
+				"required_version": input.Manifest.MinCoreVersion,
+				"host_version":     s.hostVersion,
+			})
 		}
 		p.Manifest = *input.Manifest
 	}

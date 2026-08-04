@@ -187,6 +187,18 @@ The host validates the requested permissions at install time against the allowli
 
 All routes declared under `backend.routes` are automatically mounted at `/api/v1/plugins/{pluginId}/projects/:projectId/{path}`.
 
+### Minimum Host Version (`minCoreVersion`)
+
+A manifest may declare `minCoreVersion` as a strict `X.Y.Z` (or `vX.Y.Z`) semver string — the lowest Paca (host) build the plugin is compatible with. The host enforces this on every path that persists a manifest:
+
+- `POST /api/v1/admin/plugins` (direct install)
+- `POST /api/v1/admin/plugins/marketplace/install` (marketplace install)
+- `PATCH /api/v1/admin/plugins/:pluginId` and `POST /api/v1/admin/plugins/:pluginId/upgrade` (manifest updates/upgrades)
+
+If the running build's version is older than `minCoreVersion`, the request fails with `PLUGIN_INCOMPATIBLE_HOST_VERSION` and nothing is persisted. Omitting the field means the plugin has no minimum. A host not built from a tagged release (`PACA_VERSION` unset, reporting `"dev"`) is treated as unconstrained, since there's no release version to compare against.
+
+The error response's `error` field is an English-only message meant for logs/CLI use. Clients that need to render a localized message should instead use `error_details`, an `{"error_details": {...}}` object included alongside `error_code`/`error` for this code, carrying `plugin_id`, `required_version`, and `host_version` as plain (non-localized) strings to interpolate into their own translated copy.
+
 ### Route Middleware Policy
 
 Each backend route can declare a host-enforced middleware chain in `backend.routes[].middlewares`.

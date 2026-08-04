@@ -49,6 +49,7 @@ my-plugin/
   "displayName": "My Plugin",
   "description": "A short description of what this plugin does.",
   "version": "0.1.0",
+  "minCoreVersion": "0.9.0",
   "permissions": ["db.read", "db.write", "events.subscribe"],
 
   "frontend": {
@@ -101,6 +102,8 @@ Use explicit `middlewares` when you need different behavior (for example,
 webhook endpoints that must accept anonymous requests).
 
 **Choosing an `id`:** Use reverse-domain notation: `com.yourcompany.feature-name`. First-party plugins use `com.paca.*`. The ID becomes part of the API path (`/api/v1/plugins/{id}/...`) and the database schema name, so it must be stable after first release.
+
+**`minCoreVersion`:** The minimum Paca (host) version your plugin requires, as a strict `X.Y.Z` (or `vX.Y.Z`) semver string — omit it if your plugin has no minimum. The host checks this on every install and every manifest update (including marketplace upgrades) and rejects the request with `PLUGIN_INCOMPATIBLE_HOST_VERSION` if the running build is older. A self-hosted instance not built from a tagged release (running version `"dev"`) is treated as unconstrained, since there's nothing meaningful to compare against. You can read the running instance's version from `GET /api/v1/version` (`current` field).
 
 ---
 
@@ -570,6 +573,7 @@ func TestListItems(t *testing.T) {
 - Follow semver. Increment the **patch** version for bug fixes, **minor** for new extension points, **major** for breaking changes to your API.
 - Database migrations are **additive only**. Never drop or rename columns in a migration; use a new migration file.
 - When you release a new version, update `plugin.json` and re-upload the bundle. The host will detect the version change on next startup and run new migrations.
+- If a release depends on a host capability that only exists in a newer Paca build, bump `minCoreVersion` alongside it — otherwise the manifest change describes something the current host can't provide.
 
 ---
 
@@ -578,7 +582,7 @@ func TestListItems(t *testing.T) {
 Before sharing your plugin:
 
 - [ ] Plugin ID follows reverse-domain notation.
-- [ ] `minCoreVersion` is set to the minimum Paca version you tested against.
+- [ ] `minCoreVersion` is set to the minimum Paca version you tested against — installs on older hosts are rejected automatically.
 - [ ] All DB tables are within your plugin's schema.
 - [ ] No secrets or credentials are hard-coded in the WASM binary or JS bundle.
 - [ ] The WASM binary is signed with your private key (include the public key in `plugin.json` under `publisher.publicKey`).

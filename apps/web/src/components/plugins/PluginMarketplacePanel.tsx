@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import {
+	AlertTriangle,
 	ArrowUpCircle,
 	Database,
 	Download,
@@ -19,6 +21,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+	ApiErrorCode,
+	getApiErrorCode,
+	getApiErrorDetails,
+	getApiErrorMessage,
+} from "@/lib/api-error";
+import {
 	installMarketplacePlugin,
 	type MarketplacePlugin,
 	marketplacePluginsQueryOptions,
@@ -26,6 +34,49 @@ import {
 	uninstallPlugin,
 	upgradePlugin,
 } from "@/lib/plugin-api";
+
+/**
+ * Resolves an install/upgrade mutation failure to a fully translated message
+ * worth showing the admin. `PLUGIN_INCOMPATIBLE_HOST_VERSION` carries
+ * request-specific detail (the required and running versions) as structured,
+ * non-localized `error_details` — interpolated into a translated string here
+ * rather than showing the server's English-only `error` text directly. Other
+ * recognized codes get a plain friendly translated message; anything else
+ * falls back to the raw server message, then a generic translated string.
+ */
+function resolveMutationErrorMessage(
+	err: unknown,
+	t: TFunction<"plugins">,
+): string {
+	const code = getApiErrorCode(err);
+
+	if (code === ApiErrorCode.PluginIncompatibleHostVersion) {
+		const details = getApiErrorDetails(err);
+		if (details?.required_version && details?.host_version) {
+			return t("marketplace.card.errors.incompatibleHostVersion", {
+				required: details.required_version,
+				current: details.host_version,
+			});
+		}
+		return t("marketplace.card.errors.incompatibleHostVersionGeneric");
+	}
+
+	const knownMessages: Partial<Record<string, string>> = {
+		[ApiErrorCode.PluginAlreadyUpToDate]: t(
+			"marketplace.card.errors.alreadyUpToDate",
+		),
+		[ApiErrorCode.PluginDowngradeNotAllowed]: t(
+			"marketplace.card.errors.downgradeNotAllowed",
+		),
+		[ApiErrorCode.PluginNotFound]: t("marketplace.card.errors.notFound"),
+		[ApiErrorCode.PluginNameTaken]: t("marketplace.card.errors.nameTaken"),
+	};
+	return (
+		(code && knownMessages[code]) ??
+		getApiErrorMessage(err) ??
+		t("marketplace.card.errors.generic")
+	);
+}
 
 function initials(name: string): string {
 	const words = name
@@ -110,6 +161,7 @@ function PluginCard({
 	isUninstalling,
 	isUpgrading,
 	installedVersion,
+	errorMessage,
 	onInstall,
 	onUninstall,
 	onUpgrade,
@@ -120,6 +172,7 @@ function PluginCard({
 	isUninstalling: boolean;
 	isUpgrading: boolean;
 	installedVersion?: string;
+	errorMessage?: string;
 	onInstall: (name: string) => void;
 	onUninstall: (name: string) => void;
 	onUpgrade: (pluginName: string) => void;
@@ -274,6 +327,13 @@ function PluginCard({
 						</Button>
 					)}
 				</div>
+
+				{errorMessage ? (
+					<div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+						<AlertTriangle className="size-3.5 shrink-0 translate-y-0.5" />
+						<span>{errorMessage}</span>
+					</div>
+				) : null}
 			</div>
 		</div>
 	);
@@ -305,10 +365,25 @@ export function PluginMarketplacePanel() {
 	);
 	const [upgradingIds, setUpgradingIds] = useState<Set<string>>(new Set());
 
+	// Keyed by marketplace plugin name / installed plugin id respectively, so
+	// each card shows only the error from its own most recent attempt.
+	const [installErrors, setInstallErrors] = useState<Map<string, string>>(
+		new Map(),
+	);
+	const [upgradeErrors, setUpgradeErrors] = useState<Map<string, string>>(
+		new Map(),
+	);
+
 	const installMutation = useMutation({
 		mutationFn: installMarketplacePlugin,
 		onMutate: (variables) => {
 			setInstallingNames((prev) => new Set(prev).add(variables.name));
+			setInstallErrors((prev) => {
+				if (!prev.has(variables.name)) return prev;
+				const next = new Map(prev);
+				next.delete(variables.name);
+				return next;
+			});
 		},
 		onSettled: (_data, _error, variables) => {
 			setInstallingNames((prev) => {
@@ -316,6 +391,10 @@ export function PluginMarketplacePanel() {
 				next.delete(variables.name);
 				return next;
 			});
+		},
+		onError: (err, variables) => {
+			const message = resolveMutationErrorMessage(err, t);
+			setInstallErrors((prev) => new Map(prev).set(variables.name, message));
 		},
 		onSuccess: async () => {
 			await Promise.all([
@@ -349,6 +428,12 @@ export function PluginMarketplacePanel() {
 		mutationFn: upgradePlugin,
 		onMutate: (pluginId) => {
 			setUpgradingIds((prev) => new Set(prev).add(pluginId));
+			setUpgradeErrors((prev) => {
+				if (!prev.has(pluginId)) return prev;
+				const next = new Map(prev);
+				next.delete(pluginId);
+				return next;
+			});
 		},
 		onSettled: (_data, _error, pluginId) => {
 			setUpgradingIds((prev) => {
@@ -356,6 +441,10 @@ export function PluginMarketplacePanel() {
 				next.delete(pluginId);
 				return next;
 			});
+		},
+		onError: (err, pluginId) => {
+			const message = resolveMutationErrorMessage(err, t);
+			setUpgradeErrors((prev) => new Map(prev).set(pluginId, message));
 		},
 		onSuccess: async () => {
 			await qc.invalidateQueries({ queryKey: ["plugins"] });
@@ -399,6 +488,10 @@ export function PluginMarketplacePanel() {
 								isInstalling={installingNames.has(plugin.name)}
 								isUninstalling={!!pluginId && uninstallingIds.has(pluginId)}
 								isUpgrading={!!pluginId && upgradingIds.has(pluginId)}
+								errorMessage={
+									installErrors.get(plugin.name) ??
+									(pluginId ? upgradeErrors.get(pluginId) : undefined)
+								}
 								onInstall={(name) =>
 									installMutation.mutate({ name, enabled: true })
 								}

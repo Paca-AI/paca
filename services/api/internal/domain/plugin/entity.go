@@ -39,6 +39,12 @@ type PluginManifest struct {
 	Description string `json:"description,omitempty"`
 	// Version is the semver version of the plugin.
 	Version string `json:"version"`
+	// MinCoreVersion is the minimum Paca (host) version required to install or
+	// upgrade to this manifest, as a strict "X.Y.Z" (or "vX.Y.Z") semver
+	// string. The host refuses to install/enable a manifest whose
+	// MinCoreVersion is newer than the running build (see CheckMinCoreVersion).
+	// Empty means the plugin has no minimum host version requirement.
+	MinCoreVersion string `json:"minCoreVersion,omitempty"`
 	// Capabilities lists the plugin's capabilities (e.g., "repository" for VCS plugins).
 	Capabilities []string `json:"capabilities,omitempty"`
 	// Backend holds backend-specific manifest settings.
@@ -101,6 +107,11 @@ func pluginKeyNamespace(pluginID string) string {
 // declare a key (e.g. "users.write") that collides with a built-in
 // permission or another plugin's custom permission.
 func (m PluginManifest) Validate() error {
+	if m.MinCoreVersion != "" {
+		if _, err := parseStrictSemver(m.MinCoreVersion); err != nil {
+			return fmt.Errorf("minCoreVersion: %w", err)
+		}
+	}
 	namespace := pluginKeyNamespace(m.ID)
 	prefix := namespace + "."
 	for _, perm := range m.CustomPermissions {

@@ -6,6 +6,66 @@ import (
 	"github.com/Paca-AI/api/internal/platform/bundledskills"
 )
 
+func TestPluginManifestValidate_MinCoreVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		wantErr bool
+	}{
+		{name: "empty is valid", version: ""},
+		{name: "valid semver", version: "1.2.3"},
+		{name: "valid semver with v prefix", version: "v1.2.3"},
+		{name: "missing patch", version: "1.2", wantErr: true},
+		{name: "pre-release rejected", version: "1.2.3-beta.1", wantErr: true},
+		{name: "build metadata rejected", version: "1.2.3+001", wantErr: true},
+		{name: "non-numeric component", version: "1.x.3", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := PluginManifest{ID: "com.paca.example", MinCoreVersion: tt.version}
+			err := m.Validate()
+			if tt.wantErr && err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
+
+func TestPluginManifestCheckMinCoreVersion(t *testing.T) {
+	tests := []struct {
+		name           string
+		minCoreVersion string
+		hostVersion    string
+		wantErr        bool
+	}{
+		{name: "no minimum declared", minCoreVersion: "", hostVersion: "1.0.0"},
+		{name: "host newer than minimum", minCoreVersion: "1.0.0", hostVersion: "1.2.0"},
+		{name: "host equals minimum", minCoreVersion: "1.2.0", hostVersion: "1.2.0"},
+		{name: "host older than minimum", minCoreVersion: "1.2.0", hostVersion: "1.1.9", wantErr: true},
+		{name: "host version has v prefix", minCoreVersion: "1.2.0", hostVersion: "v1.2.0"},
+		{name: "host version has pre-release suffix", minCoreVersion: "1.2.0", hostVersion: "v1.2.0-evup.1"},
+		{name: "unparseable host version (dev build) never blocks", minCoreVersion: "99.0.0", hostVersion: "dev"},
+		{name: "empty host version never blocks", minCoreVersion: "99.0.0", hostVersion: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := PluginManifest{ID: "com.paca.example", MinCoreVersion: tt.minCoreVersion}
+			err := m.CheckMinCoreVersion(tt.hostVersion)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestPluginManifestValidate_Skills(t *testing.T) {
 	base := func(skills *SkillsManifest) PluginManifest {
 		return PluginManifest{

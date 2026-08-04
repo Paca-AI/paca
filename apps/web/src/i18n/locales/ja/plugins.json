@@ -19,6 +19,15 @@
 				"migrations": "マイグレーション",
 				"mcp": "MCP",
 				"skills": "スキル"
+			},
+			"errors": {
+				"incompatibleHostVersion": "このプラグインには Paca {{required}} 以降が必要です（現在のバージョン: {{current}}）。",
+				"incompatibleHostVersionGeneric": "このプラグインには、現在お使いのバージョンより新しいPacaが必要です。",
+				"alreadyUpToDate": "このプラグインはすでに最新です。",
+				"downgradeNotAllowed": "インストール済みのバージョンより古いバージョンはインストールできません。",
+				"notFound": "このプラグインはマーケットプレイスで利用できなくなりました。",
+				"nameTaken": "この名前のプラグインはすでにインストールされています。",
+				"generic": "エラーが発生しました。もう一度お試しください。"
 			}
 		}
 	},

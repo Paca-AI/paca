@@ -255,6 +255,9 @@ const (
 	CodePluginAlreadyUpToDate Code = "PLUGIN_ALREADY_UP_TO_DATE"
 	// CodePluginDowngradeNotAllowed indicates the marketplace version is older than the installed version.
 	CodePluginDowngradeNotAllowed Code = "PLUGIN_DOWNGRADE_NOT_ALLOWED"
+	// CodePluginIncompatibleHostVersion indicates the plugin manifest's
+	// minCoreVersion is newer than the running Paca build.
+	CodePluginIncompatibleHostVersion Code = "PLUGIN_INCOMPATIBLE_HOST_VERSION"
 	// CodePayloadTooLarge indicates the request body exceeds the server's size limit.
 	CodePayloadTooLarge Code = "PAYLOAD_TOO_LARGE"
 
@@ -360,6 +363,14 @@ const (
 type Error struct {
 	Code    Code
 	Message string
+	// Details carries structured, non-localized values a client needs to
+	// render its own translated message (e.g. version numbers, entity
+	// names) — Message itself is English prose and not localized, so a
+	// client that wants a translated string for its own locale should
+	// prefer interpolating Details into a local string rather than
+	// displaying Message directly. Nil when the code has nothing structured
+	// to add beyond Message.
+	Details map[string]string
 }
 
 func (e *Error) Error() string { return e.Message }
@@ -367,4 +378,10 @@ func (e *Error) Error() string { return e.Message }
 // New returns a new *Error with the given code and message.
 func New(code Code, message string) *Error {
 	return &Error{Code: code, Message: message}
+}
+
+// NewWithDetails returns a new *Error carrying structured Details alongside
+// the given code and message.
+func NewWithDetails(code Code, message string, details map[string]string) *Error {
+	return &Error{Code: code, Message: message, Details: details}
 }

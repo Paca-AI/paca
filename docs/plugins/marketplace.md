@@ -70,7 +70,7 @@ When an admin clicks Install in the web app:
    - Manifest: `PLUGINS_WASM_DIR/<plugin-id>/plugin.json`
    - Migrations: `PLUGINS_WASM_DIR/<plugin-id>/migrations/*.sql`
    - Frontend: `PLUGINS_FRONTEND_DIR/<plugin-id>/...`
-5. API registers plugin record in database (`plugins` table).
+5. API registers plugin record in database (`plugins` table) — rejecting the install with `PLUGIN_INCOMPATIBLE_HOST_VERSION` if the downloaded manifest's `minCoreVersion` (see [backend-plugin-system.md](backend-plugin-system.md#minimum-host-version-mincoreversion)) is newer than the running Paca build.
 6. API runs plugin migrations.
 7. API loads/reloads runtime module.
 

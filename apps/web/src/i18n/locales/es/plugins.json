@@ -19,6 +19,15 @@
 				"migrations": "Migraciones",
 				"mcp": "MCP",
 				"skills": "Habilidades"
+			},
+			"errors": {
+				"incompatibleHostVersion": "Este plugin requiere Paca {{required}} o una versión posterior. Actualmente tienes {{current}}.",
+				"incompatibleHostVersionGeneric": "Este plugin requiere una versión de Paca más reciente que la que tienes instalada.",
+				"alreadyUpToDate": "Este plugin ya está actualizado.",
+				"downgradeNotAllowed": "No se puede instalar una versión anterior a la que ya está instalada.",
+				"notFound": "Este plugin ya no está disponible en el mercado de plugins.",
+				"nameTaken": "Ya hay un plugin instalado con este nombre.",
+				"generic": "Ocurrió un error. Inténtalo de nuevo."
 			}
 		}
 	},
