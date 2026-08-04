@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -957,4 +959,93 @@ func (h *AgentHandler) GetACPBridgeStatus(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// --- Activity Feed ------------------------------------------------------------
+
+var validActivitySourceTypes = []string{"task", "doc"}
+
+// ListAgentActivities handles GET /projects/:projectId/agents/:agentId/activities.
+//
+// Supported query params (all optional, combine with AND):
+//   - type=<task|doc>|<task,doc>            filter by one or more source types
+//   - created_after=<YYYY-MM-DD|RFC3339>    activities created on/after this date/instant
+//   - created_before=<YYYY-MM-DD|RFC3339>   activities created before this date/instant
+//   - search=<text>                         matches the linked task/doc title or activity content
+//   - cursor=<opaque>, page_size=<1-200>    keyset pagination (see next_cursor in response)
+func (h *AgentHandler) ListAgentActivities(w http.ResponseWriter, r *http.Request) {
+	projectID, agentID, err := h.parseAgentForProject(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if h.memberRepo == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "member resolver not available"))
+		return
+	}
+	member, err := h.memberRepo.FindMemberByAgent(r.Context(), projectID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	pageSize, err := parsePageSize(r, 20, 200)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	filter := agentdom.ListAgentActivitiesFilter{ActorMemberID: member.ID}
+	if typesRaw := r.URL.Query().Get("type"); typesRaw != "" {
+		for _, t := range splitCommaList(typesRaw) {
+			if !slices.Contains(validActivitySourceTypes, t) {
+				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid type: "+t))
+				return
+			}
+			filter.SourceTypes = append(filter.SourceTypes, agentdom.ActivitySourceType(t))
+		}
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("created_after")); raw != "" {
+		t, ok := parseCreatedAfterBound(raw)
+		if !ok {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid created_after"))
+			return
+		}
+		filter.CreatedAfter = t
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("created_before")); raw != "" {
+		t, ok := parseCreatedBeforeBound(raw)
+		if !ok {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid created_before"))
+			return
+		}
+		filter.CreatedBefore = t
+	}
+	if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
+		filter.Search = &search
+	}
+	if cursorRaw := r.URL.Query().Get("cursor"); cursorRaw != "" {
+		filter.CursorAfter = &cursorRaw
+	}
+
+	items, hasMore, err := h.svc.ListAgentActivities(r.Context(), filter, pageSize)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentActivityResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, dto.AgentActivityFromEntity(item))
+	}
+
+	var nextCursor *string
+	if hasMore && len(items) > 0 {
+		s := agentdom.EncodeActivityFeedCursor(items[len(items)-1])
+		nextCursor = &s
+	}
+	presenter.OK(w, r, map[string]any{
+		"items":       resp,
+		"page_size":   pageSize,
+		"next_cursor": nextCursor,
+	})
 }

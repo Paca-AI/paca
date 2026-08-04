@@ -1189,3 +1189,133 @@ func chatSessionToRecord(s *agentdom.AgentChatSession) agentChatSessionRecord {
 		UpdatedAt:     s.UpdatedAt,
 	}
 }
+
+// -------------------------------------------------------------------------
+// Activity Feed
+// -------------------------------------------------------------------------
+
+type agentActivityFeedRecord struct {
+	ID           string          `db:"id"`
+	SourceType   string          `db:"source_type"`
+	SourceID     string          `db:"source_id"`
+	SourceTitle  string          `db:"source_title"`
+	ActivityType string          `db:"activity_type"`
+	Content      json.RawMessage `db:"content"`
+	CreatedAt    time.Time       `db:"created_at"`
+	UpdatedAt    time.Time       `db:"updated_at"`
+}
+
+// ListAgentActivities returns a keyset-paginated page of an agent's unified
+// task+doc activity feed, ordered newest-first. task_activities and
+// doc_activities are combined via UNION ALL into a common column shape
+// (agentActivityFeedRecord) up front, filtered by actor_id — both branches
+// reference the same $1 placeholder since it's one value used twice, not
+// two separate args. The dynamic filters (source type, date range, search,
+// cursor) are then applied to the combined result exactly like
+// ListConversations applies its filters to agent_conversations, fetching
+// one row beyond limit to detect whether more pages remain.
+func (r *AgentRepository) ListAgentActivities(ctx context.Context, in agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
+	b := newQueryBuilder()
+	b.idx = 2 // $1 is reserved for the actor member id, shared by both UNION branches
+
+	if len(in.SourceTypes) > 0 {
+		types := make([]string, len(in.SourceTypes))
+		for i, t := range in.SourceTypes {
+			types[i] = string(t)
+		}
+		b.addInClause("source_type", types)
+	}
+	if in.CreatedAfter != nil {
+		p := b.placeholder()
+		b.args = append(b.args, *in.CreatedAfter)
+		b.whereClauses = append(b.whereClauses, "created_at >= "+p)
+	}
+	if in.CreatedBefore != nil {
+		p := b.placeholder()
+		b.args = append(b.args, *in.CreatedBefore)
+		b.whereClauses = append(b.whereClauses, "created_at < "+p)
+	}
+	if in.Search != nil {
+		if q := strings.TrimSpace(*in.Search); q != "" {
+			p := b.placeholder()
+			b.args = append(b.args, "%"+q+"%")
+			// Matches either the linked task/document title or the raw
+			// activity content (field diffs, comment text, etc.) — a plain
+			// case-insensitive substring match, not full-text search, since
+			// activity content is small compared to conversation event
+			// payloads (which do warrant the tsvector/GIN approach used by
+			// listConversations' search).
+			b.whereClauses = append(b.whereClauses,
+				fmt.Sprintf("(source_title ILIKE %s OR content::text ILIKE %s)", p, p))
+		}
+	}
+	if in.CursorAfter != nil {
+		cur, err := agentdom.DecodeActivityFeedCursor(*in.CursorAfter)
+		if err != nil {
+			return nil, false, fmt.Errorf("%w: %s", agentdom.ErrActivityFeedInvalidCursor, err)
+		}
+		p1 := b.placeholder()
+		p2 := b.placeholder()
+		b.args = append(b.args, cur.CreatedAt, cur.ID)
+		b.whereClauses = append(b.whereClauses, fmt.Sprintf("(created_at, id) < (%s, %s)", p1, p2))
+	}
+
+	limitP := b.placeholder()
+	b.args = append(b.args, limit+1)
+
+	whereSQL := "1=1"
+	if len(b.whereClauses) > 0 {
+		whereSQL += " AND " + strings.Join(b.whereClauses, " AND ")
+	}
+
+	query := `WITH agent_activities AS (
+		SELECT ta.id, 'task' AS source_type, ta.task_id AS source_id, t.title AS source_title,
+		       ta.activity_type, ta.content, ta.created_at, ta.updated_at
+		FROM task_activities ta
+		JOIN tasks t ON t.id = ta.task_id
+		WHERE ta.actor_id = $1 AND ta.deleted_at IS NULL
+		UNION ALL
+		SELECT da.id, 'doc' AS source_type, da.document_id AS source_id, d.title AS source_title,
+		       da.activity_type, da.content, da.created_at, da.updated_at
+		FROM doc_activities da
+		JOIN documents d ON d.id = da.document_id
+		WHERE da.actor_id = $1 AND da.deleted_at IS NULL
+	)
+	SELECT id, source_type, source_id, source_title, activity_type, content, created_at, updated_at
+	FROM agent_activities WHERE ` + whereSQL + fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT %s`, limitP)
+
+	args := append([]interface{}{in.ActorMemberID.String()}, b.args...)
+
+	var recs []agentActivityFeedRecord
+	if err := r.db.SelectContext(ctx, &recs, query, args...); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(recs) > limit
+	if hasMore {
+		recs = recs[:limit]
+	}
+
+	result := make([]*agentdom.ActivityFeedItem, 0, len(recs))
+	for _, rec := range recs {
+		result = append(result, activityFeedItemFromRecord(rec))
+	}
+	return result, hasMore, nil
+}
+
+func activityFeedItemFromRecord(rec agentActivityFeedRecord) *agentdom.ActivityFeedItem {
+	content := rec.Content
+	if len(content) == 0 {
+		content = json.RawMessage("{}")
+	}
+	return &agentdom.ActivityFeedItem{
+		ID:           mustParseUUID(rec.ID),
+		SourceType:   agentdom.ActivitySourceType(rec.SourceType),
+		SourceID:     mustParseUUID(rec.SourceID),
+		SourceTitle:  rec.SourceTitle,
+		ActivityType: rec.ActivityType,
+		Content:      content,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
+	}
+}

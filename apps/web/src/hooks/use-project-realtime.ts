@@ -23,9 +23,16 @@
 // task.* events  → invalidate ["projects", projectId, "tasks"]
 //                  This covers allTasksQueryOptions, taskQueryOptions,
 //                  sprintTasksQueryOptions, epicTasksQueryOptions, etc.
+//                  Also invalidates ["projects", projectId, "agentActivities"]
+//                  (agentActivitiesQueryOptions) — task activity changes can
+//                  belong to any agent, so every agent's activity feed cache
+//                  is invalidated rather than trying to parse which agent
+//                  from the payload.
 // doc.* events   → invalidate ["projects", projectId, "docs"]
 //                  This covers docFoldersQueryOptions, docListQueryOptions,
-//                  docQueryOptions, etc.
+//                  docQueryOptions, etc. Also invalidates
+//                  ["projects", projectId, "agentActivities"], same reasoning
+//                  as task.* above.
 // sprint.* events → invalidate ["projects", projectId, "sprints"]
 //                  This covers sprintsQueryOptions and sprintQueryOptions —
 //                  replaces the sidebar's old refetchInterval polling.
@@ -72,12 +79,18 @@ export function useProjectRealtime(projectId: string): void {
 				void queryClient.invalidateQueries({
 					queryKey: ["projects", projectId, "tasks"],
 				});
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", projectId, "agentActivities"],
+				});
 				return;
 			}
 
 			if (type.startsWith("doc.")) {
 				void queryClient.invalidateQueries({
 					queryKey: ["projects", projectId, "docs"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", projectId, "agentActivities"],
 				});
 				return;
 			}

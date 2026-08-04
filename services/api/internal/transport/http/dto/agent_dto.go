@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -374,6 +375,37 @@ func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResp
 		CreatedAt:           c.CreatedAt,
 		AgentName:           c.AgentName,
 		AgentHandle:         c.AgentHandle,
+	}
+}
+
+// AgentActivityResponse is the public view of one item in an agent's unified
+// task+doc activity feed.
+type AgentActivityResponse struct {
+	ID           uuid.UUID       `json:"id"`
+	SourceType   string          `json:"source_type"`
+	SourceID     uuid.UUID       `json:"source_id"`
+	SourceTitle  string          `json:"source_title"`
+	ActivityType string          `json:"activity_type"`
+	Content      json.RawMessage `json:"content"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
+// AgentActivityFromEntity maps a domain ActivityFeedItem to an AgentActivityResponse DTO.
+func AgentActivityFromEntity(a *agentdom.ActivityFeedItem) AgentActivityResponse {
+	content := a.Content
+	if len(content) == 0 {
+		content = json.RawMessage("{}")
+	}
+	return AgentActivityResponse{
+		ID:           a.ID,
+		SourceType:   string(a.SourceType),
+		SourceID:     a.SourceID,
+		SourceTitle:  a.SourceTitle,
+		ActivityType: a.ActivityType,
+		Content:      content,
+		CreatedAt:    a.CreatedAt,
+		UpdatedAt:    a.UpdatedAt,
 	}
 }
 

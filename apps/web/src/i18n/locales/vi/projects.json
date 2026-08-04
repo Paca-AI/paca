@@ -121,7 +121,8 @@
 				"overview": "Tổng quan",
 				"mcpServers": "Máy chủ MCP",
 				"skills": "Skill",
-				"envVars": "Môi trường"
+				"envVars": "Môi trường",
+				"activity": "Hoạt động"
 			},
 			"overview": {
 				"nameLabel": "Tên",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "Hủy",
 					"addSkill": "Thêm skill"
+				}
+			},
+			"activity": {
+				"commented": "đã bình luận",
+				"sourceType": {
+					"task": "Công việc",
+					"doc": "Tài liệu"
+				},
+				"empty": {
+					"title": "Chưa có hoạt động nào",
+					"description": "Hoạt động trên công việc và tài liệu do tác nhân này thực hiện sẽ hiển thị ở đây."
+				},
+				"emptyFiltered": {
+					"title": "Không có hoạt động phù hợp",
+					"description": "Hãy thử điều chỉnh bộ lọc hoặc tìm kiếm."
+				},
+				"filters": {
+					"title": "Bộ lọc",
+					"type": "Loại",
+					"dateRange": "Khoảng thời gian",
+					"searchPlaceholder": "Tìm kiếm hoạt động…",
+					"dateFrom": "Từ ngày",
+					"dateTo": "Đến ngày",
+					"clearAll": "Xóa bộ lọc"
 				}
 			}
 		},

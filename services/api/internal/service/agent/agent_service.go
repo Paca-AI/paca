@@ -646,6 +646,11 @@ func (s *Service) ListConversations(ctx context.Context, in agentdom.ListConvers
 	return s.repo.ListConversations(ctx, in, limit)
 }
 
+// ListAgentActivities returns a page of an agent's unified task+doc activity feed.
+func (s *Service) ListAgentActivities(ctx context.Context, in agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
+	return s.repo.ListAgentActivities(ctx, in, limit)
+}
+
 // GetConversation returns a single conversation after verifying project ownership.
 func (s *Service) GetConversation(ctx context.Context, projectID, conversationID uuid.UUID) (*agentdom.AgentConversation, error) {
 	c, err := s.repo.FindConversationByID(ctx, conversationID)

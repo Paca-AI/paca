@@ -779,6 +779,97 @@ export const chatSessionsQueryOptions = (projectId: string, agentId: string) =>
 		queryFn: () => listChatSessions(projectId, agentId),
 	});
 
+// ── Activity Feed ────────────────────────────────────────────────────────────
+
+export type AgentActivitySourceType = "task" | "doc";
+
+export interface AgentActivity {
+	id: string;
+	source_type: AgentActivitySourceType;
+	source_id: string;
+	source_title: string;
+	activity_type: string;
+	// Heterogeneous by source_type (task activity content vs doc activity
+	// content have different shapes) — callers narrow it per-row using
+	// source_type before passing to activityDescription/describeDocActivity.
+	content: unknown;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AgentActivityListResult {
+	items: AgentActivity[];
+	page_size: number;
+	next_cursor: string | null;
+}
+
+export const AGENT_ACTIVITIES_PAGE_SIZE = 20;
+
+export interface ListAgentActivitiesOptions {
+	sourceTypes?: AgentActivitySourceType[];
+	/** Local calendar dates ("YYYY-MM-DD") — see ListConversationsOptions above. */
+	createdAfter?: string;
+	createdBefore?: string;
+	/** Free-text search matched server-side against the linked task/doc title and activity content. */
+	search?: string;
+	cursor?: string;
+	pageSize?: number;
+}
+
+function buildAgentActivityQueryParams(opts: ListAgentActivitiesOptions = {}) {
+	const params: Record<string, string | number> = {};
+	params.page_size = opts.pageSize ?? AGENT_ACTIVITIES_PAGE_SIZE;
+	if (opts.cursor) params.cursor = opts.cursor;
+	if (opts.sourceTypes && opts.sourceTypes.length > 0)
+		params.type = opts.sourceTypes.join(",");
+	if (opts.createdAfter)
+		params.created_after = localDateStartISO(opts.createdAfter);
+	if (opts.createdBefore)
+		params.created_before = localDateExclusiveEndISO(opts.createdBefore);
+	if (opts.search?.trim()) params.search = opts.search.trim();
+	return params;
+}
+
+export async function listAgentActivities(
+	projectId: string,
+	agentId: string,
+	options?: ListAgentActivitiesOptions,
+): Promise<AgentActivityListResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<AgentActivityListResult>
+	>(`/projects/${projectId}/agents/${agentId}/activities`, {
+		params: buildAgentActivityQueryParams(options),
+	});
+	return data.data;
+}
+
+// Cursor-paginated the same way conversationsQueryOptions is (see above) —
+// not nested under the ["projects", projectId, "agents", ...] prefix so that
+// task.*/doc.* realtime invalidation (use-project-realtime.ts) can target
+// every agent's activity feed at once without also invalidating agent
+// detail/mcp-servers/skills/env-vars caches.
+export type AgentActivityFilters = Omit<
+	ListAgentActivitiesOptions,
+	"cursor" | "pageSize"
+>;
+
+export const agentActivitiesQueryOptions = (
+	projectId: string,
+	agentId: string,
+	filters: AgentActivityFilters = {},
+) =>
+	infiniteQueryOptions({
+		queryKey: ["projects", projectId, "agentActivities", agentId, filters],
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listAgentActivities(projectId, agentId, {
+				...filters,
+				cursor: pageParam,
+				pageSize: AGENT_ACTIVITIES_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
+
 // ── LLM Models ────────────────────────────────────────────────────────────────
 
 export interface LLMProviderInfo {
