@@ -61,3 +61,10 @@ var (
 var (
 	ErrChatSessionNotFound = errors.New("chat session not found")
 )
+
+// Activity feed errors
+var (
+	// ErrActivityFeedInvalidCursor is returned when a client-supplied
+	// activity feed pagination cursor fails to decode.
+	ErrActivityFeedInvalidCursor = errors.New("invalid pagination cursor")
+)

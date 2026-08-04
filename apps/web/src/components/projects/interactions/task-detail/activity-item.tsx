@@ -132,8 +132,11 @@ export function describeTaskChange(
 	}
 }
 
-function activityDescription(
-	entry: ActivityEntry,
+// Exported (and narrowed to just the fields it needs) so the agent activity
+// feed tab can reuse the same task-activity copy without duplicating it —
+// see apps/web/src/components/projects/agents/agent-activity-tab.tsx.
+export function activityDescription(
+	entry: Pick<ActivityEntry, "activity_type" | "content">,
 	names: ActivityNameMaps,
 	t: TFunction<"projects">,
 ): string {

@@ -14,6 +14,7 @@ type Service interface {
 	EnvVarService
 	ConversationService
 	ChatSessionService
+	ActivityFeedService
 }
 
 // AgentService defines agent CRUD use cases.
@@ -77,6 +78,11 @@ type ChatSessionService interface {
 	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*AgentChatSession, *AgentConversation, error)
 	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*AgentConversation, error)
 	ListChatMessages(ctx context.Context, sessionID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
+}
+
+// ActivityFeedService defines the agent activity feed use case.
+type ActivityFeedService interface {
+	ListAgentActivities(ctx context.Context, in ListAgentActivitiesFilter, limit int) (items []*ActivityFeedItem, hasMore bool, err error)
 }
 
 // --- Input types ---

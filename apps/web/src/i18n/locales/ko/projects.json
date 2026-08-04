@@ -121,7 +121,8 @@
 				"overview": "개요",
 				"mcpServers": "MCP 서버",
 				"skills": "스킬",
-				"envVars": "환경 변수"
+				"envVars": "환경 변수",
+				"activity": "활동"
 			},
 			"overview": {
 				"nameLabel": "이름",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "취소",
 					"addSkill": "스킬 추가"
+				}
+			},
+			"activity": {
+				"commented": "댓글을 남겼습니다",
+				"sourceType": {
+					"task": "작업",
+					"doc": "문서"
+				},
+				"empty": {
+					"title": "아직 활동이 없습니다",
+					"description": "이 에이전트가 수행한 작업 및 문서 활동이 여기에 표시됩니다."
+				},
+				"emptyFiltered": {
+					"title": "일치하는 활동이 없습니다",
+					"description": "필터나 검색어를 조정해 보세요."
+				},
+				"filters": {
+					"title": "필터",
+					"type": "유형",
+					"dateRange": "날짜 범위",
+					"searchPlaceholder": "활동 검색…",
+					"dateFrom": "시작일",
+					"dateTo": "종료일",
+					"clearAll": "필터 초기화"
 				}
 			}
 		},

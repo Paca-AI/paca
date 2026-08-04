@@ -30,6 +30,7 @@ type mockAgentSvc struct {
 	startChatSession       func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
 	listConversations      func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	listConversationEvents func(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error)
+	listAgentActivities    func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 }
 
 func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID) ([]*agentdom.Agent, error) {
@@ -95,6 +96,12 @@ func (m *mockAgentSvc) ListConversations(ctx context.Context, filter agentdom.Li
 	}
 	return nil, false, nil
 }
+func (m *mockAgentSvc) ListAgentActivities(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
+	if m.listAgentActivities != nil {
+		return m.listAgentActivities(ctx, filter, limit)
+	}
+	return nil, false, nil
+}
 func (m *mockAgentSvc) GetConversation(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 	return nil, errors.New("not found")
 }
@@ -152,11 +159,12 @@ func newAgentRouter(svc agentdom.Service) chi.Router {
 }
 
 // fakeMemberRepo implements projectdom.MemberRepository, letting tests
-// control FindMemberByUserProject — the only method resolveMemberID calls.
-// Every other method panics if invoked, since resolveMemberID tests should
-// never reach them.
+// control FindMemberByUserProject (used by resolveMemberID) and
+// FindMemberByAgent (used by ListAgentActivities). Every other method
+// panics if invoked, since those tests should never reach them.
 type fakeMemberRepo struct {
 	findByUserProject func(ctx context.Context, userID, projectID uuid.UUID) (*projectdom.ProjectMember, error)
+	findByAgent       func(ctx context.Context, projectID, agentID uuid.UUID) (*projectdom.ProjectMember, error)
 }
 
 func (f *fakeMemberRepo) ListMembers(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
@@ -165,8 +173,11 @@ func (f *fakeMemberRepo) ListMembers(context.Context, uuid.UUID) ([]*projectdom.
 func (f *fakeMemberRepo) FindMember(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
 	panic("fakeMemberRepo: FindMember not used by resolveMemberID tests")
 }
-func (f *fakeMemberRepo) FindMemberByAgent(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
-	panic("fakeMemberRepo: FindMemberByAgent not used by resolveMemberID tests")
+func (f *fakeMemberRepo) FindMemberByAgent(ctx context.Context, projectID, agentID uuid.UUID) (*projectdom.ProjectMember, error) {
+	if f.findByAgent != nil {
+		return f.findByAgent(ctx, projectID, agentID)
+	}
+	panic("fakeMemberRepo: FindMemberByAgent not configured")
 }
 func (f *fakeMemberRepo) FindMemberByUserProject(ctx context.Context, userID, projectID uuid.UUID) (*projectdom.ProjectMember, error) {
 	return f.findByUserProject(ctx, userID, projectID)
@@ -229,6 +240,7 @@ func newAgentRouterWithMemberRepo(svc agentdom.Service, memberRepo projectdom.Me
 	r.Use(claimsMiddleware(subject))
 	r.Route("/projects/{projectId}/agents/{agentId}", func(r chi.Router) {
 		r.Post("/chat-sessions", h.StartChatSession)
+		r.Get("/activities", h.ListAgentActivities)
 	})
 	return r
 }
@@ -602,5 +614,122 @@ func TestResolveMemberID_Resolved_PassesMemberIDToService(t *testing.T) {
 	}
 	if gotMemberID != resolvedMemberID {
 		t.Fatalf("expected resolved member ID %v to reach the service, got %v", resolvedMemberID, gotMemberID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListAgentActivities tests
+// ---------------------------------------------------------------------------
+
+func TestListAgentActivities_NoMemberRepoConfigured_Returns500(t *testing.T) {
+	r := newAgentRouterWithMemberRepo(validAgentSvc(), nil, uuid.New().String())
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/activities", nil)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when no member repo is configured, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListAgentActivities_WrongProject_Returns404(t *testing.T) {
+	svc := &mockAgentSvc{
+		getAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	memberRepo := &fakeMemberRepo{}
+	r := newAgentRouterWithMemberRepo(svc, memberRepo, uuid.New().String())
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/activities", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for wrong-project agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListAgentActivities_MemberNotFound_Returns404(t *testing.T) {
+	memberRepo := &fakeMemberRepo{
+		findByAgent: func(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
+			return nil, projectdom.ErrMemberNotFound
+		},
+	}
+	r := newAgentRouterWithMemberRepo(validAgentSvc(), memberRepo, uuid.New().String())
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/activities", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when the agent has no project membership, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListAgentActivities_InvalidType_Returns400(t *testing.T) {
+	memberID := uuid.New()
+	memberRepo := &fakeMemberRepo{
+		findByAgent: func(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
+			return &projectdom.ProjectMember{ID: memberID}, nil
+		},
+	}
+	r := newAgentRouterWithMemberRepo(validAgentSvc(), memberRepo, uuid.New().String())
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/activities?type=bogus", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an invalid type filter, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListAgentActivities_Success_ResolvesMemberAndForwardsFilters(t *testing.T) {
+	memberID := uuid.New()
+	memberRepo := &fakeMemberRepo{
+		findByAgent: func(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
+			return &projectdom.ProjectMember{ID: memberID}, nil
+		},
+	}
+	var gotFilter agentdom.ListAgentActivitiesFilter
+	svc := validAgentSvc()
+	svc.listAgentActivities = func(_ context.Context, filter agentdom.ListAgentActivitiesFilter, _ int) ([]*agentdom.ActivityFeedItem, bool, error) {
+		gotFilter = filter
+		return []*agentdom.ActivityFeedItem{
+			{ID: uuid.New(), SourceType: agentdom.ActivitySourceTask, ActivityType: "task.created"},
+		}, false, nil
+	}
+	r := newAgentRouterWithMemberRepo(svc, memberRepo, uuid.New().String())
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodGet,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/activities?type=task,doc&search=hello", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotFilter.ActorMemberID != memberID {
+		t.Fatalf("expected the resolved member ID %v to reach the service, got %v", memberID, gotFilter.ActorMemberID)
+	}
+	wantTypes := []agentdom.ActivitySourceType{agentdom.ActivitySourceTask, agentdom.ActivitySourceDoc}
+	if len(gotFilter.SourceTypes) != len(wantTypes) || gotFilter.SourceTypes[0] != wantTypes[0] || gotFilter.SourceTypes[1] != wantTypes[1] {
+		t.Fatalf("expected source types %v, got %v", wantTypes, gotFilter.SourceTypes)
+	}
+	if gotFilter.Search == nil || *gotFilter.Search != "hello" {
+		t.Fatalf("expected search %q, got %v", "hello", gotFilter.Search)
+	}
+
+	var body struct {
+		Data struct {
+			Items []any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if len(body.Data.Items) != 1 {
+		t.Fatalf("expected 1 item in response, got %d", len(body.Data.Items))
 	}
 }

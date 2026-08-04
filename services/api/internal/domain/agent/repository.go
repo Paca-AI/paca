@@ -15,6 +15,7 @@ type Repository interface {
 	EnvVarRepository
 	ConversationRepository
 	ChatSessionRepository
+	ActivityFeedRepository
 }
 
 // AgentRepository defines storage operations for agents.

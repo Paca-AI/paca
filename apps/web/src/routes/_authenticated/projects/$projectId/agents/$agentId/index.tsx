@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+	Activity as ActivityIcon,
 	Bot,
 	Check,
 	Code2,
@@ -15,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AcpBridgeSetup } from "@/components/projects/agents/acp-bridge-setup";
+import { AgentActivityTab } from "@/components/projects/agents/agent-activity-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,7 +85,7 @@ export const Route = createFileRoute(
 	component: AgentDetailPage,
 });
 
-type Tab = "overview" | "mcp-servers" | "skills" | "env-vars";
+type Tab = "overview" | "mcp-servers" | "skills" | "env-vars" | "activity";
 
 const CUSTOM = "__custom__";
 
@@ -1241,6 +1243,11 @@ const TABS = [
 		labelKey: "agents.detail.tabs.envVars",
 		icon: KeyRound,
 	},
+	{
+		id: "activity",
+		labelKey: "agents.detail.tabs.activity",
+		icon: ActivityIcon,
+	},
 ] as const satisfies {
 	id: Tab;
 	labelKey: string;
@@ -1359,7 +1366,13 @@ function AgentDetailPage() {
 			</div>
 
 			{/* Tab content */}
-			<div className="flex-1 overflow-auto p-6">
+			<div
+				className={
+					activeTab === "activity"
+						? "flex flex-1 min-h-0 flex-col p-6"
+						: "flex-1 overflow-auto p-6"
+				}
+			>
 				{activeTab === "overview" && (
 					<OverviewTab
 						agent={agent}
@@ -1387,6 +1400,9 @@ function AgentDetailPage() {
 						agentId={agentId}
 						canWrite={canWrite}
 					/>
+				)}
+				{activeTab === "activity" && (
+					<AgentActivityTab projectId={projectId} agentId={agentId} />
 				)}
 			</div>
 		</div>

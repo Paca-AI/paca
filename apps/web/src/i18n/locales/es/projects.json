@@ -121,7 +121,8 @@
 				"overview": "Resumen",
 				"mcpServers": "Servidores MCP",
 				"skills": "Skills",
-				"envVars": "Entorno"
+				"envVars": "Entorno",
+				"activity": "Actividad"
 			},
 			"overview": {
 				"nameLabel": "Nombre",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "Cancelar",
 					"addSkill": "Añadir skill"
+				}
+			},
+			"activity": {
+				"commented": "comentó",
+				"sourceType": {
+					"task": "Tarea",
+					"doc": "Documento"
+				},
+				"empty": {
+					"title": "Sin actividad todavía",
+					"description": "La actividad en tareas y documentos realizada por este agente aparecerá aquí."
+				},
+				"emptyFiltered": {
+					"title": "Sin actividad coincidente",
+					"description": "Intenta ajustar los filtros o la búsqueda."
+				},
+				"filters": {
+					"title": "Filtros",
+					"type": "Tipo",
+					"dateRange": "Rango de fechas",
+					"searchPlaceholder": "Buscar actividad…",
+					"dateFrom": "Desde",
+					"dateTo": "Hasta",
+					"clearAll": "Borrar filtros"
 				}
 			}
 		},

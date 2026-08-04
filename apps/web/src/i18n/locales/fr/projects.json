@@ -121,7 +121,8 @@
 				"overview": "Aperçu",
 				"mcpServers": "Serveurs MCP",
 				"skills": "Compétences",
-				"envVars": "Environnement"
+				"envVars": "Environnement",
+				"activity": "Activité"
 			},
 			"overview": {
 				"nameLabel": "Nom",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "Annuler",
 					"addSkill": "Ajouter la compétence"
+				}
+			},
+			"activity": {
+				"commented": "a commenté",
+				"sourceType": {
+					"task": "Tâche",
+					"doc": "Document"
+				},
+				"empty": {
+					"title": "Aucune activité pour le moment",
+					"description": "L'activité sur les tâches et documents effectuée par cet agent apparaîtra ici."
+				},
+				"emptyFiltered": {
+					"title": "Aucune activité correspondante",
+					"description": "Essayez d'ajuster vos filtres ou votre recherche."
+				},
+				"filters": {
+					"title": "Filtres",
+					"type": "Type",
+					"dateRange": "Plage de dates",
+					"searchPlaceholder": "Rechercher une activité…",
+					"dateFrom": "Du",
+					"dateTo": "Au",
+					"clearAll": "Effacer les filtres"
 				}
 			}
 		},

@@ -121,7 +121,8 @@
 				"overview": "Overview",
 				"mcpServers": "MCP Servers",
 				"skills": "Skills",
-				"envVars": "Environment"
+				"envVars": "Environment",
+				"activity": "Activity"
 			},
 			"overview": {
 				"nameLabel": "Name",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "Cancel",
 					"addSkill": "Add skill"
+				}
+			},
+			"activity": {
+				"commented": "commented",
+				"sourceType": {
+					"task": "Task",
+					"doc": "Doc"
+				},
+				"empty": {
+					"title": "No activity yet",
+					"description": "Task and document activity performed by this agent will show up here."
+				},
+				"emptyFiltered": {
+					"title": "No matching activity",
+					"description": "Try adjusting your filters or search."
+				},
+				"filters": {
+					"title": "Filters",
+					"type": "Type",
+					"dateRange": "Date range",
+					"searchPlaceholder": "Search activity…",
+					"dateFrom": "From",
+					"dateTo": "To",
+					"clearAll": "Clear filters"
 				}
 			}
 		},

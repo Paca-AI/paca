@@ -121,7 +121,8 @@
 				"overview": "概要",
 				"mcpServers": "MCPサーバー",
 				"skills": "スキル",
-				"envVars": "環境変数"
+				"envVars": "環境変数",
+				"activity": "アクティビティ"
 			},
 			"overview": {
 				"nameLabel": "名前",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "キャンセル",
 					"addSkill": "スキルを追加"
+				}
+			},
+			"activity": {
+				"commented": "コメントしました",
+				"sourceType": {
+					"task": "タスク",
+					"doc": "ドキュメント"
+				},
+				"empty": {
+					"title": "まだアクティビティはありません",
+					"description": "このエージェントによるタスクおよびドキュメントのアクティビティがここに表示されます。"
+				},
+				"emptyFiltered": {
+					"title": "該当するアクティビティがありません",
+					"description": "フィルターや検索条件を調整してみてください。"
+				},
+				"filters": {
+					"title": "フィルター",
+					"type": "タイプ",
+					"dateRange": "日付範囲",
+					"searchPlaceholder": "アクティビティを検索…",
+					"dateFrom": "開始日",
+					"dateTo": "終了日",
+					"clearAll": "フィルターをクリア"
 				}
 			}
 		},

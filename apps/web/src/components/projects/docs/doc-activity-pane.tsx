@@ -2,10 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import {
-	type ActivityEntry,
-	ActivityPane,
-} from "@/components/shared/activity-pane";
+import { ActivityPane } from "@/components/shared/activity-pane";
 import { textToBlocks } from "@/components/shared/comment-blocknote";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
@@ -45,16 +42,18 @@ function getDocActivityChanges(content: unknown): DocActivityChange[] {
 	);
 }
 
-function describeDocActivity(
-	entry: ActivityEntry,
+// Exported (and narrowed to just the fields it needs) so the agent activity
+// feed tab can reuse the same doc-activity copy without duplicating it — see
+// apps/web/src/components/projects/agents/agent-activity-tab.tsx.
+export function describeDocActivity(
+	entry: Pick<DocActivity, "activity_type" | "content">,
 	t: TFunction<"projects">,
 ): string {
-	const activity = entry as DocActivity;
-	switch (activity.activity_type) {
+	switch (entry.activity_type) {
 		case "doc.created":
 			return t("docs.activity.created");
 		case "doc.updated": {
-			const changes = getDocActivityChanges(activity.content);
+			const changes = getDocActivityChanges(entry.content);
 			if (changes.length > 0) {
 				const fields = changes.map((c) => c.field).join(", ");
 				return t("docs.activity.updatedFields", { fields });
@@ -68,7 +67,7 @@ function describeDocActivity(
 		case "comment":
 			return "";
 		default:
-			return activity.activity_type;
+			return entry.activity_type;
 	}
 }
 

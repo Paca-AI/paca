@@ -121,7 +121,8 @@
 				"overview": "Обзор",
 				"mcpServers": "MCP-серверы",
 				"skills": "Навыки",
-				"envVars": "Окружение"
+				"envVars": "Окружение",
+				"activity": "Активность"
 			},
 			"overview": {
 				"nameLabel": "Имя",
@@ -216,6 +217,30 @@
 					"urlLabel": "URL",
 					"cancel": "Отмена",
 					"addSkill": "Добавить навык"
+				}
+			},
+			"activity": {
+				"commented": "оставил комментарий",
+				"sourceType": {
+					"task": "Задача",
+					"doc": "Документ"
+				},
+				"empty": {
+					"title": "Пока нет активности",
+					"description": "Здесь будет отображаться активность этого агента по задачам и документам."
+				},
+				"emptyFiltered": {
+					"title": "Нет подходящей активности",
+					"description": "Попробуйте изменить фильтры или запрос поиска."
+				},
+				"filters": {
+					"title": "Фильтры",
+					"type": "Тип",
+					"dateRange": "Диапазон дат",
+					"searchPlaceholder": "Поиск по активности…",
+					"dateFrom": "С",
+					"dateTo": "По",
+					"clearAll": "Сбросить фильтры"
 				}
 			}
 		},

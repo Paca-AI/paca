@@ -121,7 +121,8 @@
 				"overview": "概览",
 				"mcpServers": "MCP 服务器",
 				"skills": "技能",
-				"envVars": "环境变量"
+				"envVars": "环境变量",
+				"activity": "动态"
 			},
 			"overview": {
 				"nameLabel": "名称",
@@ -210,6 +211,30 @@
 					"urlLabel": "URL",
 					"cancel": "取消",
 					"addSkill": "添加技能"
+				}
+			},
+			"activity": {
+				"commented": "发表了评论",
+				"sourceType": {
+					"task": "任务",
+					"doc": "文档"
+				},
+				"empty": {
+					"title": "暂无动态",
+					"description": "该代理执行的任务和文档动态将显示在此处。"
+				},
+				"emptyFiltered": {
+					"title": "没有匹配的动态",
+					"description": "请尝试调整筛选条件或搜索内容。"
+				},
+				"filters": {
+					"title": "筛选",
+					"type": "类型",
+					"dateRange": "日期范围",
+					"searchPlaceholder": "搜索动态…",
+					"dateFrom": "起始日期",
+					"dateTo": "结束日期",
+					"clearAll": "清除筛选"
 				}
 			}
 		},

@@ -61,6 +61,7 @@ type mockAgentRepo struct {
 	findChatSessionByID             func(ctx context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error)
 	createChatSession               func(ctx context.Context, session *agentdom.AgentChatSession) error
 	updateChatSession               func(ctx context.Context, session *agentdom.AgentChatSession) error
+	listAgentActivities             func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 }
 
 func (m *mockAgentRepo) ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error) {
@@ -248,6 +249,13 @@ func (m *mockAgentRepo) DeleteEnvVar(ctx context.Context, id uuid.UUID) error {
 func (m *mockAgentRepo) ListConversations(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
 	if m.listConversations != nil {
 		return m.listConversations(ctx, filter, limit)
+	}
+	return nil, false, nil
+}
+
+func (m *mockAgentRepo) ListAgentActivities(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
+	if m.listAgentActivities != nil {
+		return m.listAgentActivities(ctx, filter, limit)
 	}
 	return nil, false, nil
 }
@@ -986,6 +994,48 @@ func TestListConversations_PropagatesRepoError(t *testing.T) {
 	_, hasMore, err := svc.ListConversations(context.Background(), agentdom.ListConversationsFilter{}, 20)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationInvalidCursor)
+	assert.False(t, hasMore)
+}
+
+func TestListAgentActivities_Success(t *testing.T) {
+	memberID := uuid.New()
+	items := []*agentdom.ActivityFeedItem{
+		{ID: uuid.New(), SourceType: agentdom.ActivitySourceTask, ActivityType: "task.created"},
+		{ID: uuid.New(), SourceType: agentdom.ActivitySourceDoc, ActivityType: "doc.updated"},
+	}
+
+	var gotFilter agentdom.ListAgentActivitiesFilter
+	var gotLimit int
+	repo := &mockAgentRepo{
+		listAgentActivities: func(_ context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error) {
+			gotFilter = filter
+			gotLimit = limit
+			return items, true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	filter := agentdom.ListAgentActivitiesFilter{ActorMemberID: memberID}
+	result, hasMore, err := svc.ListAgentActivities(context.Background(), filter, 20)
+
+	assert.NoError(t, err)
+	assert.True(t, hasMore)
+	assert.Equal(t, items, result)
+	assert.Equal(t, 20, gotLimit)
+	assert.Equal(t, memberID, gotFilter.ActorMemberID)
+}
+
+func TestListAgentActivities_PropagatesRepoError(t *testing.T) {
+	repo := &mockAgentRepo{
+		listAgentActivities: func(_ context.Context, _ agentdom.ListAgentActivitiesFilter, _ int) ([]*agentdom.ActivityFeedItem, bool, error) {
+			return nil, false, agentdom.ErrActivityFeedInvalidCursor
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, hasMore, err := svc.ListAgentActivities(context.Background(), agentdom.ListAgentActivitiesFilter{}, 20)
+
+	assert.ErrorIs(t, err, agentdom.ErrActivityFeedInvalidCursor)
 	assert.False(t, hasMore)
 }
 
