@@ -19,6 +19,15 @@
 				"migrations": "数据库迁移",
 				"mcp": "MCP",
 				"skills": "技能"
+			},
+			"errors": {
+				"incompatibleHostVersion": "此插件需要 Paca {{required}} 或更高版本。您当前运行的是 {{current}}。",
+				"incompatibleHostVersionGeneric": "此插件需要比当前运行版本更新的 Paca 版本。",
+				"alreadyUpToDate": "此插件已是最新版本。",
+				"downgradeNotAllowed": "无法安装比已安装版本更旧的版本。",
+				"notFound": "此插件在插件市场中已不可用。",
+				"nameTaken": "已安装同名插件。",
+				"generic": "出现错误，请重试。"
 			}
 		}
 	},

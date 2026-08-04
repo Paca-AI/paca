@@ -19,6 +19,15 @@
 				"migrations": "마이그레이션",
 				"mcp": "MCP",
 				"skills": "스킬"
+			},
+			"errors": {
+				"incompatibleHostVersion": "이 플러그인을 사용하려면 Paca {{required}} 이상이 필요합니다. 현재 버전: {{current}}.",
+				"incompatibleHostVersionGeneric": "이 플러그인을 사용하려면 현재 실행 중인 버전보다 최신 Paca 버전이 필요합니다.",
+				"alreadyUpToDate": "이 플러그인은 이미 최신 버전입니다.",
+				"downgradeNotAllowed": "이미 설치된 버전보다 이전 버전은 설치할 수 없습니다.",
+				"notFound": "이 플러그인은 더 이상 마켓플레이스에서 사용할 수 없습니다.",
+				"nameTaken": "이 이름의 플러그인이 이미 설치되어 있습니다.",
+				"generic": "문제가 발생했습니다. 다시 시도해 주세요."
 			}
 		}
 	},

@@ -75,6 +75,13 @@ export const ApiErrorCode = {
 	GitHubBranchAlreadyLinked: "GITHUB_BRANCH_ALREADY_LINKED",
 	GitHubTokenInsufficientPermissions: "GITHUB_TOKEN_INSUFFICIENT_PERMISSIONS",
 
+	// Plugin domain errors.
+	PluginNotFound: "PLUGIN_NOT_FOUND",
+	PluginNameTaken: "PLUGIN_NAME_TAKEN",
+	PluginAlreadyUpToDate: "PLUGIN_ALREADY_UP_TO_DATE",
+	PluginDowngradeNotAllowed: "PLUGIN_DOWNGRADE_NOT_ALLOWED",
+	PluginIncompatibleHostVersion: "PLUGIN_INCOMPATIBLE_HOST_VERSION",
+
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
 	InternalError: "INTERNAL_ERROR",
@@ -105,6 +112,12 @@ export interface ApiErrorEnvelope {
 	success: false;
 	error_code: ApiErrorCode;
 	error: string;
+	/**
+	 * Structured, non-localized values for the handful of error codes that
+	 * need them (e.g. `PLUGIN_INCOMPATIBLE_HOST_VERSION` carries
+	 * `required_version`/`host_version`) — see `getApiErrorDetails`.
+	 */
+	error_details?: Record<string, string>;
 	request_id?: string;
 }
 
@@ -123,4 +136,33 @@ export function getApiErrorCode(error: unknown): ApiErrorCode | null {
 	if (!code) return null;
 	const known = Object.values(ApiErrorCode) as string[];
 	return known.includes(code) ? (code as ApiErrorCode) : null;
+}
+
+/**
+ * Extracts the human-readable `error` message from an API error envelope.
+ * This is free-text set by the server and is never localized — prefer
+ * `getApiErrorDetails` plus a translated string with interpolation when the
+ * code supports it, and fall back to this only for unrecognized codes.
+ * Returns `null` when the error is not an API error envelope.
+ */
+export function getApiErrorMessage(error: unknown): string | null {
+	const err = error as {
+		response?: { data?: { error?: string } };
+	};
+	return err?.response?.data?.error ?? null;
+}
+
+/**
+ * Extracts the structured `error_details` map from an API error envelope
+ * (see `ApiErrorEnvelope.error_details`) — values here are plain data (IDs,
+ * version numbers), never translated text, so they're safe to interpolate
+ * into a locally translated string. Returns `null` when absent.
+ */
+export function getApiErrorDetails(
+	error: unknown,
+): Record<string, string> | null {
+	const err = error as {
+		response?: { data?: { error_details?: Record<string, string> } };
+	};
+	return err?.response?.data?.error_details ?? null;
 }

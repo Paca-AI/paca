@@ -252,7 +252,7 @@ func New(cfg *config.Config) (*App, error) {
 	installerHTTPClient := &http.Client{Timeout: cfg.Plugins.MarketplaceTimeout}
 	pluginInstaller := pluginrt.NewInstaller(cfg.Plugins.WASMDir, cfg.Plugins.FrontendDir, cfg.Plugins.MCPDir, cfg.Plugins.SkillsDir, installerHTTPClient, log)
 
-	pluginService := pluginsvc.New(pluginRepo)
+	pluginService := pluginsvc.New(pluginRepo).WithHostVersion(cfg.Release.Version)
 
 	// Load all enabled plugins from the DB into the WASM runtime.
 	installedPlugins, err := pluginService.ListPlugins(context.Background())

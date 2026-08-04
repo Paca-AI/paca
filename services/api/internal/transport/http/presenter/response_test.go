@@ -96,6 +96,49 @@ func TestError_APIErrorCodeMapping(t *testing.T) {
 	}
 }
 
+func TestError_DetailsIncludedForAPIErrorWithDetails(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := newTestRequest("")
+
+	Error(w, r, apierr.NewWithDetails(
+		apierr.CodePluginIncompatibleHostVersion,
+		"plugin requires a newer host",
+		map[string]string{"required_version": "v0.11.2", "host_version": "v0.10.0"},
+	))
+
+	var env envelope
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if env.ErrorDetails["required_version"] != "v0.11.2" {
+		t.Fatalf("expected required_version detail %q, got %q", "v0.11.2", env.ErrorDetails["required_version"])
+	}
+	if env.ErrorDetails["host_version"] != "v0.10.0" {
+		t.Fatalf("expected host_version detail %q, got %q", "v0.10.0", env.ErrorDetails["host_version"])
+	}
+}
+
+func TestError_DetailsOmittedWhenNotSet(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := newTestRequest("")
+
+	Error(w, r, apierr.New(apierr.CodeBadRequest, "bad request body"))
+
+	if strings := w.Body.String(); jsonHasKey(t, strings, "error_details") {
+		t.Fatalf("expected error_details to be omitted, got body: %s", strings)
+	}
+}
+
+func jsonHasKey(t *testing.T, body, key string) bool {
+	t.Helper()
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	_, ok := raw[key]
+	return ok
+}
+
 func TestError_InternalMessageIsSanitized(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := newTestRequest("")

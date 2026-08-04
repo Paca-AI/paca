@@ -30,7 +30,12 @@ type envelope struct {
 	Data      any    `json:"data,omitempty"`
 	ErrorCode string `json:"error_code,omitempty"`
 	Error     string `json:"error,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
+	// ErrorDetails carries structured, non-localized values for the handful
+	// of error codes that need them (see apierr.Error.Details) — a client
+	// renders its own translated message by interpolating these values
+	// rather than displaying Error, which is English-only prose.
+	ErrorDetails map[string]string `json:"error_details,omitempty"`
+	RequestID    string            `json:"request_id,omitempty"`
 }
 
 // OK writes a 200 success response.
@@ -71,7 +76,18 @@ func Accepted(w http.ResponseWriter, r *http.Request, data any) {
 // a JSON error envelope.  If err is an *apierr.Error, its code is used
 // directly; otherwise the code is derived from known domain sentinel errors.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
-	status, code := statusAndCodeFor(err)
+	// Resolve *apierr.Error once: it both settles the status/code (mirroring
+	// statusAndCodeFor's own precedence) and carries any structured Details,
+	// so a second errors.As walk isn't needed below.
+	var apiErr *apierr.Error
+	var status int
+	var code apierr.Code
+	if errors.As(err, &apiErr) {
+		code = apiErr.Code
+		status = httpStatusForCode(code)
+	} else {
+		status, code = statusAndCodeFor(err)
+	}
 
 	// For internal/unexpected errors, avoid leaking implementation details to clients.
 	publicMsg := err.Error()
@@ -80,11 +96,17 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		publicMsg = "internal server error"
 	}
 
+	var details map[string]string
+	if apiErr != nil {
+		details = apiErr.Details
+	}
+
 	httpx.WriteJSON(w, status, envelope{
-		Success:   false,
-		ErrorCode: string(code),
-		Error:     publicMsg,
-		RequestID: httpx.RequestIDFromContext(r.Context()),
+		Success:      false,
+		ErrorCode:    string(code),
+		Error:        publicMsg,
+		ErrorDetails: details,
+		RequestID:    httpx.RequestIDFromContext(r.Context()),
 	})
 }
 
@@ -516,7 +538,8 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusNotFound
 	case apierr.CodePluginNameTaken,
 		apierr.CodePluginAlreadyUpToDate,
-		apierr.CodePluginDowngradeNotAllowed:
+		apierr.CodePluginDowngradeNotAllowed,
+		apierr.CodePluginIncompatibleHostVersion:
 		return http.StatusConflict
 	case apierr.CodePayloadTooLarge:
 		return http.StatusRequestEntityTooLarge

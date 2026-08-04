@@ -41,6 +41,15 @@ type Service interface {
 	// UpdatePlugin patches an existing plugin registration.
 	UpdatePlugin(ctx context.Context, id uuid.UUID, input UpdateInput) (*Plugin, error)
 
+	// CheckHostCompatibility reports whether the running host version
+	// satisfies manifest's declared MinCoreVersion, without persisting
+	// anything. Callers that install/update a plugin outside a single
+	// InstallPlugin/UpdatePlugin call (e.g. a marketplace upgrade that
+	// downloads artifacts and runs migrations before persisting) must call
+	// this explicitly and early, before any of those side effects, so an
+	// incompatible upgrade never becomes live even briefly.
+	CheckHostCompatibility(manifest PluginManifest) error
+
 	// DeletePlugin removes a plugin from the registry.
 	DeletePlugin(ctx context.Context, id uuid.UUID) error
 
