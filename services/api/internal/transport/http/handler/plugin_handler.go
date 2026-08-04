@@ -192,9 +192,9 @@ func (h *PluginHandler) InstallMarketplacePlugin(w http.ResponseWriter, r *http.
 		return
 	}
 
-	manifest, err := h.installer.Install(r.Context(), *entry)
+	manifest, err := h.installer.Install(r.Context(), *entry, h.svc.CheckHostCompatibility)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "failed to install plugin artifacts: "+err.Error()))
+		presenter.Error(w, r, installArtifactsError(err))
 		return
 	}
 
@@ -379,10 +379,13 @@ func (h *PluginHandler) UpgradeMarketplacePlugin(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Download and overwrite existing artifacts.
-	manifest, err := h.installer.Install(r.Context(), *entry)
+	// Download and overwrite existing artifacts. CheckHostCompatibility runs
+	// inside Install, before any of the currently-installed plugin's live
+	// files are touched, so an incompatible upgrade leaves them untouched
+	// entirely rather than requiring cleanup after the fact.
+	manifest, err := h.installer.Install(r.Context(), *entry, h.svc.CheckHostCompatibility)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "failed to install plugin artifacts: "+err.Error()))
+		presenter.Error(w, r, installArtifactsError(err))
 		return
 	}
 	if manifest.Version != entry.Version {
@@ -394,18 +397,6 @@ func (h *PluginHandler) UpgradeMarketplacePlugin(w http.ResponseWriter, r *http.
 				entry.Version,
 			),
 		))
-		return
-	}
-
-	// Reject an incompatible minCoreVersion before running migrations or
-	// loading the new binary into the runtime — checking only at the final
-	// persistence step (inside UpdatePlugin, below) would let an incompatible
-	// upgrade run migrations and go live in the runtime before being rejected.
-	if err := h.svc.CheckHostCompatibility(manifest); err != nil {
-		if cleanupErr := h.installer.Uninstall(installed.Name); cleanupErr != nil {
-			slog.Error("plugin upgrade: failed to clean up installed artifacts after host compatibility check failure", "name", installed.Name, "error", cleanupErr)
-		}
-		presenter.Error(w, r, err)
 		return
 	}
 
@@ -1030,4 +1021,17 @@ func parsePluginID(r *http.Request) (uuid.UUID, error) {
 		return uuid.Nil, apierr.New(apierr.CodeBadRequest, "invalid pluginId: "+raw)
 	}
 	return id, nil
+}
+
+// installArtifactsError maps an error from Installer.Install to a response
+// error. A *apierr.Error (from the checkManifest callback, e.g.
+// PLUGIN_INCOMPATIBLE_HOST_VERSION with its structured Details) is passed
+// through unchanged so the client still gets the specific code/details;
+// anything else (download/extract/parse failures) is a generic bad request.
+func installArtifactsError(err error) error {
+	var apiErr *apierr.Error
+	if errors.As(err, &apiErr) {
+		return apiErr
+	}
+	return apierr.New(apierr.CodeBadRequest, "failed to install plugin artifacts: "+err.Error())
 }
