@@ -7,13 +7,105 @@
 #   curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh -o install.sh
 #   bash install.sh
 #
-# ── One-liner (non-interactive, all defaults + auto-generated secrets) ────────
-#   bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
+# ── Non-interactive (CI, scripts, AI coding agents) ──────────────────────────
+#   Set PACA_YES=1. This is REQUIRED for unattended use — without it, any
+#   prompt this script reaches will block on a `read`, and in a sandbox that
+#   provides a pty but no human to type into it, that read never returns.
+#   PACA_YES=1 alone is enough to guarantee zero prompts (every field falls
+#   back to a sane default, generating fresh random secrets as needed); add
+#   any of the variables below beforehand to steer specific choices instead
+#   of accepting the default.
 #
-# ── Environment variable overrides ───────────────────────────────────────────
-#   PACA_DIR         Installation directory      (default: ./paca)
-#   PACA_VERSION     Release tag to install      (default: latest)
-#   PACA_YES         Skip prompts, use defaults  (set to 1)
+#   PACA_YES=1 bash install.sh
+#   # or, without a local copy of the script at all:
+#   PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
+#
+# ── AI agents: use this script, not a hand-rolled docker-compose/.env ───────
+#   This script is the source of truth for a working deployment — it pins
+#   compatible image tags, generates every required secret with the right
+#   format/length, and writes a `.env` the bundled Caddyfile and compose file
+#   expect. Prefer `PACA_YES=1 bash install.sh` (with env overrides below)
+#   over reconstructing docker-compose.yml / .env by hand from the README —
+#   it is less likely to drift from what a given release actually needs.
+#
+# ── Environment variable reference ───────────────────────────────────────────
+#   Variables named after an actual `.env` key (DATABASE_URL, STORAGE_*,
+#   BACKUP_*, PUBLIC_URL, GATEWAY_PORT, ADMIN_*, ENCRYPTION_KEY, JWT_SECRET,
+#   POSTGRES_PASSWORD, AGENT_API_KEY, INTERNAL_API_KEY) are written to `.env`
+#   verbatim when set. Variables prefixed `PACA_` are installer-only choices
+#   that steer which branch of a prompt is taken, with two exceptions —
+#   PACA_WEB and PACA_AI_AGENT are also written to `.env` verbatim (see
+#   "Web app" / "AI agent" below), so upgrade.sh can read the choice back.
+#   Every variable below is optional; unset ones get a generated or default
+#   value. Secrets left unset are auto-generated and printed at the end of a
+#   successful run (and saved in `.env`) — nothing is silently left blank.
+#
+#   General
+#     PACA_DIR                    Installation directory              (default: ./paca)
+#     PACA_VERSION                Release tag to install               (default: latest)
+#     PACA_YES                    Skip prompts, use defaults           (set to 1)
+#     PACA_START                  Pull images and start after writing  (default: yes)
+#                                  config; yes/no.
+#
+#   Admin account
+#     ADMIN_USERNAME               (default: admin; min 3 chars)
+#     ADMIN_PASSWORD               (default: auto-generated 16 chars; min 8 if set)
+#
+#   Encryption (plugin secrets at rest)
+#     ENCRYPTION_KEY               64-char lowercase hex (default: auto-generated).
+#                                  Reusing an existing DB? You MUST supply its
+#                                  original key here — a different one makes
+#                                  existing encrypted values unreadable.
+#
+#   Database
+#     DATABASE_URL                 Setting this selects external/managed
+#                                  Postgres and suppresses the bundled
+#                                  container; leave unset for bundled Postgres.
+#     POSTGRES_PASSWORD            Bundled Postgres only (default: auto-generated)
+#
+#   Database backups (bundled Postgres only; skipped for external DB)
+#     BACKUP_ENABLED               true/false                          (default: true)
+#     BACKUP_DIR                   (default: ./backups)
+#     BACKUP_CRON                  5-field cron, UTC                   (default: "0 2 * * *")
+#     BACKUP_RETENTION_DAYS        (default: 7)
+#
+#   Object storage
+#     STORAGE_PROVIDER             minio/s3                            (default: minio)
+#     STORAGE_REGION                                                   (default: us-east-1)
+#     STORAGE_BUCKET                Required if STORAGE_PROVIDER=s3     (default: paca for minio)
+#     STORAGE_ACCESS_KEY_ID         Required if STORAGE_PROVIDER=s3     (default: auto-generated for minio)
+#     STORAGE_SECRET_ACCESS_KEY     Required if STORAGE_PROVIDER=s3     (default: auto-generated for minio)
+#
+#   Network
+#     PACA_ADDRESS                 Domain or IP Paca is reachable at    (default: localhost)
+#     PACA_HTTPS                   yes/no; ignored for localhost        (default: yes)
+#     GATEWAY_PORT                 Only used when serving plain HTTP    (default: 80)
+#     PUBLIC_URL                   Full public URL, no trailing slash   (default: derived from the above)
+#
+#   Web app
+#     PACA_WEB                     bundled/external                    (default: bundled)
+#
+#   AI agent
+#     PACA_AI_AGENT                yes/no                               (default: yes)
+#     AGENT_API_KEY                 (default: auto-generated)
+#     INTERNAL_API_KEY              (default: auto-generated)
+#
+#   PACA_WEB and PACA_AI_AGENT are also written to .env, so upgrade.sh can
+#   read the choice back and keep these services scaled to 0 automatically on
+#   future upgrades — you won't need to re-pass --scale web=0 / --scale
+#   ai-agent=0 by hand each time.
+#
+#   Other secrets
+#     JWT_SECRET                    (default: auto-generated)
+#
+#   Full example — fully unattended, custom domain, S3, no AI agent:
+#     PACA_YES=1 \
+#     PACA_ADDRESS=paca.example.com \
+#     STORAGE_PROVIDER=s3 STORAGE_BUCKET=my-bucket \
+#     STORAGE_ACCESS_KEY_ID=AKIA... STORAGE_SECRET_ACCESS_KEY=... \
+#     PACA_AI_AGENT=no \
+#     ADMIN_PASSWORD='a-strong-password' \
+#     bash install.sh
 
 set -euo pipefail
 
@@ -39,6 +131,28 @@ bold()    { echo -e "${BOLD}$*${RESET}"; }
 rand_hex()    { ( set +o pipefail; LC_ALL=C tr -dc 'a-f0-9'    </dev/urandom | head -c "${1:-32}"; ); }
 rand_alnum()  { ( set +o pipefail; LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-24}"; ); }
 
+# has_ctty
+# /dev/tty is a device node that exists on disk regardless of whether this
+# process actually has a controlling terminal to open — `[[ -e /dev/tty ]]`
+# is therefore always true on Linux and doesn't tell us anything. Actually
+# attempting to open it is the only reliable test, and it must be the
+# condition of an if/elif so a failure (no ctty: ENXIO) doesn't trip
+# `set -e` and kill the whole script.
+has_ctty() { { : </dev/tty; } 2>/dev/null; }
+
+# is_noninteractive
+# True exactly when ask() below would resolve to its default without ever
+# blocking on real input — PACA_YES=1, or neither stdin nor /dev/tty is
+# available to read from. Mirrors ask()'s own branching so fail-fast
+# validation (below) only fires for the cases that would otherwise loop
+# forever; a genuinely interactive session can just be re-prompted instead.
+is_noninteractive() {
+    [[ "${PACA_YES:-0}" == "1" ]] && return 0
+    [[ -t 0 ]] && return 1
+    has_ctty && return 1
+    return 0
+}
+
 # ask VAR "Question" "default"
 # Reads from /dev/tty when stdin is a pipe (curl | bash).
 ask() {
@@ -60,7 +174,7 @@ ask() {
     fi
     if [[ -t 0 ]]; then
         read -r -p "$(echo -e "$prompt")" _input
-    elif [[ -e /dev/tty ]]; then
+    elif has_ctty; then
         read -r -p "$(echo -e "$prompt")" _input </dev/tty
     else
         printf -v "$_var" %s "${default}"
@@ -82,18 +196,22 @@ ask_secret() {
     fi
     if [[ -t 0 ]]; then
         read -r -s -p "$(echo -e "$prompt")" _input; echo
-    elif [[ -e /dev/tty ]]; then
+    elif has_ctty; then
         read -r -s -p "$(echo -e "$prompt")" _input </dev/tty; echo
     fi
     printf -v "$_var" %s "$_input"
 }
 
-# ask_choice VAR "Question" option1 option2 ...
+# ask_choice VAR "Question" default_idx option1 option2 ...
+# default_idx is the 1-based option picked under PACA_YES=1 (or a bare
+# Enter) — callers compute it from an env var so a choice can be steered
+# non-interactively instead of always landing on option 1.
 # Returns the chosen option string.
 ask_choice() {
     local _var="$1"
     local question="$2"
-    shift 2
+    local default_idx="$3"
+    shift 3
     local options=("$@")
     local i
 
@@ -103,11 +221,11 @@ ask_choice() {
     done
 
     local choice=""
-    ask choice "Choice" "1"
+    ask choice "Choice" "$default_idx"
     local idx=$(( choice - 1 ))
     if (( idx < 0 || idx >= ${#options[@]} )); then
-        warn "Invalid choice, using default (1)"
-        idx=0
+        warn "Invalid choice, using default (${default_idx})"
+        idx=$(( default_idx - 1 ))
     fi
     printf -v "$_var" %s "${options[$idx]}"
 }
@@ -211,6 +329,14 @@ validate_username() {
     return 0
 }
 
+# Fail fast (rather than looping forever on a `read` nobody will answer) if
+# an env-supplied default is already invalid under PACA_YES=1 or any other
+# non-interactive run, where every prompt below just re-returns the same
+# default. A genuinely interactive run still gets re-prompted below instead.
+if is_noninteractive && ! validate_username "$ADMIN_USERNAME"; then
+    die "ADMIN_USERNAME (\"${ADMIN_USERNAME}\") is invalid: must be at least 3 characters."
+fi
+
 while true; do
     ask ADMIN_USERNAME "Admin username" "$ADMIN_USERNAME"
     if validate_username "$ADMIN_USERNAME"; then
@@ -271,27 +397,44 @@ echo "  supply the original key — a different key makes all existing encrypted
 echo "  values permanently unreadable."
 echo ""
 
-ENCRYPTION_KEY=""
+ENCRYPTION_KEY="${ENCRYPTION_KEY:-}"
 ENCRYPTION_KEY_GENERATED=0
-ask_secret ENCRYPTION_KEY "Encryption key — 64-char hex (leave blank to generate)"
 
-if [[ -z "$ENCRYPTION_KEY" ]]; then
-    ENCRYPTION_KEY="$(rand_hex 64)"
-    ENCRYPTION_KEY_GENERATED=1
-    info "Encryption key generated."
-else
+# If a key was supplied via env var, validate it before proceeding — same
+# pattern as ADMIN_PASSWORD above, so a bad env value fails loudly instead of
+# silently falling through to a prompt that will never be answered.
+if [[ -n "$ENCRYPTION_KEY" ]]; then
     if [[ ! "$ENCRYPTION_KEY" =~ ^[a-f0-9]{64}$ ]]; then
-        die "Invalid encryption key: must be exactly 64 lowercase hex characters (32 bytes). Generate one with: openssl rand -hex 32"
+        die "Invalid ENCRYPTION_KEY: must be exactly 64 lowercase hex characters (32 bytes). Generate one with: openssl rand -hex 32"
     fi
-    info "Using the provided encryption key."
+    info "Using the encryption key from the environment."
+else
+    ask_secret ENCRYPTION_KEY "Encryption key — 64-char hex (leave blank to generate)"
+
+    if [[ -z "$ENCRYPTION_KEY" ]]; then
+        ENCRYPTION_KEY="$(rand_hex 64)"
+        ENCRYPTION_KEY_GENERATED=1
+        info "Encryption key generated."
+    else
+        if [[ ! "$ENCRYPTION_KEY" =~ ^[a-f0-9]{64}$ ]]; then
+            die "Invalid encryption key: must be exactly 64 lowercase hex characters (32 bytes). Generate one with: openssl rand -hex 32"
+        fi
+        info "Using the provided encryption key."
+    fi
 fi
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
 heading "Database"
 
+# Setting DATABASE_URL implies "external" without a separate choice
+# variable — an agent that supplies a connection string obviously wants it
+# used, and this keeps one env var in sync instead of two.
+DB_DEFAULT_IDX=1
+[[ -n "${DATABASE_URL:-}" ]] && DB_DEFAULT_IDX=2
+
 DB_CHOICE=""
-ask_choice DB_CHOICE "How should Paca store data?" \
+ask_choice DB_CHOICE "How should Paca store data?" "$DB_DEFAULT_IDX" \
     "Bundled PostgreSQL container (recommended)" \
     "External / managed PostgreSQL (bring your own)"
 
@@ -301,12 +444,24 @@ POSTGRES_PASSWORD_VALUE=""
 
 if [[ "$DB_CHOICE" == *"External"* ]]; then
     SCALE_POSTGRES="--scale postgres=0"
-    ask DATABASE_URL_OVERRIDE "PostgreSQL connection URL" "postgres://user:pass@host:5432/dbname"
+    # ask() prints its default inline (e.g. "[postgres://user:pass@host/db]:"),
+    # so passing DATABASE_URL through as the default would echo its embedded
+    # credentials to the terminal. Use it directly instead — same pattern as
+    # STORAGE_SECRET_ACCESS_KEY below — and only prompt when it's unset.
+    if [[ -n "${DATABASE_URL:-}" ]]; then
+        DATABASE_URL_OVERRIDE="$DATABASE_URL"
+        info "Using the PostgreSQL connection URL from the environment."
+    else
+        ask DATABASE_URL_OVERRIDE "PostgreSQL connection URL" "postgres://user:pass@host:5432/dbname"
+    fi
+    if [[ -z "$DATABASE_URL_OVERRIDE" || "$DATABASE_URL_OVERRIDE" == "postgres://user:pass@host:5432/dbname" ]]; then
+        die "External PostgreSQL selected but no real DATABASE_URL was given. Set the DATABASE_URL env var or rerun interactively and type a real connection string."
+    fi
     # Set a placeholder so the compose's ${POSTGRES_PASSWORD:-changeme} default doesn't matter.
     POSTGRES_PASSWORD_VALUE="not-used-external-db"
     info "External PostgreSQL will be used."
 else
-    POSTGRES_PASSWORD_VALUE="$(rand_alnum 20)"
+    POSTGRES_PASSWORD_VALUE="${POSTGRES_PASSWORD:-$(rand_alnum 20)}"
     info "A bundled PostgreSQL container will be started."
 fi
 
@@ -315,10 +470,14 @@ fi
 heading "Database backups"
 
 SCALE_DB_BACKUP=""
+# Capture the env-supplied enable/disable choice before BACKUP_ENABLED gets
+# reused below as the actual (branch-dependent) output value. Normalized to
+# lowercase so False/FALSE/0 are recognized too, not just a literal "false".
+BACKUP_ENABLED_INPUT="$(printf '%s' "${BACKUP_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
 BACKUP_ENABLED="true"
-BACKUP_DIR="./backups"
-BACKUP_CRON="0 2 * * *"
-BACKUP_RETENTION_DAYS="7"
+BACKUP_DIR="${BACKUP_DIR:-./backups}"
+BACKUP_CRON="${BACKUP_CRON:-0 2 * * *}"
+BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
 
 # validate_cron VALUE
 # Checks the same field count the db-backup container enforces at startup
@@ -358,13 +517,24 @@ else
     echo ""
 
     INCLUDE_BACKUPS="yes"
-    yes_no INCLUDE_BACKUPS "Enable automated database backups?" "y"
+    BACKUP_DEFAULT="y"
+    case "$BACKUP_ENABLED_INPUT" in false|0) BACKUP_DEFAULT="n" ;; esac
+    yes_no INCLUDE_BACKUPS "Enable automated database backups?" "$BACKUP_DEFAULT"
 
     if [[ "$INCLUDE_BACKUPS" == "no" ]]; then
         SCALE_DB_BACKUP="--scale db-backup=0"
         BACKUP_ENABLED="false"
         info "Automated backups will be skipped."
     else
+        # Fail fast (rather than looping forever on a `read` nobody will
+        # answer) if an env-supplied BACKUP_CRON is already invalid. Checked
+        # only here — once backups are confirmed to actually run — since an
+        # external-DB or backups-disabled install never reads this value, and
+        # a bad-but-irrelevant BACKUP_CRON in the environment shouldn't kill
+        # an otherwise-valid install.
+        if is_noninteractive && ! validate_cron "$BACKUP_CRON"; then
+            die "BACKUP_CRON (\"${BACKUP_CRON}\") is invalid: must be 5 whitespace-separated fields of digits and * , - /."
+        fi
         ask BACKUP_DIR "Directory to store backups in" "$BACKUP_DIR"
         while true; do
             ask BACKUP_CRON "Backup schedule (cron syntax, interpreted in UTC unless you set TZ in .env later)" "$BACKUP_CRON"
@@ -382,19 +552,19 @@ fi
 
 heading "Object storage"
 
+# STORAGE_PROVIDER doubles as both the .env output key and the input
+# selector here — set it to "s3" or "minio" beforehand to skip this prompt.
+STORAGE_DEFAULT_IDX=1
+[[ "${STORAGE_PROVIDER:-}" == "s3" ]] && STORAGE_DEFAULT_IDX=2
+
 STORAGE_CHOICE=""
-ask_choice STORAGE_CHOICE "Where should file attachments be stored?" \
+ask_choice STORAGE_CHOICE "Where should file attachments be stored?" "$STORAGE_DEFAULT_IDX" \
     "Self-hosted MinIO (recommended, no cloud account needed)" \
     "AWS S3"
 
 SCALE_MINIO=""
-STORAGE_PROVIDER="minio"
 STORAGE_ENDPOINT="minio:9000"
 STORAGE_USE_SSL="false"
-STORAGE_REGION="us-east-1"
-STORAGE_BUCKET="paca"
-STORAGE_ACCESS_KEY_ID="$(rand_alnum 16)"
-STORAGE_SECRET_ACCESS_KEY="$(rand_alnum 32)"
 
 if [[ "$STORAGE_CHOICE" == *"AWS"* ]]; then
     SCALE_MINIO="--scale minio=0"
@@ -402,10 +572,14 @@ if [[ "$STORAGE_CHOICE" == *"AWS"* ]]; then
     STORAGE_ENDPOINT=""
     STORAGE_USE_SSL="true"
 
-    ask STORAGE_REGION    "AWS region"          "us-east-1"
-    ask STORAGE_BUCKET    "S3 bucket name"      ""
-    ask STORAGE_ACCESS_KEY_ID    "AWS access key ID"     ""
-    ask_secret STORAGE_SECRET_ACCESS_KEY "AWS secret access key"
+    ask STORAGE_REGION    "AWS region"          "${STORAGE_REGION:-us-east-1}"
+    ask STORAGE_BUCKET    "S3 bucket name"      "${STORAGE_BUCKET:-}"
+    ask STORAGE_ACCESS_KEY_ID    "AWS access key ID"     "${STORAGE_ACCESS_KEY_ID:-}"
+    if [[ -n "${STORAGE_SECRET_ACCESS_KEY:-}" ]]; then
+        info "Using the AWS secret access key from the environment."
+    else
+        ask_secret STORAGE_SECRET_ACCESS_KEY "AWS secret access key"
+    fi
 
     if [[ -z "$STORAGE_BUCKET" ]]; then
         die "S3 bucket name is required."
@@ -415,6 +589,11 @@ if [[ "$STORAGE_CHOICE" == *"AWS"* ]]; then
     fi
     info "AWS S3 will be used (bucket: ${STORAGE_BUCKET}, region: ${STORAGE_REGION})."
 else
+    STORAGE_PROVIDER="minio"
+    STORAGE_REGION="${STORAGE_REGION:-us-east-1}"
+    STORAGE_BUCKET="${STORAGE_BUCKET:-paca}"
+    STORAGE_ACCESS_KEY_ID="${STORAGE_ACCESS_KEY_ID:-$(rand_alnum 16)}"
+    STORAGE_SECRET_ACCESS_KEY="${STORAGE_SECRET_ACCESS_KEY:-$(rand_alnum 32)}"
     info "Self-hosted MinIO will be started."
 fi
 
@@ -431,28 +610,27 @@ echo "  over plain HTTP instead, since it never needs (or can get) a certificate
 echo ""
 
 ADDRESS=""
-ask ADDRESS "Domain name (recommended) or IP address Paca will be accessible at" "localhost"
+ask ADDRESS "Domain name (recommended) or IP address Paca will be accessible at" "${PACA_ADDRESS:-localhost}"
 
-GATEWAY_PORT="80"
+GATEWAY_PORT="${GATEWAY_PORT:-80}"
 
 if [[ "$ADDRESS" == "localhost" ]]; then
     USE_HTTPS="no"
     info "Using localhost — serving over plain HTTP."
 else
-    USE_HTTPS="yes"
-    yes_no USE_HTTPS "Serve over HTTPS?" "y"
+    yes_no USE_HTTPS "Serve over HTTPS?" "${PACA_HTTPS:-y}"
 fi
 
 if [[ "$USE_HTTPS" == "yes" ]]; then
     SITE_ADDRESS="$ADDRESS"
-    PUBLIC_URL="https://${ADDRESS}"
+    PUBLIC_URL="${PUBLIC_URL:-https://${ADDRESS}}"
 
     info "Caddy will obtain a certificate for ${ADDRESS} on first start — a trusted"
     info "Let's Encrypt certificate if DNS resolves here, otherwise a local one."
     warn "Ports 80 and 443 must both be reachable from the internet for Let's Encrypt to succeed."
 else
     SITE_ADDRESS=":80"
-    ask GATEWAY_PORT "Gateway port (the port Paca will be accessible on)" "80"
+    ask GATEWAY_PORT "Gateway port (the port Paca will be accessible on)" "$GATEWAY_PORT"
 
     # Derive a sensible default public URL from the port.
     if [[ "$GATEWAY_PORT" == "80" ]]; then
@@ -461,7 +639,7 @@ else
         _DEFAULT_PUBLIC_URL="http://${ADDRESS}:${GATEWAY_PORT}"
     fi
 
-    ask PUBLIC_URL "Public URL (full URL where Paca will be accessible, no trailing slash)" "$_DEFAULT_PUBLIC_URL"
+    ask PUBLIC_URL "Public URL (full URL where Paca will be accessible, no trailing slash)" "${PUBLIC_URL:-$_DEFAULT_PUBLIC_URL}"
 fi
 
 PUBLIC_URL="${PUBLIC_URL%/}"  # strip trailing slash
@@ -484,14 +662,18 @@ fi
 
 heading "Web application"
 
+WEB_DEFAULT_IDX=1
+[[ "${PACA_WEB:-}" == "external" ]] && WEB_DEFAULT_IDX=2
+
 WEB_CHOICE=""
-ask_choice WEB_CHOICE "How do you want to serve the web app?" \
+ask_choice WEB_CHOICE "How do you want to serve the web app?" "$WEB_DEFAULT_IDX" \
     "Bundled container (recommended – Caddy serves the built React SPA)" \
     "External hosting (S3, CloudFront, Vercel, etc. – only API services run here)"
 
 SCALE_WEB=""
 if [[ "$WEB_CHOICE" == *"External"* ]]; then
     SCALE_WEB="--scale web=0"
+    PACA_WEB="external"
     echo ""
     warn "The web container will be skipped."
     warn "Build the SPA from source and deploy the dist/ folder to your CDN."
@@ -499,6 +681,7 @@ if [[ "$WEB_CHOICE" == *"External"* ]]; then
     echo ""
     info "The gateway will still serve /api/, /ws/, and /storage/ routes."
 else
+    PACA_WEB="bundled"
     info "Bundled web container will be started."
 fi
 
@@ -511,11 +694,11 @@ echo "  It requires access to the Docker socket on the host machine."
 echo ""
 
 INCLUDE_AI_AGENT="yes"
-yes_no INCLUDE_AI_AGENT "Include the AI agent service?" "y"
+yes_no INCLUDE_AI_AGENT "Include the AI agent service?" "${PACA_AI_AGENT:-y}"
 
 SCALE_AI_AGENT=""
-AGENT_API_KEY="$(rand_hex 32)"
-INTERNAL_API_KEY="$(rand_hex 32)"
+AGENT_API_KEY="${AGENT_API_KEY:-$(rand_hex 32)}"
+INTERNAL_API_KEY="${INTERNAL_API_KEY:-$(rand_hex 32)}"
 
 if [[ "$INCLUDE_AI_AGENT" == "no" ]]; then
     SCALE_AI_AGENT="--scale ai-agent=0"
@@ -562,7 +745,7 @@ else
 fi
 
 if [[ "$KEEP_ENV" == "no" ]]; then
-    JWT_SECRET="$(rand_hex 32)"
+    JWT_SECRET="${JWT_SECRET:-$(rand_hex 32)}"
 
     cat >.env <<EOF
 # ── Paca environment ──────────────────────────────────────────────────────────
@@ -646,6 +829,12 @@ PORT_POOL_START=10000
 PORT_POOL_SIZE=100
 WORKER_CONCURRENCY=10
 
+# ── Service topology ─────────────────────────────────────────────────────────
+# Recorded so upgrade.sh can keep these services scaled to 0 automatically on
+# future upgrades, instead of you having to re-pass --scale flags every time.
+PACA_WEB=${PACA_WEB}
+PACA_AI_AGENT=${INCLUDE_AI_AGENT}
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL=info
 EOF
@@ -670,7 +859,7 @@ echo -e "  ${BOLD}Admin user  ${RESET}${ADMIN_USERNAME}"
 echo ""
 
 START="yes"
-yes_no START "Pull images and start Paca now?" "y"
+yes_no START "Pull images and start Paca now?" "${PACA_START:-y}"
 
 if [[ "$START" != "yes" ]]; then
     echo ""
