@@ -108,7 +108,7 @@ func pluginKeyNamespace(pluginID string) string {
 // permission or another plugin's custom permission.
 func (m PluginManifest) Validate() error {
 	if m.MinCoreVersion != "" {
-		if _, err := parseStrictSemver(m.MinCoreVersion); err != nil {
+		if _, err := ParseSemver(m.MinCoreVersion); err != nil {
 			return fmt.Errorf("minCoreVersion: %w", err)
 		}
 	}

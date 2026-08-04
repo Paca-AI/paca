@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Paca-AI/api/internal/apierr"
@@ -320,9 +319,10 @@ func (h *PluginHandler) UpdatePlugin(w http.ResponseWriter, r *http.Request) {
 
 // UpgradeMarketplacePlugin handles POST /api/v1/admin/plugins/:pluginId/upgrade.
 // It fetches the latest version from the marketplace catalog, validates that the
-// marketplace version is strictly newer than the installed version, downloads and
-// replaces all artifacts, runs any new migrations, updates the DB record, and
-// reloads the plugin in the WASM runtime.
+// marketplace version is strictly newer than the installed version and that the
+// host satisfies the new manifest's minCoreVersion, downloads and replaces all
+// artifacts, runs any new migrations, updates the DB record, and reloads the
+// plugin in the WASM runtime.
 func (h *PluginHandler) UpgradeMarketplacePlugin(w http.ResponseWriter, r *http.Request) {
 	if h.marketplace == nil || h.installer == nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "marketplace installer not configured"))
@@ -365,7 +365,7 @@ func (h *PluginHandler) UpgradeMarketplacePlugin(w http.ResponseWriter, r *http.
 	}
 
 	// Enforce semver ordering: refuse no-ops and downgrades.
-	cmp, err := compareSemver(entry.Version, installed.Version)
+	cmp, err := plugindom.CompareSemver(entry.Version, installed.Version)
 	if err != nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "version comparison failed: "+err.Error()))
 		return
@@ -394,6 +394,18 @@ func (h *PluginHandler) UpgradeMarketplacePlugin(w http.ResponseWriter, r *http.
 				entry.Version,
 			),
 		))
+		return
+	}
+
+	// Reject an incompatible minCoreVersion before running migrations or
+	// loading the new binary into the runtime — checking only at the final
+	// persistence step (inside UpdatePlugin, below) would let an incompatible
+	// upgrade run migrations and go live in the runtime before being rejected.
+	if err := h.svc.CheckHostCompatibility(manifest); err != nil {
+		if cleanupErr := h.installer.Uninstall(installed.Name); cleanupErr != nil {
+			slog.Error("plugin upgrade: failed to clean up installed artifacts after host compatibility check failure", "name", installed.Name, "error", cleanupErr)
+		}
+		presenter.Error(w, r, err)
 		return
 	}
 
@@ -1018,54 +1030,4 @@ func parsePluginID(r *http.Request) (uuid.UUID, error) {
 		return uuid.Nil, apierr.New(apierr.CodeBadRequest, "invalid pluginId: "+raw)
 	}
 	return id, nil
-}
-
-// compareSemver returns a positive integer when a > b, 0 when equal, and a
-// negative integer when a < b. Only strict "X.Y.Z" (or "vX.Y.Z") versions
-// are accepted; pre-release identifiers and build metadata cause an error.
-func compareSemver(a, b string) (int, error) {
-	pa, err := parseSemver(a)
-	if err != nil {
-		return 0, fmt.Errorf("invalid version %q: %w", a, err)
-	}
-	pb, err := parseSemver(b)
-	if err != nil {
-		return 0, fmt.Errorf("invalid version %q: %w", b, err)
-	}
-	for i := range pa {
-		if pa[i] != pb[i] {
-			return pa[i] - pb[i], nil
-		}
-	}
-	return 0, nil
-}
-
-// parseSemver parses a strict "X.Y.Z" (or "vX.Y.Z") version string into its
-// major, minor, and patch integer components. Pre-release identifiers (e.g.
-// "1.0.0-beta.1") and build metadata (e.g. "1.0.0+001") are rejected with an
-// error so that callers never silently treat different precedence levels as
-// equal.
-func parseSemver(v string) ([3]int, error) {
-	v = strings.TrimPrefix(v, "v")
-	// Reject build metadata.
-	if strings.ContainsRune(v, '+') {
-		return [3]int{}, fmt.Errorf("version %q must not contain build metadata", v)
-	}
-	// Reject pre-release identifiers.
-	if strings.ContainsRune(v, '-') {
-		return [3]int{}, fmt.Errorf("version %q must not contain pre-release identifiers; only strict X.Y.Z versions are supported", v)
-	}
-	parts := strings.SplitN(v, ".", 3)
-	if len(parts) != 3 {
-		return [3]int{}, fmt.Errorf("expected major.minor.patch, got %q", v)
-	}
-	var result [3]int
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return [3]int{}, fmt.Errorf("non-numeric version component %q", p)
-		}
-		result[i] = n
-	}
-	return result, nil
 }

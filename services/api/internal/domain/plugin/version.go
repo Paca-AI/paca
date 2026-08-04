@@ -6,13 +6,14 @@ import (
 	"strings"
 )
 
-// parseStrictSemver parses a strict "X.Y.Z" (or "vX.Y.Z") version string into
-// its major, minor, and patch integer components. Pre-release identifiers
-// (e.g. "1.0.0-beta.1") and build metadata (e.g. "1.0.0+001") are rejected —
-// manifest-authored version fields (Version, MinCoreVersion) are expected to
-// be plain releases, mirroring the strict parsing the upgrade-comparison path
-// already applies to a plugin's own Version field.
-func parseStrictSemver(v string) ([3]int, error) {
+// ParseSemver parses a strict "X.Y.Z" (or "vX.Y.Z") version string into its
+// major, minor, and patch integer components. Pre-release identifiers (e.g.
+// "1.0.0-beta.1") and build metadata (e.g. "1.0.0+001") are rejected with an
+// error so that callers never silently treat different precedence levels as
+// equal. This is the single source of truth for strict semver parsing across
+// the plugin system — manifest-authored version fields (Version,
+// MinCoreVersion) and marketplace-upgrade comparisons both rely on it.
+func ParseSemver(v string) ([3]int, error) {
 	trimmed := strings.TrimPrefix(v, "v")
 	if strings.ContainsRune(trimmed, '+') {
 		return [3]int{}, fmt.Errorf("version %q must not contain build metadata", v)
@@ -33,6 +34,26 @@ func parseStrictSemver(v string) ([3]int, error) {
 		result[i] = n
 	}
 	return result, nil
+}
+
+// CompareSemver returns a positive integer when a > b, 0 when equal, and a
+// negative integer when a < b. Only strict "X.Y.Z" (or "vX.Y.Z") versions are
+// accepted; pre-release identifiers and build metadata cause an error.
+func CompareSemver(a, b string) (int, error) {
+	pa, err := ParseSemver(a)
+	if err != nil {
+		return 0, fmt.Errorf("invalid version %q: %w", a, err)
+	}
+	pb, err := ParseSemver(b)
+	if err != nil {
+		return 0, fmt.Errorf("invalid version %q: %w", b, err)
+	}
+	for i := range pa {
+		if pa[i] != pb[i] {
+			return pa[i] - pb[i], nil
+		}
+	}
+	return 0, nil
 }
 
 // parseLenientHostVersion extracts the major.minor.patch core from the
@@ -71,7 +92,7 @@ func (m PluginManifest) CheckMinCoreVersion(hostVersion string) error {
 	if m.MinCoreVersion == "" {
 		return nil
 	}
-	minCore, err := parseStrictSemver(m.MinCoreVersion)
+	minCore, err := ParseSemver(m.MinCoreVersion)
 	if err != nil {
 		// Should already be caught by Validate(), but a manifest read back
 		// from storage before this field existed shouldn't panic here.

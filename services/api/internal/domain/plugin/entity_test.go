@@ -66,6 +66,50 @@ func TestPluginManifestCheckMinCoreVersion(t *testing.T) {
 	}
 }
 
+// TestCompareSemver covers the shared strict-semver comparator now used by
+// both PluginManifest validation/MinCoreVersion checks and the marketplace
+// upgrade handler's downgrade/no-op guard, so the two call sites can't drift
+// out of sync on what counts as newer/older/equal.
+func TestCompareSemver(t *testing.T) {
+	tests := []struct {
+		name     string
+		a, b     string
+		wantSign int // -1, 0, or 1
+		wantErr  bool
+	}{
+		{name: "equal", a: "1.2.3", b: "1.2.3", wantSign: 0},
+		{name: "equal with v prefix", a: "v1.2.3", b: "1.2.3", wantSign: 0},
+		{name: "a greater by patch", a: "1.2.4", b: "1.2.3", wantSign: 1},
+		{name: "a less by minor", a: "1.1.9", b: "1.2.0", wantSign: -1},
+		{name: "a greater by major", a: "2.0.0", b: "1.9.9", wantSign: 1},
+		{name: "invalid a", a: "1.2", b: "1.2.3", wantErr: true},
+		{name: "invalid b", a: "1.2.3", b: "1.2.x", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmp, err := CompareSemver(tt.a, tt.b)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			switch {
+			case tt.wantSign > 0 && cmp <= 0:
+				t.Errorf("expected positive result, got %d", cmp)
+			case tt.wantSign < 0 && cmp >= 0:
+				t.Errorf("expected negative result, got %d", cmp)
+			case tt.wantSign == 0 && cmp != 0:
+				t.Errorf("expected 0, got %d", cmp)
+			}
+		})
+	}
+}
+
 func TestPluginManifestValidate_Skills(t *testing.T) {
 	base := func(skills *SkillsManifest) PluginManifest {
 		return PluginManifest{

@@ -195,7 +195,7 @@ A manifest may declare `minCoreVersion` as a strict `X.Y.Z` (or `vX.Y.Z`) semver
 - `POST /api/v1/admin/plugins/marketplace/install` (marketplace install)
 - `PATCH /api/v1/admin/plugins/:pluginId` and `POST /api/v1/admin/plugins/:pluginId/upgrade` (manifest updates/upgrades)
 
-If the running build's version is older than `minCoreVersion`, the request fails with `PLUGIN_INCOMPATIBLE_HOST_VERSION` and nothing is persisted. Omitting the field means the plugin has no minimum. A host not built from a tagged release (`PACA_VERSION` unset, reporting `"dev"`) is treated as unconstrained, since there's no release version to compare against.
+If the running build's version is older than `minCoreVersion`, the request fails with `PLUGIN_INCOMPATIBLE_HOST_VERSION` before any migrations run or the new manifest is loaded into the runtime, and nothing is persisted. Omitting the field means the plugin has no minimum. A host not built from a tagged release (`PACA_VERSION` unset, reporting `"dev"`) is treated as unconstrained, since there's no release version to compare against.
 
 The error response's `error` field is an English-only message meant for logs/CLI use. Clients that need to render a localized message should instead use `error_details`, an `{"error_details": {...}}` object included alongside `error_code`/`error` for this code, carrying `plugin_id`, `required_version`, and `host_version` as plain (non-localized) strings to interpolate into their own translated copy.
 

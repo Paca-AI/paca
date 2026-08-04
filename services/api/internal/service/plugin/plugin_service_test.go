@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/api/internal/apierr"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 )
@@ -311,6 +312,48 @@ func TestInstallPlugin_UnsetHostVersion_NeverBlocks(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestCheckHostCompatibility_UsableStandaloneBeforeSideEffects exercises
+// CheckHostCompatibility directly (not via InstallPlugin/UpdatePlugin),
+// mirroring how UpgradeMarketplacePlugin's handler must call it: as a
+// pre-flight check, before downloading artifacts, running migrations, or
+// touching the runtime, so an incompatible upgrade never runs any of that
+// before being rejected.
+func TestCheckHostCompatibility_UsableStandaloneBeforeSideEffects(t *testing.T) {
+	repo := newFakePluginRepo()
+	svc := pluginsvc.New(repo).WithHostVersion("1.0.0")
+
+	err := svc.CheckHostCompatibility(plugindom.PluginManifest{
+		ID:             "com.paca.toonew",
+		Version:        "2.0.0",
+		MinCoreVersion: "2.0.0",
+	})
+	if err == nil {
+		t.Fatal("expected error for a manifest requiring a newer host version, got nil")
+	}
+
+	var apiErr *apierr.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *apierr.Error, got %T", err)
+	}
+	if apiErr.Code != apierr.CodePluginIncompatibleHostVersion {
+		t.Errorf("expected code %q, got %q", apierr.CodePluginIncompatibleHostVersion, apiErr.Code)
+	}
+	if apiErr.Details["required_version"] != "2.0.0" {
+		t.Errorf("expected required_version detail %q, got %q", "2.0.0", apiErr.Details["required_version"])
+	}
+	if apiErr.Details["host_version"] != "1.0.0" {
+		t.Errorf("expected host_version detail %q, got %q", "1.0.0", apiErr.Details["host_version"])
+	}
+
+	if err := svc.CheckHostCompatibility(plugindom.PluginManifest{
+		ID:             "com.paca.compatible",
+		Version:        "1.0.0",
+		MinCoreVersion: "1.0.0",
+	}); err != nil {
+		t.Fatalf("unexpected error for a compatible manifest: %v", err)
 	}
 }
 

@@ -76,7 +76,18 @@ func Accepted(w http.ResponseWriter, r *http.Request, data any) {
 // a JSON error envelope.  If err is an *apierr.Error, its code is used
 // directly; otherwise the code is derived from known domain sentinel errors.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
-	status, code := statusAndCodeFor(err)
+	// Resolve *apierr.Error once: it both settles the status/code (mirroring
+	// statusAndCodeFor's own precedence) and carries any structured Details,
+	// so a second errors.As walk isn't needed below.
+	var apiErr *apierr.Error
+	var status int
+	var code apierr.Code
+	if errors.As(err, &apiErr) {
+		code = apiErr.Code
+		status = httpStatusForCode(code)
+	} else {
+		status, code = statusAndCodeFor(err)
+	}
 
 	// For internal/unexpected errors, avoid leaking implementation details to clients.
 	publicMsg := err.Error()
@@ -86,8 +97,7 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 	}
 
 	var details map[string]string
-	var apiErr *apierr.Error
-	if errors.As(err, &apiErr) {
+	if apiErr != nil {
 		details = apiErr.Details
 	}
 
