@@ -33,7 +33,9 @@
 #   BACKUP_*, PUBLIC_URL, GATEWAY_PORT, ADMIN_*, ENCRYPTION_KEY, JWT_SECRET,
 #   POSTGRES_PASSWORD, AGENT_API_KEY, INTERNAL_API_KEY) are written to `.env`
 #   verbatim when set. Variables prefixed `PACA_` are installer-only choices
-#   with no 1:1 `.env` key (they steer which branch of a prompt is taken).
+#   that steer which branch of a prompt is taken, with two exceptions —
+#   PACA_WEB and PACA_AI_AGENT are also written to `.env` verbatim (see
+#   "Web app" / "AI agent" below), so upgrade.sh can read the choice back.
 #   Every variable below is optional; unset ones get a generated or default
 #   value. Secrets left unset are auto-generated and printed at the end of a
 #   successful run (and saved in `.env`) — nothing is silently left blank.
@@ -137,6 +139,19 @@ rand_alnum()  { ( set +o pipefail; LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | h
 # condition of an if/elif so a failure (no ctty: ENXIO) doesn't trip
 # `set -e` and kill the whole script.
 has_ctty() { { : </dev/tty; } 2>/dev/null; }
+
+# is_noninteractive
+# True exactly when ask() below would resolve to its default without ever
+# blocking on real input — PACA_YES=1, or neither stdin nor /dev/tty is
+# available to read from. Mirrors ask()'s own branching so fail-fast
+# validation (below) only fires for the cases that would otherwise loop
+# forever; a genuinely interactive session can just be re-prompted instead.
+is_noninteractive() {
+    [[ "${PACA_YES:-0}" == "1" ]] && return 0
+    [[ -t 0 ]] && return 1
+    has_ctty && return 1
+    return 0
+}
 
 # ask VAR "Question" "default"
 # Reads from /dev/tty when stdin is a pipe (curl | bash).
@@ -315,10 +330,10 @@ validate_username() {
 }
 
 # Fail fast (rather than looping forever on a `read` nobody will answer) if
-# an env-supplied default is already invalid — this matters under PACA_YES=1
-# or any non-interactive run, where every prompt below just re-returns the
-# same default.
-if ! validate_username "$ADMIN_USERNAME"; then
+# an env-supplied default is already invalid under PACA_YES=1 or any other
+# non-interactive run, where every prompt below just re-returns the same
+# default. A genuinely interactive run still gets re-prompted below instead.
+if is_noninteractive && ! validate_username "$ADMIN_USERNAME"; then
     die "ADMIN_USERNAME (\"${ADMIN_USERNAME}\") is invalid: must be at least 3 characters."
 fi
 
@@ -477,12 +492,6 @@ validate_cron() {
     return 0
 }
 
-# Same fail-fast rationale as ADMIN_USERNAME above: an invalid env-supplied
-# cron string must not spin the prompt below forever under PACA_YES=1.
-if ! validate_cron "$BACKUP_CRON"; then
-    die "BACKUP_CRON (\"${BACKUP_CRON}\") is invalid: must be 5 whitespace-separated fields of digits and * , - /."
-fi
-
 if [[ -n "$SCALE_POSTGRES" ]]; then
     # db-backup runs pg_dump against the bundled container; an external/managed
     # database is assumed to already have its own backup mechanism.
@@ -507,6 +516,15 @@ else
         BACKUP_ENABLED="false"
         info "Automated backups will be skipped."
     else
+        # Fail fast (rather than looping forever on a `read` nobody will
+        # answer) if an env-supplied BACKUP_CRON is already invalid. Checked
+        # only here — once backups are confirmed to actually run — since an
+        # external-DB or backups-disabled install never reads this value, and
+        # a bad-but-irrelevant BACKUP_CRON in the environment shouldn't kill
+        # an otherwise-valid install.
+        if is_noninteractive && ! validate_cron "$BACKUP_CRON"; then
+            die "BACKUP_CRON (\"${BACKUP_CRON}\") is invalid: must be 5 whitespace-separated fields of digits and * , - /."
+        fi
         ask BACKUP_DIR "Directory to store backups in" "$BACKUP_DIR"
         while true; do
             ask BACKUP_CRON "Backup schedule (cron syntax, interpreted in UTC unless you set TZ in .env later)" "$BACKUP_CRON"
