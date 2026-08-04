@@ -444,7 +444,16 @@ POSTGRES_PASSWORD_VALUE=""
 
 if [[ "$DB_CHOICE" == *"External"* ]]; then
     SCALE_POSTGRES="--scale postgres=0"
-    ask DATABASE_URL_OVERRIDE "PostgreSQL connection URL" "${DATABASE_URL:-postgres://user:pass@host:5432/dbname}"
+    # ask() prints its default inline (e.g. "[postgres://user:pass@host/db]:"),
+    # so passing DATABASE_URL through as the default would echo its embedded
+    # credentials to the terminal. Use it directly instead — same pattern as
+    # STORAGE_SECRET_ACCESS_KEY below — and only prompt when it's unset.
+    if [[ -n "${DATABASE_URL:-}" ]]; then
+        DATABASE_URL_OVERRIDE="$DATABASE_URL"
+        info "Using the PostgreSQL connection URL from the environment."
+    else
+        ask DATABASE_URL_OVERRIDE "PostgreSQL connection URL" "postgres://user:pass@host:5432/dbname"
+    fi
     if [[ -z "$DATABASE_URL_OVERRIDE" || "$DATABASE_URL_OVERRIDE" == "postgres://user:pass@host:5432/dbname" ]]; then
         die "External PostgreSQL selected but no real DATABASE_URL was given. Set the DATABASE_URL env var or rerun interactively and type a real connection string."
     fi
@@ -462,8 +471,9 @@ heading "Database backups"
 
 SCALE_DB_BACKUP=""
 # Capture the env-supplied enable/disable choice before BACKUP_ENABLED gets
-# reused below as the actual (branch-dependent) output value.
-BACKUP_ENABLED_INPUT="${BACKUP_ENABLED:-true}"
+# reused below as the actual (branch-dependent) output value. Normalized to
+# lowercase so False/FALSE/0 are recognized too, not just a literal "false".
+BACKUP_ENABLED_INPUT="$(printf '%s' "${BACKUP_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
 BACKUP_ENABLED="true"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 BACKUP_CRON="${BACKUP_CRON:-0 2 * * *}"
@@ -508,7 +518,7 @@ else
 
     INCLUDE_BACKUPS="yes"
     BACKUP_DEFAULT="y"
-    [[ "$BACKUP_ENABLED_INPUT" == "false" ]] && BACKUP_DEFAULT="n"
+    case "$BACKUP_ENABLED_INPUT" in false|0) BACKUP_DEFAULT="n" ;; esac
     yes_no INCLUDE_BACKUPS "Enable automated database backups?" "$BACKUP_DEFAULT"
 
     if [[ "$INCLUDE_BACKUPS" == "no" ]]; then
