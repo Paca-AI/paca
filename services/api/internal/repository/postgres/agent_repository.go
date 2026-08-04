@@ -1195,14 +1195,15 @@ func chatSessionToRecord(s *agentdom.AgentChatSession) agentChatSessionRecord {
 // -------------------------------------------------------------------------
 
 type agentActivityFeedRecord struct {
-	ID           string          `db:"id"`
-	SourceType   string          `db:"source_type"`
-	SourceID     string          `db:"source_id"`
-	SourceTitle  string          `db:"source_title"`
-	ActivityType string          `db:"activity_type"`
-	Content      json.RawMessage `db:"content"`
-	CreatedAt    time.Time       `db:"created_at"`
-	UpdatedAt    time.Time       `db:"updated_at"`
+	ID            string          `db:"id"`
+	SourceType    string          `db:"source_type"`
+	SourceID      string          `db:"source_id"`
+	SourceTitle   string          `db:"source_title"`
+	SourceDeleted bool            `db:"source_deleted"`
+	ActivityType  string          `db:"activity_type"`
+	Content       json.RawMessage `db:"content"`
+	CreatedAt     time.Time       `db:"created_at"`
+	UpdatedAt     time.Time       `db:"updated_at"`
 }
 
 // ListAgentActivities returns a keyset-paginated page of an agent's unified
@@ -1270,18 +1271,20 @@ func (r *AgentRepository) ListAgentActivities(ctx context.Context, in agentdom.L
 
 	query := `WITH agent_activities AS (
 		SELECT ta.id, 'task' AS source_type, ta.task_id AS source_id, t.title AS source_title,
+		       (t.deleted_at IS NOT NULL) AS source_deleted,
 		       ta.activity_type, ta.content, ta.created_at, ta.updated_at
 		FROM task_activities ta
 		JOIN tasks t ON t.id = ta.task_id
 		WHERE ta.actor_id = $1 AND ta.deleted_at IS NULL
 		UNION ALL
 		SELECT da.id, 'doc' AS source_type, da.document_id AS source_id, d.title AS source_title,
+		       (d.deleted_at IS NOT NULL) AS source_deleted,
 		       da.activity_type, da.content, da.created_at, da.updated_at
 		FROM doc_activities da
 		JOIN documents d ON d.id = da.document_id
 		WHERE da.actor_id = $1 AND da.deleted_at IS NULL
 	)
-	SELECT id, source_type, source_id, source_title, activity_type, content, created_at, updated_at
+	SELECT id, source_type, source_id, source_title, source_deleted, activity_type, content, created_at, updated_at
 	FROM agent_activities WHERE ` + whereSQL + fmt.Sprintf(` ORDER BY created_at DESC, id DESC LIMIT %s`, limitP)
 
 	args := append([]interface{}{in.ActorMemberID.String()}, b.args...)
@@ -1309,13 +1312,14 @@ func activityFeedItemFromRecord(rec agentActivityFeedRecord) *agentdom.ActivityF
 		content = json.RawMessage("{}")
 	}
 	return &agentdom.ActivityFeedItem{
-		ID:           mustParseUUID(rec.ID),
-		SourceType:   agentdom.ActivitySourceType(rec.SourceType),
-		SourceID:     mustParseUUID(rec.SourceID),
-		SourceTitle:  rec.SourceTitle,
-		ActivityType: rec.ActivityType,
-		Content:      content,
-		CreatedAt:    rec.CreatedAt,
-		UpdatedAt:    rec.UpdatedAt,
+		ID:            mustParseUUID(rec.ID),
+		SourceType:    agentdom.ActivitySourceType(rec.SourceType),
+		SourceID:      mustParseUUID(rec.SourceID),
+		SourceTitle:   rec.SourceTitle,
+		SourceDeleted: rec.SourceDeleted,
+		ActivityType:  rec.ActivityType,
+		Content:       content,
+		CreatedAt:     rec.CreatedAt,
+		UpdatedAt:     rec.UpdatedAt,
 	}
 }

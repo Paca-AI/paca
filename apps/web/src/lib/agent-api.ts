@@ -788,6 +788,10 @@ export interface AgentActivity {
 	source_type: AgentActivitySourceType;
 	source_id: string;
 	source_title: string;
+	// True when the linked task/doc has since been deleted — the activity
+	// (including the delete action itself) stays in the feed, but the UI
+	// shouldn't link to a source that no longer resolves.
+	source_deleted: boolean;
 	activity_type: string;
 	// Heterogeneous by source_type (task activity content vs doc activity
 	// content have different shapes) — callers narrow it per-row using

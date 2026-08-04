@@ -22,15 +22,19 @@ const (
 // ActivityFeedItem is one row of an agent's unified task+doc activity feed.
 // SourceTitle is the joined task/document title at query time, so the UI can
 // render and link to "commented on <title>" without a second round trip.
+// Deleted tasks/docs are intentionally still included (an agent deleting a
+// task is itself an activity worth keeping in the feed) — SourceDeleted lets
+// the UI skip linking to a source that no longer resolves.
 type ActivityFeedItem struct {
-	ID           uuid.UUID
-	SourceType   ActivitySourceType
-	SourceID     uuid.UUID
-	SourceTitle  string
-	ActivityType string
-	Content      json.RawMessage
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID            uuid.UUID
+	SourceType    ActivitySourceType
+	SourceID      uuid.UUID
+	SourceTitle   string
+	SourceDeleted bool
+	ActivityType  string
+	Content       json.RawMessage
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // ListAgentActivitiesFilter carries optional filters for listing an agent's

@@ -1,10 +1,13 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Activity, CheckSquare, FileText } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentActivityFilters } from "@/components/projects/agents/agent-activity-filters";
-import { activityDescription } from "@/components/projects/interactions/task-detail/activity-item";
+import {
+	type ActivityNameMaps,
+	activityDescription,
+} from "@/components/projects/interactions/task-detail/activity-item";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,13 +16,14 @@ import {
 	agentActivitiesQueryOptions,
 } from "@/lib/agent-api";
 import type { DocActivityContent, DocActivityType } from "@/lib/doc-api";
+import { sprintsQueryOptions } from "@/lib/interaction-api";
+import { projectMembersQueryOptions } from "@/lib/project-api";
 import { timeAgo } from "@/lib/time-ago";
 import { describeDocActivity } from "../docs/doc-activity-pane";
 
-const EMPTY_NAME_MAPS = { members: {}, sprints: {} };
-
 function describeItem(
 	item: AgentActivity,
+	names: ActivityNameMaps,
 	t: ReturnType<typeof useTranslation<"projects">>["t"],
 ): string {
 	if (item.activity_type === "comment") {
@@ -31,7 +35,7 @@ function describeItem(
 				activity_type: item.activity_type,
 				content: item.content as Record<string, unknown> | unknown[],
 			},
-			EMPTY_NAME_MAPS,
+			names,
 			t,
 		);
 	}
@@ -47,14 +51,16 @@ function describeItem(
 function ActivityRow({
 	projectId,
 	item,
+	names,
 }: {
 	projectId: string;
 	item: AgentActivity;
+	names: ActivityNameMaps;
 }) {
 	const { t } = useTranslation("projects");
 	const { t: tCommon } = useTranslation("common");
 	const Icon = item.source_type === "task" ? CheckSquare : FileText;
-	const description = describeItem(item, t);
+	const description = describeItem(item, names, t);
 
 	return (
 		<div className="flex items-start gap-3 border-b border-border/10 px-1 py-2.5 last:border-0">
@@ -68,7 +74,11 @@ function ActivityRow({
 				{description && (
 					<span className="text-sm text-foreground/80">{description}</span>
 				)}
-				{item.source_type === "task" ? (
+				{item.source_deleted ? (
+					<span className="truncate text-sm font-medium text-muted-foreground/70">
+						{item.source_title}
+					</span>
+				) : item.source_type === "task" ? (
 					<Link
 						to="/projects/$projectId/tasks/$taskId"
 						params={{ projectId, taskId: item.source_id }}
@@ -107,6 +117,20 @@ export function AgentActivityTab({
 
 	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
 		useInfiniteQuery(agentActivitiesQueryOptions(projectId, agentId, filters));
+
+	const { data: membersData } = useQuery(projectMembersQueryOptions(projectId));
+	const { data: sprintsData } = useQuery(sprintsQueryOptions(projectId));
+	const names = useMemo<ActivityNameMaps>(() => {
+		const members: Record<string, string> = {};
+		for (const m of membersData ?? []) {
+			members[m.id] = m.full_name || m.username;
+		}
+		const sprints: Record<string, string> = {};
+		for (const s of sprintsData ?? []) {
+			sprints[s.id] = s.name;
+		}
+		return { members, sprints };
+	}, [membersData, sprintsData]);
 
 	const items = data?.pages.flatMap((page) => page.items) ?? [];
 	const hasActiveFilters = Object.values(filters).some((v) =>
@@ -164,7 +188,12 @@ export function AgentActivityTab({
 				) : (
 					<>
 						{items.map((item) => (
-							<ActivityRow key={item.id} projectId={projectId} item={item} />
+							<ActivityRow
+								key={item.id}
+								projectId={projectId}
+								item={item}
+								names={names}
+							/>
 						))}
 						{hasNextPage && (
 							<div ref={loadMoreRef} className="py-2">
