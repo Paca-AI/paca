@@ -42,7 +42,8 @@
 #
 #   General
 #     PACA_DIR                    Installation directory              (default: ./paca)
-#     PACA_VERSION                Release tag to install               (default: latest)
+#     PACA_VERSION                Release tag to install               (default: the release this
+#                                  script shipped with, or latest when run from a checkout)
 #     PACA_YES                    Skip prompts, use defaults           (set to 1)
 #     PACA_START                  Pull images and start after writing  (default: yes)
 #                                  config; yes/no.
@@ -259,7 +260,15 @@ download() {
 
 # ── Version / URL resolution ──────────────────────────────────────────────────
 
-PACA_VERSION="${PACA_VERSION:-latest}"
+# CD stamps this to the exact tag of the release install.sh ships with (see
+# the "Prepare assets" step in .github/workflows/cd.yml), so a plain
+# `bash install.sh` installs a version that's guaranteed to exist instead of
+# whatever :latest happens to resolve to. The source tree keeps "latest" so a
+# checkout run directly still behaves sensibly. Keep this a standalone
+# `NAME="value"` assignment — CD's sed matches on that exact shape.
+PACA_DEFAULT_VERSION="latest"
+
+PACA_VERSION="${PACA_VERSION:-$PACA_DEFAULT_VERSION}"
 
 if [[ "$PACA_VERSION" == "latest" ]]; then
     RELEASE_BASE="https://github.com/Paca-AI/paca/releases/latest/download"
@@ -824,7 +833,7 @@ ENCRYPTION_KEY=${ENCRYPTION_KEY}
 AGENT_API_KEY=${AGENT_API_KEY}
 INTERNAL_API_KEY=${INTERNAL_API_KEY}
 AI_AGENT_PORT=8082
-AGENT_SERVER_IMAGE=ghcr.io/paca-ai/paca-agent-server:latest
+AGENT_SERVER_IMAGE=ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}
 PORT_POOL_START=10000
 PORT_POOL_SIZE=100
 WORKER_CONCURRENCY=10
