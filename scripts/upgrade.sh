@@ -44,7 +44,8 @@
 #
 # ── Environment variable reference ───────────────────────────────────────────
 #   PACA_DIR                    Installation directory to upgrade       (default: .)
-#   PACA_VERSION                Release tag to upgrade to               (default: latest)
+#   PACA_VERSION                Release tag to upgrade to               (default: the release this
+#                                script shipped with, or latest when run from a checkout)
 #   PACA_YES                    Skip prompts, use defaults              (set to 1)
 #   PACA_PROCEED                Actually run the upgrade (yes/no).      (default: yes)
 #                                "no" prints the current vs. target
@@ -182,7 +183,15 @@ get_env_var() {
 
 # ── Version / URL resolution ──────────────────────────────────────────────────
 
-PACA_VERSION="${PACA_VERSION:-latest}"
+# CD stamps this to the exact tag of the release upgrade.sh ships with (see
+# the "Prepare assets" step in .github/workflows/cd.yml), so a plain
+# `bash upgrade.sh` upgrades to a version that's guaranteed to exist instead
+# of whatever :latest happens to resolve to. The source tree keeps "latest"
+# so a checkout run directly still behaves sensibly. Keep this a standalone
+# `NAME="value"` assignment — CD's sed matches on that exact shape.
+PACA_DEFAULT_VERSION="latest"
+
+PACA_VERSION="${PACA_VERSION:-$PACA_DEFAULT_VERSION}"
 
 if [[ "$PACA_VERSION" == "latest" ]]; then
     RELEASE_BASE="https://github.com/Paca-AI/paca/releases/latest/download"
@@ -293,6 +302,12 @@ if [[ "$PACA_VERSION" != "latest" ]]; then
         image_name="$(echo "$var" | sed -e 's/^PACA_//' -e 's/_IMAGE$//' | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')"
         set_env_var .env "$var" "pacaai/paca-${image_name}:${IMAGE_TAG}"
     done
+    # Only re-pin AGENT_SERVER_IMAGE if it's already on Paca's own image —
+    # never overwrite a custom value. The old-upstream-image migration below
+    # handles the one other known default separately.
+    if [[ "$(get_env_var .env AGENT_SERVER_IMAGE)" == ghcr.io/paca-ai/paca-agent-server:* ]]; then
+        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}"
+    fi
     info "Pinned image versions in .env to ${IMAGE_TAG}."
 else
     info "Using floating :latest images — no image version changes needed."
@@ -310,13 +325,13 @@ OLD_AGENT_SERVER_IMAGE_DEFAULT="ghcr.io/openhands/agent-server:latest-python"
 if [[ "$(get_env_var .env AGENT_SERVER_IMAGE)" == "$OLD_AGENT_SERVER_IMAGE_DEFAULT" ]]; then
     heading "Agent-server image"
     info "AGENT_SERVER_IMAGE is still set to the upstream OpenHands image (${OLD_AGENT_SERVER_IMAGE_DEFAULT})."
-    info "Paca now ships its own agent-server image (ghcr.io/paca-ai/paca-agent-server:latest) with the Paca MCP server pre-installed, avoiding a cold npm download on every new sandbox."
+    info "Paca now ships its own agent-server image (ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}) with the Paca MCP server pre-installed, avoiding a cold npm download on every new sandbox."
     UPDATE_AGENT_IMAGE="yes"
-    yes_no UPDATE_AGENT_IMAGE "Switch AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:latest?" "${PACA_UPDATE_AGENT_IMAGE:-y}"
+    yes_no UPDATE_AGENT_IMAGE "Switch AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}?" "${PACA_UPDATE_AGENT_IMAGE:-y}"
     if [[ "$UPDATE_AGENT_IMAGE" == "yes" ]]; then
         backup_env_once
-        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server:latest"
-        info "Updated AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:latest."
+        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}"
+        info "Updated AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}."
     else
         info "Keeping AGENT_SERVER_IMAGE unchanged."
     fi

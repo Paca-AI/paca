@@ -24,6 +24,15 @@ name: cd
 #     docker-compose.yml — standalone compose (no source tree required)
 #     Caddyfile          — Caddy gateway configuration
 #     .env.production.example — environment variable template
+#
+# "Latest" label sequencing (hold-release-label / promote-release below):
+# no image is pushed with a :latest Docker tag, and the GitHub release itself
+# is held off the "Latest" release marker, until every job in this workflow
+# has succeeded. This keeps /releases/latest and every :latest image tag
+# pointing at the previous, fully-shipped release for the whole ~20-30 minute
+# build window instead of a half-published one. install.sh/upgrade.sh are
+# also stamped with this exact release's tag as their default target, so a
+# plain `bash install.sh` never depends on the :latest tag being current.
 
 on:
   release:
@@ -37,10 +46,33 @@ permissions:
 env:
   REGISTRY: ghcr.io
 
-# ─────────────────────────────────────────────────────────────────────────────
-# API service image
-# ─────────────────────────────────────────────────────────────────────────────
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Hold the "Latest" release label until every artefact has actually shipped
+  # ─────────────────────────────────────────────────────────────────────────────
+  # GitHub marks a newly published release "Latest" (and /releases/latest
+  # resolves to it) immediately on publish by default. This workflow takes
+  # 20-30 minutes, so during that window /releases/latest/download/* would
+  # 404 (release-assets hasn't run yet) and any :latest Docker pull would
+  # still be fine (see below) but the release page itself would look "live"
+  # before it is. Demote it back to no label here — promote-release (the
+  # last job in this file) re-marks it "Latest" only once everything below
+  # has succeeded.
+  hold-release-label:
+    name: Hold "Latest" label until release is complete
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Unmark this release as "Latest"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.event.release.tag_name }}" --repo "${{ github.repository }}" --latest=false
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # API service image
+  # ─────────────────────────────────────────────────────────────────────────────
   api-image:
     name: Build and push API image
     runs-on: ubuntu-latest
@@ -76,7 +108,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -132,7 +163,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -186,7 +216,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -237,7 +266,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -289,7 +317,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -428,10 +455,26 @@ jobs:
   # End-users download and run:
   #   curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh -o install.sh
   #   bash install.sh
+  #
+  # Waits for every image/package job so these assets — and the exact version
+  # they're stamped with below — are never uploaded for a release that isn't
+  # fully shippable. If any of those jobs fail, this job is skipped and the
+  # previous release (still the "Latest" one; see hold-release-label /
+  # promote-release) keeps serving installs/upgrades until it's fixed.
   # ─────────────────────────────────────────────────────────────────────────────
   release-assets:
     name: Upload deployment assets to release
     runs-on: ubuntu-latest
+    needs:
+      [
+        api-image,
+        realtime-image,
+        web-image,
+        ai-agent-image,
+        agent-server-image,
+        publish-mcp,
+        publish-acp-bridge,
+      ]
     permissions:
       contents: write
 
@@ -449,6 +492,17 @@ jobs:
           cp scripts/upgrade.sh                    upgrade.sh
           chmod +x install.sh upgrade.sh
 
+          # Stamp this release's own tag as the scripts' default version. A
+          # plain `bash install.sh` / `bash upgrade.sh` downloaded from this
+          # release then pins to a version that's guaranteed to exist,
+          # instead of the floating :latest Docker tag, which promote-release
+          # only updates once this job has already succeeded. Targets the
+          # single `PACA_DEFAULT_VERSION="latest"` line each script keeps for
+          # exactly this purpose — see the comment above it in install.sh /
+          # upgrade.sh before changing this pattern.
+          VERSION="${{ github.event.release.tag_name }}"
+          sed -i "s/^PACA_DEFAULT_VERSION=\"latest\"$/PACA_DEFAULT_VERSION=\"${VERSION}\"/" install.sh upgrade.sh
+
       - name: Upload assets to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -460,3 +514,72 @@ jobs:
             Caddyfile \
             .env.production.example \
             --clobber
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Promote release to "Latest"
+  #
+  # Runs only once every image/package job AND release-assets have succeeded,
+  # so this never fires for a partially-shipped release. Skipped entirely for
+  # pre-releases, which should never become the default install/upgrade
+  # target. Two things happen together here, deliberately in the same job:
+  #   1. Every image gets a :latest tag pointing at this version's manifest,
+  #      via `imagetools create` (a registry-side copy, no rebuild needed).
+  #   2. The GitHub release is marked "Latest" (undoing hold-release-label),
+  #      so /releases/latest/download/* starts serving this release's assets.
+  # Reversing the order (label first, tags second) would let /releases/latest
+  # briefly resolve to a release whose :latest images aren't there yet.
+  # ─────────────────────────────────────────────────────────────────────────────
+  promote-release:
+    name: Promote release to "Latest"
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
+    needs:
+      [
+        api-image,
+        realtime-image,
+        web-image,
+        ai-agent-image,
+        agent-server-image,
+        publish-mcp,
+        publish-acp-bridge,
+        release-assets,
+      ]
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Retag images as :latest
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          TAG="${VERSION#v}"
+          for image in paca-api paca-realtime paca-web paca-ai-agent paca-agent-server; do
+            docker buildx imagetools create \
+              -t "${{ env.REGISTRY }}/${{ github.repository_owner }}/${image}:latest" \
+              "${{ env.REGISTRY }}/${{ github.repository_owner }}/${image}:${TAG}"
+            docker buildx imagetools create \
+              -t "${{ secrets.DOCKERHUB_USERNAME }}/${image}:latest" \
+              "${{ secrets.DOCKERHUB_USERNAME }}/${image}:${TAG}"
+          done
+
+      - name: Mark release as "Latest"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.event.release.tag_name }}" --repo "${{ github.repository }}" --latest
