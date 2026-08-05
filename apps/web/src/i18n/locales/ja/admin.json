@@ -279,39 +279,6 @@
 			"title": "グローバルエージェントはまだありません",
 			"description": "グローバルエージェントを作成すると、チャットやプロジェクトへの招待に利用できるようになります。",
 			"createAgent": "エージェントを作成"
-		},
-		"table": {
-			"editAction": "エージェントを編集",
-			"deleteAction": "エージェントを削除"
-		},
-		"formDialog": {
-			"editTitle": "グローバルエージェントを編集",
-			"description": "グローバルエージェントには専用のプロジェクトがありません — そのプロジェクトのチームページから招待すると、そこで作業できるようになります。",
-			"nameLabel": "名前",
-			"handleLabel": "ハンドル",
-			"globalRoleLabel": "グローバルロール",
-			"noGlobalRole": "ロールなし",
-			"globalRoleHint": "このエージェントがグローバルスコープ(ホーム/管理チャットなど)で何を実行できるかを制御します。必須ではありません — プロジェクトに招待された後に付与されるロールとは別物です。",
-			"acpProviderLabel": "ACPプロバイダー",
-			"providerLabel": "プロバイダー",
-			"modelLabel": "モデル",
-			"customOption": "カスタム…",
-			"apiKeyLabel": "APIキー",
-			"apiKeyKeepPlaceholder": "現在のキーを維持する場合は空欄のままにしてください",
-			"baseUrlLabel": "ベースURL",
-			"systemPromptLabel": "システムプロンプト",
-			"optional": "任意",
-			"cancel": "キャンセル",
-			"save": "変更を保存",
-			"updateFailed": "エージェントの更新に失敗しました"
-		},
-		"deleteDialog": {
-			"title": "エージェントを削除しますか?",
-			"confirmPrefix": "メンバー、ロール、インタラクションを含む",
-			"confirmSuffix": "招待されているすべてのプロジェクトから削除されます。この操作は元に戻せません。",
-			"cancel": "キャンセル",
-			"delete": "削除",
-			"deleteFailed": "エージェントの削除に失敗しました"
 		}
 	}
 }

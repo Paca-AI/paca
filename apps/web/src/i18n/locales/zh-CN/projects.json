@@ -76,6 +76,7 @@
 			"deleteDialog": {
 				"title": "删除 {{name}}？",
 				"description": "这将永久删除该智能体并将其从项目中移除。正在进行的对话将被终止。",
+				"descriptionGlobal": "这将永久删除该智能体，并将其从已邀请加入的所有项目中移除。正在进行的对话将被终止。",
 				"cancel": "取消",
 				"delete": "删除"
 			}

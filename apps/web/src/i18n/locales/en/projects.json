@@ -76,6 +76,7 @@
 			"deleteDialog": {
 				"title": "Delete {{name}}?",
 				"description": "This permanently deletes the agent and removes it from the project. Running conversations will be stopped.",
+				"descriptionGlobal": "This permanently deletes the agent and removes it from every project it has been invited into. Running conversations will be stopped.",
 				"cancel": "Cancel",
 				"delete": "Delete"
 			}

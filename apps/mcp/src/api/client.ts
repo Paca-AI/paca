@@ -49,6 +49,9 @@ export class PacaAPIClient {
 		if (this.config.agentId) {
 			headers["X-Agent-ID"] = this.config.agentId;
 		}
+		if (this.config.actorUserId) {
+			headers["X-Actor-User-ID"] = this.config.actorUserId;
+		}
 
 		const options: RequestInit = {
 			method,

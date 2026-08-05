@@ -396,6 +396,16 @@ def test_empty_servers_returns_empty_dict(no_paca_key):
     assert cfg == {}
 
 
+def test_paca_server_includes_actor_user_id_when_set(with_paca_key):
+    cfg = build_mcp_config([], "agent-99", "proj-42", "user-7")
+    assert cfg["paca"]["env"]["PACA_ACTOR_USER_ID"] == "user-7"
+
+
+def test_paca_server_omits_actor_user_id_when_none(with_paca_key):
+    cfg = build_mcp_config([], "agent-99", "proj-42")
+    assert "PACA_ACTOR_USER_ID" not in cfg["paca"]["env"]
+
+
 # ─── load_plugin_skills ────────────────────────────────────────────────────────
 
 

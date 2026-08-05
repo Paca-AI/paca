@@ -9,39 +9,6 @@
 			"title": "No global agents yet",
 			"description": "Create a global agent to make it available for chat and project invites.",
 			"createAgent": "Create agent"
-		},
-		"table": {
-			"editAction": "Edit agent",
-			"deleteAction": "Delete agent"
-		},
-		"formDialog": {
-			"editTitle": "Edit Global Agent",
-			"description": "Global agents have no project of their own — invite them into a project from that project's Team page to put them to work there.",
-			"nameLabel": "Name",
-			"handleLabel": "Handle",
-			"globalRoleLabel": "Global Role",
-			"noGlobalRole": "No role",
-			"globalRoleHint": "Governs what this agent may do at global scope (e.g. from the home/admin chat). Not required — a role granted later, once invited into a project, is separate.",
-			"acpProviderLabel": "ACP Provider",
-			"providerLabel": "Provider",
-			"modelLabel": "Model",
-			"customOption": "Custom…",
-			"apiKeyLabel": "API Key",
-			"apiKeyKeepPlaceholder": "Leave blank to keep the current key",
-			"baseUrlLabel": "Base URL",
-			"systemPromptLabel": "System Prompt",
-			"optional": "optional",
-			"cancel": "Cancel",
-			"save": "Save changes",
-			"updateFailed": "Failed to update agent"
-		},
-		"deleteDialog": {
-			"title": "Delete agent?",
-			"confirmPrefix": "This will permanently delete",
-			"confirmSuffix": ", removing it from every project it has been invited into. This cannot be undone.",
-			"cancel": "Cancel",
-			"delete": "Delete",
-			"deleteFailed": "Failed to delete agent"
 		}
 	},
 	"users": {

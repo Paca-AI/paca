@@ -21,6 +21,15 @@ export interface PacaConfig {
 	 * the caller has permission in, passed explicitly per call.
 	 */
 	projectId?: string;
+	/**
+	 * Human user UUID this agent is acting on behalf of, forwarded as
+	 * X-Actor-User-ID on every API request. Only ever set for a global agent
+	 * dispatched from a trigger that names a human actor (e.g. a global-chat
+	 * message) — lets server-side attribution (e.g. who created a project)
+	 * point at that human instead of the shared agent-bot identity. Unset
+	 * for a personal API key or a project-scoped agent's automation runs.
+	 */
+	actorUserId?: string;
 }
 
 export interface PermissionMap {

@@ -100,6 +100,26 @@ describe("PacaAPIClient – request headers", () => {
 			(options.headers as Record<string, string>)["X-Agent-ID"],
 		).toBeUndefined();
 	});
+
+	it("sends X-Actor-User-ID header when actorUserId is configured", async () => {
+		vi.stubGlobal("fetch", mockFetchOk([]));
+		const client = makeClient({ agentId: "agent-abc", actorUserId: "user-7" });
+		await client.listProjects();
+		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
+		expect((options.headers as Record<string, string>)["X-Actor-User-ID"]).toBe(
+			"user-7",
+		);
+	});
+
+	it("omits X-Actor-User-ID when actorUserId is not configured", async () => {
+		vi.stubGlobal("fetch", mockFetchOk([]));
+		const client = makeClient({ agentId: "agent-abc" });
+		await client.listProjects();
+		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
+		expect(
+			(options.headers as Record<string, string>)["X-Actor-User-ID"],
+		).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -32,6 +32,14 @@ type actorContextKey struct{}
 // authenticating with an agent API key.
 type agentContextKey struct{}
 
+// agentActorUserContextKey is the unexported key used to store the human
+// actor's user ID for an agent-authenticated request that names one via
+// X-Actor-User-ID (e.g. a global agent's MCP tool call made on behalf of the
+// human chatting with it — see setAPIKeyAuthContext). Only ever set
+// alongside a resolved agentContextKey; a plain human JWT session already
+// carries its own identity via actorContextKey and never needs this.
+type agentActorUserContextKey struct{}
+
 // APIKeyAuthenticator validates a raw API key string and returns the key record.
 // It is satisfied by apikeysvc.Service.
 type APIKeyAuthenticator interface {
@@ -148,7 +156,7 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			if apiKeyAuthenticator != nil {
 				key, err := apiKeyAuthenticator.Authenticate(r.Context(), tokenStr)
 				if err == nil {
-					var agentID uuid.UUID
+					var agentID, actorUserID uuid.UUID
 					if agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator); ok && agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
 						agentIDHeader := r.Header.Get("X-Agent-ID")
 						if agentIDHeader != "" {
@@ -156,8 +164,9 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 								agentID = parsedID
 							}
 						}
+						actorUserID = parseActorUserIDHeader(r)
 					}
-					r = setAPIKeyAuthContext(r, key.UserID, agentID)
+					r = setAPIKeyAuthContext(r, key.UserID, agentID, actorUserID)
 				}
 			}
 			return r, true
@@ -179,7 +188,7 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			return r, false
 		}
 
-		var agentID uuid.UUID
+		var agentID, actorUserID uuid.UUID
 		if agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator); ok && agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
 			agentIDHeader := r.Header.Get("X-Agent-ID")
 			if agentIDHeader != "" {
@@ -187,9 +196,10 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 					agentID = parsedID
 				}
 			}
+			actorUserID = parseActorUserIDHeader(r)
 		}
 
-		r = setAPIKeyAuthContext(r, key.UserID, agentID)
+		r = setAPIKeyAuthContext(r, key.UserID, agentID, actorUserID)
 		return r, true
 	}
 
@@ -211,7 +221,25 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 	return r, true
 }
 
-func setAPIKeyAuthContext(r *http.Request, userID uuid.UUID, agentID uuid.UUID) *http.Request {
+// parseActorUserIDHeader parses X-Actor-User-ID, the human actor a global
+// agent's MCP tool call is acting on behalf of (e.g. "create a project for
+// me" from the home-page chat). Only ever consulted from the agent-API-key
+// branch above — a human JWT session already carries its own identity via
+// actorContextKey and must never have this header honored, or one human
+// could impersonate another simply by setting it.
+func parseActorUserIDHeader(r *http.Request) uuid.UUID {
+	header := r.Header.Get("X-Actor-User-ID")
+	if header == "" {
+		return uuid.Nil
+	}
+	parsed, err := uuid.Parse(header)
+	if err != nil {
+		return uuid.Nil
+	}
+	return parsed
+}
+
+func setAPIKeyAuthContext(r *http.Request, userID, agentID, actorUserID uuid.UUID) *http.Request {
 	syntheticClaims := &domainauth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: userID.String(),
@@ -227,6 +255,11 @@ func setAPIKeyAuthContext(r *http.Request, userID uuid.UUID, agentID uuid.UUID) 
 	ctx = context.WithValue(ctx, actorContextKey{}, userID)
 	if agentID != uuid.Nil {
 		ctx = context.WithValue(ctx, agentContextKey{}, agentID)
+		// Only ever paired with a resolved agent ID — see
+		// parseActorUserIDHeader's doc comment.
+		if actorUserID != uuid.Nil {
+			ctx = context.WithValue(ctx, agentActorUserContextKey{}, actorUserID)
+		}
 	}
 	return r.WithContext(ctx)
 }
@@ -289,6 +322,26 @@ func IsAPIKeyAuth(r *http.Request) bool {
 // Returns (uuid.Nil, false) when no agent ID is set.
 func AgentIDFromRequest(r *http.Request) (uuid.UUID, bool) {
 	return AgentIDFromContext(r.Context())
+}
+
+// AgentActorUserIDFromContext extracts the human actor's user ID for an
+// agent-authenticated request that named one via X-Actor-User-ID (see
+// parseActorUserIDHeader). Returns (uuid.Nil, false) when absent — which is
+// the common case: only a global agent's MCP tool calls, made on behalf of
+// the specific human chatting with it, set this.
+func AgentActorUserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
+	v := ctx.Value(agentActorUserContextKey{})
+	if v == nil {
+		return uuid.Nil, false
+	}
+	id, ok := v.(uuid.UUID)
+	return id, ok
+}
+
+// AgentActorUserIDFromRequest extracts the human actor's user ID from the
+// request context. See AgentActorUserIDFromContext.
+func AgentActorUserIDFromRequest(r *http.Request) (uuid.UUID, bool) {
+	return AgentActorUserIDFromContext(r.Context())
 }
 
 // RequireJWTAuth rejects requests that were authenticated via an API key.

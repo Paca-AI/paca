@@ -76,6 +76,7 @@
 			"deleteDialog": {
 				"title": "¿Eliminar {{name}}?",
 				"description": "Esto elimina permanentemente al agente y lo retira del proyecto. Las conversaciones en curso se detendrán.",
+				"descriptionGlobal": "Esto elimina permanentemente al agente y lo retira de todos los proyectos a los que ha sido invitado. Las conversaciones en curso se detendrán.",
 				"cancel": "Cancelar",
 				"delete": "Eliminar"
 			}

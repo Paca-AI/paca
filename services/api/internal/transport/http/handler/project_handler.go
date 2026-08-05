@@ -265,9 +265,14 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := middleware.ClaimsFrom(r)
 	var createdBy *uuid.UUID
-	if claims != nil {
+	if actorUserID, ok := middleware.AgentActorUserIDFromRequest(r); ok {
+		// A global agent's MCP tool call acting on behalf of a specific human
+		// (e.g. "create a project for me" from the home-page chat) — attribute
+		// the project to that human, not the shared agent-bot identity that
+		// claims.Subject would otherwise resolve to. See parseActorUserIDHeader.
+		createdBy = &actorUserID
+	} else if claims := middleware.ClaimsFrom(r); claims != nil {
 		if uid, err := uuid.Parse(claims.Subject); err == nil {
 			createdBy = &uid
 		}

@@ -534,7 +534,10 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
             is_automation=trigger.actor_member_id is None,
         )
         mcp_config = build_mcp_config(
-            agent_config.mcp_servers, agent_config.agent_id, trigger.project_id
+            agent_config.mcp_servers,
+            agent_config.agent_id,
+            trigger.project_id,
+            trigger.actor_user_id,
         )
 
         system_suffix = agent_config.system_prompt or ""

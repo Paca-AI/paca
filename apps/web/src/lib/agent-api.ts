@@ -692,6 +692,153 @@ export async function deleteEnvVar(
 	);
 }
 
+// ── Global Agent MCP Servers / Skills / Env Vars ─────────────────────────────
+//
+// Siblings of the project-scoped functions above, hitting /admin/agents/:id/...
+// instead of /projects/:projectId/agents/:id/... — these MCP/skill/env-var
+// services were already agentId-only on the backend (see
+// services/api/internal/domain/agent/service.go's MCPServerService etc.),
+// so the admin route tree is a thin wrapper over the same service methods.
+
+export async function listGlobalMCPServers(
+	agentId: string,
+): Promise<AgentMCPServer[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentMCPServer[] }>
+	>(`/admin/agents/${agentId}/mcp-servers`);
+	return data.data.items;
+}
+
+export async function addGlobalMCPServer(
+	agentId: string,
+	payload: {
+		server_name: string;
+		transport: "stdio" | "sse" | "http";
+		command?: string | null;
+		args?: string[];
+		url?: string | null;
+		env?: Record<string, string>;
+	},
+): Promise<AgentMCPServer> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AgentMCPServer>
+	>(`/admin/agents/${agentId}/mcp-servers`, payload);
+	return data.data;
+}
+
+export async function updateGlobalMCPServer(
+	agentId: string,
+	serverId: string,
+	payload: {
+		is_enabled?: boolean;
+		command?: string;
+		args?: string[];
+		url?: string | null;
+	},
+): Promise<AgentMCPServer> {
+	const { data } = await apiClient.instance.patch<
+		SuccessEnvelope<AgentMCPServer>
+	>(`/admin/agents/${agentId}/mcp-servers/${serverId}`, payload);
+	return data.data;
+}
+
+export async function deleteGlobalMCPServer(
+	agentId: string,
+	serverId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/admin/agents/${agentId}/mcp-servers/${serverId}`,
+	);
+}
+
+export async function listGlobalSkills(agentId: string): Promise<AgentSkill[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentSkill[] }>
+	>(`/admin/agents/${agentId}/skills`);
+	return data.data.items;
+}
+
+export async function addGlobalSkill(
+	agentId: string,
+	payload: {
+		skill_name: string;
+		skill_source: "inline" | "marketplace" | "github_url";
+		skill_content?: string;
+		source_url?: string | null;
+		triggers?: string[];
+	},
+): Promise<AgentSkill> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentSkill>>(
+		`/admin/agents/${agentId}/skills`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function updateGlobalSkill(
+	agentId: string,
+	skillId: string,
+	payload: {
+		is_enabled?: boolean;
+		triggers?: string[];
+		skill_content?: string;
+	},
+): Promise<AgentSkill> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<AgentSkill>>(
+		`/admin/agents/${agentId}/skills/${skillId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteGlobalSkill(
+	agentId: string,
+	skillId: string,
+): Promise<void> {
+	await apiClient.instance.delete(`/admin/agents/${agentId}/skills/${skillId}`);
+}
+
+export async function listGlobalEnvVars(
+	agentId: string,
+): Promise<AgentEnvVar[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentEnvVar[] }>
+	>(`/admin/agents/${agentId}/env-vars`);
+	return data.data.items;
+}
+
+export async function addGlobalEnvVar(
+	agentId: string,
+	payload: { key: string; value: string },
+): Promise<AgentEnvVar> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentEnvVar>>(
+		`/admin/agents/${agentId}/env-vars`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function updateGlobalEnvVar(
+	agentId: string,
+	envVarId: string,
+	payload: { value: string },
+): Promise<AgentEnvVar> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<AgentEnvVar>>(
+		`/admin/agents/${agentId}/env-vars/${envVarId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteGlobalEnvVar(
+	agentId: string,
+	envVarId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/admin/agents/${agentId}/env-vars/${envVarId}`,
+	);
+}
+
 // ── Conversations ─────────────────────────────────────────────────────────────
 
 export interface ConversationListResult {
@@ -937,6 +1084,24 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "env-vars"],
 		queryFn: () => listEnvVars(projectId, agentId),
+	});
+
+export const globalAgentMCPServersQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "mcp-servers"],
+		queryFn: () => listGlobalMCPServers(agentId),
+	});
+
+export const globalAgentSkillsQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "skills"],
+		queryFn: () => listGlobalSkills(agentId),
+	});
+
+export const globalAgentEnvVarsQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "env-vars"],
+		queryFn: () => listGlobalEnvVars(agentId),
 	});
 
 // Fetched once (no polling) — kept live afterward via useProjectRealtime's

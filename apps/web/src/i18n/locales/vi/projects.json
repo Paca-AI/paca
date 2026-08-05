@@ -76,6 +76,7 @@
 			"deleteDialog": {
 				"title": "Xóa {{name}}?",
 				"description": "Thao tác này sẽ xóa vĩnh viễn agent và loại bỏ nó khỏi dự án. Các cuộc trò chuyện đang chạy sẽ bị dừng.",
+				"descriptionGlobal": "Thao tác này sẽ xóa vĩnh viễn agent và loại bỏ nó khỏi mọi dự án mà agent đã được mời tham gia. Các cuộc trò chuyện đang chạy sẽ bị dừng.",
 				"cancel": "Hủy",
 				"delete": "Xóa"
 			}

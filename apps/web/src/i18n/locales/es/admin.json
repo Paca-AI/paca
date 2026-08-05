@@ -279,39 +279,6 @@
 			"title": "Aún no hay agentes globales",
 			"description": "Crea un agente global para que esté disponible para chatear y para invitarlo a proyectos.",
 			"createAgent": "Crear agente"
-		},
-		"table": {
-			"editAction": "Editar agente",
-			"deleteAction": "Eliminar agente"
-		},
-		"formDialog": {
-			"editTitle": "Editar agente global",
-			"description": "Los agentes globales no tienen un proyecto propio: invítalos a un proyecto desde la página de Equipo de ese proyecto para ponerlos a trabajar allí.",
-			"nameLabel": "Nombre",
-			"handleLabel": "Identificador",
-			"globalRoleLabel": "Rol global",
-			"noGlobalRole": "Sin rol",
-			"globalRoleHint": "Determina lo que este agente puede hacer a nivel global (por ejemplo, desde el chat de inicio o de administración). No es obligatorio: un rol asignado más adelante, al invitarlo a un proyecto, es independiente.",
-			"acpProviderLabel": "Proveedor ACP",
-			"providerLabel": "Proveedor",
-			"modelLabel": "Modelo",
-			"customOption": "Personalizado…",
-			"apiKeyLabel": "Clave de API",
-			"apiKeyKeepPlaceholder": "Déjalo en blanco para mantener la clave actual",
-			"baseUrlLabel": "URL base",
-			"systemPromptLabel": "Prompt del sistema",
-			"optional": "opcional",
-			"cancel": "Cancelar",
-			"save": "Guardar cambios",
-			"updateFailed": "No se pudo actualizar el agente"
-		},
-		"deleteDialog": {
-			"title": "¿Eliminar agente?",
-			"confirmPrefix": "Esto eliminará permanentemente",
-			"confirmSuffix": ", eliminándolo de todos los proyectos a los que ha sido invitado. Esta acción no se puede deshacer.",
-			"cancel": "Cancelar",
-			"delete": "Eliminar",
-			"deleteFailed": "No se pudo eliminar el agente"
 		}
 	}
 }
