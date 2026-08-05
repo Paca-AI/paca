@@ -68,7 +68,8 @@ jobs:
       - name: Unmark this release as "Latest"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.event.release.tag_name }}" --repo "${{ github.repository }}" --latest=false
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release edit "$TAG_NAME" --repo "${{ github.repository }}" --latest=false
 
   # ─────────────────────────────────────────────────────────────────────────────
   # API service image
@@ -535,6 +536,7 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     needs:
       [
+        hold-release-label,
         api-image,
         realtime-image,
         web-image,
@@ -582,4 +584,5 @@ jobs:
       - name: Mark release as "Latest"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.event.release.tag_name }}" --repo "${{ github.repository }}" --latest
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release edit "$TAG_NAME" --repo "${{ github.repository }}" --latest
