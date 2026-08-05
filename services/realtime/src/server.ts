@@ -32,6 +32,14 @@
 //
 // A "leave" event removes the socket from all namespace rooms for that project.
 //
+// Two more rooms are auto-joined at connect time, keyed purely on the
+// socket's own identity rather than any project permission check:
+//
+//   user:<userId>:notifications  — all notification.* events
+//   user:<userId>:agent-chat     — agent.* events with no project_id, i.e. a
+//                                  conversation with a global agent from the
+//                                  home page / admin pages
+//
 // Client-side example (using socket.io-client):
 //
 //   const socket = io("http://localhost", {
@@ -53,6 +61,7 @@ import {
 import { extractTokenFromCookieHeader } from "./auth.ts";
 import type { Config } from "./config.ts";
 import {
+	agentChatRoomName,
 	type EventNamespace,
 	hasProjectPermission,
 	NAMESPACE_PERMISSIONS,
@@ -165,6 +174,17 @@ export function createSocketServer(
 		logger.debug(
 			{ userId, room: `user:${userId}:notifications` },
 			"joined user notification room",
+		);
+
+		// Auto-join the user's personal global-agent-chat room, same reasoning
+		// as notifications above: a global agent conversation (home page /
+		// admin pages, no project) has no project room to place the socket in
+		// via the permission-gated "join" flow below, so this is keyed purely
+		// on the user's own identity instead.
+		socket.join(agentChatRoomName(userId));
+		logger.debug(
+			{ userId, room: agentChatRoomName(userId) },
+			"joined user agent-chat room",
 		);
 
 		// Join namespace-scoped rooms for a project.  Fetches project permissions

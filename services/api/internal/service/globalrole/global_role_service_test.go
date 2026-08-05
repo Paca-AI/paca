@@ -86,8 +86,27 @@ func (r *stubRepo) CountUsersWithRole(ctx context.Context, id uuid.UUID) (int64,
 	return 0, nil
 }
 
+// stubAgentCounter is a minimal agentRoleCounter stub.
+type stubAgentCounter struct {
+	count func(ctx context.Context, id uuid.UUID) (int64, error)
+}
+
+func (a *stubAgentCounter) CountAgentsWithGlobalRole(ctx context.Context, id uuid.UUID) (int64, error) {
+	if a.count != nil {
+		return a.count(ctx, id)
+	}
+	return 0, nil
+}
+
+// newSvc builds a Service with no agentRoleCounter configured — sufficient
+// for tests that don't exercise the agent-in-use guard (Delete treats a nil
+// agents dependency as "no agents to check").
+func newSvc(repo *stubRepo) *globalrolesvc.Service {
+	return globalrolesvc.New(repo, nil)
+}
+
 func TestCreate_NameValidation(t *testing.T) {
-	svc := globalrolesvc.New(&stubRepo{})
+	svc := newSvc(&stubRepo{})
 	_, err := svc.Create(context.Background(), globalroledom.CreateInput{Name: "   "})
 	if !errors.Is(err, globalroledom.ErrInvalidName) {
 		t.Fatalf("expected ErrInvalidName, got %v", err)
@@ -95,7 +114,7 @@ func TestCreate_NameValidation(t *testing.T) {
 }
 
 func TestCreate_NameTaken(t *testing.T) {
-	svc := globalrolesvc.New(&stubRepo{
+	svc := newSvc(&stubRepo{
 		findByName: func(_ context.Context, _ string) (*globalroledom.GlobalRole, error) {
 			return &globalroledom.GlobalRole{ID: uuid.New(), Name: "SUPER_ADMIN"}, nil
 		},
@@ -108,7 +127,7 @@ func TestCreate_NameTaken(t *testing.T) {
 
 func TestDelete_RejectedWhenUsersAssigned(t *testing.T) {
 	roleID := uuid.New()
-	svc := globalrolesvc.New(&stubRepo{
+	svc := newSvc(&stubRepo{
 		countUsersWithRole: func(_ context.Context, id uuid.UUID) (int64, error) {
 			if id != roleID {
 				t.Fatalf("unexpected role id: %s", id)
@@ -123,10 +142,29 @@ func TestDelete_RejectedWhenUsersAssigned(t *testing.T) {
 	}
 }
 
+func TestDelete_RejectedWhenAgentAssigned(t *testing.T) {
+	roleID := uuid.New()
+	svc := globalrolesvc.New(&stubRepo{
+		countUsersWithRole: func(_ context.Context, _ uuid.UUID) (int64, error) { return 0, nil },
+	}, &stubAgentCounter{
+		count: func(_ context.Context, id uuid.UUID) (int64, error) {
+			if id != roleID {
+				t.Fatalf("unexpected role id: %s", id)
+			}
+			return 1, nil // 1 global agent references this role
+		},
+	})
+
+	err := svc.Delete(context.Background(), roleID)
+	if !errors.Is(err, globalroledom.ErrHasAssignedUsers) {
+		t.Fatalf("expected ErrHasAssignedUsers, got %v", err)
+	}
+}
+
 func TestDelete_SucceedsWhenNoUsersAssigned(t *testing.T) {
 	roleID := uuid.New()
 	deleted := false
-	svc := globalrolesvc.New(&stubRepo{
+	svc := newSvc(&stubRepo{
 		findByID: func(_ context.Context, id uuid.UUID) (*globalroledom.GlobalRole, error) {
 			return &globalroledom.GlobalRole{ID: id, Name: "OLD"}, nil
 		},
@@ -148,7 +186,7 @@ func TestDelete_SucceedsWhenNoUsersAssigned(t *testing.T) {
 func TestReplaceUserRoles_ReturnsAssignedRoles(t *testing.T) {
 	userID := uuid.New()
 	roleID := uuid.New()
-	svc := globalrolesvc.New(&stubRepo{
+	svc := newSvc(&stubRepo{
 		replaceUserRoles: func(_ context.Context, gotUserID uuid.UUID, _ []uuid.UUID) error {
 			if gotUserID != userID {
 				t.Fatalf("unexpected user id: %s", gotUserID)

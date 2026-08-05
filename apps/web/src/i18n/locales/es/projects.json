@@ -30,7 +30,7 @@
 			"projectRoleHint": "Controla lo que el agente puede leer y modificar en este proyecto.",
 			"agentTypeLabel": "Tipo de agente",
 			"agentTypeLLM": "LLM (clave de API)",
-			"agentTypeLLMHint": "Paca llama directamente a la API de un modelo y ejecuta el agente en un sandbox en la nube.",
+			"agentTypeLLMHint": "Paca llama directamente a la API de un modelo y ejecuta el agente en un contenedor aislado en el servidor donde está alojado Paca.",
 			"agentTypeACP": "ACP (CLI local)",
 			"agentTypeACPHint": "Delega en una CLI de código que tú mismo ejecutas — Claude Code, Codex, Gemini CLI o un servidor ACP personalizado.",
 			"modelSection": "Modelo",
@@ -62,7 +62,11 @@
 			"creating": "Creando…",
 			"createAgent": "Crear agente",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Eres un ingeniero de software sénior…"
+			"systemPromptPlaceholder": "Eres un ingeniero de software sénior…",
+			"globalRoleLabel": "Rol global",
+			"globalRolePlaceholder": "Selecciona un rol global…",
+			"globalRoleHint": "Controla lo que el agente puede hacer a nivel global (por ejemplo, desde el chat de inicio o de administración). Opcional: un rol asignado más adelante, al invitarlo a un proyecto, es independiente.",
+			"noGlobalRoleOption": "Sin rol"
 		},
 		"card": {
 			"configure": "Configurar",
@@ -663,7 +667,11 @@
 			"addMember": "Añadir miembro",
 			"errors": {
 				"addFailed": "No se pudo añadir al miembro. Inténtalo de nuevo."
-			}
+			},
+			"modeUser": "Usuario",
+			"modeAgent": "Agente de IA",
+			"agentLabel": "Agente",
+			"noAgentsAvailable": "No hay agentes globales disponibles para invitar."
 		},
 		"roleChip": {
 			"changeRole": "Cambiar rol",
@@ -687,7 +695,8 @@
 		"newConversation": "Nueva conversación",
 		"agentLabel": "Agente",
 		"selectAgentPlaceholder": "Selecciona un agente…",
-		"selectAgentFirst": "Selecciona primero un agente."
+		"selectAgentFirst": "Selecciona primero un agente.",
+		"noAgentsAvailable": "Aún no hay agentes disponibles."
 	},
 	"taskTypes": {
 		"deleteDialog": {

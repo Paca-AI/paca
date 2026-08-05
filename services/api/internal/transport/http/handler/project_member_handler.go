@@ -44,8 +44,10 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
-	if req.UserID == uuid.Nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "user_id is required"))
+	hasUser := req.UserID != uuid.Nil
+	hasAgent := req.AgentID != nil && *req.AgentID != uuid.Nil
+	if hasUser == hasAgent {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "exactly one of user_id or agent_id is required"))
 		return
 	}
 	if req.ProjectRoleID == uuid.Nil {
@@ -55,6 +57,7 @@ func (h *ProjectHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 
 	m, err := h.svc.AddMember(r.Context(), id, projectdom.AddMemberInput{
 		UserID:        req.UserID,
+		AgentID:       req.AgentID,
 		ProjectRoleID: req.ProjectRoleID,
 	})
 	if err != nil {

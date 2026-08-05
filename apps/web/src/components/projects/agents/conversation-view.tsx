@@ -24,13 +24,21 @@ import {
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
+	chattableAgentsQueryOptions,
 	conversationEventsQueryOptions,
 	conversationQueryOptions,
+	globalConversationEventsQueryOptions,
+	globalConversationQueryOptions,
 	heartbeatConversation,
+	heartbeatGlobalConversation,
 	pauseConversation,
+	pauseGlobalConversation,
 	sendChatMessage,
 	sendConversationMessage,
+	sendGlobalChatMessage,
+	sendGlobalConversationMessage,
 	stopConversation,
+	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
 import {
@@ -45,7 +53,8 @@ function ConversationControls({
 	conversation,
 	isACP,
 }: {
-	projectId: string;
+	/** Absent for a global-chat conversation (home/admin pages, no project). */
+	projectId?: string;
 	conversation: AgentConversation;
 	isACP: boolean;
 }) {
@@ -53,16 +62,29 @@ function ConversationControls({
 	const qc = useQueryClient();
 
 	const invalidate = () => {
-		qc.invalidateQueries({
-			queryKey: ["projects", projectId, "conversations", conversation.id],
-		});
-		qc.invalidateQueries({
-			queryKey: ["projects", projectId, "conversations"],
-		});
+		if (projectId) {
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "conversations", conversation.id],
+			});
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "conversations"],
+			});
+		} else {
+			qc.invalidateQueries({
+				queryKey: ["global-chat", "conversations", conversation.id],
+			});
+			qc.invalidateQueries({ queryKey: ["global-chat", "conversations"] });
+		}
 	};
 
 	const stopMut = useMutation({
-		mutationFn: () => stopConversation(projectId, conversation.id),
+		mutationFn: async () => {
+			if (projectId) {
+				await stopConversation(projectId, conversation.id);
+			} else {
+				await stopGlobalConversation(conversation.id);
+			}
+		},
 		onSuccess: invalidate,
 	});
 
@@ -106,7 +128,8 @@ function ConversationControls({
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface ConversationViewProps {
-	projectId: string;
+	/** Absent for a global-chat conversation (home/admin pages, no project). */
+	projectId?: string;
 	conversationId: string;
 }
 
@@ -131,14 +154,32 @@ export function ConversationView({
 		data: conversation,
 		isLoading: convLoading,
 		isError,
-	} = useQuery(conversationQueryOptions(projectId, conversationId));
-	const { data: events = [], isLoading: eventsLoading } = useQuery(
-		conversationEventsQueryOptions(projectId, conversationId),
+	} = useQuery(
+		projectId
+			? conversationQueryOptions(projectId, conversationId)
+			: globalConversationQueryOptions(conversationId),
 	);
-	const { data: agent } = useQuery({
-		...agentQueryOptions(projectId, conversation?.agent_id ?? ""),
-		enabled: !!conversation?.agent_id,
+	const { data: events = [], isLoading: eventsLoading } = useQuery(
+		projectId
+			? conversationEventsQueryOptions(projectId, conversationId)
+			: globalConversationEventsQueryOptions(conversationId),
+	);
+	// Project scope: GET /projects/:id/agents/:agentId (project members may
+	// always read their own project's agents). Global scope: the caller may
+	// not have agents.read (admin-gated), so this uses the unrestricted
+	// "browse global agents to chat with" list instead (same as
+	// ai-chat-float-global.tsx) and finds the agent by id client-side.
+	const { data: projectAgent } = useQuery({
+		...agentQueryOptions(projectId ?? "", conversation?.agent_id ?? ""),
+		enabled: !!projectId && !!conversation?.agent_id,
 	});
+	const { data: chattableAgents = [] } = useQuery({
+		...chattableAgentsQueryOptions,
+		enabled: !projectId && !!conversation?.agent_id,
+	});
+	const agent = projectId
+		? projectAgent
+		: chattableAgents.find((a) => a.id === conversation?.agent_id);
 	const isACP = agent?.agent_type === "acp";
 
 	const isRunning =
@@ -166,12 +207,19 @@ export function ConversationView({
 	);
 
 	const invalidate = (id: string = conversationId) => {
-		qc.invalidateQueries({
-			queryKey: ["projects", projectId, "conversations", id],
-		});
-		qc.invalidateQueries({
-			queryKey: ["projects", projectId, "conversations"],
-		});
+		if (projectId) {
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "conversations", id],
+			});
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "conversations"],
+			});
+		} else {
+			qc.invalidateQueries({
+				queryKey: ["global-chat", "conversations", id],
+			});
+			qc.invalidateQueries({ queryKey: ["global-chat", "conversations"] });
+		}
 	};
 
 	const onNew = async (message: AppendMessage) => {
@@ -187,17 +235,25 @@ export function ConversationView({
 			// ACP conversation of a non-chat trigger type (task_assigned,
 			// comment_mention, etc.) — reply in place on the same
 			// conversation_id rather than through a chat session.
-			await sendConversationMessage(projectId, conversation.id, text);
+			if (projectId) {
+				await sendConversationMessage(projectId, conversation.id, text);
+			} else {
+				await sendGlobalConversationMessage(conversation.id, text);
+			}
 			invalidate();
 			return;
 		}
 
-		const result = await sendChatMessage(
-			projectId,
-			conversation.agent_id,
-			conversation.chat_session_id,
-			{ message: text },
-		);
+		const result = projectId
+			? await sendChatMessage(
+					projectId,
+					conversation.agent_id,
+					conversation.chat_session_id,
+					{ message: text },
+				)
+			: await sendGlobalChatMessage(conversation.chat_session_id, {
+					message: text,
+				});
 		// The previous conversation may have already ended (explicitly
 		// stopped, or reaped after 3 minutes with no heartbeat) — replying
 		// then silently starts a fresh conversation server-side. Follow it,
@@ -205,7 +261,10 @@ export function ConversationView({
 		// conversation and the reply appears to vanish.
 		if (result.id !== conversationId) {
 			qc.setQueryData(
-				conversationQueryOptions(projectId, result.id).queryKey,
+				(projectId
+					? conversationQueryOptions(projectId, result.id)
+					: globalConversationQueryOptions(result.id)
+				).queryKey,
 				result,
 			);
 			setConversationId(result.id);
@@ -215,7 +274,11 @@ export function ConversationView({
 
 	const onCancel = async () => {
 		if (!conversation) return;
-		await pauseConversation(projectId, conversation.id);
+		if (projectId) {
+			await pauseConversation(projectId, conversation.id);
+		} else {
+			await pauseGlobalConversation(conversation.id);
+		}
 		invalidate();
 	};
 
@@ -239,10 +302,15 @@ export function ConversationView({
 	useEffect(() => {
 		if (conversation?.trigger_type !== "chat_message" || isTerminal || isACP)
 			return;
-		void heartbeatConversation(projectId, conversationId).catch(() => {});
-		const interval = setInterval(() => {
-			void heartbeatConversation(projectId, conversationId).catch(() => {});
-		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
+		const ping = () => {
+			void (
+				projectId
+					? heartbeatConversation(projectId, conversationId)
+					: heartbeatGlobalConversation(conversationId)
+			).catch(() => {});
+		};
+		ping();
+		const interval = setInterval(ping, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
 	}, [
 		conversation?.trigger_type,

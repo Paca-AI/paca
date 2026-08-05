@@ -30,7 +30,7 @@
 			"projectRoleHint": "Contrôle ce que l'agent peut lire et modifier dans ce projet.",
 			"agentTypeLabel": "Type d'agent",
 			"agentTypeLLM": "LLM (clé API)",
-			"agentTypeLLMHint": "Paca appelle directement l'API d'un modèle et exécute l'agent dans un sandbox cloud.",
+			"agentTypeLLMHint": "Paca appelle directement l'API d'un modèle et exécute l'agent dans un conteneur isolé sur le serveur hébergeant Paca.",
 			"agentTypeACP": "ACP (CLI locale)",
 			"agentTypeACPHint": "Délègue à une CLI de code que vous exécutez vous-même — Claude Code, Codex, Gemini CLI ou un serveur ACP personnalisé.",
 			"modelSection": "Modèle",
@@ -62,7 +62,11 @@
 			"creating": "Création…",
 			"createAgent": "Créer l'agent",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Vous êtes un ingénieur logiciel senior…"
+			"systemPromptPlaceholder": "Vous êtes un ingénieur logiciel senior…",
+			"globalRoleLabel": "Rôle global",
+			"globalRolePlaceholder": "Sélectionnez un rôle global…",
+			"globalRoleHint": "Détermine ce que l'agent peut faire au niveau global (par exemple depuis le chat d'accueil/admin). Facultatif — un rôle attribué plus tard, une fois invité dans un projet, est distinct.",
+			"noGlobalRoleOption": "Aucun rôle"
 		},
 		"card": {
 			"configure": "Configurer",
@@ -663,7 +667,11 @@
 			"addMember": "Ajouter le membre",
 			"errors": {
 				"addFailed": "Échec de l'ajout du membre. Veuillez réessayer."
-			}
+			},
+			"modeUser": "Utilisateur",
+			"modeAgent": "Agent IA",
+			"agentLabel": "Agent",
+			"noAgentsAvailable": "Aucun agent global disponible à inviter."
 		},
 		"roleChip": {
 			"changeRole": "Changer de rôle",
@@ -687,7 +695,8 @@
 		"newConversation": "Nouvelle conversation",
 		"agentLabel": "Agent",
 		"selectAgentPlaceholder": "Sélectionner un agent…",
-		"selectAgentFirst": "Veuillez d'abord sélectionner un agent."
+		"selectAgentFirst": "Veuillez d'abord sélectionner un agent.",
+		"noAgentsAvailable": "Aucun agent disponible pour le moment."
 	},
 	"taskTypes": {
 		"deleteDialog": {

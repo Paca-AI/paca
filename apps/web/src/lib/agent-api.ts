@@ -111,9 +111,19 @@ export interface AgentEnvVar {
 export type AgentType = "llm" | "acp";
 export type ACPProvider = "claude-code" | "codex" | "gemini-cli" | "custom";
 
+// "project" agents belong to exactly one project (project_id set). "global"
+// agents belong to none (project_id null) — they chat on the home/admin
+// pages and can be invited into projects the same way a user is added as a
+// member (see project-api.ts's addProjectMember, agent_id branch).
+export type AgentScope = "project" | "global";
+
 export interface Agent {
 	id: string;
-	project_id: string;
+	// Null for a global-scope agent.
+	project_id?: string | null;
+	agent_scope: AgentScope;
+	// Only ever set for a global-scope agent — mirrors users.role_id.
+	global_role_id?: string | null;
 	name: string;
 	handle: string;
 	avatar_url?: string | null;
@@ -153,12 +163,15 @@ export type ConversationTriggerType =
 export interface AgentConversation {
 	id: string;
 	agent_id: string;
-	project_id: string;
+	// Null for a global-chat conversation (with a global agent from the
+	// home/admin pages) — actor_user_id identifies the human instead.
+	project_id?: string | null;
 	trigger_type: ConversationTriggerType;
 	task_id?: string | null;
 	comment_id?: string | null;
 	chat_session_id?: string | null;
 	triggered_by_member_id?: string;
+	actor_user_id?: string | null;
 	status: ConversationStatus;
 	iteration_count: number;
 	error_message?: string | null;
@@ -183,8 +196,11 @@ export interface AgentConversationEvent {
 export interface AgentChatSession {
 	id: string;
 	agent_id: string;
-	project_id: string;
-	member_id: string;
+	// project_id/member_id are null for a global chat session; actor_user_id
+	// is set instead. Exactly the reverse for a project chat session.
+	project_id?: string | null;
+	member_id?: string | null;
+	actor_user_id?: string | null;
 	title?: string | null;
 	last_message_at?: string | null;
 	created_at: string;
@@ -259,6 +275,185 @@ export async function updateAgent(
 	return data.data;
 }
 
+// ── Global Agents (admin CRUD) ───────────────────────────────────────────────
+//
+// Global agents have no project — they're managed from /admin/agents
+// (permission-gated: agents.read/agents.write) and later invited into
+// projects via project-api.ts's addProjectMember (agent_id branch), the same
+// action used to add a human member.
+
+export async function listGlobalAgents(): Promise<Agent[]> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<{ items: Agent[] }>>(
+			"/admin/agents",
+		);
+	return data.data.items;
+}
+
+export async function getGlobalAgent(agentId: string): Promise<Agent> {
+	const { data } = await apiClient.instance.get<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}`,
+	);
+	return data.data;
+}
+
+export interface CreateGlobalAgentPayload {
+	name: string;
+	handle: string;
+	agent_type?: AgentType;
+	llm_provider?: string;
+	llm_model?: string;
+	llm_api_key?: string;
+	llm_base_url?: string;
+	acp_provider?: ACPProvider;
+	acp_command?: string[];
+	system_prompt?: string;
+	git_committer_name?: string;
+	git_committer_email?: string;
+	global_role_id?: string | null;
+}
+
+export async function createGlobalAgent(
+	payload: CreateGlobalAgentPayload,
+): Promise<Agent> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<Agent>>(
+		"/admin/agents",
+		payload,
+	);
+	return data.data;
+}
+
+export interface UpdateGlobalAgentPayload {
+	name?: string;
+	handle?: string;
+	llm_provider?: string;
+	llm_model?: string;
+	llm_api_key?: string;
+	llm_base_url?: string | null;
+	acp_provider?: ACPProvider;
+	acp_command?: string[];
+	system_prompt?: string;
+	git_committer_name?: string;
+	git_committer_email?: string;
+	global_role_id?: string | null;
+}
+
+export async function updateGlobalAgent(
+	agentId: string,
+	payload: UpdateGlobalAgentPayload,
+): Promise<Agent> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteGlobalAgent(agentId: string): Promise<void> {
+	await apiClient.instance.delete(`/admin/agents/${agentId}`);
+}
+
+// Any authenticated human may browse global agents (to chat with one) —
+// unlike listGlobalAgents (/admin/agents) above, this isn't permission-gated.
+export async function listChattableAgents(): Promise<Agent[]> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<{ items: Agent[] }>>(
+			"/agents",
+		);
+	return data.data.items;
+}
+
+// ── Global Chat ───────────────────────────────────────────────────────────────
+//
+// Chatting with a global agent from the home page / admin pages — no project
+// context. Mirrors the project-scoped chat session + conversation functions
+// above; see services/api's /agents/:agentId/chat-sessions and
+// /agents/conversations/:id route tree.
+
+export async function listGlobalChatSessions(
+	agentId: string,
+): Promise<AgentChatSession[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentChatSession[] }>
+	>(`/agents/${agentId}/chat-sessions`);
+	return data.data.items;
+}
+
+export async function startGlobalChatSession(
+	agentId: string,
+	payload: { message: string; title?: string },
+): Promise<StartChatSessionResponse> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<StartChatSessionResponse>
+	>(`/agents/${agentId}/chat-sessions`, payload);
+	return data.data;
+}
+
+export async function sendGlobalChatMessage(
+	sessionId: string,
+	payload: { message: string },
+): Promise<AgentConversation> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{ conversation: AgentConversation }>
+	>(`/agents/chat-sessions/${sessionId}/messages`, payload);
+	return data.data.conversation;
+}
+
+export async function getGlobalConversation(
+	conversationId: string,
+): Promise<AgentConversation> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<AgentConversation>
+	>(`/agents/conversations/${conversationId}`);
+	return data.data;
+}
+
+export async function listGlobalConversationEvents(
+	conversationId: string,
+): Promise<AgentConversationEvent[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentConversationEvent[] }>
+	>(`/agents/conversations/${conversationId}/events`, {
+		params: { limit: 200 },
+	});
+	return data.data.items;
+}
+
+export async function stopGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.post(`/agents/conversations/${conversationId}/stop`);
+}
+
+export async function pauseGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/agents/conversations/${conversationId}/pause`,
+	);
+}
+
+export async function heartbeatGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/agents/conversations/${conversationId}/heartbeat`,
+	);
+}
+
+// sendGlobalConversationMessage is sendConversationMessage's global-chat
+// sibling — replies to a global conversation directly by id (the ACP resume
+// path), rather than through a chat session.
+export async function sendGlobalConversationMessage(
+	conversationId: string,
+	message: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/agents/conversations/${conversationId}/messages`,
+		{ message },
+	);
+}
+
 // ── ACP Local Bridge ─────────────────────────────────────────────────────────
 
 export interface AcpBridgeToken {
@@ -289,6 +484,26 @@ export async function getAcpBridgeStatus(
 	// listLLMModels below.
 	const { data } = await apiClient.instance.get<AcpBridgeStatus>(
 		`/projects/${projectId}/agents/${agentId}/acp-bridge-status`,
+	);
+	return data;
+}
+
+// generateGlobalAcpBridgeToken/getGlobalAcpBridgeStatus are
+// generateAcpBridgeToken/getAcpBridgeStatus's global-agent siblings.
+export async function generateGlobalAcpBridgeToken(
+	agentId: string,
+): Promise<AcpBridgeToken> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AcpBridgeToken>
+	>(`/admin/agents/${agentId}/acp-bridge-token`);
+	return data.data;
+}
+
+export async function getGlobalAcpBridgeStatus(
+	agentId: string,
+): Promise<AcpBridgeStatus> {
+	const { data } = await apiClient.instance.get<AcpBridgeStatus>(
+		`/admin/agents/${agentId}/acp-bridge-status`,
 	);
 	return data;
 }
@@ -553,6 +768,21 @@ export async function listConversations(
 	return data.data;
 }
 
+// listGlobalConversations is listConversations' global-chat sibling — always
+// scoped server-side to the caller's own conversations (see
+// services/api's ConversationHandler.ListGlobalConversations), so it takes
+// no projectId/agentId-style scope argument.
+export async function listGlobalConversations(
+	options?: ListConversationsOptions,
+): Promise<ConversationListResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ConversationListResult>
+	>("/agents/conversations", {
+		params: buildConversationQueryParams(options),
+	});
+	return data.data;
+}
+
 export async function getConversation(
 	projectId: string,
 	conversationId: string,
@@ -723,6 +953,20 @@ export const acpBridgeStatusQueryOptions = (
 		enabled: options?.enabled ?? true,
 	});
 
+// Global-agent sibling of acpBridgeStatusQueryOptions. Unlike the
+// project-scoped one, this has no live socket-driven update — a global
+// agent's bridge status event currently has no per-agent room to route to
+// (see services/ai-agent's acp_bridge.py) — so it's fetch-once only.
+export const globalAcpBridgeStatusQueryOptions = (
+	agentId: string,
+	options?: { enabled?: boolean },
+) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "acp-bridge-status"],
+		queryFn: () => getGlobalAcpBridgeStatus(agentId),
+		enabled: options?.enabled ?? true,
+	});
+
 // No refetchInterval: kept live via useProjectRealtime's socket-driven
 // invalidation of the ["projects", projectId, "conversations"] prefix on
 // every "agent.*" event instead of polling. Cursor-paginated — each page
@@ -777,6 +1021,64 @@ export const chatSessionsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "chat-sessions"],
 		queryFn: () => listChatSessions(projectId, agentId),
+	});
+
+// ── Global Agent / Global Chat Query Options ────────────────────────────────
+//
+// Separate ["global-agents", ...] / ["global-chat", ...] cache-key
+// namespaces — deliberately not nested under ["projects", ...] since a
+// global agent/conversation has no projectId to key off.
+
+export const globalAgentsQueryOptions = queryOptions({
+	queryKey: ["global-agents"],
+	queryFn: listGlobalAgents,
+});
+
+export const chattableAgentsQueryOptions = queryOptions({
+	queryKey: ["global-agents", "chattable"],
+	queryFn: listChattableAgents,
+});
+
+export const globalAgentQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId],
+		queryFn: () => getGlobalAgent(agentId),
+	});
+
+export const globalChatSessionsQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-chat", "agents", agentId, "chat-sessions"],
+		queryFn: () => listGlobalChatSessions(agentId),
+	});
+
+// No refetchInterval: kept live via useGlobalAgentRealtime's socket-driven
+// invalidation of the ["global-chat", "conversations"] prefix, same
+// mechanism as conversationsQueryOptions above.
+export const globalConversationsQueryOptions = (
+	filters: ConversationFilters = {},
+) =>
+	infiniteQueryOptions({
+		queryKey: ["global-chat", "conversations", filters],
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listGlobalConversations({
+				...filters,
+				cursor: pageParam,
+				pageSize: CONVERSATIONS_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
+
+export const globalConversationQueryOptions = (conversationId: string) =>
+	queryOptions({
+		queryKey: ["global-chat", "conversations", conversationId],
+		queryFn: () => getGlobalConversation(conversationId),
+	});
+
+export const globalConversationEventsQueryOptions = (conversationId: string) =>
+	queryOptions({
+		queryKey: ["global-chat", "conversations", conversationId, "events"],
+		queryFn: () => listGlobalConversationEvents(conversationId),
 	});
 
 // ── Activity Feed ────────────────────────────────────────────────────────────

@@ -37,6 +37,26 @@ type AgentRepository interface {
 	// SetACPBridgeTokenHash stores the SHA-256 hash of a newly generated
 	// local-bridge auth token, replacing any previous one.
 	SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error
+
+	// -- Global agents (AgentScope == AgentScopeGlobal, ProjectID == uuid.Nil).
+
+	ListGlobalAgents(ctx context.Context) ([]*Agent, error)
+	// FindGlobalAgentByHandle looks up a global agent by its instance-wide
+	// unique handle (uq_agents_global_handle). Distinct from
+	// FindAgentByHandle, which resolves within one project's visible agents
+	// (its own project-scoped agents plus any global agents invited into it)
+	// via the project_members join and would never match on projectID ==
+	// uuid.Nil.
+	FindGlobalAgentByHandle(ctx context.Context, handle string) (*Agent, error)
+	CreateGlobalAgent(ctx context.Context, a *Agent) error
+	// SoftDeleteGlobalAgentCascade soft-deletes the agent row and every
+	// active project_members row referencing it, across every project it
+	// was invited into, in one transaction.
+	SoftDeleteGlobalAgentCascade(ctx context.Context, agentID uuid.UUID) error
+	// ListInvitedProjectIDs returns the IDs of every project a global agent
+	// currently has an active project_members row in — used to invalidate
+	// each project's member-list cache when the agent is deleted.
+	ListInvitedProjectIDs(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // MCPServerRepository defines storage for agent MCP server configurations.
@@ -94,12 +114,25 @@ type ChatSessionRepository interface {
 	FindChatSessionByID(ctx context.Context, id uuid.UUID) (*AgentChatSession, error)
 	CreateChatSession(ctx context.Context, s *AgentChatSession) error
 	UpdateChatSession(ctx context.Context, s *AgentChatSession) error
+	// ListGlobalChatSessions is ListChatSessions' sibling for global chat
+	// sessions, keyed by actor_user_id instead of member_id.
+	ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*AgentChatSession, error)
 }
 
 // ListConversationsFilter carries optional filters for listing conversations.
 type ListConversationsFilter struct {
-	AgentIDs     []uuid.UUID
-	ProjectID    *uuid.UUID
+	AgentIDs  []uuid.UUID
+	ProjectID *uuid.UUID
+	// GlobalOnly, when true, restricts the listing to global-chat
+	// conversations (project_id IS NULL) — used by the "my global
+	// conversations" endpoint. Mutually exclusive with ProjectID; callers
+	// should set at most one.
+	GlobalOnly bool
+	// ActorUserID, when set, restricts the listing to conversations with
+	// this actor_user_id — used by ListGlobalConversations to scope the
+	// "my global conversations" endpoint to the caller only, since global
+	// chat has no project-team visibility to share it with.
+	ActorUserID  *uuid.UUID
 	TaskID       *uuid.UUID
 	Statuses     []string
 	TriggerTypes []string

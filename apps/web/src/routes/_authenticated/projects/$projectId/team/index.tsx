@@ -52,6 +52,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
 import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
+import { type Agent, chattableAgentsQueryOptions } from "@/lib/agent-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	addProjectMember,
@@ -129,22 +130,32 @@ function AddMemberDialog({
 	projectId,
 	roles,
 	existingMemberIds,
+	existingAgentIds,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	projectId: string;
 	roles: ProjectRole[];
 	existingMemberIds: Set<string>;
+	existingAgentIds: Set<string>;
 }) {
 	const { t } = useTranslation("projects");
 	const queryClient = useQueryClient();
 	const { hasPermission: can } = usePermissions();
+	const [mode, setMode] = useState<"user" | "agent">("user");
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
+	const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
 	const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 	const [userSearch, setUserSearch] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const canReadUsers = can("users.read");
+
+	const { data: allAgents = [], isLoading: isLoadingAgents } = useQuery({
+		...chattableAgentsQueryOptions,
+		enabled: open && mode === "agent",
+	});
+	const availableAgents = allAgents.filter((a) => !existingAgentIds.has(a.id));
 
 	const {
 		data: usersPages,
@@ -183,10 +194,21 @@ function AddMemberDialog({
 
 	const addMutation = useMutation({
 		mutationFn: () => {
-			if (!selectedUser || !selectedRoleId) {
-				return Promise.reject(new Error("User and role are required"));
+			if (!selectedRoleId) {
+				return Promise.reject(new Error("Role is required"));
 			}
-
+			if (mode === "agent") {
+				if (!selectedAgent) {
+					return Promise.reject(new Error("Agent is required"));
+				}
+				return addProjectMember(projectId, {
+					agent_id: selectedAgent.id,
+					project_role_id: selectedRoleId,
+				});
+			}
+			if (!selectedUser) {
+				return Promise.reject(new Error("User is required"));
+			}
 			return addProjectMember(projectId, {
 				user_id: selectedUser.id,
 				project_role_id: selectedRoleId,
@@ -207,14 +229,19 @@ function AddMemberDialog({
 	});
 
 	function handleClose() {
+		setMode("user");
 		setSelectedUser(null);
+		setSelectedAgent(null);
 		setSelectedRoleId("");
 		setUserSearch("");
 		setError(null);
 		onOpenChange(false);
 	}
 
-	const canSubmit = selectedUser && selectedRoleId && !addMutation.isPending;
+	const canSubmit =
+		!!selectedRoleId &&
+		!addMutation.isPending &&
+		(mode === "agent" ? !!selectedAgent : !!selectedUser);
 	const selectedUserId = selectedUser?.id ?? null;
 
 	return (
@@ -236,88 +263,187 @@ function AddMemberDialog({
 				</DialogHeader>
 
 				<div className="space-y-4 py-1">
-					{/* User search */}
-					<div className="space-y-1.5">
-						<p className="text-sm font-medium">
-							{t("team.addMemberDialog.userLabel")}
-						</p>
-						{selectedUser ? (
-							<div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
-								<Avatar className="size-7 shrink-0">
-									<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
-										{getInitials(
-											selectedUser.full_name || selectedUser.username,
-										)}
-									</AvatarFallback>
-								</Avatar>
-								<div className="min-w-0 flex-1">
-									<span className="text-sm font-medium">
-										{selectedUser.full_name || selectedUser.username}
-									</span>
-									{selectedUser.full_name && (
-										<span className="ml-2 text-xs text-muted-foreground">
-											@{selectedUser.username}
-										</span>
-									)}
-								</div>
+					{/* Mode toggle: invite a human user, or invite a global agent */}
+					<div className="grid grid-cols-2 gap-2">
+						{(["user", "agent"] as const).map((m) => {
+							const isSelected = mode === m;
+							return (
 								<button
+									key={m}
 									type="button"
-									className="text-xs text-muted-foreground hover:text-foreground"
 									onClick={() => {
+										setMode(m);
 										setSelectedUser(null);
-										setTimeout(() => searchRef.current?.focus(), 50);
+										setSelectedAgent(null);
+										setError(null);
 									}}
+									className={`flex items-center justify-center gap-1.5 rounded-lg border p-2.5 text-xs font-medium transition-all ${
+										isSelected
+											? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
+											: "border-border/60 hover:border-border hover:bg-muted/30"
+									}`}
 								>
-									{t("team.addMemberDialog.change")}
+									{m === "user" ? (
+										<UserRound className="size-3.5" />
+									) : (
+										<Bot className="size-3.5" />
+									)}
+									{m === "user"
+										? t("team.addMemberDialog.modeUser")
+										: t("team.addMemberDialog.modeAgent")}
 								</button>
-							</div>
-						) : (
-							<div className="rounded-lg border border-border overflow-hidden">
-								<div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-									<Search className="size-3.5 shrink-0 text-muted-foreground" />
-									<input
-										ref={searchRef}
-										className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-										placeholder={t("team.addMemberDialog.searchPlaceholder")}
-										value={userSearch}
-										onChange={(e) => setUserSearch(e.target.value)}
-										autoFocus
-									/>
+							);
+						})}
+					</div>
+
+					{mode === "agent" ? (
+						<div className="space-y-1.5">
+							<p className="text-sm font-medium">
+								{t("team.addMemberDialog.agentLabel")}
+							</p>
+							{selectedAgent ? (
+								<div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+									<Avatar className="size-7 shrink-0">
+										<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
+											<Bot className="size-3.5" />
+										</AvatarFallback>
+									</Avatar>
+									<div className="min-w-0 flex-1">
+										<span className="text-sm font-medium">
+											{selectedAgent.name}
+										</span>
+										<span className="ml-2 text-xs text-muted-foreground">
+											@{selectedAgent.handle}
+										</span>
+									</div>
+									<button
+										type="button"
+										className="text-xs text-muted-foreground hover:text-foreground"
+										onClick={() => setSelectedAgent(null)}
+									>
+										{t("team.addMemberDialog.change")}
+									</button>
 								</div>
-								<div
-									className="max-h-44 overflow-y-auto p-1"
-									onScroll={handleUsersListScroll}
-								>
-									{isLoadingUsers ? (
+							) : (
+								<div className="rounded-lg border border-border overflow-hidden max-h-44 overflow-y-auto p-1">
+									{isLoadingAgents ? (
 										<div className="flex items-center justify-center py-4">
 											<Loader2 className="size-4 animate-spin text-muted-foreground" />
 										</div>
-									) : filteredUsers.length === 0 ? (
+									) : availableAgents.length === 0 ? (
 										<p className="py-4 text-center text-xs text-muted-foreground">
-											{userSearch
-												? t("team.addMemberDialog.noUsersMatch")
-												: t("team.addMemberDialog.noUsersAvailable")}
+											{t("team.addMemberDialog.noAgentsAvailable")}
 										</p>
 									) : (
-										filteredUsers.map((user: User) => (
-											<UserPickerItem
-												key={user.id}
-												user={user}
-												selected={selectedUserId === user.id}
-												onSelect={setSelectedUser}
-											/>
+										availableAgents.map((agent) => (
+											<button
+												key={agent.id}
+												type="button"
+												className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+												onClick={() => setSelectedAgent(agent)}
+											>
+												<Avatar className="size-7 shrink-0">
+													<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
+														<Bot className="size-3.5" />
+													</AvatarFallback>
+												</Avatar>
+												<div className="min-w-0 flex-1">
+													<span className="font-medium truncate block">
+														{agent.name}
+													</span>
+													<span className="text-xs text-muted-foreground truncate block">
+														@{agent.handle}
+													</span>
+												</div>
+											</button>
 										))
 									)}
-									{isFetchingNextPage && (
-										<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
-											<Loader2 className="size-3 animate-spin" />
-											{t("team.addMemberDialog.loadingMore")}
-										</div>
-									)}
 								</div>
-							</div>
-						)}
-					</div>
+							)}
+						</div>
+					) : (
+						<div className="space-y-1.5">
+							<p className="text-sm font-medium">
+								{t("team.addMemberDialog.userLabel")}
+							</p>
+							{selectedUser ? (
+								<div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+									<Avatar className="size-7 shrink-0">
+										<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
+											{getInitials(
+												selectedUser.full_name || selectedUser.username,
+											)}
+										</AvatarFallback>
+									</Avatar>
+									<div className="min-w-0 flex-1">
+										<span className="text-sm font-medium">
+											{selectedUser.full_name || selectedUser.username}
+										</span>
+										{selectedUser.full_name && (
+											<span className="ml-2 text-xs text-muted-foreground">
+												@{selectedUser.username}
+											</span>
+										)}
+									</div>
+									<button
+										type="button"
+										className="text-xs text-muted-foreground hover:text-foreground"
+										onClick={() => {
+											setSelectedUser(null);
+											setTimeout(() => searchRef.current?.focus(), 50);
+										}}
+									>
+										{t("team.addMemberDialog.change")}
+									</button>
+								</div>
+							) : (
+								<div className="rounded-lg border border-border overflow-hidden">
+									<div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
+										<Search className="size-3.5 shrink-0 text-muted-foreground" />
+										<input
+											ref={searchRef}
+											className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+											placeholder={t("team.addMemberDialog.searchPlaceholder")}
+											value={userSearch}
+											onChange={(e) => setUserSearch(e.target.value)}
+											autoFocus
+										/>
+									</div>
+									<div
+										className="max-h-44 overflow-y-auto p-1"
+										onScroll={handleUsersListScroll}
+									>
+										{isLoadingUsers ? (
+											<div className="flex items-center justify-center py-4">
+												<Loader2 className="size-4 animate-spin text-muted-foreground" />
+											</div>
+										) : filteredUsers.length === 0 ? (
+											<p className="py-4 text-center text-xs text-muted-foreground">
+												{userSearch
+													? t("team.addMemberDialog.noUsersMatch")
+													: t("team.addMemberDialog.noUsersAvailable")}
+											</p>
+										) : (
+											filteredUsers.map((user: User) => (
+												<UserPickerItem
+													key={user.id}
+													user={user}
+													selected={selectedUserId === user.id}
+													onSelect={setSelectedUser}
+												/>
+											))
+										)}
+										{isFetchingNextPage && (
+											<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
+												<Loader2 className="size-3 animate-spin" />
+												{t("team.addMemberDialog.loadingMore")}
+											</div>
+										)}
+									</div>
+								</div>
+							)}
+						</div>
+					)}
 
 					{/* Role picker */}
 					<div className="space-y-1.5">
@@ -616,6 +742,15 @@ function TeamPage() {
 		() => new Set((members ?? []).map((m) => m.user_id)),
 		[members],
 	);
+	const existingAgentIds = useMemo(
+		() =>
+			new Set(
+				(members ?? [])
+					.filter((m) => m.member_type === "agent" && m.agent_id)
+					.map((m) => m.agent_id as string),
+			),
+		[members],
+	);
 
 	const removeMutation = useMutation({
 		mutationFn: () => {
@@ -742,6 +877,7 @@ function TeamPage() {
 				projectId={projectId}
 				roles={roles}
 				existingMemberIds={existingMemberIds}
+				existingAgentIds={existingAgentIds}
 			/>
 
 			{/* Remove confirmation dialog */}

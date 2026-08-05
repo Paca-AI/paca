@@ -340,6 +340,79 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 	},
 ];
 
+/** Parses a permissions object/array response body into a flat boolean map. */
+function parsePermissionData(data: any): Record<string, boolean> {
+	const out: Record<string, boolean> = {};
+	if (!data) return out;
+	if (Array.isArray(data)) {
+		for (const perm of data) {
+			out[perm] = true;
+		}
+	} else if (typeof data === "object") {
+		for (const [key, value] of Object.entries(data)) {
+			out[key] = value === true || value === "true";
+		}
+	}
+	return out;
+}
+
+/** Extracts a `permissions` payload from either an unwrapped body or one
+ * still wrapped in the API's `{success, data}` envelope — defensively
+ * checking both shapes, since callers here use a raw fetch() rather than
+ * PacaAPIClient's envelope-unwrapping request() helper. */
+function extractPermissions(json: any): any {
+	if (json && typeof json === "object") {
+		if (
+			"data" in json &&
+			json.data &&
+			typeof json.data === "object" &&
+			"permissions" in json.data
+		) {
+			return json.data.permissions;
+		}
+		if ("permissions" in json) {
+			return json.permissions;
+		}
+	}
+	return json;
+}
+
+/**
+ * Fetches this project's permission map for a single project and merges it
+ * into `projects`. Shared by the pinned single-project fetch and the
+ * unpinned global-agent multi-project fetch below — same endpoint
+ * (GET .../members/me/permissions), same agent-or-human auth headers.
+ */
+async function fetchProjectPermissions(
+	config: PacaConfig,
+	headers: Record<string, string>,
+	projectId: string,
+	projects: Record<string, Record<string, boolean>>,
+): Promise<void> {
+	try {
+		const permUrl = `${config.baseURL}/api/v1/projects/${projectId}/members/me/permissions`;
+		const permResponse = await fetch(permUrl, { headers });
+
+		if (!permResponse.ok) {
+			console.error(
+				`Failed to fetch permissions for project ${projectId}: ${permResponse.status} ${permResponse.statusText}`,
+			);
+			return;
+		}
+		const permJson = await permResponse.json();
+		const permData = extractPermissions(permJson);
+		if (permData && typeof permData === "object") {
+			projects[projectId] = parsePermissionData(permData);
+			console.error(
+				`[permissions] Project ${projectId} permissions:`,
+				Object.keys(projects[projectId]),
+			);
+		}
+	} catch (err) {
+		console.error(`Failed to fetch permissions for project ${projectId}:`, err);
+	}
+}
+
 export async function fetchAgentPermissions(
 	config: PacaConfig,
 ): Promise<PermissionMap> {
@@ -354,6 +427,13 @@ export async function fetchAgentPermissions(
 		return { global, projects };
 	}
 
+	// A global-scope agent: agentId set, no fixed projectId — running
+	// "unpinned" (see index.ts). Unlike a project-scoped agent, it has its
+	// own global role (agents.global_role_id) and may be invited into
+	// several projects at once, so both the global-permissions fetch below
+	// and the project-permissions fetch need a global-agent-specific path.
+	const isGlobalAgent = Boolean(config.agentId) && !config.projectId;
+
 	try {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
@@ -363,38 +443,24 @@ export async function fetchAgentPermissions(
 			headers["X-Agent-ID"] = config.agentId;
 		}
 
-		if (!config.agentId) {
+		// Global permissions: a human (personal key) reads their own via
+		// /users/me/global-permissions; a global agent reads its own via the
+		// analogous agent self-service endpoint (agent-API-key authenticated,
+		// resolves via the agent's own global_role_id — see
+		// authz.HasGlobalPermissionsForAgent on the backend). A
+		// project-scoped agent has no global role of its own and skips this,
+		// same as before.
+		if (!config.agentId || isGlobalAgent) {
 			try {
-				const globalUrl = `${config.baseURL}/api/v1/users/me/global-permissions`;
+				const globalUrl = isGlobalAgent
+					? `${config.baseURL}/api/v1/agents/me/global-permissions`
+					: `${config.baseURL}/api/v1/users/me/global-permissions`;
 				const globalResponse = await fetch(globalUrl, { headers });
 
 				if (globalResponse.ok) {
 					const globalJson = await globalResponse.json();
-					let globalData: any;
-					if (
-						globalJson &&
-						typeof globalJson === "object" &&
-						"permissions" in globalJson
-					) {
-						globalData = globalJson.permissions;
-					} else if (Array.isArray(globalJson)) {
-						globalData = {};
-						for (const perm of globalJson) {
-							globalData[perm] = true;
-						}
-					}
-
-					if (globalData) {
-						if (Array.isArray(globalData)) {
-							for (const perm of globalData) {
-								global[perm] = true;
-							}
-						} else if (typeof globalData === "object") {
-							for (const [key, value] of Object.entries(globalData)) {
-								global[key] = value === true || value === "true";
-							}
-						}
-					}
+					const globalData = extractPermissions(globalJson);
+					Object.assign(global, parsePermissionData(globalData));
 				}
 			} catch (err) {
 				console.error("[permissions] Failed to fetch global permissions:", err);
@@ -402,60 +468,47 @@ export async function fetchAgentPermissions(
 		}
 
 		if (config.projectId) {
-			const projectId = config.projectId;
+			await fetchProjectPermissions(config, headers, config.projectId, projects);
+			const entityType = config.agentId ? "agent" : "user";
+			console.error(
+				`[permissions] Loaded permissions for ${entityType} in project ${config.projectId}`,
+			);
+		} else if (isGlobalAgent) {
+			// Discover every project this global agent has been invited into
+			// (GET /agents/me/projects), then fetch its own permissions in
+			// each — the multi-project counterpart of the single fetch above.
+			// This is what lets the tool-listing filter's requiresProject
+			// branch (server.ts) and per-call projectId validation (never
+			// pinned when config.projectId is unset) resolve to real
+			// per-project permissions instead of an empty map.
 			try {
-				const permUrl = `${config.baseURL}/api/v1/projects/${projectId}/members/me/permissions`;
-				const permResponse = await fetch(permUrl, { headers });
-
-				if (permResponse.ok) {
-					const permJson = await permResponse.json();
-					let permData: any;
-					// Check for nested data.permissions structure (API response format)
-					if (
-						permJson &&
-						typeof permJson === "object" &&
-						"data" in permJson &&
-						permJson.data &&
-						typeof permJson.data === "object" &&
-						"permissions" in permJson.data
-					) {
-						permData = permJson.data.permissions;
-					} else if (
-						permJson &&
-						typeof permJson === "object" &&
-						"permissions" in permJson
-					) {
-						permData = permJson.permissions;
-					} else {
-						permData = permJson;
-					}
-
-					if (permData && typeof permData === "object") {
-						projects[projectId] = {};
-						for (const [key, value] of Object.entries(permData)) {
-							projects[projectId][key] = value === true || value === "true";
-						}
-						console.error(
-							`[permissions] Project ${projectId} permissions:`,
-							Object.keys(projects[projectId]),
-						);
-					}
+				const projectsUrl = `${config.baseURL}/api/v1/agents/me/projects`;
+				const projectsResponse = await fetch(projectsUrl, { headers });
+				if (projectsResponse.ok) {
+					const projectsJson = await projectsResponse.json();
+					const body =
+						projectsJson && typeof projectsJson === "object" && "data" in projectsJson
+							? projectsJson.data
+							: projectsJson;
+					const projectIds: string[] = Array.isArray(body?.project_ids)
+						? body.project_ids
+						: [];
+					await Promise.all(
+						projectIds.map((projectId) =>
+							fetchProjectPermissions(config, headers, projectId, projects),
+						),
+					);
+					console.error(
+						`[permissions] Global agent loaded permissions for ${projectIds.length} invited project(s)`,
+					);
 				} else {
 					console.error(
-						`Failed to fetch permissions for project ${projectId}: ${permResponse.status} ${permResponse.statusText}`,
+						`[permissions] Failed to fetch invited projects: ${projectsResponse.status} ${projectsResponse.statusText}`,
 					);
 				}
 			} catch (err) {
-				console.error(
-					`Failed to fetch permissions for project ${projectId}:`,
-					err,
-				);
+				console.error("[permissions] Failed to fetch invited projects:", err);
 			}
-
-			const entityType = config.agentId ? "agent" : "user";
-			console.error(
-				`[permissions] Loaded permissions for ${entityType} in project ${projectId}`,
-			);
 		}
 	} catch (error) {
 		console.error("[permissions] Failed to fetch permissions:", error);

@@ -30,7 +30,7 @@
 			"projectRoleHint": "Kiểm soát những gì agent có thể đọc và sửa đổi trong dự án này.",
 			"agentTypeLabel": "Loại agent",
 			"agentTypeLLM": "LLM (khóa API)",
-			"agentTypeLLMHint": "Paca gọi trực tiếp API của mô hình và chạy agent trong sandbox trên cloud.",
+			"agentTypeLLMHint": "Paca gọi trực tiếp API của mô hình và chạy agent trong một container sandbox trên máy chủ lưu trữ Paca.",
 			"agentTypeACP": "ACP (CLI cục bộ)",
 			"agentTypeACPHint": "Ủy quyền cho một CLI lập trình mà bạn tự chạy — Claude Code, Codex, Gemini CLI hoặc máy chủ ACP tùy chỉnh.",
 			"modelSection": "Mô hình",
@@ -62,7 +62,11 @@
 			"creating": "Đang tạo…",
 			"createAgent": "Tạo Agent",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…"
+			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…",
+			"globalRoleLabel": "Vai trò toàn cục",
+			"globalRolePlaceholder": "Chọn một vai trò toàn cục…",
+			"globalRoleHint": "Quyết định những gì agent có thể làm ở phạm vi toàn cục (ví dụ: từ trang chat trang chủ/quản trị). Tùy chọn — vai trò được cấp sau, khi được mời vào một dự án, là riêng biệt.",
+			"noGlobalRoleOption": "Không có vai trò"
 		},
 		"card": {
 			"configure": "Cấu hình",
@@ -663,7 +667,11 @@
 			"addMember": "Thêm thành viên",
 			"errors": {
 				"addFailed": "Thêm thành viên thất bại. Vui lòng thử lại."
-			}
+			},
+			"modeUser": "Người dùng",
+			"modeAgent": "Agent AI",
+			"agentLabel": "Agent",
+			"noAgentsAvailable": "Không có agent toàn cục nào để mời."
 		},
 		"roleChip": {
 			"changeRole": "Đổi vai trò",
@@ -687,7 +695,8 @@
 		"newConversation": "Hội thoại mới",
 		"agentLabel": "Agent",
 		"selectAgentPlaceholder": "Chọn một agent…",
-		"selectAgentFirst": "Vui lòng chọn một agent trước."
+		"selectAgentFirst": "Vui lòng chọn một agent trước.",
+		"noAgentsAvailable": "Chưa có agent nào khả dụng."
 	},
 	"taskTypes": {
 		"deleteDialog": {

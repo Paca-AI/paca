@@ -73,7 +73,10 @@ func NewConversationHandler(svc agentdom.Service) *ConversationHandler {
 	return &ConversationHandler{svc: svc}
 }
 
-// ListConversations handles GET /projects/:projectId/conversations.
+// parseConversationListQuery parses the query params shared by
+// ListConversations and ListGlobalConversations into a filter + page size.
+// Callers are responsible for setting the scope fields (ProjectID/GlobalOnly/
+// ActorUserID) on the returned filter themselves.
 //
 // Supported query params (all optional, combine with AND):
 //   - agent_id=<uuid>|<uuid,uuid,...>       filter by one or more agents
@@ -84,22 +87,13 @@ func NewConversationHandler(svc agentdom.Service) *ConversationHandler {
 //   - search=<text>                         matches conversations with an event
 //     containing this text (see agent_conversation_event_search_text)
 //   - cursor=<opaque>, page_size=<1-200>    keyset pagination (see next_cursor in response)
-func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.Request) {
-	projectID, err := parseProjectID(r)
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
-	}
-
+func parseConversationListQuery(r *http.Request) (agentdom.ListConversationsFilter, int, error) {
 	pageSize, err := parsePageSize(r, 20, 200)
 	if err != nil {
-		presenter.Error(w, r, err)
-		return
+		return agentdom.ListConversationsFilter{}, 0, err
 	}
 
-	filter := agentdom.ListConversationsFilter{
-		ProjectID: &projectID,
-	}
+	var filter agentdom.ListConversationsFilter
 	if agentIDsRaw := r.URL.Query().Get("agent_id"); agentIDsRaw != "" {
 		for _, s := range strings.Split(agentIDsRaw, ",") {
 			if id, err := uuid.Parse(strings.TrimSpace(s)); err == nil {
@@ -111,8 +105,7 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		statuses := splitCommaList(statusesRaw)
 		for _, s := range statuses {
 			if !slices.Contains(validConversationStatuses, s) {
-				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid status: "+s))
-				return
+				return agentdom.ListConversationsFilter{}, 0, apierr.New(apierr.CodeBadRequest, "invalid status: "+s)
 			}
 		}
 		filter.Statuses = statuses
@@ -121,8 +114,7 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		triggerTypes := splitCommaList(triggerTypesRaw)
 		for _, tt := range triggerTypes {
 			if !slices.Contains(validConversationTriggerTypes, tt) {
-				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid trigger_type: "+tt))
-				return
+				return agentdom.ListConversationsFilter{}, 0, apierr.New(apierr.CodeBadRequest, "invalid trigger_type: "+tt)
 			}
 		}
 		filter.TriggerTypes = triggerTypes
@@ -130,16 +122,14 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	if raw := strings.TrimSpace(r.URL.Query().Get("created_after")); raw != "" {
 		t, ok := parseCreatedAfterBound(raw)
 		if !ok {
-			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid created_after"))
-			return
+			return agentdom.ListConversationsFilter{}, 0, apierr.New(apierr.CodeBadRequest, "invalid created_after")
 		}
 		filter.CreatedAfter = t
 	}
 	if raw := strings.TrimSpace(r.URL.Query().Get("created_before")); raw != "" {
 		t, ok := parseCreatedBeforeBound(raw)
 		if !ok {
-			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid created_before"))
-			return
+			return agentdom.ListConversationsFilter{}, 0, apierr.New(apierr.CodeBadRequest, "invalid created_before")
 		}
 		filter.CreatedBefore = t
 	}
@@ -149,12 +139,12 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 	if cursorRaw := r.URL.Query().Get("cursor"); cursorRaw != "" {
 		filter.CursorAfter = &cursorRaw
 	}
+	return filter, pageSize, nil
+}
 
-	convs, hasMore, err := h.svc.ListConversations(r.Context(), filter, pageSize)
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
-	}
+// writeConversationListResponse encodes a conversation page in the shared
+// {items, page_size, next_cursor} envelope used by both list endpoints.
+func writeConversationListResponse(w http.ResponseWriter, r *http.Request, convs []*agentdom.AgentConversation, hasMore bool, pageSize int) {
 	resp := make([]dto.AgentConversationResponse, 0, len(convs))
 	for _, conv := range convs {
 		resp = append(resp, dto.ConversationFromEntity(conv))
@@ -170,6 +160,51 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		"page_size":   pageSize,
 		"next_cursor": nextCursor,
 	})
+}
+
+// ListConversations handles GET /projects/:projectId/conversations.
+func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	filter, pageSize, err := parseConversationListQuery(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	filter.ProjectID = &projectID
+
+	convs, hasMore, err := h.svc.ListConversations(r.Context(), filter, pageSize)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	writeConversationListResponse(w, r, convs, hasMore, pageSize)
+}
+
+// ListGlobalConversations handles GET /agents/conversations. Returns only
+// the caller's own global-chat conversations — see
+// agentdom.Service.ListGlobalConversations.
+func (h *ConversationHandler) ListGlobalConversations(w http.ResponseWriter, r *http.Request) {
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	filter, pageSize, err := parseConversationListQuery(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	convs, hasMore, err := h.svc.ListGlobalConversations(r.Context(), userID, filter, pageSize)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	writeConversationListResponse(w, r, convs, hasMore, pageSize)
 }
 
 // GetConversation handles GET /projects/:projectId/conversations/:conversationId.
@@ -295,6 +330,128 @@ func (h *ConversationHandler) SendConversationMessage(w http.ResponseWriter, r *
 	memberID, _ := uuid.Parse(claims.Subject)
 
 	if err := h.svc.SendConversationMessage(r.Context(), projectID, convID, req.Message, memberID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "message sent"})
+}
+
+// --- Global Conversations ------------------------------------------------
+//
+// Siblings of the methods above, scoped to a global-chat conversation
+// (ProjectID == uuid.Nil) instead of a given project — no project context,
+// so there is no projectId route param to parse.
+
+// GetGlobalConversation handles GET /agents/conversations/:conversationId.
+func (h *ConversationHandler) GetGlobalConversation(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.GetGlobalConversation(r.Context(), convID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ConversationFromEntity(conv))
+}
+
+// GetGlobalConversationEvents handles GET /agents/conversations/:conversationId/events.
+// ListConversationEvents itself is already conversation-scoped only (no
+// project ownership check, see the project-scoped ListConversationEvents
+// above) — GetGlobalConversation is called first purely to 404 on an
+// unknown or non-global conversation id, matching GetGlobalConversation's
+// own scope check above.
+func (h *ConversationHandler) GetGlobalConversationEvents(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if _, err := h.svc.GetGlobalConversation(r.Context(), convID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	offset, limit, err := parseOffsetLimit(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, offset, limit)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentConversationEventResponse, 0, len(events))
+	for _, e := range events {
+		resp = append(resp, dto.ConversationEventFromEntity(e))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp, "total": total})
+}
+
+// StopGlobalConversation handles POST /agents/conversations/:conversationId/stop.
+func (h *ConversationHandler) StopGlobalConversation(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.StopGlobalConversation(r.Context(), convID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "conversation stopped"})
+}
+
+// PauseGlobalConversation handles POST /agents/conversations/:conversationId/pause.
+func (h *ConversationHandler) PauseGlobalConversation(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.PauseGlobalConversation(r.Context(), convID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "conversation pause requested"})
+}
+
+// GlobalConversationHeartbeat handles POST /agents/conversations/:conversationId/heartbeat.
+func (h *ConversationHandler) GlobalConversationHeartbeat(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.GlobalHeartbeat(r.Context(), convID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"status": "ok"})
+}
+
+// SendGlobalConversationMessage handles POST /agents/conversations/:conversationId/messages.
+func (h *ConversationHandler) SendGlobalConversationMessage(w http.ResponseWriter, r *http.Request) {
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.SendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	claims := middleware.ClaimsFrom(r)
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	if err := h.svc.SendGlobalConversationMessage(r.Context(), convID, req.Message, userID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}

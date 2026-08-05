@@ -90,7 +90,7 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
             "acp_command": [],
         },
     )
-    schedule_watchdog.assert_called_once_with("conv-1", "proj-1", 30)
+    schedule_watchdog.assert_called_once_with("conv-1", "proj-1", 30, trigger.actor_user_id)
 
 
 async def test_bridge_goes_offline_mid_dispatch_still_fails(monkeypatch):

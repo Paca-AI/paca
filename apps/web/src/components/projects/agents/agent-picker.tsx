@@ -11,7 +11,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { agentsQueryOptions } from "@/lib/agent-api";
+import { usePermissions } from "@/hooks/use-permissions";
+import {
+	agentsQueryOptions,
+	chattableAgentsQueryOptions,
+} from "@/lib/agent-api";
 
 // ── Agent picker ──────────────────────────────────────────────────────────────
 //
@@ -30,8 +34,14 @@ export interface AgentPickerState {
 	/** Once a conversation has started, the agent is fixed for its lifetime —
 	 * lock the picker instead of implying a switch would do anything. */
 	disabled?: boolean;
-	/** Needed to link to the Agents page when the project has none yet. */
-	projectId: string;
+	/** Link shown in the empty state ("no agents yet, create one") — null
+	 * hides that button entirely (e.g. a global-scope user without
+	 * permission to create a global agent has nowhere useful to send them). */
+	emptyStateLink: {
+		to: string;
+		params?: Record<string, string>;
+		search?: Record<string, unknown>;
+	} | null;
 }
 
 export const AgentPickerContext = createContext<AgentPickerState | null>(null);
@@ -43,11 +53,12 @@ export const AgentPickerContext = createContext<AgentPickerState | null>(null);
 // below) on its own.
 export function useAgentPicker(
 	projectId: string,
-	options?: { disabled?: boolean },
+	options?: { disabled?: boolean; enabled?: boolean },
 ) {
-	const { data: agents = [], isLoading: agentsLoading } = useQuery(
-		agentsQueryOptions(projectId),
-	);
+	const { data: agents = [], isLoading: agentsLoading } = useQuery({
+		...agentsQueryOptions(projectId),
+		enabled: options?.enabled ?? true,
+	});
 	const [agentId, setAgentId] = useState("");
 
 	// Nothing to actually pick between — auto-select the project's only agent
@@ -66,9 +77,52 @@ export function useAgentPicker(
 			agentId,
 			onAgentChange: setAgentId,
 			disabled,
-			projectId,
+			emptyStateLink: {
+				to: "/projects/$projectId/agents",
+				params: { projectId },
+				search: { create: true },
+			},
 		}),
 		[agents, agentsLoading, agentId, disabled, projectId],
+	);
+
+	return { agentId, setAgentId, agents, agentsLoading, pickerState };
+}
+
+// Global-scope sibling of useAgentPicker: sources from every agent any
+// authenticated user may chat with (GET /agents, no project) instead of a
+// single project's roster. Used by the global AIChatFloat (home/admin pages).
+export function useGlobalAgentPicker(options?: {
+	disabled?: boolean;
+	enabled?: boolean;
+}) {
+	const { hasPermission } = usePermissions();
+	const { data: agents = [], isLoading: agentsLoading } = useQuery({
+		...chattableAgentsQueryOptions,
+		enabled: options?.enabled ?? true,
+	});
+	const [agentId, setAgentId] = useState("");
+
+	useEffect(() => {
+		if (!agentId && agents.length === 1 && agents[0]) {
+			setAgentId(agents[0].id);
+		}
+	}, [agents, agentId]);
+
+	const disabled = options?.disabled;
+	const canCreate = hasPermission("agents.write");
+	const pickerState = useMemo<AgentPickerState>(
+		() => ({
+			agents,
+			agentsLoading,
+			agentId,
+			onAgentChange: setAgentId,
+			disabled,
+			emptyStateLink: canCreate
+				? { to: "/admin/agents", search: { create: true } }
+				: null,
+		}),
+		[agents, agentsLoading, agentId, disabled, canCreate],
 	);
 
 	return { agentId, setAgentId, agents, agentsLoading, pickerState };
@@ -78,26 +132,33 @@ export function AgentPickerInline() {
 	const { t } = useTranslation("projects");
 	const picker = useContext(AgentPickerContext);
 	if (!picker) return null;
-	const { agents, agentsLoading, agentId, onAgentChange, disabled, projectId } =
-		picker;
+	const {
+		agents,
+		agentsLoading,
+		agentId,
+		onAgentChange,
+		disabled,
+		emptyStateLink,
+	} = picker;
 
 	if (agentsLoading) {
 		return <div className="h-7 w-32 animate-pulse rounded-full bg-muted" />;
 	}
 	if (agents.length === 0) {
+		if (!emptyStateLink) {
+			return (
+				<span className="text-xs text-muted-foreground px-2">
+					{t("aiChat.noAgentsAvailable")}
+				</span>
+			);
+		}
 		return (
 			<Button
 				size="sm"
 				variant="outline"
 				className="h-7 gap-1.5 rounded-full text-xs"
 				nativeButton={false}
-				render={
-					<Link
-						to="/projects/$projectId/agents"
-						params={{ projectId }}
-						search={{ create: true }}
-					/>
-				}
+				render={<Link {...emptyStateLink} />}
 			>
 				<Plus className="size-3.5" />
 				{t("agents.page.newAgent")}

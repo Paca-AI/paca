@@ -18,6 +18,10 @@ type PermissionStore interface {
 type AgentPermissionStore interface {
 	PermissionStore
 	ListAgentProjectPermissions(ctx context.Context, agentID, projectID uuid.UUID) ([]Permission, error)
+	// ListAgentGlobalPermissions returns permissions granted by a global
+	// agent's own global role, for checks with no project context. Mirrors
+	// ListGlobalPermissions for users.
+	ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]Permission, error)
 }
 
 // AgentRoleResolver resolves an agent's role in a project.
@@ -74,6 +78,18 @@ func (a *Authorizer) HasPermissionsForAgent(
 	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, &projectID, roleName, required...)
 }
 
+// HasGlobalPermissionsForAgent reports whether agentID has all required
+// permissions via its own global role, with no project context. Distinct
+// from HasPermissionsForAgent, which resolves permissions via the agent's
+// project_members role within one specific project.
+func (a *Authorizer) HasGlobalPermissionsForAgent(
+	ctx context.Context,
+	agentID uuid.UUID,
+	required ...Permission,
+) (bool, error) {
+	return a.hasPermissionsForActor(ctx, uuid.Nil, &agentID, nil, "", required...)
+}
+
 // hasPermissionsForActor is the internal implementation that works for both users and agents.
 func (a *Authorizer) hasPermissionsForActor(
 	ctx context.Context,
@@ -97,6 +113,22 @@ func (a *Authorizer) hasPermissionsForActor(
 			globalPerms, err := a.store.ListGlobalPermissions(ctx, userID)
 			if err != nil {
 				return false, fmt.Errorf("authz: list global permissions: %w", err)
+			}
+			for _, p := range globalPerms {
+				granted[p] = struct{}{}
+			}
+		} else if agentID != nil && projectID == nil {
+			// Global-scope check for an agent (HasGlobalPermissionsForAgent):
+			// resolve via the agent's own global role, mirroring the userID
+			// branch above. Never reached from HasPermissionsForAgent, which
+			// always passes a non-nil projectID.
+			agentStore, ok := a.store.(AgentPermissionStore)
+			if !ok {
+				return false, fmt.Errorf("authz: agent global permissions not supported by store")
+			}
+			globalPerms, err := agentStore.ListAgentGlobalPermissions(ctx, *agentID)
+			if err != nil {
+				return false, fmt.Errorf("authz: list agent global permissions: %w", err)
 			}
 			for _, p := range globalPerms {
 				granted[p] = struct{}{}

@@ -12,7 +12,14 @@ export interface PacaConfig {
 	gatewayURL?: string;
 	/** Agent UUID forwarded as X-Agent-ID on every API request. */
 	agentId?: string;
-	/** Project UUID - required when agentId is provided for single-project agent mode. */
+	/**
+	 * Project UUID — required when agentId is provided AND the agent is
+	 * project-scoped ("single-project agent mode": every tool call is
+	 * pinned to this one project, see server.ts). Left unset for a
+	 * global-scope agent (agentId set, no fixed project) or a personal API
+	 * key — either runs "unpinned": each tool call may target any project
+	 * the caller has permission in, passed explicitly per call.
+	 */
 	projectId?: string;
 }
 

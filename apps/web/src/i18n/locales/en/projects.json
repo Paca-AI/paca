@@ -28,9 +28,13 @@
 			"projectRoleLabel": "Project Role",
 			"projectRolePlaceholder": "Select a project role…",
 			"projectRoleHint": "Controls what the agent can read and modify in this project.",
+			"globalRoleLabel": "Global Role",
+			"globalRolePlaceholder": "Select a global role…",
+			"globalRoleHint": "Controls what the agent can do at global scope (e.g. from the home/admin chat). Optional — a role granted later, once invited into a project, is separate.",
+			"noGlobalRoleOption": "No role",
 			"agentTypeLabel": "Agent Type",
 			"agentTypeLLM": "LLM (API key)",
-			"agentTypeLLMHint": "Paca calls a model API directly and runs the agent in a cloud sandbox.",
+			"agentTypeLLMHint": "Paca calls a model API directly and runs the agent in a sandboxed container on the server hosting Paca.",
 			"agentTypeACP": "ACP (local CLI)",
 			"agentTypeACPHint": "Delegates to a coding CLI you run yourself — Claude Code, Codex, Gemini CLI, or a custom ACP server.",
 			"modelSection": "Model",
@@ -651,7 +655,11 @@
 		"addMemberDialog": {
 			"title": "Add member",
 			"description": "Select a user and assign them a role in this project.",
+			"modeUser": "User",
+			"modeAgent": "AI Agent",
 			"userLabel": "User",
+			"agentLabel": "Agent",
+			"noAgentsAvailable": "No global agents available to invite.",
 			"change": "Change",
 			"searchPlaceholder": "Search by name or username…",
 			"noUsersMatch": "No users match your search.",
@@ -687,7 +695,8 @@
 		"newConversation": "New conversation",
 		"agentLabel": "Agent",
 		"selectAgentPlaceholder": "Select an agent…",
-		"selectAgentFirst": "Please select an agent first."
+		"selectAgentFirst": "Please select an agent first.",
+		"noAgentsAvailable": "No agents available yet."
 	},
 	"taskTypes": {
 		"deleteDialog": {

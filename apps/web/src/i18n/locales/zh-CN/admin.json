@@ -268,5 +268,50 @@
 		"current": "当前版本",
 		"error": "暂时无法加载更新日志，请稍后再试。",
 		"empty": "暂无发布说明。"
+	},
+	"agents": {
+		"header": {
+			"title": "全局智能体",
+			"description": "管理可以在主页和管理页面聊天、并可被邀请加入任意项目的 AI 智能体。",
+			"newAgent": "新建智能体"
+		},
+		"empty": {
+			"title": "暂无全局智能体",
+			"description": "创建一个全局智能体，使其可用于聊天和项目邀请。",
+			"createAgent": "创建智能体"
+		},
+		"table": {
+			"editAction": "编辑智能体",
+			"deleteAction": "删除智能体"
+		},
+		"formDialog": {
+			"editTitle": "编辑全局智能体",
+			"description": "全局智能体没有自己的项目 — 可以从某个项目的团队页面邀请它加入该项目，使其在那里开展工作。",
+			"nameLabel": "名称",
+			"handleLabel": "Handle",
+			"globalRoleLabel": "全局角色",
+			"noGlobalRole": "无角色",
+			"globalRoleHint": "决定该智能体在全局范围内(例如在主页/管理聊天中)可以执行的操作。非必填 — 之后邀请加入项目时授予的角色是另一回事。",
+			"acpProviderLabel": "ACP 提供方",
+			"providerLabel": "提供方",
+			"modelLabel": "模型",
+			"customOption": "自定义…",
+			"apiKeyLabel": "API 密钥",
+			"apiKeyKeepPlaceholder": "留空以保留当前密钥",
+			"baseUrlLabel": "基础 URL",
+			"systemPromptLabel": "系统提示词",
+			"optional": "可选",
+			"cancel": "取消",
+			"save": "保存更改",
+			"updateFailed": "更新智能体失败"
+		},
+		"deleteDialog": {
+			"title": "删除智能体？",
+			"confirmPrefix": "这将永久删除",
+			"confirmSuffix": "，并将其从已邀请加入的所有项目中移除。此操作无法撤销。",
+			"cancel": "取消",
+			"delete": "删除",
+			"deleteFailed": "删除智能体失败"
+		}
 	}
 }

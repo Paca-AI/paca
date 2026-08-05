@@ -82,24 +82,32 @@ async def publish_event(fields: dict[str, Any]) -> None:
 
 
 async def publish_realtime(
-    project_id: str,
+    project_id: str | None,
     conversation_id: str,
     event_type: str = "agent.conversation.event",
     extra_payload: dict[str, Any] | None = None,
+    actor_user_id: str | None = None,
 ) -> None:
     """Publish directly to the paca.events pub/sub channel so the realtime
     service immediately fans the event out to connected WebSocket clients.
 
     The realtime service routes any event whose type starts with "agent." to
-    the project tasks room (see permissions.ts), so clients invalidate their
-    conversation query caches and see new messages without waiting for the
-    next poll cycle.
+    the project tasks room when project_id is present (see permissions.ts),
+    so clients invalidate their conversation query caches and see new
+    messages without waiting for the next poll cycle. A global-chat event
+    (no project — the conversation runs with no project context, see
+    TriggerMessage.project_id) has no project room to route to; passing
+    actor_user_id instead lets the realtime service route it to that human's
+    own per-user room. At least one of the two should be set for the event
+    to reach any client — see subscriber.ts's routeEvent for the actual
+    routing decision.
     """
     client = get_client()
-    payload: dict[str, Any] = {
-        "project_id": project_id,
-        "conversation_id": conversation_id,
-    }
+    payload: dict[str, Any] = {"conversation_id": conversation_id}
+    if project_id is not None:
+        payload["project_id"] = project_id
+    if actor_user_id is not None:
+        payload["actor_user_id"] = actor_user_id
     if extra_payload:
         payload.update(extra_payload)
     message = json.dumps({"type": event_type, "payload": payload})
@@ -129,13 +137,22 @@ class TriggerMessage:
     trigger_type: str
     conversation_id: str
     agent_id: str
-    project_id: str
+    # None for a global-chat trigger (home page / admin pages, no project
+    # context) — see agent_service.go's publishGlobalChatTrigger, which omits
+    # project_id from the payload entirely rather than sending an empty string.
+    project_id: str | None
     task_id: str | None
     comment_id: str | None
     chat_session_id: str | None
     message: str
     actor_member_id: str | None
     repo_plugin_ids: list[str]
+    # Set instead of actor_member_id for a global-chat trigger: the human's
+    # raw users.id, since there may be no project_members row for them at
+    # all. Defaults to None (trailing field with a default, per dataclass
+    # field-ordering rules) so every existing project-scoped construction
+    # site — including test fixtures — keeps working unchanged.
+    actor_user_id: str | None = None
 
     @classmethod
     def from_stream_entry(cls, stream_id: str, fields: dict[str, str]) -> TriggerMessage:
@@ -146,12 +163,13 @@ class TriggerMessage:
             trigger_type=fields["trigger_type"],
             conversation_id=fields["conversation_id"],
             agent_id=fields["agent_id"],
-            project_id=fields["project_id"],
+            project_id=fields.get("project_id"),
             task_id=fields.get("task_id") or None,
             comment_id=fields.get("comment_id") or None,
             chat_session_id=fields.get("chat_session_id") or None,
             message=fields.get("message", ""),
             actor_member_id=fields.get("actor_member_id"),
+            actor_user_id=fields.get("actor_user_id"),
             repo_plugin_ids=repo_plugin_ids,
         )
 
@@ -163,7 +181,9 @@ class ControlMessage:
     stream_id: str
     control_type: str  # one of _CONTROL_TYPES
     conversation_id: str
-    project_id: str
+    # None for a control message targeting a global-chat conversation — see
+    # TriggerMessage.project_id.
+    project_id: str | None
 
     @classmethod
     def from_stream_entry(cls, stream_id: str, fields: dict[str, str]) -> ControlMessage:
@@ -171,7 +191,7 @@ class ControlMessage:
             stream_id=stream_id,
             control_type=fields["type"],
             conversation_id=fields["conversation_id"],
-            project_id=fields["project_id"],
+            project_id=fields.get("project_id"),
         )
 
 

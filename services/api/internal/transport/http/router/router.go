@@ -145,6 +145,60 @@ func New(deps Deps) http.Handler {
 					Delete("/global-roles/{roleId}", deps.GlobalRole.Delete)
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionGlobalRolesAssign)).
 					Put("/users/{userId}/global-roles", deps.GlobalRole.ReplaceUserRoles)
+
+				// Global agent management — CRUD for AgentScopeGlobal agents,
+				// mirroring the user/global-role shape above. Global agents are
+				// not tied to any project; they're attached to one later via the
+				// same "invite a member" flow used for humans (POST
+				// /projects/{projectId}/members with agent_id set — see below).
+				if deps.Agent != nil {
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
+						Get("/agents", deps.Agent.ListGlobalAgents)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents", deps.Agent.CreateGlobalAgent)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
+						Get("/agents/{agentId}", deps.Agent.GetGlobalAgent)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Patch("/agents/{agentId}", deps.Agent.UpdateGlobalAgent)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Delete("/agents/{agentId}", deps.Agent.DeleteGlobalAgent)
+
+					// ACP local bridge
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents/{agentId}/acp-bridge-token", deps.Agent.GenerateGlobalACPBridgeToken)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
+						Get("/agents/{agentId}/acp-bridge-status", deps.Agent.GetGlobalACPBridgeStatus)
+
+					// MCP servers
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
+						Get("/agents/{agentId}/mcp-servers", deps.Agent.ListGlobalAgentMCPServers)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents/{agentId}/mcp-servers", deps.Agent.AddGlobalAgentMCPServer)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Patch("/agents/{agentId}/mcp-servers/{serverId}", deps.Agent.UpdateGlobalAgentMCPServer)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Delete("/agents/{agentId}/mcp-servers/{serverId}", deps.Agent.DeleteGlobalAgentMCPServer)
+
+					// Skills
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
+						Get("/agents/{agentId}/skills", deps.Agent.ListGlobalAgentSkills)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents/{agentId}/skills", deps.Agent.AddGlobalAgentSkill)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Patch("/agents/{agentId}/skills/{skillId}", deps.Agent.UpdateGlobalAgentSkill)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Delete("/agents/{agentId}/skills/{skillId}", deps.Agent.DeleteGlobalAgentSkill)
+
+					// Environment variables
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
+						Get("/agents/{agentId}/env-vars", deps.Agent.ListGlobalAgentEnvVars)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents/{agentId}/env-vars", deps.Agent.AddGlobalAgentEnvVar)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Patch("/agents/{agentId}/env-vars/{envVarId}", deps.Agent.UpdateGlobalAgentEnvVar)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Delete("/agents/{agentId}/env-vars/{envVarId}", deps.Agent.DeleteGlobalAgentEnvVar)
+				}
 			})
 
 			// Projects — collection routes.
@@ -162,13 +216,55 @@ func New(deps Deps) http.Handler {
 					Post("/projects", deps.Project.CreateProject)
 			})
 
-			// LLM models — accessible to any authenticated user
+			// LLM models, global agents, and global chat — accessible to any
+			// authenticated user (human or agent-API-key). Static children
+			// ("llm-models", "skill-templates", "me", "chat-sessions",
+			// "conversations") are matched before the "{agentId}" wildcard
+			// branch — chi, like any radix-tree router, always prefers a
+			// literal path segment over a param at the same level, the same
+			// way "/projects/workspace-stats" is disambiguated from
+			// "/projects/{projectId}" elsewhere in this file.
 			if deps.Agent != nil {
 				r.Route("/agents", func(r chi.Router) {
 					r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
 					r.Use(httpmw.RequireFreshPassword())
 					r.Get("/llm-models", deps.Agent.GetLLMModels)
 					r.Get("/skill-templates", deps.Agent.ListSkillTemplates)
+
+					// Any authenticated human may browse global agents (to chat
+					// with one) — unlike /admin/agents, this is intentionally
+					// not permission-gated, matching how any project member can
+					// already see a project's agents. It's the same handler as
+					// the admin listing, just reachable without an admin
+					// permission.
+					r.Get("/", deps.Agent.ListGlobalAgents)
+
+					// Agent self-service (agent-API-key authenticated via
+					// X-Agent-ID) — what the MCP server calls when running as a
+					// global agent to populate its own permission map.
+					r.Get("/me/global-permissions", deps.Agent.GetMyGlobalPermissions)
+					r.Get("/me/projects", deps.Agent.GetMyInvitedProjects)
+
+					// Global chat — chatting with a global agent from the home
+					// page / admin pages, no project context. Any authenticated
+					// human may chat with any global agent, same as any project
+					// member may chat with a project agent — deliberately not
+					// gated behind PermissionAgentsRead (a regular USER-role
+					// human has no global agents.* permission by default, and
+					// this chat is meant to be available to every user).
+					r.Get("/{agentId}/chat-sessions", deps.Agent.ListGlobalChatSessions)
+					r.Post("/{agentId}/chat-sessions", deps.Agent.StartGlobalChatSession)
+					r.Post("/chat-sessions/{sessionId}/messages", deps.Agent.SendGlobalChatMessage)
+
+					if deps.Conversation != nil {
+						r.Get("/conversations", deps.Conversation.ListGlobalConversations)
+						r.Get("/conversations/{conversationId}", deps.Conversation.GetGlobalConversation)
+						r.Get("/conversations/{conversationId}/events", deps.Conversation.GetGlobalConversationEvents)
+						r.Post("/conversations/{conversationId}/stop", deps.Conversation.StopGlobalConversation)
+						r.Post("/conversations/{conversationId}/pause", deps.Conversation.PauseGlobalConversation)
+						r.Post("/conversations/{conversationId}/heartbeat", deps.Conversation.GlobalConversationHeartbeat)
+						r.Post("/conversations/{conversationId}/messages", deps.Conversation.SendGlobalConversationMessage)
+					}
 				})
 			}
 

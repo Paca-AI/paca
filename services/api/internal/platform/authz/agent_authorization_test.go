@@ -25,10 +25,11 @@ func (m *mockAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, agent
 }
 
 type mockPermissionStore struct {
-	globalPerms  map[uuid.UUID][]authz.Permission
-	projectPerms map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> user_id -> permissions
-	agentPerms   map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
-	legacyPerms  map[string][]authz.Permission
+	globalPerms      map[uuid.UUID][]authz.Permission
+	projectPerms     map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> user_id -> permissions
+	agentPerms       map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
+	agentGlobalPerms map[uuid.UUID][]authz.Permission               // agent_id -> permissions (via its own global role)
+	legacyPerms      map[string][]authz.Permission
 }
 
 func (m *mockPermissionStore) ListGlobalPermissions(_ context.Context, userID uuid.UUID) ([]authz.Permission, error) {
@@ -47,6 +48,10 @@ func (m *mockPermissionStore) ListAgentProjectPermissions(_ context.Context, age
 		return projMap[agentID], nil
 	}
 	return nil, nil
+}
+
+func (m *mockPermissionStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
+	return m.agentGlobalPerms[agentID], nil
 }
 
 func TestAgentAuthorization(t *testing.T) {
@@ -147,5 +152,52 @@ func TestAgentAuthorizationWithMultipleProjects(t *testing.T) {
 		allowed2, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, project2, authz.PermissionTasksRead)
 		require.NoError(t, err)
 		assert.True(t, allowed2)
+	})
+}
+
+// TestHasGlobalPermissionsForAgent_ResolvesViaAgentsOwnGlobalRole verifies
+// that a global-scope agent permission check (no project context) is
+// resolved from that specific agent's own global-role permissions — not
+// merged with, or substituted by, any other actor's permissions. This is
+// the authorizer-level counterpart to the middleware regression test in
+// internal/transport/http/middleware/authz_test.go, which additionally
+// verifies EnforcePermissions actually routes here instead of falling
+// through to the shared agent-API-key subject.
+func TestHasGlobalPermissionsForAgent_ResolvesViaAgentsOwnGlobalRole(t *testing.T) {
+	lowPrivAgent := uuid.New()
+	adminAgent := uuid.New()
+
+	permissionStore := &mockPermissionStore{
+		agentGlobalPerms: map[uuid.UUID][]authz.Permission{
+			// lowPrivAgent has no entry at all -> zero global permissions.
+			adminAgent: {authz.PermissionUsersWrite, authz.PermissionGlobalRolesWrite},
+		},
+	}
+	authorizer := authz.NewAuthorizer(permissionStore)
+
+	t.Run("agent with no global role has no global permissions", func(t *testing.T) {
+		allowed, err := authorizer.HasGlobalPermissionsForAgent(context.Background(), lowPrivAgent, authz.PermissionUsersWrite)
+		require.NoError(t, err)
+		assert.False(t, allowed)
+	})
+
+	t.Run("agent with an assigned global role gets exactly its permissions", func(t *testing.T) {
+		allowed, err := authorizer.HasGlobalPermissionsForAgent(context.Background(), adminAgent, authz.PermissionUsersWrite)
+		require.NoError(t, err)
+		assert.True(t, allowed)
+
+		disallowed, err := authorizer.HasGlobalPermissionsForAgent(context.Background(), adminAgent, authz.PermissionProjectsDelete)
+		require.NoError(t, err)
+		assert.False(t, disallowed)
+	})
+
+	t.Run("global-scope check never consults ListAgentProjectPermissions", func(t *testing.T) {
+		// Sanity check on the mock itself: agentPerms (project-scoped) is nil
+		// on this store, so if HasGlobalPermissionsForAgent ever routed through
+		// the project-scoped resolver by mistake, this would panic on a nil
+		// map dereference rather than silently pass.
+		allowed, err := authorizer.HasGlobalPermissionsForAgent(context.Background(), adminAgent, authz.PermissionUsersWrite)
+		require.NoError(t, err)
+		assert.True(t, allowed)
 	})
 }

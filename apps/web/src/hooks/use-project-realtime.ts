@@ -63,48 +63,58 @@ import {
 	rejoinProject,
 } from "@/lib/socket-client";
 
-export function useProjectRealtime(projectId: string): void {
+// projectId may be undefined for a component that's reused at both project
+// and global scope (e.g. the Conversations page) — the hook is a no-op in
+// that case rather than requiring the caller to conditionally call it, which
+// would violate the rules of hooks.
+export function useProjectRealtime(projectId: string | undefined): void {
 	const queryClient = useQueryClient();
 
 	useEffect(() => {
+		if (!projectId) return;
+		// Narrowed to a plain non-optional const: TS's control-flow narrowing
+		// of the guard above doesn't carry into the named function
+		// declarations below (handleEvent/handleConnect are hoisted, so TS
+		// can't prove they're only ever called after the guard runs).
+		const currentProjectId = projectId;
 		const socket = connectSocket();
 
 		// Subscribe to the project rooms.
-		joinProject(projectId);
+		joinProject(currentProjectId);
 
 		function handleEvent(event: RealtimeEvent) {
 			const { type } = event;
 
 			if (type.startsWith("task.")) {
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "tasks"],
+					queryKey: ["projects", currentProjectId, "tasks"],
 				});
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "agentActivities"],
+					queryKey: ["projects", currentProjectId, "agentActivities"],
 				});
 				return;
 			}
 
 			if (type.startsWith("doc.")) {
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "docs"],
+					queryKey: ["projects", currentProjectId, "docs"],
 				});
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "agentActivities"],
+					queryKey: ["projects", currentProjectId, "agentActivities"],
 				});
 				return;
 			}
 
 			if (type.startsWith("sprint.")) {
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "sprints"],
+					queryKey: ["projects", currentProjectId, "sprints"],
 				});
 				return;
 			}
 
 			if (type.startsWith("view.")) {
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "views"],
+					queryKey: ["projects", currentProjectId, "views"],
 				});
 				return;
 			}
@@ -116,10 +126,10 @@ export function useProjectRealtime(projectId: string): void {
 			// rather than branching per sub-type.
 			if (type.startsWith("workflow.")) {
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "workflows"],
+					queryKey: ["projects", currentProjectId, "workflows"],
 				});
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "tasks"],
+					queryKey: ["projects", currentProjectId, "tasks"],
 				});
 				return;
 			}
@@ -133,7 +143,7 @@ export function useProjectRealtime(projectId: string): void {
 						: null;
 				if (taskId) {
 					void queryClient.invalidateQueries({
-						queryKey: ["projects", projectId, "tasks", taskId, "github"],
+						queryKey: ["projects", currentProjectId, "tasks", taskId, "github"],
 					});
 				}
 				return;
@@ -150,7 +160,13 @@ export function useProjectRealtime(projectId: string): void {
 						: null;
 				if (agentId && typeof event.payload.connected === "boolean") {
 					queryClient.setQueryData(
-						["projects", projectId, "agents", agentId, "acp-bridge-status"],
+						[
+							"projects",
+							currentProjectId,
+							"agents",
+							agentId,
+							"acp-bridge-status",
+						],
 						{ connected: event.payload.connected },
 					);
 				}
@@ -161,12 +177,12 @@ export function useProjectRealtime(projectId: string): void {
 			// (agent.session.started is recorded as a task activity).
 			if (type.startsWith("agent.")) {
 				void queryClient.invalidateQueries({
-					queryKey: ["projects", projectId, "conversations"],
+					queryKey: ["projects", currentProjectId, "conversations"],
 				});
 				// agent.session.started shows up in task activity feeds
 				if (type === "agent.session.started" || type.startsWith("task.")) {
 					void queryClient.invalidateQueries({
-						queryKey: ["projects", projectId, "tasks"],
+						queryKey: ["projects", currentProjectId, "tasks"],
 					});
 				}
 				const conversationId =
@@ -177,7 +193,7 @@ export function useProjectRealtime(projectId: string): void {
 					void queryClient.invalidateQueries({
 						queryKey: [
 							"projects",
-							projectId,
+							currentProjectId,
 							"conversations",
 							conversationId,
 							"events",
@@ -198,14 +214,14 @@ export function useProjectRealtime(projectId: string): void {
 		// `joinProject`) since this isn't a new subscriber — it must not bump
 		// the reference count that `leaveProject` decrements on unmount.
 		function handleConnect() {
-			rejoinProject(projectId);
+			rejoinProject(currentProjectId);
 		}
 		socket.on("connect", handleConnect);
 
 		return () => {
 			socket.off("event", handleEvent);
 			socket.off("connect", handleConnect);
-			leaveProject(projectId);
+			leaveProject(currentProjectId);
 		};
 	}, [projectId, queryClient]);
 }

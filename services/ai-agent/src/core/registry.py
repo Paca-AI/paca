@@ -47,7 +47,10 @@ class ChatSandboxState:
 
     handle: SandboxHandle
     sdk_conversation_id: object
-    project_id: str
+    # None for a global-chat conversation (no project) — actor_user_id is
+    # set instead in that case. See core.streams.TriggerMessage.
+    project_id: str | None
+    actor_user_id: str | None = None
     last_active_at: float = dataclasses.field(default_factory=time.monotonic)
 
 

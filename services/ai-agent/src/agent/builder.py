@@ -198,7 +198,7 @@ def build_skills(db_skills: list[AgentSkillRow]) -> list[Skill]:
 def build_mcp_config(
     db_servers: list[AgentMCPServerRow],
     agent_id: str,
-    project_id: str,
+    project_id: str | None,
 ) -> dict:
     """Build the MCP server configuration dict for the OpenHands SDK.
 
@@ -207,6 +207,13 @@ def build_mcp_config(
 
     User-configured servers come first; the built-in Paca MCP server is always
     appended last so it cannot be overridden by user entries.
+
+    project_id is None for a global-chat conversation (no project context) —
+    PACA_PROJECT_ID is omitted entirely rather than sent empty, which puts
+    the spawned apps/mcp process into its "unpinned" mode: each tool call may
+    target any project the agent has permission in, rather than being locked
+    to one (see apps/mcp/src/index.ts's PACA_AGENT_ID/PACA_PROJECT_ID
+    handling).
     """
     servers: dict = {}
 
@@ -230,16 +237,18 @@ def build_mcp_config(
             command, args = "node", [settings.dev_mcp_path]
         else:
             command, args = "npx", ["-y", "@paca-ai/paca-mcp"]
+        env = {
+            "PACA_API_KEY": settings.paca_api_key,
+            "PACA_API_URL": settings.api_base_url,
+            "PACA_GATEWAY_URL": settings.gateway_base_url,
+            "PACA_AGENT_ID": agent_id,
+        }
+        if project_id is not None:
+            env["PACA_PROJECT_ID"] = project_id
         servers["paca"] = {
             "command": command,
             "args": args,
-            "env": {
-                "PACA_API_KEY": settings.paca_api_key,
-                "PACA_API_URL": settings.api_base_url,
-                "PACA_GATEWAY_URL": settings.gateway_base_url,
-                "PACA_AGENT_ID": agent_id,
-                "PACA_PROJECT_ID": project_id,
-            },
+            "env": env,
         }
 
     return servers

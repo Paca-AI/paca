@@ -269,7 +269,9 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
 
     return AgentConfig(
         agent_id=str(row["id"]),
-        project_id=str(row["project_id"]),
+        # NULL for a global-scope agent — str(None) would wrongly produce the
+        # literal string "None", so this must stay conditional.
+        project_id=str(row["project_id"]) if row["project_id"] is not None else None,
         system_prompt=row["system_prompt"],
         llm_provider=row["llm_provider"],
         llm_model=row["llm_model"],
@@ -290,14 +292,16 @@ async def load_agent_config(agent_id: str) -> AgentConfig | None:
     )
 
 
-async def find_agent_by_bridge_token_hash(token_hash: str) -> tuple[str, str] | None:
+async def find_agent_by_bridge_token_hash(token_hash: str) -> tuple[str, str | None] | None:
     """Look up the ACP agent whose current local-bridge token hashes to
     token_hash. Used to authenticate an incoming bridge WebSocket connection
     (see src/routes/bridge.py) — a hash miss (wrong/revoked token) or a match
     against a non-ACP or soft-deleted agent both return None.
 
-    Returns (agent_id, project_id) — project_id lets the caller publish a
-    project-scoped realtime event on connect/disconnect without a second query.
+    Returns (agent_id, project_id) — project_id is None for a global-scope
+    ACP agent (it has no single owning project; per-conversation project
+    context, when there is one, is resolved separately — see
+    conversation_repository.get_conversation_realtime_context).
     """
     pool = await get_pool()
     row = await pool.fetchrow(
@@ -309,4 +313,9 @@ async def find_agent_by_bridge_token_hash(token_hash: str) -> tuple[str, str] | 
         """,
         token_hash,
     )
-    return (str(row["id"]), str(row["project_id"])) if row is not None else None
+    if row is None:
+        return None
+    return (
+        str(row["id"]),
+        str(row["project_id"]) if row["project_id"] is not None else None,
+    )

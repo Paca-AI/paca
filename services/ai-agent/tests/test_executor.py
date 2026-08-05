@@ -292,6 +292,7 @@ async def test_teardown_paused_chat_sandbox_publishes_realtime_event(mock_teardo
         project_id="proj-42",
         conversation_id="conv-1",
         event_type="agent.conversation.stopped",
+        actor_user_id=None,
     )
 
 

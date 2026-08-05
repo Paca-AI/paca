@@ -30,7 +30,7 @@
 			"projectRoleHint": "このプロジェクト内でエージェントが読み取り・変更できる範囲を制御します。",
 			"agentTypeLabel": "エージェントタイプ",
 			"agentTypeLLM": "LLM（APIキー）",
-			"agentTypeLLMHint": "Pacaがモデル API を直接呼び出し、クラウドサンドボックスでエージェントを実行します。",
+			"agentTypeLLMHint": "Pacaがモデル API を直接呼び出し、Paca をホストしているサーバー上のサンドボックス化されたコンテナでエージェントを実行します。",
 			"agentTypeACP": "ACP（ローカルCLI）",
 			"agentTypeACPHint": "自分で実行するコーディングCLI（Claude Code、Codex、Gemini CLI、またはカスタムACPサーバー）に処理を委任します。",
 			"modelSection": "モデル",
@@ -62,7 +62,11 @@
 			"creating": "作成中…",
 			"createAgent": "エージェントを作成",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "あなたはシニアソフトウェアエンジニアです…"
+			"systemPromptPlaceholder": "あなたはシニアソフトウェアエンジニアです…",
+			"globalRoleLabel": "グローバルロール",
+			"globalRolePlaceholder": "グローバルロールを選択…",
+			"globalRoleHint": "エージェントがグローバルスコープ(ホーム/管理チャットなど)で何を実行できるかを制御します。任意 — プロジェクトに招待された後に付与されるロールとは別物です。",
+			"noGlobalRoleOption": "ロールなし"
 		},
 		"card": {
 			"configure": "設定",
@@ -663,7 +667,11 @@
 			"addMember": "メンバーを追加",
 			"errors": {
 				"addFailed": "メンバーの追加に失敗しました。もう一度お試しください。"
-			}
+			},
+			"modeUser": "ユーザー",
+			"modeAgent": "AIエージェント",
+			"agentLabel": "エージェント",
+			"noAgentsAvailable": "招待できるグローバルエージェントがありません。"
 		},
 		"roleChip": {
 			"changeRole": "ロールを変更",
@@ -687,7 +695,8 @@
 		"newConversation": "新しい会話",
 		"agentLabel": "エージェント",
 		"selectAgentPlaceholder": "エージェントを選択…",
-		"selectAgentFirst": "まずエージェントを選択してください。"
+		"selectAgentFirst": "まずエージェントを選択してください。",
+		"noAgentsAvailable": "利用できるエージェントはまだありません。"
 	},
 	"taskTypes": {
 		"deleteDialog": {

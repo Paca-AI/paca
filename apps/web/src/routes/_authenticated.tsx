@@ -1,9 +1,15 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Outlet,
+	redirect,
+	useRouterState,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import { GlobalAIChatFloat } from "@/components/projects/ai-chat-float-global";
 import {
 	SidebarInset,
 	SidebarProvider,
@@ -71,6 +77,11 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
 	const queryClient = useQueryClient();
 	const { data: user } = useQuery(currentUserOptionalQueryOptions);
+	const pathname = useRouterState({ select: (s) => s.location.pathname });
+	// Global agent chat is available everywhere except inside a project —
+	// project pages already mount their own project-scoped AIChatFloat (see
+	// routes/_authenticated/projects/$projectId.tsx).
+	const showGlobalChat = !!user && !PROJECT_ROUTE_RE.test(pathname);
 
 	useEffect(() => {
 		if (!user) return;
@@ -133,6 +144,7 @@ function AuthenticatedLayout() {
 						</div>
 					</SidebarInset>
 				</SidebarProvider>
+				{showGlobalChat && <GlobalAIChatFloat />}
 			</ShortcutProvider>
 		</PluginRegistryProvider>
 	);

@@ -14,10 +14,14 @@ import (
 // Agent DTOs
 // =========================================================================
 
-// AgentResponse is the public view of an agent.
+// AgentResponse is the public view of an agent. ProjectID is nil for a
+// global-scope agent (AgentScope == "global"); GlobalRoleID is only ever
+// set for a global-scope agent.
 type AgentResponse struct {
 	ID                uuid.UUID                `json:"id"`
-	ProjectID         uuid.UUID                `json:"project_id"`
+	ProjectID         *uuid.UUID               `json:"project_id,omitempty"`
+	AgentScope        string                   `json:"agent_scope"`
+	GlobalRoleID      *uuid.UUID               `json:"global_role_id,omitempty"`
 	MemberID          *uuid.UUID               `json:"member_id,omitempty"`
 	Name              string                   `json:"name"`
 	Handle            string                   `json:"handle"`
@@ -66,21 +70,46 @@ type CreateAgentRequest struct {
 	ProjectRoleID     uuid.UUID `json:"project_role_id" binding:"required"`
 }
 
-// UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId.
+// UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId
+// and PATCH /admin/agents/:agentId. GlobalRoleID is only meaningful for the
+// latter (global agents) — pass a zero UUID to clear an assigned role.
 type UpdateAgentRequest struct {
-	Name              *string  `json:"name"`
-	Handle            *string  `json:"handle"`
-	LLMProvider       *string  `json:"llm_provider"`
-	LLMModel          *string  `json:"llm_model"`
-	LLMAPIKey         *string  `json:"llm_api_key"`
-	LLMBaseURL        *string  `json:"llm_base_url"`
-	ACPProvider       *string  `json:"acp_provider"`
-	ACPCommand        []string `json:"acp_command"`
-	SystemPrompt      *string  `json:"system_prompt"`
-	MaxIterations     *int     `json:"max_iterations"`
-	TimeoutMinutes    *int     `json:"timeout_minutes"`
-	GitCommitterName  *string  `json:"git_committer_name"`
-	GitCommitterEmail *string  `json:"git_committer_email"`
+	Name              *string    `json:"name"`
+	Handle            *string    `json:"handle"`
+	LLMProvider       *string    `json:"llm_provider"`
+	LLMModel          *string    `json:"llm_model"`
+	LLMAPIKey         *string    `json:"llm_api_key"`
+	LLMBaseURL        *string    `json:"llm_base_url"`
+	ACPProvider       *string    `json:"acp_provider"`
+	ACPCommand        []string   `json:"acp_command"`
+	SystemPrompt      *string    `json:"system_prompt"`
+	MaxIterations     *int       `json:"max_iterations"`
+	TimeoutMinutes    *int       `json:"timeout_minutes"`
+	GitCommitterName  *string    `json:"git_committer_name"`
+	GitCommitterEmail *string    `json:"git_committer_email"`
+	GlobalRoleID      *uuid.UUID `json:"global_role_id"`
+}
+
+// CreateGlobalAgentRequest is the body for POST /admin/agents. Mirrors
+// CreateAgentRequest minus ProjectRoleID (nothing to assign at creation
+// time — a global agent gets a project role only later, when invited into a
+// project), plus GlobalRoleID.
+type CreateGlobalAgentRequest struct {
+	Name              string     `json:"name" binding:"required"`
+	Handle            string     `json:"handle" binding:"required"`
+	AgentType         string     `json:"agent_type"`
+	LLMProvider       string     `json:"llm_provider"`
+	LLMModel          string     `json:"llm_model"`
+	LLMAPIKey         string     `json:"llm_api_key"`
+	LLMBaseURL        string     `json:"llm_base_url"`
+	ACPProvider       string     `json:"acp_provider"`
+	ACPCommand        []string   `json:"acp_command"`
+	SystemPrompt      string     `json:"system_prompt"`
+	MaxIterations     int        `json:"max_iterations"`
+	TimeoutMinutes    int        `json:"timeout_minutes"`
+	GitCommitterName  string     `json:"git_committer_name"`
+	GitCommitterEmail string     `json:"git_committer_email"`
+	GlobalRoleID      *uuid.UUID `json:"global_role_id"`
 }
 
 // GenerateACPBridgeTokenResponse is the body returned for POST
@@ -93,9 +122,14 @@ type GenerateACPBridgeTokenResponse struct {
 
 // AgentFromEntity maps an Agent entity to AgentResponse.
 func AgentFromEntity(a *agentdom.Agent) AgentResponse {
+	scope := string(a.AgentScope)
+	if scope == "" {
+		scope = string(agentdom.AgentScopeProject)
+	}
 	resp := AgentResponse{
 		ID:                a.ID,
-		ProjectID:         a.ProjectID,
+		AgentScope:        scope,
+		GlobalRoleID:      a.GlobalRoleID,
 		MemberID:          a.MemberID,
 		Name:              a.Name,
 		Handle:            a.Handle,
@@ -115,6 +149,10 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		CreatedBy:         a.CreatedBy,
 		CreatedAt:         a.CreatedAt,
 		UpdatedAt:         a.UpdatedAt,
+	}
+	if a.ProjectID != uuid.Nil {
+		id := a.ProjectID
+		resp.ProjectID = &id
 	}
 	if len(a.MCPServers) > 0 {
 		resp.MCPServers = make([]AgentMCPServerResponse, 0, len(a.MCPServers))
@@ -320,15 +358,18 @@ type WriteWithAIRequest struct {
 // Conversation DTOs
 // =========================================================================
 
-// AgentConversationResponse is the public view of a conversation.
+// AgentConversationResponse is the public view of a conversation. ProjectID
+// is nil for a global-chat conversation, which carries ActorUserID instead
+// of TriggeredByMemberID.
 type AgentConversationResponse struct {
 	ID                  uuid.UUID  `json:"id"`
 	AgentID             uuid.UUID  `json:"agent_id"`
-	ProjectID           uuid.UUID  `json:"project_id"`
+	ProjectID           *uuid.UUID `json:"project_id,omitempty"`
 	TriggerType         string     `json:"trigger_type"`
 	TaskID              *uuid.UUID `json:"task_id,omitempty"`
 	ChatSessionID       *uuid.UUID `json:"chat_session_id,omitempty"`
 	TriggeredByMemberID *uuid.UUID `json:"triggered_by_member_id,omitempty"`
+	ActorUserID         *uuid.UUID `json:"actor_user_id,omitempty"`
 	Status              string     `json:"status"`
 	IterationCount      int        `json:"iteration_count"`
 	BranchName          *string    `json:"branch_name,omitempty"`
@@ -358,14 +399,14 @@ type SendMessageRequest struct {
 
 // ConversationFromEntity maps an AgentConversation entity to its DTO.
 func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResponse {
-	return AgentConversationResponse{
+	resp := AgentConversationResponse{
 		ID:                  c.ID,
 		AgentID:             c.AgentID,
-		ProjectID:           c.ProjectID,
 		TriggerType:         c.TriggerType,
 		TaskID:              c.TaskID,
 		ChatSessionID:       c.ChatSessionID,
 		TriggeredByMemberID: c.TriggeredByMemberID,
+		ActorUserID:         c.ActorUserID,
 		Status:              c.Status,
 		IterationCount:      c.IterationCount,
 		BranchName:          c.BranchName,
@@ -376,6 +417,11 @@ func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResp
 		AgentName:           c.AgentName,
 		AgentHandle:         c.AgentHandle,
 	}
+	if c.ProjectID != uuid.Nil {
+		id := c.ProjectID
+		resp.ProjectID = &id
+	}
+	return resp
 }
 
 // AgentActivityResponse is the public view of one item in an agent's unified
@@ -432,12 +478,15 @@ func ConversationEventFromEntity(e *agentdom.AgentConversationEvent) AgentConver
 // Chat Session DTOs
 // =========================================================================
 
-// AgentChatSessionResponse is the public view of a chat session.
+// AgentChatSessionResponse is the public view of a chat session. ProjectID
+// and MemberID are nil for a global chat session, which carries
+// ActorUserID instead.
 type AgentChatSessionResponse struct {
 	ID            uuid.UUID  `json:"id"`
 	AgentID       uuid.UUID  `json:"agent_id"`
-	ProjectID     uuid.UUID  `json:"project_id"`
-	MemberID      uuid.UUID  `json:"member_id"`
+	ProjectID     *uuid.UUID `json:"project_id,omitempty"`
+	MemberID      *uuid.UUID `json:"member_id,omitempty"`
+	ActorUserID   *uuid.UUID `json:"actor_user_id,omitempty"`
 	Title         *string    `json:"title,omitempty"`
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -455,15 +504,23 @@ type SendChatMessageRequest struct {
 
 // ChatSessionFromEntity maps an AgentChatSession entity to its DTO.
 func ChatSessionFromEntity(s *agentdom.AgentChatSession) AgentChatSessionResponse {
-	return AgentChatSessionResponse{
+	resp := AgentChatSessionResponse{
 		ID:            s.ID,
 		AgentID:       s.AgentID,
-		ProjectID:     s.ProjectID,
-		MemberID:      s.MemberID,
+		ActorUserID:   s.ActorUserID,
 		Title:         s.Title,
 		LastMessageAt: s.LastMessageAt,
 		CreatedAt:     s.CreatedAt,
 	}
+	if s.ProjectID != uuid.Nil {
+		id := s.ProjectID
+		resp.ProjectID = &id
+	}
+	if s.MemberID != uuid.Nil {
+		id := s.MemberID
+		resp.MemberID = &id
+	}
+	return resp
 }
 
 // =========================================================================

@@ -18,6 +18,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -33,6 +34,13 @@ type agentActivityRecorder interface {
 	RecordActivity(ctx context.Context, in taskdom.RecordActivityInput) error
 }
 
+// agentGlobalPermissionReader resolves a global agent's own effective
+// global-scope permissions. Satisfied directly by *postgres.AuthzPermissionStore
+// (the same store instance the Authorizer itself uses).
+type agentGlobalPermissionReader interface {
+	ListAgentGlobalPermissions(ctx context.Context, agentID uuid.UUID) ([]authz.Permission, error)
+}
+
 // AgentHandler handles AI agent management endpoints.
 type AgentHandler struct {
 	svc                agentdom.Service
@@ -42,6 +50,7 @@ type AgentHandler struct {
 	httpClient         *http.Client
 	activityRec        agentActivityRecorder
 	memberRepo         projectdom.MemberRepository
+	globalPermReader   agentGlobalPermissionReader
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -71,6 +80,30 @@ func (h *AgentHandler) WithActivityRecorder(r agentActivityRecorder) *AgentHandl
 func (h *AgentHandler) WithMemberRepo(repo projectdom.MemberRepository) *AgentHandler {
 	h.memberRepo = repo
 	return h
+}
+
+// WithGlobalPermissionReader attaches the store used by
+// GetMyGlobalPermissions to resolve a calling global agent's own
+// global-scope permissions.
+func (h *AgentHandler) WithGlobalPermissionReader(reader agentGlobalPermissionReader) *AgentHandler {
+	h.globalPermReader = reader
+	return h
+}
+
+// callerUserID extracts the authenticated human user's ID from the
+// request's JWT claims. Used by the global-chat handlers, which have no
+// project context and therefore no project_members.id to resolve (unlike
+// resolveMemberID) — the caller's raw user ID is the actor identity.
+func callerUserID(r *http.Request) (uuid.UUID, error) {
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		return uuid.Nil, apierr.New(apierr.CodeUnauthenticated, "unauthenticated")
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+	}
+	return userID, nil
 }
 
 // resolveMemberID maps the authenticated caller's user ID to their
@@ -275,6 +308,201 @@ func (h *AgentHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"message": "agent deleted"})
 }
 
+// --- Global Agents (admin) ---------------------------------------------------
+
+// ListGlobalAgents handles GET /admin/agents.
+func (h *AgentHandler) ListGlobalAgents(w http.ResponseWriter, r *http.Request) {
+	agents, err := h.svc.ListGlobalAgents(r.Context())
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentResponse, 0, len(agents))
+	for _, a := range agents {
+		resp = append(resp, dto.AgentFromEntity(a))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// GetGlobalAgent handles GET /admin/agents/:agentId.
+func (h *AgentHandler) GetGlobalAgent(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	a, err := h.svc.GetGlobalAgent(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.AgentFromEntity(a))
+}
+
+// CreateGlobalAgent handles POST /admin/agents.
+func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request) {
+	var req dto.CreateGlobalAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentType := req.AgentType
+	if agentType == "" {
+		agentType = agentdom.AgentTypeLLM
+	}
+	switch {
+	case req.Name == "":
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "name is required"))
+		return
+	case req.Handle == "":
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "handle is required"))
+		return
+	}
+	switch agentType {
+	case agentdom.AgentTypeLLM:
+		switch {
+		case req.LLMProvider == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_provider is required"))
+			return
+		case req.LLMModel == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_model is required"))
+			return
+		case req.LLMAPIKey == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_api_key is required"))
+			return
+		}
+	case agentdom.AgentTypeACP:
+		if req.ACPProvider == "" {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "acp_provider is required"))
+			return
+		}
+	default:
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp"))
+		return
+	}
+	claims := middleware.ClaimsFrom(r)
+	callerID, _ := uuid.Parse(claims.Subject)
+
+	a, err := h.svc.CreateGlobalAgent(r.Context(), agentdom.CreateGlobalAgentInput{
+		Name:              req.Name,
+		Handle:            req.Handle,
+		AgentType:         agentType,
+		LLMProvider:       req.LLMProvider,
+		LLMModel:          req.LLMModel,
+		LLMAPIKey:         req.LLMAPIKey,
+		LLMBaseURL:        req.LLMBaseURL,
+		ACPProvider:       req.ACPProvider,
+		ACPCommand:        req.ACPCommand,
+		SystemPrompt:      req.SystemPrompt,
+		MaxIterations:     req.MaxIterations,
+		TimeoutMinutes:    req.TimeoutMinutes,
+		GitCommitterName:  req.GitCommitterName,
+		GitCommitterEmail: req.GitCommitterEmail,
+		GlobalRoleID:      req.GlobalRoleID,
+		CreatedBy:         &callerID,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.AgentFromEntity(a))
+}
+
+// UpdateGlobalAgent handles PATCH /admin/agents/:agentId.
+func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.UpdateAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	a, err := h.svc.UpdateGlobalAgent(r.Context(), agentID, agentdom.UpdateAgentInput{
+		Name:              req.Name,
+		Handle:            req.Handle,
+		LLMProvider:       req.LLMProvider,
+		LLMModel:          req.LLMModel,
+		LLMAPIKey:         req.LLMAPIKey,
+		LLMBaseURL:        req.LLMBaseURL,
+		ACPProvider:       req.ACPProvider,
+		ACPCommand:        req.ACPCommand,
+		SystemPrompt:      req.SystemPrompt,
+		MaxIterations:     req.MaxIterations,
+		TimeoutMinutes:    req.TimeoutMinutes,
+		GitCommitterName:  req.GitCommitterName,
+		GitCommitterEmail: req.GitCommitterEmail,
+		GlobalRoleID:      req.GlobalRoleID,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.AgentFromEntity(a))
+}
+
+// DeleteGlobalAgent handles DELETE /admin/agents/:agentId.
+func (h *AgentHandler) DeleteGlobalAgent(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteGlobalAgent(r.Context(), agentID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "agent deleted"})
+}
+
+// GetMyGlobalPermissions handles GET /agents/me/global-permissions.
+// Agent-API-key-authenticated only (X-Agent-ID header) — returns the
+// calling global agent's own effective global-scope permissions, resolved
+// via its global_role_id. This is what the MCP server (services/ai-agent)
+// calls to populate its permission map for a global-scope conversation.
+func (h *AgentHandler) GetMyGlobalPermissions(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := middleware.AgentIDFromRequest(r)
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "agent identity required"))
+		return
+	}
+	if h.globalPermReader == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "permission reader not available"))
+		return
+	}
+	perms, err := h.globalPermReader.ListAgentGlobalPermissions(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	out := make([]string, 0, len(perms))
+	for _, p := range perms {
+		out = append(out, string(p))
+	}
+	presenter.OK(w, r, map[string]any{"permissions": out})
+}
+
+// GetMyInvitedProjects handles GET /agents/me/projects. Agent-API-key
+// authenticated only — returns the IDs of every project the calling global
+// agent currently has an active membership in. Used by the MCP server to
+// discover which projects to probe for per-project permissions when running
+// in unpinned (global chat) mode.
+func (h *AgentHandler) GetMyInvitedProjects(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := middleware.AgentIDFromRequest(r)
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "agent identity required"))
+		return
+	}
+	projectIDs, err := h.svc.ListInvitedProjectIDs(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"project_ids": projectIDs})
+}
+
 // --- MCP Servers ------------------------------------------------------------
 
 // parseAgentForProject parses projectId and agentId, verifies the agent belongs
@@ -294,6 +522,20 @@ func (h *AgentHandler) parseAgentForProject(r *http.Request) (projectID, agentID
 		return
 	}
 	return
+}
+
+// parseGlobalAgent parses agentId and verifies it identifies a global-scope
+// agent. Sibling of parseAgentForProject for the admin-mounted sub-resource
+// routes (MCP servers, skills, env vars) on a global agent.
+func (h *AgentHandler) parseGlobalAgent(r *http.Request) (agentID uuid.UUID, err error) {
+	agentID, err = parseParamUUID(r, "agentId")
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err = h.svc.GetGlobalAgent(r.Context(), agentID); err != nil {
+		return uuid.Nil, err
+	}
+	return agentID, nil
 }
 
 // ListMCPServers handles GET /projects/:projectId/agents/:agentId/mcp-servers.
@@ -386,6 +628,114 @@ func (h *AgentHandler) UpdateMCPServer(w http.ResponseWriter, r *http.Request) {
 // DeleteMCPServer handles DELETE /projects/:projectId/agents/:agentId/mcp-servers/:serverId.
 func (h *AgentHandler) DeleteMCPServer(w http.ResponseWriter, r *http.Request) {
 	_, agentID, err := h.parseAgentForProject(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	serverID, err := parseParamUUID(r, "serverId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteMCPServer(r.Context(), agentID, serverID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "mcp server deleted"})
+}
+
+// --- Global Agent MCP Servers (admin) ----------------------------------------
+
+// ListGlobalAgentMCPServers handles GET /admin/agents/:agentId/mcp-servers.
+func (h *AgentHandler) ListGlobalAgentMCPServers(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	servers, err := h.svc.ListMCPServers(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentMCPServerResponse, 0, len(servers))
+	for _, s := range servers {
+		resp = append(resp, dto.MCPServerFromEntity(s))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// AddGlobalAgentMCPServer handles POST /admin/agents/:agentId/mcp-servers.
+func (h *AgentHandler) AddGlobalAgentMCPServer(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.AddMCPServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.ServerName == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "server_name is required"))
+		return
+	}
+	switch req.Transport {
+	case "stdio", "sse", "http":
+	default:
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "transport must be one of: stdio, sse, http"))
+		return
+	}
+	srv, err := h.svc.AddMCPServer(r.Context(), agentID, agentdom.AddMCPServerInput{
+		ServerName: req.ServerName,
+		Transport:  req.Transport,
+		Command:    req.Command,
+		Args:       req.Args,
+		URL:        req.URL,
+		Env:        req.Env,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.MCPServerFromEntity(srv))
+}
+
+// UpdateGlobalAgentMCPServer handles PATCH /admin/agents/:agentId/mcp-servers/:serverId.
+func (h *AgentHandler) UpdateGlobalAgentMCPServer(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	serverID, err := parseParamUUID(r, "serverId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.UpdateMCPServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	srv, err := h.svc.UpdateMCPServer(r.Context(), agentID, serverID, agentdom.UpdateMCPServerInput{
+		Command:   req.Command,
+		Args:      req.Args,
+		URL:       req.URL,
+		Env:       req.Env,
+		IsEnabled: req.IsEnabled,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.MCPServerFromEntity(srv))
+}
+
+// DeleteGlobalAgentMCPServer handles DELETE /admin/agents/:agentId/mcp-servers/:serverId.
+func (h *AgentHandler) DeleteGlobalAgentMCPServer(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -507,6 +857,111 @@ func (h *AgentHandler) DeleteSkill(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"message": "skill deleted"})
 }
 
+// --- Global Agent Skills (admin) ---------------------------------------------
+
+// ListGlobalAgentSkills handles GET /admin/agents/:agentId/skills.
+func (h *AgentHandler) ListGlobalAgentSkills(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	skills, err := h.svc.ListSkills(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentSkillResponse, 0, len(skills))
+	for _, s := range skills {
+		resp = append(resp, dto.SkillFromEntity(s))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// AddGlobalAgentSkill handles POST /admin/agents/:agentId/skills.
+func (h *AgentHandler) AddGlobalAgentSkill(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.AddSkillRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.SkillName == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "skill_name is required"))
+		return
+	}
+	switch req.SkillSource {
+	case "inline", "marketplace", "github_url":
+	default:
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "skill_source must be one of: inline, marketplace, github_url"))
+		return
+	}
+	skill, err := h.svc.AddSkill(r.Context(), agentID, agentdom.AddSkillInput{
+		SkillName:    req.SkillName,
+		SkillSource:  req.SkillSource,
+		SkillContent: req.SkillContent,
+		SourceURL:    req.SourceURL,
+		Triggers:     req.Triggers,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.SkillFromEntity(skill))
+}
+
+// UpdateGlobalAgentSkill handles PATCH /admin/agents/:agentId/skills/:skillId.
+func (h *AgentHandler) UpdateGlobalAgentSkill(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	skillID, err := parseParamUUID(r, "skillId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.UpdateSkillRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	skill, err := h.svc.UpdateSkill(r.Context(), agentID, skillID, agentdom.UpdateSkillInput{
+		SkillContent: req.SkillContent,
+		Triggers:     req.Triggers,
+		IsEnabled:    req.IsEnabled,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.SkillFromEntity(skill))
+}
+
+// DeleteGlobalAgentSkill handles DELETE /admin/agents/:agentId/skills/:skillId.
+func (h *AgentHandler) DeleteGlobalAgentSkill(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	skillID, err := parseParamUUID(r, "skillId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteSkill(r.Context(), agentID, skillID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "skill deleted"})
+}
+
 // --- Environment Variables ---------------------------------------------------
 
 // ListEnvVars handles GET /projects/:projectId/agents/:agentId/env-vars.
@@ -593,6 +1048,108 @@ func (h *AgentHandler) UpdateEnvVar(w http.ResponseWriter, r *http.Request) {
 // DeleteEnvVar handles DELETE /projects/:projectId/agents/:agentId/env-vars/:envVarId.
 func (h *AgentHandler) DeleteEnvVar(w http.ResponseWriter, r *http.Request) {
 	_, agentID, err := h.parseAgentForProject(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	envVarID, err := parseParamUUID(r, "envVarId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.DeleteEnvVar(r.Context(), agentID, envVarID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, map[string]any{"message": "environment variable deleted"})
+}
+
+// --- Global Agent Environment Variables (admin) ------------------------------
+
+// ListGlobalAgentEnvVars handles GET /admin/agents/:agentId/env-vars.
+func (h *AgentHandler) ListGlobalAgentEnvVars(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	envVars, err := h.svc.ListEnvVars(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentEnvVarResponse, 0, len(envVars))
+	for _, v := range envVars {
+		resp = append(resp, dto.EnvVarFromEntity(v))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// AddGlobalAgentEnvVar handles POST /admin/agents/:agentId/env-vars.
+func (h *AgentHandler) AddGlobalAgentEnvVar(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.AddEnvVarRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.Key == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "key is required"))
+		return
+	}
+	if req.Value == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "value is required"))
+		return
+	}
+	envVar, err := h.svc.AddEnvVar(r.Context(), agentID, agentdom.AddEnvVarInput{
+		Key:   req.Key,
+		Value: req.Value,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.EnvVarFromEntity(envVar))
+}
+
+// UpdateGlobalAgentEnvVar handles PATCH /admin/agents/:agentId/env-vars/:envVarId.
+func (h *AgentHandler) UpdateGlobalAgentEnvVar(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	envVarID, err := parseParamUUID(r, "envVarId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.UpdateEnvVarRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.Value == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "value is required"))
+		return
+	}
+	envVar, err := h.svc.UpdateEnvVar(r.Context(), agentID, envVarID, agentdom.UpdateEnvVarInput{
+		Value: req.Value,
+	})
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.EnvVarFromEntity(envVar))
+}
+
+// DeleteGlobalAgentEnvVar handles DELETE /admin/agents/:agentId/env-vars/:envVarId.
+func (h *AgentHandler) DeleteGlobalAgentEnvVar(w http.ResponseWriter, r *http.Request) {
+	agentID, err := h.parseGlobalAgent(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -707,6 +1264,98 @@ func (h *AgentHandler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, map[string]any{"conversation": dto.ConversationFromEntity(conv)})
+}
+
+// --- Global Chat Sessions -----------------------------------------------------
+//
+// Chatting with a global agent from the home page / admin pages — no
+// project context. The caller is always a JWT-authenticated human; there is
+// no project_members.id to resolve (unlike resolveMemberID above), only the
+// raw user ID from the JWT subject (see callerUserID).
+
+// ListGlobalChatSessions handles GET /agents/:agentId/chat-sessions (global).
+func (h *AgentHandler) ListGlobalChatSessions(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	sessions, err := h.svc.ListGlobalChatSessions(r.Context(), agentID, userID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	resp := make([]dto.AgentChatSessionResponse, 0, len(sessions))
+	for _, s := range sessions {
+		resp = append(resp, dto.ChatSessionFromEntity(s))
+	}
+	presenter.OK(w, r, map[string]any{"items": resp})
+}
+
+// StartGlobalChatSession handles POST /agents/:agentId/chat-sessions (global).
+func (h *AgentHandler) StartGlobalChatSession(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.StartChatSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.Message == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
+		return
+	}
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, map[string]any{
+		"session":      dto.ChatSessionFromEntity(session),
+		"conversation": dto.ConversationFromEntity(conv),
+	})
+}
+
+// SendGlobalChatMessage handles POST /agents/chat-sessions/:sessionId/messages (global).
+func (h *AgentHandler) SendGlobalChatMessage(w http.ResponseWriter, r *http.Request) {
+	sessionID, err := parseParamUUID(r, "sessionId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	var req dto.SendChatMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if req.Message == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
+		return
+	}
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -869,6 +1518,31 @@ func (h *AgentHandler) GenerateACPBridgeToken(w http.ResponseWriter, r *http.Req
 	})
 }
 
+// GenerateGlobalACPBridgeToken handles POST
+// /admin/agents/:agentId/acp-bridge-token — GenerateACPBridgeToken's
+// global-agent sibling.
+func (h *AgentHandler) GenerateGlobalACPBridgeToken(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	token, err := h.svc.GenerateGlobalACPBridgeToken(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	go h.disconnectACPBridge(agentID)
+	runCommand := fmt.Sprintf("uvx paca-acp-bridge run --agent-id %s --token %s", agentID, token)
+	if h.publicURL != "" {
+		runCommand += fmt.Sprintf(" --server %s", h.publicURL)
+	}
+	presenter.OK(w, r, dto.GenerateACPBridgeTokenResponse{
+		Token:      token,
+		RunCommand: runCommand,
+	})
+}
+
 // disconnectACPBridge best-effort force-closes any bridge session currently
 // connected for agentID by calling ai-agent's internal POST
 // /agent-bridge/disconnect/:agentId (see routes/bridge.py). Called after a
@@ -921,6 +1595,29 @@ func (h *AgentHandler) GetACPBridgeStatus(w http.ResponseWriter, r *http.Request
 		presenter.Error(w, r, err)
 		return
 	}
+	h.proxyACPBridgeStatus(w, r, agent)
+}
+
+// GetGlobalACPBridgeStatus handles GET /admin/agents/:agentId/acp-bridge-status
+// — GetACPBridgeStatus's global-agent sibling.
+func (h *AgentHandler) GetGlobalACPBridgeStatus(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agent, err := h.svc.GetGlobalAgent(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	h.proxyACPBridgeStatus(w, r, agent)
+}
+
+// proxyACPBridgeStatus proxies to ai-agent's internal bridge presence check
+// for agent, shared by GetACPBridgeStatus and GetGlobalACPBridgeStatus once
+// each has resolved+verified the agent via its own ownership check.
+func (h *AgentHandler) proxyACPBridgeStatus(w http.ResponseWriter, r *http.Request, agent *agentdom.Agent) {
 	if agent.AgentType != agentdom.AgentTypeACP {
 		presenter.Error(w, r, agentdom.ErrAgentTypeInvalid)
 		return
@@ -932,7 +1629,7 @@ func (h *AgentHandler) GetACPBridgeStatus(w http.ResponseWriter, r *http.Request
 
 	req, err := http.NewRequestWithContext(
 		r.Context(), http.MethodGet,
-		fmt.Sprintf("%s/agent-bridge/status/%s", h.aiAgentURL, agentID), nil,
+		fmt.Sprintf("%s/agent-bridge/status/%s", h.aiAgentURL, agent.ID), nil,
 	)
 	if err != nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to create request"))

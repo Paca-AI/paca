@@ -12,14 +12,23 @@ import (
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 )
 
+// agentRoleCounter is the minimal interface Delete needs to also guard
+// against deleting a global role still assigned to a global agent, the same
+// way it already guards against users. Satisfied directly by
+// *postgres.AgentRepository — this package depends on no agent domain type.
+type agentRoleCounter interface {
+	CountAgentsWithGlobalRole(ctx context.Context, roleID uuid.UUID) (int64, error)
+}
+
 // Service is the concrete implementation of globalrole.Service.
 type Service struct {
-	repo globalroledom.Repository
+	repo   globalroledom.Repository
+	agents agentRoleCounter
 }
 
 // New returns a configured global role service.
-func New(repo globalroledom.Repository) *Service {
-	return &Service{repo: repo}
+func New(repo globalroledom.Repository, agents agentRoleCounter) *Service {
+	return &Service{repo: repo, agents: agents}
 }
 
 // List returns all global role definitions.
@@ -91,8 +100,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in globalroledom.Upd
 }
 
 // Delete removes a global role definition. It returns ErrHasAssignedUsers if
-// any user currently references this role via their assigned global role
-// (for example, through users.role_id).
+// any user or global agent currently references this role via their
+// assigned global role (users.role_id or agents.global_role_id).
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	count, err := s.repo.CountUsersWithRole(ctx, id)
 	if err != nil {
@@ -100,6 +109,15 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	if count > 0 {
 		return globalroledom.ErrHasAssignedUsers
+	}
+	if s.agents != nil {
+		agentCount, err := s.agents.CountAgentsWithGlobalRole(ctx, id)
+		if err != nil {
+			return err
+		}
+		if agentCount > 0 {
+			return globalroledom.ErrHasAssignedUsers
+		}
 	}
 	return s.repo.Delete(ctx, id)
 }

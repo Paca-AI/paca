@@ -268,5 +268,50 @@
 		"current": "Versão atual",
 		"error": "Não foi possível carregar as novidades agora. Tente novamente mais tarde.",
 		"empty": "Nenhuma novidade disponível no momento."
+	},
+	"agents": {
+		"header": {
+			"title": "Agentes Globais",
+			"description": "Gerencie agentes de IA que conversam na página inicial e nas páginas de administração, e que podem ser convidados para qualquer projeto.",
+			"newAgent": "Novo agente"
+		},
+		"empty": {
+			"title": "Ainda não há agentes globais",
+			"description": "Crie um agente global para disponibilizá-lo para conversas e convites de projeto.",
+			"createAgent": "Criar agente"
+		},
+		"table": {
+			"editAction": "Editar agente",
+			"deleteAction": "Excluir agente"
+		},
+		"formDialog": {
+			"editTitle": "Editar Agente Global",
+			"description": "Agentes globais não têm um projeto próprio — convide-os para um projeto na página de Equipe desse projeto para colocá-los para trabalhar lá.",
+			"nameLabel": "Nome",
+			"handleLabel": "Identificador",
+			"globalRoleLabel": "Função Global",
+			"noGlobalRole": "Sem função",
+			"globalRoleHint": "Determina o que este agente pode fazer em escopo global (por exemplo, no chat da página inicial/admin). Não é obrigatório — uma função concedida depois, ao ser convidado para um projeto, é separada.",
+			"acpProviderLabel": "Provedor ACP",
+			"providerLabel": "Provedor",
+			"modelLabel": "Modelo",
+			"customOption": "Personalizado…",
+			"apiKeyLabel": "Chave de API",
+			"apiKeyKeepPlaceholder": "Deixe em branco para manter a chave atual",
+			"baseUrlLabel": "URL base",
+			"systemPromptLabel": "Prompt de sistema",
+			"optional": "opcional",
+			"cancel": "Cancelar",
+			"save": "Salvar alterações",
+			"updateFailed": "Falha ao atualizar o agente"
+		},
+		"deleteDialog": {
+			"title": "Excluir agente?",
+			"confirmPrefix": "Isso excluirá permanentemente",
+			"confirmSuffix": ", removendo-o de todos os projetos aos quais foi convidado. Isso não pode ser desfeito.",
+			"cancel": "Cancelar",
+			"delete": "Excluir",
+			"deleteFailed": "Falha ao excluir o agente"
+		}
 	}
 }

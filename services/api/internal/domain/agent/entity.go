@@ -7,10 +7,26 @@ import (
 	"github.com/google/uuid"
 )
 
-// Agent represents an AI agent belonging to a project.
+// Agent represents an AI agent. A project-scoped agent (AgentScope ==
+// AgentScopeProject) belongs to exactly one project (ProjectID set); a
+// global agent (AgentScope == AgentScopeGlobal) belongs to none (ProjectID
+// is the zero value, uuid.Nil) and is instead attached to zero or more
+// projects indirectly via project_members rows, the same "add a member"
+// mechanism used for humans (see project.MemberService.AddMember). This
+// mirrors the existing ProjectMember.UserID convention ("zero-value for
+// agent members") rather than using a pointer, to avoid rippling a type
+// change through every existing project-scoped call site.
 type Agent struct {
-	ID              uuid.UUID
-	ProjectID       uuid.UUID
+	ID        uuid.UUID
+	ProjectID uuid.UUID // zero value (uuid.Nil) for global-scope agents
+	// AgentScope is "project" (default) or "global". See the Agent doc
+	// comment above.
+	AgentScope AgentScope
+	// GlobalRoleID is the global_roles row governing what this agent may do
+	// via admin-shaped tools (create users, manage global roles, manage
+	// projects) when acting with no project context. Only ever set for
+	// AgentScopeGlobal agents; nil means no global-scope permissions.
+	GlobalRoleID    *uuid.UUID
 	Name            string
 	Handle          string
 	AvatarURL       *string
@@ -58,6 +74,16 @@ type Agent struct {
 const (
 	AgentTypeLLM = "llm"
 	AgentTypeACP = "acp"
+)
+
+// AgentScope discriminates a project-owned agent from an instance-wide
+// (global) one. See the Agent doc comment.
+type AgentScope string
+
+// AgentScope values.
+const (
+	AgentScopeProject AgentScope = "project"
+	AgentScopeGlobal  AgentScope = "global"
 )
 
 // ACPProvider values.
@@ -157,28 +183,34 @@ type SkillTemplate struct {
 type AgentConversation struct {
 	ID            uuid.UUID
 	AgentID       uuid.UUID
-	ProjectID     uuid.UUID
-	TriggerType   string // task_assigned | comment_mention | chat_message | description_write | automation_message
+	ProjectID     uuid.UUID // zero value (uuid.Nil) for a global-chat conversation
+	TriggerType   string    // task_assigned | comment_mention | chat_message | description_write | automation_message
 	TaskID        *uuid.UUID
 	CommentID     *uuid.UUID
 	ChatSessionID *uuid.UUID
 	// TriggeredByMemberID is nil for conversations triggered by the
-	// automation-workflow engine, which has no human member behind it.
+	// automation-workflow engine (no human member behind it) OR by the
+	// global chat (ActorUserID is set instead — see below). Never set
+	// together with ActorUserID.
 	TriggeredByMemberID *uuid.UUID
-	Status              string // queued | running | paused | finished | failed | stopped
-	ContainerID         *string
-	HostPort            *int
-	IterationCount      int
-	ErrorMessage        *string
-	RepoPluginID        *uuid.UUID
-	RepoCloneURL        *string
-	BranchName          *string
-	PRUrl               *string
-	PersistenceDir      *string
-	StartedAt           *time.Time
-	FinishedAt          *time.Time
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// ActorUserID is set only for a global-chat conversation (ProjectID is
+	// uuid.Nil): the human user who sent the message, identified directly
+	// since there may be no project_members row for them at all.
+	ActorUserID    *uuid.UUID
+	Status         string // queued | running | paused | finished | failed | stopped
+	ContainerID    *string
+	HostPort       *int
+	IterationCount int
+	ErrorMessage   *string
+	RepoPluginID   *uuid.UUID
+	RepoCloneURL   *string
+	BranchName     *string
+	PRUrl          *string
+	PersistenceDir *string
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 	// Populated by JOIN
 	AgentName   string
 	AgentHandle string
@@ -197,11 +229,18 @@ type AgentConversationEvent struct {
 }
 
 // AgentChatSession is a persistent chat session between a user and an agent.
+// A project-scoped session (started from a project's own chat) has
+// ProjectID and MemberID set and ActorUserID nil; a global-chat session
+// (started from the home page / admin pages, no project context) has
+// ProjectID and MemberID zero-valued and ActorUserID set instead — the
+// human's identity carried directly, since they may not be a member of any
+// project.
 type AgentChatSession struct {
 	ID            uuid.UUID
 	AgentID       uuid.UUID
-	ProjectID     uuid.UUID
-	MemberID      uuid.UUID
+	ProjectID     uuid.UUID // zero value (uuid.Nil) for a global chat session
+	MemberID      uuid.UUID // zero value (uuid.Nil) for a global chat session
+	ActorUserID   *uuid.UUID
 	Title         *string
 	LastMessageAt *time.Time
 	CreatedAt     time.Time

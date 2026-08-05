@@ -138,6 +138,11 @@ def test_event_for_owned_conversation_is_persisted():
                 return_value=0,
             ),
             patch(
+                "src.repositories.conversation_repository.get_conversation_realtime_context",
+                new_callable=AsyncMock,
+                return_value=("proj-1", None),
+            ),
+            patch(
                 "src.routes.bridge.persist_conversation_event", new_callable=AsyncMock
             ) as mock_persist,
         ):
@@ -153,9 +158,13 @@ def test_event_for_owned_conversation_is_persisted():
             assert ws.receive_json() == {"type": "pong"}
         mock_persist.assert_awaited_once()
         assert mock_persist.await_args.kwargs["conversation_id"] == "conv-1"
-        # project_id must come from the authenticated hello resolution, not
-        # (an absent, in this case) client-supplied field.
+        # project_id/actor_user_id must come from a per-conversation DB lookup
+        # (get_conversation_realtime_context), not a client-supplied field on
+        # the message, nor the connection-level agent resolution — a single
+        # bridge session can relay conversations from different projects (or
+        # a global-chat conversation with no project at all).
         assert mock_persist.await_args.kwargs["project_id"] == "proj-1"
+        assert mock_persist.await_args.kwargs["actor_user_id"] is None
     finally:
         ws_cm.__exit__(None, None, None)
         for p in patches:
@@ -225,6 +234,11 @@ def test_turn_status_for_owned_conversation_updates_status():
                 "src.repositories.conversation_repository.get_conversation_agent_type",
                 new_callable=AsyncMock,
                 return_value=("agent-1", "acp"),
+            ),
+            patch(
+                "src.repositories.conversation_repository.get_conversation_realtime_context",
+                new_callable=AsyncMock,
+                return_value=("proj-1", None),
             ),
             patch(
                 "src.repositories.conversation_repository.update_conversation_status",
@@ -304,6 +318,11 @@ def test_disconnect_unregisters_with_authenticated_project_id_not_client_supplie
             "src.repositories.conversation_repository.get_next_event_index",
             new_callable=AsyncMock,
             return_value=0,
+        ),
+        patch(
+            "src.repositories.conversation_repository.get_conversation_realtime_context",
+            new_callable=AsyncMock,
+            return_value=("real-project", None),
         ),
         patch("src.routes.bridge.persist_conversation_event", new_callable=AsyncMock),
     ):

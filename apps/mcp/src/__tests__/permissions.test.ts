@@ -207,6 +207,7 @@ describe("TOOL_PERMISSIONS", () => {
 			).toBeTruthy();
 		}
 	});
+
 });
 
 // ---------------------------------------------------------------------------
@@ -300,5 +301,132 @@ describe("fetchAgentPermissions", () => {
 
 		expect(result.global).toEqual({});
 		expect(result.projects).toEqual({});
+	});
+
+	describe("project-scoped agent (agentId + projectId)", () => {
+		it("skips the global-permissions fetch entirely", async () => {
+			vi.mocked(fetch).mockResolvedValue({
+				ok: true,
+				json: async () => ({ data: { permissions: {} } }),
+			} as Response);
+
+			await fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				agentId: "agent-1",
+				projectId: "proj-abc",
+			});
+
+			const globalCalls = vi
+				.mocked(fetch)
+				.mock.calls.filter(([url]) =>
+					(url as string).includes("global-permissions"),
+				);
+			expect(globalCalls).toHaveLength(0);
+		});
+
+		it("sends X-Agent-ID on the project-permissions request", async () => {
+			vi.mocked(fetch).mockResolvedValue({
+				ok: true,
+				json: async () => ({ data: { permissions: { "tasks.read": true } } }),
+			} as Response);
+
+			await fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				agentId: "agent-1",
+				projectId: "proj-abc",
+			});
+
+			const call = vi.mocked(fetch).mock.calls[0];
+			expect(call[1]).toMatchObject({
+				headers: expect.objectContaining({ "X-Agent-ID": "agent-1" }),
+			});
+		});
+	});
+
+	describe("global agent (agentId set, no projectId — unpinned mode)", () => {
+		function mockJson(body: any): Response {
+			return { ok: true, json: async () => body } as Response;
+		}
+
+		it("fetches its own global permissions via /agents/me/global-permissions", async () => {
+			vi.mocked(fetch).mockImplementation(async (url) => {
+				const u = url as string;
+				if (u.includes("/agents/me/global-permissions")) {
+					return mockJson({ data: { permissions: { "users.write": true } } });
+				}
+				if (u.includes("/agents/me/projects")) {
+					return mockJson({ data: { project_ids: [] } });
+				}
+				throw new Error(`unexpected fetch: ${u}`);
+			});
+
+			const result = await fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				agentId: "global-agent-1",
+			});
+
+			expect(result.global).toEqual({ "users.write": true });
+			// Never calls the human-only endpoint.
+			const humanGlobalCalls = vi
+				.mocked(fetch)
+				.mock.calls.filter(([url]) =>
+					(url as string).includes("/users/me/global-permissions"),
+				);
+			expect(humanGlobalCalls).toHaveLength(0);
+		});
+
+		it("discovers invited projects and fetches permissions for each", async () => {
+			vi.mocked(fetch).mockImplementation(async (url) => {
+				const u = url as string;
+				if (u.includes("/agents/me/global-permissions")) {
+					return mockJson({ data: { permissions: {} } });
+				}
+				if (u.includes("/agents/me/projects")) {
+					return mockJson({ data: { project_ids: ["proj-a", "proj-b"] } });
+				}
+				if (u.includes("/projects/proj-a/members/me/permissions")) {
+					return mockJson({ data: { permissions: { "tasks.read": true } } });
+				}
+				if (u.includes("/projects/proj-b/members/me/permissions")) {
+					return mockJson({ data: { permissions: { "tasks.write": true } } });
+				}
+				throw new Error(`unexpected fetch: ${u}`);
+			});
+
+			const result = await fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				agentId: "global-agent-1",
+			});
+
+			expect(result.projects).toEqual({
+				"proj-a": { "tasks.read": true },
+				"proj-b": { "tasks.write": true },
+			});
+		});
+
+		it("returns empty projects when the agent has no invitations", async () => {
+			vi.mocked(fetch).mockImplementation(async (url) => {
+				const u = url as string;
+				if (u.includes("/agents/me/global-permissions")) {
+					return mockJson({ data: { permissions: {} } });
+				}
+				if (u.includes("/agents/me/projects")) {
+					return mockJson({ data: { project_ids: [] } });
+				}
+				throw new Error(`unexpected fetch: ${u}`);
+			});
+
+			const result = await fetchAgentPermissions({
+				apiKey: "key-123",
+				baseURL: "http://localhost:8080",
+				agentId: "global-agent-1",
+			});
+
+			expect(result.projects).toEqual({});
+		});
 	});
 });

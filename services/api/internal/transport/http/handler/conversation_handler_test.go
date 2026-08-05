@@ -555,3 +555,141 @@ func TestListConversations_InvalidProjectIDReturnsBadRequest(t *testing.T) {
 		t.Errorf("expected 400 for malformed project id, got %d", rec.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ListGlobalConversations (GET /agents/conversations)
+// ---------------------------------------------------------------------------
+
+func newGlobalConversationsListRouter(svc agentdom.Service, subject string) chi.Router {
+	h := handler.NewConversationHandler(svc)
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(subject))
+	r.Get("/agents/conversations", h.ListGlobalConversations)
+	return r
+}
+
+// The caller's own user id must always be forced as ActorUserID, and
+// GlobalOnly/ProjectID must never be left for the client to override via
+// query params — this is the privacy boundary that keeps one user's global
+// chats from leaking to another.
+func TestListGlobalConversations_ScopesToCallerAndGlobalOnly(t *testing.T) {
+	callerID := uuid.New()
+	var gotActorUserID uuid.UUID
+	var gotFilter agentdom.ListConversationsFilter
+	svc := &mockAgentSvc{
+		listGlobalConversations: func(_ context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, _ int) ([]*agentdom.AgentConversation, bool, error) {
+			gotActorUserID = actorUserID
+			gotFilter = filter
+			return []*agentdom.AgentConversation{{ID: uuid.New()}}, false, nil
+		},
+	}
+	r := newGlobalConversationsListRouter(svc, callerID.String())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotActorUserID != callerID {
+		t.Errorf("expected actorUserID %s forced from claims, got %s", callerID, gotActorUserID)
+	}
+	// The handler itself never sets GlobalOnly/ProjectID — that's the
+	// service's job (see Service.ListGlobalConversations) so there's no
+	// query param a client could smuggle those through with.
+	if gotFilter.ProjectID != nil {
+		t.Errorf("expected handler to leave ProjectID unset, got %v", gotFilter.ProjectID)
+	}
+}
+
+func TestListGlobalConversations_Unauthenticated401s(t *testing.T) {
+	svc := &mockAgentSvc{}
+	h := handler.NewConversationHandler(svc)
+	r := chi.NewRouter()
+	r.Get("/agents/conversations", h.ListGlobalConversations)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 with no claims in context, got %d", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetGlobalConversationEvents (GET /agents/conversations/:conversationId/events)
+// ---------------------------------------------------------------------------
+
+func newGlobalConversationRouter(svc agentdom.Service) chi.Router {
+	h := handler.NewConversationHandler(svc)
+	r := chi.NewRouter()
+	r.Route("/agents/conversations/{conversationId}", func(r chi.Router) {
+		r.Get("/events", h.GetGlobalConversationEvents)
+	})
+	return r
+}
+
+func TestGetGlobalConversationEvents_ReturnsEvents(t *testing.T) {
+	convID := uuid.New()
+	svc := &mockAgentSvc{
+		getGlobalConversation: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id != convID {
+				t.Fatalf("unexpected conversation id %s", id)
+			}
+			return &agentdom.AgentConversation{ID: convID}, nil
+		},
+		listConversationEvents: func(_ context.Context, id uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
+			if id != convID {
+				t.Fatalf("unexpected conversation id %s", id)
+			}
+			return []*agentdom.AgentConversationEvent{{ID: uuid.New(), ConversationID: convID}}, 1, nil
+		},
+	}
+	r := newGlobalConversationRouter(svc)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations/"+convID.String()+"/events", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Data.Items) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(resp.Data.Items))
+	}
+}
+
+// A conversation id that doesn't resolve to a global (project_id IS NULL)
+// conversation must 404 via GetGlobalConversation's own scope check —
+// ListConversationEvents must never be reached in that case, since it has
+// no ownership check of its own to fall back on.
+func TestGetGlobalConversationEvents_UnknownConversationNotFound(t *testing.T) {
+	eventsCalled := false
+	svc := &mockAgentSvc{
+		getGlobalConversation: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return nil, agentdom.ErrConversationNotFound
+		},
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
+			eventsCalled = true
+			return nil, 0, nil
+		},
+	}
+	r := newGlobalConversationRouter(svc)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations/"+uuid.New().String()+"/events", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if eventsCalled {
+		t.Error("ListConversationEvents must not be called when the conversation isn't a valid global conversation")
+	}
+}

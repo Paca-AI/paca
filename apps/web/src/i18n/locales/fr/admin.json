@@ -268,5 +268,50 @@
 		"current": "Version actuelle",
 		"error": "Impossible de charger les nouveautés pour le moment. Veuillez réessayer plus tard.",
 		"empty": "Aucune note de version disponible pour le moment."
+	},
+	"agents": {
+		"header": {
+			"title": "Agents globaux",
+			"description": "Gérez les agents IA qui discutent sur la page d'accueil et les pages d'administration, et qui peuvent être invités dans n'importe quel projet.",
+			"newAgent": "Nouvel agent"
+		},
+		"empty": {
+			"title": "Aucun agent global pour le moment",
+			"description": "Créez un agent global pour le rendre disponible pour le chat et les invitations à des projets.",
+			"createAgent": "Créer un agent"
+		},
+		"table": {
+			"editAction": "Modifier l'agent",
+			"deleteAction": "Supprimer l'agent"
+		},
+		"formDialog": {
+			"editTitle": "Modifier l'agent global",
+			"description": "Les agents globaux n'ont pas de projet propre — invitez-les dans un projet depuis la page Équipe de ce projet pour les y faire travailler.",
+			"nameLabel": "Nom",
+			"handleLabel": "Identifiant",
+			"globalRoleLabel": "Rôle global",
+			"noGlobalRole": "Aucun rôle",
+			"globalRoleHint": "Détermine ce que cet agent peut faire au niveau global (par exemple depuis le chat d'accueil/admin). Non requis — un rôle attribué plus tard, une fois invité dans un projet, est distinct.",
+			"acpProviderLabel": "Fournisseur ACP",
+			"providerLabel": "Fournisseur",
+			"modelLabel": "Modèle",
+			"customOption": "Personnalisé…",
+			"apiKeyLabel": "Clé API",
+			"apiKeyKeepPlaceholder": "Laissez vide pour conserver la clé actuelle",
+			"baseUrlLabel": "URL de base",
+			"systemPromptLabel": "Invite système",
+			"optional": "facultatif",
+			"cancel": "Annuler",
+			"save": "Enregistrer les modifications",
+			"updateFailed": "Échec de la mise à jour de l'agent"
+		},
+		"deleteDialog": {
+			"title": "Supprimer l'agent ?",
+			"confirmPrefix": "Cette action supprimera définitivement",
+			"confirmSuffix": ", en le retirant de tous les projets où il a été invité. Cette action est irréversible.",
+			"cancel": "Annuler",
+			"delete": "Supprimer",
+			"deleteFailed": "Échec de la suppression de l'agent"
+		}
 	}
 }

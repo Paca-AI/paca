@@ -329,11 +329,12 @@ class _SeenEvents:
 
 async def persist_conversation_event(
     conversation_id: str,
-    project_id: str,
+    project_id: str | None,
     event_type: str,
     event_source: str,
     event_index: int,
     payload: str,
+    actor_user_id: str | None = None,
 ) -> None:
     """Write a single event to Postgres + Valkey and fan it out over realtime.
 
@@ -341,7 +342,8 @@ async def persist_conversation_event(
     which additionally filters and indexes SDK event objects) and
     routes/bridge.py, which persists events reported by a local ACP bridge
     daemon — both paths must write to the same destinations so the frontend
-    renders either source identically.
+    renders either source identically. project_id is None and actor_user_id
+    is set for a global-chat conversation (see TriggerMessage).
     """
     await conversation_repository.insert_conversation_event(
         conversation_id=conversation_id,
@@ -353,7 +355,7 @@ async def persist_conversation_event(
     await stream_store.publish_event(
         {
             "conversation_id": conversation_id,
-            "project_id": project_id,
+            "project_id": project_id or "",
             "event_type": event_type,
             "event_source": event_source,
             "event_index": str(event_index),
@@ -365,6 +367,7 @@ async def persist_conversation_event(
         project_id=project_id,
         conversation_id=conversation_id,
         event_type=f"agent.{event_type.lower()}",
+        actor_user_id=actor_user_id,
     )
 
 
@@ -404,6 +407,7 @@ def _persist_event(
             event_source=event_source,
             event_index=event_index,
             payload=payload,
+            actor_user_id=trigger.actor_user_id,
         ),
         loop,
     )
@@ -706,6 +710,7 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                     handle=handle,
                     sdk_conversation_id=conversation.id,
                     project_id=trigger.project_id,
+                    actor_user_id=trigger.actor_user_id,
                     last_active_at=time.monotonic(),
                 )
             else:
@@ -731,6 +736,7 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                 project_id=trigger.project_id,
                 conversation_id=trigger.conversation_id,
                 event_type=event_type,
+                actor_user_id=trigger.actor_user_id,
             )
 
     except Exception as exc:
@@ -743,6 +749,7 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                 project_id=trigger.project_id,
                 conversation_id=trigger.conversation_id,
                 event_type="agent.conversation.failed",
+                actor_user_id=trigger.actor_user_id,
             )
 
     finally:
@@ -792,6 +799,7 @@ async def teardown_paused_chat_sandbox(conversation_id: str) -> bool:
         project_id=entry.project_id,
         conversation_id=conversation_id,
         event_type="agent.conversation.stopped",
+        actor_user_id=entry.actor_user_id,
     )
     return True
 

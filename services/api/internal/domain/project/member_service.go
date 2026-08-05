@@ -6,9 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// AddMemberInput carries fields for adding a user to a project.
+// AddMemberInput carries fields for adding a member to a project — a human
+// (UserID) or, exclusively, a global agent being invited (AgentID). Exactly
+// one of UserID/AgentID must be set.
 type AddMemberInput struct {
 	UserID        uuid.UUID
+	AgentID       *uuid.UUID
 	ProjectRoleID uuid.UUID
 }
 

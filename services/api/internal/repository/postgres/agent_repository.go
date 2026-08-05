@@ -21,7 +21,9 @@ import (
 
 type agentRecord struct {
 	ID                 string     `db:"id"`
-	ProjectID          string     `db:"project_id"`
+	ProjectID          *string    `db:"project_id"` // NULL for global-scope agents
+	AgentScope         string     `db:"agent_scope"`
+	GlobalRoleID       *string    `db:"global_role_id"`
 	Name               string     `db:"name"`
 	Handle             string     `db:"handle"`
 	AvatarURL          *string    `db:"avatar_url"`
@@ -84,12 +86,13 @@ type agentSkillRecord struct {
 type agentConversationRecord struct {
 	ID                  string     `db:"id"`
 	AgentID             string     `db:"agent_id"`
-	ProjectID           string     `db:"project_id"`
+	ProjectID           *string    `db:"project_id"` // NULL for a global-chat conversation
 	TriggerType         string     `db:"trigger_type"`
 	TaskID              *string    `db:"task_id"`
 	CommentID           *string    `db:"comment_id"`
 	ChatSessionID       *string    `db:"chat_session_id"`
 	TriggeredByMemberID *string    `db:"triggered_by_member_id"`
+	ActorUserID         *string    `db:"actor_user_id"`
 	Status              string     `db:"status"`
 	ContainerID         *string    `db:"container_id"`
 	HostPort            *int       `db:"host_port"`
@@ -119,8 +122,9 @@ type agentConversationEventRecord struct {
 type agentChatSessionRecord struct {
 	ID            string     `db:"id"`
 	AgentID       string     `db:"agent_id"`
-	ProjectID     string     `db:"project_id"`
-	MemberID      string     `db:"member_id"`
+	ProjectID     *string    `db:"project_id"` // NULL for a global chat session
+	MemberID      *string    `db:"member_id"`  // NULL for a global chat session
+	ActorUserID   *string    `db:"actor_user_id"`
 	Title         *string    `db:"title"`
 	LastMessageAt *time.Time `db:"last_message_at"`
 	CreatedAt     time.Time  `db:"created_at"`
@@ -141,24 +145,83 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 	return &AgentRepository{db: db}
 }
 
-const agentSelectCols = `a.id, a.project_id, a.name, a.handle, a.avatar_url, a.agent_type, a.llm_provider, a.llm_model,
+const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_url, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
-	a.git_committer_name, a.git_committer_email, a.created_by, a.created_at, a.updated_at, a.deleted_at,
-	pm.id AS member_id`
+	a.git_committer_name, a.git_committer_email, a.created_by, a.created_at, a.updated_at, a.deleted_at`
+
+// agentSelectCols is used with a JOIN/LEFT JOIN against project_members
+// aliased pm, populating member_id from that join.
+const agentSelectCols = agentSelectColsBase + `, pm.id AS member_id`
+
+// agentSelectColsNoMember is used when there is no single project_members
+// row to join against (a global agent listed/looked-up outside any one
+// project's context) — member_id is meaningless there.
+const agentSelectColsNoMember = agentSelectColsBase + `, NULL::uuid AS member_id`
+
+// uuidFromNullable converts a nullable DB string column to uuid.UUID, using
+// uuid.Nil for NULL — the zero-value sentinel this package uses for "no
+// project" / "no member" (see Agent.ProjectID, AgentChatSession.MemberID),
+// mirroring the existing ProjectMember.UserID convention.
+func uuidFromNullable(s *string) uuid.UUID {
+	if s == nil {
+		return uuid.Nil
+	}
+	return mustParseUUID(*s)
+}
+
+// nullableUUIDString converts a uuid.UUID to a nullable DB string column,
+// treating uuid.Nil as NULL — the inverse of uuidFromNullable.
+func nullableUUIDString(id uuid.UUID) *string {
+	if id == uuid.Nil {
+		return nil
+	}
+	s := id.String()
+	return &s
+}
 
 // -------------------------------------------------------------------------
 // Agents
 // -------------------------------------------------------------------------
 
-// ListAgents returns all agents belonging to the given project.
+// ListAgents returns all agents visible in the given project: its own
+// project-scoped agents, plus any global agents currently invited into it
+// (i.e. with an active project_members row there). Filtering through the
+// project_members join rather than agents.project_id directly is what makes
+// invited global agents show up here — a global agent's own project_id is
+// always NULL. For every project-scoped agent (which always has exactly one
+// active project_members row from CreateAgentWithMembership) this returns
+// the identical row set as filtering on a.project_id directly would.
 func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error) {
 	var rows []agentRecord
 	err := r.db.SelectContext(ctx, &rows, `
 		SELECT `+agentSelectCols+`
 		FROM agents a
-		LEFT JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL
-		WHERE a.project_id = $1 AND a.deleted_at IS NULL`, projectID.String())
+		JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL AND pm.project_id = $1
+		WHERE a.deleted_at IS NULL`, projectID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*agentdom.Agent, 0, len(rows))
+	for _, row := range rows {
+		a, err := agentFromReadRow(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, a)
+	}
+	return result, nil
+}
+
+// ListGlobalAgents returns every global-scope agent (agent_scope='global').
+func (r *AgentRepository) ListGlobalAgents(ctx context.Context) ([]*agentdom.Agent, error) {
+	var rows []agentRecord
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT `+agentSelectColsNoMember+`
+		FROM agents a
+		WHERE a.agent_scope = 'global' AND a.deleted_at IS NULL
+		ORDER BY a.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -175,13 +238,19 @@ func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID) (
 }
 
 // FindAgentByID returns a single agent with its MCP servers and skills.
+// member_id is only meaningful for a project-scoped agent (which has at
+// most one active project_members row); a global agent can have many, so
+// this arbitrarily picks one via LIMIT 1 rather than leaving row order
+// undefined — callers resolving a global agent's project membership should
+// use ListInvitedProjectIDs instead of this method's MemberID field.
 func (r *AgentRepository) FindAgentByID(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error) {
 	var row agentRecord
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+agentSelectCols+`
 		FROM agents a
 		LEFT JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL
-		WHERE a.id = $1 AND a.deleted_at IS NULL`, id.String())
+		WHERE a.id = $1 AND a.deleted_at IS NULL
+		LIMIT 1`, id.String())
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, agentdom.ErrAgentNotFound
 	}
@@ -211,14 +280,19 @@ func (r *AgentRepository) FindAgentByID(ctx context.Context, id uuid.UUID) (*age
 	return agent, nil
 }
 
-// FindAgentByHandle returns an agent by its unique handle within a project.
+// FindAgentByHandle returns an agent by its handle among those visible in a
+// project: its own project-scoped agents, plus any global agents currently
+// invited into it — resolved via the project_members join (see ListAgents'
+// doc comment for why joining rather than filtering on a.project_id
+// directly matters for global agents). Used for @mention resolution and
+// handle-uniqueness checks within a project.
 func (r *AgentRepository) FindAgentByHandle(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error) {
 	var row agentRecord
 	err := r.db.GetContext(ctx, &row, `
 		SELECT `+agentSelectCols+`
 		FROM agents a
-		LEFT JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL
-		WHERE a.project_id = $1 AND a.handle = $2 AND a.deleted_at IS NULL`,
+		JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL AND pm.project_id = $1
+		WHERE a.handle = $2 AND a.deleted_at IS NULL`,
 		projectID.String(), handle)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, agentdom.ErrAgentNotFound
@@ -266,13 +340,13 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  acp_provider=$7, acp_command=$8,
 			  system_prompt=$9,
 			  max_iterations=$10, timeout_minutes=$11,
-			  git_committer_name=$12, git_committer_email=$13, updated_at=$14
-			WHERE id=$15`,
+			  git_committer_name=$12, git_committer_email=$13, global_role_id=$14, updated_at=$15
+			WHERE id=$16`,
 			a.Name, a.Handle, a.AvatarURL, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
-			a.GitCommitterName, a.GitCommitterEmail, time.Now(), a.ID.String(),
+			a.GitCommitterName, a.GitCommitterEmail, rec.GlobalRoleID, time.Now(), a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -353,6 +427,97 @@ func (r *AgentRepository) SoftDeleteAgentWithMembership(ctx context.Context, pro
 			WHERE project_id=$2 AND agent_id=$3 AND member_type='agent'`, now, projectID.String(), agentID.String())
 		return err
 	})
+}
+
+// FindGlobalAgentByHandle looks up a global agent by its instance-wide
+// unique handle (uq_agents_global_handle). See its doc comment in
+// domain/agent/repository.go for how this differs from FindAgentByHandle.
+func (r *AgentRepository) FindGlobalAgentByHandle(ctx context.Context, handle string) (*agentdom.Agent, error) {
+	var row agentRecord
+	err := r.db.GetContext(ctx, &row, `
+		SELECT `+agentSelectColsNoMember+`
+		FROM agents a
+		WHERE a.project_id IS NULL AND a.handle = $1 AND a.deleted_at IS NULL`, handle)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, agentdom.ErrAgentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return agentFromReadRow(row)
+}
+
+// CreateGlobalAgent inserts a new global-scope agent (project_id NULL, no
+// project_members row — unlike CreateAgentWithMembership, a global agent
+// starts with zero project invitations; it's attached to a project later,
+// on demand, via the same "add a member" flow used for humans).
+func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Agent) error {
+	rec, err := agentToRecord(a)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
+		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
+		  max_iterations, timeout_minutes,
+		  git_committer_name, git_committer_email, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarURL, rec.AgentType,
+		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
+		rec.ACPProvider, rec.ACPCommand,
+		rec.SystemPrompt,
+		rec.MaxIterations, rec.TimeoutMinutes,
+		rec.GitCommitterName, rec.GitCommitterEmail, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+	)
+	return err
+}
+
+// SoftDeleteGlobalAgentCascade soft-deletes the agent row and every active
+// project_members row referencing it, across every project it was invited
+// into, in one transaction. project_members.agent_id's ON DELETE CASCADE FK
+// only fires on a hard delete, and agents are soft-deleted, so the
+// membership cleanup has to happen explicitly here.
+func (r *AgentRepository) SoftDeleteGlobalAgentCascade(ctx context.Context, agentID uuid.UUID) error {
+	now := time.Now()
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE agents SET deleted_at=$1 WHERE id=$2 AND agent_scope='global'`, now, agentID.String()); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			UPDATE project_members SET deleted_at=$1
+			WHERE agent_id=$2 AND member_type='agent' AND deleted_at IS NULL`, now, agentID.String())
+		return err
+	})
+}
+
+// ListInvitedProjectIDs returns the IDs of every project a global agent
+// currently has an active project_members row in.
+func (r *AgentRepository) ListInvitedProjectIDs(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []string
+	err := r.db.SelectContext(ctx, &ids, `
+		SELECT project_id FROM project_members
+		WHERE agent_id = $1 AND member_type = 'agent' AND deleted_at IS NULL`, agentID.String())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, mustParseUUID(id))
+	}
+	return result, nil
+}
+
+// CountAgentsWithGlobalRole returns the number of non-deleted global agents
+// whose global_role_id points to the given role — used by
+// globalrolesvc.Service.Delete to block deleting a role still assigned to
+// an agent, the same guard already applied for users.
+func (r *AgentRepository) CountAgentsWithGlobalRole(ctx context.Context, roleID uuid.UUID) (int64, error) {
+	var count int64
+	if err := r.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM agents WHERE global_role_id = $1 AND deleted_at IS NULL`, roleID.String()); err != nil {
+		return 0, fmt.Errorf("agent repo: count agents with global role: %w", err)
+	}
+	return count, nil
 }
 
 // -------------------------------------------------------------------------
@@ -582,7 +747,7 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // ActionEvent per agent step) rather than stored: see #314 and migration
 // 000026_drop_conversation_iteration_count.sql for why.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-	triggered_by_member_id, status, container_id, host_port,
+	triggered_by_member_id, actor_user_id, status, container_id, host_port,
 	(SELECT COUNT(*) FROM agent_conversation_events e
 	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'ActionEvent') AS iteration_count,
 	error_message,
@@ -602,6 +767,13 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		p := b.placeholder()
 		b.args = append(b.args, in.ProjectID.String())
 		b.whereClauses = append(b.whereClauses, "project_id = "+p)
+	} else if in.GlobalOnly {
+		b.whereClauses = append(b.whereClauses, "project_id IS NULL")
+	}
+	if in.ActorUserID != nil {
+		p := b.placeholder()
+		b.args = append(b.args, in.ActorUserID.String())
+		b.whereClauses = append(b.whereClauses, "actor_user_id = "+p)
 	}
 	if in.TaskID != nil {
 		p := b.placeholder()
@@ -710,12 +882,12 @@ func (r *AgentRepository) CreateConversation(ctx context.Context, c *agentdom.Ag
 	rec := conversationToRecord(c)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO agent_conversations (id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-		  triggered_by_member_id, status, container_id, host_port, error_message,
+		  triggered_by_member_id, actor_user_id, status, container_id, host_port, error_message,
 		  repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
 		  started_at, finished_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		rec.ID, rec.AgentID, rec.ProjectID, rec.TriggerType, rec.TaskID, rec.CommentID, rec.ChatSessionID,
-		rec.TriggeredByMemberID, rec.Status, rec.ContainerID, rec.HostPort, rec.ErrorMessage,
+		rec.TriggeredByMemberID, rec.ActorUserID, rec.Status, rec.ContainerID, rec.HostPort, rec.ErrorMessage,
 		rec.RepoPluginID, rec.RepoCloneURL, rec.BranchName, rec.PRUrl, rec.PersistenceDir,
 		rec.StartedAt, rec.FinishedAt, rec.CreatedAt, rec.UpdatedAt,
 	)
@@ -809,7 +981,7 @@ func (r *AgentRepository) CreateConversationEvent(ctx context.Context, e *agentd
 // Chat Sessions
 // -------------------------------------------------------------------------
 
-const chatSessionCols = `id, agent_id, project_id, member_id, title, last_message_at, created_at, updated_at`
+const chatSessionCols = `id, agent_id, project_id, member_id, actor_user_id, title, last_message_at, created_at, updated_at`
 
 // ListChatSessions returns all chat sessions for the given agent and member.
 func (r *AgentRepository) ListChatSessions(ctx context.Context, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
@@ -818,6 +990,24 @@ func (r *AgentRepository) ListChatSessions(ctx context.Context, agentID, memberI
 		SELECT `+chatSessionCols+` FROM agent_chat_sessions
 		WHERE agent_id = $1 AND member_id = $2
 		ORDER BY created_at DESC`, agentID.String(), memberID.String()); err != nil {
+		return nil, err
+	}
+	result := make([]*agentdom.AgentChatSession, 0, len(recs))
+	for _, rec := range recs {
+		result = append(result, chatSessionFromRecord(rec))
+	}
+	return result, nil
+}
+
+// ListGlobalChatSessions returns all global chat sessions for the given
+// agent and human actor (ListChatSessions' sibling, keyed by actor_user_id
+// instead of member_id).
+func (r *AgentRepository) ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+	var recs []agentChatSessionRecord
+	if err := r.db.SelectContext(ctx, &recs, `
+		SELECT `+chatSessionCols+` FROM agent_chat_sessions
+		WHERE agent_id = $1 AND actor_user_id = $2
+		ORDER BY created_at DESC`, agentID.String(), actorUserID.String()); err != nil {
 		return nil, err
 	}
 	result := make([]*agentdom.AgentChatSession, 0, len(recs))
@@ -843,9 +1033,9 @@ func (r *AgentRepository) FindChatSessionByID(ctx context.Context, id uuid.UUID)
 func (r *AgentRepository) CreateChatSession(ctx context.Context, s *agentdom.AgentChatSession) error {
 	rec := chatSessionToRecord(s)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO agent_chat_sessions (id, agent_id, project_id, member_id, title, last_message_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		rec.ID, rec.AgentID, rec.ProjectID, rec.MemberID, rec.Title, rec.LastMessageAt, rec.CreatedAt, rec.UpdatedAt,
+		INSERT INTO agent_chat_sessions (id, agent_id, project_id, member_id, actor_user_id, title, last_message_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		rec.ID, rec.AgentID, rec.ProjectID, rec.MemberID, rec.ActorUserID, rec.Title, rec.LastMessageAt, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
 }
@@ -866,9 +1056,14 @@ func (r *AgentRepository) UpdateChatSession(ctx context.Context, s *agentdom.Age
 // -------------------------------------------------------------------------
 
 func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
+	scope := agentdom.AgentScope(row.AgentScope)
+	if scope == "" {
+		scope = agentdom.AgentScopeProject
+	}
 	a := &agentdom.Agent{
 		ID:                mustParseUUID(row.ID),
-		ProjectID:         mustParseUUID(row.ProjectID),
+		ProjectID:         uuidFromNullable(row.ProjectID),
+		AgentScope:        scope,
 		Name:              row.Name,
 		Handle:            row.Handle,
 		AvatarURL:         row.AvatarURL,
@@ -906,6 +1101,10 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		mid := mustParseUUID(*row.MemberID)
 		a.MemberID = &mid
 	}
+	if row.GlobalRoleID != nil {
+		rid := mustParseUUID(*row.GlobalRoleID)
+		a.GlobalRoleID = &rid
+	}
 	return a, nil
 }
 
@@ -922,9 +1121,14 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 	if err != nil {
 		return agentRecord{}, fmt.Errorf("marshal acp_command for agent %s: %w", a.ID, err)
 	}
+	scope := string(a.AgentScope)
+	if scope == "" {
+		scope = string(agentdom.AgentScopeProject)
+	}
 	rec := agentRecord{
 		ID:                a.ID.String(),
-		ProjectID:         a.ProjectID.String(),
+		ProjectID:         nullableUUIDString(a.ProjectID),
+		AgentScope:        scope,
 		Name:              a.Name,
 		Handle:            a.Handle,
 		AvatarURL:         a.AvatarURL,
@@ -946,6 +1150,10 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 	if a.CreatedBy != nil {
 		s := a.CreatedBy.String()
 		rec.CreatedBy = &s
+	}
+	if a.GlobalRoleID != nil {
+		s := a.GlobalRoleID.String()
+		rec.GlobalRoleID = &s
 	}
 	return rec, nil
 }
@@ -1051,7 +1259,7 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 	c := &agentdom.AgentConversation{
 		ID:             mustParseUUID(rec.ID),
 		AgentID:        mustParseUUID(rec.AgentID),
-		ProjectID:      mustParseUUID(rec.ProjectID),
+		ProjectID:      uuidFromNullable(rec.ProjectID),
 		TriggerType:    rec.TriggerType,
 		Status:         rec.Status,
 		ContainerID:    rec.ContainerID,
@@ -1083,6 +1291,10 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		id := mustParseUUID(*rec.TriggeredByMemberID)
 		c.TriggeredByMemberID = &id
 	}
+	if rec.ActorUserID != nil {
+		id := mustParseUUID(*rec.ActorUserID)
+		c.ActorUserID = &id
+	}
 	if rec.RepoPluginID != nil {
 		id := mustParseUUID(*rec.RepoPluginID)
 		c.RepoPluginID = &id
@@ -1094,7 +1306,7 @@ func conversationToRecord(c *agentdom.AgentConversation) agentConversationRecord
 	rec := agentConversationRecord{
 		ID:             c.ID.String(),
 		AgentID:        c.AgentID.String(),
-		ProjectID:      c.ProjectID.String(),
+		ProjectID:      nullableUUIDString(c.ProjectID),
 		TriggerType:    c.TriggerType,
 		Status:         c.Status,
 		ContainerID:    c.ContainerID,
@@ -1124,6 +1336,10 @@ func conversationToRecord(c *agentdom.AgentConversation) agentConversationRecord
 	if c.TriggeredByMemberID != nil {
 		s := c.TriggeredByMemberID.String()
 		rec.TriggeredByMemberID = &s
+	}
+	if c.ActorUserID != nil {
+		s := c.ActorUserID.String()
+		rec.ActorUserID = &s
 	}
 	if c.RepoPluginID != nil {
 		s := c.RepoPluginID.String()
@@ -1165,29 +1381,39 @@ func conversationEventToRecord(e *agentdom.AgentConversationEvent) (agentConvers
 }
 
 func chatSessionFromRecord(rec agentChatSessionRecord) *agentdom.AgentChatSession {
-	return &agentdom.AgentChatSession{
+	s := &agentdom.AgentChatSession{
 		ID:            mustParseUUID(rec.ID),
 		AgentID:       mustParseUUID(rec.AgentID),
-		ProjectID:     mustParseUUID(rec.ProjectID),
-		MemberID:      mustParseUUID(rec.MemberID),
+		ProjectID:     uuidFromNullable(rec.ProjectID),
+		MemberID:      uuidFromNullable(rec.MemberID),
 		Title:         rec.Title,
 		LastMessageAt: rec.LastMessageAt,
 		CreatedAt:     rec.CreatedAt,
 		UpdatedAt:     rec.UpdatedAt,
 	}
+	if rec.ActorUserID != nil {
+		id := mustParseUUID(*rec.ActorUserID)
+		s.ActorUserID = &id
+	}
+	return s
 }
 
 func chatSessionToRecord(s *agentdom.AgentChatSession) agentChatSessionRecord {
-	return agentChatSessionRecord{
+	rec := agentChatSessionRecord{
 		ID:            s.ID.String(),
 		AgentID:       s.AgentID.String(),
-		ProjectID:     s.ProjectID.String(),
-		MemberID:      s.MemberID.String(),
+		ProjectID:     nullableUUIDString(s.ProjectID),
+		MemberID:      nullableUUIDString(s.MemberID),
 		Title:         s.Title,
 		LastMessageAt: s.LastMessageAt,
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
 	}
+	if s.ActorUserID != nil {
+		id := s.ActorUserID.String()
+		rec.ActorUserID = &id
+	}
+	return rec
 }
 
 // -------------------------------------------------------------------------

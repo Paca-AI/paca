@@ -77,8 +77,16 @@ func EnforcePermissions(w http.ResponseWriter, r *http.Request, authorizer *auth
 	agentID, hasAgentID := AgentIDFromRequest(r)
 
 	var allowed bool
-	if hasAgentID && projectID != nil {
-		allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, permissions...)
+	if hasAgentID {
+		if projectID != nil {
+			allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, permissions...)
+		} else {
+			// Global-scope, agent-authenticated request: narrow to this
+			// specific agent's own global role rather than falling through
+			// to the shared agent-API-key subject (which is a fixed
+			// SUPER_ADMIN bot user) — see HasGlobalPermissionsForAgent.
+			allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, permissions...)
+		}
 	} else {
 		userID, parseErr := uuid.Parse(claims.Subject)
 		if parseErr != nil {
@@ -156,8 +164,12 @@ func RequireAnyPermissions(authorizer *authz.Authorizer, groups ...PermissionGro
 				}
 
 				var allowed bool
-				if hasAgentID && projectID != nil {
-					allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
+				if hasAgentID {
+					if projectID != nil {
+						allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
+					} else {
+						allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, group.Permissions...)
+					}
 				} else {
 					allowed, err = authorizer.HasPermissions(r.Context(), userID, projectID, claims.Role, group.Permissions...)
 				}
@@ -231,8 +243,12 @@ func RequirePublicProjectOrPermissions(checker ProjectVisibilityChecker, authori
 					}
 
 					var allowed bool
-					if hasAgentID && projectID != nil {
-						allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
+					if hasAgentID {
+						if projectID != nil {
+							allowed, err = authorizer.HasPermissionsForAgent(r.Context(), agentID, *projectID, group.Permissions...)
+						} else {
+							allowed, err = authorizer.HasGlobalPermissionsForAgent(r.Context(), agentID, group.Permissions...)
+						}
 					} else {
 						allowed, err = authorizer.HasPermissions(r.Context(), userID, projectID, claims.Role, group.Permissions...)
 					}
