@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM golang:1.26-alpine AS builder
+# --platform=$BUILDPLATFORM pins this stage to the host arch (e.g. amd64)
+# regardless of TARGETPLATFORM, so multi-arch builds cross-compile natively
+# via GOOS/GOARCH instead of running the Go compiler under QEMU emulation for
+# arm64 — that emulation was the dominant cost in multi-platform CI builds.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 WORKDIR /build
 
@@ -10,9 +14,19 @@ RUN go mod download
 
 COPY . .
 
-# Keep compile-time memory usage low for small Docker Desktop allocations.
-RUN CGO_ENABLED=0 GOOS=linux GOMAXPROCS=1 GOMEMLIMIT=768MiB \
-	go build -p=1 -ldflags="-s -w" -o api ./cmd/api
+ARG TARGETOS
+ARG TARGETARCH
+
+# GOMAXPROCS/GOMEMLIMIT/-p default to single-core/low-memory for small Docker
+# Desktop allocations (local builds, e2e CI). CD overrides these via
+# --build-arg since GitHub Actions runners have more headroom and native
+# cross-compilation removes the memory pressure that motivated the low
+# defaults in the first place.
+ARG GOMAXPROCS=1
+ARG GOMEMLIMIT=768MiB
+ARG GOBUILD_P=1
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOMAXPROCS=$GOMAXPROCS GOMEMLIMIT=$GOMEMLIMIT \
+	go build -p=$GOBUILD_P -ldflags="-s -w" -o api ./cmd/api
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM alpine:3.21
