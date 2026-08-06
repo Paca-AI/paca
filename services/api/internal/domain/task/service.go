@@ -131,6 +131,9 @@ type TaskService interface {
 	// memberIDs, across their respective projects — see
 	// Repository.ListAssignedTasks for the keyset-pagination contract.
 	ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*Task, bool, error)
+	// CountOpenTasksByProjects returns the number of non-done tasks across all
+	// of projectIDs in a single query — see Repository.CountOpenTasksByProjects.
+	CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 }
 
 // CreateTaskInput carries fields required to create a task.

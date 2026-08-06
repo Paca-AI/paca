@@ -328,7 +328,7 @@ func New(cfg *config.Config) (*App, error) {
 			projectService,
 			authorizer,
 			handler.WithProjectDefaultViews(viewService, taskService),
-			handler.WithProjectStatsServices(taskService, agentService),
+			handler.WithProjectStatsServices(taskService, userService),
 		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskPublisher(publisher),

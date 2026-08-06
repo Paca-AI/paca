@@ -9,6 +9,13 @@ import (
 // MemberRepository defines persistence operations for project members.
 type MemberRepository interface {
 	ListMembers(ctx context.Context, projectID uuid.UUID) ([]*ProjectMember, error)
+	// CountDistinctAgentsByProjects returns the number of distinct agents
+	// with an active membership across all of projectIDs, in a single query
+	// — used by the home page's workspace stats widget so an invited global
+	// agent belonging to several projects is counted once, not once per
+	// project. Human team-member counts come from userdom.Service.CountUsers
+	// instead: they aren't project-scoped, so they don't need this table.
+	CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 	FindMember(ctx context.Context, projectID, userID uuid.UUID) (*ProjectMember, error)
 	// FindMemberByAgent returns the active member record for an agent in a
 	// project. Used to resolve an agent UUID to a member UUID.

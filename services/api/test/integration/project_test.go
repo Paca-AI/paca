@@ -288,6 +288,26 @@ func (r *fakeProjectRepo) ListMembers(_ context.Context, projectID uuid.UUID) ([
 	return out, nil
 }
 
+func (r *fakeProjectRepo) CountDistinctAgentsByProjects(_ context.Context, projectIDs []uuid.UUID) (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	wanted := make(map[uuid.UUID]struct{}, len(projectIDs))
+	for _, id := range projectIDs {
+		wanted[id] = struct{}{}
+	}
+	agents := make(map[uuid.UUID]struct{})
+	for _, m := range r.members {
+		if _, ok := wanted[m.ProjectID]; !ok {
+			continue
+		}
+		if m.AgentID != nil {
+			agents[*m.AgentID] = struct{}{}
+		}
+	}
+	return int64(len(agents)), nil
+}
+
 func (r *fakeProjectRepo) FindMember(_ context.Context, projectID, userID uuid.UUID) (*projectdom.ProjectMember, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

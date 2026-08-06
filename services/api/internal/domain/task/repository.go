@@ -87,6 +87,10 @@ type TaskRepository interface {
 	// (same cursor format as the "importance" ListTasks sort).
 	// Used by the cross-project "assigned to me" home page widget.
 	ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*Task, bool, error)
+	// CountOpenTasksByProjects returns the number of non-done tasks across all
+	// of projectIDs in a single query, for cross-project aggregates like the
+	// home page's workspace stats widget — avoids an N-query per-project loop.
+	CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 }
 
 // TaskSort carries resolved sort configuration for ListTasks.

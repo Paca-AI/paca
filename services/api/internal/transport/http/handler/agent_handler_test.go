@@ -240,6 +240,9 @@ type fakeMemberRepo struct {
 func (f *fakeMemberRepo) ListMembers(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
 	panic("fakeMemberRepo: ListMembers not used by resolveMemberID tests")
 }
+func (f *fakeMemberRepo) CountDistinctAgentsByProjects(context.Context, []uuid.UUID) (int64, error) {
+	panic("fakeMemberRepo: CountDistinctAgentsByProjects not used by resolveMemberID tests")
+}
 func (f *fakeMemberRepo) FindMember(context.Context, uuid.UUID, uuid.UUID) (*projectdom.ProjectMember, error) {
 	panic("fakeMemberRepo: FindMember not used by resolveMemberID tests")
 }

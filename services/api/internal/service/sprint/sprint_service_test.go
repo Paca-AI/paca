@@ -195,6 +195,10 @@ func (r *fakeTaskRepo) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int
 	return nil, false, nil
 }
 
+func (r *fakeTaskRepo) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 func (r *fakeTaskRepo) BulkMoveSprintTasks(_ context.Context, projectID, sourceSprintID uuid.UUID, targetSprintID *uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

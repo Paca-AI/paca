@@ -18,6 +18,15 @@ func (s *Service) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*proj
 	return s.repo.ListMembers(ctx, projectID)
 }
 
+// CountDistinctAgentsByProjects returns the distinct agent member count
+// across projectIDs. Unlike ListMembers, this skips the per-project
+// FindByID existence check — it's a cross-project aggregate over a caller-
+// supplied ID set (e.g. every project a user can access), not a lookup
+// scoped to one project the caller is expected to already know exists.
+func (s *Service) CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	return s.repo.CountDistinctAgentsByProjects(ctx, projectIDs)
+}
+
 // AddMember adds a member to a project with the specified role — a human
 // (in.UserID) or, when in.AgentID is set, invites an existing global agent
 // into the project (the "invite" flow: the same action as adding a human,

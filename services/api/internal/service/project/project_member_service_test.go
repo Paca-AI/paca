@@ -50,6 +50,10 @@ func (m *memberServiceRepoMock) ListMembers(context.Context, uuid.UUID) ([]*proj
 	return nil, nil
 }
 
+func (m *memberServiceRepoMock) CountDistinctAgentsByProjects(context.Context, []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 func (m *memberServiceRepoMock) FindMember(ctx context.Context, projectID, userID uuid.UUID) (*projectdom.ProjectMember, error) {
 	if m.findMember != nil {
 		return m.findMember(ctx, projectID, userID)

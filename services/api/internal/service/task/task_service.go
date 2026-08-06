@@ -296,6 +296,12 @@ func (s *Service) CountTasks(ctx context.Context, projectID uuid.UUID, filter ta
 	return s.repo.CountTasks(ctx, projectID, filter)
 }
 
+// CountOpenTasksByProjects returns the number of non-done tasks across all of
+// projectIDs in a single query.
+func (s *Service) CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	return s.repo.CountOpenTasksByProjects(ctx, projectIDs)
+}
+
 // SumTaskField sums a numeric field across all matching tasks, ignoring pagination.
 func (s *Service) SumTaskField(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, fieldKey string) (float64, error) {
 	return s.repo.SumTaskField(ctx, projectID, filter, fieldKey)

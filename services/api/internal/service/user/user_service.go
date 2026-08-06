@@ -69,6 +69,11 @@ func (s *Service) List(ctx context.Context, page, pageSize int) ([]*userdom.User
 	return s.repo.List(ctx, offset, pageSize)
 }
 
+// CountUsers returns the total count of users without paginating rows.
+func (s *Service) CountUsers(ctx context.Context) (int64, error) {
+	return s.repo.CountUsers(ctx)
+}
+
 // ListGlobalPermissions returns effective global permissions for the user.
 func (s *Service) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
 	u, err := s.repo.FindByID(ctx, id)

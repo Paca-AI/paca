@@ -235,6 +235,11 @@ func (c *CachedService) CountTasks(ctx context.Context, projectID uuid.UUID, fil
 	return c.svc.CountTasks(ctx, projectID, filter)
 }
 
+// CountOpenTasksByProjects delegates to the underlying service without caching.
+func (c *CachedService) CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	return c.svc.CountOpenTasksByProjects(ctx, projectIDs)
+}
+
 // SumTaskField delegates to the underlying service without caching.
 func (c *CachedService) SumTaskField(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, fieldKey string) (float64, error) {
 	return c.svc.SumTaskField(ctx, projectID, filter, fieldKey)

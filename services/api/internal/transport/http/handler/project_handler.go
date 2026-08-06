@@ -3,17 +3,14 @@ package handler
 import (
 	"context"
 	"net/http"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Paca-AI/api/internal/apierr"
-	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -23,14 +20,15 @@ import (
 // taskServiceForStats is the minimal task-service surface used to compute
 // workspace-level open-task counts in GetWorkspaceStats.
 type taskServiceForStats interface {
-	ListTaskStatuses(ctx context.Context, projectID uuid.UUID) ([]*taskdom.TaskStatus, error)
-	CountTasks(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter) (int64, error)
+	CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 }
 
-// agentServiceForStats is the minimal agent-service surface used to compute
-// workspace-level AI-agent counts in GetWorkspaceStats.
-type agentServiceForStats interface {
-	ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error)
+// userServiceForStats is the minimal user-service surface used to compute
+// the workspace-level team-member count in GetWorkspaceStats. It's a plain
+// users-table count, not scoped to accessible projects — see
+// userdom.Service.CountUsers.
+type userServiceForStats interface {
+	CountUsers(ctx context.Context) (int64, error)
 }
 
 // ProjectHandler handles project management endpoints.
@@ -40,7 +38,7 @@ type ProjectHandler struct {
 	viewSvc     sprintdom.ViewService
 	taskTypeSvc taskTypeLister
 	taskSvc     taskServiceForStats
-	agentSvc    agentServiceForStats
+	userSvc     userServiceForStats
 }
 
 // ProjectHandlerOption customizes optional project-handler dependencies.
@@ -54,13 +52,15 @@ func WithProjectDefaultViews(viewSvc sprintdom.ViewService, taskTypeSvc taskType
 	}
 }
 
-// WithProjectStatsServices wires the task and agent services used by the
-// workspace stats endpoint. Passing nil is allowed and causes the affected
-// counters to return zero.
-func WithProjectStatsServices(taskSvc taskServiceForStats, agentSvc agentServiceForStats) ProjectHandlerOption {
+// WithProjectStatsServices wires the task and user services used by the
+// workspace stats endpoint's open-task and team-member counters. Passing nil
+// for either is allowed and causes that counter to return zero. The AI-agent
+// count doesn't need a separate service — it's computed via h.svc
+// (projectdom.Service), which GetWorkspaceStats always has.
+func WithProjectStatsServices(taskSvc taskServiceForStats, userSvc userServiceForStats) ProjectHandlerOption {
 	return func(h *ProjectHandler) {
 		h.taskSvc = taskSvc
-		h.agentSvc = agentSvc
+		h.userSvc = userSvc
 	}
 }
 
@@ -160,76 +160,55 @@ func (h *ProjectHandler) GetWorkspaceStats(w http.ResponseWriter, r *http.Reques
 	}
 
 	var stats dto.WorkspaceStatsResponse
-	if len(projects) == 0 {
-		presenter.OK(w, r, stats)
-		return
+
+	projectIDs := make([]uuid.UUID, len(projects))
+	for i, p := range projects {
+		projectIDs[i] = p.ID
 	}
 
+	// Each counter is a single aggregate query (not a per-project fan-out):
+	// CountOpenTasksByProjects and CountDistinctAgentsByProjects each
+	// dedupe/aggregate in SQL, so a task or invited global agent belonging
+	// to several projects is counted once, not once per project. Both
+	// tolerate an empty projectIDs slice, returning zero rather than
+	// erroring. TeamMemberCount is a plain users-table count via
+	// h.userSvc.CountUsers — team membership isn't scoped to accessible
+	// projects, so it doesn't need projectIDs at all. All three run
+	// concurrently since they're independent round trips; each writes only
+	// its own disjoint stats field(s), so no mutex is needed — errgroup.Wait
+	// establishes the happens-before edge before stats is read below.
 	g, gctx := errgroup.WithContext(r.Context())
-	var mu sync.Mutex
-	seenMembers := make(map[uuid.UUID]struct{})
 
-	for _, p := range projects {
-		projectID := p.ID
-
-		if h.taskSvc != nil {
-			g.Go(func() error {
-				statuses, listErr := h.taskSvc.ListTaskStatuses(gctx, projectID)
-				if listErr != nil {
-					return listErr
-				}
-				openIDs := make([]uuid.UUID, 0, len(statuses))
-				for _, s := range statuses {
-					if s.Category != taskdom.StatusCategoryDone {
-						openIDs = append(openIDs, s.ID)
-					}
-				}
-				if len(openIDs) == 0 {
-					return nil
-				}
-				count, countErr := h.taskSvc.CountTasks(gctx, projectID, taskdom.TaskFilter{StatusIDs: openIDs})
-				if countErr != nil {
-					return countErr
-				}
-				mu.Lock()
-				stats.OpenTaskCount += count
-				mu.Unlock()
-				return nil
-			})
-		}
-
+	if h.taskSvc != nil {
 		g.Go(func() error {
-			members, listErr := h.svc.ListMembers(gctx, projectID)
-			if listErr != nil {
-				return listErr
+			count, err := h.taskSvc.CountOpenTasksByProjects(gctx, projectIDs)
+			if err != nil {
+				return err
 			}
-			mu.Lock()
-			for _, m := range members {
-				if m.UserID == uuid.Nil {
-					continue
-				}
-				if _, ok := seenMembers[m.UserID]; !ok {
-					seenMembers[m.UserID] = struct{}{}
-					stats.TeamMemberCount++
-				}
-			}
-			mu.Unlock()
+			stats.OpenTaskCount = count
 			return nil
 		})
-
-		if h.agentSvc != nil {
-			g.Go(func() error {
-				agents, listErr := h.agentSvc.ListAgents(gctx, projectID)
-				if listErr != nil {
-					return listErr
-				}
-				mu.Lock()
-				stats.AIAgentCount += int64(len(agents))
-				mu.Unlock()
-				return nil
-			})
-		}
 	}
+
+	if h.userSvc != nil {
+		g.Go(func() error {
+			count, err := h.userSvc.CountUsers(gctx)
+			if err != nil {
+				return err
+			}
+			stats.TeamMemberCount = count
+			return nil
+		})
+	}
+
+	g.Go(func() error {
+		count, err := h.svc.CountDistinctAgentsByProjects(gctx, projectIDs)
+		if err != nil {
+			return err
+		}
+		stats.AIAgentCount = count
+		return nil
+	})
 
 	if err := g.Wait(); err != nil {
 		presenter.Error(w, r, err)

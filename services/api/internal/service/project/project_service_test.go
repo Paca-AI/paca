@@ -93,6 +93,9 @@ func (r *fakeProjectRepo) CountMembersWithRole(_ context.Context, _ uuid.UUID) (
 func (r *fakeProjectRepo) ListMembers(_ context.Context, _ uuid.UUID) ([]*projectdom.ProjectMember, error) {
 	return nil, nil
 }
+func (r *fakeProjectRepo) CountDistinctAgentsByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
 func (r *fakeProjectRepo) FindMember(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*projectdom.ProjectMember, error) {
 	return nil, projectdom.ErrMemberNotFound
 }

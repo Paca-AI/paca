@@ -23,6 +23,9 @@ type UpdateMemberRoleInput struct {
 // MemberService defines member management use cases.
 type MemberService interface {
 	ListMembers(ctx context.Context, projectID uuid.UUID) ([]*ProjectMember, error)
+	// CountDistinctAgentsByProjects returns the distinct agent member count
+	// across projectIDs — see MemberRepository.CountDistinctAgentsByProjects.
+	CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 	AddMember(ctx context.Context, projectID uuid.UUID, in AddMemberInput) (*ProjectMember, error)
 	UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in UpdateMemberRoleInput) (*ProjectMember, error)
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
