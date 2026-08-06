@@ -209,10 +209,17 @@ export interface AgentChatSession {
 
 // ── Agents ────────────────────────────────────────────────────────────────────
 
-export async function listAgents(projectId: string): Promise<Agent[]> {
+// scope narrows the result to just that AgentScope server-side (e.g.
+// "project" to hide global agents invited into this project as members) —
+// omit it to get everything the project can act through, as the @mention
+// picker and task assignment do. See services/api's AgentHandler.ListAgents.
+export async function listAgents(
+	projectId: string,
+	scope?: AgentScope,
+): Promise<Agent[]> {
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<{ items: Agent[] }>
-	>(`/projects/${projectId}/agents`);
+	>(`/projects/${projectId}/agents`, { params: scope ? { scope } : undefined });
 	return data.data.items;
 }
 
@@ -1057,6 +1064,22 @@ export const agentsQueryOptions = (projectId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents"],
 		queryFn: () => listAgents(projectId),
+	});
+
+// projectScopedAgentsQueryOptions is agentsQueryOptions' sibling for the
+// project Agents management page, which lists project-owned agents only —
+// scope=project server-side-filters out global agents invited into the
+// project as members, which agentsQueryOptions' other callers (agent-picker,
+// conversations) still want included. A separate function/key rather than
+// an optional param on agentsQueryOptions, so its queryKey shape doesn't
+// widen into a union type that'd break call sites like
+// conversations-layout.tsx's `projectId ? agentsQueryOptions(projectId) :
+// chattableAgentsQueryOptions` ternary (both branches must share one
+// queryKey type for useQuery to type-check).
+export const projectScopedAgentsQueryOptions = (projectId: string) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "agents", "project"] as const,
+		queryFn: () => listAgents(projectId, "project"),
 	});
 
 export const agentQueryOptions = (projectId: string, agentId: string) =>

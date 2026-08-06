@@ -184,7 +184,7 @@ func nullableUUIDString(id uuid.UUID) *string {
 // Agents
 // -------------------------------------------------------------------------
 
-// ListAgents returns all agents visible in the given project: its own
+// ListAgents returns agents visible in the given project: its own
 // project-scoped agents, plus any global agents currently invited into it
 // (i.e. with an active project_members row there). Filtering through the
 // project_members join rather than agents.project_id directly is what makes
@@ -192,13 +192,23 @@ func nullableUUIDString(id uuid.UUID) *string {
 // always NULL. For every project-scoped agent (which always has exactly one
 // active project_members row from CreateAgentWithMembership) this returns
 // the identical row set as filtering on a.project_id directly would.
-func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error) {
-	var rows []agentRecord
-	err := r.db.SelectContext(ctx, &rows, `
-		SELECT `+agentSelectCols+`
+//
+// scope narrows the result to just that AgentScope; the zero value
+// (AgentScope("")) applies no filter and returns both, as described above.
+func (r *AgentRepository) ListAgents(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
+	query := `
+		SELECT ` + agentSelectCols + `
 		FROM agents a
 		JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL AND pm.project_id = $1
-		WHERE a.deleted_at IS NULL`, projectID.String())
+		WHERE a.deleted_at IS NULL`
+	args := []any{projectID.String()}
+	if scope != "" {
+		query += " AND a.agent_scope = $2"
+		args = append(args, string(scope))
+	}
+
+	var rows []agentRecord
+	err := r.db.SelectContext(ctx, &rows, query, args...)
 	if err != nil {
 		return nil, err
 	}

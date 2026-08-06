@@ -63,9 +63,10 @@ func (s *Service) encryptKey(plaintext string) (string, error) {
 // Agents
 // -------------------------------------------------------------------------
 
-// ListAgents returns all agents in the given project.
-func (s *Service) ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error) {
-	return s.repo.ListAgents(ctx, projectID)
+// ListAgents returns agents visible in the given project, optionally
+// narrowed to a single AgentScope. See AgentRepository.ListAgents.
+func (s *Service) ListAgents(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
+	return s.repo.ListAgents(ctx, projectID, scope)
 }
 
 // GetAgent returns a single agent after verifying project ownership.

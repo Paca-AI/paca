@@ -19,7 +19,9 @@ type Service interface {
 
 // AgentService defines agent CRUD use cases.
 type AgentService interface {
-	ListAgents(ctx context.Context, projectID uuid.UUID) ([]*Agent, error)
+	// ListAgents returns agents visible in the given project, optionally
+	// narrowed to a single AgentScope. See AgentRepository.ListAgents.
+	ListAgents(ctx context.Context, projectID uuid.UUID, scope AgentScope) ([]*Agent, error)
 	GetAgent(ctx context.Context, projectID, agentID uuid.UUID) (*Agent, error)
 	CreateAgent(ctx context.Context, projectID uuid.UUID, in CreateAgentInput) (*Agent, error)
 	UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID, in UpdateAgentInput) (*Agent, error)

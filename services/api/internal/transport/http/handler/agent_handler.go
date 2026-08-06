@@ -129,14 +129,24 @@ func (h *AgentHandler) resolveMemberID(r *http.Request, projectID uuid.UUID) (uu
 
 // --- Agents -----------------------------------------------------------------
 
-// ListAgents handles GET /projects/:projectId/agents.
+// ListAgents handles GET /projects/:projectId/agents. An optional ?scope=
+// query param ("project" or "global") narrows the result to just that
+// AgentScope — e.g. the project Agents management page passes
+// scope=project to hide invited global agents it can't manage from there;
+// callers that want every agent the project can act through (the @mention
+// picker, task assignment) omit it. See AgentRepository.ListAgents.
 func (h *AgentHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	agents, err := h.svc.ListAgents(r.Context(), projectID)
+	scope := agentdom.AgentScope(r.URL.Query().Get("scope"))
+	if scope != "" && scope != agentdom.AgentScopeProject && scope != agentdom.AgentScopeGlobal {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid scope"))
+		return
+	}
+	agents, err := h.svc.ListAgents(r.Context(), projectID, scope)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

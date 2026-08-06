@@ -38,7 +38,7 @@ type mockAgentSvc struct {
 	generateGlobalACPBridgeToken func(ctx context.Context, agentID uuid.UUID) (string, error)
 }
 
-func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID) ([]*agentdom.Agent, error) {
+func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID, _ agentdom.AgentScope) ([]*agentdom.Agent, error) {
 	return nil, nil
 }
 func (m *mockAgentSvc) GetAgent(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {

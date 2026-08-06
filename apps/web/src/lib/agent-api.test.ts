@@ -12,7 +12,7 @@ vi.mock("./api-client", () => ({
 	},
 }));
 
-import { listConversations } from "./agent-api";
+import { listAgents, listConversations } from "./agent-api";
 
 const PROJECT_ID = "proj-1";
 
@@ -35,6 +35,28 @@ function paramsOf(callIndex = 0) {
 describe("agent-api", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	describe("listAgents", () => {
+		it("sends no params when called without a scope", async () => {
+			mockGet.mockResolvedValue(ok({ items: [] }));
+
+			await listAgents(PROJECT_ID);
+
+			expect(mockGet).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/agents`, {
+				params: undefined,
+			});
+		});
+
+		it("forwards scope as a query param when given", async () => {
+			mockGet.mockResolvedValue(ok({ items: [] }));
+
+			await listAgents(PROJECT_ID, "project");
+
+			expect(mockGet).toHaveBeenCalledWith(`/projects/${PROJECT_ID}/agents`, {
+				params: { scope: "project" },
+			});
+		});
 	});
 
 	describe("listConversations", () => {

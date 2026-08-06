@@ -15,8 +15,8 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type AcpBridgeToken,
 	type Agent,
-	agentsQueryOptions,
 	llmModelsQueryOptions,
+	projectScopedAgentsQueryOptions,
 } from "@/lib/agent-api";
 import {
 	projectQueryOptions,
@@ -31,7 +31,7 @@ export const Route = createFileRoute(
 	}),
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
 		await Promise.all([
-			queryClient.ensureQueryData(agentsQueryOptions(projectId)),
+			queryClient.ensureQueryData(projectScopedAgentsQueryOptions(projectId)),
 			queryClient.ensureQueryData(projectRolesQueryOptions(projectId)),
 			queryClient.ensureQueryData(llmModelsQueryOptions),
 		]);
@@ -50,8 +50,12 @@ function AgentsPage() {
 	const canWrite = hasProjectPermission("agents.write");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
+	// projectScopedAgentsQueryOptions server-side-filters out global-scope
+	// agents invited into this project as members (see agent-api.ts's
+	// AgentScope doc comment) — this page manages project-owned agents only;
+	// global agents are configured from /admin/agents.
 	const { data: agents = [], isLoading } = useQuery(
-		agentsQueryOptions(projectId),
+		projectScopedAgentsQueryOptions(projectId),
 	);
 	const [createOpen, setCreateOpen] = useState(create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);

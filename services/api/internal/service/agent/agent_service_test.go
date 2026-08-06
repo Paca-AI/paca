@@ -24,7 +24,7 @@ func findAgentByIDReturning(agentType string) func(context.Context, uuid.UUID) (
 type mockAgentRepo struct {
 	findAgentByID                   func(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error)
 	findAgentByHandle               func(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error)
-	listAgents                      func(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error)
+	listAgents                      func(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error)
 	createAgent                     func(ctx context.Context, agent *agentdom.Agent) error
 	createAgentWithMembership       func(ctx context.Context, agent *agentdom.Agent, memberID, projectID, projectRoleID uuid.UUID) error
 	updateAgent                     func(ctx context.Context, agent *agentdom.Agent) error
@@ -70,9 +70,9 @@ type mockAgentRepo struct {
 	listGlobalChatSessions          func(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error)
 }
 
-func (m *mockAgentRepo) ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error) {
+func (m *mockAgentRepo) ListAgents(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
 	if m.listAgents != nil {
-		return m.listAgents(ctx, projectID)
+		return m.listAgents(ctx, projectID, scope)
 	}
 	return nil, nil
 }
@@ -496,9 +496,12 @@ func TestListAgents_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
-		listAgents: func(_ context.Context, pid uuid.UUID) ([]*agentdom.Agent, error) {
+		listAgents: func(_ context.Context, pid uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
 			if pid != projectID {
 				t.Fatalf("expected projectID %v, got %v", projectID, pid)
+			}
+			if scope != "" {
+				t.Fatalf("expected no scope filter, got %q", scope)
 			}
 			return []*agentdom.Agent{agent1, agent2}, nil
 		},
@@ -507,10 +510,27 @@ func TestListAgents_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	result, err := svc.ListAgents(context.Background(), projectID)
+	result, err := svc.ListAgents(context.Background(), projectID, "")
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
+}
+
+func TestListAgents_ScopeFilterPassedThrough(t *testing.T) {
+	projectID := uuid.New()
+	var gotScope agentdom.AgentScope
+	repo := &mockAgentRepo{
+		listAgents: func(_ context.Context, _ uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
+			gotScope = scope
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.ListAgents(context.Background(), projectID, agentdom.AgentScopeProject)
+
+	assert.NoError(t, err)
+	assert.Equal(t, agentdom.AgentScopeProject, gotScope)
 }
 
 func TestCreateAgent_Success(t *testing.T) {

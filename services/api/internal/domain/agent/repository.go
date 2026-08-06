@@ -20,7 +20,11 @@ type Repository interface {
 
 // AgentRepository defines storage operations for agents.
 type AgentRepository interface {
-	ListAgents(ctx context.Context, projectID uuid.UUID) ([]*Agent, error)
+	// ListAgents returns agents visible in the given project. scope narrows
+	// the result to just that AgentScope ("project" or "global"); the zero
+	// value (AgentScope("")) returns both — its own project-scoped agents
+	// plus any global agents currently invited into it.
+	ListAgents(ctx context.Context, projectID uuid.UUID, scope AgentScope) ([]*Agent, error)
 	FindAgentByID(ctx context.Context, id uuid.UUID) (*Agent, error)
 	FindAgentByHandle(ctx context.Context, projectID uuid.UUID, handle string) (*Agent, error)
 	CreateAgent(ctx context.Context, a *Agent) error
