@@ -396,6 +396,28 @@ def test_empty_servers_returns_empty_dict(no_paca_key):
     assert cfg == {}
 
 
+def test_paca_server_includes_actor_user_id_when_set(with_paca_key):
+    cfg = build_mcp_config([], "agent-99", "proj-42", "user-7")
+    assert cfg["paca"]["env"]["PACA_ACTOR_USER_ID"] == "user-7"
+
+
+def test_paca_server_omits_actor_user_id_when_none(with_paca_key):
+    cfg = build_mcp_config([], "agent-99", "proj-42")
+    assert "PACA_ACTOR_USER_ID" not in cfg["paca"]["env"]
+
+
+def test_paca_server_omits_project_id_when_none_for_global_agent(with_paca_key):
+    """The security-relevant half of build_mcp_config's new behavior: a
+    global-chat conversation (project_id=None) must put the spawned MCP
+    process into "unpinned" mode by omitting PACA_PROJECT_ID entirely, not by
+    sending an empty string — see the function's own doc comment. Previously
+    untested; only the actor_user_id inclusion/omission was covered."""
+    cfg = build_mcp_config([], "agent-99", None, "user-7")
+    assert "PACA_PROJECT_ID" not in cfg["paca"]["env"]
+    assert cfg["paca"]["env"]["PACA_AGENT_ID"] == "agent-99"
+    assert cfg["paca"]["env"]["PACA_ACTOR_USER_ID"] == "user-7"
+
+
 # ─── load_plugin_skills ────────────────────────────────────────────────────────
 
 

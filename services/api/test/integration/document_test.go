@@ -313,7 +313,7 @@ func buildDocTestRouter(docRepo *fakeDocRepoIT, store *projectPermStore) http.Ha
 	userService := usersvc.New(userRepo)
 	projectRepo := newFakeProjectRepo()
 	taskRepo := newFakeTaskRepoIT()
-	projectService := projectsvc.New(projectRepo, taskRepo)
+	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintRepo := newFakeSprintRepoIT()
 	viewRepo := newFakeViewRepoIT()

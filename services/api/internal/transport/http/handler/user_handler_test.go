@@ -44,6 +44,9 @@ func (m *mockUserSvc) List(ctx context.Context, page, pageSize int) ([]*domainus
 	}
 	return nil, 0, nil
 }
+func (m *mockUserSvc) CountUsers(context.Context) (int64, error) {
+	return 0, nil
+}
 func (m *mockUserSvc) ListGlobalPermissions(ctx context.Context, id uuid.UUID) ([]string, error) {
 	if m.listGlobalPermissions != nil {
 		return m.listGlobalPermissions(ctx, id)

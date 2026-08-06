@@ -10,6 +10,8 @@ import {
 	type AcpBridgeToken,
 	acpBridgeStatusQueryOptions,
 	generateAcpBridgeToken,
+	generateGlobalAcpBridgeToken,
+	globalAcpBridgeStatusQueryOptions,
 } from "@/lib/agent-api";
 
 // Fixed commands for the setup steps that don't depend on any
@@ -121,7 +123,8 @@ export function AcpBridgeSetup({
 	onTokenGenerated,
 	initialToken = null,
 }: {
-	projectId: string;
+	/** Absent for a global agent (managed from /admin/agents, no project). */
+	projectId?: string;
 	agentId: string;
 	acpProvider: ACPProvider;
 	hasToken: boolean;
@@ -144,11 +147,18 @@ export function AcpBridgeSetup({
 		: genericMcpConnectCommand();
 
 	const { data: status } = useQuery(
-		acpBridgeStatusQueryOptions(projectId, agentId, { enabled: hasAnyToken }),
+		projectId
+			? acpBridgeStatusQueryOptions(projectId, agentId, {
+					enabled: hasAnyToken,
+				})
+			: globalAcpBridgeStatusQueryOptions(agentId, { enabled: hasAnyToken }),
 	);
 
 	const generateMutation = useMutation({
-		mutationFn: () => generateAcpBridgeToken(projectId, agentId),
+		mutationFn: () =>
+			projectId
+				? generateAcpBridgeToken(projectId, agentId)
+				: generateGlobalAcpBridgeToken(agentId),
 		onSuccess: (result) => {
 			setRevealed(result);
 			onTokenGenerated();

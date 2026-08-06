@@ -6,9 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// AddMemberInput carries fields for adding a user to a project.
+// AddMemberInput carries fields for adding a member to a project — a human
+// (UserID) or, exclusively, a global agent being invited (AgentID). Exactly
+// one of UserID/AgentID must be set.
 type AddMemberInput struct {
 	UserID        uuid.UUID
+	AgentID       *uuid.UUID
 	ProjectRoleID uuid.UUID
 }
 
@@ -20,6 +23,9 @@ type UpdateMemberRoleInput struct {
 // MemberService defines member management use cases.
 type MemberService interface {
 	ListMembers(ctx context.Context, projectID uuid.UUID) ([]*ProjectMember, error)
+	// CountDistinctAgentsByProjects returns the distinct agent member count
+	// across projectIDs — see MemberRepository.CountDistinctAgentsByProjects.
+	CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 	AddMember(ctx context.Context, projectID uuid.UUID, in AddMemberInput) (*ProjectMember, error)
 	UpdateMemberRole(ctx context.Context, projectID, userID uuid.UUID, in UpdateMemberRoleInput) (*ProjectMember, error)
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error

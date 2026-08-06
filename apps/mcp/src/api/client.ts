@@ -15,7 +15,7 @@ import type {
 	UpdateSprintInput,
 	UpdateTaskInput,
 } from "../types/index.js";
-import { markdownToBlocknote } from "../utils/index.js";
+import { formatApiRequestError, markdownToBlocknote } from "../utils/index.js";
 
 /**
  * Paca API client for interacting with the Paca backend.
@@ -49,6 +49,14 @@ export class PacaAPIClient {
 		if (this.config.agentId) {
 			headers["X-Agent-ID"] = this.config.agentId;
 		}
+		// Only ever meaningful alongside X-Agent-ID (see PacaConfig.actorUserId's
+		// doc comment: "unset for a personal API key"). Gating on agentId here
+		// too — not just trusting actorUserId's own truthiness — means a stray
+		// or misconfigured PACA_ACTOR_USER_ID can never reach the server
+		// without an agent identity attached to it.
+		if (this.config.agentId && this.config.actorUserId) {
+			headers["X-Actor-User-ID"] = this.config.actorUserId;
+		}
 
 		const options: RequestInit = {
 			method,
@@ -64,7 +72,7 @@ export class PacaAPIClient {
 		if (!response.ok) {
 			const errorText = await response.text();
 			throw new Error(
-				`API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+				formatApiRequestError(response.status, response.statusText, errorText),
 			);
 		}
 

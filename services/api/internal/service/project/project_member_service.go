@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 )
 
@@ -17,7 +18,19 @@ func (s *Service) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*proj
 	return s.repo.ListMembers(ctx, projectID)
 }
 
-// AddMember adds a user to a project with the specified role.
+// CountDistinctAgentsByProjects returns the distinct agent member count
+// across projectIDs. Unlike ListMembers, this skips the per-project
+// FindByID existence check — it's a cross-project aggregate over a caller-
+// supplied ID set (e.g. every project a user can access), not a lookup
+// scoped to one project the caller is expected to already know exists.
+func (s *Service) CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	return s.repo.CountDistinctAgentsByProjects(ctx, projectIDs)
+}
+
+// AddMember adds a member to a project with the specified role — a human
+// (in.UserID) or, when in.AgentID is set, invites an existing global agent
+// into the project (the "invite" flow: the same action as adding a human,
+// just for an agent).
 func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
 	if _, err := s.repo.FindByID(ctx, projectID); err != nil {
 		return nil, err
@@ -30,6 +43,10 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 	// Ensure the role belongs to this project (or is a template).
 	if role.ProjectID != nil && *role.ProjectID != projectID {
 		return nil, projectdom.ErrRoleNotFound
+	}
+
+	if in.AgentID != nil {
+		return s.addAgentMember(ctx, projectID, *in.AgentID, in.ProjectRoleID)
 	}
 
 	_, err = s.repo.FindMember(ctx, projectID, in.UserID)
@@ -56,6 +73,42 @@ func (s *Service) AddMember(ctx context.Context, projectID uuid.UUID, in project
 		return nil, err
 	}
 	return added, nil
+}
+
+// addAgentMember validates and invites an existing global agent into a
+// project — the AgentID branch of AddMember. Only global-scope agents can
+// be invited (a project-scoped agent already belongs to exactly one project
+// by construction); the agent must not already be a member; and its handle
+// must not collide with any agent already visible in this project (its own
+// project-scoped agents plus any other invited global agents), since
+// @mention resolution is handle-based within a project.
+func (s *Service) addAgentMember(ctx context.Context, projectID, agentID, roleID uuid.UUID) (*projectdom.ProjectMember, error) {
+	if s.agents == nil {
+		return nil, projectdom.ErrAgentNotInvitable
+	}
+	agent, err := s.agents.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	if agent.AgentScope != agentdom.AgentScopeGlobal {
+		return nil, projectdom.ErrAgentNotInvitable
+	}
+
+	if _, err := s.repo.FindMemberByAgent(ctx, projectID, agentID); err == nil {
+		return nil, projectdom.ErrMemberAlreadyAdded
+	} else if !errors.Is(err, projectdom.ErrMemberNotFound) {
+		return nil, err
+	}
+
+	if existing, err := s.agents.FindAgentByHandle(ctx, projectID, agent.Handle); err == nil && existing.ID != agentID {
+		return nil, projectdom.ErrAgentHandleConflict
+	}
+
+	memberID := uuid.New()
+	if err := s.repo.AddAgentMember(ctx, memberID, projectID, agentID, roleID); err != nil {
+		return nil, err
+	}
+	return s.repo.FindMemberByAgent(ctx, projectID, agentID)
 }
 
 // UpdateMemberRole changes the role of an existing project member.

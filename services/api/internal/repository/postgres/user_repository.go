@@ -63,9 +63,9 @@ func NewUserRepository(db *sqlx.DB) *UserRepository {
 // date plus the total count across all pages.  The built-in agent bot account
 // is excluded because it is an internal system identity, not a real user.
 func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]*userdom.User, int64, error) {
-	var total int64
-	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND username != '_paca_agent_bot'`); err != nil {
-		return nil, 0, fmt.Errorf("user repo: list count: %w", err)
+	total, err := r.CountUsers(ctx)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	var rows []userReadRow
@@ -84,6 +84,17 @@ func (r *UserRepository) List(ctx context.Context, offset, limit int) ([]*userdo
 		users = append(users, rowToEntity(&rows[i]))
 	}
 	return users, total, nil
+}
+
+// CountUsers returns the total count of non-deleted, non-system users. The
+// built-in agent bot account is excluded because it is an internal system
+// identity, not a real user — matching List's filter.
+func (r *UserRepository) CountUsers(ctx context.Context) (int64, error) {
+	var total int64
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND username != '_paca_agent_bot'`); err != nil {
+		return 0, fmt.Errorf("user repo: count users: %w", err)
+	}
+	return total, nil
 }
 
 // FindByID returns the user with the given primary key, or userdom.ErrNotFound.

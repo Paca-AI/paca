@@ -76,6 +76,31 @@ async def get_conversation_agent_type(conversation_id: str) -> tuple[str, str] |
     return str(row["agent_id"]), row["agent_type"]
 
 
+async def get_conversation_realtime_context(conversation_id: str) -> tuple[str | None, str | None]:
+    """Return (project_id, actor_user_id) for routing a realtime event about
+    this conversation — mirrors the two-actor-shape TriggerMessage/
+    ChatSandboxState already carry, exactly one of which is set.
+
+    Used by routes/bridge.py: unlike executor.run_conversation (which reads
+    project_id/actor_user_id straight off the in-memory TriggerMessage for
+    the turn it's currently running), the bridge WebSocket relay handles
+    events/turn_status for whichever conversation_id the local daemon
+    reports, so it needs a fresh per-conversation lookup rather than reusing
+    the connect-time agent (a global ACP agent's bridge session can relay
+    conversations with different project contexts, or none).
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT project_id, actor_user_id FROM agent_conversations WHERE id = $1",
+        conversation_id,
+    )
+    if row is None:
+        return None, None
+    project_id = str(row["project_id"]) if row["project_id"] is not None else None
+    actor_user_id = str(row["actor_user_id"]) if row["actor_user_id"] is not None else None
+    return project_id, actor_user_id
+
+
 async def get_next_event_index(conversation_id: str) -> int:
     """Return the next unused event_index for a conversation.
 

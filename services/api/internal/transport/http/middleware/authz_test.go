@@ -85,6 +85,118 @@ func TestRequirePermissions_AllowedByStore(t *testing.T) {
 	}
 }
 
+// agentAwarePermissionStore additionally implements authz.AgentPermissionStore,
+// with distinct global-permission sets for "the shared agent API key's
+// underlying bot subject" (ListGlobalPermissions, keyed by userID — mirrors
+// userdom.SystemActorUserID, seeded SUPER_ADMIN in production) and "a
+// specific agent's own global role" (ListAgentGlobalPermissions, keyed by
+// agentID) — the two identities EnforcePermissions must not conflate for an
+// agent-authenticated, global-scope request. See the tests below.
+type agentAwarePermissionStore struct {
+	globalPermsByUser  map[uuid.UUID][]authz.Permission
+	globalPermsByAgent map[uuid.UUID][]authz.Permission
+}
+
+func (s *agentAwarePermissionStore) ListGlobalPermissions(_ context.Context, userID uuid.UUID) ([]authz.Permission, error) {
+	return s.globalPermsByUser[userID], nil
+}
+
+func (s *agentAwarePermissionStore) ListProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+func (s *agentAwarePermissionStore) ListAgentProjectPermissions(context.Context, uuid.UUID, uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+func (s *agentAwarePermissionStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
+	return s.globalPermsByAgent[agentID], nil
+}
+
+// withAgentAuth simulates an agent-API-key-authenticated request: the shared
+// static agent API key resolves to a fixed bot subject (userdom.SystemActorUserID
+// in production, seeded SUPER_ADMIN) plus an X-Agent-ID header identifying
+// the specific acting agent — the same shape internal/transport/http/middleware/authn.go
+// produces for a real agent API key request.
+func withAgentAuth(botSubject, agentID uuid.UUID) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), claimsContextKey{}, &domainauth.Claims{
+				RegisteredClaims: jwt.RegisteredClaims{Subject: botSubject.String()},
+				Role:             "SUPER_ADMIN",
+				Kind:             "access",
+			})
+			ctx = WithAgentID(ctx, agentID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// TestEnforcePermissions_AgentGlobalScope_UsesAgentsOwnRole is the
+// regression test for the privilege-escalation gap this feature closed:
+// EnforcePermissions previously only routed hasAgentID requests through
+// HasPermissionsForAgent when projectID != nil, so a global-scope,
+// agent-authenticated request (hasAgentID=true, projectID=nil — exactly what
+// the global-agent self-service endpoints introduce) fell through to
+// resolving claims.Subject instead, which for the shared agent API key is a
+// fixed SUPER_ADMIN bot user. Any global agent, regardless of its own
+// global_role_id, would have inherited that bot's unrestricted permissions.
+// This asserts a low-privilege agent now gets 403 instead.
+func TestEnforcePermissions_AgentGlobalScope_UsesAgentsOwnRole(t *testing.T) {
+	botSubject := uuid.New()
+	lowPrivAgent := uuid.New()
+
+	store := &agentAwarePermissionStore{
+		globalPermsByUser: map[uuid.UUID][]authz.Permission{
+			botSubject: {authz.PermissionAll}, // mirrors seedAgentBotUser's SUPER_ADMIN
+		},
+		// lowPrivAgent has no entry in globalPermsByAgent -> no global role.
+	}
+
+	r := chi.NewRouter()
+	r.With(withAgentAuth(botSubject, lowPrivAgent),
+		RequirePermissions(authz.NewAuthorizer(store), GlobalScope(), authz.PermissionUsersWrite)).
+		Get("/admin/users", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/users", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 (agent's own global role, not the shared bot subject's), got %d", w.Code)
+	}
+}
+
+// TestEnforcePermissions_AgentGlobalScope_AllowedByOwnRole is the positive
+// counterpart: an agent that does have the required permission via its own
+// global_role_id is allowed, independent of the bot subject's permissions.
+func TestEnforcePermissions_AgentGlobalScope_AllowedByOwnRole(t *testing.T) {
+	botSubject := uuid.New()
+	adminAgent := uuid.New()
+
+	store := &agentAwarePermissionStore{
+		globalPermsByUser: map[uuid.UUID][]authz.Permission{
+			botSubject: {authz.PermissionAll},
+		},
+		globalPermsByAgent: map[uuid.UUID][]authz.Permission{
+			adminAgent: {authz.PermissionUsersWrite},
+		},
+	}
+
+	r := chi.NewRouter()
+	r.With(withAgentAuth(botSubject, adminAgent),
+		RequirePermissions(authz.NewAuthorizer(store), GlobalScope(), authz.PermissionUsersWrite)).
+		Get("/admin/users", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/users", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (agent's own global role grants this permission), got %d", w.Code)
+	}
+}
+
 func TestRequirePermissions_ProjectScope(t *testing.T) {
 	store := &mockPermissionStore{projectPerms: []authz.Permission{authz.PermissionTasksWrite}}
 	r := chi.NewRouter()

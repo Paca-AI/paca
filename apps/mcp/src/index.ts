@@ -25,6 +25,7 @@ async function main() {
 	const gatewayURL = process.env.PACA_GATEWAY_URL || undefined;
 	const agentId = process.env.PACA_AGENT_ID || undefined;
 	const projectId = process.env.PACA_PROJECT_ID || undefined;
+	const actorUserId = process.env.PACA_ACTOR_USER_ID || undefined;
 
 	// Validate required configuration
 	if (!apiKey) {
@@ -37,18 +38,15 @@ async function main() {
 		process.exit(1);
 	}
 
-	// If agent ID is provided, project ID is required
-	if (agentId && !projectId) {
-		console.error(
-			"PACA_PROJECT_ID environment variable is required when using PACA_AGENT_ID.",
-		);
-		console.error("\nExample:");
-		console.error("  export PACA_AGENT_ID='your-agent-id-here'");
-		console.error("  export PACA_PROJECT_ID='your-project-id-here'");
-		console.error("  export PACA_API_KEY='your-api-key-here'");
-		console.error("  export PACA_API_URL='http://localhost:8080'");
-		process.exit(1);
-	}
+	// PACA_PROJECT_ID pins every tool call to a single project ("single-project
+	// agent mode" — see server.ts). It's optional when PACA_AGENT_ID is set:
+	// a global-scope agent (services/ai-agent's builder.build_mcp_config omits
+	// PACA_PROJECT_ID entirely for a global-chat conversation) runs "unpinned"
+	// instead, the same mode a personal API key with no project already uses —
+	// each tool call may target any project the agent has permission in
+	// (e.g. list/create/update a project, or work within one it's been
+	// invited into), passed explicitly per call rather than pinned once at
+	// startup. See fetchAgentPermissions in permissions.ts.
 
 	// Create configuration object
 	const config: PacaConfig = {
@@ -57,6 +55,7 @@ async function main() {
 		gatewayURL,
 		agentId,
 		projectId,
+		actorUserId,
 	};
 
 	// Create and configure MCP server (loads plugin modules asynchronously)

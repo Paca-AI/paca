@@ -33,6 +33,19 @@ export function projectRoomName(
 	return `project:${projectId}:${namespace}`;
 }
 
+// agentChatRoomName returns the Socket.IO room name for a user's global
+// agent chat events — agent.* events with no project_id (a conversation with
+// a global agent from the home page / admin pages, see services/ai-agent's
+// core.streams.publish_realtime) route here instead of a project room, keyed
+// on payload.actor_user_id. Mirrors the existing
+// `user:${userId}:notifications` per-user room, auto-joined at connect time
+// (see server.ts) rather than via an explicit "join" — there's no
+// project-membership permission check to run first, since this is just the
+// caller's own identity.
+export function agentChatRoomName(userId: string): string {
+	return `user:${userId}:agent-chat`;
+}
+
 // eventNamespace infers the namespace from the event type prefix.
 // Returns undefined for unknown event types.
 export function eventNamespace(type: string): EventNamespace | undefined {

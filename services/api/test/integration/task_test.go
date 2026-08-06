@@ -622,6 +622,10 @@ func (r *fakeTaskRepo) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int
 	return nil, false, nil
 }
 
+func (r *fakeTaskRepo) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 // ---------------------------------------------------------------------------
 // In-memory fake activity repository
 // ---------------------------------------------------------------------------
@@ -727,7 +731,7 @@ func buildTaskTestRouterWithSprints(taskRepo *fakeTaskRepo, sprintRepo *fakeSpri
 	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
 	userService := usersvc.New(userRepo)
 	projectRepo := newFakeProjectRepo()
-	projectService := projectsvc.New(projectRepo, taskRepo)
+	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
 	viewService := sprintsvc.NewViewService(viewRepo, nil)

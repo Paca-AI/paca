@@ -15,6 +15,10 @@ type Repository interface {
 	FindByUsernameIncludingDeleted(ctx context.Context, username string) (*User, error)
 	// List returns a page of users and the total count of all users.
 	List(ctx context.Context, offset, limit int) ([]*User, int64, error)
+	// CountUsers returns the total count of active, non-system users — the
+	// same count List returns as its total, without paginating any rows.
+	// Used by the home page's workspace stats widget for team-member count.
+	CountUsers(ctx context.Context) (int64, error)
 	Create(ctx context.Context, u *User) error
 	Update(ctx context.Context, u *User) error
 	Delete(ctx context.Context, id uuid.UUID) error

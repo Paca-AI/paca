@@ -1143,6 +1143,33 @@ func (r *TaskRepository) CountTasks(ctx context.Context, projectID uuid.UUID, fi
 	return count, nil
 }
 
+// CountOpenTasksByProjects returns the number of non-done tasks across all of
+// projectIDs in a single query — the cross-project equivalent of calling
+// CountTasks once per project, used by the home page's workspace stats
+// widget to avoid an N-query fan-out. The INNER JOIN to task_statuses
+// intentionally excludes tasks with no status assigned (status_id NULL),
+// matching CountTasks' status_id-IN-clause semantics for a single project.
+func (r *TaskRepository) CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	if len(projectIDs) == 0 {
+		return 0, nil
+	}
+
+	b := newQueryBuilder()
+	b.addInClause("t.project_id", uuidSliceToStrSlice(projectIDs))
+
+	query := `
+		SELECT COUNT(*) FROM tasks t
+		JOIN task_statuses ts ON ts.id = t.status_id
+		WHERE t.deleted_at IS NULL AND ts.category != 'done' AND ` +
+		strings.Join(b.whereClauses, " AND ")
+
+	var count int64
+	if err := r.db.GetContext(ctx, &count, query, b.args...); err != nil {
+		return 0, fmt.Errorf("task repo: count open tasks by projects: %w", err)
+	}
+	return count, nil
+}
+
 // SumTaskField sums a numeric task field across all tasks matching filter.
 func (r *TaskRepository) SumTaskField(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter, fieldKey string) (float64, error) {
 	b := newQueryBuilder()

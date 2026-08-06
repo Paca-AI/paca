@@ -358,6 +358,29 @@ func (r *ProjectRepository) ListMembers(ctx context.Context, projectID uuid.UUID
 	return members, nil
 }
 
+// CountDistinctAgentsByProjects returns the number of distinct agents with
+// an active membership across all of projectIDs, in a single query — the
+// cross-project equivalent of calling ListMembers once per project and
+// deduping agent_id in application code.
+func (r *ProjectRepository) CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	if len(projectIDs) == 0 {
+		return 0, nil
+	}
+
+	b := newQueryBuilder()
+	b.addInClause("project_id", uuidSliceToStrSlice(projectIDs))
+
+	var count int64
+	query := `
+		SELECT COUNT(DISTINCT agent_id)
+		FROM project_members
+		WHERE deleted_at IS NULL AND agent_id IS NOT NULL AND ` + b.whereClauses[0]
+	if err := r.db.GetContext(ctx, &count, query, b.args...); err != nil {
+		return 0, fmt.Errorf("project repo: count distinct agents: %w", err)
+	}
+	return count, nil
+}
+
 // FindMember returns a single active member record for the given project + user combo.
 func (r *ProjectRepository) FindMember(ctx context.Context, projectID, userID uuid.UUID) (*projectdom.ProjectMember, error) {
 	var row projectMemberReadRow

@@ -42,6 +42,44 @@ export function formatToolError(error: unknown): string {
 }
 
 /**
+ * Turns a non-ok API response into an error message for the calling agent.
+ * The backend's error envelope is JSON ({ error, error_code, ... }); when the
+ * body parses as that shape, this surfaces its `error` message directly —
+ * prefixed with "Permission denied" for 403s — instead of dumping the raw
+ * status/body, so a permission failure reads as an actionable instruction
+ * ("you don't have permission to do that") rather than looking like a server
+ * malfunction the agent might retry. Falls back to the raw status/body when
+ * the response isn't that JSON shape (e.g. a proxy error page).
+ */
+export function formatApiRequestError(
+	status: number,
+	statusText: string,
+	errorText: string,
+): string {
+	let apiMessage: string | undefined;
+	try {
+		const parsed = JSON.parse(errorText);
+		if (
+			parsed &&
+			typeof parsed === "object" &&
+			typeof parsed.error === "string"
+		) {
+			apiMessage = parsed.error;
+		}
+	} catch {
+		// Not the JSON error envelope — fall through to the raw-text format below.
+	}
+
+	if (apiMessage) {
+		return status === 403
+			? `Permission denied: ${apiMessage}`
+			: `${apiMessage} (HTTP ${status})`;
+	}
+
+	return `API request failed: ${status} ${statusText} - ${errorText}`;
+}
+
+/**
  * Formats a task object into a readable string.
  * @param task - The task object to format
  * @returns Formatted task string with description in Markdown

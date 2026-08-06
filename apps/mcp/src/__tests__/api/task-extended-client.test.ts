@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../utils/index.js", () => ({
-	markdownToBlocknote: vi.fn((md: string) => [
-		{ type: "paragraph", content: [{ type: "text", text: md }] },
-	]),
-}));
+vi.mock("../../utils/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../utils/index.js")>();
+	return {
+		...actual,
+		markdownToBlocknote: vi.fn((md: string) => [
+			{ type: "paragraph", content: [{ type: "text", text: md }] },
+		]),
+	};
+});
 
 import { PacaAPITaskExtendedClient } from "../../api/task-extended-client.js";
 

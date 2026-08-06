@@ -50,7 +50,24 @@ def build_initial_prompt(trigger: TriggerMessage) -> str:
     return trigger.message
 
 
-def build_project_context_suffix(project_id: str) -> str:
+_GLOBAL_CONTEXT_SUFFIX = (
+    "\n\n## Current Context\n"
+    "You are a global Paca agent, not scoped to any single project. You may "
+    "have been invited into one or more projects and can act in any of "
+    "them, plus admin-level tools (managing users, global roles, projects) "
+    "if your own role grants them.\n"
+    "**Always pass an explicit `projectId` in any MCP tool call that "
+    "requires it** — call `list_projects` first if you don't already know "
+    "which project the user means; never assume a single current project.\n"
+)
+
+
+def build_project_context_suffix(project_id: str | None) -> str:
+    """project_id is None for a global-chat conversation (home page / admin
+    pages, no fixed project) — see TriggerMessage.project_id.
+    """
+    if project_id is None:
+        return _GLOBAL_CONTEXT_SUFFIX
     return (
         f"\n\n## Current Project Context\n"
         f"You are working inside project `{project_id}`.\n"

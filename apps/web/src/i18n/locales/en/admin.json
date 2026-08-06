@@ -1,4 +1,16 @@
 {
+	"agents": {
+		"header": {
+			"title": "Global Agents",
+			"description": "Manage AI agents that chat on the home page and admin pages, and can be invited into any project.",
+			"newAgent": "New Agent"
+		},
+		"empty": {
+			"title": "No global agents yet",
+			"description": "Create a global agent to make it available for chat and project invites.",
+			"createAgent": "Create agent"
+		}
+	},
 	"users": {
 		"header": {
 			"title": "User Management",

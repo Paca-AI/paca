@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock markdownToBlocknote so tests don't need a live BlockNote editor.
-// client.ts imports from "../utils/index.js" (relative to src/api/), which
-// resolves to the same absolute path as "../../utils/index.js" from here.
-vi.mock("../../utils/index.js", () => ({
-	markdownToBlocknote: vi.fn((md: string) => [{ type: "paragraph", text: md }]),
-	blocknoteToMarkdown: vi.fn(() => ""),
-}));
+// Mock markdownToBlocknote so tests don't need a live BlockNote editor, while
+// keeping the real formatApiRequestError (used by the error-handling tests
+// below). client.ts imports from "../utils/index.js" (relative to src/api/),
+// which resolves to the same absolute path as "../../utils/index.js" here.
+vi.mock("../../utils/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../utils/index.js")>();
+	return {
+		...actual,
+		markdownToBlocknote: vi.fn((md: string) => [
+			{ type: "paragraph", text: md },
+		]),
+		blocknoteToMarkdown: vi.fn(() => ""),
+	};
+});
 
 import { PacaAPIClient } from "../../api/client.js";
 import type { PacaConfig } from "../../types/index.js";
@@ -98,6 +105,42 @@ describe("PacaAPIClient – request headers", () => {
 		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
 		expect(
 			(options.headers as Record<string, string>)["X-Agent-ID"],
+		).toBeUndefined();
+	});
+
+	it("sends X-Actor-User-ID header when actorUserId is configured", async () => {
+		vi.stubGlobal("fetch", mockFetchOk([]));
+		const client = makeClient({ agentId: "agent-abc", actorUserId: "user-7" });
+		await client.listProjects();
+		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
+		expect((options.headers as Record<string, string>)["X-Actor-User-ID"]).toBe(
+			"user-7",
+		);
+	});
+
+	it("omits X-Actor-User-ID when actorUserId is not configured", async () => {
+		vi.stubGlobal("fetch", mockFetchOk([]));
+		const client = makeClient({ agentId: "agent-abc" });
+		await client.listProjects();
+		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
+		expect(
+			(options.headers as Record<string, string>)["X-Actor-User-ID"],
+		).toBeUndefined();
+	});
+
+	it("omits X-Actor-User-ID when actorUserId is configured without agentId", async () => {
+		// Regression test: actorUserId is only ever meaningful alongside an
+		// agent identity (PacaConfig.actorUserId's doc comment: "unset for a
+		// personal API key"). A misconfigured or stray PACA_ACTOR_USER_ID with
+		// no PACA_AGENT_ID must never reach the server as a personal API key's
+		// header — that would misattribute a human's own actions to whatever
+		// actor id happened to leak into the env.
+		vi.stubGlobal("fetch", mockFetchOk([]));
+		const client = makeClient({ agentId: undefined, actorUserId: "user-7" });
+		await client.listProjects();
+		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
+		expect(
+			(options.headers as Record<string, string>)["X-Actor-User-ID"],
 		).toBeUndefined();
 	});
 });

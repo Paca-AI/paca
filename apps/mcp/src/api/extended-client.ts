@@ -17,6 +17,7 @@ import type {
 	UpdateTaskStatusInput,
 	UpdateTaskTypeInput,
 } from "../types/index.js";
+import { formatApiRequestError } from "../utils/index.js";
 
 /**
  * Extended API client methods for additional Paca endpoints.
@@ -61,7 +62,7 @@ export class PacaAPIExtendedClient {
 		if (!response.ok) {
 			const errorText = await response.text();
 			throw new Error(
-				`API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+				formatApiRequestError(response.status, response.statusText, errorText),
 			);
 		}
 

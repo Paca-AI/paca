@@ -231,7 +231,7 @@ func buildAttachmentTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorag
 	for _, t := range tasks {
 		_ = taskRepo.CreateTask(context.Background(), t)
 	}
-	projectService := projectsvc.New(projectRepo, taskRepo)
+	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
 	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)

@@ -7,7 +7,7 @@ import type {
 	SuccessEnvelope,
 	UpdateFolderInput,
 } from "../types/index.js";
-import { markdownToBlocknote } from "../utils/index.js";
+import { formatApiRequestError, markdownToBlocknote } from "../utils/index.js";
 
 /**
  * Extended API client for Document features.
@@ -47,7 +47,7 @@ export class PacaAPIDocClient {
 		if (!response.ok) {
 			const errorText = await response.text();
 			throw new Error(
-				`API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+				formatApiRequestError(response.status, response.statusText, errorText),
 			);
 		}
 

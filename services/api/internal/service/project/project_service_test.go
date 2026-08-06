@@ -93,6 +93,9 @@ func (r *fakeProjectRepo) CountMembersWithRole(_ context.Context, _ uuid.UUID) (
 func (r *fakeProjectRepo) ListMembers(_ context.Context, _ uuid.UUID) ([]*projectdom.ProjectMember, error) {
 	return nil, nil
 }
+func (r *fakeProjectRepo) CountDistinctAgentsByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
 func (r *fakeProjectRepo) FindMember(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*projectdom.ProjectMember, error) {
 	return nil, projectdom.ErrMemberNotFound
 }
@@ -161,7 +164,7 @@ func TestCreate_SeedsDefaultTaskTypesAndStatuses(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
 	tb := &fakeTaskBootstrapper{}
-	svc := New(repo, tb)
+	svc := New(repo, tb, nil)
 
 	creatorID := uuid.New()
 	p, err := svc.Create(ctx, projectdom.CreateProjectInput{
@@ -278,7 +281,7 @@ func TestCreate_SeedsWithCorrectTimestamps(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
 	tb := &fakeTaskBootstrapper{}
-	svc := New(repo, tb)
+	svc := New(repo, tb, nil)
 
 	before := time.Now().Truncate(time.Second)
 	_, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "Timestamp Test"})
@@ -302,7 +305,7 @@ func TestCreate_SeedsWithCorrectTimestamps(t *testing.T) {
 func TestCreate_NilTaskRepo_DoesNotPanic(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
-	svc := New(repo, nil) // nil task repo is allowed
+	svc := New(repo, nil, nil) // nil task repo is allowed
 
 	_, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "No Task Repo"})
 	if err != nil {
@@ -316,7 +319,7 @@ func TestCreate_NilTaskRepo_DoesNotPanic(t *testing.T) {
 
 func TestCreate_AutoGeneratesPrefix_SingleWord(t *testing.T) {
 	ctx := context.Background()
-	svc := New(newFakeProjectRepo(), nil)
+	svc := New(newFakeProjectRepo(), nil, nil)
 
 	p, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "paca"})
 	if err != nil {
@@ -329,7 +332,7 @@ func TestCreate_AutoGeneratesPrefix_SingleWord(t *testing.T) {
 
 func TestCreate_AutoGeneratesPrefix_MultiWord(t *testing.T) {
 	ctx := context.Background()
-	svc := New(newFakeProjectRepo(), nil)
+	svc := New(newFakeProjectRepo(), nil, nil)
 
 	p, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "My Awesome Project"})
 	if err != nil {
@@ -342,7 +345,7 @@ func TestCreate_AutoGeneratesPrefix_MultiWord(t *testing.T) {
 
 func TestCreate_ExplicitPrefixUsed(t *testing.T) {
 	ctx := context.Background()
-	svc := New(newFakeProjectRepo(), nil)
+	svc := New(newFakeProjectRepo(), nil, nil)
 
 	p, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "My Project", TaskIDPrefix: "MP2"})
 	if err != nil {
@@ -355,7 +358,7 @@ func TestCreate_ExplicitPrefixUsed(t *testing.T) {
 
 func TestCreate_InvalidPrefixReturnsError(t *testing.T) {
 	ctx := context.Background()
-	svc := New(newFakeProjectRepo(), nil)
+	svc := New(newFakeProjectRepo(), nil, nil)
 
 	_, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "My Project", TaskIDPrefix: "my prefix!"})
 	if err == nil {
@@ -366,7 +369,7 @@ func TestCreate_InvalidPrefixReturnsError(t *testing.T) {
 func TestUpdate_PrefixUpdated(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
-	svc := New(repo, nil)
+	svc := New(repo, nil, nil)
 
 	p, _ := svc.Create(ctx, projectdom.CreateProjectInput{Name: "MyProj"})
 
@@ -382,7 +385,7 @@ func TestUpdate_PrefixUpdated(t *testing.T) {
 func TestUpdate_InvalidPrefixReturnsError(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
-	svc := New(repo, nil)
+	svc := New(repo, nil, nil)
 
 	p, _ := svc.Create(ctx, projectdom.CreateProjectInput{Name: "MyProj"})
 
@@ -399,7 +402,7 @@ func TestUpdate_InvalidPrefixReturnsError(t *testing.T) {
 func TestDelete_ExistingProject_Succeeds(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
-	svc := New(repo, nil)
+	svc := New(repo, nil, nil)
 
 	p, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "To Delete"})
 	if err != nil {
@@ -418,7 +421,7 @@ func TestDelete_ExistingProject_Succeeds(t *testing.T) {
 
 func TestDelete_NonExistentProject_ReturnsNotFound(t *testing.T) {
 	ctx := context.Background()
-	svc := New(newFakeProjectRepo(), nil)
+	svc := New(newFakeProjectRepo(), nil, nil)
 
 	err := svc.Delete(ctx, uuid.New())
 	if !errors.Is(err, projectdom.ErrNotFound) {
@@ -429,7 +432,7 @@ func TestDelete_NonExistentProject_ReturnsNotFound(t *testing.T) {
 func TestDelete_AlreadyDeletedProject_ReturnsNotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeProjectRepo()
-	svc := New(repo, nil)
+	svc := New(repo, nil, nil)
 
 	p, err := svc.Create(ctx, projectdom.CreateProjectInput{Name: "Double Delete"})
 	if err != nil {

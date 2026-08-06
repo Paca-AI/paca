@@ -9,9 +9,13 @@ import (
 // --- Project Member DTOs ----------------------------------------------------
 
 // AddProjectMemberRequest is the body for POST /v1/projects/:projectId/members.
+// Exactly one of UserID/AgentID must be set: UserID adds a human member;
+// AgentID invites an existing global agent into the project — the same
+// action, just for an agent instead of a human.
 type AddProjectMemberRequest struct {
-	UserID        uuid.UUID `json:"user_id" binding:"required"`
-	ProjectRoleID uuid.UUID `json:"project_role_id" binding:"required"`
+	UserID        uuid.UUID  `json:"user_id,omitempty"`
+	AgentID       *uuid.UUID `json:"agent_id,omitempty"`
+	ProjectRoleID uuid.UUID  `json:"project_role_id" binding:"required"`
 }
 
 // UpdateProjectMemberRoleRequest is the body for PATCH /v1/projects/:projectId/members/:memberId.

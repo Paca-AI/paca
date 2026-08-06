@@ -124,7 +124,9 @@ export async function listProjectMembers(
 
 export async function addProjectMember(
 	projectId: string,
-	payload: { user_id: string; project_role_id: string },
+	payload:
+		| { user_id: string; project_role_id: string }
+		| { agent_id: string; project_role_id: string },
 ): Promise<ProjectMember> {
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<ProjectMember>

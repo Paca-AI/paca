@@ -160,6 +160,10 @@ func (s *stubTaskSvc) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int,
 	return nil, false, nil
 }
 
+func (s *stubTaskSvc) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 func (s *stubTaskSvc) GetTask(_ context.Context, _, id uuid.UUID) (*taskdom.Task, error) {
 	return &taskdom.Task{ID: id}, nil
 }

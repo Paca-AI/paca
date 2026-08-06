@@ -1373,6 +1373,9 @@ export function AppSidebar() {
 	const canAccessUsers =
 		hasPermission("users.read") || hasPermission("users.write");
 
+	const canAccessGlobalAgents =
+		hasPermission("agents.read") || hasPermission("agents.write");
+
 	const canAccessPlugins = hasPermission("users.write");
 
 	const canCreateProject = hasPermission("projects.create");
@@ -1390,8 +1393,13 @@ export function AppSidebar() {
 	const showAdminSection =
 		canAccessGlobalRoles ||
 		canAccessUsers ||
+		canAccessGlobalAgents ||
 		canAccessPlugins ||
 		adminPluginNavItems.length > 0;
+	// Plugin-contributed admin pages get their own sidebar section, separate
+	// from core workspace administration — the "Plugins" management link
+	// itself (canAccessPlugins) stays in Administration.
+	const showPluginsSection = adminPluginNavItems.length > 0;
 	const isProjectContext = !!projectId;
 	const isAnonymous = !user;
 
@@ -1465,6 +1473,11 @@ export function AppSidebar() {
 								<SidebarGroupContent>
 									<SidebarMenu>
 										<NavItem to="/home" icon={Home} label={t("nav.home")} />
+										<NavItem
+											to="/conversations"
+											icon={MessageSquare}
+											label={t("nav.conversations")}
+										/>
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
@@ -1495,6 +1508,13 @@ export function AppSidebar() {
 													label={t("nav.users")}
 												/>
 											) : null}
+											{canAccessGlobalAgents ? (
+												<NavItem
+													to="/admin/agents"
+													icon={Bot}
+													label={t("nav.agents")}
+												/>
+											) : null}
 											{canAccessPlugins ? (
 												<NavItem
 													to="/admin/plugins"
@@ -1508,6 +1528,20 @@ export function AppSidebar() {
 												icon={Sparkles}
 												label={t("nav.changelog")}
 											/>
+										</SidebarMenu>
+									</SidebarGroupContent>
+								</SidebarGroup>
+							</>
+						) : null}
+						{/* Plugin-contributed admin pages get their own sidebar section,
+						   separate from core workspace administration. */}
+						{showPluginsSection ? (
+							<>
+								<SidebarSeparator />
+								<SidebarGroup>
+									<SidebarGroupLabel>{t("nav.plugins")}</SidebarGroupLabel>
+									<SidebarGroupContent>
+										<SidebarMenu>
 											<PluginAdminPages navItems={adminPluginNavItems} />
 										</SidebarMenu>
 									</SidebarGroupContent>

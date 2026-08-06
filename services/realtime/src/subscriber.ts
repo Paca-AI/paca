@@ -14,17 +14,29 @@
 //   workflow.* events  →  project:<projectId>:workflows (except
 //                          workflow.assigned, which is task-scoped)
 //   sprint.*   events  →  project:<projectId>:sprints
+//   agent.*    events  →  project:<projectId>:tasks, OR — when the event has
+//                          no project_id (a global agent's home-page / admin
+//                          chat, see services/ai-agent's
+//                          core.streams.publish_realtime) —
+//                          user:<actorUserId>:agent-chat instead.
 //
 // Sockets are pre-placed in the correct rooms at join time based on their
-// project permissions.  No per-message permission checks are needed here —
-// if a socket is in the room it is authorised to receive the event.
+// project permissions (project:* rooms) or simply their own identity
+// (user:<userId>:notifications and user:<userId>:agent-chat, auto-joined on
+// connect — see server.ts).  No per-message permission checks are needed
+// here — if a socket is in the room it is authorised to receive the event.
 //
-// Events without a project_id, or with an unrecognised type prefix, are dropped.
+// Events without a project_id and (for agent.* events) without an
+// actor_user_id, or with an unrecognised type prefix, are dropped.
 
 import Redis from "ioredis";
 import type { Logger } from "pino";
 import type { Server } from "socket.io";
-import { eventNamespace, projectRoomName } from "./permissions.ts";
+import {
+	agentChatRoomName,
+	eventNamespace,
+	projectRoomName,
+} from "./permissions.ts";
 
 // CHANNEL is the Valkey Pub/Sub channel the API publishes to.
 // Must stay in sync with events.ChannelRealtime in services/api.
@@ -114,23 +126,37 @@ function routeEvent(io: Server, msg: RealtimeMessage, logger: Logger): void {
 		return;
 	}
 
-	// Only project-scoped events are forwarded.
+	// Project-scoped events (the common case).
 	const projectId = payload.project_id;
-	if (typeof projectId !== "string" || !projectId) {
-		logger.debug({ type }, "event has no project scope — skipped");
+	if (typeof projectId === "string" && projectId) {
+		// Resolve the namespace room from the event type prefix.
+		const ns = eventNamespace(type);
+		if (!ns) {
+			logger.debug({ type }, "unknown event namespace — skipped");
+			return;
+		}
+
+		const room = projectRoomName(projectId, ns);
+		logger.debug({ type, room }, "routing event to room");
+		io.to(room).emit("event", { type, payload });
 		return;
 	}
 
-	// Resolve the namespace room from the event type prefix.
-	const ns = eventNamespace(type);
-	if (!ns) {
-		logger.debug({ type }, "unknown event namespace — skipped");
-		return;
+	// A global agent.* event (a conversation with a global agent from the
+	// home page / admin pages — no project_id, see services/ai-agent's
+	// core.streams.publish_realtime) routes to the acting human's own
+	// per-user room instead of a project room.
+	if (type.startsWith("agent.")) {
+		const actorUserId = payload.actor_user_id;
+		if (typeof actorUserId === "string" && actorUserId) {
+			const room = agentChatRoomName(actorUserId);
+			logger.debug({ type, room }, "routing global agent event to user room");
+			io.to(room).emit("event", { type, payload });
+			return;
+		}
 	}
 
-	const room = projectRoomName(projectId, ns);
-	logger.debug({ type, room }, "routing event to room");
-	io.to(room).emit("event", { type, payload });
+	logger.debug({ type }, "event has no project or actor scope — skipped");
 }
 
 function eventPayload(msg: RealtimeMessage): Record<string, unknown> | null {

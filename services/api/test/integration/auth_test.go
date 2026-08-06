@@ -99,6 +99,10 @@ func (r *fakeUserRepo) List(_ context.Context, offset, limit int) ([]*userdom.Us
 	}
 	return all[offset:end], total, nil
 }
+
+func (r *fakeUserRepo) CountUsers(_ context.Context) (int64, error) {
+	return int64(len(r.byID)), nil
+}
 func (r *fakeUserRepo) Delete(_ context.Context, id uuid.UUID) error {
 	u, ok := r.byID[id]
 	if !ok {

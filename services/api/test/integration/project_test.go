@@ -288,6 +288,26 @@ func (r *fakeProjectRepo) ListMembers(_ context.Context, projectID uuid.UUID) ([
 	return out, nil
 }
 
+func (r *fakeProjectRepo) CountDistinctAgentsByProjects(_ context.Context, projectIDs []uuid.UUID) (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	wanted := make(map[uuid.UUID]struct{}, len(projectIDs))
+	for _, id := range projectIDs {
+		wanted[id] = struct{}{}
+	}
+	agents := make(map[uuid.UUID]struct{})
+	for _, m := range r.members {
+		if _, ok := wanted[m.ProjectID]; !ok {
+			continue
+		}
+		if m.AgentID != nil {
+			agents[*m.AgentID] = struct{}{}
+		}
+	}
+	return int64(len(agents)), nil
+}
+
 func (r *fakeProjectRepo) FindMember(_ context.Context, projectID, userID uuid.UUID) (*projectdom.ProjectMember, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -396,11 +416,12 @@ func (r *fakeProjectRepo) RemoveMemberByMemberID(_ context.Context, memberID uui
 }
 
 type projectPermStore struct {
-	globalPerms  []authz.Permission
-	projectPerms map[uuid.UUID][]authz.Permission
-	userPerms    map[uuid.UUID]map[uuid.UUID][]authz.Permission // user_id -> project_id -> permissions
-	agentPerms   map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
-	agentRoles   map[uuid.UUID]map[uuid.UUID]string             // project_id -> agent_id -> role_name
+	globalPerms      []authz.Permission
+	projectPerms     map[uuid.UUID][]authz.Permission
+	userPerms        map[uuid.UUID]map[uuid.UUID][]authz.Permission // user_id -> project_id -> permissions
+	agentPerms       map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
+	agentRoles       map[uuid.UUID]map[uuid.UUID]string             // project_id -> agent_id -> role_name
+	agentGlobalPerms map[uuid.UUID][]authz.Permission               // agent_id -> permissions (via its own global role)
 }
 
 func (s *projectPermStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
@@ -426,7 +447,7 @@ func (s *projectPermStore) GetAgentProjectRoleName(_ context.Context, agentID, p
 			return role, nil
 		}
 	}
-	return "", fmt.Errorf("agent not found in project")
+	return "", authz.ErrAgentNotInProject
 }
 
 func (s *projectPermStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
@@ -434,6 +455,10 @@ func (s *projectPermStore) ListAgentProjectPermissions(_ context.Context, agentI
 		return append([]authz.Permission(nil), projMap[agentID]...), nil
 	}
 	return nil, fmt.Errorf("agent permissions not found")
+}
+
+func (s *projectPermStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
+	return append([]authz.Permission(nil), s.agentGlobalPerms[agentID]...), nil
 }
 
 func buildProjectTestRouter(repo *fakeProjectRepo, store *projectPermStore) http.Handler {
@@ -447,7 +472,7 @@ func buildProjectTestRouterWithTaskRepo(repo *fakeProjectRepo, store *projectPer
 	userRepo := newFakeUserRepo()
 	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
 	userService := usersvc.New(userRepo)
-	projectService := projectsvc.New(repo, taskRepo)
+	projectService := projectsvc.New(repo, taskRepo, nil)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{

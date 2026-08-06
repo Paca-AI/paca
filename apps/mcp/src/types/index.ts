@@ -12,8 +12,24 @@ export interface PacaConfig {
 	gatewayURL?: string;
 	/** Agent UUID forwarded as X-Agent-ID on every API request. */
 	agentId?: string;
-	/** Project UUID - required when agentId is provided for single-project agent mode. */
+	/**
+	 * Project UUID — required when agentId is provided AND the agent is
+	 * project-scoped ("single-project agent mode": every tool call is
+	 * pinned to this one project, see server.ts). Left unset for a
+	 * global-scope agent (agentId set, no fixed project) or a personal API
+	 * key — either runs "unpinned": each tool call may target any project
+	 * the caller has permission in, passed explicitly per call.
+	 */
 	projectId?: string;
+	/**
+	 * Human user UUID this agent is acting on behalf of, forwarded as
+	 * X-Actor-User-ID on every API request. Only ever set for a global agent
+	 * dispatched from a trigger that names a human actor (e.g. a global-chat
+	 * message) — lets server-side attribution (e.g. who created a project)
+	 * point at that human instead of the shared agent-bot identity. Unset
+	 * for a personal API key or a project-scoped agent's automation runs.
+	 */
+	actorUserId?: string;
 }
 
 export interface PermissionMap {

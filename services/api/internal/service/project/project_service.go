@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -83,15 +84,27 @@ type taskBootstrapper interface {
 	CreateTaskStatus(ctx context.Context, s *taskdom.TaskStatus) error
 }
 
+// agentLookup is the minimal interface AddMember needs to validate and
+// resolve an agent being invited into a project. Satisfied directly by
+// *postgres.AgentRepository — this package depends only on the small
+// agentdom domain type, not on the agentsvc service package, so there is no
+// import cycle with agentsvc (which itself depends on projectsvc for member
+// cache invalidation).
+type agentLookup interface {
+	FindAgentByID(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error)
+	FindAgentByHandle(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error)
+}
+
 // Service is the concrete implementation of projectdom.Service.
 type Service struct {
 	repo     projectdom.Repository
 	taskRepo taskBootstrapper
+	agents   agentLookup
 }
 
 // New returns a configured project service.
-func New(repo projectdom.Repository, taskRepo taskBootstrapper) *Service {
-	return &Service{repo: repo, taskRepo: taskRepo}
+func New(repo projectdom.Repository, taskRepo taskBootstrapper, agents agentLookup) *Service {
+	return &Service{repo: repo, taskRepo: taskRepo, agents: agents}
 }
 
 // List returns a page of projects and the total count.

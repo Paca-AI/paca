@@ -42,6 +42,7 @@ func (r *stubUserRepo) FindByUsernameIncludingDeleted(ctx context.Context, usern
 func (r *stubUserRepo) List(_ context.Context, _, _ int) ([]*userdom.User, int64, error) {
 	return nil, 0, nil
 }
+func (r *stubUserRepo) CountUsers(_ context.Context) (int64, error)     { return 0, nil }
 func (r *stubUserRepo) Create(_ context.Context, _ *userdom.User) error { return nil }
 func (r *stubUserRepo) Update(_ context.Context, _ *userdom.User) error { return nil }
 func (r *stubUserRepo) Delete(_ context.Context, _ uuid.UUID) error     { return nil }

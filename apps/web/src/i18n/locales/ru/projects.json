@@ -30,7 +30,7 @@
 			"projectRoleHint": "Определяет, что агент может читать и изменять в этом проекте.",
 			"agentTypeLabel": "Тип агента",
 			"agentTypeLLM": "LLM (API-ключ)",
-			"agentTypeLLMHint": "Paca напрямую обращается к API модели и запускает агента в облачной песочнице.",
+			"agentTypeLLMHint": "Paca напрямую обращается к API модели и запускает агента в изолированном контейнере на сервере, на котором размещён Paca.",
 			"agentTypeACP": "ACP (локальный CLI)",
 			"agentTypeACPHint": "Делегирует работу CLI для кода, который вы запускаете сами, — Claude Code, Codex, Gemini CLI или пользовательский ACP-сервер.",
 			"modelSection": "Модель",
@@ -62,7 +62,11 @@
 			"creating": "Создание…",
 			"createAgent": "Создать агента",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Вы — senior software engineer…"
+			"systemPromptPlaceholder": "Вы — senior software engineer…",
+			"globalRoleLabel": "Глобальная роль",
+			"globalRolePlaceholder": "Выберите глобальную роль…",
+			"globalRoleHint": "Определяет, что агент может делать в глобальной области (например, в чате на главной странице или в админке). Необязательно — роль, назначенная позже, после приглашения в проект, отдельна.",
+			"noGlobalRoleOption": "Без роли"
 		},
 		"card": {
 			"configure": "Настроить",
@@ -72,6 +76,8 @@
 			"deleteDialog": {
 				"title": "Удалить {{name}}?",
 				"description": "Агент будет удалён навсегда и убран из проекта. Запущенные диалоги будут остановлены.",
+				"descriptionGlobal": "Агент будет удалён навсегда и убран из всех проектов, в которые он был приглашён. Запущенные диалоги будут остановлены.",
+				"deleteFailed": "Не удалось удалить агента. Попробуйте ещё раз.",
 				"cancel": "Отмена",
 				"delete": "Удалить"
 			}
@@ -677,7 +683,11 @@
 			"addMember": "Добавить участника",
 			"errors": {
 				"addFailed": "Не удалось добавить участника. Попробуйте ещё раз."
-			}
+			},
+			"modeUser": "Пользователь",
+			"modeAgent": "ИИ-агент",
+			"agentLabel": "Агент",
+			"noAgentsAvailable": "Нет доступных глобальных агентов для приглашения."
 		},
 		"roleChip": {
 			"changeRole": "Изменить роль",
@@ -701,7 +711,8 @@
 		"newConversation": "Новый диалог",
 		"agentLabel": "Агент",
 		"selectAgentPlaceholder": "Выберите агента…",
-		"selectAgentFirst": "Сначала выберите агента."
+		"selectAgentFirst": "Сначала выберите агента.",
+		"noAgentsAvailable": "Пока нет доступных агентов."
 	},
 	"taskTypes": {
 		"deleteDialog": {

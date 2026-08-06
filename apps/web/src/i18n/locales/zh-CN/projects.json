@@ -30,7 +30,7 @@
 			"projectRoleHint": "控制智能体在此项目中可以读取和修改的内容。",
 			"agentTypeLabel": "智能体类型",
 			"agentTypeLLM": "LLM（API 密钥）",
-			"agentTypeLLMHint": "Paca 直接调用模型 API，并在云端沙箱中运行智能体。",
+			"agentTypeLLMHint": "Paca 直接调用模型 API，并在托管 Paca 的服务器上的沙箱容器中运行智能体。",
 			"agentTypeACP": "ACP（本地 CLI）",
 			"agentTypeACPHint": "委托给您自己运行的编码 CLI — Claude Code、Codex、Gemini CLI 或自定义 ACP 服务器。",
 			"modelSection": "模型",
@@ -62,7 +62,11 @@
 			"creating": "正在创建…",
 			"createAgent": "创建智能体",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "你是一名高级软件工程师…"
+			"systemPromptPlaceholder": "你是一名高级软件工程师…",
+			"globalRoleLabel": "全局角色",
+			"globalRolePlaceholder": "选择一个全局角色…",
+			"globalRoleHint": "决定智能体在全局范围内(例如在主页/管理聊天中)可以执行的操作。可选 — 之后邀请加入项目时授予的角色是另一回事。",
+			"noGlobalRoleOption": "无角色"
 		},
 		"card": {
 			"configure": "配置",
@@ -72,6 +76,8 @@
 			"deleteDialog": {
 				"title": "删除 {{name}}？",
 				"description": "这将永久删除该智能体并将其从项目中移除。正在进行的对话将被终止。",
+				"descriptionGlobal": "这将永久删除该智能体，并将其从已邀请加入的所有项目中移除。正在进行的对话将被终止。",
+				"deleteFailed": "删除智能体失败，请重试。",
 				"cancel": "取消",
 				"delete": "删除"
 			}
@@ -663,7 +669,11 @@
 			"addMember": "添加成员",
 			"errors": {
 				"addFailed": "添加成员失败，请重试。"
-			}
+			},
+			"modeUser": "用户",
+			"modeAgent": "AI 智能体",
+			"agentLabel": "智能体",
+			"noAgentsAvailable": "没有可邀请的全局智能体。"
 		},
 		"roleChip": {
 			"changeRole": "更改角色",
@@ -687,7 +697,8 @@
 		"newConversation": "新建对话",
 		"agentLabel": "智能体",
 		"selectAgentPlaceholder": "选择一个智能体…",
-		"selectAgentFirst": "请先选择一个智能体。"
+		"selectAgentFirst": "请先选择一个智能体。",
+		"noAgentsAvailable": "暂无可用的智能体。"
 	},
 	"taskTypes": {
 		"deleteDialog": {

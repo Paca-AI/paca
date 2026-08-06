@@ -184,6 +184,10 @@ func (f *fakeTaskSvc) ListAssignedTasks(_ context.Context, memberIDs []uuid.UUID
 	return out, false, nil
 }
 
+func (f *fakeTaskSvc) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 func (f *fakeTaskSvc) GetTask(_ context.Context, _, id uuid.UUID) (*taskdom.Task, error) {
 	f.mu.RLock()
 	t, ok := f.tasks[id]

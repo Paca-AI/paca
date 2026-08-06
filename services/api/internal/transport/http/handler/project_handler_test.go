@@ -20,6 +20,7 @@ import (
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
+	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 )
@@ -37,6 +38,7 @@ type mockProjectSvc struct {
 	update                  func(ctx context.Context, id uuid.UUID, in projectdom.UpdateProjectInput) (*projectdom.Project, error)
 	delete                  func(ctx context.Context, id uuid.UUID) error
 	listMembers             func(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
+	countDistinctAgents     func(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
 	addMember               func(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error)
 	updateMember            func(ctx context.Context, projectID, userID uuid.UUID, in projectdom.UpdateMemberRoleInput) (*projectdom.ProjectMember, error)
 	removeMember            func(ctx context.Context, projectID, userID uuid.UUID) error
@@ -103,6 +105,13 @@ func (m *mockProjectSvc) ListMembers(ctx context.Context, projectID uuid.UUID) (
 		return m.listMembers(ctx, projectID)
 	}
 	return []*projectdom.ProjectMember{}, nil
+}
+
+func (m *mockProjectSvc) CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	if m.countDistinctAgents != nil {
+		return m.countDistinctAgents(ctx, projectIDs)
+	}
+	return 0, nil
 }
 
 func (m *mockProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
@@ -1100,5 +1109,123 @@ func TestUpdateMemberRole_MissingProjectRoleID_Returns400(t *testing.T) {
 		jsonBody(t, map[string]any{}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing project_role_id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetWorkspaceStats
+// ---------------------------------------------------------------------------
+
+// mockTaskStatsSvc implements the handler package's unexported
+// taskServiceForStats interface structurally (Go interfaces are satisfied
+// implicitly, so an external test package can implement one without naming it).
+type mockTaskStatsSvc struct {
+	countOpenTasksByProjects func(ctx context.Context, projectIDs []uuid.UUID) (int64, error)
+}
+
+func (m *mockTaskStatsSvc) CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	return m.countOpenTasksByProjects(ctx, projectIDs)
+}
+
+// mockUserStatsSvc implements handler.userServiceForStats structurally.
+type mockUserStatsSvc struct {
+	countUsers func(ctx context.Context) (int64, error)
+}
+
+func (m *mockUserStatsSvc) CountUsers(ctx context.Context) (int64, error) {
+	return m.countUsers(ctx)
+}
+
+// TestGetWorkspaceStats_SingleAggregateQueryPerCounter guards against a
+// regression back to the old per-project fan-out (one ListMembers/ListAgents
+// call per accessible project, deduped in Go) that both inflated the "AI
+// agents" count for an agent invited into multiple projects and did an
+// avoidable N-query loop. It asserts each counter is computed via exactly
+// one call — the team-member count via a plain users-table count that
+// ignores accessible-project scoping entirely, and the AI-agent count via
+// one aggregate call covering every accessible project at once.
+func TestGetWorkspaceStats_SingleAggregateQueryPerCounter(t *testing.T) {
+	proj1, proj2 := uuid.New(), uuid.New()
+
+	var memberCalls, taskCalls, userCalls int
+	var gotMemberProjectIDs, gotTaskProjectIDs []uuid.UUID
+
+	projectSvc := &mockProjectSvc{
+		list: func(_ context.Context, _, _ int) ([]*projectdom.Project, int64, error) {
+			return []*projectdom.Project{{ID: proj1}, {ID: proj2}}, 2, nil
+		},
+		countDistinctAgents: func(_ context.Context, projectIDs []uuid.UUID) (int64, error) {
+			memberCalls++
+			gotMemberProjectIDs = projectIDs
+			return 2, nil
+		},
+	}
+	taskSvc := &mockTaskStatsSvc{
+		countOpenTasksByProjects: func(_ context.Context, projectIDs []uuid.UUID) (int64, error) {
+			taskCalls++
+			gotTaskProjectIDs = projectIDs
+			return 7, nil
+		},
+	}
+	userSvc := &mockUserStatsSvc{
+		countUsers: func(_ context.Context) (int64, error) {
+			userCalls++
+			return 5, nil
+		},
+	}
+
+	authorizer := authz.NewAuthorizer(nil)
+	r := chi.NewRouter()
+	r.Use(adminClaimsMiddleware())
+	h := handler.NewProjectHandler(projectSvc, authorizer, handler.WithProjectStatsServices(taskSvc, userSvc))
+	r.Get("/projects/workspace-stats", h.GetWorkspaceStats)
+
+	w := do(t, r, http.MethodGet, "/projects/workspace-stats", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if memberCalls != 1 {
+		t.Fatalf("expected CountDistinctAgentsByProjects called exactly once, got %d calls", memberCalls)
+	}
+	if taskCalls != 1 {
+		t.Fatalf("expected CountOpenTasksByProjects called exactly once, got %d calls", taskCalls)
+	}
+	if userCalls != 1 {
+		t.Fatalf("expected CountUsers called exactly once, got %d calls", userCalls)
+	}
+	assertSameProjectIDs(t, gotMemberProjectIDs, []uuid.UUID{proj1, proj2})
+	assertSameProjectIDs(t, gotTaskProjectIDs, []uuid.UUID{proj1, proj2})
+
+	var envelope struct {
+		Data dto.WorkspaceStatsResponse `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if envelope.Data.TeamMemberCount != 5 {
+		t.Fatalf("expected TeamMemberCount=5, got %d", envelope.Data.TeamMemberCount)
+	}
+	if envelope.Data.AIAgentCount != 2 {
+		t.Fatalf("expected AIAgentCount=2, got %d", envelope.Data.AIAgentCount)
+	}
+	if envelope.Data.OpenTaskCount != 7 {
+		t.Fatalf("expected OpenTaskCount=7, got %d", envelope.Data.OpenTaskCount)
+	}
+}
+
+func assertSameProjectIDs(t *testing.T, got []uuid.UUID, want []uuid.UUID) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("expected %d project IDs, got %d (%v)", len(want), len(got), got)
+	}
+	wantSet := make(map[uuid.UUID]struct{}, len(want))
+	for _, id := range want {
+		wantSet[id] = struct{}{}
+	}
+	for _, id := range got {
+		if _, ok := wantSet[id]; !ok {
+			t.Fatalf("unexpected project ID %s in %v (want %v)", id, got, want)
+		}
 	}
 }

@@ -268,5 +268,17 @@
 		"current": "Versão atual",
 		"error": "Não foi possível carregar as novidades agora. Tente novamente mais tarde.",
 		"empty": "Nenhuma novidade disponível no momento."
+	},
+	"agents": {
+		"header": {
+			"title": "Agentes Globais",
+			"description": "Gerencie agentes de IA que conversam na página inicial e nas páginas de administração, e que podem ser convidados para qualquer projeto.",
+			"newAgent": "Novo agente"
+		},
+		"empty": {
+			"title": "Ainda não há agentes globais",
+			"description": "Crie um agente global para disponibilizá-lo para conversas e convites de projeto.",
+			"createAgent": "Criar agente"
+		}
 	}
 }

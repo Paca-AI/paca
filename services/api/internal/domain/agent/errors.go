@@ -22,6 +22,13 @@ var (
 	ErrNotSupportedForACPAgent = errors.New("not supported for ACP-type agents — the local ACP client owns its own tool/MCP/skill/environment configuration")
 )
 
+// Global agent errors
+var (
+	// ErrAgentNotGlobal is returned when a global-agent-only operation
+	// (admin CRUD, global chat) targets a project-scoped agent.
+	ErrAgentNotGlobal = errors.New("agent is not a global agent")
+)
+
 // MCP server errors
 var (
 	ErrMCPServerNotFound        = errors.New("MCP server not found")

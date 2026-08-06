@@ -268,5 +268,17 @@
 		"current": "Version actuelle",
 		"error": "Impossible de charger les nouveautés pour le moment. Veuillez réessayer plus tard.",
 		"empty": "Aucune note de version disponible pour le moment."
+	},
+	"agents": {
+		"header": {
+			"title": "Agents globaux",
+			"description": "Gérez les agents IA qui discutent sur la page d'accueil et les pages d'administration, et qui peuvent être invités dans n'importe quel projet.",
+			"newAgent": "Nouvel agent"
+		},
+		"empty": {
+			"title": "Aucun agent global pour le moment",
+			"description": "Créez un agent global pour le rendre disponible pour le chat et les invitations à des projets.",
+			"createAgent": "Créer un agent"
+		}
 	}
 }

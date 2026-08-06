@@ -46,10 +46,16 @@ async def _fail_offline(trigger: TriggerMessage) -> None:
         project_id=trigger.project_id,
         conversation_id=trigger.conversation_id,
         event_type="agent.conversation.failed",
+        actor_user_id=trigger.actor_user_id,
     )
 
 
-async def _watchdog(conversation_id: str, project_id: str, timeout_minutes: int) -> None:
+async def _watchdog(
+    conversation_id: str,
+    project_id: str | None,
+    timeout_minutes: int,
+    actor_user_id: str | None = None,
+) -> None:
     """Fails a dispatched ACP turn that never reported a terminal turn_status.
 
     Dispatch to the bridge goes over Valkey Pub/Sub (see acp_bridge.dispatch),
@@ -74,11 +80,19 @@ async def _watchdog(conversation_id: str, project_id: str, timeout_minutes: int)
         project_id=project_id,
         conversation_id=conversation_id,
         event_type="agent.conversation.failed",
+        actor_user_id=actor_user_id,
     )
 
 
-def _schedule_watchdog(conversation_id: str, project_id: str, timeout_minutes: int) -> None:
-    task = asyncio.create_task(_watchdog(conversation_id, project_id, timeout_minutes))
+def _schedule_watchdog(
+    conversation_id: str,
+    project_id: str | None,
+    timeout_minutes: int,
+    actor_user_id: str | None = None,
+) -> None:
+    task = asyncio.create_task(
+        _watchdog(conversation_id, project_id, timeout_minutes, actor_user_id)
+    )
     _watchdog_tasks.add(task)
     task.add_done_callback(_watchdog_tasks.discard)
 
@@ -121,4 +135,9 @@ async def dispatch_acp_trigger(trigger: TriggerMessage, agent_config: AgentConfi
         await _fail_offline(trigger)
         return
 
-    _schedule_watchdog(trigger.conversation_id, trigger.project_id, agent_config.timeout_minutes)
+    _schedule_watchdog(
+        trigger.conversation_id,
+        trigger.project_id,
+        agent_config.timeout_minutes,
+        trigger.actor_user_id,
+    )

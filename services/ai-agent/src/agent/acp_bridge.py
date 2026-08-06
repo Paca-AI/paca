@@ -187,7 +187,7 @@ async def _broadcast_eviction(agent_id: str, winning_session_id: str) -> None:
     await client.publish(_control_channel(agent_id), json.dumps({"session_id": winning_session_id}))
 
 
-async def register(agent_id: str, project_id: str, ws: _SendsJSON) -> str:
+async def register(agent_id: str, project_id: str | None, ws: _SendsJSON) -> str:
     """Mark an agent's local bridge as connected on this replica.
 
     Publishes an "agent.acp_bridge.status" realtime event so the frontend
@@ -230,7 +230,7 @@ async def evict(agent_id: str) -> None:
     await _broadcast_eviction(agent_id, _FORCE_EVICT_SESSION_ID)
 
 
-async def unregister(agent_id: str, project_id: str, session_id: str) -> None:
+async def unregister(agent_id: str, project_id: str | None, session_id: str) -> None:
     """Tear down a bridge connection — called on WebSocket disconnect.
 
     No-ops if session_id no longer matches the currently registered session
@@ -261,7 +261,16 @@ async def unregister(agent_id: str, project_id: str, session_id: str) -> None:
     await _publish_status(agent_id, project_id, connected=False)
 
 
-async def _publish_status(agent_id: str, project_id: str, *, connected: bool) -> None:
+async def _publish_status(agent_id: str, project_id: str | None, *, connected: bool) -> None:
+    """project_id is None for a global-scope ACP agent — its bridge status
+    has no single project room to route to (it may be invited into several,
+    or none), so this realtime event is a known best-effort gap for global
+    agents: services/realtime's routeEvent drops any agent.* event with
+    neither project_id nor actor_user_id, so the status badge for a global
+    ACP agent's bridge connection won't update live. Not routing it to every
+    invited project is a deliberate simplification, not an oversight — see
+    docs/ai-agent/database-schema.md's Global Agents section.
+    """
     try:
         await stream_store.publish_realtime(
             project_id=project_id,

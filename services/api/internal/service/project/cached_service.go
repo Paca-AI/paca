@@ -164,6 +164,13 @@ func (c *CachedService) ListMembers(ctx context.Context, projectID uuid.UUID) ([
 	return result, nil
 }
 
+// CountDistinctAgentsByProjects delegates to the underlying service without
+// caching — like GetMyProjectPermissions, an arbitrary-project-ID-set
+// aggregate isn't a good fit for this cache's per-project key scheme.
+func (c *CachedService) CountDistinctAgentsByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error) {
+	return c.svc.CountDistinctAgentsByProjects(ctx, projectIDs)
+}
+
 // AddMember delegates to the underlying service and invalidates the members cache.
 func (c *CachedService) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
 	m, err := c.svc.AddMember(ctx, projectID, in)

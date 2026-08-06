@@ -41,6 +41,9 @@ func (m *mockUserSvc) GetByID(context.Context, uuid.UUID) (*userdom.User, error)
 func (m *mockUserSvc) List(context.Context, int, int) ([]*userdom.User, int64, error) {
 	return []*userdom.User{}, 0, nil
 }
+func (m *mockUserSvc) CountUsers(context.Context) (int64, error) {
+	return 0, nil
+}
 func (m *mockUserSvc) ListGlobalPermissions(context.Context, uuid.UUID) ([]string, error) {
 	return []string{string(authz.PermissionUsersRead)}, nil
 }
@@ -98,6 +101,9 @@ func (s *stubProjectSvc) Update(context.Context, uuid.UUID, projectdom.UpdatePro
 func (s *stubProjectSvc) Delete(context.Context, uuid.UUID) error { return nil }
 func (s *stubProjectSvc) ListMembers(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
 	return nil, nil
+}
+func (s *stubProjectSvc) CountDistinctAgentsByProjects(context.Context, []uuid.UUID) (int64, error) {
+	return 0, nil
 }
 func (s *stubProjectSvc) AddMember(context.Context, uuid.UUID, projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
 	return nil, nil

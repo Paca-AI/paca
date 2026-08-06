@@ -111,9 +111,19 @@ export interface AgentEnvVar {
 export type AgentType = "llm" | "acp";
 export type ACPProvider = "claude-code" | "codex" | "gemini-cli" | "custom";
 
+// "project" agents belong to exactly one project (project_id set). "global"
+// agents belong to none (project_id null) — they chat on the home/admin
+// pages and can be invited into projects the same way a user is added as a
+// member (see project-api.ts's addProjectMember, agent_id branch).
+export type AgentScope = "project" | "global";
+
 export interface Agent {
 	id: string;
-	project_id: string;
+	// Null for a global-scope agent.
+	project_id?: string | null;
+	agent_scope: AgentScope;
+	// Only ever set for a global-scope agent — mirrors users.role_id.
+	global_role_id?: string | null;
 	name: string;
 	handle: string;
 	avatar_url?: string | null;
@@ -153,12 +163,15 @@ export type ConversationTriggerType =
 export interface AgentConversation {
 	id: string;
 	agent_id: string;
-	project_id: string;
+	// Null for a global-chat conversation (with a global agent from the
+	// home/admin pages) — actor_user_id identifies the human instead.
+	project_id?: string | null;
 	trigger_type: ConversationTriggerType;
 	task_id?: string | null;
 	comment_id?: string | null;
 	chat_session_id?: string | null;
 	triggered_by_member_id?: string;
+	actor_user_id?: string | null;
 	status: ConversationStatus;
 	iteration_count: number;
 	error_message?: string | null;
@@ -183,8 +196,11 @@ export interface AgentConversationEvent {
 export interface AgentChatSession {
 	id: string;
 	agent_id: string;
-	project_id: string;
-	member_id: string;
+	// project_id/member_id are null for a global chat session; actor_user_id
+	// is set instead. Exactly the reverse for a project chat session.
+	project_id?: string | null;
+	member_id?: string | null;
+	actor_user_id?: string | null;
 	title?: string | null;
 	last_message_at?: string | null;
 	created_at: string;
@@ -193,10 +209,17 @@ export interface AgentChatSession {
 
 // ── Agents ────────────────────────────────────────────────────────────────────
 
-export async function listAgents(projectId: string): Promise<Agent[]> {
+// scope narrows the result to just that AgentScope server-side (e.g.
+// "project" to hide global agents invited into this project as members) —
+// omit it to get everything the project can act through, as the @mention
+// picker and task assignment do. See services/api's AgentHandler.ListAgents.
+export async function listAgents(
+	projectId: string,
+	scope?: AgentScope,
+): Promise<Agent[]> {
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<{ items: Agent[] }>
-	>(`/projects/${projectId}/agents`);
+	>(`/projects/${projectId}/agents`, { params: scope ? { scope } : undefined });
 	return data.data.items;
 }
 
@@ -259,6 +282,185 @@ export async function updateAgent(
 	return data.data;
 }
 
+// ── Global Agents (admin CRUD) ───────────────────────────────────────────────
+//
+// Global agents have no project — they're managed from /admin/agents
+// (permission-gated: agents.read/agents.write) and later invited into
+// projects via project-api.ts's addProjectMember (agent_id branch), the same
+// action used to add a human member.
+
+export async function listGlobalAgents(): Promise<Agent[]> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<{ items: Agent[] }>>(
+			"/admin/agents",
+		);
+	return data.data.items;
+}
+
+export async function getGlobalAgent(agentId: string): Promise<Agent> {
+	const { data } = await apiClient.instance.get<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}`,
+	);
+	return data.data;
+}
+
+export interface CreateGlobalAgentPayload {
+	name: string;
+	handle: string;
+	agent_type?: AgentType;
+	llm_provider?: string;
+	llm_model?: string;
+	llm_api_key?: string;
+	llm_base_url?: string;
+	acp_provider?: ACPProvider;
+	acp_command?: string[];
+	system_prompt?: string;
+	git_committer_name?: string;
+	git_committer_email?: string;
+	global_role_id?: string | null;
+}
+
+export async function createGlobalAgent(
+	payload: CreateGlobalAgentPayload,
+): Promise<Agent> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<Agent>>(
+		"/admin/agents",
+		payload,
+	);
+	return data.data;
+}
+
+export interface UpdateGlobalAgentPayload {
+	name?: string;
+	handle?: string;
+	llm_provider?: string;
+	llm_model?: string;
+	llm_api_key?: string;
+	llm_base_url?: string | null;
+	acp_provider?: ACPProvider;
+	acp_command?: string[];
+	system_prompt?: string;
+	git_committer_name?: string;
+	git_committer_email?: string;
+	global_role_id?: string | null;
+}
+
+export async function updateGlobalAgent(
+	agentId: string,
+	payload: UpdateGlobalAgentPayload,
+): Promise<Agent> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
+		`/admin/agents/${agentId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteGlobalAgent(agentId: string): Promise<void> {
+	await apiClient.instance.delete(`/admin/agents/${agentId}`);
+}
+
+// Any authenticated human may browse global agents (to chat with one) —
+// unlike listGlobalAgents (/admin/agents) above, this isn't permission-gated.
+export async function listChattableAgents(): Promise<Agent[]> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<{ items: Agent[] }>>(
+			"/agents",
+		);
+	return data.data.items;
+}
+
+// ── Global Chat ───────────────────────────────────────────────────────────────
+//
+// Chatting with a global agent from the home page / admin pages — no project
+// context. Mirrors the project-scoped chat session + conversation functions
+// above; see services/api's /agents/:agentId/chat-sessions and
+// /agents/conversations/:id route tree.
+
+export async function listGlobalChatSessions(
+	agentId: string,
+): Promise<AgentChatSession[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentChatSession[] }>
+	>(`/agents/${agentId}/chat-sessions`);
+	return data.data.items;
+}
+
+export async function startGlobalChatSession(
+	agentId: string,
+	payload: { message: string; title?: string },
+): Promise<StartChatSessionResponse> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<StartChatSessionResponse>
+	>(`/agents/${agentId}/chat-sessions`, payload);
+	return data.data;
+}
+
+export async function sendGlobalChatMessage(
+	sessionId: string,
+	payload: { message: string },
+): Promise<AgentConversation> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{ conversation: AgentConversation }>
+	>(`/agents/chat-sessions/${sessionId}/messages`, payload);
+	return data.data.conversation;
+}
+
+export async function getGlobalConversation(
+	conversationId: string,
+): Promise<AgentConversation> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<AgentConversation>
+	>(`/agents/conversations/${conversationId}`);
+	return data.data;
+}
+
+export async function listGlobalConversationEvents(
+	conversationId: string,
+): Promise<AgentConversationEvent[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentConversationEvent[] }>
+	>(`/agents/conversations/${conversationId}/events`, {
+		params: { limit: 200 },
+	});
+	return data.data.items;
+}
+
+export async function stopGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.post(`/agents/conversations/${conversationId}/stop`);
+}
+
+export async function pauseGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/agents/conversations/${conversationId}/pause`,
+	);
+}
+
+export async function heartbeatGlobalConversation(
+	conversationId: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/agents/conversations/${conversationId}/heartbeat`,
+	);
+}
+
+// sendGlobalConversationMessage is sendConversationMessage's global-chat
+// sibling — replies to a global conversation directly by id (the ACP resume
+// path), rather than through a chat session.
+export async function sendGlobalConversationMessage(
+	conversationId: string,
+	message: string,
+): Promise<void> {
+	await apiClient.instance.post(
+		`/agents/conversations/${conversationId}/messages`,
+		{ message },
+	);
+}
+
 // ── ACP Local Bridge ─────────────────────────────────────────────────────────
 
 export interface AcpBridgeToken {
@@ -289,6 +491,26 @@ export async function getAcpBridgeStatus(
 	// listLLMModels below.
 	const { data } = await apiClient.instance.get<AcpBridgeStatus>(
 		`/projects/${projectId}/agents/${agentId}/acp-bridge-status`,
+	);
+	return data;
+}
+
+// generateGlobalAcpBridgeToken/getGlobalAcpBridgeStatus are
+// generateAcpBridgeToken/getAcpBridgeStatus's global-agent siblings.
+export async function generateGlobalAcpBridgeToken(
+	agentId: string,
+): Promise<AcpBridgeToken> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AcpBridgeToken>
+	>(`/admin/agents/${agentId}/acp-bridge-token`);
+	return data.data;
+}
+
+export async function getGlobalAcpBridgeStatus(
+	agentId: string,
+): Promise<AcpBridgeStatus> {
+	const { data } = await apiClient.instance.get<AcpBridgeStatus>(
+		`/admin/agents/${agentId}/acp-bridge-status`,
 	);
 	return data;
 }
@@ -477,6 +699,153 @@ export async function deleteEnvVar(
 	);
 }
 
+// ── Global Agent MCP Servers / Skills / Env Vars ─────────────────────────────
+//
+// Siblings of the project-scoped functions above, hitting /admin/agents/:id/...
+// instead of /projects/:projectId/agents/:id/... — these MCP/skill/env-var
+// services were already agentId-only on the backend (see
+// services/api/internal/domain/agent/service.go's MCPServerService etc.),
+// so the admin route tree is a thin wrapper over the same service methods.
+
+export async function listGlobalMCPServers(
+	agentId: string,
+): Promise<AgentMCPServer[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentMCPServer[] }>
+	>(`/admin/agents/${agentId}/mcp-servers`);
+	return data.data.items;
+}
+
+export async function addGlobalMCPServer(
+	agentId: string,
+	payload: {
+		server_name: string;
+		transport: "stdio" | "sse" | "http";
+		command?: string | null;
+		args?: string[];
+		url?: string | null;
+		env?: Record<string, string>;
+	},
+): Promise<AgentMCPServer> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AgentMCPServer>
+	>(`/admin/agents/${agentId}/mcp-servers`, payload);
+	return data.data;
+}
+
+export async function updateGlobalMCPServer(
+	agentId: string,
+	serverId: string,
+	payload: {
+		is_enabled?: boolean;
+		command?: string;
+		args?: string[];
+		url?: string | null;
+	},
+): Promise<AgentMCPServer> {
+	const { data } = await apiClient.instance.patch<
+		SuccessEnvelope<AgentMCPServer>
+	>(`/admin/agents/${agentId}/mcp-servers/${serverId}`, payload);
+	return data.data;
+}
+
+export async function deleteGlobalMCPServer(
+	agentId: string,
+	serverId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/admin/agents/${agentId}/mcp-servers/${serverId}`,
+	);
+}
+
+export async function listGlobalSkills(agentId: string): Promise<AgentSkill[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentSkill[] }>
+	>(`/admin/agents/${agentId}/skills`);
+	return data.data.items;
+}
+
+export async function addGlobalSkill(
+	agentId: string,
+	payload: {
+		skill_name: string;
+		skill_source: "inline" | "marketplace" | "github_url";
+		skill_content?: string;
+		source_url?: string | null;
+		triggers?: string[];
+	},
+): Promise<AgentSkill> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentSkill>>(
+		`/admin/agents/${agentId}/skills`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function updateGlobalSkill(
+	agentId: string,
+	skillId: string,
+	payload: {
+		is_enabled?: boolean;
+		triggers?: string[];
+		skill_content?: string;
+	},
+): Promise<AgentSkill> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<AgentSkill>>(
+		`/admin/agents/${agentId}/skills/${skillId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteGlobalSkill(
+	agentId: string,
+	skillId: string,
+): Promise<void> {
+	await apiClient.instance.delete(`/admin/agents/${agentId}/skills/${skillId}`);
+}
+
+export async function listGlobalEnvVars(
+	agentId: string,
+): Promise<AgentEnvVar[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentEnvVar[] }>
+	>(`/admin/agents/${agentId}/env-vars`);
+	return data.data.items;
+}
+
+export async function addGlobalEnvVar(
+	agentId: string,
+	payload: { key: string; value: string },
+): Promise<AgentEnvVar> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentEnvVar>>(
+		`/admin/agents/${agentId}/env-vars`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function updateGlobalEnvVar(
+	agentId: string,
+	envVarId: string,
+	payload: { value: string },
+): Promise<AgentEnvVar> {
+	const { data } = await apiClient.instance.patch<SuccessEnvelope<AgentEnvVar>>(
+		`/admin/agents/${agentId}/env-vars/${envVarId}`,
+		payload,
+	);
+	return data.data;
+}
+
+export async function deleteGlobalEnvVar(
+	agentId: string,
+	envVarId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/admin/agents/${agentId}/env-vars/${envVarId}`,
+	);
+}
+
 // ── Conversations ─────────────────────────────────────────────────────────────
 
 export interface ConversationListResult {
@@ -548,6 +917,21 @@ export async function listConversations(
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<ConversationListResult>
 	>(`/projects/${projectId}/conversations`, {
+		params: buildConversationQueryParams(options),
+	});
+	return data.data;
+}
+
+// listGlobalConversations is listConversations' global-chat sibling — always
+// scoped server-side to the caller's own conversations (see
+// services/api's ConversationHandler.ListGlobalConversations), so it takes
+// no projectId/agentId-style scope argument.
+export async function listGlobalConversations(
+	options?: ListConversationsOptions,
+): Promise<ConversationListResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ConversationListResult>
+	>("/agents/conversations", {
 		params: buildConversationQueryParams(options),
 	});
 	return data.data;
@@ -682,6 +1066,22 @@ export const agentsQueryOptions = (projectId: string) =>
 		queryFn: () => listAgents(projectId),
 	});
 
+// projectScopedAgentsQueryOptions is agentsQueryOptions' sibling for the
+// project Agents management page, which lists project-owned agents only —
+// scope=project server-side-filters out global agents invited into the
+// project as members, which agentsQueryOptions' other callers (agent-picker,
+// conversations) still want included. A separate function/key rather than
+// an optional param on agentsQueryOptions, so its queryKey shape doesn't
+// widen into a union type that'd break call sites like
+// conversations-layout.tsx's `projectId ? agentsQueryOptions(projectId) :
+// chattableAgentsQueryOptions` ternary (both branches must share one
+// queryKey type for useQuery to type-check).
+export const projectScopedAgentsQueryOptions = (projectId: string) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "agents", "project"] as const,
+		queryFn: () => listAgents(projectId, "project"),
+	});
+
 export const agentQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId],
@@ -709,6 +1109,24 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 		queryFn: () => listEnvVars(projectId, agentId),
 	});
 
+export const globalAgentMCPServersQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "mcp-servers"],
+		queryFn: () => listGlobalMCPServers(agentId),
+	});
+
+export const globalAgentSkillsQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "skills"],
+		queryFn: () => listGlobalSkills(agentId),
+	});
+
+export const globalAgentEnvVarsQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "env-vars"],
+		queryFn: () => listGlobalEnvVars(agentId),
+	});
+
 // Fetched once (no polling) — kept live afterward via useProjectRealtime's
 // direct cache update on "agent.acp_bridge.status" events (published by
 // services/ai-agent's acp_bridge.py on every bridge connect/disconnect).
@@ -720,6 +1138,20 @@ export const acpBridgeStatusQueryOptions = (
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "acp-bridge-status"],
 		queryFn: () => getAcpBridgeStatus(projectId, agentId),
+		enabled: options?.enabled ?? true,
+	});
+
+// Global-agent sibling of acpBridgeStatusQueryOptions. Unlike the
+// project-scoped one, this has no live socket-driven update — a global
+// agent's bridge status event currently has no per-agent room to route to
+// (see services/ai-agent's acp_bridge.py) — so it's fetch-once only.
+export const globalAcpBridgeStatusQueryOptions = (
+	agentId: string,
+	options?: { enabled?: boolean },
+) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId, "acp-bridge-status"],
+		queryFn: () => getGlobalAcpBridgeStatus(agentId),
 		enabled: options?.enabled ?? true,
 	});
 
@@ -777,6 +1209,64 @@ export const chatSessionsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "chat-sessions"],
 		queryFn: () => listChatSessions(projectId, agentId),
+	});
+
+// ── Global Agent / Global Chat Query Options ────────────────────────────────
+//
+// Separate ["global-agents", ...] / ["global-chat", ...] cache-key
+// namespaces — deliberately not nested under ["projects", ...] since a
+// global agent/conversation has no projectId to key off.
+
+export const globalAgentsQueryOptions = queryOptions({
+	queryKey: ["global-agents"],
+	queryFn: listGlobalAgents,
+});
+
+export const chattableAgentsQueryOptions = queryOptions({
+	queryKey: ["global-agents", "chattable"],
+	queryFn: listChattableAgents,
+});
+
+export const globalAgentQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-agents", agentId],
+		queryFn: () => getGlobalAgent(agentId),
+	});
+
+export const globalChatSessionsQueryOptions = (agentId: string) =>
+	queryOptions({
+		queryKey: ["global-chat", "agents", agentId, "chat-sessions"],
+		queryFn: () => listGlobalChatSessions(agentId),
+	});
+
+// No refetchInterval: kept live via useGlobalAgentRealtime's socket-driven
+// invalidation of the ["global-chat", "conversations"] prefix, same
+// mechanism as conversationsQueryOptions above.
+export const globalConversationsQueryOptions = (
+	filters: ConversationFilters = {},
+) =>
+	infiniteQueryOptions({
+		queryKey: ["global-chat", "conversations", filters],
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listGlobalConversations({
+				...filters,
+				cursor: pageParam,
+				pageSize: CONVERSATIONS_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
+
+export const globalConversationQueryOptions = (conversationId: string) =>
+	queryOptions({
+		queryKey: ["global-chat", "conversations", conversationId],
+		queryFn: () => getGlobalConversation(conversationId),
+	});
+
+export const globalConversationEventsQueryOptions = (conversationId: string) =>
+	queryOptions({
+		queryKey: ["global-chat", "conversations", conversationId, "events"],
+		queryFn: () => listGlobalConversationEvents(conversationId),
 	});
 
 // ── Activity Feed ────────────────────────────────────────────────────────────

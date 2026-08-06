@@ -47,7 +47,7 @@ func buildCachedTaskRouter(t *testing.T, taskRepo *fakeTaskRepo, store *projectP
 	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
 	userService := usersvc.New(userRepo)
 	projectRepo := newFakeProjectRepo()
-	projectService := projectsvc.New(projectRepo, taskRepo)
+	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 
 	// Wrap the real task service with the caching decorator.
 	realTaskSvc := tasksvc.New(taskRepo)

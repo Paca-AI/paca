@@ -268,5 +268,17 @@
 		"current": "Phiên bản hiện tại",
 		"error": "Hiện không thể tải nhật ký thay đổi. Vui lòng thử lại sau.",
 		"empty": "Chưa có ghi chú phát hành nào."
+	},
+	"agents": {
+		"header": {
+			"title": "Agent toàn cục",
+			"description": "Quản lý các agent AI trò chuyện trên trang chủ và các trang quản trị, có thể được mời vào bất kỳ dự án nào.",
+			"newAgent": "Agent mới"
+		},
+		"empty": {
+			"title": "Chưa có agent toàn cục nào",
+			"description": "Tạo một agent toàn cục để có thể trò chuyện và mời vào dự án.",
+			"createAgent": "Tạo agent"
+		}
 	}
 }

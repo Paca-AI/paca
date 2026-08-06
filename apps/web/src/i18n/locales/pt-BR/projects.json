@@ -30,7 +30,7 @@
 			"projectRoleHint": "Controla o que o agente pode ler e modificar neste projeto.",
 			"agentTypeLabel": "Tipo de agente",
 			"agentTypeLLM": "LLM (chave de API)",
-			"agentTypeLLMHint": "O Paca chama diretamente a API de um modelo e executa o agente em um sandbox na nuvem.",
+			"agentTypeLLMHint": "O Paca chama diretamente a API de um modelo e executa o agente em um contêiner isolado no servidor que hospeda o Paca.",
 			"agentTypeACP": "ACP (CLI local)",
 			"agentTypeACPHint": "Delega a uma CLI de código que você mesmo executa — Claude Code, Codex, Gemini CLI ou um servidor ACP personalizado.",
 			"modelSection": "Modelo",
@@ -62,7 +62,11 @@
 			"creating": "Criando…",
 			"createAgent": "Criar agente",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…"
+			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…",
+			"globalRoleLabel": "Função Global",
+			"globalRolePlaceholder": "Selecione uma função global…",
+			"globalRoleHint": "Determina o que o agente pode fazer em escopo global (por exemplo, no chat da página inicial/admin). Opcional — uma função concedida depois, ao ser convidado para um projeto, é separada.",
+			"noGlobalRoleOption": "Sem função"
 		},
 		"card": {
 			"configure": "Configurar",
@@ -72,6 +76,8 @@
 			"deleteDialog": {
 				"title": "Excluir {{name}}?",
 				"description": "Isso exclui permanentemente o agente e o remove do projeto. As conversas em andamento serão interrompidas.",
+				"descriptionGlobal": "Isso exclui permanentemente o agente e o remove de todos os projetos aos quais foi convidado. As conversas em andamento serão interrompidas.",
+				"deleteFailed": "Falha ao excluir o agente. Tente novamente.",
 				"cancel": "Cancelar",
 				"delete": "Excluir"
 			}
@@ -663,7 +669,11 @@
 			"addMember": "Adicionar membro",
 			"errors": {
 				"addFailed": "Falha ao adicionar o membro. Tente novamente."
-			}
+			},
+			"modeUser": "Usuário",
+			"modeAgent": "Agente de IA",
+			"agentLabel": "Agente",
+			"noAgentsAvailable": "Nenhum agente global disponível para convidar."
 		},
 		"roleChip": {
 			"changeRole": "Alterar papel",
@@ -687,7 +697,8 @@
 		"newConversation": "Nova conversa",
 		"agentLabel": "Agente",
 		"selectAgentPlaceholder": "Selecione um agente…",
-		"selectAgentFirst": "Selecione um agente primeiro."
+		"selectAgentFirst": "Selecione um agente primeiro.",
+		"noAgentsAvailable": "Ainda não há agentes disponíveis."
 	},
 	"taskTypes": {
 		"deleteDialog": {

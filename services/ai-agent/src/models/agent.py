@@ -42,7 +42,10 @@ class PluginSkillRef:
 @dataclass
 class AgentConfig:
     agent_id: str
-    project_id: str
+    # None for a global-scope agent (agents.project_id IS NULL) — it has no
+    # single owning project; which project (if any) a given conversation
+    # runs in is carried per-trigger instead (see core.streams.TriggerMessage).
+    project_id: str | None
     system_prompt: str | None
     llm_provider: str
     llm_model: str

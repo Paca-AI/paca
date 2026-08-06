@@ -125,6 +125,10 @@ func (s *stubProjectSvc) ListMembers(ctx context.Context, projectID uuid.UUID) (
 	return []*projectdom.ProjectMember{{ID: uuid.New(), ProjectID: projectID}}, nil
 }
 
+func (s *stubProjectSvc) CountDistinctAgentsByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 func (s *stubProjectSvc) AddMember(ctx context.Context, projectID uuid.UUID, in projectdom.AddMemberInput) (*projectdom.ProjectMember, error) {
 	if s.addMember != nil {
 		return s.addMember(ctx, projectID, in)

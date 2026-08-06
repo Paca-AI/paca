@@ -63,21 +63,19 @@ func (s *Service) encryptKey(plaintext string) (string, error) {
 // Agents
 // -------------------------------------------------------------------------
 
-// ListAgents returns all agents in the given project.
-func (s *Service) ListAgents(ctx context.Context, projectID uuid.UUID) ([]*agentdom.Agent, error) {
-	return s.repo.ListAgents(ctx, projectID)
+// ListAgents returns agents visible in the given project, optionally
+// narrowed to a single AgentScope. See AgentRepository.ListAgents.
+func (s *Service) ListAgents(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
+	return s.repo.ListAgents(ctx, projectID, scope)
 }
 
-// GetAgent returns a single agent after verifying project ownership.
+// GetAgent returns a single agent visible in projectID — its own
+// project-scoped agent, or a global agent currently invited into the
+// project (see FindVisibleAgentInProject) — so a project's agent detail
+// page resolves the same agents its list view shows, rather than 404ing on
+// an invited global agent.
 func (s *Service) GetAgent(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
-	a, err := s.repo.FindAgentByID(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	if a.ProjectID != projectID {
-		return nil, agentdom.ErrAgentNotFound
-	}
-	return a, nil
+	return s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
 }
 
 // CreateAgent validates input, creates the agent, and sets up project membership.
@@ -298,6 +296,253 @@ func (s *Service) DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID)
 	return nil
 }
 
+// -------------------------------------------------------------------------
+// Global agents (AgentScope == AgentScopeGlobal)
+//
+// These are intentionally self-contained rather than sharing bodies with
+// CreateAgent/UpdateAgent/DeleteAgent above: the two shapes diverge in how
+// they establish project access (a project-scoped agent gets exactly one
+// project_members row at creation time; a global agent gets zero, and is
+// attached to projects later via the invite flow, see
+// project.MemberService.AddMember), and keeping them separate means the
+// existing, tested project-scoped methods are never touched by this change.
+// -------------------------------------------------------------------------
+
+// ListGlobalAgents returns all global-scope agents.
+func (s *Service) ListGlobalAgents(ctx context.Context) ([]*agentdom.Agent, error) {
+	return s.repo.ListGlobalAgents(ctx)
+}
+
+// GetGlobalAgent returns a single agent after verifying it is global-scope.
+func (s *Service) GetGlobalAgent(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error) {
+	a, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	if a.AgentScope != agentdom.AgentScopeGlobal {
+		return nil, agentdom.ErrAgentNotFound
+	}
+	return a, nil
+}
+
+// CreateGlobalAgent validates input and creates a global-scope agent. Unlike
+// CreateAgent, no project_members row is created — the agent starts out
+// invited into zero projects.
+func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error) {
+	handle := strings.TrimSpace(in.Handle)
+	if handle == "" {
+		return nil, agentdom.ErrAgentHandleInvalid
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return nil, agentdom.ErrAgentNameInvalid
+	}
+
+	if existing, err := s.repo.FindGlobalAgentByHandle(ctx, handle); err == nil && existing != nil {
+		return nil, agentdom.ErrAgentHandleTaken
+	}
+
+	agentType := in.AgentType
+	if agentType == "" {
+		agentType = agentdom.AgentTypeLLM
+	}
+	if agentType != agentdom.AgentTypeLLM && agentType != agentdom.AgentTypeACP {
+		return nil, agentdom.ErrAgentTypeInvalid
+	}
+
+	now := time.Now()
+	a := &agentdom.Agent{
+		ID:             uuid.New(),
+		AgentScope:     agentdom.AgentScopeGlobal,
+		GlobalRoleID:   in.GlobalRoleID,
+		Name:           name,
+		Handle:         handle,
+		AgentType:      agentType,
+		MaxIterations:  in.MaxIterations,
+		TimeoutMinutes: in.TimeoutMinutes,
+		CreatedBy:      in.CreatedBy,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	if agentType == agentdom.AgentTypeACP {
+		if !agentdom.ValidACPProviders[in.ACPProvider] {
+			return nil, agentdom.ErrACPProviderInvalid
+		}
+		if in.ACPProvider == agentdom.ACPProviderCustom && len(in.ACPCommand) == 0 {
+			return nil, agentdom.ErrACPCommandRequired
+		}
+		provider := in.ACPProvider
+		a.ACPProvider = &provider
+		a.ACPCommand = in.ACPCommand
+	} else {
+		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt LLM API key: %w", err)
+		}
+		a.LLMProvider = in.LLMProvider
+		a.LLMModel = in.LLMModel
+		a.LLMAPIKeySecret = encryptedKey
+		a.LLMBaseURL = in.LLMBaseURL
+		a.SystemPrompt = in.SystemPrompt
+		a.GitCommitterName = in.GitCommitterName
+		a.GitCommitterEmail = in.GitCommitterEmail
+		if a.GitCommitterName == "" {
+			a.GitCommitterName = "paca-agent"
+		}
+		if a.GitCommitterEmail == "" {
+			a.GitCommitterEmail = "280579135+paca-agent@users.noreply.github.com"
+		}
+	}
+	const maxIterationsLimit = 500
+	const defaultMaxIterations = 500
+	const timeoutMinutesLimit = 480 // 8 hours
+
+	if a.MaxIterations <= 0 {
+		a.MaxIterations = defaultMaxIterations
+	} else if a.MaxIterations > maxIterationsLimit {
+		a.MaxIterations = maxIterationsLimit
+	}
+	if a.TimeoutMinutes <= 0 {
+		a.TimeoutMinutes = 30
+	} else if a.TimeoutMinutes > timeoutMinutesLimit {
+		a.TimeoutMinutes = timeoutMinutesLimit
+	}
+
+	if err := s.repo.CreateGlobalAgent(ctx, a); err != nil {
+		return nil, fmt.Errorf("create global agent: %w", err)
+	}
+	return a, nil
+}
+
+// UpdateGlobalAgent patches mutable fields of an existing global agent,
+// including GlobalRoleID (set in.GlobalRoleID to &uuid.Nil to clear it).
+func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in agentdom.UpdateAgentInput) (*agentdom.Agent, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
+	if in.Name != nil {
+		a.Name = strings.TrimSpace(*in.Name)
+	}
+	if in.Handle != nil {
+		h := strings.TrimSpace(*in.Handle)
+		if h != a.Handle {
+			if existing, err := s.repo.FindGlobalAgentByHandle(ctx, h); err == nil && existing != nil {
+				return nil, agentdom.ErrAgentHandleTaken
+			}
+			a.Handle = h
+		}
+	}
+	// See the equivalent block in UpdateAgent for why LLM/ACP fields are
+	// guarded by the agent's existing (immutable) type.
+	if a.AgentType != agentdom.AgentTypeACP {
+		if in.LLMProvider != nil {
+			a.LLMProvider = *in.LLMProvider
+		}
+		if in.LLMModel != nil {
+			a.LLMModel = *in.LLMModel
+		}
+		if in.LLMAPIKey != nil {
+			encryptedKey, err := s.encryptKey(*in.LLMAPIKey)
+			if err != nil {
+				return nil, fmt.Errorf("encrypt LLM API key: %w", err)
+			}
+			a.LLMAPIKeySecret = encryptedKey
+		}
+		if in.LLMBaseURL != nil {
+			a.LLMBaseURL = *in.LLMBaseURL
+		}
+		if in.SystemPrompt != nil {
+			a.SystemPrompt = *in.SystemPrompt
+		}
+		if in.GitCommitterName != nil {
+			a.GitCommitterName = *in.GitCommitterName
+		}
+		if in.GitCommitterEmail != nil {
+			a.GitCommitterEmail = *in.GitCommitterEmail
+		}
+	}
+	if a.AgentType == agentdom.AgentTypeACP {
+		if in.ACPProvider != nil {
+			if !agentdom.ValidACPProviders[*in.ACPProvider] {
+				return nil, agentdom.ErrACPProviderInvalid
+			}
+			a.ACPProvider = in.ACPProvider
+		}
+		if in.ACPCommand != nil {
+			a.ACPCommand = in.ACPCommand
+		}
+		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
+			return nil, agentdom.ErrACPCommandRequired
+		}
+	}
+	const maxIterationsLimit = 500
+	const defaultMaxIterations = 500
+	const timeoutMinutesLimit = 480
+
+	if in.MaxIterations != nil {
+		v := *in.MaxIterations
+		if v <= 0 {
+			v = defaultMaxIterations
+		} else if v > maxIterationsLimit {
+			v = maxIterationsLimit
+		}
+		a.MaxIterations = v
+	}
+	if in.TimeoutMinutes != nil {
+		v := *in.TimeoutMinutes
+		if v <= 0 {
+			v = 30
+		} else if v > timeoutMinutesLimit {
+			v = timeoutMinutesLimit
+		}
+		a.TimeoutMinutes = v
+	}
+	if in.GlobalRoleID != nil {
+		if *in.GlobalRoleID == uuid.Nil {
+			a.GlobalRoleID = nil
+		} else {
+			a.GlobalRoleID = in.GlobalRoleID
+		}
+	}
+	a.UpdatedAt = time.Now()
+
+	if err := s.repo.UpdateAgent(ctx, a); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// DeleteGlobalAgent soft-deletes a global agent and every project_members
+// row referencing it, across every project it was invited into.
+func (s *Service) DeleteGlobalAgent(ctx context.Context, agentID uuid.UUID) error {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	// Snapshot affected projects before the cascade delete so their
+	// member-list caches can be invalidated once membership is actually gone.
+	projectIDs, err := s.repo.ListInvitedProjectIDs(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.SoftDeleteGlobalAgentCascade(ctx, a.ID); err != nil {
+		return err
+	}
+	for _, projectID := range projectIDs {
+		_ = s.projRepo.InvalidateMembersCache(ctx, projectID)
+	}
+	return nil
+}
+
+// ListInvitedProjectIDs returns the IDs of every project a global agent
+// currently has an active project_members row in.
+func (s *Service) ListInvitedProjectIDs(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error) {
+	return s.repo.ListInvitedProjectIDs(ctx, agentID)
+}
+
 // GenerateACPBridgeToken issues a new local-bridge auth token for an ACP-type
 // agent, replacing any existing one. Only the token's SHA-256 hash is
 // persisted (services/ai-agent hashes an incoming token the same way to
@@ -305,6 +550,30 @@ func (s *Service) DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID)
 // afterward.
 func (s *Service) GenerateACPBridgeToken(ctx context.Context, projectID, agentID uuid.UUID) (string, error) {
 	a, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
+		return "", err
+	}
+	if a.AgentType != agentdom.AgentTypeACP {
+		return "", agentdom.ErrAgentTypeInvalid
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate bridge token: %w", err)
+	}
+	plaintext := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(plaintext))
+	hash := hex.EncodeToString(sum[:])
+	if err := s.repo.SetACPBridgeTokenHash(ctx, agentID, hash); err != nil {
+		return "", fmt.Errorf("store bridge token hash: %w", err)
+	}
+	return plaintext, nil
+}
+
+// GenerateGlobalACPBridgeToken is GenerateACPBridgeToken's global-agent
+// sibling — identical token generation, ownership verified via
+// GetGlobalAgent (AgentScope == global) instead of a projectID match.
+func (s *Service) GenerateGlobalACPBridgeToken(ctx context.Context, agentID uuid.UUID) (string, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
 	if err != nil {
 		return "", err
 	}
@@ -789,6 +1058,137 @@ func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.Ag
 }
 
 // -------------------------------------------------------------------------
+// Global Conversations (ProjectID == uuid.Nil) — siblings of the
+// Conversations methods above, scoped to "no project" instead of a given
+// projectID, with the actor identified by ActorUserID instead of a
+// project_members.id. Global-chat conversations never gather repo/PR tools
+// (repo_plugin_ids is omitted from their trigger payloads) — repository
+// access is inherently project-shaped and out of scope for a conversation
+// with no project context.
+// -------------------------------------------------------------------------
+
+// ListGlobalConversations returns a page of the caller's own global-chat
+// conversations matching the filter. GlobalOnly and ActorUserID are forced
+// server-side — a caller can never list another user's global conversations
+// by passing a different actor, unlike the project-scoped listing which is
+// visible to the whole project team.
+func (s *Service) ListGlobalConversations(ctx context.Context, actorUserID uuid.UUID, in agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
+	in.GlobalOnly = true
+	in.ProjectID = nil
+	in.ActorUserID = &actorUserID
+	return s.repo.ListConversations(ctx, in, limit)
+}
+
+// GetGlobalConversation returns a single conversation after verifying it is
+// both a global-chat conversation (ProjectID == uuid.Nil) AND owned by
+// actorUserID — the global-chat equivalent of GetConversation's projectID
+// ownership check. Without the actor check, any authenticated user could
+// read, control, or inject messages into another user's global-chat
+// conversation simply by knowing its ID, since global conversations have no
+// project-team membership to gate access the way project conversations do.
+func (s *Service) GetGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error) {
+	c, err := s.repo.FindConversationByID(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if c.ProjectID != uuid.Nil || c.ActorUserID == nil || *c.ActorUserID != actorUserID {
+		return nil, agentdom.ErrConversationNotFound
+	}
+	return c, nil
+}
+
+// StopGlobalConversation stops a global conversation that is not already finished.
+func (s *Service) StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
+	if err != nil {
+		return err
+	}
+	if agentdom.ConversationStatus(c.Status).IsTerminal() {
+		return agentdom.ErrConversationAlreadyStopped
+	}
+	if err := s.repo.UpdateConversationStatus(ctx, conversationID, string(agentdom.ConversationStatusStopped)); err != nil {
+		return err
+	}
+	return s.publishTrigger(ctx, events.TopicAgentStop, map[string]any{
+		"conversation_id": conversationID.String(),
+	})
+}
+
+// PauseGlobalConversation interrupts a global conversation's in-flight turn.
+func (s *Service) PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
+	if err != nil {
+		return err
+	}
+	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
+		return agentdom.ErrConversationNotRunning
+	}
+	return s.publishTrigger(ctx, events.TopicAgentPause, map[string]any{
+		"conversation_id": conversationID.String(),
+	})
+}
+
+// GlobalHeartbeat refreshes a global conversation's idle timer.
+func (s *Service) GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	if _, err := s.GetGlobalConversation(ctx, conversationID, actorUserID); err != nil {
+		return err
+	}
+	return s.publishTrigger(ctx, events.TopicAgentHeartbeat, map[string]any{
+		"conversation_id": conversationID.String(),
+	})
+}
+
+// SendGlobalConversationMessage publishes a chat message to an active global conversation.
+func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error {
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
+	if err != nil {
+		return err
+	}
+
+	agent, err := s.repo.FindAgentByID(ctx, c.AgentID)
+	if err != nil {
+		return err
+	}
+	if agent.AgentType == agentdom.AgentTypeACP {
+		return s.sendACPGlobalConversationMessage(ctx, c, message, actorUserID)
+	}
+
+	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
+		return agentdom.ErrConversationNotRunning
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+		"conversation_id": conversationID.String(),
+		"agent_id":        c.AgentID.String(),
+		"message":         message,
+		"actor_user_id":   actorUserID.String(),
+	})
+}
+
+// sendACPGlobalConversationMessage is sendACPConversationMessage's
+// global-chat sibling — see its doc comment for why ACP conversations can
+// always be resumed regardless of trigger type or terminal status.
+func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, actorUserID uuid.UUID) error {
+	status := agentdom.ConversationStatus(c.Status)
+	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
+		return agentdom.ErrConversationBusy
+	}
+	claimed, err := s.repo.ClaimConversationStatus(ctx, c.ID, string(status), string(agentdom.ConversationStatusRunning))
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return agentdom.ErrConversationBusy
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+		"conversation_id": c.ID.String(),
+		"agent_id":        c.AgentID.String(),
+		"trigger_type":    c.TriggerType,
+		"actor_user_id":   actorUserID.String(),
+		"message":         message,
+	})
+}
+
+// -------------------------------------------------------------------------
 // Chat Sessions
 // -------------------------------------------------------------------------
 
@@ -929,6 +1329,123 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	return conv, nil
 }
 
+// -------------------------------------------------------------------------
+// Global Chat Sessions — siblings of the Chat Sessions methods above,
+// keyed by actor_user_id instead of a project's memberID.
+// -------------------------------------------------------------------------
+
+// ListGlobalChatSessions returns all global chat sessions for the given
+// agent and human actor.
+func (s *Service) ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+	return s.repo.ListGlobalChatSessions(ctx, agentID, actorUserID)
+}
+
+// StartGlobalChatSession creates a new global chat session and publishes
+// the initial message trigger.
+func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+	now := time.Now()
+
+	session := &agentdom.AgentChatSession{
+		ID:            uuid.New(),
+		AgentID:       agentID,
+		ActorUserID:   &actorUserID,
+		LastMessageAt: &now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := s.repo.CreateChatSession(ctx, session); err != nil {
+		return nil, nil, err
+	}
+
+	conv, err := s.createGlobalConversation(ctx, agentID, actorUserID, agentdom.AgentConversation{
+		TriggerType:   "chat_message",
+		ChatSessionID: &session.ID,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := s.publishGlobalChatTrigger(ctx, agentID, conv.ID, session.ID, actorUserID, message); err != nil {
+		return nil, nil, err
+	}
+
+	return session, conv, nil
+}
+
+// SendGlobalChatMessage sends a message to an existing global chat session
+// and publishes the trigger. Mirrors SendChatMessage's resume/terminal
+// handling — see its doc comment for the pause/resume rationale.
+func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session.ProjectID != uuid.Nil || session.ActorUserID == nil || *session.ActorUserID != actorUserID {
+		return nil, agentdom.ErrChatSessionNotFound
+	}
+
+	latest, err := s.repo.FindLatestConversationByChatSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	conv := latest
+	if latest != nil {
+		switch agentdom.ConversationStatus(latest.Status) {
+		case agentdom.ConversationStatusRunning, agentdom.ConversationStatusQueued:
+			return nil, agentdom.ErrConversationBusy
+		case agentdom.ConversationStatusPaused:
+			claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
+				string(agentdom.ConversationStatusPaused), string(agentdom.ConversationStatusRunning))
+			if err != nil {
+				return nil, err
+			}
+			if !claimed {
+				return nil, agentdom.ErrConversationBusy
+			}
+		case agentdom.ConversationStatusFinished, agentdom.ConversationStatusFailed, agentdom.ConversationStatusStopped:
+			agent, err := s.repo.FindAgentByID(ctx, session.AgentID)
+			if err != nil {
+				return nil, err
+			}
+			if agent.AgentType == agentdom.AgentTypeACP {
+				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
+					latest.Status, string(agentdom.ConversationStatusRunning))
+				if err != nil {
+					return nil, err
+				}
+				if !claimed {
+					return nil, agentdom.ErrConversationBusy
+				}
+			} else {
+				conv = nil
+			}
+		}
+	}
+
+	if conv == nil {
+		conv, err = s.createGlobalConversation(ctx, session.AgentID, actorUserID, agentdom.AgentConversation{
+			TriggerType:   "chat_message",
+			ChatSessionID: &sessionID,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	// else: resume — reuse the same conversation_id so ai-agent reattaches
+	// to the sandbox it kept alive rather than cold-starting a new one.
+
+	if err := s.publishGlobalChatTrigger(ctx, session.AgentID, conv.ID, sessionID, actorUserID, message); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	session.LastMessageAt = &now
+	_ = s.repo.UpdateChatSession(ctx, session)
+
+	return conv, nil
+}
+
 // ListChatMessages returns conversation events for a chat session.
 func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
 	// TODO: We'd need to aggregate events from all conversations in this session.
@@ -963,6 +1480,27 @@ func (s *Service) createConversation(ctx context.Context, projectID, agentID uui
 		Status:              string(agentdom.ConversationStatusQueued),
 		CreatedAt:           now,
 		UpdatedAt:           now,
+	}
+	if err := s.repo.CreateConversation(ctx, conv); err != nil {
+		return nil, err
+	}
+	return conv, nil
+}
+
+// createGlobalConversation is createConversation's global-chat sibling:
+// there is no project_id and the actor is a user directly rather than a
+// resolved project_members.id.
+func (s *Service) createGlobalConversation(ctx context.Context, agentID, actorUserID uuid.UUID, template agentdom.AgentConversation) (*agentdom.AgentConversation, error) {
+	now := time.Now()
+	conv := &agentdom.AgentConversation{
+		ID:            uuid.New(),
+		AgentID:       agentID,
+		TriggerType:   template.TriggerType,
+		ChatSessionID: template.ChatSessionID,
+		ActorUserID:   &actorUserID,
+		Status:        string(agentdom.ConversationStatusQueued),
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	if err := s.repo.CreateConversation(ctx, conv); err != nil {
 		return nil, err
@@ -1177,6 +1715,22 @@ func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessi
 		"trigger_type":    "chat_message",
 		"message":         message,
 		"repo_plugin_ids": strings.Join(repoPluginIDs, ","),
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
+}
+
+// publishGlobalChatTrigger is publishChatTrigger's global-chat sibling — no
+// project_id, actor identified by actor_user_id, and repo_plugin_ids
+// omitted entirely (repo/PR tools are excluded from global-chat
+// conversations; see the Global Conversations section's doc comment).
+func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID, sessionID, actorUserID uuid.UUID, message string) error {
+	payload := map[string]any{
+		"conversation_id": convID.String(),
+		"agent_id":        agentID.String(),
+		"chat_session_id": sessionID.String(),
+		"actor_user_id":   actorUserID.String(),
+		"trigger_type":    "chat_message",
+		"message":         message,
 	}
 	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
