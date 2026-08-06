@@ -447,7 +447,7 @@ func (s *projectPermStore) GetAgentProjectRoleName(_ context.Context, agentID, p
 			return role, nil
 		}
 	}
-	return "", fmt.Errorf("agent not found in project")
+	return "", authz.ErrAgentNotInProject
 }
 
 func (s *projectPermStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {

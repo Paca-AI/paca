@@ -2,11 +2,19 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 )
+
+// ErrAgentNotInProject indicates the agent has no project_members row for the
+// requested project (never added, or removed). This is an expected
+// authorization outcome — the agent simply has zero permissions in that
+// project — not a server error, so HasPermissionsForAgent treats it as
+// "not allowed" rather than propagating it as an error.
+var ErrAgentNotInProject = errors.New("authz: agent not found in project")
 
 // PermissionStore resolves effective permissions from global and project roles.
 type PermissionStore interface {
@@ -72,6 +80,13 @@ func (a *Authorizer) HasPermissionsForAgent(
 
 	roleName, err := a.agentRoleResolver.GetAgentProjectRoleName(ctx, agentID, projectID)
 	if err != nil {
+		if errors.Is(err, ErrAgentNotInProject) {
+			// Not a member of this project -> no permissions here, same as
+			// any other "granted nothing" outcome. Callers (the authz
+			// middleware) map allowed=false to a 403, so this must not be
+			// returned as an error or it surfaces as an unhandled 500.
+			return false, nil
+		}
 		return false, fmt.Errorf("authz: resolve agent role: %w", err)
 	}
 

@@ -2,6 +2,7 @@ package authz_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,6 +14,10 @@ import (
 
 type mockAgentRoleResolver struct {
 	roles map[uuid.UUID]map[uuid.UUID]string // project_id -> agent_id -> role_name
+	// resolveErr, when set, is returned verbatim instead of
+	// authz.ErrAgentNotInProject for any agent/project not found in roles —
+	// lets tests distinguish "not a member" from a genuine resolver failure.
+	resolveErr error
 }
 
 func (m *mockAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, agentID, projectID uuid.UUID) (string, error) {
@@ -21,7 +26,10 @@ func (m *mockAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, agent
 			return role, nil
 		}
 	}
-	return "", assert.AnError
+	if m.resolveErr != nil {
+		return "", m.resolveErr
+	}
+	return "", authz.ErrAgentNotInProject
 }
 
 type mockPermissionStore struct {
@@ -200,4 +208,41 @@ func TestHasGlobalPermissionsForAgent_ResolvesViaAgentsOwnGlobalRole(t *testing.
 		require.NoError(t, err)
 		assert.True(t, allowed)
 	})
+}
+
+// TestHasPermissionsForAgent_AgentNotInProject verifies that an agent with no
+// project_members row (never added, or removed) is denied (allowed=false)
+// without an error — regression test for the bug where this case propagated
+// as an unhandled error and surfaced to callers as a 500 instead of the
+// caller's normal 403 "insufficient permissions" path.
+func TestHasPermissionsForAgent_AgentNotInProject(t *testing.T) {
+	projectID := uuid.New()
+	strangerAgent := uuid.New()
+
+	resolver := &mockAgentRoleResolver{roles: map[uuid.UUID]map[uuid.UUID]string{}}
+	authorizer := authz.NewAuthorizer(&mockPermissionStore{}).WithAgentRoleResolver(resolver)
+
+	allowed, err := authorizer.HasPermissionsForAgent(context.Background(), strangerAgent, projectID, authz.PermissionTasksRead)
+	require.NoError(t, err, "agent not being a project member must not surface as an error")
+	assert.False(t, allowed)
+}
+
+// TestHasPermissionsForAgent_ResolverFailure verifies a genuine resolver
+// failure (e.g. a DB error) still propagates as an error, so it is not
+// silently swallowed into a false "not allowed" the way ErrAgentNotInProject
+// deliberately is.
+func TestHasPermissionsForAgent_ResolverFailure(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	resolver := &mockAgentRoleResolver{
+		roles:      map[uuid.UUID]map[uuid.UUID]string{},
+		resolveErr: assert.AnError,
+	}
+	authorizer := authz.NewAuthorizer(&mockPermissionStore{}).WithAgentRoleResolver(resolver)
+
+	allowed, err := authorizer.HasPermissionsForAgent(context.Background(), agentID, projectID, authz.PermissionTasksRead)
+	require.Error(t, err)
+	assert.False(t, allowed)
+	assert.False(t, errors.Is(err, authz.ErrAgentNotInProject))
 }

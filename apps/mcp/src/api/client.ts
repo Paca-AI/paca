@@ -15,7 +15,7 @@ import type {
 	UpdateSprintInput,
 	UpdateTaskInput,
 } from "../types/index.js";
-import { markdownToBlocknote } from "../utils/index.js";
+import { formatApiRequestError, markdownToBlocknote } from "../utils/index.js";
 
 /**
  * Paca API client for interacting with the Paca backend.
@@ -67,7 +67,7 @@ export class PacaAPIClient {
 		if (!response.ok) {
 			const errorText = await response.text();
 			throw new Error(
-				`API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+				formatApiRequestError(response.status, response.statusText, errorText),
 			);
 		}
 

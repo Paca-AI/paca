@@ -12,6 +12,7 @@ import type {
 	UpdateViewInput,
 	View,
 } from "../types/index.js";
+import { formatApiRequestError } from "../utils/index.js";
 
 /**
  * Extended API client for Views, Custom Fields, and Attachments.
@@ -51,7 +52,7 @@ export class PacaAPIViewsClient {
 		if (!response.ok) {
 			const errorText = await response.text();
 			throw new Error(
-				`API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+				formatApiRequestError(response.status, response.statusText, errorText),
 			);
 		}
 

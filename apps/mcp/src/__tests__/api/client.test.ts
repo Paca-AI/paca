@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock markdownToBlocknote so tests don't need a live BlockNote editor.
-// client.ts imports from "../utils/index.js" (relative to src/api/), which
-// resolves to the same absolute path as "../../utils/index.js" from here.
-vi.mock("../../utils/index.js", () => ({
-	markdownToBlocknote: vi.fn((md: string) => [{ type: "paragraph", text: md }]),
-	blocknoteToMarkdown: vi.fn(() => ""),
-}));
+// Mock markdownToBlocknote so tests don't need a live BlockNote editor, while
+// keeping the real formatApiRequestError (used by the error-handling tests
+// below). client.ts imports from "../utils/index.js" (relative to src/api/),
+// which resolves to the same absolute path as "../../utils/index.js" here.
+vi.mock("../../utils/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../utils/index.js")>();
+	return {
+		...actual,
+		markdownToBlocknote: vi.fn((md: string) => [
+			{ type: "paragraph", text: md },
+		]),
+		blocknoteToMarkdown: vi.fn(() => ""),
+	};
+});
 
 import { PacaAPIClient } from "../../api/client.js";
 import type { PacaConfig } from "../../types/index.js";

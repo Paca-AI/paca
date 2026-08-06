@@ -14,6 +14,7 @@ import type {
 	UpdateAutomationInput,
 	UpdateAutomationNodeInput,
 } from "../types/index.js";
+import { formatApiRequestError } from "../utils/index.js";
 
 /**
  * API client for automation-graph endpoints.
@@ -53,7 +54,7 @@ export class PacaAPIAutomationClient {
 		if (!response.ok) {
 			const errorText = await response.text();
 			throw new Error(
-				`API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+				formatApiRequestError(response.status, response.statusText, errorText),
 			);
 		}
 

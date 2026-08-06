@@ -23,7 +23,7 @@ func (s *AuthzPermissionStore) GetAgentProjectRoleName(ctx context.Context, agen
 		WHERE pm.agent_id = $1 AND pm.project_id = $2 AND pm.deleted_at IS NULL`,
 		agentID.String(), projectID.String())
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("agent not found in project")
+		return "", authz.ErrAgentNotInProject
 	}
 	if err != nil {
 		return "", fmt.Errorf("authz store: get agent project role name: %w", err)
