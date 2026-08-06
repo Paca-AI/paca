@@ -11,6 +11,7 @@ import logging
 import threading
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from paca_acp_bridge.runner import (
     ConversationRunner,
@@ -302,15 +303,32 @@ async def test_event_callback_logs_when_send_fails_on_loop(caplog):
     assert any("Failed to report event" in record.getMessage() for record in caplog.records)
 
 
-class _FakeFinishEvent:
+class _FakeFinishAction(BaseModel):
+    """Frozen like the SDK's FinishAction, so clearing the message in place is
+    impossible and the copy path is the one under test."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message: str
+
+
+class _FakeFinishEvent(BaseModel):
     """Stands in for the ActionEvent that closes an ACP turn: a FinishAction
-    whose message is the whole turn's assistant text, joined by the SDK."""
+    whose message is the whole turn's assistant text, joined by the SDK.
 
-    def __init__(self, message: str) -> None:
-        self._message = message
+    A real (frozen) model rather than a hand-rolled stub, so the payload is
+    produced by Pydantic's serializer exactly as the SDK's own events are.
+    """
 
-    def model_dump_json(self):
-        return json.dumps({"tool_name": "finish", "action": {"message": self._message}})
+    model_config = ConfigDict(frozen=True)
+
+    action: _FakeFinishAction
+    tool_name: str = "finish"
+    reasoning_content: str | None = None
+    source: str = "agent"
+
+    def __init__(self, message: str, **kwargs) -> None:
+        super().__init__(action=_FakeFinishAction(message=message), **kwargs)
 
 
 async def _drain():
@@ -477,3 +495,83 @@ def test_start_turn_drops_state_from_the_previous_turn():
     assert relay.take_pending() is None
     # The previous turn's text must no longer suppress this turn's finish message.
     assert not relay.already_emitted("text from the previous turn")
+
+
+async def test_blanking_the_finish_message_leaves_the_rest_of_the_payload_byte_intact():
+    """The payload is serialized once, by Pydantic. Parsing it and re-encoding
+    with json.dumps would escape non-ASCII elsewhere in the event and re-space
+    the JSON; both models are frozen, so the message is cleared on a copy."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    event = _FakeFinishEvent("done ✅", reasoning_content="café ✅ déjà vu")
+    untouched = event.model_dump_json()
+
+    relay.on_token("done ✅")
+    callback(event)
+    await _drain()
+
+    payload = sent[-1]["payload"]
+    # Non-ASCII stays as written, exactly as Pydantic emits it.
+    assert "café ✅ déjà vu" in payload
+    assert "\\u00e9" not in payload
+    assert json.loads(payload)["action"]["message"] == ""
+    # The SDK keeps this event in conversation history — it must not be mutated.
+    assert event.action.message == "done ✅"
+    assert event.model_dump_json() == untouched
+
+
+async def test_a_masking_failure_drops_the_segment_and_keeps_the_finish_message():
+    """Fail closed: unmaskable text is never emitted. Dropping the segment also
+    leaves the FinishAction message un-blanked, so the text still reaches the
+    conversation at the end of the turn, masked by the SDK."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    class _Registry:
+        @staticmethod
+        def mask_secrets_in_output(_text):
+            raise RuntimeError("secret registry unavailable")
+
+    class _State:
+        secret_registry = _Registry()
+
+    class _Conversation:
+        state = _State()
+
+    runner, relay = _runner_with_relay(send)
+    relay.bind_masker(_Conversation())
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("text that could not be masked")
+    callback(_FakeFinishEvent("text that could not be masked"))
+    await _drain()
+
+    assert [m["event_type"] for m in sent] == ["_FakeFinishEvent"]
+    assert json.loads(sent[0]["payload"])["action"]["message"] == ("text that could not be masked")
+
+
+async def test_non_finish_events_are_never_rewritten():
+    """The guard is `tool_name == "finish"`; SDK ActionEvents always carry a
+    tool_name, so anything else must pass through untouched."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    event = _FakeFinishEvent("identical text", tool_name="str_replace_editor")
+    relay.on_token("identical text")
+    callback(event)
+    await _drain()
+
+    assert json.loads(sent[-1]["payload"])["action"]["message"] == "identical text"

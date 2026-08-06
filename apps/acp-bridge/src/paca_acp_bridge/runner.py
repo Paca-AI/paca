@@ -125,7 +125,18 @@ class _AssistantTextRelay:
             try:
                 text = self._mask(text)
             except Exception:
-                logger.debug("Secret masking failed for streamed text", exc_info=True)
+                # Fail closed. Emitting the unmasked text could persist a secret,
+                # which is the same reason the SDK treats a masking failure as
+                # fatal to the turn rather than shipping what it could not mask
+                # (``_raise_masking_error``). Dropping the segment also leaves
+                # ``_emitted`` short of the closing FinishAction message, so that
+                # message is kept and the text still reaches the conversation —
+                # masked by the SDK, at the end of the turn as it was before.
+                logger.warning(
+                    "Secret masking failed for streamed text; dropping this segment",
+                    exc_info=True,
+                )
+                return None
         if not text:
             return None
         self._emitted.append(text)
@@ -289,8 +300,8 @@ class ConversationRunner:
                 "Failed to report status for conversation %s", conversation_id, exc_info=True
             )
 
-    def _strip_duplicated_finish_message(self, payload: str, relay: _AssistantTextRelay) -> str:
-        """Blank a FinishAction message that was already streamed as text.
+    def _event_payload(self, event: Any, relay: _AssistantTextRelay | None) -> str:
+        """Serialize an event, dropping a FinishAction message already streamed.
 
         The SDK builds that message by joining every chunk of the turn, so once
         those chunks have gone out as ``MessageEvent``s it is a verbatim second
@@ -302,32 +313,34 @@ class ConversationRunner:
         Only an exact match is removed. If the two ever diverge — the SDK masks
         the join a second time, which can catch a secret split across two chunks
         — the message is left alone and shown as-is rather than discarded.
+
+        The message is cleared on a copy, and the payload is produced by
+        Pydantic's serializer exactly once. ``ActionEvent`` and ``FinishAction``
+        are both frozen, so it cannot be cleared in place — and the SDK keeps
+        this event in conversation history, so it must not be mutated anyway.
         """
-        try:
-            data = json.loads(payload)
-        except (TypeError, ValueError):
-            return payload
-        if not isinstance(data, dict) or data.get("tool_name") not in (None, "finish"):
-            return payload
-        action = data.get("action")
-        if not isinstance(action, dict):
-            return payload
-        message = action.get("message")
-        if not isinstance(message, str) or not relay.already_emitted(message):
-            return payload
-        action["message"] = ""
-        return json.dumps(data)
+        if not hasattr(event, "model_dump_json"):
+            return "{}"
+        if relay is not None and getattr(event, "tool_name", None) == "finish":
+            action = getattr(event, "action", None)
+            message = getattr(action, "message", None)
+            if isinstance(message, str) and relay.already_emitted(message):
+                event = event.model_copy(
+                    update={"action": action.model_copy(update={"message": ""})}
+                )
+        return event.model_dump_json()
 
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:
             event_type = type(event).__name__
             try:
-                payload = event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
                 relay = self._text_relays.get(conversation_id)
                 if relay is not None:
                     # Flush what the agent said since the previous event before
                     # forwarding this one, so its narration is ordered against
-                    # the tool calls it describes.
+                    # the tool calls it describes. This has to happen before the
+                    # payload is built: the flushed segment is what makes the
+                    # closing FinishAction message a duplicate.
                     streamed = relay.take_pending()
                     if streamed is not None:
                         self._dispatch_event(
@@ -337,12 +350,12 @@ class ConversationRunner:
                                 "project_id": project_id,
                                 "event_type": "MessageEvent",
                                 "event_source": "agent",
-                                "payload": json.dumps({"content": streamed}),
+                                "payload": json.dumps({"content": streamed}, ensure_ascii=False),
                             },
                             "MessageEvent",
                             conversation_id,
                         )
-                    payload = self._strip_duplicated_finish_message(payload, relay)
+                payload = self._event_payload(event, relay)
                 message = {
                     "type": "event",
                     "conversation_id": conversation_id,
