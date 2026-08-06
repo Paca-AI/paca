@@ -100,11 +100,10 @@ async def bridge_ws(websocket: WebSocket) -> None:
                 # bridge session can relay conversations from different
                 # projects (or the global chat, no project at all) — see
                 # conversation_repository.get_conversation_realtime_context.
-                conv_project_id, conv_actor_user_id = (
-                    await conversation_repository.get_conversation_realtime_context(
-                        conversation_id
-                    )
-                )
+                (
+                    conv_project_id,
+                    conv_actor_user_id,
+                ) = await conversation_repository.get_conversation_realtime_context(conversation_id)
                 event_index = await conversation_repository.get_next_event_index(conversation_id)
                 await persist_conversation_event(
                     conversation_id=conversation_id,
@@ -139,11 +138,10 @@ async def bridge_ws(websocket: WebSocket) -> None:
                 await conversation_repository.update_conversation_status(
                     conversation_id, status, error_message=data.get("error_message")
                 )
-                conv_project_id, conv_actor_user_id = (
-                    await conversation_repository.get_conversation_realtime_context(
-                        conversation_id
-                    )
-                )
+                (
+                    conv_project_id,
+                    conv_actor_user_id,
+                ) = await conversation_repository.get_conversation_realtime_context(conversation_id)
                 await stream_store.publish_realtime(
                     project_id=conv_project_id,
                     conversation_id=conversation_id,
