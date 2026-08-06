@@ -243,28 +243,25 @@ export function CreateAgentDialog({
 			// Generate the bridge token and MCP key as part of the same
 			// "Creating…" spinner instead of separate loading steps inside the
 			// setup dialog — the dialog can then just display already-resolved
-			// results, with nothing left for the user to click. Each generation
-			// is independent: if one sub-step fails, the agent still exists and
-			// the other's result is unaffected — fall through with that one
-			// null so the setup dialog offers a manual retry for just that
-			// value instead of failing the whole creation.
-			let token: AcpBridgeToken | null = null;
-			try {
-				token = projectId
-					? await generateAcpBridgeToken(projectId, agent.id)
-					: await generateGlobalAcpBridgeToken(agent.id);
-			} catch {
-				// token stays null
-			}
-			let mcpKey: string | null = null;
-			try {
-				const result = projectId
-					? await generateAgentMCPKey(projectId, agent.id)
-					: await generateGlobalAgentMCPKey(agent.id);
-				mcpKey = result.token;
-			} catch {
-				// mcpKey stays null
-			}
+			// results, with nothing left for the user to click. The two
+			// generations are independent of each other, so they run
+			// concurrently rather than adding their latency on top of each
+			// other: if one sub-step fails, the agent still exists and the
+			// other's result is unaffected — fall through with that one null
+			// so the setup dialog offers a manual retry for just that value
+			// instead of failing the whole creation.
+			const [tokenResult, mcpKeyResult] = await Promise.allSettled([
+				projectId
+					? generateAcpBridgeToken(projectId, agent.id)
+					: generateGlobalAcpBridgeToken(agent.id),
+				projectId
+					? generateAgentMCPKey(projectId, agent.id)
+					: generateGlobalAgentMCPKey(agent.id),
+			]);
+			const token =
+				tokenResult.status === "fulfilled" ? tokenResult.value : null;
+			const mcpKey =
+				mcpKeyResult.status === "fulfilled" ? mcpKeyResult.value.token : null;
 			return { agent, token, mcpKey };
 		},
 		onSuccess: ({ agent, token, mcpKey }) => {

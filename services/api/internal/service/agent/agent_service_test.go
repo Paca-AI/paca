@@ -2616,6 +2616,161 @@ func TestGenerateACPBridgeToken_WrongProject(t *testing.T) {
 }
 
 // -------------------------------------------------------------------------
+// GenerateAgentMCPKey / GenerateGlobalAgentMCPKey — same shape as
+// GenerateACPBridgeToken above, but persisted via SetMCPAPIKeyHash and
+// resolved later by FindAgentByMCPAPIKeyHash (see the authn middleware's
+// agentClaimsForKey).
+// -------------------------------------------------------------------------
+
+func TestGenerateAgentMCPKey_Success(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	provider := agentdom.ACPProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:          agentID,
+		ProjectID:   projectID,
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: &provider,
+	}
+
+	var storedHash string
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	repo.setMCPAPIKeyHash = func(_ context.Context, id uuid.UUID, hash string) error {
+		if id != agentID {
+			t.Fatalf("expected agentID %v, got %v", agentID, id)
+		}
+		storedHash = hash
+		return nil
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	key, err := svc.GenerateAgentMCPKey(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, key)
+	assert.NotEmpty(t, storedHash)
+	// The stored value must be a hash, never the plaintext key itself.
+	assert.NotEqual(t, key, storedHash)
+}
+
+func TestGenerateAgentMCPKey_NonACPAgent(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	agent := &agentdom.Agent{
+		ID:        agentID,
+		ProjectID: projectID,
+		AgentType: agentdom.AgentTypeLLM,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GenerateAgentMCPKey(context.Background(), projectID, agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentTypeInvalid)
+}
+
+func TestGenerateAgentMCPKey_WrongProject(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	// Same project-scope enforcement as TestGenerateACPBridgeToken_WrongProject.
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GenerateAgentMCPKey(context.Background(), projectID, agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+func TestGenerateGlobalAgentMCPKey_Success(t *testing.T) {
+	agentID := uuid.New()
+	provider := agentdom.ACPProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:          agentID,
+		AgentScope:  agentdom.AgentScopeGlobal,
+		AgentType:   agentdom.AgentTypeACP,
+		ACPProvider: &provider,
+	}
+
+	var storedHash string
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	repo.setMCPAPIKeyHash = func(_ context.Context, id uuid.UUID, hash string) error {
+		if id != agentID {
+			t.Fatalf("expected agentID %v, got %v", agentID, id)
+		}
+		storedHash = hash
+		return nil
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	key, err := svc.GenerateGlobalAgentMCPKey(context.Background(), agentID)
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, key)
+	assert.NotEmpty(t, storedHash)
+	assert.NotEqual(t, key, storedHash)
+}
+
+func TestGenerateGlobalAgentMCPKey_NonACPAgent(t *testing.T) {
+	agentID := uuid.New()
+	agent := &agentdom.Agent{
+		ID:         agentID,
+		AgentScope: agentdom.AgentScopeGlobal,
+		AgentType:  agentdom.AgentTypeLLM,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GenerateGlobalAgentMCPKey(context.Background(), agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentTypeInvalid)
+}
+
+func TestGenerateGlobalAgentMCPKey_NotGlobalScope(t *testing.T) {
+	agentID := uuid.New()
+	// A project-scoped agent must not be reachable through the global
+	// endpoint — GetGlobalAgent rejects it as not found.
+	agent := &agentdom.Agent{
+		ID:         agentID,
+		AgentScope: agentdom.AgentScopeProject,
+		AgentType:  agentdom.AgentTypeACP,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GenerateGlobalAgentMCPKey(context.Background(), agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// -------------------------------------------------------------------------
 // requireNonACPAgent — MCP servers / skills / env vars are meaningless for
 // ACP-type agents (services/ai-agent's acp_dispatch.py never reads any of
 // these tables), so every write path must reject them outright instead of
