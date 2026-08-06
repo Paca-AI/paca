@@ -33,6 +33,8 @@ type mockAgentRepo struct {
 	softDeleteAgentWithMembership   func(ctx context.Context, projectID, agentID uuid.UUID) error
 	setAgentMemberID                func(ctx context.Context, agentID, memberID uuid.UUID) error
 	setACPBridgeTokenHash           func(ctx context.Context, agentID uuid.UUID, hash string) error
+	setMCPAPIKeyHash                func(ctx context.Context, agentID uuid.UUID, hash string) error
+	findAgentByMCPAPIKeyHash        func(ctx context.Context, hash string) (*agentdom.Agent, error)
 	listMCPServers                  func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error)
 	findMCPServerByID               func(ctx context.Context, id uuid.UUID) (*agentdom.AgentMCPServer, error)
 	createMCPServer                 func(ctx context.Context, server *agentdom.AgentMCPServer) error
@@ -193,6 +195,20 @@ func (m *mockAgentRepo) SetACPBridgeTokenHash(ctx context.Context, agentID uuid.
 		return m.setACPBridgeTokenHash(ctx, agentID, hash)
 	}
 	return nil
+}
+
+func (m *mockAgentRepo) SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUID, hash string) error {
+	if m.setMCPAPIKeyHash != nil {
+		return m.setMCPAPIKeyHash(ctx, agentID, hash)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) FindAgentByMCPAPIKeyHash(ctx context.Context, hash string) (*agentdom.Agent, error) {
+	if m.findAgentByMCPAPIKeyHash != nil {
+		return m.findAgentByMCPAPIKeyHash(ctx, hash)
+	}
+	return nil, agentdom.ErrAgentNotFound
 }
 
 func (m *mockAgentRepo) ListMCPServers(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error) {

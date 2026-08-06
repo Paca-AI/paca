@@ -134,6 +134,7 @@ export interface Agent {
 	acp_provider?: ACPProvider | null;
 	acp_command?: string[];
 	has_acp_bridge_token: boolean;
+	has_mcp_api_key: boolean;
 	system_prompt: string;
 	git_committer_name: string;
 	git_committer_email: string;
@@ -513,6 +514,36 @@ export async function getGlobalAcpBridgeStatus(
 		`/admin/agents/${agentId}/acp-bridge-status`,
 	);
 	return data;
+}
+
+// A freshly generated MCP API key bound to one specific agent — used as
+// PACA_API_KEY alongside PACA_AGENT_ID in that agent's MCP connect command,
+// so tool calls are attributed to the agent instead of to whoever generated
+// it. Shown once; only its hash is persisted, and generating a new one
+// invalidates whatever key was live before (only ever one live key per
+// agent, same as AcpBridgeToken).
+export interface AgentMCPKey {
+	token: string;
+}
+
+export async function generateAgentMCPKey(
+	projectId: string,
+	agentId: string,
+): Promise<AgentMCPKey> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentMCPKey>>(
+		`/projects/${projectId}/agents/${agentId}/mcp-agent-key`,
+	);
+	return data.data;
+}
+
+// generateGlobalAgentMCPKey is generateAgentMCPKey's global-agent sibling.
+export async function generateGlobalAgentMCPKey(
+	agentId: string,
+): Promise<AgentMCPKey> {
+	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentMCPKey>>(
+		`/admin/agents/${agentId}/mcp-agent-key`,
+	);
+	return data.data;
 }
 
 export async function writeTaskDescriptionWithAI(

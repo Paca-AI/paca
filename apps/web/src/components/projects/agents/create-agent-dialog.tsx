@@ -48,7 +48,9 @@ import {
 	createAgent,
 	createGlobalAgent,
 	generateAcpBridgeToken,
+	generateAgentMCPKey,
 	generateGlobalAcpBridgeToken,
+	generateGlobalAgentMCPKey,
 	globalAgentsQueryOptions,
 	llmModelsQueryOptions,
 } from "@/lib/agent-api";
@@ -88,7 +90,11 @@ export function CreateAgentDialog({
 	projectId?: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onAcpAgentCreated: (agent: Agent, token: AcpBridgeToken | null) => void;
+	onAcpAgentCreated: (
+		agent: Agent,
+		token: AcpBridgeToken | null,
+		mcpKey: string | null,
+	) => void;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -232,24 +238,36 @@ export function CreateAgentDialog({
 						...typeFields,
 					});
 			if (agent.agent_type !== "acp") {
-				return { agent, token: null };
+				return { agent, token: null, mcpKey: null };
 			}
-			// Generate the bridge token as part of the same "Creating…" spinner
-			// instead of a separate loading step inside the setup dialog — the
-			// dialog can then just display an already-resolved result. If this
-			// sub-step fails, the agent still exists; fall through with
-			// token: null so the setup dialog offers a manual retry instead of
-			// failing the whole creation.
+			// Generate the bridge token and MCP key as part of the same
+			// "Creating…" spinner instead of separate loading steps inside the
+			// setup dialog — the dialog can then just display already-resolved
+			// results, with nothing left for the user to click. Each generation
+			// is independent: if one sub-step fails, the agent still exists and
+			// the other's result is unaffected — fall through with that one
+			// null so the setup dialog offers a manual retry for just that
+			// value instead of failing the whole creation.
+			let token: AcpBridgeToken | null = null;
 			try {
-				const token = projectId
+				token = projectId
 					? await generateAcpBridgeToken(projectId, agent.id)
 					: await generateGlobalAcpBridgeToken(agent.id);
-				return { agent, token };
 			} catch {
-				return { agent, token: null };
+				// token stays null
 			}
+			let mcpKey: string | null = null;
+			try {
+				const result = projectId
+					? await generateAgentMCPKey(projectId, agent.id)
+					: await generateGlobalAgentMCPKey(agent.id);
+				mcpKey = result.token;
+			} catch {
+				// mcpKey stays null
+			}
+			return { agent, token, mcpKey };
 		},
-		onSuccess: ({ agent, token }) => {
+		onSuccess: ({ agent, token, mcpKey }) => {
 			if (projectId) {
 				qc.invalidateQueries({
 					queryKey: ["projects", projectId, "agents"],
@@ -260,7 +278,7 @@ export function CreateAgentDialog({
 			}
 			handleClose(false);
 			if (agent.agent_type === "acp") {
-				onAcpAgentCreated(agent, token);
+				onAcpAgentCreated(agent, token, mcpKey);
 			}
 		},
 	});
@@ -805,6 +823,7 @@ export function AcpSetupDialog({
 	projectId,
 	agent,
 	token,
+	mcpKey,
 	open,
 	canWrite,
 	onOpenChange,
@@ -814,6 +833,7 @@ export function AcpSetupDialog({
 	projectId?: string;
 	agent: Agent | null;
 	token: AcpBridgeToken | null;
+	mcpKey: string | null;
 	open: boolean;
 	canWrite: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -839,8 +859,10 @@ export function AcpSetupDialog({
 						agentId={agent.id}
 						acpProvider={agent.acp_provider ?? "claude-code"}
 						hasToken={agent.has_acp_bridge_token || token !== null}
+						hasKey={agent.has_mcp_api_key || mcpKey !== null}
 						canWrite={canWrite}
 						initialToken={token}
+						initialKey={mcpKey}
 						onTokenGenerated={() => {
 							if (projectId) {
 								qc.invalidateQueries({

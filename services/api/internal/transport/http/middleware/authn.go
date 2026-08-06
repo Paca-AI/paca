@@ -226,7 +226,7 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 					// degrades to "no agent identity" rather than a 401,
 					// same as it already does for an Authenticate error a
 					// few lines up.
-					agentID, actorUserID, _ := resolveAgentClaims(r, apiKeyAuthenticator, tokenStr)
+					agentID, actorUserID, _ := agentClaimsForKey(r, apiKeyAuthenticator, tokenStr, key)
 					r = setAPIKeyAuthContext(r, key.UserID, agentID, actorUserID)
 				}
 			}
@@ -249,7 +249,7 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			return r, false
 		}
 
-		agentID, actorUserID, claimErr := resolveAgentClaims(r, apiKeyAuthenticator, tokenStr)
+		agentID, actorUserID, claimErr := agentClaimsForKey(r, apiKeyAuthenticator, tokenStr, key)
 		if claimErr != nil {
 			presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unable to verify claimed agent identity"))
 			return r, false
@@ -326,6 +326,21 @@ func resolveAgentClaims(r *http.Request, apiKeyAuthenticator APIKeyAuthenticator
 
 	verifier, _ := apiKeyAuthenticator.(AgentIdentityVerifier)
 	return verifyAgentIdentity(r.Context(), verifier, claimedAgentID, claimedActorUserID)
+}
+
+// agentClaimsForKey resolves which agent (if any) an already-authenticated
+// API-key request should be attributed to. A per-agent MCP key (key.AgentID
+// set by apikeysvc.Service.Authenticate's FindAgentByMCPAPIKeyHash fallback)
+// already proves its own agent identity — the key itself is the evidence,
+// so it's trusted directly with no header claim to verify. Any other key
+// (a personal key, or the shared static agent key) falls back to
+// resolveAgentClaims, which only ever honors X-Agent-ID/X-Actor-User-ID for
+// the latter.
+func agentClaimsForKey(r *http.Request, apiKeyAuthenticator APIKeyAuthenticator, tokenStr string, key *apikeydom.APIKey) (agentID, actorUserID uuid.UUID, err error) {
+	if key.AgentID != nil {
+		return *key.AgentID, uuid.Nil, nil
+	}
+	return resolveAgentClaims(r, apiKeyAuthenticator, tokenStr)
 }
 
 func setAPIKeyAuthContext(r *http.Request, userID, agentID, actorUserID uuid.UUID) *http.Request {

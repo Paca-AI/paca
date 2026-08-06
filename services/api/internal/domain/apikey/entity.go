@@ -19,6 +19,13 @@ type APIKey struct {
 	ExpiresAt  *time.Time
 	CreatedAt  time.Time
 	RevokedAt  *time.Time
+	// AgentID is set only for the synthetic record Authenticate returns when
+	// the presented key is a specific agent's own MCP API key (as opposed
+	// to a human's personal key, or the shared static agent key) — never
+	// persisted in the api_keys table. Its presence tells the authn
+	// middleware which agent the key already proves identity for, with no
+	// separate X-Agent-ID header claim needed or trusted.
+	AgentID *uuid.UUID
 }
 
 // IsActive reports whether the key can be used for authentication.

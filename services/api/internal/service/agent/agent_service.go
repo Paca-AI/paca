@@ -51,6 +51,7 @@ func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
 	return s
 }
 
+
 // encryptKey encrypts plaintext if an encryptor is configured; otherwise returns plaintext unchanged.
 func (s *Service) encryptKey(plaintext string) (string, error) {
 	if s.encryptor == nil || plaintext == "" {
@@ -589,6 +590,54 @@ func (s *Service) GenerateGlobalACPBridgeToken(ctx context.Context, agentID uuid
 	hash := hex.EncodeToString(sum[:])
 	if err := s.repo.SetACPBridgeTokenHash(ctx, agentID, hash); err != nil {
 		return "", fmt.Errorf("store bridge token hash: %w", err)
+	}
+	return plaintext, nil
+}
+
+// GenerateAgentMCPKey issues a new MCP API key for an ACP-type agent,
+// replacing any existing one, and returns the plaintext once — only its
+// SHA-256 hash is persisted. Overwriting the hash means the previous key
+// stops authenticating immediately (see AgentRepository.SetMCPAPIKeyHash).
+func (s *Service) GenerateAgentMCPKey(ctx context.Context, projectID, agentID uuid.UUID) (string, error) {
+	a, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
+		return "", err
+	}
+	if a.AgentType != agentdom.AgentTypeACP {
+		return "", agentdom.ErrAgentTypeInvalid
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate MCP API key: %w", err)
+	}
+	plaintext := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(plaintext))
+	hash := hex.EncodeToString(sum[:])
+	if err := s.repo.SetMCPAPIKeyHash(ctx, agentID, hash); err != nil {
+		return "", fmt.Errorf("store MCP API key hash: %w", err)
+	}
+	return plaintext, nil
+}
+
+// GenerateGlobalAgentMCPKey is GenerateAgentMCPKey's global-agent sibling —
+// ownership verified via GetGlobalAgent instead of a projectID match.
+func (s *Service) GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UUID) (string, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return "", err
+	}
+	if a.AgentType != agentdom.AgentTypeACP {
+		return "", agentdom.ErrAgentTypeInvalid
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate MCP API key: %w", err)
+	}
+	plaintext := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(plaintext))
+	hash := hex.EncodeToString(sum[:])
+	if err := s.repo.SetMCPAPIKeyHash(ctx, agentID, hash); err != nil {
+		return "", fmt.Errorf("store MCP API key hash: %w", err)
 	}
 	return plaintext, nil
 }

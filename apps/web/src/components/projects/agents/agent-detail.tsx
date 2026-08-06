@@ -418,6 +418,7 @@ function OverviewTab({
 						agentId={agent.id}
 						acpProvider={agent.acp_provider ?? "claude-code"}
 						hasToken={agent.has_acp_bridge_token}
+						hasKey={agent.has_mcp_api_key}
 						canWrite={canWrite}
 						onTokenGenerated={() =>
 							qc.setQueryData(
@@ -517,6 +518,7 @@ function LocalBridgePanel({
 	agentId,
 	acpProvider,
 	hasToken,
+	hasKey,
 	canWrite,
 	onTokenGenerated,
 }: {
@@ -524,6 +526,7 @@ function LocalBridgePanel({
 	agentId: string;
 	acpProvider: ACPProvider;
 	hasToken: boolean;
+	hasKey: boolean;
 	canWrite: boolean;
 	onTokenGenerated: () => void;
 }) {
@@ -541,6 +544,7 @@ function LocalBridgePanel({
 				agentId={agentId}
 				acpProvider={acpProvider}
 				hasToken={hasToken}
+				hasKey={hasKey}
 				canWrite={canWrite}
 				onTokenGenerated={onTokenGenerated}
 			/>

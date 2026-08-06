@@ -62,6 +62,7 @@ function AgentsPage() {
 	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(
 		null,
 	);
+	const [acpSetupKey, setAcpSetupKey] = useState<string | null>(null);
 
 	// `?create=true` (from the agent picker's "no agents yet" empty state)
 	// only needs to open the dialog once — leaving it in the URL would
@@ -160,21 +161,24 @@ function AgentsPage() {
 				projectId={projectId}
 				open={createOpen}
 				onOpenChange={handleCreateOpenChange}
-				onAcpAgentCreated={(agent, token) => {
+				onAcpAgentCreated={(agent, token, mcpKey) => {
 					setAcpSetupAgent(agent);
 					setAcpSetupToken(token);
+					setAcpSetupKey(mcpKey);
 				}}
 			/>
 			<AcpSetupDialog
 				projectId={projectId}
 				agent={acpSetupAgent}
 				token={acpSetupToken}
+				mcpKey={acpSetupKey}
 				open={acpSetupAgent !== null}
 				canWrite={canWrite}
 				onOpenChange={(v) => {
 					if (!v) {
 						setAcpSetupAgent(null);
 						setAcpSetupToken(null);
+						setAcpSetupKey(null);
 					}
 				}}
 				onTokenGenerated={() =>

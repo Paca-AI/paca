@@ -49,6 +49,15 @@ type AgentRepository interface {
 	// SetACPBridgeTokenHash stores the SHA-256 hash of a newly generated
 	// local-bridge auth token, replacing any previous one.
 	SetACPBridgeTokenHash(ctx context.Context, agentID uuid.UUID, hash string) error
+	// SetMCPAPIKeyHash stores the SHA-256 hash of a newly generated MCP API
+	// key, replacing any previous one — only one key is ever live per agent,
+	// so the previous key stops authenticating the moment this is called.
+	SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUID, hash string) error
+	// FindAgentByMCPAPIKeyHash resolves the agent whose current MCP API key
+	// hashes to hash, for the authn middleware to identify the caller
+	// directly from the key it presented — no separate identity claim
+	// needed. Returns ErrAgentNotFound if no live agent matches.
+	FindAgentByMCPAPIKeyHash(ctx context.Context, hash string) (*Agent, error)
 
 	// -- Global agents (AgentScope == AgentScopeGlobal, ProjectID == uuid.Nil).
 

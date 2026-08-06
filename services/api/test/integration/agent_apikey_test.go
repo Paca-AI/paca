@@ -117,6 +117,10 @@ func (passthroughAgentIdentityStore) HasActiveGlobalChatSession(context.Context,
 	return true, nil
 }
 
+func (passthroughAgentIdentityStore) FindAgentByMCPAPIKeyHash(context.Context, string) (*agentdom.Agent, error) {
+	return nil, agentdom.ErrAgentNotFound
+}
+
 // agentKeyAuthReq creates a request authenticated with agent API key
 func agentKeyAuthReq(ctx context.Context, method, url string, agentID uuid.UUID, body any) *http.Request {
 	var reader *bytes.Reader

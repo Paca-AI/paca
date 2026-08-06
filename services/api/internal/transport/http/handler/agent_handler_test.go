@@ -63,6 +63,9 @@ func (m *mockAgentSvc) UpdateAgent(_ context.Context, _, _ uuid.UUID, _ agentdom
 func (m *mockAgentSvc) GenerateACPBridgeToken(_ context.Context, _, _ uuid.UUID) (string, error) {
 	return "", nil
 }
+func (m *mockAgentSvc) GenerateAgentMCPKey(_ context.Context, _, _ uuid.UUID) (string, error) {
+	return "", nil
+}
 func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
 	return agentdom.ErrAgentNotFound
 }
@@ -167,6 +170,9 @@ func (m *mockAgentSvc) GenerateGlobalACPBridgeToken(ctx context.Context, agentID
 	if m.generateGlobalACPBridgeToken != nil {
 		return m.generateGlobalACPBridgeToken(ctx, agentID)
 	}
+	return "", nil
+}
+func (m *mockAgentSvc) GenerateGlobalAgentMCPKey(_ context.Context, _ uuid.UUID) (string, error) {
 	return "", nil
 }
 func (m *mockAgentSvc) ListGlobalConversations(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {

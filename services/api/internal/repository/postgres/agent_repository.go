@@ -35,6 +35,7 @@ type agentRecord struct {
 	ACPProvider        *string    `db:"acp_provider"`
 	ACPCommand         []byte     `db:"acp_command"`
 	ACPBridgeTokenHash *string    `db:"acp_bridge_token_hash"`
+	MCPAPIKeyHash      *string    `db:"mcp_api_key_hash"`
 	SystemPrompt       string     `db:"system_prompt"`
 	MaxIterations      int        `db:"max_iterations"`
 	TimeoutMinutes     int        `db:"timeout_minutes"`
@@ -146,7 +147,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 }
 
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_url, a.agent_type, a.llm_provider, a.llm_model,
-	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.system_prompt,
+	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
 	a.git_committer_name, a.git_committer_email, a.created_by, a.created_at, a.updated_at, a.deleted_at`
 
@@ -423,6 +424,35 @@ func (r *AgentRepository) SetACPBridgeTokenHash(ctx context.Context, agentID uui
 		hash, time.Now(), agentID.String(),
 	)
 	return err
+}
+
+// SetMCPAPIKeyHash stores the SHA-256 hash of a newly generated MCP API key,
+// overwriting any previous one so it immediately stops authenticating.
+func (r *AgentRepository) SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUID, hash string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agents SET mcp_api_key_hash=$1, updated_at=$2 WHERE id=$3`,
+		hash, time.Now(), agentID.String(),
+	)
+	return err
+}
+
+// FindAgentByMCPAPIKeyHash resolves the agent whose current MCP API key
+// hashes to hash — used by the authn middleware to identify the caller
+// directly from the key it presented.
+func (r *AgentRepository) FindAgentByMCPAPIKeyHash(ctx context.Context, hash string) (*agentdom.Agent, error) {
+	var row agentRecord
+	err := r.db.GetContext(ctx, &row, `
+		SELECT `+agentSelectColsNoMember+`
+		FROM agents a
+		WHERE a.mcp_api_key_hash = $1 AND a.deleted_at IS NULL
+		LIMIT 1`, hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, agentdom.ErrAgentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return agentFromReadRow(row)
 }
 
 // SetAgentMemberID is a no-op; membership is derived from project_members JOIN.
@@ -1138,6 +1168,7 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		LLMBaseURL:        row.LLMBaseURL,
 		ACPProvider:       row.ACPProvider,
 		HasACPBridgeToken: row.ACPBridgeTokenHash != nil && *row.ACPBridgeTokenHash != "",
+		HasMCPAPIKey:      row.MCPAPIKeyHash != nil && *row.MCPAPIKeyHash != "",
 		SystemPrompt:      row.SystemPrompt,
 		MaxIterations:     row.MaxIterations,
 		TimeoutMinutes:    row.TimeoutMinutes,
@@ -1149,6 +1180,9 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	}
 	if row.ACPBridgeTokenHash != nil {
 		a.ACPBridgeTokenHash = *row.ACPBridgeTokenHash
+	}
+	if row.MCPAPIKeyHash != nil {
+		a.MCPAPIKeyHash = *row.MCPAPIKeyHash
 	}
 	if len(row.ACPCommand) > 0 {
 		var cmd []string
