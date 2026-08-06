@@ -31,7 +31,8 @@ const CLAUDE_SETUP_TOKEN_COMMAND = "claude setup-token";
 // anywhere itself — non-interactive/headless auth (what the bridge needs)
 // only picks it up once it's exported as CLAUDE_CODE_OAUTH_TOKEN. See
 // https://platform.claude.com/docs/en/authentication#generate-a-long-lived-token.
-const CLAUDE_OAUTH_EXPORT_COMMAND = "export CLAUDE_CODE_OAUTH_TOKEN=<token-from-above>";
+const CLAUDE_OAUTH_EXPORT_COMMAND =
+	"export CLAUDE_CODE_OAUTH_TOKEN=<token-from-above>";
 
 // Codex and Gemini CLI don't have an equivalent "generate a token" command —
 // both read their API key straight from an env var — so unlike Claude Code
@@ -343,10 +344,7 @@ export function AcpBridgeSetup({
 			    shown as two separate commands (a single chained `&&` line got
 			    too long to read/copy comfortably) */}
 			<div className="space-y-1.5">
-				<StepHeading
-					index={2}
-					title={t("agents.acpSetup.stepSkillMcpTitle")}
-				/>
+				<StepHeading index={2} title={t("agents.acpSetup.stepSkillMcpTitle")} />
 				<p className="text-xs text-muted-foreground pl-7">
 					{t("agents.acpSetup.stepSkillMcpDescription")}
 				</p>

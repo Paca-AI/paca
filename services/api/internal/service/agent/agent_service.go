@@ -51,7 +51,6 @@ func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
 	return s
 }
 
-
 // encryptKey encrypts plaintext if an encryptor is configured; otherwise returns plaintext unchanged.
 func (s *Service) encryptKey(plaintext string) (string, error) {
 	if s.encryptor == nil || plaintext == "" {
