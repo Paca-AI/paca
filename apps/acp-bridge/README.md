@@ -86,3 +86,17 @@ where the agent actually ran.
 
 Keep this process running for as long as you want the agent to be reachable
 from Paca — it reconnects automatically on a dropped connection.
+
+### Assistant text arrives in position
+
+`ACPAgent` streams tool calls as they happen, but buffers the agent's own
+text for the entire turn and persists it only at the end, inside the
+`FinishAction` of the turn's closing event. On its own that means everything
+the agent *said* shows up after everything it *did*.
+
+The daemon subscribes to the conversation's token callbacks and forwards each
+run of buffered text as a `MessageEvent` just before whatever event came next,
+so narration is interleaved with the tool calls it describes. Because the
+`FinishAction` message is the join of those same chunks, it is blanked when it
+would be an exact duplicate — the text is still persisted, in the events it
+was split into.
