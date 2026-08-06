@@ -30,6 +30,14 @@ import {
 } from "@/lib/socket-client";
 
 const PROJECT_ROUTE_RE = /^\/projects\/[^/]+/;
+// The global Conversations page (and its nested $conversationId route) has
+// its own dedicated "new conversation" entry point (see
+// routes/_authenticated/conversations/index.tsx's NewConversationThread) —
+// same reasoning as the project-scoped conversations page hiding its own
+// AIChatFloat in routes/_authenticated/projects/$projectId.tsx, just via a
+// pathname check here instead of useMatches()/routeId since this layout
+// sits above the project/non-project split rather than inside one project.
+const CONVERSATIONS_ROUTE_RE = /^\/conversations(\/|$)/;
 
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -78,10 +86,14 @@ function AuthenticatedLayout() {
 	const queryClient = useQueryClient();
 	const { data: user } = useQuery(currentUserOptionalQueryOptions);
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
-	// Global agent chat is available everywhere except inside a project —
-	// project pages already mount their own project-scoped AIChatFloat (see
-	// routes/_authenticated/projects/$projectId.tsx).
-	const showGlobalChat = !!user && !PROJECT_ROUTE_RE.test(pathname);
+	// Global agent chat is available everywhere except inside a project
+	// (project pages already mount their own project-scoped AIChatFloat, see
+	// routes/_authenticated/projects/$projectId.tsx) or on the global
+	// Conversations page itself (see CONVERSATIONS_ROUTE_RE above).
+	const showGlobalChat =
+		!!user &&
+		!PROJECT_ROUTE_RE.test(pathname) &&
+		!CONVERSATIONS_ROUTE_RE.test(pathname);
 
 	useEffect(() => {
 		if (!user) return;
