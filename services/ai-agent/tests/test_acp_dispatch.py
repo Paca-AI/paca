@@ -25,6 +25,26 @@ def _trigger() -> TriggerMessage:
     )
 
 
+def _global_trigger() -> TriggerMessage:
+    """A global-chat trigger: no project, no project-member — the human is
+    identified directly via actor_user_id instead of actor_member_id. See
+    TriggerMessage's doc comment."""
+    return TriggerMessage(
+        stream_id="1-2",
+        trigger_type="chat_message",
+        conversation_id="conv-2",
+        agent_id="agent-1",
+        project_id=None,
+        task_id=None,
+        comment_id=None,
+        chat_session_id="sess-2",
+        message="hello",
+        actor_member_id=None,
+        repo_plugin_ids=[],
+        actor_user_id="user-7",
+    )
+
+
 def _acp_config() -> AgentConfig:
     return AgentConfig(
         agent_id="agent-1",
@@ -91,6 +111,44 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
         },
     )
     schedule_watchdog.assert_called_once_with("conv-1", "proj-1", 30, trigger.actor_user_id)
+
+
+async def test_online_bridge_dispatches_start_turn_global_chat_forwards_actor_user_id(
+    monkeypatch,
+):
+    """Regression test for actor_user_id actually being threaded through a
+    global-chat (project_id=None) dispatch, not just compared None-to-None
+    the way test_online_bridge_dispatches_start_turn's trigger fixture does."""
+    monkeypatch.setattr(acp_dispatch.acp_bridge, "is_online", AsyncMock(return_value=True))
+    dispatch_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(acp_dispatch.acp_bridge, "dispatch", dispatch_mock)
+    update_status = AsyncMock()
+    monkeypatch.setattr(
+        acp_dispatch.conversation_repository, "update_conversation_status", update_status
+    )
+    schedule_watchdog = MagicMock()
+    monkeypatch.setattr(acp_dispatch, "_schedule_watchdog", schedule_watchdog)
+
+    trigger = _global_trigger()
+    config = _acp_config()
+    await acp_dispatch.dispatch_acp_trigger(trigger, config)
+
+    dispatch_mock.assert_awaited_once_with(
+        "agent-1",
+        {
+            "type": "start_turn",
+            "conversation_id": "conv-2",
+            "project_id": None,
+            "message": build_acp_message(trigger),
+            "trigger_type": "chat_message",
+            "acp_provider": "claude-code",
+            "acp_command": [],
+        },
+    )
+    # The real assertion: "user-7" must reach the watchdog call, not None —
+    # a mixed-up argument order or a dropped field would still pass a naive
+    # None-vs-None comparison but fails this.
+    schedule_watchdog.assert_called_once_with("conv-2", None, 30, "user-7")
 
 
 async def test_bridge_goes_offline_mid_dispatch_still_fails(monkeypatch):

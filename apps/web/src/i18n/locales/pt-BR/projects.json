@@ -77,6 +77,7 @@
 				"title": "Excluir {{name}}?",
 				"description": "Isso exclui permanentemente o agente e o remove do projeto. As conversas em andamento serão interrompidas.",
 				"descriptionGlobal": "Isso exclui permanentemente o agente e o remove de todos os projetos aos quais foi convidado. As conversas em andamento serão interrompidas.",
+				"deleteFailed": "Falha ao excluir o agente. Tente novamente.",
 				"cancel": "Cancelar",
 				"delete": "Excluir"
 			}

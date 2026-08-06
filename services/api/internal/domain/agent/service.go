@@ -105,10 +105,16 @@ type ConversationService interface {
 	// has no project-team concept to grant shared visibility the way project
 	// conversations do, so this stays scoped to the caller.
 	ListGlobalConversations(ctx context.Context, actorUserID uuid.UUID, in ListConversationsFilter, limit int) (convs []*AgentConversation, hasMore bool, err error)
-	GetGlobalConversation(ctx context.Context, conversationID uuid.UUID) (*AgentConversation, error)
-	StopGlobalConversation(ctx context.Context, conversationID uuid.UUID) error
-	PauseGlobalConversation(ctx context.Context, conversationID uuid.UUID) error
-	GlobalHeartbeat(ctx context.Context, conversationID uuid.UUID) error
+	// GetGlobalConversation returns a single conversation after verifying it
+	// is both a global-chat conversation and owned by actorUserID — the
+	// global-chat equivalent of GetConversation's projectID ownership check.
+	// Every other Global* conversation method below funnels through this for
+	// its existence+ownership gate, so actorUserID must never be dropped
+	// from any of them.
+	GetGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) (*AgentConversation, error)
+	StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error
 }
 

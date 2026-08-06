@@ -343,13 +343,20 @@ func (h *ConversationHandler) SendConversationMessage(w http.ResponseWriter, r *
 // so there is no projectId route param to parse.
 
 // GetGlobalConversation handles GET /agents/conversations/:conversationId.
+// Scoped to the caller's own conversation — see
+// agentdom.Service.GetGlobalConversation's doc comment.
 func (h *ConversationHandler) GetGlobalConversation(w http.ResponseWriter, r *http.Request) {
 	convID, err := parseParamUUID(r, "conversationId")
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	conv, err := h.svc.GetGlobalConversation(r.Context(), convID)
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.GetGlobalConversation(r.Context(), convID, userID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -358,18 +365,22 @@ func (h *ConversationHandler) GetGlobalConversation(w http.ResponseWriter, r *ht
 }
 
 // GetGlobalConversationEvents handles GET /agents/conversations/:conversationId/events.
-// ListConversationEvents itself is already conversation-scoped only (no
-// project ownership check, see the project-scoped ListConversationEvents
-// above) — GetGlobalConversation is called first purely to 404 on an
-// unknown or non-global conversation id, matching GetGlobalConversation's
-// own scope check above.
+// ListConversationEvents itself is conversation-scoped only (no ownership
+// check of its own, see the project-scoped ListConversationEvents above) —
+// GetGlobalConversation is called first to gate on both "is this a global
+// conversation" and "does it belong to the caller" before ever reaching it.
 func (h *ConversationHandler) GetGlobalConversationEvents(w http.ResponseWriter, r *http.Request) {
 	convID, err := parseParamUUID(r, "conversationId")
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	if _, err := h.svc.GetGlobalConversation(r.Context(), convID); err != nil {
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if _, err := h.svc.GetGlobalConversation(r.Context(), convID, userID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -397,7 +408,12 @@ func (h *ConversationHandler) StopGlobalConversation(w http.ResponseWriter, r *h
 		presenter.Error(w, r, err)
 		return
 	}
-	if err := h.svc.StopGlobalConversation(r.Context(), convID); err != nil {
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.StopGlobalConversation(r.Context(), convID, userID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -411,7 +427,12 @@ func (h *ConversationHandler) PauseGlobalConversation(w http.ResponseWriter, r *
 		presenter.Error(w, r, err)
 		return
 	}
-	if err := h.svc.PauseGlobalConversation(r.Context(), convID); err != nil {
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.PauseGlobalConversation(r.Context(), convID, userID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -425,7 +446,12 @@ func (h *ConversationHandler) GlobalConversationHeartbeat(w http.ResponseWriter,
 		presenter.Error(w, r, err)
 		return
 	}
-	if err := h.svc.GlobalHeartbeat(r.Context(), convID); err != nil {
+	userID, err := callerUserID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.GlobalHeartbeat(r.Context(), convID, userID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -444,10 +470,9 @@ func (h *ConversationHandler) SendGlobalConversationMessage(w http.ResponseWrite
 		presenter.Error(w, r, err)
 		return
 	}
-	claims := middleware.ClaimsFrom(r)
-	userID, err := uuid.Parse(claims.Subject)
+	userID, err := callerUserID(r)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		presenter.Error(w, r, err)
 		return
 	}
 

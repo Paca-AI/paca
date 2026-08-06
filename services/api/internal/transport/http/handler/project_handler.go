@@ -124,7 +124,10 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 // GetWorkspaceStats handles GET /projects/workspace-stats.
 // It returns workspace-wide aggregate counts for the authenticated user:
-// open tasks, unique team members, and AI agents across all accessible projects.
+// open tasks and AI agents across all accessible projects, plus
+// TeamMemberCount — unlike the other two counters, this one is a plain
+// platform-wide user count (see userdom.Service.CountUsers), not scoped to
+// the caller's accessible projects.
 func (h *ProjectHandler) GetWorkspaceStats(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.ClaimsFrom(r)
 	if claims == nil {

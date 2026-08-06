@@ -1083,21 +1083,26 @@ func (s *Service) ListGlobalConversations(ctx context.Context, actorUserID uuid.
 }
 
 // GetGlobalConversation returns a single conversation after verifying it is
-// a global-chat conversation (ProjectID == uuid.Nil).
-func (s *Service) GetGlobalConversation(ctx context.Context, conversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+// both a global-chat conversation (ProjectID == uuid.Nil) AND owned by
+// actorUserID — the global-chat equivalent of GetConversation's projectID
+// ownership check. Without the actor check, any authenticated user could
+// read, control, or inject messages into another user's global-chat
+// conversation simply by knowing its ID, since global conversations have no
+// project-team membership to gate access the way project conversations do.
+func (s *Service) GetGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error) {
 	c, err := s.repo.FindConversationByID(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	if c.ProjectID != uuid.Nil {
+	if c.ProjectID != uuid.Nil || c.ActorUserID == nil || *c.ActorUserID != actorUserID {
 		return nil, agentdom.ErrConversationNotFound
 	}
 	return c, nil
 }
 
 // StopGlobalConversation stops a global conversation that is not already finished.
-func (s *Service) StopGlobalConversation(ctx context.Context, conversationID uuid.UUID) error {
-	c, err := s.GetGlobalConversation(ctx, conversationID)
+func (s *Service) StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
 	if err != nil {
 		return err
 	}
@@ -1113,8 +1118,8 @@ func (s *Service) StopGlobalConversation(ctx context.Context, conversationID uui
 }
 
 // PauseGlobalConversation interrupts a global conversation's in-flight turn.
-func (s *Service) PauseGlobalConversation(ctx context.Context, conversationID uuid.UUID) error {
-	c, err := s.GetGlobalConversation(ctx, conversationID)
+func (s *Service) PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
 	if err != nil {
 		return err
 	}
@@ -1127,8 +1132,8 @@ func (s *Service) PauseGlobalConversation(ctx context.Context, conversationID uu
 }
 
 // GlobalHeartbeat refreshes a global conversation's idle timer.
-func (s *Service) GlobalHeartbeat(ctx context.Context, conversationID uuid.UUID) error {
-	if _, err := s.GetGlobalConversation(ctx, conversationID); err != nil {
+func (s *Service) GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	if _, err := s.GetGlobalConversation(ctx, conversationID, actorUserID); err != nil {
 		return err
 	}
 	return s.publishTrigger(ctx, events.TopicAgentHeartbeat, map[string]any{
@@ -1138,7 +1143,7 @@ func (s *Service) GlobalHeartbeat(ctx context.Context, conversationID uuid.UUID)
 
 // SendGlobalConversationMessage publishes a chat message to an active global conversation.
 func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error {
-	c, err := s.GetGlobalConversation(ctx, conversationID)
+	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
 	if err != nil {
 		return err
 	}

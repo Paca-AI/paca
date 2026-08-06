@@ -207,6 +207,11 @@ export function AgentCard({
 							)}
 						</DialogDescription>
 					</DialogHeader>
+					{deleteMutation.isError && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{t("agents.card.deleteDialog.deleteFailed")}
+						</p>
+					)}
 					<DialogFooter>
 						<Button
 							variant="outline"

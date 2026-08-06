@@ -1381,6 +1381,38 @@ export function AgentDetailView({
 		window.history.pushState(null, "", url);
 	};
 
+	// ACP agents run entirely in the user's own local environment (see the
+	// Local Bridge panel on the Overview tab) — Paca never forwards tools,
+	// MCP servers, skills, or environment variables into that local process,
+	// so none of those tabs apply. A global agent's activity is inherently
+	// project-shaped (task/doc activity within one project) and it may be
+	// invited into many projects or none, so Activity has no single feed to
+	// show and is hidden entirely at global scope. Computed here (before the
+	// !agent early return below) so both the correction effect and the render
+	// below share one definition — agent?.agent_type is undefined pre-load,
+	// which simply leaves the ACP-only filter a no-op until agent arrives.
+	const acpHiddenTabs: Tab[] = ["mcp-servers", "skills", "env-vars"];
+	const visibleTabs = TABS.filter((tab) => {
+		if (tab.id === "activity" && !projectId) return false;
+		if (agent?.agent_type === "acp" && acpHiddenTabs.includes(tab.id)) {
+			return false;
+		}
+		return true;
+	});
+
+	// A tab restored from location.hash on mount (or left over from a
+	// previous agent/scope navigated to via the same route) may not apply
+	// here — e.g. "#activity" on a global agent page, or "#mcp-servers" for
+	// an agent that turns out to be ACP-type once it loads. Without this,
+	// the tab strip silently shows no active button and the content pane
+	// below renders nothing (none of its activeTab===X branches match),
+	// rather than falling back to a tab that's actually visible.
+	useEffect(() => {
+		if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+			setActiveTab("overview");
+		}
+	}, [visibleTabs, activeTab]);
+
 	if (!agent) {
 		return (
 			<div className="flex flex-col gap-4 p-6">
@@ -1396,22 +1428,6 @@ export function AgentDetailView({
 		.join("")
 		.toUpperCase()
 		.slice(0, 2);
-
-	// ACP agents run entirely in the user's own local environment (see the
-	// Local Bridge panel on the Overview tab) — Paca never forwards tools,
-	// MCP servers, skills, or environment variables into that local process,
-	// so none of those tabs apply. A global agent's activity is inherently
-	// project-shaped (task/doc activity within one project) and it may be
-	// invited into many projects or none, so Activity has no single feed to
-	// show and is hidden entirely at global scope.
-	const acpHiddenTabs: Tab[] = ["mcp-servers", "skills", "env-vars"];
-	const visibleTabs = TABS.filter((tab) => {
-		if (tab.id === "activity" && !projectId) return false;
-		if (agent.agent_type === "acp" && acpHiddenTabs.includes(tab.id)) {
-			return false;
-		}
-		return true;
-	});
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0">

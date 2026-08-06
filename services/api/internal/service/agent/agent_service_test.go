@@ -1186,6 +1186,127 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+func TestGetGlobalConversation_Success(t *testing.T) {
+	actorUserID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &actorUserID,
+		Status:      "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetGlobalConversation(context.Background(), conversationID, actorUserID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+// TestGetGlobalConversation_WrongActor is the regression test for the IDOR
+// where GetGlobalConversation checked only "is this a global conversation"
+// (ProjectID == uuid.Nil) and never "does it belong to the caller" — any
+// authenticated user could read/stop/pause/heartbeat/message any other
+// user's global conversation just by knowing its ID. See the doc comment on
+// agentdom.Service.GetGlobalConversation.
+func TestGetGlobalConversation_WrongActor(t *testing.T) {
+	realOwner := uuid.New()
+	attacker := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &realOwner,
+		Status:      "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetGlobalConversation(context.Background(), conversationID, attacker)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetGlobalConversation_RejectsProjectScopedConversation guards the
+// other half of the scope check: a project-scoped conversation must never
+// be reachable through the global-chat endpoints, even if ActorUserID were
+// somehow populated on it.
+func TestGetGlobalConversation_RejectsProjectScopedConversation(t *testing.T) {
+	actorUserID := uuid.New()
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		ProjectID: projectID,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetGlobalConversation(context.Background(), conversationID, actorUserID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGlobalConversationMutators_RejectWrongActor covers
+// Stop/Pause/GlobalHeartbeat/SendGlobalConversationMessage — all four funnel
+// through GetGlobalConversation for their existence+ownership gate, so a
+// caller who isn't the conversation's actor must be denied by every one of
+// them, not just the read path.
+func TestGlobalConversationMutators_RejectWrongActor(t *testing.T) {
+	realOwner := uuid.New()
+	attacker := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &realOwner,
+		Status:      "running",
+	}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		updateConversationStatus: func(_ context.Context, _ uuid.UUID, _ string) error {
+			t.Fatal("must not mutate a conversation the caller doesn't own")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	t.Run("stop", func(t *testing.T) {
+		err := svc.StopGlobalConversation(context.Background(), conversationID, attacker)
+		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	})
+	t.Run("pause", func(t *testing.T) {
+		err := svc.PauseGlobalConversation(context.Background(), conversationID, attacker)
+		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	})
+	t.Run("heartbeat", func(t *testing.T) {
+		err := svc.GlobalHeartbeat(context.Background(), conversationID, attacker)
+		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	})
+	t.Run("send message", func(t *testing.T) {
+		err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "hi", attacker)
+		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+	})
+}
+
 func TestListConversations_Success(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()

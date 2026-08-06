@@ -26,16 +26,20 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAgentSvc struct {
-	getAgent                     func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
-	createAgent                  func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
-	startChatSession             func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
-	listConversations            func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
-	listConversationEvents       func(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error)
-	listAgentActivities          func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
-	getGlobalConversation        func(ctx context.Context, conversationID uuid.UUID) (*agentdom.AgentConversation, error)
-	listGlobalConversations      func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
-	getGlobalAgent               func(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
-	generateGlobalACPBridgeToken func(ctx context.Context, agentID uuid.UUID) (string, error)
+	getAgent                      func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
+	createAgent                   func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
+	startChatSession              func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
+	listConversations             func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
+	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error)
+	listAgentActivities           func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
+	getGlobalConversation         func(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error)
+	listGlobalConversations       func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
+	stopGlobalConversation        func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	pauseGlobalConversation       func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	globalHeartbeat               func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
+	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error
+	getGlobalAgent                func(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
+	generateGlobalACPBridgeToken  func(ctx context.Context, agentID uuid.UUID) (string, error)
 }
 
 func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID, _ agentdom.AgentScope) ([]*agentdom.Agent, error) {
@@ -171,16 +175,34 @@ func (m *mockAgentSvc) ListGlobalConversations(ctx context.Context, actorUserID 
 	}
 	return nil, false, nil
 }
-func (m *mockAgentSvc) GetGlobalConversation(ctx context.Context, conversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) GetGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error) {
 	if m.getGlobalConversation != nil {
-		return m.getGlobalConversation(ctx, conversationID)
+		return m.getGlobalConversation(ctx, conversationID, actorUserID)
 	}
 	return nil, nil
 }
-func (m *mockAgentSvc) StopGlobalConversation(_ context.Context, _ uuid.UUID) error  { return nil }
-func (m *mockAgentSvc) PauseGlobalConversation(_ context.Context, _ uuid.UUID) error { return nil }
-func (m *mockAgentSvc) GlobalHeartbeat(_ context.Context, _ uuid.UUID) error         { return nil }
-func (m *mockAgentSvc) SendGlobalConversationMessage(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) error {
+func (m *mockAgentSvc) StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	if m.stopGlobalConversation != nil {
+		return m.stopGlobalConversation(ctx, conversationID, actorUserID)
+	}
+	return nil
+}
+func (m *mockAgentSvc) PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	if m.pauseGlobalConversation != nil {
+		return m.pauseGlobalConversation(ctx, conversationID, actorUserID)
+	}
+	return nil
+}
+func (m *mockAgentSvc) GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error {
+	if m.globalHeartbeat != nil {
+		return m.globalHeartbeat(ctx, conversationID, actorUserID)
+	}
+	return nil
+}
+func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error {
+	if m.sendGlobalConversationMessage != nil {
+		return m.sendGlobalConversationMessage(ctx, conversationID, message, actorUserID)
+	}
 	return nil
 }
 func (m *mockAgentSvc) ListGlobalChatSessions(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {

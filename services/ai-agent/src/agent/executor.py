@@ -355,7 +355,14 @@ async def persist_conversation_event(
     await stream_store.publish_event(
         {
             "conversation_id": conversation_id,
+            # EVENTS_STREAM is a flat Valkey stream (XADD), not the variable
+            # JSON payload publish_realtime below builds — every entry keeps
+            # the same fixed set of fields, so "unset" is spelled as ""
+            # rather than omitted (unlike the None-omitted convention used
+            # everywhere else in this PR, e.g. publish_realtime/TriggerMessage
+            # /build_mcp_config, where the payload shape does vary).
             "project_id": project_id or "",
+            "actor_user_id": actor_user_id or "",
             "event_type": event_type,
             "event_source": event_source,
             "event_index": str(event_index),

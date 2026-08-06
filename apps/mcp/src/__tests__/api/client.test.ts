@@ -127,6 +127,22 @@ describe("PacaAPIClient – request headers", () => {
 			(options.headers as Record<string, string>)["X-Actor-User-ID"],
 		).toBeUndefined();
 	});
+
+	it("omits X-Actor-User-ID when actorUserId is configured without agentId", async () => {
+		// Regression test: actorUserId is only ever meaningful alongside an
+		// agent identity (PacaConfig.actorUserId's doc comment: "unset for a
+		// personal API key"). A misconfigured or stray PACA_ACTOR_USER_ID with
+		// no PACA_AGENT_ID must never reach the server as a personal API key's
+		// header — that would misattribute a human's own actions to whatever
+		// actor id happened to leak into the env.
+		vi.stubGlobal("fetch", mockFetchOk([]));
+		const client = makeClient({ agentId: undefined, actorUserId: "user-7" });
+		await client.listProjects();
+		const [, options] = (fetch as any).mock.calls[0] as [string, RequestInit];
+		expect(
+			(options.headers as Record<string, string>)["X-Actor-User-ID"],
+		).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -17,12 +17,75 @@ from src.agent.executor import (
     _post_turn_status,
     _SeenEvents,
     _wait_for_done_or_stop,
+    persist_conversation_event,
     teardown_paused_chat_sandbox,
 )
 from src.core import streams as stream_store
 from src.core.registry import ChatSandboxState, chat_sandboxes, stop_events
 from src.core.streams import TriggerMessage
 from src.repositories import conversation_repository
+
+# ─── persist_conversation_event ─────────────────────────────────────────────
+
+
+async def test_persist_conversation_event_forwards_actor_user_id_to_durable_stream(
+    monkeypatch,
+):
+    """Regression test: actor_user_id reached publish_realtime (the pub/sub
+    fan-out) but was silently dropped from the publish_event payload written
+    to the durable paca:agent:events Valkey stream — any consumer reading
+    that stream directly (rather than the pub/sub channel) lost actor
+    attribution for every global-chat event. Assert it's present on both."""
+    monkeypatch.setattr(conversation_repository, "insert_conversation_event", AsyncMock())
+    publish_event_mock = AsyncMock()
+    monkeypatch.setattr(stream_store, "publish_event", publish_event_mock)
+    publish_realtime_mock = AsyncMock()
+    monkeypatch.setattr(stream_store, "publish_realtime", publish_realtime_mock)
+
+    await persist_conversation_event(
+        conversation_id="conv-1",
+        project_id=None,
+        event_type="MessageEvent",
+        event_source="agent",
+        event_index=0,
+        payload="{}",
+        actor_user_id="user-7",
+    )
+
+    publish_event_mock.assert_awaited_once()
+    stream_fields = publish_event_mock.await_args.args[0]
+    assert stream_fields["actor_user_id"] == "user-7"
+    assert stream_fields["project_id"] == ""  # None sentinel — see the call site's comment
+
+    publish_realtime_mock.assert_awaited_once()
+    assert publish_realtime_mock.await_args.kwargs["actor_user_id"] == "user-7"
+    assert publish_realtime_mock.await_args.kwargs["project_id"] is None
+
+
+async def test_persist_conversation_event_defaults_actor_user_id_to_empty_string(
+    monkeypatch,
+):
+    """Project-scoped conversations have no actor_user_id — the durable
+    stream must still get a (empty-string) value for the field rather than
+    the Python literal "None" that str(None) would otherwise produce."""
+    monkeypatch.setattr(conversation_repository, "insert_conversation_event", AsyncMock())
+    publish_event_mock = AsyncMock()
+    monkeypatch.setattr(stream_store, "publish_event", publish_event_mock)
+    monkeypatch.setattr(stream_store, "publish_realtime", AsyncMock())
+
+    await persist_conversation_event(
+        conversation_id="conv-1",
+        project_id="proj-1",
+        event_type="MessageEvent",
+        event_source="agent",
+        event_index=0,
+        payload="{}",
+    )
+
+    stream_fields = publish_event_mock.await_args.args[0]
+    assert stream_fields["actor_user_id"] == ""
+    assert stream_fields["project_id"] == "proj-1"
+
 
 # ─── _AtomicCounter ─────────────────────────────────────────────────────────
 
@@ -242,12 +305,15 @@ def _clear_chat_sandboxes():
     stop_events.clear()
 
 
-def _fake_sandbox_state(conversation_id: str, project_id: str = "proj-1") -> ChatSandboxState:
+def _fake_sandbox_state(
+    conversation_id: str, project_id: str | None = "proj-1", actor_user_id: str | None = None
+) -> ChatSandboxState:
     handle = object()  # only ever passed to a mocked stop_sandbox in these tests
     return ChatSandboxState(
         handle=handle,  # type: ignore[arg-type]
         sdk_conversation_id="sdk-conv-xyz",
         project_id=project_id,
+        actor_user_id=actor_user_id,
     )
 
 
@@ -278,9 +344,7 @@ async def test_teardown_paused_chat_sandbox_marks_stopped(mock_teardown):
 
     await teardown_paused_chat_sandbox("conv-1")
 
-    conversation_repository.update_conversation_status.assert_awaited_once_with(
-        "conv-1", "stopped"
-    )
+    conversation_repository.update_conversation_status.assert_awaited_once_with("conv-1", "stopped")
 
 
 async def test_teardown_paused_chat_sandbox_publishes_realtime_event(mock_teardown):
@@ -293,6 +357,27 @@ async def test_teardown_paused_chat_sandbox_publishes_realtime_event(mock_teardo
         conversation_id="conv-1",
         event_type="agent.conversation.stopped",
         actor_user_id=None,
+    )
+
+
+async def test_teardown_paused_chat_sandbox_publishes_actor_user_id_for_global_chat(
+    mock_teardown,
+):
+    """Regression test: the actor_user_id threading through a resumed/paused
+    *global* chat sandbox (project_id=None) was previously only ever
+    exercised with actor_user_id=None (see the project-scoped test above),
+    which would still pass even if the field were silently dropped."""
+    chat_sandboxes["conv-1"] = _fake_sandbox_state(
+        "conv-1", project_id=None, actor_user_id="user-7"
+    )
+
+    await teardown_paused_chat_sandbox("conv-1")
+
+    stream_store.publish_realtime.assert_awaited_once_with(
+        project_id=None,
+        conversation_id="conv-1",
+        event_type="agent.conversation.stopped",
+        actor_user_id="user-7",
     )
 
 

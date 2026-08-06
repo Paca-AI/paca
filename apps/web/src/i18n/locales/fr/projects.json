@@ -77,6 +77,7 @@
 				"title": "Supprimer {{name}} ?",
 				"description": "Cette action supprime définitivement l'agent et le retire du projet. Les conversations en cours seront arrêtées.",
 				"descriptionGlobal": "Cette action supprime définitivement l'agent et le retire de tous les projets où il a été invité. Les conversations en cours seront arrêtées.",
+				"deleteFailed": "Échec de la suppression de l'agent. Veuillez réessayer.",
 				"cancel": "Annuler",
 				"delete": "Supprimer"
 			}

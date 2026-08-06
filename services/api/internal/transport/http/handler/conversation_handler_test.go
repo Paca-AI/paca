@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -617,26 +618,40 @@ func TestListGlobalConversations_Unauthenticated401s(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// GetGlobalConversationEvents (GET /agents/conversations/:conversationId/events)
+// Get/Stop/Pause/Heartbeat/SendMessage/Events on a single global conversation
+// (GET|POST /agents/conversations/:conversationId[...])
 // ---------------------------------------------------------------------------
 
-func newGlobalConversationRouter(svc agentdom.Service) chi.Router {
+// newGlobalConversationRouter wires every single-resource global-conversation
+// route behind claims for the given subject, so ownership-enforcement tests
+// can exercise each verb through the real HTTP layer.
+func newGlobalConversationRouter(svc agentdom.Service, subject string) chi.Router {
 	h := handler.NewConversationHandler(svc)
 	r := chi.NewRouter()
+	r.Use(claimsMiddleware(subject))
 	r.Route("/agents/conversations/{conversationId}", func(r chi.Router) {
+		r.Get("/", h.GetGlobalConversation)
 		r.Get("/events", h.GetGlobalConversationEvents)
+		r.Post("/stop", h.StopGlobalConversation)
+		r.Post("/pause", h.PauseGlobalConversation)
+		r.Post("/heartbeat", h.GlobalConversationHeartbeat)
+		r.Post("/messages", h.SendGlobalConversationMessage)
 	})
 	return r
 }
 
 func TestGetGlobalConversationEvents_ReturnsEvents(t *testing.T) {
 	convID := uuid.New()
+	callerID := uuid.New()
 	svc := &mockAgentSvc{
-		getGlobalConversation: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+		getGlobalConversation: func(_ context.Context, id, actorUserID uuid.UUID) (*agentdom.AgentConversation, error) {
 			if id != convID {
 				t.Fatalf("unexpected conversation id %s", id)
 			}
-			return &agentdom.AgentConversation{ID: convID}, nil
+			if actorUserID != callerID {
+				t.Fatalf("expected actorUserID %s forced from claims, got %s", callerID, actorUserID)
+			}
+			return &agentdom.AgentConversation{ID: convID, ActorUserID: &callerID}, nil
 		},
 		listConversationEvents: func(_ context.Context, id uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
 			if id != convID {
@@ -645,7 +660,7 @@ func TestGetGlobalConversationEvents_ReturnsEvents(t *testing.T) {
 			return []*agentdom.AgentConversationEvent{{ID: uuid.New(), ConversationID: convID}}, 1, nil
 		},
 	}
-	r := newGlobalConversationRouter(svc)
+	r := newGlobalConversationRouter(svc, callerID.String())
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations/"+convID.String()+"/events", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -673,7 +688,7 @@ func TestGetGlobalConversationEvents_ReturnsEvents(t *testing.T) {
 func TestGetGlobalConversationEvents_UnknownConversationNotFound(t *testing.T) {
 	eventsCalled := false
 	svc := &mockAgentSvc{
-		getGlobalConversation: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+		getGlobalConversation: func(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return nil, agentdom.ErrConversationNotFound
 		},
 		listConversationEvents: func(_ context.Context, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
@@ -681,7 +696,7 @@ func TestGetGlobalConversationEvents_UnknownConversationNotFound(t *testing.T) {
 			return nil, 0, nil
 		},
 	}
-	r := newGlobalConversationRouter(svc)
+	r := newGlobalConversationRouter(svc, uuid.New().String())
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations/"+uuid.New().String()+"/events", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -691,5 +706,118 @@ func TestGetGlobalConversationEvents_UnknownConversationNotFound(t *testing.T) {
 	}
 	if eventsCalled {
 		t.Error("ListConversationEvents must not be called when the conversation isn't a valid global conversation")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ownership enforcement — regression tests for the IDOR where a caller could
+// read/stop/pause/heartbeat/message another user's global conversation
+// simply by knowing its ID. Every handler below must forward the caller's
+// own user ID (never a client-suppliable value) to the service, and the
+// service is responsible for 404ing on a mismatch — these tests assert the
+// handler side of that contract: the *right* actorUserID reaches the mock.
+// ---------------------------------------------------------------------------
+
+func TestGetGlobalConversation_ForwardsCallerIDNotConversationOwner(t *testing.T) {
+	convID := uuid.New()
+	callerID := uuid.New()
+	otherUsersConv := uuid.New() // the conversation's real owner — must never leak in.
+	var gotActorUserID uuid.UUID
+	svc := &mockAgentSvc{
+		getGlobalConversation: func(_ context.Context, _, actorUserID uuid.UUID) (*agentdom.AgentConversation, error) {
+			gotActorUserID = actorUserID
+			// Simulate the service's real ownership check: this conversation
+			// belongs to otherUsersConv, not the caller, so a correct handler
+			// (forwarding callerID) gets ErrConversationNotFound back.
+			if actorUserID != otherUsersConv {
+				return nil, agentdom.ErrConversationNotFound
+			}
+			return &agentdom.AgentConversation{ID: convID}, nil
+		},
+	}
+	r := newGlobalConversationRouter(svc, callerID.String())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/conversations/"+convID.String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if gotActorUserID != callerID {
+		t.Fatalf("handler must forward the authenticated caller's own id, got %s want %s", gotActorUserID, callerID)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a conversation the caller doesn't own, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStopPauseHeartbeatGlobalConversation_ForwardCallerID(t *testing.T) {
+	convID := uuid.New()
+	callerID := uuid.New()
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"stop", http.MethodPost, "/stop"},
+		{"pause", http.MethodPost, "/pause"},
+		{"heartbeat", http.MethodPost, "/heartbeat"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotConvID, gotActorUserID uuid.UUID
+			svc := &mockAgentSvc{
+				stopGlobalConversation: func(_ context.Context, id, actorUserID uuid.UUID) error {
+					gotConvID, gotActorUserID = id, actorUserID
+					return agentdom.ErrConversationNotFound
+				},
+				pauseGlobalConversation: func(_ context.Context, id, actorUserID uuid.UUID) error {
+					gotConvID, gotActorUserID = id, actorUserID
+					return agentdom.ErrConversationNotFound
+				},
+				globalHeartbeat: func(_ context.Context, id, actorUserID uuid.UUID) error {
+					gotConvID, gotActorUserID = id, actorUserID
+					return agentdom.ErrConversationNotFound
+				},
+			}
+			r := newGlobalConversationRouter(svc, callerID.String())
+			req := httptest.NewRequestWithContext(context.Background(), tc.method, "/agents/conversations/"+convID.String()+tc.path, nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if gotConvID != convID {
+				t.Errorf("expected conversation id %s forwarded, got %s", convID, gotConvID)
+			}
+			if gotActorUserID != callerID {
+				t.Errorf("expected caller id %s forwarded as actorUserID, got %s", callerID, gotActorUserID)
+			}
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("expected the service's not-found error to surface as 404, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestSendGlobalConversationMessage_ForwardsCallerIDNotBodySuppliedActor(t *testing.T) {
+	convID := uuid.New()
+	callerID := uuid.New()
+	attackerSuppliedActor := uuid.New()
+	var gotActorUserID uuid.UUID
+	svc := &mockAgentSvc{
+		sendGlobalConversationMessage: func(_ context.Context, _ uuid.UUID, _ string, actorUserID uuid.UUID) error {
+			gotActorUserID = actorUserID
+			return nil
+		},
+	}
+	r := newGlobalConversationRouter(svc, callerID.String())
+	body := `{"message":"hi","actor_user_id":"` + attackerSuppliedActor.String() + `"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
+		"/agents/conversations/"+convID.String()+"/messages", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotActorUserID != callerID {
+		t.Fatalf("actorUserID must always be the authenticated caller (%s), never a client-suppliable body field (%s)", callerID, gotActorUserID)
 	}
 }
