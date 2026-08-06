@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 )
 
@@ -23,12 +24,25 @@ const (
 	maxNameLen     = 100
 )
 
+// AgentIdentityStore is the minimal agent-lookup surface
+// WithAgentIdentityStore needs to verify an agent-API-key request's claimed
+// X-Agent-ID / X-Actor-User-ID against the database. Satisfied directly by
+// *postgres.AgentRepository.
+type AgentIdentityStore interface {
+	FindAgentByID(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
+	HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
+}
+
 // Service is the concrete implementation of apikeydom.Service.
 type Service struct {
 	repo           apikeydom.Repository
 	agentKeyHash   [32]byte  // SHA-256 of the configured static agent API key
 	agentKeySet    bool      // true when an agent API key has been configured
 	agentBotUserID uuid.UUID // user identity returned for the static agent key
+	// agentIdentity backs FindAgentByID/HasActiveGlobalChatSession below,
+	// which together satisfy middleware.AgentIdentityVerifier — see
+	// WithAgentIdentityStore.
+	agentIdentity AgentIdentityStore
 }
 
 // New returns a configured API key Service.
@@ -44,6 +58,39 @@ func (s *Service) WithAgentKey(rawKey string, agentUserID uuid.UUID) *Service {
 	s.agentBotUserID = agentUserID
 	s.agentKeySet = true
 	return s
+}
+
+// WithAgentIdentityStore wires the agent/chat-session lookups the
+// authentication middleware needs to verify a claimed X-Agent-ID /
+// X-Actor-User-ID pair (see middleware.AgentIdentityVerifier's doc comment
+// for the threat this closes) — the agent API key alone is a single shared
+// secret and proves nothing about which specific agent, or which specific
+// human, a given request is acting for.
+func (s *Service) WithAgentIdentityStore(store AgentIdentityStore) *Service {
+	s.agentIdentity = store
+	return s
+}
+
+// FindAgentByID implements middleware.AgentIdentityVerifier by delegating to
+// the wired AgentIdentityStore. Returns agentdom.ErrAgentNotFound if no
+// store was configured, so an unwired Service fails closed rather than
+// silently trusting every claimed agent ID.
+func (s *Service) FindAgentByID(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error) {
+	if s.agentIdentity == nil {
+		return nil, agentdom.ErrAgentNotFound
+	}
+	return s.agentIdentity.FindAgentByID(ctx, agentID)
+}
+
+// HasActiveGlobalChatSession implements middleware.AgentIdentityVerifier by
+// delegating to the wired AgentIdentityStore. Returns false (not an error)
+// if no store was configured — verifyAgentIdentity in the middleware treats
+// a false return as "reject," so this still fails closed.
+func (s *Service) HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error) {
+	if s.agentIdentity == nil {
+		return false, nil
+	}
+	return s.agentIdentity.HasActiveGlobalChatSession(ctx, agentID, actorUserID)
 }
 
 // List returns all non-revoked API keys for the given user.

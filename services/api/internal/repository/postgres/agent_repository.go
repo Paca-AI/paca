@@ -290,6 +290,47 @@ func (r *AgentRepository) FindAgentByID(ctx context.Context, id uuid.UUID) (*age
 	return agent, nil
 }
 
+// FindVisibleAgentInProject returns a single agent by ID, restricted to
+// those visible in projectID: its own project-scoped agent, or a global
+// agent currently invited into it — same project_members join as
+// ListAgents (see its doc comment for why joining, not filtering on
+// a.project_id, is what makes an invited global agent resolvable here).
+func (r *AgentRepository) FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
+	var row agentRecord
+	err := r.db.GetContext(ctx, &row, `
+		SELECT `+agentSelectCols+`
+		FROM agents a
+		JOIN project_members pm ON pm.agent_id = a.id AND pm.deleted_at IS NULL AND pm.project_id = $1
+		WHERE a.id = $2 AND a.deleted_at IS NULL`,
+		projectID.String(), agentID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, agentdom.ErrAgentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	agent, err := agentFromReadRow(row)
+	if err != nil {
+		return nil, err
+	}
+	mcpServers, err := r.ListMCPServers(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	skills, err := r.ListSkills(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	envVars, err := r.ListEnvVars(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	agent.MCPServers = mcpServers
+	agent.Skills = skills
+	agent.EnvVars = envVars
+	return agent, nil
+}
+
 // FindAgentByHandle returns an agent by its handle among those visible in a
 // project: its own project-scoped agents, plus any global agents currently
 // invited into it — resolved via the project_members join (see ListAgents'
@@ -1025,6 +1066,19 @@ func (r *AgentRepository) ListGlobalChatSessions(ctx context.Context, agentID, a
 		result = append(result, chatSessionFromRecord(rec))
 	}
 	return result, nil
+}
+
+// HasActiveGlobalChatSession reports whether agentID has ever started a
+// global chat session with actorUserID. agent_chat_sessions has no
+// deleted_at column (sessions are never soft-deleted), so "ever started" and
+// "active" coincide — existence alone is the check.
+func (r *AgentRepository) HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error) {
+	const q = `SELECT EXISTS(SELECT 1 FROM agent_chat_sessions WHERE agent_id = $1 AND actor_user_id = $2)`
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, q, agentID.String(), actorUserID.String()); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // FindChatSessionByID returns a single chat session by its primary key.

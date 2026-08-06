@@ -26,6 +26,14 @@ type AgentRepository interface {
 	// plus any global agents currently invited into it.
 	ListAgents(ctx context.Context, projectID uuid.UUID, scope AgentScope) ([]*Agent, error)
 	FindAgentByID(ctx context.Context, id uuid.UUID) (*Agent, error)
+	// FindVisibleAgentInProject returns a single agent by ID, but only if it
+	// is visible in projectID — its own project-scoped agent, or a global
+	// agent currently invited into it (same project_members join as
+	// ListAgents/FindAgentByHandle). Returns ErrAgentNotFound otherwise, so
+	// a project-scoped detail page (GET /projects/:id/agents/:agentId) can
+	// resolve an invited global agent the same way the project's agent list
+	// already does, instead of 404ing on it.
+	FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*Agent, error)
 	FindAgentByHandle(ctx context.Context, projectID uuid.UUID, handle string) (*Agent, error)
 	CreateAgent(ctx context.Context, a *Agent) error
 	UpdateAgent(ctx context.Context, a *Agent) error
@@ -121,6 +129,13 @@ type ChatSessionRepository interface {
 	// ListGlobalChatSessions is ListChatSessions' sibling for global chat
 	// sessions, keyed by actor_user_id instead of member_id.
 	ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*AgentChatSession, error)
+	// HasActiveGlobalChatSession reports whether agentID has ever started a
+	// global chat session with actorUserID. Used by the agent-API-key
+	// authentication middleware (middleware.AgentIdentityVerifier) to verify
+	// an X-Actor-User-ID claim is backed by a real session rather than an
+	// arbitrary value riding on the single shared static agent API key —
+	// see that type's doc comment for the full threat model.
+	HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
 }
 
 // ListConversationsFilter carries optional filters for listing conversations.

@@ -23,6 +23,7 @@ func findAgentByIDReturning(agentType string) func(context.Context, uuid.UUID) (
 
 type mockAgentRepo struct {
 	findAgentByID                   func(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error)
+	findVisibleAgentInProject       func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
 	findAgentByHandle               func(ctx context.Context, projectID uuid.UUID, handle string) (*agentdom.Agent, error)
 	listAgents                      func(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error)
 	createAgent                     func(ctx context.Context, agent *agentdom.Agent) error
@@ -68,6 +69,7 @@ type mockAgentRepo struct {
 	softDeleteGlobalAgentCascade    func(ctx context.Context, agentID uuid.UUID) error
 	listInvitedProjectIDs           func(ctx context.Context, agentID uuid.UUID) ([]uuid.UUID, error)
 	listGlobalChatSessions          func(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error)
+	hasActiveGlobalChatSession      func(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
 }
 
 func (m *mockAgentRepo) ListAgents(ctx context.Context, projectID uuid.UUID, scope agentdom.AgentScope) ([]*agentdom.Agent, error) {
@@ -80,6 +82,24 @@ func (m *mockAgentRepo) ListAgents(ctx context.Context, projectID uuid.UUID, sco
 func (m *mockAgentRepo) FindAgentByID(ctx context.Context, id uuid.UUID) (*agentdom.Agent, error) {
 	if m.findAgentByID != nil {
 		return m.findAgentByID(ctx, id)
+	}
+	return nil, agentdom.ErrAgentNotFound
+}
+
+func (m *mockAgentRepo) FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
+	if m.findVisibleAgentInProject != nil {
+		return m.findVisibleAgentInProject(ctx, projectID, agentID)
+	}
+	// Most tests exercising UpdateAgent/DeleteAgent/GenerateACPBridgeToken
+	// (which all call Service.GetAgent -> FindVisibleAgentInProject) only
+	// care about agent-scoped behavior, not the project-visibility join
+	// itself — falling back to findAgentByID keeps them working without
+	// every one of them having to wire findVisibleAgentInProject explicitly.
+	// Tests that specifically exercise visibility (e.g.
+	// TestGetAgent_ResolvesInvitedGlobalAgent, TestGetAgent_WrongProject)
+	// set findVisibleAgentInProject directly instead.
+	if m.findAgentByID != nil {
+		return m.findAgentByID(ctx, agentID)
 	}
 	return nil, agentdom.ErrAgentNotFound
 }
@@ -371,6 +391,13 @@ func (m *mockAgentRepo) ListGlobalChatSessions(ctx context.Context, agentID, act
 	return nil, nil
 }
 
+func (m *mockAgentRepo) HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error) {
+	if m.hasActiveGlobalChatSession != nil {
+		return m.hasActiveGlobalChatSession(ctx, agentID, actorUserID)
+	}
+	return false, nil
+}
+
 func (m *mockAgentRepo) FindChatSessionByID(ctx context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
 	if m.findChatSessionByID != nil {
 		return m.findChatSessionByID(ctx, id)
@@ -439,7 +466,10 @@ func TestGetAgent_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+		findVisibleAgentInProject: func(_ context.Context, gotProjectID, gotAgentID uuid.UUID) (*agentdom.Agent, error) {
+			if gotProjectID != projectID || gotAgentID != agentID {
+				t.Fatalf("unexpected lookup (%s, %s)", gotProjectID, gotAgentID)
+			}
 			return agent, nil
 		},
 	}
@@ -456,18 +486,16 @@ func TestGetAgent_Success(t *testing.T) {
 
 func TestGetAgent_WrongProject(t *testing.T) {
 	projectID := uuid.New()
-	wrongProjectID := uuid.New()
 	agentID := uuid.New()
-	agent := &agentdom.Agent{
-		ID:        agentID,
-		ProjectID: wrongProjectID,
-		Name:      "Test Agent",
-		Handle:    "test-agent",
-	}
 
+	// The repo layer (FindVisibleAgentInProject) is the one that actually
+	// enforces visibility via its project_members join — a project this
+	// agent isn't visible in simply yields no row, which the postgres impl
+	// maps to ErrAgentNotFound (see agent_repository.go). The service just
+	// has to propagate that, not re-check ProjectID itself.
 	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
-			return agent, nil
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
 		},
 	}
 	projRepo := &mockProjectRepo{}
@@ -478,6 +506,42 @@ func TestGetAgent_WrongProject(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// TestGetAgent_ResolvesInvitedGlobalAgent is the regression test for the
+// gap Pullfrog's review flagged: a global agent has ProjectID == uuid.Nil,
+// never equal to any real project — the old ProjectID-equality check in
+// GetAgent would 404 on it even when the project's own agent list (which
+// joins through project_members, see ListAgents) shows it as a member. The
+// fix delegates entirely to FindVisibleAgentInProject, so this just asserts
+// the service returns whatever that lookup finds without re-applying the
+// old ownership check.
+func TestGetAgent_ResolvesInvitedGlobalAgent(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	globalAgent := &agentdom.Agent{
+		ID:         agentID,
+		ProjectID:  uuid.Nil, // global agents never have a project of their own
+		AgentScope: agentdom.AgentScopeGlobal,
+		Name:       "Global Bot",
+		Handle:     "global-bot",
+	}
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, gotProjectID, gotAgentID uuid.UUID) (*agentdom.Agent, error) {
+			if gotProjectID == projectID && gotAgentID == agentID {
+				return globalAgent, nil
+			}
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetAgent(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, agentID, result.ID)
+	assert.Equal(t, agentdom.AgentScopeGlobal, result.AgentScope)
 }
 
 func TestListAgents_Success(t *testing.T) {
@@ -2518,19 +2582,14 @@ func TestGenerateACPBridgeToken_NonACPAgent(t *testing.T) {
 
 func TestGenerateACPBridgeToken_WrongProject(t *testing.T) {
 	projectID := uuid.New()
-	wrongProjectID := uuid.New()
 	agentID := uuid.New()
-	provider := agentdom.ACPProviderClaudeCode
-	agent := &agentdom.Agent{
-		ID:          agentID,
-		ProjectID:   wrongProjectID,
-		AgentType:   agentdom.AgentTypeACP,
-		ACPProvider: &provider,
-	}
 
+	// Project-scope enforcement now lives in the repo's
+	// FindVisibleAgentInProject join (see TestGetAgent_WrongProject) — a
+	// project the agent isn't visible in simply yields no row.
 	repo := &mockAgentRepo{
-		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
-			return agent, nil
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
 		},
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -69,6 +70,13 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
 
 	apiKeyService := apikeysvc.New(apiKeyRepo).WithAgentKey(testAgentAPIKey, botUserID)
+	// None of these task/comment-focused tests exercise the X-Actor-User-ID
+	// verification path (they never set that header, only X-Agent-ID) — see
+	// authn_test.go's TestAuthn_APIKey_* for that. This fake exists purely
+	// so a well-formed X-Agent-ID isn't rejected outright by
+	// verifyAgentIdentity's DB lookup, which every one of these tests would
+	// otherwise fail closed against.
+	apiKeyService.WithAgentIdentityStore(passthroughAgentIdentityStore{})
 
 	if store == nil {
 		store = &projectPermStore{}
@@ -92,6 +100,21 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 		View:                 handler.NewViewHandler(viewService),
 		Log:                  log,
 	})
+}
+
+// passthroughAgentIdentityStore satisfies apikeysvc.AgentIdentityStore by
+// treating every X-Agent-ID as a real, existing agent — these integration
+// tests are about task/comment behavior under agent-key auth, not about the
+// X-Agent-ID verification boundary itself (see authn_test.go for that), so
+// they don't need a real agents-table fake.
+type passthroughAgentIdentityStore struct{}
+
+func (passthroughAgentIdentityStore) FindAgentByID(_ context.Context, agentID uuid.UUID) (*agentdom.Agent, error) {
+	return &agentdom.Agent{ID: agentID, AgentScope: agentdom.AgentScopeProject}, nil
+}
+
+func (passthroughAgentIdentityStore) HasActiveGlobalChatSession(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
 }
 
 // agentKeyAuthReq creates a request authenticated with agent API key

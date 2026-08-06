@@ -214,6 +214,11 @@ func New(cfg *config.Config) (*App, error) {
 	if cfg.Security.AgentAPIKey != "" {
 		apiKeyService.WithAgentKey(cfg.Security.AgentAPIKey, agentBotUserID)
 	}
+	// Wires the DB-backed X-Agent-ID / X-Actor-User-ID verification the
+	// authn middleware needs (middleware.AgentIdentityVerifier) — without
+	// this, agentRepo stays nil on apiKeyService and every agent/actor claim
+	// fails closed (see apikeysvc.Service.FindAgentByID's nil-store branch).
+	apiKeyService.WithAgentIdentityStore(agentRepo)
 
 	// --- Plugin infrastructure ----------------------------------------------
 	// sqlx.DB embeds *sql.DB; plugin infrastructure uses the raw driver interface.

@@ -69,16 +69,13 @@ func (s *Service) ListAgents(ctx context.Context, projectID uuid.UUID, scope age
 	return s.repo.ListAgents(ctx, projectID, scope)
 }
 
-// GetAgent returns a single agent after verifying project ownership.
+// GetAgent returns a single agent visible in projectID — its own
+// project-scoped agent, or a global agent currently invited into the
+// project (see FindVisibleAgentInProject) — so a project's agent detail
+// page resolves the same agents its list view shows, rather than 404ing on
+// an invited global agent.
 func (s *Service) GetAgent(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
-	a, err := s.repo.FindAgentByID(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	if a.ProjectID != projectID {
-		return nil, agentdom.ErrAgentNotFound
-	}
-	return a, nil
+	return s.repo.FindVisibleAgentInProject(ctx, projectID, agentID)
 }
 
 // CreateAgent validates input, creates the agent, and sets up project membership.

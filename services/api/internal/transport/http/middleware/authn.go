@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
@@ -51,6 +52,69 @@ type APIKeyAuthenticator interface {
 type AgentAPIKeyAuthenticator interface {
 	APIKeyAuthenticator
 	IsAgentKey(ctx context.Context, rawKey string) bool
+}
+
+// AgentIdentityVerifier confirms an agent-API-key request's claimed
+// X-Agent-ID / X-Actor-User-ID header values against the database before
+// either is trusted. The agent API key (apikeysvc.WithAgentKey) is a single
+// static secret shared by every agent process — presenting it proves only
+// "this caller knows the shared secret," not "this caller actually is the
+// specific agent, or is acting for the specific human, it claims to be" via
+// these two headers. Without this check, anyone holding that one key (a
+// leak, or a compromised/malicious agent sandbox reading its own env) could
+// set X-Agent-ID to any agent UUID to read that agent's own permissions and
+// invited-projects list (GetMyGlobalPermissions, GetMyInvitedProjects), or
+// set X-Actor-User-ID to attribute actions like CreateProject to an
+// arbitrary human. Implemented directly by *postgres.AgentRepository (it
+// already has both FindAgentByID and HasActiveGlobalChatSession).
+type AgentIdentityVerifier interface {
+	// FindAgentByID must return agentdom.ErrAgentNotFound (or any error) for
+	// an unknown or soft-deleted agent — applyAuthn treats any error here as
+	// "reject the claimed identity."
+	FindAgentByID(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
+	// HasActiveGlobalChatSession reports whether agentID has an active
+	// global chat session with actorUserID — the actual evidence binding
+	// the two together, not just their both being well-formed UUIDs.
+	HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
+}
+
+// errAgentIdentityUnverified is returned by verifyAgentIdentity for any
+// failed check — deliberately generic (never "no such agent" vs. "wrong
+// actor") so the HTTP response doesn't help an attacker distinguish a
+// nonexistent agent ID from a real one paired with the wrong human.
+var errAgentIdentityUnverified = errors.New("authn: unable to verify claimed agent identity")
+
+// verifyAgentIdentity checks a claimed (agentID, actorUserID) pair from
+// X-Agent-ID / X-Actor-User-ID against the database via verifier. Returns
+// the same pair back only if every applicable check passes; otherwise
+// returns errAgentIdentityUnverified. agentID == uuid.Nil (no X-Agent-ID
+// header) is a no-op — nothing to verify. A verifier of nil fails closed
+// rather than silently trusting an unverifiable claim.
+func verifyAgentIdentity(ctx context.Context, verifier AgentIdentityVerifier, agentID, actorUserID uuid.UUID) (uuid.UUID, uuid.UUID, error) {
+	if agentID == uuid.Nil {
+		return uuid.Nil, uuid.Nil, nil
+	}
+	if verifier == nil {
+		return uuid.Nil, uuid.Nil, errAgentIdentityUnverified
+	}
+	agent, err := verifier.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, errAgentIdentityUnverified
+	}
+	if actorUserID == uuid.Nil {
+		return agentID, uuid.Nil, nil
+	}
+	// Only global agents legitimately chat with a human directly — a
+	// project-scoped agent's actions are attributed via its
+	// project_members.id, never a raw actor_user_id.
+	if agent.AgentScope != agentdom.AgentScopeGlobal {
+		return uuid.Nil, uuid.Nil, errAgentIdentityUnverified
+	}
+	hasSession, err := verifier.HasActiveGlobalChatSession(ctx, agentID, actorUserID)
+	if err != nil || !hasSession {
+		return uuid.Nil, uuid.Nil, errAgentIdentityUnverified
+	}
+	return agentID, actorUserID, nil
 }
 
 // Authn validates the access JWT and stores the parsed claims in the request context
@@ -156,16 +220,13 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			if apiKeyAuthenticator != nil {
 				key, err := apiKeyAuthenticator.Authenticate(r.Context(), tokenStr)
 				if err == nil {
-					var agentID, actorUserID uuid.UUID
-					if agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator); ok && agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
-						agentIDHeader := r.Header.Get("X-Agent-ID")
-						if agentIDHeader != "" {
-							if parsedID, parseErr := uuid.Parse(agentIDHeader); parseErr == nil {
-								agentID = parsedID
-							}
-						}
-						actorUserID = parseActorUserIDHeader(r)
-					}
+					// Unverifiable agent/actor claims are dropped (zero
+					// value), not hard-failed — OptionalAuthn's contract is
+					// "never abort on bad credentials," so a spoofed claim
+					// degrades to "no agent identity" rather than a 401,
+					// same as it already does for an Authenticate error a
+					// few lines up.
+					agentID, actorUserID, _ := resolveAgentClaims(r, apiKeyAuthenticator, tokenStr)
 					r = setAPIKeyAuthContext(r, key.UserID, agentID, actorUserID)
 				}
 			}
@@ -188,15 +249,10 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 			return r, false
 		}
 
-		var agentID, actorUserID uuid.UUID
-		if agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator); ok && agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
-			agentIDHeader := r.Header.Get("X-Agent-ID")
-			if agentIDHeader != "" {
-				if parsedID, parseErr := uuid.Parse(agentIDHeader); parseErr == nil {
-					agentID = parsedID
-				}
-			}
-			actorUserID = parseActorUserIDHeader(r)
+		agentID, actorUserID, claimErr := resolveAgentClaims(r, apiKeyAuthenticator, tokenStr)
+		if claimErr != nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unable to verify claimed agent identity"))
+			return r, false
 		}
 
 		r = setAPIKeyAuthContext(r, key.UserID, agentID, actorUserID)
@@ -226,17 +282,50 @@ func applyAuthn(w http.ResponseWriter, r *http.Request, tm *jwttoken.Manager, ap
 // me" from the home-page chat). Only ever consulted from the agent-API-key
 // branch above — a human JWT session already carries its own identity via
 // actorContextKey and must never have this header honored, or one human
-// could impersonate another simply by setting it.
-func parseActorUserIDHeader(r *http.Request) uuid.UUID {
+// could impersonate another simply by setting it. Returns (uuid.Nil, nil)
+// when the header is absent — nothing claimed. A non-nil error means the
+// header was present but malformed; resolveAgentClaims treats that as a
+// verification failure rather than silently falling back to "no claim."
+func parseActorUserIDHeader(r *http.Request) (uuid.UUID, error) {
 	header := r.Header.Get("X-Actor-User-ID")
 	if header == "" {
-		return uuid.Nil
+		return uuid.Nil, nil
 	}
-	parsed, err := uuid.Parse(header)
-	if err != nil {
-		return uuid.Nil
+	return uuid.Parse(header)
+}
+
+// resolveAgentClaims parses X-Agent-ID / X-Actor-User-ID off r and verifies
+// them against the database via apiKeyAuthenticator's AgentIdentityVerifier
+// (when it implements one) — see that type's doc comment for why an
+// unverified claim can't be trusted. Only ever does anything when tokenStr
+// is the shared static agent key (see IsAgentKey); otherwise returns zero
+// values and a nil error, since there is no agent claim to resolve for a
+// personal API key. Returns a non-nil error whenever a claim was made
+// (a header was present) but failed verification — callers decide whether
+// that's fatal (required auth: reject the request) or just dropped
+// (OptionalAuthn: proceed with no agent identity, same as any other bad
+// credential in that path).
+func resolveAgentClaims(r *http.Request, apiKeyAuthenticator APIKeyAuthenticator, tokenStr string) (agentID, actorUserID uuid.UUID, err error) {
+	agentKeyAuth, ok := apiKeyAuthenticator.(AgentAPIKeyAuthenticator)
+	if !ok || !agentKeyAuth.IsAgentKey(r.Context(), tokenStr) {
+		return uuid.Nil, uuid.Nil, nil
 	}
-	return parsed
+
+	var claimedAgentID uuid.UUID
+	if agentIDHeader := r.Header.Get("X-Agent-ID"); agentIDHeader != "" {
+		parsed, parseErr := uuid.Parse(agentIDHeader)
+		if parseErr != nil {
+			return uuid.Nil, uuid.Nil, errAgentIdentityUnverified
+		}
+		claimedAgentID = parsed
+	}
+	claimedActorUserID, parseErr := parseActorUserIDHeader(r)
+	if parseErr != nil {
+		return uuid.Nil, uuid.Nil, errAgentIdentityUnverified
+	}
+
+	verifier, _ := apiKeyAuthenticator.(AgentIdentityVerifier)
+	return verifyAgentIdentity(r.Context(), verifier, claimedAgentID, claimedActorUserID)
 }
 
 func setAPIKeyAuthContext(r *http.Request, userID, agentID, actorUserID uuid.UUID) *http.Request {
