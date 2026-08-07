@@ -44,6 +44,15 @@ export const LoadOlderEvents: FC<{
 		const apply = () => {
 			const fromEnd = anchorRef.current;
 			if (fromEnd === null) return;
+			// The observed element also contains the composer/footer and the
+			// live message list, so a resize can land here before the older
+			// page's request even resolves — the reader typing, or the agent
+			// streaming new tokens at the bottom while they read history.
+			// `fromEnd` only accounts for the prepend; correcting against a
+			// resize that isn't the prepend yet would yank the reader's
+			// position for no reason. Nothing relevant can have landed before
+			// the fetch itself resolves.
+			if (isLoadingOlderRef.current) return;
 			const target = viewport.scrollHeight - fromEnd;
 			if (Math.abs(viewport.scrollTop - target) < 0.5) {
 				if (!isLoadingOlderRef.current) anchorRef.current = null;

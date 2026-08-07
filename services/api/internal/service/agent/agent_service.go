@@ -1512,7 +1512,12 @@ func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, off
 	if len(convs) == 0 {
 		return []*agentdom.AgentConversationEvent{}, 0, nil
 	}
-	_ = offset // offset has no cursor equivalent; unreachable code, see doc comment above
+	// offset has no cursor equivalent (see agentdom.ConversationEventWindow):
+	// fail loudly rather than silently ignoring it, in case this method ever
+	// grows a real caller that expects offset-based paging to work.
+	if offset != 0 {
+		return nil, 0, fmt.Errorf("ListChatMessages: non-zero offset %d is not supported by cursor-based ListConversationEvents", offset)
+	}
 	return s.repo.ListConversationEvents(ctx, convs[0].ID, agentdom.ConversationEventWindow{Limit: limit})
 }
 
