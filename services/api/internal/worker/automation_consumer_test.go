@@ -482,7 +482,13 @@ func (f *fakePauseResumeRepo) CountPendingAgentWaits(_ context.Context, runID uu
 	}
 	return count, nil
 }
-func (f *fakePauseResumeRepo) CountPendingAgentWaitsForNode(_ context.Context, runID, nodeID uuid.UUID) (int, error) {
+func (f *fakePauseResumeRepo) DeletePendingAgentWaitAndCountRemaining(_ context.Context, id, runID, nodeID uuid.UUID) (int, error) {
+	for convID, w := range f.pendingWaits {
+		if w.ID == id {
+			delete(f.pendingWaits, convID)
+			break
+		}
+	}
 	count := 0
 	for _, w := range f.pendingWaits {
 		if w.RunID == runID && w.NodeID == nodeID {
@@ -1504,7 +1510,7 @@ func (f *fakePluginTriggerRepo) DeletePendingAgentWait(context.Context, uuid.UUI
 func (f *fakePluginTriggerRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
 	return 0, nil
 }
-func (f *fakePluginTriggerRepo) CountPendingAgentWaitsForNode(context.Context, uuid.UUID, uuid.UUID) (int, error) {
+func (f *fakePluginTriggerRepo) DeletePendingAgentWaitAndCountRemaining(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (int, error) {
 	return 0, nil
 }
 func (f *fakePluginTriggerRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {

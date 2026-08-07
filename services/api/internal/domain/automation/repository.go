@@ -68,27 +68,28 @@ type Repository interface {
 	// FindPendingAgentWait returns the pending wait for conversationID, or
 	// (nil, nil) if none exists — either the conversation never had one
 	// (most conversations aren't automation-driven at all) or it was
-	// already resolved and deleted by an earlier, at-least-once redelivery
-	// of the same terminal-status message. Read-only by design: the caller
-	// must not delete the row (via DeletePendingAgentWait) until it has
-	// confirmed the walk actually resumed, so a crash or error mid-resume
-	// leaves the row in place for the next redelivery to retry instead of
-	// silently losing it.
+	// already resolved by an earlier, at-least-once redelivery of the same
+	// terminal-status message. Read-only — resolving a wait (deleting it)
+	// is DeletePendingAgentWaitAndCountRemaining below, not this.
 	FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*PendingAgentWait, error)
-	// DeletePendingAgentWait removes a pending wait once its walk has
-	// successfully resumed — see FindPendingAgentWait.
+	// DeletePendingAgentWait removes a pending wait outright, with no
+	// fan-out accounting — used only when the owning automation turns out
+	// to be inactive, where nothing downstream will ever fire regardless
+	// of sibling state, so the fan-out count doesn't matter.
 	DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error
+	// DeletePendingAgentWaitAndCountRemaining atomically deletes id (a
+	// resolved wait) and returns how many sibling waits remain for
+	// (runID, nodeID) — see the postgres implementation's docstring for
+	// why this must be a single atomic operation rather than a separate
+	// count-then-delete or delete-then-count pair. A trigger_ai_agent node
+	// can fan out to several conversations sharing one NodeID (see
+	// walkAction), and the graph walk must not continue past that node
+	// until every one of them has resolved; a remaining count of 0 means
+	// the caller was the last.
+	DeletePendingAgentWaitAndCountRemaining(ctx context.Context, id, runID, nodeID uuid.UUID) (int, error)
 	// CountPendingAgentWaits reports how many waits are still outstanding
 	// for runID — used to decide whether a run can be finalized yet.
 	CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error)
-	// CountPendingAgentWaitsForNode reports how many waits are still
-	// outstanding for nodeID specifically within runID — a trigger_ai_agent
-	// node can fan out to several conversations sharing the same NodeID
-	// (see walkAction), and the graph walk must not continue past that node
-	// until every one of them has resolved. Includes the caller's own
-	// not-yet-deleted row, so a count of 1 means the caller is the last one
-	// outstanding.
-	CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error)
 
 	// --- wait pause/resume -------------------------------------------------------
 

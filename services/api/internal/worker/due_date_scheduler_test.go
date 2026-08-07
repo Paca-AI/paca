@@ -61,7 +61,7 @@ func (f *fakeDueDateRepo) DeletePendingAgentWait(context.Context, uuid.UUID) err
 func (f *fakeDueDateRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
 	return 0, nil
 }
-func (f *fakeDueDateRepo) CountPendingAgentWaitsForNode(context.Context, uuid.UUID, uuid.UUID) (int, error) {
+func (f *fakeDueDateRepo) DeletePendingAgentWaitAndCountRemaining(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (int, error) {
 	return 0, nil
 }
 func (f *fakeDueDateRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {

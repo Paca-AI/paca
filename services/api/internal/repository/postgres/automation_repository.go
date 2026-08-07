@@ -809,16 +809,47 @@ func (r *AutomationRepository) CountPendingAgentWaits(ctx context.Context, runID
 	return count, nil
 }
 
-// CountPendingAgentWaitsForNode implements automationdom.Repository.CountPendingAgentWaitsForNode.
-func (r *AutomationRepository) CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error) {
-	var count int
-	if err := r.db.GetContext(ctx, &count,
-		`SELECT COUNT(*) FROM automation_pending_agent_waits WHERE run_id = $1 AND node_id = $2`,
-		runID.String(), nodeID.String(),
-	); err != nil {
+// DeletePendingAgentWaitAndCountRemaining implements
+// automationdom.Repository.DeletePendingAgentWaitAndCountRemaining.
+//
+// A fanned-out trigger_ai_agent node's sibling conversations can reach a
+// terminal status within moments of each other and be processed by
+// different consumer replicas truly concurrently — dispatchMessages calls
+// handleAgentConversationStatus synchronously within one replica's own
+// read loop, but each replica has its own Redis consumer-group identity
+// (see AutomationConsumer.consumerName), so different conversations'
+// messages can land on different replicas at the same time. Deciding "am I
+// the last sibling to resolve" can't be a separate DELETE then COUNT (or
+// COUNT then DELETE) in either order: two siblings resolving concurrently
+// can each read a stale view of the other's row and either both conclude
+// they're not last (stalling the run forever, since neither ever proceeds)
+// or both conclude they are (firing downstream twice). A transaction-
+// scoped Postgres advisory lock keyed on (runID, nodeID) serializes
+// exactly this contended decision across replicas — concurrent siblings
+// for the same node take their turn one at a time, each seeing the prior
+// one's delete already applied — without blocking unrelated nodes or runs.
+func (r *AutomationRepository) DeletePendingAgentWaitAndCountRemaining(ctx context.Context, id, runID, nodeID uuid.UUID) (int, error) {
+	var remaining int
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		lockKey := runID.String() + ":" + nodeID.String()
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+			return fmt.Errorf("acquire fan-out lock: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM automation_pending_agent_waits WHERE id = $1`, id.String()); err != nil {
+			return fmt.Errorf("delete pending agent wait: %w", err)
+		}
+		if err := tx.GetContext(ctx, &remaining,
+			`SELECT COUNT(*) FROM automation_pending_agent_waits WHERE run_id = $1 AND node_id = $2`,
+			runID.String(), nodeID.String(),
+		); err != nil {
+			return fmt.Errorf("count remaining siblings: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return 0, err
 	}
-	return count, nil
+	return remaining, nil
 }
 
 // --- wait pause/resume ---------------------------------------------------------

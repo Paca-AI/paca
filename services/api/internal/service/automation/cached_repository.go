@@ -247,9 +247,9 @@ func (c *CachedRepository) CountPendingAgentWaits(ctx context.Context, runID uui
 	return c.repo.CountPendingAgentWaits(ctx, runID)
 }
 
-// CountPendingAgentWaitsForNode delegates to the underlying repository.
-func (c *CachedRepository) CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error) {
-	return c.repo.CountPendingAgentWaitsForNode(ctx, runID, nodeID)
+// DeletePendingAgentWaitAndCountRemaining delegates to the underlying repository.
+func (c *CachedRepository) DeletePendingAgentWaitAndCountRemaining(ctx context.Context, id, runID, nodeID uuid.UUID) (int, error) {
+	return c.repo.DeletePendingAgentWaitAndCountRemaining(ctx, id, runID, nodeID)
 }
 
 // CreatePendingDelay delegates to the underlying repository.

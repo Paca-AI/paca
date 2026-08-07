@@ -63,19 +63,19 @@ type automationGraphReader interface {
 	// resumeWalk.
 	ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*automationdom.RunStep, error)
 	// CreatePendingAgentWait, FindPendingAgentWait, DeletePendingAgentWait,
-	// and CountPendingAgentWaits back the trigger_ai_agent pause/resume flow
-	// — see walkAction, handleAgentConversationStatus, and
-	// finalizeRunIfDone. Find/Delete are separate calls rather than one
-	// atomic claim-and-delete so the row survives until resumeWalk actually
-	// succeeds — see FindPendingAgentWait's docstring.
+	// DeletePendingAgentWaitAndCountRemaining, and CountPendingAgentWaits
+	// back the trigger_ai_agent pause/resume flow — see walkAction,
+	// handleAgentConversationStatus, resumeWalk, and finalizeRunIfDone.
 	CreatePendingAgentWait(ctx context.Context, w *automationdom.PendingAgentWait) error
 	FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error)
 	DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error
+	// DeletePendingAgentWaitAndCountRemaining gates a fanned-out
+	// trigger_ai_agent node's outgoing edges on every one of its
+	// conversations resolving, not just the first, and does so atomically
+	// so concurrent consumer replicas can't race each other — see resumeWalk
+	// and the postgres implementation's docstring.
+	DeletePendingAgentWaitAndCountRemaining(ctx context.Context, id, runID, nodeID uuid.UUID) (int, error)
 	CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error)
-	// CountPendingAgentWaitsForNode gates a fanned-out trigger_ai_agent
-	// node's outgoing edges on every one of its conversations resolving,
-	// not just the first — see resumeWalk.
-	CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error)
 	// CreatePendingDelay, ListDueDelays, DeletePendingDelay, and
 	// CountPendingDelays back the wait action's pause/resume flow — see
 	// walkWait, WaitScheduler, and finalizeRunIfDone. Same
@@ -1011,22 +1011,15 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 
 	if err := c.resumeWalk(ctx, wait, status); err != nil {
 		c.log.Error("automation consumer: resume walk", "run_id", wait.RunID, "node_id", wait.NodeID, "err", err)
-		return // not acked, row not deleted — retried via processPending
+		return // not acked — retried via processPending (see resumeWalk's
+		// docstring for exactly which failures this can still recover: any
+		// error resumeWalk returns happens strictly before it resolves
+		// wait's row, so the row is guaranteed to still be there for the
+		// retry to find again)
 	}
-	// Only delete once the walk has actually resumed, so a crash or error
-	// above leaves the row for the next redelivery to retry instead of
-	// silently losing it — see FindPendingAgentWait's docstring.
-	if err := c.repo.DeletePendingAgentWait(ctx, wait.ID); err != nil {
-		c.log.Error("automation consumer: delete pending agent wait", "id", wait.ID, "err", err)
-		return // not acked — retried via processPending
-	}
-	// finalizeRunIfDone must run after the delete above, not before — it
-	// counts this same table, so run it any earlier (e.g. from inside
-	// resumeWalk) and it would still see this now-resolved wait as
-	// outstanding. A failure here is logged but doesn't block the ack: the
-	// resume itself already succeeded and its row is already gone, so
-	// redelivery can't retry this step anyway — it would just re-find
-	// nothing and ack immediately (see the wait == nil branch above).
+	// resumeWalk already resolved (deleted) wait's row itself as part of an
+	// atomic fan-out-accounting step — see its docstring — so unlike a
+	// plain single-step resume, there's no separate delete to do here.
 	if err := c.finalizeRunIfDone(ctx, wait.RunID); err != nil {
 		c.log.Error("automation consumer: finalize run", "run_id", wait.RunID, "err", err)
 	}
@@ -1037,17 +1030,21 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 // conversation reaches a terminal status. On anything other than "finished"
 // (the agent session itself failed or was stopped), the node's step is
 // recorded as failed and the walk does not continue past it — mirroring how
-// every other node type's own error already stops that branch. Does NOT
-// call finalizeRunIfDone itself — the caller must do that only after
-// deleting wait's row (finalizeRunIfDone counts the same table, so calling
-// it any earlier would still see this not-yet-deleted wait as outstanding).
+// every other node type's own error already stops that branch.
 //
 // A trigger_ai_agent node can fan out to several conversations that all
-// share wait.NodeID (see walkAction) — so before walking that node's
-// outgoing edges, this checks whether any sibling conversation is still
-// outstanding and, if this is the last one, whether any sibling (or this
-// one) failed/stopped. Only proceeds past the node once every conversation
-// has resolved AND every one of them finished successfully.
+// share wait.NodeID (see walkAction), and different conversations'
+// terminal-status messages can be processed by different consumer replicas
+// truly concurrently (see DeletePendingAgentWaitAndCountRemaining's
+// docstring) — so "is this the last sibling, and did every one of them
+// finish successfully" has to be resolved via one atomic delete-and-count
+// per resolution, not a separate count-then-delete. Only ever returns a
+// non-nil error for a failure that happens BEFORE that atomic step (so
+// wait's row is guaranteed to still exist for a retry to find again);
+// every failure after it — including resumeWalkFrom's own — is recorded as
+// a failed run step and swallowed instead, since wait's row (and every
+// sibling's) is already gone by then and a redelivery could never retry it
+// anyway.
 func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom.PendingAgentWait, status string) error {
 	automation, err := c.repo.FindAutomationByID(ctx, wait.AutomationID)
 	if err != nil {
@@ -1067,28 +1064,35 @@ func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom
 		}
 	}
 
+	// Resolve this wait now, atomically with learning how many siblings
+	// remain — every sibling's resolution (finished, failed, or stopped)
+	// must go through this same accounting, regardless of the checks
+	// below, so a later sibling's count is always accurate.
+	remaining, err := c.repo.DeletePendingAgentWaitAndCountRemaining(ctx, wait.ID, wait.RunID, wait.NodeID)
+	if err != nil {
+		return fmt.Errorf("resolve pending agent wait: %w", err)
+	}
+	if remaining > 0 {
+		// Siblings still outstanding — nothing more to do until the last
+		// one resolves.
+		return nil
+	}
+
+	// Everything from here on happens after wait's row (and every
+	// sibling's) is already gone — see the doc comment above for why every
+	// failure past this point is recorded and swallowed, not returned.
+	if status != "finished" {
+		return nil
+	}
 	// Not an error if the automation was archived/reverted-to-draft while
 	// this wait was outstanding — same as executeRun's own check.
 	if automation.Status != automationdom.StatusActive {
 		return nil
 	}
-
-	// wait's own row hasn't been deleted yet (the caller does that after
-	// this returns), so a count of 1 here means every sibling has already
-	// resolved and this is the last one.
-	stillPending, err := c.repo.CountPendingAgentWaitsForNode(ctx, wait.RunID, wait.NodeID)
-	if err != nil {
-		return fmt.Errorf("count pending agent waits for node: %w", err)
-	}
-	if stillPending > 1 {
-		return nil
-	}
-	if status != "finished" {
-		return nil
-	}
 	steps, err := c.repo.ListRunStepsByRun(ctx, wait.RunID)
 	if err != nil {
-		return fmt.Errorf("list run steps: %w", err)
+		c.log.Error("automation consumer: list run steps after resolving last fan-out wait", "run_id", wait.RunID, "err", err)
+		return nil
 	}
 	for _, s := range steps {
 		if s.NodeID == wait.NodeID && s.Status == automationdom.RunStepFailed {
@@ -1098,7 +1102,20 @@ func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom
 		}
 	}
 
-	return c.resumeWalkFrom(ctx, automation, wait.RunID, wait.ProjectID, wait.NodeID, wait.Context)
+	if err := c.resumeWalkFrom(ctx, automation, wait.RunID, wait.ProjectID, wait.NodeID, wait.Context); err != nil {
+		c.log.Error("automation consumer: resume walk from", "run_id", wait.RunID, "node_id", wait.NodeID, "err", err)
+		if stepErr := c.repo.CreateRunStep(ctx, &automationdom.RunStep{
+			ID:         uuid.New(),
+			RunID:      wait.RunID,
+			NodeID:     wait.NodeID,
+			Status:     automationdom.RunStepFailed,
+			Error:      fmt.Sprintf("resume failed: %v", err),
+			ExecutedAt: time.Now(),
+		}); stepErr != nil {
+			c.log.Error("automation consumer: record resume failure", "run_id", wait.RunID, "err", stepErr)
+		}
+	}
+	return nil
 }
 
 // resumeAfterDelay continues a graph walk that paused at delay.NodeID once

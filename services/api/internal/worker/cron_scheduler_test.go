@@ -68,7 +68,7 @@ func (f *fakeCronRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error 
 func (f *fakeCronRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
 	return 0, nil
 }
-func (f *fakeCronRepo) CountPendingAgentWaitsForNode(context.Context, uuid.UUID, uuid.UUID) (int, error) {
+func (f *fakeCronRepo) DeletePendingAgentWaitAndCountRemaining(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (int, error) {
 	return 0, nil
 }
 func (f *fakeCronRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
