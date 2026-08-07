@@ -267,7 +267,12 @@
 			"conversationEnded": "Этот диалог завершён.",
 			"textOnlyMessage": "Поддерживаются только текстовые сообщения.",
 			"failed": "Диалог завершился с ошибкой",
-			"noOutput": "Агент не выдал результат."
+			"noOutput": "Агент не выдал результат.",
+			"loadingOlder": "Загрузка…",
+			"newBelow_one": "{{count}} новое сообщение",
+			"newBelow_few": "{{count}} новых сообщения",
+			"newBelow_many": "{{count}} новых сообщений",
+			"newBelow_other": "{{count}} новых сообщения"
 		},
 		"thread": {
 			"composerPlaceholder": "Сообщение агенту…",

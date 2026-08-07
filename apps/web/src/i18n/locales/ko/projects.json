@@ -261,7 +261,10 @@
 			"conversationEnded": "이 대화가 종료되었습니다.",
 			"textOnlyMessage": "텍스트 메시지만 지원됩니다.",
 			"failed": "대화가 실패했습니다",
-			"noOutput": "에이전트가 출력을 생성하지 않았습니다."
+			"noOutput": "에이전트가 출력을 생성하지 않았습니다.",
+			"loadingOlder": "불러오는 중…",
+			"newBelow_one": "새 메시지 {{count}}개",
+			"newBelow_other": "새 메시지 {{count}}개"
 		},
 		"thread": {
 			"composerPlaceholder": "에이전트에게 메시지…",
