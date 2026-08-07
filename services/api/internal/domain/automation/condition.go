@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
@@ -45,7 +46,30 @@ const (
 	FieldReporter    Field = "reporter_id"
 	FieldStartDate   Field = "start_date"
 	FieldDueDate     Field = "due_date"
+
+	// The five sprint-scoped fields below evaluate against the walk's
+	// current sprint (see the worker's walker.sprint/resolveSprint) rather
+	// than the task — distinct from FieldSprint ("sprint_id" above, which
+	// stays meaning "this task's sprint ID"). Reachable from either a
+	// Sprint-triggered walk (w.sprint set directly) or a Task-triggered one
+	// resolving through task.SprintID.
+	FieldSprintName      Field = "sprint_name"
+	FieldSprintStatus    Field = "sprint_status"
+	FieldSprintGoal      Field = "sprint_goal"
+	FieldSprintStartDate Field = "sprint_start_date"
+	FieldSprintEndDate   Field = "sprint_end_date"
 )
+
+// IsSprintField reports whether f evaluates against a Sprint (via Evaluate's
+// sprint parameter) rather than a Task.
+func IsSprintField(f Field) bool {
+	switch f {
+	case FieldSprintName, FieldSprintStatus, FieldSprintGoal, FieldSprintStartDate, FieldSprintEndDate:
+		return true
+	default:
+		return false
+	}
+}
 
 // ConditionLeaf is a single comparison against one field of the task — the
 // whole of a Condition branch's tree (no AND/OR/NOT nesting).
@@ -67,12 +91,42 @@ type ConditionLeaf struct {
 	MatchMode string `json:"match_mode,omitempty"`
 }
 
-// Evaluate reports whether the leaf is satisfied by task. A nil leaf
-// evaluates to true (an empty condition matches everything), matching the
-// old rule engine's WrapLegacyFilter behavior for "no filter".
-func (l *ConditionLeaf) Evaluate(task *taskdom.Task) bool {
+// Evaluate reports whether the leaf is satisfied by task (or, for the five
+// sprint-scoped fields, by sprint). A nil leaf evaluates to true (an empty
+// condition matches everything), matching the old rule engine's
+// WrapLegacyFilter behavior for "no filter". A sprint field with sprint nil,
+// or a task field with task nil, evaluates false rather than panicking —
+// either can legitimately be nil depending on whether the walk that reached
+// this leaf was Task- or Sprint-triggered.
+func (l *ConditionLeaf) Evaluate(task *taskdom.Task, sprint *sprintdom.Sprint) bool {
 	if l == nil {
 		return true
+	}
+	if IsSprintField(l.Field) {
+		if sprint == nil {
+			return false
+		}
+		switch l.Field {
+		case FieldSprintName:
+			return compareAny(sprint.Name, l.Operator, l.Value)
+		case FieldSprintStatus:
+			return compareAny(string(sprint.Status), l.Operator, l.Value)
+		case FieldSprintGoal:
+			var goal string
+			if sprint.Goal != nil {
+				goal = *sprint.Goal
+			}
+			return compareAny(goal, l.Operator, l.Value)
+		case FieldSprintStartDate:
+			return compareTimePtr(sprint.StartDate, l.Operator, l.Value)
+		case FieldSprintEndDate:
+			return compareTimePtr(sprint.EndDate, l.Operator, l.Value)
+		default:
+			return false
+		}
+	}
+	if task == nil {
+		return false
 	}
 	switch l.Field {
 	case FieldStatus:
@@ -131,14 +185,14 @@ func (l *ConditionLeaf) EvaluateAgainstTasks(tasks []*taskdom.Task, matchMode st
 	}
 	if matchMode == "all" {
 		for _, t := range tasks {
-			if !l.Evaluate(t) {
+			if !l.Evaluate(t, nil) {
 				return false
 			}
 		}
 		return true
 	}
 	for _, t := range tasks {
-		if l.Evaluate(t) {
+		if l.Evaluate(t, nil) {
 			return true
 		}
 	}
@@ -166,6 +220,12 @@ var validOperatorsByField = map[Field]map[Operator]bool{
 	FieldReporter:    {OpEquals: true, OpNotEquals: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldStartDate:   {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
 	FieldDueDate:     {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
+
+	FieldSprintName:      {OpEquals: true, OpNotEquals: true, OpContains: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldSprintStatus:    {OpEquals: true, OpNotEquals: true},
+	FieldSprintGoal:      {OpEquals: true, OpNotEquals: true, OpContains: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldSprintStartDate: {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
+	FieldSprintEndDate:   {OpEquals: true, OpNotEquals: true, OpGreaterThan: true, OpLessThan: true, OpIsEmpty: true, OpIsNotEmpty: true},
 }
 
 // Validate reports whether the leaf is well-formed: it has a recognized
@@ -278,6 +338,13 @@ func compareAny(field any, op Operator, value any) bool {
 		return fmt.Sprintf("%v", field) == fmt.Sprintf("%v", value)
 	case OpNotEquals:
 		return fmt.Sprintf("%v", field) != fmt.Sprintf("%v", value)
+	case OpContains:
+		// Substring containment — what "contains" clearly means for a
+		// free-text field (title, sprint_name, sprint_goal). Fixes a
+		// latent bug: FieldTitle has always declared contains valid in
+		// validOperatorsByField, but this function had no case for it,
+		// silently falling to the default-false below on every use.
+		return strings.Contains(fmt.Sprintf("%v", field), fmt.Sprintf("%v", value))
 	case OpGreaterThan, OpLessThan:
 		ff, fok := toFloat(field)
 		tf, tok := toFloat(value)

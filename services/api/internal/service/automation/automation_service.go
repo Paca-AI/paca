@@ -18,6 +18,7 @@ import (
 
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
@@ -889,9 +890,9 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 			return fmt.Errorf("%w: %v", automationdom.ErrNodeConfigInvalid, err)
 		}
 	}
-	if t == automationdom.ActionCallAPI {
+	if t == automationdom.ActionCallAPI || t == automationdom.ActionWait || t == automationdom.ActionUpdateSprint || t == automationdom.ActionCompleteSprint {
 		if cfg.Target != nil {
-			return fmt.Errorf("%w: call_api does not support a target — it doesn't operate on a task", automationdom.ErrNodeConfigInvalid)
+			return fmt.Errorf("%w: %s does not support a target — it resolves its own sprint/nothing from context instead", automationdom.ErrNodeConfigInvalid, t)
 		}
 	} else if err := s.validateTaskTarget(ctx, projectID, cfg.Target, strict); err != nil {
 		return err
@@ -925,8 +926,54 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 				return fmt.Errorf("%w: call_api requires url", automationdom.ErrNodeConfigInvalid)
 			}
 		}
+	case automationdom.ActionWait:
+		if cfg.WaitMinutes != nil && *cfg.WaitMinutes <= 0 {
+			return fmt.Errorf("%w: wait_minutes must be greater than 0", automationdom.ErrNodeConfigInvalid)
+		}
+		if strict && cfg.WaitMinutes == nil {
+			return fmt.Errorf("%w: wait requires wait_minutes", automationdom.ErrNodeConfigInvalid)
+		}
+	case automationdom.ActionUpdateSprint:
+		return s.validateSprintFieldUpdate(cfg.SprintUpdate, strict)
+	case automationdom.ActionCompleteSprint:
+		// MoveToSprintID is optional (nil = move to backlog, mirroring
+		// sprintdom.CompleteSprintInput) — nothing to require.
 	}
 	return nil
+}
+
+// validateSprintFieldUpdate validates ActionUpdateSprint's config: in strict
+// mode at least one field must actually be set (same "config-less node is
+// almost certainly a mistake" reasoning as validateTaskFieldUpdate), and a
+// set Status must be a recognized sprintdom.SprintStatus value. No FK/
+// cross-project check for anything here — same precedent
+// validateTaskFieldUpdate already established for sprint_id: an invalid
+// reference just fails later at the sprint service's own lookup when the
+// action actually runs.
+func (s *Service) validateSprintFieldUpdate(upd *automationdom.SprintFieldUpdate, strict bool) error {
+	if upd == nil {
+		if strict {
+			return fmt.Errorf("%w: update_sprint requires at least one field to update", automationdom.ErrNodeConfigInvalid)
+		}
+		return nil
+	}
+	if strict && !sprintFieldUpdateHasAnyField(upd) {
+		return fmt.Errorf("%w: update_sprint requires at least one field to update", automationdom.ErrNodeConfigInvalid)
+	}
+	if upd.Status != nil && !sprintdom.ValidSprintStatuses[*upd.Status] {
+		return fmt.Errorf("%w: invalid sprint status %q", automationdom.ErrNodeConfigInvalid, *upd.Status)
+	}
+	return nil
+}
+
+// sprintFieldUpdateHasAnyField reports whether upd sets at least one field —
+// used only to reject a config-less update_sprint node in strict mode.
+func sprintFieldUpdateHasAnyField(upd *automationdom.SprintFieldUpdate) bool {
+	return upd.Name != "" ||
+		upd.StartDate != nil ||
+		upd.EndDate != nil ||
+		upd.Goal != nil ||
+		upd.Status != nil
 }
 
 // validateTaskFieldUpdate validates ActionUpdateTask's config: a

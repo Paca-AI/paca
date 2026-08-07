@@ -16,7 +16,7 @@ import {
 	CONDITION_NODE_TYPE,
 	type PluginNodeType,
 	pluginNodeTypesQueryOptions,
-	TRIGGER_TYPES,
+	TRIGGER_TYPE_GROUPS,
 } from "@/lib/automation-api";
 
 interface AutomationNodePaletteProps {
@@ -56,18 +56,19 @@ export function AutomationNodePalette({
 					}
 				/>
 				<DropdownMenuContent align="start" className="w-56">
-					<DropdownMenuGroup>
-						{pluginTriggers.length > 0 && (
+					{TRIGGER_TYPE_GROUPS.map((group, i) => (
+						<DropdownMenuGroup key={group.labelKey}>
+							{i > 0 && <DropdownMenuSeparator />}
 							<DropdownMenuLabel>
-								{t("automation.palette.builtIn")}
+								{t(`automation.palette.triggerGroups.${group.labelKey}`)}
 							</DropdownMenuLabel>
-						)}
-						{TRIGGER_TYPES.map((type) => (
-							<DropdownMenuItem key={type} onClick={() => onAddTrigger(type)}>
-								{t(`automation.triggerTypes.${type}`)}
-							</DropdownMenuItem>
-						))}
-					</DropdownMenuGroup>
+							{group.types.map((type) => (
+								<DropdownMenuItem key={type} onClick={() => onAddTrigger(type)}>
+									{t(`automation.triggerTypes.${type}`)}
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuGroup>
+					))}
 					{pluginTriggers.length > 0 && (
 						<PluginTypeGroup items={pluginTriggers} onSelect={onAddTrigger} />
 					)}

@@ -60,6 +60,35 @@ type Repository interface {
 	CreateRunStep(ctx context.Context, s *RunStep) error
 	ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*RunStep, error)
 
+	// --- trigger_ai_agent pause/resume ------------------------------------------
+
+	// CreatePendingAgentWait records that a graph walk is paused at
+	// w.NodeID, waiting on w.ConversationID to reach a terminal status.
+	CreatePendingAgentWait(ctx context.Context, w *PendingAgentWait) error
+	// ClaimPendingAgentWait atomically deletes and returns the pending wait
+	// for conversationID, or (nil, nil) if none exists — either the
+	// conversation never had one (most conversations aren't automation-
+	// driven at all) or it was already claimed by an earlier, at-least-once
+	// redelivery of the same terminal-status message.
+	ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*PendingAgentWait, error)
+	// CountPendingAgentWaits reports how many waits are still outstanding
+	// for runID — used to decide whether a run can be finalized yet.
+	CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error)
+
+	// --- wait pause/resume -------------------------------------------------------
+
+	// CreatePendingDelay records that a graph walk is paused at d.NodeID
+	// until d.ResumeAt.
+	CreatePendingDelay(ctx context.Context, d *PendingDelay) error
+	// ClaimDueDelays atomically deletes and returns every pending delay
+	// whose ResumeAt has passed — a scheduler tick can have several due at
+	// once, unlike ClaimPendingAgentWait's single-row-by-key claim.
+	ClaimDueDelays(ctx context.Context) ([]*PendingDelay, error)
+	// CountPendingDelays reports how many delays are still outstanding for
+	// runID — used alongside CountPendingAgentWaits to decide whether a run
+	// can be finalized yet.
+	CountPendingDelays(ctx context.Context, runID uuid.UUID) (int, error)
+
 	// --- Due-date scheduling ---------------------------------------------------
 
 	// ListDueDateCandidates returns, for every enabled due_date_reached

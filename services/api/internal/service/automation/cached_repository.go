@@ -227,6 +227,36 @@ func (c *CachedRepository) ListRunStepsByRun(ctx context.Context, runID uuid.UUI
 	return c.repo.ListRunStepsByRun(ctx, runID)
 }
 
+// CreatePendingAgentWait delegates to the underlying repository.
+func (c *CachedRepository) CreatePendingAgentWait(ctx context.Context, w *automationdom.PendingAgentWait) error {
+	return c.repo.CreatePendingAgentWait(ctx, w)
+}
+
+// ClaimPendingAgentWait delegates to the underlying repository.
+func (c *CachedRepository) ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	return c.repo.ClaimPendingAgentWait(ctx, conversationID)
+}
+
+// CountPendingAgentWaits delegates to the underlying repository.
+func (c *CachedRepository) CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error) {
+	return c.repo.CountPendingAgentWaits(ctx, runID)
+}
+
+// CreatePendingDelay delegates to the underlying repository.
+func (c *CachedRepository) CreatePendingDelay(ctx context.Context, d *automationdom.PendingDelay) error {
+	return c.repo.CreatePendingDelay(ctx, d)
+}
+
+// ClaimDueDelays delegates to the underlying repository.
+func (c *CachedRepository) ClaimDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error) {
+	return c.repo.ClaimDueDelays(ctx)
+}
+
+// CountPendingDelays delegates to the underlying repository.
+func (c *CachedRepository) CountPendingDelays(ctx context.Context, runID uuid.UUID) (int, error) {
+	return c.repo.CountPendingDelays(ctx, runID)
+}
+
 // ListDueDateCandidates delegates to the underlying repository.
 func (c *CachedRepository) ListDueDateCandidates(ctx context.Context) ([]automationdom.DueDateCandidate, error) {
 	return c.repo.ListDueDateCandidates(ctx)

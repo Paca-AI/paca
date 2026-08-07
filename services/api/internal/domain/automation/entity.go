@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 )
 
 // Status is the lifecycle state of an Automation.
@@ -93,6 +95,19 @@ const (
 	// webhook endpoint with a valid secret token (see WebhookToken). Like
 	// TriggerCron, it always carries a fixed TargetTaskID.
 	TriggerAPITrigger TriggerType = "api_trigger"
+
+	// The four sprint triggers below start a walk with a Sprint in context
+	// instead of a Task (see the worker's executeRunForSprint) — fired from
+	// StreamSprintActivities, not the task-activity stream. TriggerConfig's
+	// SprintID optionally narrows to one sprint, the same pattern
+	// TriggerStatusChanged's StatusID uses to narrow to one status.
+	TriggerSprintCreated TriggerType = "sprint_created"
+	// TriggerSprintStarted fires on a sprint's transition into Active
+	// status — the only status transition sprintsvc.Service distinguishes
+	// today (see UpdateSprint's wasActive diff).
+	TriggerSprintStarted   TriggerType = "sprint_started"
+	TriggerSprintCompleted TriggerType = "sprint_completed"
+	TriggerSprintDeleted   TriggerType = "sprint_deleted"
 )
 
 // ValidBuiltinTriggerTypes is the set of built-in trigger type values.
@@ -106,6 +121,10 @@ var ValidBuiltinTriggerTypes = map[TriggerType]bool{
 	TriggerPredecessorDone: true,
 	TriggerCron:            true,
 	TriggerAPITrigger:      true,
+	TriggerSprintCreated:   true,
+	TriggerSprintStarted:   true,
+	TriggerSprintCompleted: true,
+	TriggerSprintDeleted:   true,
 }
 
 // ConditionNodeType is the sole "type" value for kind=condition nodes (there
@@ -131,6 +150,22 @@ const (
 	// other built-in action, it doesn't mutate the task, so it has no
 	// "already applied" idempotency check — it always executes when visited.
 	ActionCallAPI ActionType = "call_api"
+	// ActionWait pauses the graph walk for ActionConfig.WaitMinutes before
+	// continuing to its outgoing edges — no task involved, just a clock.
+	// Mirrors trigger_ai_agent's pause-the-walk shape (see the worker's
+	// PendingDelay/walkWait/WaitScheduler) rather than call_api's
+	// run-to-completion one.
+	ActionWait ActionType = "wait"
+	// ActionUpdateSprint and ActionCompleteSprint resolve their target
+	// sprint from the walk's own context (w.sprint if Sprint-triggered, else
+	// task.SprintID if Task-triggered — see the worker's resolveSprint), not
+	// from a Target the way task actions do. ActionCompleteSprint is its own
+	// action rather than folded into ActionUpdateSprint's generic field-set,
+	// since completing has the extra bulk-task-move side effect
+	// sprintsvc.CompleteSprint provides (ActionConfig.MoveToSprintID) that a
+	// plain status-field update wouldn't get.
+	ActionUpdateSprint   ActionType = "update_sprint"
+	ActionCompleteSprint ActionType = "complete_sprint"
 )
 
 // ValidBuiltinActionTypes is the set of built-in action type values.
@@ -138,17 +173,26 @@ var ValidBuiltinActionTypes = map[ActionType]bool{
 	ActionUpdateTask:     true,
 	ActionTriggerAIAgent: true,
 	ActionCallAPI:        true,
+	ActionWait:           true,
+	ActionUpdateSprint:   true,
+	ActionCompleteSprint: true,
 }
 
 // NodeRequiresTask reports whether a node needs a task in context to
 // execute: true for every condition node (built-in or plugin — both
-// evaluate task fields) and every built-in action except call_api and
-// trigger_ai_agent. call_api operates on static config with no task
+// evaluate task fields, though a condition using one of the sprint-scoped
+// Fields tolerates a nil task too — see the worker's walk()) and every
+// built-in action except call_api, trigger_ai_agent, wait, update_sprint,
+// and complete_sprint. call_api operates on static config with no task
 // involved; trigger_ai_agent starts an agent conversation either way, task
 // bound (see the worker's applyTriggerAIAgentOnTask and
 // agentsvc.TriggerTaskAssigned) or, with no task, as a standalone message
 // (see applyDirectAgentMessage and agentsvc.TriggerDirectMessage) — so it
-// works either way, and neither path touches the task's assignee. A
+// works either way, and neither path touches the task's assignee. wait just
+// pauses the walk for a duration, no task touched either. update_sprint/
+// complete_sprint resolve their own sprint from context (see
+// ActionUpdateSprint's doc comment) rather than strictly requiring a task —
+// they can run from a Sprint-triggered walk with no task at all. A
 // plugin-contributed action is conservatively treated as requiring a task,
 // since there's no manifest flag today declaring otherwise.
 //
@@ -156,14 +200,19 @@ var ValidBuiltinActionTypes = map[ActionType]bool{
 // agree: the service layer rejects an edge/node-update that would let a
 // trigger with no target task (see TriggerConfig.TargetTaskID) reach a node
 // this returns true for, and the worker's graph walk defensively refuses to
-// visit such a node with a nil task rather than panic.
+// visit such a node with a nil task rather than panic. Neither enforcement
+// point currently walks from a Sprint trigger at all (validateTaskReachability
+// only ever starts its BFS from predecessor_done/cron/api_trigger), so this
+// function's KindCondition case staying unconditionally true doesn't block a
+// legitimate Sprint-trigger → sprint-field-condition edge at creation time —
+// only the worker's own runtime check needs the extra nil-task tolerance.
 func NodeRequiresTask(kind Kind, nodeType string) bool {
 	switch kind {
 	case KindCondition:
 		return true
 	case KindAction:
 		switch ActionType(nodeType) {
-		case ActionCallAPI, ActionTriggerAIAgent:
+		case ActionCallAPI, ActionTriggerAIAgent, ActionWait, ActionUpdateSprint, ActionCompleteSprint:
 			return false
 		default:
 			return true
@@ -325,6 +374,10 @@ type TriggerConfig struct {
 	// expression (minute hour day-of-month month day-of-week), parsed via
 	// robfig/cron's ParseStandard and evaluated in UTC.
 	CronExpression string `json:"cron_expression,omitempty"`
+	// SprintID narrows any of the four TriggerSprint* types to firing only
+	// for this one sprint. Nil means "any sprint in the project" — the same
+	// optional-narrowing shape as StatusID above.
+	SprintID *uuid.UUID `json:"sprint_id,omitempty"`
 }
 
 // TaskTargetKind selects which task a condition leaf or action operates on,
@@ -424,6 +477,34 @@ type ActionConfig struct {
 	// resolves more than one task, the action fans out — applied once per
 	// resolved task (see the worker's runAction).
 	Target *TaskTarget `json:"target,omitempty"`
+
+	// WaitMinutes is wait's pause duration — how long the graph walk stays
+	// paused at this node (see the worker's PendingDelay/walkWait) before
+	// continuing to its outgoing edges. Required, must be > 0 (validated at
+	// strict/activate time by automationsvc).
+	WaitMinutes *int `json:"wait_minutes,omitempty"`
+
+	// SprintUpdate carries every sprint-field change to apply when Type is
+	// ActionUpdateSprint — the sprint-scoped counterpart to Update, applied
+	// to whichever sprint the walk resolves via the worker's resolveSprint.
+	SprintUpdate *SprintFieldUpdate `json:"sprint_update,omitempty"`
+	// MoveToSprintID is complete_sprint's optional destination for the
+	// sprint's non-done tasks (nil = move to backlog) — mirrors
+	// sprintdom.CompleteSprintInput.MoveToSprintID.
+	MoveToSprintID *uuid.UUID `json:"move_to_sprint_id,omitempty"`
+}
+
+// SprintFieldUpdate is the sparse "which fields to set" payload for
+// ActionUpdateSprint — same field set sprintdom.UpdateSprintInput exposes,
+// with TaskFieldUpdate's simpler nil-means-untouched convention rather than
+// UpdateSprintInput's explicit-clear **T plumbing (no built-in action node
+// needs to explicitly clear a sprint field to nil today).
+type SprintFieldUpdate struct {
+	Name      string                  `json:"name,omitempty"`
+	StartDate *time.Time              `json:"start_date,omitempty"`
+	EndDate   *time.Time              `json:"end_date,omitempty"`
+	Goal      *string                 `json:"goal,omitempty"`
+	Status    *sprintdom.SprintStatus `json:"status,omitempty"`
 }
 
 // TaskFieldUpdate is the sparse "which fields to set" payload for
@@ -475,6 +556,53 @@ type ConditionBranch struct {
 type CronCandidate struct {
 	Node        *Node
 	LastFiredAt *time.Time
+}
+
+// WalkContext is the set of walk-scoped identifiers — task, sprint, and any
+// future context type a trigger might carry — that a paused node needs in
+// order to resume correctly. Stored as a single JSON blob on
+// PendingAgentWait/PendingDelay (see below) rather than one column per
+// field, so adding a new context type is a new field here plus a version
+// bump, never a migration.
+type WalkContext struct {
+	TaskID   *uuid.UUID `json:"task_id,omitempty"`
+	SprintID *uuid.UUID `json:"sprint_id,omitempty"`
+}
+
+// PendingAgentWait is one in-flight "graph walk is paused here" marker,
+// created when a trigger_ai_agent action node starts an agent conversation
+// and deleted (via Repository.ClaimPendingAgentWait) once that conversation
+// reaches a terminal status — see worker.AutomationConsumer.walkAction and
+// handleAgentConversationStatus. AutomationID is stored directly (not
+// derived by joining through NodeID) so resuming the walk can LoadGraph
+// without an extra lookup. Context mirrors the walker's own task/sprint
+// fields at the point the walk paused, so resumeWalkFrom can reconstruct
+// them fresh on resume.
+type PendingAgentWait struct {
+	ID             uuid.UUID
+	RunID          uuid.UUID
+	NodeID         uuid.UUID
+	AutomationID   uuid.UUID
+	ConversationID uuid.UUID
+	ProjectID      uuid.UUID
+	Context        WalkContext
+	CreatedAt      time.Time
+}
+
+// PendingDelay is one in-flight "graph walk is paused here" marker, created
+// when a wait action node is visited and deleted (via
+// Repository.ClaimDueDelays) once ResumeAt has passed — see the worker's
+// walkWait and WaitScheduler. Same shape as PendingAgentWait, with ResumeAt
+// standing in for a conversation ID as the thing being waited on.
+type PendingDelay struct {
+	ID           uuid.UUID
+	RunID        uuid.UUID
+	NodeID       uuid.UUID
+	AutomationID uuid.UUID
+	ProjectID    uuid.UUID
+	Context      WalkContext
+	ResumeAt     time.Time
+	CreatedAt    time.Time
 }
 
 // WebhookToken is the secret credential an external caller presents to fire

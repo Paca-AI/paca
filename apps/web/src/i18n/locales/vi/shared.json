@@ -62,7 +62,8 @@
 			},
 			"aiAgents": {
 				"label": "AI Agent",
-				"sub": "Chưa cấu hình"
+				"sub": "Chưa cấu hình",
+				"subActive": "{{count}} đã cấu hình"
 			}
 		},
 		"myTasks": {

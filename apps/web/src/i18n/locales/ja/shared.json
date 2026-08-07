@@ -62,7 +62,8 @@
 			},
 			"aiAgents": {
 				"label": "AIエージェント",
-				"sub": "未設定"
+				"sub": "未設定",
+				"subActive": "{{count}}件設定済み"
 			}
 		},
 		"myTasks": {

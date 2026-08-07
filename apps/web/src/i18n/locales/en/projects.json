@@ -1337,7 +1337,12 @@
 			"addCondition": "Add Condition",
 			"addAction": "Add Action",
 			"builtIn": "Built-in",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"triggerGroups": {
+				"taskEvents": "Task events",
+				"sprintEvents": "Sprint events",
+				"scheduleWebhook": "Schedule & webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Trigger",
@@ -1357,12 +1362,19 @@
 			"due_date_reached": "Due date reached",
 			"predecessor_done": "Predecessor(s) done",
 			"cron": "Cron schedule",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "Sprint created",
+			"sprint_started": "Sprint started",
+			"sprint_completed": "Sprint completed",
+			"sprint_deleted": "Sprint deleted"
 		},
 		"actionTypes": {
 			"update_task": "Update task",
 			"trigger_ai_agent": "Trigger AI agent",
-			"call_api": "Call API"
+			"call_api": "Call API",
+			"wait": "Wait",
+			"update_sprint": "Update sprint",
+			"complete_sprint": "Complete sprint"
 		},
 		"nodeConfig": {
 			"save": "Save",
@@ -1433,7 +1445,12 @@
 					"parent_task_id": "Parent task",
 					"reporter_id": "Reporter",
 					"start_date": "Start date",
-					"due_date": "Due date"
+					"due_date": "Due date",
+					"sprint_name": "Sprint name",
+					"sprint_status": "Sprint status",
+					"sprint_goal": "Sprint goal",
+					"sprint_start_date": "Sprint start date",
+					"sprint_end_date": "Sprint end date"
 				}
 			},
 			"action": {
@@ -1454,6 +1471,23 @@
 				"headerValuePlaceholder": "Value",
 				"addHeader": "Add header",
 				"bodyLabel": "Body",
+				"waitMinutesLabel": "Wait (minutes)",
+				"waitMinutesHint": "How long to pause here before continuing to the next node.",
+				"updateSprintHint": "Only the fields you fill in below are changed — everything else on the sprint is left untouched.",
+				"sprintNameLabel": "Name",
+				"sprintStartDateLabel": "Start date",
+				"sprintEndDateLabel": "End date",
+				"sprintGoalLabel": "Goal",
+				"sprintStatusLabel": "Status",
+				"sprintStatusUnchanged": "Leave unchanged",
+				"sprintStatusPlanned": "Planned",
+				"sprintStatusActive": "Active",
+				"sprintStatusCompleted": "Completed",
+				"completeSprintHint": "Marks the sprint complete and moves its unfinished tasks.",
+				"moveToSprintLabel": "Move unfinished tasks to",
+				"moveToSprintBacklog": "Backlog",
+				"moveToSprintHint": "Non-done tasks in this sprint move here when it completes.",
+				"variablesHint": "Supports {{task.title}}, {{sprint.name}}, and similar {{variable}} placeholders from the current run.",
 				"updateTaskHint": "Only the fields you enable below are changed — everything else on the task is left untouched.",
 				"addFieldToUpdate": "Add field to update…",
 				"customFieldsLabel": "Custom field",

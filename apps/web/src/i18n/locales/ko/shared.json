@@ -62,7 +62,8 @@
 			},
 			"aiAgents": {
 				"label": "AI 에이전트",
-				"sub": "설정된 에이전트 없음"
+				"sub": "설정된 에이전트 없음",
+				"subActive": "{{count}}개 설정됨"
 			}
 		},
 		"myTasks": {

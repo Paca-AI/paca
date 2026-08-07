@@ -1337,7 +1337,12 @@
 			"addCondition": "添加条件",
 			"addAction": "添加操作",
 			"builtIn": "内置",
-			"plugins": "插件"
+			"plugins": "插件",
+			"triggerGroups": {
+				"taskEvents": "任务事件",
+				"sprintEvents": "冲刺事件",
+				"scheduleWebhook": "定时计划和 Webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "触发器",
@@ -1357,12 +1362,19 @@
 			"due_date_reached": "到达截止日期时",
 			"predecessor_done": "前置任务完成时",
 			"cron": "定时计划",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "冲刺创建时",
+			"sprint_started": "冲刺开始时",
+			"sprint_completed": "冲刺完成时",
+			"sprint_deleted": "冲刺删除时"
 		},
 		"actionTypes": {
 			"update_task": "更新任务",
 			"trigger_ai_agent": "触发 AI 代理",
-			"call_api": "调用 API"
+			"call_api": "调用 API",
+			"wait": "等待",
+			"update_sprint": "更新冲刺",
+			"complete_sprint": "完成冲刺"
 		},
 		"nodeConfig": {
 			"save": "保存",
@@ -1433,7 +1445,12 @@
 					"parent_task_id": "父任务",
 					"reporter_id": "报告人",
 					"start_date": "开始日期",
-					"due_date": "截止日期"
+					"due_date": "截止日期",
+					"sprint_name": "冲刺名称",
+					"sprint_status": "冲刺状态",
+					"sprint_goal": "冲刺目标",
+					"sprint_start_date": "冲刺开始日期",
+					"sprint_end_date": "冲刺结束日期"
 				}
 			},
 			"action": {
@@ -1454,6 +1471,23 @@
 				"headerValuePlaceholder": "值",
 				"addHeader": "添加请求头",
 				"bodyLabel": "请求体",
+				"waitMinutesLabel": "等待时间（分钟）",
+				"waitMinutesHint": "在继续下一个节点之前，在此暂停多长时间。",
+				"updateSprintHint": "仅更改下方填写的字段——冲刺的其余部分保持不变。",
+				"sprintNameLabel": "名称",
+				"sprintStartDateLabel": "开始日期",
+				"sprintEndDateLabel": "结束日期",
+				"sprintGoalLabel": "目标",
+				"sprintStatusLabel": "状态",
+				"sprintStatusUnchanged": "保持不变",
+				"sprintStatusPlanned": "已计划",
+				"sprintStatusActive": "进行中",
+				"sprintStatusCompleted": "已完成",
+				"completeSprintHint": "将冲刺标记为已完成，并移动其未完成的任务。",
+				"moveToSprintLabel": "将未完成的任务移动到",
+				"moveToSprintBacklog": "待办列表",
+				"moveToSprintHint": "此冲刺中未完成的任务在冲刺完成时会移动到这里。",
+				"variablesHint": "支持 {{task.title}}、{{sprint.name}} 等来自当前运行的 {{variable}} 占位符。",
 				"updateTaskHint": "只有下方启用的字段会被更改——任务的其余部分保持不变。",
 				"addFieldToUpdate": "添加要更新的字段…",
 				"customFieldsLabel": "自定义字段",

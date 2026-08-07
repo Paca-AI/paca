@@ -1337,7 +1337,12 @@
 			"addCondition": "条件を追加",
 			"addAction": "アクションを追加",
 			"builtIn": "組み込み",
-			"plugins": "プラグイン"
+			"plugins": "プラグイン",
+			"triggerGroups": {
+				"taskEvents": "タスクイベント",
+				"sprintEvents": "スプリントイベント",
+				"scheduleWebhook": "スケジュールとWebhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "トリガー",
@@ -1357,12 +1362,19 @@
 			"due_date_reached": "期日到達時",
 			"predecessor_done": "先行タスク完了時",
 			"cron": "Cronスケジュール",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "スプリント作成",
+			"sprint_started": "スプリント開始",
+			"sprint_completed": "スプリント完了",
+			"sprint_deleted": "スプリント削除"
 		},
 		"actionTypes": {
 			"update_task": "タスクを更新",
 			"trigger_ai_agent": "AIエージェントを起動",
-			"call_api": "APIを呼び出し"
+			"call_api": "APIを呼び出し",
+			"wait": "待機",
+			"update_sprint": "スプリントを更新",
+			"complete_sprint": "スプリントを完了"
 		},
 		"nodeConfig": {
 			"save": "保存",
@@ -1433,7 +1445,12 @@
 					"parent_task_id": "親タスク",
 					"reporter_id": "報告者",
 					"start_date": "開始日",
-					"due_date": "期日"
+					"due_date": "期日",
+					"sprint_name": "スプリント名",
+					"sprint_status": "スプリントステータス",
+					"sprint_goal": "スプリントの目標",
+					"sprint_start_date": "スプリント開始日",
+					"sprint_end_date": "スプリント終了日"
 				}
 			},
 			"action": {
@@ -1454,6 +1471,23 @@
 				"headerValuePlaceholder": "値",
 				"addHeader": "ヘッダーを追加",
 				"bodyLabel": "本文",
+				"waitMinutesLabel": "待機時間(分)",
+				"waitMinutesHint": "次のノードに進む前にここで待機する時間です。",
+				"updateSprintHint": "以下で入力したフィールドのみが変更されます。スプリントの他の項目はそのまま維持されます。",
+				"sprintNameLabel": "名前",
+				"sprintStartDateLabel": "開始日",
+				"sprintEndDateLabel": "終了日",
+				"sprintGoalLabel": "目標",
+				"sprintStatusLabel": "ステータス",
+				"sprintStatusUnchanged": "変更しない",
+				"sprintStatusPlanned": "計画中",
+				"sprintStatusActive": "進行中",
+				"sprintStatusCompleted": "完了",
+				"completeSprintHint": "スプリントを完了とし、未完了のタスクを移動します。",
+				"moveToSprintLabel": "未完了タスクの移動先",
+				"moveToSprintBacklog": "バックログ",
+				"moveToSprintHint": "スプリントが完了すると、未完了のタスクはここに移動します。",
+				"variablesHint": "{{task.title}}、{{sprint.name}} など、現在の実行の {{variable}} プレースホルダーを使用できます。",
 				"updateTaskHint": "以下で有効にしたフィールドのみが変更されます。その他のタスクの内容は変更されません。",
 				"addFieldToUpdate": "更新するフィールドを追加…",
 				"customFieldsLabel": "カスタムフィールド",

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,9 +21,11 @@ import (
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
+	"github.com/Paca-AI/api/internal/pkg/vartemplate"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/netguard"
 )
@@ -39,6 +42,11 @@ type automationGraphReader interface {
 	ListEnabledTriggerNodesByType(ctx context.Context, projectID uuid.UUID, triggerType automationdom.TriggerType) ([]*automationdom.Node, error)
 	ListPredecessorTriggersWatching(ctx context.Context, taskID uuid.UUID) ([]*automationdom.Node, error)
 	FindAutomationByNodeID(ctx context.Context, nodeID uuid.UUID) (*automationdom.Automation, error)
+	// FindAutomationByID resolves an automation directly by its own ID —
+	// used when resuming a walk paused at a trigger_ai_agent node, where the
+	// pending wait already carries AutomationID (see PendingAgentWait)
+	// rather than a node to look it up through.
+	FindAutomationByID(ctx context.Context, id uuid.UUID) (*automationdom.Automation, error)
 	// FindNodeByID resolves a specific node — used by handleExternalTrigger,
 	// which (unlike every stream-driven trigger type) already knows exactly
 	// which node fired from the webhook handler's payload, with no
@@ -48,6 +56,23 @@ type automationGraphReader interface {
 	CreateRun(ctx context.Context, r *automationdom.Run) error
 	UpdateRun(ctx context.Context, r *automationdom.Run) error
 	CreateRunStep(ctx context.Context, s *automationdom.RunStep) error
+	// ListRunStepsByRun is used both to decide a finished run's overall
+	// status (failed if any step failed) and, when resuming a paused walk,
+	// to seed the resumed walker's visited set — see finalizeRunIfDone and
+	// resumeWalk.
+	ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*automationdom.RunStep, error)
+	// CreatePendingAgentWait, ClaimPendingAgentWait, and CountPendingAgentWaits
+	// back the trigger_ai_agent pause/resume flow — see walkAction,
+	// handleAgentConversationStatus, and finalizeRunIfDone.
+	CreatePendingAgentWait(ctx context.Context, w *automationdom.PendingAgentWait) error
+	ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error)
+	CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error)
+	// CreatePendingDelay, ClaimDueDelays, and CountPendingDelays back the
+	// wait action's pause/resume flow — see walkWait, WaitScheduler, and
+	// finalizeRunIfDone.
+	CreatePendingDelay(ctx context.Context, d *automationdom.PendingDelay) error
+	ClaimDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error)
+	CountPendingDelays(ctx context.Context, runID uuid.UUID) (int, error)
 	ListDueDateCandidates(ctx context.Context) ([]automationdom.DueDateCandidate, error)
 	RecordDueDateFire(ctx context.Context, automationID, nodeID, taskID uuid.UUID) error
 	ListCronCandidates(ctx context.Context) ([]automationdom.CronCandidate, error)
@@ -111,6 +136,23 @@ type automationAgentMessenger interface {
 	TriggerTaskAssigned(ctx context.Context, projectID, agentID, taskID uuid.UUID, triggeredByMemberID *uuid.UUID, note string) (*agentdom.AgentConversation, error)
 }
 
+// automationSprintReader resolves a sprint by ID — used by resolveSprint to
+// look up a task-triggered walk's sprint (via task.SprintID) and by
+// handleSprintActivity to load the sprint a Sprint-triggered walk starts
+// with.
+type automationSprintReader interface {
+	FindSprintByID(ctx context.Context, id uuid.UUID) (*sprintdom.Sprint, error)
+}
+
+// automationSprintUpdater applies update_sprint/complete_sprint through the
+// normal sprint service, so they get the same validation and side effects
+// (bulk-moving a completed sprint's tasks, event publishing) as an
+// HTTP-driven change.
+type automationSprintUpdater interface {
+	UpdateSprint(ctx context.Context, projectID, id uuid.UUID, in sprintdom.UpdateSprintInput) (*sprintdom.Sprint, error)
+	CompleteSprint(ctx context.Context, projectID, id uuid.UUID, in sprintdom.CompleteSprintInput) (*sprintdom.Sprint, error)
+}
+
 // AutomationConsumer reads task-activity events from StreamTaskActivities
 // and evaluates the automation graph engine whenever a task event that
 // could match a trigger occurs: created, status changed, assignee changed,
@@ -128,6 +170,8 @@ type AutomationConsumer struct {
 	pluginRuntime  automationPluginRuntime
 	memberRepo     automationMemberReader
 	agentMessenger automationAgentMessenger
+	sprintRepo     automationSprintReader
+	sprintSvc      automationSprintUpdater
 	publisher      *messaging.Publisher
 	httpClient     *http.Client
 	log            *slog.Logger
@@ -163,6 +207,18 @@ func (c *AutomationConsumer) WithHTTPClient(client *http.Client) *AutomationCons
 func (c *AutomationConsumer) WithAgentMessaging(memberRepo automationMemberReader, agentMessenger automationAgentMessenger) *AutomationConsumer {
 	c.memberRepo = memberRepo
 	c.agentMessenger = agentMessenger
+	return c
+}
+
+// WithSprintService attaches the dependencies update_sprint/complete_sprint
+// and sprint-field conditions need. Without it, a sprint action node fails
+// its run step with "sprint dispatch not configured" rather than panicking,
+// and a sprint-field condition simply can't resolve a sprint via
+// task.SprintID (a Sprint-triggered walk's own w.sprint still works, since
+// that doesn't need a lookup).
+func (c *AutomationConsumer) WithSprintService(sprintRepo automationSprintReader, sprintSvc automationSprintUpdater) *AutomationConsumer {
+	c.sprintRepo = sprintRepo
+	c.sprintSvc = sprintSvc
 	return c
 }
 
@@ -226,7 +282,7 @@ func (c *AutomationConsumer) Start(ctx context.Context) {
 }
 
 func (c *AutomationConsumer) ensureGroup(ctx context.Context) error {
-	for _, stream := range []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents} {
+	for _, stream := range []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities} {
 		err := c.client.XGroupCreateMkStream(ctx, stream, c.groupName, c.groupStartID).Err()
 		if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 			return err
@@ -259,7 +315,7 @@ func (c *AutomationConsumer) run() {
 		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    c.groupName,
 			Consumer: c.consumerName,
-			Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, ">", ">", ">"},
+			Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities, ">", ">", ">", ">", ">"},
 			Count:    automationReadCount,
 			Block:    automationReadBlock,
 		}).Result()
@@ -288,7 +344,11 @@ func (c *AutomationConsumer) run() {
 // know exactly which node/task to run (resolved by the webhook handler
 // before publishing); StreamPluginTriggerEvents messages carry a plugin's
 // own event topic, matched against plugin-declared Trigger nodes by topic;
-// everything else goes through the task-activity trigger-matching path.
+// StreamAgentConversationStatus messages report a conversation reaching a
+// terminal status, resuming any graph walk paused waiting on it;
+// StreamSprintActivities messages report a sprint reaching a distinguished
+// event, matched against Sprint trigger nodes; everything else goes through
+// the task-activity trigger-matching path.
 func (c *AutomationConsumer) dispatchMessages(msgs []redis.XStream) {
 	for _, stream := range msgs {
 		for _, msg := range stream.Messages {
@@ -297,6 +357,10 @@ func (c *AutomationConsumer) dispatchMessages(msgs []redis.XStream) {
 				c.handleExternalTrigger(msg)
 			case events.StreamPluginTriggerEvents:
 				c.handlePluginTriggerEvent(msg)
+			case events.StreamAgentConversationStatus:
+				c.handleAgentConversationStatus(msg)
+			case events.StreamSprintActivities:
+				c.handleSprintActivity(msg)
 			default:
 				c.handle(msg)
 			}
@@ -308,7 +372,7 @@ func (c *AutomationConsumer) processPending(ctx context.Context) {
 	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.groupName,
 		Consumer: c.consumerName,
-		Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, "0", "0", "0"},
+		Streams:  []string{events.StreamTaskActivities, events.StreamAutomationExternalTriggers, events.StreamPluginTriggerEvents, events.StreamAgentConversationStatus, events.StreamSprintActivities, "0", "0", "0", "0", "0"},
 		Count:    automationReadCount,
 	}).Result()
 	if err != nil && err != redis.Nil {
@@ -558,6 +622,76 @@ func (c *AutomationConsumer) handlePluginTriggerEvent(msg redis.XMessage) {
 	c.ack(ctx, events.StreamPluginTriggerEvents, msg.ID)
 }
 
+// handleSprintActivity matches a sprint reaching a distinguished event
+// (sprintsvc.Service.publishSprintActivity's event_type — exactly one of the
+// four TriggerSprint* constants) against every enabled Sprint trigger node
+// of that type in the sprint's project, applying each match's optional
+// SprintID narrowing, and starts a Sprint-triggered walk
+// (executeRunForSprint) per match.
+func (c *AutomationConsumer) handleSprintActivity(msg redis.XMessage) {
+	ctx := context.Background()
+
+	sprintIDStr, _ := msg.Values["sprint_id"].(string)
+	projectIDStr, _ := msg.Values["project_id"].(string)
+	eventType, _ := msg.Values["event_type"].(string)
+	sprintID, err := uuid.Parse(sprintIDStr)
+	if err != nil {
+		c.ack(ctx, events.StreamSprintActivities, msg.ID)
+		return
+	}
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.ack(ctx, events.StreamSprintActivities, msg.ID)
+		return
+	}
+
+	nodes, err := c.repo.ListEnabledTriggerNodesByType(ctx, projectID, automationdom.TriggerType(eventType))
+	if err != nil {
+		c.log.Error("automation consumer: list sprint trigger nodes", "type", eventType, "err", err)
+		return // not acked — retried via processPending
+	}
+	if len(nodes) == 0 {
+		c.ack(ctx, events.StreamSprintActivities, msg.ID)
+		return
+	}
+
+	// The full field snapshot travels in the message itself (see
+	// publishSprintActivity) rather than being re-fetched by ID — required
+	// for sprint_deleted, whose row is already gone from Postgres by the
+	// time this consumes the message, and avoids a lookup for every other
+	// event type too.
+	name, _ := msg.Values["name"].(string)
+	status, _ := msg.Values["status"].(string)
+	sprint := &sprintdom.Sprint{ID: sprintID, ProjectID: projectID, Name: name, Status: sprintdom.SprintStatus(status)}
+	if goal, _ := msg.Values["goal"].(string); goal != "" {
+		sprint.Goal = &goal
+	}
+	if s, _ := msg.Values["start_date"].(string); s != "" {
+		if t, parseErr := time.Parse(time.RFC3339, s); parseErr == nil {
+			sprint.StartDate = &t
+		}
+	}
+	if s, _ := msg.Values["end_date"].(string); s != "" {
+		if t, parseErr := time.Parse(time.RFC3339, s); parseErr == nil {
+			sprint.EndDate = &t
+		}
+	}
+
+	for _, node := range nodes {
+		var cfg automationdom.TriggerConfig
+		if len(node.Config) > 0 {
+			_ = json.Unmarshal(node.Config, &cfg)
+		}
+		if cfg.SprintID != nil && *cfg.SprintID != sprintID {
+			continue
+		}
+		if err := c.executeRunForSprint(ctx, projectID, node, sprint); err != nil {
+			c.log.Error("automation consumer: sprint trigger run failed", "node_id", node.ID, "err", err)
+		}
+	}
+	c.ack(ctx, events.StreamSprintActivities, msg.ID)
+}
+
 // processEvent fetches the authoritative task once, then matches it against
 // every candidate trigger type plus (if checkPredecessors) any
 // predecessor_done trigger watching it. Errors applying an individual
@@ -688,19 +822,35 @@ func (c *AutomationConsumer) executeRun(ctx context.Context, projectID uuid.UUID
 	if automation.Status != automationdom.StatusActive {
 		return nil
 	}
+	return c.runGraphWalk(ctx, projectID, automation, triggerNode, task, nil)
+}
 
+// executeRunForSprint is executeRun's Sprint-triggered counterpart, starting
+// the walk with a Sprint in context instead of a Task — see
+// handleSprintActivity, its only caller.
+func (c *AutomationConsumer) executeRunForSprint(ctx context.Context, projectID uuid.UUID, triggerNode *automationdom.Node, sprint *sprintdom.Sprint) error {
+	automation, err := c.repo.FindAutomationByNodeID(ctx, triggerNode.ID)
+	if err != nil {
+		return fmt.Errorf("find automation: %w", err)
+	}
+	if automation.Status != automationdom.StatusActive {
+		return nil
+	}
+	return c.runGraphWalk(ctx, projectID, automation, triggerNode, nil, sprint)
+}
+
+// runGraphWalk is executeRun/executeRunForSprint's shared core: creates an
+// automation_runs row and walks the graph from triggerNode, mutating task
+// (or sprint) in place as actions apply. Exactly one of task/sprint is
+// non-nil for any built-in trigger today, though nothing here assumes that
+// — a walk with both nil is simply one where every task/sprint-requiring
+// node fails its own step (see walk's defense-in-depth guard).
+func (c *AutomationConsumer) runGraphWalk(ctx context.Context, projectID uuid.UUID, automation *automationdom.Automation, triggerNode *automationdom.Node, task *taskdom.Task, sprint *sprintdom.Sprint) error {
 	graph, err := c.repo.LoadGraph(ctx, automation.ID)
 	if err != nil {
 		return fmt.Errorf("load graph: %w", err)
 	}
-	nodesByID := make(map[uuid.UUID]*automationdom.Node, len(graph.Nodes))
-	for _, n := range graph.Nodes {
-		nodesByID[n.ID] = n
-	}
-	outgoing := make(map[uuid.UUID][]*automationdom.Edge, len(graph.Edges))
-	for _, e := range graph.Edges {
-		outgoing[e.SourceNodeID] = append(outgoing[e.SourceNodeID], e)
-	}
+	nodesByID, outgoing := indexGraph(graph)
 
 	var taskID *uuid.UUID
 	if task != nil {
@@ -723,6 +873,7 @@ func (c *AutomationConsumer) executeRun(ctx context.Context, projectID uuid.UUID
 		projectID:      projectID,
 		automationName: automation.Name,
 		task:           task,
+		sprint:         sprint,
 		nodesByID:      nodesByID,
 		outgoing:       outgoing,
 		runID:          run.ID,
@@ -732,17 +883,239 @@ func (c *AutomationConsumer) executeRun(ctx context.Context, projectID uuid.UUID
 		w.walk(ctx, e.TargetNodeID)
 	}
 
-	now := time.Now()
-	run.FinishedAt = &now
-	if w.failed {
-		run.Status = automationdom.RunStatusFailed
-	} else {
-		run.Status = automationdom.RunStatusCompleted
-	}
-	if err := c.repo.UpdateRun(ctx, run); err != nil {
-		c.log.Error("automation consumer: update run", "run_id", run.ID, "err", err)
+	// If the walk paused at a trigger_ai_agent or wait node (or several,
+	// across parallel branches), this leaves the run "running" —
+	// finalizeRunIfDone no-ops until every outstanding pause resolves and
+	// the run can actually be closed out.
+	if err := c.finalizeRunIfDone(ctx, run.ID); err != nil {
+		c.log.Error("automation consumer: finalize run", "run_id", run.ID, "err", err)
 	}
 	return nil
+}
+
+// indexGraph builds the lookup maps a graph walk needs from a freshly loaded
+// Graph — shared by executeRun's initial walk and resumeWalk's continuation,
+// both of which read the graph fresh rather than trusting an old in-memory
+// copy (an automation can be edited while a run is paused on it).
+func indexGraph(graph *automationdom.Graph) (map[uuid.UUID]*automationdom.Node, map[uuid.UUID][]*automationdom.Edge) {
+	nodesByID := make(map[uuid.UUID]*automationdom.Node, len(graph.Nodes))
+	for _, n := range graph.Nodes {
+		nodesByID[n.ID] = n
+	}
+	outgoing := make(map[uuid.UUID][]*automationdom.Edge, len(graph.Edges))
+	for _, e := range graph.Edges {
+		outgoing[e.SourceNodeID] = append(outgoing[e.SourceNodeID], e)
+	}
+	return nodesByID, outgoing
+}
+
+// finalizeRunIfDone closes out runID — status Failed if any of its run steps
+// recorded so far failed, Completed otherwise — but only once nothing is
+// still paused waiting on it: neither a trigger_ai_agent conversation
+// (CountPendingAgentWaits) nor a wait node's clock (CountPendingDelays).
+// Called at the end of executeRun's initial synchronous walk and at the end
+// of every resumeWalk/resumeAfterDelay continuation, since any of them can
+// be the one that finally drains the last outstanding pause.
+func (c *AutomationConsumer) finalizeRunIfDone(ctx context.Context, runID uuid.UUID) error {
+	pendingWaits, err := c.repo.CountPendingAgentWaits(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("count pending agent waits: %w", err)
+	}
+	pendingDelays, err := c.repo.CountPendingDelays(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("count pending delays: %w", err)
+	}
+	if pendingWaits+pendingDelays > 0 {
+		return nil
+	}
+
+	steps, err := c.repo.ListRunStepsByRun(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("list run steps: %w", err)
+	}
+	status := automationdom.RunStatusCompleted
+	for _, s := range steps {
+		if s.Status == automationdom.RunStepFailed {
+			status = automationdom.RunStatusFailed
+			break
+		}
+	}
+
+	now := time.Now()
+	// UpdateRun only touches status/finished_at — no need to reload the rest
+	// of the row first.
+	return c.repo.UpdateRun(ctx, &automationdom.Run{ID: runID, Status: status, FinishedAt: &now})
+}
+
+// agentConversationStatusPayload mirrors the fields
+// stream_store.publish_conversation_status (services/ai-agent/src/core/streams.py)
+// appends to StreamAgentConversationStatus.
+type agentConversationStatusPayload struct {
+	ConversationID string `json:"conversation_id"`
+	Status         string `json:"status"`
+}
+
+// handleAgentConversationStatus resumes a graph walk paused at a
+// trigger_ai_agent node once its conversation reaches a terminal status.
+// Most conversations aren't automation-driven at all, so a claim miss (no
+// PendingAgentWait row for this conversation) is the common case, not an
+// error.
+func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
+	ctx := context.Background()
+
+	convIDStr, _ := msg.Values["conversation_id"].(string)
+	status, _ := msg.Values["status"].(string)
+	convID, err := uuid.Parse(convIDStr)
+	if err != nil {
+		c.ack(ctx, events.StreamAgentConversationStatus, msg.ID)
+		return
+	}
+	if status != "finished" && status != "failed" && status != "stopped" {
+		// Defensive: services/ai-agent only ever publishes a terminal
+		// status here (see ConversationStatus.IsTerminal on the Python
+		// side), but a malformed/unexpected value shouldn't be retried
+		// forever.
+		c.ack(ctx, events.StreamAgentConversationStatus, msg.ID)
+		return
+	}
+
+	wait, err := c.repo.ClaimPendingAgentWait(ctx, convID)
+	if err != nil {
+		c.log.Error("automation consumer: claim pending agent wait", "conversation_id", convID, "err", err)
+		return // not acked — retried via processPending
+	}
+	if wait == nil {
+		c.ack(ctx, events.StreamAgentConversationStatus, msg.ID)
+		return
+	}
+
+	if err := c.resumeWalk(ctx, wait, status); err != nil {
+		c.log.Error("automation consumer: resume walk", "run_id", wait.RunID, "node_id", wait.NodeID, "err", err)
+		return // not acked — retried via processPending
+	}
+	c.ack(ctx, events.StreamAgentConversationStatus, msg.ID)
+}
+
+// resumeWalk continues a graph walk that paused at wait.NodeID once its
+// conversation reaches a terminal status. On anything other than "finished"
+// (the agent session itself failed or was stopped), the node's step is
+// recorded as failed and the walk does not continue past it — mirroring how
+// every other node type's own error already stops that branch.
+func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom.PendingAgentWait, status string) error {
+	automation, err := c.repo.FindAutomationByID(ctx, wait.AutomationID)
+	if err != nil {
+		return fmt.Errorf("find automation: %w", err)
+	}
+
+	if status != "finished" {
+		if err := c.repo.CreateRunStep(ctx, &automationdom.RunStep{
+			ID:         uuid.New(),
+			RunID:      wait.RunID,
+			NodeID:     wait.NodeID,
+			Status:     automationdom.RunStepFailed,
+			Error:      fmt.Sprintf("agent conversation %s", status),
+			ExecutedAt: time.Now(),
+		}); err != nil {
+			return fmt.Errorf("record failed run step: %w", err)
+		}
+		return c.finalizeRunIfDone(ctx, wait.RunID)
+	}
+
+	// Not an error if the automation was archived/reverted-to-draft while
+	// this wait was outstanding — same as executeRun's own check — but the
+	// run still needs closing out so it doesn't stay "running" forever.
+	if automation.Status != automationdom.StatusActive {
+		return c.finalizeRunIfDone(ctx, wait.RunID)
+	}
+
+	return c.resumeWalkFrom(ctx, automation, wait.RunID, wait.ProjectID, wait.NodeID, wait.Context)
+}
+
+// resumeAfterDelay continues a graph walk that paused at delay.NodeID once
+// delay.ResumeAt has passed — the wait-node counterpart to resumeWalk. A
+// delay has no failure outcome to report (unlike a conversation that can
+// come back failed/stopped), so it always continues to the paused node's
+// outgoing edges once the automation is confirmed still active.
+func (c *AutomationConsumer) resumeAfterDelay(ctx context.Context, delay *automationdom.PendingDelay) error {
+	automation, err := c.repo.FindAutomationByID(ctx, delay.AutomationID)
+	if err != nil {
+		return fmt.Errorf("find automation: %w", err)
+	}
+	// Not an error if the automation was archived/reverted-to-draft while
+	// this delay was outstanding — see resumeWalk's identical check.
+	if automation.Status != automationdom.StatusActive {
+		return c.finalizeRunIfDone(ctx, delay.RunID)
+	}
+	return c.resumeWalkFrom(ctx, automation, delay.RunID, delay.ProjectID, delay.NodeID, delay.Context)
+}
+
+// resumeWalkFrom is the shared "reload everything fresh and pick up where a
+// paused node left off" core of both resumeWalk (once a trigger_ai_agent
+// conversation finishes) and resumeAfterDelay (once a wait node's resume_at
+// passes): reload the graph, task, and sprint fresh (an automation can be
+// edited, and a task/sprint can be mutated elsewhere, while a run sits
+// paused), seed visited from this run's own recorded steps, and walk
+// nodeID's outgoing edges. walkCtx is the PendingAgentWait/PendingDelay's
+// persisted snapshot of the walk's identifiers at the point it paused (see
+// walker.walkContext) — SprintID is only set for a walk that was
+// Sprint-triggered (walker.sprint set directly rather than resolved via a
+// task).
+func (c *AutomationConsumer) resumeWalkFrom(ctx context.Context, automation *automationdom.Automation, runID, projectID, nodeID uuid.UUID, walkCtx automationdom.WalkContext) error {
+	graph, err := c.repo.LoadGraph(ctx, automation.ID)
+	if err != nil {
+		return fmt.Errorf("load graph: %w", err)
+	}
+	nodesByID, outgoing := indexGraph(graph)
+
+	var task *taskdom.Task
+	if walkCtx.TaskID != nil {
+		task, err = c.taskRepo.FindTaskByID(ctx, *walkCtx.TaskID)
+		if err != nil {
+			return fmt.Errorf("find task: %w", err)
+		}
+	}
+
+	var sprint *sprintdom.Sprint
+	if walkCtx.SprintID != nil {
+		if c.sprintRepo == nil {
+			return fmt.Errorf("sprint dispatch not configured")
+		}
+		sprint, err = c.sprintRepo.FindSprintByID(ctx, *walkCtx.SprintID)
+		if err != nil {
+			return fmt.Errorf("find sprint: %w", err)
+		}
+	}
+
+	// Seed visited from this run's own recorded steps rather than starting
+	// empty: another branch of the same run may have already reached (and
+	// executed) a node this resumed branch would otherwise re-visit — the
+	// in-memory visited map an all-synchronous walk relies on doesn't
+	// survive a pause, so RunStep history stands in for it here.
+	steps, err := c.repo.ListRunStepsByRun(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("list run steps: %w", err)
+	}
+	visited := make(map[uuid.UUID]bool, len(steps))
+	for _, s := range steps {
+		visited[s.NodeID] = true
+	}
+
+	w := &walker{
+		consumer:       c,
+		projectID:      projectID,
+		automationName: automation.Name,
+		task:           task,
+		sprint:         sprint,
+		nodesByID:      nodesByID,
+		outgoing:       outgoing,
+		runID:          runID,
+		visited:        visited,
+	}
+	for _, e := range outgoing[nodeID] {
+		w.walk(ctx, e.TargetNodeID)
+	}
+
+	return c.finalizeRunIfDone(ctx, runID)
 }
 
 // walker holds the mutable state of a single graph walk.
@@ -751,11 +1124,30 @@ type walker struct {
 	projectID      uuid.UUID
 	automationName string
 	task           *taskdom.Task
-	nodesByID      map[uuid.UUID]*automationdom.Node
-	outgoing       map[uuid.UUID][]*automationdom.Edge
-	runID          uuid.UUID
-	visited        map[uuid.UUID]bool
-	failed         bool
+	// sprint is set instead of task for a Sprint-triggered walk (see
+	// executeRunForSprint) — nil for every ordinary Task-triggered walk.
+	// resolveSprint is what lets a sprint action/condition reachable from a
+	// Task-triggered walk still find a sprint to work with, via task.SprintID.
+	sprint    *sprintdom.Sprint
+	nodesByID map[uuid.UUID]*automationdom.Node
+	outgoing  map[uuid.UUID][]*automationdom.Edge
+	runID     uuid.UUID
+	visited   map[uuid.UUID]bool
+}
+
+// walkContext snapshots the walk-scoped identifiers (task, sprint, and any
+// future context type) into a automationdom.WalkContext for persisting
+// alongside a PendingAgentWait/PendingDelay — see resumeWalkFrom, which
+// reconstructs task/sprint from exactly this on resume.
+func (w *walker) walkContext() automationdom.WalkContext {
+	var walkCtx automationdom.WalkContext
+	if w.task != nil {
+		walkCtx.TaskID = &w.task.ID
+	}
+	if w.sprint != nil {
+		walkCtx.SprintID = &w.sprint.ID
+	}
+	return walkCtx
 }
 
 // walk visits nodeID and recurses into its outgoing edges. visited guards
@@ -773,13 +1165,23 @@ func (w *walker) walk(ctx context.Context, nodeID uuid.UUID) {
 		return
 	}
 
-	if w.task == nil && automationdom.NodeRequiresTask(node.Kind, node.Type) {
+	if node.Kind == automationdom.KindCondition && node.Type == automationdom.ConditionNodeType {
+		// The one built-in condition node type tolerates a Sprint-only walk
+		// (task nil, sprint set) — its sprint-scoped Fields evaluate against
+		// w.sprint/resolveSprint instead of a task. A plugin-contributed
+		// condition type has no such concept (falls through to the else
+		// branch below, still strictly requiring a task) — it always calls
+		// into WASM with a task payload it would otherwise nil-dereference.
+		if w.task == nil && w.sprint == nil {
+			w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, "automation: this node requires a task or sprint, but the trigger has neither configured")
+			return
+		}
+	} else if w.task == nil && automationdom.NodeRequiresTask(node.Kind, node.Type) {
 		// Defense in depth: validateTaskReachability (checked at
 		// edge-creation/node-update/activate time) should make this
 		// unreachable — a task-less trigger can only ever reach call_api
 		// actions. Fail the step instead of a nil-pointer panic if that
 		// invariant is ever violated.
-		w.failed = true
 		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, "automation: this node requires a task, but the trigger has no target task configured")
 		return
 	}
@@ -788,7 +1190,11 @@ func (w *walker) walk(ctx context.Context, nodeID uuid.UUID) {
 	case automationdom.KindCondition:
 		w.walkCondition(ctx, node)
 	case automationdom.KindAction:
-		w.walkAction(ctx, node)
+		if node.Type == string(automationdom.ActionWait) {
+			w.walkWait(ctx, node)
+		} else {
+			w.walkAction(ctx, node)
+		}
 	default:
 		// A trigger node mid-walk shouldn't happen (edges into triggers are
 		// rejected at creation time) — defensively skip.
@@ -806,9 +1212,8 @@ func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
 
 	matchedHandle := automationdom.ElseHandle
 	for _, b := range cfg.Branches {
-		matched, err := w.consumer.evaluateLeaf(ctx, w.projectID, w.task, b.Tree)
+		matched, err := w.evaluateLeaf(ctx, b.Tree)
 		if err != nil {
-			w.failed = true
 			w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, err.Error())
 			return
 		}
@@ -828,27 +1233,111 @@ func (w *walker) walkCondition(ctx context.Context, node *automationdom.Node) {
 	}
 }
 
-// evaluateLeaf evaluates leaf against baseTask (the walk's own bound task),
+// evaluateLeaf evaluates leaf against the walk's own bound task or sprint,
 // retargeting first if leaf.Target names something other than "self" — see
-// resolveTargetTasks and ConditionLeaf.EvaluateAgainstTasks.
-func (c *AutomationConsumer) evaluateLeaf(ctx context.Context, projectID uuid.UUID, baseTask *taskdom.Task, leaf *automationdom.ConditionLeaf) (bool, error) {
+// resolveTargetTasks and ConditionLeaf.EvaluateAgainstTasks. Target-based
+// retargeting only applies to task fields — a sprint-scoped Field always
+// evaluates against resolveSprint's result, exactly like a walk's own bound
+// task/sprint everywhere else in this node type, with no equivalent
+// "evaluate against a different sprint" concept.
+func (w *walker) evaluateLeaf(ctx context.Context, leaf *automationdom.ConditionLeaf) (bool, error) {
 	if leaf == nil {
 		return true, nil
 	}
-	if leaf.Target == nil || leaf.Target.Kind == "" || leaf.Target.Kind == automationdom.TaskTargetSelf {
-		return leaf.Evaluate(baseTask), nil
+	if automationdom.IsSprintField(leaf.Field) {
+		sprint, err := w.resolveSprint(ctx)
+		if err != nil {
+			return false, err
+		}
+		return leaf.Evaluate(nil, sprint), nil
 	}
-	if baseTask == nil {
-		// Defense in depth: a condition always requires a task
-		// (NodeRequiresTask), so validateTaskReachability should make this
-		// unreachable regardless of Target.
+	if leaf.Target == nil || leaf.Target.Kind == "" || leaf.Target.Kind == automationdom.TaskTargetSelf {
+		return leaf.Evaluate(w.task, nil), nil
+	}
+	if w.task == nil {
+		// Defense in depth: a condition always requires a task or sprint
+		// (see walk's guard); a Target only makes sense relative to a task,
+		// so a Sprint-triggered walk (task nil) reaching a Targeted task
+		// leaf is a config mismatch, not something validateTaskReachability
+		// catches today (it doesn't know about Sprint triggers at all).
 		return false, fmt.Errorf("condition: target %q requires a task to resolve relative to, but the walk has none", leaf.Target.Kind)
 	}
-	tasks, err := c.resolveTargetTasks(ctx, projectID, baseTask, leaf.Target)
+	tasks, err := w.consumer.resolveTargetTasks(ctx, w.projectID, w.task, leaf.Target)
 	if err != nil {
 		return false, err
 	}
 	return leaf.EvaluateAgainstTasks(tasks, leaf.MatchMode), nil
+}
+
+// resolveSprint returns the sprint a sprint-scoped condition/action should
+// operate on: w.sprint directly for a Sprint-triggered walk, or the sprint
+// identified by w.task.SprintID for a Task-triggered one. Returns (nil, nil)
+// — not an error — when there's simply no sprint to resolve (a task-field
+// condition config accidentally reused on an unrelated task, or a task not
+// in any sprint): callers that can tolerate that (a condition leaf, via
+// ConditionLeaf.Evaluate's own nil-sprint handling) treat nil as "doesn't
+// match" instead of failing the whole run step; callers that can't (the
+// update_sprint/complete_sprint action handlers) turn a nil result into
+// their own explicit failure.
+func (w *walker) resolveSprint(ctx context.Context) (*sprintdom.Sprint, error) {
+	return w.consumer.resolveSprintFor(ctx, w.task, w.sprint)
+}
+
+// templateVars builds the {{variable}} substitution set available to the
+// node about to execute (see vartemplate.Render) — task.* fields when the
+// walk has a task, sprint.* fields when it has (or can resolve, via
+// resolveSprint) a sprint, and automation.name always. A DB-error resolving
+// the sprint just means sprint.* vars are left out of the set (an
+// unresolvable {{sprint.name}} reads as a literal, unsubstituted
+// placeholder in the output — see Render's own doc comment — rather than
+// failing the whole node over what's usually just "this task isn't in a
+// sprint").
+func (w *walker) templateVars(ctx context.Context) map[string]string {
+	vars := map[string]string{"automation.name": w.automationName}
+	if w.task != nil {
+		vars["task.id"] = w.task.ID.String()
+		vars["task.title"] = w.task.Title
+		vars["task.importance"] = strconv.Itoa(w.task.Importance)
+		if w.task.StoryPoints != nil {
+			vars["task.story_points"] = strconv.Itoa(*w.task.StoryPoints)
+		}
+		vars["task.tags"] = strings.Join(w.task.Tags, ", ")
+		if w.task.SprintID != nil {
+			vars["task.sprint_id"] = w.task.SprintID.String()
+		}
+	}
+	if sprint, err := w.resolveSprint(ctx); err == nil && sprint != nil {
+		vars["sprint.id"] = sprint.ID.String()
+		vars["sprint.name"] = sprint.Name
+		vars["sprint.status"] = string(sprint.Status)
+		if sprint.Goal != nil {
+			vars["sprint.goal"] = *sprint.Goal
+		}
+		if sprint.StartDate != nil {
+			vars["sprint.start_date"] = sprint.StartDate.Format(time.RFC3339)
+		}
+		if sprint.EndDate != nil {
+			vars["sprint.end_date"] = sprint.EndDate.Format(time.RFC3339)
+		}
+	}
+	return vars
+}
+
+// resolveSprintFor is resolveSprint's underlying logic, factored out as a
+// plain (task, sprint) function so runAction's update_sprint/complete_sprint
+// dispatch — which only has these two values, not a *walker — can reuse it
+// without needing a walker instance.
+func (c *AutomationConsumer) resolveSprintFor(ctx context.Context, task *taskdom.Task, sprint *sprintdom.Sprint) (*sprintdom.Sprint, error) {
+	if sprint != nil {
+		return sprint, nil
+	}
+	if task == nil || task.SprintID == nil {
+		return nil, nil
+	}
+	if c.sprintRepo == nil {
+		return nil, fmt.Errorf("sprint dispatch not configured")
+	}
+	return c.sprintRepo.FindSprintByID(ctx, *task.SprintID)
 }
 
 // resolveTargetTasks returns the task(s) target actually resolves to,
@@ -943,14 +1432,12 @@ func (w *walker) walkPluginCondition(ctx context.Context, node *automationdom.No
 
 	tasks, err := w.consumer.resolveTargetTasks(ctx, w.projectID, w.task, cfg.Target)
 	if err != nil {
-		w.failed = true
 		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, err.Error())
 		return
 	}
 
 	matched, input, err := w.consumer.evaluatePluginConditionAgainstTasks(ctx, w.projectID, node, tasks, cfg.MatchMode)
 	if err != nil {
-		w.failed = true
 		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, input, nil, err.Error())
 		return
 	}
@@ -968,6 +1455,40 @@ func (w *walker) walkPluginCondition(ctx context.Context, node *automationdom.No
 	}
 }
 
+// walkWait handles a wait action node: unlike every other action, there's
+// nothing to "apply" now — it records its own run step, schedules a
+// PendingDelay for WaitMinutes from now, and returns without walking
+// outgoing edges. WaitScheduler resumes the walk (via resumeAfterDelay)
+// once that delay's ResumeAt passes.
+func (w *walker) walkWait(ctx context.Context, node *automationdom.Node) {
+	var cfg automationdom.ActionConfig
+	if err := json.Unmarshal(node.Config, &cfg); err != nil {
+		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, fmt.Sprintf("wait: decode config: %v", err))
+		return
+	}
+	if cfg.WaitMinutes == nil || *cfg.WaitMinutes <= 0 {
+		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, nil, nil, "wait: missing or non-positive wait_minutes")
+		return
+	}
+
+	resumeAt := time.Now().Add(time.Duration(*cfg.WaitMinutes) * time.Minute)
+	output, _ := json.Marshal(map[string]any{"resume_at": resumeAt})
+	w.recordStep(ctx, node.ID, automationdom.RunStepCompleted, nil, output, "")
+
+	if err := w.consumer.repo.CreatePendingDelay(ctx, &automationdom.PendingDelay{
+		ID:           uuid.New(),
+		RunID:        w.runID,
+		NodeID:       node.ID,
+		AutomationID: node.AutomationID,
+		ProjectID:    w.projectID,
+		Context:      w.walkContext(),
+		ResumeAt:     resumeAt,
+		CreatedAt:    time.Now(),
+	}); err != nil {
+		w.consumer.log.Error("automation consumer: create pending delay", "node_id", node.ID, "err", err)
+	}
+}
+
 func (w *walker) walkAction(ctx context.Context, node *automationdom.Node) {
 	inputData := map[string]any{}
 	if w.task != nil {
@@ -975,9 +1496,8 @@ func (w *walker) walkAction(ctx context.Context, node *automationdom.Node) {
 		inputData["assignee_ids"] = w.task.AssigneeIDs
 	}
 	input, _ := json.Marshal(inputData)
-	applied, detail, err := w.consumer.runAction(ctx, w.projectID, node, w.task, w.automationName, w.runID)
+	applied, detail, err := w.consumer.runAction(ctx, w.projectID, node, w.task, w.sprint, w.templateVars(ctx), w.automationName, w.runID)
 	if err != nil {
-		w.failed = true
 		w.recordStep(ctx, node.ID, automationdom.RunStepFailed, input, nil, err.Error())
 		return
 	}
@@ -997,9 +1517,70 @@ func (w *walker) walkAction(ctx context.Context, node *automationdom.Node) {
 	output, _ := json.Marshal(outputMap)
 	w.recordStep(ctx, node.ID, status, input, output, "")
 
+	// trigger_ai_agent only ever reports applied conversation_id(s) in
+	// detail when it actually started one or more agent conversations (see
+	// runAction) — when it does, the walk pauses here instead of continuing:
+	// handleAgentConversationStatus/resumeWalk walks these outgoing edges
+	// later, once every one of those conversations reaches a terminal
+	// status. A skipped/empty trigger_ai_agent (no conversation created)
+	// falls through to the same immediate continuation as every other
+	// action.
+	if node.Type == string(automationdom.ActionTriggerAIAgent) {
+		if convIDs := conversationIDsFromDetail(detail); len(convIDs) > 0 {
+			walkCtx := w.walkContext()
+			for _, convID := range convIDs {
+				if err := w.consumer.repo.CreatePendingAgentWait(ctx, &automationdom.PendingAgentWait{
+					ID:             uuid.New(),
+					RunID:          w.runID,
+					NodeID:         node.ID,
+					AutomationID:   node.AutomationID,
+					ConversationID: convID,
+					ProjectID:      w.projectID,
+					Context:        walkCtx,
+					CreatedAt:      time.Now(),
+				}); err != nil {
+					w.consumer.log.Error("automation consumer: create pending agent wait", "node_id", node.ID, "conversation_id", convID, "err", err)
+				}
+			}
+			return
+		}
+	}
+
 	for _, e := range w.outgoing[node.ID] {
 		w.walk(ctx, e.TargetNodeID)
 	}
+}
+
+// conversationIDsFromDetail extracts the agent conversation ID(s) runAction
+// reported for a trigger_ai_agent node's detail output — "conversation_id"
+// for the single-task path (task-less direct message, or no explicit
+// retarget) or "conversation_ids" for a cfg.Target fan-out across several
+// resolved tasks (see runAction). Malformed entries are skipped rather than
+// failing the whole node — better to pause on the ones that parsed than to
+// fail a node whose actual dispatch already succeeded.
+func conversationIDsFromDetail(detail json.RawMessage) []uuid.UUID {
+	if len(detail) == 0 {
+		return nil
+	}
+	var parsed struct {
+		ConversationID  string   `json:"conversation_id"`
+		ConversationIDs []string `json:"conversation_ids"`
+	}
+	if err := json.Unmarshal(detail, &parsed); err != nil {
+		return nil
+	}
+	var out []uuid.UUID
+	if parsed.ConversationID != "" {
+		if id, err := uuid.Parse(parsed.ConversationID); err == nil {
+			out = append(out, id)
+		}
+	}
+	for _, s := range parsed.ConversationIDs {
+		if id, err := uuid.Parse(s); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func (w *walker) recordStep(ctx context.Context, nodeID uuid.UUID, status automationdom.RunStepStatus, input, output json.RawMessage, errMsg string) {
@@ -1035,7 +1616,7 @@ func (w *walker) recordStep(ctx context.Context, nodeID uuid.UUID, status automa
 // action fans out — applied once per resolved task via applyActionForTask,
 // aggregated into detail's "targets" array. Fanning out stops at the first
 // error, same fail-fast behavior as a single-task action's error today.
-func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, task *taskdom.Task, automationName string, runID uuid.UUID) (applied bool, detail json.RawMessage, err error) {
+func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, task *taskdom.Task, sprint *sprintdom.Sprint, vars map[string]string, automationName string, runID uuid.UUID) (applied bool, detail json.RawMessage, err error) {
 	var cfg automationdom.ActionConfig
 	if err := json.Unmarshal(node.Config, &cfg); err != nil {
 		return false, nil, fmt.Errorf("decode action config: %w", err)
@@ -1052,7 +1633,22 @@ func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID,
 			// empty method/url while the automation stays active.
 			return false, nil, fmt.Errorf("call_api: missing method or url")
 		}
-		return c.applyCallAPI(ctx, cfg)
+		return c.applyCallAPI(ctx, cfg, vars)
+	}
+
+	// update_sprint/complete_sprint resolve their own sprint from context
+	// (sprint directly, or task.SprintID — see resolveSprintFor), not from a
+	// Target the way task actions do, so — like call_api — there's nothing
+	// to retarget here either, and both run regardless of whether task is
+	// nil (a Sprint-triggered walk) or set (a Task-triggered one reaching
+	// down into its own sprint).
+	if actionType == automationdom.ActionUpdateSprint {
+		applied, err := c.applyUpdateSprint(ctx, projectID, task, sprint, cfg.SprintUpdate, vars)
+		return applied, nil, err
+	}
+	if actionType == automationdom.ActionCompleteSprint {
+		applied, err := c.applyCompleteSprint(ctx, projectID, task, sprint, cfg.MoveToSprintID)
+		return applied, nil, err
 	}
 
 	// trigger_ai_agent's task-less direct-message path doesn't involve any
@@ -1061,15 +1657,21 @@ func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID,
 		if cfg.MemberID == nil {
 			return false, nil, fmt.Errorf("trigger_ai_agent: missing member_id")
 		}
-		applied, err := c.applyDirectAgentMessage(ctx, projectID, *cfg.MemberID, cfg.Message)
-		return applied, nil, err
+		applied, convID, err := c.applyDirectAgentMessage(ctx, projectID, *cfg.MemberID, vartemplate.Render(cfg.Message, vars))
+		if err != nil {
+			return applied, nil, err
+		}
+		return applied, conversationDetail(convID), nil
 	}
 
 	if cfg.Target == nil || cfg.Target.Kind == "" || cfg.Target.Kind == automationdom.TaskTargetSelf {
 		// No explicit retarget — exactly today's behavior: one task, no
 		// aggregated detail.
-		applied, err := c.applyActionForTask(ctx, projectID, node, actionType, cfg, task, automationName, runID)
-		return applied, nil, err
+		applied, convID, err := c.applyActionForTask(ctx, projectID, node, actionType, cfg, task, automationName, vars, runID)
+		if err != nil {
+			return applied, nil, err
+		}
+		return applied, conversationDetail(convID), nil
 	}
 	if task == nil {
 		// Defense in depth: every non-call_api, non-task-less-trigger_ai_agent
@@ -1090,18 +1692,40 @@ func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID,
 		Applied bool   `json:"applied"`
 	}
 	results := make([]targetResult, 0, len(targets))
+	var convIDs []string
 	anyApplied := false
 	for _, t := range targets {
-		a, applyErr := c.applyActionForTask(ctx, projectID, node, actionType, cfg, t, automationName, runID)
+		// A fanned-out trigger_ai_agent starts one conversation per resolved
+		// task — every one of them gets its own pending wait (see
+		// walkAction), so the walk past this node only continues once all
+		// of them have finished. vars stays the walk's own base task/sprint
+		// throughout the fan-out (not rebuilt per resolved task) — a
+		// {{task.title}} reference reflects the walk's own task, not each
+		// individual fanned-out one.
+		a, convID, applyErr := c.applyActionForTask(ctx, projectID, node, actionType, cfg, t, automationName, vars, runID)
 		if applyErr != nil {
-			detailBytes, _ := json.Marshal(map[string]any{"targets": results})
+			detailBytes, _ := json.Marshal(map[string]any{"targets": results, "conversation_ids": convIDs})
 			return anyApplied, detailBytes, fmt.Errorf("task %s: %w", t.ID, applyErr)
 		}
 		anyApplied = anyApplied || a
 		results = append(results, targetResult{TaskID: t.ID.String(), Applied: a})
+		if convID != nil {
+			convIDs = append(convIDs, convID.String())
+		}
 	}
-	detailBytes, _ := json.Marshal(map[string]any{"targets": results})
+	detailBytes, _ := json.Marshal(map[string]any{"targets": results, "conversation_ids": convIDs})
 	return anyApplied, detailBytes, nil
+}
+
+// conversationDetail wraps a trigger_ai_agent conversation ID (nil for every
+// other action, or when none was created) into the JSON shape
+// conversationIDsFromDetail expects back out of a run step's detail.
+func conversationDetail(convID *uuid.UUID) json.RawMessage {
+	if convID == nil {
+		return nil
+	}
+	b, _ := json.Marshal(map[string]any{"conversation_id": convID.String()})
+	return b
 }
 
 // applyActionForTask dispatches to the concrete handler for actionType
@@ -1109,18 +1733,22 @@ func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID,
 // action (cfg.Target set to something other than "self") can call this
 // once per resolved task. call_api and trigger_ai_agent's task-less
 // direct-message path are handled directly in runAction before this is
-// ever reached, since neither operates on a task at all.
-func (c *AutomationConsumer) applyActionForTask(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, actionType automationdom.ActionType, cfg automationdom.ActionConfig, task *taskdom.Task, automationName string, runID uuid.UUID) (bool, error) {
+// ever reached, since neither operates on a task at all. The *uuid.UUID
+// return is trigger_ai_agent's started conversation ID (nil for every other
+// action type, or on failure/skip) — see runAction's callers.
+func (c *AutomationConsumer) applyActionForTask(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, actionType automationdom.ActionType, cfg automationdom.ActionConfig, task *taskdom.Task, automationName string, vars map[string]string, runID uuid.UUID) (bool, *uuid.UUID, error) {
 	switch actionType {
 	case automationdom.ActionUpdateTask:
-		return c.applyUpdateTask(ctx, projectID, task, cfg.Update, automationName)
+		applied, err := c.applyUpdateTask(ctx, projectID, task, cfg.Update, automationName, vars)
+		return applied, nil, err
 	case automationdom.ActionTriggerAIAgent:
 		if cfg.MemberID == nil {
-			return false, fmt.Errorf("trigger_ai_agent: missing member_id")
+			return false, nil, fmt.Errorf("trigger_ai_agent: missing member_id")
 		}
-		return c.applyTriggerAIAgentOnTask(ctx, projectID, task, *cfg.MemberID, automationName, cfg.Message)
+		return c.applyTriggerAIAgentOnTask(ctx, projectID, task, *cfg.MemberID, automationName, vartemplate.Render(cfg.Message, vars))
 	default:
-		return c.runPluginAction(ctx, projectID, node, task, runID)
+		applied, err := c.runPluginAction(ctx, projectID, node, task, runID)
+		return applied, nil, err
 	}
 }
 
@@ -1135,17 +1763,19 @@ const maxCallAPIResponseBody = 4096
 // to check before running, so it always executes when the walk reaches it.
 // A non-2xx response is treated as a Go error (walk-stopping, same as any
 // other action's failure), not a "skipped" no-op.
-func (c *AutomationConsumer) applyCallAPI(ctx context.Context, cfg automationdom.ActionConfig) (bool, json.RawMessage, error) {
+func (c *AutomationConsumer) applyCallAPI(ctx context.Context, cfg automationdom.ActionConfig, vars map[string]string) (bool, json.RawMessage, error) {
+	url := vartemplate.Render(cfg.URL, vars)
+	body := vartemplate.Render(cfg.Body, vars)
 	var bodyReader io.Reader
-	if cfg.Body != "" {
-		bodyReader = strings.NewReader(cfg.Body)
+	if body != "" {
+		bodyReader = strings.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(cfg.Method), cfg.URL, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(cfg.Method), url, bodyReader)
 	if err != nil {
 		return false, nil, fmt.Errorf("call_api: build request: %w", err)
 	}
 	for k, v := range cfg.Headers {
-		req.Header.Set(k, v)
+		req.Header.Set(k, vartemplate.Render(v, vars))
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -1297,22 +1927,25 @@ func pluginNodePayload(nodeType string, config json.RawMessage, projectID uuid.U
 // clobber whoever the task is actually assigned to just to route it to an
 // agent. Unlike applyUpdateTask there's no "already in target state" check
 // to make: no task state is being mutated here, so — same as
-// applyDirectAgentMessage — every visit starts a fresh conversation.
-func (c *AutomationConsumer) applyTriggerAIAgentOnTask(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, memberID uuid.UUID, automationName, agentMessage string) (bool, error) {
+// applyDirectAgentMessage — every visit starts a fresh conversation. The
+// returned *uuid.UUID is the new conversation's ID (nil on failure) — the
+// caller (walkAction, via runAction/applyActionForTask) uses it to pause the
+// graph walk until that conversation finishes.
+func (c *AutomationConsumer) applyTriggerAIAgentOnTask(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, memberID uuid.UUID, automationName, agentMessage string) (bool, *uuid.UUID, error) {
 	if c.memberRepo == nil || c.agentMessenger == nil {
-		return false, fmt.Errorf("trigger_ai_agent: agent dispatch not configured")
+		return false, nil, fmt.Errorf("trigger_ai_agent: agent dispatch not configured")
 	}
 	member, err := c.memberRepo.FindMemberByID(ctx, memberID)
 	if err != nil {
-		return false, fmt.Errorf("trigger_ai_agent: find member: %w", err)
+		return false, nil, fmt.Errorf("trigger_ai_agent: find member: %w", err)
 	}
 	if !member.IsAgent() || member.AgentID == nil {
-		return false, fmt.Errorf("trigger_ai_agent: member %s is not an agent", memberID)
+		return false, nil, fmt.Errorf("trigger_ai_agent: member %s is not an agent", memberID)
 	}
 
 	conv, err := c.agentMessenger.TriggerTaskAssigned(ctx, projectID, *member.AgentID, task.ID, nil, triggerAIAgentNote(automationName, agentMessage))
 	if err != nil {
-		return false, fmt.Errorf("trigger_ai_agent: trigger conversation: %w", err)
+		return false, nil, fmt.Errorf("trigger_ai_agent: trigger conversation: %w", err)
 	}
 
 	c.recordAppliedActivity(ctx, projectID, task.ID, automationName, map[string]any{
@@ -1335,7 +1968,7 @@ func (c *AutomationConsumer) applyTriggerAIAgentOnTask(ctx context.Context, proj
 			c.log.Warn("automation consumer: could not record agent session activity", "err", recErr)
 		}
 	}
-	return true, nil
+	return true, &conv.ID, nil
 }
 
 // triggerAIAgentNote builds the note prepended to the agent's initial
@@ -1373,38 +2006,42 @@ func triggerAIAgentNote(automationName, agentMessage string) string {
 // task (a cron/api_trigger/predecessor_done trigger with no
 // target_task_id), since there's nothing to assign. Unlike applyUpdateTask,
 // there's no "already in target state" check to make — every visit sends a
-// fresh message, and it always reports "applied" on success.
-func (c *AutomationConsumer) applyDirectAgentMessage(ctx context.Context, projectID uuid.UUID, memberID uuid.UUID, message string) (bool, error) {
+// fresh message, and it always reports "applied" on success. The returned
+// *uuid.UUID is the new conversation's ID (nil on failure), same contract as
+// applyTriggerAIAgentOnTask.
+func (c *AutomationConsumer) applyDirectAgentMessage(ctx context.Context, projectID uuid.UUID, memberID uuid.UUID, message string) (bool, *uuid.UUID, error) {
 	if c.memberRepo == nil || c.agentMessenger == nil {
-		return false, fmt.Errorf("trigger_ai_agent: direct-message dispatch not configured")
+		return false, nil, fmt.Errorf("trigger_ai_agent: direct-message dispatch not configured")
 	}
 	if strings.TrimSpace(message) == "" {
 		// Unlike a task assignment (which falls back to a default "get
 		// started" prompt on the agent side), a direct message has no task
 		// for the agent to load context from — an empty prompt would just
 		// error out downstream, so require one here instead.
-		return false, fmt.Errorf("trigger_ai_agent: a message is required when there's no target task to assign")
+		return false, nil, fmt.Errorf("trigger_ai_agent: a message is required when there's no target task to assign")
 	}
 	member, err := c.memberRepo.FindMemberByID(ctx, memberID)
 	if err != nil {
-		return false, fmt.Errorf("trigger_ai_agent: find member: %w", err)
+		return false, nil, fmt.Errorf("trigger_ai_agent: find member: %w", err)
 	}
 	if !member.IsAgent() || member.AgentID == nil {
-		return false, fmt.Errorf("trigger_ai_agent: member %s is not an agent", memberID)
+		return false, nil, fmt.Errorf("trigger_ai_agent: member %s is not an agent", memberID)
 	}
-	if _, err := c.agentMessenger.TriggerDirectMessage(ctx, projectID, *member.AgentID, nil, message); err != nil {
-		return false, fmt.Errorf("trigger_ai_agent: trigger direct message: %w", err)
+	conv, err := c.agentMessenger.TriggerDirectMessage(ctx, projectID, *member.AgentID, nil, message)
+	if err != nil {
+		return false, nil, fmt.Errorf("trigger_ai_agent: trigger direct message: %w", err)
 	}
-	return true, nil
+	return true, &conv.ID, nil
 }
 
-func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, upd *automationdom.TaskFieldUpdate, automationName string) (bool, error) {
+func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, upd *automationdom.TaskFieldUpdate, automationName string, vars map[string]string) (bool, error) {
 	if upd == nil {
 		return false, fmt.Errorf("update_task: missing update config")
 	}
 	in := taskdom.UpdateTaskInput{}
 	changed := map[string]any{}
 	oldAssignees := task.AssigneeIDs
+	renderedTitle := vartemplate.Render(upd.Title, vars)
 
 	if upd.TaskTypeID != nil && (task.TaskTypeID == nil || *task.TaskTypeID != *upd.TaskTypeID) {
 		id := *upd.TaskTypeID
@@ -1430,10 +2067,9 @@ func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid
 		in.ParentTaskID = &ptr
 		changed["parent_task_id"] = id
 	}
-	if upd.Title != "" && upd.Title != task.Title {
-		title := upd.Title
-		in.Title = title
-		changed["title"] = title
+	if renderedTitle != "" && renderedTitle != task.Title {
+		in.Title = renderedTitle
+		changed["title"] = renderedTitle
 	}
 	if len(upd.Description) > 0 && !bytes.Equal(upd.Description, task.Description) {
 		desc := upd.Description
@@ -1562,6 +2198,102 @@ func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid
 			}
 		}
 	}
+	return true, nil
+}
+
+// applyUpdateSprint mutates the sprint resolveSprintFor(task, sprint)
+// resolves to — sprint directly for a Sprint-triggered walk, or the sprint
+// identified by task.SprintID for a Task-triggered one reaching down into
+// its own sprint. Same diff-before-mutate idempotency pattern as
+// applyUpdateTask: only fields that actually differ from the sprint's
+// current value go into the UpdateSprint call, and "nothing changed" reports
+// unapplied rather than firing a no-op update every time this node re-runs.
+func (c *AutomationConsumer) applyUpdateSprint(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, sprint *sprintdom.Sprint, upd *automationdom.SprintFieldUpdate, vars map[string]string) (bool, error) {
+	if upd == nil {
+		return false, fmt.Errorf("update_sprint: missing update config")
+	}
+	target, err := c.resolveSprintFor(ctx, task, sprint)
+	if err != nil {
+		return false, fmt.Errorf("update_sprint: %w", err)
+	}
+	if target == nil {
+		return false, fmt.Errorf("update_sprint: no sprint in context")
+	}
+	if c.sprintSvc == nil {
+		return false, fmt.Errorf("update_sprint: sprint dispatch not configured")
+	}
+
+	in := sprintdom.UpdateSprintInput{}
+	changed := false
+
+	if name := strings.TrimSpace(vartemplate.Render(upd.Name, vars)); name != "" && name != target.Name {
+		in.Name = name
+		changed = true
+	}
+	if upd.StartDate != nil && (target.StartDate == nil || !target.StartDate.Equal(*upd.StartDate)) {
+		d := *upd.StartDate
+		ptr := &d
+		in.StartDate = &ptr
+		changed = true
+	}
+	if upd.EndDate != nil && (target.EndDate == nil || !target.EndDate.Equal(*upd.EndDate)) {
+		d := *upd.EndDate
+		ptr := &d
+		in.EndDate = &ptr
+		changed = true
+	}
+	if upd.Goal != nil {
+		if g := vartemplate.Render(*upd.Goal, vars); target.Goal == nil || *target.Goal != g {
+			ptr := &g
+			in.Goal = &ptr
+			changed = true
+		}
+	}
+	if upd.Status != nil && *upd.Status != target.Status {
+		s := *upd.Status
+		in.Status = &s
+		changed = true
+	}
+
+	if !changed {
+		return false, nil
+	}
+	updated, err := c.sprintSvc.UpdateSprint(ctx, projectID, target.ID, in)
+	if err != nil {
+		return false, fmt.Errorf("update_sprint: %w", err)
+	}
+	// Mutate in place (mirrors applyUpdateTask) so a later node in the same
+	// walk — including a subsequent resolveSprintFor call — sees the
+	// change immediately.
+	*target = *updated
+	return true, nil
+}
+
+// applyCompleteSprint marks the sprint resolveSprintFor(task, sprint)
+// resolves to as completed, bulk-moving its non-done tasks via
+// sprintSvc.CompleteSprint (see that method's own doc comment) — a distinct
+// action from applyUpdateSprint's generic Status field because of that extra
+// side effect. Already-complete is treated as "nothing to do" (not applied),
+// the same idempotency posture as every other action.
+func (c *AutomationConsumer) applyCompleteSprint(ctx context.Context, projectID uuid.UUID, task *taskdom.Task, sprint *sprintdom.Sprint, moveToSprintID *uuid.UUID) (bool, error) {
+	target, err := c.resolveSprintFor(ctx, task, sprint)
+	if err != nil {
+		return false, fmt.Errorf("complete_sprint: %w", err)
+	}
+	if target == nil {
+		return false, fmt.Errorf("complete_sprint: no sprint in context")
+	}
+	if c.sprintSvc == nil {
+		return false, fmt.Errorf("complete_sprint: sprint dispatch not configured")
+	}
+	if target.Status == sprintdom.SprintStatusCompleted {
+		return false, nil
+	}
+	updated, err := c.sprintSvc.CompleteSprint(ctx, projectID, target.ID, sprintdom.CompleteSprintInput{MoveToSprintID: moveToSprintID})
+	if err != nil {
+		return false, fmt.Errorf("complete_sprint: %w", err)
+	}
+	*target = *updated
 	return true, nil
 }
 

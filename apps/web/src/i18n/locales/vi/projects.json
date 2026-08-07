@@ -1337,7 +1337,12 @@
 			"addCondition": "Thêm điều kiện",
 			"addAction": "Thêm hành động",
 			"builtIn": "Tích hợp sẵn",
-			"plugins": "Plugin"
+			"plugins": "Plugin",
+			"triggerGroups": {
+				"taskEvents": "Sự kiện công việc",
+				"sprintEvents": "Sự kiện sprint",
+				"scheduleWebhook": "Lịch và webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Trình kích hoạt",
@@ -1357,12 +1362,19 @@
 			"due_date_reached": "Đến hạn chót",
 			"predecessor_done": "(Các) công việc trước đã xong",
 			"cron": "Lịch cron",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "Sprint được tạo",
+			"sprint_started": "Sprint bắt đầu",
+			"sprint_completed": "Sprint hoàn thành",
+			"sprint_deleted": "Sprint bị xóa"
 		},
 		"actionTypes": {
 			"update_task": "Cập nhật công việc",
 			"trigger_ai_agent": "Kích hoạt tác nhân AI",
-			"call_api": "Gọi API"
+			"call_api": "Gọi API",
+			"wait": "Chờ",
+			"update_sprint": "Cập nhật sprint",
+			"complete_sprint": "Hoàn thành sprint"
 		},
 		"nodeConfig": {
 			"save": "Lưu",
@@ -1433,7 +1445,12 @@
 					"parent_task_id": "Công việc cha",
 					"reporter_id": "Người báo cáo",
 					"start_date": "Ngày bắt đầu",
-					"due_date": "Ngày đến hạn"
+					"due_date": "Ngày đến hạn",
+					"sprint_name": "Tên sprint",
+					"sprint_status": "Trạng thái sprint",
+					"sprint_goal": "Mục tiêu sprint",
+					"sprint_start_date": "Ngày bắt đầu sprint",
+					"sprint_end_date": "Ngày kết thúc sprint"
 				}
 			},
 			"action": {
@@ -1454,6 +1471,23 @@
 				"headerValuePlaceholder": "Giá trị",
 				"addHeader": "Thêm tiêu đề",
 				"bodyLabel": "Nội dung",
+				"waitMinutesLabel": "Thời gian chờ (phút)",
+				"waitMinutesHint": "Thời gian tạm dừng tại đây trước khi tiếp tục sang node kế tiếp.",
+				"updateSprintHint": "Chỉ những trường bạn điền bên dưới mới được thay đổi — mọi thứ khác trên sprint vẫn giữ nguyên.",
+				"sprintNameLabel": "Tên",
+				"sprintStartDateLabel": "Ngày bắt đầu",
+				"sprintEndDateLabel": "Ngày kết thúc",
+				"sprintGoalLabel": "Mục tiêu",
+				"sprintStatusLabel": "Trạng thái",
+				"sprintStatusUnchanged": "Giữ nguyên",
+				"sprintStatusPlanned": "Đã lên kế hoạch",
+				"sprintStatusActive": "Đang hoạt động",
+				"sprintStatusCompleted": "Đã hoàn thành",
+				"completeSprintHint": "Đánh dấu sprint hoàn thành và di chuyển các tác vụ chưa xong.",
+				"moveToSprintLabel": "Di chuyển tác vụ chưa xong đến",
+				"moveToSprintBacklog": "Backlog",
+				"moveToSprintHint": "Các tác vụ chưa xong trong sprint này sẽ chuyển đến đây khi sprint hoàn thành.",
+				"variablesHint": "Hỗ trợ {{task.title}}, {{sprint.name}} và các placeholder {{variable}} khác từ lần chạy hiện tại.",
 				"updateTaskHint": "Chỉ những trường bạn bật dưới đây mới bị thay đổi — phần còn lại của công việc không bị ảnh hưởng.",
 				"addFieldToUpdate": "Thêm trường cần cập nhật…",
 				"customFieldsLabel": "Trường tùy chỉnh",

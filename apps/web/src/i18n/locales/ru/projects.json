@@ -1357,7 +1357,12 @@
 			"addCondition": "Добавить условие",
 			"addAction": "Добавить действие",
 			"builtIn": "Встроенные",
-			"plugins": "Плагины"
+			"plugins": "Плагины",
+			"triggerGroups": {
+				"taskEvents": "События задач",
+				"sprintEvents": "События спринтов",
+				"scheduleWebhook": "Расписание и webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Триггер",
@@ -1377,12 +1382,19 @@
 			"due_date_reached": "Наступил срок",
 			"predecessor_done": "Предшествующая(ие) задача(и) завершена(ы)",
 			"cron": "Расписание cron",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "Спринт создан",
+			"sprint_started": "Спринт начат",
+			"sprint_completed": "Спринт завершён",
+			"sprint_deleted": "Спринт удалён"
 		},
 		"actionTypes": {
 			"update_task": "Обновить задачу",
 			"trigger_ai_agent": "Запустить ИИ-агента",
-			"call_api": "Вызвать API"
+			"call_api": "Вызвать API",
+			"wait": "Подождать",
+			"update_sprint": "Обновить спринт",
+			"complete_sprint": "Завершить спринт"
 		},
 		"nodeConfig": {
 			"save": "Сохранить",
@@ -1453,7 +1465,12 @@
 					"parent_task_id": "Родительская задача",
 					"reporter_id": "Автор",
 					"start_date": "Дата начала",
-					"due_date": "Срок"
+					"due_date": "Срок",
+					"sprint_name": "Название спринта",
+					"sprint_status": "Статус спринта",
+					"sprint_goal": "Цель спринта",
+					"sprint_start_date": "Дата начала спринта",
+					"sprint_end_date": "Дата окончания спринта"
 				}
 			},
 			"action": {
@@ -1474,6 +1491,23 @@
 				"headerValuePlaceholder": "Значение",
 				"addHeader": "Добавить заголовок",
 				"bodyLabel": "Тело запроса",
+				"waitMinutesLabel": "Ожидание (минут)",
+				"waitMinutesHint": "Сколько времени приостановить выполнение здесь, прежде чем перейти к следующему узлу.",
+				"updateSprintHint": "Изменяются только заполненные ниже поля — остальная часть спринта остаётся без изменений.",
+				"sprintNameLabel": "Название",
+				"sprintStartDateLabel": "Дата начала",
+				"sprintEndDateLabel": "Дата окончания",
+				"sprintGoalLabel": "Цель",
+				"sprintStatusLabel": "Статус",
+				"sprintStatusUnchanged": "Не изменять",
+				"sprintStatusPlanned": "Запланирован",
+				"sprintStatusActive": "Активный",
+				"sprintStatusCompleted": "Завершён",
+				"completeSprintHint": "Отмечает спринт как завершённый и переносит его незавершённые задачи.",
+				"moveToSprintLabel": "Перенести незавершённые задачи в",
+				"moveToSprintBacklog": "Бэклог",
+				"moveToSprintHint": "Незавершённые задачи из этого спринта переносятся сюда при его завершении.",
+				"variablesHint": "Поддерживает {{task.title}}, {{sprint.name}} и похожие плейсхолдеры {{variable}} из текущего запуска.",
 				"updateTaskHint": "Изменяются только поля, включённые ниже — остальная часть задачи остаётся без изменений.",
 				"addFieldToUpdate": "Добавить поле для обновления…",
 				"customFieldsLabel": "Пользовательское поле",
