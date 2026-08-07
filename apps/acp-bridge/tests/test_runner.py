@@ -6,12 +6,19 @@ than a real `openhands.sdk.Conversation`.
 """
 
 import asyncio
+import json
 import logging
 import threading
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
-from paca_acp_bridge.runner import ConversationRunner, resolve_acp_command
+from paca_acp_bridge.runner import (
+    ConversationRunner,
+    _AssistantTextRelay,
+    _chunk_text,
+    resolve_acp_command,
+)
 
 
 def test_resolve_builtin_provider_uses_sdk_default_command():
@@ -294,3 +301,277 @@ async def test_event_callback_logs_when_send_fails_on_loop(caplog):
         await asyncio.sleep(0)
 
     assert any("Failed to report event" in record.getMessage() for record in caplog.records)
+
+
+class _FakeFinishAction(BaseModel):
+    """Frozen like the SDK's FinishAction, so clearing the message in place is
+    impossible and the copy path is the one under test."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message: str
+
+
+class _FakeFinishEvent(BaseModel):
+    """Stands in for the ActionEvent that closes an ACP turn: a FinishAction
+    whose message is the whole turn's assistant text, joined by the SDK.
+
+    A real (frozen) model rather than a hand-rolled stub, so the payload is
+    produced by Pydantic's serializer exactly as the SDK's own events are.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    action: _FakeFinishAction
+    tool_name: str = "finish"
+    reasoning_content: str | None = None
+    source: str = "agent"
+
+    def __init__(self, message: str, **kwargs) -> None:
+        super().__init__(action=_FakeFinishAction(message=message), **kwargs)
+
+
+async def _drain():
+    # The on-loop dispatch path schedules tasks rather than awaiting them.
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+def _runner_with_relay(send):
+    runner = ConversationRunner(workspace="/tmp", send=send)
+    runner._loop = asyncio.get_running_loop()
+    relay = _AssistantTextRelay()
+    runner._text_relays["conv-1"] = relay
+    return runner, relay
+
+
+def test_chunk_text_accepts_a_plain_string_and_a_stream_chunk():
+    """ACPAgent calls token callbacks with a str; the SDK's TokenCallbackType
+    alias says litellm ModelResponseStream. Both have to work."""
+
+    class _Delta:
+        content = "from a stream chunk"
+
+    class _Choice:
+        delta = _Delta()
+
+    class _Chunk:
+        choices = [_Choice()]
+
+    assert _chunk_text("from a string") == "from a string"
+    assert _chunk_text(_Chunk()) == "from a stream chunk"
+    assert _chunk_text(object()) == ""
+
+
+async def test_streamed_text_is_emitted_before_the_event_that_follows_it():
+    """The whole point of the relay: narration reaches Paca positioned against
+    the tool call it describes, rather than in one lump at the end of the turn."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("Checking the failing test")
+    relay.on_token(" first.")
+    callback(_FakeEvent())
+    await _drain()
+
+    assert [m["event_type"] for m in sent] == ["MessageEvent", "_FakeEvent"]
+    assert sent[0]["event_source"] == "agent"
+    assert json.loads(sent[0]["payload"]) == {"content": "Checking the failing test first."}
+
+
+async def test_nothing_extra_is_emitted_when_no_text_was_streamed():
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, _relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    callback(_FakeEvent())
+    await _drain()
+
+    assert [m["event_type"] for m in sent] == ["_FakeEvent"]
+
+
+async def test_finish_message_is_blanked_once_its_text_has_been_streamed():
+    """The SDK builds the FinishAction message by joining the same chunks, so
+    forwarding it verbatim would repeat the whole turn's narration."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("First I read the file.")
+    callback(_FakeEvent())
+    relay.on_token(" Then I fixed it.")
+    callback(_FakeFinishEvent("First I read the file. Then I fixed it."))
+    await _drain()
+
+    assert [m["event_type"] for m in sent] == [
+        "MessageEvent",
+        "_FakeEvent",
+        "MessageEvent",
+        "_FakeFinishEvent",
+    ]
+    assert json.loads(sent[3]["payload"])["action"]["message"] == ""
+    # The text itself survives — split across the two MessageEvents.
+    streamed = "".join(json.loads(sent[i]["payload"])["content"] for i in (0, 2))
+    assert streamed == "First I read the file. Then I fixed it."
+
+
+async def test_finish_message_is_kept_when_it_differs_from_the_streamed_text():
+    """Only an exact duplicate is dropped. The SDK masks the joined text a
+    second time, which can catch a secret split across two chunks; if that
+    makes the two differ, the message must still be shown."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("streamed text")
+    callback(_FakeFinishEvent("a differently masked version"))
+    await _drain()
+
+    assert json.loads(sent[1]["payload"])["action"]["message"] == ("a differently masked version")
+
+
+async def test_segments_are_re_masked_before_they_are_emitted():
+    """Chunks arrive individually masked, so a secret spanning two of them is
+    only matchable once joined — the same reason the SDK re-masks at its own
+    persistence boundary."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    class _Registry:
+        @staticmethod
+        def mask_secrets_in_output(text):
+            return text.replace("sk-secret", "<masked>")
+
+    class _State:
+        secret_registry = _Registry()
+
+    class _Conversation:
+        state = _State()
+
+    runner, relay = _runner_with_relay(send)
+    relay.bind_masker(_Conversation())
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("token is sk-")
+    relay.on_token("secret now")
+    callback(_FakeEvent())
+    await _drain()
+
+    assert json.loads(sent[0]["payload"]) == {"content": "token is <masked> now"}
+
+
+def test_bind_masker_tolerates_a_conversation_without_a_registry():
+    relay = _AssistantTextRelay()
+    relay.bind_masker(object())
+    relay.on_token("unmasked but still forwarded")
+    assert relay.take_pending() == "unmasked but still forwarded"
+
+
+def test_start_turn_drops_state_from_the_previous_turn():
+    relay = _AssistantTextRelay()
+    relay.on_token("text from the previous turn")
+    assert relay.take_pending() is not None
+
+    relay.start_turn()
+    assert relay.take_pending() is None
+    # The previous turn's text must no longer suppress this turn's finish message.
+    assert not relay.already_emitted("text from the previous turn")
+
+
+async def test_blanking_the_finish_message_leaves_the_rest_of_the_payload_byte_intact():
+    """The payload is serialized once, by Pydantic. Parsing it and re-encoding
+    with json.dumps would escape non-ASCII elsewhere in the event and re-space
+    the JSON; both models are frozen, so the message is cleared on a copy."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    event = _FakeFinishEvent("done ✅", reasoning_content="café ✅ déjà vu")
+    untouched = event.model_dump_json()
+
+    relay.on_token("done ✅")
+    callback(event)
+    await _drain()
+
+    payload = sent[-1]["payload"]
+    # Non-ASCII stays as written, exactly as Pydantic emits it.
+    assert "café ✅ déjà vu" in payload
+    assert "\\u00e9" not in payload
+    assert json.loads(payload)["action"]["message"] == ""
+    # The SDK keeps this event in conversation history — it must not be mutated.
+    assert event.action.message == "done ✅"
+    assert event.model_dump_json() == untouched
+
+
+async def test_a_masking_failure_drops_the_segment_and_keeps_the_finish_message():
+    """Fail closed: unmaskable text is never emitted. Dropping the segment also
+    leaves the FinishAction message un-blanked, so the text still reaches the
+    conversation at the end of the turn, masked by the SDK."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    class _Registry:
+        @staticmethod
+        def mask_secrets_in_output(_text):
+            raise RuntimeError("secret registry unavailable")
+
+    class _State:
+        secret_registry = _Registry()
+
+    class _Conversation:
+        state = _State()
+
+    runner, relay = _runner_with_relay(send)
+    relay.bind_masker(_Conversation())
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("text that could not be masked")
+    callback(_FakeFinishEvent("text that could not be masked"))
+    await _drain()
+
+    assert [m["event_type"] for m in sent] == ["_FakeFinishEvent"]
+    assert json.loads(sent[0]["payload"])["action"]["message"] == ("text that could not be masked")
+
+
+async def test_non_finish_events_are_never_rewritten():
+    """The guard is `tool_name == "finish"`; SDK ActionEvents always carry a
+    tool_name, so anything else must pass through untouched."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    event = _FakeFinishEvent("identical text", tool_name="str_replace_editor")
+    relay.on_token("identical text")
+    callback(event)
+    await _drain()
+
+    assert json.loads(sent[-1]["payload"])["action"]["message"] == "identical text"

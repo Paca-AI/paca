@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -50,6 +51,100 @@ SendFn = Callable[[dict[str, Any]], Awaitable[None]]
 class _ConversationHandle:
     conversation: Conversation
     task: asyncio.Task[None]
+
+
+def _chunk_text(chunk: Any) -> str:
+    """Pull the text out of whatever a token callback was handed.
+
+    ``ACPAgent`` invokes the conversation's token callbacks with a plain ``str``
+    — the already-masked ``AgentMessageChunk`` text — while the SDK's own
+    ``TokenCallbackType`` alias describes a litellm ``ModelResponseStream``.
+    Handle both, so this keeps working whichever way that inconsistency is
+    eventually settled.
+    """
+    if isinstance(chunk, str):
+        return chunk
+    text = ""
+    for choice in getattr(chunk, "choices", None) or []:
+        content = getattr(getattr(choice, "delta", None), "content", None)
+        if isinstance(content, str):
+            text += content
+    return text
+
+
+class _AssistantTextRelay:
+    """Collects streamed assistant text so it can be emitted in position.
+
+    ``ACPAgent`` accumulates every ``AgentMessageChunk`` for the whole turn and
+    persists the joined result only at the end, as the ``FinishAction`` message
+    on the turn's closing ``ActionEvent``. Tool calls, by contrast, are emitted
+    as they happen. The result is that everything the agent *said* arrives in
+    one block after everything it *did*, with no way to tell which narration
+    belonged to which step.
+
+    This relay buffers the chunks and hands them back in segments. The runner
+    emits each segment as a ``MessageEvent`` immediately before the next event
+    it forwards, which puts the narration back between the tool calls it
+    describes.
+    """
+
+    def __init__(self) -> None:
+        self._pending: list[str] = []
+        self._emitted: list[str] = []
+        self._mask: Callable[[str], str] | None = None
+
+    def bind_masker(self, conversation: Any) -> None:
+        """Adopt the conversation's secret masker, if it exposes one.
+
+        The chunks arrive individually masked, but a secret split across two of
+        them only becomes matchable once they are joined — which is exactly why
+        the SDK re-masks at its own persistence boundary. Segments are a
+        persistence boundary too, so re-mask here for the same reason.
+        """
+        registry = getattr(getattr(conversation, "state", None), "secret_registry", None)
+        mask = getattr(registry, "mask_secrets_in_output", None)
+        if callable(mask):
+            self._mask = mask
+
+    def start_turn(self) -> None:
+        self._pending.clear()
+        self._emitted.clear()
+
+    def on_token(self, chunk: Any) -> None:
+        text = _chunk_text(chunk)
+        if text:
+            self._pending.append(text)
+
+    def take_pending(self) -> str | None:
+        """Return (and consume) the text streamed since the last call."""
+        if not self._pending:
+            return None
+        text = "".join(self._pending)
+        self._pending.clear()
+        if self._mask is not None:
+            try:
+                text = self._mask(text)
+            except Exception:
+                # Fail closed. Emitting the unmasked text could persist a secret,
+                # which is the same reason the SDK treats a masking failure as
+                # fatal to the turn rather than shipping what it could not mask
+                # (``_raise_masking_error``). Dropping the segment also leaves
+                # ``_emitted`` short of the closing FinishAction message, so that
+                # message is kept and the text still reaches the conversation —
+                # masked by the SDK, at the end of the turn as it was before.
+                logger.warning(
+                    "Secret masking failed for streamed text; dropping this segment",
+                    exc_info=True,
+                )
+                return None
+        if not text:
+            return None
+        self._emitted.append(text)
+        return text
+
+    def already_emitted(self, message: str) -> bool:
+        """True if `message` is exactly the text already sent as MessageEvents."""
+        return bool(self._emitted) and "".join(self._emitted) == message
 
 
 def resolve_acp_command(acp_provider: str | None, acp_command: list[str]) -> list[str]:
@@ -89,6 +184,7 @@ class ConversationRunner:
         # coroutines back onto it (e.g. mid-turn streaming events).
         self._loop: asyncio.AbstractEventLoop | None = None
         self._conversations: dict[str, _ConversationHandle] = {}
+        self._text_relays: dict[str, _AssistantTextRelay] = {}
 
     async def start_turn(self, data: dict[str, Any]) -> None:
         self._loop = asyncio.get_running_loop()
@@ -119,6 +215,9 @@ class ConversationRunner:
                 return
             # Resume — reply on the conversation object already running from
             # an earlier turn in this same chat session.
+            relay = self._text_relays.get(conversation_id)
+            if relay is not None:
+                relay.start_turn()
             existing.task = asyncio.create_task(
                 self._run_conversation(existing.conversation, conversation_id, project_id, message)
             )
@@ -132,11 +231,15 @@ class ConversationRunner:
             return
 
         agent = ACPAgent(acp_command=command)
+        relay = _AssistantTextRelay()
+        self._text_relays[conversation_id] = relay
         conversation = Conversation(
             agent=agent,
             workspace=self.workspace,
             callbacks=[self._make_event_callback(conversation_id, project_id)],
+            token_callbacks=[relay.on_token],
         )
+        relay.bind_masker(conversation)
         task = asyncio.create_task(
             self._run_conversation(conversation, conversation_id, project_id, message)
         )
@@ -197,11 +300,62 @@ class ConversationRunner:
                 "Failed to report status for conversation %s", conversation_id, exc_info=True
             )
 
+    def _event_payload(self, event: Any, relay: _AssistantTextRelay | None) -> str:
+        """Serialize an event, dropping a FinishAction message already streamed.
+
+        The SDK builds that message by joining every chunk of the turn, so once
+        those chunks have gone out as ``MessageEvent``s it is a verbatim second
+        copy — the whole turn's narration repeated after the tool calls. Nothing
+        server-side reads it (it is rendered, not consumed), and the same text
+        is still persisted in the events it was split into, so dropping it loses
+        nothing.
+
+        Only an exact match is removed. If the two ever diverge — the SDK masks
+        the join a second time, which can catch a secret split across two chunks
+        — the message is left alone and shown as-is rather than discarded.
+
+        The message is cleared on a copy, and the payload is produced by
+        Pydantic's serializer exactly once. ``ActionEvent`` and ``FinishAction``
+        are both frozen, so it cannot be cleared in place — and the SDK keeps
+        this event in conversation history, so it must not be mutated anyway.
+        """
+        if not hasattr(event, "model_dump_json"):
+            return "{}"
+        if relay is not None and getattr(event, "tool_name", None) == "finish":
+            action = getattr(event, "action", None)
+            message = getattr(action, "message", None)
+            if isinstance(message, str) and relay.already_emitted(message):
+                event = event.model_copy(
+                    update={"action": action.model_copy(update={"message": ""})}
+                )
+        return event.model_dump_json()
+
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:
             event_type = type(event).__name__
             try:
-                payload = event.model_dump_json() if hasattr(event, "model_dump_json") else "{}"
+                relay = self._text_relays.get(conversation_id)
+                if relay is not None:
+                    # Flush what the agent said since the previous event before
+                    # forwarding this one, so its narration is ordered against
+                    # the tool calls it describes. This has to happen before the
+                    # payload is built: the flushed segment is what makes the
+                    # closing FinishAction message a duplicate.
+                    streamed = relay.take_pending()
+                    if streamed is not None:
+                        self._dispatch_event(
+                            {
+                                "type": "event",
+                                "conversation_id": conversation_id,
+                                "project_id": project_id,
+                                "event_type": "MessageEvent",
+                                "event_source": "agent",
+                                "payload": json.dumps({"content": streamed}, ensure_ascii=False),
+                            },
+                            "MessageEvent",
+                            conversation_id,
+                        )
+                payload = self._event_payload(event, relay)
                 message = {
                     "type": "event",
                     "conversation_id": conversation_id,
@@ -210,48 +364,7 @@ class ConversationRunner:
                     "event_source": str(getattr(event, "source", "agent")),
                     "payload": payload,
                 }
-                try:
-                    called_from_our_loop = asyncio.get_running_loop() is self._loop
-                except RuntimeError:
-                    called_from_our_loop = False
-                if called_from_our_loop:
-                    # Most on_event calls now happen this way: arun() runs as
-                    # a task directly on this daemon's own loop, and things
-                    # like finalizing a turn or emitting InterruptEvent on
-                    # cancellation call back into this callback synchronously
-                    # from that same task. Blocking here with
-                    # run_coroutine_threadsafe(...).result() would deadlock —
-                    # the loop can't run the coroutine it just scheduled
-                    # while its own thread is stuck waiting on it (always
-                    # timing out after the full 10s). Just schedule it — but
-                    # still log if _send ends up failing, same as the
-                    # cross-thread branch below, rather than letting it
-                    # become a silent unretrieved-exception warning.
-                    def _log_send_failure(
-                        task: asyncio.Task[None],
-                        _event_type: str = event_type,
-                        _conversation_id: str = conversation_id,
-                    ) -> None:
-                        if task.cancelled():
-                            return
-                        exc = task.exception()
-                        if exc is not None:
-                            logger.warning(
-                                "Failed to report event %s for conversation %s",
-                                _event_type,
-                                _conversation_id,
-                                exc_info=exc,
-                            )
-
-                    asyncio.get_running_loop().create_task(self._send(message)).add_done_callback(
-                        _log_send_failure
-                    )
-                else:
-                    # Mid-turn ACP streaming updates fire from ACPAgent's own
-                    # background ("portal") thread, so this hop really is
-                    # cross-thread there, and safe to wait on.
-                    future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
-                    future.result(timeout=10)
+                self._dispatch_event(message, event_type, conversation_id)
             except Exception:
                 logger.warning(
                     "Failed to report event %s for conversation %s",
@@ -261,6 +374,52 @@ class ConversationRunner:
                 )
 
         return callback
+
+    def _dispatch_event(
+        self, message: dict[str, Any], event_type: str, conversation_id: str
+    ) -> None:
+        try:
+            called_from_our_loop = asyncio.get_running_loop() is self._loop
+        except RuntimeError:
+            called_from_our_loop = False
+        if called_from_our_loop:
+            # Most on_event calls now happen this way: arun() runs as
+            # a task directly on this daemon's own loop, and things
+            # like finalizing a turn or emitting InterruptEvent on
+            # cancellation call back into this callback synchronously
+            # from that same task. Blocking here with
+            # run_coroutine_threadsafe(...).result() would deadlock —
+            # the loop can't run the coroutine it just scheduled
+            # while its own thread is stuck waiting on it (always
+            # timing out after the full 10s). Just schedule it — but
+            # still log if _send ends up failing, same as the
+            # cross-thread branch below, rather than letting it
+            # become a silent unretrieved-exception warning.
+            def _log_send_failure(
+                task: asyncio.Task[None],
+                _event_type: str = event_type,
+                _conversation_id: str = conversation_id,
+            ) -> None:
+                if task.cancelled():
+                    return
+                exc = task.exception()
+                if exc is not None:
+                    logger.warning(
+                        "Failed to report event %s for conversation %s",
+                        _event_type,
+                        _conversation_id,
+                        exc_info=exc,
+                    )
+
+            asyncio.get_running_loop().create_task(self._send(message)).add_done_callback(
+                _log_send_failure
+            )
+        else:
+            # Mid-turn ACP streaming updates fire from ACPAgent's own
+            # background ("portal") thread, so this hop really is
+            # cross-thread there, and safe to wait on.
+            future = asyncio.run_coroutine_threadsafe(self._send(message), self._loop)
+            future.result(timeout=10)
 
     async def _report_status(
         self, conversation_id: str, project_id: str, status: str, error_message: str | None = None
