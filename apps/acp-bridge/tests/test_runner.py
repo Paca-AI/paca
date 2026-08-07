@@ -331,6 +331,40 @@ class _FakeFinishEvent(BaseModel):
         super().__init__(action=_FakeFinishAction(message=message), **kwargs)
 
 
+class _FakeFinishObservation(BaseModel):
+    """Stands in for the SDK's FinishObservation: content is a list of
+    TextContent-like blocks, and `.text` joins them — same shape `Observation`
+    itself uses, so `_blank_duplicate_finish_text` can be exercised as written
+    (it reads `.text`, not `.content`, and clears via `.content` on a copy)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    content: list[dict[str, str]]
+
+    def __init__(self, text: str, **kwargs) -> None:
+        super().__init__(content=[{"type": "text", "text": text}], **kwargs)
+
+    @property
+    def text(self) -> str:
+        return "".join(item["text"] for item in self.content)
+
+
+class _FakeFinishObservationEvent(BaseModel):
+    """Stands in for the ObservationEvent that always follows a finish
+    ActionEvent — the SDK pairs every action with an observation, and for
+    "finish" both carry the identical joined text (FinishObservation.from_text
+    is built from the same `response_text` as the FinishAction message)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    observation: _FakeFinishObservation
+    tool_name: str = "finish"
+    source: str = "environment"
+
+    def __init__(self, text: str, **kwargs) -> None:
+        super().__init__(observation=_FakeFinishObservation(text), **kwargs)
+
+
 async def _drain():
     # The on-loop dispatch path schedules tasks rather than awaiting them.
     for _ in range(5):
@@ -575,3 +609,97 @@ async def test_non_finish_events_are_never_rewritten():
     await _drain()
 
     assert json.loads(sent[-1]["payload"])["action"]["message"] == "identical text"
+
+
+async def test_finish_observation_is_blanked_alongside_the_finish_action():
+    """The SDK closes every turn with *two* events built from the same text:
+    the ActionEvent (FinishAction.message) and, immediately after, an
+    ObservationEvent (FinishObservation.text) — `_finalize_successful_turn`
+    emits both, always. Blanking only the action half would still leave the
+    observation half persisting the same text a second time server-side
+    (every event is persisted unconditionally), even though nothing renders
+    it — the earlier version of this fix missed this second event entirely."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("First I read the file.")
+    callback(_FakeEvent())
+    relay.on_token(" Then I fixed it.")
+    callback(_FakeFinishEvent("First I read the file. Then I fixed it."))
+    callback(_FakeFinishObservationEvent("First I read the file. Then I fixed it."))
+    await _drain()
+
+    assert [m["event_type"] for m in sent] == [
+        "MessageEvent",
+        "_FakeEvent",
+        "MessageEvent",
+        "_FakeFinishEvent",
+        "_FakeFinishObservationEvent",
+    ]
+    assert json.loads(sent[3]["payload"])["action"]["message"] == ""
+    assert json.loads(sent[4]["payload"])["observation"]["content"] == []
+
+
+async def test_finish_observation_is_kept_when_it_differs_from_the_streamed_text():
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    relay.on_token("streamed text")
+    callback(_FakeFinishObservationEvent("a differently masked version"))
+    await _drain()
+
+    observation = json.loads(sent[-1]["payload"])["observation"]
+    assert observation["content"] == [{"type": "text", "text": "a differently masked version"}]
+
+
+async def test_finish_message_is_blanked_when_it_is_a_trailing_duplicate_after_a_retry():
+    """ACPAgent retries a turn in place on a transient connection error:
+    `_reset_client_for_turn` clears the SDK's own accumulated text for the
+    new attempt but re-wires the *same* on_token callback, so this relay's
+    `_emitted` keeps growing across every attempt while the SDK's eventual
+    FinishAction message reflects only the attempt that actually succeeded.
+    Without a trailing-duplicate check, that survivor message would fail the
+    (exact-match) dedup and be shown again in full — on top of whatever
+    already streamed from the failed attempt."""
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    runner, relay = _runner_with_relay(send)
+    callback = runner._make_event_callback("conv-1", "proj-1")
+
+    # Attempt 1 streams some narration, then the connection drops.
+    relay.on_token("Connecting to the server...")
+    callback(_FakeEvent())
+    # Attempt 2 (the retry) streams its own narration and succeeds; the SDK's
+    # FinishAction message is built only from this attempt's accumulated text.
+    relay.on_token("Retrying now. Done.")
+    callback(_FakeFinishEvent("Retrying now. Done."))
+    await _drain()
+
+    assert json.loads(sent[-1]["payload"])["action"]["message"] == ""
+
+
+async def test_already_emitted_does_not_match_an_unrelated_prefix():
+    """A trailing-duplicate check must still reject text that only shares a
+    prefix (or is unrelated) with what streamed — not every substring match
+    is a real duplicate."""
+    relay = _AssistantTextRelay()
+    relay.on_token("Checking the failing test first.")
+    relay.take_pending()
+
+    assert not relay.already_emitted("Checking the failing")
+    assert not relay.already_emitted("something else entirely")
+    assert relay.already_emitted("Checking the failing test first.")
+    assert relay.already_emitted("test first.")

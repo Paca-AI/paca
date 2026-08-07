@@ -1,8 +1,22 @@
--- Add per-trigger system prompt columns to the agents table.
--- The executor appends the matching column to the base system_prompt at runtime
--- depending on how the agent was invoked (task assignment / comment / chat).
-
-ALTER TABLE agents
-    ADD COLUMN IF NOT EXISTS task_trigger_prompt        TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS doc_comment_trigger_prompt TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS chat_trigger_prompt        TEXT NOT NULL DEFAULT '';
+-- Originally added per-trigger system prompt columns to the agents table.
+-- Dropped again by 000019_drop_agent_trigger_prompts.sql, superseded by the
+-- ai-agent service's fixed trigger-context skills.
+--
+-- This file no longer runs the ADD COLUMN it originally did. This whole
+-- migrations directory is re-executed in full, in lexicographic order, on
+-- every application boot (see database.RunMigrationsFS — there is no
+-- schema_migrations tracking table), and 000019 always runs after this file
+-- in the same boot and drops these same columns again. Postgres never
+-- reclaims a dropped column's slot in pg_attribute (ALTER TABLE ... DROP
+-- COLUMN only marks it attisdropped; the attnum stays consumed until the
+-- table is rebuilt) — so every boot was creating three fresh columns here
+-- only to have 000019 immediately ghost them again, permanently burning
+-- three of the table's hard 1600-column ceiling per boot. After roughly 400
+-- boots this exhausted the limit and took down every subsequent boot with
+-- "ERROR: tables can have at most 1600 columns" the moment this file tried
+-- to add them once more.
+--
+-- Left as a no-op (rather than deleted) so the migration numbering and
+-- historical record stay intact; 000019's DROP COLUMN IF EXISTS remains and
+-- is still correct — it's just a permanent no-op now that these columns are
+-- never re-created.
