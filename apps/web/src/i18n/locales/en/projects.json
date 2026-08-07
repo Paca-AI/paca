@@ -1205,6 +1205,8 @@
 				"goalPlaceholder": "What should this sprint achieve?",
 				"startDateLabel": "Start date",
 				"dueDateLabel": "Due date",
+				"dateRangeError": "Due date can't be before the start date.",
+				"error": "Failed to update sprint. Please try again.",
 				"cancel": "Cancel",
 				"saving": "Saving…",
 				"save": "Save changes"

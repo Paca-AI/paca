@@ -1111,8 +1111,34 @@ function ProjectInteractionsSection({
 	const [dragOverInteractionId, setDragOverInteractionId] = useState<
 		string | null
 	>(null);
-	const [completedSprintsCollapsed, setCompletedSprintsCollapsed] =
-		useState(true);
+	// Collapsed by default; persisted per-project once the user makes a choice.
+	const [completedSprintsCollapsed, setCompletedSprintsCollapsed] = useState(
+		() => {
+			try {
+				const stored = localStorage.getItem(
+					`paca:sidebar-completed-sprints-collapsed:${projectId}`,
+				);
+				return stored === null ? true : stored === "true";
+			} catch {
+				return true;
+			}
+		},
+	);
+
+	const toggleCompletedSprints = () => {
+		setCompletedSprintsCollapsed((prev) => {
+			const next = !prev;
+			try {
+				localStorage.setItem(
+					`paca:sidebar-completed-sprints-collapsed:${projectId}`,
+					String(next),
+				);
+			} catch {
+				/* ignore */
+			}
+			return next;
+		});
+	};
 
 	// Clear the drop-target highlight whenever any drag ends (covers drag-cancel
 	// and mouse-release outside a valid target, where dragleave may not fire).
@@ -1308,9 +1334,7 @@ function ProjectInteractionsSection({
 								<SidebarMenuItem>
 									<SidebarMenuButton
 										tooltip={t("interactions.completedSprints")}
-										onClick={() =>
-											setCompletedSprintsCollapsed((prev) => !prev)
-										}
+										onClick={toggleCompletedSprints}
 										className="text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
 									>
 										<ChevronRight

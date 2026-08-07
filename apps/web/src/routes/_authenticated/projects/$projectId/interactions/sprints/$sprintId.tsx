@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2, Pencil, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { InteractionLayout } from "@/components/projects/interactions/interaction-layout";
@@ -73,6 +73,23 @@ function SprintPage() {
 	const [editGoal, setEditGoal] = useState("");
 	const [editStartDate, setEditStartDate] = useState("");
 	const [editEndDate, setEditEndDate] = useState("");
+	const [editError, setEditError] = useState<string | null>(null);
+
+	const dateRangeInvalid = Boolean(
+		editStartDate && editEndDate && editEndDate < editStartDate,
+	);
+
+	// Register a document-level keydown listener while the modal is open so
+	// Escape works regardless of which element currently has focus (mirrors
+	// StartSprintModal's fix for the same issue).
+	useEffect(() => {
+		if (!editOpen) return;
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setEditOpen(false);
+		};
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [editOpen]);
 
 	const sprintTasks = tasksResult?.items ?? [];
 
@@ -116,7 +133,11 @@ function SprintPage() {
 			qc.invalidateQueries({
 				queryKey: ["projects", projectId, "sprints", sprintId],
 			});
+			setEditError(null);
 			setEditOpen(false);
+		},
+		onError: () => {
+			setEditError(t("layout.sprintDetail.editSprintModal.error"));
 		},
 	});
 
@@ -171,6 +192,7 @@ function SprintPage() {
 									setEditEndDate(
 										sprint.end_date ? sprint.end_date.slice(0, 10) : "",
 									);
+									setEditError(null);
 									setEditOpen(true);
 								}}
 								className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/10 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-all duration-150"
@@ -286,6 +308,16 @@ function SprintPage() {
 									/>
 								</div>
 							</div>
+							{dateRangeInvalid && (
+								<p className="text-xs text-destructive">
+									{t("layout.sprintDetail.editSprintModal.dateRangeError")}
+								</p>
+							)}
+							{editError && (
+								<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+									{editError}
+								</p>
+							)}
 						</div>
 						<div className="mt-6 flex justify-end gap-2">
 							<button
@@ -299,7 +331,7 @@ function SprintPage() {
 								type="button"
 								onClick={() =>
 									updateSprintMutation.mutate({
-										name: editName.trim() || sprint.name,
+										name: editName.trim(),
 										goal: editGoal.trim() || null,
 										start_date: editStartDate
 											? `${editStartDate}T00:00:00Z`
@@ -307,7 +339,11 @@ function SprintPage() {
 										end_date: editEndDate ? `${editEndDate}T00:00:00Z` : null,
 									})
 								}
-								disabled={updateSprintMutation.isPending || !editName.trim()}
+								disabled={
+									updateSprintMutation.isPending ||
+									!editName.trim() ||
+									dateRangeInvalid
+								}
 								className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
 							>
 								{updateSprintMutation.isPending
