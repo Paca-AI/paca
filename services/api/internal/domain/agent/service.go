@@ -31,6 +31,14 @@ type AgentService interface {
 	// ACP-type agent, replacing any existing one, and returns the plaintext
 	// once — only its SHA-256 hash is persisted.
 	GenerateACPBridgeToken(ctx context.Context, projectID, agentID uuid.UUID) (plaintext string, err error)
+	// GenerateAgentMCPKey issues a new MCP API key for an ACP-type agent,
+	// replacing any existing one, and returns the plaintext once — only its
+	// SHA-256 hash is persisted. The previous key stops authenticating the
+	// moment this is called, so there is only ever one live key per agent
+	// (same behavior as GenerateACPBridgeToken). Used in the agent's MCP
+	// connect command so tool calls are attributed to the agent itself
+	// instead of to whichever human generated the command.
+	GenerateAgentMCPKey(ctx context.Context, projectID, agentID uuid.UUID) (plaintext string, err error)
 
 	// -- Global agents (AgentScope == AgentScopeGlobal). See the Agent doc
 	// comment. These never take a projectID: a global agent has none of its
@@ -52,6 +60,10 @@ type AgentService interface {
 	// sibling — same token generation, ownership verified via GetGlobalAgent
 	// instead of a projectID match.
 	GenerateGlobalACPBridgeToken(ctx context.Context, agentID uuid.UUID) (plaintext string, err error)
+	// GenerateGlobalAgentMCPKey is GenerateAgentMCPKey's global-agent
+	// sibling — ownership verified via GetGlobalAgent instead of a
+	// projectID match.
+	GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UUID) (plaintext string, err error)
 }
 
 // MCPServerService defines MCP server CRUD use cases.

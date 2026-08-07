@@ -543,6 +543,20 @@ func (s *Service) ListInvitedProjectIDs(ctx context.Context, agentID uuid.UUID) 
 	return s.repo.ListInvitedProjectIDs(ctx, agentID)
 }
 
+// generateHashedSecret returns a fresh 32 random bytes as both its hex
+// plaintext and the hex SHA-256 hash of that plaintext — the shared
+// generation step behind every "issue a new bridge token / MCP key" method
+// below, all of which persist only the hash and return the plaintext once.
+func generateHashedSecret() (plaintext, hash string, err error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", "", err
+	}
+	plaintext = hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(plaintext))
+	return plaintext, hex.EncodeToString(sum[:]), nil
+}
+
 // GenerateACPBridgeToken issues a new local-bridge auth token for an ACP-type
 // agent, replacing any existing one. Only the token's SHA-256 hash is
 // persisted (services/ai-agent hashes an incoming token the same way to
@@ -556,13 +570,10 @@ func (s *Service) GenerateACPBridgeToken(ctx context.Context, projectID, agentID
 	if a.AgentType != agentdom.AgentTypeACP {
 		return "", agentdom.ErrAgentTypeInvalid
 	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
+	plaintext, hash, err := generateHashedSecret()
+	if err != nil {
 		return "", fmt.Errorf("generate bridge token: %w", err)
 	}
-	plaintext := hex.EncodeToString(raw)
-	sum := sha256.Sum256([]byte(plaintext))
-	hash := hex.EncodeToString(sum[:])
 	if err := s.repo.SetACPBridgeTokenHash(ctx, agentID, hash); err != nil {
 		return "", fmt.Errorf("store bridge token hash: %w", err)
 	}
@@ -580,15 +591,54 @@ func (s *Service) GenerateGlobalACPBridgeToken(ctx context.Context, agentID uuid
 	if a.AgentType != agentdom.AgentTypeACP {
 		return "", agentdom.ErrAgentTypeInvalid
 	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
+	plaintext, hash, err := generateHashedSecret()
+	if err != nil {
 		return "", fmt.Errorf("generate bridge token: %w", err)
 	}
-	plaintext := hex.EncodeToString(raw)
-	sum := sha256.Sum256([]byte(plaintext))
-	hash := hex.EncodeToString(sum[:])
 	if err := s.repo.SetACPBridgeTokenHash(ctx, agentID, hash); err != nil {
 		return "", fmt.Errorf("store bridge token hash: %w", err)
+	}
+	return plaintext, nil
+}
+
+// GenerateAgentMCPKey issues a new MCP API key for an ACP-type agent,
+// replacing any existing one, and returns the plaintext once — only its
+// SHA-256 hash is persisted. Overwriting the hash means the previous key
+// stops authenticating immediately (see AgentRepository.SetMCPAPIKeyHash).
+func (s *Service) GenerateAgentMCPKey(ctx context.Context, projectID, agentID uuid.UUID) (string, error) {
+	a, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
+		return "", err
+	}
+	if a.AgentType != agentdom.AgentTypeACP {
+		return "", agentdom.ErrAgentTypeInvalid
+	}
+	plaintext, hash, err := generateHashedSecret()
+	if err != nil {
+		return "", fmt.Errorf("generate MCP API key: %w", err)
+	}
+	if err := s.repo.SetMCPAPIKeyHash(ctx, agentID, hash); err != nil {
+		return "", fmt.Errorf("store MCP API key hash: %w", err)
+	}
+	return plaintext, nil
+}
+
+// GenerateGlobalAgentMCPKey is GenerateAgentMCPKey's global-agent sibling —
+// ownership verified via GetGlobalAgent instead of a projectID match.
+func (s *Service) GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UUID) (string, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return "", err
+	}
+	if a.AgentType != agentdom.AgentTypeACP {
+		return "", agentdom.ErrAgentTypeInvalid
+	}
+	plaintext, hash, err := generateHashedSecret()
+	if err != nil {
+		return "", fmt.Errorf("generate MCP API key: %w", err)
+	}
+	if err := s.repo.SetMCPAPIKeyHash(ctx, agentID, hash); err != nil {
+		return "", fmt.Errorf("store MCP API key hash: %w", err)
 	}
 	return plaintext, nil
 }

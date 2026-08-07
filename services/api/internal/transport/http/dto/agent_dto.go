@@ -33,6 +33,7 @@ type AgentResponse struct {
 	ACPProvider       *string                  `json:"acp_provider,omitempty"`
 	ACPCommand        []string                 `json:"acp_command,omitempty"`
 	HasACPBridgeToken bool                     `json:"has_acp_bridge_token"`
+	HasMCPAPIKey      bool                     `json:"has_mcp_api_key"`
 	SystemPrompt      string                   `json:"system_prompt"`
 	MaxIterations     int                      `json:"max_iterations"`
 	TimeoutMinutes    int                      `json:"timeout_minutes"`
@@ -120,6 +121,19 @@ type GenerateACPBridgeTokenResponse struct {
 	RunCommand string `json:"run_command"`
 }
 
+// GenerateMCPAgentKeyResponse is the body returned for POST
+// /projects/:projectId/agents/:agentId/mcp-agent-key (and its
+// /admin/agents/:agentId/mcp-agent-key global sibling). Token is shown once
+// and cannot be retrieved again — only its hash is persisted, and
+// generating a new one invalidates whatever key was live before (same
+// one-live-key-at-a-time behavior as GenerateACPBridgeTokenResponse). Used
+// as PACA_API_KEY alongside PACA_AGENT_ID in the agent's MCP connect
+// command so tool calls are attributed to the agent, not to whichever human
+// requested this.
+type GenerateMCPAgentKeyResponse struct {
+	Token string `json:"token"`
+}
+
 // AgentFromEntity maps an Agent entity to AgentResponse.
 func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 	scope := string(a.AgentScope)
@@ -141,6 +155,7 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		ACPProvider:       a.ACPProvider,
 		ACPCommand:        a.ACPCommand,
 		HasACPBridgeToken: a.HasACPBridgeToken,
+		HasMCPAPIKey:      a.HasMCPAPIKey,
 		SystemPrompt:      a.SystemPrompt,
 		MaxIterations:     a.MaxIterations,
 		TimeoutMinutes:    a.TimeoutMinutes,

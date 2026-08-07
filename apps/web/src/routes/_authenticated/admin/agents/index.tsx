@@ -68,6 +68,7 @@ function GlobalAgentsPage() {
 	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(
 		null,
 	);
+	const [acpSetupKey, setAcpSetupKey] = useState<string | null>(null);
 
 	// Mirrors the project Agents page's handling of ?create=true — only needs
 	// to open the dialog once, so strip it from the URL once consumed.
@@ -157,21 +158,24 @@ function GlobalAgentsPage() {
 				<CreateAgentDialog
 					open={createOpen}
 					onOpenChange={handleCreateOpenChange}
-					onAcpAgentCreated={(agent, token) => {
+					onAcpAgentCreated={(agent, token, mcpKey) => {
 						setAcpSetupAgent(agent);
 						setAcpSetupToken(token);
+						setAcpSetupKey(mcpKey);
 					}}
 				/>
 			)}
 			<AcpSetupDialog
 				agent={acpSetupAgent}
 				token={acpSetupToken}
+				mcpKey={acpSetupKey}
 				open={acpSetupAgent !== null}
 				canWrite={canWrite}
 				onOpenChange={(v) => {
 					if (!v) {
 						setAcpSetupAgent(null);
 						setAcpSetupToken(null);
+						setAcpSetupKey(null);
 					}
 				}}
 				onTokenGenerated={() =>

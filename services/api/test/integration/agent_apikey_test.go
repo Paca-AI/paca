@@ -3,6 +3,9 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -115,6 +118,10 @@ func (passthroughAgentIdentityStore) FindAgentByID(_ context.Context, agentID uu
 
 func (passthroughAgentIdentityStore) HasActiveGlobalChatSession(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
 	return true, nil
+}
+
+func (passthroughAgentIdentityStore) FindAgentByMCPAPIKeyHash(context.Context, string) (*agentdom.Agent, error) {
+	return nil, agentdom.ErrAgentNotFound
 }
 
 // agentKeyAuthReq creates a request authenticated with agent API key
@@ -1186,4 +1193,305 @@ func TestAgentAPIKey_PermissionScenarios(t *testing.T) {
 			t.Errorf("no permission: expected 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Per-Agent MCP API Key Tests
+//
+// Unlike the shared-static-key + X-Agent-ID tests above, these exercise
+// apikeysvc.Service.Authenticate's FindAgentByMCPAPIKeyHash fallback (see
+// agent_service.go's GenerateAgentMCPKey / GenerateGlobalAgentMCPKey and
+// authn.go's agentClaimsForKey): a key that, by itself, already proves which
+// single agent it belongs to, with no X-Agent-ID header needed or trusted.
+// ---------------------------------------------------------------------------
+
+// mcpKeyAgentIdentityStore fakes apikeysvc.AgentIdentityStore with a real,
+// stateful hash->agent mapping (unlike passthroughAgentIdentityStore above,
+// which always fails FindAgentByMCPAPIKeyHash) so a test can mint a key for
+// an agent and then present it over HTTP exactly like a real generated key.
+type mcpKeyAgentIdentityStore struct {
+	agents map[uuid.UUID]*agentdom.Agent
+	byHash map[string]uuid.UUID // sha256 hex hash -> agentID
+}
+
+func newMCPKeyAgentIdentityStore() *mcpKeyAgentIdentityStore {
+	return &mcpKeyAgentIdentityStore{
+		agents: map[uuid.UUID]*agentdom.Agent{},
+		byHash: map[string]uuid.UUID{},
+	}
+}
+
+// registerKey mints a plaintext MCP key for agentID and records its hash,
+// mirroring agentsvc.Service.GenerateAgentMCPKey (random bytes -> hex ->
+// SHA-256 hash). Calling it again for the same agent drops the previous
+// hash first, mirroring SetMCPAPIKeyHash overwriting the column — only one
+// key is ever live per agent.
+func (s *mcpKeyAgentIdentityStore) registerKey(agentID uuid.UUID) string {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		panic(err)
+	}
+	plaintext := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(plaintext))
+	hash := hex.EncodeToString(sum[:])
+
+	for h, id := range s.byHash {
+		if id == agentID {
+			delete(s.byHash, h)
+		}
+	}
+	s.byHash[hash] = agentID
+	if _, ok := s.agents[agentID]; !ok {
+		s.agents[agentID] = &agentdom.Agent{ID: agentID, AgentScope: agentdom.AgentScopeProject}
+	}
+	return plaintext
+}
+
+func (s *mcpKeyAgentIdentityStore) FindAgentByID(_ context.Context, agentID uuid.UUID) (*agentdom.Agent, error) {
+	if a, ok := s.agents[agentID]; ok {
+		return a, nil
+	}
+	return nil, agentdom.ErrAgentNotFound
+}
+
+func (s *mcpKeyAgentIdentityStore) HasActiveGlobalChatSession(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (s *mcpKeyAgentIdentityStore) FindAgentByMCPAPIKeyHash(_ context.Context, hash string) (*agentdom.Agent, error) {
+	agentID, ok := s.byHash[hash]
+	if !ok {
+		return nil, agentdom.ErrAgentNotFound
+	}
+	return s.agents[agentID], nil
+}
+
+// buildAgentMCPKeyRouter is like buildAgentKeyRouterWithBotID but wires a
+// stateful mcpKeyAgentIdentityStore instead of the always-fail
+// passthroughAgentIdentityStore, so tests can register a real per-agent MCP
+// key and then present it over HTTP to exercise the full Authenticate ->
+// FindAgentByMCPAPIKeyHash -> agentClaimsForKey path production traffic
+// uses. The static agent key is still wired (as it always is in production,
+// see bootstrap/app.go) so agentBotUserID is set correctly.
+func buildAgentMCPKeyRouter(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKeyRepo, store *projectPermStore, identityStore *mcpKeyAgentIdentityStore) http.Handler {
+	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
+	refreshStore := &fakeRefreshStore{}
+	userRepo := newFakeUserRepo()
+	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
+	userService := usersvc.New(userRepo, userRepo)
+	projectRepo := newFakeProjectRepo()
+	projectService := projectsvc.New(projectRepo, taskRepo, nil)
+	taskService := tasksvc.New(taskRepo)
+	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
+	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)
+	activityRepo := newFakeTaskActivityRepo()
+	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
+
+	apiKeyService := apikeysvc.New(apiKeyRepo).
+		WithAgentKey(testAgentAPIKey, uuid.MustParse(testAgentBotUserID)).
+		WithAgentIdentityStore(identityStore)
+
+	if store == nil {
+		store = &projectPermStore{}
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(store)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	return router.New(router.Deps{
+		TokenManager:         tm,
+		APIKeyAuth:           apiKeyService,
+		Authorizer:           authorizer,
+		ProjectVisibilitySvc: projectService,
+		Health:               handler.NewHealthHandler(),
+		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
+		User:                 handler.NewUserHandler(userService),
+		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
+		Project:              handler.NewProjectHandler(projectService, authorizer),
+		Task:                 handler.NewTaskHandler(taskService, viewService, activityService),
+		Sprint:               handler.NewSprintHandler(sprintService, viewService),
+		View:                 handler.NewViewHandler(viewService),
+		Log:                  log,
+	})
+}
+
+func TestAgentMCPKey_CreateTask_Success(t *testing.T) {
+	taskRepo := newFakeTaskRepoIT()
+	apiKeyRepo := newFakeAPIKeyRepo()
+	projectID := uuid.New()
+	agentID := uuid.New()
+	botUserID := uuid.MustParse(testAgentBotUserID)
+
+	identityStore := newMCPKeyAgentIdentityStore()
+	mcpKey := identityStore.registerKey(agentID)
+
+	store := &projectPermStore{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			botUserID: {
+				projectID: {authz.PermissionTasksWrite},
+			},
+		},
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			projectID: {
+				agentID: {authz.PermissionTasksWrite},
+			},
+		},
+		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
+			projectID: {
+				agentID: "agent_developer",
+			},
+		},
+	}
+
+	r := buildAgentMCPKeyRouter(taskRepo, apiKeyRepo, store, identityStore)
+	base := fmt.Sprintf("/api/v1/projects/%s/tasks", projectID)
+
+	body, _ := json.Marshal(map[string]any{"title": "Created via MCP key"})
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, base, bytes.NewReader(body))
+	req.Header.Set("X-API-Key", mcpKey)
+	req.Header.Set("Content-Type", "application/json")
+	// Deliberately no X-Agent-ID header — identity must come entirely from
+	// the key itself.
+
+	w := serve(r, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	title, _ := env.Data["title"].(string)
+	if title != "Created via MCP key" {
+		t.Errorf("expected title %q, got %q", "Created via MCP key", title)
+	}
+}
+
+func TestAgentMCPKey_UnknownKey_Returns401(t *testing.T) {
+	taskRepo := newFakeTaskRepoIT()
+	apiKeyRepo := newFakeAPIKeyRepo()
+	projectID := uuid.New()
+
+	identityStore := newMCPKeyAgentIdentityStore()
+	r := buildAgentMCPKeyRouter(taskRepo, apiKeyRepo, &projectPermStore{}, identityStore)
+	base := fmt.Sprintf("/api/v1/projects/%s/tasks", projectID)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, base, nil)
+	req.Header.Set("X-API-Key", "paca_some_key_that_was_never_registered")
+
+	w := serve(r, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for an unregistered key, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestAgentMCPKey_RegeneratedKey_InvalidatesOldKey covers the "only one live
+// key per agent" guarantee described on GenerateAgentMCPKey: regenerating a
+// key must make the previous plaintext stop authenticating immediately.
+func TestAgentMCPKey_RegeneratedKey_InvalidatesOldKey(t *testing.T) {
+	taskRepo := newFakeTaskRepoIT()
+	apiKeyRepo := newFakeAPIKeyRepo()
+	projectID := uuid.New()
+	agentID := uuid.New()
+	botUserID := uuid.MustParse(testAgentBotUserID)
+
+	identityStore := newMCPKeyAgentIdentityStore()
+	oldKey := identityStore.registerKey(agentID)
+
+	store := &projectPermStore{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			botUserID: {projectID: {authz.PermissionTasksRead}},
+		},
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			projectID: {agentID: {authz.PermissionTasksRead}},
+		},
+		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
+			projectID: {agentID: "agent_reader"},
+		},
+	}
+
+	r := buildAgentMCPKeyRouter(taskRepo, apiKeyRepo, store, identityStore)
+	base := fmt.Sprintf("/api/v1/projects/%s/tasks", projectID)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, base, nil)
+	req.Header.Set("X-API-Key", oldKey)
+	if w := serve(r, req); w.Code != http.StatusOK {
+		t.Fatalf("expected 200 with the live key, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Regenerate — overwrites the stored hash, same as SetMCPAPIKeyHash.
+	identityStore.registerKey(agentID)
+
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, base, nil)
+	req.Header.Set("X-API-Key", oldKey)
+	w := serve(r, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for the replaced key, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestAgentMCPKey_XAgentIDHeaderIgnored is the regression test for the
+// impersonation gap this PR closes: presenting one agent's own MCP key
+// alongside an X-Agent-ID header claiming a *different* agent must still
+// attribute the request to the key's own agent, never the header's. Before
+// this PR's per-agent key, a leaked shared AGENT_API_KEY plus an arbitrary
+// X-Agent-ID header could authenticate as any agent; agentClaimsForKey now
+// trusts the key-resolved identity unconditionally once key.AgentID is set.
+func TestAgentMCPKey_XAgentIDHeaderIgnored(t *testing.T) {
+	taskRepo := newFakeTaskRepoIT()
+	apiKeyRepo := newFakeAPIKeyRepo()
+	projectID := uuid.New()
+	ownAgentID := uuid.New()
+	otherAgentID := uuid.New() // caller never holds this agent's key
+	botUserID := uuid.MustParse(testAgentBotUserID)
+
+	identityStore := newMCPKeyAgentIdentityStore()
+	ownKey := identityStore.registerKey(ownAgentID)
+	identityStore.registerKey(otherAgentID)
+
+	taskID := uuid.New()
+	taskRepo.tasks[taskID] = &taskdom.Task{
+		ID:        taskID,
+		ProjectID: projectID,
+		Title:     "Task",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	store := &projectPermStore{
+		userPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			botUserID: {projectID: {authz.PermissionTasksRead}},
+		},
+		agentPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			projectID: {
+				ownAgentID:   {authz.PermissionTasksRead},
+				otherAgentID: {}, // explicitly no permissions
+			},
+		},
+		agentRoles: map[uuid.UUID]map[uuid.UUID]string{
+			projectID: {
+				ownAgentID:   "agent_reader",
+				otherAgentID: "agent_no_perms",
+			},
+		},
+	}
+
+	r := buildAgentMCPKeyRouter(taskRepo, apiKeyRepo, store, identityStore)
+	taskURL := fmt.Sprintf("/api/v1/projects/%s/tasks/%s", projectID, taskID)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, taskURL, nil)
+	req.Header.Set("X-API-Key", ownKey)
+	// Spoofing attempt: claim to be an agent with no permissions. If this
+	// were honored, the request would 403; the fix means it's ignored and
+	// the request is attributed to ownAgentID instead.
+	req.Header.Set("X-Agent-ID", otherAgentID.String())
+
+	w := serve(r, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (request attributed to the key's own agent, X-Agent-ID ignored), got %d: %s", w.Code, w.Body.String())
+	}
 }

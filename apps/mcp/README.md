@@ -22,8 +22,8 @@ No installation or build step required. Configure your AI agent client to use th
 |---|---|---|---|
 | `PACA_API_KEY` | ✅ | — | API key for authentication (see below) |
 | `PACA_API_URL` | ❌ | `http://localhost:8080` | URL of your Paca API instance |
-| `PACA_AGENT_ID` | ❌ | — | Agent UUID (required when using global agent API key) |
-| `PACA_PROJECT_ID` | ❌* | — | Project UUID for single-project mode (required when PACA_AGENT_ID is set) |
+| `PACA_AGENT_ID` | ❌ | — | Agent UUID — set to connect as a specific ACP agent instead of yourself (see Agent Mode below) |
+| `PACA_PROJECT_ID` | ❌ | — | Project UUID to pin every tool call to a single project. Optional even when `PACA_AGENT_ID` is set — a global agent left unset here runs "unpinned" across every project it's invited into |
 
 ### Claude Desktop
 
@@ -110,32 +110,28 @@ The MCP server automatically filters available tools based on permissions, wheth
 
 | Mode | Trigger | API Key Source | Permission Source | Scope |
 |---|---|---|---|---|
-| **Agent Single-Project** | `PACA_AGENT_ID` + `PACA_PROJECT_ID` | Global `AGENT_API_KEY` from server config | Agent's permissions in the specified project | Single project only |
+| **Agent Single-Project** | `PACA_AGENT_ID` + `PACA_PROJECT_ID` | That agent's own `PACA_API_KEY` | Agent's permissions in the specified project | Single project only |
+| **Agent Global** | `PACA_AGENT_ID` only (no `PACA_PROJECT_ID`) | That agent's own `PACA_API_KEY` | Agent's global role, plus its per-project permissions resolved as each tool call needs them | Every project the agent is invited into |
 | **User Single-Project** | `PACA_PROJECT_ID` only (no `PACA_AGENT_ID`) | User's personal API key | User's global + project permissions | Single project |
-| **User Global** | No `PACA_PROJECT_ID` | User's personal API key | User's global permissions only | All projects (no project-scoped tools) |
+| **User Global** | Neither set | User's personal API key | User's global permissions only | All projects (no project-scoped tools) |
 
-**Note**: AI agents operate in single-project mode. The global `AGENT_API_KEY` is configured on the Paca server via the `AGENT_API_KEY` environment variable.
+**Note**: Each ACP agent has its own `PACA_API_KEY`, generated per-agent — not a key shared across every agent in the deployment. Generate (or regenerate) it from the agent's setup page in the Paca UI; regenerating immediately invalidates whatever key was live before, since only one key is ever active per agent.
 
-### Agent Mode (Single-Project)
+### Agent Mode
 
-When both `PACA_AGENT_ID` and `PACA_PROJECT_ID` are set:
+Set `PACA_AGENT_ID` to connect as a specific ACP agent instead of as yourself. Add `PACA_PROJECT_ID` too if you want every tool call pinned to one project (recommended for a project-scoped agent); leave it unset for a global agent, which can then work across any project it's been invited into.
 
-1. **Authentication**: Uses the global `AGENT_API_KEY` configured on the Paca server
-2. **Impersonation**: `X-Agent-ID` header specifies which agent to act as
-3. **Permission Fetch**: Only fetches permissions for the specified project
-4. **Tool Filtering**: Shows only tools the agent has permission to use in that project
-5. **Project Validation**: Enforces that all tool calls use the configured project ID
-6. **Performance**: Optimized for single-project operations (single API call)
+1. **Authentication**: Uses that agent's own `PACA_API_KEY` — the key itself identifies the agent, so no separate impersonation header is needed or honored
+2. **Permission Fetch**: With `PACA_PROJECT_ID` set, only that project's permissions are fetched; without it, the agent's global role and per-project permissions are resolved as each tool call needs them
+3. **Tool Filtering**: Shows only tools the agent has permission to use
+4. **Project Validation**: With `PACA_PROJECT_ID` set, enforces that all tool calls use that project ID
+5. **Performance**: Single-project mode is optimized for that common case (one API call at startup)
 
-**How to Get the Agent API Key:**
+**How to Get the Agent's API Key:**
 
-The `AGENT_API_KEY` is configured on the Paca server, not per-agent. Check your server's environment:
-```bash
-# On the Paca server
-echo $AGENT_API_KEY  # This is the global agent key to use
-```
+Generate it from the agent's setup page in the Paca UI (Project → Agents → the agent → "Generate key" under the local bridge setup steps). The plaintext is shown once — copy it immediately, since only its SHA-256 hash is stored server-side. It's also available via the API directly: `POST /projects/:projectId/agents/:agentId/mcp-agent-key` for a project agent, or `POST /admin/agents/:agentId/mcp-agent-key` for a global agent.
 
-**Configuration:**
+**Configuration (single-project):**
 ```json
 {
   "mcpServers": {
@@ -143,10 +139,27 @@ echo $AGENT_API_KEY  # This is the global agent key to use
       "command": "npx",
       "args": ["-y", "@paca-ai/paca-mcp"],
       "env": {
-        "PACA_API_KEY": "server-agent-key-from-env",
+        "PACA_API_KEY": "agent-mcp-key-from-above",
         "PACA_API_URL": "http://localhost:8080",
         "PACA_AGENT_ID": "your-agent-uuid-here",
         "PACA_PROJECT_ID": "your-project-uuid-here"
+      }
+    }
+  }
+}
+```
+
+**Configuration (global agent, unpinned across every invited project):**
+```json
+{
+  "mcpServers": {
+    "paca": {
+      "command": "npx",
+      "args": ["-y", "@paca-ai/paca-mcp"],
+      "env": {
+        "PACA_API_KEY": "agent-mcp-key-from-above",
+        "PACA_API_URL": "http://localhost:8080",
+        "PACA_AGENT_ID": "your-agent-uuid-here"
       }
     }
   }
@@ -240,10 +253,7 @@ When `PACA_AGENT_ID` is not set:
 2. **Configure Role Permissions**: Ensure the assigned roles have the necessary permissions
 3. **Restart MCP Server**: Restart the MCP server to refresh the permission cache
 
-**Important**: When using agent mode:
-- `PACA_API_KEY` must be a **user's API key** (not the agent's API key)
-- `PACA_AGENT_ID` is the agent to impersonate
-- The user who owns the API key must have permission to use/impersonate the agent
+**Important**: When using agent mode, `PACA_API_KEY` must be that agent's own key (see "How to Get the Agent's API Key" above) — the key itself is what identifies the agent to the server, so `PACA_AGENT_ID` alone is not a claim the server will trust from any other key.
 
 **For Users:**
 1. **Assign Global Roles**: Grant users global permissions through their global roles

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -26,11 +27,15 @@ const (
 
 // AgentIdentityStore is the minimal agent-lookup surface
 // WithAgentIdentityStore needs to verify an agent-API-key request's claimed
-// X-Agent-ID / X-Actor-User-ID against the database. Satisfied directly by
+// X-Agent-ID / X-Actor-User-ID against the database, and to resolve a
+// per-agent MCP API key directly to its owning agent. Satisfied directly by
 // *postgres.AgentRepository.
 type AgentIdentityStore interface {
 	FindAgentByID(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
 	HasActiveGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID) (bool, error)
+	// FindAgentByMCPAPIKeyHash resolves the agent whose current MCP API key
+	// hashes to hash — see agentdom.AgentRepository.FindAgentByMCPAPIKeyHash.
+	FindAgentByMCPAPIKeyHash(ctx context.Context, hash string) (*agentdom.Agent, error)
 }
 
 // Service is the concrete implementation of apikeydom.Service.
@@ -149,10 +154,15 @@ func (s *Service) Revoke(ctx context.Context, userID, keyID uuid.UUID) error {
 
 // Authenticate validates a raw API key and returns the matching record.
 // If a static agent API key has been configured via WithAgentKey, it is
-// checked first in constant time without a database lookup.
-// For all other keys a SHA-256 hash lookup is performed against the database.
-// A best-effort update of last_used_at is performed; any update error is
-// ignored so authentication does not fail due to last_used_at persistence.
+// checked first in constant time without a database lookup. Otherwise a
+// SHA-256 hash lookup is performed against personal API keys first; if
+// nothing matches, it falls back to checking whether the hash is a specific
+// agent's own MCP API key (see WithAgentIdentityStore) — returning a record
+// with AgentID set lets the caller (the authn middleware) attribute the
+// request to that agent directly, without a separate identity claim.
+// A best-effort update of last_used_at is performed for personal keys; any
+// update error is ignored so authentication does not fail due to
+// last_used_at persistence.
 func (s *Service) Authenticate(ctx context.Context, rawKey string) (*apikeydom.APIKey, error) {
 	// Check static agent key first — constant-time comparison to prevent
 	// timing attacks.
@@ -167,21 +177,38 @@ func (s *Service) Authenticate(ctx context.Context, rawKey string) (*apikeydom.A
 	keyHash := hex.EncodeToString(hash[:])
 
 	key, err := s.repo.FindByHash(ctx, keyHash)
-	if err != nil {
+	if err == nil {
+		if key.RevokedAt != nil {
+			return nil, apikeydom.ErrRevoked
+		}
+		if key.ExpiresAt != nil && time.Now().After(*key.ExpiresAt) {
+			return nil, apikeydom.ErrExpired
+		}
+		// Best-effort last_used_at update — ignore errors.
+		_ = s.repo.UpdateLastUsed(ctx, key.ID, time.Now().UTC())
+		return key, nil
+	}
+	if !errors.Is(err, apikeydom.ErrNotFound) {
 		return nil, err
 	}
 
-	if key.RevokedAt != nil {
-		return nil, apikeydom.ErrRevoked
-	}
-	if key.ExpiresAt != nil && time.Now().After(*key.ExpiresAt) {
-		return nil, apikeydom.ErrExpired
+	// Not a personal key — check whether it's a specific agent's own MCP
+	// API key before giving up.
+	if s.agentIdentity != nil {
+		agent, aerr := s.agentIdentity.FindAgentByMCPAPIKeyHash(ctx, keyHash)
+		if aerr == nil {
+			return &apikeydom.APIKey{UserID: s.agentBotUserID, AgentID: &agent.ID}, nil
+		}
+		// Only "no agent has this key" falls through to ErrNotFound below —
+		// anything else (e.g. a transient DB failure) must propagate as-is,
+		// or an outage would silently present as an invalid API key instead
+		// of a 500.
+		if !errors.Is(aerr, agentdom.ErrAgentNotFound) {
+			return nil, aerr
+		}
 	}
 
-	// Best-effort last_used_at update — ignore errors.
-	_ = s.repo.UpdateLastUsed(ctx, key.ID, time.Now().UTC())
-
-	return key, nil
+	return nil, apikeydom.ErrNotFound
 }
 
 // IsAgentKey checks if the provided raw key is the static agent API key.

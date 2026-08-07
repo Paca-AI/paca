@@ -40,6 +40,7 @@ type mockAgentSvc struct {
 	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error
 	getGlobalAgent                func(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
 	generateGlobalACPBridgeToken  func(ctx context.Context, agentID uuid.UUID) (string, error)
+	generateGlobalAgentMCPKey     func(ctx context.Context, agentID uuid.UUID) (string, error)
 }
 
 func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID, _ agentdom.AgentScope) ([]*agentdom.Agent, error) {
@@ -61,6 +62,9 @@ func (m *mockAgentSvc) UpdateAgent(_ context.Context, _, _ uuid.UUID, _ agentdom
 	return nil, agentdom.ErrAgentNotFound
 }
 func (m *mockAgentSvc) GenerateACPBridgeToken(_ context.Context, _, _ uuid.UUID) (string, error) {
+	return "", nil
+}
+func (m *mockAgentSvc) GenerateAgentMCPKey(_ context.Context, _, _ uuid.UUID) (string, error) {
 	return "", nil
 }
 func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
@@ -169,6 +173,12 @@ func (m *mockAgentSvc) GenerateGlobalACPBridgeToken(ctx context.Context, agentID
 	}
 	return "", nil
 }
+func (m *mockAgentSvc) GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UUID) (string, error) {
+	if m.generateGlobalAgentMCPKey != nil {
+		return m.generateGlobalAgentMCPKey(ctx, agentID)
+	}
+	return "", nil
+}
 func (m *mockAgentSvc) ListGlobalConversations(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error) {
 	if m.listGlobalConversations != nil {
 		return m.listGlobalConversations(ctx, actorUserID, filter, limit)
@@ -246,6 +256,7 @@ func newGlobalAgentAcpRouter(svc agentdom.Service) chi.Router {
 	r.Route("/admin/agents/{agentId}", func(r chi.Router) {
 		r.Post("/acp-bridge-token", h.GenerateGlobalACPBridgeToken)
 		r.Get("/acp-bridge-status", h.GetGlobalACPBridgeStatus)
+		r.Post("/mcp-agent-key", h.GenerateGlobalAgentMCPKey)
 	})
 	return r
 }
@@ -880,6 +891,69 @@ func TestGenerateGlobalACPBridgeToken_RejectsNonACPAgent(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for a non-ACP agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GenerateGlobalAgentMCPKey (POST /admin/agents/:agentId/mcp-agent-key)
+// ---------------------------------------------------------------------------
+
+func TestGenerateGlobalAgentMCPKey_ReturnsToken(t *testing.T) {
+	agentID := uuid.New()
+	var gotAgentID uuid.UUID
+	svc := &mockAgentSvc{
+		generateGlobalAgentMCPKey: func(_ context.Context, id uuid.UUID) (string, error) {
+			gotAgentID = id
+			return "plaintext-mcp-key", nil
+		},
+	}
+	r := newGlobalAgentAcpRouter(svc)
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents/"+agentID.String()+"/mcp-agent-key", nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotAgentID != agentID {
+		t.Errorf("expected agentID %s to reach the service, got %s", agentID, gotAgentID)
+	}
+	var resp struct {
+		Data struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Data.Token != "plaintext-mcp-key" {
+		t.Errorf("expected token %q, got %q", "plaintext-mcp-key", resp.Data.Token)
+	}
+}
+
+func TestGenerateGlobalAgentMCPKey_RejectsNonACPAgent(t *testing.T) {
+	svc := &mockAgentSvc{
+		generateGlobalAgentMCPKey: func(_ context.Context, _ uuid.UUID) (string, error) {
+			return "", agentdom.ErrAgentTypeInvalid
+		},
+	}
+	r := newGlobalAgentAcpRouter(svc)
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents/"+uuid.New().String()+"/mcp-agent-key", nil)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for a non-ACP agent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGenerateGlobalAgentMCPKey_UnknownAgentNotFound(t *testing.T) {
+	svc := &mockAgentSvc{
+		generateGlobalAgentMCPKey: func(_ context.Context, _ uuid.UUID) (string, error) {
+			return "", agentdom.ErrAgentNotFound
+		},
+	}
+	r := newGlobalAgentAcpRouter(svc)
+	w := doAgentRequest(t, r, http.MethodPost, "/admin/agents/"+uuid.New().String()+"/mcp-agent-key", nil)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

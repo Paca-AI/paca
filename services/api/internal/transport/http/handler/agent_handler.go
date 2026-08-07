@@ -1668,6 +1668,47 @@ func (h *AgentHandler) proxyACPBridgeStatus(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(body)
 }
 
+// GenerateAgentMCPKey handles POST
+// /projects/:projectId/agents/:agentId/mcp-agent-key. It issues a new MCP
+// API key bound to this specific agent, replacing any existing one, and
+// returns the plaintext once — the caller must copy it now, since only its
+// hash is persisted. Gated on PermissionAgentsWrite by the router, same as
+// GenerateACPBridgeToken.
+func (h *AgentHandler) GenerateAgentMCPKey(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	token, err := h.svc.GenerateAgentMCPKey(r.Context(), projectID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GenerateMCPAgentKeyResponse{Token: token})
+}
+
+// GenerateGlobalAgentMCPKey handles POST /admin/agents/:agentId/mcp-agent-key
+// — GenerateAgentMCPKey's global-agent sibling.
+func (h *AgentHandler) GenerateGlobalAgentMCPKey(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	token, err := h.svc.GenerateGlobalAgentMCPKey(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.GenerateMCPAgentKeyResponse{Token: token})
+}
+
 // --- Activity Feed ------------------------------------------------------------
 
 var validActivitySourceTypes = []string{"task", "doc"}

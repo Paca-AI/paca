@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 )
@@ -258,5 +259,104 @@ func TestAuthenticate_UnknownKey(t *testing.T) {
 	_, err := svc.Authenticate(context.Background(), "paca_"+"a"+strings.Repeat("b", 63))
 	if !errors.Is(err, apikeydom.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// stubAgentIdentityStore satisfies apikeysvc.AgentIdentityStore for the
+// per-agent MCP key fallback tests below.
+type stubAgentIdentityStore struct {
+	findAgentByMCPAPIKeyHash func(ctx context.Context, hash string) (*agentdom.Agent, error)
+}
+
+func (s *stubAgentIdentityStore) FindAgentByID(_ context.Context, agentID uuid.UUID) (*agentdom.Agent, error) {
+	return &agentdom.Agent{ID: agentID}, nil
+}
+
+func (s *stubAgentIdentityStore) HasActiveGlobalChatSession(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (s *stubAgentIdentityStore) FindAgentByMCPAPIKeyHash(ctx context.Context, hash string) (*agentdom.Agent, error) {
+	if s.findAgentByMCPAPIKeyHash != nil {
+		return s.findAgentByMCPAPIKeyHash(ctx, hash)
+	}
+	return nil, agentdom.ErrAgentNotFound
+}
+
+func TestAuthenticate_AgentMCPKey_ResolvesAgentID(t *testing.T) {
+	agentID := uuid.New()
+	svc := apikeysvc.New(&stubRepo{}).
+		WithAgentIdentityStore(&stubAgentIdentityStore{
+			findAgentByMCPAPIKeyHash: func(context.Context, string) (*agentdom.Agent, error) {
+				return &agentdom.Agent{ID: agentID}, nil
+			},
+		})
+
+	result, err := svc.Authenticate(context.Background(), "some-agent-mcp-key")
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if result.AgentID == nil || *result.AgentID != agentID {
+		t.Fatalf("expected AgentID %v, got %v", agentID, result.AgentID)
+	}
+}
+
+func TestAuthenticate_PersonalKeyTakesPrecedenceOverAgentStore(t *testing.T) {
+	// A hash that matches a personal key must never fall through to the
+	// agent-identity store — the two lookups only differ in what an
+	// attacker-unknown raw key happens to hash to.
+	personalKey := &apikeydom.APIKey{ID: uuid.New(), UserID: uuid.New()}
+	agentStoreCalled := false
+	svc := apikeysvc.New(&stubRepo{
+		findByHash: func(context.Context, string) (*apikeydom.APIKey, error) {
+			return personalKey, nil
+		},
+	}).WithAgentIdentityStore(&stubAgentIdentityStore{
+		findAgentByMCPAPIKeyHash: func(context.Context, string) (*agentdom.Agent, error) {
+			agentStoreCalled = true
+			return &agentdom.Agent{ID: uuid.New()}, nil
+		},
+	})
+
+	result, err := svc.Authenticate(context.Background(), "paca_"+"a"+strings.Repeat("b", 63))
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if result.AgentID != nil {
+		t.Errorf("expected no AgentID for a personal key match, got %v", result.AgentID)
+	}
+	if agentStoreCalled {
+		t.Error("agent identity store should not be consulted once a personal key matches")
+	}
+}
+
+func TestAuthenticate_UnknownKey_AgentStoreConfigured(t *testing.T) {
+	// A key that matches neither a personal key nor any agent's MCP key
+	// must still fail closed with ErrNotFound.
+	svc := apikeysvc.New(&stubRepo{}).WithAgentIdentityStore(&stubAgentIdentityStore{})
+	_, err := svc.Authenticate(context.Background(), "paca_"+"a"+strings.Repeat("b", 63))
+	if !errors.Is(err, apikeydom.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// TestAuthenticate_AgentStoreDBError_Propagates covers a transient failure
+// in the MCP-key fallback lookup (e.g. the database is unreachable): it must
+// surface as-is, not be masked as an ordinary "invalid API key" ErrNotFound —
+// otherwise an infrastructure outage looks identical to a bad credential.
+func TestAuthenticate_AgentStoreDBError_Propagates(t *testing.T) {
+	dbErr := errors.New("connection refused")
+	svc := apikeysvc.New(&stubRepo{}).WithAgentIdentityStore(&stubAgentIdentityStore{
+		findAgentByMCPAPIKeyHash: func(context.Context, string) (*agentdom.Agent, error) {
+			return nil, dbErr
+		},
+	})
+
+	_, err := svc.Authenticate(context.Background(), "paca_"+"a"+strings.Repeat("b", 63))
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected the underlying DB error to propagate, got %v", err)
+	}
+	if errors.Is(err, apikeydom.ErrNotFound) {
+		t.Error("a transient lookup failure must not be reported as ErrNotFound")
 	}
 }
