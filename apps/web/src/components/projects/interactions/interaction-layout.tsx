@@ -1188,7 +1188,12 @@ export function InteractionLayout({
 				status_id: statusId,
 				sprint_id: taskSprintId ?? null,
 			}),
-		onSuccess: () => qc.invalidateQueries({ queryKey: tasksListQueryKey }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: tasksListQueryKey });
+			// Status changes affect a sprint's incomplete-task count (surfaced in
+			// the Complete Sprint dialog's move-to-sprint suggestion).
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
+		},
 	});
 
 	const handleStatusChange = useCallback(
@@ -1228,7 +1233,13 @@ export function InteractionLayout({
 			}
 			return task;
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: tasksListQueryKey }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: tasksListQueryKey });
+			// A newly created (non-done) task changes its sprint's incomplete-task
+			// count (surfaced in the Complete Sprint dialog's move-to-sprint
+			// suggestion), so refresh the sprint-scoped queries too.
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
+		},
 	});
 
 	const handleCreateTask = async (
@@ -1354,7 +1365,13 @@ export function InteractionLayout({
 						["projects", projectId, "tasks", taskId],
 						updatedTask,
 					);
-					return qc.invalidateQueries({ queryKey: tasksListQueryKey });
+					qc.invalidateQueries({ queryKey: tasksListQueryKey });
+					// Moving a task between status/sprint columns affects a sprint's
+					// incomplete-task count (surfaced in the Complete Sprint dialog's
+					// move-to-sprint suggestion), so refresh the sprint-scoped queries too.
+					return qc.invalidateQueries({
+						queryKey: ["projects", projectId, "sprints"],
+					});
 				})
 				.catch(console.error);
 		},
@@ -1367,6 +1384,9 @@ export function InteractionLayout({
 		mutationFn: (taskId: string) => deleteTask(projectId, taskId),
 		onSuccess: (_, taskId) => {
 			qc.invalidateQueries({ queryKey: tasksListQueryKey });
+			// Deleting a task changes its sprint's incomplete-task count (surfaced
+			// in the Complete Sprint dialog's move-to-sprint suggestion).
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
 			setDeleteConfirmTask(null);
 			if (selectedTaskId === taskId) setSelectedTaskId(null);
 		},

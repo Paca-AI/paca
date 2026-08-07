@@ -39,7 +39,8 @@
 	"interactions": {
 		"title": "Interacciones",
 		"timeline": "Cronología",
-		"productBacklog": "Backlog del producto"
+		"productBacklog": "Backlog del producto",
+		"completedSprints": "Sprints completados"
 	},
 	"docs": {
 		"documentation": "Documentación",

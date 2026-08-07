@@ -1196,6 +1196,21 @@
 			"statusCompleted": "Completado",
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · iniciado el {{date}}",
+			"editSprint": "Editar sprint",
+			"editSprintModal": {
+				"title": "Editar sprint",
+				"nameLabel": "Nombre",
+				"goalLabel": "Objetivo",
+				"optional": "(opcional)",
+				"goalPlaceholder": "¿Qué debería lograr este sprint?",
+				"startDateLabel": "Fecha de inicio",
+				"dueDateLabel": "Fecha límite",
+				"dateRangeError": "La fecha límite no puede ser anterior a la fecha de inicio.",
+				"error": "No se pudo actualizar el sprint. Inténtalo de nuevo.",
+				"cancel": "Cancelar",
+				"saving": "Guardando…",
+				"save": "Guardar cambios"
+			},
 			"completeSprint": "Completar sprint",
 			"completeSprintModal": {
 				"title": "Completar sprint",

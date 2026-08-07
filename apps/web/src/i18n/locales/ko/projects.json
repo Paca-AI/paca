@@ -1196,6 +1196,21 @@
 			"statusCompleted": "완료됨",
 			"description": "{{status}} 스프린트",
 			"descriptionWithStartDate": "{{status}} 스프린트 · {{date}} 시작",
+			"editSprint": "스프린트 수정",
+			"editSprintModal": {
+				"title": "스프린트 수정",
+				"nameLabel": "이름",
+				"goalLabel": "목표",
+				"optional": "(선택 사항)",
+				"goalPlaceholder": "이 스프린트에서 달성해야 할 목표는 무엇인가요?",
+				"startDateLabel": "시작일",
+				"dueDateLabel": "마감일",
+				"dateRangeError": "마감일은 시작일보다 빠를 수 없습니다.",
+				"error": "스프린트를 업데이트하지 못했습니다. 다시 시도해 주세요.",
+				"cancel": "취소",
+				"saving": "저장 중…",
+				"save": "변경 사항 저장"
+			},
 			"completeSprint": "스프린트 완료",
 			"completeSprintModal": {
 				"title": "스프린트 완료",

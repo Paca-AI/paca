@@ -1196,6 +1196,21 @@
 			"statusCompleted": "完了",
 			"description": "{{status}}のスプリント",
 			"descriptionWithStartDate": "{{status}}のスプリント・{{date}}に開始",
+			"editSprint": "スプリントを編集",
+			"editSprintModal": {
+				"title": "スプリントを編集",
+				"nameLabel": "名前",
+				"goalLabel": "ゴール",
+				"optional": "(任意)",
+				"goalPlaceholder": "このスプリントで達成すべきことは?",
+				"startDateLabel": "開始日",
+				"dueDateLabel": "期限日",
+				"dateRangeError": "期限日は開始日より前にできません。",
+				"error": "スプリントの更新に失敗しました。もう一度お試しください。",
+				"cancel": "キャンセル",
+				"saving": "保存中…",
+				"save": "変更を保存"
+			},
 			"completeSprint": "スプリントを完了",
 			"completeSprintModal": {
 				"title": "スプリントを完了",
