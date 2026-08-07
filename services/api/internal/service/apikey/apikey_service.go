@@ -195,8 +195,16 @@ func (s *Service) Authenticate(ctx context.Context, rawKey string) (*apikeydom.A
 	// Not a personal key — check whether it's a specific agent's own MCP
 	// API key before giving up.
 	if s.agentIdentity != nil {
-		if agent, aerr := s.agentIdentity.FindAgentByMCPAPIKeyHash(ctx, keyHash); aerr == nil {
+		agent, aerr := s.agentIdentity.FindAgentByMCPAPIKeyHash(ctx, keyHash)
+		if aerr == nil {
 			return &apikeydom.APIKey{UserID: s.agentBotUserID, AgentID: &agent.ID}, nil
+		}
+		// Only "no agent has this key" falls through to ErrNotFound below —
+		// anything else (e.g. a transient DB failure) must propagate as-is,
+		// or an outage would silently present as an invalid API key instead
+		// of a 500.
+		if !errors.Is(aerr, agentdom.ErrAgentNotFound) {
+			return nil, aerr
 		}
 	}
 

@@ -339,3 +339,24 @@ func TestAuthenticate_UnknownKey_AgentStoreConfigured(t *testing.T) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
+
+// TestAuthenticate_AgentStoreDBError_Propagates covers a transient failure
+// in the MCP-key fallback lookup (e.g. the database is unreachable): it must
+// surface as-is, not be masked as an ordinary "invalid API key" ErrNotFound —
+// otherwise an infrastructure outage looks identical to a bad credential.
+func TestAuthenticate_AgentStoreDBError_Propagates(t *testing.T) {
+	dbErr := errors.New("connection refused")
+	svc := apikeysvc.New(&stubRepo{}).WithAgentIdentityStore(&stubAgentIdentityStore{
+		findAgentByMCPAPIKeyHash: func(context.Context, string) (*agentdom.Agent, error) {
+			return nil, dbErr
+		},
+	})
+
+	_, err := svc.Authenticate(context.Background(), "paca_"+"a"+strings.Repeat("b", 63))
+	if !errors.Is(err, dbErr) {
+		t.Errorf("expected the underlying DB error to propagate, got %v", err)
+	}
+	if errors.Is(err, apikeydom.ErrNotFound) {
+		t.Error("a transient lookup failure must not be reported as ErrNotFound")
+	}
+}
