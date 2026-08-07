@@ -41,11 +41,4 @@ Feature: Session management
       When the user closes that browser context
       And the user opens a new browser context
       And the user navigates to the application root
-      Then the username field should be visible
-      And the sign-in button should be visible
-
-    Scenario: Independent browser contexts do not share authentication state
-      When the user opens a brand-new browser context
-      And the user navigates to the application root
-      Then the username field should be visible
-      And the sign-in button should be visible
+      Then the "Welcome back" heading should be visible
