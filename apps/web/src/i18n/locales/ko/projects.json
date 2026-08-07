@@ -1299,9 +1299,8 @@
 			"updated": "{{time}}에 업데이트됨"
 		},
 		"status": {
-			"draft": "임시 저장",
 			"active": "활성",
-			"archived": "보관됨"
+			"inactive": "비활성"
 		},
 		"createDialog": {
 			"title": "새 자동화",
@@ -1319,10 +1318,7 @@
 			"confirm": "삭제"
 		},
 		"builder": {
-			"activate": "활성화",
-			"archive": "보관",
-			"deactivate": "비활성화",
-			"readOnlyNoticeArchived": "이 자동화는 보관되어 읽기 전용입니다 — 보관된 자동화는 편집할 수 없습니다.",
+			"toggleActiveLabel": "이 자동화의 활성 상태를 전환",
 			"genericError": "문제가 발생했습니다. 다시 시도해 주세요.",
 			"taskLessTriggerConnectionError": "이 트리거에는 대상 태스크가 설정되어 있지 않아 API 호출 또는 AI 에이전트 실행 액션에만 연결할 수 있습니다 — 조건과 그 외 액션은 실행할 태스크가 필요합니다.",
 			"collapseSidebar": "패널 접기",

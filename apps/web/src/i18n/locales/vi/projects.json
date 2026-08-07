@@ -1299,9 +1299,8 @@
 			"updated": "Đã cập nhật {{time}}"
 		},
 		"status": {
-			"draft": "Bản nháp",
 			"active": "Đang hoạt động",
-			"archived": "Đã lưu trữ"
+			"inactive": "Không hoạt động"
 		},
 		"createDialog": {
 			"title": "Tự động hóa mới",
@@ -1319,10 +1318,7 @@
 			"confirm": "Xóa"
 		},
 		"builder": {
-			"activate": "Kích hoạt",
-			"archive": "Lưu trữ",
-			"deactivate": "Hủy kích hoạt",
-			"readOnlyNoticeArchived": "Tự động hóa này đã được lưu trữ và ở chế độ chỉ xem — tự động hóa đã lưu trữ không thể chỉnh sửa.",
+			"toggleActiveLabel": "Bật hoặc tắt tự động hóa này",
 			"genericError": "Đã xảy ra lỗi. Vui lòng thử lại.",
 			"taskLessTriggerConnectionError": "Trình kích hoạt này chưa đặt công việc mục tiêu nên chỉ có thể kết nối với hành động Gọi API hoặc Kích hoạt tác nhân AI — điều kiện và các hành động khác cần một công việc để thực hiện.",
 			"collapseSidebar": "Thu gọn bảng",

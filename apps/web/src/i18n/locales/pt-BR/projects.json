@@ -1299,9 +1299,8 @@
 			"updated": "Atualizado {{time}}"
 		},
 		"status": {
-			"draft": "Rascunho",
 			"active": "Ativo",
-			"archived": "Arquivado"
+			"inactive": "Inativo"
 		},
 		"createDialog": {
 			"title": "Nova automação",
@@ -1319,10 +1318,7 @@
 			"confirm": "Excluir"
 		},
 		"builder": {
-			"activate": "Ativar",
-			"archive": "Arquivar",
-			"deactivate": "Desativar",
-			"readOnlyNoticeArchived": "Esta automação está arquivada e é somente leitura — automações arquivadas não podem ser editadas.",
+			"toggleActiveLabel": "Ativar ou desativar esta automação",
 			"genericError": "Algo deu errado. Tente novamente.",
 			"taskLessTriggerConnectionError": "Este gatilho não tem uma tarefa alvo definida, então só pode se conectar a uma ação Chamar API ou Acionar agente de IA — condições e as demais ações precisam de uma tarefa para agir.",
 			"collapseSidebar": "Recolher painel",

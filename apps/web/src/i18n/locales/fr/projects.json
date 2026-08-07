@@ -1299,9 +1299,8 @@
 			"updated": "Mis à jour {{time}}"
 		},
 		"status": {
-			"draft": "Brouillon",
 			"active": "Actif",
-			"archived": "Archivé"
+			"inactive": "Inactif"
 		},
 		"createDialog": {
 			"title": "Nouvelle automatisation",
@@ -1319,10 +1318,7 @@
 			"confirm": "Supprimer"
 		},
 		"builder": {
-			"activate": "Activer",
-			"archive": "Archiver",
-			"deactivate": "Désactiver",
-			"readOnlyNoticeArchived": "Cette automatisation est archivée et en lecture seule — les automatisations archivées ne peuvent pas être modifiées.",
+			"toggleActiveLabel": "Activer ou désactiver cette automatisation",
 			"genericError": "Une erreur est survenue. Veuillez réessayer.",
 			"taskLessTriggerConnectionError": "Ce déclencheur n'a pas de tâche cible définie ; il ne peut donc se connecter qu'à une action Appeler l'API ou Déclencher l'agent IA — les conditions et les autres actions ont besoin d'une tâche pour s'exécuter.",
 			"collapseSidebar": "Réduire le panneau",

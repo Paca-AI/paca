@@ -108,7 +108,7 @@ func (s *Service) CreateAutomation(ctx context.Context, in automationdom.CreateA
 		ProjectID:   in.ProjectID,
 		Name:        name,
 		Description: strings.TrimSpace(in.Description),
-		Status:      automationdom.StatusDraft,
+		Status:      automationdom.StatusInactive,
 		CreatedBy:   s.resolveMember(ctx, in.CreatedBy, in.AgentID, in.ProjectID),
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -166,16 +166,14 @@ func (s *Service) DeleteAutomation(ctx context.Context, projectID, automationID 
 	return nil
 }
 
-// Activate transitions a draft automation to active, after validating the
-// graph is safe to run: at least one trigger node, at least one action
-// node, and the graph remains a DAG.
+// Activate transitions an automation to active, after validating the graph
+// is safe to run: at least one trigger node, at least one action node, and
+// the graph remains a DAG. Always re-validates and re-confirms active even
+// if already active, so re-invoking it is a harmless idempotent no-op.
 func (s *Service) Activate(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return nil, err
-	}
-	if a.Status != automationdom.StatusDraft {
-		return nil, automationdom.ErrNotDraft
 	}
 
 	nodes, err := s.repo.ListNodesByAutomation(ctx, a.ID)
@@ -228,47 +226,21 @@ func (s *Service) Activate(ctx context.Context, projectID, automationID uuid.UUI
 	return a, nil
 }
 
-// Archive transitions an active automation to archived, stopping it from
-// firing without deleting its graph.
-func (s *Service) Archive(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
+// Deactivate transitions an automation to inactive, stopping it from firing
+// without deleting its graph — the graph stays fully editable either way.
+// Always sets inactive unconditionally, so re-invoking it (or calling it on
+// an already-inactive automation) is a harmless idempotent no-op.
+func (s *Service) Deactivate(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
 	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return nil, err
 	}
-	if a.Status != automationdom.StatusActive {
-		return nil, automationdom.ErrNotActive
-	}
-	a.Status = automationdom.StatusArchived
+	a.Status = automationdom.StatusInactive
 	a.UpdatedAt = time.Now()
 	if err := s.repo.UpdateAutomation(ctx, a); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, events.TopicAutomationArchived, map[string]any{
-		"project_id":    projectID.String(),
-		"automation_id": a.ID.String(),
-	})
-	return a, nil
-}
-
-// RevertToDraft transitions an active automation back to draft so its graph
-// can be edited again. A no-op if it's already draft.
-func (s *Service) RevertToDraft(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
-	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
-	if err != nil {
-		return nil, err
-	}
-	if a.Status == automationdom.StatusDraft {
-		return a, nil
-	}
-	if a.Status != automationdom.StatusActive {
-		return nil, automationdom.ErrNotActive
-	}
-	a.Status = automationdom.StatusDraft
-	a.UpdatedAt = time.Now()
-	if err := s.repo.UpdateAutomation(ctx, a); err != nil {
-		return nil, err
-	}
-	s.publish(ctx, events.TopicAutomationRevertedToDraft, map[string]any{
+	s.publish(ctx, events.TopicAutomationDeactivated, map[string]any{
 		"project_id":    projectID.String(),
 		"automation_id": a.ID.String(),
 	})
@@ -279,7 +251,7 @@ func (s *Service) RevertToDraft(ctx context.Context, projectID, automationID uui
 
 // AddNode adds a new Trigger/Condition/Action node to an editable automation.
 func (s *Service) AddNode(ctx context.Context, projectID, automationID uuid.UUID, in automationdom.AddNodeInput) (*automationdom.Node, error) {
-	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
+	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +284,7 @@ func (s *Service) AddNode(ctx context.Context, projectID, automationID uuid.UUID
 
 // UpdateNode updates a node's config and/or canvas position.
 func (s *Service) UpdateNode(ctx context.Context, projectID, automationID, nodeID uuid.UUID, in automationdom.UpdateNodeInput) (*automationdom.Node, error) {
-	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
+	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +347,7 @@ func (s *Service) UpdateNode(ctx context.Context, projectID, automationID, nodeI
 
 // RemoveNode deletes a node and its connected edges from an editable automation.
 func (s *Service) RemoveNode(ctx context.Context, projectID, automationID, nodeID uuid.UUID) error {
-	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
+	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return err
 	}
@@ -400,7 +372,7 @@ func (s *Service) RemoveNode(ctx context.Context, projectID, automationID, nodeI
 // cycles, duplicates, edges into a Trigger, and edges that would make a
 // downstream node unreachable from a task.
 func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID, in automationdom.AddEdgeInput) (*automationdom.Edge, error) {
-	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
+	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +441,7 @@ func (s *Service) AddEdge(ctx context.Context, projectID, automationID uuid.UUID
 
 // RemoveEdge deletes one edge from an editable automation.
 func (s *Service) RemoveEdge(ctx context.Context, projectID, automationID, edgeID uuid.UUID) error {
-	a, err := s.requireEditableOwnedAutomation(ctx, projectID, automationID)
+	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
 	if err != nil {
 		return err
 	}
@@ -652,22 +624,6 @@ func (s *Service) findOwnedAutomation(ctx context.Context, projectID, automation
 	}
 	if a.ProjectID != projectID {
 		return nil, automationdom.ErrNotFound
-	}
-	return a, nil
-}
-
-// requireEditableOwnedAutomation looks up an owned automation and rejects
-// graph mutations once it's archived. Draft and active are both editable;
-// the engine always reads the graph fresh per event, so an in-flight edit to
-// an active automation degrades to a stale read on the current event rather
-// than crashing or corrupting state.
-func (s *Service) requireEditableOwnedAutomation(ctx context.Context, projectID, automationID uuid.UUID) (*automationdom.Automation, error) {
-	a, err := s.findOwnedAutomation(ctx, projectID, automationID)
-	if err != nil {
-		return nil, err
-	}
-	if a.Status == automationdom.StatusArchived {
-		return nil, automationdom.ErrArchived
 	}
 	return a, nil
 }

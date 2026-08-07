@@ -389,20 +389,10 @@ func taskTypeIDByName(types []map[string]any, name string) string {
 	return ""
 }
 
-func archiveAutomationViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID string) {
+func deactivateAutomationViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID string) {
 	t.Helper()
 	req := mustRequest(env.ctx, t, http.MethodPost,
-		fmt.Sprintf("%s/api/v1/projects/%s/automations/%s/archive", env.base, projectID, automationID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp := mustDo(t, client, req)
-	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusOK)
-}
-
-func revertAutomationToDraftViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID string) {
-	t.Helper()
-	req := mustRequest(env.ctx, t, http.MethodPost,
-		fmt.Sprintf("%s/api/v1/projects/%s/automations/%s/revert-to-draft", env.base, projectID, automationID), nil)
+		fmt.Sprintf("%s/api/v1/projects/%s/automations/%s/deactivate", env.base, projectID, automationID), nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp := mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()
@@ -861,7 +851,7 @@ func TestE2EAutomation_WebhookTriggerTokenLifecycle(t *testing.T) {
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 
 	// Token generation doesn't require the automation to be active — but the
-	// webhook call itself must still be rejected while it's in draft.
+	// webhook call itself must still be rejected while it's inactive.
 	rawToken := generateWebhookTokenViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID)
 	postWebhookExpect(t, env, triggerID, rawToken, http.StatusNotFound)
 
@@ -2107,7 +2097,7 @@ func TestE2EAutomationEngine_ConditionElseBranchFiresWhenNoBranchMatches(t *test
 
 // ---------------------------------------------------------------------------
 // Engine: graph structure — chaining, idempotency, and lifecycle after
-// activation (archive/revert-to-draft/live edits)
+// activation (deactivate/reactivate/live edits)
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ActionChainContinuesPastFirstAction(t *testing.T) {
@@ -2214,24 +2204,24 @@ func TestE2EAutomationEngine_IdempotentAssignSkipsRunStepOnSecondFire(t *testing
 	}
 }
 
-func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
+func TestE2EAutomation_InactiveAutomationDoesNotFire(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
-	ownerUsername := "automation-archived-owner-" + uuid.NewString()
-	seedTaskMemberUser(t, env, ownerUsername, "automationarchived1")
-	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationarchived1")
+	ownerUsername := "automation-inactive-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationinactive1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationinactive1")
 	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
 
 	memberID := addProjectMemberWithAutomationPerms(t, env, ownerClient, ownerToken, projID,
-		"automation-archived-member-"+uuid.NewString(), "automationarchivedm1")
+		"automation-inactive-member-"+uuid.NewString(), "automationinactivem1")
 
 	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
 	inProgressID := statusIDByName(statuses, "In Progress")
-	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Archived Automation Task")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Inactive Automation Task")
 
-	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Archived Automation")
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Inactive Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
@@ -2240,7 +2230,7 @@ func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
-	archiveAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+	deactivateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
 
 	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
 
@@ -2248,30 +2238,30 @@ func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
 	if assignees, _ := data["assignee_ids"].([]any); len(assignees) != 0 {
-		t.Fatalf("expected an archived automation to never fire, got assignee_ids=%v", assignees)
+		t.Fatalf("expected an inactive automation to never fire, got assignee_ids=%v", assignees)
 	}
 }
 
-func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.T) {
+func TestE2EAutomation_DeactivateStopsFiringThenReactivateResumes(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
-	ownerUsername := "automation-revertdraft-owner-" + uuid.NewString()
-	seedTaskMemberUser(t, env, ownerUsername, "automationrevertdraft1")
-	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationrevertdraft1")
+	ownerUsername := "automation-deactivate-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationdeactivate1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationdeactivate1")
 	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
 
 	memberID := addProjectMemberWithAutomationPerms(t, env, ownerClient, ownerToken, projID,
-		"automation-revertdraft-member-"+uuid.NewString(), "automationrevertdraftm1")
+		"automation-deactivate-member-"+uuid.NewString(), "automationdeactivatem1")
 
 	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
 	inProgressID := statusIDByName(statuses, "In Progress")
 	doneID := statusIDByName(statuses, "Done")
 
-	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Revert Draft Task")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Deactivate Task")
 
-	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Revert Draft Automation")
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Deactivate Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
@@ -2280,14 +2270,14 @@ func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
-	revertAutomationToDraftViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+	deactivateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
 
-	// Draft: firing the matching event must NOT assign anyone.
+	// Inactive: firing the matching event must NOT assign anyone.
 	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
 	time.Sleep(3 * time.Second)
 	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
 	if assignees, _ := data["assignee_ids"].([]any); len(assignees) != 0 {
-		t.Fatalf("expected a draft (reverted) automation to not fire, got assignee_ids=%v", assignees)
+		t.Fatalf("expected an inactive (deactivated) automation to not fire, got assignee_ids=%v", assignees)
 	}
 
 	// Re-activate: a FRESH status transition into In Progress must now fire.

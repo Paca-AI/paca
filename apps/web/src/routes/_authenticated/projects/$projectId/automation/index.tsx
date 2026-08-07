@@ -43,13 +43,9 @@ export const Route = createFileRoute(
 	component: AutomationListPage,
 });
 
-const STATUS_BADGE_VARIANT: Record<
-	string,
-	"default" | "secondary" | "outline"
-> = {
-	draft: "secondary",
+const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary"> = {
 	active: "default",
-	archived: "outline",
+	inactive: "secondary",
 };
 
 function AutomationListPage() {
@@ -209,7 +205,7 @@ function AutomationListPage() {
 
 									<div className="flex items-center gap-1.5 shrink-0">
 										<Badge
-											variant={STATUS_BADGE_VARIANT[a.status] ?? "outline"}
+											variant={STATUS_BADGE_VARIANT[a.status] ?? "default"}
 										>
 											{t(`automation.status.${a.status}`)}
 										</Badge>

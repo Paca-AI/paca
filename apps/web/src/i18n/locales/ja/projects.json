@@ -1299,9 +1299,8 @@
 			"updated": "{{time}}に更新"
 		},
 		"status": {
-			"draft": "下書き",
 			"active": "有効",
-			"archived": "アーカイブ済み"
+			"inactive": "無効"
 		},
 		"createDialog": {
 			"title": "新規自動化",
@@ -1319,10 +1318,7 @@
 			"confirm": "削除"
 		},
 		"builder": {
-			"activate": "有効化",
-			"archive": "アーカイブ",
-			"deactivate": "無効化",
-			"readOnlyNoticeArchived": "この自動化はアーカイブ済みで読み取り専用です — アーカイブされた自動化は編集できません。",
+			"toggleActiveLabel": "この自動化の有効/無効を切り替える",
 			"genericError": "問題が発生しました。もう一度お試しください。",
 			"taskLessTriggerConnectionError": "このトリガーには対象タスクが設定されていないため、「API呼び出し」または「AIエージェントを起動」アクションにしか接続できません — 条件やその他のアクションは実行対象となるタスクが必要です。",
 			"collapseSidebar": "パネルを折りたたむ",

@@ -1,7 +1,7 @@
 // Package automationdom defines the unified automation-graph aggregate and
 // its domain contracts.
 //
-// An Automation is a project-scoped, draft/active/archived graph of typed
+// An Automation is a project-scoped, active/inactive graph of typed
 // steps — Trigger, Condition, Action — connected by directed edges. Unlike
 // the workflow feature it replaces, a node no longer wraps a task: a Trigger
 // node matches ANY task satisfying its type+config against an incoming
@@ -31,24 +31,21 @@ import (
 type Status string
 
 const (
-	// StatusDraft is the initial state: the graph can be freely edited and
-	// the engine ignores it.
-	StatusDraft Status = "draft"
 	// StatusActive means the engine evaluates this automation on every
 	// relevant task event. The graph can still be edited while active; the
 	// engine reads it fresh per event, so an edit takes effect on the next
-	// event rather than requiring a draft/reactivate round-trip.
+	// event rather than requiring a deactivate/reactivate round-trip.
 	StatusActive Status = "active"
-	// StatusArchived is a terminal-ish state: the engine ignores it, editing
-	// is disallowed, and it can be reverted to draft to resume editing.
-	StatusArchived Status = "archived"
+	// StatusInactive means the engine ignores this automation — the initial
+	// state for a newly created automation, and where Deactivate returns it
+	// to. The graph remains fully editable while inactive.
+	StatusInactive Status = "inactive"
 )
 
 // ValidStatuses is the set of allowed automation status values.
 var ValidStatuses = map[Status]bool{
-	StatusDraft:    true,
 	StatusActive:   true,
-	StatusArchived: true,
+	StatusInactive: true,
 }
 
 // Kind discriminates the three node kinds a graph can contain.

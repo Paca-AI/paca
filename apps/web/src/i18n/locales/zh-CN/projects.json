@@ -1299,9 +1299,8 @@
 			"updated": "更新于 {{time}}"
 		},
 		"status": {
-			"draft": "草稿",
 			"active": "已启用",
-			"archived": "已归档"
+			"inactive": "已停用"
 		},
 		"createDialog": {
 			"title": "新建自动化",
@@ -1319,10 +1318,7 @@
 			"confirm": "删除"
 		},
 		"builder": {
-			"activate": "启用",
-			"archive": "归档",
-			"deactivate": "停用",
-			"readOnlyNoticeArchived": "该自动化已归档，为只读状态 — 已归档的自动化无法编辑。",
+			"toggleActiveLabel": "切换此自动化的启用状态",
 			"genericError": "出了点问题，请重试。",
 			"taskLessTriggerConnectionError": "该触发器未设置目标任务，因此只能连接到“调用 API”或“触发 AI 代理”操作 — 条件和其他操作都需要一个任务才能运行。",
 			"collapseSidebar": "收起面板",

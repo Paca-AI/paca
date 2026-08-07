@@ -345,12 +345,6 @@ const (
 	CodeAutomationEdgeHandleRequired Code = "AUTOMATION_EDGE_HANDLE_REQUIRED"
 	// CodeAutomationEdgeHandleNotAllowed indicates an edge from a trigger/action node specified a branch handle.
 	CodeAutomationEdgeHandleNotAllowed Code = "AUTOMATION_EDGE_HANDLE_NOT_ALLOWED"
-	// CodeAutomationNotDraft indicates the automation can only be activated while in draft.
-	CodeAutomationNotDraft Code = "AUTOMATION_NOT_DRAFT"
-	// CodeAutomationNotActive indicates the automation is not active.
-	CodeAutomationNotActive Code = "AUTOMATION_NOT_ACTIVE"
-	// CodeAutomationArchived indicates the automation's graph can no longer be edited once archived.
-	CodeAutomationArchived Code = "AUTOMATION_ARCHIVED"
 	// CodeAutomationActivateNoTrigger indicates the automation has no trigger node.
 	CodeAutomationActivateNoTrigger Code = "AUTOMATION_ACTIVATE_NO_TRIGGER"
 	// CodeAutomationActivateNoAction indicates the automation has no action node, so activating it would never do anything.

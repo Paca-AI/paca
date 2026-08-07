@@ -1299,9 +1299,8 @@
 			"updated": "Updated {{time}}"
 		},
 		"status": {
-			"draft": "Draft",
 			"active": "Active",
-			"archived": "Archived"
+			"inactive": "Inactive"
 		},
 		"createDialog": {
 			"title": "New automation",
@@ -1319,10 +1318,7 @@
 			"confirm": "Delete"
 		},
 		"builder": {
-			"activate": "Activate",
-			"archive": "Archive",
-			"deactivate": "Deactivate",
-			"readOnlyNoticeArchived": "This automation is archived and read-only — archived automations can't be edited.",
+			"toggleActiveLabel": "Toggle whether this automation is active",
 			"genericError": "Something went wrong. Please try again.",
 			"taskLessTriggerConnectionError": "This trigger has no target task set, so it can only connect to a Call API or Trigger AI agent action — conditions and every other action need a task to run against.",
 			"collapseSidebar": "Collapse panel",

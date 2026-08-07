@@ -380,12 +380,6 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAutomationEdgeHandleRequired
 	case errors.Is(err, automationdom.ErrEdgeHandleNotAllowed):
 		return http.StatusBadRequest, apierr.CodeAutomationEdgeHandleNotAllowed
-	case errors.Is(err, automationdom.ErrNotDraft):
-		return http.StatusConflict, apierr.CodeAutomationNotDraft
-	case errors.Is(err, automationdom.ErrNotActive):
-		return http.StatusConflict, apierr.CodeAutomationNotActive
-	case errors.Is(err, automationdom.ErrArchived):
-		return http.StatusConflict, apierr.CodeAutomationArchived
 	case errors.Is(err, automationdom.ErrActivateNoTrigger):
 		return http.StatusBadRequest, apierr.CodeAutomationActivateNoTrigger
 	case errors.Is(err, automationdom.ErrActivateNoAction):
@@ -573,10 +567,7 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAutomationNodeNotFound,
 		apierr.CodeAutomationEdgeNotFound:
 		return http.StatusNotFound
-	case apierr.CodeAutomationEdgeDuplicate,
-		apierr.CodeAutomationNotDraft,
-		apierr.CodeAutomationNotActive,
-		apierr.CodeAutomationArchived:
+	case apierr.CodeAutomationEdgeDuplicate:
 		return http.StatusConflict
 	case apierr.CodeAutomationNameInvalid,
 		apierr.CodeAutomationNodeInvalidKind,

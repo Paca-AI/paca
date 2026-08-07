@@ -166,17 +166,16 @@ const (
 	// automation.applied (the engine mutating a task) is a separate,
 	// task-scoped event defined as taskdom.ActivityTypeAutomationApplied, not
 	// here.
-	TopicAutomationCreated         = "automation.created"
-	TopicAutomationUpdated         = "automation.updated"
-	TopicAutomationDeleted         = "automation.deleted"
-	TopicAutomationActivated       = "automation.activated"
-	TopicAutomationArchived        = "automation.archived"
-	TopicAutomationRevertedToDraft = "automation.reverted_to_draft"
-	TopicAutomationNodeAdded       = "automation.node.added"
-	TopicAutomationNodeUpdated     = "automation.node.updated"
-	TopicAutomationNodeRemoved     = "automation.node.removed"
-	TopicAutomationEdgeAdded       = "automation.edge.added"
-	TopicAutomationEdgeRemoved     = "automation.edge.removed"
+	TopicAutomationCreated     = "automation.created"
+	TopicAutomationUpdated     = "automation.updated"
+	TopicAutomationDeleted     = "automation.deleted"
+	TopicAutomationActivated   = "automation.activated"
+	TopicAutomationDeactivated = "automation.deactivated"
+	TopicAutomationNodeAdded   = "automation.node.added"
+	TopicAutomationNodeUpdated = "automation.node.updated"
+	TopicAutomationNodeRemoved = "automation.node.removed"
+	TopicAutomationEdgeAdded   = "automation.edge.added"
+	TopicAutomationEdgeRemoved = "automation.edge.removed"
 	// TopicAutomationAPITriggerFired is appended to
 	// StreamAutomationExternalTriggers by the webhook receiver handler once
 	// a POST's token has been verified.

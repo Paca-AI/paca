@@ -4,7 +4,7 @@ import type { SuccessEnvelope } from "./api-error";
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
-export type AutomationStatus = "draft" | "active" | "archived";
+export type AutomationStatus = "active" | "inactive";
 export type NodeKind = "trigger" | "condition" | "action";
 
 export const TRIGGER_TYPES = [
@@ -433,22 +433,12 @@ export async function activateAutomation(
 	return data.data;
 }
 
-export async function archiveAutomation(
+export async function deactivateAutomation(
 	projectId: string,
 	automationId: string,
 ): Promise<Automation> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Automation>>(
-		`/projects/${projectId}/automations/${automationId}/archive`,
-	);
-	return data.data;
-}
-
-export async function revertAutomationToDraft(
-	projectId: string,
-	automationId: string,
-): Promise<Automation> {
-	const { data } = await apiClient.instance.post<SuccessEnvelope<Automation>>(
-		`/projects/${projectId}/automations/${automationId}/revert-to-draft`,
+		`/projects/${projectId}/automations/${automationId}/deactivate`,
 	);
 	return data.data;
 }

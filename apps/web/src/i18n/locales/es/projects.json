@@ -1299,9 +1299,8 @@
 			"updated": "Actualizado {{time}}"
 		},
 		"status": {
-			"draft": "Borrador",
 			"active": "Activo",
-			"archived": "Archivado"
+			"inactive": "Inactivo"
 		},
 		"createDialog": {
 			"title": "Nueva automatización",
@@ -1319,10 +1318,7 @@
 			"confirm": "Eliminar"
 		},
 		"builder": {
-			"activate": "Activar",
-			"archive": "Archivar",
-			"deactivate": "Desactivar",
-			"readOnlyNoticeArchived": "Esta automatización está archivada y es de solo lectura — las automatizaciones archivadas no se pueden editar.",
+			"toggleActiveLabel": "Alternar si esta automatización está activa",
 			"genericError": "Algo salió mal. Inténtalo de nuevo.",
 			"taskLessTriggerConnectionError": "Este disparador no tiene una tarea objetivo definida, por lo que solo puede conectarse a una acción de Llamar API o Activar agente de IA — las condiciones y el resto de las acciones necesitan una tarea sobre la que actuar.",
 			"collapseSidebar": "Contraer panel",
