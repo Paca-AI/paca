@@ -42,6 +42,6 @@ Feature: Login page user experience
 
   Scenario: Touch interactions can complete a successful login on mobile viewport
     When the user resizes the viewport to 375 by 667
-    And the user reloads the login page
+    And the user enables remember me
     And the user signs in on mobile with the configured valid username and password
     Then the home heading should be visible
