@@ -568,8 +568,9 @@ type WalkContext struct {
 
 // PendingAgentWait is one in-flight "graph walk is paused here" marker,
 // created when a trigger_ai_agent action node starts an agent conversation
-// and deleted (via Repository.ClaimPendingAgentWait) once that conversation
-// reaches a terminal status — see worker.AutomationConsumer.walkAction and
+// and deleted (via Repository.DeletePendingAgentWait) once that
+// conversation's terminal status has actually been resumed — see
+// worker.AutomationConsumer.walkAction and
 // handleAgentConversationStatus. AutomationID is stored directly (not
 // derived by joining through NodeID) so resuming the walk can LoadGraph
 // without an extra lookup. Context mirrors the walker's own task/sprint
@@ -588,9 +589,10 @@ type PendingAgentWait struct {
 
 // PendingDelay is one in-flight "graph walk is paused here" marker, created
 // when a wait action node is visited and deleted (via
-// Repository.ClaimDueDelays) once ResumeAt has passed — see the worker's
-// walkWait and WaitScheduler. Same shape as PendingAgentWait, with ResumeAt
-// standing in for a conversation ID as the thing being waited on.
+// Repository.DeletePendingDelay) once ResumeAt has passed and the walk has
+// actually resumed — see the worker's walkWait and WaitScheduler. Same shape
+// as PendingAgentWait, with ResumeAt standing in for a conversation ID as
+// the thing being waited on.
 type PendingDelay struct {
 	ID           uuid.UUID
 	RunID        uuid.UUID

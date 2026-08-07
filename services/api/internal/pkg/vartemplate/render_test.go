@@ -1,6 +1,9 @@
 package vartemplate
 
-import "testing"
+import (
+	"net/url"
+	"testing"
+)
 
 func TestRender_SubstitutesKnownKeys(t *testing.T) {
 	got := Render("Hello {{task.title}}, in {{sprint.name}}", map[string]string{
@@ -48,5 +51,39 @@ func TestRender_SamePlaceholderMultipleTimes(t *testing.T) {
 	got := Render("{{task.title}} - {{task.title}}", map[string]string{"task.title": "x"})
 	if got != "x - x" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRenderEscaped_EscapesOnlySubstitutedValues(t *testing.T) {
+	got := RenderEscaped("https://example.com/search?q={{task.title}}&x=1",
+		map[string]string{"task.title": "fix & rebuild"}, url.QueryEscape)
+	want := "https://example.com/search?q=fix+%26+rebuild&x=1"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestRenderEscaped_UnknownKeyLeftVerbatimUnescaped(t *testing.T) {
+	got := RenderEscaped("Value: {{task.unknown_field}}", map[string]string{"task.title": "x"}, url.QueryEscape)
+	want := "Value: {{task.unknown_field}}"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestRenderEscaped_EmptyTemplateOrVars(t *testing.T) {
+	if got := RenderEscaped("", map[string]string{"a": "b"}, url.QueryEscape); got != "" {
+		t.Fatalf("expected empty template to return empty, got %q", got)
+	}
+	if got := RenderEscaped("{{a}}", nil, url.QueryEscape); got != "{{a}}" {
+		t.Fatalf("expected a nil vars map to leave the template untouched, got %q", got)
+	}
+}
+
+func TestStripNewlines(t *testing.T) {
+	got := StripNewlines("evil\r\nX-Injected: true")
+	want := "evilX-Injected: true"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

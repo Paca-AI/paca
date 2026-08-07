@@ -2187,7 +2187,7 @@ function ActionConfigForm({
 	}
 
 	if (type === "wait") {
-		const minutes = Number(waitMinutes);
+		const minutes = Math.floor(Number(waitMinutes));
 		return (
 			<div className="space-y-3">
 				<div className="space-y-1.5">
@@ -2195,6 +2195,7 @@ function ActionConfigForm({
 					<Input
 						type="number"
 						min={1}
+						step={1}
 						value={waitMinutes}
 						onChange={(e) => setWaitMinutes(e.target.value)}
 						disabled={!canEdit}

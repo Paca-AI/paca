@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -61,17 +62,27 @@ type automationGraphReader interface {
 	// to seed the resumed walker's visited set — see finalizeRunIfDone and
 	// resumeWalk.
 	ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*automationdom.RunStep, error)
-	// CreatePendingAgentWait, ClaimPendingAgentWait, and CountPendingAgentWaits
-	// back the trigger_ai_agent pause/resume flow — see walkAction,
-	// handleAgentConversationStatus, and finalizeRunIfDone.
+	// CreatePendingAgentWait, FindPendingAgentWait, DeletePendingAgentWait,
+	// and CountPendingAgentWaits back the trigger_ai_agent pause/resume flow
+	// — see walkAction, handleAgentConversationStatus, and
+	// finalizeRunIfDone. Find/Delete are separate calls rather than one
+	// atomic claim-and-delete so the row survives until resumeWalk actually
+	// succeeds — see FindPendingAgentWait's docstring.
 	CreatePendingAgentWait(ctx context.Context, w *automationdom.PendingAgentWait) error
-	ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error)
+	FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error)
+	DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error
 	CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error)
-	// CreatePendingDelay, ClaimDueDelays, and CountPendingDelays back the
-	// wait action's pause/resume flow — see walkWait, WaitScheduler, and
-	// finalizeRunIfDone.
+	// CountPendingAgentWaitsForNode gates a fanned-out trigger_ai_agent
+	// node's outgoing edges on every one of its conversations resolving,
+	// not just the first — see resumeWalk.
+	CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error)
+	// CreatePendingDelay, ListDueDelays, DeletePendingDelay, and
+	// CountPendingDelays back the wait action's pause/resume flow — see
+	// walkWait, WaitScheduler, and finalizeRunIfDone. Same
+	// list-then-delete-on-success reasoning as the agent-wait trio above.
 	CreatePendingDelay(ctx context.Context, d *automationdom.PendingDelay) error
-	ClaimDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error)
+	ListDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error)
+	DeletePendingDelay(ctx context.Context, id uuid.UUID) error
 	CountPendingDelays(ctx context.Context, runID uuid.UUID) (int, error)
 	ListDueDateCandidates(ctx context.Context) ([]automationdom.DueDateCandidate, error)
 	RecordDueDateFire(ctx context.Context, automationID, nodeID, taskID uuid.UUID) error
@@ -662,7 +673,16 @@ func (c *AutomationConsumer) handleSprintActivity(msg redis.XMessage) {
 	// event type too.
 	name, _ := msg.Values["name"].(string)
 	status, _ := msg.Values["status"].(string)
-	sprint := &sprintdom.Sprint{ID: sprintID, ProjectID: projectID, Name: name, Status: sprintdom.SprintStatus(status)}
+	sprintStatus := sprintdom.SprintStatus(status)
+	if !sprintdom.ValidSprintStatuses[sprintStatus] {
+		// Malformed/unexpected value from the publisher — same posture as
+		// handleAgentConversationStatus's identical guard: don't retry
+		// forever on something that will never become valid.
+		c.log.Error("automation consumer: sprint activity has invalid status", "sprint_id", sprintID, "status", status)
+		c.ack(ctx, events.StreamSprintActivities, msg.ID)
+		return
+	}
+	sprint := &sprintdom.Sprint{ID: sprintID, ProjectID: projectID, Name: name, Status: sprintStatus}
 	if goal, _ := msg.Values["goal"].(string); goal != "" {
 		sprint.Goal = &goal
 	}
@@ -979,9 +999,9 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 		return
 	}
 
-	wait, err := c.repo.ClaimPendingAgentWait(ctx, convID)
+	wait, err := c.repo.FindPendingAgentWait(ctx, convID)
 	if err != nil {
-		c.log.Error("automation consumer: claim pending agent wait", "conversation_id", convID, "err", err)
+		c.log.Error("automation consumer: find pending agent wait", "conversation_id", convID, "err", err)
 		return // not acked — retried via processPending
 	}
 	if wait == nil {
@@ -991,7 +1011,24 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 
 	if err := c.resumeWalk(ctx, wait, status); err != nil {
 		c.log.Error("automation consumer: resume walk", "run_id", wait.RunID, "node_id", wait.NodeID, "err", err)
+		return // not acked, row not deleted — retried via processPending
+	}
+	// Only delete once the walk has actually resumed, so a crash or error
+	// above leaves the row for the next redelivery to retry instead of
+	// silently losing it — see FindPendingAgentWait's docstring.
+	if err := c.repo.DeletePendingAgentWait(ctx, wait.ID); err != nil {
+		c.log.Error("automation consumer: delete pending agent wait", "id", wait.ID, "err", err)
 		return // not acked — retried via processPending
+	}
+	// finalizeRunIfDone must run after the delete above, not before — it
+	// counts this same table, so run it any earlier (e.g. from inside
+	// resumeWalk) and it would still see this now-resolved wait as
+	// outstanding. A failure here is logged but doesn't block the ack: the
+	// resume itself already succeeded and its row is already gone, so
+	// redelivery can't retry this step anyway — it would just re-find
+	// nothing and ack immediately (see the wait == nil branch above).
+	if err := c.finalizeRunIfDone(ctx, wait.RunID); err != nil {
+		c.log.Error("automation consumer: finalize run", "run_id", wait.RunID, "err", err)
 	}
 	c.ack(ctx, events.StreamAgentConversationStatus, msg.ID)
 }
@@ -1000,7 +1037,17 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 // conversation reaches a terminal status. On anything other than "finished"
 // (the agent session itself failed or was stopped), the node's step is
 // recorded as failed and the walk does not continue past it — mirroring how
-// every other node type's own error already stops that branch.
+// every other node type's own error already stops that branch. Does NOT
+// call finalizeRunIfDone itself — the caller must do that only after
+// deleting wait's row (finalizeRunIfDone counts the same table, so calling
+// it any earlier would still see this not-yet-deleted wait as outstanding).
+//
+// A trigger_ai_agent node can fan out to several conversations that all
+// share wait.NodeID (see walkAction) — so before walking that node's
+// outgoing edges, this checks whether any sibling conversation is still
+// outstanding and, if this is the last one, whether any sibling (or this
+// one) failed/stopped. Only proceeds past the node once every conversation
+// has resolved AND every one of them finished successfully.
 func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom.PendingAgentWait, status string) error {
 	automation, err := c.repo.FindAutomationByID(ctx, wait.AutomationID)
 	if err != nil {
@@ -1018,14 +1065,37 @@ func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom
 		}); err != nil {
 			return fmt.Errorf("record failed run step: %w", err)
 		}
-		return c.finalizeRunIfDone(ctx, wait.RunID)
 	}
 
 	// Not an error if the automation was archived/reverted-to-draft while
-	// this wait was outstanding — same as executeRun's own check — but the
-	// run still needs closing out so it doesn't stay "running" forever.
+	// this wait was outstanding — same as executeRun's own check.
 	if automation.Status != automationdom.StatusActive {
-		return c.finalizeRunIfDone(ctx, wait.RunID)
+		return nil
+	}
+
+	// wait's own row hasn't been deleted yet (the caller does that after
+	// this returns), so a count of 1 here means every sibling has already
+	// resolved and this is the last one.
+	stillPending, err := c.repo.CountPendingAgentWaitsForNode(ctx, wait.RunID, wait.NodeID)
+	if err != nil {
+		return fmt.Errorf("count pending agent waits for node: %w", err)
+	}
+	if stillPending > 1 {
+		return nil
+	}
+	if status != "finished" {
+		return nil
+	}
+	steps, err := c.repo.ListRunStepsByRun(ctx, wait.RunID)
+	if err != nil {
+		return fmt.Errorf("list run steps: %w", err)
+	}
+	for _, s := range steps {
+		if s.NodeID == wait.NodeID && s.Status == automationdom.RunStepFailed {
+			// A sibling conversation failed/stopped — don't continue past
+			// this node, mirroring the single-conversation rule above.
+			return nil
+		}
 	}
 
 	return c.resumeWalkFrom(ctx, automation, wait.RunID, wait.ProjectID, wait.NodeID, wait.Context)
@@ -1035,7 +1105,8 @@ func (c *AutomationConsumer) resumeWalk(ctx context.Context, wait *automationdom
 // delay.ResumeAt has passed — the wait-node counterpart to resumeWalk. A
 // delay has no failure outcome to report (unlike a conversation that can
 // come back failed/stopped), so it always continues to the paused node's
-// outgoing edges once the automation is confirmed still active.
+// outgoing edges once the automation is confirmed still active. Does NOT
+// call finalizeRunIfDone itself — see resumeWalk's identical note.
 func (c *AutomationConsumer) resumeAfterDelay(ctx context.Context, delay *automationdom.PendingDelay) error {
 	automation, err := c.repo.FindAutomationByID(ctx, delay.AutomationID)
 	if err != nil {
@@ -1044,7 +1115,7 @@ func (c *AutomationConsumer) resumeAfterDelay(ctx context.Context, delay *automa
 	// Not an error if the automation was archived/reverted-to-draft while
 	// this delay was outstanding — see resumeWalk's identical check.
 	if automation.Status != automationdom.StatusActive {
-		return c.finalizeRunIfDone(ctx, delay.RunID)
+		return nil
 	}
 	return c.resumeWalkFrom(ctx, automation, delay.RunID, delay.ProjectID, delay.NodeID, delay.Context)
 }
@@ -1115,7 +1186,7 @@ func (c *AutomationConsumer) resumeWalkFrom(ctx context.Context, automation *aut
 		w.walk(ctx, e.TargetNodeID)
 	}
 
-	return c.finalizeRunIfDone(ctx, runID)
+	return nil
 }
 
 // walker holds the mutable state of a single graph walk.
@@ -1764,18 +1835,24 @@ const maxCallAPIResponseBody = 4096
 // A non-2xx response is treated as a Go error (walk-stopping, same as any
 // other action's failure), not a "skipped" no-op.
 func (c *AutomationConsumer) applyCallAPI(ctx context.Context, cfg automationdom.ActionConfig, vars map[string]string) (bool, json.RawMessage, error) {
-	url := vartemplate.Render(cfg.URL, vars)
+	// URL-escape substituted values (not the static template text around
+	// them) so an interpolated task title or sprint name containing '&',
+	// '#', spaces, etc. can't alter the URL's structure — e.g. add query
+	// parameters the template didn't intend. Body is left as plain Render:
+	// it's the request payload, not something that affects request
+	// routing/headers, so raw substitution there isn't a protocol-level risk.
+	reqURL := vartemplate.RenderEscaped(cfg.URL, vars, url.QueryEscape)
 	body := vartemplate.Render(cfg.Body, vars)
 	var bodyReader io.Reader
 	if body != "" {
 		bodyReader = strings.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(cfg.Method), url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(cfg.Method), reqURL, bodyReader)
 	if err != nil {
 		return false, nil, fmt.Errorf("call_api: build request: %w", err)
 	}
 	for k, v := range cfg.Headers {
-		req.Header.Set(k, vartemplate.Render(v, vars))
+		req.Header.Set(k, vartemplate.RenderEscaped(v, vars, vartemplate.StripNewlines))
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -2105,7 +2182,7 @@ func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid
 		}
 		anyDiff := false
 		for k, v := range upd.CustomFields {
-			if existing, ok := task.CustomFields[k]; !ok || fmt.Sprintf("%v", existing) != fmt.Sprintf("%v", v) {
+			if existing, ok := task.CustomFields[k]; !ok || !customFieldValuesEqual(existing, v) {
 				anyDiff = true
 			}
 			newFields[k] = v
@@ -2262,10 +2339,20 @@ func (c *AutomationConsumer) applyUpdateSprint(ctx context.Context, projectID uu
 	if err != nil {
 		return false, fmt.Errorf("update_sprint: %w", err)
 	}
-	// Mutate in place (mirrors applyUpdateTask) so a later node in the same
-	// walk — including a subsequent resolveSprintFor call — sees the
-	// change immediately.
-	*target = *updated
+	if sprint != nil {
+		// sprint (not target) is the walker's own long-lived object for a
+		// Sprint-triggered walk (see resolveSprintFor: target == sprint
+		// whenever sprint is non-nil) — mutate it in place, mirroring
+		// applyUpdateTask, so a later node in the same walk sees the
+		// change immediately without re-fetching. A task-derived target
+		// (sprint == nil here) instead came from sprintRepo.FindSprintByID
+		// and may be a pointer shared via caching — never mutate that one
+		// in place, since it could corrupt state visible to unrelated
+		// callers. A later resolveSprintFor call for the same task
+		// re-fetches fresh regardless, so nothing is lost by leaving it
+		// alone.
+		*sprint = *updated
+	}
 	return true, nil
 }
 
@@ -2293,8 +2380,31 @@ func (c *AutomationConsumer) applyCompleteSprint(ctx context.Context, projectID 
 	if err != nil {
 		return false, fmt.Errorf("complete_sprint: %w", err)
 	}
-	*target = *updated
+	if sprint != nil {
+		// See applyUpdateSprint's identical guard for why this only mutates
+		// in place when sprint (the walker's own object) is what resolved,
+		// never a task-derived, possibly cache-shared pointer.
+		*sprint = *updated
+	}
 	return true, nil
+}
+
+// customFieldValuesEqual compares two custom-field values (each already
+// json.Unmarshaled into any, so numbers are float64, objects are
+// map[string]any, etc.) by their canonical JSON encoding rather than
+// fmt.Sprintf("%v", ...) — %v can miscompare structured values (map key
+// order isn't guaranteed by %v the way json.Marshal's is) and, more subtly,
+// can also treat values as equal that only coincidentally stringify the
+// same way. Marshal errors (e.g. an unsupported type slipping through) are
+// treated as "not equal" — fail toward re-applying the update rather than
+// silently skipping a real change.
+func customFieldValuesEqual(a, b any) bool {
+	aj, aErr := json.Marshal(a)
+	bj, bErr := json.Marshal(b)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return bytes.Equal(aj, bj)
 }
 
 // sortedUUIDs and sortedStrings give applyUpdateTask a stable comparison

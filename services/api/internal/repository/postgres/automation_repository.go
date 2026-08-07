@@ -779,11 +779,11 @@ func (r *AutomationRepository) CreatePendingAgentWait(ctx context.Context, w *au
 	return err
 }
 
-// ClaimPendingAgentWait implements automationdom.Repository.ClaimPendingAgentWait.
-func (r *AutomationRepository) ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
+// FindPendingAgentWait implements automationdom.Repository.FindPendingAgentWait.
+func (r *AutomationRepository) FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
 	const q = `
-		DELETE FROM automation_pending_agent_waits WHERE conversation_id = $1
-		RETURNING id, run_id, node_id, automation_id, conversation_id, project_id, context, created_at`
+		SELECT id, run_id, node_id, automation_id, conversation_id, project_id, context, created_at
+		FROM automation_pending_agent_waits WHERE conversation_id = $1`
 	var rec pendingAgentWaitRecord
 	if err := r.db.GetContext(ctx, &rec, q, conversationID.String()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -794,10 +794,28 @@ func (r *AutomationRepository) ClaimPendingAgentWait(ctx context.Context, conver
 	return rec.toDomain()
 }
 
+// DeletePendingAgentWait implements automationdom.Repository.DeletePendingAgentWait.
+func (r *AutomationRepository) DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM automation_pending_agent_waits WHERE id = $1`, id.String())
+	return err
+}
+
 // CountPendingAgentWaits implements automationdom.Repository.CountPendingAgentWaits.
 func (r *AutomationRepository) CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error) {
 	var count int
 	if err := r.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM automation_pending_agent_waits WHERE run_id = $1`, runID.String()); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountPendingAgentWaitsForNode implements automationdom.Repository.CountPendingAgentWaitsForNode.
+func (r *AutomationRepository) CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error) {
+	var count int
+	if err := r.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM automation_pending_agent_waits WHERE run_id = $1 AND node_id = $2`,
+		runID.String(), nodeID.String(),
+	); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -819,11 +837,11 @@ func (r *AutomationRepository) CreatePendingDelay(ctx context.Context, d *automa
 	return err
 }
 
-// ClaimDueDelays implements automationdom.Repository.ClaimDueDelays.
-func (r *AutomationRepository) ClaimDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error) {
+// ListDueDelays implements automationdom.Repository.ListDueDelays.
+func (r *AutomationRepository) ListDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error) {
 	const q = `
-		DELETE FROM automation_pending_delays WHERE resume_at <= NOW()
-		RETURNING id, run_id, node_id, automation_id, project_id, context, resume_at, created_at`
+		SELECT id, run_id, node_id, automation_id, project_id, context, resume_at, created_at
+		FROM automation_pending_delays WHERE resume_at <= NOW()`
 	var recs []pendingDelayRecord
 	if err := r.db.SelectContext(ctx, &recs, q); err != nil {
 		return nil, err
@@ -837,6 +855,12 @@ func (r *AutomationRepository) ClaimDueDelays(ctx context.Context) ([]*automatio
 		out = append(out, d)
 	}
 	return out, nil
+}
+
+// DeletePendingDelay implements automationdom.Repository.DeletePendingDelay.
+func (r *AutomationRepository) DeletePendingDelay(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM automation_pending_delays WHERE id = $1`, id.String())
+	return err
 }
 
 // CountPendingDelays implements automationdom.Repository.CountPendingDelays.

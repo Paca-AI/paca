@@ -457,18 +457,35 @@ func (f *fakePauseResumeRepo) CreatePendingAgentWait(_ context.Context, w *autom
 	f.pendingWaits[w.ConversationID] = w
 	return nil
 }
-func (f *fakePauseResumeRepo) ClaimPendingAgentWait(_ context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
+func (f *fakePauseResumeRepo) FindPendingAgentWait(_ context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
 	w, ok := f.pendingWaits[conversationID]
 	if !ok {
 		return nil, nil
 	}
-	delete(f.pendingWaits, conversationID)
 	return w, nil
+}
+func (f *fakePauseResumeRepo) DeletePendingAgentWait(_ context.Context, id uuid.UUID) error {
+	for convID, w := range f.pendingWaits {
+		if w.ID == id {
+			delete(f.pendingWaits, convID)
+			return nil
+		}
+	}
+	return nil
 }
 func (f *fakePauseResumeRepo) CountPendingAgentWaits(_ context.Context, runID uuid.UUID) (int, error) {
 	count := 0
 	for _, w := range f.pendingWaits {
 		if w.RunID == runID {
+			count++
+		}
+	}
+	return count, nil
+}
+func (f *fakePauseResumeRepo) CountPendingAgentWaitsForNode(_ context.Context, runID, nodeID uuid.UUID) (int, error) {
+	count := 0
+	for _, w := range f.pendingWaits {
+		if w.RunID == runID && w.NodeID == nodeID {
 			count++
 		}
 	}
@@ -481,16 +498,19 @@ func (f *fakePauseResumeRepo) CreatePendingDelay(_ context.Context, d *automatio
 	f.pendingDelays[d.ID] = d
 	return nil
 }
-func (f *fakePauseResumeRepo) ClaimDueDelays(_ context.Context) ([]*automationdom.PendingDelay, error) {
+func (f *fakePauseResumeRepo) ListDueDelays(_ context.Context) ([]*automationdom.PendingDelay, error) {
 	now := time.Now()
 	var out []*automationdom.PendingDelay
-	for id, d := range f.pendingDelays {
+	for _, d := range f.pendingDelays {
 		if !d.ResumeAt.After(now) {
 			out = append(out, d)
-			delete(f.pendingDelays, id)
 		}
 	}
 	return out, nil
+}
+func (f *fakePauseResumeRepo) DeletePendingDelay(_ context.Context, id uuid.UUID) error {
+	delete(f.pendingDelays, id)
+	return nil
 }
 func (f *fakePauseResumeRepo) CountPendingDelays(_ context.Context, runID uuid.UUID) (int, error) {
 	count := 0
@@ -637,6 +657,138 @@ func TestTriggerAIAgentPauseResume_Failed_DoesNotContinueAndFailsRun(t *testing.
 	}
 }
 
+// newFanOutPauseResumeFixture mirrors newPauseResumeFixture but seeds TWO
+// PendingAgentWait rows sharing the same agentNode.ID — the shape
+// cfg.Target fan-out produces when a trigger_ai_agent node starts a
+// conversation per resolved task (see walkAction's conversationIDsFromDetail
+// loop) — instead of driving the real fan-out dispatch through runAction.
+func newFanOutPauseResumeFixture(t *testing.T) (c *AutomationConsumer, client *redis.Client, repo *fakePauseResumeRepo, updater *fakeTaskUpdater, runID uuid.UUID, agentNodeID uuid.UUID, convA, convB uuid.UUID) {
+	t.Helper()
+	updater = &fakeTaskUpdater{}
+	task := &taskdom.Task{ID: uuid.New()}
+	automationID := uuid.New()
+
+	cfg, _ := json.Marshal(automationdom.ActionConfig{})
+	agentNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionTriggerAIAgent), Config: cfg}
+	updateCfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"reviewed"}}})
+	nextNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateTask), Config: updateCfg}
+	edge := &automationdom.Edge{ID: uuid.New(), AutomationID: automationID, SourceNodeID: agentNode.ID, TargetNodeID: nextNode.ID}
+
+	repo = &fakePauseResumeRepo{
+		automation: &automationdom.Automation{ID: automationID, Status: automationdom.StatusActive},
+		nodes:      []*automationdom.Node{agentNode, nextNode},
+		edges:      []*automationdom.Edge{edge},
+	}
+	taskReader := &fakeAutomationTaskReader{byID: map[uuid.UUID]*taskdom.Task{task.ID: task}}
+	c, client = newTestConsumerWithRedis(t, repo, taskReader, nil)
+	c.taskSvc = updater
+
+	runID = uuid.New()
+	if err := repo.CreateRun(context.Background(), &automationdom.Run{ID: runID, AutomationID: automationID, Status: automationdom.RunStatusRunning}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	// Both conversations share agentNode.ID and carry the same task in
+	// their walk context — the shape a cfg.Target fan-out across several
+	// resolved tasks WOULD differ on (each gets its own task), but the
+	// gating logic under test only cares about NodeID/RunID, not which
+	// task each conversation is scoped to.
+	convA, convB = uuid.New(), uuid.New()
+	for _, convID := range []uuid.UUID{convA, convB} {
+		if err := repo.CreatePendingAgentWait(context.Background(), &automationdom.PendingAgentWait{
+			ID:             uuid.New(),
+			RunID:          runID,
+			NodeID:         agentNode.ID,
+			AutomationID:   automationID,
+			ConversationID: convID,
+			Context:        automationdom.WalkContext{TaskID: &task.ID},
+			CreatedAt:      time.Now(),
+		}); err != nil {
+			t.Fatalf("seed pending agent wait: %v", err)
+		}
+	}
+	if len(repo.pendingWaits) != 2 {
+		t.Fatalf("expected two pending agent waits recorded, got %d", len(repo.pendingWaits))
+	}
+	return c, client, repo, updater, runID, agentNode.ID, convA, convB
+}
+
+// TestTriggerAIAgentFanOut_WaitsForEverySiblingBeforeContinuing is a
+// regression test for the bug where a trigger_ai_agent node fanned out to
+// several conversations sharing one NodeID, and each terminal-status event
+// independently walked that node's outgoing edges — so the FIRST conversation
+// to finish fired downstream actions while its siblings were still in
+// flight, and firing happened again for each subsequent one too.
+func TestTriggerAIAgentFanOut_WaitsForEverySiblingBeforeContinuing(t *testing.T) {
+	c, client, repo, updater, runID, agentNodeID, convA, convB := newFanOutPauseResumeFixture(t)
+	defer func() { _ = client.Close() }()
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-1", Values: map[string]any{
+		"conversation_id": convA.String(),
+		"status":          "finished",
+	}})
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to NOT run after only the first of two conversations finished, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 1 {
+		t.Fatalf("expected the second conversation's wait to remain pending, got %d remaining", len(repo.pendingWaits))
+	}
+	if run := repo.runs[runID]; run.Status != automationdom.RunStatusRunning {
+		t.Fatalf("expected the run to still be running with a sibling outstanding, got %+v", run)
+	}
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-2", Values: map[string]any{
+		"conversation_id": convB.String(),
+		"status":          "finished",
+	}})
+	if updater.calls != 1 {
+		t.Fatalf("expected update_task to run exactly once, only after BOTH conversations finished, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 0 {
+		t.Fatalf("expected no pending agent waits left, got %d", len(repo.pendingWaits))
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusCompleted {
+		t.Fatalf("expected the run to finalize as completed, got %+v", run)
+	}
+	_ = agentNodeID
+}
+
+// TestTriggerAIAgentFanOut_OneSiblingFailingBlocksDownstream confirms the
+// AND semantics: if any one of the fanned-out conversations fails/stops,
+// the node's outgoing edges never fire, even once every conversation has
+// resolved — mirroring the existing single-conversation rule that a
+// non-"finished" status blocks progression past the node.
+func TestTriggerAIAgentFanOut_OneSiblingFailingBlocksDownstream(t *testing.T) {
+	c, client, repo, updater, runID, agentNodeID, convA, convB := newFanOutPauseResumeFixture(t)
+	defer func() { _ = client.Close() }()
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-1", Values: map[string]any{
+		"conversation_id": convA.String(),
+		"status":          "failed",
+	}})
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-2", Values: map[string]any{
+		"conversation_id": convB.String(),
+		"status":          "finished",
+	}})
+
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to never run when a sibling conversation failed, got %d calls", updater.calls)
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusFailed {
+		t.Fatalf("expected the run to finalize as failed, got %+v", run)
+	}
+	var sawFailedStep bool
+	for _, s := range repo.runSteps {
+		if s.NodeID == agentNodeID && s.Status == automationdom.RunStepFailed {
+			sawFailedStep = true
+		}
+	}
+	if !sawFailedStep {
+		t.Fatal("expected a failed run step recorded for the trigger_ai_agent node")
+	}
+}
+
 // --- wait pause/resume --------------------------------------------------------
 
 // newWaitPauseFixture builds a Wait -> Update Task graph (two action nodes,
@@ -686,12 +838,12 @@ func newWaitPauseFixture(t *testing.T) (c *AutomationConsumer, repo *fakePauseRe
 	return c, repo, updater, runID
 }
 
-func TestWaitPauseResume_NotYetDue_ClaimDueDelaysLeavesItPending(t *testing.T) {
+func TestWaitPauseResume_NotYetDue_ListDueDelaysLeavesItPending(t *testing.T) {
 	_, repo, _, _ := newWaitPauseFixture(t)
 
-	due, err := repo.ClaimDueDelays(context.Background())
+	due, err := repo.ListDueDelays(context.Background())
 	if err != nil {
-		t.Fatalf("ClaimDueDelays: %v", err)
+		t.Fatalf("ListDueDelays: %v", err)
 	}
 	if len(due) != 0 {
 		t.Fatalf("expected no delays due yet (resume_at is ~1 minute out), got %d", len(due))
@@ -710,19 +862,31 @@ func TestWaitPauseResume_ResumesAfterDelayPasses(t *testing.T) {
 		d.ResumeAt = time.Now().Add(-time.Second)
 	}
 
-	due, err := repo.ClaimDueDelays(context.Background())
+	due, err := repo.ListDueDelays(context.Background())
 	if err != nil {
-		t.Fatalf("ClaimDueDelays: %v", err)
+		t.Fatalf("ListDueDelays: %v", err)
 	}
 	if len(due) != 1 {
-		t.Fatalf("expected exactly one due delay claimed, got %d", len(due))
+		t.Fatalf("expected exactly one due delay listed, got %d", len(due))
 	}
-	if len(repo.pendingDelays) != 0 {
-		t.Fatalf("expected the delay to be removed once claimed, got %d remaining", len(repo.pendingDelays))
+	if len(repo.pendingDelays) != 1 {
+		t.Fatalf("expected the delay to remain in place until the resume actually succeeds, got %d remaining", len(repo.pendingDelays))
 	}
 
 	if err := c.resumeAfterDelay(context.Background(), due[0]); err != nil {
 		t.Fatalf("resumeAfterDelay: %v", err)
+	}
+	// Mirrors WaitScheduler.tick: only delete once resumeAfterDelay
+	// succeeds, then finalize (which must run after the delete — see
+	// resumeAfterDelay's docstring).
+	if err := repo.DeletePendingDelay(context.Background(), due[0].ID); err != nil {
+		t.Fatalf("DeletePendingDelay: %v", err)
+	}
+	if len(repo.pendingDelays) != 0 {
+		t.Fatalf("expected the delay to be removed after a successful resume, got %d remaining", len(repo.pendingDelays))
+	}
+	if err := c.finalizeRunIfDone(context.Background(), runID); err != nil {
+		t.Fatalf("finalizeRunIfDone: %v", err)
 	}
 
 	if updater.calls != 1 {
@@ -805,16 +969,23 @@ func TestWaitPauseResume_SprintTriggered_PreservesSprintContext(t *testing.T) {
 		d.ResumeAt = time.Now().Add(-time.Second)
 	}
 
-	due, err := repo.ClaimDueDelays(context.Background())
+	due, err := repo.ListDueDelays(context.Background())
 	if err != nil {
-		t.Fatalf("ClaimDueDelays: %v", err)
+		t.Fatalf("ListDueDelays: %v", err)
 	}
 	if len(due) != 1 {
-		t.Fatalf("expected exactly one due delay claimed, got %d", len(due))
+		t.Fatalf("expected exactly one due delay listed, got %d", len(due))
 	}
 
 	if err := c.resumeAfterDelay(context.Background(), due[0]); err != nil {
 		t.Fatalf("resumeAfterDelay: %v", err)
+	}
+	// Mirrors WaitScheduler.tick: delete then finalize, in that order.
+	if err := repo.DeletePendingDelay(context.Background(), due[0].ID); err != nil {
+		t.Fatalf("DeletePendingDelay: %v", err)
+	}
+	if err := c.finalizeRunIfDone(context.Background(), runID); err != nil {
+		t.Fatalf("finalizeRunIfDone: %v", err)
 	}
 
 	if updater.updateCalls != 1 {
@@ -862,6 +1033,48 @@ func TestApplyUpdateTask_Status_AppliesWhenDifferent(t *testing.T) {
 	}
 	if task.StatusID == nil || *task.StatusID != newStatus {
 		t.Fatalf("expected task.StatusID mutated in place to %v, got %v", newStatus, task.StatusID)
+	}
+}
+
+func TestCustomFieldValuesEqual(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b any
+		want bool
+	}{
+		{"equal numbers", float64(5), float64(5), true},
+		{"equal strings", "x", "x", true},
+		{"different numbers", float64(5), float64(6), false},
+		// The bug fmt.Sprintf("%v", ...) missed: a number and the string
+		// of that same number stringify identically via %v ("5" == "5")
+		// but are semantically different custom-field values (a type
+		// change, not a no-op).
+		{"number vs its string form", float64(5), "5", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := customFieldValuesEqual(tc.a, tc.b); got != tc.want {
+				t.Fatalf("customFieldValuesEqual(%#v, %#v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyUpdateTask_CustomField_NumberVsStringIsDetectedAsChanged(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"points": float64(5)}}
+
+	// Same value under fmt.Sprintf("%v", ...) ("5" == "5") but a genuine
+	// type change (number -> string) — must be detected as a real diff,
+	// not silently skipped as a no-op.
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task,
+		&automationdom.TaskFieldUpdate{CustomFields: map[string]any{"points": "5"}}, "test-automation", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied || updater.calls != 1 {
+		t.Fatalf("expected the type change to be detected and applied, got applied=%v calls=%d", applied, updater.calls)
 	}
 }
 
@@ -1282,17 +1495,26 @@ func (f *fakePluginTriggerRepo) ListRunStepsByRun(context.Context, uuid.UUID) ([
 func (f *fakePluginTriggerRepo) CreatePendingAgentWait(context.Context, *automationdom.PendingAgentWait) error {
 	return nil
 }
-func (f *fakePluginTriggerRepo) ClaimPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
+func (f *fakePluginTriggerRepo) FindPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
 	return nil, nil
 }
+func (f *fakePluginTriggerRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error {
+	return nil
+}
 func (f *fakePluginTriggerRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakePluginTriggerRepo) CountPendingAgentWaitsForNode(context.Context, uuid.UUID, uuid.UUID) (int, error) {
 	return 0, nil
 }
 func (f *fakePluginTriggerRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
 	return nil
 }
-func (f *fakePluginTriggerRepo) ClaimDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
+func (f *fakePluginTriggerRepo) ListDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
 	return nil, nil
+}
+func (f *fakePluginTriggerRepo) DeletePendingDelay(context.Context, uuid.UUID) error {
+	return nil
 }
 func (f *fakePluginTriggerRepo) CountPendingDelays(context.Context, uuid.UUID) (int, error) {
 	return 0, nil

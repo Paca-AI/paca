@@ -65,25 +65,43 @@ type Repository interface {
 	// CreatePendingAgentWait records that a graph walk is paused at
 	// w.NodeID, waiting on w.ConversationID to reach a terminal status.
 	CreatePendingAgentWait(ctx context.Context, w *PendingAgentWait) error
-	// ClaimPendingAgentWait atomically deletes and returns the pending wait
-	// for conversationID, or (nil, nil) if none exists — either the
-	// conversation never had one (most conversations aren't automation-
-	// driven at all) or it was already claimed by an earlier, at-least-once
-	// redelivery of the same terminal-status message.
-	ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*PendingAgentWait, error)
+	// FindPendingAgentWait returns the pending wait for conversationID, or
+	// (nil, nil) if none exists — either the conversation never had one
+	// (most conversations aren't automation-driven at all) or it was
+	// already resolved and deleted by an earlier, at-least-once redelivery
+	// of the same terminal-status message. Read-only by design: the caller
+	// must not delete the row (via DeletePendingAgentWait) until it has
+	// confirmed the walk actually resumed, so a crash or error mid-resume
+	// leaves the row in place for the next redelivery to retry instead of
+	// silently losing it.
+	FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*PendingAgentWait, error)
+	// DeletePendingAgentWait removes a pending wait once its walk has
+	// successfully resumed — see FindPendingAgentWait.
+	DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error
 	// CountPendingAgentWaits reports how many waits are still outstanding
 	// for runID — used to decide whether a run can be finalized yet.
 	CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error)
+	// CountPendingAgentWaitsForNode reports how many waits are still
+	// outstanding for nodeID specifically within runID — a trigger_ai_agent
+	// node can fan out to several conversations sharing the same NodeID
+	// (see walkAction), and the graph walk must not continue past that node
+	// until every one of them has resolved. Includes the caller's own
+	// not-yet-deleted row, so a count of 1 means the caller is the last one
+	// outstanding.
+	CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error)
 
 	// --- wait pause/resume -------------------------------------------------------
 
 	// CreatePendingDelay records that a graph walk is paused at d.NodeID
 	// until d.ResumeAt.
 	CreatePendingDelay(ctx context.Context, d *PendingDelay) error
-	// ClaimDueDelays atomically deletes and returns every pending delay
-	// whose ResumeAt has passed — a scheduler tick can have several due at
-	// once, unlike ClaimPendingAgentWait's single-row-by-key claim.
-	ClaimDueDelays(ctx context.Context) ([]*PendingDelay, error)
+	// ListDueDelays returns every pending delay whose ResumeAt has passed,
+	// without deleting them — see FindPendingAgentWait's docstring for why
+	// claiming must not delete until the resume actually succeeds.
+	ListDueDelays(ctx context.Context) ([]*PendingDelay, error)
+	// DeletePendingDelay removes a pending delay once its walk has
+	// successfully resumed — see ListDueDelays.
+	DeletePendingDelay(ctx context.Context, id uuid.UUID) error
 	// CountPendingDelays reports how many delays are still outstanding for
 	// runID — used alongside CountPendingAgentWaits to decide whether a run
 	// can be finalized yet.

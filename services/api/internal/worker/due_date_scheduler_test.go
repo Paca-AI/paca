@@ -52,17 +52,26 @@ func (f *fakeDueDateRepo) ListRunStepsByRun(context.Context, uuid.UUID) ([]*auto
 func (f *fakeDueDateRepo) CreatePendingAgentWait(context.Context, *automationdom.PendingAgentWait) error {
 	return nil
 }
-func (f *fakeDueDateRepo) ClaimPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
+func (f *fakeDueDateRepo) FindPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
 	return nil, nil
 }
+func (f *fakeDueDateRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error {
+	return nil
+}
 func (f *fakeDueDateRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakeDueDateRepo) CountPendingAgentWaitsForNode(context.Context, uuid.UUID, uuid.UUID) (int, error) {
 	return 0, nil
 }
 func (f *fakeDueDateRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
 	return nil
 }
-func (f *fakeDueDateRepo) ClaimDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
+func (f *fakeDueDateRepo) ListDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
 	return nil, nil
+}
+func (f *fakeDueDateRepo) DeletePendingDelay(context.Context, uuid.UUID) error {
+	return nil
 }
 func (f *fakeDueDateRepo) CountPendingDelays(context.Context, uuid.UUID) (int, error) {
 	return 0, nil

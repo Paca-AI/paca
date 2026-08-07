@@ -232,9 +232,14 @@ func (c *CachedRepository) CreatePendingAgentWait(ctx context.Context, w *automa
 	return c.repo.CreatePendingAgentWait(ctx, w)
 }
 
-// ClaimPendingAgentWait delegates to the underlying repository.
-func (c *CachedRepository) ClaimPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
-	return c.repo.ClaimPendingAgentWait(ctx, conversationID)
+// FindPendingAgentWait delegates to the underlying repository.
+func (c *CachedRepository) FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	return c.repo.FindPendingAgentWait(ctx, conversationID)
+}
+
+// DeletePendingAgentWait delegates to the underlying repository.
+func (c *CachedRepository) DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error {
+	return c.repo.DeletePendingAgentWait(ctx, id)
 }
 
 // CountPendingAgentWaits delegates to the underlying repository.
@@ -242,14 +247,24 @@ func (c *CachedRepository) CountPendingAgentWaits(ctx context.Context, runID uui
 	return c.repo.CountPendingAgentWaits(ctx, runID)
 }
 
+// CountPendingAgentWaitsForNode delegates to the underlying repository.
+func (c *CachedRepository) CountPendingAgentWaitsForNode(ctx context.Context, runID, nodeID uuid.UUID) (int, error) {
+	return c.repo.CountPendingAgentWaitsForNode(ctx, runID, nodeID)
+}
+
 // CreatePendingDelay delegates to the underlying repository.
 func (c *CachedRepository) CreatePendingDelay(ctx context.Context, d *automationdom.PendingDelay) error {
 	return c.repo.CreatePendingDelay(ctx, d)
 }
 
-// ClaimDueDelays delegates to the underlying repository.
-func (c *CachedRepository) ClaimDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error) {
-	return c.repo.ClaimDueDelays(ctx)
+// ListDueDelays delegates to the underlying repository.
+func (c *CachedRepository) ListDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error) {
+	return c.repo.ListDueDelays(ctx)
+}
+
+// DeletePendingDelay delegates to the underlying repository.
+func (c *CachedRepository) DeletePendingDelay(ctx context.Context, id uuid.UUID) error {
+	return c.repo.DeletePendingDelay(ctx, id)
 }
 
 // CountPendingDelays delegates to the underlying repository.

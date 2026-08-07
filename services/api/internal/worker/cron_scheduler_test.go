@@ -59,17 +59,26 @@ func (f *fakeCronRepo) ListRunStepsByRun(context.Context, uuid.UUID) ([]*automat
 func (f *fakeCronRepo) CreatePendingAgentWait(context.Context, *automationdom.PendingAgentWait) error {
 	return nil
 }
-func (f *fakeCronRepo) ClaimPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
+func (f *fakeCronRepo) FindPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
 	return nil, nil
 }
+func (f *fakeCronRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error {
+	return nil
+}
 func (f *fakeCronRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakeCronRepo) CountPendingAgentWaitsForNode(context.Context, uuid.UUID, uuid.UUID) (int, error) {
 	return 0, nil
 }
 func (f *fakeCronRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
 	return nil
 }
-func (f *fakeCronRepo) ClaimDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
+func (f *fakeCronRepo) ListDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
 	return nil, nil
+}
+func (f *fakeCronRepo) DeletePendingDelay(context.Context, uuid.UUID) error {
+	return nil
 }
 func (f *fakeCronRepo) CountPendingDelays(context.Context, uuid.UUID) (int, error) {
 	return 0, nil
