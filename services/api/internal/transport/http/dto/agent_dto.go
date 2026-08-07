@@ -387,6 +387,8 @@ type AgentConversationResponse struct {
 	ActorUserID         *uuid.UUID `json:"actor_user_id,omitempty"`
 	Status              string     `json:"status"`
 	IterationCount      int        `json:"iteration_count"`
+	// Omitted on list responses, which do not load it.
+	EventCount          *int       `json:"event_count,omitempty"`
 	BranchName          *string    `json:"branch_name,omitempty"`
 	PRUrl               *string    `json:"pr_url,omitempty"`
 	StartedAt           *time.Time `json:"started_at,omitempty"`
@@ -424,6 +426,7 @@ func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResp
 		ActorUserID:         c.ActorUserID,
 		Status:              c.Status,
 		IterationCount:      c.IterationCount,
+		EventCount:          c.EventCount,
 		BranchName:          c.BranchName,
 		PRUrl:               c.PRUrl,
 		StartedAt:           c.StartedAt,

@@ -175,6 +175,12 @@ export interface AgentConversation {
 	actor_user_id?: string | null;
 	status: ConversationStatus;
 	iteration_count: number;
+	/**
+	 * Number of persisted events. Present on a single-conversation read only,
+	 * which is what lets a view open on the newest events without first asking
+	 * how many there are.
+	 */
+	event_count?: number;
 	error_message?: string | null;
 	branch_name?: string | null;
 	pr_url?: string | null;
@@ -415,6 +421,51 @@ export async function getGlobalConversation(
 	>(`/agents/conversations/${conversationId}`);
 	return data.data;
 }
+
+/** The API rejects any limit above this (see parseOffsetLimit). */
+export const CONVERSATION_EVENTS_PAGE_SIZE = 200;
+
+export type ConversationEventPage = {
+	items: AgentConversationEvent[];
+	/** Total events in the conversation, as reported by the server. */
+	total: number;
+};
+
+/**
+ * Fetch one window of a conversation's events, oldest first.
+ *
+ * `event_index` is gapless, so `offset` addresses events directly: offset 200 is
+ * event_index 200, and stays so however many events arrive later.
+ */
+async function fetchConversationEventWindow(
+	path: string,
+	{ offset, limit }: { offset: number; limit: number },
+): Promise<ConversationEventPage> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentConversationEvent[]; total?: number }>
+	>(path, { params: { limit, offset } });
+	const items = data.data.items ?? [];
+	return { items, total: data.data.total ?? offset + items.length };
+}
+
+export const listConversationEventWindow = (
+	projectId: string,
+	conversationId: string,
+	window: { offset: number; limit: number },
+) =>
+	fetchConversationEventWindow(
+		`/projects/${projectId}/conversations/${conversationId}/events`,
+		window,
+	);
+
+export const listGlobalConversationEventWindow = (
+	conversationId: string,
+	window: { offset: number; limit: number },
+) =>
+	fetchConversationEventWindow(
+		`/agents/conversations/${conversationId}/events`,
+		window,
+	);
 
 export async function listGlobalConversationEvents(
 	conversationId: string,
@@ -1292,6 +1343,132 @@ export const globalConversationQueryOptions = (conversationId: string) =>
 	queryOptions({
 		queryKey: ["global-chat", "conversations", conversationId],
 		queryFn: () => getGlobalConversation(conversationId),
+	});
+
+// Must stay outside both ["projects", …] and ["global-chat", …]: the realtime
+// hooks invalidate those prefixes, which would reset this entry.
+export const conversationEventsTailKey = (conversationId: string) => [
+	"conversation-events-tail",
+	conversationId,
+];
+
+/**
+ * Notification channel, not a data source: the realtime hooks write the highest
+ * `event_index` they have seen and observers re-render.
+ */
+export type ConversationEventsTail = { tick: number; index: number | null };
+
+const CONVERSATION_EVENTS_TAIL_INITIAL: ConversationEventsTail = {
+	tick: 0,
+	index: null,
+};
+
+export const conversationEventsTailQueryOptions = (conversationId: string) =>
+	queryOptions({
+		queryKey: conversationEventsTailKey(conversationId),
+		// Never fetched: a refetch would replace the signal with the initial value.
+		queryFn: (): ConversationEventsTail => CONVERSATION_EVENTS_TAIL_INITIAL,
+		enabled: false,
+		initialData: CONVERSATION_EVENTS_TAIL_INITIAL,
+		staleTime: Number.POSITIVE_INFINITY,
+		gcTime: Number.POSITIVE_INFINITY,
+	});
+
+/**
+ * One window of a conversation's events, paged by offset in both directions.
+ *
+ * Keyed outside ["projects", …] and ["global-chat", …] on purpose: an infinite
+ * query refetches every page it holds, so an incidental prefix invalidation
+ * would re-read the whole stream. Nothing may refetch this implicitly, hence the
+ * infinite stale time.
+ */
+export const conversationEventWindowKey = (conversationId: string) => [
+	"conversation-event-window",
+	conversationId,
+];
+
+export const conversationEventCountQueryOptions = ({
+	projectId,
+	conversationId,
+}: {
+	projectId?: string | undefined;
+	conversationId: string;
+}) =>
+	queryOptions({
+		queryKey: [...conversationEventWindowKey(conversationId), "count"],
+		// One row, for its `total`. Only needed against an API that does not
+		// report `event_count` on the conversation itself.
+		queryFn: async () =>
+			(
+				await (projectId === undefined
+					? listGlobalConversationEventWindow(conversationId, {
+							offset: 0,
+							limit: 1,
+						})
+					: listConversationEventWindow(projectId, conversationId, {
+							offset: 0,
+							limit: 1,
+						}))
+			).total,
+		staleTime: Number.POSITIVE_INFINITY,
+	});
+
+/** A page carries its own limit so a short hop cannot overlap what is loaded. */
+type ConversationEventWindowParam = { offset: number; limit: number };
+
+export const conversationEventWindowInfiniteOptions = ({
+	projectId,
+	conversationId,
+	/** Events the conversation is known to hold, used to open on the newest page. */
+	count,
+	/** Highest index realtime has reported, which can be ahead of `count`. */
+	tailIndex,
+	pageSize = CONVERSATION_EVENTS_PAGE_SIZE,
+}: {
+	projectId?: string | undefined;
+	conversationId: string;
+	count: number;
+	tailIndex: number | null;
+	pageSize?: number;
+}) =>
+	infiniteQueryOptions({
+		queryKey: conversationEventWindowKey(conversationId),
+		queryFn: ({ pageParam }: { pageParam: ConversationEventWindowParam }) =>
+			projectId === undefined
+				? listGlobalConversationEventWindow(conversationId, pageParam)
+				: listConversationEventWindow(projectId, conversationId, pageParam),
+		initialPageParam: {
+			offset: Math.max(0, count - pageSize),
+			limit: pageSize,
+		} as ConversationEventWindowParam,
+		getPreviousPageParam: (
+			_first,
+			_all,
+			firstPageParam,
+		): ConversationEventWindowParam | undefined =>
+			firstPageParam.offset > 0
+				? {
+						offset: Math.max(0, firstPageParam.offset - pageSize),
+						// Clamped: the last hop backwards is usually shorter than a full
+						// page, and a full one would refetch events already held.
+						limit: Math.min(pageSize, firstPageParam.offset),
+					}
+				: undefined,
+		getNextPageParam: (
+			lastPage,
+			_all,
+			lastPageParam,
+		): ConversationEventWindowParam | undefined => {
+			// An empty page means the server has nothing further, whatever the
+			// counts say — without this the next param would not advance.
+			if (lastPage.items.length === 0) return undefined;
+			const next = lastPageParam.offset + lastPage.items.length;
+			const known = Math.max(lastPage.total, (tailIndex ?? -1) + 1);
+			return next < known ? { offset: next, limit: pageSize } : undefined;
+		},
+		staleTime: Number.POSITIVE_INFINITY,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 	});
 
 export const globalConversationEventsQueryOptions = (conversationId: string) =>

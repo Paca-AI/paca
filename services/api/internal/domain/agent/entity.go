@@ -209,6 +209,9 @@ type AgentConversation struct {
 	ContainerID    *string
 	HostPort       *int
 	IterationCount int
+	// EventCount is the number of persisted events. Only loaded when a single
+	// conversation is read; nil elsewhere.
+	EventCount *int
 	ErrorMessage   *string
 	RepoPluginID   *uuid.UUID
 	RepoCloneURL   *string

@@ -25,9 +25,7 @@ import {
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
 	chattableAgentsQueryOptions,
-	conversationEventsQueryOptions,
 	conversationQueryOptions,
-	globalConversationEventsQueryOptions,
 	globalConversationQueryOptions,
 	heartbeatConversation,
 	heartbeatGlobalConversation,
@@ -45,6 +43,8 @@ import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 } from "./conversation-to-thread-messages";
+import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
+import { useConversationEventWindow } from "./use-conversation-event-window";
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
@@ -159,11 +159,22 @@ export function ConversationView({
 			? conversationQueryOptions(projectId, conversationId)
 			: globalConversationQueryOptions(conversationId),
 	);
-	const { data: events = [], isLoading: eventsLoading } = useQuery(
-		projectId
-			? conversationEventsQueryOptions(projectId, conversationId)
-			: globalConversationEventsQueryOptions(conversationId),
-	);
+	const {
+		events,
+		isLoading: eventsLoading,
+		hasOlder,
+		isLoadingOlder,
+		loadOlder,
+		newBelow,
+		following,
+		setFollowing,
+		jumpToLatest,
+	} = useConversationEventWindow({
+		projectId,
+		conversationId,
+		eventCount: conversation?.event_count,
+		ready: !convLoading,
+	});
 	// Project scope: GET /projects/:id/agents/:agentId (project members may
 	// always read their own project's agents). Global scope: the caller may
 	// not have agents.read (admin-gated), so this uses the unrestricted
@@ -423,7 +434,27 @@ export function ConversationView({
 			{/* Thread */}
 			<div className="flex-1 min-h-0">
 				<AssistantRuntimeProvider runtime={runtime}>
-					<Thread />
+					<Thread
+						turnAnchor="bottom"
+						// A run starting must not pull a reader who is paging back
+						// through history.
+						scrollToBottomOnRunStart={false}
+						viewportHeader={
+							<LoadOlderEvents
+								hasOlder={hasOlder}
+								isLoadingOlder={isLoadingOlder}
+								loadOlder={loadOlder}
+							/>
+						}
+						viewportOverlay={
+							<TailFollowIndicator
+								newBelow={newBelow}
+								following={following}
+								setFollowing={setFollowing}
+								jumpToLatest={jumpToLatest}
+							/>
+						}
+					/>
 				</AssistantRuntimeProvider>
 			</div>
 

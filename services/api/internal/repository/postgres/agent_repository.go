@@ -98,6 +98,7 @@ type agentConversationRecord struct {
 	ContainerID         *string    `db:"container_id"`
 	HostPort            *int       `db:"host_port"`
 	IterationCount      int64      `db:"iteration_count"`
+	EventCount          *int64     `db:"event_count"`
 	ErrorMessage        *string    `db:"error_message"`
 	RepoPluginID        *string    `db:"repo_plugin_id"`
 	RepoCloneURL        *string    `db:"repo_clone_url"`
@@ -931,7 +932,11 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 // FindConversationByID returns a single conversation by its primary key.
 func (r *AgentRepository) FindConversationByID(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
 	var rec agentConversationRecord
-	if err := r.db.GetContext(ctx, &rec, `SELECT `+conversationCols+` FROM agent_conversations WHERE id = $1`, id.String()); err != nil {
+	const query = `SELECT ` + conversationCols + `,
+		(SELECT COUNT(*) FROM agent_conversation_events e
+		 WHERE e.conversation_id = agent_conversations.id) AS event_count
+		FROM agent_conversations WHERE id = $1`
+	if err := r.db.GetContext(ctx, &rec, query, id.String()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, agentdom.ErrConversationNotFound
 		}
@@ -1353,6 +1358,16 @@ func envVarFromRecord(rec agentEnvVarRecord) *agentdom.AgentEnvironmentVariable 
 	}
 }
 
+// eventCountFromRecord narrows the scanned count, leaving it nil when the query
+// did not select one.
+func eventCountFromRecord(v *int64) *int {
+	if v == nil {
+		return nil
+	}
+	n := int(*v)
+	return &n
+}
+
 func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversation {
 	c := &agentdom.AgentConversation{
 		ID:             mustParseUUID(rec.ID),
@@ -1363,6 +1378,7 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		ContainerID:    rec.ContainerID,
 		HostPort:       rec.HostPort,
 		IterationCount: int(rec.IterationCount),
+		EventCount:     eventCountFromRecord(rec.EventCount),
 		ErrorMessage:   rec.ErrorMessage,
 		RepoCloneURL:   rec.RepoCloneURL,
 		BranchName:     rec.BranchName,

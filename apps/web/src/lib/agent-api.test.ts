@@ -33,6 +33,7 @@ import {
 	getGlobalConversation,
 	heartbeatGlobalConversation,
 	listAgents,
+	listConversationEventWindow,
 	listConversations,
 	listGlobalAgents,
 	listGlobalChatSessions,
@@ -483,6 +484,36 @@ describe("agent-api", () => {
 				`/admin/agents/${AGENT_ID}/acp-bridge-status`,
 			);
 			expect(result).toEqual({ connected: true });
+		});
+	});
+	describe("listConversationEventWindow", () => {
+		it("requests exactly the window it was asked for", async () => {
+			mockGet.mockResolvedValueOnce(ok({ items: [], total: 900 }));
+
+			const page = await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				offset: 700,
+				limit: 200,
+			});
+
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
+				{ params: { limit: 200, offset: 700 } },
+			);
+			expect(page.total).toBe(900);
+		});
+
+		it("infers a total from the window when the API omits one", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ items: [{ event_index: 10 }, { event_index: 11 }] }),
+			);
+
+			const page = await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				offset: 10,
+				limit: 200,
+			});
+
+			expect(page.total).toBe(12);
+			expect(page.items).toHaveLength(2);
 		});
 	});
 });
