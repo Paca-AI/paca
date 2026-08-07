@@ -749,7 +749,9 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                 actor_user_id=trigger.actor_user_id,
             )
             if status.is_terminal():
-                await stream_store.publish_conversation_status(trigger.conversation_id, status.value)
+                await stream_store.publish_conversation_status(
+                    trigger.conversation_id, status.value
+                )
 
     except Exception as exc:
         if not stop_event.is_set() and not pause_event.is_set():

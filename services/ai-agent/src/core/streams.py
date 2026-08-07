@@ -99,7 +99,9 @@ async def publish_conversation_status(conversation_id: str, status: str) -> None
     conversation finishes.
     """
     client = get_client()
-    await client.xadd(CONVERSATION_STATUS_STREAM, {"conversation_id": conversation_id, "status": status})
+    await client.xadd(
+        CONVERSATION_STATUS_STREAM, {"conversation_id": conversation_id, "status": status}
+    )
 
 
 async def publish_realtime(
