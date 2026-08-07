@@ -62,7 +62,8 @@
 			},
 			"aiAgents": {
 				"label": "AI 智能体",
-				"sub": "尚未配置"
+				"sub": "尚未配置",
+				"subActive": "{{count}} 个已配置"
 			}
 		},
 		"myTasks": {

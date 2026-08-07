@@ -62,7 +62,8 @@
 			},
 			"aiAgents": {
 				"label": "Agentes de IA",
-				"sub": "Ninguno configurado"
+				"sub": "Ninguno configurado",
+				"subActive": "{{count}} configurados"
 			}
 		},
 		"myTasks": {

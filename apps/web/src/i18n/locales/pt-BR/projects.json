@@ -1299,9 +1299,8 @@
 			"updated": "Atualizado {{time}}"
 		},
 		"status": {
-			"draft": "Rascunho",
 			"active": "Ativo",
-			"archived": "Arquivado"
+			"inactive": "Inativo"
 		},
 		"createDialog": {
 			"title": "Nova automação",
@@ -1319,10 +1318,7 @@
 			"confirm": "Excluir"
 		},
 		"builder": {
-			"activate": "Ativar",
-			"archive": "Arquivar",
-			"deactivate": "Desativar",
-			"readOnlyNoticeArchived": "Esta automação está arquivada e é somente leitura — automações arquivadas não podem ser editadas.",
+			"toggleActiveLabel": "Ativar ou desativar esta automação",
 			"genericError": "Algo deu errado. Tente novamente.",
 			"taskLessTriggerConnectionError": "Este gatilho não tem uma tarefa alvo definida, então só pode se conectar a uma ação Chamar API ou Acionar agente de IA — condições e as demais ações precisam de uma tarefa para agir.",
 			"collapseSidebar": "Recolher painel",
@@ -1337,7 +1333,12 @@
 			"addCondition": "Adicionar condição",
 			"addAction": "Adicionar ação",
 			"builtIn": "Nativo",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"triggerGroups": {
+				"taskEvents": "Eventos de tarefas",
+				"sprintEvents": "Eventos de sprints",
+				"scheduleWebhook": "Agendamento e webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Gatilho",
@@ -1357,12 +1358,19 @@
 			"due_date_reached": "Prazo atingido",
 			"predecessor_done": "Predecessora(s) concluída(s)",
 			"cron": "Agendamento cron",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "Sprint criado",
+			"sprint_started": "Sprint iniciado",
+			"sprint_completed": "Sprint concluído",
+			"sprint_deleted": "Sprint excluído"
 		},
 		"actionTypes": {
 			"update_task": "Atualizar tarefa",
 			"trigger_ai_agent": "Acionar agente de IA",
-			"call_api": "Chamar API"
+			"call_api": "Chamar API",
+			"wait": "Aguardar",
+			"update_sprint": "Atualizar sprint",
+			"complete_sprint": "Concluir sprint"
 		},
 		"nodeConfig": {
 			"save": "Salvar",
@@ -1433,7 +1441,12 @@
 					"parent_task_id": "Tarefa pai",
 					"reporter_id": "Relator",
 					"start_date": "Data de início",
-					"due_date": "Data de entrega"
+					"due_date": "Data de entrega",
+					"sprint_name": "Nome do sprint",
+					"sprint_status": "Status do sprint",
+					"sprint_goal": "Objetivo do sprint",
+					"sprint_start_date": "Data de início do sprint",
+					"sprint_end_date": "Data de término do sprint"
 				}
 			},
 			"action": {
@@ -1454,6 +1467,23 @@
 				"headerValuePlaceholder": "Valor",
 				"addHeader": "Adicionar cabeçalho",
 				"bodyLabel": "Corpo",
+				"waitMinutesLabel": "Espera (minutos)",
+				"waitMinutesHint": "Por quanto tempo pausar aqui antes de continuar para o próximo nó.",
+				"updateSprintHint": "Somente os campos preenchidos abaixo são alterados — o restante do sprint permanece intacto.",
+				"sprintNameLabel": "Nome",
+				"sprintStartDateLabel": "Data de início",
+				"sprintEndDateLabel": "Data de término",
+				"sprintGoalLabel": "Objetivo",
+				"sprintStatusLabel": "Status",
+				"sprintStatusUnchanged": "Não alterar",
+				"sprintStatusPlanned": "Planejado",
+				"sprintStatusActive": "Ativo",
+				"sprintStatusCompleted": "Concluído",
+				"completeSprintHint": "Marca o sprint como concluído e move suas tarefas não finalizadas.",
+				"moveToSprintLabel": "Mover tarefas não finalizadas para",
+				"moveToSprintBacklog": "Backlog",
+				"moveToSprintHint": "Tarefas não concluídas deste sprint são movidas para cá quando ele é concluído.",
+				"variablesHint": "Suporta {{task.title}}, {{sprint.name}} e outros marcadores {{variable}} semelhantes da execução atual.",
 				"updateTaskHint": "Somente os campos habilitados abaixo são alterados — o restante da tarefa permanece intacto.",
 				"addFieldToUpdate": "Adicionar campo para atualizar…",
 				"customFieldsLabel": "Campo personalizado",

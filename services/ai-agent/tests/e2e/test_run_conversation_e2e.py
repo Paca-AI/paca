@@ -99,25 +99,30 @@ class MockedPersistence:
     insert_event: AsyncMock
     update_status: AsyncMock
     publish_realtime: AsyncMock
+    publish_conversation_status: AsyncMock
 
 
 @pytest.fixture
 def persistence(monkeypatch) -> MockedPersistence:
     mocks = MockedPersistence(
-        insert_event=AsyncMock(), update_status=AsyncMock(), publish_realtime=AsyncMock()
+        insert_event=AsyncMock(),
+        update_status=AsyncMock(),
+        publish_realtime=AsyncMock(),
+        publish_conversation_status=AsyncMock(),
     )
     monkeypatch.setattr(conversation_repository, "insert_conversation_event", mocks.insert_event)
     monkeypatch.setattr(conversation_repository, "update_conversation_status", mocks.update_status)
     # No prior events for these single-turn e2e scenarios — the counter
     # starts at 0, same as before get_next_event_index existed.
-    monkeypatch.setattr(
-        conversation_repository, "get_next_event_index", AsyncMock(return_value=0)
-    )
+    monkeypatch.setattr(conversation_repository, "get_next_event_index", AsyncMock(return_value=0))
     monkeypatch.setattr(
         conversation_repository, "get_seen_event_ids", AsyncMock(return_value=set())
     )
     monkeypatch.setattr(stream_store, "publish_event", AsyncMock())
     monkeypatch.setattr(stream_store, "publish_realtime", mocks.publish_realtime)
+    monkeypatch.setattr(
+        stream_store, "publish_conversation_status", mocks.publish_conversation_status
+    )
     return mocks
 
 
@@ -132,9 +137,7 @@ def stub_default_skills(monkeypatch):
     monkeypatch.setattr(executor, "load_default_skills", AsyncMock(return_value=()))
 
 
-def _agent_config(
-    base_url: str, *, max_iterations: int = 3
-) -> AgentConfig:
+def _agent_config(base_url: str, *, max_iterations: int = 3) -> AgentConfig:
     return AgentConfig(
         agent_id="e2e-test-agent",
         project_id="e2e-test-project",

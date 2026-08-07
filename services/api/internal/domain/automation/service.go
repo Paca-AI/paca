@@ -18,8 +18,7 @@ type Service interface {
 	DeleteAutomation(ctx context.Context, projectID, automationID uuid.UUID) error
 
 	Activate(ctx context.Context, projectID, automationID uuid.UUID) (*Automation, error)
-	Archive(ctx context.Context, projectID, automationID uuid.UUID) (*Automation, error)
-	RevertToDraft(ctx context.Context, projectID, automationID uuid.UUID) (*Automation, error)
+	Deactivate(ctx context.Context, projectID, automationID uuid.UUID) (*Automation, error)
 
 	AddNode(ctx context.Context, projectID, automationID uuid.UUID, in AddNodeInput) (*Node, error)
 	UpdateNode(ctx context.Context, projectID, automationID, nodeID uuid.UUID, in UpdateNodeInput) (*Node, error)

@@ -327,6 +327,48 @@ func TestValidateActionConfig_CallAPI_ValidConfigPasses(t *testing.T) {
 	}
 }
 
+func TestValidateActionConfig_Wait_NonPositiveMinutesRejectedRegardlessOfStrict(t *testing.T) {
+	svc := &Service{}
+	zero := 0
+	cfg, _ := json.Marshal(automationdom.ActionConfig{WaitMinutes: &zero})
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionWait, cfg, false); err == nil {
+		t.Fatal("expected wait_minutes=0 to be rejected even in non-strict mode")
+	}
+	negative := -5
+	cfg, _ = json.Marshal(automationdom.ActionConfig{WaitMinutes: &negative})
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionWait, cfg, false); err == nil {
+		t.Fatal("expected a negative wait_minutes to be rejected even in non-strict mode")
+	}
+}
+
+func TestValidateActionConfig_Wait_StrictRequiresWaitMinutes(t *testing.T) {
+	svc := &Service{}
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionWait, json.RawMessage(`{}`), false); err != nil {
+		t.Fatalf("expected an empty wait config to pass non-strict (create-time) validation, got %v", err)
+	}
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionWait, json.RawMessage(`{}`), true); err == nil {
+		t.Fatal("expected strict validation to require wait_minutes")
+	}
+}
+
+func TestValidateActionConfig_Wait_RejectsTarget(t *testing.T) {
+	svc := &Service{}
+	minutes := 5
+	cfg, _ := json.Marshal(automationdom.ActionConfig{WaitMinutes: &minutes, Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
+	if err := svc.validateActionConfig(context.Background(), uuid.New(), automationdom.ActionWait, cfg, true); err == nil {
+		t.Fatal("expected wait to reject a target — it doesn't operate on a task")
+	}
+}
+
+func TestValidateActionConfig_Wait_ValidConfigPasses(t *testing.T) {
+	svc := &Service{}
+	minutes := 10
+	cfg, _ := json.Marshal(automationdom.ActionConfig{WaitMinutes: &minutes})
+	if err := svc.validateActionConfig(context.TODO(), uuid.Nil, automationdom.ActionWait, cfg, true); err != nil {
+		t.Fatalf("expected a valid wait config to pass, got %v", err)
+	}
+}
+
 // --- validateTaskReachability ------------------------------------------------
 
 func taskLessTriggerNode(t *testing.T, triggerType automationdom.TriggerType) *automationdom.Node {

@@ -22,6 +22,11 @@ type fakeCronRepo struct {
 	candidates      []automationdom.CronCandidate
 	automation      *automationdom.Automation
 	recordFireCalls []time.Time
+	// createdRunSteps captures every CreateRunStep call, in order — used by
+	// tests that need to observe a walk's outcome now that walker no longer
+	// carries an in-memory failed flag (see automation_consumer_test.go's
+	// nil-task defense-in-depth tests).
+	createdRunSteps []*automationdom.RunStep
 }
 
 func (f *fakeCronRepo) ListEnabledTriggerNodesByType(context.Context, uuid.UUID, automationdom.TriggerType) ([]*automationdom.Node, error) {
@@ -33,6 +38,9 @@ func (f *fakeCronRepo) ListPredecessorTriggersWatching(context.Context, uuid.UUI
 func (f *fakeCronRepo) FindAutomationByNodeID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
 	return f.automation, nil
 }
+func (f *fakeCronRepo) FindAutomationByID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
+	return f.automation, nil
+}
 func (f *fakeCronRepo) FindNodeByID(context.Context, uuid.UUID) (*automationdom.Node, error) {
 	return nil, automationdom.ErrNodeNotFound
 }
@@ -41,8 +49,39 @@ func (f *fakeCronRepo) LoadGraph(context.Context, uuid.UUID) (*automationdom.Gra
 }
 func (f *fakeCronRepo) CreateRun(context.Context, *automationdom.Run) error { return nil }
 func (f *fakeCronRepo) UpdateRun(context.Context, *automationdom.Run) error { return nil }
-func (f *fakeCronRepo) CreateRunStep(context.Context, *automationdom.RunStep) error {
+func (f *fakeCronRepo) CreateRunStep(_ context.Context, s *automationdom.RunStep) error {
+	f.createdRunSteps = append(f.createdRunSteps, s)
 	return nil
+}
+func (f *fakeCronRepo) ListRunStepsByRun(context.Context, uuid.UUID) ([]*automationdom.RunStep, error) {
+	return nil, nil
+}
+func (f *fakeCronRepo) CreatePendingAgentWait(context.Context, *automationdom.PendingAgentWait) error {
+	return nil
+}
+func (f *fakeCronRepo) FindPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	return nil, nil
+}
+func (f *fakeCronRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error {
+	return nil
+}
+func (f *fakeCronRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakeCronRepo) DeletePendingAgentWaitAndCountRemaining(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakeCronRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
+	return nil
+}
+func (f *fakeCronRepo) ListDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
+	return nil, nil
+}
+func (f *fakeCronRepo) DeletePendingDelay(context.Context, uuid.UUID) error {
+	return nil
+}
+func (f *fakeCronRepo) CountPendingDelays(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
 }
 func (f *fakeCronRepo) ListDueDateCandidates(context.Context) ([]automationdom.DueDateCandidate, error) {
 	return nil, nil

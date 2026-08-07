@@ -367,9 +367,7 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
 							Post("/{automationId}/activate", deps.Automation.ActivateAutomation)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{automationId}/archive", deps.Automation.ArchiveAutomation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
-							Post("/{automationId}/revert-to-draft", deps.Automation.RevertAutomationToDraft)
+							Post("/{automationId}/deactivate", deps.Automation.DeactivateAutomation)
 
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionWorkflowsWrite)).
 							Post("/{automationId}/nodes", deps.Automation.AddAutomationNode)
