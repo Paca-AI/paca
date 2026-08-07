@@ -96,7 +96,11 @@ the agent *said* shows up after everything it *did*.
 
 The daemon subscribes to the conversation's token callbacks and forwards each
 run of buffered text as a `MessageEvent` just before whatever event came next,
-so narration is interleaved with the tool calls it describes. Because the
-`FinishAction` message is the join of those same chunks, it is blanked when it
-would be an exact duplicate — the text is still persisted, in the events it
-was split into.
+so narration is interleaved with the tool calls it describes. The turn's
+closing `FinishAction`/`FinishObservation` pair is built from the join of
+those same chunks, so each is blanked when it would be a trailing duplicate
+of what already streamed — the text is still persisted, in the events it was
+split into. "Trailing", not just exact, because a turn retried in place after
+a transient ACP connection error resets the SDK's own accumulated text but
+not this daemon's buffer, so the surviving attempt's text is still an exact
+duplicate of the tail of what streamed, not necessarily the whole thing.

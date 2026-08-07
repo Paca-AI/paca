@@ -126,12 +126,15 @@ class _AssistantTextRelay:
                 text = self._mask(text)
             except Exception:
                 # Fail closed. Emitting the unmasked text could persist a secret,
-                # which is the same reason the SDK treats a masking failure as
-                # fatal to the turn rather than shipping what it could not mask
-                # (``_raise_masking_error``). Dropping the segment also leaves
-                # ``_emitted`` short of the closing FinishAction message, so that
-                # message is kept and the text still reaches the conversation —
-                # masked by the SDK, at the end of the turn as it was before.
+                # so a masking failure here drops the segment rather than
+                # shipping what could not be masked — stricter than the SDK's
+                # own ``_mask_value``, which returns the text unmasked on
+                # failure (a deliberate crash-avoidance tradeoff there; nothing
+                # forces the same tradeoff on this new relay). Dropping the
+                # segment also leaves ``_emitted`` short of the closing
+                # FinishAction message, so that message is kept and the text
+                # still reaches the conversation — masked by the SDK, at the
+                # end of the turn as it was before.
                 logger.warning(
                     "Secret masking failed for streamed text; dropping this segment",
                     exc_info=True,
@@ -143,8 +146,24 @@ class _AssistantTextRelay:
         return text
 
     def already_emitted(self, message: str) -> bool:
-        """True if `message` is exactly the text already sent as MessageEvents."""
-        return bool(self._emitted) and "".join(self._emitted) == message
+        """True if `message` is a trailing duplicate of the text already sent
+        as MessageEvents.
+
+        Compared as a suffix, not full equality. ``ACPAgent.step()`` retries a
+        turn in place on a transient connection error: ``_reset_client_for_turn``
+        clears the SDK's own accumulated text for the new attempt, but it
+        re-wires the *same* ``on_token`` callback rather than telling this
+        relay a retry happened, so ``_emitted`` keeps growing across every
+        attempt while the SDK's final message reflects only the attempt that
+        actually succeeded. That message is still an exact duplicate of what
+        streamed — just of the tail, not the whole turn. Matching only full
+        equality would miss it after any retry and let the surviving attempt's
+        text show a second time; a trailing-duplicate check catches that case
+        too, and is exactly the pre-retry behavior when there was no retry.
+        """
+        if not message or not self._emitted:
+            return False
+        return "".join(self._emitted).endswith(message)
 
 
 def resolve_acp_command(acp_provider: str | None, acp_command: list[str]) -> list[str]:
@@ -301,34 +320,52 @@ class ConversationRunner:
             )
 
     def _event_payload(self, event: Any, relay: _AssistantTextRelay | None) -> str:
-        """Serialize an event, dropping a FinishAction message already streamed.
+        """Serialize an event, dropping finish text already streamed.
 
-        The SDK builds that message by joining every chunk of the turn, so once
-        those chunks have gone out as ``MessageEvent``s it is a verbatim second
-        copy — the whole turn's narration repeated after the tool calls. Nothing
-        server-side reads it (it is rendered, not consumed), and the same text
-        is still persisted in the events it was split into, so dropping it loses
-        nothing.
+        ``_finalize_successful_turn`` closes every turn with *two* events built
+        from the same joined text: the ``ActionEvent`` carrying the
+        ``FinishAction`` (``action.message``), and — immediately after, same
+        ``tool_name="finish"`` — an ``ObservationEvent`` carrying a
+        ``FinishObservation`` (``observation.text``, via ``content``). Once
+        those chunks have gone out as ``MessageEvent``s, *both* are a verbatim
+        second copy of the whole turn's narration; blanking only the action
+        half would still leave the observation half persisted server-side
+        (``services/ai-agent`` persists every event unconditionally), even
+        though nothing renders or reads it — it exists only because the SDK
+        pairs every action with an observation. Nothing is lost either way:
+        the same text is still persisted in the events it was split into.
 
-        Only an exact match is removed. If the two ever diverge — the SDK masks
-        the join a second time, which can catch a secret split across two chunks
-        — the message is left alone and shown as-is rather than discarded.
+        Only an exact (trailing) duplicate is removed — see
+        ``_AssistantTextRelay.already_emitted``. If the streamed and final text
+        ever diverge for a reason other than a retry — the SDK masks the join a
+        second time, which can catch a secret split across two chunks — the
+        text is left alone and shown as-is rather than discarded.
 
-        The message is cleared on a copy, and the payload is produced by
-        Pydantic's serializer exactly once. ``ActionEvent`` and ``FinishAction``
-        are both frozen, so it cannot be cleared in place — and the SDK keeps
-        this event in conversation history, so it must not be mutated anyway.
+        The text is cleared on a copy, and the payload is produced by
+        Pydantic's serializer exactly once. ``ActionEvent``/``FinishAction``
+        and ``ObservationEvent``/``FinishObservation`` are all frozen, so
+        neither can be cleared in place — and the SDK keeps this event in
+        conversation history, so it must not be mutated anyway.
         """
         if not hasattr(event, "model_dump_json"):
             return "{}"
         if relay is not None and getattr(event, "tool_name", None) == "finish":
-            action = getattr(event, "action", None)
-            message = getattr(action, "message", None)
-            if isinstance(message, str) and relay.already_emitted(message):
-                event = event.model_copy(
-                    update={"action": action.model_copy(update={"message": ""})}
-                )
+            event = self._blank_duplicate_finish_text(event, relay)
         return event.model_dump_json()
+
+    @staticmethod
+    def _blank_duplicate_finish_text(event: Any, relay: _AssistantTextRelay) -> Any:
+        action = getattr(event, "action", None)
+        message = getattr(action, "message", None)
+        if isinstance(message, str) and relay.already_emitted(message):
+            event = event.model_copy(update={"action": action.model_copy(update={"message": ""})})
+        observation = getattr(event, "observation", None)
+        text = getattr(observation, "text", None)
+        if isinstance(text, str) and relay.already_emitted(text):
+            event = event.model_copy(
+                update={"observation": observation.model_copy(update={"content": []})}
+            )
+        return event
 
     def _make_event_callback(self, conversation_id: str, project_id: str) -> Callable[[Any], None]:
         def callback(event: Any) -> None:

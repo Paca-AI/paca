@@ -1,7 +1,10 @@
--- Add description_write trigger prompt column and extend trigger_type constraint.
-
-ALTER TABLE agents
-    ADD COLUMN IF NOT EXISTS description_write_trigger_prompt TEXT NOT NULL DEFAULT '';
+-- Originally also added agents.description_write_trigger_prompt; that ADD
+-- COLUMN is gone now (see 000010_add_trigger_prompts_to_agents.sql for why —
+-- 000019_drop_agent_trigger_prompts.sql always drops this same column again
+-- in the same boot, and Postgres never reclaims a dropped column's slot, so
+-- re-adding it here every boot was silently burning the agents table's
+-- 1600-column ceiling). The trigger_type constraint change below is still
+-- needed and unaffected.
 
 -- Extend the trigger_type check constraint to include 'description_write' and
 -- 'automation_message'.
