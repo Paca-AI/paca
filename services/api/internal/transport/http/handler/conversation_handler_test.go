@@ -150,7 +150,7 @@ func TestListConversations_PageSizeInvalidRejected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ListConversationEvents: offset/limit handling
+// ListConversationEvents: after/before/limit window handling
 // ---------------------------------------------------------------------------
 
 func doListConversationEvents(t *testing.T, svc agentdom.Service, projectID, conversationID, query string) *httptest.ResponseRecorder {
@@ -166,25 +166,38 @@ func doListConversationEvents(t *testing.T, svc agentdom.Service, projectID, con
 	return rec
 }
 
-func TestListConversationEvents_OffsetLimitValid(t *testing.T) {
+// listConversationEventsResp decodes the {items, total, next_cursor,
+// prev_cursor} envelope returned by both events endpoints.
+type listConversationEventsResp struct {
+	Success bool `json:"success"`
+	Data    struct {
+		Items      []map[string]any `json:"items"`
+		Total      int64            `json:"total"`
+		NextCursor *string          `json:"next_cursor"`
+		PrevCursor *string          `json:"prev_cursor"`
+	} `json:"data"`
+	ErrorCode string `json:"error_code"`
+}
+
+func TestListConversationEvents_WindowValid(t *testing.T) {
 	cases := []struct {
-		name       string
-		query      string
-		wantOffset int
-		wantLimit  int
+		name      string
+		query     string
+		wantAfter *string
+		wantLimit int
 	}{
-		{"absent_defaults", "", 0, 50},
-		{"valid_custom_values_kept", "offset=10&limit=25", 10, 25},
-		{"limit_max_boundary_kept", "limit=200", 0, 200},
-		{"limit_min_boundary_kept", "limit=1", 0, 1},
-		{"offset_zero_kept", "offset=0", 0, 50},
+		{"absent_defaults", "", nil, 50},
+		{"custom_limit_kept", "limit=25", nil, 25},
+		{"limit_max_boundary_kept", "limit=200", nil, 200},
+		{"limit_min_boundary_kept", "limit=1", nil, 1},
+		{"after_cursor_forwarded", "after=some-opaque-cursor&limit=25", ptr("some-opaque-cursor"), 25},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var gotOffset, gotLimit int
+			var got agentdom.ConversationEventWindow
 			svc := &mockAgentSvc{
-				listConversationEvents: func(_ context.Context, _ uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
-					gotOffset, gotLimit = offset, limit
+				listConversationEvents: func(_ context.Context, _ uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+					got = window
 					return nil, 0, nil
 				},
 			}
@@ -192,24 +205,43 @@ func TestListConversationEvents_OffsetLimitValid(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 			}
-			if gotOffset != tc.wantOffset || gotLimit != tc.wantLimit {
-				t.Errorf("expected service called with offset=%d limit=%d, got offset=%d limit=%d",
-					tc.wantOffset, tc.wantLimit, gotOffset, gotLimit)
+			if got.Limit != tc.wantLimit {
+				t.Errorf("expected limit=%d, got %d", tc.wantLimit, got.Limit)
+			}
+			if (got.After == nil) != (tc.wantAfter == nil) || (got.After != nil && *got.After != *tc.wantAfter) {
+				t.Errorf("expected After=%v, got %v", tc.wantAfter, got.After)
 			}
 		})
 	}
 }
 
-// TestListConversationEvents_OffsetLimitInvalidRejected covers the same
+func TestListConversationEvents_BeforeCursorForwarded(t *testing.T) {
+	var got agentdom.ConversationEventWindow
+	svc := &mockAgentSvc{
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			got = window
+			return nil, 0, nil
+		},
+	}
+	rec := doListConversationEvents(t, svc, uuid.New().String(), uuid.New().String(), "before=some-opaque-cursor")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got.Before == nil || *got.Before != "some-opaque-cursor" {
+		t.Errorf("expected Before=%q, got %v", "some-opaque-cursor", got.Before)
+	}
+	if got.After != nil {
+		t.Errorf("expected After nil, got %v", got.After)
+	}
+}
+
+// TestListConversationEvents_LimitInvalidRejected covers the same
 // silent-substitution fix as TestListConversations_PageSizeInvalidRejected,
-// applied to this endpoint's offset/limit pair: an explicitly supplied
-// out-of-range or non-numeric value now fails the request instead of quietly
-// running with a different limit than the caller asked for (which broke
-// offset math for callers advancing offset by their requested limit).
-func TestListConversationEvents_OffsetLimitInvalidRejected(t *testing.T) {
+// applied to this endpoint's limit param: an explicitly supplied
+// out-of-range or non-numeric value now fails the request instead of
+// quietly running with a different limit than the caller asked for.
+func TestListConversationEvents_LimitInvalidRejected(t *testing.T) {
 	cases := []string{
-		"offset=-1",
-		"offset=abc",
 		"limit=0",
 		"limit=-5",
 		"limit=201",
@@ -218,8 +250,8 @@ func TestListConversationEvents_OffsetLimitInvalidRejected(t *testing.T) {
 	for _, query := range cases {
 		t.Run(query, func(t *testing.T) {
 			svc := &mockAgentSvc{
-				listConversationEvents: func(_ context.Context, _ uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
-					t.Fatalf("service should not be called for invalid offset/limit, got offset=%d limit=%d", offset, limit)
+				listConversationEvents: func(_ context.Context, _ uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+					t.Fatalf("service should not be called for invalid limit, got window=%+v", window)
 					return nil, 0, nil
 				},
 			}
@@ -230,6 +262,112 @@ func TestListConversationEvents_OffsetLimitInvalidRejected(t *testing.T) {
 		})
 	}
 }
+
+// TestListConversationEvents_AfterAndBeforeMutuallyExclusiveRejected covers
+// the query-parsing guard against a caller supplying both bounds at once,
+// which would otherwise leave it ambiguous which direction to page in.
+func TestListConversationEvents_AfterAndBeforeMutuallyExclusiveRejected(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			t.Fatalf("service should not be called when after and before are both set, got window=%+v", window)
+			return nil, 0, nil
+		},
+	}
+	rec := doListConversationEvents(t, svc, uuid.New().String(), uuid.New().String(), "after=a&before=b")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListConversationEvents: next_cursor/prev_cursor response wiring
+// ---------------------------------------------------------------------------
+
+func eventAt(index int) *agentdom.AgentConversationEvent {
+	return &agentdom.AgentConversationEvent{ID: uuid.New(), EventIndex: index}
+}
+
+func TestListConversationEvents_PrevCursorAbsentAtStartOfStream(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			return []*agentdom.AgentConversationEvent{eventAt(0), eventAt(1)}, 2, nil
+		},
+	}
+	_, resp := doListConversationEventsDecoded(t, svc, "")
+	if resp.Data.PrevCursor != nil {
+		t.Errorf("expected nil prev_cursor when the first event is index 0, got %q", *resp.Data.PrevCursor)
+	}
+}
+
+func TestListConversationEvents_PrevCursorPresentMidStream(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			return []*agentdom.AgentConversationEvent{eventAt(50), eventAt(51)}, 100, nil
+		},
+	}
+	_, resp := doListConversationEventsDecoded(t, svc, "")
+	if resp.Data.PrevCursor == nil {
+		t.Fatal("expected non-nil prev_cursor when earlier events exist")
+	}
+	cur, err := agentdom.DecodeConversationEventCursor(*resp.Data.PrevCursor)
+	if err != nil {
+		t.Fatalf("decode prev_cursor: %v", err)
+	}
+	if cur.EventIndex != 50 {
+		t.Errorf("expected prev_cursor to encode the first event's index 50, got %d", cur.EventIndex)
+	}
+}
+
+// TestListConversationEvents_NextCursorAlwaysPresentWhenNonEmpty covers the
+// deliberate asymmetry with prev_cursor documented on
+// writeConversationEventWindowResponse: unlike prev_cursor, next_cursor
+// cannot definitively report "nothing more" on a live stream, so it is
+// always returned for a non-empty page — even when this page is, as far as
+// `total` is concerned, already the tail — leaving the decision of whether
+// resuming is worthwhile to the caller (which weighs it against realtime's
+// tail signal instead).
+func TestListConversationEvents_NextCursorAlwaysPresentWhenNonEmpty(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			return []*agentdom.AgentConversationEvent{eventAt(98), eventAt(99)}, 100, nil
+		},
+	}
+	_, resp := doListConversationEventsDecoded(t, svc, "")
+	if resp.Data.NextCursor == nil {
+		t.Fatal("expected non-nil next_cursor even when this page reaches the currently-known tail")
+	}
+	cur, err := agentdom.DecodeConversationEventCursor(*resp.Data.NextCursor)
+	if err != nil {
+		t.Fatalf("decode next_cursor: %v", err)
+	}
+	if cur.EventIndex != 99 {
+		t.Errorf("expected next_cursor to encode the last event's index 99, got %d", cur.EventIndex)
+	}
+}
+
+func TestListConversationEvents_BothCursorsAbsentForEmptyPage(t *testing.T) {
+	svc := &mockAgentSvc{
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			return nil, 0, nil
+		},
+	}
+	_, resp := doListConversationEventsDecoded(t, svc, "")
+	if resp.Data.NextCursor != nil || resp.Data.PrevCursor != nil {
+		t.Errorf("expected both cursors nil for an empty page, got next=%v prev=%v", resp.Data.NextCursor, resp.Data.PrevCursor)
+	}
+}
+
+func doListConversationEventsDecoded(t *testing.T, svc agentdom.Service, query string) (*httptest.ResponseRecorder, listConversationEventsResp) {
+	t.Helper()
+	rec := doListConversationEvents(t, svc, uuid.New().String(), uuid.New().String(), query)
+	var resp listConversationEventsResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response body %q: %v", rec.Body.String(), err)
+	}
+	return rec, resp
+}
+
+func ptr(s string) *string { return &s }
 
 // ---------------------------------------------------------------------------
 // Filter wiring
@@ -653,7 +791,7 @@ func TestGetGlobalConversationEvents_ReturnsEvents(t *testing.T) {
 			}
 			return &agentdom.AgentConversation{ID: convID, ActorUserID: &callerID}, nil
 		},
-		listConversationEvents: func(_ context.Context, id uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
+		listConversationEvents: func(_ context.Context, id uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
 			if id != convID {
 				t.Fatalf("unexpected conversation id %s", id)
 			}
@@ -691,7 +829,7 @@ func TestGetGlobalConversationEvents_UnknownConversationNotFound(t *testing.T) {
 		getGlobalConversation: func(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return nil, agentdom.ErrConversationNotFound
 		},
-		listConversationEvents: func(_ context.Context, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
 			eventsCalled = true
 			return nil, 0, nil
 		},

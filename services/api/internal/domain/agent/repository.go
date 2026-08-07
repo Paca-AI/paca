@@ -125,7 +125,10 @@ type ConversationRepository interface {
 	// another caller already moved the conversation out of fromStatus).
 	ClaimConversationStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
 	UpdateConversation(ctx context.Context, c *AgentConversation) error
-	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
+	// ListConversationEvents returns one page of a conversation's events per
+	// window (see ConversationEventWindow), plus the conversation's current
+	// total event count.
+	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	CreateConversationEvent(ctx context.Context, e *AgentConversationEvent) error
 }
 
@@ -177,4 +180,23 @@ type ListConversationsFilter struct {
 	// 000028) contains this text.
 	Search      *string
 	CursorAfter *string // opaque base64 cursor; when set, resumes after this conversation
+}
+
+// ConversationEventWindow selects one keyset-paginated page of a single
+// conversation's events (always returned ascending by event_index). At most
+// one of After/Before is set:
+//   - Neither set: the newest Limit events — opens a conversation on its
+//     tail without needing to know its length upfront.
+//   - After set: events with event_index > After's, ascending — pages
+//     forward, e.g. catching up to events realtime has reported.
+//   - Before set: the Limit events immediately preceding Before's
+//     event_index — pages backward into older history.
+//
+// After/Before carry opaque cursors produced by EncodeConversationEventCursor
+// (mirroring ListConversationsFilter.CursorAfter above); the repository
+// decodes them.
+type ConversationEventWindow struct {
+	After  *string
+	Before *string
+	Limit  int
 }

@@ -33,6 +33,7 @@ import {
 	getGlobalConversation,
 	heartbeatGlobalConversation,
 	listAgents,
+	listConversationEventWindow,
 	listConversations,
 	listGlobalAgents,
 	listGlobalChatSessions,
@@ -483,6 +484,57 @@ describe("agent-api", () => {
 				`/admin/agents/${AGENT_ID}/acp-bridge-status`,
 			);
 			expect(result).toEqual({ connected: true });
+		});
+	});
+	describe("listConversationEventWindow", () => {
+		it("requests the newest page when no cursor is given", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ items: [], total: 900, next_cursor: null, prev_cursor: "cur-a" }),
+			);
+
+			const page = await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				limit: 200,
+			});
+
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
+				{ params: { limit: 200 } },
+			);
+			expect(page.total).toBe(900);
+			expect(page.prev_cursor).toBe("cur-a");
+			expect(page.next_cursor).toBeNull();
+		});
+
+		it("forwards an after cursor, not before", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ items: [], total: 900, next_cursor: null, prev_cursor: null }),
+			);
+
+			await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				after: "cur-b",
+				limit: 200,
+			});
+
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
+				{ params: { limit: 200, after: "cur-b" } },
+			);
+		});
+
+		it("forwards a before cursor, not after", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ items: [], total: 900, next_cursor: null, prev_cursor: null }),
+			);
+
+			await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				before: "cur-c",
+				limit: 200,
+			});
+
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
+				{ params: { limit: 200, before: "cur-c" } },
+			);
 		});
 	});
 });

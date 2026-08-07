@@ -651,22 +651,65 @@ func TestE2EListConversationPagination_SearchFilter(t *testing.T) {
 	})
 }
 
+// listConversationEventsWindow issues GET .../conversations/:id/events with
+// the given query params and asserts a 200 response, returning the decoded
+// data map.
+func listConversationEventsWindow(t *testing.T, env *e2eEnv, client *http.Client, token, projID, convID string, q url.Values) map[string]any {
+	t.Helper()
+	reqURL := fmt.Sprintf("%s/api/v1/projects/%s/conversations/%s/events", env.base, projID, convID)
+	if len(q) > 0 {
+		reqURL += "?" + q.Encode()
+	}
+	req := mustRequest(env.ctx, t, http.MethodGet, reqURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusOK)
+	var env2 envelope
+	decodeJSON(t, resp, &env2)
+	return assertDataMap(t, env2)
+}
+
+// prevCursorStr extracts the prev_cursor string from an events-window data
+// map. Returns "" when prev_cursor is absent or null.
+func prevCursorStr(data map[string]any) string {
+	if v, ok := data["prev_cursor"]; ok && v != nil {
+		s, _ := v.(string)
+		return s
+	}
+	return ""
+}
+
+// eventIndices extracts the "event_index" field from every item in an
+// events-window data map, in the order returned.
+func eventIndices(data map[string]any) []int {
+	items, _ := data["items"].([]any)
+	out := make([]int, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]any)
+		idx, _ := item["event_index"].(float64)
+		out = append(out, int(idx))
+	}
+	return out
+}
+
 // ---------------------------------------------------------------------------
-// TestE2EListConversationEvents_OffsetLimitValidation
+// TestE2EListConversationEventsWindow_LimitValidation
 // Mirrors the page_size validation coverage above, applied to this sibling
-// endpoint's offset/limit pair: an explicitly supplied out-of-range or
-// non-numeric value must be rejected rather than silently substituted, for
-// the same reason (a caller advancing offset by its requested limit would
-// otherwise skip or duplicate rows against its own math with no signal).
-// The conversation ID need not exist — invalid offset/limit is rejected
-// before the service layer is ever reached.
+// endpoint's limit param, plus the after/before cursor params that replaced
+// offset — an explicitly supplied out-of-range or non-numeric limit, an
+// unparsable cursor, or after+before supplied together must all be rejected
+// rather than silently substituted or resolved ambiguously. The conversation
+// ID need not exist for the limit/mutual-exclusivity cases — both are
+// rejected before the service layer is ever reached — but the invalid-cursor
+// case needs one, since cursor decoding happens in the repository.
 // ---------------------------------------------------------------------------
 
-func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
+func TestE2EListConversationEventsWindow_LimitValidation(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
-	client, token, projID, _, _ := seedConversationFixture(t, env)
-	convID := uuid.NewString()
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+	convID := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Now())
 
 	eventsURL := func(q url.Values) string {
 		u := fmt.Sprintf("%s/api/v1/projects/%s/conversations/%s/events", env.base, projID, convID)
@@ -676,7 +719,7 @@ func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
 		return u
 	}
 
-	t.Run("absent_offset_and_limit_default", func(t *testing.T) {
+	t.Run("absent_params_default", func(t *testing.T) {
 		req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(nil), nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		resp := mustDo(t, client, req)
@@ -684,15 +727,13 @@ func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
 		assertStatus(t, resp, http.StatusOK)
 	})
 
-	invalidCases := []url.Values{
-		{"offset": {"-1"}},
-		{"offset": {"abc"}},
+	invalidLimitCases := []url.Values{
 		{"limit": {"0"}},
 		{"limit": {"-5"}},
 		{"limit": {"201"}},
 		{"limit": {"abc"}},
 	}
-	for _, q := range invalidCases {
+	for _, q := range invalidLimitCases {
 		t.Run(q.Encode(), func(t *testing.T) {
 			req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(q), nil)
 			req.Header.Set("Authorization", "Bearer "+token)
@@ -702,6 +743,168 @@ func TestE2EListConversationEvents_OffsetLimitValidation(t *testing.T) {
 			assertErrorCode(t, resp, "BAD_REQUEST")
 		})
 	}
+
+	t.Run("after_and_before_together_rejected", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(url.Values{
+			"after":  {"anything"},
+			"before": {"anything"},
+		}), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusBadRequest)
+		assertErrorCode(t, resp, "BAD_REQUEST")
+	})
+
+	t.Run("unparsable_after_cursor_rejected", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(url.Values{
+			"after": {"not-a-valid-base64-cursor!!"},
+		}), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode == http.StatusOK {
+			t.Errorf("expected a non-200 error response for an unparsable after cursor, got 200")
+		}
+		assertErrorCode(t, resp, "AGENT_CONVERSATION_EVENT_INVALID_CURSOR")
+	})
+
+	t.Run("unparsable_before_cursor_rejected", func(t *testing.T) {
+		req := mustRequest(env.ctx, t, http.MethodGet, eventsURL(url.Values{
+			"before": {"not-a-valid-base64-cursor!!"},
+		}), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode == http.StatusOK {
+			t.Errorf("expected a non-200 error response for an unparsable before cursor, got 200")
+		}
+		assertErrorCode(t, resp, "AGENT_CONVERSATION_EVENT_INVALID_CURSOR")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestE2EListConversationEventsWindow_CursorBased
+// Exercises the keyset SQL in AgentRepository.ListConversationEvents against
+// a real database — the handler-level unit tests drive it through a mocked
+// service, so this is the only coverage of the actual event_index >/< cursor
+// queries and the reverse-then-flip-to-ascending ordering they rely on.
+// ---------------------------------------------------------------------------
+
+func TestE2EListConversationEventsWindow_CursorBased(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	client, token, projID, agentID, memberID := seedConversationFixture(t, env)
+	convID := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Now())
+
+	// event_index 0..4, five events total.
+	for i := 0; i < 5; i++ {
+		createConversationEvent(t, env, convID, i, "ActionEvent")
+	}
+
+	t.Run("no_cursor_opens_on_the_newest_page", func(t *testing.T) {
+		data := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{"limit": {"3"}})
+		if got := eventIndices(data); !slices.Equal(got, []int{2, 3, 4}) {
+			t.Errorf("expected newest 3 events [2 3 4] ascending, got %v", got)
+		}
+		if total, _ := data["total"].(float64); total != 5 {
+			t.Errorf("expected total=5, got %v", data["total"])
+		}
+		// Older events (0, 1) remain, so prev_cursor must be set.
+		if prevCursorStr(data) == "" {
+			t.Error("expected non-empty prev_cursor when older events remain")
+		}
+		// next_cursor is always present for a non-empty page — see
+		// writeConversationEventWindowResponse's doc comment for why it can't
+		// promise more exists the way prev_cursor can.
+		if nextCursorStr(data) == "" {
+			t.Error("expected non-empty next_cursor for a non-empty page")
+		}
+	})
+
+	t.Run("before_pages_older_events_in_without_duplicating_what_is_held", func(t *testing.T) {
+		first := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{"limit": {"3"}})
+		cursor := prevCursorStr(first)
+		if cursor == "" {
+			t.Fatal("expected non-empty prev_cursor from the newest page")
+		}
+
+		older := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{
+			"before": {cursor},
+			"limit":  {"3"},
+		})
+		if got := eventIndices(older); !slices.Equal(got, []int{0, 1}) {
+			t.Errorf("expected the 2 remaining older events [0 1] ascending, got %v", got)
+		}
+		// event_index 0 is the start of the stream.
+		if prevCursorStr(older) != "" {
+			t.Error("expected empty prev_cursor once event_index 0 is included")
+		}
+	})
+
+	t.Run("after_pages_forward_from_a_cursor", func(t *testing.T) {
+		// prev_cursor from the [2 3 4] page points at event_index 2; paging
+		// forward from there must land back on [3 4].
+		first := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{"limit": {"3"}})
+		cursor := prevCursorStr(first)
+
+		forward := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{
+			"after": {cursor},
+			"limit": {"3"},
+		})
+		if got := eventIndices(forward); !slices.Equal(got, []int{3, 4}) {
+			t.Errorf("expected events after index 2 to be [3 4], got %v", got)
+		}
+	})
+
+	t.Run("after_the_newest_event_returns_an_empty_page_with_no_cursors", func(t *testing.T) {
+		first := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{"limit": {"3"}})
+		cursor := nextCursorStr(first)
+		if cursor == "" {
+			t.Fatal("expected non-empty next_cursor from the newest page")
+		}
+
+		data := listConversationEventsWindow(t, env, client, token, projID, convID, url.Values{
+			"after": {cursor},
+			"limit": {"3"},
+		})
+		if got := eventIndices(data); len(got) != 0 {
+			t.Errorf("expected no events past the newest one, got %v", got)
+		}
+		if nextCursorStr(data) != "" || prevCursorStr(data) != "" {
+			t.Error("expected both cursors empty for an empty page")
+		}
+	})
+
+	t.Run("full_backward_traversal_returns_every_event_exactly_once", func(t *testing.T) {
+		seen := make(map[int]int)
+		cursor := ""
+		for {
+			q := url.Values{"limit": {"2"}}
+			if cursor != "" {
+				q.Set("before", cursor)
+			}
+			data := listConversationEventsWindow(t, env, client, token, projID, convID, q)
+			for _, idx := range eventIndices(data) {
+				seen[idx]++
+			}
+			// Always continues backward from prev_cursor — including from the
+			// first (tail-open) hop, where next_cursor is also present but
+			// points the wrong way for this traversal.
+			cursor = prevCursorStr(data)
+			if cursor == "" {
+				break
+			}
+		}
+		if len(seen) != 5 {
+			t.Errorf("expected 5 unique events after full backward traversal, got %d: %v", len(seen), seen)
+		}
+		for i := 0; i < 5; i++ {
+			if seen[i] != 1 {
+				t.Errorf("event_index %d was returned %d times (expected exactly once)", i, seen[i])
+			}
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

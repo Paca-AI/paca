@@ -261,7 +261,10 @@
 			"conversationEnded": "This conversation has ended.",
 			"textOnlyMessage": "Only text messages are supported.",
 			"failed": "Conversation failed",
-			"noOutput": "The agent did not produce any output."
+			"noOutput": "The agent did not produce any output.",
+			"loadingOlder": "Loading…",
+			"newBelow_one": "{{count}} new message",
+			"newBelow_other": "{{count}} new messages"
 		},
 		"thread": {
 			"composerPlaceholder": "Message agent…",

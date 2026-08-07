@@ -62,6 +62,9 @@ var (
 	// ErrConversationInvalidCursor is returned when a client-supplied
 	// pagination cursor fails to decode.
 	ErrConversationInvalidCursor = errors.New("invalid pagination cursor")
+	// ErrConversationEventInvalidCursor is returned when a client-supplied
+	// conversation-events window cursor (after/before) fails to decode.
+	ErrConversationEventInvalidCursor = errors.New("invalid pagination cursor")
 )
 
 // Chat session errors

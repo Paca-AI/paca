@@ -982,9 +982,10 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 	return c, nil
 }
 
-// ListConversationEvents returns a paginated list of events for a conversation.
-func (s *Service) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
-	return s.repo.ListConversationEvents(ctx, conversationID, offset, limit)
+// ListConversationEvents returns one keyset-paginated window of events for a
+// conversation (see agentdom.ConversationEventWindow), plus its total count.
+func (s *Service) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+	return s.repo.ListConversationEvents(ctx, conversationID, window)
 }
 
 // StopConversation stops a conversation that is not already finished.
@@ -1516,7 +1517,9 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 	return conv, nil
 }
 
-// ListChatMessages returns conversation events for a chat session.
+// ListChatMessages returns conversation events for a chat session. Unreached
+// by any route (see agentdom.ChatSessionService) — kept only to satisfy the
+// interface until it grows a real caller.
 func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
 	// TODO: We'd need to aggregate events from all conversations in this session.
 	// For now, return events from the most recent conversation with this session_id.
@@ -1529,7 +1532,13 @@ func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, off
 	if len(convs) == 0 {
 		return []*agentdom.AgentConversationEvent{}, 0, nil
 	}
-	return s.repo.ListConversationEvents(ctx, convs[0].ID, offset, limit)
+	// offset has no cursor equivalent (see agentdom.ConversationEventWindow):
+	// fail loudly rather than silently ignoring it, in case this method ever
+	// grows a real caller that expects offset-based paging to work.
+	if offset != 0 {
+		return nil, 0, fmt.Errorf("ListChatMessages: non-zero offset %d is not supported by cursor-based ListConversationEvents", offset)
+	}
+	return s.repo.ListConversationEvents(ctx, convs[0].ID, agentdom.ConversationEventWindow{Limit: limit})
 }
 
 // -------------------------------------------------------------------------

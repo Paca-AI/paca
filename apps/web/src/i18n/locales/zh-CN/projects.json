@@ -261,7 +261,10 @@
 			"conversationEnded": "此对话已结束。",
 			"textOnlyMessage": "仅支持文本消息。",
 			"failed": "对话失败",
-			"noOutput": "代理未生成任何输出。"
+			"noOutput": "代理未生成任何输出。",
+			"loadingOlder": "加载中…",
+			"newBelow_one": "{{count}} 条新消息",
+			"newBelow_other": "{{count}} 条新消息"
 		},
 		"thread": {
 			"composerPlaceholder": "给代理发消息…",

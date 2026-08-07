@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -931,7 +932,8 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 // FindConversationByID returns a single conversation by its primary key.
 func (r *AgentRepository) FindConversationByID(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
 	var rec agentConversationRecord
-	if err := r.db.GetContext(ctx, &rec, `SELECT `+conversationCols+` FROM agent_conversations WHERE id = $1`, id.String()); err != nil {
+	const query = `SELECT ` + conversationCols + ` FROM agent_conversations WHERE id = $1`
+	if err := r.db.GetContext(ctx, &rec, query, id.String()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, agentdom.ErrConversationNotFound
 		}
@@ -1016,21 +1018,71 @@ func (r *AgentRepository) UpdateConversation(ctx context.Context, c *agentdom.Ag
 	return err
 }
 
-// ListConversationEvents returns a paginated list of events for a conversation.
-func (r *AgentRepository) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
+// ListConversationEvents returns one keyset-paginated page of a
+// conversation's events (see agentdom.ConversationEventWindow), always
+// ascending by event_index, plus the conversation's current total event
+// count.
+//
+// Unlike ListConversations above, this needs no separate "fetch one extra
+// row" probe for hasMore-toward-the-start: event_index is gapless and
+// 0-based within a conversation, so the caller
+// (writeConversationEventWindowResponse) gets that for free from
+// first.EventIndex > 0. There is no equivalent probe toward the tail —
+// this is a live stream, so "nothing newer" can never be more than true as
+// of this query — see that function's doc comment for how it handles the
+// asymmetry.
+func (r *AgentRepository) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
 	var total int64
 	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM agent_conversation_events WHERE conversation_id = $1`, conversationID.String()); err != nil {
 		return nil, 0, err
 	}
 
-	var recs []agentConversationEventRecord
-	if err := r.db.SelectContext(ctx, &recs, `
-		SELECT id, conversation_id, event_index, event_type, event_source, payload, created_at
-		FROM agent_conversation_events
-		WHERE conversation_id = $1
-		ORDER BY event_index ASC
-		OFFSET $2 LIMIT $3`, conversationID.String(), offset, limit); err != nil {
+	var (
+		recs  []agentConversationEventRecord
+		query string
+		args  []any
+	)
+	switch {
+	case window.After != nil:
+		cur, err := agentdom.DecodeConversationEventCursor(*window.After)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%w: %s", agentdom.ErrConversationEventInvalidCursor, err)
+		}
+		query = `
+			SELECT id, conversation_id, event_index, event_type, event_source, payload, created_at
+			FROM agent_conversation_events
+			WHERE conversation_id = $1 AND event_index > $2
+			ORDER BY event_index ASC LIMIT $3`
+		args = []any{conversationID.String(), cur.EventIndex, window.Limit}
+	case window.Before != nil:
+		cur, err := agentdom.DecodeConversationEventCursor(*window.Before)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%w: %s", agentdom.ErrConversationEventInvalidCursor, err)
+		}
+		// Newest-first so LIMIT keeps the events immediately preceding the
+		// cursor rather than the oldest ones in the conversation; reversed
+		// below to the ascending order every caller expects.
+		query = `
+			SELECT id, conversation_id, event_index, event_type, event_source, payload, created_at
+			FROM agent_conversation_events
+			WHERE conversation_id = $1 AND event_index < $2
+			ORDER BY event_index DESC LIMIT $3`
+		args = []any{conversationID.String(), cur.EventIndex, window.Limit}
+	default:
+		// Neither bound: the newest page, so a conversation can be opened on
+		// its tail without a separate round trip to learn its length first.
+		query = `
+			SELECT id, conversation_id, event_index, event_type, event_source, payload, created_at
+			FROM agent_conversation_events
+			WHERE conversation_id = $1
+			ORDER BY event_index DESC LIMIT $2`
+		args = []any{conversationID.String(), window.Limit}
+	}
+	if err := r.db.SelectContext(ctx, &recs, query, args...); err != nil {
 		return nil, 0, err
+	}
+	if window.After == nil {
+		slices.Reverse(recs)
 	}
 
 	result := make([]*agentdom.AgentConversationEvent, 0, len(recs))

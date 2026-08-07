@@ -1,10 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ConversationView } from "@/components/projects/agents/conversation-view";
 import { RouteErrorComponent } from "@/components/route-error-boundary";
-import {
-	conversationEventsQueryOptions,
-	conversationQueryOptions,
-} from "@/lib/agent-api";
+import { conversationQueryOptions } from "@/lib/agent-api";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/conversations/$conversationId",
@@ -13,14 +10,12 @@ export const Route = createFileRoute(
 		context: { queryClient },
 		params: { projectId, conversationId },
 	}) => {
-		await Promise.all([
-			queryClient.ensureQueryData(
-				conversationQueryOptions(projectId, conversationId),
-			),
-			queryClient.ensureQueryData(
-				conversationEventsQueryOptions(projectId, conversationId),
-			),
-		]);
+		// Prefetches the conversation itself (agent, status, etc.) — the events
+		// window is fetched separately by useConversationEventWindow and opens
+		// on the newest page on its own, with no dependency on this data.
+		await queryClient.ensureQueryData(
+			conversationQueryOptions(projectId, conversationId),
+		);
 	},
 	// Without an errorComponent, a loader failure (e.g. deleted conversation,
 	// API 500) bubbles up and crashes the router's internal Lazy wrapper.

@@ -34,6 +34,7 @@ import {
 	createContext,
 	type FC,
 	type PropsWithChildren,
+	type ReactNode,
 	useContext,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -83,6 +84,22 @@ export type ThreadComponents = {
 
 export type ThreadProps = {
 	components?: ThreadComponents | undefined;
+	/** Rendered inside the viewport, above the messages. */
+	viewportHeader?: ReactNode | undefined;
+	/** Rendered inside the viewport, below the messages. */
+	viewportOverlay?: ReactNode | undefined;
+	/**
+	 * "bottom" gives classic chat behaviour: opens on the newest message and
+	 * stays pinned there while the reader is at the bottom. "top" anchors each
+	 * new user message at the top of the viewport and disables auto-scroll.
+	 */
+	turnAnchor?: "top" | "bottom" | undefined;
+	/**
+	 * Whether a starting run scrolls to the newest message. Queues a scroll the
+	 * viewport re-applies on every content resize until it is cleared, which
+	 * overrides a caller that is positioning the scroll itself.
+	 */
+	scrollToBottomOnRunStart?: boolean | undefined;
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
@@ -96,17 +113,41 @@ const isNewChatView = (s: AssistantState) =>
 	s.thread.messages.length === 0 &&
 	(!s.thread.isLoading || s.threads.isLoading);
 
-export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
+export const Thread: FC<ThreadProps> = ({
+	components = EMPTY_COMPONENTS,
+	viewportHeader,
+	viewportOverlay,
+	turnAnchor = "top",
+	scrollToBottomOnRunStart = true,
+}) => {
 	const isEmpty = useAuiState(isNewChatView);
 
 	return (
 		<ThreadComponentsContext.Provider value={components}>
-			<ThreadRoot isEmpty={isEmpty} />
+			<ThreadRoot
+				isEmpty={isEmpty}
+				viewportHeader={viewportHeader}
+				viewportOverlay={viewportOverlay}
+				turnAnchor={turnAnchor}
+				scrollToBottomOnRunStart={scrollToBottomOnRunStart}
+			/>
 		</ThreadComponentsContext.Provider>
 	);
 };
 
-const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
+const ThreadRoot: FC<{
+	isEmpty: boolean;
+	viewportHeader?: ReactNode | undefined;
+	viewportOverlay?: ReactNode | undefined;
+	turnAnchor: "top" | "bottom";
+	scrollToBottomOnRunStart: boolean;
+}> = ({
+	isEmpty,
+	viewportHeader,
+	viewportOverlay,
+	turnAnchor,
+	scrollToBottomOnRunStart,
+}) => {
 	const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
 
 	return (
@@ -121,7 +162,8 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 			}}
 		>
 			<ThreadPrimitive.Viewport
-				turnAnchor="top"
+				turnAnchor={turnAnchor}
+				scrollToBottomOnRunStart={scrollToBottomOnRunStart}
 				data-slot="aui_thread-viewport"
 				className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth [scrollbar-gutter:stable]"
 			>
@@ -135,6 +177,8 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 						<Welcome />
 					</AuiIf>
 
+					{viewportHeader}
+
 					<div
 						data-slot="aui_message-group"
 						className="mb-14 flex flex-col gap-y-6 empty:hidden"
@@ -143,6 +187,8 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
 							{() => <ThreadMessage />}
 						</ThreadPrimitive.Messages>
 					</div>
+
+					{viewportOverlay}
 
 					<ThreadPrimitive.ViewportFooter
 						className={cn(

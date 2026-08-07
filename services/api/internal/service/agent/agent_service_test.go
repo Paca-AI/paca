@@ -58,7 +58,7 @@ type mockAgentRepo struct {
 	updateConversationStatus        func(ctx context.Context, id uuid.UUID, status string) error
 	claimConversationStatus         func(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
 	updateConversation              func(ctx context.Context, conv *agentdom.AgentConversation) error
-	listConversationEvents          func(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error)
+	listConversationEvents          func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
 	createConversationEvent         func(ctx context.Context, event *agentdom.AgentConversationEvent) error
 	listChatSessions                func(ctx context.Context, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error)
 	findChatSessionByID             func(ctx context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error)
@@ -379,9 +379,9 @@ func (m *mockAgentRepo) UpdateConversation(ctx context.Context, conv *agentdom.A
 	return nil
 }
 
-func (m *mockAgentRepo) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
+func (m *mockAgentRepo) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
 	if m.listConversationEvents != nil {
-		return m.listConversationEvents(ctx, conversationID, offset, limit)
+		return m.listConversationEvents(ctx, conversationID, window)
 	}
 	return nil, 0, nil
 }

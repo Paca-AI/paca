@@ -261,7 +261,10 @@
 			"conversationEnded": "Cuộc trò chuyện này đã kết thúc.",
 			"textOnlyMessage": "Chỉ hỗ trợ tin nhắn văn bản.",
 			"failed": "Cuộc trò chuyện thất bại",
-			"noOutput": "Agent không tạo ra kết quả nào."
+			"noOutput": "Agent không tạo ra kết quả nào.",
+			"loadingOlder": "Đang tải…",
+			"newBelow_one": "{{count}} tin nhắn mới",
+			"newBelow_other": "{{count}} tin nhắn mới"
 		},
 		"thread": {
 			"composerPlaceholder": "Nhắn tin cho agent…",

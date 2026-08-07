@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
 		leaveProject: vi.fn(),
 		rejoinProject: vi.fn(),
 		invalidateQueries: vi.fn(),
+		setQueryData: vi.fn(),
 	};
 });
 
@@ -34,6 +35,7 @@ vi.mock("@tanstack/react-query", async () => {
 		...actual,
 		useQueryClient: () => ({
 			invalidateQueries: mocks.invalidateQueries,
+			setQueryData: mocks.setQueryData,
 		}),
 	};
 });
@@ -273,5 +275,43 @@ describe("useProjectRealtime", () => {
 		expect(mocks.leaveProject).toHaveBeenCalledWith("proj-1");
 		// New project joined.
 		expect(mocks.joinProject).toHaveBeenCalledWith("proj-2");
+	});
+	it("does not refetch the conversation list or detail for a persisted event", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({
+			type: "agent.acptoolcallevent",
+			payload: { conversation_id: "conv-1", event_index: "42" },
+		});
+
+		// The stream grew; the conversation's own fields did not.
+		expect(mocks.setQueryData).toHaveBeenCalled();
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "conversations", "conv-1", "events"],
+		});
+		expect(mocks.invalidateQueries).not.toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "conversations"],
+		});
+	});
+
+	it("refetches the conversations prefix for a lifecycle event", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({
+			type: "agent.conversation.finished",
+			payload: { conversation_id: "conv-1" },
+		});
+
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "conversations"],
+		});
 	});
 });

@@ -94,7 +94,7 @@ type EnvVarService interface {
 type ConversationService interface {
 	ListConversations(ctx context.Context, in ListConversationsFilter, limit int) (convs []*AgentConversation, hasMore bool, err error)
 	GetConversation(ctx context.Context, projectID, conversationID uuid.UUID) (*AgentConversation, error)
-	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
+	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
 	// conversation's sandbox. Unchanged from before.
 	StopConversation(ctx context.Context, projectID, conversationID uuid.UUID) error

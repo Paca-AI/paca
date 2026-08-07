@@ -337,6 +337,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentConversationInvalidCursor
 	case errors.Is(err, agentdom.ErrActivityFeedInvalidCursor):
 		return http.StatusBadRequest, apierr.CodeAgentActivityInvalidCursor
+	case errors.Is(err, agentdom.ErrConversationEventInvalidCursor):
+		return http.StatusBadRequest, apierr.CodeAgentConversationEventInvalidCursor
 	case errors.Is(err, agentdom.ErrChatSessionNotFound):
 		return http.StatusNotFound, apierr.CodeAgentChatSessionNotFound
 	case errors.Is(err, agentdom.ErrEnvVarNotFound):

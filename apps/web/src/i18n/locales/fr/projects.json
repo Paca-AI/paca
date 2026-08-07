@@ -261,7 +261,10 @@
 			"conversationEnded": "Cette conversation est terminée.",
 			"textOnlyMessage": "Seuls les messages texte sont pris en charge.",
 			"failed": "La conversation a échoué",
-			"noOutput": "L'agent n'a produit aucun résultat."
+			"noOutput": "L'agent n'a produit aucun résultat.",
+			"loadingOlder": "Chargement…",
+			"newBelow_one": "{{count}} nouveau message",
+			"newBelow_other": "{{count}} nouveaux messages"
 		},
 		"thread": {
 			"composerPlaceholder": "Message à l'agent…",

@@ -261,7 +261,10 @@
 			"conversationEnded": "Esta conversa foi encerrada.",
 			"textOnlyMessage": "Apenas mensagens de texto são suportadas.",
 			"failed": "A conversa falhou",
-			"noOutput": "O agente não produziu nenhuma saída."
+			"noOutput": "O agente não produziu nenhuma saída.",
+			"loadingOlder": "Carregando…",
+			"newBelow_one": "{{count}} nova mensagem",
+			"newBelow_other": "{{count}} novas mensagens"
 		},
 		"thread": {
 			"composerPlaceholder": "Enviar mensagem ao agente…",

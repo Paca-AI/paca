@@ -19,6 +19,10 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import {
+	type ConversationEventsTail,
+	conversationEventsTailKey,
+} from "@/lib/agent-api";
 import { connectSocket, type RealtimeEvent } from "@/lib/socket-client";
 
 export function useGlobalAgentRealtime(enabled = true): void {
@@ -36,9 +40,39 @@ export function useGlobalAgentRealtime(enabled = true): void {
 			// useProjectRealtime's agent.* handling; prefix-matches both the
 			// single conversation and its events sub-key since TanStack Query
 			// invalidates by key prefix.
-			void queryClient.invalidateQueries({
-				queryKey: ["global-chat", "conversations"],
-			});
+			const conversationId =
+				typeof event.payload.conversation_id === "string"
+					? event.payload.conversation_id
+					: null;
+			// A persisted event carries its index and changes only the event stream;
+			// the conversation's own fields change on lifecycle messages.
+			const eventIndex = Number.parseInt(
+				String(event.payload.event_index ?? ""),
+				10,
+			);
+			const isPersistedEvent = Number.isFinite(eventIndex);
+
+			if (conversationId) {
+				queryClient.setQueryData(
+					conversationEventsTailKey(conversationId),
+					(prev: ConversationEventsTail | undefined) => ({
+						tick: (prev?.tick ?? 0) + 1,
+						index: isPersistedEvent
+							? Math.max(prev?.index ?? -1, eventIndex)
+							: (prev?.index ?? null),
+					}),
+				);
+				// For views that read the whole event list.
+				void queryClient.invalidateQueries({
+					queryKey: ["global-chat", "conversations", conversationId, "events"],
+				});
+			}
+
+			if (!isPersistedEvent) {
+				void queryClient.invalidateQueries({
+					queryKey: ["global-chat", "conversations"],
+				});
+			}
 		}
 
 		socket.on("event", handleEvent);

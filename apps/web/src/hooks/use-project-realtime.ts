@@ -56,6 +56,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
+	type ConversationEventsTail,
+	conversationEventsTailKey,
+} from "@/lib/agent-api";
+import {
 	connectSocket,
 	joinProject,
 	leaveProject,
@@ -173,23 +177,37 @@ export function useProjectRealtime(projectId: string | undefined): void {
 				return;
 			}
 
-			// agent.* events: invalidate conversation list/events and task activities
+			// agent.* events: conversation caches and task activities
 			// (agent.session.started is recorded as a task activity).
 			if (type.startsWith("agent.")) {
-				void queryClient.invalidateQueries({
-					queryKey: ["projects", currentProjectId, "conversations"],
-				});
-				// agent.session.started shows up in task activity feeds
-				if (type === "agent.session.started" || type.startsWith("task.")) {
-					void queryClient.invalidateQueries({
-						queryKey: ["projects", currentProjectId, "tasks"],
-					});
-				}
 				const conversationId =
 					typeof event.payload.conversation_id === "string"
 						? event.payload.conversation_id
 						: null;
+				// A persisted event carries its index. Such an event changes only the
+				// conversation's event stream — its own fields change on the lifecycle
+				// messages, which arrive separately — so the list and the detail are
+				// left alone. A run of a few hundred events would otherwise refetch
+				// both a few hundred times.
+				const eventIndex = Number.parseInt(
+					String(event.payload.event_index ?? ""),
+					10,
+				);
+				const isPersistedEvent = Number.isFinite(eventIndex);
+
 				if (conversationId) {
+					// How far the stream has grown, for views holding a window of
+					// events.
+					queryClient.setQueryData(
+						conversationEventsTailKey(conversationId),
+						(prev: ConversationEventsTail | undefined) => ({
+							tick: (prev?.tick ?? 0) + 1,
+							index: isPersistedEvent
+								? Math.max(prev?.index ?? -1, eventIndex)
+								: (prev?.index ?? null),
+						}),
+					);
+					// For views that read the whole event list.
 					void queryClient.invalidateQueries({
 						queryKey: [
 							"projects",
@@ -199,6 +217,18 @@ export function useProjectRealtime(projectId: string | undefined): void {
 							"events",
 						],
 					});
+				}
+
+				if (!isPersistedEvent) {
+					void queryClient.invalidateQueries({
+						queryKey: ["projects", currentProjectId, "conversations"],
+					});
+					// agent.session.started shows up in task activity feeds
+					if (type === "agent.session.started" || type.startsWith("task.")) {
+						void queryClient.invalidateQueries({
+							queryKey: ["projects", currentProjectId, "tasks"],
+						});
+					}
 				}
 				return;
 			}
