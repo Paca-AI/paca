@@ -52,30 +52,6 @@ func parsePage(r *http.Request) (int, error) {
 	return n, nil
 }
 
-// parseOffsetLimit reads the offset and limit query parameters. Absent
-// params silently fall back to their defaults (0 and 50); only an explicitly
-// supplied, invalid value is rejected — for the same reason parsePageSize
-// rejects one: a caller advancing offset by the limit it requested (e.g.
-// offset += limit) would otherwise get a different limit back with no
-// signal, skipping or duplicating rows against its own math.
-func parseOffsetLimit(r *http.Request) (offset, limit int, err error) {
-	rawOffset := r.URL.Query().Get("offset")
-	if rawOffset == "" {
-		offset = 0
-	} else if offset, err = strconv.Atoi(rawOffset); err != nil || offset < 0 {
-		return 0, 0, apierr.New(apierr.CodeBadRequest, "offset must be a non-negative integer")
-	}
-
-	rawLimit := r.URL.Query().Get("limit")
-	if rawLimit == "" {
-		limit = 50
-	} else if limit, err = strconv.Atoi(rawLimit); err != nil || limit < 1 || limit > 200 {
-		return 0, 0, apierr.New(apierr.CodeBadRequest, "limit must be an integer between 1 and 200")
-	}
-
-	return offset, limit, nil
-}
-
 // splitCommaList splits a comma-separated query param into its trimmed,
 // non-empty parts (e.g. "running, paused" -> ["running", "paused"]).
 func splitCommaList(raw string) []string {

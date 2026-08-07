@@ -10,8 +10,9 @@ export const Route = createFileRoute(
 		context: { queryClient },
 		params: { projectId, conversationId },
 	}) => {
-		// The conversation only: it carries `event_count`, which is all the
-		// view needs to open on the newest events.
+		// Prefetches the conversation itself (agent, status, etc.) — the events
+		// window is fetched separately by useConversationEventWindow and opens
+		// on the newest page on its own, with no dependency on this data.
 		await queryClient.ensureQueryData(
 			conversationQueryOptions(projectId, conversationId),
 		);

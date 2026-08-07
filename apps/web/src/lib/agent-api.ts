@@ -175,12 +175,6 @@ export interface AgentConversation {
 	actor_user_id?: string | null;
 	status: ConversationStatus;
 	iteration_count: number;
-	/**
-	 * Number of persisted events. Present on a single-conversation read only,
-	 * which is what lets a view open on the newest events without first asking
-	 * how many there are.
-	 */
-	event_count?: number;
 	error_message?: string | null;
 	branch_name?: string | null;
 	pr_url?: string | null;
@@ -422,36 +416,65 @@ export async function getGlobalConversation(
 	return data.data;
 }
 
-/** The API rejects any limit above this (see parseOffsetLimit). */
+/** The API rejects any limit above this (see parseConversationEventWindowQuery). */
 export const CONVERSATION_EVENTS_PAGE_SIZE = 200;
+
+/** At most one of after/before is set — see fetchConversationEventWindow. */
+export type ConversationEventWindowParam = {
+	after?: string;
+	before?: string;
+	limit: number;
+};
 
 export type ConversationEventPage = {
 	items: AgentConversationEvent[];
 	/** Total events in the conversation, as reported by the server. */
 	total: number;
+	/** Opaque cursor resuming forward (toward newer events) from this page's
+	 *  last item — pass as `after` — or null once it is the newest known. */
+	next_cursor: string | null;
+	/** Opaque cursor resuming backward (toward older events) from this
+	 *  page's first item — pass as `before` — or null at the start of the
+	 *  stream (its first event is event_index 0). */
+	prev_cursor: string | null;
 };
 
 /**
  * Fetch one window of a conversation's events, oldest first.
  *
- * `event_index` is gapless, so `offset` addresses events directly: offset 200 is
- * event_index 200, and stays so however many events arrive later.
+ * Neither `after` nor `before` set opens on the newest `limit` events, the
+ * same "start from page one" cursor concept conversationsQueryOptions and
+ * epicTasksInfiniteQueryOptions use — a conversation can be read without
+ * first learning how many events it holds. Passing back a page's own
+ * next_cursor/prev_cursor pages forward/backward from there.
  */
 async function fetchConversationEventWindow(
 	path: string,
-	{ offset, limit }: { offset: number; limit: number },
+	{ after, before, limit }: ConversationEventWindowParam,
 ): Promise<ConversationEventPage> {
+	const params: Record<string, string | number> = { limit };
+	if (after) params.after = after;
+	if (before) params.before = before;
 	const { data } = await apiClient.instance.get<
-		SuccessEnvelope<{ items: AgentConversationEvent[]; total?: number }>
-	>(path, { params: { limit, offset } });
-	const items = data.data.items ?? [];
-	return { items, total: data.data.total ?? offset + items.length };
+		SuccessEnvelope<{
+			items: AgentConversationEvent[];
+			total: number;
+			next_cursor: string | null;
+			prev_cursor: string | null;
+		}>
+	>(path, { params });
+	return {
+		items: data.data.items ?? [],
+		total: data.data.total,
+		next_cursor: data.data.next_cursor,
+		prev_cursor: data.data.prev_cursor,
+	};
 }
 
 export const listConversationEventWindow = (
 	projectId: string,
 	conversationId: string,
-	window: { offset: number; limit: number },
+	window: ConversationEventWindowParam,
 ) =>
 	fetchConversationEventWindow(
 		`/projects/${projectId}/conversations/${conversationId}/events`,
@@ -460,7 +483,7 @@ export const listConversationEventWindow = (
 
 export const listGlobalConversationEventWindow = (
 	conversationId: string,
-	window: { offset: number; limit: number },
+	window: ConversationEventWindowParam,
 ) =>
 	fetchConversationEventWindow(
 		`/agents/conversations/${conversationId}/events`,
@@ -1375,7 +1398,11 @@ export const conversationEventsTailQueryOptions = (conversationId: string) =>
 	});
 
 /**
- * One window of a conversation's events, paged by offset in both directions.
+ * One window of a conversation's events, paged by cursor in both
+ * directions — the same opaque-cursor concept conversationsQueryOptions and
+ * epicTasksInfiniteQueryOptions use for next_cursor, extended with a
+ * prev_cursor since this reader opens on the tail and grows outward in both
+ * directions rather than listing forward from page one.
  *
  * Keyed outside ["projects", …] and ["global-chat", …] on purpose: an infinite
  * query refetches every page it holds, so an incidental prefix invalidation
@@ -1387,47 +1414,16 @@ export const conversationEventWindowKey = (conversationId: string) => [
 	conversationId,
 ];
 
-export const conversationEventCountQueryOptions = ({
-	projectId,
-	conversationId,
-}: {
-	projectId?: string | undefined;
-	conversationId: string;
-}) =>
-	queryOptions({
-		queryKey: [...conversationEventWindowKey(conversationId), "count"],
-		// One row, for its `total`. Only needed against an API that does not
-		// report `event_count` on the conversation itself.
-		queryFn: async () =>
-			(
-				await (projectId === undefined
-					? listGlobalConversationEventWindow(conversationId, {
-							offset: 0,
-							limit: 1,
-						})
-					: listConversationEventWindow(projectId, conversationId, {
-							offset: 0,
-							limit: 1,
-						}))
-			).total,
-		staleTime: Number.POSITIVE_INFINITY,
-	});
-
-/** A page carries its own limit so a short hop cannot overlap what is loaded. */
-type ConversationEventWindowParam = { offset: number; limit: number };
-
 export const conversationEventWindowInfiniteOptions = ({
 	projectId,
 	conversationId,
-	/** Events the conversation is known to hold, used to open on the newest page. */
-	count,
-	/** Highest index realtime has reported, which can be ahead of `count`. */
+	/** Highest index realtime has reported, which can be ahead of a page's
+	 *  own `total` — see ConversationEventPage['next_cursor']. */
 	tailIndex,
 	pageSize = CONVERSATION_EVENTS_PAGE_SIZE,
 }: {
 	projectId?: string | undefined;
 	conversationId: string;
-	count: number;
 	tailIndex: number | null;
 	pageSize?: number;
 }) =>
@@ -1437,34 +1433,25 @@ export const conversationEventWindowInfiniteOptions = ({
 			projectId === undefined
 				? listGlobalConversationEventWindow(conversationId, pageParam)
 				: listConversationEventWindow(projectId, conversationId, pageParam),
-		initialPageParam: {
-			offset: Math.max(0, count - pageSize),
-			limit: pageSize,
-		} as ConversationEventWindowParam,
+		// No cursor: opens on the newest page, without needing to already know
+		// how many events the conversation holds.
+		initialPageParam: { limit: pageSize } as ConversationEventWindowParam,
 		getPreviousPageParam: (
-			_first,
-			_all,
-			firstPageParam,
+			firstPage,
 		): ConversationEventWindowParam | undefined =>
-			firstPageParam.offset > 0
-				? {
-						offset: Math.max(0, firstPageParam.offset - pageSize),
-						// Clamped: the last hop backwards is usually shorter than a full
-						// page, and a full one would refetch events already held.
-						limit: Math.min(pageSize, firstPageParam.offset),
-					}
+			firstPage.prev_cursor
+				? { before: firstPage.prev_cursor, limit: pageSize }
 				: undefined,
-		getNextPageParam: (
-			lastPage,
-			_all,
-			lastPageParam,
-		): ConversationEventWindowParam | undefined => {
-			// An empty page means the server has nothing further, whatever the
-			// counts say — without this the next param would not advance.
-			if (lastPage.items.length === 0) return undefined;
-			const next = lastPageParam.offset + lastPage.items.length;
+		getNextPageParam: (lastPage): ConversationEventWindowParam | undefined => {
+			// No cursor means an empty page (see ConversationEventPage) — the
+			// server has nothing to resume from, whatever the counts say.
+			if (!lastPage.next_cursor) return undefined;
+			const lastEvent = lastPage.items.at(-1);
+			const loadedThrough = (lastEvent?.event_index ?? -1) + 1;
 			const known = Math.max(lastPage.total, (tailIndex ?? -1) + 1);
-			return next < known ? { offset: next, limit: pageSize } : undefined;
+			return loadedThrough < known
+				? { after: lastPage.next_cursor, limit: pageSize }
+				: undefined;
 		},
 		staleTime: Number.POSITIVE_INFINITY,
 		refetchOnWindowFocus: false,

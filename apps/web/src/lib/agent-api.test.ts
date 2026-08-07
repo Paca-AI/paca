@@ -487,33 +487,54 @@ describe("agent-api", () => {
 		});
 	});
 	describe("listConversationEventWindow", () => {
-		it("requests exactly the window it was asked for", async () => {
-			mockGet.mockResolvedValueOnce(ok({ items: [], total: 900 }));
+		it("requests the newest page when no cursor is given", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ items: [], total: 900, next_cursor: null, prev_cursor: "cur-a" }),
+			);
 
 			const page = await listConversationEventWindow(PROJECT_ID, "conv-1", {
-				offset: 700,
 				limit: 200,
 			});
 
 			expect(mockGet).toHaveBeenCalledWith(
 				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
-				{ params: { limit: 200, offset: 700 } },
+				{ params: { limit: 200 } },
 			);
 			expect(page.total).toBe(900);
+			expect(page.prev_cursor).toBe("cur-a");
+			expect(page.next_cursor).toBeNull();
 		});
 
-		it("infers a total from the window when the API omits one", async () => {
+		it("forwards an after cursor, not before", async () => {
 			mockGet.mockResolvedValueOnce(
-				ok({ items: [{ event_index: 10 }, { event_index: 11 }] }),
+				ok({ items: [], total: 900, next_cursor: null, prev_cursor: null }),
 			);
 
-			const page = await listConversationEventWindow(PROJECT_ID, "conv-1", {
-				offset: 10,
+			await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				after: "cur-b",
 				limit: 200,
 			});
 
-			expect(page.total).toBe(12);
-			expect(page.items).toHaveLength(2);
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
+				{ params: { limit: 200, after: "cur-b" } },
+			);
+		});
+
+		it("forwards a before cursor, not after", async () => {
+			mockGet.mockResolvedValueOnce(
+				ok({ items: [], total: 900, next_cursor: null, prev_cursor: null }),
+			);
+
+			await listConversationEventWindow(PROJECT_ID, "conv-1", {
+				before: "cur-c",
+				limit: 200,
+			});
+
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
+				{ params: { limit: 200, before: "cur-c" } },
+			);
 		});
 	});
 });

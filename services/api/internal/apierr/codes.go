@@ -299,6 +299,8 @@ const (
 	CodeAgentConversationInvalidCursor Code = "AGENT_CONVERSATION_INVALID_CURSOR"
 	// CodeAgentActivityInvalidCursor indicates a client-supplied activity feed pagination cursor failed to decode.
 	CodeAgentActivityInvalidCursor Code = "AGENT_ACTIVITY_INVALID_CURSOR"
+	// CodeAgentConversationEventInvalidCursor indicates a client-supplied conversation-events window cursor failed to decode.
+	CodeAgentConversationEventInvalidCursor Code = "AGENT_CONVERSATION_EVENT_INVALID_CURSOR"
 	// CodeAgentChatSessionNotFound indicates the requested chat session does not exist.
 	CodeAgentChatSessionNotFound Code = "AGENT_CHAT_SESSION_NOT_FOUND"
 	// CodeAgentEnvVarNotFound indicates the requested environment variable does not exist.

@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
 	type AgentConversationEvent,
 	CONVERSATION_EVENTS_PAGE_SIZE,
-	conversationEventCountQueryOptions,
 	conversationEventsTailQueryOptions,
 	conversationEventWindowInfiniteOptions,
 } from "@/lib/agent-api";
@@ -26,25 +25,23 @@ export type UseConversationEventWindow = {
  * Reads a conversation's events as a window anchored at the newest page,
  * extending upwards on demand and forwards as events arrive.
  *
- * Paging by offset is safe on a live stream because `event_index` is gapless: an
- * index is an offset, so a page addresses the same events however many arrive
- * later. Pages therefore stay contiguous, which `eventsToThreadMessages`
- * requires — it carries state across the array it is given (open tool calls keyed
- * by id, the assistant message being accumulated) and is only correct over an
- * unbroken run.
+ * Cursor-paginated on `event_index` (see conversationEventWindowInfiniteOptions):
+ * the window opens on the newest page with no cursor at all, so unlike an
+ * offset scheme it never needs to learn the conversation's length first.
+ * Pages stay contiguous, which `eventsToThreadMessages` requires — it carries
+ * state across the array it is given (open tool calls keyed by id, the
+ * assistant message being accumulated) and is only correct over an unbroken
+ * run.
  */
 export function useConversationEventWindow({
 	projectId,
 	conversationId,
-	eventCount,
-	/** Holds the first fetch until `eventCount` is settled, avoiding a probe. */
 	ready = true,
 	pageSize = CONVERSATION_EVENTS_PAGE_SIZE,
 }: {
 	/** Absent for a global-chat conversation. */
 	projectId?: string | undefined;
 	conversationId: string;
-	eventCount: number | undefined;
 	ready?: boolean;
 	pageSize?: number;
 }): UseConversationEventWindow {
@@ -57,15 +54,6 @@ export function useConversationEventWindow({
 	);
 	const tailIndex = tail?.index ?? null;
 
-	const needsCount = typeof eventCount !== "number";
-	const { data: probedCount } = useQuery({
-		...conversationEventCountQueryOptions({ projectId, conversationId }),
-		enabled: ready && needsCount,
-	});
-	const count = eventCount ?? probedCount;
-	// Realtime can know about events before a count fetched earlier does.
-	const known = Math.max(count ?? 0, (tailIndex ?? -1) + 1);
-
 	const {
 		data,
 		isPending,
@@ -75,17 +63,15 @@ export function useConversationEventWindow({
 		hasPreviousPage,
 		isFetchingPreviousPage,
 		fetchPreviousPage,
+		refetch,
 	} = useInfiniteQuery({
 		...conversationEventWindowInfiniteOptions({
 			projectId,
 			conversationId,
-			count: known,
 			tailIndex,
 			pageSize,
 		}),
-		// Nothing to window until at least one event exists; a conversation that
-		// is empty when opened starts fetching when realtime reports its first.
-		enabled: ready && count !== undefined && known > 0,
+		enabled: ready,
 	});
 
 	const events = useMemo(
@@ -96,10 +82,31 @@ export function useConversationEventWindow({
 	// Catch up to the tail a page at a time. Depends on `data` so an append that
 	// still leaves more to fetch re-runs this: the other values are unchanged
 	// across it, and a burst larger than one page would otherwise stall.
+	//
+	// A conversation with no events yet is the one case fetchNextPage can't
+	// drive this: its sole (empty) page carries no next_cursor to resume
+	// from, since there is no last event to encode one from. Re-opening on
+	// the tail via a plain refetch once realtime reports the first event
+	// replaces that empty page in place, rather than appending a second
+	// (still cursor-less) one that fetchNextPage would otherwise produce.
 	useEffect(() => {
-		if (!data || !following || !hasNextPage || isFetchingNextPage) return;
+		if (!data || !following || isFetchingNextPage) return;
+		if (events.length === 0) {
+			if ((tailIndex ?? -1) >= 0) void refetch();
+			return;
+		}
+		if (!hasNextPage) return;
 		void fetchNextPage();
-	}, [data, following, hasNextPage, isFetchingNextPage, fetchNextPage]);
+	}, [
+		data,
+		following,
+		hasNextPage,
+		isFetchingNextPage,
+		fetchNextPage,
+		events.length,
+		tailIndex,
+		refetch,
+	]);
 
 	const loaded =
 		events.length === 0 ? 0 : (events.at(-1)?.event_index ?? -1) + 1;
@@ -111,8 +118,7 @@ export function useConversationEventWindow({
 
 	return {
 		events,
-		// A conversation with no events is loaded, not loading.
-		isLoading: count === undefined || (known > 0 && isPending),
+		isLoading: isPending,
 		hasOlder: hasPreviousPage,
 		isLoadingOlder: isFetchingPreviousPage,
 		loadOlder: () => {

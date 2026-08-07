@@ -262,7 +262,6 @@
 			"textOnlyMessage": "Only text messages are supported.",
 			"failed": "Conversation failed",
 			"noOutput": "The agent did not produce any output.",
-			"loadOlder": "Load earlier messages",
 			"loadingOlder": "Loading…",
 			"newBelow_one": "{{count}} new message",
 			"newBelow_other": "{{count}} new messages"

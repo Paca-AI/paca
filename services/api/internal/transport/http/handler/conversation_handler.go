@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -227,6 +228,78 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	presenter.OK(w, r, dto.ConversationFromEntity(conv))
 }
 
+// parseConversationEventWindowQuery parses the query params shared by
+// ListConversationEvents and GetGlobalConversationEvents:
+//   - after=<opaque cursor>   events after this point, ascending — pages
+//     forward/catches up to newly arrived events.
+//   - before=<opaque cursor>  the events immediately preceding this point —
+//     pages backward into older history.
+//   - limit=<1-200>           page size; defaults to 50.
+//
+// after and before are mutually exclusive; supplying both is a 400. Neither
+// supplied selects the newest `limit` events, so a conversation can be
+// opened on its tail without a separate round trip to learn its length.
+func parseConversationEventWindowQuery(r *http.Request) (agentdom.ConversationEventWindow, error) {
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 200 {
+			return agentdom.ConversationEventWindow{}, apierr.New(apierr.CodeBadRequest, "limit must be an integer between 1 and 200")
+		}
+		limit = n
+	}
+
+	window := agentdom.ConversationEventWindow{Limit: limit}
+	if raw := r.URL.Query().Get("after"); raw != "" {
+		window.After = &raw
+	}
+	if raw := r.URL.Query().Get("before"); raw != "" {
+		window.Before = &raw
+	}
+	if window.After != nil && window.Before != nil {
+		return agentdom.ConversationEventWindow{}, apierr.New(apierr.CodeBadRequest, "after and before are mutually exclusive")
+	}
+	return window, nil
+}
+
+// writeConversationEventWindowResponse encodes an events page in the
+// {items, total, next_cursor, prev_cursor} envelope shared by
+// ListConversationEvents and GetGlobalConversationEvents.
+//
+// prev_cursor and next_cursor are not symmetric. prev_cursor reports whether
+// older events genuinely remain — event_index is gapless and 0-based, so
+// first.EventIndex > 0 is a stable, permanent fact once true. next_cursor
+// cannot make the equivalent claim about newer events: this is a live
+// stream, so "nothing newer exists" is only ever true as of this query and
+// can be stale by the time the response is read. next_cursor is therefore
+// always present when the page is non-empty — a resume token for the
+// forward direction, not a promise that resuming will find something —
+// leaving the caller (useConversationEventWindow, weighing it against
+// realtime's tail signal) to decide whether using it is worthwhile.
+func writeConversationEventWindowResponse(w http.ResponseWriter, r *http.Request, events []*agentdom.AgentConversationEvent, total int64) {
+	resp := make([]dto.AgentConversationEventResponse, 0, len(events))
+	for _, e := range events {
+		resp = append(resp, dto.ConversationEventFromEntity(e))
+	}
+
+	var nextCursor, prevCursor *string
+	if len(events) > 0 {
+		first, last := events[0], events[len(events)-1]
+		if first.EventIndex > 0 {
+			s := agentdom.EncodeConversationEventCursor(first)
+			prevCursor = &s
+		}
+		s := agentdom.EncodeConversationEventCursor(last)
+		nextCursor = &s
+	}
+	presenter.OK(w, r, map[string]any{
+		"items":       resp,
+		"total":       total,
+		"next_cursor": nextCursor,
+		"prev_cursor": prevCursor,
+	})
+}
+
 // ListConversationEvents handles GET /projects/:projectId/conversations/:conversationId/events.
 func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *http.Request) {
 	convID, err := parseParamUUID(r, "conversationId")
@@ -235,21 +308,17 @@ func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *h
 		return
 	}
 
-	offset, limit, err := parseOffsetLimit(r)
+	window, err := parseConversationEventWindowQuery(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, offset, limit)
+	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, window)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	resp := make([]dto.AgentConversationEventResponse, 0, len(events))
-	for _, e := range events {
-		resp = append(resp, dto.ConversationEventFromEntity(e))
-	}
-	presenter.OK(w, r, map[string]any{"items": resp, "total": total})
+	writeConversationEventWindowResponse(w, r, events, total)
 }
 
 // StopConversation handles POST /projects/:projectId/conversations/:conversationId/stop.
@@ -384,21 +453,17 @@ func (h *ConversationHandler) GetGlobalConversationEvents(w http.ResponseWriter,
 		presenter.Error(w, r, err)
 		return
 	}
-	offset, limit, err := parseOffsetLimit(r)
+	window, err := parseConversationEventWindowQuery(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, offset, limit)
+	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, window)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	resp := make([]dto.AgentConversationEventResponse, 0, len(events))
-	for _, e := range events {
-		resp = append(resp, dto.ConversationEventFromEntity(e))
-	}
-	presenter.OK(w, r, map[string]any{"items": resp, "total": total})
+	writeConversationEventWindowResponse(w, r, events, total)
 }
 
 // StopGlobalConversation handles POST /agents/conversations/:conversationId/stop.

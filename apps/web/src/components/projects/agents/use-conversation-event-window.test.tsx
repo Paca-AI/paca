@@ -37,25 +37,60 @@ const range = (from: number, to: number) =>
 const PROJECT_PATH = `/projects/${PROJECT_ID}/conversations/${CONVERSATION_ID}/events`;
 const GLOBAL_PATH = `/agents/conversations/${CONVERSATION_ID}/events`;
 
-/** Serves `[offset, offset+limit)` plus the current total, as the API does. */
+// Opaque only in the sense the hook never parses it — this fake mirrors the
+// real API's cursor as "the event_index it was encoded from" so the fake
+// server below can decode it straight back.
+const cursorOf = (index: number) => `cur:${index}`;
+const indexOfCursor = (cursor: string) => Number(cursor.slice(4));
+
+/**
+ * Serves the same {items, total, next_cursor, prev_cursor} shape the real
+ * API does: no cursor returns the newest `limit` events; `after`/`before`
+ * seek by event_index in either direction. next_cursor is always present
+ * for a non-empty page (a live stream can never definitively rule out more
+ * arriving); prev_cursor is null only once event_index 0 is included.
+ */
 function fakeStream(initialCount: number) {
 	let count = initialCount;
 	mockGet.mockImplementation(
 		async (
 			_path: string,
-			{ params }: { params: { offset: number; limit: number } },
-		) => ({
-			data: {
-				success: true,
+			{
+				params,
+			}: { params: { after?: string; before?: string; limit: number } },
+		) => {
+			const { after, before, limit } = params;
+			let items: AgentConversationEvent[];
+			if (after !== undefined) {
+				const from = indexOfCursor(after) + 1;
+				const to = Math.min(from + limit - 1, count - 1);
+				items = from <= to ? range(from, to) : [];
+			} else if (before !== undefined) {
+				const to = indexOfCursor(before) - 1;
+				const from = Math.max(0, to - limit + 1);
+				items = to >= 0 ? range(from, to) : [];
+			} else {
+				const to = count - 1;
+				const from = Math.max(0, to - limit + 1);
+				items = to >= 0 ? range(from, to) : [];
+			}
+			const first = items[0];
+			const last = items.at(-1);
+			return {
 				data: {
-					items: range(
-						params.offset,
-						Math.min(params.offset + params.limit, count) - 1,
-					).filter((e) => e.event_index < count),
-					total: count,
+					success: true,
+					data: {
+						items,
+						total: count,
+						next_cursor: last ? cursorOf(last.event_index) : null,
+						prev_cursor:
+							first && first.event_index > 0
+								? cursorOf(first.event_index)
+								: null,
+					},
 				},
-			},
-		}),
+			};
+		},
 	);
 	return {
 		grow(by: number) {
@@ -113,7 +148,6 @@ function open(
 			useConversationEventWindow({
 				projectId: PROJECT_ID,
 				conversationId: CONVERSATION_ID,
-				eventCount: 275,
 				pageSize: 200,
 				...props,
 			}),
@@ -137,6 +171,9 @@ describe("useConversationEventWindow", () => {
 		expect(lastIndex(result.current.events)).toBe(274);
 		expect(result.current.hasOlder).toBe(true);
 		expect(requests(PROJECT_PATH)).toHaveLength(1);
+		// No cursor on the opening request — it doesn't need to already know
+		// how many events the conversation holds.
+		expect(paramsOf(PROJECT_PATH, 0)).toEqual({ limit: 200 });
 	});
 
 	it("pages older events in without refetching what it holds", async () => {
@@ -155,7 +192,7 @@ describe("useConversationEventWindow", () => {
 
 	it("stops offering older events at the start of the stream", async () => {
 		fakeStream(10);
-		const { result } = open({ eventCount: 10 });
+		const { result } = open();
 
 		await waitFor(() => expect(result.current.events).toHaveLength(10));
 		expect(result.current.hasOlder).toBe(false);
@@ -191,7 +228,7 @@ describe("useConversationEventWindow", () => {
 
 	it("takes events for a conversation that was empty when opened", async () => {
 		const stream = fakeStream(0);
-		const { result, signal } = open({ eventCount: 0 });
+		const { result, signal } = open();
 		await waitFor(() => expect(result.current.isLoading).toBe(false));
 		expect(result.current.events).toHaveLength(0);
 
@@ -202,7 +239,7 @@ describe("useConversationEventWindow", () => {
 
 	it("catches up across a burst that outruns one page", async () => {
 		const stream = fakeStream(10);
-		const { result, signal } = open({ eventCount: 10, pageSize: 5 });
+		const { result, signal } = open({ pageSize: 5 });
 		await waitFor(() => expect(lastIndex(result.current.events)).toBe(9));
 
 		// 12 new events with a 5-event page: needs three round trips.
@@ -212,28 +249,18 @@ describe("useConversationEventWindow", () => {
 		});
 	});
 
-	it("probes for the count when the API does not report one", async () => {
-		fakeStream(50);
-		const { result } = open({ eventCount: undefined });
-
-		await waitFor(() => expect(result.current.events).toHaveLength(50));
-		// First call is the one-row probe, then the window itself.
-		expect(paramsOf(PROJECT_PATH, 0)).toEqual({ offset: 0, limit: 1 });
-	});
-
-	it("holds the first fetch until the event count is settled", async () => {
+	it("holds the first fetch until ready", async () => {
 		fakeStream(275);
 		const { wrapper } = harness();
 
-		type Props = { ready: boolean; eventCount: number | undefined };
-		const initialProps: Props = { ready: false, eventCount: undefined };
+		type Props = { ready: boolean };
+		const initialProps: Props = { ready: false };
 
 		const { result, rerender } = renderHook(
-			({ ready, eventCount }: Props) =>
+			({ ready }: Props) =>
 				useConversationEventWindow({
 					projectId: PROJECT_ID,
 					conversationId: CONVERSATION_ID,
-					eventCount,
 					ready,
 					pageSize: 200,
 				}),
@@ -242,15 +269,14 @@ describe("useConversationEventWindow", () => {
 
 		expect(requests(PROJECT_PATH)).toHaveLength(0);
 
-		rerender({ ready: true, eventCount: 275 });
+		rerender({ ready: true });
 		await waitFor(() => expect(result.current.events).toHaveLength(200));
-		// Went straight to the tail: no probe was needed.
-		expect(paramsOf(PROJECT_PATH, 0)).toEqual({ offset: 75, limit: 200 });
+		expect(paramsOf(PROJECT_PATH, 0)).toEqual({ limit: 200 });
 	});
 
 	it("reads the global route when there is no project", async () => {
 		fakeStream(30);
-		const { result } = open({ projectId: undefined, eventCount: 30 });
+		const { result } = open({ projectId: undefined });
 
 		await waitFor(() => expect(result.current.events).toHaveLength(30));
 		expect(requests(GLOBAL_PATH)).toHaveLength(1);
@@ -270,14 +296,16 @@ describe("useConversationEventWindow", () => {
 	});
 	it("keeps paging back to the start without overlapping what is held", async () => {
 		fakeStream(250);
-		const { result } = open({ eventCount: 250, pageSize: 100 });
+		const { result } = open({ pageSize: 100 });
 		await waitFor(() => expect(result.current.events).toHaveLength(100));
 
 		act(() => result.current.loadOlder());
 		await waitFor(() => expect(result.current.events).toHaveLength(200));
 
-		// The last hop back covers 50 events, not a full page: asking for a full
-		// one would refetch events 50..99, which are already loaded.
+		// The last hop back covers 50 events, not a full page — keyset
+		// pagination on event_index can't overlap what's already loaded, unlike
+		// an offset scheme where a naive full-page request here would have
+		// refetched events 50..99.
 		act(() => result.current.loadOlder());
 		await waitFor(() => expect(result.current.events).toHaveLength(250));
 

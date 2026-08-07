@@ -172,7 +172,6 @@ export function ConversationView({
 	} = useConversationEventWindow({
 		projectId,
 		conversationId,
-		eventCount: conversation?.event_count,
 		ready: !convLoading,
 	});
 	// Project scope: GET /projects/:id/agents/:agentId (project members may
