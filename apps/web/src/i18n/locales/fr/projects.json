@@ -1196,6 +1196,19 @@
 			"statusCompleted": "Terminé",
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · débuté le {{date}}",
+			"editSprint": "Modifier le sprint",
+			"editSprintModal": {
+				"title": "Modifier le sprint",
+				"nameLabel": "Nom",
+				"goalLabel": "Objectif",
+				"optional": "(facultatif)",
+				"goalPlaceholder": "Que doit accomplir ce sprint ?",
+				"startDateLabel": "Date de début",
+				"dueDateLabel": "Date d'échéance",
+				"cancel": "Annuler",
+				"saving": "Enregistrement…",
+				"save": "Enregistrer les modifications"
+			},
 			"completeSprint": "Terminer le sprint",
 			"completeSprintModal": {
 				"title": "Terminer le sprint",

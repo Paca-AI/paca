@@ -39,7 +39,8 @@
 	"interactions": {
 		"title": "Tương tác",
 		"timeline": "Dòng thời gian",
-		"productBacklog": "Product Backlog"
+		"productBacklog": "Product Backlog",
+		"completedSprints": "Sprint đã hoàn thành"
 	},
 	"docs": {
 		"documentation": "Tài liệu",

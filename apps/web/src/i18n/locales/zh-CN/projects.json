@@ -1196,6 +1196,19 @@
 			"statusCompleted": "已完成",
 			"description": "{{status}}的冲刺",
 			"descriptionWithStartDate": "{{status}}的冲刺 · 开始于 {{date}}",
+			"editSprint": "编辑冲刺",
+			"editSprintModal": {
+				"title": "编辑冲刺",
+				"nameLabel": "名称",
+				"goalLabel": "目标",
+				"optional": "(可选)",
+				"goalPlaceholder": "此冲刺应达成什么目标?",
+				"startDateLabel": "开始日期",
+				"dueDateLabel": "截止日期",
+				"cancel": "取消",
+				"saving": "保存中…",
+				"save": "保存更改"
+			},
 			"completeSprint": "完成冲刺",
 			"completeSprintModal": {
 				"title": "完成冲刺",

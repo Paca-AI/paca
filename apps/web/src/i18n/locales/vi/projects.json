@@ -1196,6 +1196,19 @@
 			"statusCompleted": "Đã hoàn thành",
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · bắt đầu {{date}}",
+			"editSprint": "Chỉnh sửa sprint",
+			"editSprintModal": {
+				"title": "Chỉnh sửa sprint",
+				"nameLabel": "Tên",
+				"goalLabel": "Mục tiêu",
+				"optional": "(không bắt buộc)",
+				"goalPlaceholder": "Sprint này cần đạt được điều gì?",
+				"startDateLabel": "Ngày bắt đầu",
+				"dueDateLabel": "Ngày đến hạn",
+				"cancel": "Hủy",
+				"saving": "Đang lưu…",
+				"save": "Lưu thay đổi"
+			},
 			"completeSprint": "Hoàn thành sprint",
 			"completeSprintModal": {
 				"title": "Hoàn thành sprint",

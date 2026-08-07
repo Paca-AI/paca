@@ -39,7 +39,8 @@
 	"interactions": {
 		"title": "インタラクション",
 		"timeline": "タイムライン",
-		"productBacklog": "プロダクトバックログ"
+		"productBacklog": "プロダクトバックログ",
+		"completedSprints": "完了したスプリント"
 	},
 	"docs": {
 		"documentation": "ドキュメント",

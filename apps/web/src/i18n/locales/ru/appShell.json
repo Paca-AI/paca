@@ -39,7 +39,8 @@
 	"interactions": {
 		"title": "Взаимодействия",
 		"timeline": "Таймлайн",
-		"productBacklog": "Бэклог продукта"
+		"productBacklog": "Бэклог продукта",
+		"completedSprints": "Завершённые спринты"
 	},
 	"docs": {
 		"documentation": "Документация",

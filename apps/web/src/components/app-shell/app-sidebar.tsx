@@ -9,6 +9,7 @@ import {
 	ArrowLeft,
 	BookOpen,
 	Bot,
+	CheckCircle2,
 	ChevronDown,
 	ChevronRight,
 	File,
@@ -1110,6 +1111,8 @@ function ProjectInteractionsSection({
 	const [dragOverInteractionId, setDragOverInteractionId] = useState<
 		string | null
 	>(null);
+	const [completedSprintsCollapsed, setCompletedSprintsCollapsed] =
+		useState(true);
 
 	// Clear the drop-target highlight whenever any drag ends (covers drag-cancel
 	// and mouse-release outside a valid target, where dragleave may not fire).
@@ -1185,6 +1188,10 @@ function ProjectInteractionsSection({
 	const openSprints = sprints
 		.filter((s) => s.status === "active")
 		.sort((a, b) => a.name.localeCompare(b.name));
+
+	const completedSprints = sprints
+		.filter((s) => s.status === "completed")
+		.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 
 	const backlogHref = `/projects/${projectId}/interactions/backlog`;
 	const isBacklogActive = location.startsWith(backlogHref);
@@ -1295,6 +1302,56 @@ function ProjectInteractionsSection({
 								</SidebarMenuItem>
 							);
 						})}
+						{/* Closed sprints (collapsible) */}
+						{completedSprints.length > 0 && (
+							<>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										tooltip={t("interactions.completedSprints")}
+										onClick={() =>
+											setCompletedSprintsCollapsed((prev) => !prev)
+										}
+										className="text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+									>
+										<ChevronRight
+											className={cn(
+												"size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40",
+												!completedSprintsCollapsed && "rotate-90",
+											)}
+										/>
+										<span className="flex-1 truncate text-xs font-medium">
+											{t("interactions.completedSprints")}
+										</span>
+										<span className="rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+											{completedSprints.length}
+										</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								{!completedSprintsCollapsed &&
+									completedSprints.map((sprint) => {
+										const sprintHref = `/projects/${projectId}/interactions/sprints/${sprint.id}`;
+										const isActive = location.startsWith(sprintHref);
+										return (
+											<SidebarMenuItem key={sprint.id}>
+												<SidebarMenuButton
+													isActive={isActive}
+													tooltip={sprint.name}
+													render={<Link to={sprintHref} />}
+													className={cn(
+														"relative transition-all duration-150",
+														isActive
+															? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
+															: "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+													)}
+												>
+													<CheckCircle2 className="size-4" />
+													<span className="flex-1 truncate">{sprint.name}</span>
+												</SidebarMenuButton>
+											</SidebarMenuItem>
+										);
+									})}
+							</>
+						)}
 					</SidebarMenu>
 				</SidebarGroupContent>
 			)}

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,6 +12,8 @@ import {
 	sprintQueryOptions,
 	sprintsQueryOptions,
 	sprintTasksQueryOptions,
+	type UpdateSprintPayload,
+	updateSprint,
 } from "@/lib/interaction-api";
 import { taskStatusesQueryOptions } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
@@ -66,6 +68,12 @@ function SprintPage() {
 	const [completeOpen, setCompleteOpen] = useState(false);
 	const [moveToSprintId, setMoveToSprintId] = useState<string | null>(null);
 
+	const [editOpen, setEditOpen] = useState(false);
+	const [editName, setEditName] = useState("");
+	const [editGoal, setEditGoal] = useState("");
+	const [editStartDate, setEditStartDate] = useState("");
+	const [editEndDate, setEditEndDate] = useState("");
+
 	const sprintTasks = tasksResult?.items ?? [];
 
 	const doneStatusIds = new Set(
@@ -97,6 +105,18 @@ function SprintPage() {
 				to: "/projects/$projectId/interactions/backlog",
 				params: { projectId },
 			});
+		},
+	});
+
+	const updateSprintMutation = useMutation({
+		mutationFn: (payload: UpdateSprintPayload) =>
+			updateSprint(projectId, sprintId, payload),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
+			qc.invalidateQueries({
+				queryKey: ["projects", projectId, "sprints", sprintId],
+			});
+			setEditOpen(false);
 		},
 	});
 
@@ -138,18 +158,166 @@ function SprintPage() {
 				sprintId={sprintId}
 				context="sprint"
 				headerActions={
-					sprint.status === "active" && canManageSprints ? (
-						<button
-							type="button"
-							onClick={() => setCompleteOpen(true)}
-							className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all duration-150"
-						>
-							<CheckCircle2 className="size-3.5 shrink-0" />
-							{t("layout.sprintDetail.completeSprint")}
-						</button>
+					canManageSprints ? (
+						<>
+							<button
+								type="button"
+								onClick={() => {
+									setEditName(sprint.name);
+									setEditGoal(sprint.goal ?? "");
+									setEditStartDate(
+										sprint.start_date ? sprint.start_date.slice(0, 10) : "",
+									);
+									setEditEndDate(
+										sprint.end_date ? sprint.end_date.slice(0, 10) : "",
+									);
+									setEditOpen(true);
+								}}
+								className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/10 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-all duration-150"
+							>
+								<Pencil className="size-3.5 shrink-0" />
+								{t("layout.sprintDetail.editSprint")}
+							</button>
+							{sprint.status === "active" && (
+								<button
+									type="button"
+									onClick={() => setCompleteOpen(true)}
+									className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all duration-150"
+								>
+									<CheckCircle2 className="size-3.5 shrink-0" />
+									{t("layout.sprintDetail.completeSprint")}
+								</button>
+							)}
+						</>
 					) : undefined
 				}
 			/>
+			{/* Edit Sprint Modal */}
+			{editOpen && (
+				// biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+					onClick={(e) => {
+						if (e.target === e.currentTarget) setEditOpen(false);
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") setEditOpen(false);
+					}}
+				>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: modal panel */}
+					<div
+						className="relative w-full max-w-md rounded-xl border border-border/50 bg-background p-6 shadow-2xl mx-4"
+						onClick={(e) => e.stopPropagation()}
+						onKeyDown={(e) => e.stopPropagation()}
+					>
+						<button
+							type="button"
+							onClick={() => setEditOpen(false)}
+							className="absolute right-4 top-4 flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all"
+						>
+							<X className="size-4" />
+						</button>
+						<h2 className="font-[Syne] text-lg font-bold tracking-tight mb-4">
+							{t("layout.sprintDetail.editSprintModal.title")}
+						</h2>
+						<div className="flex flex-col gap-4">
+							<div className="flex flex-col gap-1.5">
+								<label htmlFor="es-name" className="text-sm font-medium">
+									{t("layout.sprintDetail.editSprintModal.nameLabel")}
+								</label>
+								<input
+									id="es-name"
+									value={editName}
+									onChange={(e) => setEditName(e.target.value)}
+									className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+								/>
+							</div>
+							<div className="flex flex-col gap-1.5">
+								<label
+									htmlFor="es-goal"
+									className="text-sm font-medium text-muted-foreground"
+								>
+									{t("layout.sprintDetail.editSprintModal.goalLabel")}{" "}
+									<span className="text-xs font-normal">
+										{t("layout.sprintDetail.editSprintModal.optional")}
+									</span>
+								</label>
+								<textarea
+									id="es-goal"
+									value={editGoal}
+									onChange={(e) => setEditGoal(e.target.value)}
+									rows={2}
+									placeholder={t(
+										"layout.sprintDetail.editSprintModal.goalPlaceholder",
+									)}
+									className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50 resize-none"
+								/>
+							</div>
+							<div className="grid grid-cols-2 gap-3">
+								<div className="flex flex-col gap-1.5">
+									<label
+										htmlFor="es-start"
+										className="text-sm font-medium text-muted-foreground"
+									>
+										{t("layout.sprintDetail.editSprintModal.startDateLabel")}
+									</label>
+									<input
+										id="es-start"
+										type="date"
+										value={editStartDate}
+										onChange={(e) => setEditStartDate(e.target.value)}
+										className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+									/>
+								</div>
+								<div className="flex flex-col gap-1.5">
+									<label
+										htmlFor="es-end"
+										className="text-sm font-medium text-muted-foreground"
+									>
+										{t("layout.sprintDetail.editSprintModal.dueDateLabel")}
+									</label>
+									<input
+										id="es-end"
+										type="date"
+										value={editEndDate}
+										min={editStartDate || undefined}
+										onChange={(e) => setEditEndDate(e.target.value)}
+										className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+									/>
+								</div>
+							</div>
+						</div>
+						<div className="mt-6 flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={() => setEditOpen(false)}
+								className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
+							>
+								{t("layout.sprintDetail.editSprintModal.cancel")}
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									updateSprintMutation.mutate({
+										name: editName.trim() || sprint.name,
+										goal: editGoal.trim() || null,
+										start_date: editStartDate
+											? `${editStartDate}T00:00:00Z`
+											: null,
+										end_date: editEndDate ? `${editEndDate}T00:00:00Z` : null,
+									})
+								}
+								disabled={updateSprintMutation.isPending || !editName.trim()}
+								className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+							>
+								{updateSprintMutation.isPending
+									? t("layout.sprintDetail.editSprintModal.saving")
+									: t("layout.sprintDetail.editSprintModal.save")}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 			{/* Complete Sprint Modal */}
 			{completeOpen && (
 				// biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop

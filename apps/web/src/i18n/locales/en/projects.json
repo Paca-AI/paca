@@ -1196,6 +1196,19 @@
 			"statusCompleted": "Completed",
 			"description": "{{status}} sprint",
 			"descriptionWithStartDate": "{{status}} sprint · started {{date}}",
+			"editSprint": "Edit sprint",
+			"editSprintModal": {
+				"title": "Edit sprint",
+				"nameLabel": "Name",
+				"goalLabel": "Goal",
+				"optional": "(optional)",
+				"goalPlaceholder": "What should this sprint achieve?",
+				"startDateLabel": "Start date",
+				"dueDateLabel": "Due date",
+				"cancel": "Cancel",
+				"saving": "Saving…",
+				"save": "Save changes"
+			},
 			"completeSprint": "Complete sprint",
 			"completeSprintModal": {
 				"title": "Complete sprint",

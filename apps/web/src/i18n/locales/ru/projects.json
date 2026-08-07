@@ -1214,6 +1214,19 @@
 			"statusCompleted": "Завершён",
 			"description": "{{status}} спринт",
 			"descriptionWithStartDate": "{{status}} спринт · начат {{date}}",
+			"editSprint": "Изменить спринт",
+			"editSprintModal": {
+				"title": "Изменить спринт",
+				"nameLabel": "Название",
+				"goalLabel": "Цель",
+				"optional": "(необязательно)",
+				"goalPlaceholder": "Чего должен достичь этот спринт?",
+				"startDateLabel": "Дата начала",
+				"dueDateLabel": "Срок выполнения",
+				"cancel": "Отмена",
+				"saving": "Сохранение…",
+				"save": "Сохранить изменения"
+			},
 			"completeSprint": "Завершить спринт",
 			"completeSprintModal": {
 				"title": "Завершить спринт",
