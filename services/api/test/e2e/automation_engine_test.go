@@ -1576,6 +1576,23 @@ func publishAgentConversationStatusViaRedis(t *testing.T, env *e2eEnv, conversat
 	}
 }
 
+// stopConversationViaAPI calls the real StopConversation endpoint — unlike
+// publishAgentConversationStatusViaRedis, which fabricates the stream
+// message directly, this exercises agentsvc.Service.StopConversation's own
+// StreamAgentConversationStatus publish, the thing
+// TestE2EAutomationEngine_TriggerAIAgentStoppedViaAPIFailsRunWithoutRunningNextNode
+// actually needs to prove: that an explicit stop (not just a conversation
+// finishing/failing on its own) also resumes a paused graph walk.
+func stopConversationViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, conversationID string) {
+	t.Helper()
+	req := mustRequest(env.ctx, t, http.MethodPost,
+		fmt.Sprintf("%s/api/v1/projects/%s/conversations/%s/stop", env.base, projectID, conversationID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusOK)
+}
+
 // waitForAutomationRunStatus polls automationID's run list until it has
 // exactly one run whose status equals want, or fails the test after timeout.
 func waitForAutomationRunStatus(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID, want string, timeout time.Duration) map[string]any {
@@ -1714,6 +1731,46 @@ func TestE2EAutomationEngine_TriggerAIAgentFailedConversationFailsRunWithoutRunn
 	}
 	if !sawFailedAgentStep {
 		t.Fatalf("expected a failed run step recorded for the trigger_ai_agent node, got steps: %v", steps)
+	}
+}
+
+// TestE2EAutomationEngine_TriggerAIAgentStoppedViaAPIFailsRunWithoutRunningNextNode
+// covers the same "the pending wait must resolve" contract as the finished/
+// failed tests above, but for an explicit stop instead of the conversation
+// reaching a terminal status on its own. Regression coverage for a bug where
+// StopConversation wrote "stopped" straight to Postgres and told ai-agent to
+// tear the conversation down, but never published to
+// StreamAgentConversationStatus — leaving any trigger_ai_agent node's
+// PendingAgentWait (and its automation run) paused forever, since neither
+// Go's StopConversation nor ai-agent's own shutdown-path turn-end logic
+// considered itself responsible for that publish.
+func TestE2EAutomationEngine_TriggerAIAgentStoppedViaAPIFailsRunWithoutRunningNextNode(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerClient, ownerToken, projID, automationID, agentNodeID, task, conversationID :=
+		setupTriggerAIAgentPauseFixture(t, env, "automation-aiagent-stop")
+
+	stopConversationViaAPI(t, env, ownerClient, ownerToken, projID, conversationID)
+
+	run := waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "failed", 20*time.Second)
+
+	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
+	if tags, _ := data["tags"].([]any); len(tags) != 0 {
+		t.Fatalf("expected update_task to never run when the agent conversation was stopped, got tags %v", tags)
+	}
+
+	runID, _ := run["id"].(string)
+	steps := listAutomationRunStepsViaAPI(t, env, ownerClient, ownerToken, projID, automationID, runID)
+	var sawFailedAgentStep bool
+	for _, step := range steps {
+		if step["node_id"] == agentNodeID && step["status"] == "failed" {
+			sawFailedAgentStep = true
+		}
+	}
+	if !sawFailedAgentStep {
+		t.Fatalf("expected a failed run step recorded for the trigger_ai_agent node once its conversation was stopped, got steps: %v", steps)
 	}
 }
 

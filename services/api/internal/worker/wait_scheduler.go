@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,14 +19,52 @@ const (
 	waitSchedulerInterval = 15 * time.Second
 )
 
+// releaseLockScript deletes leaderKey only if it still holds this holder's
+// own token — a plain Del (used by DueDateScheduler/CronScheduler, where a
+// lost lock is harmless) would let a replica whose lock already expired and
+// was re-acquired by someone else delete that new holder's lock instead of
+// its own. Here that distinction matters (see WaitScheduler's docstring), so
+// release is compare-and-delete rather than unconditional.
+var releaseLockScript = redis.NewScript(`
+if redis.call("get", KEYS[1]) == ARGV[1] then
+	return redis.call("del", KEYS[1])
+else
+	return 0
+end
+`)
+
+// renewLockScript extends leaderKey's TTL only if it still holds this
+// holder's own token, atomically with the check — same compare-then-act
+// requirement as releaseLockScript, so a holder whose lock already expired
+// (and was possibly reclaimed by another replica) can't accidentally revive
+// or extend a lock it no longer owns.
+var renewLockScript = redis.NewScript(`
+if redis.call("get", KEYS[1]) == ARGV[1] then
+	return redis.call("pexpire", KEYS[1], ARGV[2])
+else
+	return 0
+end
+`)
+
 // WaitScheduler periodically polls for wait action nodes whose configured
 // duration has elapsed and resumes their paused graph walk. Same
 // leader-lock/ticker shape as DueDateScheduler/CronScheduler — here the lock
 // is a correctness requirement, not just an optimization: ListDueDelays no
 // longer deletes on read (see its docstring), so without the lock two
-// replicas could both list and resume the same due delay concurrently. The
-// lock is held for the whole tick, including every resumeAfterDelay call
-// below, not just the list step.
+// replicas could both list and resume the same due delay concurrently.
+//
+// Unlike DueDateScheduler/CronScheduler's plain SETNX-then-unconditional-Del
+// lock (fine there, since a lost lock is merely "harmless" — see
+// DueDateScheduler's docstring), this lock is held across a loop of
+// resumeAfterDelay calls whose total duration isn't bounded by the tick
+// interval — a backlog of due delays, or one slow call_api HTTP call, can
+// keep a tick running well past the lock's TTL. So the lock here carries a
+// per-acquisition token (see acquireLock/renewLock/releaseLock): release is
+// compare-and-delete rather than unconditional (a holder whose TTL already
+// expired must not delete a different replica's freshly-acquired lock), and
+// the lock is renewed before processing each delay in the loop rather than
+// held statically for the whole tick — so a long backlog keeps extending its
+// own lease instead of running out from under itself.
 type WaitScheduler struct {
 	client    *redis.Client
 	consumer  *AutomationConsumer
@@ -98,20 +137,48 @@ func (s *WaitScheduler) run(ctx context.Context) {
 	}
 }
 
-func (s *WaitScheduler) tick(ctx context.Context) {
-	err := s.client.SetArgs(ctx, s.leaderKey, "1", redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
+// acquireLock attempts to take leaderKey with a fresh, per-acquisition
+// token, returning ("", false) if another replica already holds it.
+func (s *WaitScheduler) acquireLock(ctx context.Context) (string, bool) {
+	token := uuid.New().String()
+	err := s.client.SetArgs(ctx, s.leaderKey, token, redis.SetArgs{TTL: s.interval * 2, Mode: "NX"}).Err()
 	if errors.Is(err, redis.Nil) {
-		return // another replica holds the lock this tick
+		return "", false // another replica holds the lock this tick
 	}
 	if err != nil {
 		s.log.Warn("wait scheduler: leader lock error", "err", err)
+		return "", false
+	}
+	return token, true
+}
+
+// renewLock extends leaderKey's TTL, but only while token is still the
+// current holder — see renewLockScript. Returns false if the lock was lost
+// (expired and possibly reclaimed by another replica), signaling the caller
+// to stop processing rather than continue unprotected.
+func (s *WaitScheduler) renewLock(ctx context.Context, token string) bool {
+	n, err := renewLockScript.Run(ctx, s.client, []string{s.leaderKey}, token, (s.interval * 2).Milliseconds()).Int()
+	if err != nil {
+		s.log.Warn("wait scheduler: renew leader lock", "err", err)
+		return false
+	}
+	return n != 0
+}
+
+// releaseLock deletes leaderKey, but only while token is still the current
+// holder — see releaseLockScript.
+func (s *WaitScheduler) releaseLock(ctx context.Context, token string) {
+	if err := releaseLockScript.Run(ctx, s.client, []string{s.leaderKey}, token).Err(); err != nil {
+		s.log.Warn("wait scheduler: release leader lock", "err", err)
+	}
+}
+
+func (s *WaitScheduler) tick(ctx context.Context) {
+	token, ok := s.acquireLock(ctx)
+	if !ok {
 		return
 	}
-	defer func() {
-		if delErr := s.client.Del(ctx, s.leaderKey).Err(); delErr != nil {
-			s.log.Warn("wait scheduler: release leader lock", "err", delErr)
-		}
-	}()
+	defer s.releaseLock(ctx, token)
 
 	delays, err := s.consumer.repo.ListDueDelays(ctx)
 	if err != nil {
@@ -119,6 +186,16 @@ func (s *WaitScheduler) tick(ctx context.Context) {
 		return
 	}
 	for _, delay := range delays {
+		// Renewed before every delay (not just once per tick) so a long
+		// backlog — or one slow resumeAfterDelay call — keeps the lease
+		// alive instead of racing its own TTL. A lost lock here means
+		// another replica may already be processing (or about to process)
+		// the remainder of this tick's list, so stop rather than risk
+		// double-resuming.
+		if !s.renewLock(ctx, token) {
+			s.log.Warn("wait scheduler: lost leader lock mid-tick, stopping early", "remaining", len(delays))
+			return
+		}
 		if err := s.consumer.resumeAfterDelay(ctx, delay); err != nil {
 			s.log.Error("wait scheduler: resume after delay", "run_id", delay.RunID, "node_id", delay.NodeID, "err", err)
 			continue // row left in place — retried next tick, see ListDueDelays
