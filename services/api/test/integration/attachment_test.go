@@ -306,6 +306,35 @@ func buildAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorageCli
 	return h, userRepo
 }
 
+// buildProjectAvatarTestRouter wires a router with the project avatar
+// endpoints (WithProjectAvatarService) backed by real (fake) storage, plus
+// enough of the project CRUD surface to create a project to run avatar
+// requests against.
+func buildProjectAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorageClient, permStore *projectPermStore) http.Handler {
+	tm := jwttoken.New(testSecret, 15*time.Minute, 168*time.Hour)
+	refreshStore := &fakeRefreshStore{}
+	userRepo := newFakeUserRepo()
+	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
+	projectRepo := newFakeProjectRepo()
+	taskRepo := newFakeTaskRepoIT()
+	projectService := projectsvc.New(projectRepo, taskRepo, nil)
+	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), store, "test-bucket")
+	projectService.WithAvatarService(attachmentService)
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	return router.New(router.Deps{
+		TokenManager:         tm,
+		Authorizer:           authz.NewAuthorizer(permStore),
+		ProjectVisibilitySvc: projectService,
+		Health:               handler.NewHealthHandler(),
+		Auth:                 handler.NewAuthHandler(authService, testCookieCfg),
+		GlobalRole:           handler.NewGlobalRoleHandler(&fakeGlobalRoleService{}),
+		Project: handler.NewProjectHandler(projectService, authz.NewAuthorizer(permStore),
+			handler.WithProjectAvatarService(attachmentService)),
+		Log: log,
+	})
+}
+
 // fullPermStore returns a projectPermStore granting all task/attachment perms for the given project.
 func fullPermStore(projectID uuid.UUID) *projectPermStore {
 	return &projectPermStore{
@@ -919,5 +948,173 @@ func TestAvatarUpload_RejectsOversizedFile(t *testing.T) {
 	}))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for oversized file, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestAvatarUpload_OwnerMismatch_RejectsCompletingAnotherUsersUpload proves a
+// file initiated for one owner can't be completed against a different
+// owner's avatar, even if the second owner learns the file_id — the storage
+// key embeds the owning user's ID, and CompleteAvatarUpload checks it.
+func TestAvatarUpload_OwnerMismatch_RejectsCompletingAnotherUsersUpload(t *testing.T) {
+	userA, userB := uuid.New(), uuid.New()
+	repo := newFakeAttachmentRepo()
+	store := newFakeStorageClient()
+	r, userRepo := buildAvatarTestRouter(repo, store)
+	for _, u := range []*userdom.User{
+		{ID: userA, Username: "owner-a", FullName: "Owner A", Role: userdom.RoleUser},
+		{ID: userB, Username: "owner-b", FullName: "Owner B", Role: userdom.RoleUser},
+	} {
+		if err := userRepo.Create(context.Background(), u); err != nil {
+			t.Fatalf("seed user %s: %v", u.Username, err)
+		}
+	}
+	tokA := issueAttachToken(t, userA.String())
+	tokB := issueAttachToken(t, userB.String())
+
+	pngBytes := fakePNG(t, 50, 50)
+
+	// User A initiates and "uploads" to storage.
+	wInit := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/users/me/avatar/initiate-upload", tokA, map[string]any{
+		"file_name":    "a.png",
+		"content_type": "image/png",
+		"file_size":    len(pngBytes),
+	}))
+	if wInit.Code != http.StatusCreated {
+		t.Fatalf("initiate as user A: expected 201, got %d: %s", wInit.Code, wInit.Body.String())
+	}
+	initData := decodeAttachData(t, wInit)
+	fileID, _ := initData["file_id"].(string)
+	uploadURL, _ := initData["upload_url"].(string)
+	store.PutObject(context.Background(), "test-bucket", keyFromFakeUploadURL(t, "test-bucket", uploadURL), "image/png", pngBytes) //nolint:errcheck
+
+	// User B tries to complete A's upload as their own avatar.
+	wComplete := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/users/me/avatar/complete-upload", tokB, map[string]any{
+		"file_id": fileID,
+	}))
+	if wComplete.Code != http.StatusNotFound {
+		t.Fatalf("complete as user B: expected 404 (owner mismatch), got %d: %s", wComplete.Code, wComplete.Body.String())
+	}
+
+	// User A can still complete their own upload afterwards.
+	wCompleteA := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/users/me/avatar/complete-upload", tokA, map[string]any{
+		"file_id": fileID,
+	}))
+	if wCompleteA.Code != http.StatusOK {
+		t.Fatalf("complete as user A: expected 200, got %d: %s", wCompleteA.Code, wCompleteA.Body.String())
+	}
+}
+
+// TestAvatarUpload_ActualBytesExceedDeclaredSize_RejectedAtComplete proves
+// that a client can't bypass the size cap by declaring a small file_size at
+// initiate time and then PUTting more bytes directly to the presigned URL —
+// CompleteAvatarUpload re-checks the actual downloaded object size before
+// doing any decode work on it.
+func TestAvatarUpload_ActualBytesExceedDeclaredSize_RejectedAtComplete(t *testing.T) {
+	userID := uuid.New()
+	store := newFakeStorageClient()
+	r, userRepo := buildAvatarTestRouter(newFakeAttachmentRepo(), store)
+	if err := userRepo.Create(context.Background(), &userdom.User{
+		ID: userID, Username: "avatartester4", FullName: "Avatar Tester 4", Role: userdom.RoleUser,
+	}); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	tok := issueAttachToken(t, userID.String())
+
+	// Declare a small, well-under-the-cap size at initiate time.
+	wInit := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/users/me/avatar/initiate-upload", tok, map[string]any{
+		"file_name":    "lies.png",
+		"content_type": "image/png",
+		"file_size":    1024,
+	}))
+	if wInit.Code != http.StatusCreated {
+		t.Fatalf("initiate: expected 201, got %d: %s", wInit.Code, wInit.Body.String())
+	}
+	initData := decodeAttachData(t, wInit)
+	fileID, _ := initData["file_id"].(string)
+	uploadURL, _ := initData["upload_url"].(string)
+
+	// Simulate the client PUTting more bytes than it declared — nothing
+	// about the presigned URL itself enforces the declared size.
+	oversized := bytes.Repeat([]byte{0xAB}, attachmentdom.MaxAvatarUploadSize+1024)
+	store.PutObject(context.Background(), "test-bucket", keyFromFakeUploadURL(t, "test-bucket", uploadURL), "image/png", oversized) //nolint:errcheck
+
+	wComplete := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/users/me/avatar/complete-upload", tok, map[string]any{
+		"file_id": fileID,
+	}))
+	if wComplete.Code != http.StatusBadRequest {
+		t.Errorf("complete with oversized actual upload: expected 400, got %d: %s", wComplete.Code, wComplete.Body.String())
+	}
+}
+
+// TestAvatarUpload_Project_FullFlow covers the initiate/upload/complete/
+// delete HTTP flow for a project avatar — the self-service user flow is
+// covered by TestAvatarUpload_SelfService above, but that leaves the
+// project (and agent) owner kinds without any full-router coverage of their
+// own; a project avatar exercises the same CompleteAvatarUpload code path
+// through a different owner kind and permission-middleware branch
+// (PermissionProjectsWrite instead of the always-self "me" routes).
+func TestAvatarUpload_Project_FullFlow(t *testing.T) {
+	store := newFakeStorageClient()
+	permStore := &projectPermStore{
+		globalPerms: []authz.Permission{
+			authz.PermissionProjectsRead,
+			authz.PermissionProjectsWrite,
+			authz.PermissionProjectsCreate,
+		},
+	}
+	r := buildProjectAvatarTestRouter(newFakeAttachmentRepo(), store, permStore)
+	tok := issueProjectToken(t, uuid.NewString())
+
+	createW := serve(r, authedJSONReq(t.Context(), http.MethodPost, "/api/v1/projects", tok, map[string]any{
+		"name": "Avatar Project",
+	}))
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create project: expected 201, got %d: %s", createW.Code, createW.Body.String())
+	}
+	projectID := projectIDFromCreate(t, createW)
+	avatarPath := "/api/v1/projects/" + projectID + "/avatar"
+
+	pngBytes := fakePNG(t, 120, 80)
+
+	wInit := serve(r, authedJSONReq(t.Context(), http.MethodPost, avatarPath+"/initiate-upload", tok, map[string]any{
+		"file_name":    "project.png",
+		"content_type": "image/png",
+		"file_size":    len(pngBytes),
+	}))
+	if wInit.Code != http.StatusCreated {
+		t.Fatalf("initiate: expected 201, got %d: %s", wInit.Code, wInit.Body.String())
+	}
+	initData := decodeAttachData(t, wInit)
+	fileID, _ := initData["file_id"].(string)
+	uploadURL, _ := initData["upload_url"].(string)
+	store.PutObject(context.Background(), "test-bucket", keyFromFakeUploadURL(t, "test-bucket", uploadURL), "image/png", pngBytes) //nolint:errcheck
+
+	wComplete := serve(r, authedJSONReq(t.Context(), http.MethodPost, avatarPath+"/complete-upload", tok, map[string]any{
+		"file_id": fileID,
+	}))
+	if wComplete.Code != http.StatusOK {
+		t.Fatalf("complete: expected 200, got %d: %s", wComplete.Code, wComplete.Body.String())
+	}
+	completeData := decodeAttachData(t, wComplete)
+	if completeData["avatar_url"] == nil || completeData["avatar_url"] == "" {
+		t.Errorf("expected avatar_url in complete response, got %v", completeData)
+	}
+
+	wGet := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/projects/"+projectID, tok, nil))
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("get project: expected 200, got %d: %s", wGet.Code, wGet.Body.String())
+	}
+	getData := decodeAttachData(t, wGet)
+	if getData["avatar_url"] == nil || getData["avatar_url"] == "" {
+		t.Errorf("expected GetProject to report avatar_url after upload, got %v", getData)
+	}
+
+	wDelete := serve(r, authedJSONReq(t.Context(), http.MethodDelete, avatarPath, tok, nil))
+	if wDelete.Code != http.StatusOK {
+		t.Fatalf("delete avatar: expected 200, got %d: %s", wDelete.Code, wDelete.Body.String())
+	}
+	deleteData := decodeAttachData(t, wDelete)
+	if deleteData["avatar_url"] != nil {
+		t.Errorf("expected avatar_url to be cleared after delete, got %v", deleteData["avatar_url"])
 	}
 }

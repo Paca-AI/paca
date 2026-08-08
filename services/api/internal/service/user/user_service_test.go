@@ -4,15 +4,53 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
 )
+
+// ---------------------------------------------------------------------------
+// stub avatar service
+// ---------------------------------------------------------------------------
+
+// stubAvatarService is a bare-bones attachmentdom.AvatarService double —
+// CompleteAvatarUpload always returns nextKeys, and DeleteAvatarObjects
+// records what it was asked to delete so tests can assert the *previous*
+// avatar's keys were cleaned up after a replace.
+type stubAvatarService struct {
+	mu          sync.Mutex
+	nextKeys    *attachmentdom.AvatarKeys
+	deletedKeys []string
+}
+
+func (s *stubAvatarService) InitiateAvatarUpload(context.Context, attachmentdom.AvatarUploadInput) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{FileID: uuid.New(), UploadURL: "https://fake/upload"}, nil
+}
+
+func (s *stubAvatarService) CompleteAvatarUpload(context.Context, attachmentdom.AvatarCompleteInput) (*attachmentdom.AvatarKeys, error) {
+	return s.nextKeys, nil
+}
+
+func (s *stubAvatarService) ResolveAvatarURL(context.Context, *string) (*string, error) {
+	return nil, nil
+}
+
+func (s *stubAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, k := range keys {
+		if k != nil && *k != "" {
+			s.deletedKeys = append(s.deletedKeys, *k)
+		}
+	}
+}
 
 // ---------------------------------------------------------------------------
 // stub repository
@@ -500,5 +538,80 @@ func TestDelete_RepoError(t *testing.T) {
 	err := svc.Delete(context.Background(), uuid.New())
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("expected repo error, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Avatar
+// ---------------------------------------------------------------------------
+
+func TestInitiateAvatarUpload_NoAvatarService_ReturnsError(t *testing.T) {
+	svc := usersvc.New(&stubRepo{}) // WithAvatarService never called
+	_, err := svc.InitiateAvatarUpload(context.Background(), uuid.New(), "me.png", "image/png", 1024)
+	if !errors.Is(err, usersvc.ErrAvatarServiceRequired) {
+		t.Fatalf("expected ErrAvatarServiceRequired, got %v", err)
+	}
+}
+
+func TestCompleteAvatarUpload_SwapsKeysAndDeletesOld(t *testing.T) {
+	oldKey, oldThumbKey := "avatars/users/u1/old/full.png", "avatars/users/u1/old/thumb.png"
+	userID := uuid.New()
+	var updated *userdom.User
+	repo := &stubRepo{
+		findByID: func(_ context.Context, id uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id, AvatarKey: &oldKey, AvatarThumbKey: &oldThumbKey}, nil
+		},
+		update: func(_ context.Context, u *userdom.User) error {
+			updated = u
+			return nil
+		},
+	}
+	avatarSvc := &stubAvatarService{
+		nextKeys: &attachmentdom.AvatarKeys{Key: "avatars/users/u1/new/full.png", ThumbKey: "avatars/users/u1/new/thumb.png"},
+	}
+	svc := usersvc.New(repo).WithAvatarService(avatarSvc)
+
+	u, err := svc.CompleteAvatarUpload(context.Background(), userID, uuid.New())
+	if err != nil {
+		t.Fatalf("CompleteAvatarUpload: %v", err)
+	}
+	if u.AvatarKey == nil || *u.AvatarKey != avatarSvc.nextKeys.Key {
+		t.Errorf("expected AvatarKey %q, got %v", avatarSvc.nextKeys.Key, u.AvatarKey)
+	}
+	if updated == nil || updated.AvatarKey == nil || *updated.AvatarKey != avatarSvc.nextKeys.Key {
+		t.Errorf("expected repo.Update to persist the new AvatarKey, got %v", updated)
+	}
+
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	if len(avatarSvc.deletedKeys) != 2 {
+		t.Fatalf("expected the two old keys to be deleted, got %v", avatarSvc.deletedKeys)
+	}
+}
+
+func TestRemoveAvatar_NoExistingAvatar_NoOps(t *testing.T) {
+	updateCalled := false
+	repo := &stubRepo{
+		findByID: func(_ context.Context, id uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id}, nil
+		},
+		update: func(context.Context, *userdom.User) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	avatarSvc := &stubAvatarService{}
+	svc := usersvc.New(repo).WithAvatarService(avatarSvc)
+
+	if _, err := svc.RemoveAvatar(context.Background(), uuid.New()); err != nil {
+		t.Fatalf("RemoveAvatar: %v", err)
+	}
+	if updateCalled {
+		t.Error("expected repo.Update not to be called when the user has no avatar")
+	}
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	if len(avatarSvc.deletedKeys) != 0 {
+		t.Errorf("expected no delete calls when user has no avatar, got %v", avatarSvc.deletedKeys)
 	}
 }

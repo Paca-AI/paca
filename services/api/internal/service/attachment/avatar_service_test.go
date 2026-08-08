@@ -2,10 +2,15 @@ package attachmentsvc
 
 import (
 	"bytes"
+	"encoding/binary"
+	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
 	"testing"
+
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 )
 
 func solidImage(w, h int, c color.Color) image.Image {
@@ -75,5 +80,61 @@ func TestDecodeAvatarImage_PNG(t *testing.T) {
 func TestDecodeAvatarImage_InvalidBytes(t *testing.T) {
 	if _, err := decodeAvatarImage([]byte("not an image"), "image/png"); err == nil {
 		t.Fatal("expected decodeAvatarImage to reject non-image bytes, got nil error")
+	}
+}
+
+// fakePNGHeader builds a syntactically valid PNG signature + IHDR chunk
+// declaring width x height, with no pixel data. image.DecodeConfig only
+// needs the IHDR chunk to report dimensions, so this lets the oversized-
+// dimensions test below exercise the guard against an implausibly large
+// declared image without actually allocating that much memory.
+func fakePNGHeader(width, height uint32) []byte {
+	var buf bytes.Buffer
+	buf.Write([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], width)
+	binary.BigEndian.PutUint32(ihdr[4:8], height)
+	ihdr[8] = 8  // bit depth
+	ihdr[9] = 6  // color type: truecolor + alpha
+	ihdr[10] = 0 // compression method
+	ihdr[11] = 0 // filter method
+	ihdr[12] = 0 // interlace method
+	writePNGChunk(&buf, "IHDR", ihdr)
+	return buf.Bytes()
+}
+
+func writePNGChunk(buf *bytes.Buffer, chunkType string, data []byte) {
+	var lenBuf [4]byte
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(data)))
+	buf.Write(lenBuf[:])
+
+	typeAndData := append([]byte(chunkType), data...)
+	buf.Write(typeAndData)
+
+	var crcBuf [4]byte
+	binary.BigEndian.PutUint32(crcBuf[:], crc32.ChecksumIEEE(typeAndData))
+	buf.Write(crcBuf[:])
+}
+
+func TestDecodeAvatarImage_RejectsOversizedDimensions(t *testing.T) {
+	// Declares a 50000x50000 image (2.5 billion pixels, ~10 GiB as RGBA) —
+	// well past MaxAvatarDecodeDimension. Must be rejected before the full
+	// decoder ever runs.
+	huge := fakePNGHeader(50000, 50000)
+	_, err := decodeAvatarImage(huge, "image/png")
+	if !errors.Is(err, attachmentdom.ErrAvatarDimensionsTooLarge) {
+		t.Fatalf("decodeAvatarImage(50000x50000): got %v, want ErrAvatarDimensionsTooLarge", err)
+	}
+}
+
+func TestDecodeAvatarImage_AllowsDimensionsWithinCap(t *testing.T) {
+	square := solidImage(200, 200, color.White)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, square); err != nil {
+		t.Fatalf("encode fixture PNG: %v", err)
+	}
+	if _, err := decodeAvatarImage(buf.Bytes(), "image/png"); err != nil {
+		t.Fatalf("decodeAvatarImage(200x200): unexpected error: %v", err)
 	}
 }

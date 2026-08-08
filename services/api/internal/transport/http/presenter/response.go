@@ -244,7 +244,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeMultipartPartsEmpty
 	case errors.Is(err, attachmentdom.ErrAvatarTooLarge),
 		errors.Is(err, attachmentdom.ErrAvatarContentTypeInvalid),
-		errors.Is(err, attachmentdom.ErrAvatarDecodeFailed):
+		errors.Is(err, attachmentdom.ErrAvatarDecodeFailed),
+		errors.Is(err, attachmentdom.ErrAvatarDimensionsTooLarge):
 		return http.StatusBadRequest, apierr.CodeAttachmentInvalid
 	case errors.Is(err, attachmentdom.ErrAvatarOwnerMismatch):
 		return http.StatusNotFound, apierr.CodeFileNotFound

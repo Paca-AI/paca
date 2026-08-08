@@ -51,7 +51,21 @@ type AvatarService interface {
 
 // MaxAvatarUploadSize caps the raw (pre-resize) avatar upload. Comfortably
 // under storage.MultipartThreshold so avatars never need the multipart path.
+// Enforced twice: against the client-declared size at initiate time, and
+// again against the actual downloaded object at complete time — a client
+// can PUT more bytes than it declared straight to the presigned URL, so the
+// declared-size check alone is not sufficient.
 const MaxAvatarUploadSize = 5 * 1024 * 1024 // 5 MiB
+
+// MaxAvatarDecodeDimension caps the width/height (in pixels) an uploaded
+// avatar may declare before the server will fully decode it. Checked via a
+// cheap header-only DecodeConfig read, before the full pixel buffer is
+// allocated — a small, highly-compressed file can otherwise declare
+// dimensions large enough to exhaust server memory on decode (a
+// "decompression bomb"). Comfortably above any realistic photo (a 4K photo
+// is 3840x2160) while keeping the worst-case decode buffer bounded
+// (8192x8192 RGBA is ~256 MiB).
+const MaxAvatarDecodeDimension = 8192
 
 // AvatarContentTypes is the whitelist of accepted raw upload content types.
 var AvatarContentTypes = map[string]bool{

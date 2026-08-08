@@ -208,6 +208,13 @@ func New(cfg *config.Config) (*App, error) {
 	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), storageClient, cfg.Storage.Bucket)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
+	// Unlike userService/agentService above, this return value isn't
+	// reassigned: projectService (the cached wrapper built from
+	// projectServiceBase back at its construction) already holds this same
+	// *Service pointer, and WithAvatarService mutates it in place, so the
+	// config takes effect through projectService too. Reassigning here would
+	// itself go unused (and trip staticcheck's SA4006) since projectServiceBase
+	// is never read again after this line.
 	projectServiceBase.WithAvatarService(attachmentService)
 
 	// --- API Key management -------------------------------------------------

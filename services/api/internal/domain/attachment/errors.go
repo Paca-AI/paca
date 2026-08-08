@@ -38,6 +38,10 @@ var (
 	// ErrAvatarDecodeFailed is returned when the uploaded bytes cannot be
 	// decoded as an image of one of the accepted content types.
 	ErrAvatarDecodeFailed = errors.New("uploaded file is not a valid image")
+	// ErrAvatarDimensionsTooLarge is returned when an uploaded image's
+	// declared pixel dimensions exceed MaxAvatarDecodeDimension, checked
+	// before the full image is decoded into memory.
+	ErrAvatarDimensionsTooLarge = errors.New("image dimensions exceed the maximum allowed for an avatar")
 	// ErrAvatarOwnerMismatch is returned when a file being completed does not
 	// belong to the claimed avatar owner (storage key prefix mismatch).
 	ErrAvatarOwnerMismatch = errors.New("file does not belong to the specified avatar owner")

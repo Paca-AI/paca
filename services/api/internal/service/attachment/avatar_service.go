@@ -2,6 +2,7 @@ package attachmentsvc
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"  // register GIF decoder with image.Decode
@@ -101,9 +102,19 @@ func (s *Service) CompleteAvatarUpload(ctx context.Context, in attachmentdom.Ava
 	if err != nil {
 		return nil, fmt.Errorf("attachment svc: download avatar upload: %w", err)
 	}
+	// The client declares file_size at initiate time, but the presigned PUT
+	// URL enforces nothing about the actual object it accepts — a client can
+	// upload more bytes than it declared. Re-check the real object here,
+	// before doing any decode work on it.
+	if len(raw) > attachmentdom.MaxAvatarUploadSize {
+		return nil, attachmentdom.ErrAvatarTooLarge
+	}
 
 	img, err := decodeAvatarImage(raw, f.ContentType)
 	if err != nil {
+		if errors.Is(err, attachmentdom.ErrAvatarDimensionsTooLarge) {
+			return nil, err
+		}
 		return nil, attachmentdom.ErrAvatarDecodeFailed
 	}
 	square := cropToSquare(img)
@@ -178,12 +189,46 @@ func avatarOwnerPrefix(kind attachmentdom.AvatarOwnerKind, ownerID uuid.UUID) st
 // (golang.org/x/image/webp, decode-only) — png/jpeg/gif decoders are
 // registered with the stdlib image.Decode dispatcher via blank imports
 // above.
+//
+// Dimensions are checked first via a cheap, header-only DecodeConfig read
+// before the full decoder (which allocates a pixel buffer proportional to
+// width*height) ever runs — otherwise a small, highly-compressed file could
+// declare dimensions large enough to exhaust server memory on decode.
 func decodeAvatarImage(data []byte, contentType string) (image.Image, error) {
+	if err := checkAvatarDimensions(data, contentType); err != nil {
+		return nil, err
+	}
 	if contentType == "image/webp" {
 		return webp.Decode(bytes.NewReader(data))
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	return img, err
+}
+
+// checkAvatarDimensions rejects images whose declared width or height
+// exceeds MaxAvatarDecodeDimension, without decoding the full pixel buffer.
+func checkAvatarDimensions(data []byte, contentType string) error {
+	var width, height int
+	if contentType == "image/webp" {
+		cfg, err := webp.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+		width, height = cfg.Width, cfg.Height
+	} else {
+		cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+		width, height = cfg.Width, cfg.Height
+	}
+	if width <= 0 || height <= 0 {
+		return attachmentdom.ErrAvatarDecodeFailed
+	}
+	if width > attachmentdom.MaxAvatarDecodeDimension || height > attachmentdom.MaxAvatarDecodeDimension {
+		return attachmentdom.ErrAvatarDimensionsTooLarge
+	}
+	return nil
 }
 
 // cropToSquare returns the center square crop of img as a fresh RGBA image.
