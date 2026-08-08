@@ -18,6 +18,7 @@ import (
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	pluginom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -150,6 +151,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeProjectNameInvalid
 	case errors.Is(err, projectdom.ErrPrefixInvalid):
 		return http.StatusBadRequest, apierr.CodeProjectPrefixInvalid
+	case errors.Is(err, settingsdom.ErrInvalidColor):
+		return http.StatusBadRequest, apierr.CodeBadRequest
+	case errors.Is(err, settingsdom.ErrBrandNameTooLong):
+		return http.StatusBadRequest, apierr.CodeBadRequest
 	case errors.Is(err, projectdom.ErrRoleNotFound):
 		return http.StatusNotFound, apierr.CodeProjectRoleNotFound
 	case errors.Is(err, projectdom.ErrRoleNameTaken):

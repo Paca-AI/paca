@@ -41,6 +41,7 @@ import (
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
+	settingssvc "github.com/Paca-AI/api/internal/service/settings"
 	sprintsvc "github.com/Paca-AI/api/internal/service/sprint"
 	tasksvc "github.com/Paca-AI/api/internal/service/task"
 	usersvc "github.com/Paca-AI/api/internal/service/user"
@@ -109,6 +110,7 @@ func New(cfg *config.Config) (*App, error) {
 	docRepo := pgRepo.NewDocumentRepository(db)
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	pluginRepo := pgRepo.NewPluginRepository(db)
+	settingsRepo := pgRepo.NewSettingsRepository(db)
 	rawAutomationRepo := pgRepo.NewAutomationRepository(db)
 	// Wraps rawAutomationRepo with a cache for graph reads, invalidated on
 	// writes — shared between automationService and automationConsumer
@@ -151,6 +153,7 @@ func New(cfg *config.Config) (*App, error) {
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
+	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
 		if hexErr != nil {
@@ -216,6 +219,7 @@ func New(cfg *config.Config) (*App, error) {
 	// itself go unused (and trip staticcheck's SA4006) since projectServiceBase
 	// is never read again after this line.
 	projectServiceBase.WithAvatarService(attachmentService)
+	settingsService.WithAvatarService(attachmentService)
 
 	// --- API Key management -------------------------------------------------
 	apiKeyRepo := pgRepo.NewAPIKeyRepository(db)
@@ -367,6 +371,7 @@ func New(cfg *config.Config) (*App, error) {
 		Agent:              agentHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
+		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
 		Log:                log,
 		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
 	}

@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "Escrever Funções do Projeto",
 				"description": "Criar e atualizar funções em qualquer projeto"
+			},
+			"settingsWrite": {
+				"label": "Editar configurações do workspace",
+				"description": "Atualizar o logotipo, o favicon e a cor principal do workspace"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Funções Globais",
 			"users": "Usuários",
 			"projects": "Projetos",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"settings": "Configurações"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "Ainda não há agentes globais",
 			"description": "Crie um agente global para disponibilizá-lo para conversas e convites de projeto.",
 			"createAgent": "Criar agente"
+		}
+	},
+	"settings": {
+		"title": "Identidade visual do workspace",
+		"description": "Defina o logotipo, o favicon e a cor principal usados em todos os projetos deste workspace.",
+		"images": {
+			"title": "Logotipo e favicon",
+			"logo": {
+				"label": "Logotipo",
+				"change": "Alterar logotipo",
+				"remove": "Remover logotipo",
+				"uploading": "Enviando…"
+			},
+			"favicon": {
+				"label": "Favicon",
+				"change": "Alterar favicon",
+				"remove": "Remover favicon",
+				"uploading": "Enviando…"
+			},
+			"errors": {
+				"invalidType": "Escolha uma imagem PNG, JPEG, WEBP ou GIF.",
+				"tooLarge": "A imagem deve ter no máximo 5 MB.",
+				"uploadFailed": "Falha ao enviar a imagem. Tente novamente.",
+				"removeFailed": "Falha ao remover a imagem. Tente novamente."
+			}
+		},
+		"general": {
+			"title": "Geral",
+			"brandNameLabel": "Nome da marca",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "Cor principal",
+			"colorsDescription": "Escolha uma cor de destaque para os botões e elementos em destaque do app — ajustada automaticamente para os modos claro e escuro.",
+			"colorPresets": {
+				"green": "Verde",
+				"blue": "Azul",
+				"teal": "Verde-azulado",
+				"indigo": "Índigo",
+				"purple": "Roxo",
+				"pink": "Rosa",
+				"red": "Vermelho",
+				"orange": "Laranja"
+			},
+			"save": "Salvar alterações",
+			"saved": "Salvo",
+			"errors": {
+				"updateFailed": "Falha ao salvar. Tente novamente."
+			}
 		}
 	}
 }

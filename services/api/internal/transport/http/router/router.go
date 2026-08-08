@@ -42,6 +42,7 @@ type Deps struct {
 	Agent                *handler.AgentHandler
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
+	Settings             *handler.SettingsHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
 	// or empty slice (the zero value, so every existing caller of this
@@ -69,6 +70,13 @@ func New(deps Deps) http.Handler {
 			if deps.Version != nil {
 				r.Get("/version", deps.Version.Check)
 				r.Get("/releases", deps.Version.ListReleases)
+			}
+
+			// Workspace branding — public, no auth required. Read pre-login
+			// (login page) and on every page load, so it can't sit behind
+			// the Authn middleware the way /admin/settings' writes do below.
+			if deps.Settings != nil {
+				r.Get("/branding", deps.Settings.GetBranding)
 			}
 
 			// Auth
@@ -211,6 +219,24 @@ func New(deps Deps) http.Handler {
 						Patch("/agents/{agentId}/env-vars/{envVarId}", deps.Agent.UpdateGlobalAgentEnvVar)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
 						Delete("/agents/{agentId}/env-vars/{envVarId}", deps.Agent.DeleteGlobalAgentEnvVar)
+				}
+
+				// Workspace branding (logo/favicon/primary color) — a
+				// singleton, so no {id} in the path. Sub-routed under
+				// "/settings/logo" and "/settings/favicon" with an "/avatar/…"
+				// suffix so the frontend can drive both through the same
+				// generic avatar-upload client/component used for
+				// users/agents/projects (which always POSTs/DELETEs to
+				// "{basePath}/avatar/…").
+				if deps.Settings != nil {
+					write := httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionSettingsWrite)
+					r.With(write).Patch("/settings", deps.Settings.UpdateSettings)
+					r.With(write).Post("/settings/logo/avatar/initiate-upload", deps.Settings.InitiateLogoUpload)
+					r.With(write).Post("/settings/logo/avatar/complete-upload", deps.Settings.CompleteLogoUpload)
+					r.With(write).Delete("/settings/logo/avatar", deps.Settings.DeleteLogo)
+					r.With(write).Post("/settings/favicon/avatar/initiate-upload", deps.Settings.InitiateFaviconUpload)
+					r.With(write).Post("/settings/favicon/avatar/complete-upload", deps.Settings.CompleteFaviconUpload)
+					r.With(write).Delete("/settings/favicon/avatar", deps.Settings.DeleteFavicon)
 				}
 			})
 

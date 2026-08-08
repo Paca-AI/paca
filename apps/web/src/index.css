@@ -248,7 +248,7 @@ body::before {
 .dark body::before {
 	background: radial-gradient(
 		ellipse 70% 40% at 50% -5%,
-		rgba(158, 217, 87, 0.05),
+		color-mix(in oklab, var(--palm) 5%, transparent),
 		transparent
 	);
 }
@@ -424,7 +424,7 @@ a {
 	 * overriding them. */
 	a {
 		color: var(--lagoon);
-		text-decoration-color: rgba(94, 143, 24, 0.35);
+		text-decoration-color: color-mix(in oklab, var(--lagoon) 35%, transparent);
 		text-decoration-thickness: 1px;
 		text-underline-offset: 2px;
 	}
@@ -433,7 +433,6 @@ a {
 	}
 	.dark a {
 		color: var(--lagoon);
-		text-decoration-color: rgba(158, 217, 87, 0.35);
 	}
 	.dark a:hover {
 		color: var(--lagoon-deep);

@@ -2,6 +2,7 @@ import {
 	FolderKanban,
 	type LucideIcon,
 	Puzzle,
+	Settings,
 	Shield,
 	Users,
 } from "lucide-react";
@@ -96,6 +97,12 @@ export const KNOWN_PERMISSIONS = [
 		descriptionKey: "globalRoles.permissions.projectRolesWrite.description",
 		domain: "projects",
 	},
+	{
+		key: "settings.write",
+		labelKey: "globalRoles.permissions.settingsWrite.label",
+		descriptionKey: "globalRoles.permissions.settingsWrite.description",
+		domain: "settings",
+	},
 ] as const satisfies KnownPermission[];
 
 export interface PermissionGroup {
@@ -124,5 +131,10 @@ export const PERMISSION_GROUPS = [
 		domain: "plugins",
 		labelKey: "globalRoles.permissionGroups.plugins",
 		Icon: Puzzle,
+	},
+	{
+		domain: "settings",
+		labelKey: "globalRoles.permissionGroups.settings",
+		Icon: Settings,
 	},
 ] as const satisfies PermissionGroup[];

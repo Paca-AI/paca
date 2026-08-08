@@ -71,6 +71,7 @@ import {
 	SidebarSeparator,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { useBranding } from "@/hooks/use-branding";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import type { ThemeMode } from "@/hooks/use-theme-mode";
@@ -861,7 +862,7 @@ function NavItem({
 					"relative transition-all duration-150",
 					isActive
 						? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-						: "hover:bg-sidebar-accent/60",
+						: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 				)}
 			>
 				<Icon className="size-4" />
@@ -993,7 +994,7 @@ function ProjectNavItems({
 											"relative transition-all duration-150",
 											isActive
 												? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-												: "hover:bg-sidebar-accent/60",
+												: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 										)}
 									>
 										<Icon className="size-4" />
@@ -1044,7 +1045,7 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
 										"relative transition-all duration-150",
 										isActive
 											? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-											: "hover:bg-sidebar-accent/60",
+											: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 									)}
 								>
 									<Icon className="size-4" />
@@ -1279,7 +1280,7 @@ function ProjectInteractionsSection({
 									"relative transition-all duration-150",
 									isTimelineActive
 										? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-										: "hover:bg-sidebar-accent/60",
+										: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 								)}
 							>
 								<GanttChart className="size-4" />
@@ -1300,7 +1301,7 @@ function ProjectInteractionsSection({
 									"relative transition-all duration-150",
 									isBacklogActive
 										? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-										: "hover:bg-sidebar-accent/60",
+										: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 									dragOverInteractionId === "backlog" &&
 										"ring-2 ring-primary/40 bg-primary/5 text-primary",
 								)}
@@ -1328,7 +1329,7 @@ function ProjectInteractionsSection({
 											"relative transition-all duration-150",
 											isActive
 												? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-												: "hover:bg-sidebar-accent/60",
+												: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 											dragOverInteractionId === sprint.id &&
 												"ring-2 ring-primary/40 bg-primary/5 text-primary",
 										)}
@@ -1346,7 +1347,7 @@ function ProjectInteractionsSection({
 									<SidebarMenuButton
 										tooltip={t("interactions.completedSprints")}
 										onClick={toggleCompletedSprints}
-										className="text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+										className="text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
 									>
 										<ChevronRight
 											className={cn(
@@ -1376,7 +1377,7 @@ function ProjectInteractionsSection({
 														"relative transition-all duration-150",
 														isActive
 															? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-															: "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+															: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
 													)}
 												>
 													<CheckCircle2 className="size-4" />
@@ -1458,6 +1459,9 @@ export function AppSidebar() {
 	const { projectId } = useParams({ strict: false });
 	const { data: user } = useQuery(currentUserOptionalQueryOptions);
 	const { getNavItems } = usePluginRegistry();
+	const branding = useBranding();
+	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;
+	const brandName = branding?.brand_name;
 
 	const canAccessGlobalRoles =
 		hasPermission("global_roles.read") || hasPermission("global_roles.write");
@@ -1469,6 +1473,8 @@ export function AppSidebar() {
 		hasPermission("agents.read") || hasPermission("agents.write");
 
 	const canAccessPlugins = hasPermission("users.write");
+
+	const canAccessSettings = hasPermission("settings.write");
 
 	const canCreateProject = hasPermission("projects.create");
 
@@ -1487,6 +1493,7 @@ export function AppSidebar() {
 		canAccessUsers ||
 		canAccessGlobalAgents ||
 		canAccessPlugins ||
+		canAccessSettings ||
 		adminPluginNavItems.length > 0;
 	// Plugin-contributed admin pages get their own sidebar section, separate
 	// from core workspace administration — the "Plugins" management link
@@ -1504,9 +1511,10 @@ export function AppSidebar() {
 						<Link to="/home">
 							<img
 								src={
-									resolvedMode === "dark"
+									logoUrl ??
+									(resolvedMode === "dark"
 										? "/paca-logo-dark.svg"
-										: "/paca-logo.svg"
+										: "/paca-logo.svg")
 								}
 								alt={t("brand.logoAlt")}
 								className="size-8 shrink-0"
@@ -1515,16 +1523,17 @@ export function AppSidebar() {
 					) : (
 						<img
 							src={
-								resolvedMode === "dark"
+								logoUrl ??
+								(resolvedMode === "dark"
 									? "/paca-logo-dark.svg"
-									: "/paca-logo.svg"
+									: "/paca-logo.svg")
 							}
 							alt={t("brand.logoAlt")}
 							className="size-8 shrink-0"
 						/>
 					)}
 					<span className="font-[Syne] font-bold text-base tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-						paca
+						{brandName ?? "paca"}
 					</span>
 				</div>
 				<div className="group-data-[collapsible=icon]:hidden">
@@ -1613,6 +1622,13 @@ export function AppSidebar() {
 													icon={Puzzle}
 													label={t("nav.plugins")}
 													exact
+												/>
+											) : null}
+											{canAccessSettings ? (
+												<NavItem
+													to="/admin/settings"
+													icon={Settings}
+													label={t("nav.settings")}
 												/>
 											) : null}
 											<NavItem

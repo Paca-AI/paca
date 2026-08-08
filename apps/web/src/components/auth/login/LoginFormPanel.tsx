@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useBranding } from "@/hooks/use-branding";
 import { useLoginForm } from "@/hooks/use-login-form";
 import { validatePassword, validateUsername } from "@/lib/auth-validation";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,10 @@ export function LoginFormPanel() {
 	const { t: tCommon } = useTranslation("common");
 	const { form, serverError } = useLoginForm();
 	const [showPassword, setShowPassword] = useState(false);
-	const logoSrc = "/paca-logo.svg";
+	const branding = useBranding();
+	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;
+	const logoSrc = logoUrl ?? "/paca-logo.svg";
+	const brandName = branding?.brand_name;
 
 	return (
 		<div className="relative flex flex-col justify-center px-8 py-10 sm:px-10">
@@ -32,7 +36,7 @@ export function LoginFormPanel() {
 						className="h-auto w-8"
 					/>
 					<span className="text-base font-bold tracking-tight text-(--sea-ink)">
-						paca
+						{brandName ?? "paca"}
 					</span>
 				</div>
 

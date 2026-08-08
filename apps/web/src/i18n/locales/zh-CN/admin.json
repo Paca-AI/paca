@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "编辑项目角色",
 				"description": "在任意项目中创建和更新角色"
+			},
+			"settingsWrite": {
+				"label": "编辑工作区设置",
+				"description": "更新工作区的徽标、favicon 和主色调"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "全局角色",
 			"users": "用户",
 			"projects": "项目",
-			"plugins": "插件"
+			"plugins": "插件",
+			"settings": "设置"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "暂无全局智能体",
 			"description": "创建一个全局智能体，使其可用于聊天和项目邀请。",
 			"createAgent": "创建智能体"
+		}
+	},
+	"settings": {
+		"title": "工作区品牌设置",
+		"description": "设置此工作区中所有项目通用的徽标、favicon 和主色调。",
+		"images": {
+			"title": "徽标与 Favicon",
+			"logo": {
+				"label": "徽标",
+				"change": "更换徽标",
+				"remove": "移除徽标",
+				"uploading": "上传中…"
+			},
+			"favicon": {
+				"label": "Favicon",
+				"change": "更换 Favicon",
+				"remove": "移除 Favicon",
+				"uploading": "上传中…"
+			},
+			"errors": {
+				"invalidType": "请选择 PNG、JPEG、WEBP 或 GIF 格式的图片。",
+				"tooLarge": "图片大小不能超过 5 MB。",
+				"uploadFailed": "图片上传失败，请重试。",
+				"removeFailed": "图片移除失败，请重试。"
+			}
+		},
+		"general": {
+			"title": "通用",
+			"brandNameLabel": "品牌名称",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "主色调",
+			"colorsDescription": "选择整个应用中按钮和高亮元素使用的强调色，系统会自动适配浅色和深色模式。",
+			"colorPresets": {
+				"green": "绿色",
+				"blue": "蓝色",
+				"teal": "青色",
+				"indigo": "靛蓝",
+				"purple": "紫色",
+				"pink": "粉色",
+				"red": "红色",
+				"orange": "橙色"
+			},
+			"save": "保存更改",
+			"saved": "已保存",
+			"errors": {
+				"updateFailed": "保存失败，请重试。"
+			}
 		}
 	}
 }

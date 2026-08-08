@@ -21,6 +21,7 @@ import { Route as AuthenticatedProfileApiKeysRouteImport } from './routes/_authe
 import { Route as AuthenticatedConversationsConversationIdRouteImport } from './routes/_authenticated/conversations/$conversationId'
 import { Route as AuthenticatedProjectsProjectIdIndexRouteImport } from './routes/_authenticated/projects/$projectId/index'
 import { Route as AuthenticatedAdminUsersIndexRouteImport } from './routes/_authenticated/admin/users/index'
+import { Route as AuthenticatedAdminSettingsIndexRouteImport } from './routes/_authenticated/admin/settings/index'
 import { Route as AuthenticatedAdminPluginsIndexRouteImport } from './routes/_authenticated/admin/plugins/index'
 import { Route as AuthenticatedAdminGlobalRolesIndexRouteImport } from './routes/_authenticated/admin/global-roles/index'
 import { Route as AuthenticatedAdminChangelogIndexRouteImport } from './routes/_authenticated/admin/changelog/index'
@@ -109,6 +110,12 @@ const AuthenticatedAdminUsersIndexRoute =
   AuthenticatedAdminUsersIndexRouteImport.update({
     id: '/admin/users/',
     path: '/admin/users/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminSettingsIndexRoute =
+  AuthenticatedAdminSettingsIndexRouteImport.update({
+    id: '/admin/settings/',
+    path: '/admin/settings/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminPluginsIndexRoute =
@@ -259,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
   '/admin/global-roles/': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/admin/plugins/': typeof AuthenticatedAdminPluginsIndexRoute
+  '/admin/settings/': typeof AuthenticatedAdminSettingsIndexRoute
   '/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/projects/$projectId/': typeof AuthenticatedProjectsProjectIdIndexRoute
   '/admin/plugins/$pluginId/$slug': typeof AuthenticatedAdminPluginsPluginIdSlugRoute
@@ -291,6 +299,7 @@ export interface FileRoutesByTo {
   '/admin/changelog': typeof AuthenticatedAdminChangelogIndexRoute
   '/admin/global-roles': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/admin/plugins': typeof AuthenticatedAdminPluginsIndexRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersIndexRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdIndexRoute
   '/admin/plugins/$pluginId/$slug': typeof AuthenticatedAdminPluginsPluginIdSlugRoute
@@ -328,6 +337,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
   '/_authenticated/admin/global-roles/': typeof AuthenticatedAdminGlobalRolesIndexRoute
   '/_authenticated/admin/plugins/': typeof AuthenticatedAdminPluginsIndexRoute
+  '/_authenticated/admin/settings/': typeof AuthenticatedAdminSettingsIndexRoute
   '/_authenticated/admin/users/': typeof AuthenticatedAdminUsersIndexRoute
   '/_authenticated/projects/$projectId/': typeof AuthenticatedProjectsProjectIdIndexRoute
   '/_authenticated/admin/plugins/$pluginId/$slug': typeof AuthenticatedAdminPluginsPluginIdSlugRoute
@@ -365,6 +375,7 @@ export interface FileRouteTypes {
     | '/admin/changelog/'
     | '/admin/global-roles/'
     | '/admin/plugins/'
+    | '/admin/settings/'
     | '/admin/users/'
     | '/projects/$projectId/'
     | '/admin/plugins/$pluginId/$slug'
@@ -397,6 +408,7 @@ export interface FileRouteTypes {
     | '/admin/changelog'
     | '/admin/global-roles'
     | '/admin/plugins'
+    | '/admin/settings'
     | '/admin/users'
     | '/projects/$projectId'
     | '/admin/plugins/$pluginId/$slug'
@@ -433,6 +445,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/changelog/'
     | '/_authenticated/admin/global-roles/'
     | '/_authenticated/admin/plugins/'
+    | '/_authenticated/admin/settings/'
     | '/_authenticated/admin/users/'
     | '/_authenticated/projects/$projectId/'
     | '/_authenticated/admin/plugins/$pluginId/$slug'
@@ -544,6 +557,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/users'
       fullPath: '/admin/users/'
       preLoaderRoute: typeof AuthenticatedAdminUsersIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/settings/': {
+      id: '/_authenticated/admin/settings/'
+      path: '/admin/settings'
+      fullPath: '/admin/settings/'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/plugins/': {
@@ -805,6 +825,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminChangelogIndexRoute: typeof AuthenticatedAdminChangelogIndexRoute
   AuthenticatedAdminGlobalRolesIndexRoute: typeof AuthenticatedAdminGlobalRolesIndexRoute
   AuthenticatedAdminPluginsIndexRoute: typeof AuthenticatedAdminPluginsIndexRoute
+  AuthenticatedAdminSettingsIndexRoute: typeof AuthenticatedAdminSettingsIndexRoute
   AuthenticatedAdminUsersIndexRoute: typeof AuthenticatedAdminUsersIndexRoute
   AuthenticatedAdminPluginsPluginIdSlugRoute: typeof AuthenticatedAdminPluginsPluginIdSlugRoute
   AuthenticatedAdminAgentsAgentIdIndexRoute: typeof AuthenticatedAdminAgentsAgentIdIndexRoute
@@ -822,6 +843,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminGlobalRolesIndexRoute:
     AuthenticatedAdminGlobalRolesIndexRoute,
   AuthenticatedAdminPluginsIndexRoute: AuthenticatedAdminPluginsIndexRoute,
+  AuthenticatedAdminSettingsIndexRoute: AuthenticatedAdminSettingsIndexRoute,
   AuthenticatedAdminUsersIndexRoute: AuthenticatedAdminUsersIndexRoute,
   AuthenticatedAdminPluginsPluginIdSlugRoute:
     AuthenticatedAdminPluginsPluginIdSlugRoute,
