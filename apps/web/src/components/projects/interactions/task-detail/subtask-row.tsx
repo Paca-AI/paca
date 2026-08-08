@@ -1,5 +1,6 @@
 import { Check, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import type { Task } from "@/lib/interaction-api";
 import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
+import { resolveMemberAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
 import {
 	getPriority,
@@ -122,11 +124,15 @@ export function SubtaskRow({
 											key={id}
 											className="flex size-5.5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-xs font-bold ring-2 ring-card"
 										>
-											{m ? (
-												(m.full_name || m.username).slice(0, 1).toUpperCase()
-											) : (
-												<User className="size-2.5" />
-											)}
+											<EntityAvatarContent
+												avatarUrl={m ? resolveMemberAvatarUrl(m) : undefined}
+											>
+												{m ? (
+													(m.full_name || m.username).slice(0, 1).toUpperCase()
+												) : (
+													<User className="size-2.5" />
+												)}
+											</EntityAvatarContent>
 										</div>
 									);
 								})
@@ -185,7 +191,13 @@ export function SubtaskRow({
 											}}
 										>
 											<div className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-xs font-bold">
-												{(m.full_name || m.username).slice(0, 1).toUpperCase()}
+												<EntityAvatarContent
+													avatarUrl={resolveMemberAvatarUrl(m)}
+												>
+													{(m.full_name || m.username)
+														.slice(0, 1)
+														.toUpperCase()}
+												</EntityAvatarContent>
 											</div>
 											<span className="flex-1 text-left truncate">
 												{m.full_name || m.username}

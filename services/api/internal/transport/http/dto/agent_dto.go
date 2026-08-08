@@ -18,14 +18,18 @@ import (
 // global-scope agent (AgentScope == "global"); GlobalRoleID is only ever
 // set for a global-scope agent.
 type AgentResponse struct {
-	ID                uuid.UUID                `json:"id"`
-	ProjectID         *uuid.UUID               `json:"project_id,omitempty"`
-	AgentScope        string                   `json:"agent_scope"`
-	GlobalRoleID      *uuid.UUID               `json:"global_role_id,omitempty"`
-	MemberID          *uuid.UUID               `json:"member_id,omitempty"`
-	Name              string                   `json:"name"`
-	Handle            string                   `json:"handle"`
+	ID           uuid.UUID  `json:"id"`
+	ProjectID    *uuid.UUID `json:"project_id,omitempty"`
+	AgentScope   string     `json:"agent_scope"`
+	GlobalRoleID *uuid.UUID `json:"global_role_id,omitempty"`
+	MemberID     *uuid.UUID `json:"member_id,omitempty"`
+	Name         string     `json:"name"`
+	Handle       string     `json:"handle"`
+	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
+	// handler (not this mapper) via attachmentdom.AvatarService — nil when
+	// no avatar has been uploaded.
 	AvatarURL         *string                  `json:"avatar_url,omitempty"`
+	AvatarThumbURL    *string                  `json:"avatar_thumb_url,omitempty"`
 	AgentType         string                   `json:"agent_type"`
 	LLMProvider       string                   `json:"llm_provider"`
 	LLMModel          string                   `json:"llm_model"`
@@ -147,7 +151,6 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		MemberID:          a.MemberID,
 		Name:              a.Name,
 		Handle:            a.Handle,
-		AvatarURL:         a.AvatarURL,
 		AgentType:         a.AgentType,
 		LLMProvider:       a.LLMProvider,
 		LLMModel:          a.LLMModel,

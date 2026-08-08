@@ -138,6 +138,17 @@
 				"envVars": "环境变量",
 				"activity": "动态"
 			},
+			"avatar": {
+				"change": "更换头像",
+				"remove": "移除头像",
+				"uploading": "上传中…",
+				"errors": {
+					"invalidType": "请选择 PNG、JPEG、WEBP 或 GIF 格式的图片。",
+					"tooLarge": "图片大小不能超过 5 MB。",
+					"uploadFailed": "头像上传失败，请重试。",
+					"removeFailed": "头像移除失败，请重试。"
+				}
+			},
 			"overview": {
 				"nameLabel": "名称",
 				"llmConfiguration": "LLM 配置",
@@ -457,6 +468,17 @@
 	"settings": {
 		"general": {
 			"title": "通用",
+			"avatar": {
+				"change": "更换头像",
+				"remove": "移除头像",
+				"uploading": "上传中…",
+				"errors": {
+					"invalidType": "请选择 PNG、JPEG、WEBP 或 GIF 格式的图片。",
+					"tooLarge": "图片大小不能超过 5 MB。",
+					"uploadFailed": "头像上传失败，请重试。",
+					"removeFailed": "头像移除失败，请重试。"
+				}
+			},
 			"projectNameLabel": "项目名称",
 			"projectNamePlaceholder": "我的精彩项目",
 			"taskIdPrefixLabel": "任务编号前缀",

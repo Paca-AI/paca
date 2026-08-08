@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -23,8 +24,9 @@ type SessionInvalidator interface {
 
 // UserHandler handles user-related endpoints.
 type UserHandler struct {
-	svc     domainuser.Service
-	authSvc SessionInvalidator
+	svc       domainuser.Service
+	authSvc   SessionInvalidator
+	avatarSvc attachmentdom.AvatarService
 }
 
 // NewUserHandler returns a UserHandler wired to the provided user service.
@@ -36,6 +38,23 @@ func NewUserHandler(svc domainuser.Service, authSvc ...SessionInvalidator) *User
 		h.authSvc = authSvc[0]
 	}
 	return h
+}
+
+// WithAvatarService configures avatar URL resolution for UserResponse.
+func (h *UserHandler) WithAvatarService(svc attachmentdom.AvatarService) *UserHandler {
+	h.avatarSvc = svc
+	return h
+}
+
+// toUserResponse maps u to a UserResponse and, if an AvatarService is
+// configured, resolves its avatar keys into presigned display URLs.
+func (h *UserHandler) toUserResponse(ctx context.Context, u *domainuser.User) dto.UserResponse {
+	resp := dto.UserFromEntity(u)
+	if h.avatarSvc != nil {
+		resp.AvatarURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, u.AvatarKey)
+		resp.AvatarThumbURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, u.AvatarThumbKey)
+	}
+	return resp
 }
 
 // --- Self-service routes ---------------------------------------------------
@@ -60,7 +79,7 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presenter.OK(w, r, dto.UserFromEntity(u))
+	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
 }
 
 // UpdateMe handles PATCH /users/me — lets users update their own profile.
@@ -90,7 +109,7 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presenter.OK(w, r, dto.UserFromEntity(u))
+	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
 }
 
 // GetMyGlobalPermissions handles GET /users/me/global-permissions.
@@ -139,7 +158,7 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]dto.UserResponse, 0, len(users))
 	for _, u := range users {
-		items = append(items, dto.UserFromEntity(u))
+		items = append(items, h.toUserResponse(r.Context(), u))
 	}
 
 	presenter.OK(w, r, dto.PagedUsersResponse{
@@ -164,7 +183,7 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presenter.OK(w, r, dto.UserFromEntity(u))
+	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
 }
 
 // CreateUser handles POST /admin/users — admin-only user creation.
@@ -194,7 +213,7 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presenter.Created(w, r, dto.UserFromEntity(u))
+	presenter.Created(w, r, h.toUserResponse(r.Context(), u))
 }
 
 // AdminUpdateUser handles PATCH /admin/users/:userId — admin update of any user.
@@ -219,7 +238,7 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presenter.OK(w, r, dto.UserFromEntity(u))
+	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
 }
 
 // DeleteUser handles DELETE /admin/users/:userId.
@@ -306,4 +325,82 @@ func (h *UserHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	presenter.NoContent(w)
+}
+
+// --- Avatar ------------------------------------------------------------
+
+// InitiateAvatarUpload handles POST /users/me/avatar/initiate-upload.
+func (h *UserHandler) InitiateAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	var req dto.InitiateUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	session, err := h.svc.InitiateAvatarUpload(r.Context(), id, req.FileName, req.ContentType, req.FileSize)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	presenter.Created(w, r, dto.UploadSessionFromDomain(session))
+}
+
+// CompleteAvatarUpload handles POST /users/me/avatar/complete-upload.
+func (h *UserHandler) CompleteAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	var req dto.CompleteAvatarUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	u, err := h.svc.CompleteAvatarUpload(r.Context(), id, req.FileID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
+}
+
+// DeleteAvatar handles DELETE /users/me/avatar.
+func (h *UserHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid subject claim"))
+		return
+	}
+
+	u, err := h.svc.RemoveAvatar(r.Context(), id)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	presenter.OK(w, r, h.toUserResponse(r.Context(), u))
 }

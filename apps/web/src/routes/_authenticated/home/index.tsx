@@ -18,6 +18,7 @@ import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
 import { UpdateBanner } from "@/components/home/UpdateBanner";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +42,7 @@ import { currentUserQueryOptions } from "@/lib/auth-api";
 import { assignedTasksQueryOptions } from "@/lib/interaction-api";
 import {
 	createProject,
+	getProjectInitials,
 	type Project,
 	projectsQueryOptions,
 	workspaceStatsQueryOptions,
@@ -328,12 +330,7 @@ function CreateProjectDialog({
 
 function ProjectCard({ project }: { project: Project }) {
 	const { t } = useTranslation("shared");
-	const initials = project.name
-		.split(/\s+/)
-		.filter(Boolean)
-		.slice(0, 2)
-		.map((w) => w[0].toUpperCase())
-		.join("");
+	const initials = getProjectInitials(project.name);
 
 	const formattedDate = new Date(project.created_at).toLocaleDateString(
 		"en-US",
@@ -349,7 +346,9 @@ function ProjectCard({ project }: { project: Project }) {
 			<div className="absolute inset-x-0 top-0 h-px rounded-t-xl bg-primary/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
 			<div className="flex items-start gap-3.5 mb-4">
 				<div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/15 font-[Syne] text-sm font-bold text-primary">
-					{initials || <FolderKanban className="size-4" />}
+					<EntityAvatarContent avatarUrl={project.avatar_thumb_url}>
+						{initials || <FolderKanban className="size-4" />}
+					</EntityAvatarContent>
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2 mb-0.5">

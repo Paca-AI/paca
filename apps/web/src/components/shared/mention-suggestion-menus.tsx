@@ -4,6 +4,7 @@ import {
 	type DefaultReactSuggestionItem,
 	SuggestionMenuController,
 } from "@blocknote/react";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { useDebouncedAsyncCallback } from "@/hooks/use-debounced-callback";
 import { searchMentionableTasks } from "@/lib/mention-api";
 import type { customSchema } from "./blocknote-schema";
@@ -30,7 +31,7 @@ interface MentionSuggestionMenuProps {
 		id: string;
 		name: string;
 		username: string;
-		avatar?: string | null | undefined;
+		avatarThumbUrl?: string | null | undefined;
 	}>;
 	/** Needed to search tasks live as the user types after "#" — the project's
 	 *  task list has no fixed upper bound, so it's queried on demand instead
@@ -54,6 +55,16 @@ export function MentionSuggestionMenus({
 		return teamMembers.map((member) => ({
 			title: member.name,
 			subtext: `@${member.username}`,
+			// Resolved fresh from the live teamMembers list every time the
+			// dropdown opens — safe, unlike the mention chip's own props (see
+			// the avatar: "" comment below), since this is never persisted.
+			icon: (
+				<div className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-[10px] font-bold overflow-hidden">
+					<EntityAvatarContent avatarUrl={member.avatarThumbUrl}>
+						{member.name.slice(0, 1).toUpperCase()}
+					</EntityAvatarContent>
+				</div>
+			),
 			onItemClick: () => {
 				editor.insertInlineContent([
 					{
@@ -61,7 +72,12 @@ export function MentionSuggestionMenus({
 						props: {
 							id: member.id,
 							name: member.name,
-							avatar: member.avatar ?? "",
+							// Never populated with a real URL: mention props are baked
+							// into permanently-stored document content, and a presigned
+							// avatar URL would expire long before the mention does. The
+							// live suggestion dropdown (below) shows the real avatar
+							// instead, since it's resolved fresh every time it opens.
+							avatar: "",
 						},
 					},
 					" ",

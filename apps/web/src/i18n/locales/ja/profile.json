@@ -18,6 +18,17 @@
 	"errors": {
 		"updateFailed": "プロフィールの更新に失敗しました。もう一度お試しください。"
 	},
+	"avatar": {
+		"change": "アバターを変更",
+		"remove": "アバターを削除",
+		"uploading": "アップロード中…",
+		"errors": {
+			"invalidType": "PNG、JPEG、WEBP、GIF形式の画像を選択してください。",
+			"tooLarge": "画像は5MB以下にしてください。",
+			"uploadFailed": "アバターのアップロードに失敗しました。もう一度お試しください。",
+			"removeFailed": "アバターの削除に失敗しました。もう一度お試しください。"
+		}
+	},
 	"joinedOn": "{{date}}に参加",
 	"changePassword": {
 		"title": "パスワードを変更",

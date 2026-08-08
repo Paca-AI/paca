@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 )
 
 // CreateProjectInput carries fields required to create a new project.
@@ -44,4 +46,12 @@ type ProjectService interface {
 	Create(ctx context.Context, in CreateProjectInput) (*Project, error)
 	Update(ctx context.Context, id uuid.UUID, in UpdateProjectInput) (*Project, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+
+	// InitiateAvatarUpload starts an avatar upload for the project and
+	// returns a presigned upload session.
+	InitiateAvatarUpload(ctx context.Context, projectID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error)
+	// CompleteAvatarUpload finishes an avatar upload, replacing any previous avatar.
+	CompleteAvatarUpload(ctx context.Context, projectID, fileID uuid.UUID) (*Project, error)
+	// RemoveAvatar clears the project's avatar, deleting the underlying objects.
+	RemoveAvatar(ctx context.Context, projectID uuid.UUID) (*Project, error)
 }

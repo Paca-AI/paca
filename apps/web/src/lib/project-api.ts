@@ -12,8 +12,22 @@ export interface Project {
 	is_public: boolean;
 	task_id_prefix: string;
 	settings: Record<string, unknown>;
+	avatar_url?: string | null;
+	avatar_thumb_url?: string | null;
 	created_by?: string;
 	created_at: string;
+}
+
+/** Text-avatar fallback for a project — one letter per word, up to two
+ * words (e.g. "Test Project" -> "TP"). Shared so every surface (sidebar,
+ * project cards, settings) renders the same initials for the same name. */
+export function getProjectInitials(name: string): string {
+	return name
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0].toUpperCase())
+		.join("");
 }
 
 export interface ProjectListResult {
@@ -41,6 +55,13 @@ export interface ProjectMember {
 	agent_id?: string;
 	agent_name?: string;
 	agent_handle?: string;
+	avatar_url?: string | null;
+	avatar_thumb_url?: string | null;
+	// Only meaningful when member_type is "agent" — used to pick a default
+	// provider-logo avatar when this member has no avatar_url of its own.
+	agent_type?: string; // "llm" | "acp"
+	agent_llm_provider?: string;
+	agent_acp_provider?: string | null;
 }
 
 export interface ProjectRole {

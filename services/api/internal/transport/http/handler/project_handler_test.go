@@ -15,6 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
@@ -98,6 +99,16 @@ func (m *mockProjectSvc) Delete(ctx context.Context, id uuid.UUID) error {
 		return m.delete(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockProjectSvc) InitiateAvatarUpload(context.Context, uuid.UUID, string, string, int64, uuid.UUID) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{}, nil
+}
+func (m *mockProjectSvc) CompleteAvatarUpload(context.Context, uuid.UUID, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
+}
+func (m *mockProjectSvc) RemoveAvatar(context.Context, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
 }
 
 func (m *mockProjectSvc) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {

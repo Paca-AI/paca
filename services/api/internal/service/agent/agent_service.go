@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
@@ -38,6 +40,7 @@ type Service struct {
 	publisher  *messaging.Publisher
 	pluginRepo pluginFinder
 	encryptor  *secret.Encryptor
+	avatarSvc  attachmentdom.AvatarService
 }
 
 // New returns a configured agent service.
@@ -48,6 +51,12 @@ func New(repo agentdom.Repository, projRepo projectMemberWriter, publisher *mess
 // WithEncryptor configures AES-256-GCM encryption for the LLM API key stored at rest.
 func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
 	s.encryptor = enc
+	return s
+}
+
+// WithAvatarService configures avatar upload support.
+func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
+	s.avatarSvc = svc
 	return s
 }
 
@@ -641,6 +650,129 @@ func (s *Service) GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UU
 		return "", fmt.Errorf("store MCP API key hash: %w", err)
 	}
 	return plaintext, nil
+}
+
+// ErrAvatarServiceRequired indicates a missing AvatarService dependency when
+// an avatar-upload path is invoked.
+var ErrAvatarServiceRequired = errors.New("agent svc: avatar service required")
+
+// InitiateAvatarUpload starts an avatar upload for a project-scoped agent.
+func (s *Service) InitiateAvatarUpload(ctx context.Context, projectID, agentID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+		return nil, err
+	}
+	return s.avatarSvc.InitiateAvatarUpload(ctx, attachmentdom.AvatarUploadInput{
+		OwnerKind:   attachmentdom.AvatarOwnerAgent,
+		OwnerID:     agentID,
+		FileName:    fileName,
+		ContentType: contentType,
+		FileSize:    fileSize,
+		UploadedBy:  uploadedBy,
+	})
+}
+
+// CompleteAvatarUpload finishes an avatar upload for a project-scoped agent.
+func (s *Service) CompleteAvatarUpload(ctx context.Context, projectID, agentID, fileID uuid.UUID) (*agentdom.Agent, error) {
+	a, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.completeAvatarUpload(ctx, a, fileID)
+}
+
+// RemoveAvatar clears a project-scoped agent's avatar.
+func (s *Service) RemoveAvatar(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
+	a, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.removeAvatar(ctx, a)
+}
+
+// InitiateGlobalAvatarUpload is InitiateAvatarUpload's global-agent sibling.
+func (s *Service) InitiateGlobalAvatarUpload(ctx context.Context, agentID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	if _, err := s.GetGlobalAgent(ctx, agentID); err != nil {
+		return nil, err
+	}
+	return s.avatarSvc.InitiateAvatarUpload(ctx, attachmentdom.AvatarUploadInput{
+		OwnerKind:   attachmentdom.AvatarOwnerAgent,
+		OwnerID:     agentID,
+		FileName:    fileName,
+		ContentType: contentType,
+		FileSize:    fileSize,
+		UploadedBy:  uploadedBy,
+	})
+}
+
+// CompleteGlobalAvatarUpload is CompleteAvatarUpload's global-agent sibling.
+func (s *Service) CompleteGlobalAvatarUpload(ctx context.Context, agentID, fileID uuid.UUID) (*agentdom.Agent, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.completeAvatarUpload(ctx, a, fileID)
+}
+
+// RemoveGlobalAvatar is RemoveAvatar's global-agent sibling.
+func (s *Service) RemoveGlobalAvatar(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error) {
+	a, err := s.GetGlobalAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.removeAvatar(ctx, a)
+}
+
+// completeAvatarUpload is the shared tail of CompleteAvatarUpload and
+// CompleteGlobalAvatarUpload once the agent has been loaded and its scope
+// verified by the caller.
+func (s *Service) completeAvatarUpload(ctx context.Context, a *agentdom.Agent, fileID uuid.UUID) (*agentdom.Agent, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	keys, err := s.avatarSvc.CompleteAvatarUpload(ctx, attachmentdom.AvatarCompleteInput{
+		OwnerKind: attachmentdom.AvatarOwnerAgent,
+		OwnerID:   a.ID,
+		FileID:    fileID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	oldKey, oldThumbKey := a.AvatarKey, a.AvatarThumbKey
+	a.AvatarKey = &keys.Key
+	a.AvatarThumbKey = &keys.ThumbKey
+	if err := s.repo.UpdateAgent(ctx, a); err != nil {
+		return nil, err
+	}
+
+	s.avatarSvc.DeleteAvatarObjects(ctx, oldKey, oldThumbKey)
+	return a, nil
+}
+
+// removeAvatar is the shared tail of RemoveAvatar and RemoveGlobalAvatar
+// once the agent has been loaded and its scope verified by the caller.
+func (s *Service) removeAvatar(ctx context.Context, a *agentdom.Agent) (*agentdom.Agent, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	oldKey, oldThumbKey := a.AvatarKey, a.AvatarThumbKey
+	if oldKey == nil && oldThumbKey == nil {
+		return a, nil
+	}
+	a.AvatarKey = nil
+	a.AvatarThumbKey = nil
+	if err := s.repo.UpdateAgent(ctx, a); err != nil {
+		return nil, err
+	}
+
+	s.avatarSvc.DeleteAvatarObjects(ctx, oldKey, oldThumbKey)
+	return a, nil
 }
 
 // requireNonACPAgent rejects MCP server / skill / environment variable

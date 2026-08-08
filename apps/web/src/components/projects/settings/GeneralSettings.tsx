@@ -2,13 +2,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Globe, Loader2, Lock } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
-import { projectQueryOptions, updateProject } from "@/lib/project-api";
+import {
+	getProjectInitials,
+	projectQueryOptions,
+	updateProject,
+} from "@/lib/project-api";
 
 export function GeneralSettings({
 	projectId,
@@ -78,11 +84,56 @@ export function GeneralSettings({
 		prefix.trim() !== (project?.task_id_prefix ?? "") ||
 		isPublic !== (project?.is_public ?? false);
 
+	const initials = getProjectInitials(project?.name ?? "");
+
 	return (
 		<div className="rounded-xl border border-border/60 bg-card p-6">
 			<h3 className="font-[Syne] text-base font-semibold mb-4">
 				{t("settings.general.title")}
 			</h3>
+
+			{/* Identity header — avatar next to the project's name/prefix, same
+			    layout as the profile page's own avatar setting. */}
+			<div className="flex items-center gap-4 mb-6">
+				<AvatarUpload
+					basePath={`/projects/${projectId}`}
+					avatarUrl={project?.avatar_url}
+					fallback={initials}
+					disabled={!canEdit}
+					className="size-14 rounded-xl"
+					fallbackClassName="bg-primary text-primary-foreground text-lg font-bold"
+					labels={{
+						change: t("settings.general.avatar.change"),
+						remove: t("settings.general.avatar.remove"),
+						uploading: t("settings.general.avatar.uploading"),
+						invalidType: t("settings.general.avatar.errors.invalidType"),
+						tooLarge: t("settings.general.avatar.errors.tooLarge"),
+						uploadFailed: t("settings.general.avatar.errors.uploadFailed"),
+						removeFailed: t("settings.general.avatar.errors.removeFailed"),
+					}}
+					onChange={(result) => {
+						queryClient.setQueryData(
+							projectQueryOptions(projectId).queryKey,
+							(old) => (old ? { ...old, ...result } : old),
+						);
+						// Other places reading the project list (sidebar switcher,
+						// home page cards) hold a separate cache entry that
+						// setQueryData above doesn't touch.
+						queryClient.invalidateQueries({ queryKey: ["projects"] });
+					}}
+				/>
+				<div>
+					<p className="text-lg font-semibold leading-tight">{project?.name}</p>
+					{project?.task_id_prefix ? (
+						<p className="mt-0.5 font-[JetBrains_Mono,monospace] text-sm text-muted-foreground">
+							{project.task_id_prefix}
+						</p>
+					) : null}
+				</div>
+			</div>
+
+			<Separator className="mb-6" />
+
 			<div className="space-y-4 max-w-md">
 				<div className="space-y-1.5">
 					<Label htmlFor="project-name">

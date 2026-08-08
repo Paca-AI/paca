@@ -18,6 +18,17 @@
 	"errors": {
 		"updateFailed": "Cập nhật hồ sơ thất bại. Vui lòng thử lại."
 	},
+	"avatar": {
+		"change": "Đổi ảnh đại diện",
+		"remove": "Xóa ảnh đại diện",
+		"uploading": "Đang tải lên…",
+		"errors": {
+			"invalidType": "Vui lòng chọn ảnh định dạng PNG, JPEG, WEBP hoặc GIF.",
+			"tooLarge": "Ảnh phải nhỏ hơn hoặc bằng 5 MB.",
+			"uploadFailed": "Tải ảnh đại diện lên thất bại. Vui lòng thử lại.",
+			"removeFailed": "Xóa ảnh đại diện thất bại. Vui lòng thử lại."
+		}
+	},
 	"joinedOn": "Tham gia {{date}}",
 	"changePassword": {
 		"title": "Đổi mật khẩu",

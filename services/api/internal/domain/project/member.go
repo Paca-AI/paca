@@ -23,6 +23,20 @@ type ProjectMember struct {
 	AgentID     *uuid.UUID
 	AgentName   string
 	AgentHandle string
+	// AgentType/AgentLLMProvider/AgentACPProvider mirror the agent's own
+	// fields (agentdom.Agent) — used by the frontend to pick a default
+	// provider-logo avatar when the agent has no custom avatar uploaded.
+	// Only meaningful when IsAgent() is true.
+	AgentType        string // "llm" | "acp"
+	AgentLLMProvider string
+	AgentACPProvider *string
+	// Avatar object-storage keys, populated by JOIN from whichever of
+	// users/agents backs this member (see IsAgent). Both nil when the
+	// backing user/agent has no avatar uploaded.
+	UserAvatarKey       *string
+	UserAvatarThumbKey  *string
+	AgentAvatarKey      *string
+	AgentAvatarThumbKey *string
 }
 
 // IsAgent returns true if this member is an AI agent.

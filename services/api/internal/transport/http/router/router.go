@@ -90,6 +90,9 @@ func New(deps Deps) http.Handler {
 					r.Get("/me", deps.User.GetMe)
 					r.Patch("/me", deps.User.UpdateMe)
 					r.Get("/me/global-permissions", deps.User.GetMyGlobalPermissions)
+					r.Post("/me/avatar/initiate-upload", deps.User.InitiateAvatarUpload)
+					r.Post("/me/avatar/complete-upload", deps.User.CompleteAvatarUpload)
+					r.Delete("/me/avatar", deps.User.DeleteAvatar)
 
 					// Cross-project "assigned to me" tasks — home page widget.
 					if deps.Task != nil {
@@ -170,6 +173,14 @@ func New(deps Deps) http.Handler {
 						Get("/agents/{agentId}/acp-bridge-status", deps.Agent.GetGlobalACPBridgeStatus)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
 						Post("/agents/{agentId}/mcp-agent-key", deps.Agent.GenerateGlobalAgentMCPKey)
+
+					// Avatar
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents/{agentId}/avatar/initiate-upload", deps.Agent.InitiateGlobalAvatarUpload)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Post("/agents/{agentId}/avatar/complete-upload", deps.Agent.CompleteGlobalAvatarUpload)
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsWrite)).
+						Delete("/agents/{agentId}/avatar", deps.Agent.DeleteGlobalAvatar)
 
 					// MCP servers
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAgentsRead)).
@@ -283,6 +294,14 @@ func New(deps Deps) http.Handler {
 					Patch("/", deps.Project.UpdateProject)
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsDelete)).
 					Delete("/", deps.Project.DeleteProject)
+
+				// Avatar
+				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsWrite)).
+					Post("/avatar/initiate-upload", deps.Project.InitiateAvatarUpload)
+				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsWrite)).
+					Post("/avatar/complete-upload", deps.Project.CompleteAvatarUpload)
+				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsWrite)).
+					Delete("/avatar", deps.Project.DeleteAvatar)
 
 				// Members
 				r.Route("/members", func(r chi.Router) {
@@ -628,6 +647,14 @@ func New(deps Deps) http.Handler {
 							Get("/{agentId}/acp-bridge-status", deps.Agent.GetACPBridgeStatus)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Post("/{agentId}/mcp-agent-key", deps.Agent.GenerateAgentMCPKey)
+
+						// Avatar
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{agentId}/avatar/initiate-upload", deps.Agent.InitiateAvatarUpload)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{agentId}/avatar/complete-upload", deps.Agent.CompleteAvatarUpload)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Delete("/{agentId}/avatar", deps.Agent.DeleteAvatar)
 
 						// Activity feed
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).

@@ -174,16 +174,21 @@ type UpdateDocCommentRequest struct {
 
 // DocActivityResponse is the public representation of a doc activity entry.
 type DocActivityResponse struct {
-	ID            uuid.UUID       `json:"id"`
-	DocumentID    uuid.UUID       `json:"document_id"`
-	ActorID       *uuid.UUID      `json:"actor_id,omitempty"`
-	ActorName     string          `json:"actor_name,omitempty"`
-	ActorUsername string          `json:"actor_username,omitempty"`
-	ActivityType  string          `json:"activity_type"`
-	Content       json.RawMessage `json:"content"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-	DeletedAt     *time.Time      `json:"deleted_at,omitempty"`
+	ID            uuid.UUID  `json:"id"`
+	DocumentID    uuid.UUID  `json:"document_id"`
+	ActorID       *uuid.UUID `json:"actor_id,omitempty"`
+	ActorName     string     `json:"actor_name,omitempty"`
+	ActorUsername string     `json:"actor_username,omitempty"`
+	// ActorAvatarURL/ActorAvatarThumbURL are presigned GET URLs, populated by
+	// the handler (not this mapper) via attachmentdom.AvatarService — nil
+	// when the actor has no avatar.
+	ActorAvatarURL      *string         `json:"actor_avatar_url,omitempty"`
+	ActorAvatarThumbURL *string         `json:"actor_avatar_thumb_url,omitempty"`
+	ActivityType        string          `json:"activity_type"`
+	Content             json.RawMessage `json:"content"`
+	CreatedAt           time.Time       `json:"created_at"`
+	UpdatedAt           time.Time       `json:"updated_at"`
+	DeletedAt           *time.Time      `json:"deleted_at,omitempty"`
 }
 
 // DocActivityFromEntity maps a domain Activity to a DocActivityResponse DTO.

@@ -79,6 +79,8 @@ export interface DocActivity {
 	actor_id: string | null;
 	actor_name: string;
 	actor_username: string;
+	actor_avatar_url?: string | null;
+	actor_avatar_thumb_url?: string | null;
 	activity_type: DocActivityType;
 	content: string | DocActivityContent | null;
 	created_at: string;

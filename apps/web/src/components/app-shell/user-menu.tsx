@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { LocaleRadioGroup } from "@/components/LocaleRadioGroup";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -105,6 +105,9 @@ export function UserMenu() {
 						}
 					>
 						<Avatar size="sm" className="rounded-lg">
+							{user.avatar_thumb_url ? (
+								<AvatarImage src={user.avatar_thumb_url} />
+							) : null}
 							<AvatarFallback className="rounded-lg bg-primary text-primary-foreground text-xs font-semibold">
 								{initials}
 							</AvatarFallback>

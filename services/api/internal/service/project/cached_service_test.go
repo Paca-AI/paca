@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
@@ -115,6 +116,16 @@ func (s *stubProjectSvc) Delete(ctx context.Context, id uuid.UUID) error {
 		return s.delete(ctx, id)
 	}
 	return nil
+}
+
+func (s *stubProjectSvc) InitiateAvatarUpload(context.Context, uuid.UUID, string, string, int64, uuid.UUID) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{}, nil
+}
+func (s *stubProjectSvc) CompleteAvatarUpload(context.Context, uuid.UUID, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
+}
+func (s *stubProjectSvc) RemoveAvatar(context.Context, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
 }
 
 func (s *stubProjectSvc) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {

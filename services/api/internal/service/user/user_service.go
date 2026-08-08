@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -31,11 +32,16 @@ type Service struct {
 	repo                   userdom.Repository
 	globalPermissionReader GlobalPermissionReader
 	roleRepo               RoleByNameFinder
+	avatarSvc              attachmentdom.AvatarService
 }
 
 // ErrRoleResolverRequired indicates a missing role resolver dependency when a
 // mutating path requires Role -> RoleID resolution.
 var ErrRoleResolverRequired = errors.New("user svc: role resolver required")
+
+// ErrAvatarServiceRequired indicates a missing AvatarService dependency when
+// an avatar-upload path is invoked.
+var ErrAvatarServiceRequired = errors.New("user svc: avatar service required")
 
 // New returns a configured user Service.
 // Pass optional GlobalPermissionReader and RoleByNameFinder as variadic args.
@@ -49,6 +55,12 @@ func New(repo userdom.Repository, opts ...any) *Service {
 			s.roleRepo = v
 		}
 	}
+	return s
+}
+
+// WithAvatarService configures avatar upload support.
+func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
+	s.avatarSvc = svc
 	return s
 }
 
@@ -256,4 +268,75 @@ func (s *Service) ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPas
 // Delete soft-deletes a user.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
+}
+
+// InitiateAvatarUpload starts an avatar upload for the user's own profile picture.
+func (s *Service) InitiateAvatarUpload(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	return s.avatarSvc.InitiateAvatarUpload(ctx, attachmentdom.AvatarUploadInput{
+		OwnerKind:   attachmentdom.AvatarOwnerUser,
+		OwnerID:     userID,
+		FileName:    fileName,
+		ContentType: contentType,
+		FileSize:    fileSize,
+		UploadedBy:  userID,
+	})
+}
+
+// CompleteAvatarUpload finishes an avatar upload, replacing any previous avatar.
+func (s *Service) CompleteAvatarUpload(ctx context.Context, userID, fileID uuid.UUID) (*userdom.User, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	u, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	keys, err := s.avatarSvc.CompleteAvatarUpload(ctx, attachmentdom.AvatarCompleteInput{
+		OwnerKind: attachmentdom.AvatarOwnerUser,
+		OwnerID:   userID,
+		FileID:    fileID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	oldKey, oldThumbKey := u.AvatarKey, u.AvatarThumbKey
+	u.AvatarKey = &keys.Key
+	u.AvatarThumbKey = &keys.ThumbKey
+	u.UpdatedAt = time.Now()
+	if err := s.repo.Update(ctx, u); err != nil {
+		return nil, err
+	}
+
+	s.avatarSvc.DeleteAvatarObjects(ctx, oldKey, oldThumbKey)
+	return u, nil
+}
+
+// RemoveAvatar clears the user's avatar, deleting the underlying objects.
+func (s *Service) RemoveAvatar(ctx context.Context, userID uuid.UUID) (*userdom.User, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	u, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	oldKey, oldThumbKey := u.AvatarKey, u.AvatarThumbKey
+	if oldKey == nil && oldThumbKey == nil {
+		return u, nil
+	}
+	u.AvatarKey = nil
+	u.AvatarThumbKey = nil
+	u.UpdatedAt = time.Now()
+	if err := s.repo.Update(ctx, u); err != nil {
+		return nil, err
+	}
+
+	s.avatarSvc.DeleteAvatarObjects(ctx, oldKey, oldThumbKey)
+	return u, nil
 }

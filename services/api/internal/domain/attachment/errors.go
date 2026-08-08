@@ -29,4 +29,20 @@ var (
 	// ErrTaskNotInProject is returned when the referenced task does not belong
 	// to the project specified in the request URL.
 	ErrTaskNotInProject = errors.New("task does not belong to the specified project")
+
+	// ErrAvatarTooLarge is returned when an avatar upload exceeds MaxAvatarUploadSize.
+	ErrAvatarTooLarge = errors.New("avatar file exceeds the maximum allowed size")
+	// ErrAvatarContentTypeInvalid is returned when an avatar upload's content
+	// type is not in AvatarContentTypes.
+	ErrAvatarContentTypeInvalid = errors.New("avatar content type must be image/png, image/jpeg, image/webp, or image/gif")
+	// ErrAvatarDecodeFailed is returned when the uploaded bytes cannot be
+	// decoded as an image of one of the accepted content types.
+	ErrAvatarDecodeFailed = errors.New("uploaded file is not a valid image")
+	// ErrAvatarDimensionsTooLarge is returned when an uploaded image's
+	// declared pixel dimensions exceed MaxAvatarDecodeDimension, checked
+	// before the full image is decoded into memory.
+	ErrAvatarDimensionsTooLarge = errors.New("image dimensions exceed the maximum allowed for an avatar")
+	// ErrAvatarOwnerMismatch is returned when a file being completed does not
+	// belong to the claimed avatar owner (storage key prefix mismatch).
+	ErrAvatarOwnerMismatch = errors.New("file does not belong to the specified avatar owner")
 )

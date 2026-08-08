@@ -2,14 +2,56 @@ package agentsvc
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 )
+
+// ---------------------------------------------------------------------------
+// Minimal fake avatar service
+// ---------------------------------------------------------------------------
+
+// fakeAvatarService is a bare-bones attachmentdom.AvatarService double —
+// CompleteAvatarUpload always returns nextKeys, and DeleteAvatarObjects
+// records what it was asked to delete so tests can assert the *previous*
+// avatar's keys were cleaned up after a replace.
+type fakeAvatarService struct {
+	mu             sync.Mutex
+	nextKeys       *attachmentdom.AvatarKeys
+	deletedKeys    []string
+	initiateCalled bool
+}
+
+func (f *fakeAvatarService) InitiateAvatarUpload(context.Context, attachmentdom.AvatarUploadInput) (*attachmentdom.UploadSession, error) {
+	f.mu.Lock()
+	f.initiateCalled = true
+	f.mu.Unlock()
+	return &attachmentdom.UploadSession{FileID: uuid.New(), UploadURL: "https://fake/upload"}, nil
+}
+
+func (f *fakeAvatarService) CompleteAvatarUpload(context.Context, attachmentdom.AvatarCompleteInput) (*attachmentdom.AvatarKeys, error) {
+	return f.nextKeys, nil
+}
+
+func (f *fakeAvatarService) ResolveAvatarURL(context.Context, *string) (*string, error) {
+	return nil, nil
+}
+
+func (f *fakeAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, k := range keys {
+		if k != nil && *k != "" {
+			f.deletedKeys = append(f.deletedKeys, *k)
+		}
+	}
+}
 
 // findAgentByIDReturning stubs mockAgentRepo.findAgentByID to return a
 // minimal agent of the given type, regardless of the requested id — used by
@@ -2961,4 +3003,132 @@ func TestDeleteEnvVar_ACPAgent_ReturnsError(t *testing.T) {
 	err := svc.DeleteEnvVar(context.Background(), agentID, envVarID)
 
 	assert.ErrorIs(t, err, agentdom.ErrNotSupportedForACPAgent)
+}
+
+// ---------------------------------------------------------------------------
+// Avatar
+// ---------------------------------------------------------------------------
+
+func TestInitiateAvatarUpload_NoAvatarService_ReturnsError(t *testing.T) {
+	repo := &mockAgentRepo{findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM)}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}) // WithAvatarService never called
+
+	_, err := svc.InitiateAvatarUpload(context.Background(), uuid.New(), uuid.New(), "me.png", "image/png", 1024, uuid.New())
+
+	assert.ErrorIs(t, err, ErrAvatarServiceRequired)
+}
+
+func TestInitiateAvatarUpload_AgentNotInProject_NeverCallsAvatarService(t *testing.T) {
+	repo := &mockAgentRepo{
+		findAgentByID: func(context.Context, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	avatarSvc := &fakeAvatarService{}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAvatarService(avatarSvc)
+
+	_, err := svc.InitiateAvatarUpload(context.Background(), uuid.New(), uuid.New(), "me.png", "image/png", 1024, uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	assert.False(t, avatarSvc.initiateCalled, "avatar service must not be reached once ownership fails")
+}
+
+func TestCompleteAvatarUpload_SwapsKeysAndDeletesOld(t *testing.T) {
+	oldKey, oldThumbKey := "avatars/agents/a1/old/full.png", "avatars/agents/a1/old/thumb.png"
+	agentID := uuid.New()
+	projectID := uuid.New()
+	var updated *agentdom.Agent
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ProjectID: projectID, AvatarKey: &oldKey, AvatarThumbKey: &oldThumbKey}, nil
+		},
+		updateAgent: func(_ context.Context, a *agentdom.Agent) error {
+			updated = a
+			return nil
+		},
+	}
+	avatarSvc := &fakeAvatarService{
+		nextKeys: &attachmentdom.AvatarKeys{Key: "avatars/agents/a1/new/full.png", ThumbKey: "avatars/agents/a1/new/thumb.png"},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAvatarService(avatarSvc)
+
+	a, err := svc.CompleteAvatarUpload(context.Background(), projectID, agentID, uuid.New())
+
+	assert.NoError(t, err)
+	assert.Equal(t, avatarSvc.nextKeys.Key, *a.AvatarKey)
+	assert.Equal(t, avatarSvc.nextKeys.ThumbKey, *a.AvatarThumbKey)
+	if assert.NotNil(t, updated) {
+		assert.Equal(t, avatarSvc.nextKeys.Key, *updated.AvatarKey)
+	}
+
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	assert.ElementsMatch(t, []string{oldKey, oldThumbKey}, avatarSvc.deletedKeys)
+}
+
+func TestRemoveAvatar_NoExistingAvatar_NoOps(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	updateCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ProjectID: projectID}, nil
+		},
+		updateAgent: func(context.Context, *agentdom.Agent) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	avatarSvc := &fakeAvatarService{}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAvatarService(avatarSvc)
+
+	_, err := svc.RemoveAvatar(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.False(t, updateCalled, "expected repo.UpdateAgent not to be called when the agent has no avatar")
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	assert.Empty(t, avatarSvc.deletedKeys)
+}
+
+func TestCompleteGlobalAvatarUpload_RejectsProjectScopedAgent(t *testing.T) {
+	agentID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeProject, ProjectID: uuid.New()}, nil
+		},
+	}
+	avatarSvc := &fakeAvatarService{}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAvatarService(avatarSvc)
+
+	_, err := svc.CompleteGlobalAvatarUpload(context.Background(), agentID, uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	assert.Empty(t, avatarSvc.deletedKeys, "avatar service must not be touched for a scope-mismatched agent")
+}
+
+func TestRemoveGlobalAvatar_ClearsKeysAndDeletesObjects(t *testing.T) {
+	key, thumbKey := "avatars/agents/a2/full.png", "avatars/agents/a2/thumb.png"
+	agentID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentScope: agentdom.AgentScopeGlobal, AvatarKey: &key, AvatarThumbKey: &thumbKey}, nil
+		},
+		updateAgent: func(context.Context, *agentdom.Agent) error { return nil },
+	}
+	avatarSvc := &fakeAvatarService{}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAvatarService(avatarSvc)
+
+	a, err := svc.RemoveGlobalAvatar(context.Background(), agentID)
+
+	assert.NoError(t, err)
+	assert.Nil(t, a.AvatarKey)
+	assert.Nil(t, a.AvatarThumbKey)
+	avatarSvc.mu.Lock()
+	defer avatarSvc.mu.Unlock()
+	assert.ElementsMatch(t, []string{key, thumbKey}, avatarSvc.deletedKeys)
 }

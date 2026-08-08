@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/cache"
 )
@@ -136,6 +137,35 @@ func (c *CachedService) Delete(ctx context.Context, id uuid.UUID) error {
 		c.log.WarnContext(ctx, "cache: DeleteProject delete", "err", err)
 	}
 	return nil
+}
+
+// InitiateAvatarUpload delegates directly to the underlying service (nothing to cache).
+func (c *CachedService) InitiateAvatarUpload(ctx context.Context, projectID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error) {
+	return c.svc.InitiateAvatarUpload(ctx, projectID, fileName, contentType, fileSize, uploadedBy)
+}
+
+// CompleteAvatarUpload delegates to the underlying service and invalidates the project cache entry.
+func (c *CachedService) CompleteAvatarUpload(ctx context.Context, projectID, fileID uuid.UUID) (*projectdom.Project, error) {
+	p, err := c.svc.CompleteAvatarUpload(ctx, projectID, fileID)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.st.Delete(ctx, projectKey(projectID)); err != nil {
+		c.log.WarnContext(ctx, "cache: CompleteAvatarUpload delete", "err", err)
+	}
+	return p, nil
+}
+
+// RemoveAvatar delegates to the underlying service and invalidates the project cache entry.
+func (c *CachedService) RemoveAvatar(ctx context.Context, projectID uuid.UUID) (*projectdom.Project, error) {
+	p, err := c.svc.RemoveAvatar(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.st.Delete(ctx, projectKey(projectID)); err != nil {
+		c.log.WarnContext(ctx, "cache: RemoveAvatar delete", "err", err)
+	}
+	return p, nil
 }
 
 // --- Members -----------------------------------------------------------------

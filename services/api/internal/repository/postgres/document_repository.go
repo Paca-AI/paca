@@ -66,8 +66,10 @@ type docActivityRecord struct {
 	DeletedAt    *time.Time       `db:"deleted_at"`
 
 	// Joined from project_members + users.
-	ActorFullName *string `db:"actor_full_name"`
-	ActorUsername *string `db:"actor_username"`
+	ActorFullName       *string `db:"actor_full_name"`
+	ActorUsername       *string `db:"actor_username"`
+	ActorAvatarKey      *string `db:"actor_avatar_key"`
+	ActorAvatarThumbKey *string `db:"actor_avatar_thumb_key"`
 }
 
 // =============================================================================
@@ -227,6 +229,8 @@ func activityFromDocRecord(r docActivityRecord) *docdom.Activity {
 	if r.ActorUsername != nil {
 		a.ActorUsername = *r.ActorUsername
 	}
+	a.ActorAvatarKey = r.ActorAvatarKey
+	a.ActorAvatarThumbKey = r.ActorAvatarThumbKey
 	return a
 }
 
@@ -438,7 +442,9 @@ func (r *DocumentRepository) DeleteRecentSnapshotsExcept(ctx context.Context, do
 const docActivityJoinSQL = `
 	SELECT da.id, da.document_id, da.actor_id, da.activity_type, da.content, da.created_at, da.updated_at, da.deleted_at,
 	       COALESCE(u.full_name, ag.name) AS actor_full_name,
-	       COALESCE(u.username, ag.handle) AS actor_username
+	       COALESCE(u.username, ag.handle) AS actor_username,
+	       COALESCE(u.avatar_key, ag.avatar_key) AS actor_avatar_key,
+	       COALESCE(u.avatar_thumb_key, ag.avatar_thumb_key) AS actor_avatar_thumb_key
 	FROM doc_activities da
 	LEFT JOIN project_members pm ON pm.id = da.actor_id
 	LEFT JOIN users u ON u.id = pm.user_id

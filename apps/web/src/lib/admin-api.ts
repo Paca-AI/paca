@@ -73,6 +73,8 @@ export interface User {
 	full_name: string;
 	role: string;
 	must_change_password: boolean;
+	avatar_url?: string | null;
+	avatar_thumb_url?: string | null;
 	created_at: string;
 }
 

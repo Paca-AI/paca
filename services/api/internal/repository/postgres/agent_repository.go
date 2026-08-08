@@ -27,7 +27,8 @@ type agentRecord struct {
 	GlobalRoleID       *string    `db:"global_role_id"`
 	Name               string     `db:"name"`
 	Handle             string     `db:"handle"`
-	AvatarURL          *string    `db:"avatar_url"`
+	AvatarKey          *string    `db:"avatar_key"`
+	AvatarThumbKey     *string    `db:"avatar_thumb_key"`
 	AgentType          string     `db:"agent_type"`
 	LLMProvider        string     `db:"llm_provider"`
 	LLMModel           string     `db:"llm_model"`
@@ -147,7 +148,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 	return &AgentRepository{db: db}
 }
 
-const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_url, a.agent_type, a.llm_provider, a.llm_model,
+const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
 	a.git_committer_name, a.git_committer_email, a.created_by, a.created_at, a.updated_at, a.deleted_at`
@@ -363,12 +364,12 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 		return err
 	}
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO agents (id, project_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
+		INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
 		  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarURL, rec.AgentType,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
@@ -389,13 +390,13 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		_, err := tx.ExecContext(ctx, `
 			UPDATE agents SET
-			  name=$1, handle=$2, avatar_url=$3, llm_provider=$4, llm_model=$5, llm_base_url=$6,
-			  acp_provider=$7, acp_command=$8,
-			  system_prompt=$9,
-			  max_iterations=$10, timeout_minutes=$11,
-			  git_committer_name=$12, git_committer_email=$13, global_role_id=$14, updated_at=$15
-			WHERE id=$16`,
-			a.Name, a.Handle, a.AvatarURL, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
+			  name=$1, handle=$2, avatar_key=$3, avatar_thumb_key=$4, llm_provider=$5, llm_model=$6, llm_base_url=$7,
+			  acp_provider=$8, acp_command=$9,
+			  system_prompt=$10,
+			  max_iterations=$11, timeout_minutes=$12,
+			  git_committer_name=$13, git_committer_email=$14, global_role_id=$15, updated_at=$16
+			WHERE id=$17`,
+			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
@@ -471,12 +472,12 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO agents (id, project_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
+			INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
 			  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarURL, rec.AgentType,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
@@ -539,12 +540,12 @@ func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Age
 		return err
 	}
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_url, agent_type, llm_provider, llm_model,
+		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
 		  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarURL, rec.AgentType,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
@@ -1212,7 +1213,8 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		AgentScope:        scope,
 		Name:              row.Name,
 		Handle:            row.Handle,
-		AvatarURL:         row.AvatarURL,
+		AvatarKey:         row.AvatarKey,
+		AvatarThumbKey:    row.AvatarThumbKey,
 		AgentType:         row.AgentType,
 		LLMProvider:       row.LLMProvider,
 		LLMModel:          row.LLMModel,
@@ -1281,7 +1283,8 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		AgentScope:        scope,
 		Name:              a.Name,
 		Handle:            a.Handle,
-		AvatarURL:         a.AvatarURL,
+		AvatarKey:         a.AvatarKey,
+		AvatarThumbKey:    a.AvatarThumbKey,
 		AgentType:         agentType,
 		LLMProvider:       a.LLMProvider,
 		LLMModel:          a.LLMModel,

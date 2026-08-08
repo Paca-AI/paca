@@ -16,6 +16,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -51,6 +52,7 @@ type AgentHandler struct {
 	activityRec        agentActivityRecorder
 	memberRepo         projectdom.MemberRepository
 	globalPermReader   agentGlobalPermissionReader
+	avatarSvc          attachmentdom.AvatarService
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -88,6 +90,23 @@ func (h *AgentHandler) WithMemberRepo(repo projectdom.MemberRepository) *AgentHa
 func (h *AgentHandler) WithGlobalPermissionReader(reader agentGlobalPermissionReader) *AgentHandler {
 	h.globalPermReader = reader
 	return h
+}
+
+// WithAvatarService configures avatar URL resolution for AgentResponse.
+func (h *AgentHandler) WithAvatarService(svc attachmentdom.AvatarService) *AgentHandler {
+	h.avatarSvc = svc
+	return h
+}
+
+// toAgentResponse maps ag to an AgentResponse and, if an AvatarService is
+// configured, resolves its avatar keys into presigned display URLs.
+func (h *AgentHandler) toAgentResponse(ctx context.Context, ag *agentdom.Agent) dto.AgentResponse {
+	resp := dto.AgentFromEntity(ag)
+	if h.avatarSvc != nil {
+		resp.AvatarURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, ag.AvatarKey)
+		resp.AvatarThumbURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, ag.AvatarThumbKey)
+	}
+	return resp
 }
 
 // callerUserID extracts the authenticated human user's ID from the
@@ -153,7 +172,7 @@ func (h *AgentHandler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := make([]dto.AgentResponse, 0, len(agents))
 	for _, a := range agents {
-		resp = append(resp, dto.AgentFromEntity(a))
+		resp = append(resp, h.toAgentResponse(r.Context(), a))
 	}
 	presenter.OK(w, r, map[string]any{"items": resp})
 }
@@ -175,7 +194,7 @@ func (h *AgentHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.AgentFromEntity(a))
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // CreateAgent handles POST /projects/:projectId/agents.
@@ -257,7 +276,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.Created(w, r, dto.AgentFromEntity(a))
+	presenter.Created(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // UpdateAgent handles PATCH /projects/:projectId/agents/:agentId.
@@ -296,7 +315,7 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.AgentFromEntity(a))
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // DeleteAgent handles DELETE /projects/:projectId/agents/:agentId.
@@ -329,7 +348,7 @@ func (h *AgentHandler) ListGlobalAgents(w http.ResponseWriter, r *http.Request) 
 	}
 	resp := make([]dto.AgentResponse, 0, len(agents))
 	for _, a := range agents {
-		resp = append(resp, dto.AgentFromEntity(a))
+		resp = append(resp, h.toAgentResponse(r.Context(), a))
 	}
 	presenter.OK(w, r, map[string]any{"items": resp})
 }
@@ -346,7 +365,7 @@ func (h *AgentHandler) GetGlobalAgent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.AgentFromEntity(a))
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // CreateGlobalAgent handles POST /admin/agents.
@@ -415,7 +434,7 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.Created(w, r, dto.AgentFromEntity(a))
+	presenter.Created(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // UpdateGlobalAgent handles PATCH /admin/agents/:agentId.
@@ -450,7 +469,7 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.AgentFromEntity(a))
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // DeleteGlobalAgent handles DELETE /admin/agents/:agentId.
@@ -1707,6 +1726,157 @@ func (h *AgentHandler) GenerateGlobalAgentMCPKey(w http.ResponseWriter, r *http.
 		return
 	}
 	presenter.OK(w, r, dto.GenerateMCPAgentKeyResponse{Token: token})
+}
+
+// --- Avatar -------------------------------------------------------------------
+
+// InitiateAvatarUpload handles POST /projects/:projectId/agents/:agentId/avatar/initiate-upload.
+func (h *AgentHandler) InitiateAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	uploaderID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "invalid subject in token"))
+		return
+	}
+
+	var req dto.InitiateUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	session, err := h.svc.InitiateAvatarUpload(r.Context(), projectID, agentID, req.FileName, req.ContentType, req.FileSize, uploaderID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.UploadSessionFromDomain(session))
+}
+
+// CompleteAvatarUpload handles POST /projects/:projectId/agents/:agentId/avatar/complete-upload.
+func (h *AgentHandler) CompleteAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	var req dto.CompleteAvatarUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	a, err := h.svc.CompleteAvatarUpload(r.Context(), projectID, agentID, req.FileID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
+}
+
+// DeleteAvatar handles DELETE /projects/:projectId/agents/:agentId/avatar.
+func (h *AgentHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	a, err := h.svc.RemoveAvatar(r.Context(), projectID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
+}
+
+// InitiateGlobalAvatarUpload handles POST /admin/agents/:agentId/avatar/initiate-upload.
+func (h *AgentHandler) InitiateGlobalAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	uploaderID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "invalid subject in token"))
+		return
+	}
+
+	var req dto.InitiateUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	session, err := h.svc.InitiateGlobalAvatarUpload(r.Context(), agentID, req.FileName, req.ContentType, req.FileSize, uploaderID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.UploadSessionFromDomain(session))
+}
+
+// CompleteGlobalAvatarUpload handles POST /admin/agents/:agentId/avatar/complete-upload.
+func (h *AgentHandler) CompleteGlobalAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	var req dto.CompleteAvatarUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	a, err := h.svc.CompleteGlobalAvatarUpload(r.Context(), agentID, req.FileID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
+}
+
+// DeleteGlobalAvatar handles DELETE /admin/agents/:agentId/avatar.
+func (h *AgentHandler) DeleteGlobalAvatar(w http.ResponseWriter, r *http.Request) {
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	a, err := h.svc.RemoveGlobalAvatar(r.Context(), agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, h.toAgentResponse(r.Context(), a))
 }
 
 // --- Activity Feed ------------------------------------------------------------

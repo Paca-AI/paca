@@ -9,6 +9,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import {
 	Popover,
 	PopoverContent,
@@ -27,6 +28,7 @@ import {
 import {
 	type CustomFieldDefinition,
 	customFieldsQueryOptions,
+	type ProjectMember,
 	projectMembersQueryOptions,
 	STATUS_CATEGORIES,
 	STATUS_CATEGORY_LABELS,
@@ -36,6 +38,7 @@ import {
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
 } from "@/lib/project-api";
+import { resolveMemberAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
 import { PRIORITY_LEVELS } from "./priority";
 import { ChipField } from "./task-detail/property-field/chip-field";
@@ -495,7 +498,17 @@ function AssigneeFilterSection({
 	selectedIds,
 	onChange,
 }: {
-	members: { id: string; full_name: string; username: string }[];
+	members: Pick<
+		ProjectMember,
+		| "id"
+		| "full_name"
+		| "username"
+		| "avatar_thumb_url"
+		| "member_type"
+		| "agent_type"
+		| "agent_llm_provider"
+		| "agent_acp_provider"
+	>[];
 	selectedIds: string[];
 	onChange: (ids: string[]) => void;
 }) {
@@ -540,7 +553,9 @@ function AssigneeFilterSection({
 							onChange={() => toggle(m.id)}
 							icon={
 								<div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-xs font-bold ring-1 ring-primary/20">
-									{display.slice(0, 1).toUpperCase()}
+									<EntityAvatarContent avatarUrl={resolveMemberAvatarUrl(m)}>
+										{display.slice(0, 1).toUpperCase()}
+									</EntityAvatarContent>
 								</div>
 							}
 						/>

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
@@ -59,6 +60,15 @@ func (m *mockUserSvc) AdminUpdate(context.Context, uuid.UUID, userdom.AdminUpdat
 func (m *mockUserSvc) ResetPassword(context.Context, uuid.UUID, string) error            { return nil }
 func (m *mockUserSvc) ChangeMyPassword(context.Context, uuid.UUID, string, string) error { return nil }
 func (m *mockUserSvc) Delete(context.Context, uuid.UUID) error                           { return nil }
+func (m *mockUserSvc) InitiateAvatarUpload(context.Context, uuid.UUID, string, string, int64) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{}, nil
+}
+func (m *mockUserSvc) CompleteAvatarUpload(context.Context, uuid.UUID, uuid.UUID) (*userdom.User, error) {
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
+}
+func (m *mockUserSvc) RemoveAvatar(context.Context, uuid.UUID) (*userdom.User, error) {
+	return &userdom.User{ID: uuid.New(), Username: "alice", FullName: "Alice", Role: userdom.RoleUser}, nil
+}
 
 type mockGlobalRoleSvc struct{}
 
@@ -99,6 +109,15 @@ func (s *stubProjectSvc) Update(context.Context, uuid.UUID, projectdom.UpdatePro
 	return nil, nil
 }
 func (s *stubProjectSvc) Delete(context.Context, uuid.UUID) error { return nil }
+func (s *stubProjectSvc) InitiateAvatarUpload(context.Context, uuid.UUID, string, string, int64, uuid.UUID) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{}, nil
+}
+func (s *stubProjectSvc) CompleteAvatarUpload(context.Context, uuid.UUID, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
+}
+func (s *stubProjectSvc) RemoveAvatar(context.Context, uuid.UUID) (*projectdom.Project, error) {
+	return nil, projectdom.ErrNotFound
+}
 func (s *stubProjectSvc) ListMembers(context.Context, uuid.UUID) ([]*projectdom.ProjectMember, error) {
 	return nil, nil
 }

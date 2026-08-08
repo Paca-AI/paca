@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -228,6 +230,43 @@ func (c *S3Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("storage: delete object %q: %w", key, err)
+	}
+	return nil
+}
+
+// GetObject downloads an object's contents into memory, bounded by maxBytes
+// (see the Client interface doc — maxBytes <= 0 means unbounded).
+func (c *S3Client) GetObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error) {
+	out, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: get object %q: %w", key, err)
+	}
+	defer func() { _ = out.Body.Close() }()
+
+	var body io.Reader = out.Body
+	if maxBytes > 0 {
+		body = io.LimitReader(out.Body, maxBytes)
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, fmt.Errorf("storage: read object %q: %w", key, err)
+	}
+	return data, nil
+}
+
+// PutObject uploads data directly to the object store from the server.
+func (c *S3Client) PutObject(ctx context.Context, bucket, key, contentType string, data []byte) error {
+	_, err := c.s3.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+		Body:        bytes.NewReader(data),
+	})
+	if err != nil {
+		return fmt.Errorf("storage: put object %q: %w", key, err)
 	}
 	return nil
 }

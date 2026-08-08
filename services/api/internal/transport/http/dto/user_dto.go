@@ -50,7 +50,12 @@ type UserResponse struct {
 	FullName           string    `json:"full_name"`
 	Role               string    `json:"role"`
 	MustChangePassword bool      `json:"must_change_password"`
-	CreatedAt          time.Time `json:"created_at"`
+	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
+	// handler (not this mapper) via attachmentdom.AvatarService — nil when
+	// no avatar has been uploaded.
+	AvatarURL      *string   `json:"avatar_url,omitempty"`
+	AvatarThumbURL *string   `json:"avatar_thumb_url,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // PagedUsersResponse wraps a list of users with pagination metadata.

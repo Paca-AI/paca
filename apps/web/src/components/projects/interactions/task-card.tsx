@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -31,6 +32,7 @@ import {
 	type TaskStatus,
 	type TaskType,
 } from "@/lib/project-api";
+import { resolveMemberAvatarUrl } from "@/lib/provider-logos";
 import { useHoveredTaskStore } from "@/lib/shortcuts/hovered-task-store";
 import { cn } from "@/lib/utils";
 
@@ -149,11 +151,15 @@ export function TaskCard({
 										key={id}
 										className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/15 text-primary text-xs font-bold ring-2 ring-card"
 									>
-										{m ? (
-											(m.full_name || m.username).slice(0, 1).toUpperCase()
-										) : (
-											<User className="size-2.5" />
-										)}
+										<EntityAvatarContent
+											avatarUrl={m ? resolveMemberAvatarUrl(m) : undefined}
+										>
+											{m ? (
+												(m.full_name || m.username).slice(0, 1).toUpperCase()
+											) : (
+												<User className="size-2.5" />
+											)}
+										</EntityAvatarContent>
 									</div>
 								);
 							})
@@ -217,7 +223,11 @@ export function TaskCard({
 										}}
 									>
 										<div className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-primary/20 to-primary/10 text-primary text-xs font-bold">
-											{(m.full_name || m.username).slice(0, 1).toUpperCase()}
+											<EntityAvatarContent
+												avatarUrl={resolveMemberAvatarUrl(m)}
+											>
+												{(m.full_name || m.username).slice(0, 1).toUpperCase()}
+											</EntityAvatarContent>
 										</div>
 										<span className="flex-1 text-left truncate">
 											{m.full_name || m.username}
@@ -476,13 +486,19 @@ export function TaskCard({
 						}
 						className="flex size-5 items-center justify-center rounded-full bg-linear-to-br from-muted/80 to-muted/40 text-muted-foreground text-xs font-bold ring-1 ring-border/25"
 					>
-						{reporter ? (
-							(reporter.full_name || reporter.username)
-								.slice(0, 1)
-								.toUpperCase()
-						) : (
-							<User className="size-2.5" />
-						)}
+						<EntityAvatarContent
+							avatarUrl={
+								reporter ? resolveMemberAvatarUrl(reporter) : undefined
+							}
+						>
+							{reporter ? (
+								(reporter.full_name || reporter.username)
+									.slice(0, 1)
+									.toUpperCase()
+							) : (
+								<User className="size-2.5" />
+							)}
+						</EntityAvatarContent>
 					</div>
 				);
 			}

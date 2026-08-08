@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -223,6 +224,24 @@ func (m *mockAgentSvc) StartGlobalChatSession(_ context.Context, _, _ uuid.UUID,
 }
 func (m *mockAgentSvc) SendGlobalChatMessage(_ context.Context, _, _ uuid.UUID, _ string) (*agentdom.AgentConversation, error) {
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
+}
+func (m *mockAgentSvc) InitiateAvatarUpload(_ context.Context, _, _ uuid.UUID, _, _ string, _ int64, _ uuid.UUID) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{}, nil
+}
+func (m *mockAgentSvc) CompleteAvatarUpload(_ context.Context, _, _, _ uuid.UUID) (*agentdom.Agent, error) {
+	return nil, agentdom.ErrAgentNotFound
+}
+func (m *mockAgentSvc) RemoveAvatar(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+	return nil, agentdom.ErrAgentNotFound
+}
+func (m *mockAgentSvc) InitiateGlobalAvatarUpload(_ context.Context, _ uuid.UUID, _, _ string, _ int64, _ uuid.UUID) (*attachmentdom.UploadSession, error) {
+	return &attachmentdom.UploadSession{}, nil
+}
+func (m *mockAgentSvc) CompleteGlobalAvatarUpload(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+	return nil, agentdom.ErrAgentNotFound
+}
+func (m *mockAgentSvc) RemoveGlobalAvatar(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+	return nil, agentdom.ErrAgentNotFound
 }
 
 var _ agentdom.Service = (*mockAgentSvc)(nil)
