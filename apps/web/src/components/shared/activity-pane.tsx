@@ -24,6 +24,7 @@ import {
 	type CommentEditorHandle,
 } from "@/components/shared/comment-blocknote";
 import { ContentDiffDialog } from "@/components/shared/content-diff";
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -40,6 +41,8 @@ export interface ActivityEntry {
 	actor_id?: string | null;
 	actor_name: string;
 	actor_username: string;
+	actor_avatar_url?: string | null;
+	actor_avatar_thumb_url?: string | null;
 	activity_type: string;
 	content: Record<string, unknown> | unknown[] | string | null;
 	created_at: string;
@@ -377,7 +380,9 @@ function ActivityItemInner<T extends ActivityEntry>({
 						: "bg-muted/40 text-muted-foreground/80 ring-border/20",
 				)}
 			>
-				{initial}
+				<EntityAvatarContent avatarUrl={entry.actor_avatar_thumb_url}>
+					{initial}
+				</EntityAvatarContent>
 			</div>
 			<div className="flex-1 min-w-0">
 				{isComment ? (

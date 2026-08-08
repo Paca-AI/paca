@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -39,6 +40,7 @@ type ProjectHandler struct {
 	taskTypeSvc taskTypeLister
 	taskSvc     taskServiceForStats
 	userSvc     userServiceForStats
+	avatarSvc   attachmentdom.AvatarService
 }
 
 // ProjectHandlerOption customizes optional project-handler dependencies.
@@ -64,6 +66,16 @@ func WithProjectStatsServices(taskSvc taskServiceForStats, userSvc userServiceFo
 	}
 }
 
+// WithProjectAvatarService configures avatar URL resolution for member
+// responses (ListMembers, AddMember, UpdateMemberRole) and for the
+// project's own avatar (ProjectResponse), and enables the project avatar
+// upload endpoints.
+func WithProjectAvatarService(svc attachmentdom.AvatarService) ProjectHandlerOption {
+	return func(h *ProjectHandler) {
+		h.avatarSvc = svc
+	}
+}
+
 // NewProjectHandler returns a ProjectHandler wired to the service and authorizer.
 func NewProjectHandler(svc projectdom.Service, authorizer *authz.Authorizer, opts ...ProjectHandlerOption) *ProjectHandler {
 	h := &ProjectHandler{svc: svc, authorizer: authorizer}
@@ -73,6 +85,17 @@ func NewProjectHandler(svc projectdom.Service, authorizer *authz.Authorizer, opt
 		}
 	}
 	return h
+}
+
+// toProjectResponse maps p to a ProjectResponse and, if an AvatarService is
+// configured, resolves its avatar keys into presigned display URLs.
+func (h *ProjectHandler) toProjectResponse(ctx context.Context, p *projectdom.Project) dto.ProjectResponse {
+	resp := dto.ProjectFromEntity(p)
+	if h.avatarSvc != nil {
+		resp.AvatarURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, p.AvatarKey)
+		resp.AvatarThumbURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, p.AvatarThumbKey)
+	}
+	return resp
 }
 
 // ListProjects handles GET /projects.
@@ -117,7 +140,7 @@ func (h *ProjectHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]dto.ProjectResponse, 0, len(projects))
 	for _, p := range projects {
-		resp = append(resp, dto.ProjectFromEntity(p))
+		resp = append(resp, h.toProjectResponse(r.Context(), p))
 	}
 	presenter.OK(w, r, map[string]any{"items": resp, "total": total, "page": page, "page_size": pageSize})
 }
@@ -233,7 +256,7 @@ func (h *ProjectHandler) GetProject(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.ProjectFromEntity(p))
+	presenter.OK(w, r, h.toProjectResponse(r.Context(), p))
 }
 
 // CreateProject handles POST /projects.
@@ -280,7 +303,7 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	presenter.Created(w, r, dto.ProjectFromEntity(p))
+	presenter.Created(w, r, h.toProjectResponse(r.Context(), p))
 }
 
 // UpdateProject handles PATCH /projects/:projectId.
@@ -307,7 +330,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.ProjectFromEntity(p))
+	presenter.OK(w, r, h.toProjectResponse(r.Context(), p))
 }
 
 // DeleteProject handles DELETE /projects/:projectId.
@@ -322,6 +345,73 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.OK(w, r, map[string]any{"message": "project deleted"})
+}
+
+// InitiateAvatarUpload handles POST /projects/:projectId/avatar/initiate-upload.
+func (h *ProjectHandler) InitiateAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	id, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	claims := middleware.ClaimsFrom(r)
+	if claims == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
+		return
+	}
+	uploaderID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "invalid subject in token"))
+		return
+	}
+
+	var req dto.InitiateUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	session, err := h.svc.InitiateAvatarUpload(r.Context(), id, req.FileName, req.ContentType, req.FileSize, uploaderID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.Created(w, r, dto.UploadSessionFromDomain(session))
+}
+
+// CompleteAvatarUpload handles POST /projects/:projectId/avatar/complete-upload.
+func (h *ProjectHandler) CompleteAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	id, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	var req dto.CompleteAvatarUploadRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	p, err := h.svc.CompleteAvatarUpload(r.Context(), id, req.FileID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, h.toProjectResponse(r.Context(), p))
+}
+
+// DeleteAvatar handles DELETE /projects/:projectId/avatar.
+func (h *ProjectHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	id, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	p, err := h.svc.RemoveAvatar(r.Context(), id)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, h.toProjectResponse(r.Context(), p))
 }
 
 // --- helpers ----------------------------------------------------------------

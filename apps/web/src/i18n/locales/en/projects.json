@@ -138,6 +138,17 @@
 				"envVars": "Environment",
 				"activity": "Activity"
 			},
+			"avatar": {
+				"change": "Change avatar",
+				"remove": "Remove avatar",
+				"uploading": "Uploading…",
+				"errors": {
+					"invalidType": "Please choose a PNG, JPEG, WEBP, or GIF image.",
+					"tooLarge": "Image must be 5 MB or smaller.",
+					"uploadFailed": "Failed to upload avatar. Please try again.",
+					"removeFailed": "Failed to remove avatar. Please try again."
+				}
+			},
 			"overview": {
 				"nameLabel": "Name",
 				"llmConfiguration": "LLM Configuration",
@@ -457,6 +468,17 @@
 	"settings": {
 		"general": {
 			"title": "General",
+			"avatar": {
+				"change": "Change avatar",
+				"remove": "Remove avatar",
+				"uploading": "Uploading…",
+				"errors": {
+					"invalidType": "Please choose a PNG, JPEG, WEBP, or GIF image.",
+					"tooLarge": "Image must be 5 MB or smaller.",
+					"uploadFailed": "Failed to upload avatar. Please try again.",
+					"removeFailed": "Failed to remove avatar. Please try again."
+				}
+			},
 			"projectNameLabel": "Project name",
 			"projectNamePlaceholder": "My awesome project",
 			"taskIdPrefixLabel": "Task ID prefix",

@@ -144,7 +144,8 @@ func New(cfg *config.Config) (*App, error) {
 	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo)
 	agentRepo := pgRepo.NewAgentRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
-	projectService := projectsvc.NewCachedService(projectsvc.New(projectRepo, taskRepo, agentRepo), cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
+	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
+	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
 	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
@@ -205,6 +206,9 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), storageClient, cfg.Storage.Bucket)
+	userService = userService.WithAvatarService(attachmentService)
+	agentService = agentService.WithAvatarService(attachmentService)
+	projectServiceBase.WithAvatarService(attachmentService)
 
 	// --- API Key management -------------------------------------------------
 	apiKeyRepo := pgRepo.NewAPIKeyRepository(db)
@@ -307,7 +311,8 @@ func New(cfg *config.Config) (*App, error) {
 	agentHandler := handler.NewAgentHandler(agentService, cfg.AIAgentURL, cfg.AIAgentInternalKey, cfg.Server.PublicURL).
 		WithActivityRecorder(activityService).
 		WithMemberRepo(projectRepo).
-		WithGlobalPermissionReader(permissionStore)
+		WithGlobalPermissionReader(permissionStore).
+		WithAvatarService(attachmentService)
 	convHandler := handler.NewConversationHandler(agentService)
 	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 
@@ -326,7 +331,7 @@ func New(cfg *config.Config) (*App, error) {
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
-		User:                 handler.NewUserHandler(userService, authService),
+		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
 		Project: handler.NewProjectHandler(
@@ -334,17 +339,19 @@ func New(cfg *config.Config) (*App, error) {
 			authorizer,
 			handler.WithProjectDefaultViews(viewService, taskService),
 			handler.WithProjectStatsServices(taskService, userService),
+			handler.WithProjectAvatarService(attachmentService),
 		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskPublisher(publisher),
-			handler.WithTaskAssignedProjectService(projectService)),
+			handler.WithTaskAssignedProjectService(projectService),
+			handler.WithTaskAvatarService(attachmentService)),
 		Sprint: handler.NewSprintHandler(sprintService, viewService,
 			handler.WithSprintDefaultTaskTypes(taskService),
 			handler.WithSprintDefaultTaskStatuses(taskService),
 		),
 		View:               handler.NewViewHandler(viewService),
 		Attachment:         handler.NewAttachmentHandler(attachmentService),
-		Document:           handler.NewDocumentHandler(docService, docActivityService),
+		Document:           handler.NewDocumentHandler(docService, docActivityService).WithDocAvatarService(attachmentService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
 		Notification:       handler.NewNotificationHandler(notificationService),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),

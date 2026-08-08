@@ -26,10 +26,14 @@ type Agent struct {
 	// via admin-shaped tools (create users, manage global roles, manage
 	// projects) when acting with no project context. Only ever set for
 	// AgentScopeGlobal agents; nil means no global-scope permissions.
-	GlobalRoleID    *uuid.UUID
-	Name            string
-	Handle          string
-	AvatarURL       *string
+	GlobalRoleID *uuid.UUID
+	Name         string
+	Handle       string
+	// AvatarKey and AvatarThumbKey are object-storage keys for the two
+	// server-generated avatar variants (256x256 full, 64x64 thumb). Both nil
+	// when no avatar has been uploaded. See attachmentdom.AvatarService.
+	AvatarKey       *string
+	AvatarThumbKey  *string
 	AgentType       string // llm | acp
 	LLMProvider     string
 	LLMModel        string

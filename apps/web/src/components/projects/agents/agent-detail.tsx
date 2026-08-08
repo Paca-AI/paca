@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -74,6 +74,7 @@ import {
 	updateMCPServer,
 	updateSkill,
 } from "@/lib/agent-api";
+import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
 import { AcpBridgeSetup } from "./acp-bridge-setup";
 import { AgentActivityTab } from "./agent-activity-tab";
@@ -1337,6 +1338,7 @@ export function AgentDetailView({
 	agentId: string;
 }) {
 	const { t } = useTranslation("projects");
+	const qc = useQueryClient();
 
 	// Both permission hooks are always called (never conditionally, per the
 	// rules of hooks) — useProjectPermissions no-ops its own query when
@@ -1438,11 +1440,56 @@ export function AgentDetailView({
 			{/* Agent header */}
 			<div className="border-b border-border/50 px-6 py-5 shrink-0">
 				<div className="flex items-center gap-4">
-					<Avatar className="size-12 rounded-xl bg-primary/10">
-						<AvatarFallback className="rounded-xl bg-primary/10 text-primary font-bold text-base">
-							{initials}
-						</AvatarFallback>
-					</Avatar>
+					<AvatarUpload
+						basePath={
+							projectId
+								? `/projects/${projectId}/agents/${agent.id}`
+								: `/admin/agents/${agent.id}`
+						}
+						avatarUrl={resolveAgentAvatarUrl(agent, "full")}
+						canRemove={!!agent.avatar_url}
+						fallback={initials}
+						disabled={!canWrite}
+						className="size-12 rounded-xl bg-primary/10"
+						fallbackClassName="bg-primary/10 text-primary font-bold text-base"
+						labels={{
+							change: t("agents.detail.avatar.change"),
+							remove: t("agents.detail.avatar.remove"),
+							uploading: t("agents.detail.avatar.uploading"),
+							invalidType: t("agents.detail.avatar.errors.invalidType"),
+							tooLarge: t("agents.detail.avatar.errors.tooLarge"),
+							uploadFailed: t("agents.detail.avatar.errors.uploadFailed"),
+							removeFailed: t("agents.detail.avatar.errors.removeFailed"),
+						}}
+						onChange={(result) => {
+							qc.setQueryData(
+								(projectId
+									? agentQueryOptions(projectId, agent.id)
+									: globalAgentQueryOptions(agent.id)
+								).queryKey,
+								(old) => (old ? { ...old, ...result } : old),
+							);
+							// The single-agent cache above only fixes this page. Every
+							// other place that shows this agent's avatar — the agent
+							// list/cards, the chat agent picker, the conversations list,
+							// and (via project members) the team page and task
+							// assignee/reporter chips — reads from separate query caches
+							// that won't pick up the change until invalidated. A global
+							// agent can also belong to several projects at once, so the
+							// members invalidation matches every project's members query,
+							// not just this one.
+							qc.invalidateQueries({
+								queryKey: projectId
+									? ["projects", projectId, "agents"]
+									: ["global-agents"],
+							});
+							qc.invalidateQueries({
+								predicate: (query) =>
+									query.queryKey[0] === "projects" &&
+									query.queryKey[2] === "members",
+							});
+						}}
+					/>
 					<div>
 						<h1 className="text-lg font-semibold">{agent.name}</h1>
 						<div className="flex items-center gap-2 mt-0.5">

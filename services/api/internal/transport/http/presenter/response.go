@@ -242,6 +242,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeUploadIDMismatch
 	case errors.Is(err, attachmentdom.ErrMultipartPartsEmpty):
 		return http.StatusBadRequest, apierr.CodeMultipartPartsEmpty
+	case errors.Is(err, attachmentdom.ErrAvatarTooLarge),
+		errors.Is(err, attachmentdom.ErrAvatarContentTypeInvalid),
+		errors.Is(err, attachmentdom.ErrAvatarDecodeFailed):
+		return http.StatusBadRequest, apierr.CodeAttachmentInvalid
+	case errors.Is(err, attachmentdom.ErrAvatarOwnerMismatch):
+		return http.StatusNotFound, apierr.CodeFileNotFound
 	case errors.Is(err, taskdom.ErrActivityNotFound):
 		return http.StatusNotFound, apierr.CodeActivityNotFound
 	case errors.Is(err, taskdom.ErrActivityForbidden):

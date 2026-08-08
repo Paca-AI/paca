@@ -18,6 +18,17 @@
 	"errors": {
 		"updateFailed": "更新资料失败，请重试。"
 	},
+	"avatar": {
+		"change": "更换头像",
+		"remove": "移除头像",
+		"uploading": "上传中…",
+		"errors": {
+			"invalidType": "请选择 PNG、JPEG、WEBP 或 GIF 格式的图片。",
+			"tooLarge": "图片大小不能超过 5 MB。",
+			"uploadFailed": "头像上传失败，请重试。",
+			"removeFailed": "头像移除失败，请重试。"
+		}
+	},
 	"joinedOn": "加入于 {{date}}",
 	"changePassword": {
 		"title": "修改密码",

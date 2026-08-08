@@ -26,8 +26,10 @@ type taskActivityRecord struct {
 	DeletedAt    *time.Time      `db:"deleted_at"`
 
 	// Joined from the project_members + users tables.
-	ActorFullName *string `db:"actor_full_name"`
-	ActorUsername *string `db:"actor_username"`
+	ActorFullName       *string `db:"actor_full_name"`
+	ActorUsername       *string `db:"actor_username"`
+	ActorAvatarKey      *string `db:"actor_avatar_key"`
+	ActorAvatarThumbKey *string `db:"actor_avatar_thumb_key"`
 }
 
 // --- Repository struct -------------------------------------------------------
@@ -64,6 +66,8 @@ func activityFromRecord(r taskActivityRecord) *taskdom.Activity {
 	if r.ActorUsername != nil {
 		a.ActorUsername = *r.ActorUsername
 	}
+	a.ActorAvatarKey = r.ActorAvatarKey
+	a.ActorAvatarThumbKey = r.ActorAvatarThumbKey
 	return a
 }
 
@@ -73,7 +77,9 @@ const taskActivityJoinSQL = `
 	SELECT ta.id, ta.task_id, ta.actor_id, ta.activity_type, ta.content,
 	       ta.created_at, ta.updated_at, ta.deleted_at,
 	       COALESCE(u.full_name, ag.name) AS actor_full_name,
-	       COALESCE(u.username, ag.handle) AS actor_username
+	       COALESCE(u.username, ag.handle) AS actor_username,
+	       COALESCE(u.avatar_key, ag.avatar_key) AS actor_avatar_key,
+	       COALESCE(u.avatar_thumb_key, ag.avatar_thumb_key) AS actor_avatar_thumb_key
 	FROM task_activities ta
 	LEFT JOIN project_members pm ON pm.id = ta.actor_id
 	LEFT JOIN users u ON u.id = pm.user_id

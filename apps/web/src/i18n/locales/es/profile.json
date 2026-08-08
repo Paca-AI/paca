@@ -18,6 +18,17 @@
 	"errors": {
 		"updateFailed": "No se pudo actualizar el perfil. Inténtalo de nuevo."
 	},
+	"avatar": {
+		"change": "Cambiar avatar",
+		"remove": "Eliminar avatar",
+		"uploading": "Subiendo…",
+		"errors": {
+			"invalidType": "Elige una imagen PNG, JPEG, WEBP o GIF.",
+			"tooLarge": "La imagen debe pesar 5 MB o menos.",
+			"uploadFailed": "No se pudo subir el avatar. Inténtalo de nuevo.",
+			"removeFailed": "No se pudo eliminar el avatar. Inténtalo de nuevo."
+		}
+	},
 	"joinedOn": "Se unió el {{date}}",
 	"changePassword": {
 		"title": "Cambiar contraseña",

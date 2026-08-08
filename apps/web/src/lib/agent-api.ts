@@ -127,6 +127,7 @@ export interface Agent {
 	name: string;
 	handle: string;
 	avatar_url?: string | null;
+	avatar_thumb_url?: string | null;
 	agent_type: AgentType;
 	llm_provider: string;
 	llm_model: string;

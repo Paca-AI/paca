@@ -25,8 +25,13 @@ type User struct {
 	RoleID uuid.UUID
 	// Role holds the role name populated by a JOIN on global_roles; it is not
 	// stored directly in the users table.
-	Role      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt *time.Time
+	Role string
+	// AvatarKey and AvatarThumbKey are object-storage keys for the two
+	// server-generated avatar variants (256x256 full, 64x64 thumb). Both nil
+	// when no avatar has been uploaded. See attachmentdom.AvatarService.
+	AvatarKey      *string
+	AvatarThumbKey *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	DeletedAt      *time.Time
 }

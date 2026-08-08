@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 )
 
 // Service is the combined AI Agent service contract.
@@ -40,6 +42,13 @@ type AgentService interface {
 	// instead of to whichever human generated the command.
 	GenerateAgentMCPKey(ctx context.Context, projectID, agentID uuid.UUID) (plaintext string, err error)
 
+	// InitiateAvatarUpload starts an avatar upload for a project-scoped agent.
+	InitiateAvatarUpload(ctx context.Context, projectID, agentID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error)
+	// CompleteAvatarUpload finishes an avatar upload for a project-scoped agent.
+	CompleteAvatarUpload(ctx context.Context, projectID, agentID, fileID uuid.UUID) (*Agent, error)
+	// RemoveAvatar clears a project-scoped agent's avatar.
+	RemoveAvatar(ctx context.Context, projectID, agentID uuid.UUID) (*Agent, error)
+
 	// -- Global agents (AgentScope == AgentScopeGlobal). See the Agent doc
 	// comment. These never take a projectID: a global agent has none of its
 	// own, and is attached to projects only indirectly via project_members
@@ -64,6 +73,13 @@ type AgentService interface {
 	// sibling — ownership verified via GetGlobalAgent instead of a
 	// projectID match.
 	GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UUID) (plaintext string, err error)
+
+	// InitiateGlobalAvatarUpload is InitiateAvatarUpload's global-agent sibling.
+	InitiateGlobalAvatarUpload(ctx context.Context, agentID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error)
+	// CompleteGlobalAvatarUpload is CompleteAvatarUpload's global-agent sibling.
+	CompleteGlobalAvatarUpload(ctx context.Context, agentID, fileID uuid.UUID) (*Agent, error)
+	// RemoveGlobalAvatar is RemoveAvatar's global-agent sibling.
+	RemoveGlobalAvatar(ctx context.Context, agentID uuid.UUID) (*Agent, error)
 }
 
 // MCPServerService defines MCP server CRUD use cases.

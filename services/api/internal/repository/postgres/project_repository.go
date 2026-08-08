@@ -17,15 +17,17 @@ import (
 // --- sqlx models ------------------------------------------------------------
 
 type projectRecord struct {
-	ID           string     `db:"id"`
-	Name         string     `db:"name"`
-	Description  string     `db:"description"`
-	TaskIDPrefix string     `db:"task_id_prefix"`
-	IsPublic     bool       `db:"is_public"`
-	Settings     []byte     `db:"settings"`
-	CreatedBy    *string    `db:"created_by"`
-	CreatedAt    time.Time  `db:"created_at"`
-	DeletedAt    *time.Time `db:"deleted_at"`
+	ID             string     `db:"id"`
+	Name           string     `db:"name"`
+	Description    string     `db:"description"`
+	TaskIDPrefix   string     `db:"task_id_prefix"`
+	IsPublic       bool       `db:"is_public"`
+	Settings       []byte     `db:"settings"`
+	AvatarKey      *string    `db:"avatar_key"`
+	AvatarThumbKey *string    `db:"avatar_thumb_key"`
+	CreatedBy      *string    `db:"created_by"`
+	CreatedAt      time.Time  `db:"created_at"`
+	DeletedAt      *time.Time `db:"deleted_at"`
 }
 
 type projectRoleRecord struct {
@@ -39,19 +41,26 @@ type projectRoleRecord struct {
 
 // projectMemberReadRow is the result of the SELECT … JOIN query.
 type projectMemberReadRow struct {
-	ID            string     `db:"id"`
-	ProjectID     string     `db:"project_id"`
-	UserID        *string    `db:"user_id"`
-	ProjectRoleID string     `db:"project_role_id"`
-	MemberType    string     `db:"member_type"`
-	AgentID       *string    `db:"agent_id"`
-	Username      string     `db:"username"`
-	FullName      string     `db:"full_name"`
-	RoleName      string     `db:"role_name"`
-	AgentName     string     `db:"agent_name"`
-	AgentHandle   string     `db:"agent_handle"`
-	CreatedAt     time.Time  `db:"created_at"`
-	DeletedAt     *time.Time `db:"deleted_at"`
+	ID                  string     `db:"id"`
+	ProjectID           string     `db:"project_id"`
+	UserID              *string    `db:"user_id"`
+	ProjectRoleID       string     `db:"project_role_id"`
+	MemberType          string     `db:"member_type"`
+	AgentID             *string    `db:"agent_id"`
+	Username            string     `db:"username"`
+	FullName            string     `db:"full_name"`
+	RoleName            string     `db:"role_name"`
+	AgentName           string     `db:"agent_name"`
+	AgentHandle         string     `db:"agent_handle"`
+	UserAvatarKey       *string    `db:"user_avatar_key"`
+	UserAvatarThumbKey  *string    `db:"user_avatar_thumb_key"`
+	AgentAvatarKey      *string    `db:"agent_avatar_key"`
+	AgentAvatarThumbKey *string    `db:"agent_avatar_thumb_key"`
+	AgentType           string     `db:"agent_type"`
+	AgentLLMProvider    string     `db:"agent_llm_provider"`
+	AgentACPProvider    *string    `db:"agent_acp_provider"`
+	CreatedAt           time.Time  `db:"created_at"`
+	DeletedAt           *time.Time `db:"deleted_at"`
 }
 
 // --- Repository -------------------------------------------------------------
@@ -66,8 +75,8 @@ func NewProjectRepository(db *sqlx.DB) *ProjectRepository {
 	return &ProjectRepository{db: db}
 }
 
-const projectSelectCols = `id, name, description, task_id_prefix, is_public, settings, created_by, created_at, deleted_at`
-const projectSelectColsQualified = `projects.id, projects.name, projects.description, projects.task_id_prefix, projects.is_public, projects.settings, projects.created_by, projects.created_at, projects.deleted_at`
+const projectSelectCols = `id, name, description, task_id_prefix, is_public, settings, avatar_key, avatar_thumb_key, created_by, created_at, deleted_at`
+const projectSelectColsQualified = `projects.id, projects.name, projects.description, projects.task_id_prefix, projects.is_public, projects.settings, projects.avatar_key, projects.avatar_thumb_key, projects.created_by, projects.created_at, projects.deleted_at`
 
 // --- Projects ---------------------------------------------------------------
 
@@ -187,9 +196,11 @@ func (r *ProjectRepository) Update(ctx context.Context, p *projectdom.Project) e
 	}
 
 	result, err := r.db.ExecContext(ctx, `
-		UPDATE projects SET name=$1, description=$2, task_id_prefix=$3, is_public=$4, settings=$5, created_by=$6
-		WHERE id=$7`,
-		p.Name, p.Description, p.TaskIDPrefix, p.IsPublic, settings, createdBy, p.ID.String(),
+		UPDATE projects SET name=$1, description=$2, task_id_prefix=$3, is_public=$4, settings=$5,
+		  avatar_key=$6, avatar_thumb_key=$7, created_by=$8
+		WHERE id=$9`,
+		p.Name, p.Description, p.TaskIDPrefix, p.IsPublic, settings,
+		p.AvatarKey, p.AvatarThumbKey, createdBy, p.ID.String(),
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -335,7 +346,11 @@ func (r *ProjectRepository) CountMembersWithRole(ctx context.Context, roleID uui
 const projectMemberCols = `
 	pm.id, pm.project_id, pm.user_id, pm.project_role_id, pm.member_type, pm.agent_id, pm.created_at,
 	COALESCE(u.username, '') AS username, COALESCE(u.full_name, '') AS full_name, pr.role_name,
-	COALESCE(a.name, '') AS agent_name, COALESCE(a.handle, '') AS agent_handle`
+	COALESCE(a.name, '') AS agent_name, COALESCE(a.handle, '') AS agent_handle,
+	u.avatar_key AS user_avatar_key, u.avatar_thumb_key AS user_avatar_thumb_key,
+	a.avatar_key AS agent_avatar_key, a.avatar_thumb_key AS agent_avatar_thumb_key,
+	COALESCE(a.agent_type, '') AS agent_type, COALESCE(a.llm_provider, '') AS agent_llm_provider,
+	a.acp_provider AS agent_acp_provider`
 
 // ListMembers returns all active (non-deleted) members of a project enriched with user and role info.
 func (r *ProjectRepository) ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error) {
@@ -603,15 +618,17 @@ func toProjectEntity(rec *projectRecord) (*projectdom.Project, error) {
 		}
 	}
 	return &projectdom.Project{
-		ID:           id,
-		Name:         rec.Name,
-		Description:  rec.Description,
-		TaskIDPrefix: rec.TaskIDPrefix,
-		IsPublic:     rec.IsPublic,
-		Settings:     settings,
-		CreatedBy:    createdBy,
-		CreatedAt:    rec.CreatedAt,
-		DeletedAt:    rec.DeletedAt,
+		ID:             id,
+		Name:           rec.Name,
+		Description:    rec.Description,
+		TaskIDPrefix:   rec.TaskIDPrefix,
+		IsPublic:       rec.IsPublic,
+		Settings:       settings,
+		AvatarKey:      rec.AvatarKey,
+		AvatarThumbKey: rec.AvatarThumbKey,
+		CreatedBy:      createdBy,
+		CreatedAt:      rec.CreatedAt,
+		DeletedAt:      rec.DeletedAt,
 	}, nil
 }
 
@@ -689,17 +706,24 @@ func toMemberEntity(row *projectMemberReadRow) *projectdom.ProjectMember {
 	projectID, _ := uuid.Parse(row.ProjectID)
 	roleID, _ := uuid.Parse(row.ProjectRoleID)
 	m := &projectdom.ProjectMember{
-		ID:            id,
-		ProjectID:     projectID,
-		ProjectRoleID: roleID,
-		Username:      row.Username,
-		FullName:      row.FullName,
-		RoleName:      row.RoleName,
-		CreatedAt:     row.CreatedAt,
-		DeletedAt:     row.DeletedAt,
-		MemberType:    row.MemberType,
-		AgentName:     row.AgentName,
-		AgentHandle:   row.AgentHandle,
+		ID:                  id,
+		ProjectID:           projectID,
+		ProjectRoleID:       roleID,
+		Username:            row.Username,
+		FullName:            row.FullName,
+		RoleName:            row.RoleName,
+		CreatedAt:           row.CreatedAt,
+		DeletedAt:           row.DeletedAt,
+		MemberType:          row.MemberType,
+		AgentName:           row.AgentName,
+		AgentHandle:         row.AgentHandle,
+		UserAvatarKey:       row.UserAvatarKey,
+		UserAvatarThumbKey:  row.UserAvatarThumbKey,
+		AgentAvatarKey:      row.AgentAvatarKey,
+		AgentAvatarThumbKey: row.AgentAvatarThumbKey,
+		AgentType:           row.AgentType,
+		AgentLLMProvider:    row.AgentLLMProvider,
+		AgentACPProvider:    row.AgentACPProvider,
 	}
 	if row.UserID != nil {
 		userID, _ := uuid.Parse(*row.UserID)

@@ -36,6 +36,18 @@ type ProjectMemberResponse struct {
 	AgentID       *uuid.UUID `json:"agent_id,omitempty"`
 	AgentName     string     `json:"agent_name,omitempty"`
 	AgentHandle   string     `json:"agent_handle,omitempty"`
+	// AvatarURL/AvatarThumbURL are presigned GET URLs for whichever of
+	// user/agent backs this member, populated by the handler (not this
+	// mapper) via attachmentdom.AvatarService — nil when no avatar has been
+	// uploaded.
+	AvatarURL      *string `json:"avatar_url,omitempty"`
+	AvatarThumbURL *string `json:"avatar_thumb_url,omitempty"`
+	// AgentType/AgentLLMProvider/AgentACPProvider mirror the agent's own
+	// fields — only meaningful when MemberType == "agent". The frontend uses
+	// these to pick a default provider-logo avatar when AvatarURL is unset.
+	AgentType        string  `json:"agent_type,omitempty"`
+	AgentLLMProvider string  `json:"agent_llm_provider,omitempty"`
+	AgentACPProvider *string `json:"agent_acp_provider,omitempty"`
 }
 
 // ProjectMemberFromEntity maps a domain ProjectMember to a ProjectMemberResponse DTO.
@@ -50,6 +62,10 @@ func ProjectMemberFromEntity(m *projectdom.ProjectMember) ProjectMemberResponse 
 		AgentID:       m.AgentID,
 		AgentName:     m.AgentName,
 		AgentHandle:   m.AgentHandle,
+
+		AgentType:        m.AgentType,
+		AgentLLMProvider: m.AgentLLMProvider,
+		AgentACPProvider: m.AgentACPProvider,
 	}
 	if m.IsAgent() {
 		// For agent members, populate username/full_name from agent fields so
@@ -61,4 +77,14 @@ func ProjectMemberFromEntity(m *projectdom.ProjectMember) ProjectMemberResponse 
 		resp.FullName = m.FullName
 	}
 	return resp
+}
+
+// MemberAvatarKeys returns the avatar object-storage keys backing m —
+// whichever of the user/agent pair actually applies — for the handler to
+// resolve into presigned URLs.
+func MemberAvatarKeys(m *projectdom.ProjectMember) (key, thumbKey *string) {
+	if m.IsAgent() {
+		return m.AgentAvatarKey, m.AgentAvatarThumbKey
+	}
+	return m.UserAvatarKey, m.UserAvatarThumbKey
 }

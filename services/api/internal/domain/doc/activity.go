@@ -42,11 +42,15 @@ type Activity struct {
 	ActorID       *uuid.UUID // nil when the actor account has been removed
 	ActorName     string     // denormalised full name (populated on read)
 	ActorUsername string     // denormalised username   (populated on read)
-	ActivityType  ActivityType
-	Content       json.RawMessage
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     *time.Time // non-nil for soft-deleted comments
+	// ActorAvatarKey/ActorAvatarThumbKey are the actor's avatar object-storage
+	// keys (populated on read). Both nil when the actor has no avatar.
+	ActorAvatarKey      *string
+	ActorAvatarThumbKey *string
+	ActivityType        ActivityType
+	Content             json.RawMessage
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	DeletedAt           *time.Time // non-nil for soft-deleted comments
 }
 
 // FieldChange records a single before/after value for doc.updated events.

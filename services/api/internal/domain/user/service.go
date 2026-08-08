@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 )
 
 // CreateInput carries the data needed to create a new user.
@@ -51,4 +53,13 @@ type Service interface {
 	// newPassword and clears MustChangePassword.
 	ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error
 	Delete(ctx context.Context, id uuid.UUID) error
+
+	// InitiateAvatarUpload starts an avatar upload for the user's own
+	// profile picture and returns a presigned upload session.
+	InitiateAvatarUpload(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error)
+	// CompleteAvatarUpload finishes an avatar upload started via
+	// InitiateAvatarUpload, replacing any previous avatar.
+	CompleteAvatarUpload(ctx context.Context, userID, fileID uuid.UUID) (*User, error)
+	// RemoveAvatar clears the user's avatar, deleting the underlying objects.
+	RemoveAvatar(ctx context.Context, userID uuid.UUID) (*User, error)
 }

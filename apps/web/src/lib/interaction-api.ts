@@ -872,6 +872,8 @@ export interface Activity {
 	actor_id?: string | null;
 	actor_name: string;
 	actor_username: string;
+	actor_avatar_url?: string | null;
+	actor_avatar_thumb_url?: string | null;
 	activity_type: string;
 	content: Record<string, unknown> | unknown[];
 	created_at: string;

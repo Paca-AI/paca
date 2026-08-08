@@ -58,6 +58,17 @@ type Client interface {
 
 	// EnsureBucket creates the bucket if it does not already exist.
 	EnsureBucket(ctx context.Context, bucket string) error
+
+	// GetObject downloads an object's full contents. Intended for small
+	// objects the server needs to process itself (e.g. re-encoding an
+	// uploaded avatar) — not for client-facing downloads, which should use
+	// PresignGetObject instead.
+	GetObject(ctx context.Context, bucket, key string) ([]byte, error)
+
+	// PutObject uploads data directly from the server (as opposed to a
+	// client uploading via a presigned URL from PresignPutObject).
+	// Intended for small, server-generated objects (e.g. a resized avatar).
+	PutObject(ctx context.Context, bucket, key, contentType string, data []byte) error
 }
 
 // MultipartThreshold is the minimum file size (in bytes) at which the service

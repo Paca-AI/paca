@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Paca-AI/api/internal/apierr"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -18,12 +20,32 @@ import (
 type DocumentHandler struct {
 	svc         docdom.Service
 	activitySvc docdom.ActivityService
+	avatarSvc   attachmentdom.AvatarService
 }
 
 // NewDocumentHandler returns a DocumentHandler wired to the doc service and
 // activity service.
 func NewDocumentHandler(svc docdom.Service, activitySvc docdom.ActivityService) *DocumentHandler {
 	return &DocumentHandler{svc: svc, activitySvc: activitySvc}
+}
+
+// WithDocAvatarService configures avatar URL resolution for activity
+// responses (comments/system events show the actor's avatar).
+func (h *DocumentHandler) WithDocAvatarService(svc attachmentdom.AvatarService) *DocumentHandler {
+	h.avatarSvc = svc
+	return h
+}
+
+// toDocActivityResponse maps a to a DocActivityResponse and, if an
+// AvatarService is configured, resolves the actor's avatar keys into
+// presigned display URLs.
+func (h *DocumentHandler) toDocActivityResponse(ctx context.Context, a *docdom.Activity) dto.DocActivityResponse {
+	resp := dto.DocActivityFromEntity(a)
+	if h.avatarSvc != nil {
+		resp.ActorAvatarURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, a.ActorAvatarKey)
+		resp.ActorAvatarThumbURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, a.ActorAvatarThumbKey)
+	}
+	return resp
 }
 
 // =============================================================================
@@ -403,7 +425,7 @@ func (h *DocumentHandler) ListActivities(w http.ResponseWriter, r *http.Request)
 	}
 	resp := make([]dto.DocActivityResponse, 0, len(activities))
 	for _, a := range activities {
-		resp = append(resp, dto.DocActivityFromEntity(a))
+		resp = append(resp, h.toDocActivityResponse(r.Context(), a))
 	}
 	presenter.OK(w, r, map[string]any{"items": resp})
 }
@@ -453,7 +475,7 @@ func (h *DocumentHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.Created(w, r, dto.DocActivityFromEntity(a))
+	presenter.Created(w, r, h.toDocActivityResponse(r.Context(), a))
 }
 
 // UpdateComment handles PATCH /projects/:projectId/docs/:docId/comments/:commentId.
@@ -495,7 +517,7 @@ func (h *DocumentHandler) UpdateComment(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, err)
 		return
 	}
-	presenter.OK(w, r, dto.DocActivityFromEntity(a))
+	presenter.OK(w, r, h.toDocActivityResponse(r.Context(), a))
 }
 
 // DeleteComment handles DELETE /projects/:projectId/docs/:docId/comments/:commentId.

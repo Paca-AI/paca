@@ -18,6 +18,17 @@
 	"errors": {
 		"updateFailed": "프로필 업데이트에 실패했습니다. 다시 시도해 주세요."
 	},
+	"avatar": {
+		"change": "아바타 변경",
+		"remove": "아바타 제거",
+		"uploading": "업로드 중…",
+		"errors": {
+			"invalidType": "PNG, JPEG, WEBP 또는 GIF 이미지를 선택해 주세요.",
+			"tooLarge": "이미지는 5MB 이하여야 합니다.",
+			"uploadFailed": "아바타 업로드에 실패했습니다. 다시 시도해 주세요.",
+			"removeFailed": "아바타 제거에 실패했습니다. 다시 시도해 주세요."
+		}
+	},
 	"joinedOn": "{{date}}에 가입",
 	"changePassword": {
 		"title": "비밀번호 변경",

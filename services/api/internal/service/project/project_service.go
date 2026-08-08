@@ -3,6 +3,7 @@ package projectsvc
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/authz"
@@ -97,15 +99,26 @@ type agentLookup interface {
 
 // Service is the concrete implementation of projectdom.Service.
 type Service struct {
-	repo     projectdom.Repository
-	taskRepo taskBootstrapper
-	agents   agentLookup
+	repo      projectdom.Repository
+	taskRepo  taskBootstrapper
+	agents    agentLookup
+	avatarSvc attachmentdom.AvatarService
 }
 
 // New returns a configured project service.
 func New(repo projectdom.Repository, taskRepo taskBootstrapper, agents agentLookup) *Service {
 	return &Service{repo: repo, taskRepo: taskRepo, agents: agents}
 }
+
+// WithAvatarService configures avatar upload support.
+func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
+	s.avatarSvc = svc
+	return s
+}
+
+// ErrAvatarServiceRequired indicates a missing AvatarService dependency when
+// an avatar-upload path is invoked.
+var ErrAvatarServiceRequired = errors.New("project svc: avatar service required")
 
 // List returns a page of projects and the total count.
 func (s *Service) List(ctx context.Context, page, pageSize int) ([]*projectdom.Project, int64, error) {
@@ -350,6 +363,78 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	return s.repo.Delete(ctx, id)
+}
+
+// InitiateAvatarUpload starts an avatar upload for the project.
+func (s *Service) InitiateAvatarUpload(ctx context.Context, projectID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	if _, err := s.repo.FindByID(ctx, projectID); err != nil {
+		return nil, err
+	}
+	return s.avatarSvc.InitiateAvatarUpload(ctx, attachmentdom.AvatarUploadInput{
+		OwnerKind:   attachmentdom.AvatarOwnerProject,
+		OwnerID:     projectID,
+		FileName:    fileName,
+		ContentType: contentType,
+		FileSize:    fileSize,
+		UploadedBy:  uploadedBy,
+	})
+}
+
+// CompleteAvatarUpload finishes an avatar upload, replacing any previous avatar.
+func (s *Service) CompleteAvatarUpload(ctx context.Context, projectID, fileID uuid.UUID) (*projectdom.Project, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	p, err := s.repo.FindByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	keys, err := s.avatarSvc.CompleteAvatarUpload(ctx, attachmentdom.AvatarCompleteInput{
+		OwnerKind: attachmentdom.AvatarOwnerProject,
+		OwnerID:   projectID,
+		FileID:    fileID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	oldKey, oldThumbKey := p.AvatarKey, p.AvatarThumbKey
+	p.AvatarKey = &keys.Key
+	p.AvatarThumbKey = &keys.ThumbKey
+	if err := s.repo.Update(ctx, p); err != nil {
+		return nil, err
+	}
+
+	s.avatarSvc.DeleteAvatarObjects(ctx, oldKey, oldThumbKey)
+	return p, nil
+}
+
+// RemoveAvatar clears the project's avatar, deleting the underlying objects.
+func (s *Service) RemoveAvatar(ctx context.Context, projectID uuid.UUID) (*projectdom.Project, error) {
+	if s.avatarSvc == nil {
+		return nil, ErrAvatarServiceRequired
+	}
+	p, err := s.repo.FindByID(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	oldKey, oldThumbKey := p.AvatarKey, p.AvatarThumbKey
+	if oldKey == nil && oldThumbKey == nil {
+		return p, nil
+	}
+	p.AvatarKey = nil
+	p.AvatarThumbKey = nil
+	if err := s.repo.Update(ctx, p); err != nil {
+		return nil, err
+	}
+
+	s.avatarSvc.DeleteAvatarObjects(ctx, oldKey, oldThumbKey)
+	return p, nil
 }
 
 func cloneSettings(in map[string]any) map[string]any {

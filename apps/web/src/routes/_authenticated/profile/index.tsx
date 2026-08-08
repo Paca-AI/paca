@@ -4,7 +4,7 @@ import { CalendarDays, User } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChangePasswordCard } from "@/components/profile/ChangePasswordCard";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,19 +22,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import type { SuccessEnvelope } from "@/lib/api-error";
 import type { User as UserType } from "@/lib/auth-api";
-import { currentUserQueryOptions } from "@/lib/auth-api";
+import {
+	currentUserOptionalQueryOptions,
+	currentUserQueryOptions,
+} from "@/lib/auth-api";
 import { formatDate } from "@/lib/format-date";
 
 export const Route = createFileRoute("/_authenticated/profile/")({
 	component: ProfilePage,
 });
 
-async function updateProfile(
-	userId: string,
-	payload: { full_name: string },
-): Promise<UserType> {
+async function updateProfile(payload: {
+	full_name: string;
+}): Promise<UserType> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<UserType>>(
-		`/users/${userId}`,
+		"/users/me",
 		payload,
 	);
 	return data.data;
@@ -60,12 +62,7 @@ function ProfilePage() {
 	const [serverError, setServerError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		mutationFn: () => {
-			if (!user) {
-				throw new Error("User is not loaded");
-			}
-			return updateProfile(user.id, { full_name: fullName.trim() });
-		},
+		mutationFn: () => updateProfile({ full_name: fullName.trim() }),
 		onSuccess: (updated) => {
 			queryClient.setQueryData(currentUserQueryOptions.queryKey, updated);
 			setEditing(false);
@@ -181,11 +178,36 @@ function ProfilePage() {
 			<Card>
 				<CardHeader>
 					<div className="flex items-center gap-4">
-						<Avatar className="size-14 rounded-xl">
-							<AvatarFallback className="rounded-xl bg-primary text-primary-foreground text-lg font-bold">
-								{initials}
-							</AvatarFallback>
-						</Avatar>
+						<AvatarUpload
+							basePath="/users/me"
+							avatarUrl={user.avatar_url}
+							fallback={initials}
+							className="size-14 rounded-xl"
+							fallbackClassName="bg-primary text-primary-foreground text-lg font-bold"
+							labels={{
+								change: t("avatar.change"),
+								remove: t("avatar.remove"),
+								uploading: t("avatar.uploading"),
+								invalidType: t("avatar.errors.invalidType"),
+								tooLarge: t("avatar.errors.tooLarge"),
+								uploadFailed: t("avatar.errors.uploadFailed"),
+								removeFailed: t("avatar.errors.removeFailed"),
+							}}
+							onChange={(result) => {
+								// Two separate caches back "who am I" (this page's own query,
+								// and user-menu.tsx's optional variant used in the top-nav) —
+								// both need the update or one keeps showing the pre-upload
+								// avatar until its staleTime lapses.
+								queryClient.setQueryData(
+									currentUserQueryOptions.queryKey,
+									(old) => (old ? { ...old, ...result } : old),
+								);
+								queryClient.setQueryData(
+									currentUserOptionalQueryOptions.queryKey,
+									(old) => (old ? { ...old, ...result } : old),
+								);
+							}}
+						/>
 						<div>
 							<CardTitle className="text-lg">{displayName}</CardTitle>
 							<CardDescription className="mt-0.5">

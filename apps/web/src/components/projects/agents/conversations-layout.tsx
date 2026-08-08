@@ -3,7 +3,7 @@ import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { Clock, MessageSquare, Plus, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +20,7 @@ import {
 	conversationsQueryOptions,
 	globalConversationsQueryOptions,
 } from "@/lib/agent-api";
+import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
 import { ConversationFilters } from "./conversation-filters";
 
@@ -71,6 +72,7 @@ function ConversationListItem({
 		.join("")
 		.toUpperCase()
 		.slice(0, 2);
+	const avatarUrl = agent ? resolveAgentAvatarUrl(agent) : undefined;
 
 	const href = projectId
 		? `/projects/${projectId}/conversations/${conv.id}`
@@ -88,6 +90,7 @@ function ConversationListItem({
 		>
 			<div className="flex items-center gap-2 min-w-0">
 				<Avatar className="size-6 rounded-md bg-primary/10 shrink-0">
+					{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
 					<AvatarFallback className="rounded-md bg-primary/10 text-primary text-[10px] font-semibold">
 						{initials}
 					</AvatarFallback>

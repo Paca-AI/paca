@@ -36,8 +36,13 @@ type ProjectResponse struct {
 	TaskIDPrefix string         `json:"task_id_prefix"`
 	IsPublic     bool           `json:"is_public"`
 	Settings     map[string]any `json:"settings"`
-	CreatedBy    *uuid.UUID     `json:"created_by,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
+	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
+	// handler (not this mapper) via attachmentdom.AvatarService — nil when
+	// no avatar has been uploaded.
+	AvatarURL      *string    `json:"avatar_url,omitempty"`
+	AvatarThumbURL *string    `json:"avatar_thumb_url,omitempty"`
+	CreatedBy      *uuid.UUID `json:"created_by,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // WorkspaceStatsResponse is the public representation of workspace-level

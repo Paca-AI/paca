@@ -44,6 +44,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
@@ -93,7 +94,11 @@ import type { PluginNavRegistration } from "@/lib/plugin-api";
 import { ExtensionPoint } from "@/lib/plugins/extension-point";
 import { resolvePluginIcon } from "@/lib/plugins/icon-resolver";
 import { usePluginRegistry } from "@/lib/plugins/registry";
-import { projectQueryOptions, projectsQueryOptions } from "@/lib/project-api";
+import {
+	getProjectInitials,
+	projectQueryOptions,
+	projectsQueryOptions,
+} from "@/lib/project-api";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./user-menu";
 
@@ -729,7 +734,7 @@ function ProjectSwitcher({
 	const projects = projectsResult?.items ?? [];
 	const label = currentProject?.name ?? t("projectSwitcher.projects");
 	const initials = currentProject?.name
-		? currentProject.name.slice(0, 2).toUpperCase()
+		? getProjectInitials(currentProject.name)
 		: null;
 
 	const { data: user } = useQuery(currentUserOptionalQueryOptions);
@@ -738,7 +743,9 @@ function ProjectSwitcher({
 		return (
 			<div className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm font-medium text-sidebar-foreground/80 select-none">
 				<div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-bold">
-					{initials ?? <FolderKanban className="size-3" />}
+					<EntityAvatarContent avatarUrl={currentProject?.avatar_thumb_url}>
+						{initials ?? <FolderKanban className="size-3" />}
+					</EntityAvatarContent>
 				</div>
 				<span className="flex-1 truncate text-left">{label}</span>
 			</div>
@@ -756,7 +763,9 @@ function ProjectSwitcher({
 				)}
 			>
 				<div className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary text-xs font-bold">
-					{initials ?? <FolderKanban className="size-3" />}
+					<EntityAvatarContent avatarUrl={currentProject?.avatar_thumb_url}>
+						{initials ?? <FolderKanban className="size-3" />}
+					</EntityAvatarContent>
 				</div>
 				<span className="flex-1 truncate text-left">{label}</span>
 				<ChevronDown
@@ -787,7 +796,9 @@ function ProjectSwitcher({
 								}
 							>
 								<div className="flex size-5 shrink-0 items-center justify-center rounded bg-primary/15 text-primary text-xs font-bold">
-									{p.name.slice(0, 2).toUpperCase()}
+									<EntityAvatarContent avatarUrl={p.avatar_thumb_url}>
+										{getProjectInitials(p.name)}
+									</EntityAvatarContent>
 								</div>
 								<span className="truncate">{p.name}</span>
 								{p.id === currentProjectId && (

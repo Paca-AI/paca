@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -64,6 +64,10 @@ import {
 	removeProjectMember,
 	updateProjectMemberRole,
 } from "@/lib/project-api";
+import {
+	resolveAgentAvatarUrl,
+	resolveMemberAvatarUrl,
+} from "@/lib/provider-logos";
 import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 
 export const Route = createFileRoute(
@@ -107,6 +111,9 @@ function UserPickerItem({
 			onClick={() => onSelect(user)}
 		>
 			<Avatar className="size-7 shrink-0">
+				{user.avatar_thumb_url ? (
+					<AvatarImage src={user.avatar_thumb_url} />
+				) : null}
 				<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
 					{getInitials(display)}
 				</AvatarFallback>
@@ -150,6 +157,9 @@ function AddMemberDialog({
 	const [error, setError] = useState<string | null>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const canReadUsers = can("users.read");
+	const selectedAgentAvatarUrl = selectedAgent
+		? resolveAgentAvatarUrl(selectedAgent)
+		: undefined;
 
 	const { data: allAgents = [], isLoading: isLoadingAgents } = useQuery({
 		...chattableAgentsQueryOptions,
@@ -304,6 +314,9 @@ function AddMemberDialog({
 							{selectedAgent ? (
 								<div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
 									<Avatar className="size-7 shrink-0">
+										{selectedAgentAvatarUrl ? (
+											<AvatarImage src={selectedAgentAvatarUrl} />
+										) : null}
 										<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
 											<Bot className="size-3.5" />
 										</AvatarFallback>
@@ -335,28 +348,32 @@ function AddMemberDialog({
 											{t("team.addMemberDialog.noAgentsAvailable")}
 										</p>
 									) : (
-										availableAgents.map((agent) => (
-											<button
-												key={agent.id}
-												type="button"
-												className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-												onClick={() => setSelectedAgent(agent)}
-											>
-												<Avatar className="size-7 shrink-0">
-													<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
-														<Bot className="size-3.5" />
-													</AvatarFallback>
-												</Avatar>
-												<div className="min-w-0 flex-1">
-													<span className="font-medium truncate block">
-														{agent.name}
-													</span>
-													<span className="text-xs text-muted-foreground truncate block">
-														@{agent.handle}
-													</span>
-												</div>
-											</button>
-										))
+										availableAgents.map((agent) => {
+											const avatarUrl = resolveAgentAvatarUrl(agent);
+											return (
+												<button
+													key={agent.id}
+													type="button"
+													className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+													onClick={() => setSelectedAgent(agent)}
+												>
+													<Avatar className="size-7 shrink-0">
+														{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+														<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
+															<Bot className="size-3.5" />
+														</AvatarFallback>
+													</Avatar>
+													<div className="min-w-0 flex-1">
+														<span className="font-medium truncate block">
+															{agent.name}
+														</span>
+														<span className="text-xs text-muted-foreground truncate block">
+															@{agent.handle}
+														</span>
+													</div>
+												</button>
+											);
+										})
 									)}
 								</div>
 							)}
@@ -369,6 +386,9 @@ function AddMemberDialog({
 							{selectedUser ? (
 								<div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
 									<Avatar className="size-7 shrink-0">
+										{selectedUser.avatar_thumb_url ? (
+											<AvatarImage src={selectedUser.avatar_thumb_url} />
+										) : null}
 										<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
 											{getInitials(
 												selectedUser.full_name || selectedUser.username,
@@ -665,10 +685,12 @@ function MemberRow({
 		member.member_type === "agent" ||
 		member.username.startsWith("bot-") ||
 		member.role_name.toLowerCase().includes("agent");
+	const memberAvatarUrl = resolveMemberAvatarUrl(member);
 
 	return (
 		<div className="flex items-center gap-3 rounded-xl border border-border/50 bg-card px-4 py-3 transition-colors hover:bg-muted/30">
 			<Avatar className="size-9 shrink-0">
+				{memberAvatarUrl ? <AvatarImage src={memberAvatarUrl} /> : null}
 				<AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
 					{isBot ? <Bot className="size-4" /> : getInitials(display)}
 				</AvatarFallback>

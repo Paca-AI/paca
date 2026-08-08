@@ -482,15 +482,20 @@ func CustomFieldDefinitionFromEntity(f *taskdom.CustomFieldDefinition) CustomFie
 
 // ActivityResponse is the public representation of a task activity entry.
 type ActivityResponse struct {
-	ID            uuid.UUID            `json:"id"`
-	TaskID        uuid.UUID            `json:"task_id"`
-	ActorID       *uuid.UUID           `json:"actor_id,omitempty"`
-	ActorName     string               `json:"actor_name"`
-	ActorUsername string               `json:"actor_username"`
-	ActivityType  taskdom.ActivityType `json:"activity_type"`
-	Content       json.RawMessage      `json:"content"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	TaskID        uuid.UUID  `json:"task_id"`
+	ActorID       *uuid.UUID `json:"actor_id,omitempty"`
+	ActorName     string     `json:"actor_name"`
+	ActorUsername string     `json:"actor_username"`
+	// ActorAvatarURL/ActorAvatarThumbURL are presigned GET URLs, populated by
+	// the handler (not this mapper) via attachmentdom.AvatarService — nil
+	// when the actor has no avatar.
+	ActorAvatarURL      *string              `json:"actor_avatar_url,omitempty"`
+	ActorAvatarThumbURL *string              `json:"actor_avatar_thumb_url,omitempty"`
+	ActivityType        taskdom.ActivityType `json:"activity_type"`
+	Content             json.RawMessage      `json:"content"`
+	CreatedAt           time.Time            `json:"created_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
 }
 
 // ActivityFromEntity maps a domain Activity to an ActivityResponse DTO.

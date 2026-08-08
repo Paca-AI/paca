@@ -138,6 +138,17 @@
 				"envVars": "Environnement",
 				"activity": "Activité"
 			},
+			"avatar": {
+				"change": "Changer l’avatar",
+				"remove": "Supprimer l’avatar",
+				"uploading": "Envoi en cours…",
+				"errors": {
+					"invalidType": "Veuillez choisir une image PNG, JPEG, WEBP ou GIF.",
+					"tooLarge": "L’image doit faire 5 Mo maximum.",
+					"uploadFailed": "Échec de l’envoi de l’avatar. Veuillez réessayer.",
+					"removeFailed": "Échec de la suppression de l’avatar. Veuillez réessayer."
+				}
+			},
 			"overview": {
 				"nameLabel": "Nom",
 				"llmConfiguration": "Configuration du LLM",
@@ -457,6 +468,17 @@
 	"settings": {
 		"general": {
 			"title": "Général",
+			"avatar": {
+				"change": "Changer l’avatar",
+				"remove": "Supprimer l’avatar",
+				"uploading": "Envoi en cours…",
+				"errors": {
+					"invalidType": "Veuillez choisir une image PNG, JPEG, WEBP ou GIF.",
+					"tooLarge": "L’image doit faire 5 Mo maximum.",
+					"uploadFailed": "Échec de l’envoi de l’avatar. Veuillez réessayer.",
+					"removeFailed": "Échec de la suppression de l’avatar. Veuillez réessayer."
+				}
+			},
 			"projectNameLabel": "Nom du projet",
 			"projectNamePlaceholder": "Mon super projet",
 			"taskIdPrefixLabel": "Préfixe d'ID de tâche",

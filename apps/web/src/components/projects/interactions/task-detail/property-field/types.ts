@@ -26,6 +26,7 @@ export interface UserOption {
 	value: string;
 	label: string;
 	initials: string;
+	avatarUrl?: string | null;
 }
 
 export interface PropertyFieldProps {

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainuser "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
@@ -30,6 +31,9 @@ type mockUserSvc struct {
 	resetPassword         func(ctx context.Context, id uuid.UUID, newPassword string) error
 	changeMyPassword      func(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error
 	delete                func(ctx context.Context, id uuid.UUID) error
+	initiateAvatarUpload  func(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error)
+	completeAvatarUpload  func(ctx context.Context, userID, fileID uuid.UUID) (*domainuser.User, error)
+	removeAvatar          func(ctx context.Context, userID uuid.UUID) (*domainuser.User, error)
 }
 
 func (m *mockUserSvc) GetByID(ctx context.Context, id uuid.UUID) (*domainuser.User, error) {
@@ -88,6 +92,25 @@ func (m *mockUserSvc) ChangeMyPassword(ctx context.Context, id uuid.UUID, curren
 		return m.changeMyPassword(ctx, id, currentPassword, newPassword)
 	}
 	return nil
+}
+
+func (m *mockUserSvc) InitiateAvatarUpload(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error) {
+	if m.initiateAvatarUpload != nil {
+		return m.initiateAvatarUpload(ctx, userID, fileName, contentType, fileSize)
+	}
+	return &attachmentdom.UploadSession{}, nil
+}
+func (m *mockUserSvc) CompleteAvatarUpload(ctx context.Context, userID, fileID uuid.UUID) (*domainuser.User, error) {
+	if m.completeAvatarUpload != nil {
+		return m.completeAvatarUpload(ctx, userID, fileID)
+	}
+	return nil, domainuser.ErrNotFound
+}
+func (m *mockUserSvc) RemoveAvatar(ctx context.Context, userID uuid.UUID) (*domainuser.User, error) {
+	if m.removeAvatar != nil {
+		return m.removeAvatar(ctx, userID)
+	}
+	return nil, domainuser.ErrNotFound
 }
 
 // verify mock satisfies the interface at compile time

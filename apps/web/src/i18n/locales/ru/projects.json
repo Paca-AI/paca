@@ -138,6 +138,17 @@
 				"envVars": "Окружение",
 				"activity": "Активность"
 			},
+			"avatar": {
+				"change": "Изменить аватар",
+				"remove": "Удалить аватар",
+				"uploading": "Загрузка…",
+				"errors": {
+					"invalidType": "Выберите изображение в формате PNG, JPEG, WEBP или GIF.",
+					"tooLarge": "Размер изображения не должен превышать 5 МБ.",
+					"uploadFailed": "Не удалось загрузить аватар. Попробуйте снова.",
+					"removeFailed": "Не удалось удалить аватар. Попробуйте снова."
+				}
+			},
 			"overview": {
 				"nameLabel": "Имя",
 				"llmConfiguration": "Конфигурация LLM",
@@ -469,6 +480,17 @@
 	"settings": {
 		"general": {
 			"title": "Общие",
+			"avatar": {
+				"change": "Изменить аватар",
+				"remove": "Удалить аватар",
+				"uploading": "Загрузка…",
+				"errors": {
+					"invalidType": "Выберите изображение в формате PNG, JPEG, WEBP или GIF.",
+					"tooLarge": "Размер изображения не должен превышать 5 МБ.",
+					"uploadFailed": "Не удалось загрузить аватар. Попробуйте снова.",
+					"removeFailed": "Не удалось удалить аватар. Попробуйте снова."
+				}
+			},
 			"projectNameLabel": "Название проекта",
 			"projectNamePlaceholder": "Мой отличный проект",
 			"taskIdPrefixLabel": "Префикс ID задач",

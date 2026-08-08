@@ -138,6 +138,17 @@
 				"envVars": "Ambiente",
 				"activity": "Atividade"
 			},
+			"avatar": {
+				"change": "Alterar avatar",
+				"remove": "Remover avatar",
+				"uploading": "Enviando…",
+				"errors": {
+					"invalidType": "Escolha uma imagem PNG, JPEG, WEBP ou GIF.",
+					"tooLarge": "A imagem deve ter no máximo 5 MB.",
+					"uploadFailed": "Falha ao enviar o avatar. Tente novamente.",
+					"removeFailed": "Falha ao remover o avatar. Tente novamente."
+				}
+			},
 			"overview": {
 				"nameLabel": "Nome",
 				"llmConfiguration": "Configuração do LLM",
@@ -457,6 +468,17 @@
 	"settings": {
 		"general": {
 			"title": "Geral",
+			"avatar": {
+				"change": "Alterar avatar",
+				"remove": "Remover avatar",
+				"uploading": "Enviando…",
+				"errors": {
+					"invalidType": "Escolha uma imagem PNG, JPEG, WEBP ou GIF.",
+					"tooLarge": "A imagem deve ter no máximo 5 MB.",
+					"uploadFailed": "Falha ao enviar o avatar. Tente novamente.",
+					"removeFailed": "Falha ao remover o avatar. Tente novamente."
+				}
+			},
 			"projectNameLabel": "Nome do projeto",
 			"projectNamePlaceholder": "Meu projeto incrível",
 			"taskIdPrefixLabel": "Prefixo de ID de tarefa",

@@ -138,6 +138,17 @@
 				"envVars": "환경 변수",
 				"activity": "활동"
 			},
+			"avatar": {
+				"change": "아바타 변경",
+				"remove": "아바타 제거",
+				"uploading": "업로드 중…",
+				"errors": {
+					"invalidType": "PNG, JPEG, WEBP 또는 GIF 이미지를 선택해 주세요.",
+					"tooLarge": "이미지는 5MB 이하여야 합니다.",
+					"uploadFailed": "아바타 업로드에 실패했습니다. 다시 시도해 주세요.",
+					"removeFailed": "아바타 제거에 실패했습니다. 다시 시도해 주세요."
+				}
+			},
 			"overview": {
 				"nameLabel": "이름",
 				"llmConfiguration": "LLM 구성",
@@ -457,6 +468,17 @@
 	"settings": {
 		"general": {
 			"title": "일반",
+			"avatar": {
+				"change": "아바타 변경",
+				"remove": "아바타 제거",
+				"uploading": "업로드 중…",
+				"errors": {
+					"invalidType": "PNG, JPEG, WEBP 또는 GIF 이미지를 선택해 주세요.",
+					"tooLarge": "이미지는 5MB 이하여야 합니다.",
+					"uploadFailed": "아바타 업로드에 실패했습니다. 다시 시도해 주세요.",
+					"removeFailed": "아바타 제거에 실패했습니다. 다시 시도해 주세요."
+				}
+			},
 			"projectNameLabel": "프로젝트 이름",
 			"projectNamePlaceholder": "내 멋진 프로젝트",
 			"taskIdPrefixLabel": "작업 ID 접두사",
