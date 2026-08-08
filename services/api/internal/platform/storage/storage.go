@@ -59,11 +59,17 @@ type Client interface {
 	// EnsureBucket creates the bucket if it does not already exist.
 	EnsureBucket(ctx context.Context, bucket string) error
 
-	// GetObject downloads an object's full contents. Intended for small
-	// objects the server needs to process itself (e.g. re-encoding an
-	// uploaded avatar) — not for client-facing downloads, which should use
+	// GetObject downloads an object's contents. Intended for small objects
+	// the server needs to process itself (e.g. re-encoding an uploaded
+	// avatar) — not for client-facing downloads, which should use
 	// PresignGetObject instead.
-	GetObject(ctx context.Context, bucket, key string) ([]byte, error)
+	//
+	// maxBytes bounds the read itself (not just a post-read length check):
+	// the underlying stream is wrapped in an io.LimitReader, so a caller
+	// passing e.g. MaxAvatarUploadSize+1 can never be made to allocate more
+	// than that many bytes for the returned slice, no matter how large the
+	// actual stored object is. A maxBytes <= 0 means unbounded.
+	GetObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error)
 
 	// PutObject uploads data directly from the server (as opposed to a
 	// client uploading via a presigned URL from PresignPutObject).

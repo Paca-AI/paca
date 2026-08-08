@@ -234,8 +234,9 @@ func (c *S3Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	return nil
 }
 
-// GetObject downloads an object's full contents into memory.
-func (c *S3Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
+// GetObject downloads an object's contents into memory, bounded by maxBytes
+// (see the Client interface doc — maxBytes <= 0 means unbounded).
+func (c *S3Client) GetObject(ctx context.Context, bucket, key string, maxBytes int64) ([]byte, error) {
 	out, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
@@ -245,7 +246,11 @@ func (c *S3Client) GetObject(ctx context.Context, bucket, key string) ([]byte, e
 	}
 	defer func() { _ = out.Body.Close() }()
 
-	data, err := io.ReadAll(out.Body)
+	var body io.Reader = out.Body
+	if maxBytes > 0 {
+		body = io.LimitReader(out.Body, maxBytes)
+	}
+	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, fmt.Errorf("storage: read object %q: %w", key, err)
 	}

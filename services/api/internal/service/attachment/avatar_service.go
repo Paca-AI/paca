@@ -98,14 +98,17 @@ func (s *Service) CompleteAvatarUpload(ctx context.Context, in attachmentdom.Ava
 		bucket = s.bucket
 	}
 
-	raw, err := s.store.GetObject(ctx, bucket, f.StorageKey)
+	// The client declares file_size at initiate time, but the presigned PUT
+	// URL enforces nothing about the actual object it accepts — a client can
+	// upload more bytes than it declared. Bound the read itself (not just a
+	// post-read length check) by capping it one byte over the limit: if the
+	// object is larger, the reader is truncated and len(raw) comes back as
+	// exactly MaxAvatarUploadSize+1, which still trips the check below — but
+	// the server never allocates more than that for an oversized object.
+	raw, err := s.store.GetObject(ctx, bucket, f.StorageKey, attachmentdom.MaxAvatarUploadSize+1)
 	if err != nil {
 		return nil, fmt.Errorf("attachment svc: download avatar upload: %w", err)
 	}
-	// The client declares file_size at initiate time, but the presigned PUT
-	// URL enforces nothing about the actual object it accepts — a client can
-	// upload more bytes than it declared. Re-check the real object here,
-	// before doing any decode work on it.
 	if len(raw) > attachmentdom.MaxAvatarUploadSize {
 		return nil, attachmentdom.ErrAvatarTooLarge
 	}

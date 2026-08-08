@@ -223,12 +223,17 @@ func (c *fakeStorageClient) DeleteObject(_ context.Context, _, key string) error
 
 func (c *fakeStorageClient) EnsureBucket(_ context.Context, _ string) error { return nil }
 
-func (c *fakeStorageClient) GetObject(_ context.Context, _, key string) ([]byte, error) {
+func (c *fakeStorageClient) GetObject(_ context.Context, _, key string, maxBytes int64) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	data, ok := c.objects[key]
 	if !ok {
 		return nil, fmt.Errorf("fake storage: object %q not found", key)
+	}
+	// Mirror S3Client's io.LimitReader truncation so tests exercise the same
+	// "reader capped, not just length-checked after the fact" behavior.
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return data[:maxBytes], nil
 	}
 	return data, nil
 }
