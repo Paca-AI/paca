@@ -150,6 +150,12 @@ func (s *ActivitySvc) AddComment(ctx context.Context, in taskdom.AddCommentInput
 				if s.agentTrigger != nil {
 					agentMember, agentErr := s.memberRepo.FindMemberByAgent(ctx, in.ProjectID, mentionedID)
 					if agentErr == nil && agentMember.IsAgent() && agentMember.AgentID != nil {
+						// Skip self-mention: an agent mentioning itself (e.g. re-reading
+						// its own prior comment) must not retrigger its own conversation,
+						// or it can spiral into an unbounded comment loop.
+						if agentMember.ID == member.ID {
+							continue
+						}
 						conv, _ := s.agentTrigger.TriggerCommentMention(ctx, in.ProjectID, *agentMember.AgentID, in.TaskID, a.ID, member.ID, commentText)
 						if conv != nil {
 							content, _ := json.Marshal(map[string]any{
