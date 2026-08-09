@@ -64,7 +64,8 @@
 			},
 			"aiAgents": {
 				"label": "AI-агенты",
-				"sub": "Не настроены"
+				"sub": "Не настроены",
+				"subActive": "{{count}} настроено"
 			}
 		},
 		"myTasks": {
