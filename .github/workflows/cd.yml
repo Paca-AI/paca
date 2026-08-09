@@ -109,6 +109,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=false
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -164,6 +166,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=false
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -217,6 +221,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=false
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -267,6 +273,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=false
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -318,6 +326,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: |
+            latest=false
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -574,8 +584,8 @@ jobs:
           TAG="${VERSION#v}"
           for image in paca-api paca-realtime paca-web paca-ai-agent paca-agent-server; do
             docker buildx imagetools create \
-              -t "${{ env.REGISTRY }}/${{ github.repository_owner }}/${image}:latest" \
-              "${{ env.REGISTRY }}/${{ github.repository_owner }}/${image}:${TAG}"
+              -t "${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${image}:latest" \
+              "${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${image}:${TAG}"
             docker buildx imagetools create \
               -t "${{ secrets.DOCKERHUB_USERNAME }}/${image}:latest" \
               "${{ secrets.DOCKERHUB_USERNAME }}/${image}:${TAG}"
