@@ -52,6 +52,7 @@ _Goal: a working, self-hostable core that a small team can actually use._
 - ✅ Agent task assignment and status updates
 - ✅ OpenHands SDK integration (isolated sandbox containers)
 - ✅ Agent activity feed and progress reporting on task cards
+- 📋 Reduce AI agent sandbox container image size and improve startup/runtime performance
 
 ### MCP Server
 - ✅ `@paca-ai/paca-mcp` npm package
@@ -81,6 +82,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 - ✅ i18n foundation for the web UI
 - ✅ In-app notifications — notification bell with read/unread state
 - ✅ Activity diff & revert — visual before/after diff for every field change in the activity pane, one-click revert (tasks and docs)
+- ✅ Custom branding — admin-configurable brand name, logo, favicon, and accent color (light/dark presets), applied across the app shell and login screen
 
 ### Planning & Task Management
 - ✅ Task linking — link related tasks (blocked by, blocks, related, duplicate, parent/child)
