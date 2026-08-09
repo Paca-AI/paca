@@ -13,6 +13,10 @@ import (
 	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 )
 
+// settingsColumns is shared between Get and WithLock's locked read so the
+// two queries can't drift apart.
+const settingsColumns = `logo_key, logo_thumb_key, favicon_key, favicon_thumb_key, primary_color_light, primary_color_dark, brand_name, updated_at, updated_by`
+
 // workspaceSettingsRecord is the sqlx write model for the singleton
 // workspace_settings row.
 type workspaceSettingsRecord struct {
@@ -64,7 +68,7 @@ func NewSettingsRepository(db *sqlx.DB) *SettingsRepository {
 // Get returns the workspace settings row.
 func (r *SettingsRepository) Get(ctx context.Context) (*settingsdom.WorkspaceSettings, error) {
 	var rec workspaceSettingsRecord
-	err := r.db.GetContext(ctx, &rec, `SELECT logo_key, logo_thumb_key, favicon_key, favicon_thumb_key, primary_color_light, primary_color_dark, brand_name, updated_at, updated_by FROM workspace_settings WHERE id = true`)
+	err := r.db.GetContext(ctx, &rec, `SELECT `+settingsColumns+` FROM workspace_settings WHERE id = true`)
 	if errors.Is(err, sql.ErrNoRows) {
 		// The seed row (migration 000035) always exists; ErrNoRows here would
 		// mean the table was somehow emptied out from under the app.
@@ -76,14 +80,58 @@ func (r *SettingsRepository) Get(ctx context.Context) (*settingsdom.WorkspaceSet
 	return workspaceSettingsToEntity(&rec)
 }
 
-// Update persists s, overwriting the singleton row.
-func (r *SettingsRepository) Update(ctx context.Context, s *settingsdom.WorkspaceSettings) error {
+// WithLock locks the singleton row with SELECT ... FOR UPDATE for the
+// duration of a transaction, invokes fn with the current row, and persists
+// whatever fn returns (or writes nothing if fn returns a nil row). The lock
+// serializes concurrent callers so a read-modify-write from one caller can't
+// be silently overwritten by another that read its snapshot just before —
+// see settingsdom.Repository.WithLock's doc comment.
+func (r *SettingsRepository) WithLock(ctx context.Context, fn func(*settingsdom.WorkspaceSettings) (*settingsdom.WorkspaceSettings, error)) (*settingsdom.WorkspaceSettings, error) {
+	var result *settingsdom.WorkspaceSettings
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var rec workspaceSettingsRecord
+		err := tx.GetContext(ctx, &rec, `SELECT `+settingsColumns+` FROM workspace_settings WHERE id = true FOR UPDATE`)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("settings repo: with lock: workspace_settings row missing")
+		}
+		if err != nil {
+			return fmt.Errorf("settings repo: with lock: %w", err)
+		}
+		ws, err := workspaceSettingsToEntity(&rec)
+		if err != nil {
+			return err
+		}
+
+		updated, err := fn(ws)
+		if err != nil {
+			return err
+		}
+		if updated == nil {
+			result = ws
+			return nil
+		}
+
+		if err := updateRow(ctx, tx, updated); err != nil {
+			return err
+		}
+		result = updated
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// updateRow persists s, overwriting the singleton row. Takes a *sqlx.Tx so
+// WithLock's write happens inside the same transaction as its lock.
+func updateRow(ctx context.Context, tx *sqlx.Tx, s *settingsdom.WorkspaceSettings) error {
 	var updatedBy *string
 	if s.UpdatedBy != nil {
 		id := s.UpdatedBy.String()
 		updatedBy = &id
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE workspace_settings SET logo_key = $1, logo_thumb_key = $2, favicon_key = $3, favicon_thumb_key = $4, primary_color_light = $5, primary_color_dark = $6, brand_name = $7, updated_at = $8, updated_by = $9 WHERE id = true`,
+	_, err := tx.ExecContext(ctx, `UPDATE workspace_settings SET logo_key = $1, logo_thumb_key = $2, favicon_key = $3, favicon_thumb_key = $4, primary_color_light = $5, primary_color_dark = $6, brand_name = $7, updated_at = $8, updated_by = $9 WHERE id = true`,
 		s.LogoKey, s.LogoThumbKey, s.FaviconKey, s.FaviconThumbKey, s.PrimaryColorLight, s.PrimaryColorDark, s.BrandName, s.UpdatedAt, updatedBy,
 	)
 	if err != nil {

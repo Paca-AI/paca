@@ -56,7 +56,10 @@ func (f *fakeAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*stri
 // ---------------------------------------------------------------------------
 // Fake settings repository — a single row, "Get" hands back a copy (like a
 // real DB round-trip would) so mutating the returned value never leaks into
-// stored state without an explicit Update.
+// stored state without going through WithLock. WithLock holds r.mu for the
+// whole callback, mirroring how the real repository holds the Postgres row
+// lock (SELECT ... FOR UPDATE) until its transaction commits — see
+// TestWithLock_SerializesConcurrentCallers below.
 // ---------------------------------------------------------------------------
 
 type fakeSettingsRepo struct {
@@ -79,12 +82,23 @@ func (r *fakeSettingsRepo) Get(context.Context) (*settingsdom.WorkspaceSettings,
 	return &cp, nil
 }
 
-func (r *fakeSettingsRepo) Update(_ context.Context, s *settingsdom.WorkspaceSettings) error {
+func (r *fakeSettingsRepo) WithLock(_ context.Context, fn func(*settingsdom.WorkspaceSettings) (*settingsdom.WorkspaceSettings, error)) (*settingsdom.WorkspaceSettings, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	cp := *s
-	r.ws = &cp
-	return nil
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	cp := *r.ws
+	updated, err := fn(&cp)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return &cp, nil
+	}
+	stored := *updated
+	r.ws = &stored
+	return updated, nil
 }
 
 // verify *settingssvc.Service satisfies the domain interface.
@@ -320,5 +334,56 @@ func TestUpdateSettings_BrandName_TooLong_ReturnsErrBrandNameTooLong(t *testing.
 	_, err := svc.UpdateSettings(context.Background(), &tooLong, nil, nil, uuid.New())
 	if !errors.Is(err, settingsdom.ErrBrandNameTooLong) {
 		t.Fatalf("expected ErrBrandNameTooLong, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent mutations
+// ---------------------------------------------------------------------------
+
+// TestWithLock_SerializesConcurrentCallers runs a logo upload and a
+// brand-name/color update against the same row concurrently, many times
+// over. Before CompleteImageUpload/RemoveImage/UpdateSettings were rewritten
+// to go through Repository.WithLock, each did an unlocked Get-then-Update:
+// whichever call's Update landed second would overwrite the row with its own
+// stale in-memory copy, silently discarding the first call's change. This
+// asserts that after every concurrent round, both writes are visible.
+func TestWithLock_SerializesConcurrentCallers(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeSettingsRepo(&settingsdom.WorkspaceSettings{})
+	avatarSvc := &fakeAvatarService{
+		nextKeys: &attachmentdom.AvatarKeys{Key: "avatars/workspace_logo/.../full.png", ThumbKey: "avatars/workspace_logo/.../thumb.png"},
+	}
+	svc := settingssvc.New(repo).WithAvatarService(avatarSvc)
+
+	const rounds = 100
+	for i := 0; i < rounds; i++ {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, err := svc.CompleteImageUpload(ctx, settingsdom.SlotLogo, uuid.New()); err != nil {
+				t.Errorf("round %d: CompleteImageUpload: %v", i, err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			brandName, light := "My Workspace", "#5a9e1c"
+			if _, err := svc.UpdateSettings(ctx, &brandName, &light, nil, uuid.New()); err != nil {
+				t.Errorf("round %d: UpdateSettings: %v", i, err)
+			}
+		}()
+		wg.Wait()
+
+		ws, err := repo.Get(ctx)
+		if err != nil {
+			t.Fatalf("round %d: Get: %v", i, err)
+		}
+		if ws.LogoKey == nil {
+			t.Fatalf("round %d: logo upload was lost (LogoKey nil after concurrent UpdateSettings)", i)
+		}
+		if ws.BrandName == nil {
+			t.Fatalf("round %d: brand name update was lost (BrandName nil after concurrent CompleteImageUpload)", i)
+		}
 	}
 }

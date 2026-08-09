@@ -103,6 +103,14 @@ import {
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./user-menu";
 
+// Shared by every inactive nav item (top-level, project, plugin, and
+// interaction rows) so the sidebar's neutral-grey text color — deliberately
+// not tracking --primary, since that now follows the admin-configurable
+// brand color — stays consistent without repeating this string at each of
+// the many call sites below.
+const NAV_ITEM_INACTIVE_CLASS =
+	"text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground";
+
 // ── Docs Tree ─────────────────────────────────────────────────────────────────
 
 /** Tiny inline rename input used in the sidebar tree */
@@ -862,7 +870,7 @@ function NavItem({
 					"relative transition-all duration-150",
 					isActive
 						? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-						: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+						: NAV_ITEM_INACTIVE_CLASS,
 				)}
 			>
 				<Icon className="size-4" />
@@ -994,7 +1002,7 @@ function ProjectNavItems({
 											"relative transition-all duration-150",
 											isActive
 												? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-												: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+												: NAV_ITEM_INACTIVE_CLASS,
 										)}
 									>
 										<Icon className="size-4" />
@@ -1045,7 +1053,7 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
 										"relative transition-all duration-150",
 										isActive
 											? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-											: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+											: NAV_ITEM_INACTIVE_CLASS,
 									)}
 								>
 									<Icon className="size-4" />
@@ -1280,7 +1288,7 @@ function ProjectInteractionsSection({
 									"relative transition-all duration-150",
 									isTimelineActive
 										? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-										: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+										: NAV_ITEM_INACTIVE_CLASS,
 								)}
 							>
 								<GanttChart className="size-4" />
@@ -1301,7 +1309,7 @@ function ProjectInteractionsSection({
 									"relative transition-all duration-150",
 									isBacklogActive
 										? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-										: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+										: NAV_ITEM_INACTIVE_CLASS,
 									dragOverInteractionId === "backlog" &&
 										"ring-2 ring-primary/40 bg-primary/5 text-primary",
 								)}
@@ -1329,7 +1337,7 @@ function ProjectInteractionsSection({
 											"relative transition-all duration-150",
 											isActive
 												? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-												: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+												: NAV_ITEM_INACTIVE_CLASS,
 											dragOverInteractionId === sprint.id &&
 												"ring-2 ring-primary/40 bg-primary/5 text-primary",
 										)}
@@ -1347,7 +1355,7 @@ function ProjectInteractionsSection({
 									<SidebarMenuButton
 										tooltip={t("interactions.completedSprints")}
 										onClick={toggleCompletedSprints}
-										className="text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+										className={NAV_ITEM_INACTIVE_CLASS}
 									>
 										<ChevronRight
 											className={cn(
@@ -1377,7 +1385,7 @@ function ProjectInteractionsSection({
 														"relative transition-all duration-150",
 														isActive
 															? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
-															: "text-sidebar-foreground/80 dark:text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+															: NAV_ITEM_INACTIVE_CLASS,
 													)}
 												>
 													<CheckCircle2 className="size-4" />

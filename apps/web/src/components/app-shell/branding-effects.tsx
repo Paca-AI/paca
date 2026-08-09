@@ -6,14 +6,16 @@ const FAVICON_LINK_ID = "app-favicon";
 const DEFAULT_FAVICON_HREF = "/favicon.ico";
 const DEFAULT_TITLE = "Paca";
 
-function hexToRgb(hex: string): [number, number, number] | null {
+// Exported for unit testing (see branding-effects.test.ts) — otherwise only
+// used within this module.
+export function hexToRgb(hex: string): [number, number, number] | null {
 	const match = /^#([0-9a-f]{6})$/i.exec(hex);
 	if (!match) return null;
 	const int = parseInt(match[1], 16);
 	return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
 }
 
-function rgbToHex([r, g, b]: [number, number, number]): string {
+export function rgbToHex([r, g, b]: [number, number, number]): string {
 	const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
 	return `#${[r, g, b].map((c) => clamp(c).toString(16).padStart(2, "0")).join("")}`;
 }
@@ -22,7 +24,7 @@ function rgbToHex([r, g, b]: [number, number, number]): string {
  * --primary-foreground (#0a0a0a / #ffffff) via a standard perceived-
  * brightness threshold, so admin-set colors keep readable button/icon text
  * without the admin having to pick a foreground color themselves. */
-function foregroundFor(hex: string): string {
+export function foregroundFor(hex: string): string {
 	const rgb = hexToRgb(hex);
 	if (!rgb) return "#ffffff";
 	const [r, g, b] = rgb;
@@ -33,7 +35,7 @@ function foregroundFor(hex: string): string {
 /** Darkens hex toward black by `amount` (0-1) — used for --lagoon-deep, a
  * hover-state shade one step darker than the base link color, the same
  * relationship index.css's own hardcoded --lagoon/--lagoon-deep pair has. */
-function darken(hex: string, amount: number): string {
+export function darken(hex: string, amount: number): string {
 	const rgb = hexToRgb(hex);
 	if (!rgb) return hex;
 	return rgbToHex(rgb.map((c) => c * (1 - amount)) as [number, number, number]);
