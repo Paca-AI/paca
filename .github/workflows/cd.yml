@@ -571,10 +571,14 @@ jobs:
           set -euo pipefail
           VERSION="${{ github.event.release.tag_name }}"
           TAG="${VERSION#v}"
+          # ghcr.io repository paths must be lowercase. github.repository_owner
+          # preserves the org's display casing (Paca-AI), which fails here, so
+          # hardcode the lowercase form instead of deriving it at runtime.
+          OWNER="paca-ai"
           for image in paca-api paca-realtime paca-web paca-ai-agent paca-agent-server; do
             docker buildx imagetools create \
-              -t "${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${image}:latest" \
-              "${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${image}:${TAG}"
+              -t "${{ env.REGISTRY }}/${OWNER}/${image}:latest" \
+              "${{ env.REGISTRY }}/${OWNER}/${image}:${TAG}"
             docker buildx imagetools create \
               -t "${{ secrets.DOCKERHUB_USERNAME }}/${image}:latest" \
               "${{ secrets.DOCKERHUB_USERNAME }}/${image}:${TAG}"
