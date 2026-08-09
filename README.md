@@ -125,6 +125,12 @@ Plan  →  Act  →  Check  →  Adapt
 
 ---
 
+## What's New in v0.12.0
+
+- **Workspace branding** — customize your workspace's logo, favicon, and primary accent color from **Settings → Workspace Branding**. Upload a logo and favicon (PNG, JPEG, WEBP, or GIF, up to 5 MB) and pick from a curated set of accent colors, each with matching light- and dark-mode variants applied automatically across buttons, highlights, the sidebar, and the login screen.
+
+---
+
 ## What's New in v0.11.0
 
 - **Event-driven automation engine** — a complete redesign of the automation system into a visual, n8n-style graph builder. Compose **Trigger → Condition → Action** flows on an interactive canvas with multi-branch switch logic, an `Else` fallback path, and nine built-in trigger types — including UTC cron schedules, due-date offsets, task-dependency gates, and inbound webhooks with secret-token auth. Actions can **retarget linked tasks** (parent, children, blockers, or explicit picks) with automatic fan-out, **dispatch AI agents** with custom prompts, or **call external APIs**. Every run is traced step-by-step in a new **Run History** panel, and a project-wide **Dependency Map** visualizes cross-task automation relationships. Plugins can contribute custom trigger, condition, and action node types via WASM.
