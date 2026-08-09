@@ -217,6 +217,12 @@ type MCPManifest struct {
 	// The module must be a Node.js-compatible ESM bundle that exports a
 	// PluginMCPEntry as its default export (see @paca-ai/plugin-sdk-mcp).
 	RemoteEntryURL string `json:"remoteEntryUrl"`
+	// ToolContextHooks lists core tool IDs (e.g. "get_task") this plugin's
+	// getToolContext can contribute to. The MCP server only calls into a
+	// plugin for a given tool if that tool ID is declared here — this is
+	// what lets the host skip plugins that have no interest in a given
+	// tool call instead of invoking every loaded plugin on every call.
+	ToolContextHooks []string `json:"toolContextHooks,omitempty"`
 }
 
 // SkillsManifest describes the Agent Skills a plugin contributes. When

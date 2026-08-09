@@ -37,6 +37,10 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	const docClient = new PacaAPIDocClient(config);
 	const automationClient = new PacaAPIAutomationClient(config);
 
+	// Load plugin MCP modules from the Paca API.
+	// Failures for individual plugins are logged and skipped.
+	const pluginRegistry = await loadPlugins(config);
+
 	const clients = {
 		apiClient,
 		extendedClient,
@@ -45,10 +49,6 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		docClient,
 		automationClient,
 	};
-
-	// Load plugin MCP modules from the Paca API.
-	// Failures for individual plugins are logged and skipped.
-	const pluginRegistry = await loadPlugins(config);
 
 	// Fetch agent permissions at startup
 	const permissionMap: PermissionMap = await fetchAgentPermissions(config);
@@ -164,7 +164,40 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		}
 
 		// Fall through to core tool handlers
-		return handleToolCall(request, clients);
+		const result = await handleToolCall(request, clients);
+
+		// Let every loaded plugin optionally attach context to this core
+		// tool's response (e.g. linked GitHub branches on get_task). Skipped
+		// for error results so a failure isn't buried under unrelated data.
+		if (!result?.isError) {
+			const sections = await pluginRegistry.getToolContext(
+				name,
+				(args ?? {}) as Record<string, unknown>,
+				config,
+			);
+			if (sections.length > 0) {
+				const extra = sections.map((s) => s.text).join("\n\n");
+				// Merge into the last text block rather than appending a new
+				// content entry: agents reliably read the one continuous text
+				// block a core tool returns, but have been observed treating
+				// a separate trailing block as unrelated/easy to miss — e.g.
+				// calling github_list_task_branches right after get_task
+				// despite the branch already being in a second block.
+				const content = [...result.content];
+				const lastIdx = content.length - 1;
+				if (lastIdx >= 0 && content[lastIdx]?.type === "text") {
+					content[lastIdx] = {
+						...content[lastIdx],
+						text: `${content[lastIdx].text}\n\n${extra}`,
+					};
+				} else {
+					content.push({ type: "text", text: extra });
+				}
+				return { ...result, content };
+			}
+		}
+
+		return result;
 	});
 
 	return server;
