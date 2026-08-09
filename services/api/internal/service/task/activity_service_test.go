@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
@@ -89,7 +90,38 @@ func (r *fakeCommentMemberRepo) FindMemberByActor(_ context.Context, _ uuid.UUID
 }
 
 func (r *fakeCommentMemberRepo) FindMemberByAgent(_ context.Context, _ uuid.UUID, agentID uuid.UUID) (*projectdom.ProjectMember, error) {
-	return &projectdom.ProjectMember{ID: agentID, MemberType: "agent"}, nil
+	return &projectdom.ProjectMember{ID: agentID, MemberType: "agent", AgentID: &agentID}, nil
+}
+
+// fakeAgentTrigger records TriggerCommentMention invocations so tests can
+// assert whether an agent conversation was (or wasn't) started.
+type fakeAgentTrigger struct {
+	calls []uuid.UUID // agentID passed on each call
+}
+
+func (f *fakeAgentTrigger) TriggerCommentMention(_ context.Context, _, agentID, _, _, _ uuid.UUID, _ string) (*agentdom.AgentConversation, error) {
+	f.calls = append(f.calls, agentID)
+	return &agentdom.AgentConversation{ID: uuid.New()}, nil
+}
+
+// teamMentionContent builds BlockNote block content embedding a single
+// @-mention whose id is mentionedID, matching the shape ExtractTeamMentionsFromBlocks parses.
+func teamMentionContent(mentionedID uuid.UUID) json.RawMessage {
+	blocks := []map[string]any{
+		{
+			"content": []map[string]any{
+				{
+					"type": "teamMention",
+					"props": map[string]any{
+						"id":   mentionedID.String(),
+						"name": "bot",
+					},
+				},
+			},
+		},
+	}
+	b, _ := json.Marshal(blocks)
+	return b
 }
 
 func validCommentContent() json.RawMessage {
@@ -164,6 +196,63 @@ func TestActivitySvc_AddComment_ResolvedMember_Succeeds(t *testing.T) {
 	}
 	if a.ActorID == nil || *a.ActorID != memberID {
 		t.Errorf("expected comment actor_id %s, got %v", memberID, a.ActorID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AddComment: agent self-mention guard
+// ---------------------------------------------------------------------------
+
+// TestActivitySvc_AddComment_AgentSelfMention_DoesNotRetrigger pins the guard
+// that prevents the #354 production incident: an agent re-reading its own
+// prior comment and treating an embedded @mention of itself as a fresh
+// instruction, spawning a new conversation for itself with no cooldown
+// anywhere in the trigger path to break the resulting loop.
+func TestActivitySvc_AddComment_AgentSelfMention_DoesNotRetrigger(t *testing.T) {
+	repo := newFakeCommentActivityRepo()
+	agentMemberID := uuid.New() // same agent posts the comment and is mentioned in it
+	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
+	trigger := &fakeAgentTrigger{}
+	svc := tasksvc.NewActivityService(repo, memberRepo, nil).WithAgentTrigger(trigger)
+
+	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
+		TaskID:    uuid.New(),
+		ProjectID: uuid.New(),
+		ActorID:   uuid.New(),
+		AgentID:   &agentMemberID,
+		Content:   teamMentionContent(agentMemberID),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(trigger.calls) != 0 {
+		t.Errorf("agent mentioning itself should not retrigger a conversation, got %d call(s): %v", len(trigger.calls), trigger.calls)
+	}
+}
+
+// TestActivitySvc_AddComment_MentioningDifferentAgent_Triggers is the
+// positive control for the self-mention guard above: a mention of a
+// different agent must still start a conversation as before.
+func TestActivitySvc_AddComment_MentioningDifferentAgent_Triggers(t *testing.T) {
+	repo := newFakeCommentActivityRepo()
+	posterAgentID := uuid.New()
+	mentionedAgentID := uuid.New()
+	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
+	trigger := &fakeAgentTrigger{}
+	svc := tasksvc.NewActivityService(repo, memberRepo, nil).WithAgentTrigger(trigger)
+
+	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
+		TaskID:    uuid.New(),
+		ProjectID: uuid.New(),
+		ActorID:   uuid.New(),
+		AgentID:   &posterAgentID,
+		Content:   teamMentionContent(mentionedAgentID),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(trigger.calls) != 1 || trigger.calls[0] != mentionedAgentID {
+		t.Errorf("expected exactly one trigger call for agent %s, got %v", mentionedAgentID, trigger.calls)
 	}
 }
 
