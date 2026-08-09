@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "プロジェクトロールの編集",
 				"description": "すべてのプロジェクトでロールを作成・更新します"
+			},
+			"settingsWrite": {
+				"label": "ワークスペース設定の書き込み",
+				"description": "ワークスペースのロゴ、ファビコン、プライマリカラーを更新する"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "グローバルロール",
 			"users": "ユーザー",
 			"projects": "プロジェクト",
-			"plugins": "プラグイン"
+			"plugins": "プラグイン",
+			"settings": "設定"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "グローバルエージェントはまだありません",
 			"description": "グローバルエージェントを作成すると、チャットやプロジェクトへの招待に利用できるようになります。",
 			"createAgent": "エージェントを作成"
+		}
+	},
+	"settings": {
+		"title": "ワークスペースのブランディング",
+		"description": "このワークスペース内のすべてのプロジェクトで使用されるロゴ、ファビコン、プライマリカラーを設定します。",
+		"images": {
+			"title": "ロゴとファビコン",
+			"logo": {
+				"label": "ロゴ",
+				"change": "ロゴを変更",
+				"remove": "ロゴを削除",
+				"uploading": "アップロード中…"
+			},
+			"favicon": {
+				"label": "ファビコン",
+				"change": "ファビコンを変更",
+				"remove": "ファビコンを削除",
+				"uploading": "アップロード中…"
+			},
+			"errors": {
+				"invalidType": "PNG、JPEG、WEBP、GIF形式の画像を選択してください。",
+				"tooLarge": "画像は5MB以下にしてください。",
+				"uploadFailed": "画像のアップロードに失敗しました。もう一度お試しください。",
+				"removeFailed": "画像の削除に失敗しました。もう一度お試しください。"
+			}
+		},
+		"general": {
+			"title": "一般",
+			"brandNameLabel": "ブランド名",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "プライマリカラー",
+			"colorsDescription": "アプリ全体のボタンやハイライトに使うアクセントカラーを選択します。ライトモードとダークモードに合わせて自動的に調整されます。",
+			"colorPresets": {
+				"green": "グリーン",
+				"blue": "ブルー",
+				"teal": "ティール",
+				"indigo": "インディゴ",
+				"purple": "パープル",
+				"pink": "ピンク",
+				"red": "レッド",
+				"orange": "オレンジ"
+			},
+			"save": "変更を保存",
+			"saved": "保存しました",
+			"errors": {
+				"updateFailed": "保存に失敗しました。もう一度お試しください。"
+			}
 		}
 	}
 }

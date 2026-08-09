@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "Écrire les rôles du projet",
 				"description": "Créer et mettre à jour les rôles de tout projet"
+			},
+			"settingsWrite": {
+				"label": "Modifier les paramètres de l’espace de travail",
+				"description": "Mettre à jour le logo, le favicon et la couleur principale de l’espace de travail"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Rôles globaux",
 			"users": "Utilisateurs",
 			"projects": "Projets",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"settings": "Paramètres"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "Aucun agent global pour le moment",
 			"description": "Créez un agent global pour le rendre disponible pour le chat et les invitations à des projets.",
 			"createAgent": "Créer un agent"
+		}
+	},
+	"settings": {
+		"title": "Image de marque de l’espace de travail",
+		"description": "Définissez le logo, le favicon et la couleur principale utilisés dans tous les projets de cet espace de travail.",
+		"images": {
+			"title": "Logo et favicon",
+			"logo": {
+				"label": "Logo",
+				"change": "Changer le logo",
+				"remove": "Supprimer le logo",
+				"uploading": "Envoi en cours…"
+			},
+			"favicon": {
+				"label": "Favicon",
+				"change": "Changer le favicon",
+				"remove": "Supprimer le favicon",
+				"uploading": "Envoi en cours…"
+			},
+			"errors": {
+				"invalidType": "Veuillez choisir une image PNG, JPEG, WEBP ou GIF.",
+				"tooLarge": "L’image doit faire 5 Mo maximum.",
+				"uploadFailed": "Échec de l’envoi de l’image. Veuillez réessayer.",
+				"removeFailed": "Échec de la suppression de l’image. Veuillez réessayer."
+			}
+		},
+		"general": {
+			"title": "Général",
+			"brandNameLabel": "Nom de la marque",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "Couleur principale",
+			"colorsDescription": "Choisissez une couleur d’accent pour les boutons et les éléments mis en avant de l’application ; elle s’adapte automatiquement au mode clair et au mode sombre.",
+			"colorPresets": {
+				"green": "Vert",
+				"blue": "Bleu",
+				"teal": "Sarcelle",
+				"indigo": "Indigo",
+				"purple": "Violet",
+				"pink": "Rose",
+				"red": "Rouge",
+				"orange": "Orange"
+			},
+			"save": "Enregistrer les modifications",
+			"saved": "Enregistré",
+			"errors": {
+				"updateFailed": "Échec de l’enregistrement. Veuillez réessayer."
+			}
 		}
 	}
 }

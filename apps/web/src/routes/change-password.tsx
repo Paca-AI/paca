@@ -84,8 +84,8 @@ function ChangePasswordPage() {
 					<div className="grid lg:grid-cols-[1fr_420px]">
 						{/* Brand / context panel */}
 						<div className="relative hidden flex-col justify-between overflow-hidden rounded-l-xl bg-[#0a0a0a] p-10 lg:flex">
-							{/* Lime ambient glow */}
-							<div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(158,217,87,0.07),transparent_60%)]" />
+							{/* Ambient glow, tinted with the brand color */}
+							<div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--palm)_7%,transparent),transparent_60%)]" />
 							{/* Concentric rings */}
 							<div className="pointer-events-none absolute right-0 top-1/2 h-96 w-96 -translate-y-1/2 translate-x-[42%] rounded-full border border-white/5" />
 							<div className="pointer-events-none absolute right-0 top-1/2 h-64 w-64 -translate-y-1/2 translate-x-[42%] rounded-full border border-white/7" />

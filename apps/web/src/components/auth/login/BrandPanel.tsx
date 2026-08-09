@@ -1,6 +1,7 @@
 import { BookOpen, Bot, Puzzle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { useBranding } from "@/hooks/use-branding";
 
 const FEATURES = [
 	{
@@ -22,11 +23,14 @@ const FEATURES = [
 
 export function BrandPanel() {
 	const { t } = useTranslation("auth");
+	const branding = useBranding();
+	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;
+	const brandName = branding?.brand_name;
 
 	return (
 		<div className="relative hidden flex-col justify-between overflow-hidden rounded-l-xl bg-[#0a0a0a] p-10 lg:flex">
-			{/* Lime ambient glow — top */}
-			<div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(158,217,87,0.08),transparent_60%)]" />
+			{/* Ambient glow — top, tinted with the brand color */}
+			<div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--palm)_8%,transparent),transparent_60%)]" />
 
 			{/* Decorative concentric rings — right side */}
 			<div className="pointer-events-none absolute right-0 top-1/2 h-105 w-105 -translate-y-1/2 translate-x-[42%] rounded-full border border-white/5" />
@@ -37,24 +41,30 @@ export function BrandPanel() {
 				<div className="mb-8 flex items-center gap-3">
 					<div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 shadow-sm shadow-black/40">
 						<img
-							src="/paca-logo-dark.svg"
+							src={logoUrl ?? "/paca-logo-dark.svg"}
 							alt={t("brand.logoAlt")}
 							width={127}
 							height={175}
-							className="h-auto w-5 brightness-0 invert"
+							className={
+								logoUrl
+									? "h-auto w-5 object-contain"
+									: "h-auto w-5 brightness-0 invert"
+							}
 						/>
 					</div>
 					<span className="text-xl font-bold tracking-tight text-white">
-						paca
+						{brandName ?? "paca"}
 					</span>
-					<span className="rounded-full border border-white/20 bg-white/8 px-2 py-0.5 text-xs font-semibold uppercase tracking-widest text-white/60">
-						{t("brand.ossBadge")}
-					</span>
+					{brandName ? null : (
+						<span className="rounded-full border border-white/20 bg-white/8 px-2 py-0.5 text-xs font-semibold uppercase tracking-widest text-white/60">
+							{t("brand.ossBadge")}
+						</span>
+					)}
 				</div>
 
 				<h2 className="display-title mb-3 text-3xl font-bold leading-tight text-balance text-white">
 					{t("brand.headingPrefix")}{" "}
-					<span className="text-[#9ed957]">{t("brand.headingHighlight")}</span>
+					<span className="text-(--palm)">{t("brand.headingHighlight")}</span>
 				</h2>
 				<p className="mb-8 text-sm leading-relaxed text-white/55">
 					{t("brand.tagline")}
@@ -67,7 +77,7 @@ export function BrandPanel() {
 							key={titleKey}
 							className="flex items-start gap-3.5 rounded-xl border border-white/8 bg-white/4 px-4 py-3.5 transition-colors hover:border-white/[0.14] hover:bg-white/[0.07]"
 						>
-							<div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[rgba(158,217,87,0.12)] ring-1 ring-[rgba(158,217,87,0.2)]">
+							<div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklab,var(--palm)_12%,transparent)] ring-1 ring-[color-mix(in_oklab,var(--palm)_20%,transparent)]">
 								<Icon className="size-3.5 text-(--palm)" />
 							</div>
 							<div>

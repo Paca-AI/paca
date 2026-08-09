@@ -50,4 +50,10 @@ const (
 	PermissionWorkflowsRead  Permission = "workflows.read"
 	PermissionWorkflowsWrite Permission = "workflows.write"
 	PermissionWorkflowsAll   Permission = "workflows.*"
+
+	// PermissionSettingsWrite gates changes to instance-wide workspace
+	// branding (logo/favicon/primary color). There is no paired
+	// settings.read: the branding itself is served by an unauthenticated
+	// public endpoint, so the only thing to gate is writing to it.
+	PermissionSettingsWrite Permission = "settings.write"
 )

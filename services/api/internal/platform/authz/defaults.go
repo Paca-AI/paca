@@ -21,6 +21,7 @@ func DefaultGlobalRoles() []RoleDefinition {
 				PermissionUsersAll,
 				PermissionGlobalRolesAll,
 				PermissionProjectsAll,
+				PermissionSettingsWrite,
 			},
 		},
 		{

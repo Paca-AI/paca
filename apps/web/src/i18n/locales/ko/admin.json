@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "프로젝트 역할 작성",
 				"description": "모든 프로젝트에서 역할 생성 및 업데이트"
+			},
+			"settingsWrite": {
+				"label": "워크스페이스 설정 쓰기",
+				"description": "워크스페이스 로고, 파비콘, 기본 색상 업데이트"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "전역 역할",
 			"users": "사용자",
 			"projects": "프로젝트",
-			"plugins": "플러그인"
+			"plugins": "플러그인",
+			"settings": "설정"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "아직 전역 에이전트가 없습니다",
 			"description": "전역 에이전트를 만들면 채팅과 프로젝트 초대에 사용할 수 있습니다.",
 			"createAgent": "에이전트 생성"
+		}
+	},
+	"settings": {
+		"title": "워크스페이스 브랜딩",
+		"description": "이 워크스페이스의 모든 프로젝트에서 사용되는 로고, 파비콘, 기본 색상을 설정합니다.",
+		"images": {
+			"title": "로고 및 파비콘",
+			"logo": {
+				"label": "로고",
+				"change": "로고 변경",
+				"remove": "로고 제거",
+				"uploading": "업로드 중…"
+			},
+			"favicon": {
+				"label": "파비콘",
+				"change": "파비콘 변경",
+				"remove": "파비콘 제거",
+				"uploading": "업로드 중…"
+			},
+			"errors": {
+				"invalidType": "PNG, JPEG, WEBP 또는 GIF 이미지를 선택해 주세요.",
+				"tooLarge": "이미지는 5MB 이하여야 합니다.",
+				"uploadFailed": "이미지 업로드에 실패했습니다. 다시 시도해 주세요.",
+				"removeFailed": "이미지 제거에 실패했습니다. 다시 시도해 주세요."
+			}
+		},
+		"general": {
+			"title": "일반",
+			"brandNameLabel": "브랜드 이름",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "기본 색상",
+			"colorsDescription": "앱 전체의 버튼과 강조 요소에 사용할 강조 색상을 선택하세요. 라이트 모드와 다크 모드에 맞게 자동으로 조정됩니다.",
+			"colorPresets": {
+				"green": "그린",
+				"blue": "블루",
+				"teal": "틸",
+				"indigo": "인디고",
+				"purple": "퍼플",
+				"pink": "핑크",
+				"red": "레드",
+				"orange": "오렌지"
+			},
+			"save": "변경사항 저장",
+			"saved": "저장됨",
+			"errors": {
+				"updateFailed": "저장에 실패했습니다. 다시 시도해 주세요."
+			}
 		}
 	}
 }

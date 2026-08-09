@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "Sửa vai trò dự án",
 				"description": "Tạo và cập nhật vai trò trong bất kỳ dự án nào"
+			},
+			"settingsWrite": {
+				"label": "Chỉnh sửa cài đặt không gian làm việc",
+				"description": "Cập nhật logo, favicon và màu chủ đạo của không gian làm việc"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Vai trò toàn cục",
 			"users": "Người dùng",
 			"projects": "Dự án",
-			"plugins": "Plugin"
+			"plugins": "Plugin",
+			"settings": "Cài đặt"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "Chưa có agent toàn cục nào",
 			"description": "Tạo một agent toàn cục để có thể trò chuyện và mời vào dự án.",
 			"createAgent": "Tạo agent"
+		}
+	},
+	"settings": {
+		"title": "Thương hiệu không gian làm việc",
+		"description": "Đặt logo, favicon và màu chủ đạo được sử dụng trên tất cả dự án trong không gian làm việc này.",
+		"images": {
+			"title": "Logo và Favicon",
+			"logo": {
+				"label": "Logo",
+				"change": "Đổi logo",
+				"remove": "Xóa logo",
+				"uploading": "Đang tải lên…"
+			},
+			"favicon": {
+				"label": "Favicon",
+				"change": "Đổi favicon",
+				"remove": "Xóa favicon",
+				"uploading": "Đang tải lên…"
+			},
+			"errors": {
+				"invalidType": "Vui lòng chọn ảnh định dạng PNG, JPEG, WEBP hoặc GIF.",
+				"tooLarge": "Ảnh phải nhỏ hơn hoặc bằng 5 MB.",
+				"uploadFailed": "Tải ảnh lên thất bại. Vui lòng thử lại.",
+				"removeFailed": "Xóa ảnh thất bại. Vui lòng thử lại."
+			}
+		},
+		"general": {
+			"title": "Chung",
+			"brandNameLabel": "Tên thương hiệu",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "Màu chủ đạo",
+			"colorsDescription": "Chọn màu nhấn dùng cho nút bấm và điểm nhấn trên toàn bộ ứng dụng — màu sẽ tự động điều chỉnh cho chế độ sáng và tối.",
+			"colorPresets": {
+				"green": "Xanh lá",
+				"blue": "Xanh dương",
+				"teal": "Xanh ngọc",
+				"indigo": "Chàm",
+				"purple": "Tím",
+				"pink": "Hồng",
+				"red": "Đỏ",
+				"orange": "Cam"
+			},
+			"save": "Lưu thay đổi",
+			"saved": "Đã lưu",
+			"errors": {
+				"updateFailed": "Lưu thất bại. Vui lòng thử lại."
+			}
 		}
 	}
 }

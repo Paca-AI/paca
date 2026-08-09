@@ -249,13 +249,18 @@
 			"projectRolesWrite": {
 				"label": "Write Project Roles",
 				"description": "Create and update roles in any project"
+			},
+			"settingsWrite": {
+				"label": "Write Workspace Settings",
+				"description": "Update the workspace logo, favicon, and primary color"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Global Roles",
 			"users": "Users",
 			"projects": "Projects",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"settings": "Settings"
 		}
 	},
 	"plugins": {
@@ -280,5 +285,52 @@
 		"current": "Current version",
 		"error": "Couldn't load the changelog right now. Please try again later.",
 		"empty": "No release notes available yet."
+	},
+	"settings": {
+		"title": "Workspace Branding",
+		"description": "Set the logo, favicon, and primary color used across every project in this workspace.",
+		"images": {
+			"title": "Logo & Favicon",
+			"logo": {
+				"label": "Logo",
+				"change": "Change logo",
+				"remove": "Remove logo",
+				"uploading": "Uploading…"
+			},
+			"favicon": {
+				"label": "Favicon",
+				"change": "Change favicon",
+				"remove": "Remove favicon",
+				"uploading": "Uploading…"
+			},
+			"errors": {
+				"invalidType": "Please choose a PNG, JPEG, WEBP, or GIF image.",
+				"tooLarge": "Image must be 5 MB or smaller.",
+				"uploadFailed": "Failed to upload image. Please try again.",
+				"removeFailed": "Failed to remove image. Please try again."
+			}
+		},
+		"general": {
+			"title": "General",
+			"brandNameLabel": "Brand Name",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "Primary Color",
+			"colorsDescription": "Choose an accent color used for buttons and highlights across the app — automatically adjusted for light and dark mode.",
+			"colorPresets": {
+				"green": "Green",
+				"blue": "Blue",
+				"teal": "Teal",
+				"indigo": "Indigo",
+				"purple": "Purple",
+				"pink": "Pink",
+				"red": "Red",
+				"orange": "Orange"
+			},
+			"save": "Save changes",
+			"saved": "Saved",
+			"errors": {
+				"updateFailed": "Failed to save. Please try again."
+			}
+		}
 	}
 }

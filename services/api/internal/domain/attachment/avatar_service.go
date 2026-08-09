@@ -16,6 +16,13 @@ const (
 	AvatarOwnerUser    AvatarOwnerKind = "users"
 	AvatarOwnerAgent   AvatarOwnerKind = "agents"
 	AvatarOwnerProject AvatarOwnerKind = "projects"
+
+	// AvatarOwnerWorkspaceLogo and AvatarOwnerWorkspaceFavicon namespace the
+	// two image slots on the singleton workspace_settings row (see
+	// settingsdom). Unlike the owner kinds above there's no per-row ID to
+	// scope by — settings.Service passes a fixed uuid.Nil owner ID for both.
+	AvatarOwnerWorkspaceLogo    AvatarOwnerKind = "workspace_logo"
+	AvatarOwnerWorkspaceFavicon AvatarOwnerKind = "workspace_favicon"
 )
 
 // AvatarService manages avatar uploads for users and agents. Unlike the task

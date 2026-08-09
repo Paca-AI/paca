@@ -237,13 +237,18 @@
 			"projectRolesWrite": {
 				"label": "Escribir roles del proyecto",
 				"description": "Crear y actualizar roles en cualquier proyecto"
+			},
+			"settingsWrite": {
+				"label": "Escribir configuración del espacio de trabajo",
+				"description": "Actualizar el logotipo, el favicon y el color principal del espacio de trabajo"
 			}
 		},
 		"permissionGroups": {
 			"globalRoles": "Roles globales",
 			"users": "Usuarios",
 			"projects": "Proyectos",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"settings": "Configuración"
 		}
 	},
 	"plugins": {
@@ -279,6 +284,53 @@
 			"title": "Aún no hay agentes globales",
 			"description": "Crea un agente global para que esté disponible para chatear y para invitarlo a proyectos.",
 			"createAgent": "Crear agente"
+		}
+	},
+	"settings": {
+		"title": "Marca del espacio de trabajo",
+		"description": "Configura el logotipo, el favicon y el color principal usados en todos los proyectos de este espacio de trabajo.",
+		"images": {
+			"title": "Logotipo y favicon",
+			"logo": {
+				"label": "Logotipo",
+				"change": "Cambiar logotipo",
+				"remove": "Eliminar logotipo",
+				"uploading": "Subiendo…"
+			},
+			"favicon": {
+				"label": "Favicon",
+				"change": "Cambiar favicon",
+				"remove": "Eliminar favicon",
+				"uploading": "Subiendo…"
+			},
+			"errors": {
+				"invalidType": "Elige una imagen PNG, JPEG, WEBP o GIF.",
+				"tooLarge": "La imagen debe pesar 5 MB o menos.",
+				"uploadFailed": "No se pudo subir la imagen. Inténtalo de nuevo.",
+				"removeFailed": "No se pudo eliminar la imagen. Inténtalo de nuevo."
+			}
+		},
+		"general": {
+			"title": "General",
+			"brandNameLabel": "Nombre de la marca",
+			"brandNamePlaceholder": "Paca",
+			"colorsLabel": "Color principal",
+			"colorsDescription": "Elige un color de acento para los botones y elementos destacados de la aplicación; se ajusta automáticamente para el modo claro y oscuro.",
+			"colorPresets": {
+				"green": "Verde",
+				"blue": "Azul",
+				"teal": "Verde azulado",
+				"indigo": "Índigo",
+				"purple": "Morado",
+				"pink": "Rosa",
+				"red": "Rojo",
+				"orange": "Naranja"
+			},
+			"save": "Guardar cambios",
+			"saved": "Guardado",
+			"errors": {
+				"updateFailed": "No se pudo guardar. Inténtalo de nuevo."
+			}
 		}
 	}
 }
