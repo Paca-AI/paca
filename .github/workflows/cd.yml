@@ -25,14 +25,24 @@ name: cd
 #     Caddyfile          — Caddy gateway configuration
 #     .env.production.example — environment variable template
 #
-# "Latest" label sequencing (hold-release-label / promote-release below):
-# no image is pushed with a :latest Docker tag, and the GitHub release itself
-# is held off the "Latest" release marker, until every job in this workflow
-# has succeeded. This keeps /releases/latest and every :latest image tag
-# pointing at the previous, fully-shipped release for the whole ~20-30 minute
-# build window instead of a half-published one. install.sh/upgrade.sh are
-# also stamped with this exact release's tag as their default target, so a
-# plain `bash install.sh` never depends on the :latest tag being current.
+# "Latest" tag sequencing (promote-release, the last job below): no image is
+# pushed with a :latest Docker tag until every job in this workflow has
+# succeeded, so :latest keeps pointing at the previous, fully-shipped release
+# for the whole ~20-30 minute build window instead of a half-published one.
+# install.sh/upgrade.sh are also stamped with this exact release's tag as
+# their default target, so a plain `bash install.sh` never depends on the
+# :latest tag being current.
+#
+# The GitHub release page itself is NOT held back the same way: GitHub marks
+# a release "Latest" (and /releases/latest resolves to it) the instant it's
+# published, before this workflow even starts, and there is no reliable way
+# to make that not so (see git history of this file for why the previous
+# hold-release-label job that tried was removed — `--latest=false` on the
+# just-published release doesn't actually demote it). So for the whole build
+# window, the release page can say "Latest" while its Docker images are still
+# on the old :latest tag and /releases/latest/download/* still 404s. Keep
+# that in mind when publishing: the release isn't actually ready just because
+# GitHub calls it "Latest".
 
 on:
   release:
@@ -47,30 +57,6 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Hold the "Latest" release label until every artefact has actually shipped
-  # ─────────────────────────────────────────────────────────────────────────────
-  # GitHub marks a newly published release "Latest" (and /releases/latest
-  # resolves to it) immediately on publish by default. This workflow takes
-  # 20-30 minutes, so during that window /releases/latest/download/* would
-  # 404 (release-assets hasn't run yet) and any :latest Docker pull would
-  # still be fine (see below) but the release page itself would look "live"
-  # before it is. Demote it back to no label here — promote-release (the
-  # last job in this file) re-marks it "Latest" only once everything below
-  # has succeeded.
-  hold-release-label:
-    name: Hold "Latest" label until release is complete
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Unmark this release as "Latest"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.event.release.tag_name }}
-        run: gh release edit "$TAG_NAME" --repo "${{ github.repository }}" --latest=false
-
   # ─────────────────────────────────────────────────────────────────────────────
   # API service image
   # ─────────────────────────────────────────────────────────────────────────────
@@ -469,9 +455,10 @@ jobs:
   #
   # Waits for every image/package job so these assets — and the exact version
   # they're stamped with below — are never uploaded for a release that isn't
-  # fully shippable. If any of those jobs fail, this job is skipped and the
-  # previous release (still the "Latest" one; see hold-release-label /
-  # promote-release) keeps serving installs/upgrades until it's fixed.
+  # fully shippable. If any of those jobs fail, this job is skipped, so
+  # /releases/latest/download/* keeps 404ing on this release's assets even
+  # though GitHub already labeled it "Latest" at publish time (see the note
+  # at the top of this file) until the underlying issue is fixed.
   # ─────────────────────────────────────────────────────────────────────────────
   release-assets:
     name: Upload deployment assets to release
@@ -535,10 +522,13 @@ jobs:
   # target. Two things happen together here, deliberately in the same job:
   #   1. Every image gets a :latest tag pointing at this version's manifest,
   #      via `imagetools create` (a registry-side copy, no rebuild needed).
-  #   2. The GitHub release is marked "Latest" (undoing hold-release-label),
-  #      so /releases/latest/download/* starts serving this release's assets.
-  # Reversing the order (label first, tags second) would let /releases/latest
-  # briefly resolve to a release whose :latest images aren't there yet.
+  #   2. The GitHub release is (re-)marked "Latest". GitHub already marked it
+  #      "Latest" at publish time regardless (see the note at the top of this
+  #      file), so this step is a no-op on the happy path — it only matters
+  #      if this specific release ever needs re-promoting after a fix.
+  # Tags before label so /releases/latest never resolves to a release whose
+  # :latest images aren't there yet, for the (now purely cosmetic) window
+  # where this step hasn't run.
   # ─────────────────────────────────────────────────────────────────────────────
   promote-release:
     name: Promote release to "Latest"
@@ -546,7 +536,6 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     needs:
       [
-        hold-release-label,
         api-image,
         realtime-image,
         web-image,
