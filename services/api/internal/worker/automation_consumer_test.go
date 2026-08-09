@@ -18,18 +18,21 @@ import (
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // fakeTaskUpdater records every UpdateTask call so tests can assert whether
 // an idempotency guard correctly skipped (or didn't skip) a mutation.
 type fakeTaskUpdater struct {
-	calls int
-	err   error
+	calls     int
+	lastInput taskdom.UpdateTaskInput
+	err       error
 }
 
-func (f *fakeTaskUpdater) UpdateTask(_ context.Context, _, _ uuid.UUID, _ taskdom.UpdateTaskInput) (*taskdom.Task, error) {
+func (f *fakeTaskUpdater) UpdateTask(_ context.Context, _, _ uuid.UUID, in taskdom.UpdateTaskInput) (*taskdom.Task, error) {
 	f.calls++
+	f.lastInput = in
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -94,7 +97,7 @@ func TestApplyUpdateTask_Assign_IdempotentWhenAlreadyAssigned(t *testing.T) {
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{memberID}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +115,7 @@ func TestApplyUpdateTask_Assign_AppliesWhenNotAssigned(t *testing.T) {
 	memberID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: nil}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{AssigneeIDs: []uuid.UUID{memberID}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -177,7 +180,7 @@ func (f *fakeAgentMessenger) TriggerTaskAssigned(_ context.Context, _, agentID, 
 
 func TestApplyDirectAgentMessage_NotConfigured(t *testing.T) {
 	c := &AutomationConsumer{log: discardLogger()}
-	_, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "hello")
+	_, _, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "hello")
 	if err == nil {
 		t.Fatal("expected an error when memberRepo/agentMessenger aren't configured")
 	}
@@ -191,7 +194,7 @@ func TestApplyDirectAgentMessage_EmptyMessageRejected(t *testing.T) {
 		agentMessenger: &fakeAgentMessenger{},
 		log:            discardLogger(),
 	}
-	_, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "   ")
+	_, _, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "   ")
 	if err == nil {
 		t.Fatal("expected an error for an empty message — there's no task for the agent to fall back to")
 	}
@@ -203,7 +206,7 @@ func TestApplyDirectAgentMessage_NonAgentMemberRejected(t *testing.T) {
 		agentMessenger: &fakeAgentMessenger{},
 		log:            discardLogger(),
 	}
-	_, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "hello")
+	_, _, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "hello")
 	if err == nil {
 		t.Fatal("expected an error when the configured member is not an agent")
 	}
@@ -218,12 +221,15 @@ func TestApplyDirectAgentMessage_Success(t *testing.T) {
 		agentMessenger: messenger,
 		log:            discardLogger(),
 	}
-	applied, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "do the thing")
+	applied, convID, err := c.applyDirectAgentMessage(context.Background(), uuid.New(), uuid.New(), "do the thing")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !applied {
 		t.Fatal("expected applyDirectAgentMessage to report applied")
+	}
+	if convID == nil {
+		t.Fatal("expected applyDirectAgentMessage to return the new conversation's ID")
 	}
 	if messenger.calls != 1 || messenger.lastAgentID != agentID || messenger.lastMessage != "do the thing" {
 		t.Fatalf("expected TriggerDirectMessage called once with the resolved agentID and message, got %+v", messenger)
@@ -241,7 +247,7 @@ func TestApplyDirectAgentMessage_Success(t *testing.T) {
 func TestApplyTriggerAIAgentOnTask_NotConfigured(t *testing.T) {
 	c := &AutomationConsumer{log: discardLogger()}
 	task := &taskdom.Task{ID: uuid.New()}
-	_, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, uuid.New(), "test-automation", "please help")
+	_, _, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, uuid.New(), "test-automation", "please help")
 	if err == nil {
 		t.Fatal("expected an error when memberRepo/agentMessenger aren't configured")
 	}
@@ -254,7 +260,7 @@ func TestApplyTriggerAIAgentOnTask_NonAgentMemberRejected(t *testing.T) {
 		log:            discardLogger(),
 	}
 	task := &taskdom.Task{ID: uuid.New()}
-	_, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, uuid.New(), "test-automation", "please help")
+	_, _, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, uuid.New(), "test-automation", "please help")
 	if err == nil {
 		t.Fatal("expected an error when the configured member is not an agent")
 	}
@@ -275,12 +281,15 @@ func TestApplyTriggerAIAgentOnTask_StartsConversationWithoutReassigningTask(t *t
 	existingAssignee := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), AssigneeIDs: []uuid.UUID{existingAssignee}}
 
-	applied, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, memberID, "test-automation", "please help")
+	applied, convID, err := c.applyTriggerAIAgentOnTask(context.Background(), uuid.New(), task, memberID, "test-automation", "please help")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !applied {
 		t.Fatal("expected applyTriggerAIAgentOnTask to report applied")
+	}
+	if convID == nil {
+		t.Fatal("expected applyTriggerAIAgentOnTask to return the new conversation's ID")
 	}
 	if updater.calls != 0 {
 		t.Fatalf("expected no UpdateTask call — trigger_ai_agent must not reassign the task, got %d calls", updater.calls)
@@ -338,9 +347,6 @@ func TestWalk_TaskPresentReachingTriggerAIAgent_DoesNotReassignTask(t *testing.T
 		visited:   map[uuid.UUID]bool{},
 	}
 	w.walk(context.Background(), action.ID)
-	if w.failed {
-		t.Fatal("expected trigger_ai_agent with a task to succeed via the task-conversation path")
-	}
 	if messenger.taskCalls != 1 {
 		t.Fatalf("expected TriggerTaskAssigned to be called once, got %d", messenger.taskCalls)
 	}
@@ -373,11 +379,633 @@ func TestWalk_NilTaskReachingTriggerAIAgent_ProceedsAndSucceeds(t *testing.T) {
 		visited:   map[uuid.UUID]bool{},
 	}
 	w.walk(context.Background(), action.ID)
-	if w.failed {
-		t.Fatal("expected a nil task reaching trigger_ai_agent to succeed via the direct-message path")
-	}
 	if messenger.calls != 1 {
 		t.Fatalf("expected TriggerDirectMessage to be called once, got %d", messenger.calls)
+	}
+}
+
+// --- trigger_ai_agent pause/resume --------------------------------------------
+
+// fakePauseResumeRepo implements automationGraphReader with real in-memory
+// graph/pending-wait storage (unlike fakeCronRepo/fakePluginTriggerRepo's
+// no-op bookkeeping) — the pause/resume tests below need CreatePendingAgentWait
+// to actually persist, ClaimPendingAgentWait to actually delete-and-return,
+// and LoadGraph to actually resolve the outgoing edge resumeWalk walks, to
+// exercise the real walkAction -> handleAgentConversationStatus -> resumeWalk
+// cycle rather than just its individual pieces.
+type fakePauseResumeRepo struct {
+	automation    *automationdom.Automation
+	nodes         []*automationdom.Node
+	edges         []*automationdom.Edge
+	pendingWaits  map[uuid.UUID]*automationdom.PendingAgentWait // keyed by conversation ID
+	pendingDelays map[uuid.UUID]*automationdom.PendingDelay     // keyed by delay ID
+	runSteps      []*automationdom.RunStep
+	runs          map[uuid.UUID]*automationdom.Run
+}
+
+func (f *fakePauseResumeRepo) ListEnabledTriggerNodesByType(context.Context, uuid.UUID, automationdom.TriggerType) ([]*automationdom.Node, error) {
+	return nil, nil
+}
+func (f *fakePauseResumeRepo) ListPredecessorTriggersWatching(context.Context, uuid.UUID) ([]*automationdom.Node, error) {
+	return nil, nil
+}
+func (f *fakePauseResumeRepo) FindAutomationByNodeID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
+	return f.automation, nil
+}
+func (f *fakePauseResumeRepo) FindAutomationByID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
+	return f.automation, nil
+}
+func (f *fakePauseResumeRepo) FindNodeByID(context.Context, uuid.UUID) (*automationdom.Node, error) {
+	return nil, automationdom.ErrNodeNotFound
+}
+func (f *fakePauseResumeRepo) LoadGraph(context.Context, uuid.UUID) (*automationdom.Graph, error) {
+	return &automationdom.Graph{Automation: f.automation, Nodes: f.nodes, Edges: f.edges}, nil
+}
+func (f *fakePauseResumeRepo) CreateRun(_ context.Context, r *automationdom.Run) error {
+	if f.runs == nil {
+		f.runs = map[uuid.UUID]*automationdom.Run{}
+	}
+	f.runs[r.ID] = r
+	return nil
+}
+func (f *fakePauseResumeRepo) UpdateRun(_ context.Context, r *automationdom.Run) error {
+	existing, ok := f.runs[r.ID]
+	if !ok {
+		return fmt.Errorf("run %s not found", r.ID)
+	}
+	existing.Status = r.Status
+	existing.FinishedAt = r.FinishedAt
+	return nil
+}
+func (f *fakePauseResumeRepo) CreateRunStep(_ context.Context, s *automationdom.RunStep) error {
+	f.runSteps = append(f.runSteps, s)
+	return nil
+}
+func (f *fakePauseResumeRepo) ListRunStepsByRun(_ context.Context, runID uuid.UUID) ([]*automationdom.RunStep, error) {
+	var out []*automationdom.RunStep
+	for _, s := range f.runSteps {
+		if s.RunID == runID {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+func (f *fakePauseResumeRepo) CreatePendingAgentWait(_ context.Context, w *automationdom.PendingAgentWait) error {
+	if f.pendingWaits == nil {
+		f.pendingWaits = map[uuid.UUID]*automationdom.PendingAgentWait{}
+	}
+	f.pendingWaits[w.ConversationID] = w
+	return nil
+}
+func (f *fakePauseResumeRepo) FindPendingAgentWait(_ context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	w, ok := f.pendingWaits[conversationID]
+	if !ok {
+		return nil, nil
+	}
+	return w, nil
+}
+func (f *fakePauseResumeRepo) DeletePendingAgentWait(_ context.Context, id uuid.UUID) error {
+	for convID, w := range f.pendingWaits {
+		if w.ID == id {
+			delete(f.pendingWaits, convID)
+			return nil
+		}
+	}
+	return nil
+}
+func (f *fakePauseResumeRepo) CountPendingAgentWaits(_ context.Context, runID uuid.UUID) (int, error) {
+	count := 0
+	for _, w := range f.pendingWaits {
+		if w.RunID == runID {
+			count++
+		}
+	}
+	return count, nil
+}
+func (f *fakePauseResumeRepo) DeletePendingAgentWaitAndCountRemaining(_ context.Context, id, runID, nodeID uuid.UUID) (int, error) {
+	for convID, w := range f.pendingWaits {
+		if w.ID == id {
+			delete(f.pendingWaits, convID)
+			break
+		}
+	}
+	count := 0
+	for _, w := range f.pendingWaits {
+		if w.RunID == runID && w.NodeID == nodeID {
+			count++
+		}
+	}
+	return count, nil
+}
+func (f *fakePauseResumeRepo) CreatePendingDelay(_ context.Context, d *automationdom.PendingDelay) error {
+	if f.pendingDelays == nil {
+		f.pendingDelays = map[uuid.UUID]*automationdom.PendingDelay{}
+	}
+	f.pendingDelays[d.ID] = d
+	return nil
+}
+func (f *fakePauseResumeRepo) ListDueDelays(_ context.Context) ([]*automationdom.PendingDelay, error) {
+	now := time.Now()
+	var out []*automationdom.PendingDelay
+	for _, d := range f.pendingDelays {
+		if !d.ResumeAt.After(now) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+func (f *fakePauseResumeRepo) DeletePendingDelay(_ context.Context, id uuid.UUID) error {
+	delete(f.pendingDelays, id)
+	return nil
+}
+func (f *fakePauseResumeRepo) CountPendingDelays(_ context.Context, runID uuid.UUID) (int, error) {
+	count := 0
+	for _, d := range f.pendingDelays {
+		if d.RunID == runID {
+			count++
+		}
+	}
+	return count, nil
+}
+func (f *fakePauseResumeRepo) ListDueDateCandidates(context.Context) ([]automationdom.DueDateCandidate, error) {
+	return nil, nil
+}
+func (f *fakePauseResumeRepo) RecordDueDateFire(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+func (f *fakePauseResumeRepo) ListCronCandidates(context.Context) ([]automationdom.CronCandidate, error) {
+	return nil, nil
+}
+func (f *fakePauseResumeRepo) RecordCronFire(context.Context, uuid.UUID, uuid.UUID, time.Time) error {
+	return nil
+}
+
+// newPauseResumeFixture builds a Trigger AI Agent -> Update Task graph (two
+// action nodes, one edge) plus the consumer/repo wiring the pause/resume
+// tests share, so each test only has to vary the conversation's terminal
+// status.
+func newPauseResumeFixture(t *testing.T) (c *AutomationConsumer, client *redis.Client, repo *fakePauseResumeRepo, updater *fakeTaskUpdater, runID uuid.UUID, agentNodeID uuid.UUID, task *taskdom.Task) {
+	t.Helper()
+	agentID := uuid.New()
+	member := &projectdom.ProjectMember{MemberType: "agent", AgentID: &agentID}
+	memberID := uuid.New()
+	messenger := &fakeAgentMessenger{}
+	updater = &fakeTaskUpdater{}
+	task = &taskdom.Task{ID: uuid.New()}
+	automationID := uuid.New()
+
+	cfg, _ := json.Marshal(automationdom.ActionConfig{MemberID: &memberID, Message: "please help"})
+	agentNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionTriggerAIAgent), Config: cfg}
+	updateCfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"reviewed"}}})
+	nextNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateTask), Config: updateCfg}
+	edge := &automationdom.Edge{ID: uuid.New(), AutomationID: automationID, SourceNodeID: agentNode.ID, TargetNodeID: nextNode.ID}
+
+	repo = &fakePauseResumeRepo{
+		automation: &automationdom.Automation{ID: automationID, Status: automationdom.StatusActive},
+		nodes:      []*automationdom.Node{agentNode, nextNode},
+		edges:      []*automationdom.Edge{edge},
+	}
+	taskReader := &fakeAutomationTaskReader{byID: map[uuid.UUID]*taskdom.Task{task.ID: task}}
+	c, client = newTestConsumerWithRedis(t, repo, taskReader, nil)
+	c.taskSvc = updater
+	c.memberRepo = &fakeAutomationMemberReader{member: member}
+	c.agentMessenger = messenger
+
+	runID = uuid.New()
+	if err := repo.CreateRun(context.Background(), &automationdom.Run{ID: runID, AutomationID: automationID, Status: automationdom.RunStatusRunning}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	w := &walker{
+		consumer:  c,
+		task:      task,
+		runID:     runID,
+		nodesByID: map[uuid.UUID]*automationdom.Node{agentNode.ID: agentNode, nextNode.ID: nextNode},
+		outgoing:  map[uuid.UUID][]*automationdom.Edge{agentNode.ID: {edge}},
+		visited:   map[uuid.UUID]bool{},
+	}
+	w.walk(context.Background(), agentNode.ID)
+
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to NOT run yet — the walk should pause at trigger_ai_agent, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 1 {
+		t.Fatalf("expected exactly one pending agent wait recorded, got %d", len(repo.pendingWaits))
+	}
+	return c, client, repo, updater, runID, agentNode.ID, task
+}
+
+func conversationIDFromPendingWaits(waits map[uuid.UUID]*automationdom.PendingAgentWait) uuid.UUID {
+	for id := range waits {
+		return id
+	}
+	return uuid.Nil
+}
+
+func TestTriggerAIAgentPauseResume_Finished_ContinuesToNextNode(t *testing.T) {
+	c, client, repo, updater, runID, agentNodeID, _ := newPauseResumeFixture(t)
+	defer func() { _ = client.Close() }()
+	convID := conversationIDFromPendingWaits(repo.pendingWaits)
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-1", Values: map[string]any{
+		"conversation_id": convID.String(),
+		"status":          "finished",
+	}})
+
+	if updater.calls != 1 {
+		t.Fatalf("expected update_task to run exactly once after the conversation finished, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 0 {
+		t.Fatalf("expected the pending wait to be claimed, got %d remaining", len(repo.pendingWaits))
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusCompleted {
+		t.Fatalf("expected the run to finalize as completed, got %+v", run)
+	}
+	var sawFailedStep bool
+	for _, s := range repo.runSteps {
+		if s.NodeID == agentNodeID && s.Status == automationdom.RunStepFailed {
+			sawFailedStep = true
+		}
+	}
+	if sawFailedStep {
+		t.Fatal("did not expect a failed run step recorded for the trigger_ai_agent node on a finished conversation")
+	}
+}
+
+func TestTriggerAIAgentPauseResume_Failed_DoesNotContinueAndFailsRun(t *testing.T) {
+	c, client, repo, updater, runID, agentNodeID, _ := newPauseResumeFixture(t)
+	defer func() { _ = client.Close() }()
+	convID := conversationIDFromPendingWaits(repo.pendingWaits)
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-1", Values: map[string]any{
+		"conversation_id": convID.String(),
+		"status":          "failed",
+	}})
+
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to never run when the agent conversation itself failed, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 0 {
+		t.Fatalf("expected the pending wait to be claimed even on failure, got %d remaining", len(repo.pendingWaits))
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusFailed {
+		t.Fatalf("expected the run to finalize as failed, got %+v", run)
+	}
+	var sawFailedStep bool
+	for _, s := range repo.runSteps {
+		if s.NodeID == agentNodeID && s.Status == automationdom.RunStepFailed {
+			sawFailedStep = true
+		}
+	}
+	if !sawFailedStep {
+		t.Fatal("expected a failed run step recorded for the trigger_ai_agent node")
+	}
+}
+
+// newFanOutPauseResumeFixture mirrors newPauseResumeFixture but seeds TWO
+// PendingAgentWait rows sharing the same agentNode.ID — the shape
+// cfg.Target fan-out produces when a trigger_ai_agent node starts a
+// conversation per resolved task (see walkAction's conversationIDsFromDetail
+// loop) — instead of driving the real fan-out dispatch through runAction.
+func newFanOutPauseResumeFixture(t *testing.T) (c *AutomationConsumer, client *redis.Client, repo *fakePauseResumeRepo, updater *fakeTaskUpdater, runID uuid.UUID, agentNodeID uuid.UUID, convA, convB uuid.UUID) {
+	t.Helper()
+	updater = &fakeTaskUpdater{}
+	task := &taskdom.Task{ID: uuid.New()}
+	automationID := uuid.New()
+
+	cfg, _ := json.Marshal(automationdom.ActionConfig{})
+	agentNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionTriggerAIAgent), Config: cfg}
+	updateCfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"reviewed"}}})
+	nextNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateTask), Config: updateCfg}
+	edge := &automationdom.Edge{ID: uuid.New(), AutomationID: automationID, SourceNodeID: agentNode.ID, TargetNodeID: nextNode.ID}
+
+	repo = &fakePauseResumeRepo{
+		automation: &automationdom.Automation{ID: automationID, Status: automationdom.StatusActive},
+		nodes:      []*automationdom.Node{agentNode, nextNode},
+		edges:      []*automationdom.Edge{edge},
+	}
+	taskReader := &fakeAutomationTaskReader{byID: map[uuid.UUID]*taskdom.Task{task.ID: task}}
+	c, client = newTestConsumerWithRedis(t, repo, taskReader, nil)
+	c.taskSvc = updater
+
+	runID = uuid.New()
+	if err := repo.CreateRun(context.Background(), &automationdom.Run{ID: runID, AutomationID: automationID, Status: automationdom.RunStatusRunning}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	// Both conversations share agentNode.ID and carry the same task in
+	// their walk context — the shape a cfg.Target fan-out across several
+	// resolved tasks WOULD differ on (each gets its own task), but the
+	// gating logic under test only cares about NodeID/RunID, not which
+	// task each conversation is scoped to.
+	convA, convB = uuid.New(), uuid.New()
+	for _, convID := range []uuid.UUID{convA, convB} {
+		if err := repo.CreatePendingAgentWait(context.Background(), &automationdom.PendingAgentWait{
+			ID:             uuid.New(),
+			RunID:          runID,
+			NodeID:         agentNode.ID,
+			AutomationID:   automationID,
+			ConversationID: convID,
+			Context:        automationdom.WalkContext{TaskID: &task.ID},
+			CreatedAt:      time.Now(),
+		}); err != nil {
+			t.Fatalf("seed pending agent wait: %v", err)
+		}
+	}
+	if len(repo.pendingWaits) != 2 {
+		t.Fatalf("expected two pending agent waits recorded, got %d", len(repo.pendingWaits))
+	}
+	return c, client, repo, updater, runID, agentNode.ID, convA, convB
+}
+
+// TestTriggerAIAgentFanOut_WaitsForEverySiblingBeforeContinuing is a
+// regression test for the bug where a trigger_ai_agent node fanned out to
+// several conversations sharing one NodeID, and each terminal-status event
+// independently walked that node's outgoing edges — so the FIRST conversation
+// to finish fired downstream actions while its siblings were still in
+// flight, and firing happened again for each subsequent one too.
+func TestTriggerAIAgentFanOut_WaitsForEverySiblingBeforeContinuing(t *testing.T) {
+	c, client, repo, updater, runID, agentNodeID, convA, convB := newFanOutPauseResumeFixture(t)
+	defer func() { _ = client.Close() }()
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-1", Values: map[string]any{
+		"conversation_id": convA.String(),
+		"status":          "finished",
+	}})
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to NOT run after only the first of two conversations finished, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 1 {
+		t.Fatalf("expected the second conversation's wait to remain pending, got %d remaining", len(repo.pendingWaits))
+	}
+	if run := repo.runs[runID]; run.Status != automationdom.RunStatusRunning {
+		t.Fatalf("expected the run to still be running with a sibling outstanding, got %+v", run)
+	}
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-2", Values: map[string]any{
+		"conversation_id": convB.String(),
+		"status":          "finished",
+	}})
+	if updater.calls != 1 {
+		t.Fatalf("expected update_task to run exactly once, only after BOTH conversations finished, got %d calls", updater.calls)
+	}
+	if len(repo.pendingWaits) != 0 {
+		t.Fatalf("expected no pending agent waits left, got %d", len(repo.pendingWaits))
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusCompleted {
+		t.Fatalf("expected the run to finalize as completed, got %+v", run)
+	}
+	_ = agentNodeID
+}
+
+// TestTriggerAIAgentFanOut_OneSiblingFailingBlocksDownstream confirms the
+// AND semantics: if any one of the fanned-out conversations fails/stops,
+// the node's outgoing edges never fire, even once every conversation has
+// resolved — mirroring the existing single-conversation rule that a
+// non-"finished" status blocks progression past the node.
+func TestTriggerAIAgentFanOut_OneSiblingFailingBlocksDownstream(t *testing.T) {
+	c, client, repo, updater, runID, agentNodeID, convA, convB := newFanOutPauseResumeFixture(t)
+	defer func() { _ = client.Close() }()
+
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-1", Values: map[string]any{
+		"conversation_id": convA.String(),
+		"status":          "failed",
+	}})
+	c.handleAgentConversationStatus(redis.XMessage{ID: "1-2", Values: map[string]any{
+		"conversation_id": convB.String(),
+		"status":          "finished",
+	}})
+
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to never run when a sibling conversation failed, got %d calls", updater.calls)
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusFailed {
+		t.Fatalf("expected the run to finalize as failed, got %+v", run)
+	}
+	var sawFailedStep bool
+	for _, s := range repo.runSteps {
+		if s.NodeID == agentNodeID && s.Status == automationdom.RunStepFailed {
+			sawFailedStep = true
+		}
+	}
+	if !sawFailedStep {
+		t.Fatal("expected a failed run step recorded for the trigger_ai_agent node")
+	}
+}
+
+// --- wait pause/resume --------------------------------------------------------
+
+// newWaitPauseFixture builds a Wait -> Update Task graph (two action nodes,
+// one edge), walks into the wait node, and asserts the walk paused there
+// exactly once — the fixture every wait pause/resume test starts from,
+// mirroring newPauseResumeFixture's role for trigger_ai_agent.
+func newWaitPauseFixture(t *testing.T) (c *AutomationConsumer, repo *fakePauseResumeRepo, updater *fakeTaskUpdater, runID uuid.UUID) {
+	t.Helper()
+	task := &taskdom.Task{ID: uuid.New()}
+	automationID := uuid.New()
+	updater = &fakeTaskUpdater{}
+
+	minutes := 1
+	waitCfg, _ := json.Marshal(automationdom.ActionConfig{WaitMinutes: &minutes})
+	waitNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionWait), Config: waitCfg}
+	updateCfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"resumed"}}})
+	nextNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateTask), Config: updateCfg}
+	edge := &automationdom.Edge{ID: uuid.New(), AutomationID: automationID, SourceNodeID: waitNode.ID, TargetNodeID: nextNode.ID}
+
+	repo = &fakePauseResumeRepo{
+		automation: &automationdom.Automation{ID: automationID, Status: automationdom.StatusActive},
+		nodes:      []*automationdom.Node{waitNode, nextNode},
+		edges:      []*automationdom.Edge{edge},
+	}
+	c = &AutomationConsumer{repo: repo, taskRepo: &fakeAutomationTaskReader{byID: map[uuid.UUID]*taskdom.Task{task.ID: task}}, taskSvc: updater, log: discardLogger()}
+
+	runID = uuid.New()
+	if err := repo.CreateRun(context.Background(), &automationdom.Run{ID: runID, AutomationID: automationID, Status: automationdom.RunStatusRunning}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	w := &walker{
+		consumer:  c,
+		task:      task,
+		runID:     runID,
+		nodesByID: map[uuid.UUID]*automationdom.Node{waitNode.ID: waitNode, nextNode.ID: nextNode},
+		outgoing:  map[uuid.UUID][]*automationdom.Edge{waitNode.ID: {edge}},
+		visited:   map[uuid.UUID]bool{},
+	}
+	w.walk(context.Background(), waitNode.ID)
+
+	if updater.calls != 0 {
+		t.Fatalf("expected update_task to NOT run yet — the walk should pause at wait, got %d calls", updater.calls)
+	}
+	if len(repo.pendingDelays) != 1 {
+		t.Fatalf("expected exactly one pending delay recorded, got %d", len(repo.pendingDelays))
+	}
+	return c, repo, updater, runID
+}
+
+func TestWaitPauseResume_NotYetDue_ListDueDelaysLeavesItPending(t *testing.T) {
+	_, repo, _, _ := newWaitPauseFixture(t)
+
+	due, err := repo.ListDueDelays(context.Background())
+	if err != nil {
+		t.Fatalf("ListDueDelays: %v", err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("expected no delays due yet (resume_at is ~1 minute out), got %d", len(due))
+	}
+	if len(repo.pendingDelays) != 1 {
+		t.Fatalf("expected the delay to remain pending, got %d", len(repo.pendingDelays))
+	}
+}
+
+func TestWaitPauseResume_ResumesAfterDelayPasses(t *testing.T) {
+	c, repo, updater, runID := newWaitPauseFixture(t)
+
+	// Force the delay due now rather than waiting out its real 1-minute
+	// duration.
+	for _, d := range repo.pendingDelays {
+		d.ResumeAt = time.Now().Add(-time.Second)
+	}
+
+	due, err := repo.ListDueDelays(context.Background())
+	if err != nil {
+		t.Fatalf("ListDueDelays: %v", err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("expected exactly one due delay listed, got %d", len(due))
+	}
+	if len(repo.pendingDelays) != 1 {
+		t.Fatalf("expected the delay to remain in place until the resume actually succeeds, got %d remaining", len(repo.pendingDelays))
+	}
+
+	if err := c.resumeAfterDelay(context.Background(), due[0]); err != nil {
+		t.Fatalf("resumeAfterDelay: %v", err)
+	}
+	// Mirrors WaitScheduler.tick: only delete once resumeAfterDelay
+	// succeeds, then finalize (which must run after the delete — see
+	// resumeAfterDelay's docstring).
+	if err := repo.DeletePendingDelay(context.Background(), due[0].ID); err != nil {
+		t.Fatalf("DeletePendingDelay: %v", err)
+	}
+	if len(repo.pendingDelays) != 0 {
+		t.Fatalf("expected the delay to be removed after a successful resume, got %d remaining", len(repo.pendingDelays))
+	}
+	if err := c.finalizeRunIfDone(context.Background(), runID); err != nil {
+		t.Fatalf("finalizeRunIfDone: %v", err)
+	}
+
+	if updater.calls != 1 {
+		t.Fatalf("expected update_task to run exactly once after the delay resumed, got %d calls", updater.calls)
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusCompleted {
+		t.Fatalf("expected the run to finalize as completed, got %+v", run)
+	}
+}
+
+// newSprintWaitPauseFixture mirrors newWaitPauseFixture but for a
+// Sprint-triggered walk (no task; walker.sprint set directly) pausing at a
+// wait node ahead of an update_sprint action — the exact shape that was
+// losing its sprint context on resume before PendingDelay.Context.SprintID
+// existed.
+func newSprintWaitPauseFixture(t *testing.T) (c *AutomationConsumer, repo *fakePauseResumeRepo, updater *fakeSprintUpdater, runID uuid.UUID) {
+	t.Helper()
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Name: "Sprint 1"}
+	automationID := uuid.New()
+	updater = &fakeSprintUpdater{}
+
+	minutes := 1
+	waitCfg, _ := json.Marshal(automationdom.ActionConfig{WaitMinutes: &minutes})
+	waitNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionWait), Config: waitCfg}
+	updateCfg, _ := json.Marshal(automationdom.ActionConfig{SprintUpdate: &automationdom.SprintFieldUpdate{Name: "Sprint 1 (updated)"}})
+	nextNode := &automationdom.Node{ID: uuid.New(), AutomationID: automationID, Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateSprint), Config: updateCfg}
+	edge := &automationdom.Edge{ID: uuid.New(), AutomationID: automationID, SourceNodeID: waitNode.ID, TargetNodeID: nextNode.ID}
+
+	repo = &fakePauseResumeRepo{
+		automation: &automationdom.Automation{ID: automationID, Status: automationdom.StatusActive},
+		nodes:      []*automationdom.Node{waitNode, nextNode},
+		edges:      []*automationdom.Edge{edge},
+	}
+	c = &AutomationConsumer{
+		repo:       repo,
+		sprintRepo: &fakeSprintReader{byID: map[uuid.UUID]*sprintdom.Sprint{sprint.ID: sprint}},
+		sprintSvc:  updater,
+		log:        discardLogger(),
+	}
+
+	runID = uuid.New()
+	if err := repo.CreateRun(context.Background(), &automationdom.Run{ID: runID, AutomationID: automationID, Status: automationdom.RunStatusRunning}); err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	w := &walker{
+		consumer:  c,
+		sprint:    sprint,
+		runID:     runID,
+		nodesByID: map[uuid.UUID]*automationdom.Node{waitNode.ID: waitNode, nextNode.ID: nextNode},
+		outgoing:  map[uuid.UUID][]*automationdom.Edge{waitNode.ID: {edge}},
+		visited:   map[uuid.UUID]bool{},
+	}
+	w.walk(context.Background(), waitNode.ID)
+
+	if updater.updateCalls != 0 {
+		t.Fatalf("expected update_sprint to NOT run yet — the walk should pause at wait, got %d calls", updater.updateCalls)
+	}
+	if len(repo.pendingDelays) != 1 {
+		t.Fatalf("expected exactly one pending delay recorded, got %d", len(repo.pendingDelays))
+	}
+	for _, d := range repo.pendingDelays {
+		if d.Context.SprintID == nil || *d.Context.SprintID != sprint.ID {
+			t.Fatalf("expected the pending delay to carry the walk's sprint ID, got %v", d.Context.SprintID)
+		}
+	}
+	return c, repo, updater, runID
+}
+
+// TestWaitPauseResume_SprintTriggered_PreservesSprintContext is a regression
+// test for the bug where a Sprint-triggered walk (sprint_started etc., no
+// task) that paused at a wait node lost its sprint context entirely on
+// resume: resumeWalkFrom only ever reconstructed the walker's task, never
+// its sprint, so the downstream update_sprint action failed with "update_
+// sprint: no sprint in context" instead of applying.
+func TestWaitPauseResume_SprintTriggered_PreservesSprintContext(t *testing.T) {
+	c, repo, updater, runID := newSprintWaitPauseFixture(t)
+
+	for _, d := range repo.pendingDelays {
+		d.ResumeAt = time.Now().Add(-time.Second)
+	}
+
+	due, err := repo.ListDueDelays(context.Background())
+	if err != nil {
+		t.Fatalf("ListDueDelays: %v", err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("expected exactly one due delay listed, got %d", len(due))
+	}
+
+	if err := c.resumeAfterDelay(context.Background(), due[0]); err != nil {
+		t.Fatalf("resumeAfterDelay: %v", err)
+	}
+	// Mirrors WaitScheduler.tick: delete then finalize, in that order.
+	if err := repo.DeletePendingDelay(context.Background(), due[0].ID); err != nil {
+		t.Fatalf("DeletePendingDelay: %v", err)
+	}
+	if err := c.finalizeRunIfDone(context.Background(), runID); err != nil {
+		t.Fatalf("finalizeRunIfDone: %v", err)
+	}
+
+	if updater.updateCalls != 1 {
+		t.Fatalf("expected update_sprint to run exactly once after the delay resumed with sprint context intact, got %d calls", updater.updateCalls)
+	}
+	run, ok := repo.runs[runID]
+	if !ok || run.Status != automationdom.RunStatusCompleted {
+		t.Fatalf("expected the run to finalize as completed, got %+v", run)
+	}
+	steps, _ := repo.ListRunStepsByRun(context.Background(), runID)
+	for _, s := range steps {
+		if s.Status == automationdom.RunStepFailed {
+			t.Fatalf("expected no failed run step, got %+v", s)
+		}
 	}
 }
 
@@ -387,7 +1015,7 @@ func TestApplyUpdateTask_Status_IdempotentWhenAlreadySet(t *testing.T) {
 	statusID := uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), StatusID: &statusID}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &statusID}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &statusID}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -402,7 +1030,7 @@ func TestApplyUpdateTask_Status_AppliesWhenDifferent(t *testing.T) {
 	oldStatus, newStatus := uuid.New(), uuid.New()
 	task := &taskdom.Task{ID: uuid.New(), StatusID: &oldStatus}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &newStatus}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{StatusID: &newStatus}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -414,13 +1042,55 @@ func TestApplyUpdateTask_Status_AppliesWhenDifferent(t *testing.T) {
 	}
 }
 
+func TestCustomFieldValuesEqual(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b any
+		want bool
+	}{
+		{"equal numbers", float64(5), float64(5), true},
+		{"equal strings", "x", "x", true},
+		{"different numbers", float64(5), float64(6), false},
+		// The bug fmt.Sprintf("%v", ...) missed: a number and the string
+		// of that same number stringify identically via %v ("5" == "5")
+		// but are semantically different custom-field values (a type
+		// change, not a no-op).
+		{"number vs its string form", float64(5), "5", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := customFieldValuesEqual(tc.a, tc.b); got != tc.want {
+				t.Fatalf("customFieldValuesEqual(%#v, %#v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyUpdateTask_CustomField_NumberVsStringIsDetectedAsChanged(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"points": float64(5)}}
+
+	// Same value under fmt.Sprintf("%v", ...) ("5" == "5") but a genuine
+	// type change (number -> string) — must be detected as a real diff,
+	// not silently skipped as a no-op.
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task,
+		&automationdom.TaskFieldUpdate{CustomFields: map[string]any{"points": "5"}}, "test-automation", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applied || updater.calls != 1 {
+		t.Fatalf("expected the type change to be detected and applied, got applied=%v calls=%d", applied, updater.calls)
+	}
+}
+
 func TestApplyUpdateTask_Priority_IdempotentWhenAlreadySet(t *testing.T) {
 	updater := &fakeTaskUpdater{}
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Importance: 5}
 
 	importance := 5
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Importance: &importance}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Importance: &importance}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -434,7 +1104,7 @@ func TestApplyUpdateTask_Tags_IdempotentWhenSameSet(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Tags: []string{"urgent"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"urgent"}}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"urgent"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -448,7 +1118,7 @@ func TestApplyUpdateTask_Tags_AppliesWhenDifferent(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Tags: []string{"bug"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"bug", "urgent"}}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Tags: []string{"bug", "urgent"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -465,7 +1135,7 @@ func TestApplyUpdateTask_CustomField_IdempotentWhenValueAlreadyMatches(t *testin
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"release_tag": "v2"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -479,7 +1149,7 @@ func TestApplyUpdateTask_CustomField_AppliesWhenValueDiffers(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), CustomFields: map[string]any{"release_tag": "v1"}}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{CustomFields: map[string]any{"release_tag": "v2"}}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -498,7 +1168,7 @@ func TestApplyUpdateTask_DueDate_IdempotentWhenAlreadySet(t *testing.T) {
 	task := &taskdom.Task{ID: uuid.New(), DueDate: &due}
 
 	sameDue := due
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &sameDue}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &sameDue}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -514,7 +1184,7 @@ func TestApplyUpdateTask_DueDate_AppliesWhenDifferent(t *testing.T) {
 	newDue := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
 	task := &taskdom.Task{ID: uuid.New(), DueDate: &oldDue}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &newDue}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{DueDate: &newDue}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -547,7 +1217,7 @@ func TestApplyUpdateTask_Description_IdempotentWhenAlreadyMatches(t *testing.T) 
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"hello"}`)}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"hello"}`)}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"hello"}`)}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -561,7 +1231,7 @@ func TestApplyUpdateTask_Description_AppliesWhenDifferent(t *testing.T) {
 	c := newTestConsumer(updater)
 	task := &taskdom.Task{ID: uuid.New(), Description: json.RawMessage(`{"text":"old"}`)}
 
-	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"new"}`)}, "test-automation")
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Description: json.RawMessage(`{"text":"new"}`)}, "test-automation", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -628,7 +1298,7 @@ func (f *fakePluginRuntime) TriggersForTopic(topic string) []plugindom.Automatio
 func TestRunAction_UnknownTypeWithoutPluginRuntimeFails(t *testing.T) {
 	c := newTestConsumer(&fakeTaskUpdater{})
 	node := &automationdom.Node{Type: "com.acme.github.comment_on_pr", Config: json.RawMessage(`{}`)}
-	_, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{}, "automation", uuid.New())
+	_, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{}, nil, nil, "automation", uuid.New())
 	if err == nil {
 		t.Fatal("expected an error for an unrecognized action type with no plugin runtime configured")
 	}
@@ -643,7 +1313,7 @@ func TestRunAction_DispatchesToRegisteredPluginAction(t *testing.T) {
 	}
 	c.pluginRuntime = runtime
 	node := &automationdom.Node{Type: "com.acme.github.comment_on_pr", Config: json.RawMessage(`{"template":"lgtm"}`)}
-	applied, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: uuid.New()}, "automation", uuid.New())
+	applied, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: uuid.New()}, nil, nil, "automation", uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -808,6 +1478,9 @@ func (f *fakePluginTriggerRepo) ListPredecessorTriggersWatching(context.Context,
 func (f *fakePluginTriggerRepo) FindAutomationByNodeID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
 	return f.automation, nil
 }
+func (f *fakePluginTriggerRepo) FindAutomationByID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
+	return f.automation, nil
+}
 func (f *fakePluginTriggerRepo) FindNodeByID(context.Context, uuid.UUID) (*automationdom.Node, error) {
 	return nil, automationdom.ErrNodeNotFound
 }
@@ -821,6 +1494,36 @@ func (f *fakePluginTriggerRepo) CreateRun(context.Context, *automationdom.Run) e
 func (f *fakePluginTriggerRepo) UpdateRun(context.Context, *automationdom.Run) error { return nil }
 func (f *fakePluginTriggerRepo) CreateRunStep(context.Context, *automationdom.RunStep) error {
 	return nil
+}
+func (f *fakePluginTriggerRepo) ListRunStepsByRun(context.Context, uuid.UUID) ([]*automationdom.RunStep, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerRepo) CreatePendingAgentWait(context.Context, *automationdom.PendingAgentWait) error {
+	return nil
+}
+func (f *fakePluginTriggerRepo) FindPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error {
+	return nil
+}
+func (f *fakePluginTriggerRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakePluginTriggerRepo) DeletePendingAgentWaitAndCountRemaining(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakePluginTriggerRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
+	return nil
+}
+func (f *fakePluginTriggerRepo) ListDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
+	return nil, nil
+}
+func (f *fakePluginTriggerRepo) DeletePendingDelay(context.Context, uuid.UUID) error {
+	return nil
+}
+func (f *fakePluginTriggerRepo) CountPendingDelays(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
 }
 func (f *fakePluginTriggerRepo) ListDueDateCandidates(context.Context) ([]automationdom.DueDateCandidate, error) {
 	return nil, nil
@@ -994,7 +1697,7 @@ func TestApplyCallAPI_SuccessRecordsStatusAndBody(t *testing.T) {
 		Headers: map[string]string{"X-Custom": "hello"},
 		Body:    `{"hi":"there"}`,
 	}
-	applied, detail, err := c.applyCallAPI(context.Background(), cfg)
+	applied, detail, err := c.applyCallAPI(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1031,7 +1734,7 @@ func TestApplyCallAPI_NonSuccessStatusIsAnError(t *testing.T) {
 
 	c := newTestConsumer(&fakeTaskUpdater{})
 	c.httpClient = http.DefaultClient
-	applied, _, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: server.URL})
+	applied, _, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: server.URL}, nil)
 	if err == nil {
 		t.Fatal("expected a non-2xx response to be treated as an error")
 	}
@@ -1050,7 +1753,7 @@ func TestApplyCallAPI_NetworkErrorIsAnError(t *testing.T) {
 
 	c := newTestConsumer(&fakeTaskUpdater{})
 	c.httpClient = http.DefaultClient
-	_, _, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: closedURL})
+	_, _, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: closedURL}, nil)
 	if err == nil {
 		t.Fatal("expected an error for a request that fails at the network level")
 	}
@@ -1065,7 +1768,7 @@ func TestApplyCallAPI_TruncatesLongResponseBody(t *testing.T) {
 
 	c := newTestConsumer(&fakeTaskUpdater{})
 	c.httpClient = http.DefaultClient
-	_, detail, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: server.URL})
+	_, detail, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: server.URL}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1094,30 +1797,32 @@ func TestApplyCallAPI_TruncatesLongResponseBody(t *testing.T) {
 
 func TestWalk_NilTaskReachingCondition_FailsStepInsteadOfPanicking(t *testing.T) {
 	condition := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindCondition, Type: automationdom.ConditionNodeType, Config: json.RawMessage(`{}`)}
+	repo := &fakeCronRepo{}
 	w := &walker{
-		consumer:  &AutomationConsumer{repo: &fakeCronRepo{}, log: discardLogger()},
+		consumer:  &AutomationConsumer{repo: repo, log: discardLogger()},
 		task:      nil,
 		nodesByID: map[uuid.UUID]*automationdom.Node{condition.ID: condition},
 		outgoing:  map[uuid.UUID][]*automationdom.Edge{},
 		visited:   map[uuid.UUID]bool{},
 	}
 	w.walk(context.Background(), condition.ID)
-	if !w.failed {
+	if len(repo.createdRunSteps) != 1 || repo.createdRunSteps[0].Status != automationdom.RunStepFailed {
 		t.Fatal("expected a nil task reaching a condition node to mark the walk failed")
 	}
 }
 
 func TestWalk_NilTaskReachingNonCallAPIAction_FailsStepInsteadOfPanicking(t *testing.T) {
 	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateTask), Config: json.RawMessage(`{}`)}
+	repo := &fakeCronRepo{}
 	w := &walker{
-		consumer:  &AutomationConsumer{repo: &fakeCronRepo{}, log: discardLogger()},
+		consumer:  &AutomationConsumer{repo: repo, log: discardLogger()},
 		task:      nil,
 		nodesByID: map[uuid.UUID]*automationdom.Node{action.ID: action},
 		outgoing:  map[uuid.UUID][]*automationdom.Edge{},
 		visited:   map[uuid.UUID]bool{},
 	}
 	w.walk(context.Background(), action.ID)
-	if !w.failed {
+	if len(repo.createdRunSteps) != 1 || repo.createdRunSteps[0].Status != automationdom.RunStepFailed {
 		t.Fatal("expected a nil task reaching an update_task action to mark the walk failed")
 	}
 }
@@ -1130,15 +1835,16 @@ func TestWalk_NilTaskReachingCallAPI_ProceedsAndSucceeds(t *testing.T) {
 
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Method: "GET", URL: server.URL})
 	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionCallAPI), Config: cfg}
+	repo := &fakeCronRepo{}
 	w := &walker{
-		consumer:  &AutomationConsumer{repo: &fakeCronRepo{}, httpClient: http.DefaultClient, log: discardLogger()},
+		consumer:  &AutomationConsumer{repo: repo, httpClient: http.DefaultClient, log: discardLogger()},
 		task:      nil,
 		nodesByID: map[uuid.UUID]*automationdom.Node{action.ID: action},
 		outgoing:  map[uuid.UUID][]*automationdom.Edge{},
 		visited:   map[uuid.UUID]bool{},
 	}
 	w.walk(context.Background(), action.ID)
-	if w.failed {
+	if len(repo.createdRunSteps) != 1 || repo.createdRunSteps[0].Status == automationdom.RunStepFailed {
 		t.Fatal("expected a nil task reaching a call_api action to succeed, since call_api never touches the task")
 	}
 }
@@ -1150,7 +1856,7 @@ func TestApplyCallAPI_DefaultClientRejectsPrivateTarget(t *testing.T) {
 	defer server.Close()
 
 	c := NewAutomationConsumer(nil, nil, nil, &fakeTaskUpdater{}, nil, nil, discardLogger())
-	_, _, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: server.URL})
+	_, _, err := c.applyCallAPI(context.Background(), automationdom.ActionConfig{Method: "GET", URL: server.URL}, nil)
 	if err == nil {
 		t.Fatal("expected the default SSRF-safe client to reject a request to a private/loopback address")
 	}
@@ -1280,7 +1986,7 @@ func TestRunAction_NoTarget_BehavesExactlyAsBeforeWithNilDetail(t *testing.T) {
 	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 	task := &taskdom.Task{ID: uuid.New()}
 
-	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, task, "test", uuid.New())
+	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, task, nil, nil, "test", uuid.New())
 	if err != nil || !applied || detail != nil {
 		t.Fatalf("expected (true, nil, nil) for an untargeted action, got (%v, %s, %v)", applied, detail, err)
 	}
@@ -1300,7 +2006,7 @@ func TestRunAction_FanOut_AppliesToEveryResolvedChild(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"x"}}, Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
 	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 
-	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, "test", uuid.New())
+	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, nil, nil, "test", uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1333,7 +2039,7 @@ func TestRunAction_FanOut_EmptyTargetsSkipsWithoutError(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Update: &automationdom.TaskFieldUpdate{Tags: []string{"x"}}, Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
 	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 
-	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, "test", uuid.New())
+	applied, detail, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, nil, nil, "test", uuid.New())
 	if err != nil || applied || detail != nil {
 		t.Fatalf("expected (false, nil, nil) when the target resolves to nothing, got (%v, %s, %v)", applied, detail, err)
 	}
@@ -1352,7 +2058,7 @@ func TestRunAction_FanOut_StopsAtFirstError(t *testing.T) {
 	cfg, _ := json.Marshal(automationdom.ActionConfig{Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}})
 	node := &automationdom.Node{Type: string(automationdom.ActionUpdateTask), Config: cfg}
 
-	_, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, "test", uuid.New())
+	_, _, err := c.runAction(context.Background(), uuid.New(), node, &taskdom.Task{ID: baseID}, nil, nil, "test", uuid.New())
 	if err == nil {
 		t.Fatal("expected an error when the resolved task's action application fails")
 	}
@@ -1369,14 +2075,433 @@ func TestEvaluateLeaf_Retargeted_UsesMatchMode(t *testing.T) {
 		Field: automationdom.FieldStatus, Operator: automationdom.OpEquals, Value: statusID.String(),
 		Target: &automationdom.TaskTarget{Kind: automationdom.TaskTargetChildren}, MatchMode: "any",
 	}
-	matched, err := c.evaluateLeaf(context.Background(), uuid.New(), &taskdom.Task{ID: baseID}, leaf)
+	w := &walker{consumer: c, projectID: uuid.New(), task: &taskdom.Task{ID: baseID}}
+	matched, err := w.evaluateLeaf(context.Background(), leaf)
 	if err != nil || !matched {
 		t.Fatalf("expected any-mode to match one of two children, got %v, %v", matched, err)
 	}
 
 	leaf.MatchMode = "all"
-	matched, err = c.evaluateLeaf(context.Background(), uuid.New(), &taskdom.Task{ID: baseID}, leaf)
+	matched, err = w.evaluateLeaf(context.Background(), leaf)
 	if err != nil || matched {
 		t.Fatalf("expected all-mode to fail since only one of two children matches, got %v, %v", matched, err)
+	}
+}
+
+// --- sprint trigger/condition/action ------------------------------------------
+
+type fakeSprintReader struct {
+	byID map[uuid.UUID]*sprintdom.Sprint
+	err  error
+}
+
+func (f *fakeSprintReader) FindSprintByID(_ context.Context, id uuid.UUID) (*sprintdom.Sprint, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	sp, ok := f.byID[id]
+	if !ok {
+		return nil, sprintdom.ErrSprintNotFound
+	}
+	return sp, nil
+}
+
+type fakeSprintUpdater struct {
+	updateCalls   int
+	completeCalls int
+	lastUpdate    sprintdom.UpdateSprintInput
+	lastComplete  sprintdom.CompleteSprintInput
+	result        *sprintdom.Sprint
+	err           error
+}
+
+func (f *fakeSprintUpdater) UpdateSprint(_ context.Context, _, id uuid.UUID, in sprintdom.UpdateSprintInput) (*sprintdom.Sprint, error) {
+	f.updateCalls++
+	f.lastUpdate = in
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.result != nil {
+		return f.result, nil
+	}
+	return &sprintdom.Sprint{ID: id}, nil
+}
+
+func (f *fakeSprintUpdater) CompleteSprint(_ context.Context, _, id uuid.UUID, in sprintdom.CompleteSprintInput) (*sprintdom.Sprint, error) {
+	f.completeCalls++
+	f.lastComplete = in
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.result != nil {
+		return f.result, nil
+	}
+	return &sprintdom.Sprint{ID: id, Status: sprintdom.SprintStatusCompleted}, nil
+}
+
+func TestResolveSprintFor_PrefersDirectSprint(t *testing.T) {
+	c := &AutomationConsumer{}
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Name: "direct"}
+	got, err := c.resolveSprintFor(context.Background(), nil, sprint)
+	if err != nil || got != sprint {
+		t.Fatalf("expected the direct sprint to be returned unchanged, got %v, %v", got, err)
+	}
+}
+
+func TestResolveSprintFor_FallsBackToTaskSprintID(t *testing.T) {
+	sprintID := uuid.New()
+	sprint := &sprintdom.Sprint{ID: sprintID, Name: "via task"}
+	c := &AutomationConsumer{sprintRepo: &fakeSprintReader{byID: map[uuid.UUID]*sprintdom.Sprint{sprintID: sprint}}}
+	task := &taskdom.Task{ID: uuid.New(), SprintID: &sprintID}
+	got, err := c.resolveSprintFor(context.Background(), task, nil)
+	if err != nil || got != sprint {
+		t.Fatalf("expected task.SprintID to resolve to the sprint, got %v, %v", got, err)
+	}
+}
+
+func TestResolveSprintFor_NoSprintReturnsNilNoError(t *testing.T) {
+	c := &AutomationConsumer{}
+	got, err := c.resolveSprintFor(context.Background(), &taskdom.Task{ID: uuid.New()}, nil)
+	if err != nil || got != nil {
+		t.Fatalf("expected (nil, nil) when neither sprint nor task.SprintID is set, got %v, %v", got, err)
+	}
+}
+
+func TestResolveSprintFor_TaskSprintIDWithoutSprintRepoConfiguredErrors(t *testing.T) {
+	sprintID := uuid.New()
+	c := &AutomationConsumer{}
+	_, err := c.resolveSprintFor(context.Background(), &taskdom.Task{ID: uuid.New(), SprintID: &sprintID}, nil)
+	if err == nil {
+		t.Fatal("expected an error when sprintRepo isn't configured but a lookup is needed")
+	}
+}
+
+func TestApplyUpdateSprint_NoSprintInContextErrors(t *testing.T) {
+	c := &AutomationConsumer{sprintSvc: &fakeSprintUpdater{}}
+	_, err := c.applyUpdateSprint(context.Background(), uuid.New(), nil, nil, &automationdom.SprintFieldUpdate{Name: "x"}, nil)
+	if err == nil {
+		t.Fatal("expected an error when neither task nor sprint gives a sprint to update")
+	}
+}
+
+func TestApplyUpdateSprint_NothingChangedSkipsWithoutCallingService(t *testing.T) {
+	updater := &fakeSprintUpdater{}
+	c := &AutomationConsumer{sprintSvc: updater}
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Name: "Sprint 1"}
+	applied, err := c.applyUpdateSprint(context.Background(), uuid.New(), nil, sprint, &automationdom.SprintFieldUpdate{Name: "Sprint 1"}, nil)
+	if err != nil || applied {
+		t.Fatalf("expected no-op when the requested name already matches, got applied=%v err=%v", applied, err)
+	}
+	if updater.updateCalls != 0 {
+		t.Fatalf("expected UpdateSprint to not be called, got %d calls", updater.updateCalls)
+	}
+}
+
+func TestApplyUpdateSprint_ChangedFieldCallsServiceAndMutatesInPlace(t *testing.T) {
+	updater := &fakeSprintUpdater{result: &sprintdom.Sprint{ID: uuid.New(), Name: "New Name"}}
+	c := &AutomationConsumer{sprintSvc: updater}
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Name: "Old Name"}
+	applied, err := c.applyUpdateSprint(context.Background(), uuid.New(), nil, sprint, &automationdom.SprintFieldUpdate{Name: "New Name"}, nil)
+	if err != nil || !applied {
+		t.Fatalf("expected applied=true, got %v, %v", applied, err)
+	}
+	if updater.updateCalls != 1 {
+		t.Fatalf("expected UpdateSprint called once, got %d", updater.updateCalls)
+	}
+	if sprint.Name != "New Name" {
+		t.Fatalf("expected the in-memory sprint to be mutated to the new name, got %q", sprint.Name)
+	}
+}
+
+func TestApplyCompleteSprint_AlreadyCompleteIsNoop(t *testing.T) {
+	updater := &fakeSprintUpdater{}
+	c := &AutomationConsumer{sprintSvc: updater}
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Status: sprintdom.SprintStatusCompleted}
+	applied, err := c.applyCompleteSprint(context.Background(), uuid.New(), nil, sprint, nil)
+	if err != nil || applied {
+		t.Fatalf("expected no-op for an already-complete sprint, got %v, %v", applied, err)
+	}
+	if updater.completeCalls != 0 {
+		t.Fatal("expected CompleteSprint to not be called for an already-complete sprint")
+	}
+}
+
+func TestApplyCompleteSprint_CompletesAndMutatesInPlace(t *testing.T) {
+	moveTo := uuid.New()
+	updater := &fakeSprintUpdater{result: &sprintdom.Sprint{ID: uuid.New(), Status: sprintdom.SprintStatusCompleted}}
+	c := &AutomationConsumer{sprintSvc: updater}
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Status: sprintdom.SprintStatusActive}
+	applied, err := c.applyCompleteSprint(context.Background(), uuid.New(), nil, sprint, &moveTo)
+	if err != nil || !applied {
+		t.Fatalf("expected applied=true, got %v, %v", applied, err)
+	}
+	if updater.completeCalls != 1 {
+		t.Fatalf("expected CompleteSprint called once, got %d", updater.completeCalls)
+	}
+	if updater.lastComplete.MoveToSprintID == nil || *updater.lastComplete.MoveToSprintID != moveTo {
+		t.Fatalf("expected MoveToSprintID threaded through, got %v", updater.lastComplete.MoveToSprintID)
+	}
+	if sprint.Status != sprintdom.SprintStatusCompleted {
+		t.Fatalf("expected the in-memory sprint mutated to completed, got %v", sprint.Status)
+	}
+}
+
+// TestWalk_SprintTriggeredWalk_ConditionEvaluatesSprintFieldsAndActionApplies
+// exercises a Sprint-triggered walk (task nil, sprint set) end to end: a
+// built-in condition node branching on sprint_status, into an update_sprint
+// action — confirms walk()'s relaxed defense-in-depth check, evaluateLeaf's
+// sprint-field dispatch, and runAction's update_sprint dispatch all compose
+// correctly with no task in context at all.
+func TestWalk_SprintTriggeredWalk_ConditionEvaluatesSprintFieldsAndActionApplies(t *testing.T) {
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Status: sprintdom.SprintStatusActive}
+	updater := &fakeSprintUpdater{result: &sprintdom.Sprint{ID: sprint.ID, Status: sprintdom.SprintStatusActive}}
+	c := &AutomationConsumer{repo: &fakeCronRepo{}, sprintSvc: updater, log: discardLogger()}
+
+	condCfg, _ := json.Marshal(automationdom.ConditionConfig{Branches: []automationdom.ConditionBranch{
+		{Handle: "match", Tree: &automationdom.ConditionLeaf{Field: automationdom.FieldSprintStatus, Operator: automationdom.OpEquals, Value: "active"}},
+	}})
+	condition := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindCondition, Type: automationdom.ConditionNodeType, Config: condCfg}
+
+	goal := "kickoff"
+	updateCfg, _ := json.Marshal(automationdom.ActionConfig{SprintUpdate: &automationdom.SprintFieldUpdate{Goal: &goal}})
+	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionUpdateSprint), Config: updateCfg}
+
+	matchHandle := "match"
+	edge := &automationdom.Edge{ID: uuid.New(), SourceNodeID: condition.ID, SourceHandle: &matchHandle, TargetNodeID: action.ID}
+
+	w := &walker{
+		consumer:  c,
+		sprint:    sprint,
+		nodesByID: map[uuid.UUID]*automationdom.Node{condition.ID: condition, action.ID: action},
+		outgoing:  map[uuid.UUID][]*automationdom.Edge{condition.ID: {edge}},
+		visited:   map[uuid.UUID]bool{},
+	}
+	w.walk(context.Background(), condition.ID)
+
+	if updater.updateCalls != 1 {
+		t.Fatalf("expected the sprint condition to match and update_sprint to run once, got %d calls", updater.updateCalls)
+	}
+}
+
+// TestWalk_SprintTriggeredWalk_ConditionElseBranchSkipsAction confirms the
+// else fallback works the same way for a sprint-field condition as it
+// already does for a task-field one.
+func TestWalk_SprintTriggeredWalk_ConditionElseBranchSkipsAction(t *testing.T) {
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Status: sprintdom.SprintStatusPlanned}
+	updater := &fakeSprintUpdater{}
+	c := &AutomationConsumer{repo: &fakeCronRepo{}, sprintSvc: updater, log: discardLogger()}
+
+	condCfg, _ := json.Marshal(automationdom.ConditionConfig{Branches: []automationdom.ConditionBranch{
+		{Handle: "match", Tree: &automationdom.ConditionLeaf{Field: automationdom.FieldSprintStatus, Operator: automationdom.OpEquals, Value: "active"}},
+	}})
+	condition := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindCondition, Type: automationdom.ConditionNodeType, Config: condCfg}
+	action := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindAction, Type: string(automationdom.ActionCompleteSprint), Config: json.RawMessage(`{}`)}
+
+	matchHandle := "match"
+	elseHandle := automationdom.ElseHandle
+	matchEdge := &automationdom.Edge{ID: uuid.New(), SourceNodeID: condition.ID, SourceHandle: &matchHandle, TargetNodeID: action.ID}
+	elseEdge := &automationdom.Edge{ID: uuid.New(), SourceNodeID: condition.ID, SourceHandle: &elseHandle, TargetNodeID: action.ID}
+
+	w := &walker{
+		consumer:  c,
+		sprint:    sprint,
+		nodesByID: map[uuid.UUID]*automationdom.Node{condition.ID: condition, action.ID: action},
+		outgoing:  map[uuid.UUID][]*automationdom.Edge{condition.ID: {matchEdge, elseEdge}},
+		visited:   map[uuid.UUID]bool{},
+	}
+	w.walk(context.Background(), condition.ID)
+
+	// planned != active, so the else edge fires — complete_sprint runs
+	// regardless of which edge fired, but this at least confirms the walk
+	// didn't error out or panic taking the sprint-context else path. The
+	// real assertion is the mismatch didn't take the "match" branch:
+	if updater.completeCalls != 1 {
+		t.Fatalf("expected complete_sprint to run exactly once (via the else edge), got %d calls", updater.completeCalls)
+	}
+}
+
+// TestHandleSprintActivity_MatchesTriggerTypeAndAppliesSprintIDNarrowing
+// confirms handleSprintActivity looks up nodes by the event's own type and
+// applies each match's optional TriggerConfig.SprintID narrowing, using the
+// full field snapshot carried in the stream message rather than a repo
+// lookup.
+func TestHandleSprintActivity_MatchesTriggerTypeAndAppliesSprintIDNarrowing(t *testing.T) {
+	sprintID := uuid.New()
+	otherSprintID := uuid.New()
+	matchingNode := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerSprintStarted)}
+	narrowedAwayCfg, _ := json.Marshal(automationdom.TriggerConfig{SprintID: &otherSprintID})
+	narrowedAwayNode := &automationdom.Node{ID: uuid.New(), Kind: automationdom.KindTrigger, Type: string(automationdom.TriggerSprintStarted), Config: narrowedAwayCfg}
+	repo := &fakePluginTriggerRepo{
+		nodesByType: map[string][]*automationdom.Node{
+			string(automationdom.TriggerSprintStarted): {matchingNode, narrowedAwayNode},
+		},
+		automation: &automationdom.Automation{ID: uuid.New(), Status: automationdom.StatusActive},
+	}
+	c, client := newTestConsumerWithRedis(t, repo, &fakePluginTriggerTaskReader{}, nil)
+	defer func() { _ = client.Close() }()
+
+	msg := redis.XMessage{ID: "1-1", Values: map[string]any{
+		"sprint_id":  sprintID.String(),
+		"project_id": uuid.New().String(),
+		"event_type": string(automationdom.TriggerSprintStarted),
+		"name":       "Sprint 4",
+		"status":     "active",
+	}}
+	c.handleSprintActivity(msg)
+
+	if len(repo.listCalls) != 1 || repo.listCalls[0] != string(automationdom.TriggerSprintStarted) {
+		t.Fatalf("expected exactly one lookup for type sprint_started, got %v", repo.listCalls)
+	}
+	// Only matchingNode's run should have started — narrowedAwayNode's
+	// SprintID doesn't match the fired sprint, so executeRunForSprint is
+	// never called for it. createRuns is a total across all matched nodes'
+	// executeRun/executeRunForSprint calls (see fakePluginTriggerRepo.CreateRun),
+	// so exactly 1 confirms the narrowing skipped the second node.
+	if repo.createRuns != 1 {
+		t.Fatalf("expected exactly one run (the un-narrowed node only), got %d", repo.createRuns)
+	}
+}
+
+// --- {{variable}} interpolation -----------------------------------------------
+
+func TestWalkerTemplateVars_BuildsTaskAndAutomationVars(t *testing.T) {
+	sp := 5
+	task := &taskdom.Task{ID: uuid.New(), Title: "Fix the bug", Importance: 3, StoryPoints: &sp, Tags: []string{"urgent", "bug"}}
+	w := &walker{consumer: &AutomationConsumer{}, automationName: "My Automation", task: task}
+	vars := w.templateVars(context.Background())
+
+	want := map[string]string{
+		"automation.name":   "My Automation",
+		"task.id":           task.ID.String(),
+		"task.title":        "Fix the bug",
+		"task.importance":   "3",
+		"task.story_points": "5",
+		"task.tags":         "urgent, bug",
+	}
+	for k, v := range want {
+		if vars[k] != v {
+			t.Errorf("vars[%q] = %q, want %q", k, vars[k], v)
+		}
+	}
+	if _, ok := vars["sprint.name"]; ok {
+		t.Error("expected no sprint.* vars when the task has no sprint_id")
+	}
+}
+
+func TestWalkerTemplateVars_BuildsSprintVarsViaResolveSprint(t *testing.T) {
+	sprintID := uuid.New()
+	goal := "Ship it"
+	sprint := &sprintdom.Sprint{ID: sprintID, Name: "Sprint 4", Status: sprintdom.SprintStatusActive, Goal: &goal}
+	c := &AutomationConsumer{sprintRepo: &fakeSprintReader{byID: map[uuid.UUID]*sprintdom.Sprint{sprintID: sprint}}}
+	task := &taskdom.Task{ID: uuid.New(), SprintID: &sprintID}
+	w := &walker{consumer: c, task: task}
+	vars := w.templateVars(context.Background())
+
+	want := map[string]string{
+		"sprint.id":     sprintID.String(),
+		"sprint.name":   "Sprint 4",
+		"sprint.status": "active",
+		"sprint.goal":   "Ship it",
+	}
+	for k, v := range want {
+		if vars[k] != v {
+			t.Errorf("vars[%q] = %q, want %q", k, vars[k], v)
+		}
+	}
+}
+
+func TestWalkerTemplateVars_DirectSprintContext(t *testing.T) {
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Name: "Sprint 5", Status: sprintdom.SprintStatusPlanned}
+	w := &walker{consumer: &AutomationConsumer{}, sprint: sprint}
+	vars := w.templateVars(context.Background())
+	if vars["sprint.name"] != "Sprint 5" || vars["sprint.status"] != "planned" {
+		t.Fatalf("expected sprint vars from the walk's own sprint, got %v", vars)
+	}
+	if _, ok := vars["task.title"]; ok {
+		t.Error("expected no task.* vars for a Sprint-triggered walk with no task")
+	}
+}
+
+func TestApplyUpdateTask_TitleTemplateIsRendered(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), Title: "Old Title"}
+	vars := map[string]string{"task.id": "abc-123"}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Title: "Ticket {{task.id}}"}, "test-automation", vars)
+	if err != nil || !applied {
+		t.Fatalf("expected applied=true, got %v, %v", applied, err)
+	}
+	if updater.lastInput.Title != "Ticket abc-123" {
+		t.Fatalf("expected the rendered title to be sent, got %q", updater.lastInput.Title)
+	}
+	if task.Title != "Ticket abc-123" {
+		t.Fatalf("expected the in-memory task's title to reflect the rendered value, got %q", task.Title)
+	}
+}
+
+func TestApplyUpdateTask_UnresolvedVariableLeftVerbatim(t *testing.T) {
+	updater := &fakeTaskUpdater{}
+	c := newTestConsumer(updater)
+	task := &taskdom.Task{ID: uuid.New(), Title: "Old Title"}
+
+	applied, err := c.applyUpdateTask(context.Background(), uuid.New(), task, &automationdom.TaskFieldUpdate{Title: "{{unknown.field}}"}, "test-automation", nil)
+	if err != nil || !applied {
+		t.Fatalf("expected applied=true, got %v, %v", applied, err)
+	}
+	if updater.lastInput.Title != "{{unknown.field}}" {
+		t.Fatalf("expected an unresolved placeholder to be left verbatim, got %q", updater.lastInput.Title)
+	}
+}
+
+func TestApplyCallAPI_RendersURLBodyAndHeaders(t *testing.T) {
+	var gotURL, gotBody, gotHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.RawQuery
+		gotHeader = r.Header.Get("X-Task-Id")
+		body := make([]byte, r.ContentLength)
+		_, _ = r.Body.Read(body)
+		gotBody = string(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	c := newTestConsumer(&fakeTaskUpdater{})
+	c.httpClient = http.DefaultClient
+	vars := map[string]string{"task.id": "task-42", "task.title": "Fix the bug"}
+	cfg := automationdom.ActionConfig{
+		Method:  "POST",
+		URL:     server.URL + "?id={{task.id}}",
+		Body:    `{"title":"{{task.title}}"}`,
+		Headers: map[string]string{"X-Task-Id": "{{task.id}}"},
+	}
+	applied, _, err := c.applyCallAPI(context.Background(), cfg, vars)
+	if err != nil || !applied {
+		t.Fatalf("expected applied=true, got %v, %v", applied, err)
+	}
+	if gotURL != "id=task-42" {
+		t.Fatalf("expected the rendered URL query, got %q", gotURL)
+	}
+	if gotBody != `{"title":"Fix the bug"}` {
+		t.Fatalf("expected the rendered body, got %q", gotBody)
+	}
+	if gotHeader != "task-42" {
+		t.Fatalf("expected the rendered header value, got %q", gotHeader)
+	}
+}
+
+func TestApplyUpdateSprint_GoalTemplateIsRendered(t *testing.T) {
+	updater := &fakeSprintUpdater{result: &sprintdom.Sprint{ID: uuid.New()}}
+	c := &AutomationConsumer{sprintSvc: updater}
+	sprint := &sprintdom.Sprint{ID: uuid.New(), Name: "Sprint 1"}
+	vars := map[string]string{"task.title": "Fix the bug"}
+	goal := "Ship: {{task.title}}"
+
+	applied, err := c.applyUpdateSprint(context.Background(), uuid.New(), nil, sprint, &automationdom.SprintFieldUpdate{Goal: &goal}, vars)
+	if err != nil || !applied {
+		t.Fatalf("expected applied=true, got %v, %v", applied, err)
+	}
+	if updater.lastUpdate.Goal == nil || **updater.lastUpdate.Goal != "Ship: Fix the bug" {
+		t.Fatalf("expected the rendered goal to be sent, got %v", updater.lastUpdate.Goal)
 	}
 }

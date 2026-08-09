@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
+	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/worker"
 )
 
@@ -38,6 +40,10 @@ func startAutomationConsumer(t *testing.T, env *e2eEnv) *worker.AutomationConsum
 		// Same wiring as bootstrap/app.go — lets a task-less trigger_ai_agent
 		// node fire a direct message instead of a task assignment.
 		WithAgentMessaging(env.projectRepo, env.agentSvc).
+		// Same wiring as bootstrap/app.go — lets update_sprint/complete_sprint
+		// dispatch, and lets a Task-triggered walk resolve a sprint via the
+		// triggering task's own sprint_id (resolveSprintFor).
+		WithSprintService(env.sprintRepo, env.sprintSvc).
 		// Every test shares one physical Redis instance and stream (see
 		// TestMain), but each gets its own Postgres database — without a
 		// consumer group of its own, parallel tests (t.Parallel()) would
@@ -383,20 +389,10 @@ func taskTypeIDByName(types []map[string]any, name string) string {
 	return ""
 }
 
-func archiveAutomationViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID string) {
+func deactivateAutomationViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID string) {
 	t.Helper()
 	req := mustRequest(env.ctx, t, http.MethodPost,
-		fmt.Sprintf("%s/api/v1/projects/%s/automations/%s/archive", env.base, projectID, automationID), nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp := mustDo(t, client, req)
-	defer func() { _ = resp.Body.Close() }()
-	assertStatus(t, resp, http.StatusOK)
-}
-
-func revertAutomationToDraftViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID string) {
-	t.Helper()
-	req := mustRequest(env.ctx, t, http.MethodPost,
-		fmt.Sprintf("%s/api/v1/projects/%s/automations/%s/revert-to-draft", env.base, projectID, automationID), nil)
+		fmt.Sprintf("%s/api/v1/projects/%s/automations/%s/deactivate", env.base, projectID, automationID), nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp := mustDo(t, client, req)
 	defer func() { _ = resp.Body.Close() }()
@@ -855,7 +851,7 @@ func TestE2EAutomation_WebhookTriggerTokenLifecycle(t *testing.T) {
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 
 	// Token generation doesn't require the automation to be active — but the
-	// webhook call itself must still be rejected while it's in draft.
+	// webhook call itself must still be rejected while it's inactive.
 	rawToken := generateWebhookTokenViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID)
 	postWebhookExpect(t, env, triggerID, rawToken, http.StatusNotFound)
 
@@ -1551,6 +1547,323 @@ func TestE2EAutomationEngine_TriggerAIAgentStartsConversationWithoutReassigning(
 }
 
 // ---------------------------------------------------------------------------
+// Engine: trigger_ai_agent pauses the walk until its conversation finishes
+//
+// The e2e stack (newE2EEnv) has no ai-agent container — nothing here ever
+// drives a real conversation to a terminal status on its own, so these tests
+// simulate services/ai-agent's role directly: they append to
+// StreamAgentConversationStatus themselves (see
+// publishAgentConversationStatusViaRedis), the exact same durable stream
+// stream_store.publish_conversation_status (services/ai-agent/src/core/streams.py)
+// writes to in production. That's what makes this a genuine end-to-end test
+// of AutomationConsumer.handleAgentConversationStatus/resumeWalk against a
+// real Postgres-backed automation_pending_agent_waits row and a real Redis
+// consumer group — not just the in-process unit tests in
+// internal/worker/automation_consumer_test.go, which fake the repository.
+// ---------------------------------------------------------------------------
+
+// publishAgentConversationStatusViaRedis simulates services/ai-agent
+// reporting conversationID's terminal status by appending directly to
+// StreamAgentConversationStatus, standing in for the ai-agent container this
+// e2e stack doesn't run.
+func publishAgentConversationStatusViaRedis(t *testing.T, env *e2eEnv, conversationID, status string) {
+	t.Helper()
+	if err := env.redisClient.XAdd(env.ctx, &redis.XAddArgs{
+		Stream: events.StreamAgentConversationStatus,
+		Values: map[string]any{"conversation_id": conversationID, "status": status},
+	}).Err(); err != nil {
+		t.Fatalf("publish agent conversation status: %v", err)
+	}
+}
+
+// stopConversationViaAPI calls the real StopConversation endpoint — unlike
+// publishAgentConversationStatusViaRedis, which fabricates the stream
+// message directly, this exercises agentsvc.Service.StopConversation's own
+// StreamAgentConversationStatus publish, the thing
+// TestE2EAutomationEngine_TriggerAIAgentStoppedViaAPIFailsRunWithoutRunningNextNode
+// actually needs to prove: that an explicit stop (not just a conversation
+// finishing/failing on its own) also resumes a paused graph walk.
+func stopConversationViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, conversationID string) {
+	t.Helper()
+	req := mustRequest(env.ctx, t, http.MethodPost,
+		fmt.Sprintf("%s/api/v1/projects/%s/conversations/%s/stop", env.base, projectID, conversationID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusOK)
+}
+
+// waitForAutomationRunStatus polls automationID's run list until it has
+// exactly one run whose status equals want, or fails the test after timeout.
+func waitForAutomationRunStatus(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, automationID, want string, timeout time.Duration) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var runs []map[string]any
+	for time.Now().Before(deadline) {
+		runs = listAutomationRunsViaAPI(t, env, client, token, projectID, automationID)
+		if len(runs) == 1 {
+			if status, _ := runs[0]["status"].(string); status == want {
+				return runs[0]
+			}
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for automation %s's run to reach status %q; last observed runs: %v", automationID, want, runs)
+	return nil
+}
+
+// setupTriggerAIAgentPauseFixture creates a project, an LLM-backed agent, a
+// task, and a Trigger(status_changed) -> Trigger AI Agent -> Update Task(tags)
+// automation; activates it; fires the trigger; and waits for the
+// trigger_ai_agent node's conversation to exist. By the time this returns,
+// the graph walk is paused at the trigger_ai_agent node — exactly where each
+// pause/resume test below wants to start from, differing only in what
+// terminal status they report back for the conversation.
+func setupTriggerAIAgentPauseFixture(t *testing.T, env *e2eEnv, namePrefix string) (ownerClient *http.Client, ownerToken, projID, automationID, agentNodeID, task, conversationID string) {
+	t.Helper()
+	ownerUsername := namePrefix + "-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, namePrefix+"owner1")
+	ownerClient, ownerToken = taskMemberLogin(t, env, ownerUsername, namePrefix+"owner1")
+	projID = createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
+
+	roleID := projectRoleIDByName(t, env, ownerClient, ownerToken, projID, "Editor")
+	_, createEnv := createAgentRequest(t, env, ownerClient, ownerToken, projID,
+		llmAgentBody(roleID, namePrefix+"-"+uuid.NewString(), nil))
+	agentID, _ := assertDataMap(t, createEnv)["id"].(string)
+
+	members := listProjectMembersViaAPI(t, env, ownerClient, ownerToken, projID)
+	agentMemberID := memberIDForAgent(members, agentID)
+	if agentMemberID == "" {
+		t.Fatalf("expected agent %q to resolve to a project member", agentID)
+	}
+
+	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
+	inProgressID := statusIDByName(statuses, "In Progress")
+	task = createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "AI Agent Pause/Resume Task")
+
+	automationID = createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Trigger AI Agent Pause/Resume Automation")
+	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
+	agentNode := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "trigger_ai_agent", map[string]any{"member_id": agentMemberID, "message": "please review"})
+	updateNode := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"reviewed"}}})
+	triggerID, _ := trigger["id"].(string)
+	agentNodeID, _ = agentNode["id"].(string)
+	updateNodeID, _ := updateNode["id"].(string)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, agentNodeID)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, agentNodeID, updateNodeID)
+	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+
+	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
+
+	conv := waitForAgentConversation(t, env, ownerClient, ownerToken, projID, agentID, 20*time.Second, func(item map[string]any) bool {
+		return item["task_id"] == task
+	})
+	conversationID, _ = conv["id"].(string)
+	if conversationID == "" {
+		t.Fatal("expected the conversation to have a non-empty id")
+	}
+	return ownerClient, ownerToken, projID, automationID, agentNodeID, task, conversationID
+}
+
+func TestE2EAutomationEngine_TriggerAIAgentPausesNextNodeUntilConversationFinishes(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerClient, ownerToken, projID, automationID, _, task, conversationID :=
+		setupTriggerAIAgentPauseFixture(t, env, "automation-aiagent-pause")
+
+	// Give the (nonexistent) ai-agent container every chance to have wrongly
+	// driven this forward on its own before asserting the negative — a
+	// regression back to the old "continue immediately" behavior would apply
+	// update_task in the same synchronous call that started the
+	// conversation, well before this point.
+	time.Sleep(1 * time.Second)
+	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
+	if tags, _ := data["tags"].([]any); len(tags) != 0 {
+		t.Fatalf("expected update_task to NOT have run yet — the walk should still be paused at trigger_ai_agent, got tags %v", tags)
+	}
+	waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "running", 5*time.Second)
+
+	publishAgentConversationStatusViaRedis(t, env, conversationID, "finished")
+
+	data = waitForTaskField(t, env, ownerClient, ownerToken, projID, task, 20*time.Second, func(data map[string]any) bool {
+		tags, _ := data["tags"].([]any)
+		return len(tags) == 1 && tags[0] == "reviewed"
+	})
+	tags, _ := data["tags"].([]any)
+	if len(tags) != 1 || tags[0] != "reviewed" {
+		t.Fatalf("expected tags to be exactly [\"reviewed\"] once the paused node resumed, got %v", tags)
+	}
+
+	waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "completed", 10*time.Second)
+}
+
+func TestE2EAutomationEngine_TriggerAIAgentFailedConversationFailsRunWithoutRunningNextNode(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerClient, ownerToken, projID, automationID, agentNodeID, task, conversationID :=
+		setupTriggerAIAgentPauseFixture(t, env, "automation-aiagent-fail")
+
+	publishAgentConversationStatusViaRedis(t, env, conversationID, "failed")
+
+	run := waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "failed", 20*time.Second)
+
+	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
+	if tags, _ := data["tags"].([]any); len(tags) != 0 {
+		t.Fatalf("expected update_task to never run when the agent conversation itself failed, got tags %v", tags)
+	}
+
+	runID, _ := run["id"].(string)
+	steps := listAutomationRunStepsViaAPI(t, env, ownerClient, ownerToken, projID, automationID, runID)
+	var sawFailedAgentStep bool
+	for _, step := range steps {
+		if step["node_id"] == agentNodeID && step["status"] == "failed" {
+			sawFailedAgentStep = true
+			if errMsg, _ := step["error"].(string); errMsg == "" {
+				t.Fatal("expected the failed run step to carry a non-empty error message")
+			}
+		}
+	}
+	if !sawFailedAgentStep {
+		t.Fatalf("expected a failed run step recorded for the trigger_ai_agent node, got steps: %v", steps)
+	}
+}
+
+// TestE2EAutomationEngine_TriggerAIAgentStoppedViaAPIFailsRunWithoutRunningNextNode
+// covers the same "the pending wait must resolve" contract as the finished/
+// failed tests above, but for an explicit stop instead of the conversation
+// reaching a terminal status on its own. Regression coverage for a bug where
+// StopConversation wrote "stopped" straight to Postgres and told ai-agent to
+// tear the conversation down, but never published to
+// StreamAgentConversationStatus — leaving any trigger_ai_agent node's
+// PendingAgentWait (and its automation run) paused forever, since neither
+// Go's StopConversation nor ai-agent's own shutdown-path turn-end logic
+// considered itself responsible for that publish.
+func TestE2EAutomationEngine_TriggerAIAgentStoppedViaAPIFailsRunWithoutRunningNextNode(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerClient, ownerToken, projID, automationID, agentNodeID, task, conversationID :=
+		setupTriggerAIAgentPauseFixture(t, env, "automation-aiagent-stop")
+
+	stopConversationViaAPI(t, env, ownerClient, ownerToken, projID, conversationID)
+
+	run := waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "failed", 20*time.Second)
+
+	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
+	if tags, _ := data["tags"].([]any); len(tags) != 0 {
+		t.Fatalf("expected update_task to never run when the agent conversation was stopped, got tags %v", tags)
+	}
+
+	runID, _ := run["id"].(string)
+	steps := listAutomationRunStepsViaAPI(t, env, ownerClient, ownerToken, projID, automationID, runID)
+	var sawFailedAgentStep bool
+	for _, step := range steps {
+		if step["node_id"] == agentNodeID && step["status"] == "failed" {
+			sawFailedAgentStep = true
+		}
+	}
+	if !sawFailedAgentStep {
+		t.Fatalf("expected a failed run step recorded for the trigger_ai_agent node once its conversation was stopped, got steps: %v", steps)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Engine: wait pauses the walk until its configured duration elapses
+// ---------------------------------------------------------------------------
+
+// TestE2EAutomationEngine_WaitNodePausesNextNodeUntilDelayElapses is the e2e
+// counterpart to the worker-level TestWaitPauseResume_* unit tests: a node
+// downstream of wait must not run until the configured duration has
+// actually elapsed. wait_minutes' validated minimum is 1, so rather than
+// have the test itself wait out a real minute, it forces the resulting
+// automation_pending_delays row due via a direct SQL update once it exists
+// — WaitScheduler (a real poller, ticking fast here via WithInterval) then
+// picks it up exactly like it would once a real minute passed.
+func TestE2EAutomationEngine_WaitNodePausesNextNodeUntilDelayElapses(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	consumer := startAutomationConsumer(t, env)
+
+	waitScheduler := worker.NewWaitScheduler(env.redisClient, consumer, slog.New(slog.NewTextHandler(os.Stdout, nil))).
+		WithInterval(200 * time.Millisecond).
+		WithLeaderKey("e2e." + uuid.NewString())
+	waitScheduler.Start(env.ctx)
+	t.Cleanup(waitScheduler.Stop)
+
+	ownerUsername := "automation-wait-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationwaitowner1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationwaitowner1")
+	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
+
+	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
+	inProgressID := statusIDByName(statuses, "In Progress")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Wait Node Task")
+
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Wait Node Automation")
+	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
+	waitNode := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "wait", map[string]any{"wait_minutes": 1})
+	updateNode := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "update_task", map[string]any{"update": map[string]any{"tags": []string{"resumed"}}})
+	triggerID, _ := trigger["id"].(string)
+	waitNodeID, _ := waitNode["id"].(string)
+	updateNodeID, _ := updateNode["id"].(string)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, waitNodeID)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, waitNodeID, updateNodeID)
+	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+
+	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var count int
+		if err := env.db.GetContext(env.ctx, &count, `SELECT COUNT(*) FROM automation_pending_delays WHERE automation_id = $1`, automationID); err != nil {
+			t.Fatalf("count pending delays: %v", err)
+		}
+		if count == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the wait node to create a pending delay")
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	// Nothing drives this forward on its own within this window — a
+	// regression back to "continue immediately" would have applied
+	// update_task in the same synchronous call that created the delay,
+	// well before this point.
+	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
+	if tags, _ := data["tags"].([]any); len(tags) != 0 {
+		t.Fatalf("expected update_task to NOT have run yet — the walk should still be paused at wait, got tags %v", tags)
+	}
+	waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "running", 5*time.Second)
+
+	if _, err := env.db.ExecContext(env.ctx, `UPDATE automation_pending_delays SET resume_at = NOW() - INTERVAL '1 second' WHERE automation_id = $1`, automationID); err != nil {
+		t.Fatalf("force delay due: %v", err)
+	}
+
+	data = waitForTaskField(t, env, ownerClient, ownerToken, projID, task, 10*time.Second, func(data map[string]any) bool {
+		tags, _ := data["tags"].([]any)
+		return len(tags) == 1 && tags[0] == "resumed"
+	})
+	tags, _ := data["tags"].([]any)
+	if len(tags) != 1 || tags[0] != "resumed" {
+		t.Fatalf("expected tags to be exactly [\"resumed\"] once the wait resumed, got %v", tags)
+	}
+
+	waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "completed", 10*time.Second)
+}
+
+// ---------------------------------------------------------------------------
 // Engine: condition fields/operators beyond importance greater_than
 // ---------------------------------------------------------------------------
 
@@ -1841,7 +2154,7 @@ func TestE2EAutomationEngine_ConditionElseBranchFiresWhenNoBranchMatches(t *test
 
 // ---------------------------------------------------------------------------
 // Engine: graph structure — chaining, idempotency, and lifecycle after
-// activation (archive/revert-to-draft/live edits)
+// activation (deactivate/reactivate/live edits)
 // ---------------------------------------------------------------------------
 
 func TestE2EAutomationEngine_ActionChainContinuesPastFirstAction(t *testing.T) {
@@ -1948,24 +2261,24 @@ func TestE2EAutomationEngine_IdempotentAssignSkipsRunStepOnSecondFire(t *testing
 	}
 }
 
-func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
+func TestE2EAutomation_InactiveAutomationDoesNotFire(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
-	ownerUsername := "automation-archived-owner-" + uuid.NewString()
-	seedTaskMemberUser(t, env, ownerUsername, "automationarchived1")
-	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationarchived1")
+	ownerUsername := "automation-inactive-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationinactive1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationinactive1")
 	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
 
 	memberID := addProjectMemberWithAutomationPerms(t, env, ownerClient, ownerToken, projID,
-		"automation-archived-member-"+uuid.NewString(), "automationarchivedm1")
+		"automation-inactive-member-"+uuid.NewString(), "automationinactivem1")
 
 	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
 	inProgressID := statusIDByName(statuses, "In Progress")
-	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Archived Automation Task")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Inactive Automation Task")
 
-	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Archived Automation")
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Inactive Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
@@ -1974,7 +2287,7 @@ func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
-	archiveAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+	deactivateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
 
 	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
 
@@ -1982,30 +2295,30 @@ func TestE2EAutomation_ArchivedAutomationDoesNotFire(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
 	if assignees, _ := data["assignee_ids"].([]any); len(assignees) != 0 {
-		t.Fatalf("expected an archived automation to never fire, got assignee_ids=%v", assignees)
+		t.Fatalf("expected an inactive automation to never fire, got assignee_ids=%v", assignees)
 	}
 }
 
-func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.T) {
+func TestE2EAutomation_DeactivateStopsFiringThenReactivateResumes(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	startAutomationConsumer(t, env)
 
-	ownerUsername := "automation-revertdraft-owner-" + uuid.NewString()
-	seedTaskMemberUser(t, env, ownerUsername, "automationrevertdraft1")
-	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationrevertdraft1")
+	ownerUsername := "automation-deactivate-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationdeactivate1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationdeactivate1")
 	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
 
 	memberID := addProjectMemberWithAutomationPerms(t, env, ownerClient, ownerToken, projID,
-		"automation-revertdraft-member-"+uuid.NewString(), "automationrevertdraftm1")
+		"automation-deactivate-member-"+uuid.NewString(), "automationdeactivatem1")
 
 	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
 	inProgressID := statusIDByName(statuses, "In Progress")
 	doneID := statusIDByName(statuses, "Done")
 
-	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Revert Draft Task")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Deactivate Task")
 
-	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Revert Draft Automation")
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Deactivate Automation")
 	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
 		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
 	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
@@ -2014,14 +2327,14 @@ func TestE2EAutomation_RevertToDraftStopsFiringThenReactivateResumes(t *testing.
 	actionID, _ := action["id"].(string)
 	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
 	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
-	revertAutomationToDraftViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+	deactivateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
 
-	// Draft: firing the matching event must NOT assign anyone.
+	// Inactive: firing the matching event must NOT assign anyone.
 	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
 	time.Sleep(3 * time.Second)
 	data := getTaskViaAPI(t, env, ownerClient, ownerToken, projID, task)
 	if assignees, _ := data["assignee_ids"].([]any); len(assignees) != 0 {
-		t.Fatalf("expected a draft (reverted) automation to not fire, got assignee_ids=%v", assignees)
+		t.Fatalf("expected an inactive (deactivated) automation to not fire, got assignee_ids=%v", assignees)
 	}
 
 	// Re-activate: a FRESH status transition into In Progress must now fire.
@@ -2269,4 +2582,201 @@ func TestE2EAutomationEngine_ConditionMatchModeAllRequiresEveryChildToMatch(t *t
 	waitForTaskField(t, env, ownerClient, ownerToken, projID, parentID, 20*time.Second, func(data map[string]any) bool {
 		return taskHasTag(data, "all-done")
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Engine: sprint trigger / condition / action
+// ---------------------------------------------------------------------------
+
+// getSprintViaAPI fetches a sprint and returns its decoded response body.
+func getSprintViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, sprintID string) map[string]any {
+	t.Helper()
+	req := mustRequest(env.ctx, t, http.MethodGet,
+		fmt.Sprintf("%s/api/v1/projects/%s/sprints/%s", env.base, projectID, sprintID), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusOK)
+	var e envelope
+	decodeJSON(t, resp, &e)
+	return assertDataMap(t, e)
+}
+
+// patchSprintFieldsViaAPI PATCHes a sprint through the normal sprint-update
+// endpoint — the same path a human edit would take, and (for status) the one
+// sprintsvc.Service diffs to detect a sprint_started transition.
+func patchSprintFieldsViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, sprintID string, fields map[string]any) {
+	t.Helper()
+	req := mustRequest(env.ctx, t, http.MethodPatch,
+		fmt.Sprintf("%s/api/v1/projects/%s/sprints/%s", env.base, projectID, sprintID), jsonBody(t, fields))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := mustDo(t, client, req)
+	defer func() { _ = resp.Body.Close() }()
+	assertStatus(t, resp, http.StatusOK)
+}
+
+// waitForSprintField polls the sprint until check(data) returns true, or
+// fails the test after timeout.
+func waitForSprintField(t *testing.T, env *e2eEnv, client *http.Client, token, projectID, sprintID string, timeout time.Duration, check func(map[string]any) bool) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var data map[string]any
+	for time.Now().Before(deadline) {
+		data = getSprintViaAPI(t, env, client, token, projectID, sprintID)
+		if check(data) {
+			return data
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for sprint %s to satisfy the expected condition; last observed: %v", sprintID, data)
+	return nil
+}
+
+// TestE2EAutomationEngine_SprintStartedTriggerConditionAndUpdateSprint fires
+// a real sprint_started event (PATCH .../sprints/:id status=active) and
+// confirms it durably reaches worker.AutomationConsumer.handleSprintActivity
+// via StreamSprintActivities (not just the fire-and-forget pub/sub channel),
+// matches a sprint_status condition against the sprint carried in the
+// message, and applies update_sprint.
+func TestE2EAutomationEngine_SprintStartedTriggerConditionAndUpdateSprint(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerUsername := "automation-sprint-started-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationsprintstarted1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationsprintstarted1")
+	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
+
+	sprintID := createSprintViaAPI(t, env, ownerClient, ownerToken, projID, "Sprint Started E2E")
+
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Sprint Started Automation")
+	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"trigger", "sprint_started", nil)
+	condCfg := map[string]any{
+		"branches": []map[string]any{
+			{
+				"handle": "active",
+				"tree": map[string]any{
+					"field": "sprint_status", "operator": "equals", "value": "active",
+				},
+			},
+		},
+	}
+	condition := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"condition", "condition", condCfg)
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "update_sprint", map[string]any{"sprint_update": map[string]any{"goal": "kickoff"}})
+	triggerID, _ := trigger["id"].(string)
+	conditionID, _ := condition["id"].(string)
+	actionID, _ := action["id"].(string)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, conditionID)
+	activeHandle := "active"
+	addAutomationEdgeViaAPIExpect(t, env, ownerClient, ownerToken, projID, automationID, conditionID, actionID, &activeHandle, http.StatusCreated)
+	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+
+	patchSprintFieldsViaAPI(t, env, ownerClient, ownerToken, projID, sprintID, map[string]any{"status": "active"})
+
+	data := waitForSprintField(t, env, ownerClient, ownerToken, projID, sprintID, 20*time.Second, func(data map[string]any) bool {
+		goal, _ := data["goal"].(string)
+		return goal == "kickoff"
+	})
+	if goal, _ := data["goal"].(string); goal != "kickoff" {
+		t.Fatalf("expected the sprint's goal to be updated to \"kickoff\", got %q", goal)
+	}
+
+	runs := listAutomationRunsViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+	if len(runs) != 1 {
+		t.Fatalf("expected exactly one recorded run, got %d", len(runs))
+	}
+	if status, _ := runs[0]["status"].(string); status != "completed" {
+		t.Fatalf("expected the run to finalize as completed, got %q", status)
+	}
+}
+
+// TestE2EAutomationEngine_TaskTriggeredCompleteSprintViaTaskSprintID fires a
+// plain task-status trigger and confirms complete_sprint resolves its
+// target sprint via the triggering task's own sprint_id — not from a
+// sprint_* trigger at all — proving a Task-triggered walk can still reach a
+// sprint action node downstream.
+func TestE2EAutomationEngine_TaskTriggeredCompleteSprintViaTaskSprintID(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerUsername := "automation-task-complete-sprint-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationtaskcompletesprint1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationtaskcompletesprint1")
+	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
+
+	sprintID := createSprintViaAPI(t, env, ownerClient, ownerToken, projID, "Sprint To Complete")
+	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
+	inProgressID := statusIDByName(statuses, "In Progress")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Task In Sprint")
+	patchTaskFieldsViaAPI(t, env, ownerClient, ownerToken, projID, task, map[string]any{"sprint_id": sprintID})
+
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Task-Triggered Complete Sprint Automation")
+	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "complete_sprint", map[string]any{})
+	triggerID, _ := trigger["id"].(string)
+	actionID, _ := action["id"].(string)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
+	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+
+	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
+
+	data := waitForSprintField(t, env, ownerClient, ownerToken, projID, sprintID, 20*time.Second, func(data map[string]any) bool {
+		status, _ := data["status"].(string)
+		return status == "completed"
+	})
+	if status, _ := data["status"].(string); status != "completed" {
+		t.Fatalf("expected the sprint to be completed via the task-triggered walk, got %q", status)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Engine: {{variable}} interpolation
+// ---------------------------------------------------------------------------
+
+// TestE2EAutomationEngine_UpdateTaskTitleSupportsVariableInterpolation fires
+// a real update_task action whose configured title references {{task.title}}
+// and confirms the applied title is rendered using the task's own (pre-update)
+// title, not the literal template text — the real vartemplate.Render call
+// inside applyUpdateTask, not a mock.
+func TestE2EAutomationEngine_UpdateTaskTitleSupportsVariableInterpolation(t *testing.T) {
+	t.Parallel()
+	env := newE2EEnv(t)
+	startAutomationConsumer(t, env)
+
+	ownerUsername := "automation-vartemplate-owner-" + uuid.NewString()
+	seedTaskMemberUser(t, env, ownerUsername, "automationvartemplate1")
+	ownerClient, ownerToken := taskMemberLogin(t, env, ownerUsername, "automationvartemplate1")
+	projID := createProjectForTasksViaAPI(t, env, ownerClient, ownerToken)
+
+	statuses := listTaskStatusesViaAPI(t, env, ownerClient, ownerToken, projID)
+	inProgressID := statusIDByName(statuses, "In Progress")
+	task := createTaskViaAPI(t, env, ownerClient, ownerToken, projID, "Original Title")
+
+	automationID := createAutomationViaAPI(t, env, ownerClient, ownerToken, projID, "Variable Interpolation Automation")
+	trigger := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"trigger", "status_changed", map[string]any{"status_id": inProgressID})
+	action := addAutomationNodeViaAPI(t, env, ownerClient, ownerToken, projID, automationID,
+		"action", "update_task", map[string]any{"update": map[string]any{"title": "Reviewed: {{task.title}}"}})
+	triggerID, _ := trigger["id"].(string)
+	actionID, _ := action["id"].(string)
+	addAutomationEdgeViaAPI(t, env, ownerClient, ownerToken, projID, automationID, triggerID, actionID)
+	activateAutomationViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
+
+	setTaskStatusViaAPI(t, env, ownerClient, ownerToken, projID, task, inProgressID)
+
+	data := waitForTaskField(t, env, ownerClient, ownerToken, projID, task, 20*time.Second, func(data map[string]any) bool {
+		title, _ := data["title"].(string)
+		return title == "Reviewed: Original Title"
+	})
+	if title, _ := data["title"].(string); title != "Reviewed: Original Title" {
+		t.Fatalf("expected {{task.title}} to render using the task's own original title, got %q", title)
+	}
 }

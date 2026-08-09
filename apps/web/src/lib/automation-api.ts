@@ -4,7 +4,7 @@ import type { SuccessEnvelope } from "./api-error";
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
-export type AutomationStatus = "draft" | "active" | "archived";
+export type AutomationStatus = "active" | "inactive";
 export type NodeKind = "trigger" | "condition" | "action";
 
 export const TRIGGER_TYPES = [
@@ -17,13 +17,54 @@ export const TRIGGER_TYPES = [
 	"predecessor_done",
 	"cron",
 	"api_trigger",
+	"sprint_created",
+	"sprint_started",
+	"sprint_completed",
+	"sprint_deleted",
 ] as const;
 export type TriggerType = (typeof TRIGGER_TYPES)[number];
+
+// Groups TRIGGER_TYPES by the activity stream each fires from, so the "Add
+// Trigger" picker can section a flat 13-item list instead of dumping it all
+// in one scroll — see AutomationNodePalette.
+export const TRIGGER_TYPE_GROUPS = [
+	{
+		labelKey: "taskEvents",
+		types: [
+			"status_changed",
+			"task_created",
+			"assignee_changed",
+			"priority_changed",
+			"tag_added",
+			"due_date_reached",
+			"predecessor_done",
+		],
+	},
+	{
+		labelKey: "sprintEvents",
+		types: [
+			"sprint_created",
+			"sprint_started",
+			"sprint_completed",
+			"sprint_deleted",
+		],
+	},
+	{
+		labelKey: "scheduleWebhook",
+		types: ["cron", "api_trigger"],
+	},
+] as const satisfies readonly {
+	labelKey: string;
+	types: readonly TriggerType[];
+}[];
 
 export const ACTION_TYPES = [
 	"update_task",
 	"trigger_ai_agent",
 	"call_api",
+	"wait",
+	"update_sprint",
+	"complete_sprint",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
@@ -161,6 +202,9 @@ export interface TriggerConfig {
 	/** cron: a standard 5-field cron expression (minute hour day-of-month
 	 * month day-of-week), evaluated in UTC. */
 	cron_expression?: string;
+	/** Narrows any of the four sprint_* trigger types to firing only for
+	 * this one sprint. Omitted means "any sprint in the project". */
+	sprint_id?: string;
 }
 
 export type ConditionOperator =
@@ -184,7 +228,16 @@ export type ConditionField =
 	| "parent_task_id"
 	| "reporter_id"
 	| "start_date"
-	| "due_date";
+	| "due_date"
+	/** The five fields below evaluate against the walk's current sprint
+	 * (set directly by a sprint_* trigger, or resolved via a task's own
+	 * sprint_id) rather than the task — distinct from "sprint_id" above,
+	 * which stays meaning "this task's sprint ID". */
+	| "sprint_name"
+	| "sprint_status"
+	| "sprint_goal"
+	| "sprint_start_date"
+	| "sprint_end_date";
 
 /** Which task a condition leaf or action operates on, relative to the
  * walk's own bound task — "self" (or omitted) is the walk's own task, the
@@ -277,6 +330,18 @@ export interface TaskFieldUpdate {
 	tags?: string[];
 }
 
+/** ActionUpdateSprint's config: every sprint-field change to apply, in one
+ * node — the sprint-scoped counterpart to TaskFieldUpdate, applied to
+ * whichever sprint the walk resolves (its own, for a sprint_* trigger, or
+ * the triggering task's sprint_id). */
+export interface SprintFieldUpdate {
+	name?: string;
+	start_date?: string;
+	end_date?: string;
+	goal?: string;
+	status?: "planned" | "active" | "completed";
+}
+
 export interface ActionConfig {
 	/** trigger_ai_agent: who runs the agent conversation — distinct from
 	 * update.assignee_ids, which reassigns the task itself. */
@@ -294,6 +359,14 @@ export interface ActionConfig {
 	 * which doesn't operate on a task at all. When target resolves to more
 	 * than one task, the action fans out — applied once per resolved task. */
 	target?: TaskTarget;
+	/** wait: how long the graph walk pauses at this node before continuing
+	 * to its outgoing edges. Required, must be > 0. */
+	wait_minutes?: number;
+	/** update_sprint: every sprint-field change to apply. */
+	sprint_update?: SprintFieldUpdate;
+	/** complete_sprint: where to move the sprint's non-done tasks (omitted =
+	 * backlog). */
+	move_to_sprint_id?: string;
 }
 
 // ── API calls ─────────────────────────────────────────────────────────────────
@@ -360,22 +433,12 @@ export async function activateAutomation(
 	return data.data;
 }
 
-export async function archiveAutomation(
+export async function deactivateAutomation(
 	projectId: string,
 	automationId: string,
 ): Promise<Automation> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Automation>>(
-		`/projects/${projectId}/automations/${automationId}/archive`,
-	);
-	return data.data;
-}
-
-export async function revertAutomationToDraft(
-	projectId: string,
-	automationId: string,
-): Promise<Automation> {
-	const { data } = await apiClient.instance.post<SuccessEnvelope<Automation>>(
-		`/projects/${projectId}/automations/${automationId}/revert-to-draft`,
+		`/projects/${projectId}/automations/${automationId}/deactivate`,
 	);
 	return data.data;
 }

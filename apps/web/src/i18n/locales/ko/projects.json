@@ -1324,9 +1324,8 @@
 			"updated": "{{time}}에 업데이트됨"
 		},
 		"status": {
-			"draft": "임시 저장",
 			"active": "활성",
-			"archived": "보관됨"
+			"inactive": "비활성"
 		},
 		"createDialog": {
 			"title": "새 자동화",
@@ -1344,10 +1343,7 @@
 			"confirm": "삭제"
 		},
 		"builder": {
-			"activate": "활성화",
-			"archive": "보관",
-			"deactivate": "비활성화",
-			"readOnlyNoticeArchived": "이 자동화는 보관되어 읽기 전용입니다 — 보관된 자동화는 편집할 수 없습니다.",
+			"toggleActiveLabel": "이 자동화의 활성 상태를 전환",
 			"genericError": "문제가 발생했습니다. 다시 시도해 주세요.",
 			"taskLessTriggerConnectionError": "이 트리거에는 대상 태스크가 설정되어 있지 않아 API 호출 또는 AI 에이전트 실행 액션에만 연결할 수 있습니다 — 조건과 그 외 액션은 실행할 태스크가 필요합니다.",
 			"collapseSidebar": "패널 접기",
@@ -1362,7 +1358,12 @@
 			"addCondition": "조건 추가",
 			"addAction": "액션 추가",
 			"builtIn": "기본 제공",
-			"plugins": "플러그인"
+			"plugins": "플러그인",
+			"triggerGroups": {
+				"taskEvents": "태스크 이벤트",
+				"sprintEvents": "스프린트 이벤트",
+				"scheduleWebhook": "일정 및 웹훅"
+			}
 		},
 		"nodeKind": {
 			"trigger": "트리거",
@@ -1382,12 +1383,19 @@
 			"due_date_reached": "마감일 도달",
 			"predecessor_done": "선행 태스크 완료",
 			"cron": "Cron 일정",
-			"api_trigger": "웹훅"
+			"api_trigger": "웹훅",
+			"sprint_created": "스프린트 생성됨",
+			"sprint_started": "스프린트 시작됨",
+			"sprint_completed": "스프린트 완료됨",
+			"sprint_deleted": "스프린트 삭제됨"
 		},
 		"actionTypes": {
 			"update_task": "작업 업데이트",
 			"trigger_ai_agent": "AI 에이전트 실행",
-			"call_api": "API 호출"
+			"call_api": "API 호출",
+			"wait": "대기",
+			"update_sprint": "스프린트 업데이트",
+			"complete_sprint": "스프린트 완료"
 		},
 		"nodeConfig": {
 			"save": "저장",
@@ -1458,7 +1466,12 @@
 					"parent_task_id": "상위 작업",
 					"reporter_id": "보고자",
 					"start_date": "시작일",
-					"due_date": "마감일"
+					"due_date": "마감일",
+					"sprint_name": "스프린트 이름",
+					"sprint_status": "스프린트 상태",
+					"sprint_goal": "스프린트 목표",
+					"sprint_start_date": "스프린트 시작일",
+					"sprint_end_date": "스프린트 종료일"
 				}
 			},
 			"action": {
@@ -1479,6 +1492,23 @@
 				"headerValuePlaceholder": "값",
 				"addHeader": "헤더 추가",
 				"bodyLabel": "본문",
+				"waitMinutesLabel": "대기 시간(분)",
+				"waitMinutesHint": "다음 노드로 진행하기 전에 여기서 대기할 시간입니다.",
+				"updateSprintHint": "아래에 입력한 필드만 변경되며, 스프린트의 나머지 항목은 그대로 유지됩니다.",
+				"sprintNameLabel": "이름",
+				"sprintStartDateLabel": "시작일",
+				"sprintEndDateLabel": "종료일",
+				"sprintGoalLabel": "목표",
+				"sprintStatusLabel": "상태",
+				"sprintStatusUnchanged": "변경 안 함",
+				"sprintStatusPlanned": "계획됨",
+				"sprintStatusActive": "진행 중",
+				"sprintStatusCompleted": "완료됨",
+				"completeSprintHint": "스프린트를 완료 처리하고 미완료 작업을 이동합니다.",
+				"moveToSprintLabel": "미완료 작업 이동 위치",
+				"moveToSprintBacklog": "백로그",
+				"moveToSprintHint": "스프린트가 완료되면 미완료 작업이 여기로 이동합니다.",
+				"variablesHint": "{{task.title}}, {{sprint.name}}과 같은 현재 실행의 {{variable}} 플레이스홀더를 사용할 수 있습니다.",
 				"updateTaskHint": "아래에서 활성화한 필드만 변경됩니다. 나머지 작업 내용은 그대로 유지됩니다.",
 				"addFieldToUpdate": "업데이트할 필드 추가…",
 				"customFieldsLabel": "사용자 지정 필드",

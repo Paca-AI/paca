@@ -32,6 +32,9 @@ func (f *fakeDueDateRepo) ListPredecessorTriggersWatching(context.Context, uuid.
 func (f *fakeDueDateRepo) FindAutomationByNodeID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
 	return f.automation, nil
 }
+func (f *fakeDueDateRepo) FindAutomationByID(context.Context, uuid.UUID) (*automationdom.Automation, error) {
+	return f.automation, nil
+}
 func (f *fakeDueDateRepo) FindNodeByID(context.Context, uuid.UUID) (*automationdom.Node, error) {
 	return nil, automationdom.ErrNodeNotFound
 }
@@ -42,6 +45,36 @@ func (f *fakeDueDateRepo) CreateRun(context.Context, *automationdom.Run) error {
 func (f *fakeDueDateRepo) UpdateRun(context.Context, *automationdom.Run) error { return nil }
 func (f *fakeDueDateRepo) CreateRunStep(context.Context, *automationdom.RunStep) error {
 	return nil
+}
+func (f *fakeDueDateRepo) ListRunStepsByRun(context.Context, uuid.UUID) ([]*automationdom.RunStep, error) {
+	return nil, nil
+}
+func (f *fakeDueDateRepo) CreatePendingAgentWait(context.Context, *automationdom.PendingAgentWait) error {
+	return nil
+}
+func (f *fakeDueDateRepo) FindPendingAgentWait(context.Context, uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	return nil, nil
+}
+func (f *fakeDueDateRepo) DeletePendingAgentWait(context.Context, uuid.UUID) error {
+	return nil
+}
+func (f *fakeDueDateRepo) CountPendingAgentWaits(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakeDueDateRepo) DeletePendingAgentWaitAndCountRemaining(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (f *fakeDueDateRepo) CreatePendingDelay(context.Context, *automationdom.PendingDelay) error {
+	return nil
+}
+func (f *fakeDueDateRepo) ListDueDelays(context.Context) ([]*automationdom.PendingDelay, error) {
+	return nil, nil
+}
+func (f *fakeDueDateRepo) DeletePendingDelay(context.Context, uuid.UUID) error {
+	return nil
+}
+func (f *fakeDueDateRepo) CountPendingDelays(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
 }
 func (f *fakeDueDateRepo) ListDueDateCandidates(context.Context) ([]automationdom.DueDateCandidate, error) {
 	return f.candidates, nil

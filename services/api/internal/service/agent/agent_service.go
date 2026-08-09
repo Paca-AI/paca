@@ -1121,6 +1121,16 @@ func (s *Service) ListConversationEvents(ctx context.Context, conversationID uui
 }
 
 // StopConversation stops a conversation that is not already finished.
+//
+// Unlike every other terminal-status transition (finished/failed, and a
+// paused-chat "stopped"), this one is decided and written here rather than
+// by ai-agent's own turn-end logic — ai-agent's _post_turn_status
+// deliberately no-ops on a full-teardown stop since this call already owns
+// the write. That means this is also the only place that can durably notify
+// worker.AutomationConsumer (via StreamAgentConversationStatus) that a
+// trigger_ai_agent-started conversation it might be waiting on just reached
+// a terminal status — ai-agent has no turn-end hook to do it from here,
+// since the stop can land while no turn is even in flight.
 func (s *Service) StopConversation(ctx context.Context, projectID, conversationID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID)
 	if err != nil {
@@ -1132,6 +1142,16 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 	if err := s.repo.UpdateConversationStatus(ctx, conversationID, string(agentdom.ConversationStatusStopped)); err != nil {
 		return err
 	}
+	// Best-effort: a failure here shouldn't fail the stop itself (the
+	// conversation is already marked stopped and ai-agent is about to be
+	// told to tear it down) — same posture as sprintsvc.publishSprintActivity.
+	// A graph walk genuinely left waiting on this conversation stays paused
+	// until the automation is edited/deactivated; there's no separate
+	// timeout/reaper for a pending wait today.
+	_ = s.publisher.AppendFlat(ctx, events.StreamAgentConversationStatus, map[string]any{
+		"conversation_id": conversationID.String(),
+		"status":          string(agentdom.ConversationStatusStopped),
+	})
 	return s.publishTrigger(ctx, events.TopicAgentStop, map[string]any{
 		"conversation_id": conversationID.String(),
 		"project_id":      projectID.String(),

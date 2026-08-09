@@ -1324,9 +1324,8 @@
 			"updated": "Mis à jour {{time}}"
 		},
 		"status": {
-			"draft": "Brouillon",
 			"active": "Actif",
-			"archived": "Archivé"
+			"inactive": "Inactif"
 		},
 		"createDialog": {
 			"title": "Nouvelle automatisation",
@@ -1344,10 +1343,7 @@
 			"confirm": "Supprimer"
 		},
 		"builder": {
-			"activate": "Activer",
-			"archive": "Archiver",
-			"deactivate": "Désactiver",
-			"readOnlyNoticeArchived": "Cette automatisation est archivée et en lecture seule — les automatisations archivées ne peuvent pas être modifiées.",
+			"toggleActiveLabel": "Activer ou désactiver cette automatisation",
 			"genericError": "Une erreur est survenue. Veuillez réessayer.",
 			"taskLessTriggerConnectionError": "Ce déclencheur n'a pas de tâche cible définie ; il ne peut donc se connecter qu'à une action Appeler l'API ou Déclencher l'agent IA — les conditions et les autres actions ont besoin d'une tâche pour s'exécuter.",
 			"collapseSidebar": "Réduire le panneau",
@@ -1362,7 +1358,12 @@
 			"addCondition": "Ajouter une condition",
 			"addAction": "Ajouter une action",
 			"builtIn": "Intégré",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"triggerGroups": {
+				"taskEvents": "Événements de tâches",
+				"sprintEvents": "Événements de sprints",
+				"scheduleWebhook": "Planification et webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Déclencheur",
@@ -1382,12 +1383,19 @@
 			"due_date_reached": "Échéance atteinte",
 			"predecessor_done": "Prédécesseur(s) terminé(s)",
 			"cron": "Planification cron",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "Sprint créé",
+			"sprint_started": "Sprint démarré",
+			"sprint_completed": "Sprint terminé",
+			"sprint_deleted": "Sprint supprimé"
 		},
 		"actionTypes": {
 			"update_task": "Mettre à jour la tâche",
 			"trigger_ai_agent": "Déclencher l'agent IA",
-			"call_api": "Appeler l'API"
+			"call_api": "Appeler l'API",
+			"wait": "Attendre",
+			"update_sprint": "Mettre à jour le sprint",
+			"complete_sprint": "Terminer le sprint"
 		},
 		"nodeConfig": {
 			"save": "Enregistrer",
@@ -1458,7 +1466,12 @@
 					"parent_task_id": "Tâche parente",
 					"reporter_id": "Rapporteur",
 					"start_date": "Date de début",
-					"due_date": "Date d'échéance"
+					"due_date": "Date d'échéance",
+					"sprint_name": "Nom du sprint",
+					"sprint_status": "Statut du sprint",
+					"sprint_goal": "Objectif du sprint",
+					"sprint_start_date": "Date de début du sprint",
+					"sprint_end_date": "Date de fin du sprint"
 				}
 			},
 			"action": {
@@ -1479,6 +1492,23 @@
 				"headerValuePlaceholder": "Valeur",
 				"addHeader": "Ajouter un en-tête",
 				"bodyLabel": "Corps",
+				"waitMinutesLabel": "Attente (minutes)",
+				"waitMinutesHint": "Durée de la pause ici avant de passer au nœud suivant.",
+				"updateSprintHint": "Seuls les champs renseignés ci-dessous sont modifiés — le reste du sprint reste inchangé.",
+				"sprintNameLabel": "Nom",
+				"sprintStartDateLabel": "Date de début",
+				"sprintEndDateLabel": "Date de fin",
+				"sprintGoalLabel": "Objectif",
+				"sprintStatusLabel": "Statut",
+				"sprintStatusUnchanged": "Ne pas modifier",
+				"sprintStatusPlanned": "Planifié",
+				"sprintStatusActive": "Actif",
+				"sprintStatusCompleted": "Terminé",
+				"completeSprintHint": "Marque le sprint comme terminé et déplace ses tâches non terminées.",
+				"moveToSprintLabel": "Déplacer les tâches non terminées vers",
+				"moveToSprintBacklog": "Backlog",
+				"moveToSprintHint": "Les tâches non terminées de ce sprint y sont déplacées lorsqu'il se termine.",
+				"variablesHint": "Prend en charge {{task.title}}, {{sprint.name}} et d'autres espaces réservés {{variable}} de l'exécution en cours.",
 				"updateTaskHint": "Seuls les champs que vous activez ci-dessous sont modifiés — le reste de la tâche n'est pas touché.",
 				"addFieldToUpdate": "Ajouter un champ à mettre à jour…",
 				"customFieldsLabel": "Champ personnalisé",

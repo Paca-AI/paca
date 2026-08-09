@@ -19,6 +19,14 @@ _pubsub_client: aioredis.Redis | None = None
 
 TRIGGER_STREAM = "paca:agent:triggers"
 EVENTS_STREAM = "paca:agent:events"
+# Durable stream a conversation's terminal status (finished/failed/stopped) is
+# appended to — unlike REALTIME_CHANNEL's pub/sub fan-out, XADD survives a
+# subscriber not being connected at the exact moment it's published, which
+# matters for services/api's automation engine: it may be waiting, possibly
+# across a restart, to resume a paused trigger_ai_agent node once this
+# conversation finishes. Mirrors StreamAgentConversationStatus in
+# services/api/internal/events/topics.go — the two constants must match.
+CONVERSATION_STATUS_STREAM = "paca:agent:conversation_status"
 # Pub/Sub channel consumed by services/realtime for WebSocket fan-out.
 REALTIME_CHANNEL = "paca.events"
 CONSUMER_GROUP = "ai-agent-workers"
@@ -79,6 +87,21 @@ async def publish_event(fields: dict[str, Any]) -> None:
     client = get_client()
     serialized = {k: str(v) for k, v in fields.items()}
     await client.xadd(EVENTS_STREAM, serialized)
+
+
+async def publish_conversation_status(conversation_id: str, status: str) -> None:
+    """Durably record that conversation_id reached a terminal status.
+
+    A consumer that must react exactly once — even across its own restart —
+    cannot rely on publish_realtime's pub/sub (fire-and-forget, no
+    redelivery). Currently consumed by services/api's automation engine to
+    resume a graph walk paused at a trigger_ai_agent node once its
+    conversation finishes.
+    """
+    client = get_client()
+    await client.xadd(
+        CONVERSATION_STATUS_STREAM, {"conversation_id": conversation_id, "status": status}
+    )
 
 
 async def publish_realtime(

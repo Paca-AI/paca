@@ -207,20 +207,24 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	taskRepo := pgRepo.NewTaskRepository(db)
 	projectService := projectsvc.New(projectRepo, taskRepo, agentRepo)
 	taskService := tasksvc.New(taskRepo)
+	// A real (non-nil) publisher is required so that task.updated activity
+	// events actually reach StreamTaskActivities — otherwise a per-test
+	// worker.AutomationConsumer would never observe task status changes made
+	// through the HTTP API. Declared before sprintService below for the same
+	// reason: a sprint reaching sprint_started/etc. must durably reach
+	// StreamSprintActivities too (see sprintsvc.Service.publishSprintActivity),
+	// not just the fire-and-forget pub/sub channel a nil publisher would
+	// silently no-op. This is a cheap, fire-and-forget XAdd for every other
+	// e2e test too (no consumer group drains it unless a test starts one),
+	// so it doesn't affect their behavior or teardown time.
+	publisher := messaging.NewPublisher(redisClient, log)
 	sprintRepo := pgRepo.NewSprintRepository(db)
-	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
+	sprintService := sprintsvc.New(sprintRepo, taskRepo, publisher)
 	viewRepo := pgRepo.NewViewRepository(db)
 	viewService := sprintsvc.NewViewService(viewRepo, nil)
 	attachmentRepo := pgRepo.NewAttachmentRepository(db)
 	apiKeyRepo := pgRepo.NewAPIKeyRepository(db)
 	apiKeyService := apikeysvc.New(apiKeyRepo)
-	// A real (non-nil) publisher is required so that task.updated activity
-	// events actually reach StreamTaskActivities — otherwise a per-test
-	// worker.AutomationConsumer would never observe task status changes made
-	// through the HTTP API. This is a cheap, fire-and-forget XAdd for every
-	// other e2e test too (no consumer group drains it unless a test starts
-	// one), so it doesn't affect their behavior or teardown time.
-	publisher := messaging.NewPublisher(redisClient, log)
 	activityRepo := pgRepo.NewTaskActivityRepository(db)
 	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher)
 	automationRepo := pgRepo.NewAutomationRepository(db)

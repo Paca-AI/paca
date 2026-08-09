@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -250,6 +251,121 @@ func (rec *runStepRecord) toDomain() (*automationdom.RunStep, error) {
 		s.Error = *rec.Error
 	}
 	return s, nil
+}
+
+// decodeWalkContext parses a pending-wait row's context JSONB column. An
+// empty/null column (rows written before the context column existed, or a
+// context with no fields set) decodes to a zero-value WalkContext rather
+// than erroring.
+func decodeWalkContext(raw []byte) (automationdom.WalkContext, error) {
+	var ctx automationdom.WalkContext
+	if len(raw) == 0 {
+		return ctx, nil
+	}
+	if err := json.Unmarshal(raw, &ctx); err != nil {
+		return ctx, fmt.Errorf("decode walk context: %w", err)
+	}
+	return ctx, nil
+}
+
+type pendingAgentWaitRecord struct {
+	ID             string    `db:"id"`
+	RunID          string    `db:"run_id"`
+	NodeID         string    `db:"node_id"`
+	AutomationID   string    `db:"automation_id"`
+	ConversationID string    `db:"conversation_id"`
+	ProjectID      string    `db:"project_id"`
+	Context        []byte    `db:"context"`
+	CreatedAt      time.Time `db:"created_at"`
+}
+
+func (rec *pendingAgentWaitRecord) toDomain() (*automationdom.PendingAgentWait, error) {
+	id, err := uuid.Parse(rec.ID)
+	if err != nil {
+		return nil, err
+	}
+	runID, err := uuid.Parse(rec.RunID)
+	if err != nil {
+		return nil, err
+	}
+	nodeID, err := uuid.Parse(rec.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	automationID, err := uuid.Parse(rec.AutomationID)
+	if err != nil {
+		return nil, err
+	}
+	conversationID, err := uuid.Parse(rec.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	projectID, err := uuid.Parse(rec.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	walkCtx, err := decodeWalkContext(rec.Context)
+	if err != nil {
+		return nil, err
+	}
+	return &automationdom.PendingAgentWait{
+		ID:             id,
+		RunID:          runID,
+		NodeID:         nodeID,
+		AutomationID:   automationID,
+		ConversationID: conversationID,
+		ProjectID:      projectID,
+		Context:        walkCtx,
+		CreatedAt:      rec.CreatedAt,
+	}, nil
+}
+
+type pendingDelayRecord struct {
+	ID           string    `db:"id"`
+	RunID        string    `db:"run_id"`
+	NodeID       string    `db:"node_id"`
+	AutomationID string    `db:"automation_id"`
+	ProjectID    string    `db:"project_id"`
+	Context      []byte    `db:"context"`
+	ResumeAt     time.Time `db:"resume_at"`
+	CreatedAt    time.Time `db:"created_at"`
+}
+
+func (rec *pendingDelayRecord) toDomain() (*automationdom.PendingDelay, error) {
+	id, err := uuid.Parse(rec.ID)
+	if err != nil {
+		return nil, err
+	}
+	runID, err := uuid.Parse(rec.RunID)
+	if err != nil {
+		return nil, err
+	}
+	nodeID, err := uuid.Parse(rec.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	automationID, err := uuid.Parse(rec.AutomationID)
+	if err != nil {
+		return nil, err
+	}
+	projectID, err := uuid.Parse(rec.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	walkCtx, err := decodeWalkContext(rec.Context)
+	if err != nil {
+		return nil, err
+	}
+	return &automationdom.PendingDelay{
+		ID:           id,
+		RunID:        runID,
+		NodeID:       nodeID,
+		AutomationID: automationID,
+		ProjectID:    projectID,
+		Context:      walkCtx,
+		ResumeAt:     rec.ResumeAt,
+		CreatedAt:    rec.CreatedAt,
+	}, nil
 }
 
 // AutomationRepository is the sqlx implementation of automationdom.Repository.
@@ -645,6 +761,146 @@ func (r *AutomationRepository) ListRunStepsByRun(ctx context.Context, runID uuid
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// --- trigger_ai_agent pause/resume --------------------------------------------
+
+// CreatePendingAgentWait implements automationdom.Repository.CreatePendingAgentWait.
+func (r *AutomationRepository) CreatePendingAgentWait(ctx context.Context, w *automationdom.PendingAgentWait) error {
+	ctxJSON, err := json.Marshal(w.Context)
+	if err != nil {
+		return fmt.Errorf("encode walk context: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO automation_pending_agent_waits (id, run_id, node_id, automation_id, conversation_id, project_id, context, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		w.ID.String(), w.RunID.String(), w.NodeID.String(), w.AutomationID.String(), w.ConversationID.String(), w.ProjectID.String(), ctxJSON, w.CreatedAt,
+	)
+	return err
+}
+
+// FindPendingAgentWait implements automationdom.Repository.FindPendingAgentWait.
+func (r *AutomationRepository) FindPendingAgentWait(ctx context.Context, conversationID uuid.UUID) (*automationdom.PendingAgentWait, error) {
+	const q = `
+		SELECT id, run_id, node_id, automation_id, conversation_id, project_id, context, created_at
+		FROM automation_pending_agent_waits WHERE conversation_id = $1`
+	var rec pendingAgentWaitRecord
+	if err := r.db.GetContext(ctx, &rec, q, conversationID.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return rec.toDomain()
+}
+
+// DeletePendingAgentWait implements automationdom.Repository.DeletePendingAgentWait.
+func (r *AutomationRepository) DeletePendingAgentWait(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM automation_pending_agent_waits WHERE id = $1`, id.String())
+	return err
+}
+
+// CountPendingAgentWaits implements automationdom.Repository.CountPendingAgentWaits.
+func (r *AutomationRepository) CountPendingAgentWaits(ctx context.Context, runID uuid.UUID) (int, error) {
+	var count int
+	if err := r.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM automation_pending_agent_waits WHERE run_id = $1`, runID.String()); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// DeletePendingAgentWaitAndCountRemaining implements
+// automationdom.Repository.DeletePendingAgentWaitAndCountRemaining.
+//
+// A fanned-out trigger_ai_agent node's sibling conversations can reach a
+// terminal status within moments of each other and be processed by
+// different consumer replicas truly concurrently — dispatchMessages calls
+// handleAgentConversationStatus synchronously within one replica's own
+// read loop, but each replica has its own Redis consumer-group identity
+// (see AutomationConsumer.consumerName), so different conversations'
+// messages can land on different replicas at the same time. Deciding "am I
+// the last sibling to resolve" can't be a separate DELETE then COUNT (or
+// COUNT then DELETE) in either order: two siblings resolving concurrently
+// can each read a stale view of the other's row and either both conclude
+// they're not last (stalling the run forever, since neither ever proceeds)
+// or both conclude they are (firing downstream twice). A transaction-
+// scoped Postgres advisory lock keyed on (runID, nodeID) serializes
+// exactly this contended decision across replicas — concurrent siblings
+// for the same node take their turn one at a time, each seeing the prior
+// one's delete already applied — without blocking unrelated nodes or runs.
+func (r *AutomationRepository) DeletePendingAgentWaitAndCountRemaining(ctx context.Context, id, runID, nodeID uuid.UUID) (int, error) {
+	var remaining int
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		lockKey := runID.String() + ":" + nodeID.String()
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+			return fmt.Errorf("acquire fan-out lock: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM automation_pending_agent_waits WHERE id = $1`, id.String()); err != nil {
+			return fmt.Errorf("delete pending agent wait: %w", err)
+		}
+		if err := tx.GetContext(ctx, &remaining,
+			`SELECT COUNT(*) FROM automation_pending_agent_waits WHERE run_id = $1 AND node_id = $2`,
+			runID.String(), nodeID.String(),
+		); err != nil {
+			return fmt.Errorf("count remaining siblings: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return remaining, nil
+}
+
+// --- wait pause/resume ---------------------------------------------------------
+
+// CreatePendingDelay implements automationdom.Repository.CreatePendingDelay.
+func (r *AutomationRepository) CreatePendingDelay(ctx context.Context, d *automationdom.PendingDelay) error {
+	ctxJSON, err := json.Marshal(d.Context)
+	if err != nil {
+		return fmt.Errorf("encode walk context: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO automation_pending_delays (id, run_id, node_id, automation_id, project_id, context, resume_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		d.ID.String(), d.RunID.String(), d.NodeID.String(), d.AutomationID.String(), d.ProjectID.String(), ctxJSON, d.ResumeAt, d.CreatedAt,
+	)
+	return err
+}
+
+// ListDueDelays implements automationdom.Repository.ListDueDelays.
+func (r *AutomationRepository) ListDueDelays(ctx context.Context) ([]*automationdom.PendingDelay, error) {
+	const q = `
+		SELECT id, run_id, node_id, automation_id, project_id, context, resume_at, created_at
+		FROM automation_pending_delays WHERE resume_at <= NOW()`
+	var recs []pendingDelayRecord
+	if err := r.db.SelectContext(ctx, &recs, q); err != nil {
+		return nil, err
+	}
+	out := make([]*automationdom.PendingDelay, 0, len(recs))
+	for i := range recs {
+		d, err := recs[i].toDomain()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// DeletePendingDelay implements automationdom.Repository.DeletePendingDelay.
+func (r *AutomationRepository) DeletePendingDelay(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM automation_pending_delays WHERE id = $1`, id.String())
+	return err
+}
+
+// CountPendingDelays implements automationdom.Repository.CountPendingDelays.
+func (r *AutomationRepository) CountPendingDelays(ctx context.Context, runID uuid.UUID) (int, error) {
+	var count int
+	if err := r.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM automation_pending_delays WHERE run_id = $1`, runID.String()); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // --- Due-date scheduling -------------------------------------------------------

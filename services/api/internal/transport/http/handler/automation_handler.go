@@ -207,8 +207,8 @@ func (h *AutomationHandler) ActivateAutomation(w http.ResponseWriter, r *http.Re
 	presenter.OK(w, r, dto.NewAutomationResponse(a))
 }
 
-// ArchiveAutomation handles POST /projects/:projectId/automations/:automationId/archive.
-func (h *AutomationHandler) ArchiveAutomation(w http.ResponseWriter, r *http.Request) {
+// DeactivateAutomation handles POST /projects/:projectId/automations/:automationId/deactivate.
+func (h *AutomationHandler) DeactivateAutomation(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -219,27 +219,7 @@ func (h *AutomationHandler) ArchiveAutomation(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, err)
 		return
 	}
-	a, err := h.svc.Archive(r.Context(), projectID, automationID)
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
-	}
-	presenter.OK(w, r, dto.NewAutomationResponse(a))
-}
-
-// RevertAutomationToDraft handles POST /projects/:projectId/automations/:automationId/revert-to-draft.
-func (h *AutomationHandler) RevertAutomationToDraft(w http.ResponseWriter, r *http.Request) {
-	projectID, err := parseProjectID(r)
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
-	}
-	automationID, err := parseAutomationID(r)
-	if err != nil {
-		presenter.Error(w, r, err)
-		return
-	}
-	a, err := h.svc.RevertToDraft(r.Context(), projectID, automationID)
+	a, err := h.svc.Deactivate(r.Context(), projectID, automationID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

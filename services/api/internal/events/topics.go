@@ -56,6 +56,17 @@ const StreamAutomationExternalTriggers = "paca.automation_external_triggers"
 // pluginTriggerEventPayload in automation_consumer.go), then execute.
 const StreamPluginTriggerEvents = "paca.plugin_trigger_events"
 
+// StreamSprintActivities is the Valkey Stream key sprintsvc.Service appends
+// to (via AppendFlat: sprint_id/project_id/event_type fields) whenever a
+// sprint is created, deleted, completed, or transitions into Active status —
+// in addition to (not instead of) its existing ChannelRealtime pub/sub
+// publish, which is fire-and-forget and worker.AutomationConsumer doesn't
+// subscribe to. event_type is exactly one of the TriggerSprint* constants in
+// domain/automation, so the consumer needs no separate activity-type-to-
+// trigger-type mapping the way task activities do. Consumed by
+// worker.AutomationConsumer.handleSprintActivity.
+const StreamSprintActivities = "paca.sprint_activities"
+
 // Event type constants used in both Pub/Sub messages and Stream entries.
 const (
 	// --- Auth events --------------------------------------------------------
@@ -155,17 +166,16 @@ const (
 	// automation.applied (the engine mutating a task) is a separate,
 	// task-scoped event defined as taskdom.ActivityTypeAutomationApplied, not
 	// here.
-	TopicAutomationCreated         = "automation.created"
-	TopicAutomationUpdated         = "automation.updated"
-	TopicAutomationDeleted         = "automation.deleted"
-	TopicAutomationActivated       = "automation.activated"
-	TopicAutomationArchived        = "automation.archived"
-	TopicAutomationRevertedToDraft = "automation.reverted_to_draft"
-	TopicAutomationNodeAdded       = "automation.node.added"
-	TopicAutomationNodeUpdated     = "automation.node.updated"
-	TopicAutomationNodeRemoved     = "automation.node.removed"
-	TopicAutomationEdgeAdded       = "automation.edge.added"
-	TopicAutomationEdgeRemoved     = "automation.edge.removed"
+	TopicAutomationCreated     = "automation.created"
+	TopicAutomationUpdated     = "automation.updated"
+	TopicAutomationDeleted     = "automation.deleted"
+	TopicAutomationActivated   = "automation.activated"
+	TopicAutomationDeactivated = "automation.deactivated"
+	TopicAutomationNodeAdded   = "automation.node.added"
+	TopicAutomationNodeUpdated = "automation.node.updated"
+	TopicAutomationNodeRemoved = "automation.node.removed"
+	TopicAutomationEdgeAdded   = "automation.edge.added"
+	TopicAutomationEdgeRemoved = "automation.edge.removed"
 	// TopicAutomationAPITriggerFired is appended to
 	// StreamAutomationExternalTriggers by the webhook receiver handler once
 	// a POST's token has been verified.
@@ -181,4 +191,15 @@ const (
 	// StreamAgentEvents is the Valkey Stream key that services/ai-agent publishes
 	// conversation events to. services/realtime consumes and fans out to Socket.IO.
 	StreamAgentEvents = "paca:agent:events"
+
+	// StreamAgentConversationStatus is the Valkey Stream key that
+	// services/ai-agent appends to whenever a conversation reaches a
+	// terminal status (finished/failed/stopped) — see
+	// stream_store.publish_conversation_status in
+	// services/ai-agent/src/core/streams.py. Durable + consumer-group-based,
+	// unlike the fire-and-forget paca.events pub/sub channel, so a consumer
+	// never misses a delivery even across its own restart. Consumed by
+	// worker.AutomationConsumer to resume a graph walk paused at a
+	// trigger_ai_agent node once its conversation finishes.
+	StreamAgentConversationStatus = "paca:agent:conversation_status"
 )

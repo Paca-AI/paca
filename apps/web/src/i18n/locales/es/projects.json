@@ -1324,9 +1324,8 @@
 			"updated": "Actualizado {{time}}"
 		},
 		"status": {
-			"draft": "Borrador",
 			"active": "Activo",
-			"archived": "Archivado"
+			"inactive": "Inactivo"
 		},
 		"createDialog": {
 			"title": "Nueva automatización",
@@ -1344,10 +1343,7 @@
 			"confirm": "Eliminar"
 		},
 		"builder": {
-			"activate": "Activar",
-			"archive": "Archivar",
-			"deactivate": "Desactivar",
-			"readOnlyNoticeArchived": "Esta automatización está archivada y es de solo lectura — las automatizaciones archivadas no se pueden editar.",
+			"toggleActiveLabel": "Alternar si esta automatización está activa",
 			"genericError": "Algo salió mal. Inténtalo de nuevo.",
 			"taskLessTriggerConnectionError": "Este disparador no tiene una tarea objetivo definida, por lo que solo puede conectarse a una acción de Llamar API o Activar agente de IA — las condiciones y el resto de las acciones necesitan una tarea sobre la que actuar.",
 			"collapseSidebar": "Contraer panel",
@@ -1362,7 +1358,12 @@
 			"addCondition": "Añadir condición",
 			"addAction": "Añadir acción",
 			"builtIn": "Integrado",
-			"plugins": "Plugins"
+			"plugins": "Plugins",
+			"triggerGroups": {
+				"taskEvents": "Eventos de tareas",
+				"sprintEvents": "Eventos de sprints",
+				"scheduleWebhook": "Programación y webhook"
+			}
 		},
 		"nodeKind": {
 			"trigger": "Disparador",
@@ -1382,12 +1383,19 @@
 			"due_date_reached": "Fecha límite alcanzada",
 			"predecessor_done": "Predecesora(s) terminada(s)",
 			"cron": "Programación cron",
-			"api_trigger": "Webhook"
+			"api_trigger": "Webhook",
+			"sprint_created": "Sprint creado",
+			"sprint_started": "Sprint iniciado",
+			"sprint_completed": "Sprint completado",
+			"sprint_deleted": "Sprint eliminado"
 		},
 		"actionTypes": {
 			"update_task": "Actualizar tarea",
 			"trigger_ai_agent": "Activar agente de IA",
-			"call_api": "Llamar API"
+			"call_api": "Llamar API",
+			"wait": "Esperar",
+			"update_sprint": "Actualizar sprint",
+			"complete_sprint": "Completar sprint"
 		},
 		"nodeConfig": {
 			"save": "Guardar",
@@ -1458,7 +1466,12 @@
 					"parent_task_id": "Tarea principal",
 					"reporter_id": "Reportero",
 					"start_date": "Fecha de inicio",
-					"due_date": "Fecha de vencimiento"
+					"due_date": "Fecha de vencimiento",
+					"sprint_name": "Nombre del sprint",
+					"sprint_status": "Estado del sprint",
+					"sprint_goal": "Objetivo del sprint",
+					"sprint_start_date": "Fecha de inicio del sprint",
+					"sprint_end_date": "Fecha de fin del sprint"
 				}
 			},
 			"action": {
@@ -1479,6 +1492,23 @@
 				"headerValuePlaceholder": "Valor",
 				"addHeader": "Añadir cabecera",
 				"bodyLabel": "Cuerpo",
+				"waitMinutesLabel": "Espera (minutos)",
+				"waitMinutesHint": "Cuánto tiempo pausar aquí antes de continuar al siguiente nodo.",
+				"updateSprintHint": "Solo se cambian los campos que rellenes a continuación — el resto del sprint permanece intacto.",
+				"sprintNameLabel": "Nombre",
+				"sprintStartDateLabel": "Fecha de inicio",
+				"sprintEndDateLabel": "Fecha de fin",
+				"sprintGoalLabel": "Objetivo",
+				"sprintStatusLabel": "Estado",
+				"sprintStatusUnchanged": "Dejar sin cambios",
+				"sprintStatusPlanned": "Planificado",
+				"sprintStatusActive": "Activo",
+				"sprintStatusCompleted": "Completado",
+				"completeSprintHint": "Marca el sprint como completado y mueve sus tareas sin terminar.",
+				"moveToSprintLabel": "Mover tareas sin terminar a",
+				"moveToSprintBacklog": "Backlog",
+				"moveToSprintHint": "Las tareas no terminadas de este sprint se mueven aquí cuando se completa.",
+				"variablesHint": "Admite {{task.title}}, {{sprint.name}} y marcadores {{variable}} similares de la ejecución actual.",
 				"updateTaskHint": "Solo se cambian los campos que habilites a continuación; el resto de la tarea permanece intacto.",
 				"addFieldToUpdate": "Añadir campo para actualizar…",
 				"customFieldsLabel": "Campo personalizado",

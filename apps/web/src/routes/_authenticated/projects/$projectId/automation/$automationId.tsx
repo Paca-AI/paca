@@ -1,14 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-	Archive as ArchiveIcon,
 	ArrowLeft,
 	History,
 	Loader2,
-	Pause,
 	Pencil,
-	Play,
 	Save,
+	Workflow,
 	X,
 } from "lucide-react";
 import { useState } from "react";
@@ -18,9 +16,9 @@ import { AutomationNodeConfigPanel } from "@/components/projects/automation/auto
 import { AutomationNodePalette } from "@/components/projects/automation/automation-node-palette";
 import { AutomationRunHistoryPanel } from "@/components/projects/automation/automation-run-history-panel";
 import { getPriority } from "@/components/projects/interactions/priority";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	ACTION_TYPES,
@@ -31,15 +29,14 @@ import {
 	activateAutomation,
 	addAutomationEdge,
 	addAutomationNode,
-	archiveAutomation,
 	automationQueryOptions,
 	automationRunsQueryOptions,
 	type ConditionConfig,
+	deactivateAutomation,
 	type PluginNodeConfigSchema,
 	pluginNodeTypesQueryOptions,
 	removeAutomationEdge,
 	removeAutomationNode,
-	revertAutomationToDraft,
 	TRIGGER_TYPES,
 	type TriggerConfig,
 	type TriggerType,
@@ -114,10 +111,6 @@ function AutomationBuilderPage() {
 
 	const graphKey = automationQueryOptions(projectId, automationId).queryKey;
 	const invalidate = () => qc.invalidateQueries({ queryKey: graphKey });
-
-	const isDraft = graph?.automation.status === "draft";
-	const isArchived = graph?.automation.status === "archived";
-	const canEditGraph = canManage && !isArchived;
 
 	function reportError(err: unknown) {
 		setErrorMessage(
@@ -493,13 +486,8 @@ function AutomationBuilderPage() {
 		onSuccess: invalidate,
 		onError: reportError,
 	});
-	const archiveMutation = useMutation({
-		mutationFn: () => archiveAutomation(projectId, automationId),
-		onSuccess: invalidate,
-		onError: reportError,
-	});
-	const revertMutation = useMutation({
-		mutationFn: () => revertAutomationToDraft(projectId, automationId),
+	const deactivateMutation = useMutation({
+		mutationFn: () => deactivateAutomation(projectId, automationId),
 		onSuccess: invalidate,
 		onError: reportError,
 	});
@@ -516,105 +504,122 @@ function AutomationBuilderPage() {
 
 	return (
 		<div className="flex flex-col min-h-0 flex-1">
-			{/* Toolbar */}
-			<div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3 shrink-0">
-				<div className="flex items-center gap-3 min-w-0">
-					<Link
-						to="/projects/$projectId/automation"
-						params={{ projectId }}
-						className={buttonVariants({ variant: "ghost", size: "icon" })}
-					>
-						<ArrowLeft className="size-4" />
-					</Link>
-					{renaming ? (
-						<div className="flex items-center gap-1.5">
-							<Input
-								autoFocus
-								value={nameDraft}
-								onChange={(e) => setNameDraft(e.target.value)}
-								className="h-8 w-56"
-							/>
-							<Button
-								size="icon"
-								variant="ghost"
-								className="size-8"
-								onClick={() => renameMutation.mutate()}
-							>
-								<Save className="size-3.5" />
-							</Button>
-							<Button
-								size="icon"
-								variant="ghost"
-								className="size-8"
-								onClick={() => setRenaming(false)}
-							>
-								<X className="size-3.5" />
-							</Button>
-						</div>
-					) : (
-						<div className="flex items-center gap-2 min-w-0">
-							<h1 className="font-semibold text-sm truncate">
-								{graph.automation.name}
-							</h1>
-							{canManage && !isArchived && (
-								<button
-									type="button"
-									onClick={() => {
-										setNameDraft(graph.automation.name);
-										setRenaming(true);
-									}}
-									className="text-muted-foreground/50 hover:text-foreground transition-colors"
+			{/* Identity: back nav, name, active/inactive state */}
+			<div className="border-b border-border/50 px-4 py-3 shrink-0">
+				<div className="flex items-center justify-between gap-3">
+					<div className="flex items-center gap-3 min-w-0">
+						<Link
+							to="/projects/$projectId/automation"
+							params={{ projectId }}
+							className={buttonVariants({ variant: "ghost", size: "icon" })}
+						>
+							<ArrowLeft className="size-4" />
+						</Link>
+						{renaming ? (
+							<div className="flex items-center gap-1.5">
+								<Input
+									autoFocus
+									value={nameDraft}
+									onChange={(e) => setNameDraft(e.target.value)}
+									className="h-8 w-56"
+								/>
+								<Button
+									size="icon"
+									variant="ghost"
+									className="size-8"
+									onClick={() => renameMutation.mutate()}
 								>
-									<Pencil className="size-3" />
-								</button>
-							)}
-						</div>
-					)}
-					<Badge
-						variant={
-							graph.automation.status === "active"
-								? "default"
-								: graph.automation.status === "draft"
-									? "secondary"
-									: "outline"
-						}
-					>
-						{t(`automation.status.${graph.automation.status}`)}
-					</Badge>
-					<div className="flex items-center gap-1 ml-2">
+									<Save className="size-3.5" />
+								</Button>
+								<Button
+									size="icon"
+									variant="ghost"
+									className="size-8"
+									onClick={() => setRenaming(false)}
+								>
+									<X className="size-3.5" />
+								</Button>
+							</div>
+						) : (
+							<div className="flex items-center gap-2 min-w-0">
+								<h1 className="font-semibold text-sm truncate">
+									{graph.automation.name}
+								</h1>
+								{canManage && (
+									<button
+										type="button"
+										onClick={() => {
+											setNameDraft(graph.automation.name);
+											setRenaming(true);
+										}}
+										className="text-muted-foreground/50 hover:text-foreground transition-colors"
+									>
+										<Pencil className="size-3" />
+									</button>
+								)}
+							</div>
+						)}
+					</div>
+
+					<div className="flex items-center gap-2 shrink-0">
+						<span className="text-xs text-muted-foreground">
+							{t(`automation.status.${graph.automation.status}`)}
+						</span>
+						<Switch
+							checked={graph.automation.status === "active"}
+							aria-label={t("automation.builder.toggleActiveLabel")}
+							onCheckedChange={() =>
+								canManage &&
+								(graph.automation.status === "active"
+									? deactivateMutation.mutate()
+									: activateMutation.mutate())
+							}
+							disabled={
+								!canManage ||
+								activateMutation.isPending ||
+								deactivateMutation.isPending
+							}
+						/>
+					</div>
+				</div>
+			</div>
+
+			{/* View tabs (Graph / Run History) + view-specific actions */}
+			<div className="border-b border-border/50 px-4 shrink-0">
+				<div className="flex items-center justify-between gap-3">
+					<div className="flex items-center gap-1 -mb-px">
 						<button
 							type="button"
 							onClick={() => setTab("graph")}
 							className={cn(
-								"rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+								"flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors",
 								tab === "graph"
-									? "bg-muted text-foreground"
-									: "text-muted-foreground hover:text-foreground",
+									? "border-primary text-primary"
+									: "border-transparent text-muted-foreground hover:text-foreground",
 							)}
 						>
+							<Workflow className="size-3.5" />
 							{t("automation.builder.tabGraph")}
 						</button>
 						<button
 							type="button"
 							onClick={() => setTab("runs")}
 							className={cn(
-								"flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+								"flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors",
 								tab === "runs"
-									? "bg-muted text-foreground"
-									: "text-muted-foreground hover:text-foreground",
+									? "border-primary text-primary"
+									: "border-transparent text-muted-foreground hover:text-foreground",
 							)}
 						>
-							<History className="size-3" />
+							<History className="size-3.5" />
 							{t("automation.builder.tabRuns")}
 						</button>
 					</div>
-				</div>
 
-				<div className="flex items-center gap-2 shrink-0">
 					{tab === "graph" && (
 						<AutomationNodePalette
 							projectId={projectId}
-							canEdit={canEditGraph}
+							canEdit={canManage}
 							onAddTrigger={(triggerType) =>
 								addNodeMutation.mutate({ kind: "trigger", type: triggerType })
 							}
@@ -629,50 +634,8 @@ function AutomationBuilderPage() {
 							}
 						/>
 					)}
-					{canManage && isDraft && (
-						<Button
-							size="sm"
-							disabled={activateMutation.isPending}
-							onClick={() => activateMutation.mutate()}
-						>
-							{activateMutation.isPending ? (
-								<Loader2 className="size-3.5 mr-1.5 animate-spin" />
-							) : (
-								<Play className="size-3.5 mr-1.5" />
-							)}
-							{t("automation.builder.activate")}
-						</Button>
-					)}
-					{canManage && graph.automation.status === "active" && (
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={archiveMutation.isPending}
-							onClick={() => archiveMutation.mutate()}
-						>
-							<ArchiveIcon className="size-3.5 mr-1.5" />
-							{t("automation.builder.archive")}
-						</Button>
-					)}
-					{canManage && graph.automation.status === "active" && (
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={revertMutation.isPending}
-							onClick={() => revertMutation.mutate()}
-						>
-							<Pause className="size-3.5 mr-1.5" />
-							{t("automation.builder.deactivate")}
-						</Button>
-					)}
 				</div>
 			</div>
-
-			{isArchived && (
-				<div className="px-4 py-2 bg-muted/30 border-b border-border/30 text-xs text-muted-foreground shrink-0">
-					{t("automation.builder.readOnlyNoticeArchived")}
-				</div>
-			)}
 
 			{tab === "graph" ? (
 				<div className="flex flex-1 min-h-0 relative">
@@ -681,7 +644,7 @@ function AutomationBuilderPage() {
 						edges={graph.edges}
 						nodeLabel={(n) => labelForType(n.kind, n.type)}
 						nodeDescription={describeNode}
-						canEdit={canEditGraph}
+						canEdit={canManage}
 						selectedNodeId={selectedNodeId}
 						onSelectNode={setSelectedNodeId}
 						onConnect={(source, sourceHandle, target) => {
@@ -718,7 +681,7 @@ function AutomationBuilderPage() {
 							members={members}
 							customFields={customFields}
 							taskTypes={taskTypes}
-							canEdit={canEditGraph}
+							canEdit={canManage}
 							saving={updateNodeMutation.isPending}
 							pluginLabel={labelForType(selectedNode.kind, selectedNode.type)}
 							pluginConfigSchema={configSchemaForType(

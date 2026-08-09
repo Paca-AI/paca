@@ -751,6 +751,10 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                 event_type=event_type,
                 actor_user_id=trigger.actor_user_id,
             )
+            if status.is_terminal():
+                await stream_store.publish_conversation_status(
+                    trigger.conversation_id, status.value
+                )
 
     except Exception as exc:
         if not stop_event.is_set() and not pause_event.is_set():
@@ -763,6 +767,9 @@ async def run_conversation(trigger: TriggerMessage, agent_config: AgentConfig) -
                 conversation_id=trigger.conversation_id,
                 event_type="agent.conversation.failed",
                 actor_user_id=trigger.actor_user_id,
+            )
+            await stream_store.publish_conversation_status(
+                trigger.conversation_id, ConversationStatus.FAILED.value
             )
 
     finally:

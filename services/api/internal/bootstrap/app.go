@@ -69,6 +69,7 @@ type App struct {
 	automationConsumer   *worker.AutomationConsumer
 	dueDateScheduler     *worker.DueDateScheduler
 	cronScheduler        *worker.CronScheduler
+	waitScheduler        *worker.WaitScheduler
 	log                  *slog.Logger
 }
 
@@ -187,6 +188,7 @@ func New(cfg *config.Config) (*App, error) {
 	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
+	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
 
 	// Object storage — defaults to MinIO; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
@@ -307,6 +309,12 @@ func New(cfg *config.Config) (*App, error) {
 	// fires a standalone message via agentService.TriggerDirectMessage.
 	// Either way, projectRepo resolves the configured member to its AgentID.
 	automationConsumer.WithAgentMessaging(projectRepo, agentService)
+	// update_sprint/complete_sprint dispatch through sprintService (not
+	// sprintRepo directly) so they get the same validation/event-publishing
+	// side effects as an HTTP-driven change; sprintRepo alone backs
+	// resolveSprintFor's task.SprintID lookup for a Task-triggered walk
+	// reaching down into its own sprint.
+	automationConsumer.WithSprintService(sprintRepo, sprintService)
 
 	// Forward every recorded activity (task created/updated/deleted, comments,
 	// links, etc.) to subscribed plugins. ActivitySvc appends to the
@@ -386,7 +394,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -400,6 +408,7 @@ func (a *App) Run() error {
 	a.automationConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
+	a.waitScheduler.Start(context.Background())
 	return a.server.ListenAndServe()
 }
 
@@ -413,6 +422,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.automationConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()
+	a.waitScheduler.Stop()
 	if a.publisher != nil {
 		a.publisher.Close()
 	}
