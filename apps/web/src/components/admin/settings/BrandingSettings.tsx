@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AvatarResult } from "@/lib/avatar-api";
 import {
-	type BrandingResponse,
 	brandingQueryOptions,
+	setBrandingQueryData,
 	updateSettings,
 } from "@/lib/settings-api";
 
@@ -53,7 +53,7 @@ export function BrandingSettings() {
 				primary_color_dark: colorDark,
 			}),
 		onSuccess: (updated) => {
-			queryClient.setQueryData(brandingQueryOptions.queryKey, (old) =>
+			setBrandingQueryData(queryClient, (old) =>
 				old ? { ...old, ...updated } : updated,
 			);
 			setGeneralError(null);
@@ -76,22 +76,20 @@ export function BrandingSettings() {
 	// drive both through the existing avatar-upload client unmodified. Map
 	// that back onto the branding cache's logo_*/favicon_* fields here.
 	function updateImageCache(slot: "logo" | "favicon", result: AvatarResult) {
-		queryClient.setQueryData<BrandingResponse>(
-			brandingQueryOptions.queryKey,
-			(old) =>
-				old
-					? slot === "logo"
-						? {
-								...old,
-								logo_url: result.avatar_url,
-								logo_thumb_url: result.avatar_thumb_url,
-							}
-						: {
-								...old,
-								favicon_url: result.avatar_url,
-								favicon_thumb_url: result.avatar_thumb_url,
-							}
-					: old,
+		setBrandingQueryData(queryClient, (old) =>
+			old
+				? slot === "logo"
+					? {
+							...old,
+							logo_url: result.avatar_url,
+							logo_thumb_url: result.avatar_thumb_url,
+						}
+					: {
+							...old,
+							favicon_url: result.avatar_url,
+							favicon_thumb_url: result.avatar_thumb_url,
+						}
+				: old,
 		);
 	}
 

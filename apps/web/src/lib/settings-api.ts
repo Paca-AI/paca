@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { queryOptions } from "@tanstack/react-query";
 
 import { apiClient } from "./api-client";
@@ -74,3 +75,25 @@ export const brandingQueryOptions = queryOptions({
 	// refetchOnMount behavior) so that cache never stays stale for long.
 	staleTime: 0,
 });
+
+// Locally patching the React Query branding cache (e.g. after a settings
+// PATCH or an avatar-upload response, both of which return only the fields
+// that changed) without also updating the localStorage cache would leave
+// that cache holding a stale snapshot: a hard reload right after such a
+// change would call readCachedBranding() above and briefly paint the old
+// logo/brand name/color for one round-trip before the background refetch
+// lands. Route every such local patch through this helper instead of
+// queryClient.setQueryData directly so the two caches can't drift apart.
+export function setBrandingQueryData(
+	queryClient: QueryClient,
+	updater: (old: BrandingResponse | undefined) => BrandingResponse | undefined,
+): void {
+	queryClient.setQueryData<BrandingResponse>(
+		brandingQueryOptions.queryKey,
+		(old) => {
+			const next = updater(old);
+			if (next) writeCachedBranding(next);
+			return next;
+		},
+	);
+}

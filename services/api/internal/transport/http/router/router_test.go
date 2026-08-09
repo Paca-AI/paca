@@ -167,10 +167,10 @@ func (f *fakeSettingsSvc) Get(context.Context) (*settingsdom.WorkspaceSettings, 
 func (f *fakeSettingsSvc) InitiateImageUpload(context.Context, settingsdom.ImageSlot, string, string, int64, uuid.UUID) (*attachmentdom.UploadSession, error) {
 	return &attachmentdom.UploadSession{}, nil
 }
-func (f *fakeSettingsSvc) CompleteImageUpload(context.Context, settingsdom.ImageSlot, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+func (f *fakeSettingsSvc) CompleteImageUpload(context.Context, settingsdom.ImageSlot, uuid.UUID, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	return &settingsdom.WorkspaceSettings{}, nil
 }
-func (f *fakeSettingsSvc) RemoveImage(context.Context, settingsdom.ImageSlot) (*settingsdom.WorkspaceSettings, error) {
+func (f *fakeSettingsSvc) RemoveImage(context.Context, settingsdom.ImageSlot, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	return &settingsdom.WorkspaceSettings{}, nil
 }
 func (f *fakeSettingsSvc) UpdateSettings(context.Context, *string, *string, *string, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {

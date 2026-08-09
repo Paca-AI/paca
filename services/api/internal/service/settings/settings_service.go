@@ -82,13 +82,14 @@ func (s *Service) InitiateImageUpload(ctx context.Context, slot settingsdom.Imag
 }
 
 // CompleteImageUpload finishes an upload for the given slot, replacing any
-// previous image in that slot. The DB read-modify-write is done under
-// settingsdom.Repository.WithLock's row lock so a concurrent write (e.g. a
-// favicon upload landing at nearly the same time as this logo upload) can't
-// read the same stale snapshot and clobber this one — see that method's doc
-// comment. The upload itself happens before the lock is taken, so the row
-// lock isn't held across a network call to the object store.
-func (s *Service) CompleteImageUpload(ctx context.Context, slot settingsdom.ImageSlot, fileID uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+// previous image in that slot, and records updatedBy as the acting user.
+// The DB read-modify-write is done under settingsdom.Repository.WithLock's
+// row lock so a concurrent write (e.g. a favicon upload landing at nearly
+// the same time as this logo upload) can't read the same stale snapshot and
+// clobber this one — see that method's doc comment. The upload itself
+// happens before the lock is taken, so the row lock isn't held across a
+// network call to the object store.
+func (s *Service) CompleteImageUpload(ctx context.Context, slot settingsdom.ImageSlot, fileID uuid.UUID, updatedBy uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	if s.avatarSvc == nil {
 		return nil, ErrAvatarServiceRequired
 	}
@@ -108,6 +109,7 @@ func (s *Service) CompleteImageUpload(ctx context.Context, slot settingsdom.Imag
 		oldKey, oldThumbKey = *key, *thumbKey
 		*key, *thumbKey = &keys.Key, &keys.ThumbKey
 		ws.UpdatedAt = time.Now().UTC()
+		ws.UpdatedBy = &updatedBy
 		return ws, nil
 	})
 	if err != nil {
@@ -118,9 +120,10 @@ func (s *Service) CompleteImageUpload(ctx context.Context, slot settingsdom.Imag
 	return ws, nil
 }
 
-// RemoveImage clears the given slot, deleting the underlying objects. See
-// CompleteImageUpload's comment on why the mutation runs under WithLock.
-func (s *Service) RemoveImage(ctx context.Context, slot settingsdom.ImageSlot) (*settingsdom.WorkspaceSettings, error) {
+// RemoveImage clears the given slot, deleting the underlying objects, and
+// records updatedBy as the acting user. See CompleteImageUpload's comment
+// on why the mutation runs under WithLock.
+func (s *Service) RemoveImage(ctx context.Context, slot settingsdom.ImageSlot, updatedBy uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
 	if s.avatarSvc == nil {
 		return nil, ErrAvatarServiceRequired
 	}
@@ -134,6 +137,7 @@ func (s *Service) RemoveImage(ctx context.Context, slot settingsdom.ImageSlot) (
 		}
 		*key, *thumbKey = nil, nil
 		ws.UpdatedAt = time.Now().UTC()
+		ws.UpdatedBy = &updatedBy
 		return ws, nil
 	})
 	if err != nil {

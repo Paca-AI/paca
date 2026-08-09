@@ -23,6 +23,12 @@ import (
 type fakeSettingsSvc struct {
 	ws              *settingsdom.WorkspaceSettings
 	updateColorsErr error
+
+	// lastCompleteUpdatedBy/lastRemoveUpdatedBy record the updatedBy the
+	// handler passed through, so tests can assert the acting user's ID
+	// actually reaches the service rather than being silently dropped.
+	lastCompleteUpdatedBy uuid.UUID
+	lastRemoveUpdatedBy   uuid.UUID
 }
 
 func (f *fakeSettingsSvc) Get(context.Context) (*settingsdom.WorkspaceSettings, error) {
@@ -36,11 +42,13 @@ func (f *fakeSettingsSvc) InitiateImageUpload(context.Context, settingsdom.Image
 	return &attachmentdom.UploadSession{FileID: uuid.New(), UploadURL: "https://fake/upload"}, nil
 }
 
-func (f *fakeSettingsSvc) CompleteImageUpload(context.Context, settingsdom.ImageSlot, uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+func (f *fakeSettingsSvc) CompleteImageUpload(_ context.Context, _ settingsdom.ImageSlot, _ uuid.UUID, updatedBy uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+	f.lastCompleteUpdatedBy = updatedBy
 	return &settingsdom.WorkspaceSettings{}, nil
 }
 
-func (f *fakeSettingsSvc) RemoveImage(context.Context, settingsdom.ImageSlot) (*settingsdom.WorkspaceSettings, error) {
+func (f *fakeSettingsSvc) RemoveImage(_ context.Context, _ settingsdom.ImageSlot, updatedBy uuid.UUID) (*settingsdom.WorkspaceSettings, error) {
+	f.lastRemoveUpdatedBy = updatedBy
 	return &settingsdom.WorkspaceSettings{}, nil
 }
 
@@ -212,5 +220,54 @@ func TestDeleteFavicon_Authed_ReturnsOK(t *testing.T) {
 	w := doSettingsRequest(t, r, http.MethodDelete, "/admin/settings/favicon/avatar", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// newSettingsRouterWithSubject is like newSettingsRouter(svc, true) but lets
+// the test control the injected claims subject, so it can assert the
+// service received that exact user ID as updatedBy.
+func newSettingsRouterWithSubject(svc settingsdom.Service, sub string) chi.Router {
+	h := handler.NewSettingsHandler(svc)
+	r := chi.NewRouter()
+	r.Route("/admin/settings", func(r chi.Router) {
+		r.Use(injectAuthClaimsMiddleware(sub))
+		r.Post("/logo/avatar/complete-upload", h.CompleteLogoUpload)
+		r.Delete("/favicon/avatar", h.DeleteFavicon)
+	})
+	return r
+}
+
+// TestCompleteLogoUpload_PassesActingUserIDToService guards against the bug
+// flagged in review: the handler extracted the acting user ID but never
+// forwarded it to CompleteImageUpload, so uploaded logos/favicons never
+// recorded who uploaded them (UpdatedBy stayed nil/stale).
+func TestCompleteLogoUpload_PassesActingUserIDToService(t *testing.T) {
+	svc := &fakeSettingsSvc{}
+	userID := uuid.New()
+	r := newSettingsRouterWithSubject(svc, userID.String())
+
+	w := doSettingsRequest(t, r, http.MethodPost, "/admin/settings/logo/avatar/complete-upload",
+		map[string]any{"file_id": uuid.New().String()})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if svc.lastCompleteUpdatedBy != userID {
+		t.Errorf("expected CompleteImageUpload to receive acting user %s, got %s", userID, svc.lastCompleteUpdatedBy)
+	}
+}
+
+// TestDeleteFavicon_PassesActingUserIDToService is RemoveImage's counterpart
+// to TestCompleteLogoUpload_PassesActingUserIDToService above.
+func TestDeleteFavicon_PassesActingUserIDToService(t *testing.T) {
+	svc := &fakeSettingsSvc{}
+	userID := uuid.New()
+	r := newSettingsRouterWithSubject(svc, userID.String())
+
+	w := doSettingsRequest(t, r, http.MethodDelete, "/admin/settings/favicon/avatar", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if svc.lastRemoveUpdatedBy != userID {
+		t.Errorf("expected RemoveImage to receive acting user %s, got %s", userID, svc.lastRemoveUpdatedBy)
 	}
 }

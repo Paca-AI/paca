@@ -27,10 +27,13 @@ type Service interface {
 	// presigned PUT URL.
 	InitiateImageUpload(ctx context.Context, slot ImageSlot, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error)
 	// CompleteImageUpload finishes an upload for the given slot, replacing
-	// any previous image in that slot.
-	CompleteImageUpload(ctx context.Context, slot ImageSlot, fileID uuid.UUID) (*WorkspaceSettings, error)
-	// RemoveImage clears the given slot, deleting the underlying objects.
-	RemoveImage(ctx context.Context, slot ImageSlot) (*WorkspaceSettings, error)
+	// any previous image in that slot, and records updatedBy as the acting
+	// user.
+	CompleteImageUpload(ctx context.Context, slot ImageSlot, fileID uuid.UUID, updatedBy uuid.UUID) (*WorkspaceSettings, error)
+	// RemoveImage clears the given slot, deleting the underlying objects,
+	// and records updatedBy as the acting user. A no-op removal (the slot
+	// was already empty) leaves UpdatedBy untouched.
+	RemoveImage(ctx context.Context, slot ImageSlot, updatedBy uuid.UUID) (*WorkspaceSettings, error)
 
 	// UpdateSettings sets the brand name and the light/dark primary accent
 	// colors together. A nil/empty brandName clears the override (falling

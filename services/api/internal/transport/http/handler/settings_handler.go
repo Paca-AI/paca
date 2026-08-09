@@ -112,7 +112,8 @@ func (h *SettingsHandler) initiateUpload(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *SettingsHandler) completeUpload(w http.ResponseWriter, r *http.Request, slot settingsdom.ImageSlot) {
-	if _, ok := actingUserID(w, r); !ok {
+	id, ok := actingUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -121,7 +122,7 @@ func (h *SettingsHandler) completeUpload(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	ws, err := h.svc.CompleteImageUpload(r.Context(), slot, req.FileID)
+	ws, err := h.svc.CompleteImageUpload(r.Context(), slot, req.FileID, id)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -130,11 +131,12 @@ func (h *SettingsHandler) completeUpload(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *SettingsHandler) deleteImage(w http.ResponseWriter, r *http.Request, slot settingsdom.ImageSlot) {
-	if _, ok := actingUserID(w, r); !ok {
+	id, ok := actingUserID(w, r)
+	if !ok {
 		return
 	}
 
-	ws, err := h.svc.RemoveImage(r.Context(), slot)
+	ws, err := h.svc.RemoveImage(r.Context(), slot, id)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

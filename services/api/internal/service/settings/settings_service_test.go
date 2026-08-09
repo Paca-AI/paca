@@ -146,8 +146,9 @@ func TestCompleteImageUpload_Logo_SwapsKeysAndDeletesOld_LeavesFaviconUntouched(
 		nextKeys: &attachmentdom.AvatarKeys{Key: "avatars/workspace_logo/.../new-full.png", ThumbKey: "avatars/workspace_logo/.../new-thumb.png"},
 	}
 	svc := settingssvc.New(repo).WithAvatarService(avatarSvc)
+	updatedBy := uuid.New()
 
-	ws, err := svc.CompleteImageUpload(ctx, settingsdom.SlotLogo, uuid.New())
+	ws, err := svc.CompleteImageUpload(ctx, settingsdom.SlotLogo, uuid.New(), updatedBy)
 	if err != nil {
 		t.Fatalf("CompleteImageUpload: %v", err)
 	}
@@ -163,6 +164,9 @@ func TestCompleteImageUpload_Logo_SwapsKeysAndDeletesOld_LeavesFaviconUntouched(
 	}
 	if ws.FaviconThumbKey == nil || *ws.FaviconThumbKey != faviconThumbKey {
 		t.Errorf("expected FaviconThumbKey unchanged (%q), got %v", faviconThumbKey, ws.FaviconThumbKey)
+	}
+	if ws.UpdatedBy == nil || *ws.UpdatedBy != updatedBy {
+		t.Errorf("expected UpdatedBy %v (the uploader), got %v", updatedBy, ws.UpdatedBy)
 	}
 
 	stored, err := repo.Get(ctx)
@@ -190,8 +194,12 @@ func TestRemoveImage_NoExistingImage_NoOps(t *testing.T) {
 	avatarSvc := &fakeAvatarService{}
 	svc := settingssvc.New(repo).WithAvatarService(avatarSvc)
 
-	if _, err := svc.RemoveImage(ctx, settingsdom.SlotFavicon); err != nil {
+	ws, err := svc.RemoveImage(ctx, settingsdom.SlotFavicon, uuid.New())
+	if err != nil {
 		t.Fatalf("RemoveImage: %v", err)
+	}
+	if ws.UpdatedBy != nil {
+		t.Errorf("expected UpdatedBy untouched by a no-op removal, got %v", ws.UpdatedBy)
 	}
 
 	avatarSvc.mu.Lock()
@@ -207,13 +215,17 @@ func TestRemoveImage_ClearsKeysAndDeletesObjects(t *testing.T) {
 	repo := newFakeSettingsRepo(&settingsdom.WorkspaceSettings{FaviconKey: &key, FaviconThumbKey: &thumbKey})
 	avatarSvc := &fakeAvatarService{}
 	svc := settingssvc.New(repo).WithAvatarService(avatarSvc)
+	updatedBy := uuid.New()
 
-	ws, err := svc.RemoveImage(ctx, settingsdom.SlotFavicon)
+	ws, err := svc.RemoveImage(ctx, settingsdom.SlotFavicon, updatedBy)
 	if err != nil {
 		t.Fatalf("RemoveImage: %v", err)
 	}
 	if ws.FaviconKey != nil || ws.FaviconThumbKey != nil {
 		t.Errorf("expected favicon keys cleared, got %v / %v", ws.FaviconKey, ws.FaviconThumbKey)
+	}
+	if ws.UpdatedBy == nil || *ws.UpdatedBy != updatedBy {
+		t.Errorf("expected UpdatedBy %v (the remover), got %v", updatedBy, ws.UpdatedBy)
 	}
 
 	avatarSvc.mu.Lock()
@@ -362,7 +374,7 @@ func TestWithLock_SerializesConcurrentCallers(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if _, err := svc.CompleteImageUpload(ctx, settingsdom.SlotLogo, uuid.New()); err != nil {
+			if _, err := svc.CompleteImageUpload(ctx, settingsdom.SlotLogo, uuid.New(), uuid.New()); err != nil {
 				t.Errorf("round %d: CompleteImageUpload: %v", i, err)
 			}
 		}()
