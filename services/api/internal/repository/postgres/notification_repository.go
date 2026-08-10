@@ -25,11 +25,21 @@ type notificationReadRow struct {
 	CreatedAt       time.Time  `db:"created_at"`
 
 	// Joined fields.
-	ActorFullName *string `db:"actor_full_name"`
-	ActorUsername *string `db:"actor_username"`
-	TaskTitle     *string `db:"task_title"`
-	TaskNumber    *int    `db:"task_number"`
-	ProjectName   string  `db:"project_name"`
+	ActorFullName       *string `db:"actor_full_name"`
+	ActorUsername       *string `db:"actor_username"`
+	ActorAvatarKey      *string `db:"actor_avatar_key"`
+	ActorAvatarThumbKey *string `db:"actor_avatar_thumb_key"`
+	// ActorMemberType/ActorAgentType/ActorAgentLLMProvider/ActorAgentACPProvider
+	// let the frontend pick a default provider-logo avatar for agent actors
+	// with no custom avatar uploaded — see projectMemberCols for the sibling
+	// query this mirrors.
+	ActorMemberType       string  `db:"actor_member_type"`
+	ActorAgentType        string  `db:"actor_agent_type"`
+	ActorAgentLLMProvider string  `db:"actor_agent_llm_provider"`
+	ActorAgentACPProvider *string `db:"actor_agent_acp_provider"`
+	TaskTitle             *string `db:"task_title"`
+	TaskNumber            *int    `db:"task_number"`
+	ProjectName           string  `db:"project_name"`
 }
 
 // --- Repository struct -------------------------------------------------------
@@ -49,7 +59,14 @@ func NewNotificationRepository(db *sqlx.DB) *NotificationRepository {
 const notificationReadCols = `
 	n.id, n.recipient_user_id, n.actor_member_id, n.type,
 	n.task_id, n.project_id, n.read_at, n.created_at,
-	u.full_name AS actor_full_name, u.username AS actor_username,
+	COALESCE(u.full_name, ag.name) AS actor_full_name,
+	COALESCE(u.username, ag.handle) AS actor_username,
+	COALESCE(u.avatar_key, ag.avatar_key) AS actor_avatar_key,
+	COALESCE(u.avatar_thumb_key, ag.avatar_thumb_key) AS actor_avatar_thumb_key,
+	COALESCE(pm.member_type, '') AS actor_member_type,
+	COALESCE(ag.agent_type, '') AS actor_agent_type,
+	COALESCE(ag.llm_provider, '') AS actor_agent_llm_provider,
+	ag.acp_provider AS actor_agent_acp_provider,
 	t.title AS task_title, t.task_number,
 	p.name AS project_name`
 
@@ -73,6 +90,12 @@ func notificationFromRow(r notificationReadRow) *notificationdom.Notification {
 	if r.ActorUsername != nil {
 		n.ActorUsername = *r.ActorUsername
 	}
+	n.ActorAvatarKey = r.ActorAvatarKey
+	n.ActorAvatarThumbKey = r.ActorAvatarThumbKey
+	n.ActorMemberType = r.ActorMemberType
+	n.ActorAgentType = r.ActorAgentType
+	n.ActorAgentLLMProvider = r.ActorAgentLLMProvider
+	n.ActorAgentACPProvider = r.ActorAgentACPProvider
 	if r.TaskID != nil {
 		id := uuid.MustParse(*r.TaskID)
 		n.TaskID = &id
@@ -112,31 +135,57 @@ func (r *NotificationRepository) Create(ctx context.Context, n *notificationdom.
 	return nil
 }
 
-// ListForUser returns up to limit notifications for the given user, newest first.
-func (r *NotificationRepository) ListForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*notificationdom.Notification, error) {
+// ListForUser returns up to limit notifications for the given user, newest
+// first (created_at DESC, id DESC), keyset-paginated via cursorAfter. It
+// fetches one row beyond limit to detect whether more pages remain, without
+// a separate COUNT query — same approach as AgentRepository.ListConversations.
+func (r *NotificationRepository) ListForUser(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
 	if limit <= 0 {
 		limit = 50
 	}
+
+	// userID is always $1; the cursor pair (if present) is $2/$3, and the
+	// limit placeholder is numbered last so it works whether or not the
+	// cursor clause is present.
+	args := []any{userID.String()}
+	whereCursor := ""
+	if cursorAfter != nil {
+		cur, err := notificationdom.DecodeNotificationCursor(*cursorAfter)
+		if err != nil {
+			return nil, false, fmt.Errorf("%w: %s", notificationdom.ErrInvalidCursor, err)
+		}
+		whereCursor = fmt.Sprintf(" AND (n.created_at, n.id) < ($%d, $%d)", len(args)+1, len(args)+2)
+		args = append(args, cur.CreatedAt, cur.ID)
+	}
+	limitPlaceholder := fmt.Sprintf("$%d", len(args)+1)
+	args = append(args, limit+1)
+
 	var rows []notificationReadRow
-	err := r.db.SelectContext(ctx, &rows, `
-		SELECT `+notificationReadCols+`
+	query := `
+		SELECT ` + notificationReadCols + `
 		FROM notifications n
 		LEFT JOIN project_members pm ON pm.id = n.actor_member_id
 		LEFT JOIN users u ON u.id = pm.user_id AND u.deleted_at IS NULL
+		LEFT JOIN agents ag ON ag.id = pm.agent_id
 		LEFT JOIN tasks t ON t.id = n.task_id AND t.deleted_at IS NULL
 		JOIN projects p ON p.id = n.project_id
-		WHERE n.recipient_user_id = $1
-		ORDER BY n.created_at DESC
-		LIMIT $2`, userID.String(), limit)
-	if err != nil {
-		return nil, fmt.Errorf("notification repo: list: %w", err)
+		WHERE n.recipient_user_id = $1` + whereCursor + `
+		ORDER BY n.created_at DESC, n.id DESC
+		LIMIT ` + limitPlaceholder
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, false, fmt.Errorf("notification repo: list: %w", err)
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
 	}
 
 	out := make([]*notificationdom.Notification, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, notificationFromRow(row))
 	}
-	return out, nil
+	return out, hasMore, nil
 }
 
 // UnreadCount returns the count of unread notifications for the given user.

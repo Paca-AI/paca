@@ -58,6 +58,7 @@
 	"notifications": {
 		"title": "Notificaciones",
 		"empty": "Aún no hay notificaciones",
+		"loadingMore": "Cargando…",
 		"markAllAsRead": "Marcar todas como leídas",
 		"muteSound": "Silenciar sonido de notificaciones",
 		"unmuteSound": "Activar sonido de notificaciones",

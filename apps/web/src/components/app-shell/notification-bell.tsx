@@ -1,16 +1,27 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useMutation,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { Bell, Volume2, VolumeX } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+	AtSign,
+	Bell,
+	Loader2,
+	UserPlus,
+	Volume2,
+	VolumeX,
+} from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
 	MAX_DISPLAYED_UNREAD_COUNT,
@@ -23,7 +34,19 @@ import {
 	isNotificationSoundMuted,
 	setNotificationSoundMuted,
 } from "@/lib/notification-sound";
+import { resolveNotificationActorAvatarUrl } from "@/lib/provider-logos";
+import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 import { timeAgo } from "@/lib/time-ago";
+
+function getInitials(name: string): string {
+	return name
+		.split(" ")
+		.filter(Boolean)
+		.map((n) => n[0])
+		.join("")
+		.toUpperCase()
+		.slice(0, 2);
+}
 
 function notificationText(n: Notification, t: TFunction<"appShell">): string {
 	if (n.type === "assigned") {
@@ -45,11 +68,21 @@ export function NotificationBell() {
 	const { t: tCommon } = useTranslation("common");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const { data } = useQuery(notificationsQueryOptions);
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
+		useInfiniteQuery(notificationsQueryOptions);
 
-	const unreadCount = data?.unread_count ?? 0;
-	const notifications = data?.items ?? [];
+	const unreadCount = data?.pages[0]?.unread_count ?? 0;
+	const notifications = useMemo(
+		() => data?.pages.flatMap((page) => page.items) ?? [],
+		[data],
+	);
 	useDocumentTitle(unreadCount);
+
+	const handleListScroll = createLoadMoreScrollHandler({
+		hasMore: !!hasNextPage,
+		isLoadingMore: isFetchingNextPage,
+		onLoadMore: () => void fetchNextPage(),
+	});
 
 	const [soundMuted, setSoundMuted] = useState(isNotificationSoundMuted);
 	const toggleSoundMuted = useCallback(() => {
@@ -105,7 +138,11 @@ export function NotificationBell() {
 					</span>
 				)}
 			</PopoverTrigger>
-			<PopoverContent align="end" sideOffset={8} className="w-80 p-0 shadow-lg">
+			<PopoverContent
+				align="end"
+				sideOffset={8}
+				className="w-96 overflow-hidden p-0 shadow-lg"
+			>
 				<div className="flex items-center justify-between px-4 py-3 border-b">
 					<span className="text-sm font-semibold">
 						{t("notifications.title")}
@@ -149,31 +186,57 @@ export function NotificationBell() {
 						<p className="text-sm">{t("notifications.empty")}</p>
 					</div>
 				) : (
-					<ScrollArea className="max-h-96">
+					<div className="max-h-96 overflow-y-auto" onScroll={handleListScroll}>
 						<ul className="divide-y">
-							{notifications.map((n) => (
-								<li key={n.id}>
-									<button
-										type="button"
-										onClick={() => handleNotificationClick(n)}
-										className={`w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex gap-3 ${!n.read_at ? "bg-primary/5" : ""}`}
-									>
-										{!n.read_at && (
-											<span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-										)}
-										<div className={!n.read_at ? "" : "pl-5"}>
-											<p className="text-sm leading-snug">
-												{notificationText(n, t)}
-											</p>
-											<p className="mt-0.5 text-xs text-muted-foreground">
-												{n.project_name} · {timeAgo(n.created_at, tCommon)}
-											</p>
-										</div>
-									</button>
-								</li>
-							))}
+							{notifications.map((n) => {
+								const avatarUrl = resolveNotificationActorAvatarUrl(n);
+								return (
+									<li key={n.id}>
+										<button
+											type="button"
+											onClick={() => handleNotificationClick(n)}
+											className={`w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex items-start gap-3 ${!n.read_at ? "bg-primary/5" : ""}`}
+										>
+											<Avatar className="mt-0.5 shrink-0">
+												{avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
+												<AvatarFallback className="font-medium">
+													{getInitials(n.actor_full_name)}
+												</AvatarFallback>
+												<span
+													aria-hidden="true"
+													className={`absolute -right-0.5 -bottom-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-background [&>svg]:h-2.5 [&>svg]:w-2.5 ${n.type === "assigned" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
+												>
+													{n.type === "assigned" ? <UserPlus /> : <AtSign />}
+												</span>
+											</Avatar>
+											<div className="min-w-0 flex-1">
+												<p
+													className={`text-sm leading-snug ${!n.read_at ? "font-medium" : ""}`}
+												>
+													{notificationText(n, t)}
+												</p>
+												<p className="mt-0.5 truncate text-xs text-muted-foreground">
+													{n.project_name} · {timeAgo(n.created_at, tCommon)}
+												</p>
+											</div>
+											{!n.read_at && (
+												<span
+													aria-hidden="true"
+													className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+												/>
+											)}
+										</button>
+									</li>
+								);
+							})}
 						</ul>
-					</ScrollArea>
+						{isFetchingNextPage && (
+							<div className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground">
+								<Loader2 className="h-3 w-3 animate-spin" />
+								{t("notifications.loadingMore")}
+							</div>
+						)}
+					</div>
 				)}
 			</PopoverContent>
 		</Popover>

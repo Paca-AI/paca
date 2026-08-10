@@ -3,6 +3,9 @@ package notificationdom
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +32,21 @@ type Notification struct {
 	// ActorFullName and ActorUsername are denormalised from the actor's user record.
 	ActorFullName string
 	ActorUsername string
+	// ActorAvatarKey and ActorAvatarThumbKey are the actor's avatar
+	// object-storage keys, resolved to presigned URLs by the HTTP handler.
+	// Nil when the actor has no avatar or the actor account has been deleted.
+	ActorAvatarKey      *string
+	ActorAvatarThumbKey *string
+	// ActorMemberType is "human" or "agent". ActorAgentType/
+	// ActorAgentLLMProvider/ActorAgentACPProvider mirror the agent's own
+	// fields and are only meaningful when ActorMemberType == "agent" — the
+	// frontend uses them to pick a default provider-logo avatar when the
+	// actor has no custom avatar uploaded (see projectdom.ProjectMember's
+	// equivalent fields, which this deliberately mirrors).
+	ActorMemberType       string
+	ActorAgentType        string
+	ActorAgentLLMProvider string
+	ActorAgentACPProvider *string
 	// Type is one of the NotificationType constants.
 	Type NotificationType
 	// TaskID is the task this notification is about.
@@ -59,8 +77,11 @@ type Repository interface {
 	// Create persists a new notification.
 	Create(ctx context.Context, n *Notification) error
 	// ListForUser returns up to limit notifications for the given user,
-	// ordered newest first.
-	ListForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*Notification, error)
+	// ordered newest first (created_at DESC, id DESC), keyset-paginated via
+	// cursorAfter (nil for the first page — see EncodeNotificationCursor /
+	// DecodeNotificationCursor). hasMore reports whether another page
+	// remains beyond the returned items.
+	ListForUser(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) (items []*Notification, hasMore bool, err error)
 	// UnreadCount returns the number of unread notifications for the given user.
 	UnreadCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// MarkAsRead sets read_at on a notification owned by userID.
@@ -81,8 +102,9 @@ type Service interface {
 	// NotifyMentioned creates notifications for all @mentioned users found in
 	// commentText who are members of the project.
 	NotifyMentioned(ctx context.Context, in NotifyMentionedInput) error
-	// ListNotifications returns up to limit notifications for the authenticated user.
-	ListNotifications(ctx context.Context, userID uuid.UUID, limit int) ([]*Notification, error)
+	// ListNotifications returns up to limit notifications for the authenticated
+	// user, keyset-paginated via cursorAfter — see Repository.ListForUser.
+	ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) (items []*Notification, hasMore bool, err error)
 	// UnreadCount returns the count of unread notifications for the user.
 	UnreadCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// MarkAsRead marks a single notification as read.
@@ -100,6 +122,11 @@ type NotifyAssignedInput struct {
 	// ActorUserID is the users.id of the person who made the assignment.
 	// Used to resolve the actor to a member and to skip self-assignment.
 	ActorUserID uuid.UUID
+	// ActorAgentID is the agent's id when the assignment was made by an AI
+	// agent (an agent-authenticated API request) rather than a human. When
+	// set, it takes precedence over ActorUserID for resolving the actor's
+	// project member — see projectdom.MemberRepository.FindMemberByActor.
+	ActorAgentID *uuid.UUID
 }
 
 // NotifyMentionedInput carries data for a mention notification.
@@ -125,3 +152,43 @@ var ErrNotificationNotFound = errNotificationNotFound("notification not found")
 type errNotificationNotFound string
 
 func (e errNotificationNotFound) Error() string { return string(e) }
+
+// ErrInvalidCursor is returned when a client-supplied pagination cursor
+// fails to decode — see agentdom.ErrConversationInvalidCursor, which this
+// mirrors.
+var ErrInvalidCursor = errInvalidCursor("invalid pagination cursor")
+
+type errInvalidCursor string
+
+func (e errInvalidCursor) Error() string { return string(e) }
+
+// Cursor holds the stable ordering fields for keyset-based pagination over
+// a user's notification list, which is always ordered by created_at DESC,
+// id DESC — same shape as agentdom.ConversationCursor/ActivityFeedCursor.
+type Cursor struct {
+	CreatedAt time.Time `json:"ca"`
+	ID        string    `json:"id"`
+}
+
+// EncodeNotificationCursor builds an opaque base64 cursor from the last
+// notification on a page.
+func EncodeNotificationCursor(n *Notification) string {
+	cur := Cursor{CreatedAt: n.CreatedAt.UTC(), ID: n.ID.String()}
+	b, _ := json.Marshal(cur)
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+// DecodeNotificationCursor parses a cursor token produced by
+// EncodeNotificationCursor.
+func DecodeNotificationCursor(s string) (*Cursor, error) {
+	b, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("decode cursor base64: %w", err)
+	}
+	var c Cursor
+	if err := json.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("decode cursor json: %w", err)
+	}
+	c.CreatedAt = c.CreatedAt.UTC()
+	return &c, nil
+}

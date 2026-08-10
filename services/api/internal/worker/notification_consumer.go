@@ -31,6 +31,9 @@ const (
 type memberReader interface {
 	FindMemberByID(ctx context.Context, memberID uuid.UUID) (*projectdom.ProjectMember, error)
 	FindMemberByUserProject(ctx context.Context, userID, projectID uuid.UUID) (*projectdom.ProjectMember, error)
+	// FindMemberByActor resolves an actor to a project member: the agent's
+	// member record when agentID is non-nil, otherwise the human user's.
+	FindMemberByActor(ctx context.Context, projectID, actorID uuid.UUID, agentID *uuid.UUID) (*projectdom.ProjectMember, error)
 }
 
 // agentTaskTrigger creates an agent conversation when a task is assigned to an agent member.
@@ -181,7 +184,10 @@ type assignmentStreamPayload struct {
 	NewAssigneeMemberID string `json:"new_assignee_member_id"`
 	OldAssigneeMemberID string `json:"old_assignee_member_id,omitempty"`
 	ActorUserID         string `json:"actor_user_id"`
-	AutomationName      string `json:"automation_name,omitempty"`
+	// ActorAgentID is set when the assignment was made by an AI agent
+	// (an agent-authenticated API request) rather than a human.
+	ActorAgentID   string `json:"actor_agent_id,omitempty"`
+	AutomationName string `json:"automation_name,omitempty"`
 }
 
 // maxPromptLabelLen caps how much of a project-controlled label (automation
@@ -296,6 +302,14 @@ func (c *NotificationConsumer) handle(msg redis.XMessage) {
 		c.ack(ctx, msg.ID)
 		return
 	}
+	var actorAgentID *uuid.UUID
+	if p.ActorAgentID != "" {
+		if parsed, err := uuid.Parse(p.ActorAgentID); err == nil {
+			actorAgentID = &parsed
+		} else {
+			c.log.Warn("notification consumer: invalid actor_agent_id", "id", msg.ID)
+		}
+	}
 
 	// Determine whether the assignee is an agent member.
 	// Agent members have no user_id, so sending them a notification would
@@ -310,7 +324,7 @@ func (c *NotificationConsumer) handle(msg redis.XMessage) {
 			// there, not a bug; only warn when a genuine human actor can't be
 			// resolved to a member.
 			var actorMemberID *uuid.UUID
-			if actorMember, err := c.memberRepo.FindMemberByUserProject(ctx, actorUserID, projectID); err == nil {
+			if actorMember, err := c.memberRepo.FindMemberByActor(ctx, projectID, actorUserID, actorAgentID); err == nil {
 				actorMemberID = &actorMember.ID
 			} else if actorUserID != userdom.SystemActorUserID {
 				c.log.Warn("notification consumer: could not resolve actor to a project member", "id", msg.ID, "actor_user_id", actorUserID, "err", err)
@@ -344,6 +358,7 @@ func (c *NotificationConsumer) handle(msg redis.XMessage) {
 		ProjectID:           projectID,
 		NewAssigneeMemberID: newAssigneeMemberID,
 		ActorUserID:         actorUserID,
+		ActorAgentID:        actorAgentID,
 	}); err != nil {
 		c.log.Error("notification consumer: NotifyAssigned failed", "id", msg.ID, "err", err)
 		// Do not ack — will be retried via processPending on next restart.

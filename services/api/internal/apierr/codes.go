@@ -203,6 +203,8 @@ const (
 	// CodeNotificationNotFound indicates the requested notification does not exist
 	// or does not belong to the authenticated user.
 	CodeNotificationNotFound Code = "NOTIFICATION_NOT_FOUND"
+	// CodeNotificationInvalidCursor indicates a client-supplied pagination cursor failed to decode.
+	CodeNotificationInvalidCursor Code = "NOTIFICATION_INVALID_CURSOR"
 
 	// CodeGitHubIntegrationNotFound indicates the project has no GitHub integration configured.
 	CodeGitHubIntegrationNotFound Code = "GITHUB_INTEGRATION_NOT_FOUND"

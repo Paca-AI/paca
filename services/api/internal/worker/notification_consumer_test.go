@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
@@ -102,8 +103,9 @@ func TestSanitizeAgentMessage_StripsOtherControlCharsAndCapsLength(t *testing.T)
 // ---------------------------------------------------------------------------
 
 type fakeMemberReader struct {
-	byID          map[uuid.UUID]*projectdom.ProjectMember
-	byUserProject func(userID, projectID uuid.UUID) (*projectdom.ProjectMember, error)
+	byID           map[uuid.UUID]*projectdom.ProjectMember
+	byUserProject  func(userID, projectID uuid.UUID) (*projectdom.ProjectMember, error)
+	byAgentProject func(agentID, projectID uuid.UUID) (*projectdom.ProjectMember, error)
 }
 
 func (f *fakeMemberReader) FindMemberByID(_ context.Context, memberID uuid.UUID) (*projectdom.ProjectMember, error) {
@@ -118,6 +120,16 @@ func (f *fakeMemberReader) FindMemberByUserProject(_ context.Context, userID, pr
 	return f.byUserProject(userID, projectID)
 }
 
+func (f *fakeMemberReader) FindMemberByActor(_ context.Context, projectID, actorID uuid.UUID, agentID *uuid.UUID) (*projectdom.ProjectMember, error) {
+	if agentID != nil {
+		if f.byAgentProject == nil {
+			return nil, errors.New("no agent found")
+		}
+		return f.byAgentProject(*agentID, projectID)
+	}
+	return f.byUserProject(actorID, projectID)
+}
+
 type fakeAgentTaskTrigger struct {
 	called                 bool
 	gotTriggeredByMemberID *uuid.UUID
@@ -129,16 +141,38 @@ func (f *fakeAgentTaskTrigger) TriggerTaskAssigned(_ context.Context, _, _, _ uu
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
 
+// fakeNotificationSvc records the input of the one method these tests
+// exercise. Embedding the interface satisfies the rest of
+// notificationdom.Service without implementing it; any other method panics
+// if called, which is intentional — these tests don't expect it to be.
+type fakeNotificationSvc struct {
+	notificationdom.Service
+	called   bool
+	gotInput notificationdom.NotifyAssignedInput
+}
+
+func (f *fakeNotificationSvc) NotifyAssigned(_ context.Context, in notificationdom.NotifyAssignedInput) error {
+	f.called = true
+	f.gotInput = in
+	return nil
+}
+
 func newTestNotificationConsumer(t *testing.T, memberRepo memberReader, agentSvc agentTaskTrigger) *NotificationConsumer {
+	t.Helper()
+	return newTestNotificationConsumerWithNotificationSvc(t, nil, memberRepo, agentSvc)
+}
+
+func newTestNotificationConsumerWithNotificationSvc(t *testing.T, notificationSvc notificationdom.Service, memberRepo memberReader, agentSvc agentTaskTrigger) *NotificationConsumer {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
 	return &NotificationConsumer{
-		client:     client,
-		memberRepo: memberRepo,
-		agentSvc:   agentSvc,
-		log:        discardLogger(),
+		client:          client,
+		notificationSvc: notificationSvc,
+		memberRepo:      memberRepo,
+		agentSvc:        agentSvc,
+		log:             discardLogger(),
 	}
 }
 
@@ -223,5 +257,40 @@ func TestNotificationConsumer_HumanTriggeredAssignment_PassesResolvedMemberID(t 
 	}
 	if agentSvc.gotTriggeredByMemberID == nil || *agentSvc.gotTriggeredByMemberID != actorMemberID {
 		t.Fatalf("expected triggeredByMemberID %v, got %v", actorMemberID, agentSvc.gotTriggeredByMemberID)
+	}
+}
+
+// TestNotificationConsumer_AgentAssignsHuman_PassesActorAgentID guards the
+// case a human user reported: when an AI agent (not a human) assigns a task
+// to a human, the resulting notification must carry the agent's ID so the
+// notification service can resolve the agent's own project-member record
+// (name + avatar) instead of failing to find a human member for the
+// agent-authenticated request's underlying actor_user_id. The assignee here
+// is a human, so this exercises the fall-through path to
+// c.notificationSvc.NotifyAssigned rather than the agent-assignee special case.
+func TestNotificationConsumer_AgentAssignsHuman_PassesActorAgentID(t *testing.T) {
+	assigneeMemberID := uuid.New()
+	actorAgentID := uuid.New()
+
+	// No entry for assigneeMemberID: FindMemberByID errors, so handle()
+	// falls through past the "assignee is an agent" branch to NotifyAssigned.
+	memberRepo := &fakeMemberReader{byID: map[uuid.UUID]*projectdom.ProjectMember{}}
+	notificationSvc := &fakeNotificationSvc{}
+	c := newTestNotificationConsumerWithNotificationSvc(t, notificationSvc, memberRepo, &fakeAgentTaskTrigger{})
+
+	msg := agentAssignmentMessage(t, assignmentStreamPayload{
+		TaskID:              uuid.New().String(),
+		ProjectID:           uuid.New().String(),
+		NewAssigneeMemberID: assigneeMemberID.String(),
+		ActorUserID:         uuid.New().String(),
+		ActorAgentID:        actorAgentID.String(),
+	})
+	c.handle(msg)
+
+	if !notificationSvc.called {
+		t.Fatalf("expected NotifyAssigned to be called")
+	}
+	if notificationSvc.gotInput.ActorAgentID == nil || *notificationSvc.gotInput.ActorAgentID != actorAgentID {
+		t.Fatalf("expected ActorAgentID %v, got %v", actorAgentID, notificationSvc.gotInput.ActorAgentID)
 	}
 }

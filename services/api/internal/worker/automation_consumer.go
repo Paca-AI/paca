@@ -2288,7 +2288,7 @@ func (c *AutomationConsumer) applyUpdateTask(ctx context.Context, projectID uuid
 		for _, memberID := range *in.AssigneeIDs {
 			if !slices.Contains(oldAssignees, memberID) {
 				extra := map[string]any{"automation_name": automationName}
-				_ = events.PublishAssignmentChanged(ctx, c.publisher, task.ID, projectID, memberID, nil, userdom.SystemActorUserID, extra)
+				_ = events.PublishAssignmentChanged(ctx, c.publisher, task.ID, projectID, memberID, nil, userdom.SystemActorUserID, nil, extra)
 			}
 		}
 	}

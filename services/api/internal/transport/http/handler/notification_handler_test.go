@@ -23,7 +23,7 @@ import (
 type mockNotificationSvc struct {
 	mu sync.RWMutex
 
-	listNotifications func(ctx context.Context, userID uuid.UUID, limit int) ([]*notificationdom.Notification, error)
+	listNotifications func(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error)
 	unreadCount       func(ctx context.Context, userID uuid.UUID) (int64, error)
 	markAsRead        func(ctx context.Context, id, userID uuid.UUID) error
 	markAllAsRead     func(ctx context.Context, userID uuid.UUID) error
@@ -37,11 +37,11 @@ func (m *mockNotificationSvc) NotifyMentioned(_ context.Context, _ notificationd
 	return nil
 }
 
-func (m *mockNotificationSvc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int) ([]*notificationdom.Notification, error) {
+func (m *mockNotificationSvc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
 	if m.listNotifications != nil {
-		return m.listNotifications(ctx, userID, limit)
+		return m.listNotifications(ctx, userID, limit, cursorAfter)
 	}
-	return nil, nil
+	return nil, false, nil
 }
 
 func (m *mockNotificationSvc) UnreadCount(ctx context.Context, userID uuid.UUID) (int64, error) {
@@ -163,14 +163,17 @@ func TestNotificationHandler_List_Success(t *testing.T) {
 	}
 
 	svc := &mockNotificationSvc{}
-	svc.listNotifications = func(_ context.Context, gotUserID uuid.UUID, limit int) ([]*notificationdom.Notification, error) {
+	svc.listNotifications = func(_ context.Context, gotUserID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
 		if gotUserID != userID {
 			t.Fatalf("expected user %s, got %s", userID, gotUserID)
 		}
-		if limit != 50 {
-			t.Fatalf("expected limit 50, got %d", limit)
+		if limit != 20 {
+			t.Fatalf("expected default page_size 20, got %d", limit)
 		}
-		return notifs, nil
+		if cursorAfter != nil {
+			t.Fatalf("expected nil cursor on first page, got %v", *cursorAfter)
+		}
+		return notifs, false, nil
 	}
 	svc.unreadCount = func(_ context.Context, _ uuid.UUID) (int64, error) {
 		return 3, nil
@@ -197,7 +200,9 @@ func TestNotificationHandler_List_Success(t *testing.T) {
 			TaskTitle     string `json:"task_title"`
 			ProjectName   string `json:"project_name"`
 		} `json:"items"`
-		UnreadCount int64 `json:"unread_count"`
+		PageSize    int     `json:"page_size"`
+		NextCursor  *string `json:"next_cursor"`
+		UnreadCount int64   `json:"unread_count"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
 		t.Fatalf("decode data: %v", err)
@@ -214,13 +219,19 @@ func TestNotificationHandler_List_Success(t *testing.T) {
 	if resp.UnreadCount != 3 {
 		t.Fatalf("expected unread_count 3, got %d", resp.UnreadCount)
 	}
+	if resp.PageSize != 20 {
+		t.Fatalf("expected page_size 20, got %d", resp.PageSize)
+	}
+	if resp.NextCursor != nil {
+		t.Fatalf("expected nil next_cursor when hasMore=false, got %v", *resp.NextCursor)
+	}
 }
 
 func TestNotificationHandler_List_Empty(t *testing.T) {
 	userID := uuid.New()
 	svc := &mockNotificationSvc{}
-	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int) ([]*notificationdom.Notification, error) {
-		return nil, nil
+	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int, _ *string) ([]*notificationdom.Notification, bool, error) {
+		return nil, false, nil
 	}
 	svc.unreadCount = func(_ context.Context, _ uuid.UUID) (int64, error) {
 		return 0, nil
@@ -246,11 +257,98 @@ func TestNotificationHandler_List_Empty(t *testing.T) {
 	}
 }
 
+func TestNotificationHandler_List_CursorAndPageSizeForwarded(t *testing.T) {
+	userID := uuid.New()
+	nextItem := &notificationdom.Notification{
+		ID:            uuid.New(),
+		CreatedAt:     time.Now(),
+		ActorFullName: "Next Page Seed",
+	}
+
+	svc := &mockNotificationSvc{}
+	var gotLimit int
+	var gotCursor *string
+	svc.listNotifications = func(_ context.Context, _ uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
+		gotLimit = limit
+		gotCursor = cursorAfter
+		return []*notificationdom.Notification{nextItem}, true, nil
+	}
+	svc.unreadCount = func(_ context.Context, _ uuid.UUID) (int64, error) {
+		return 0, nil
+	}
+
+	r := buildNotificationRouter(svc)
+	w := doNotifRequestWithActor(r, http.MethodGet, "/users/me/notifications?page_size=5&cursor=abc123", nil, userID)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotLimit != 5 {
+		t.Fatalf("expected page_size 5 forwarded as limit, got %d", gotLimit)
+	}
+	if gotCursor == nil || *gotCursor != "abc123" {
+		t.Fatalf("expected cursor %q forwarded, got %v", "abc123", gotCursor)
+	}
+
+	_, _, data := decodeNotificationEnvelope(t, w.Body.Bytes())
+	var resp struct {
+		PageSize   int     `json:"page_size"`
+		NextCursor *string `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		t.Fatalf("decode data: %v", err)
+	}
+	if resp.PageSize != 5 {
+		t.Fatalf("expected response page_size 5, got %d", resp.PageSize)
+	}
+	if resp.NextCursor == nil {
+		t.Fatal("expected non-nil next_cursor when hasMore=true")
+	}
+	wantCursor := notificationdom.EncodeNotificationCursor(nextItem)
+	if *resp.NextCursor != wantCursor {
+		t.Fatalf("expected next_cursor derived from the last item on the page, got %q want %q", *resp.NextCursor, wantCursor)
+	}
+}
+
+func TestNotificationHandler_List_InvalidPageSize(t *testing.T) {
+	userID := uuid.New()
+	svc := &mockNotificationSvc{}
+
+	r := buildNotificationRouter(svc)
+	w := doNotifRequestWithActor(r, http.MethodGet, "/users/me/notifications?page_size=0", nil, userID)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationHandler_List_InvalidCursor(t *testing.T) {
+	userID := uuid.New()
+	svc := &mockNotificationSvc{}
+	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int, _ *string) ([]*notificationdom.Notification, bool, error) {
+		return nil, false, notificationdom.ErrInvalidCursor
+	}
+
+	r := buildNotificationRouter(svc)
+	w := doNotifRequestWithActor(r, http.MethodGet, "/users/me/notifications?cursor=garbage", nil, userID)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	ok, code, _ := decodeNotificationEnvelope(t, w.Body.Bytes())
+	if ok {
+		t.Fatal("expected success=false")
+	}
+	if code != "NOTIFICATION_INVALID_CURSOR" {
+		t.Fatalf("expected error code NOTIFICATION_INVALID_CURSOR, got %s", code)
+	}
+}
+
 func TestNotificationHandler_List_ServiceError(t *testing.T) {
 	userID := uuid.New()
 	svc := &mockNotificationSvc{}
-	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int) ([]*notificationdom.Notification, error) {
-		return nil, errors.New("boom")
+	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int, _ *string) ([]*notificationdom.Notification, bool, error) {
+		return nil, false, errors.New("boom")
 	}
 
 	r := buildNotificationRouter(svc)
@@ -264,8 +362,8 @@ func TestNotificationHandler_List_ServiceError(t *testing.T) {
 func TestNotificationHandler_List_UnreadCountError(t *testing.T) {
 	userID := uuid.New()
 	svc := &mockNotificationSvc{}
-	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int) ([]*notificationdom.Notification, error) {
-		return nil, nil
+	svc.listNotifications = func(_ context.Context, _ uuid.UUID, _ int, _ *string) ([]*notificationdom.Notification, bool, error) {
+		return nil, false, nil
 	}
 	svc.unreadCount = func(_ context.Context, _ uuid.UUID) (int64, error) {
 		return 0, errors.New("unread count failure")

@@ -298,6 +298,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeDocCommentActorUnidentified
 	case errors.Is(err, notificationdom.ErrNotificationNotFound):
 		return http.StatusNotFound, apierr.CodeNotificationNotFound
+	case errors.Is(err, notificationdom.ErrInvalidCursor):
+		return http.StatusBadRequest, apierr.CodeNotificationInvalidCursor
 	case errors.Is(err, apikeydom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeAPIKeyNotFound
 	case errors.Is(err, apikeydom.ErrRevoked):
