@@ -11,6 +11,7 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
 	markAllNotificationsAsRead,
 	markNotificationAsRead,
@@ -43,6 +44,7 @@ export function NotificationBell() {
 
 	const unreadCount = data?.unread_count ?? 0;
 	const notifications = data?.items ?? [];
+	useDocumentTitle(unreadCount);
 
 	const { mutate: markRead } = useMutation({
 		mutationFn: markNotificationAsRead,
