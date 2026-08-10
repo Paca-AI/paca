@@ -5,6 +5,18 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
+/** Up to two uppercase initials from a display name, for avatar fallbacks
+ *  (e.g. "Ada Lovelace" -> "AL", "Madonna" -> "M"). */
+export function getInitials(name: string): string {
+	return name
+		.split(" ")
+		.filter(Boolean)
+		.map((n) => n[0])
+		.join("")
+		.toUpperCase()
+		.slice(0, 2);
+}
+
 export function cleanBlocks(
 	blocks: unknown[] | null | undefined,
 ): unknown[] | null {

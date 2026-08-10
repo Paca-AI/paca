@@ -24,6 +24,9 @@ var mentionRegexp = regexp.MustCompile(`@([a-zA-Z0-9._-]+)`)
 type memberLookup interface {
 	FindMemberByID(ctx context.Context, memberID uuid.UUID) (*projectdom.ProjectMember, error)
 	FindMemberByUserProject(ctx context.Context, userID, projectID uuid.UUID) (*projectdom.ProjectMember, error)
+	// FindMemberByActor resolves an actor to a project member: the agent's
+	// member record when agentID is non-nil, otherwise the human user's.
+	FindMemberByActor(ctx context.Context, projectID, actorID uuid.UUID, agentID *uuid.UUID) (*projectdom.ProjectMember, error)
 	ListMembers(ctx context.Context, projectID uuid.UUID) ([]*projectdom.ProjectMember, error)
 }
 
@@ -57,8 +60,11 @@ func (s *Svc) NotifyAssigned(ctx context.Context, in notificationdom.NotifyAssig
 		return nil
 	}
 
-	// Resolve the actor's member ID for attribution.
-	actorMember, err := s.memberRepo.FindMemberByUserProject(ctx, in.ActorUserID, in.ProjectID)
+	// Resolve the actor's member ID for attribution. When ActorAgentID is
+	// set (the assignment was made by an AI agent), this resolves the
+	// agent's own member record so the notification shows the agent's name
+	// and avatar instead of failing to find a human member.
+	actorMember, err := s.memberRepo.FindMemberByActor(ctx, in.ProjectID, in.ActorUserID, in.ActorAgentID)
 	if err != nil {
 		// Actor not found in project; still create the notification without actor attribution.
 		actorMember = nil
@@ -158,9 +164,10 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 	return nil
 }
 
-// ListNotifications returns up to limit notifications for the user, newest first.
-func (s *Svc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int) ([]*notificationdom.Notification, error) {
-	return s.repo.ListForUser(ctx, userID, limit)
+// ListNotifications returns up to limit notifications for the user, newest
+// first, keyset-paginated via cursorAfter.
+func (s *Svc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
+	return s.repo.ListForUser(ctx, userID, limit, cursorAfter)
 }
 
 // UnreadCount returns the count of unread notifications for the user.

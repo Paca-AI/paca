@@ -1,4 +1,5 @@
 import type { Agent } from "./agent-api";
+import type { Notification } from "./notification-api";
 import type { ProjectMember } from "./project-api";
 
 // Default agent avatar placeholders, shown when an agent has no custom
@@ -136,4 +137,45 @@ export function resolveMemberAvatarUrl(
 	>,
 ): string | undefined {
 	return member.avatar_thumb_url ?? getDefaultMemberAvatar(member);
+}
+
+/**
+ * getDefaultMemberAvatar's sibling for the notification list's actor
+ * projection (notification-bell.tsx) — same lookup, different field names
+ * (an `actor_` prefix) since these come from the notification JOIN rather
+ * than the project_members JOIN. Returns undefined for human actors.
+ */
+function getDefaultNotificationActorAvatar(
+	n: Pick<
+		Notification,
+		| "actor_member_type"
+		| "actor_agent_type"
+		| "actor_agent_llm_provider"
+		| "actor_agent_acp_provider"
+	>,
+): string | undefined {
+	if (n.actor_member_type !== "agent") return undefined;
+	return lookupProviderLogo(
+		n.actor_agent_type,
+		n.actor_agent_llm_provider,
+		n.actor_agent_acp_provider,
+	);
+}
+
+/**
+ * resolveMemberAvatarUrl's sibling for the notification list's actor
+ * projection (notification-bell.tsx). Always thumb-sized, same as
+ * resolveMemberAvatarUrl.
+ */
+export function resolveNotificationActorAvatarUrl(
+	n: Pick<
+		Notification,
+		| "actor_avatar_thumb_url"
+		| "actor_member_type"
+		| "actor_agent_type"
+		| "actor_agent_llm_provider"
+		| "actor_agent_acp_provider"
+	>,
+): string | undefined {
+	return n.actor_avatar_thumb_url ?? getDefaultNotificationActorAvatar(n);
 }

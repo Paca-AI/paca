@@ -58,7 +58,10 @@
 	"notifications": {
 		"title": "Thông báo",
 		"empty": "Chưa có thông báo nào",
+		"loadingMore": "Đang tải…",
 		"markAllAsRead": "Đánh dấu tất cả là đã đọc",
+		"muteSound": "Tắt âm thanh thông báo",
+		"unmuteSound": "Bật âm thanh thông báo",
 		"text": {
 			"assigned": "{{actor}} đã giao cho bạn nhiệm vụ #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} đã nhắc đến bạn trong #{{taskNumber}} — {{taskTitle}}"

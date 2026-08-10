@@ -21,6 +21,7 @@ import {
 	currentUserOptionalQueryOptions,
 	currentUserQueryOptions,
 } from "@/lib/auth-api";
+import { playNotificationSound } from "@/lib/notification-sound";
 import { PluginRegistryProvider } from "@/lib/plugins/registry";
 import { ShortcutProvider } from "@/lib/shortcuts/provider";
 import {
@@ -103,6 +104,7 @@ function AuthenticatedLayout() {
 		const handleNotification = ({ type }: { type: string }) => {
 			if (type === "notification.created") {
 				queryClient.invalidateQueries({ queryKey: ["notifications"] });
+				playNotificationSound();
 			}
 		};
 		socket.on("notification", handleNotification);

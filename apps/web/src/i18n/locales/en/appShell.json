@@ -58,7 +58,10 @@
 	"notifications": {
 		"title": "Notifications",
 		"empty": "No notifications yet",
+		"loadingMore": "Loading…",
 		"markAllAsRead": "Mark all as read",
+		"muteSound": "Mute notification sound",
+		"unmuteSound": "Unmute notification sound",
 		"text": {
 			"assigned": "{{actor}} assigned you to task #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} mentioned you in #{{taskNumber}} — {{taskTitle}}"

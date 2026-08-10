@@ -372,7 +372,7 @@ func New(cfg *config.Config) (*App, error) {
 		Attachment:         handler.NewAttachmentHandler(attachmentService),
 		Document:           handler.NewDocumentHandler(docService, docActivityService).WithDocAvatarService(attachmentService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
-		Notification:       handler.NewNotificationHandler(notificationService),
+		Notification:       handler.NewNotificationHandler(notificationService, handler.WithNotificationAvatarService(attachmentService)),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
 		Skills:             handler.NewSkillsHandler(pluginService, cfg.Plugins.SkillsDir),
 		Plugin:             pluginHandler,

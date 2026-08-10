@@ -974,7 +974,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		// Enqueue one assignment event per assignee so the NotificationConsumer
 		// can create the in-app notification asynchronously (best-effort).
 		for _, memberID := range req.AssigneeIDs {
-			_ = events.PublishAssignmentChanged(r.Context(), h.publisher, t.ID, projectID, memberID, nil, actorID, nil)
+			_ = events.PublishAssignmentChanged(r.Context(), h.publisher, t.ID, projectID, memberID, nil, actorID, agentIDPtr, nil)
 		}
 	}
 
@@ -1062,7 +1062,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 				if _, alreadyAssigned := oldSet[memberID]; alreadyAssigned {
 					continue
 				}
-				_ = events.PublishAssignmentChanged(r.Context(), h.publisher, taskID, projectID, memberID, nil, actorID, nil)
+				_ = events.PublishAssignmentChanged(r.Context(), h.publisher, taskID, projectID, memberID, nil, actorID, agentIDPtr, nil)
 			}
 		}
 	}

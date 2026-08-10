@@ -58,7 +58,10 @@
 	"notifications": {
 		"title": "Уведомления",
 		"empty": "Уведомлений пока нет",
+		"loadingMore": "Загрузка…",
 		"markAllAsRead": "Отметить все как прочитанные",
+		"muteSound": "Отключить звук уведомлений",
+		"unmuteSound": "Включить звук уведомлений",
 		"text": {
 			"assigned": "{{actor}} назначил(а) вам задачу #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} упомянул(а) вас в #{{taskNumber}} — {{taskTitle}}"
