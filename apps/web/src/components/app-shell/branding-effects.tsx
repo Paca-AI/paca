@@ -4,9 +4,9 @@ import { useThemeMode } from "@/hooks/use-theme-mode";
 
 const FAVICON_LINK_ID = "app-favicon";
 const DEFAULT_FAVICON_HREF = "/favicon.ico";
-// Exported so useNotificationTitle (see hooks/use-notification-title.ts) can
-// prefix the same base title with an unread count without hardcoding it a
-// second time.
+// Exported so useDocumentTitle (see hooks/use-document-title.ts) can prefix
+// the same base title with an unread count/project name without hardcoding
+// it a second time.
 export const DEFAULT_TITLE = "Paca";
 
 // Exported for unit testing (see branding-effects.test.ts) — otherwise only
