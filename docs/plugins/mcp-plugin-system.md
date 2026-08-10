@@ -142,18 +142,24 @@ Notes:
 - Return `null` (or `undefined`) when the plugin has nothing to contribute
   for this call. The host omits the section entirely rather than rendering
   empty boilerplate on every call — most calls won't touch every plugin.
-- The host calls `getToolContext` for every loaded plugin that implements
-  it, in parallel, after every successful core tool call (skipped when the
-  core call itself returned an error). Keep it fast and read-only.
+- The host only calls `getToolContext` on plugins that declared `toolId` in
+  their manifest's `mcp.toolContextHooks` — implementing the method alone
+  isn't enough, you also need the manifest declaration or the hook never
+  fires. Declared plugins are called in parallel, after every successful
+  core tool call (skipped when the core call itself returned an error).
+  Keep it fast and read-only.
 - Errors are caught and logged by the host (`[plugin-loader] Plugin "<id>"
   getToolContext("<toolId>") failed: ...`) — a throwing plugin contributes
   nothing but cannot break the rest of the response. You don't need your
   own try/catch purely for that; add one if you want a specific failure
   (e.g. "not configured for this project") to resolve to `null` instead of
   logging.
-- All plugins' returned text is joined and appended as one additional
-  content block on the tool result — prefix your text with a heading (e.g.
-  `## GitHub`) so it reads clearly alongside other plugins' sections.
+- All plugins' returned text is joined (in manifest-declared plugin order)
+  and merged into the tool result's last text block — not appended as a
+  separate content entry — so the AI client sees task detail and plugin
+  context as one continuous passage instead of a trailing block it can
+  ignore. Prefix your text with a heading (e.g. `## GitHub`) so it reads
+  clearly alongside other plugins' sections.
 
 ## Plugin SDK (`@paca-ai/plugin-sdk-mcp`)
 

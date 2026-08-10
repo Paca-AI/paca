@@ -184,6 +184,12 @@ export class PluginRegistry {
 	 * A registered plugin that throws, or that turns out not to actually
 	 * implement `getToolContext` (manifest/module mismatch), contributes
 	 * nothing — one broken plugin cannot blank out the rest of the response.
+	 *
+	 * Results are returned in `candidates` (i.e. plugin load) order
+	 * regardless of which plugin's call resolves first — the requests
+	 * themselves still run concurrently via `Promise.all`, only the
+	 * ordering of the resolved output is fixed, so a slow plugin can't
+	 * shuffle the sections a caller sees on one call vs. the next.
 	 */
 	async getToolContext(
 		toolId: string,
@@ -193,15 +199,13 @@ export class PluginRegistry {
 		const candidates = this.toolContextOwners.get(toolId);
 		if (!candidates || candidates.length === 0) return [];
 
-		const sections: PluginContextSection[] = [];
-
-		await Promise.all(
-			candidates.map(async (p) => {
+		const results = await Promise.all(
+			candidates.map(async (p): Promise<PluginContextSection | null> => {
 				if (!p.entry.getToolContext) {
 					console.error(
 						`[plugin-loader] Plugin "${p.pluginId}" declared toolContextHooks for "${toolId}" but its module has no getToolContext method`,
 					);
-					return;
+					return null;
 				}
 
 				const context: PluginMCPContext = {
@@ -212,17 +216,18 @@ export class PluginRegistry {
 
 				try {
 					const text = await p.entry.getToolContext(toolId, args, context);
-					if (text) sections.push({ pluginId: p.pluginId, text });
+					return text ? { pluginId: p.pluginId, text } : null;
 				} catch (error) {
 					console.error(
 						`[plugin-loader] Plugin "${p.pluginId}" getToolContext("${toolId}") failed:`,
 						error,
 					);
+					return null;
 				}
 			}),
 		);
 
-		return sections;
+		return results.filter((s): s is PluginContextSection => s !== null);
 	}
 }
 
