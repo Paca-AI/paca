@@ -122,6 +122,15 @@ export class PluginRegistry {
 				this.tools.push(tool);
 			}
 
+			if (p.toolContextHooks.length > 0 && !p.entry.getToolContext) {
+				// Manifest/module mismatch is static once the entry is loaded —
+				// warn once here rather than on every matching tool call.
+				console.error(
+					`[plugin-loader] Plugin "${p.pluginId}" declared toolContextHooks (${p.toolContextHooks.join(", ")}) but its module has no getToolContext method`,
+				);
+				continue;
+			}
+
 			for (const toolId of p.toolContextHooks) {
 				const owners = this.toolContextOwners.get(toolId) ?? [];
 				owners.push(p);
@@ -181,9 +190,10 @@ export class PluginRegistry {
 	 * register interest in `toolId` are never invoked — this is a Map
 	 * lookup, not a fan-out over every loaded plugin.
 	 *
-	 * A registered plugin that throws, or that turns out not to actually
-	 * implement `getToolContext` (manifest/module mismatch), contributes
-	 * nothing — one broken plugin cannot blank out the rest of the response.
+	 * A registered plugin that throws contributes nothing — one broken
+	 * plugin cannot blank out the rest of the response. A manifest/module
+	 * mismatch (declared but not implemented) is filtered out and logged
+	 * once at load time (see the constructor), so it never reaches here.
 	 *
 	 * Results are returned in `candidates` (i.e. plugin load) order
 	 * regardless of which plugin's call resolves first — the requests
@@ -201,12 +211,11 @@ export class PluginRegistry {
 
 		const results = await Promise.all(
 			candidates.map(async (p): Promise<PluginContextSection | null> => {
-				if (!p.entry.getToolContext) {
-					console.error(
-						`[plugin-loader] Plugin "${p.pluginId}" declared toolContextHooks for "${toolId}" but its module has no getToolContext method`,
-					);
-					return null;
-				}
+				// Guaranteed non-null: only plugins that pass this check at
+				// load time are ever added to toolContextOwners. Narrows the
+				// optional method for TS rather than guarding against a case
+				// that can occur here.
+				if (!p.entry.getToolContext) return null;
 
 				const context: PluginMCPContext = {
 					pluginId: p.pluginId,
