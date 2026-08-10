@@ -17,7 +17,7 @@ import {
 	hasPermission,
 	type PermissionMap,
 } from "./permissions.js";
-import { loadPlugins } from "./plugin-loader.js";
+import { loadPlugins, type PluginContextSection } from "./plugin-loader.js";
 import { getAllTools, handleToolCall } from "./tools/index.js";
 import type { PacaConfig } from "./types/index.js";
 
@@ -37,6 +37,10 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	const docClient = new PacaAPIDocClient(config);
 	const automationClient = new PacaAPIAutomationClient(config);
 
+	// Load plugin MCP modules from the Paca API.
+	// Failures for individual plugins are logged and skipped.
+	const pluginRegistry = await loadPlugins(config);
+
 	const clients = {
 		apiClient,
 		extendedClient,
@@ -45,10 +49,6 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		docClient,
 		automationClient,
 	};
-
-	// Load plugin MCP modules from the Paca API.
-	// Failures for individual plugins are logged and skipped.
-	const pluginRegistry = await loadPlugins(config);
 
 	// Fetch agent permissions at startup
 	const permissionMap: PermissionMap = await fetchAgentPermissions(config);
@@ -164,8 +164,56 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		}
 
 		// Fall through to core tool handlers
-		return handleToolCall(request, clients);
+		const result = await handleToolCall(request, clients);
+
+		// Let every loaded plugin optionally attach context to this core
+		// tool's response (e.g. linked GitHub branches on get_task). Skipped
+		// for error results so a failure isn't buried under unrelated data.
+		if (!result?.isError) {
+			const sections = await pluginRegistry.getToolContext(
+				name,
+				(args ?? {}) as Record<string, unknown>,
+				config,
+			);
+			if (sections.length > 0) {
+				return mergePluginContext(result, sections);
+			}
+		}
+
+		return result;
 	});
 
 	return server;
+}
+
+/**
+ * Merge plugin-contributed context sections into a core tool's result.
+ *
+ * Merges into the *last* text content block rather than appending a new
+ * content entry: agents reliably read the one continuous text block a core
+ * tool returns, but have been observed treating a separate trailing block
+ * as unrelated/easy to miss — e.g. calling github_list_task_branches right
+ * after get_task despite the branch already being in a second block. Falls
+ * back to appending a new text block when the result has no existing text
+ * block to merge into (e.g. empty content array).
+ *
+ * Exported for testing; `sections` is expected to be non-empty — callers
+ * should skip invoking this when there's nothing to merge.
+ */
+export function mergePluginContext(
+	result: any,
+	sections: PluginContextSection[],
+): any {
+	const extra = sections.map((s) => s.text).join("\n\n");
+	const content = [...result.content];
+	const lastIdx = content.length - 1;
+	if (lastIdx >= 0 && content[lastIdx]?.type === "text") {
+		content[lastIdx] = {
+			...content[lastIdx],
+			text: `${content[lastIdx].text}\n\n${extra}`,
+		};
+	} else {
+		content.push({ type: "text", text: extra });
+	}
+	return { ...result, content };
 }

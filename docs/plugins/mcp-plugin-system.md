@@ -101,6 +101,66 @@ const entry: PluginMCPEntry = {
 export default entry;
 ```
 
+## Contributing to any core tool's response (`getToolContext`)
+
+A plugin can optionally implement `getToolContext` on its `PluginMCPEntry` to
+attach additional text to the response of **any** core Paca tool call — not
+just `get_task`. This lets an AI client see a plugin's data (linked
+branches, checklist items, BDD scenarios, …) inline in whatever core tool it
+already called, without separately discovering and calling the plugin's own
+tools.
+
+```ts
+const entry: PluginMCPEntry = {
+  tools: [ /* ... */ ],
+  async handleToolCall(name, args, context) { /* ... */ },
+
+  async getToolContext(toolId, args, context) {
+    if (toolId !== "get_task") return null; // only enrich get_task
+    const { projectId, taskId } = args as { projectId: string; taskId: string };
+
+    const api = new PluginAPIClient(context);
+    const items = await api.pluginGet<Item[]>(
+      `projects/${projectId}/tasks/${taskId}/items`,
+    );
+    if (items.length === 0) return null; // nothing to add — omit the section
+    return `## My Plugin\n\n${items.map((i) => `- ${i.title}`).join("\n")}`;
+  },
+};
+```
+
+Notes:
+
+- `toolId` is the core tool's name (`"get_task"`, `"list_tasks"`,
+  `"get_project"`, …) — switch on it to decide what, if anything, to add.
+  See `ALL_TOOLS.md` in `apps/mcp` for the full list of core tools and their
+  argument shapes.
+- `args` is exactly what the AI client passed for that call — the same
+  shape the core tool itself receives, nothing more. It may not contain
+  every ID your plugin needs: e.g. `get_task_by_number` has no `taskId`,
+  only `taskNumber`, so a hook scoped to `"get_task"` won't fire for it.
+- Return `null` (or `undefined`) when the plugin has nothing to contribute
+  for this call. The host omits the section entirely rather than rendering
+  empty boilerplate on every call — most calls won't touch every plugin.
+- The host only calls `getToolContext` on plugins that declared `toolId` in
+  their manifest's `mcp.toolContextHooks` — implementing the method alone
+  isn't enough, you also need the manifest declaration or the hook never
+  fires. Declared plugins are called in parallel, after every successful
+  core tool call (skipped when the core call itself returned an error).
+  Keep it fast and read-only.
+- Errors are caught and logged by the host (`[plugin-loader] Plugin "<id>"
+  getToolContext("<toolId>") failed: ...`) — a throwing plugin contributes
+  nothing but cannot break the rest of the response. You don't need your
+  own try/catch purely for that; add one if you want a specific failure
+  (e.g. "not configured for this project") to resolve to `null` instead of
+  logging.
+- All plugins' returned text is joined (in manifest-declared plugin order)
+  and merged into the tool result's last text block — not appended as a
+  separate content entry — so the AI client sees task detail and plugin
+  context as one continuous passage instead of a trailing block it can
+  ignore. Prefix your text with a heading (e.g. `## GitHub`) so it reads
+  clearly alongside other plugins' sections.
+
 ## Plugin SDK (`@paca-ai/plugin-sdk-mcp`)
 
 The `@paca-ai/plugin-sdk-mcp` package provides:

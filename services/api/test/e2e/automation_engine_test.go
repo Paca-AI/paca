@@ -2686,13 +2686,11 @@ func TestE2EAutomationEngine_SprintStartedTriggerConditionAndUpdateSprint(t *tes
 		t.Fatalf("expected the sprint's goal to be updated to \"kickoff\", got %q", goal)
 	}
 
-	runs := listAutomationRunsViaAPI(t, env, ownerClient, ownerToken, projID, automationID)
-	if len(runs) != 1 {
-		t.Fatalf("expected exactly one recorded run, got %d", len(runs))
-	}
-	if status, _ := runs[0]["status"].(string); status != "completed" {
-		t.Fatalf("expected the run to finalize as completed, got %q", status)
-	}
+	// The sprint's goal field and the run's own status are two separate
+	// writes; waitForSprintField only proves the former landed, so the run
+	// can still legitimately be "running" for a moment after. Poll for the
+	// run status instead of checking it once, to avoid racing that write.
+	waitForAutomationRunStatus(t, env, ownerClient, ownerToken, projID, automationID, "completed", 10*time.Second)
 }
 
 // TestE2EAutomationEngine_TaskTriggeredCompleteSprintViaTaskSprintID fires a

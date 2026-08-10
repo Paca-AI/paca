@@ -27,6 +27,13 @@ interface InstalledPlugin {
 	manifest: {
 		mcp?: {
 			remoteEntryUrl: string;
+			/**
+			 * Core tool IDs (e.g. "get_task") this plugin's `getToolContext`
+			 * can contribute to. Declared up front so the host only calls
+			 * into plugins that actually registered interest in a given
+			 * tool, instead of invoking every loaded plugin on every call.
+			 */
+			toolContextHooks?: string[];
 		};
 	};
 }
@@ -43,6 +50,18 @@ interface PluginMCPEntry {
 		args: Record<string, unknown>,
 		context: PluginMCPContext,
 	): Promise<PluginToolResult>;
+	/** Optional: contribute additional text to the response of any core tool call. */
+	getToolContext?(
+		toolId: string,
+		args: Record<string, unknown>,
+		context: PluginMCPContext,
+	): Promise<string | null | undefined>;
+}
+
+/** A plugin-contributed section attached to a core tool's response. */
+export interface PluginContextSection {
+	pluginId: string;
+	text: string;
 }
 
 interface PluginMCPContext {
@@ -60,6 +79,8 @@ interface PluginToolResult {
 interface LoadedPlugin {
 	pluginId: string;
 	entry: PluginMCPEntry;
+	/** Core tool IDs this plugin declared (in its manifest) it can add context to. */
+	toolContextHooks: string[];
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -74,11 +95,19 @@ export class PluginRegistry {
 	private readonly toolOwner: Map<string, string>;
 	/** Deduplicated tool definitions contributed by loaded plugins. */
 	private readonly tools: Tool[];
+	/**
+	 * Map from core tool ID → plugins that declared (in their manifest) a
+	 * `getToolContext` hook for it. Built once at load time so a call for a
+	 * tool no plugin cares about costs a single Map lookup, not N plugin
+	 * invocations.
+	 */
+	private readonly toolContextOwners: Map<string, LoadedPlugin[]>;
 
 	constructor(loaded: LoadedPlugin[]) {
 		this.loaded = loaded;
 		this.toolOwner = new Map();
 		this.tools = [];
+		this.toolContextOwners = new Map();
 		for (const p of loaded) {
 			for (const tool of p.entry.tools) {
 				if (this.toolOwner.has(tool.name)) {
@@ -91,6 +120,21 @@ export class PluginRegistry {
 
 				this.toolOwner.set(tool.name, p.pluginId);
 				this.tools.push(tool);
+			}
+
+			if (p.toolContextHooks.length > 0 && !p.entry.getToolContext) {
+				// Manifest/module mismatch is static once the entry is loaded —
+				// warn once here rather than on every matching tool call.
+				console.error(
+					`[plugin-loader] Plugin "${p.pluginId}" declared toolContextHooks (${p.toolContextHooks.join(", ")}) but its module has no getToolContext method`,
+				);
+				continue;
+			}
+
+			for (const toolId of p.toolContextHooks) {
+				const owners = this.toolContextOwners.get(toolId) ?? [];
+				owners.push(p);
+				this.toolContextOwners.set(toolId, owners);
 			}
 		}
 	}
@@ -138,6 +182,62 @@ export class PluginRegistry {
 			};
 		}
 	}
+
+	/**
+	 * Collect context sections for a given core tool call, but only from
+	 * plugins that declared a `getToolContext` hook for that exact tool ID
+	 * in their manifest (`mcp.toolContextHooks`). Plugins that didn't
+	 * register interest in `toolId` are never invoked — this is a Map
+	 * lookup, not a fan-out over every loaded plugin.
+	 *
+	 * A registered plugin that throws contributes nothing — one broken
+	 * plugin cannot blank out the rest of the response. A manifest/module
+	 * mismatch (declared but not implemented) is filtered out and logged
+	 * once at load time (see the constructor), so it never reaches here.
+	 *
+	 * Results are returned in `candidates` (i.e. plugin load) order
+	 * regardless of which plugin's call resolves first — the requests
+	 * themselves still run concurrently via `Promise.all`, only the
+	 * ordering of the resolved output is fixed, so a slow plugin can't
+	 * shuffle the sections a caller sees on one call vs. the next.
+	 */
+	async getToolContext(
+		toolId: string,
+		args: Record<string, unknown>,
+		config: PacaConfig,
+	): Promise<PluginContextSection[]> {
+		const candidates = this.toolContextOwners.get(toolId);
+		if (!candidates || candidates.length === 0) return [];
+
+		const results = await Promise.all(
+			candidates.map(async (p): Promise<PluginContextSection | null> => {
+				// Guaranteed non-null: only plugins that pass this check at
+				// load time are ever added to toolContextOwners. Narrows the
+				// optional method for TS rather than guarding against a case
+				// that can occur here.
+				if (!p.entry.getToolContext) return null;
+
+				const context: PluginMCPContext = {
+					pluginId: p.pluginId,
+					baseURL: config.baseURL,
+					apiKey: config.apiKey,
+				};
+
+				try {
+					const text = await p.entry.getToolContext(toolId, args, context);
+					return text ? { pluginId: p.pluginId, text } : null;
+				} catch (error) {
+					console.error(
+						`[plugin-loader] Plugin "${p.pluginId}" getToolContext("${toolId}") failed:`,
+						error,
+					);
+					return null;
+				}
+			}),
+		);
+
+		return results.filter((s): s is PluginContextSection => s !== null);
+	}
 }
 
 // ── Loader ────────────────────────────────────────────────────────────────────
@@ -184,9 +284,13 @@ export async function loadPlugins(config: PacaConfig): Promise<PluginRegistry> {
 		const pluginBaseURL = config.gatewayURL ?? config.baseURL;
 		try {
 			const entry = await loadPluginEntry(plugin.name, url, pluginBaseURL);
-			loaded.push({ pluginId: plugin.name, entry });
+			const toolContextHooks = plugin.manifest.mcp?.toolContextHooks ?? [];
+			loaded.push({ pluginId: plugin.name, entry, toolContextHooks });
 			console.error(
-				`[plugin-loader] Loaded "${plugin.name}" (${entry.tools.length} tool(s))`,
+				`[plugin-loader] Loaded "${plugin.name}" (${entry.tools.length} tool(s)` +
+					(toolContextHooks.length > 0
+						? `, context hooks: ${toolContextHooks.join(", ")})`
+						: ")"),
 			);
 		} catch (err) {
 			console.error(
