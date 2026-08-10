@@ -26,6 +26,11 @@ export interface NotificationListResponse {
 	unread_count: number;
 }
 
+// Shared between the bell badge (notification-bell.tsx) and the browser tab
+// title (hooks/use-document-title.ts) so both surfaces agree on where an
+// exact unread count gives way to a "+" suffix.
+export const MAX_DISPLAYED_UNREAD_COUNT = 9;
+
 // ── API calls ─────────────────────────────────────────────────────────────────
 
 export async function getNotifications(): Promise<NotificationListResponse> {

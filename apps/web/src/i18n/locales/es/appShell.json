@@ -59,6 +59,8 @@
 		"title": "Notificaciones",
 		"empty": "Aún no hay notificaciones",
 		"markAllAsRead": "Marcar todas como leídas",
+		"muteSound": "Silenciar sonido de notificaciones",
+		"unmuteSound": "Activar sonido de notificaciones",
 		"text": {
 			"assigned": "{{actor}} te asignó la tarea #{{taskNumber}} — {{taskTitle}}",
 			"mentioned": "{{actor}} te mencionó en #{{taskNumber}} — {{taskTitle}}"

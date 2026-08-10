@@ -14,12 +14,12 @@ describe("buildDocumentTitle", () => {
 		expect(buildDocumentTitle(3, null, "Paca")).toBe("(3) Paca");
 	});
 
-	it("caps the displayed count at 99+", () => {
-		expect(buildDocumentTitle(100, null, "Paca")).toBe("(99+) Paca");
+	it("caps the displayed count at 9+, matching the bell badge", () => {
+		expect(buildDocumentTitle(10, null, "Paca")).toBe("(9+) Paca");
 	});
 
-	it("does not cap exactly 99", () => {
-		expect(buildDocumentTitle(99, null, "Paca")).toBe("(99) Paca");
+	it("does not cap exactly 9", () => {
+		expect(buildDocumentTitle(9, null, "Paca")).toBe("(9) Paca");
 	});
 
 	it("inserts the project name before the app title", () => {

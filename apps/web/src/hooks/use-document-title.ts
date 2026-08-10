@@ -3,9 +3,8 @@ import { useParams } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { DEFAULT_TITLE } from "@/components/app-shell/branding-effects";
 import { useBranding } from "@/hooks/use-branding";
+import { MAX_DISPLAYED_UNREAD_COUNT } from "@/lib/notification-api";
 import { projectQueryOptions } from "@/lib/project-api";
-
-const MAX_DISPLAYED_COUNT = 99;
 
 // Exported for unit testing (see use-document-title.test.ts).
 export function buildDocumentTitle(
@@ -16,7 +15,9 @@ export function buildDocumentTitle(
 	const base = projectName ? `${projectName} · ${appTitle}` : appTitle;
 	if (unreadCount <= 0) return base;
 	const count =
-		unreadCount > MAX_DISPLAYED_COUNT ? `${MAX_DISPLAYED_COUNT}+` : unreadCount;
+		unreadCount > MAX_DISPLAYED_UNREAD_COUNT
+			? `${MAX_DISPLAYED_UNREAD_COUNT}+`
+			: unreadCount;
 	return `(${count}) ${base}`;
 }
 

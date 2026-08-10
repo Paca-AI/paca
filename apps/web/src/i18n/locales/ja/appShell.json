@@ -59,6 +59,8 @@
 		"title": "通知",
 		"empty": "通知はまだありません",
 		"markAllAsRead": "すべて既読にする",
+		"muteSound": "通知音をミュート",
+		"unmuteSound": "通知音のミュートを解除",
 		"text": {
 			"assigned": "{{actor}}さんがあなたをタスク #{{taskNumber}} — {{taskTitle}} に割り当てました",
 			"mentioned": "{{actor}}さんが #{{taskNumber}} — {{taskTitle}} であなたにメンションしました"

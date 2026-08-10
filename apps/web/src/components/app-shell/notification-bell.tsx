@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { Bell } from "lucide-react";
-import { useCallback } from "react";
+import { Bell, Volume2, VolumeX } from "lucide-react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -13,11 +13,16 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
+	MAX_DISPLAYED_UNREAD_COUNT,
 	markAllNotificationsAsRead,
 	markNotificationAsRead,
 	type Notification,
 	notificationsQueryOptions,
 } from "@/lib/notification-api";
+import {
+	isNotificationSoundMuted,
+	setNotificationSoundMuted,
+} from "@/lib/notification-sound";
 import { timeAgo } from "@/lib/time-ago";
 
 function notificationText(n: Notification, t: TFunction<"appShell">): string {
@@ -45,6 +50,15 @@ export function NotificationBell() {
 	const unreadCount = data?.unread_count ?? 0;
 	const notifications = data?.items ?? [];
 	useDocumentTitle(unreadCount);
+
+	const [soundMuted, setSoundMuted] = useState(isNotificationSoundMuted);
+	const toggleSoundMuted = useCallback(() => {
+		setSoundMuted((prev) => {
+			const next = !prev;
+			setNotificationSoundMuted(next);
+			return next;
+		});
+	}, []);
 
 	const { mutate: markRead } = useMutation({
 		mutationFn: markNotificationAsRead,
@@ -85,7 +99,9 @@ export function NotificationBell() {
 				<Bell className="h-4 w-4" />
 				{unreadCount > 0 && (
 					<span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground leading-none">
-						{unreadCount > 9 ? "9+" : unreadCount}
+						{unreadCount > MAX_DISPLAYED_UNREAD_COUNT
+							? `${MAX_DISPLAYED_UNREAD_COUNT}+`
+							: unreadCount}
 					</span>
 				)}
 			</PopoverTrigger>
@@ -94,15 +110,38 @@ export function NotificationBell() {
 					<span className="text-sm font-semibold">
 						{t("notifications.title")}
 					</span>
-					{unreadCount > 0 && (
+					<div className="flex items-center gap-3">
 						<button
 							type="button"
-							onClick={() => markAllRead()}
-							className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+							onClick={toggleSoundMuted}
+							aria-label={
+								soundMuted
+									? t("notifications.unmuteSound")
+									: t("notifications.muteSound")
+							}
+							title={
+								soundMuted
+									? t("notifications.unmuteSound")
+									: t("notifications.muteSound")
+							}
+							className="text-muted-foreground hover:text-foreground transition-colors"
 						>
-							{t("notifications.markAllAsRead")}
+							{soundMuted ? (
+								<VolumeX className="h-3.5 w-3.5" />
+							) : (
+								<Volume2 className="h-3.5 w-3.5" />
+							)}
 						</button>
-					)}
+						{unreadCount > 0 && (
+							<button
+								type="button"
+								onClick={() => markAllRead()}
+								className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+							>
+								{t("notifications.markAllAsRead")}
+							</button>
+						)}
+					</div>
 				</div>
 				{notifications.length === 0 ? (
 					<div className="flex flex-col items-center justify-center py-10 text-muted-foreground">

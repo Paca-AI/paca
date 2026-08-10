@@ -59,6 +59,8 @@
 		"title": "알림",
 		"empty": "아직 알림이 없습니다",
 		"markAllAsRead": "모두 읽음으로 표시",
+		"muteSound": "알림 소리 음소거",
+		"unmuteSound": "알림 소리 음소거 해제",
 		"text": {
 			"assigned": "{{actor}}님이 작업 #{{taskNumber}} — {{taskTitle}}에 회원님을 배정했습니다",
 			"mentioned": "{{actor}}님이 #{{taskNumber}} — {{taskTitle}}에서 회원님을 멘션했습니다"
