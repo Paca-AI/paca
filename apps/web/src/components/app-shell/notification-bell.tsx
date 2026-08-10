@@ -13,10 +13,15 @@ import {
 	Volume2,
 	VolumeX,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+	Avatar,
+	AvatarBadge,
+	AvatarFallback,
+	AvatarImage,
+} from "@/components/ui/avatar";
 import {
 	Popover,
 	PopoverContent,
@@ -37,16 +42,7 @@ import {
 import { resolveNotificationActorAvatarUrl } from "@/lib/provider-logos";
 import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 import { timeAgo } from "@/lib/time-ago";
-
-function getInitials(name: string): string {
-	return name
-		.split(" ")
-		.filter(Boolean)
-		.map((n) => n[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
-}
+import { getInitials } from "@/lib/utils";
 
 function notificationText(n: Notification, t: TFunction<"appShell">): string {
 	if (n.type === "assigned") {
@@ -86,12 +82,11 @@ export function NotificationBell() {
 
 	const [soundMuted, setSoundMuted] = useState(isNotificationSoundMuted);
 	const toggleSoundMuted = useCallback(() => {
-		setSoundMuted((prev) => {
-			const next = !prev;
-			setNotificationSoundMuted(next);
-			return next;
-		});
+		setSoundMuted((prev) => !prev);
 	}, []);
+	useEffect(() => {
+		setNotificationSoundMuted(soundMuted);
+	}, [soundMuted]);
 
 	const { mutate: markRead } = useMutation({
 		mutationFn: markNotificationAsRead,
@@ -202,12 +197,16 @@ export function NotificationBell() {
 												<AvatarFallback className="font-medium">
 													{getInitials(n.actor_full_name)}
 												</AvatarFallback>
-												<span
+												<AvatarBadge
 													aria-hidden="true"
-													className={`absolute -right-0.5 -bottom-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-background [&>svg]:h-2.5 [&>svg]:w-2.5 ${n.type === "assigned" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
+													className={
+														n.type === "assigned"
+															? undefined
+															: "bg-secondary text-secondary-foreground"
+													}
 												>
 													{n.type === "assigned" ? <UserPlus /> : <AtSign />}
-												</span>
+												</AvatarBadge>
 											</Avatar>
 											<div className="min-w-0 flex-1">
 												<p

@@ -33,16 +33,7 @@ import {
 import { useLocale } from "@/hooks/use-locale";
 import { currentUserOptionalQueryOptions, logout } from "@/lib/auth-api";
 import { useShortcutHelpStore } from "@/lib/shortcuts/help-dialog-store";
-
-function getInitials(name: string): string {
-	return name
-		.split(" ")
-		.filter(Boolean)
-		.map((n) => n[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
-}
+import { getInitials } from "@/lib/utils";
 
 export function UserMenu() {
 	const { t } = useTranslation("appShell");

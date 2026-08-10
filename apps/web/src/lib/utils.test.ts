@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanBlocks, cn } from "./utils";
+import { cleanBlocks, cn, getInitials } from "./utils";
 
 describe("cn", () => {
 	it("joins class names and ignores falsy values", () => {
@@ -63,5 +63,27 @@ describe("cleanBlocks", () => {
 		];
 
 		expect(cleanBlocks(input)).toEqual(expected);
+	});
+});
+
+describe("getInitials", () => {
+	it("takes the first letter of the first two words", () => {
+		expect(getInitials("Ada Lovelace")).toBe("AL");
+	});
+
+	it("uses a single letter for a one-word name", () => {
+		expect(getInitials("Madonna")).toBe("M");
+	});
+
+	it("caps at two letters for names with more than two words", () => {
+		expect(getInitials("Ada Marie Lovelace")).toBe("AM");
+	});
+
+	it("ignores repeated spaces", () => {
+		expect(getInitials("Ada  Lovelace")).toBe("AL");
+	});
+
+	it("uppercases lowercase input", () => {
+		expect(getInitials("ada lovelace")).toBe("AL");
 	});
 });
