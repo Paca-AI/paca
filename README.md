@@ -289,8 +289,8 @@ docker compose --env-file .env up -d
 > # AWS S3 instead of MinIO (set STORAGE_PROVIDER=s3 in .env)
 > docker compose --env-file .env up -d --scale minio=0
 >
-> # Without the AI agent (reduces resource usage)
-> docker compose --env-file .env up -d --scale ai-agent=0
+> # Without Agent Runner (reduces resource usage)
+> docker compose --env-file .env up -d --scale agent-runner=0
 > ```
 
 ---
@@ -454,12 +454,13 @@ For full setup options and command reference, see [docs/guides/install-skills.md
 ## Architecture
 
 ```
-apps/web          React + TanStack Start + shadcn/ui — user interface
-apps/mcp          @paca-ai/paca-mcp — MCP server for AI agent integration
-services/api      Go + Gin — core business logic and REST API
-services/realtime Node.js + Socket.IO — real-time event fan-out
-services/ai-agent Python + FastAPI + OpenHands SDK — AI agent orchestration
-apps/e2e          Playwright — end-to-end test suite
+apps/web              React + TanStack Start + shadcn/ui — user interface
+apps/mcp              @paca-ai/paca-mcp — MCP server for AI agent integration
+services/api          Go + Gin — core business logic and REST API
+services/realtime     Node.js + Socket.IO — real-time event fan-out
+services/agent-runner Go — AI agent execution (Goose over ACP)
+services/agent-server Docker image for the Goose sandbox agent-runner spawns per conversation
+apps/e2e              Playwright — end-to-end test suite
 
 PostgreSQL        Persistent store
 Valkey            Cache + async event streams between services

@@ -10,7 +10,7 @@ This section will describe the external contracts of Paca.
 
 - HTTP APIs exposed by `services/api`.
 - Socket.IO connection and event contracts exposed by `services/realtime`.
-- AI-related endpoints exposed by `services/ai-agent`.
+- AI-related endpoints exposed by `services/agent-runner`.
 - Event boundaries relevant to asynchronous workflows, including Valkey Stream messages from `services/api` to `services/realtime`.
 - Cross-service contract conventions once they are stable.
 

@@ -8,10 +8,16 @@
 # since the install was created, then pulls and restarts the stack.
 #
 # Service scaling from install time (external Postgres, external S3, an
-# externally hosted web app, a disabled AI agent) is detected from .env and
-# re-applied automatically — no need to re-pass the same --scale flags on
+# externally hosted web app, a disabled Agent Runner) is detected from .env
+# and re-applied automatically — no need to re-pass the same --scale flags on
 # every upgrade. See "Extra arguments" below for scaling that isn't one of
 # these.
+#
+# Upgrading an install that predates Agent Runner (the Go/Goose service that
+# replaced the old Python "ai-agent" service)? See "Agent Runner migration"
+# below — PACA_AI_AGENT/PACA_AI_AGENT_IMAGE and an AGENT_SERVER_IMAGE pointed
+# at the old OpenHands-based sandbox are migrated forward automatically,
+# preserving whatever enable/disable choice was already made.
 #
 # Run this from the directory that holds your docker-compose.yml and .env
 # (the directory install.sh created, or wherever you set things up manually).
@@ -292,48 +298,79 @@ backup_env_once() {
     fi
 }
 
+# ── Agent Runner migration ────────────────────────────────────────────────────
+# Installs from before Agent Runner (the Go/Goose service) replaced the old
+# Python "ai-agent" service still have PACA_AI_AGENT/PACA_AI_AGENT_IMAGE in
+# .env, not the PACA_AGENT_RUNNER/PACA_AGENT_RUNNER_IMAGE docker-compose.yml
+# now actually reads — silently ignoring the old names would forget whatever
+# enable/disable choice was made at install time and reset it to "enabled".
+# Backfilling once here, before anything below reads either name, means every
+# later step only ever has to deal with the current names.
+if has_env_var .env PACA_AI_AGENT && ! has_env_var .env PACA_AGENT_RUNNER; then
+    backup_env_once
+    set_env_var .env PACA_AGENT_RUNNER "$(get_env_var .env PACA_AI_AGENT)"
+    info "Migrated PACA_AI_AGENT → PACA_AGENT_RUNNER=$(get_env_var .env PACA_AGENT_RUNNER) in .env (preserving your existing choice)."
+fi
+if has_env_var .env PACA_AI_AGENT_IMAGE && ! has_env_var .env PACA_AGENT_RUNNER_IMAGE; then
+    backup_env_once
+    _old_tag="$(get_env_var .env PACA_AI_AGENT_IMAGE)"
+    _old_tag="${_old_tag##*:}"
+    set_env_var .env PACA_AGENT_RUNNER_IMAGE "pacaai/paca-agent-runner:${_old_tag}"
+    info "Migrated PACA_AI_AGENT_IMAGE → PACA_AGENT_RUNNER_IMAGE=pacaai/paca-agent-runner:${_old_tag} in .env."
+fi
+
 # Only re-pin image tags in .env when a specific version was requested.
 # Installs left on the default ":latest" floating tag are already upgraded
 # by the pull below — rewriting them here would silently switch a
 # deliberately-pinned install onto floating tags, or vice versa.
 if [[ "$PACA_VERSION" != "latest" ]]; then
     backup_env_once
-    for var in PACA_API_IMAGE PACA_WEB_IMAGE PACA_REALTIME_IMAGE PACA_AI_AGENT_IMAGE; do
+    for var in PACA_API_IMAGE PACA_WEB_IMAGE PACA_REALTIME_IMAGE PACA_AGENT_RUNNER_IMAGE; do
         image_name="$(echo "$var" | sed -e 's/^PACA_//' -e 's/_IMAGE$//' | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')"
         set_env_var .env "$var" "pacaai/paca-${image_name}:${IMAGE_TAG}"
     done
-    # Only re-pin AGENT_SERVER_IMAGE if it's already on Paca's own image —
-    # never overwrite a custom value. The old-upstream-image migration below
-    # handles the one other known default separately.
-    if [[ "$(get_env_var .env AGENT_SERVER_IMAGE)" == ghcr.io/paca-ai/paca-agent-server:* ]]; then
-        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}"
+    # Only re-pin AGENT_SERVER_IMAGE if it's already on Paca's own Goose
+    # sandbox image — never overwrite a custom value. The old-default
+    # migration below handles installs not on that image yet separately.
+    if [[ "$(get_env_var .env AGENT_SERVER_IMAGE)" == ghcr.io/paca-ai/paca-agent-server-goose:* ]]; then
+        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}"
     fi
     info "Pinned image versions in .env to ${IMAGE_TAG}."
 else
     info "Using floating :latest images — no image version changes needed."
 fi
 
-# Migrate AGENT_SERVER_IMAGE off the old upstream default. Installs created
-# before Paca shipped its own agent-server image (Paca MCP pre-installed,
-# openhands-sdk version kept in step with services/ai-agent) have this
-# hardcoded to the raw OpenHands image. Only offer to rewrite installs still
-# on that exact old default — never touch a value the user deliberately
-# customized. Asked rather than applied silently: it changes which image the
-# sandbox containers run, which is worth a confirmation like the version
-# re-pin above rather than a silent backfill.
-OLD_AGENT_SERVER_IMAGE_DEFAULT="ghcr.io/openhands/agent-server:latest-python"
-if [[ "$(get_env_var .env AGENT_SERVER_IMAGE)" == "$OLD_AGENT_SERVER_IMAGE_DEFAULT" ]]; then
+# Migrate AGENT_SERVER_IMAGE off an old, OpenHands-based default. Agent
+# Runner executes conversations through Goose over ACP, not OpenHands's
+# agent-server protocol — neither the raw upstream image nor Paca's own
+# pre-Agent-Runner build of it works with Agent Runner at all, so an install
+# still on either one needs this value changed for agents to work post
+# upgrade, not just as a nice-to-have. Only offer to rewrite installs still on
+# one of these exact known-old defaults — never touch a value the user
+# deliberately customized. Asked rather than applied silently since it's
+# still worth a confirmation, same as the version re-pin above.
+OLD_AGENT_SERVER_IMAGE_DEFAULTS=(
+    "ghcr.io/openhands/agent-server:latest-python"
+    "ghcr.io/paca-ai/paca-agent-server:latest"
+    "ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}"
+)
+_current_agent_server_image="$(get_env_var .env AGENT_SERVER_IMAGE)"
+_agent_server_image_is_old=0
+for _old in "${OLD_AGENT_SERVER_IMAGE_DEFAULTS[@]}"; do
+    [[ "$_current_agent_server_image" == "$_old" ]] && _agent_server_image_is_old=1
+done
+if [[ "$_agent_server_image_is_old" == "1" ]]; then
     heading "Agent-server image"
-    info "AGENT_SERVER_IMAGE is still set to the upstream OpenHands image (${OLD_AGENT_SERVER_IMAGE_DEFAULT})."
-    info "Paca now ships its own agent-server image (ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}) with the Paca MCP server pre-installed, avoiding a cold npm download on every new sandbox."
+    info "AGENT_SERVER_IMAGE is still set to an OpenHands-based image (${_current_agent_server_image}), which Agent Runner cannot use."
+    info "Paca now ships a Goose-based agent-server image (ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}) with the Paca MCP server pre-installed."
     UPDATE_AGENT_IMAGE="yes"
-    yes_no UPDATE_AGENT_IMAGE "Switch AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}?" "${PACA_UPDATE_AGENT_IMAGE:-y}"
+    yes_no UPDATE_AGENT_IMAGE "Switch AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}?" "${PACA_UPDATE_AGENT_IMAGE:-y}"
     if [[ "$UPDATE_AGENT_IMAGE" == "yes" ]]; then
         backup_env_once
-        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}"
-        info "Updated AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}."
+        set_env_var .env AGENT_SERVER_IMAGE "ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}"
+        info "Updated AGENT_SERVER_IMAGE to ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}."
     else
-        info "Keeping AGENT_SERVER_IMAGE unchanged."
+        warn "Keeping AGENT_SERVER_IMAGE unchanged — agent conversations will not work against it until you update this yourself."
     fi
 fi
 
@@ -431,7 +468,7 @@ else
     info "Using an external database (DATABASE_URL is set) — skipping the automated db-backup service."
 fi
 
-# Used by the web/ai-agent inference below: distinguishes "some services were
+# Used by the web/agent-runner inference below: distinguishes "some services were
 # intentionally scaled to 0" from "the whole stack simply isn't running right
 # now" (e.g. after `docker compose down`) — in the latter case NO service has
 # a container, and without this check everything would look scaled to 0 and
@@ -461,20 +498,24 @@ elif [[ "$PROJECT_EVER_STARTED" == "1" ]]; then
     fi
 fi
 
-# AI agent: same reasoning as the web app above, via PACA_AI_AGENT.
-if has_env_var .env PACA_AI_AGENT; then
-    if [[ "$(get_env_var .env PACA_AI_AGENT)" == "no" ]]; then
-        SCALE_OPTS+=(--scale ai-agent=0)
-        info "AI agent is disabled (PACA_AI_AGENT=no in .env) — skipping the ai-agent service."
+# Agent Runner: same reasoning as the web app above, via PACA_AGENT_RUNNER
+# (already backfilled from the legacy PACA_AI_AGENT above, if present).
+if has_env_var .env PACA_AGENT_RUNNER; then
+    if [[ "$(get_env_var .env PACA_AGENT_RUNNER)" == "no" ]]; then
+        SCALE_OPTS+=(--scale agent-runner=0)
+        info "Agent Runner is disabled (PACA_AGENT_RUNNER=no in .env) — skipping the agent-runner service."
     fi
 elif [[ "$PROJECT_EVER_STARTED" == "1" ]]; then
     backup_env_once
-    if service_has_container ai-agent; then
-        set_env_var .env PACA_AI_AGENT "yes"
+    # Checks for a container under either name: an install old enough to
+    # have neither PACA_AI_AGENT nor PACA_AGENT_RUNNER in .env may still have
+    # a running 'ai-agent' container from before the migration above ran.
+    if service_has_container agent-runner || service_has_container ai-agent; then
+        set_env_var .env PACA_AGENT_RUNNER "yes"
     else
-        set_env_var .env PACA_AI_AGENT "no"
-        SCALE_OPTS+=(--scale ai-agent=0)
-        warn "No existing 'ai-agent' container found, and this install predates PACA_AI_AGENT being tracked in .env — assuming the AI agent is disabled and recording PACA_AI_AGENT=no. Wrong? Pass --scale ai-agent=1 on this run, then set PACA_AI_AGENT=yes in .env so future upgrades stop guessing."
+        set_env_var .env PACA_AGENT_RUNNER "no"
+        SCALE_OPTS+=(--scale agent-runner=0)
+        warn "No existing 'agent-runner' (or 'ai-agent') container found, and this install predates PACA_AGENT_RUNNER being tracked in .env — assuming Agent Runner is disabled and recording PACA_AGENT_RUNNER=no. Wrong? Pass --scale agent-runner=1 on this run, then set PACA_AGENT_RUNNER=yes in .env so future upgrades stop guessing."
     fi
 fi
 

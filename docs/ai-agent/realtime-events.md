@@ -51,7 +51,7 @@ Emitted when an agent conversation is initiated (trigger received and container 
 
 ### `agent:conversation:event`
 
-Emitted for each event produced by the OpenHands SDK during the conversation. This is the stream of agent "thoughts" and actions for the monitoring panel.
+Emitted for each event produced during the conversation. This is the stream of agent "thoughts" and actions for the monitoring panel. `event_type`'s value space depends on the agent's `agent_type` — see the table below.
 
 **Room:** `project:<projectId>` and `conversation:<conversationId>`
 
@@ -71,7 +71,16 @@ Emitted for each event produced by the OpenHands SDK during the conversation. Th
 }
 ```
 
-**Common `event_type` values:**
+**`event_type` values for `llm`-type agents** (via `services/agent-runner`, driving Goose over ACP — see [agent-runner-service.md](agent-runner-service.md)):
+
+| Event Type | Source | Description |
+|---|---|---|
+| `agent_message_chunk` | agent | Streamed piece of the agent's reply text |
+| `tool_call` | agent | A new tool call the agent has started |
+| `tool_call_update` | agent | Status change for an existing tool call |
+| `turn_end` | system | The turn finished — payload carries the stop reason |
+
+**`event_type` values for `acp`-type agents** (via `apps/acp-bridge`, still built on the OpenHands SDK — unaffected by the `services/ai-agent` → `services/agent-runner` migration, see that app's own README):
 
 | Event Type | Source | Description |
 |---|---|---|

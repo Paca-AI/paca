@@ -42,7 +42,7 @@ The installer supports:
 | Self-hosted MinIO | Starts a MinIO container for S3-compatible file storage (default) |
 | AWS S3 | Supply AWS credentials; MinIO container is suppressed |
 | HTTPS | Enabled by default — Let's Encrypt for a real domain, Caddy's local CA otherwise; can be disabled for plain HTTP |
-| AI Agent | Enabled by default; can be skipped to reduce resource usage. See [docs/ai-agent/api-design.md](../docs/ai-agent/api-design.md) for the agent REST API once it's running. |
+| Agent Runner | Enabled by default; can be skipped to reduce resource usage. See [docs/ai-agent/api-design.md](../docs/ai-agent/api-design.md) for the agent REST API once it's running. |
 
 #### Non-interactive install (CI, scripts, AI coding agents)
 
@@ -94,19 +94,19 @@ prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
 | `GATEWAY_PORT` | Only used when serving plain HTTP | `80` |
 | `PUBLIC_URL` | Full public URL, no trailing slash | derived from the above |
 | `PACA_WEB` | `bundled`/`external` | `bundled` |
-| `PACA_AI_AGENT` | Include the AI agent service (`yes`/`no`) | `yes` |
-| `AGENT_API_KEY` | AI agent → API pre-shared key | auto-generated |
-| `INTERNAL_API_KEY` | API → AI agent pre-shared key | auto-generated |
+| `PACA_AGENT_RUNNER` | Include the Agent Runner service (`yes`/`no`) | `yes` |
+| `AGENT_API_KEY` | Agent Runner → API pre-shared key | auto-generated |
+| `INTERNAL_API_KEY` | API → Agent Runner pre-shared key | auto-generated |
 | `JWT_SECRET` | | auto-generated |
 
-Fully unattended example — custom domain, S3, no AI agent:
+Fully unattended example — custom domain, S3, no Agent Runner:
 
 ```bash
 PACA_YES=1 \
 PACA_ADDRESS=paca.example.com \
 STORAGE_PROVIDER=s3 STORAGE_BUCKET=my-bucket \
 STORAGE_ACCESS_KEY_ID=AKIA... STORAGE_SECRET_ACCESS_KEY=... \
-PACA_AI_AGENT=no \
+PACA_AGENT_RUNNER=no \
 ADMIN_PASSWORD='a-strong-password' \
 bash install.sh
 ```
@@ -144,13 +144,13 @@ Create a `.env` with the required variables:
 JWT_SECRET=<strong-random-secret>
 ADMIN_PASSWORD=<strong-password>
 POSTGRES_PASSWORD=<strong-random-password>
-# Required even if you don't plan to use the AI agent (--scale ai-agent=0) —
+# Required even if you don't plan to use Agent Runner (--scale agent-runner=0) —
 # the api service itself refuses to start without this set, since it's also
-# used to authenticate the api → ai-agent internal status/control calls.
+# used to authenticate the api → agent-runner internal status/control calls.
 # Generate with: openssl rand -hex 32
 INTERNAL_API_KEY=<strong-random-secret>
-# Optional — only used by the AI agent to call back into the api service as
-# its own bot user. Leave unset if you're skipping the AI agent.
+# Optional — only used by Agent Runner to call back into the api service as
+# its own bot user. Leave unset if you're skipping Agent Runner.
 # Generate with: openssl rand -hex 32
 AGENT_API_KEY=<strong-random-secret>
 # Required to encrypt LLM-type agents' API keys and plugin secrets at rest.
@@ -210,16 +210,16 @@ docker compose --env-file .env up -d --scale postgres=0
 docker compose --env-file .env up -d --scale minio=0
 ```
 
-**Without the AI agent**:
+**Without Agent Runner**:
 
 ```bash
-docker compose --env-file .env up -d --scale ai-agent=0
+docker compose --env-file .env up -d --scale agent-runner=0
 ```
 
-`INTERNAL_API_KEY` must still be set in `.env` even with the AI agent scaled
+`INTERNAL_API_KEY` must still be set in `.env` even with Agent Runner scaled
 to 0 — the api service requires it unconditionally at startup regardless of
-whether ai-agent is actually running (see above). `AGENT_API_KEY` can be left
-unset in this case.
+whether agent-runner is actually running (see above). `AGENT_API_KEY` can be
+left unset in this case.
 
 Flags can be combined:
 
@@ -328,7 +328,7 @@ Set the image variables in `.env` to lock to a specific release:
 PACA_API_IMAGE=pacaai/paca-api:1.2.3
 PACA_WEB_IMAGE=pacaai/paca-web:1.2.3
 PACA_REALTIME_IMAGE=pacaai/paca-realtime:1.2.3
-PACA_AI_AGENT_IMAGE=pacaai/paca-ai-agent:1.2.3
+PACA_AGENT_RUNNER_IMAGE=pacaai/paca-agent-runner:1.2.3
 ```
 
 ### Database backups

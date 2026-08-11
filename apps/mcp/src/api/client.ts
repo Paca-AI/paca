@@ -7,6 +7,8 @@ import type {
 	Document,
 	PacaConfig,
 	Project,
+	RepositoryCloneInfo,
+	RepositoryListItem,
 	Sprint,
 	SuccessEnvelope,
 	Task,
@@ -384,5 +386,34 @@ export class PacaAPIClient {
 
 	async deleteDocument(projectId: string, docId: string): Promise<void> {
 		await this.delete(`/api/v1/projects/${projectId}/docs/${docId}`);
+	}
+
+	// ==================== Repository Methods ====================
+	// These hit a repository plugin's own proxied backend routes (mounted at
+	// /api/v1/plugins/:pluginId/* — see PluginHandler.ProxyRequest in
+	// services/api), not a core-API endpoint. Matches whatever a repository
+	// plugin (e.g. paca-plugin-github) actually implements — ported from the
+	// equivalent request shapes in the now-removed services/ai-agent's
+	// repo_tools.py (ListRepositoriesExecutor / CloneRepositoryExecutor /
+	// PushBranchExecutor).
+
+	async listPluginRepositories(
+		pluginId: string,
+		projectId: string,
+	): Promise<RepositoryListItem[]> {
+		const response = await this.get(
+			`/api/v1/plugins/${pluginId}/projects/${projectId}/repositories`,
+		);
+		return Array.isArray(response) ? response : [];
+	}
+
+	async getRepositoryCloneInfo(
+		pluginId: string,
+		projectId: string,
+		repoId: string,
+	): Promise<RepositoryCloneInfo | undefined> {
+		return this.get(
+			`/api/v1/plugins/${pluginId}/projects/${projectId}/repositories/${repoId}/clone-info`,
+		);
 	}
 }

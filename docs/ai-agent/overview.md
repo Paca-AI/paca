@@ -1,6 +1,6 @@
 # AI Agent Feature — Overview
 
-Paca AI Agents are first-class project members, triggered by task assignment, comment @mentions, or direct chat. Agents participate in the project exactly like human members — they appear in member lists, can be assigned tasks, and exchange messages in comments and chats. Depending on `agent_type`, an agent's conversations either run in an isolated Docker container managed by Paca (`llm`, powered by the [OpenHands Software Agent SDK](https://docs.openhands.dev/sdk)) or on a coding CLI the user runs locally themselves (`acp`) — see [Execution Models](#execution-models).
+Paca AI Agents are first-class project members, triggered by task assignment, comment @mentions, or direct chat. Agents participate in the project exactly like human members — they appear in member lists, can be assigned tasks, and exchange messages in comments and chats. Depending on `agent_type`, an agent's conversations either run in an isolated Docker container managed by Paca (`llm`, powered by [Goose](https://github.com/block/goose) over [ACP](https://agentclientprotocol.com/)) or on a coding CLI the user runs locally themselves (`acp`) — see [Execution Models](#execution-models).
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ Paca AI Agents are first-class project members, triggered by task assignment, co
 | **Agent Member** | A `project_members` row with `member_type = 'agent'` and a reference to the `agents` table. Agents are treated identically to human members in all product surfaces. |
 | **Agent Type** | `llm` (default) or `acp` — determines *where and how* an agent's conversations execute. See [Execution Models](#execution-models) below. Not to be confused with the pre-refactor "Agent Type" template concept (PO Assistant, Business Analyst, etc.); those are now [Skill Templates](#skill-templates). |
 | **Skill Template** | A built-in, reusable skill (`developer`, `ba`, `manual-tester`, `po-assistant`) that any agent — `llm` or `acp` — can attach, instead of a full agent preset. See [Skill Templates](#skill-templates). |
-| **Agent Conversation** | A single execution session for one trigger event. For `llm` agents, an OpenHands SDK `Conversation` spawned in a dedicated Docker container; for `acp` agents, a turn dispatched to the user's own locally-run bridge. |
+| **Agent Conversation** | A single execution session for one trigger event. For `llm` agents, a Goose ACP session spawned in a dedicated Docker container; for `acp` agents, a turn dispatched to the user's own locally-run bridge. |
 | **Conversation Event** | An atomic action/observation within a conversation (LLM message, bash command, file edit, etc.). Persisted to the database for history and real-time monitoring. |
 | **Trigger** | An event that creates an agent conversation: task assignment, comment @mention, or direct chat message. Applies identically to both agent types — only how the resulting conversation executes differs. |
 
@@ -52,21 +52,22 @@ Paca AI Agents are first-class project members, triggered by task assignment, co
            │  Valkey Stream (triggers)      │  Valkey Stream (events back)
            ▼                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  services/ai-agent  (Python + FastAPI + OpenHands SDK)                      │
+│  services/agent-runner  (Go)                                                │
 │  • Stream consumer: reads "paca:agent:triggers"                             │
-│  • Spawns one DockerWorkspace per conversation                              │
-│  • Runs OpenHands Conversation inside the container                         │
+│  • Spawns one Goose sandbox container per conversation                      │
+│  • Drives the conversation over ACP (initialize / session/new / prompt)     │
 │  • Publishes conversation events → Valkey Stream "paca:agent:events"        │
-│  • REST endpoints: pause, resume, stop, history                             │
+│  • Pause/resume/stop/heartbeat via control messages, not REST endpoints     │
 └──────────────────────────────────────────────────────────────────────────────┘
                   │
                   │  Docker socket (spawn / manage containers)
                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Agent Docker Containers  (ghcr.io/paca-ai/paca-agent-server:latest)        │
+│  Agent Docker Containers  (services/agent-server/Dockerfile)          │
 │  • One container per active conversation                                    │
 │  • Completely isolated from other containers                                │
-│  • Workspace cloned from repo plugin (credentials injected as secrets)     │
+│  • Repository cloning happens inside the container, via the agent's own     │
+│    Paca MCP tool calls — not pre-cloned by agent-runner                     │
 │  • Destroyed when conversation finishes / is stopped                        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -76,7 +77,7 @@ Paca AI Agents are first-class project members, triggered by task assignment, co
 | Service | Responsibility |
 |---|---|
 | `services/api` | Owns agent configuration, triggers agent invocations, stores conversation summaries and replies, exposes control APIs. |
-| `services/ai-agent` | Executes agent conversations via OpenHands SDK, manages Docker container lifecycle, streams events back. |
+| `services/agent-runner` | Executes `llm`-type agent conversations via Goose/ACP, manages Docker container lifecycle, streams events back; brokers `acp`-type dispatch to `apps/acp-bridge`. See [agent-runner-service.md](agent-runner-service.md). |
 | `services/realtime` | Delivers real-time conversation events to the web client via Socket.IO (same existing Valkey→Socket.IO fan-out). |
 | Docker host | Provides container isolation. Agent containers cannot reach other Paca service containers on the internal network by default. |
 
@@ -92,7 +93,7 @@ Every agent has an `agent_type` of `llm` (default) or `acp`, fixed at creation. 
 | LLM credential | `llm_api_key`, stored encrypted, managed by Paca | The user's own local CLI auth (e.g. `claude setup-token`, `OPENAI_API_KEY`) — Paca never sees, stores, or requests this |
 | MCP servers / skills / env vars | Configured on the agent in Paca, injected into the container at conversation start | Entirely the user's own local CLI configuration — Paca injects nothing |
 | Git / VCS access | Short-lived scoped token from a repository plugin (see [Repository Access & PR Creation](#repository-access--pr-creation)) | Whatever `git`/`gh` credentials are already configured on the user's machine |
-| Connection to Paca | N/A — the container is spawned and controlled by `services/ai-agent` directly | An authenticated WebSocket from the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon to `services/ai-agent`, using a per-agent bridge token generated in the Agents UI (`POST .../agents/:agentId/acp-bridge-token`) |
+| Connection to Paca | N/A — the container is spawned and controlled by `services/agent-runner` directly | An authenticated WebSocket from the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon to `services/agent-runner`, using a per-agent bridge token generated in the Agents UI (`POST .../agents/:agentId/acp-bridge-token`) |
 
 `acp` exists for users who already have a coding CLI configured the way they want (auth, MCP servers, skills, git access) and would rather point Paca at that setup than duplicate it in a sandboxed container. See [api-design.md](api-design.md) for the full field-level split between the two types, and the bridge's own README for its local setup and auth model.
 
@@ -161,44 +162,45 @@ This describes the `llm` execution path (see [Execution Models](#execution-model
 Trigger event published
         │
         ▼
-ai-agent service dequeues event
+agent-runner dequeues event
         │
         ▼
 Resolve agent config (LLM, skills, MCP servers, system prompt)
         │
         ▼
-Clone repository (if coding task) via repository plugin adapter
-  - fetch clone URL + temporary token from plugin
-  - inject credentials as OpenHands SecretSource (never logged)
+Spawn a Goose sandbox container (services/agent-server/Dockerfile)
         │
         ▼
-Spawn DockerWorkspace (OpenHands agent-server image)
-        │
-        ▼
-Create OpenHands Conversation with:
-  - LLM from agent config
-  - Skills from agent config
-  - MCP servers from agent config
-  - System prompt from agent config
+ACP handshake: initialize, then session/new with:
+  - Working directory
+  - MCP servers from agent config, plus the built-in Paca MCP server last
   - Conversation ID stored in DB
-  - Persistence dir mounted into container
-  - Event callback → publish to Valkey "paca:agent:events"
-        │
-        ├─── User sends "pause" → conversation.pause()
-        ├─── User sends "resume" → conversation.run()
-        ├─── User sends "stop" → conversation.close(), container destroyed
         │
         ▼
-Conversation finishes (agent sends finish action)
+session/prompt with the turn's message:
+  - System prompt + skills + trigger/project context + user message (cold start)
+  - Just the new message (resumed chat turn — see Pause/Resume below)
+  - Every session/update notification → publish to Valkey "paca:agent:events"
+        │
+        ├─── "pause" control message → turn interrupted, sandbox kept alive
+        ├─── "heartbeat" control message → paused sandbox's idle deadline extended
+        ├─── "stop" control message → turn interrupted (or paused sandbox found), container destroyed
+        │
+        ▼
+Turn finishes (Goose reports a stop reason)
         │
         ▼
 Persist summary + outputs
   - Post reply comment / chat message via API
-  - Create PR if coding task (via repo plugin)
+  - Repository access and PR creation happen inside the container itself, via
+    the agent's own Paca MCP tool calls — not orchestrated by agent-runner
         │
         ▼
-Container destroyed, conversation state archived
+Container destroyed (non-chat, or chat conversation fully stopped),
+conversation state persisted to Postgres
 ```
+
+Note there is no `resume` control message the way `services/ai-agent` had one — for `llm` agents a paused *non-chat* turn simply doesn't resume (each trigger is one turn), and a paused *chat* conversation resumes automatically on its next `chat_message` trigger, reusing the same sandbox rather than needing an explicit resume call. See [agent-runner-service.md](agent-runner-service.md#pause--resume--stop--heartbeat).
 
 ---
 
@@ -206,27 +208,28 @@ Container destroyed, conversation state archived
 
 This describes the `llm` execution path. `acp` agents don't go through a repository plugin at all — they use whatever `git`/`gh` credentials are already configured on the user's own machine, exactly as if the user were driving the CLI themselves; see the [Execution Models](#execution-models) table.
 
-Agents must be able to read and write code without ever seeing VCS credentials directly.
+Agents must be able to read and write code without ever seeing VCS credentials directly. Unlike `services/ai-agent`, `agent-runner` never calls the repository plugin adapter itself — cloning and PR creation are tool calls the agent makes, executed inside its own sandbox container against the built-in Paca MCP server.
 
 ### Clone Flow
 
-1. When the trigger involves a coding task, `services/ai-agent` calls the **repository plugin adapter** endpoint (e.g., the GitHub plugin) with the project context.
-2. The plugin returns a **short-lived scoped token** (e.g., a GitHub installation token with read/write on the repository, valid for 10 minutes) and the HTTPS clone URL.
-3. The token is injected into the OpenHands `Conversation` via `conversation.update_secrets()` as a `SecretSource` that fetches a fresh token on demand — the token value never appears in any log or agent output.
-4. The agent's first tool call clones the repository: `git clone https://x-access-token:$GIT_TOKEN@github.com/org/repo.git`.
-5. When the conversation ends, the workspace is destroyed and the token expires automatically.
+1. The agent decides (from the `paca` skill's routing, or a coding-task trigger's context) that it needs the repository and invokes the Paca MCP server's clone tool.
+2. The Paca MCP server (`apps/mcp`, running as `npx @paca-ai/paca-mcp` inside the same container) calls `services/api` for a **short-lived scoped token** (e.g., a GitHub installation token with read/write on the repository, valid for 10 minutes) and the HTTPS clone URL.
+3. It runs `git clone` as a subprocess with the token embedded in the URL, then scrubs the token from any command output before it can reach the model's context or a log line — the token itself is never returned to the agent as text.
+4. When the conversation ends, the container (and any working tree inside it) is destroyed and the token expires automatically.
 
 ### PR Creation Flow
 
-1. The agent completes coding work and signals readiness in its finish message.
-2. `services/ai-agent` calls the repository plugin adapter's **create PR endpoint** with the branch name and description generated by the agent.
-3. The plugin creates the PR and returns the PR URL.
-4. The agent service posts the PR URL as a comment on the Paca task.
+1. The agent completes coding work and invokes the Paca MCP server's PR-creation tool with the branch name and description it generated.
+2. The Paca MCP server calls the repository plugin adapter's **create PR endpoint** (via `services/api`).
+3. The plugin creates the PR and returns the PR URL to the tool call.
+4. The agent posts the PR URL as a comment on the Paca task itself (another Paca MCP tool call).
 
 This design means:
 - Agents never store credentials.
-- Credentials are not readable from container logs (masked by `SecretSource`).
+- Credentials are not readable from container logs (scrubbed before the agent or any log can see them).
 - Plugin plugins remain the single source of truth for VCS auth.
+
+See [repository-plugin-adapter.md](repository-plugin-adapter.md) for the full protocol.
 
 ---
 
@@ -263,6 +266,7 @@ Each template also carries a set of trigger keywords (e.g. `developer` triggers 
 
 - [database-schema.md](database-schema.md) — Agent tables and modifications to `project_members`
 - [api-design.md](api-design.md) — REST endpoints for agent management
-- [ai-agent-service.md](ai-agent-service.md) — `services/ai-agent` implementation details
+- [agent-runner-service.md](agent-runner-service.md) — `services/agent-runner` implementation details
 - [repository-plugin-adapter.md](repository-plugin-adapter.md) — How agents access VCS credentials
 - [realtime-events.md](realtime-events.md) — Socket.IO events emitted during conversations
+- [goose-migration.md](goose-migration.md) — the migration from `services/ai-agent` (Python/OpenHands) to `services/agent-runner` (Go/Goose)

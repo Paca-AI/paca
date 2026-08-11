@@ -34,6 +34,31 @@ export function extractContentText(content: unknown): string | null {
 	return null;
 }
 
+// Extracts text from a single ACP ContentBlock object ({type, text} — not
+// an array, unlike extractContentText's inputs). agent-runner (services/
+// agent-runner/internal/acp/types.go) writes this shape directly as
+// agent_message_chunk's `content` field and, wrapped one level deeper, as
+// each entry of tool_call_update's `content` array.
+function extractAcpBlockText(block: unknown): string | null {
+	if (typeof block !== "object" || block === null) return null;
+	const text = (block as Record<string, unknown>).text;
+	return typeof text === "string" && text.length > 0 ? text : null;
+}
+
+// tool_call_update's `content` is an array of {type, content: ContentBlock}
+// wrapper objects (ToolCallUpdate.Content in the Go source) — mirrors that
+// struct's own Text() helper.
+function extractToolCallUpdateText(content: unknown): string | null {
+	if (!Array.isArray(content)) return null;
+	const parts = (content as Array<unknown>)
+		.map((c) => {
+			if (typeof c !== "object" || c === null) return null;
+			return extractAcpBlockText((c as Record<string, unknown>).content);
+		})
+		.filter((t): t is string => t !== null);
+	return parts.length > 0 ? parts.join("") : null;
+}
+
 export interface ToolDiffBlock {
 	path?: string;
 	oldText: string | null;
@@ -194,6 +219,100 @@ export function eventsToThreadMessages(
 		) {
 			continue;
 		}
+
+		// user_message / agent_message_chunk / tool_call / tool_call_update /
+		// turn_end are services/agent-runner's own event types — the only
+		// ones an `llm`-type agent produces now that services/ai-agent (which
+		// wrote the OpenHands-style types below) has been removed. Handled
+		// separately from those rather than folded in, since a conversation
+		// from before this migration can still have OpenHands-typed rows in
+		// its history that must keep rendering correctly.
+		//
+		// user_message records what the user actually sent, written once at
+		// the start of a turn (internal/handler/handler.go) — ACP itself has
+		// no equivalent event (session/prompt never echoes back what it was
+		// asked), so without this a chat conversation's own messages
+		// wouldn't render at all, only the agent's replies.
+		if (t === "user_message") {
+			const text = extractAcpBlockText(p.content);
+			if (!text) continue;
+			flushCurrent();
+			messages.push({
+				id: ev.id,
+				role: "user",
+				createdAt: new Date(ev.created_at),
+				content: [{ type: "text", text }],
+			});
+			continue;
+		}
+
+		if (t === "agent_message_chunk") {
+			const text = extractAcpBlockText(p.content);
+			if (!text) continue;
+			if (!current)
+				current = startAssistantMessage(ev.id, new Date(ev.created_at));
+			// Chunks stream one turn's reply piece by piece — append to the
+			// already-open text part instead of pushing a new one each time,
+			// or the reply renders as many separate fragments/paragraphs
+			// instead of one continuous message.
+			const lastPart = current.parts.at(-1);
+			if (lastPart && lastPart.type === "text") {
+				lastPart.text += text;
+			} else {
+				current.parts.push({ type: "text", text });
+			}
+			continue;
+		}
+
+		if (t === "tool_call") {
+			if (!current)
+				current = startAssistantMessage(ev.id, new Date(ev.created_at));
+			const toolCallId =
+				typeof p.toolCallId === "string" ? p.toolCallId : ev.id;
+			const toolName = typeof p.title === "string" ? p.title : "tool";
+			const part: MutableToolCallPart = {
+				type: "tool-call",
+				toolCallId,
+				toolName,
+				argsText: "",
+			};
+			current.parts.push(part);
+			current.openToolCalls.set(toolCallId, part);
+			continue;
+		}
+
+		if (t === "tool_call_update") {
+			const toolCallId =
+				typeof p.toolCallId === "string" ? p.toolCallId : undefined;
+			const status = typeof p.status === "string" ? p.status : null;
+			const resultText = extractToolCallUpdateText(p.content);
+			const openPart =
+				toolCallId && current
+					? current.openToolCalls.get(toolCallId)
+					: undefined;
+			if (openPart) {
+				if (resultText) openPart.result = resultText;
+				if (status === "failed") openPart.isError = true;
+			} else if (resultText) {
+				// No matching open tool-call in this turn (history gap) —
+				// append a standalone, already-complete tool-call part.
+				if (!current)
+					current = startAssistantMessage(ev.id, new Date(ev.created_at));
+				current.parts.push({
+					type: "tool-call",
+					toolCallId: toolCallId ?? ev.id,
+					toolName: "tool",
+					argsText: "",
+					result: resultText,
+					...(status === "failed" ? { isError: true } : {}),
+				});
+			}
+			continue;
+		}
+
+		// turn_end carries only a machine-readable stop reason, never
+		// user-visible content.
+		if (t === "turn_end") continue;
 
 		if (t === "MessageEvent") {
 			const llmMsg = p.llm_message as { content?: unknown } | undefined;

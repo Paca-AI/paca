@@ -79,7 +79,7 @@ Create a new agent. This also creates the corresponding `project_members` row wi
 }
 ```
 
-`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command via the OpenHands SDK's own provider registry. None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
+`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `goose`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command themselves: `claude-code`/`codex`/`gemini-cli` via the OpenHands SDK's own provider registry, `goose` via a small local override in `apps/acp-bridge` (the SDK's registry doesn't know about Goose — see [goose-migration.md](goose-migration.md)). None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
 
 **Response:** `201 Created` with the created agent object.
 
@@ -153,7 +153,7 @@ Issue a new local-bridge connection token, invalidating any previous one. The pl
 
 ### `GET /api/v1/projects/:projectId/agents/:agentId/acp-bridge-status`
 
-Live connected/disconnected status for the agent's local bridge, proxied from `services/ai-agent`'s presence check.
+Live connected/disconnected status for the agent's local bridge, proxied from `services/agent-runner`'s presence check.
 
 **Response:**
 ```json
@@ -286,7 +286,7 @@ Two read-only, project-agnostic reference endpoints under `/api/v1/agents`, used
 
 ### `GET /api/v1/agents/llm-models`
 
-Proxies to `services/ai-agent`'s `/llm/models`, returning the verified LLM models available, grouped by provider.
+Proxies to `services/agent-runner`'s `/llm/models`, returning the verified LLM models available, grouped by provider.
 
 ---
 

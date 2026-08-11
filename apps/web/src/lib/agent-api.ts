@@ -1,4 +1,8 @@
-import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
+import {
+	infiniteQueryOptions,
+	type QueryClient,
+	queryOptions,
+} from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
 
@@ -109,7 +113,12 @@ export interface AgentEnvVar {
 }
 
 export type AgentType = "llm" | "acp";
-export type ACPProvider = "claude-code" | "codex" | "gemini-cli" | "custom";
+export type ACPProvider =
+	| "claude-code"
+	| "codex"
+	| "gemini-cli"
+	| "goose"
+	| "custom";
 
 // "project" agents belong to exactly one project (project_id set). "global"
 // agents belong to none (project_id null) — they chat on the home/admin
@@ -562,7 +571,7 @@ export async function getAcpBridgeStatus(
 	projectId: string,
 	agentId: string,
 ): Promise<AcpBridgeStatus> {
-	// Unlike most endpoints, this one proxies ai-agent's response verbatim
+	// Unlike most endpoints, this one proxies agent-runner's response verbatim
 	// (no SuccessEnvelope wrapping) — same pass-through pattern as
 	// listLLMModels below.
 	const { data } = await apiClient.instance.get<AcpBridgeStatus>(
@@ -1108,8 +1117,8 @@ export async function sendConversationMessage(
 }
 
 // heartbeatConversation refreshes a chat conversation's idle timer on the
-// ai-agent service — pinged periodically while a conversation is loaded in a
-// browser tab so its sandbox isn't reclaimed as long as the tab stays open.
+// agent-runner service — pinged periodically while a conversation is loaded
+// in a browser tab so its sandbox isn't reclaimed as long as the tab stays open.
 export async function heartbeatConversation(
 	projectId: string,
 	conversationId: string,
@@ -1235,7 +1244,7 @@ export const globalAgentEnvVarsQueryOptions = (agentId: string) =>
 
 // Fetched once (no polling) — kept live afterward via useProjectRealtime's
 // direct cache update on "agent.acp_bridge.status" events (published by
-// services/ai-agent's acp_bridge.py on every bridge connect/disconnect).
+// services/agent-runner's internal/acpbridge on every bridge connect/disconnect).
 export const acpBridgeStatusQueryOptions = (
 	projectId: string,
 	agentId: string,
@@ -1250,7 +1259,7 @@ export const acpBridgeStatusQueryOptions = (
 // Global-agent sibling of acpBridgeStatusQueryOptions. Unlike the
 // project-scoped one, this has no live socket-driven update — a global
 // agent's bridge status event currently has no per-agent room to route to
-// (see services/ai-agent's acp_bridge.py) — so it's fetch-once only.
+// (see services/agent-runner's internal/acpbridge) — so it's fetch-once only.
 export const globalAcpBridgeStatusQueryOptions = (
 	agentId: string,
 	options?: { enabled?: boolean },
@@ -1377,14 +1386,23 @@ export const conversationEventsTailKey = (conversationId: string) => [
 ];
 
 /**
- * Notification channel, not a data source: the realtime hooks write the highest
- * `event_index` they have seen and observers re-render.
+ * Notification channel, not a fetched data source: the realtime hooks write
+ * directly into this cache entry (via `applyRealtimeAgentEvent` below) and
+ * `useConversationEventWindow` merges `events` on top of whatever it has
+ * paginated in from the server, so a live reply can render without an HTTP
+ * round trip per event. `events` only ever holds the events not yet folded
+ * into a real fetched page — it's pruned there, not here.
  */
-export type ConversationEventsTail = { tick: number; index: number | null };
+export type ConversationEventsTail = {
+	tick: number;
+	index: number | null;
+	events: AgentConversationEvent[];
+};
 
 const CONVERSATION_EVENTS_TAIL_INITIAL: ConversationEventsTail = {
 	tick: 0,
 	index: null,
+	events: [],
 };
 
 export const conversationEventsTailQueryOptions = (conversationId: string) =>
@@ -1397,6 +1415,85 @@ export const conversationEventsTailQueryOptions = (conversationId: string) =>
 		staleTime: Number.POSITIVE_INFINITY,
 		gcTime: Number.POSITIVE_INFINITY,
 	});
+
+/**
+ * Applies one realtime `agent.*` message to `conversationId`'s tail cache —
+ * shared by useProjectRealtime and useGlobalAgentRealtime so the two don't
+ * carry two hand-copied versions of this logic.
+ *
+ * services/agent-runner's `persistAndPublish` (internal/handler/handler.go)
+ * now puts the *full* row — id, event_type, event_source, payload,
+ * created_at — on every persisted event's realtime message, not just its
+ * index. When that's present, this appends a real `AgentConversationEvent`
+ * onto the tail's `events` array — `useConversationEventWindow` renders it
+ * immediately, no `GET .../events` needed. A message with no `id` (a
+ * status-only notification like `agent.conversation.paused`, which was
+ * never a discrete row) just bumps `tick` so observers re-render; the
+ * caller is expected to trigger a real reconciling fetch for those instead
+ * — see useProjectRealtime's own handling.
+ *
+ * Returns the parsed `conversationId` and whether `payload` carried a
+ * persisted event, or `null` if the message had no `conversation_id` at
+ * all to key the cache on.
+ */
+export function applyRealtimeAgentEvent(
+	queryClient: QueryClient,
+	payload: Record<string, unknown>,
+): { conversationId: string; isPersistedEvent: boolean } | null {
+	const conversationId =
+		typeof payload.conversation_id === "string"
+			? payload.conversation_id
+			: null;
+	if (!conversationId) return null;
+
+	const eventId = typeof payload.id === "string" ? payload.id : null;
+	const eventIndex = Number.parseInt(String(payload.event_index ?? ""), 10);
+	const isPersistedEvent = Number.isFinite(eventIndex);
+
+	queryClient.setQueryData(
+		conversationEventsTailKey(conversationId),
+		(prev: ConversationEventsTail | undefined): ConversationEventsTail => {
+			const base = prev ?? CONVERSATION_EVENTS_TAIL_INITIAL;
+			if (!isPersistedEvent || !eventId) {
+				return { ...base, tick: base.tick + 1 };
+			}
+			const index = Math.max(base.index ?? -1, eventIndex);
+			// Already have it — a Socket.IO reconnect can replay a message
+			// already applied before the disconnect.
+			if (base.events.some((e) => e.id === eventId)) {
+				return { ...base, tick: base.tick + 1, index };
+			}
+			const liveEvent: AgentConversationEvent = {
+				id: eventId,
+				conversation_id: conversationId,
+				event_index: eventIndex,
+				event_type:
+					typeof payload.event_type === "string" ? payload.event_type : "",
+				event_source:
+					payload.event_source === "user" || payload.event_source === "system"
+						? payload.event_source
+						: "agent",
+				payload:
+					payload.payload && typeof payload.payload === "object"
+						? (payload.payload as Record<string, unknown>)
+						: {},
+				created_at:
+					typeof payload.created_at === "string"
+						? payload.created_at
+						: new Date().toISOString(),
+			};
+			return {
+				tick: base.tick + 1,
+				index,
+				events: [...base.events, liveEvent].sort(
+					(a, b) => a.event_index - b.event_index,
+				),
+			};
+		},
+	);
+
+	return { conversationId, isPersistedEvent };
+}
 
 /**
  * One window of a conversation's events, paged by cursor in both

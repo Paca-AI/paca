@@ -39,13 +39,15 @@ type Agent struct {
 	LLMModel        string
 	LLMAPIKeySecret string // reference to secrets store entry
 	LLMBaseURL      string
-	// ACPProvider is one of claude-code | codex | gemini-cli | custom; nil for
-	// llm-type agents.
+	// ACPProvider is one of claude-code | codex | gemini-cli | goose | custom;
+	// nil for llm-type agents.
 	ACPProvider *string
 	// ACPCommand is the command + args used to launch the ACP server. Only
-	// meaningful (and required) when ACPProvider == "custom" — built-in
-	// providers resolve a default command via the OpenHands SDK's own
-	// provider registry.
+	// meaningful (and required) when ACPProvider == "custom" — the other
+	// built-in providers resolve a default command themselves: claude-code /
+	// codex / gemini-cli via the OpenHands SDK's own provider registry, goose
+	// via a small local override in apps/acp-bridge's runner.py (the SDK's
+	// registry doesn't know about goose — see docs/ai-agent/goose-migration.md).
 	ACPCommand []string
 	// HasACPBridgeToken reports whether a local-bridge auth token has been
 	// generated; the token itself (and its hash) are never exposed here.
@@ -103,6 +105,7 @@ const (
 	ACPProviderClaudeCode = "claude-code"
 	ACPProviderCodex      = "codex"
 	ACPProviderGeminiCLI  = "gemini-cli"
+	ACPProviderGoose      = "goose"
 	ACPProviderCustom     = "custom"
 )
 
@@ -111,6 +114,7 @@ var ValidACPProviders = map[string]bool{
 	ACPProviderClaudeCode: true,
 	ACPProviderCodex:      true,
 	ACPProviderGeminiCLI:  true,
+	ACPProviderGoose:      true,
 	ACPProviderCustom:     true,
 }
 

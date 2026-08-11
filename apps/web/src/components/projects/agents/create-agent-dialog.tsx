@@ -549,6 +549,9 @@ export function CreateAgentDialog({
 											<SelectItem value="gemini-cli">
 												{t("agents.createDialog.acpProviderGeminiCli")}
 											</SelectItem>
+											<SelectItem value="goose">
+												{t("agents.createDialog.acpProviderGoose")}
+											</SelectItem>
 											<SelectSeparator />
 											<SelectItem value="custom">
 												{t("agents.createDialog.acpProviderCustom")}

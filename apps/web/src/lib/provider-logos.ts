@@ -32,7 +32,11 @@ const LLM_PROVIDER_LOGOS: Record<string, string> = {
 };
 
 // "custom" has no fixed provider identity, so it's intentionally unmapped —
-// falls back to initials like any other unmapped provider.
+// falls back to initials like any other unmapped provider. "goose" is
+// likewise unmapped for now, not because it lacks an identity but because no
+// Goose asset has been sourced from @lobehub/icons-static-svg yet (see the
+// module doc comment) — add an entry once one has, rather than guessing at
+// a path that doesn't exist on disk.
 const ACP_PROVIDER_LOGOS: Record<string, string> = {
 	"claude-code": "/provider-logos/claude-code.svg",
 	codex: "/provider-logos/codex.svg",

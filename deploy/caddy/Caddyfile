@@ -6,7 +6,7 @@
 #
 #   /api/*          →  REST API service       (forwarded as-is, /api kept)
 #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
-#   /agent-bridge/ws → AI-agent local ACP bridge WebSocket (forwarded as-is)
+#   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded as-is)
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -140,8 +140,8 @@
 	# -- MCP plugin bundles + Plugin Agent Skills bundles -------------------------
 	#
 	# See the `mcp_skills_routes` snippet above. Also served on the internal
-	# :8080 block below, which the MCP server / ai-agent use instead of this
-	# public port for their own fetches — see that block for why.
+	# :8080 block below, which the MCP server / agent-runner use instead of
+	# this public port for their own fetches — see that block for why.
 	import mcp_skills_routes
 
 	# -- API routes ---------------------------------------------------------------
@@ -153,19 +153,20 @@
 		reverse_proxy api:8080
 	}
 
-	# -- AI agent local ACP bridge -------------------------------------------------
+	# -- Agent Runner local ACP bridge ---------------------------------------------
 	#
-	# The only part of services/ai-agent exposed publicly: the WebSocket a
-	# user's local `paca-acp-bridge` daemon connects to (see
-	# services/ai-agent/src/routes/bridge.py). WebSocket upgrades are proxied
-	# automatically, same as the realtime service above.
+	# The only part of agent-runner exposed publicly: the WebSocket a user's
+	# local `paca-acp-bridge` daemon connects to (see
+	# internal/acpbridge/server.go's handleWS — the Go replacement for the
+	# old services/ai-agent's routes/bridge.py). WebSocket upgrades are
+	# proxied automatically, same as the realtime service above.
 	#
 	# Scoped to exactly /agent-bridge/ws — the sibling /agent-bridge/status/*
 	# and /agent-bridge/disconnect/* routes are internal-only (called by
 	# services/api over the docker-internal network) and must not be
 	# reachable from here.
 	handle /agent-bridge/ws {
-		reverse_proxy ai-agent:8080
+		reverse_proxy agent-runner:8080
 	}
 
 	# -- Web application (SPA) -----------------------------------------------------
@@ -179,11 +180,12 @@
 
 # -- Internal MCP/Skills bundle port ------------------------------------------
 #
-# The MCP server and ai-agent fetch plugin MCP/skills bundles via
+# The MCP server and agent-runner fetch plugin MCP/skills bundles via
 # GATEWAY_BASE_URL over plain http:// on the docker-internal network.
-# services/ai-agent/src/config.py reads GATEWAY_BASE_URL and forwards it to
-# the spawned MCP subprocess as PACA_GATEWAY_URL (see
-# services/ai-agent/src/agent/builder.py), which apps/mcp/src/plugin-loader.ts
+# services/agent-runner reads PACA_GATEWAY_URL directly (see
+# internal/executor/executor.go's Options.PacaGatewayURL) and forwards it to
+# the spawned MCP subprocess the same way services/ai-agent's
+# src/agent/builder.py used to, which apps/mcp/src/plugin-loader.ts
 # then uses to resolve plugin bundle URLs. When SITE_ADDRESS above is a real
 # domain, Caddy enables automatic HTTPS for it,
 # which installs a catch-all HTTP→HTTPS redirect on port 80 for *any* Host

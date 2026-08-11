@@ -9,7 +9,8 @@ Thanks for contributing to Paca.
 - `apps/e2e` — Playwright end-to-end test suite.
 - `services/api` — Go + Gin application backend.
 - `services/realtime` — Node.js + Socket.IO real-time event fan-out.
-- `services/ai-agent` — Python + FastAPI + OpenHands SDK AI agent runtime.
+- `services/agent-runner` — Go AI agent execution service (Goose over ACP; also brokers `acp`-type dispatch to `apps/acp-bridge`).
+- `services/agent-server` — Docker image for the Goose sandbox agent-runner spawns per conversation.
 - `docs` — architecture, guides, API, deployment, and plugin documentation.
 - `deploy` — Docker Compose files and environment templates.
 - `plugins` — local plugin store (WASM + frontend bundles).

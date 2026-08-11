@@ -30,6 +30,15 @@ export interface PacaConfig {
 	 * for a personal API key or a project-scoped agent's automation runs.
 	 */
 	actorUserId?: string;
+	/**
+	 * Names (e.g. "com.paca.github") of the repository plugins installed on
+	 * this conversation's project, forwarded from the agent-runner trigger's
+	 * repo_plugin_ids field as PACA_REPO_PLUGIN_IDS (comma-separated). Empty
+	 * or unset means no repository plugin is configured, in which case the
+	 * repo tools (list_repositories/clone_repository/push_branch) are hidden
+	 * entirely — see server.ts's tool-listing handler.
+	 */
+	repoPluginIds?: string[];
 }
 
 export interface PermissionMap {
@@ -842,6 +851,36 @@ export interface AddAutomationEdgeInput {
 	source_node_id: string;
 	source_handle?: string | null;
 	target_node_id: string;
+}
+
+// ==================== Repository (repo-tools) ====================
+
+/**
+ * One repository as returned by a repository plugin's
+ * `GET /api/v1/plugins/{pluginId}/projects/{projectId}/repositories` route
+ * (a plugin-owned endpoint proxied through PluginHandler.ProxyRequest —
+ * there is no core-API implementation of repository listing to mirror
+ * beyond this shape). Ported from the equivalent per-item dict shape in the
+ * now-removed services/ai-agent's repo_tools.py ListRepositoriesExecutor.
+ */
+export interface RepositoryListItem {
+	id: string;
+	full_name: string;
+	owner: string;
+	repo_name: string;
+	clone_url: string;
+}
+
+/**
+ * Clone credentials for one repository, from the same plugin's
+ * `.../repositories/{repoId}/clone-info` route. `token` is short-lived and
+ * must never be logged — see repo-tools.ts's scrubToken.
+ */
+export interface RepositoryCloneInfo {
+	id: string;
+	full_name: string;
+	clone_url: string;
+	token: string;
 }
 
 // ==================== API Response Helpers ====================

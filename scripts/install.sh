@@ -34,8 +34,8 @@
 #   POSTGRES_PASSWORD, AGENT_API_KEY, INTERNAL_API_KEY) are written to `.env`
 #   verbatim when set. Variables prefixed `PACA_` are installer-only choices
 #   that steer which branch of a prompt is taken, with two exceptions —
-#   PACA_WEB and PACA_AI_AGENT are also written to `.env` verbatim (see
-#   "Web app" / "AI agent" below), so upgrade.sh can read the choice back.
+#   PACA_WEB and PACA_AGENT_RUNNER are also written to `.env` verbatim (see
+#   "Web app" / "Agent Runner" below), so upgrade.sh can read the choice back.
 #   Every variable below is optional; unset ones get a generated or default
 #   value. Secrets left unset are auto-generated and printed at the end of a
 #   successful run (and saved in `.env`) — nothing is silently left blank.
@@ -86,25 +86,25 @@
 #   Web app
 #     PACA_WEB                     bundled/external                    (default: bundled)
 #
-#   AI agent
-#     PACA_AI_AGENT                yes/no                               (default: yes)
+#   Agent Runner
+#     PACA_AGENT_RUNNER             yes/no                               (default: yes)
 #     AGENT_API_KEY                 (default: auto-generated)
 #     INTERNAL_API_KEY              (default: auto-generated)
 #
-#   PACA_WEB and PACA_AI_AGENT are also written to .env, so upgrade.sh can
-#   read the choice back and keep these services scaled to 0 automatically on
-#   future upgrades — you won't need to re-pass --scale web=0 / --scale
-#   ai-agent=0 by hand each time.
+#   PACA_WEB and PACA_AGENT_RUNNER are also written to .env, so upgrade.sh
+#   can read the choice back and keep these services scaled to 0 automatically
+#   on future upgrades — you won't need to re-pass --scale web=0 / --scale
+#   agent-runner=0 by hand each time.
 #
 #   Other secrets
 #     JWT_SECRET                    (default: auto-generated)
 #
-#   Full example — fully unattended, custom domain, S3, no AI agent:
+#   Full example — fully unattended, custom domain, S3, no Agent Runner:
 #     PACA_YES=1 \
 #     PACA_ADDRESS=paca.example.com \
 #     STORAGE_PROVIDER=s3 STORAGE_BUCKET=my-bucket \
 #     STORAGE_ACCESS_KEY_ID=AKIA... STORAGE_SECRET_ACCESS_KEY=... \
-#     PACA_AI_AGENT=no \
+#     PACA_AGENT_RUNNER=no \
 #     ADMIN_PASSWORD='a-strong-password' \
 #     bash install.sh
 
@@ -694,26 +694,26 @@ else
     info "Bundled web container will be started."
 fi
 
-# ── AI Agent ──────────────────────────────────────────────────────────────────
+# ── Agent Runner ──────────────────────────────────────────────────────────────
 
-heading "AI Agent (optional)"
+heading "Agent Runner (optional)"
 
-echo "  The AI agent enables autonomous task execution."
+echo "  Agent Runner enables autonomous task execution (llm- and acp-type agents)."
 echo "  It requires access to the Docker socket on the host machine."
 echo ""
 
-INCLUDE_AI_AGENT="yes"
-yes_no INCLUDE_AI_AGENT "Include the AI agent service?" "${PACA_AI_AGENT:-y}"
+INCLUDE_AGENT_RUNNER="yes"
+yes_no INCLUDE_AGENT_RUNNER "Include the Agent Runner service?" "${PACA_AGENT_RUNNER:-y}"
 
-SCALE_AI_AGENT=""
+SCALE_AGENT_RUNNER=""
 AGENT_API_KEY="${AGENT_API_KEY:-$(rand_hex 32)}"
 INTERNAL_API_KEY="${INTERNAL_API_KEY:-$(rand_hex 32)}"
 
-if [[ "$INCLUDE_AI_AGENT" == "no" ]]; then
-    SCALE_AI_AGENT="--scale ai-agent=0"
-    info "AI agent will be skipped."
+if [[ "$INCLUDE_AGENT_RUNNER" == "no" ]]; then
+    SCALE_AGENT_RUNNER="--scale agent-runner=0"
+    info "Agent Runner will be skipped."
 else
-    info "AI agent will be included."
+    info "Agent Runner will be included."
 fi
 
 # ── Download release assets ───────────────────────────────────────────────────
@@ -768,7 +768,7 @@ if [[ "$KEEP_ENV" == "no" ]]; then
 PACA_API_IMAGE=pacaai/paca-api:${IMAGE_TAG}
 PACA_WEB_IMAGE=pacaai/paca-web:${IMAGE_TAG}
 PACA_REALTIME_IMAGE=pacaai/paca-realtime:${IMAGE_TAG}
-PACA_AI_AGENT_IMAGE=pacaai/paca-ai-agent:${IMAGE_TAG}
+PACA_AGENT_RUNNER_IMAGE=pacaai/paca-agent-runner:${IMAGE_TAG}
 
 ENVIRONMENT=production
 GATEWAY_PORT=${GATEWAY_PORT}
@@ -828,12 +828,11 @@ STORAGE_USE_SSL=${STORAGE_USE_SSL}
 # 64-char hex string used to encrypt plugin secrets at rest.
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
-# ── AI Agent ─────────────────────────────────────────────────────────────────
-# Both keys below must match across api and ai-agent services.
+# ── Agent Runner ─────────────────────────────────────────────────────────────
+# Both keys below must match across api and agent-runner services.
 AGENT_API_KEY=${AGENT_API_KEY}
 INTERNAL_API_KEY=${INTERNAL_API_KEY}
-AI_AGENT_PORT=8082
-AGENT_SERVER_IMAGE=ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}
+AGENT_SERVER_IMAGE=ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}
 PORT_POOL_START=10000
 PORT_POOL_SIZE=100
 WORKER_CONCURRENCY=10
@@ -842,7 +841,7 @@ WORKER_CONCURRENCY=10
 # Recorded so upgrade.sh can keep these services scaled to 0 automatically on
 # future upgrades, instead of you having to re-pass --scale flags every time.
 PACA_WEB=${PACA_WEB}
-PACA_AI_AGENT=${INCLUDE_AI_AGENT}
+PACA_AGENT_RUNNER=${INCLUDE_AGENT_RUNNER}
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL=info
@@ -863,7 +862,7 @@ echo -e "  ${BOLD}Database    ${RESET}$( [[ -n "$SCALE_POSTGRES" ]] && echo "Ext
 echo -e "  ${BOLD}Backups     ${RESET}$( [[ -n "$SCALE_DB_BACKUP" ]] && echo "Disabled" || echo "'${BACKUP_CRON}' UTC → ${BACKUP_DIR} (kept ${BACKUP_RETENTION_DAYS}d)" )"
 echo -e "  ${BOLD}Storage     ${RESET}$( [[ "$STORAGE_PROVIDER" == "s3" ]] && echo "AWS S3 (${STORAGE_BUCKET})" || echo "Self-hosted MinIO" )"
 echo -e "  ${BOLD}Web app     ${RESET}$( [[ -n "$SCALE_WEB" ]] && echo "External / CDN (container skipped)" || echo "Bundled container" )"
-echo -e "  ${BOLD}AI Agent    ${RESET}$( [[ -n "$SCALE_AI_AGENT" ]] && echo "Disabled" || echo "Enabled" )"
+echo -e "  ${BOLD}Agent Runner${RESET}$( [[ -n "$SCALE_AGENT_RUNNER" ]] && echo "Disabled" || echo "Enabled" )"
 echo -e "  ${BOLD}Admin user  ${RESET}${ADMIN_USERNAME}"
 echo ""
 
@@ -875,7 +874,7 @@ if [[ "$START" != "yes" ]]; then
     warn "Installation files are ready. Start Paca manually with:"
     echo ""
     bold "  cd $(pwd)"
-    bold "  ${COMPOSE_CMD} --env-file .env up -d ${SCALE_POSTGRES} ${SCALE_DB_BACKUP} ${SCALE_MINIO} ${SCALE_WEB} ${SCALE_AI_AGENT} --pull always"
+    bold "  ${COMPOSE_CMD} --env-file .env up -d ${SCALE_POSTGRES} ${SCALE_DB_BACKUP} ${SCALE_MINIO} ${SCALE_WEB} ${SCALE_AGENT_RUNNER} --pull always"
     echo ""
     exit 0
 fi
@@ -889,7 +888,7 @@ SCALE_OPTS=()
 [[ -n "$SCALE_DB_BACKUP" ]] && SCALE_OPTS+=($SCALE_DB_BACKUP)
 [[ -n "$SCALE_MINIO"     ]] && SCALE_OPTS+=($SCALE_MINIO)
 [[ -n "$SCALE_WEB"       ]] && SCALE_OPTS+=($SCALE_WEB)
-[[ -n "$SCALE_AI_AGENT"  ]] && SCALE_OPTS+=($SCALE_AI_AGENT)
+[[ -n "$SCALE_AGENT_RUNNER" ]] && SCALE_OPTS+=($SCALE_AGENT_RUNNER)
 
 # shellcheck disable=SC2086
 $COMPOSE_CMD --env-file .env up -d ${SCALE_OPTS[@]+"${SCALE_OPTS[@]}"} --pull always

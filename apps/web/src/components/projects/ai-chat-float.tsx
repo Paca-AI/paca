@@ -238,12 +238,12 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		setOpen((o) => !o);
 	}
 
-	// Pings the ai-agent service every ~30s while this tab has a conversation
+	// Pings the agent-runner service every ~30s while this tab has a conversation
 	// loaded (regardless of whether the panel is expanded or collapsed), so
 	// its sandbox's idle timer never trips as long as the tab stays open. If
-	// the tab closes (or the network drops), heartbeats simply stop and the
-	// ai-agent idle reaper reclaims the sandbox once ~3 minutes pass with no
-	// heartbeat — this replaces the old pagehide-triggered immediate stop.
+	// the tab closes (or the network drops), heartbeats simply stop and
+	// agent-runner's idle reaper reclaims the sandbox once ~3 minutes pass with
+	// no heartbeat — this replaces the old pagehide-triggered immediate stop.
 	// ACP conversations skip this entirely: there's no cloud sandbox to keep
 	// alive (the user's local bridge daemon owns that lifecycle instead), so
 	// heartbeating one would just be a wasted round trip.

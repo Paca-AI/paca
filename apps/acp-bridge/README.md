@@ -1,7 +1,8 @@
 # paca-acp-bridge
 
 A small local daemon that connects an **ACP-type** Paca AI agent to a coding
-CLI running on your own machine — Claude Code, Codex, Gemini CLI, or a custom
+CLI running on your own machine — Claude Code, Codex, Gemini CLI,
+[Goose](https://github.com/block/goose), or a custom
 [Agent Client Protocol](https://docs.openhands.dev/sdk/guides/agent-acp)
 server. Run it from your project's source directory; it spawns the ACP server
 there and streams the conversation back to Paca. Nothing is cloned into a
@@ -13,12 +14,13 @@ task requests and receives responses back.
 - Python 3.12+ (only needed if you don't use `uvx`, which manages this for you)
 - Node.js (most built-in ACP providers are launched via `npx`)
 - Your own local auth for whichever provider you pick — e.g. run
-  `claude setup-token` for Claude Code, or export `OPENAI_API_KEY` /
-  `GEMINI_API_KEY` for Codex/Gemini CLI. This is entirely your own local
-  setup, exactly as if you were running that CLI yourself — Paca never sees,
-  stores, or forwards this. Likewise, any MCP servers or skills you've
-  configured for your local ACP client are used as-is; Paca doesn't manage or
-  inject any of that.
+  `claude setup-token` for Claude Code, export `OPENAI_API_KEY` /
+  `GEMINI_API_KEY` for Codex/Gemini CLI, or run `goose configure` (or export
+  `GOOSE_PROVIDER`/the provider's own API key env var) for Goose. This is
+  entirely your own local setup, exactly as if you were running that CLI
+  yourself — Paca never sees, stores, or forwards this. Likewise, any MCP
+  servers or skills you've configured for your local ACP client are used
+  as-is; Paca doesn't manage or inject any of that.
 
 ## Run it
 

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
 	type AgentConversationEvent,
 	CONVERSATION_EVENTS_PAGE_SIZE,
@@ -23,7 +23,8 @@ export type UseConversationEventWindow = {
 
 /**
  * Reads a conversation's events as a window anchored at the newest page,
- * extending upwards on demand and forwards as events arrive.
+ * extending upwards on demand, with newly-arrived events merged in live
+ * from realtime rather than fetched.
  *
  * Cursor-paginated on `event_index` (see conversationEventWindowInfiniteOptions):
  * the window opens on the newest page with no cursor at all, so unlike an
@@ -32,6 +33,18 @@ export type UseConversationEventWindow = {
  * state across the array it is given (open tool calls keyed by id, the
  * assistant message being accumulated) and is only correct over an unbroken
  * run.
+ *
+ * Realtime no longer just reports "something changed, go re-fetch" — every
+ * persisted event's message now carries the full row (see
+ * services/agent-runner's `persistAndPublish` and this module's
+ * `applyRealtimeAgentEvent`), buffered in the conversation's tail cache. So
+ * instead of calling `fetchNextPage()` once per realtime message (one HTTP
+ * round trip per event — the actual thing this used to do), that buffer is
+ * merged directly on top of whatever's been fetched. A real fetch still
+ * happens for the initial page and for `loadOlder`, and gets triggered
+ * externally (see useProjectRealtime) to reconcile the two whenever a
+ * conversation reaches a status transition — the live buffer's own job is
+ * just to cover the gap until that lands.
  */
 export function useConversationEventWindow({
 	projectId,
@@ -45,25 +58,23 @@ export function useConversationEventWindow({
 	ready?: boolean;
 	pageSize?: number;
 }): UseConversationEventWindow {
-	// Whether the reader is at the newest event. Gates fetching forwards, so a
-	// reader looking at history does not pull events they cannot see.
+	// Whether the reader is at the newest event. Gates merging the live
+	// buffer in, so a reader looking at history doesn't have new content
+	// silently appended under them — see `events` below.
 	const [following, setFollowing] = useState(true);
 
 	const { data: tail } = useQuery(
 		conversationEventsTailQueryOptions(conversationId),
 	);
 	const tailIndex = tail?.index ?? null;
+	const liveEvents = tail?.events ?? [];
 
 	const {
 		data,
 		isPending,
-		hasNextPage,
-		isFetchingNextPage,
-		fetchNextPage,
 		hasPreviousPage,
 		isFetchingPreviousPage,
 		fetchPreviousPage,
-		refetch,
 	} = useInfiniteQuery({
 		...conversationEventWindowInfiniteOptions({
 			projectId,
@@ -74,39 +85,22 @@ export function useConversationEventWindow({
 		enabled: ready,
 	});
 
-	const events = useMemo(
+	const pagedEvents = useMemo(
 		() => data?.pages.flatMap((page) => page.items) ?? [],
 		[data],
 	);
+	const lastPagedIndex =
+		pagedEvents.length > 0 ? (pagedEvents.at(-1)?.event_index ?? -1) : -1;
 
-	// Catch up to the tail a page at a time. Depends on `data` so an append that
-	// still leaves more to fetch re-runs this: the other values are unchanged
-	// across it, and a burst larger than one page would otherwise stall.
-	//
-	// A conversation with no events yet is the one case fetchNextPage can't
-	// drive this: its sole (empty) page carries no next_cursor to resume
-	// from, since there is no last event to encode one from. Re-opening on
-	// the tail via a plain refetch once realtime reports the first event
-	// replaces that empty page in place, rather than appending a second
-	// (still cursor-less) one that fetchNextPage would otherwise produce.
-	useEffect(() => {
-		if (!data || !following || isFetchingNextPage) return;
-		if (events.length === 0) {
-			if ((tailIndex ?? -1) >= 0) void refetch();
-			return;
-		}
-		if (!hasNextPage) return;
-		void fetchNextPage();
-	}, [
-		data,
-		following,
-		hasNextPage,
-		isFetchingNextPage,
-		fetchNextPage,
-		events.length,
-		tailIndex,
-		refetch,
-	]);
+	// Merge in whatever the tail has buffered live that a real fetch hasn't
+	// caught up to yet — only while following. A reader scrolled away into
+	// history sees `newBelow`'s count grow instead, so their view doesn't
+	// shift under them.
+	const events = useMemo(() => {
+		if (!following) return pagedEvents;
+		const extra = liveEvents.filter((e) => e.event_index > lastPagedIndex);
+		return extra.length > 0 ? [...pagedEvents, ...extra] : pagedEvents;
+	}, [pagedEvents, liveEvents, lastPagedIndex, following]);
 
 	const loaded =
 		events.length === 0 ? 0 : (events.at(-1)?.event_index ?? -1) + 1;

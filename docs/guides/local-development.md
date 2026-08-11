@@ -30,7 +30,7 @@ docker compose -f deploy/docker-compose.dev.yml down -v
 | `apps/web` | React + TanStack Start + shadcn/ui | 3000 (internal) | Vite HMR |
 | `services/api` | Go + Gin | 8080 (internal) | [air](https://github.com/air-verse/air) |
 | `services/realtime` | Node.js + Socket.IO | 3001 (internal) | `bun --watch` |
-| `services/ai-agent` | Python + FastAPI + OpenHands SDK | 8080 (internal) | source volume |
+| `services/agent-runner` | Go, driving Goose over ACP | 8080 (internal) | [air](https://github.com/air-verse/air) |
 | PostgreSQL | postgres:16-alpine | 5432 | — |
 | Valkey | valkey/valkey:8-alpine | 6379 | — |
 | MinIO S3 API | minio/minio | 9000 | — |
@@ -63,9 +63,8 @@ docker compose -f deploy/docker-compose.dev.yml up -d postgres valkey
 For faster feedback loops or IDE-integrated debugging, you can run individual services directly on the host and point them at the containerized infra.
 
 **Prerequisites for host-side development:**
-- Go 1.23+ (for `services/api`)
+- Go 1.23+ (for `services/api` and `services/agent-runner`)
 - Bun (for `apps/web` and `services/realtime`)
-- Python 3.12+ with [uv](https://docs.astral.sh/uv/) (for `services/ai-agent`)
 
 ### API (`services/api`)
 
@@ -91,13 +90,25 @@ bun install            # first time only
 bun run dev
 ```
 
-### AI Agent (`services/ai-agent`)
+### Agent Runner (`services/agent-runner`)
+
+Needs more than `go run` alone: Docker socket access (to spawn Goose sandbox containers) and a locally-built sandbox image first (see [agent-runner-service.md](../ai-agent/agent-runner-service.md#docker-container-strategy)):
 
 ```bash
-cd services/ai-agent
-uv sync                # first time only
-uv run uvicorn src.main:app --reload --port 8000
+docker build -f services/agent-server/Dockerfile \
+  -t paca-agent-server-goose:dev services/agent-server
+
+cd services/agent-runner
+DATABASE_URL=postgres://paca:paca@localhost:5432/paca?sslmode=disable \
+VALKEY_URL=redis://localhost:6379/0 \
+ENCRYPTION_KEY=3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac \
+AGENT_SERVER_IMAGE=paca-agent-server-goose:dev \
+INTERNAL_API_KEY=dev-internal-key-change-in-production \
+AGENT_RUNNER_ALLOWED_AGENT_IDS='*' \
+go run ./cmd/agent-runner
 ```
+
+See [agent-runner-service.md](../ai-agent/agent-runner-service.md#environment-variables) for the full environment variable reference.
 
 ---
 
@@ -131,5 +142,5 @@ These are intentionally weak defaults — never use them in production.
 
 - `services/api` owns all persistent state changes and publishes domain events to Valkey Streams.
 - `services/realtime` consumes those events and fans them out to Socket.IO clients.
-- `services/ai-agent` reads agent trigger events from a separate Valkey Stream and manages Docker containers for OpenHands conversations.
+- `services/agent-runner` reads agent trigger events from a separate Valkey Stream and manages Docker containers running Goose conversations over ACP.
 - `apps/mcp` is stateless; run it with `npx @paca-ai/paca-mcp` pointed at the running API.

@@ -26,6 +26,12 @@ async function main() {
 	const agentId = process.env.PACA_AGENT_ID || undefined;
 	const projectId = process.env.PACA_PROJECT_ID || undefined;
 	const actorUserId = process.env.PACA_ACTOR_USER_ID || undefined;
+	// Comma-separated plugin names — see agent-runner's executor.go
+	// buildMCPServers, which sets this from trigger.RepoPluginIDs (itself
+	// decoded from the paca:agent:triggers stream's repo_plugin_ids field).
+	const repoPluginIds = process.env.PACA_REPO_PLUGIN_IDS
+		? process.env.PACA_REPO_PLUGIN_IDS.split(",").filter(Boolean)
+		: undefined;
 
 	// Validate required configuration
 	if (!apiKey) {
@@ -40,7 +46,7 @@ async function main() {
 
 	// PACA_PROJECT_ID pins every tool call to a single project ("single-project
 	// agent mode" — see server.ts). It's optional when PACA_AGENT_ID is set:
-	// a global-scope agent (services/ai-agent's builder.build_mcp_config omits
+	// a global-scope agent (services/agent-runner's buildMCPServers omits
 	// PACA_PROJECT_ID entirely for a global-chat conversation) runs "unpinned"
 	// instead, the same mode a personal API key with no project already uses —
 	// each tool call may target any project the agent has permission in
@@ -56,6 +62,7 @@ async function main() {
 		agentId,
 		projectId,
 		actorUserId,
+		repoPluginIds,
 	};
 
 	// Create and configure MCP server (loads plugin modules asynchronously)

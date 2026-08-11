@@ -301,7 +301,7 @@ export function ConversationView({
 		isDisabled: !canReply,
 	});
 
-	// Pings the ai-agent service every ~30s while this chat conversation is
+	// Pings the agent-runner service every ~30s while this chat conversation is
 	// loaded, so its sandbox's idle timer never trips as long as this view
 	// stays open — mirrors the heartbeat in ai-chat-float.tsx. Only chat
 	// conversations have a sandbox that pauses between turns; task/comment
