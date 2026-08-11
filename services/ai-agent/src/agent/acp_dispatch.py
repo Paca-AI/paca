@@ -118,7 +118,7 @@ async def dispatch_acp_trigger(trigger: TriggerMessage, agent_config: AgentConfi
             "type": "start_turn",
             "conversation_id": trigger.conversation_id,
             "project_id": trigger.project_id,
-            "message": build_acp_message(trigger),
+            "message": build_acp_message(trigger, agent_config.acp_provider),
             "trigger_type": trigger.trigger_type,
             "acp_provider": agent_config.acp_provider,
             "acp_command": agent_config.acp_command,

@@ -82,7 +82,7 @@ async def test_offline_bridge_fails_conversation(monkeypatch):
     assert publish_realtime.await_args.kwargs["event_type"] == "agent.conversation.failed"
 
 
-async def test_online_bridge_dispatches_start_turn(monkeypatch):
+async def test_online_bridge_dispatches_codex_skill_syntax(monkeypatch):
     monkeypatch.setattr(acp_dispatch.acp_bridge, "is_online", AsyncMock(return_value=True))
     dispatch_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(acp_dispatch.acp_bridge, "dispatch", dispatch_mock)
@@ -95,6 +95,7 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
 
     trigger = _trigger()
     config = _acp_config()
+    config.acp_provider = "codex"
     await acp_dispatch.dispatch_acp_trigger(trigger, config)
 
     update_status.assert_awaited_once_with("conv-1", ConversationStatus.RUNNING)
@@ -104,9 +105,9 @@ async def test_online_bridge_dispatches_start_turn(monkeypatch):
             "type": "start_turn",
             "conversation_id": "conv-1",
             "project_id": "proj-1",
-            "message": build_acp_message(trigger),
+            "message": build_acp_message(trigger, "codex"),
             "trigger_type": "chat_message",
-            "acp_provider": "claude-code",
+            "acp_provider": "codex",
             "acp_command": [],
         },
     )
@@ -118,7 +119,7 @@ async def test_online_bridge_dispatches_start_turn_global_chat_forwards_actor_us
 ):
     """Regression test for actor_user_id actually being threaded through a
     global-chat (project_id=None) dispatch, not just compared None-to-None
-    the way test_online_bridge_dispatches_start_turn's trigger fixture does."""
+    the way the project-scoped dispatch test's trigger fixture does."""
     monkeypatch.setattr(acp_dispatch.acp_bridge, "is_online", AsyncMock(return_value=True))
     dispatch_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(acp_dispatch.acp_bridge, "dispatch", dispatch_mock)
