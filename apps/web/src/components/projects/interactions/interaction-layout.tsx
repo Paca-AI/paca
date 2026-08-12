@@ -1265,10 +1265,12 @@ export function InteractionLayout({
 	const selectedTaskDirectQuery = useQuery({
 		...taskQueryOptions(projectId, selectedTaskId ?? ""),
 		enabled: !!selectedTaskId && !selectedTaskInList,
-		// Don't retry: a 404 is never worth retrying, and any other error just
-		// leaves the dialog closed (see `isTaskNotFoundError` below, which only
-		// clears `?taskId=` on a confirmed 404 — not on this).
-		retry: false,
+		// A confirmed 404 is never worth retrying — fail fast so the `?taskId=`
+		// cleanup below runs promptly. Any other error (network, 5xx) keeps the
+		// default bounded retry, since those are transient and a valid deep
+		// link shouldn't be abandoned after a single blip.
+		retry: (failureCount, error) =>
+			!isTaskNotFoundError(error) && failureCount < 3,
 	});
 	const selectedTask = useMemo(() => {
 		const { resolved, nextLastKnown } = resolveSelectedTask(
