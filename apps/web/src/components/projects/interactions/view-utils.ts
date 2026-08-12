@@ -4,6 +4,7 @@ import {
 	resolveFilterConfig,
 	type Sprint,
 	type Task,
+	type TaskListResult,
 	type ViewLayout,
 } from "@/lib/interaction-api";
 import type {
@@ -499,4 +500,61 @@ export function buildColumnDropUpdate(
 	}
 
 	return {};
+}
+
+// ── Per-column "load more" extras reconciliation ─────────────────────────────
+
+/**
+ * Whether a column's `colExtraTasks` ("load more" overflow, tracked
+ * separately from the column's base query result) is now redundant and can
+ * be dropped in favor of the base query's own data.
+ *
+ * True once the base query's data either (a) has caught up to the expanded
+ * depth the extras represent, or (b) reports there's nothing left to fetch
+ * (`next_cursor` is null/undefined) — which is authoritative even when
+ * shorter than the expected depth. (b) matters when the true total has
+ * permanently shrunk below the expected depth (an already-loaded task got
+ * deleted, or moved out of this column/filter by someone else): without it,
+ * the base query can never again return `expectedDepth` items, so extras
+ * would never clear and a deleted/moved task would linger as an unclearable
+ * ghost row indefinitely.
+ */
+export function shouldClearColumnExtras(
+	data: Pick<TaskListResult, "items" | "next_cursor"> | undefined,
+	expectedDepth: number,
+): boolean {
+	if (!data) return false;
+	return data.items.length >= expectedDepth || data.next_cursor == null;
+}
+
+// ── Selected-task resolution (survives transient gaps in the task list) ──────
+
+/**
+ * Resolves the task detail dialog's target task from the currently-loaded
+ * `tasks` list, falling back to the last-resolved task for the same id when
+ * `tasks` transiently doesn't contain it (e.g. a background refetch drops it
+ * from the loaded page right before a re-fetch restores it). Without this
+ * fallback, that gap flips the dialog's `open` prop to false and it flashes
+ * closed.
+ *
+ * `nextLastKnown` mirrors exactly what the caller should store for the next
+ * call: it only changes on a genuine selection change (cleared) or a
+ * successful lookup (updated) — a transient miss for the *same* selection
+ * leaves it untouched, so a later miss can't be masked by an unrelated
+ * earlier selection's cached task.
+ */
+export function resolveSelectedTask(
+	tasks: Task[],
+	selectedTaskId: string | null,
+	lastKnownTask: Task | null,
+): { resolved: Task | null; nextLastKnown: Task | null } {
+	if (!selectedTaskId) {
+		return { resolved: null, nextLastKnown: null };
+	}
+	const found = tasks.find((t) => t.id === selectedTaskId) ?? null;
+	if (found) {
+		return { resolved: found, nextLastKnown: found };
+	}
+	const fallback = lastKnownTask?.id === selectedTaskId ? lastKnownTask : null;
+	return { resolved: fallback, nextLastKnown: lastKnownTask };
 }

@@ -105,6 +105,8 @@ import {
 	getDefaultInitialPageSize,
 	getDefaultPageSize,
 	getTaskColumnKeys,
+	resolveSelectedTask,
+	shouldClearColumnExtras,
 	type TaskFieldUpdate,
 	type ViewContext,
 } from "./view-utils";
@@ -912,7 +914,14 @@ export function InteractionLayout({
 		// of an unrelated column) used to make already-loaded tasks flash out
 		// of the list — and out from under an open task detail dialog — until
 		// that column's own expanded refetch caught up. Only drop a column's
-		// extras once its own base data has actually reached that depth.
+		// extras once its own base data has actually reached that depth —
+		// or, if the true total has shrunk below that depth (a loaded task
+		// got deleted or moved out of the column/filter), once the base
+		// query reports there's nothing left to fetch (`next_cursor: null`),
+		// since that response is authoritative even though it's shorter than
+		// expected. Without the second condition, a permanently-shrunk total
+		// would never satisfy the length check, leaving deleted/moved tasks
+		// stuck as unclearable ghosts in colExtraTasks indefinitely.
 		setColExtraTasks((prev) => {
 			let changed = false;
 			const next = { ...prev };
@@ -921,7 +930,7 @@ export function InteractionLayout({
 				const idx = fetchColumnDefs.findIndex((col) => col.key === key);
 				const data = idx >= 0 ? columnQueries[idx]?.data : undefined;
 				const expectedDepth = colExpandedPageSizes[key] ?? initialColPageSize;
-				if (data && data.items.length >= expectedDepth) {
+				if (shouldClearColumnExtras(data, expectedDepth)) {
 					delete next[key];
 					changed = true;
 				}
@@ -939,7 +948,13 @@ export function InteractionLayout({
 	// — confirmed via a network capture showing the resulting request had
 	// every filter field unchanged, only a reverted page_size. Compare by
 	// value instead, so only a genuine filter/sort/search change resets it.
-	const colBaseOptsKey = JSON.stringify(colBaseOpts);
+	const colBaseOptsKey = useMemo(
+		() => JSON.stringify(colBaseOpts),
+		[colBaseOpts],
+	);
+	// colBaseOptsKey is a value-equality fingerprint of colBaseOpts, kept in
+	// the dep array purely to control *when* this effect re-runs even though
+	// the body doesn't read it.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the *value* of colBaseOpts changes
 	useEffect(() => {
 		setColExpandedPageSizes({});
@@ -1204,18 +1219,13 @@ export function InteractionLayout({
 	// and only clears when the selection itself changes.
 	const lastSelectedTaskRef = useRef<Task | null>(null);
 	const selectedTask = useMemo(() => {
-		if (!selectedTaskId) {
-			lastSelectedTaskRef.current = null;
-			return null;
-		}
-		const found = tasks.find((t) => t.id === selectedTaskId);
-		if (found) {
-			lastSelectedTaskRef.current = found;
-			return found;
-		}
-		return lastSelectedTaskRef.current?.id === selectedTaskId
-			? lastSelectedTaskRef.current
-			: null;
+		const { resolved, nextLastKnown } = resolveSelectedTask(
+			tasks,
+			selectedTaskId,
+			lastSelectedTaskRef.current,
+		);
+		lastSelectedTaskRef.current = nextLastKnown;
+		return resolved;
 	}, [selectedTaskId, tasks]);
 
 	const restoredFromUrl = useRef(false);
