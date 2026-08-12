@@ -63,6 +63,12 @@ async def test_llm_models_returns_dict(client):
         assert isinstance(info["models"], list)
 
 
+async def test_llm_models_includes_minimax_m2_7(client):
+    resp = await client.get("/llm/models")
+    assert resp.status_code == 200
+    assert "MiniMax-M2.7" in resp.json()["minimax"]["models"]
+
+
 # ─── Conversations — auth ─────────────────────────────────────────────────────
 
 
