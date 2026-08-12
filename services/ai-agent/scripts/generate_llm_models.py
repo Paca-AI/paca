@@ -43,6 +43,11 @@ _KNOWN_BASE_URLS: dict[str, str] = {
     "minimax": "https://api.minimax.io/v1",
 }
 
+# Keep newly released models available while the pinned LiteLLM catalog catches up.
+_REQUIRED_MODELS: dict[str, tuple[str, ...]] = {
+    "minimax": ("MiniMax-M2.7",),
+}
+
 # These providers launch interactive device-auth flows (GitHub OAuth, ChatGPT
 # OAuth) when get_api_base is called, blocking forever on stdin.  Skip them.
 _SKIP_PROVIDERS: frozenset[str] = frozenset({"chatgpt", "github_copilot"})
@@ -88,6 +93,11 @@ async def _build() -> dict[str, dict]:
         while bare.lower().startswith(prefix):
             bare = bare[len(prefix):]
         provider_to_models[provider].append(bare)
+
+    for provider, models in _REQUIRED_MODELS.items():
+        for model in models:
+            if model not in provider_to_models[provider]:
+                provider_to_models[provider].append(model)
 
     providers = sorted(provider_to_models.items())
     print(f"Resolving base URLs for {len(providers)} providers…", flush=True)
