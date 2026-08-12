@@ -100,6 +100,15 @@ export function isPasswordChangeRequired(err: unknown): boolean {
 	);
 }
 
+/**
+ * Returns true when an Axios error is a 404 TASK_NOT_FOUND — i.e. the API has
+ * authoritatively confirmed the task doesn't exist, as opposed to a network
+ * failure, timeout, or 5xx that says nothing about whether the task exists.
+ */
+export function isTaskNotFoundError(err: unknown): boolean {
+	return getApiErrorCode(err) === ApiErrorCode.TaskNotFound;
+}
+
 /** Shape of the success envelope returned by the API on success. */
 export interface SuccessEnvelope<T> {
 	success: true;
