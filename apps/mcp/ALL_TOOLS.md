@@ -78,9 +78,10 @@ This document lists all MCP tools implemented for the Paca API server.
 - `update_custom_field` - Update a custom field definition
 - `delete_custom_field` - Delete a custom field definition
 
-### 11. Attachments (3 tools)
+### 11. Attachments (4 tools)
 - `list_task_attachments` - List all attachments for a task
 - `get_attachment_download_url` - Get a download URL for an attachment
+- `read_task_attachment` - Download and read an attachment's contents (text or image) inline
 - `delete_task_attachment` - Delete an attachment from a task
 
 ### 12. Document Folders (4 tools)
@@ -200,6 +201,7 @@ This document lists all MCP tools implemented for the Paca API server.
 ### Attachments
 - GET /api/v1/projects/:projectId/tasks/:taskId/attachments
 - GET /api/v1/projects/:projectId/tasks/:taskId/attachments/:attachmentId/download-url
+- GET /api/v1/projects/:projectId/tasks/:taskId/attachments/:attachmentId/content
 - DELETE /api/v1/projects/:projectId/tasks/:taskId/attachments/:attachmentId
 
 ### Document Folders

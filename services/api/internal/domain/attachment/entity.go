@@ -17,6 +17,12 @@ const (
 	UploadStatusFailed   UploadStatus = "failed"
 )
 
+// MaxAttachmentContentSize bounds how large a file GetAttachmentContent will
+// read into memory. This is a hard backend ceiling, set comfortably above
+// the MCP server's own inline-read limits (2 MiB text / 5 MiB images) so
+// those remain the binding constraint in practice.
+const MaxAttachmentContentSize = 10 * 1024 * 1024 // 10 MiB
+
 // File is the central metadata record for every object stored in the
 // object store.  It is shared across all entities that can hold attachments.
 type File struct {

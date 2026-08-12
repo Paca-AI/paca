@@ -255,7 +255,7 @@ export function formatTaskDetail(
 		sections.push("## Attachments");
 		attachments.forEach((attachment) => {
 			sections.push(
-				`- **${attachment.file.file_name}** (${formatFileSize(attachment.file.file_size)}) - Uploaded: ${attachment.created_at}`,
+				`- **${attachment.file.file_name}** (${formatFileSize(attachment.file.file_size)}) - ID: ${attachment.id}, Uploaded: ${attachment.created_at}`,
 			);
 		});
 	}
@@ -313,7 +313,7 @@ function formatCustomFieldValue(value: unknown, fieldType: string): string {
 	}
 }
 
-function formatFileSize(bytes: number): string {
+export function formatFileSize(bytes: number): string {
 	if (bytes === 0) return "0 Bytes";
 	const k = 1024;
 	const sizes = ["Bytes", "KB", "MB", "GB"];

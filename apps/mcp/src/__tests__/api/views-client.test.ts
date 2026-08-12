@@ -359,4 +359,42 @@ describe("PacaAPIViewsClient", () => {
 			expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
 		});
 	});
+
+	describe("downloadAttachmentContent", () => {
+		it("fetches the content endpoint on baseURL (not a presigned URL) and returns bytes + content type", async () => {
+			const client = new PacaAPIViewsClient(CONFIG_WITH_AGENT);
+			fetchMock.mockResolvedValue({
+				ok: true,
+				headers: new Map([["content-type", "text/plain; charset=utf-8"]]),
+				arrayBuffer: async () => new TextEncoder().encode("hello").buffer,
+				text: async () => "",
+			});
+
+			const result = await client.downloadAttachmentContent("p1", "t1", "att1");
+
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			const [url, options] = fetchMock.mock.calls[0];
+			expect(url).toBe(
+				"https://api.example.com/api/v1/projects/p1/tasks/t1/attachments/att1/content",
+			);
+			expect(options.headers["X-API-Key"]).toBe("key123");
+			expect(options.headers["X-Agent-ID"]).toBe("agent-1");
+			expect(new TextDecoder().decode(result.buffer)).toBe("hello");
+			expect(result.contentType).toBe("text/plain; charset=utf-8");
+		});
+
+		it("throws when the content fetch fails", async () => {
+			const client = new PacaAPIViewsClient(CONFIG);
+			fetchMock.mockResolvedValue({
+				ok: false,
+				status: 413,
+				statusText: "Request Entity Too Large",
+				text: async () => "too large",
+			});
+
+			await expect(
+				client.downloadAttachmentContent("p1", "t1", "att1"),
+			).rejects.toThrow("413");
+		});
+	});
 });
