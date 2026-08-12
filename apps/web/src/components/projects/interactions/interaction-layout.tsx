@@ -1,5 +1,4 @@
 import {
-	keepPreviousData,
 	useInfiniteQuery,
 	useMutation,
 	useQueries,
@@ -105,6 +104,7 @@ import {
 	getDefaultInitialPageSize,
 	getDefaultPageSize,
 	getTaskColumnKeys,
+	keepPreviousDataOnPageSizeChangeOnly,
 	resolveSelectedTask,
 	shouldClearColumnExtras,
 	type TaskFieldUpdate,
@@ -817,8 +817,11 @@ export function InteractionLayout({
 						// back to undefined for the new key until it resolves, making
 						// already-visible tasks disappear from the list mid-fetch.
 						// Keeping the previous (smaller) page's data displayed avoids
-						// that gap.
-						placeholderData: keepPreviousData,
+						// that gap. Scoped to pageSize-only key changes so a genuine
+						// filter/sort/search change still drops to `undefined` and
+						// shows the loading skeleton, instead of silently rendering
+						// the previous (non-matching) filter's results.
+						placeholderData: keepPreviousDataOnPageSizeChangeOnly(colOpts),
 					};
 				})
 			: [],
@@ -869,18 +872,20 @@ export function InteractionLayout({
 
 	const initialGlobalPageSize =
 		configuredInitialPageSize ?? getDefaultInitialPageSize(activeView?.layout);
-	const fallbackQueryOpts = allTasksQueryOptions(projectId, {
+	const fallbackOpts = {
 		...fallbackBaseOpts,
 		pageSize: globalExpandedPageSize ?? initialGlobalPageSize,
-	});
+	};
+	const fallbackQueryOpts = allTasksQueryOptions(projectId, fallbackOpts);
 	const fallbackQuery = useQuery({
 		...fallbackQueryOpts,
 		enabled: !colQueriesEnabled && !viewsQuery.isLoading,
 		// See the matching comment on the column queries above: "load more"
 		// grows pageSize (and thus the queryKey), so keep showing the smaller
 		// page's data while the larger one fetches instead of dropping to
-		// undefined.
-		placeholderData: keepPreviousData,
+		// undefined — scoped to pageSize-only key changes so a genuine
+		// filter/sort/search change still shows the loading skeleton.
+		placeholderData: keepPreviousDataOnPageSizeChangeOnly(fallbackOpts),
 	});
 
 	// Per-column load-more state

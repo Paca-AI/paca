@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import {
 	type FilterConfig,
+	type ListTasksOptions,
 	resolveFilterConfig,
 	type Sprint,
 	type Task,
@@ -557,4 +558,42 @@ export function resolveSelectedTask(
 	}
 	const fallback = lastKnownTask?.id === selectedTaskId ? lastKnownTask : null;
 	return { resolved: fallback, nextLastKnown: lastKnownTask };
+}
+
+// ── Scoped placeholder data for pagination queries ────────────────────────────
+
+/**
+ * Builds a React Query `placeholderData` function that keeps the previous
+ * query's result only when the *only* difference between the previous
+ * request's options and `currentOpts` is `pageSize` — i.e. this queryKey
+ * change is a "load more" page-size bump or a WS-triggered depth-restore
+ * refetch, not a genuine filter/sort/search change.
+ *
+ * These queries key on the full filter-options object, so the stock
+ * `keepPreviousData` helper (which keeps previous data across *any* queryKey
+ * change) would also kick in when a user edits a filter or types a search:
+ * the previous, now non-matching results would keep rendering — with no
+ * loading skeleton and no `isPlaceholderData` indicator — until the new
+ * request resolves. Scoping the reuse to pageSize-only changes restores the
+ * loading state for genuine filter/sort/search changes while still avoiding
+ * the pagination flash this was introduced to fix.
+ */
+export function keepPreviousDataOnPageSizeChangeOnly(
+	currentOpts: ListTasksOptions,
+) {
+	return (
+		previousData: TaskListResult | undefined,
+		previousQuery: { queryKey: readonly unknown[] } | undefined,
+	): TaskListResult | undefined => {
+		if (previousData === undefined || !previousQuery) return undefined;
+		const prevOpts = previousQuery.queryKey.at(-1) as
+			| ListTasksOptions
+			| undefined;
+		if (!prevOpts || typeof prevOpts !== "object") return undefined;
+		const { pageSize: _prevPageSize, ...prevRest } = prevOpts;
+		const { pageSize: _currPageSize, ...currRest } = currentOpts;
+		return JSON.stringify(prevRest) === JSON.stringify(currRest)
+			? previousData
+			: undefined;
+	};
 }
