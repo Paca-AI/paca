@@ -208,6 +208,33 @@ describe("handleAttachmentTool – read_task_attachment", () => {
 		expect(result.content[0].text).toContain("print('hi')");
 	});
 
+	it("classifies a generic content-type by conventional extensionless filename", async () => {
+		const dockerfileAttachment = {
+			id: "att-3b",
+			file: {
+				file_name: "Dockerfile",
+				file_size: 11,
+				content_type: "application/octet-stream",
+			},
+			created_by: "user-1",
+			created_at: "2024-01-01T00:00:00Z",
+		};
+		const client = makeClient({
+			listTaskAttachments: vi.fn().mockResolvedValue([dockerfileAttachment]),
+			downloadAttachmentContent: vi.fn().mockResolvedValue({
+				buffer: new TextEncoder().encode("FROM node:20").buffer,
+				contentType: "application/octet-stream",
+			}),
+		});
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-3b" },
+			client,
+		);
+		expect(result.content[0].type).toBe("text");
+		expect(result.content[0].text).toContain("FROM node:20");
+	});
+
 	it("returns an error for a binary attachment it can't read", async () => {
 		const pdfAttachment = {
 			id: "att-4",

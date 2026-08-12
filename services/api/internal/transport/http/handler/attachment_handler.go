@@ -200,6 +200,11 @@ func (h *AttachmentHandler) GetDownloadURL(w http.ResponseWriter, r *http.Reques
 // API rather than handing back a presigned object-store URL — the right path
 // for server-side callers (e.g. the MCP server) that may not have network
 // access to the object store's public-facing endpoint.
+//
+// contentType comes from attacker-controlled upload metadata, so the response
+// always forces X-Content-Type-Options: nosniff and Content-Disposition:
+// attachment — unlike GetDownloadURL, this endpoint has no forceDownload=false
+// inline-preview mode, since nothing here is meant to be rendered by a browser.
 func (h *AttachmentHandler) GetAttachmentContent(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -227,6 +232,8 @@ func (h *AttachmentHandler) GetAttachmentContent(w http.ResponseWriter, r *http.
 		contentType = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", "attachment")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }

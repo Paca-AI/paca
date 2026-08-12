@@ -92,6 +92,31 @@ const TEXT_EXTENSIONS = new Set([
 	"svelte",
 ]);
 
+// Conventionally-named text files that don't carry a recognizable extension,
+// matched case-insensitively on the full file name.
+const TEXT_FILENAMES = new Set([
+	"dockerfile",
+	"makefile",
+	"rakefile",
+	"gemfile",
+	"gemfile.lock",
+	"procfile",
+	"vagrantfile",
+	"license",
+	"licence",
+	"readme",
+	"changelog",
+	"contributing",
+	"authors",
+	"notice",
+	".gitignore",
+	".dockerignore",
+	".gitattributes",
+	".editorconfig",
+	".npmrc",
+	".env",
+]);
+
 // Image types the MCP "image" content block (and the LLMs consuming it) can
 // actually render. Anything else falls back to the binary path below.
 const IMAGE_MIME_TYPES = new Set([
@@ -114,6 +139,8 @@ function classifyAttachment(
 	if (IMAGE_MIME_TYPES.has(normalizedType)) return "image";
 	if (normalizedType.startsWith("text/")) return "text";
 	if (TEXT_MIME_TYPES.has(normalizedType)) return "text";
+
+	if (TEXT_FILENAMES.has(fileName.toLowerCase().trim())) return "text";
 
 	const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
 	if (TEXT_EXTENSIONS.has(ext)) return "text";

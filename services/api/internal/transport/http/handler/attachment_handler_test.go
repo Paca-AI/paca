@@ -183,6 +183,12 @@ func TestGetAttachmentContent_ReturnsRawBytesWithContentType(t *testing.T) {
 	if got := w.Header().Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("expected Content-Type text/plain, got %q", got)
 	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options nosniff, got %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != "attachment" {
+		t.Fatalf("expected Content-Disposition attachment, got %q", got)
+	}
 	if got := w.Body.String(); got != "hello world" {
 		t.Fatalf("expected body %q, got %q", "hello world", got)
 	}
