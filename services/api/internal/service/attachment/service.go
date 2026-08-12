@@ -227,6 +227,53 @@ func (s *Service) GetDownloadURL(ctx context.Context, projectID, taskID, attachm
 	return url, nil
 }
 
+// GetAttachmentContent reads the attachment's bytes directly from the object
+// store (bypassing the presigned-URL flow) and returns them along with the
+// file's content type. See the interface doc for why this exists.
+func (s *Service) GetAttachmentContent(ctx context.Context, projectID, taskID, attachmentID uuid.UUID) ([]byte, string, error) {
+	if err := s.taskChecker.TaskBelongsToProject(ctx, projectID, taskID); err != nil {
+		return nil, "", err
+	}
+	a, err := s.repo.FindTaskAttachmentByID(ctx, attachmentID)
+	if err != nil {
+		return nil, "", err
+	}
+	if a.TaskID != taskID {
+		return nil, "", attachmentdom.ErrAttachmentNotFound
+	}
+
+	f, err := s.repo.FindFileByID(ctx, a.FileID)
+	if err != nil {
+		return nil, "", err
+	}
+	if f.FileSize > attachmentdom.MaxAttachmentContentSize {
+		return nil, "", attachmentdom.ErrAttachmentContentTooLarge
+	}
+
+	bucket := f.Bucket
+	if bucket == "" {
+		bucket = s.bucket
+	}
+
+	// f.FileSize is declared by the client at upload-initiation time, but the
+	// presigned PUT enforces nothing about the actual object it accepts — a
+	// client can declare a small file_size and upload a larger object (see
+	// CompleteUpload above, which never re-verifies actual size). Bound the
+	// read itself by capping one byte over the limit: if the object is
+	// larger, GetObject's io.LimitReader truncates the read at
+	// MaxAttachmentContentSize+1 bytes with no error, so the post-read
+	// length check below is what actually catches it. Mirrors
+	// avatar_service.go's identical guard against the same presigned-PUT gap.
+	data, err := s.store.GetObject(ctx, bucket, f.StorageKey, attachmentdom.MaxAttachmentContentSize+1)
+	if err != nil {
+		return nil, "", fmt.Errorf("attachment svc: get object: %w", err)
+	}
+	if int64(len(data)) > attachmentdom.MaxAttachmentContentSize {
+		return nil, "", attachmentdom.ErrAttachmentContentTooLarge
+	}
+	return data, f.ContentType, nil
+}
+
 // ListTaskAttachments returns all confirmed attachments for the given task.
 func (s *Service) ListTaskAttachments(ctx context.Context, projectID, taskID uuid.UUID) ([]*attachmentdom.TaskAttachment, error) {
 	if err := s.taskChecker.TaskBelongsToProject(ctx, projectID, taskID); err != nil {

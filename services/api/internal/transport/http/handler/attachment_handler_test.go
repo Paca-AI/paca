@@ -23,7 +23,11 @@ import (
 // Minimal fakes
 // ---------------------------------------------------------------------------
 
-type fakeAttachmentSvc struct{}
+type fakeAttachmentSvc struct {
+	contentData []byte
+	contentType string
+	contentErr  error
+}
 
 func (f *fakeAttachmentSvc) InitiateUpload(_ context.Context, _ uuid.UUID, _ attachmentdom.InitiateUploadInput) (*attachmentdom.UploadSession, error) {
 	return &attachmentdom.UploadSession{FileID: uuid.New()}, nil
@@ -39,6 +43,12 @@ func (f *fakeAttachmentSvc) ListTaskAttachments(_ context.Context, _, _ uuid.UUI
 }
 func (f *fakeAttachmentSvc) DeleteTaskAttachment(_ context.Context, _, _, _ uuid.UUID) error {
 	return nil
+}
+func (f *fakeAttachmentSvc) GetAttachmentContent(_ context.Context, _, _, _ uuid.UUID) ([]byte, string, error) {
+	if f.contentErr != nil {
+		return nil, "", f.contentErr
+	}
+	return f.contentData, f.contentType, nil
 }
 
 var _ attachmentdom.Service = (*fakeAttachmentSvc)(nil)
@@ -69,6 +79,16 @@ func newAttachmentRouterWithAuth() chi.Router {
 	r.Route("/projects/{projectId}/tasks/{taskId}/attachments", func(r chi.Router) {
 		r.Post("/initiate-upload", h.InitiateUpload)
 		r.Post("/complete-upload", h.CompleteUpload)
+	})
+	return r
+}
+
+func newAttachmentContentRouter(svc *fakeAttachmentSvc) chi.Router {
+	h := handler.NewAttachmentHandler(svc)
+	r := chi.NewRouter()
+	r.Use(injectAuthClaimsMiddleware(uuid.New().String()))
+	r.Route("/projects/{projectId}/tasks/{taskId}/attachments", func(r chi.Router) {
+		r.Get("/{attachmentId}/content", h.GetAttachmentContent)
 	})
 	return r
 }
@@ -144,5 +164,47 @@ func TestCompleteUpload_MissingFileID_Returns400(t *testing.T) {
 	w := doAttachRequest(t, r, http.MethodPost, path, map[string]any{})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing file_id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetAttachmentContent_ReturnsRawBytesWithContentType(t *testing.T) {
+	svc := &fakeAttachmentSvc{contentData: []byte("hello world"), contentType: "text/plain"}
+	r := newAttachmentContentRouter(svc)
+	projectID := uuid.New()
+	taskID := uuid.New()
+	attachmentID := uuid.New()
+	path := "/projects/" + projectID.String() + "/tasks/" + taskID.String() +
+		"/attachments/" + attachmentID.String() + "/content"
+
+	w := doAttachRequest(t, r, http.MethodGet, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected Content-Type text/plain, got %q", got)
+	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("expected X-Content-Type-Options nosniff, got %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != "attachment" {
+		t.Fatalf("expected Content-Disposition attachment, got %q", got)
+	}
+	if got := w.Body.String(); got != "hello world" {
+		t.Fatalf("expected body %q, got %q", "hello world", got)
+	}
+}
+
+func TestGetAttachmentContent_TooLarge_Returns413(t *testing.T) {
+	svc := &fakeAttachmentSvc{contentErr: attachmentdom.ErrAttachmentContentTooLarge}
+	r := newAttachmentContentRouter(svc)
+	projectID := uuid.New()
+	taskID := uuid.New()
+	attachmentID := uuid.New()
+	path := "/projects/" + projectID.String() + "/tasks/" + taskID.String() +
+		"/attachments/" + attachmentID.String() + "/content"
+
+	w := doAttachRequest(t, r, http.MethodGet, path, nil)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
 	}
 }

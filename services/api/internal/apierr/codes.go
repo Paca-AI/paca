@@ -138,6 +138,8 @@ const (
 	CodeUploadNotPending Code = "ATTACHMENT_UPLOAD_NOT_PENDING"
 	// CodeAttachmentInvalid indicates invalid input for creating an attachment.
 	CodeAttachmentInvalid Code = "ATTACHMENT_INVALID"
+	// CodeAttachmentTooLarge indicates the attachment exceeds the size that can be read inline.
+	CodeAttachmentTooLarge Code = "ATTACHMENT_TOO_LARGE"
 	// CodeMultipartUploadIDRequired indicates that a multipart upload_id was not provided.
 	CodeMultipartUploadIDRequired Code = "ATTACHMENT_MULTIPART_UPLOAD_ID_REQUIRED"
 	// CodeNotMultipartUpload indicates that an upload_id was provided for a non-multipart file.
