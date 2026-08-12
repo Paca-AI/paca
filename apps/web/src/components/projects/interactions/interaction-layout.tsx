@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
+import { isTaskNotFoundError } from "@/lib/api-error";
 import {
 	allTasksQueryOptions,
 	bulkMoveViewTaskPositions,
@@ -281,6 +282,28 @@ function buildColumnFilter(
 		}
 		default:
 			return null;
+	}
+}
+
+/** Sets `?taskId=` on the current URL without triggering a route navigation. */
+function setTaskIdSearchParam(taskId: string) {
+	try {
+		const url = new URL(window.location.href);
+		url.searchParams.set("taskId", taskId);
+		window.history.pushState({}, "", url.toString());
+	} catch {
+		/* ignore */
+	}
+}
+
+/** Removes `?taskId=` from the current URL without triggering a route navigation. */
+function clearTaskIdSearchParam() {
+	try {
+		const url = new URL(window.location.href);
+		url.searchParams.delete("taskId");
+		window.history.pushState({}, "", url.toString());
+	} catch {
+		/* ignore */
 	}
 }
 
@@ -1234,10 +1257,18 @@ export function InteractionLayout({
 	// backlog view only paginates a page at a time, or the task doesn't match
 	// the active view's filters. Fetch it by id directly so the dialog can
 	// still open; this shares its query key with the mutations below, so it
-	// stays in sync with edits made elsewhere.
+	// stays in sync with edits made elsewhere. Only enabled when the task
+	// isn't already resolvable from `tasks` — the common case of clicking a
+	// task that's already loaded needs no extra request.
+	const selectedTaskInList =
+		!!selectedTaskId && tasks.some((t) => t.id === selectedTaskId);
 	const selectedTaskDirectQuery = useQuery({
 		...taskQueryOptions(projectId, selectedTaskId ?? ""),
-		enabled: !!selectedTaskId,
+		enabled: !!selectedTaskId && !selectedTaskInList,
+		// Don't retry: a 404 is never worth retrying, and any other error just
+		// leaves the dialog closed (see `isTaskNotFoundError` below, which only
+		// clears `?taskId=` on a confirmed 404 — not on this).
+		retry: false,
 	});
 	const selectedTask = useMemo(() => {
 		const { resolved, nextLastKnown } = resolveSelectedTask(
@@ -1254,33 +1285,28 @@ export function InteractionLayout({
 		return final;
 	}, [selectedTaskId, tasks, selectedTaskDirectQuery.data]);
 
-	// A selected id that's absent from the loaded list AND fails to load
-	// directly (deleted, moved to another project, or a mistyped id) can
-	// never resolve to a task. Without this, a broken `?taskId=` deep link
-	// leaves the param in the URL forever with no dialog and no feedback.
+	// A selected id that's absent from the loaded list and the API has
+	// authoritatively confirmed (404 TASK_NOT_FOUND) doesn't exist — deleted,
+	// moved to another project, or a mistyped id — can never resolve to a
+	// task. Without this, a broken `?taskId=` deep link leaves the param in
+	// the URL forever with no dialog and no feedback. Deliberately scoped to
+	// TASK_NOT_FOUND rather than any query error: a transient network/5xx
+	// failure says nothing about whether the task exists, so it must not
+	// wipe out an otherwise-valid deep link.
+	const selectedTaskConfirmedMissing =
+		selectedTaskDirectQuery.isError &&
+		isTaskNotFoundError(selectedTaskDirectQuery.error);
 	useEffect(() => {
-		if (!selectedTaskId || !selectedTaskDirectQuery.isError) return;
+		if (!selectedTaskId || !selectedTaskConfirmedMissing) return;
 		if (tasks.some((t) => t.id === selectedTaskId)) return;
 		setSelectedTaskId(null);
-		try {
-			const url = new URL(window.location.href);
-			url.searchParams.delete("taskId");
-			window.history.pushState({}, "", url.toString());
-		} catch {
-			/* ignore */
-		}
-	}, [selectedTaskId, selectedTaskDirectQuery.isError, tasks]);
+		clearTaskIdSearchParam();
+	}, [selectedTaskId, selectedTaskConfirmedMissing, tasks]);
 
 	const handleTaskClick = (task: Task) => {
 		setSelectedTaskId(task.id);
 		onTaskClick?.(task);
-		try {
-			const url = new URL(window.location.href);
-			url.searchParams.set("taskId", task.id);
-			window.history.pushState({}, "", url.toString());
-		} catch {
-			/* ignore */
-		}
+		setTaskIdSearchParam(task.id);
 	};
 
 	const updateStatusMutation = useMutation({
@@ -2022,13 +2048,7 @@ export function InteractionLayout({
 				onOpenChange={(v) => {
 					if (!v) {
 						setSelectedTaskId(null);
-						try {
-							const url = new URL(window.location.href);
-							url.searchParams.delete("taskId");
-							window.history.pushState({}, "", url.toString());
-						} catch {
-							/* ignore */
-						}
+						clearTaskIdSearchParam();
 					}
 				}}
 				projectId={projectId}
