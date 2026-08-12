@@ -548,7 +548,13 @@ export function InteractionLayout({
 	);
 	const [searchOpen, setSearchOpen] = useState(false);
 	const searchRef = useRef<HTMLInputElement>(null);
-	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() => {
+		try {
+			return new URL(window.location.href).searchParams.get("taskId");
+		} catch {
+			return null;
+		}
+	});
 
 	const { data: members = [] } = useQuery(
 		projectMembersQueryOptions(projectId),
@@ -1223,33 +1229,30 @@ export function InteractionLayout({
 	// modal stays open (backed by its own fresh-task query) across such gaps,
 	// and only clears when the selection itself changes.
 	const lastSelectedTaskRef = useRef<Task | null>(null);
+	// A task opened via a direct `?taskId=` URL (deep link, bookmark, share)
+	// may not be among the currently loaded/filtered `tasks` at all — e.g. the
+	// backlog view only paginates a page at a time, or the task doesn't match
+	// the active view's filters. Fetch it by id directly so the dialog can
+	// still open; this shares its query key with the mutations below, so it
+	// stays in sync with edits made elsewhere.
+	const selectedTaskDirectQuery = useQuery({
+		...taskQueryOptions(projectId, selectedTaskId ?? ""),
+		enabled: !!selectedTaskId,
+	});
 	const selectedTask = useMemo(() => {
 		const { resolved, nextLastKnown } = resolveSelectedTask(
 			tasks,
 			selectedTaskId,
 			lastSelectedTaskRef.current,
 		);
-		lastSelectedTaskRef.current = nextLastKnown;
-		return resolved;
-	}, [selectedTaskId, tasks]);
-
-	const restoredFromUrl = useRef(false);
-	useEffect(() => {
-		if (restoredFromUrl.current || tasks.length === 0) return;
-		try {
-			const url = new URL(window.location.href);
-			const taskId = url.searchParams.get("taskId");
-			if (taskId) {
-				const found = tasks.find((t) => t.id === taskId);
-				if (found) {
-					setSelectedTaskId(found.id);
-					restoredFromUrl.current = true;
-				}
-			}
-		} catch {
-			/* ignore */
-		}
-	}, [tasks]);
+		const directFetched =
+			selectedTaskId && selectedTaskDirectQuery.data?.id === selectedTaskId
+				? selectedTaskDirectQuery.data
+				: null;
+		const final = resolved ?? directFetched;
+		lastSelectedTaskRef.current = final ?? nextLastKnown;
+		return final;
+	}, [selectedTaskId, tasks, selectedTaskDirectQuery.data]);
 
 	const handleTaskClick = (task: Task) => {
 		setSelectedTaskId(task.id);
