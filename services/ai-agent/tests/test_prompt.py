@@ -80,6 +80,17 @@ def test_acp_message_prefixes_paca_skill():
     assert result.startswith("/paca Do something")
 
 
+def test_acp_message_uses_codex_skill_syntax():
+    result = build_acp_message(_trigger(message="Do something"), "codex")
+    assert result.startswith("$paca Do something")
+
+
+def test_acp_message_keeps_slash_syntax_for_other_providers():
+    for provider in ("claude-code", "gemini-cli", "custom", None):
+        result = build_acp_message(_trigger(message="Do something"), provider)
+        assert result.startswith("/paca Do something")
+
+
 def test_acp_message_uses_task_assigned_fallback():
     result = build_acp_message(_trigger(trigger_type="task_assigned", message=""))
     assert result.startswith("/paca ")

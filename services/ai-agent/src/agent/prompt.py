@@ -81,12 +81,13 @@ def build_project_context_suffix(project_id: str | None) -> str:
 # way the LLM/sandbox path does (see the "paca" entry in
 # services/api/internal/platform/bundledskills/bundledskills.go) — the only
 # way to route a local ACP CLI (Claude Code, Codex, ...) through the Paca
-# skill is the literal slash command, so prefix every dispatched message
-# with it.
-_ACP_SKILL_TRIGGER = "/paca"
+# skill is the provider's explicit skill syntax, so prefix every dispatched
+# message with it.
+def _acp_skill_trigger(acp_provider: str | None) -> str:
+    return "$paca" if acp_provider == "codex" else "/paca"
 
 
-def build_acp_message(trigger: TriggerMessage) -> str:
+def build_acp_message(trigger: TriggerMessage, acp_provider: str | None = None) -> str:
     """Build the message sent to trigger an ACP agent.
 
     The LLM/sandbox path (executor.py) carries project and trigger context in
@@ -96,9 +97,10 @@ def build_acp_message(trigger: TriggerMessage) -> str:
     no separate system-suffix argument. So instead of a suffix, that same
     context (minus the repo section, which points at sandbox-only tools like
     clone_repository — ACP agents already have local repo access) is folded
-    directly into this message, prefixed with the `/paca` skill trigger.
+    directly into this message, prefixed with the provider-specific Paca
+    skill trigger.
     """
-    message = f"{_ACP_SKILL_TRIGGER} {build_initial_prompt(trigger)}"
+    message = f"{_acp_skill_trigger(acp_provider)} {build_initial_prompt(trigger)}"
     message += build_project_context_suffix(trigger.project_id)
     message += build_trigger_suffix(trigger)
     return message
