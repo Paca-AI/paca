@@ -255,9 +255,21 @@ func (s *Service) GetAttachmentContent(ctx context.Context, projectID, taskID, a
 		bucket = s.bucket
 	}
 
-	data, err := s.store.GetObject(ctx, bucket, f.StorageKey, attachmentdom.MaxAttachmentContentSize)
+	// f.FileSize is declared by the client at upload-initiation time, but the
+	// presigned PUT enforces nothing about the actual object it accepts — a
+	// client can declare a small file_size and upload a larger object (see
+	// CompleteUpload above, which never re-verifies actual size). Bound the
+	// read itself by capping one byte over the limit: if the object is
+	// larger, GetObject's io.LimitReader truncates the read at
+	// MaxAttachmentContentSize+1 bytes with no error, so the post-read
+	// length check below is what actually catches it. Mirrors
+	// avatar_service.go's identical guard against the same presigned-PUT gap.
+	data, err := s.store.GetObject(ctx, bucket, f.StorageKey, attachmentdom.MaxAttachmentContentSize+1)
 	if err != nil {
 		return nil, "", fmt.Errorf("attachment svc: get object: %w", err)
+	}
+	if int64(len(data)) > attachmentdom.MaxAttachmentContentSize {
+		return nil, "", attachmentdom.ErrAttachmentContentTooLarge
 	}
 	return data, f.ContentType, nil
 }
