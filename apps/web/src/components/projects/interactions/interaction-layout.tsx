@@ -1254,6 +1254,23 @@ export function InteractionLayout({
 		return final;
 	}, [selectedTaskId, tasks, selectedTaskDirectQuery.data]);
 
+	// A selected id that's absent from the loaded list AND fails to load
+	// directly (deleted, moved to another project, or a mistyped id) can
+	// never resolve to a task. Without this, a broken `?taskId=` deep link
+	// leaves the param in the URL forever with no dialog and no feedback.
+	useEffect(() => {
+		if (!selectedTaskId || !selectedTaskDirectQuery.isError) return;
+		if (tasks.some((t) => t.id === selectedTaskId)) return;
+		setSelectedTaskId(null);
+		try {
+			const url = new URL(window.location.href);
+			url.searchParams.delete("taskId");
+			window.history.pushState({}, "", url.toString());
+		} catch {
+			/* ignore */
+		}
+	}, [selectedTaskId, selectedTaskDirectQuery.isError, tasks]);
+
 	const handleTaskClick = (task: Task) => {
 		setSelectedTaskId(task.id);
 		onTaskClick?.(task);
