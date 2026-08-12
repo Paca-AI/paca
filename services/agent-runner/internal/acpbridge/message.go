@@ -39,20 +39,31 @@ func actionTypeLabel(t agent.Trigger) string {
 const taskAssignedDefault = "You have been assigned a task. Load it via the Paca MCP tool and " +
 	"follow the default `paca` skill's routing to pick the right specialized skill for its status."
 
+// acpSkillTrigger mirrors prompt.py's _acp_skill_trigger: the only way to
+// route a local ACP CLI through the Paca skill is the provider's explicit
+// skill syntax, which differs for Codex ($paca) vs everything else (/paca).
+func acpSkillTrigger(acpProvider string) string {
+	if acpProvider == "codex" {
+		return "$paca"
+	}
+	return "/paca"
+}
+
 // BuildACPMessage builds the message sent to trigger an ACP agent — mirrors
 // prompt.py's build_acp_message exactly: apps/acp-bridge's ConversationRunner
 // only ever calls conversation.send_message(message) on a plain local
 // Conversation, with no separate system-suffix channel (unlike the
 // LLM/sandbox path's AgentContext.system_message_suffix), so project and
 // trigger context are folded directly into this message instead, prefixed
-// with the /paca skill trigger. Unlike executor/prompt.go's
+// with the provider-specific Paca skill trigger. Unlike executor/prompt.go's
 // buildInitialMessage, this has no repository-setup section: it points at
 // sandbox-only tools like clone_repository, and an ACP agent already has
 // local repo access on the user's own machine.
-func BuildACPMessage(trigger agent.Trigger) string {
+func BuildACPMessage(trigger agent.Trigger, acpProvider string) string {
 	var b strings.Builder
 
-	b.WriteString("/paca ")
+	b.WriteString(acpSkillTrigger(acpProvider))
+	b.WriteString(" ")
 	// Uses trigger.Message itself (not a trimmed copy) once it's confirmed
 	// non-blank — mirrors build_initial_prompt's own
 	// `if trigger.message.strip(): return trigger.message` exactly (checks

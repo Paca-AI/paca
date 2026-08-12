@@ -288,6 +288,11 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		requiresProject: true,
 	},
 	{
+		toolName: "read_task_attachment",
+		permissionKey: "tasks.read",
+		requiresProject: true,
+	},
+	{
 		toolName: "delete_task_attachment",
 		permissionKey: "tasks.write",
 		requiresProject: true,

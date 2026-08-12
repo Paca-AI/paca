@@ -30,6 +30,10 @@ var (
 	// to the project specified in the request URL.
 	ErrTaskNotInProject = errors.New("task does not belong to the specified project")
 
+	// ErrAttachmentContentTooLarge is returned when GetAttachmentContent is
+	// asked to read a file larger than MaxAttachmentContentSize into memory.
+	ErrAttachmentContentTooLarge = errors.New("attachment exceeds the maximum size that can be read inline")
+
 	// ErrAvatarTooLarge is returned when an avatar upload exceeds MaxAvatarUploadSize.
 	ErrAvatarTooLarge = errors.New("avatar file exceeds the maximum allowed size")
 	// ErrAvatarContentTypeInvalid is returned when an avatar upload's content

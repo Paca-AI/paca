@@ -485,6 +485,7 @@ describe("formatTaskDetail", () => {
 		);
 		expect(result).toContain("## Attachments");
 		expect(result).toContain("screenshot.png");
+		expect(result).toContain("att-1");
 	});
 
 	it("includes custom fields section when customFields are provided", () => {

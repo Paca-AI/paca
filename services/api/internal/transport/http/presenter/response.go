@@ -254,6 +254,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAttachmentInvalid
 	case errors.Is(err, attachmentdom.ErrAvatarOwnerMismatch):
 		return http.StatusNotFound, apierr.CodeFileNotFound
+	case errors.Is(err, attachmentdom.ErrAttachmentContentTooLarge):
+		return http.StatusRequestEntityTooLarge, apierr.CodeAttachmentTooLarge
 	case errors.Is(err, taskdom.ErrActivityNotFound):
 		return http.StatusNotFound, apierr.CodeActivityNotFound
 	case errors.Is(err, taskdom.ErrActivityForbidden):

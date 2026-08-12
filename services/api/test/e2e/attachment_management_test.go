@@ -200,6 +200,29 @@ func TestE2EAttachmentManagement_CRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("get_attachment_content", func(t *testing.T) {
+		if attachmentID == "" {
+			t.Skip("attachment_id not available (previous subtest failed)")
+		}
+		path := attachmentPath(env.base, projID, taskID, "/"+attachmentID+"/content")
+		req := mustRequest(env.ctx, t, http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp := mustDo(t, client, req)
+		defer func() { _ = resp.Body.Close() }()
+		assertStatus(t, resp, http.StatusOK)
+
+		if ct := resp.Header.Get("Content-Type"); ct != "text/plain" {
+			t.Errorf("expected Content-Type text/plain, got %q", ct)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("read response body: %v", err)
+		}
+		if string(body) != fileContent {
+			t.Errorf("expected content %q, got %q", fileContent, string(body))
+		}
+	})
+
 	t.Run("get_download_url_inline", func(t *testing.T) {
 		if attachmentID == "" {
 			t.Skip("attachment_id not available (previous subtest failed)")

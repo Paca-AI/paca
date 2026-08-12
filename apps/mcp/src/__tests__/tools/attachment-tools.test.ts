@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../utils/index.js", () => ({
 	formatList: vi.fn((items: any[], fn: any) => items.map(fn).join("---")),
+	formatFileSize: vi.fn((bytes: number) => `${bytes} bytes`),
 }));
 
 import {
@@ -26,6 +27,10 @@ function makeClient(overrides: Record<string, any> = {}) {
 		getAttachmentDownloadURL: vi
 			.fn()
 			.mockResolvedValue("https://cdn.example.com/photo.png"),
+		downloadAttachmentContent: vi.fn().mockResolvedValue({
+			buffer: new TextEncoder().encode("hello world").buffer,
+			contentType: "image/png",
+		}),
 		deleteTaskAttachment: vi.fn().mockResolvedValue(undefined),
 		...overrides,
 	} as any;
@@ -36,14 +41,15 @@ function makeClient(overrides: Record<string, any> = {}) {
 // ---------------------------------------------------------------------------
 
 describe("getAttachmentTools", () => {
-	it("returns 3 tools", () => {
-		expect(getAttachmentTools()).toHaveLength(3);
+	it("returns 4 tools", () => {
+		expect(getAttachmentTools()).toHaveLength(4);
 	});
 
-	it("includes list_task_attachments, get_attachment_download_url, delete_task_attachment", () => {
+	it("includes list_task_attachments, get_attachment_download_url, read_task_attachment, delete_task_attachment", () => {
 		const names = getAttachmentTools().map((t) => t.name);
 		expect(names).toContain("list_task_attachments");
 		expect(names).toContain("get_attachment_download_url");
+		expect(names).toContain("read_task_attachment");
 		expect(names).toContain("delete_task_attachment");
 	});
 });
@@ -120,6 +126,172 @@ describe("handleAttachmentTool – get_attachment_download_url", () => {
 		expect(result.content[0].text).toContain(
 			"https://cdn.example.com/photo.png",
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// read_task_attachment
+// ---------------------------------------------------------------------------
+
+describe("handleAttachmentTool – read_task_attachment", () => {
+	it("returns an image content block for an image attachment", async () => {
+		const client = makeClient();
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-1" },
+			client,
+		);
+		expect(client.downloadAttachmentContent).toHaveBeenCalledWith(
+			"p1",
+			"t1",
+			"att-1",
+		);
+		expect(result.content[0].type).toBe("image");
+		expect(result.content[0].mimeType).toBe("image/png");
+		expect(result.content[0].data).toBe(
+			Buffer.from("hello world").toString("base64"),
+		);
+	});
+
+	it("returns a text content block for a text attachment", async () => {
+		const textAttachment = {
+			id: "att-2",
+			file: {
+				file_name: "notes.md",
+				file_size: 11,
+				content_type: "text/markdown",
+			},
+			created_by: "user-1",
+			created_at: "2024-01-01T00:00:00Z",
+		};
+		const client = makeClient({
+			listTaskAttachments: vi.fn().mockResolvedValue([textAttachment]),
+			downloadAttachmentContent: vi.fn().mockResolvedValue({
+				buffer: new TextEncoder().encode("hello world").buffer,
+				contentType: "text/markdown",
+			}),
+		});
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-2" },
+			client,
+		);
+		expect(result.content[0].type).toBe("text");
+		expect(result.content[0].text).toContain("notes.md");
+		expect(result.content[0].text).toContain("hello world");
+	});
+
+	it("classifies a generic content-type by file extension", async () => {
+		const codeAttachment = {
+			id: "att-3",
+			file: {
+				file_name: "script.py",
+				file_size: 11,
+				content_type: "application/octet-stream",
+			},
+			created_by: "user-1",
+			created_at: "2024-01-01T00:00:00Z",
+		};
+		const client = makeClient({
+			listTaskAttachments: vi.fn().mockResolvedValue([codeAttachment]),
+			downloadAttachmentContent: vi.fn().mockResolvedValue({
+				buffer: new TextEncoder().encode("print('hi')").buffer,
+				contentType: "application/octet-stream",
+			}),
+		});
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-3" },
+			client,
+		);
+		expect(result.content[0].type).toBe("text");
+		expect(result.content[0].text).toContain("print('hi')");
+	});
+
+	it("classifies a generic content-type by conventional extensionless filename", async () => {
+		const dockerfileAttachment = {
+			id: "att-3b",
+			file: {
+				file_name: "Dockerfile",
+				file_size: 11,
+				content_type: "application/octet-stream",
+			},
+			created_by: "user-1",
+			created_at: "2024-01-01T00:00:00Z",
+		};
+		const client = makeClient({
+			listTaskAttachments: vi.fn().mockResolvedValue([dockerfileAttachment]),
+			downloadAttachmentContent: vi.fn().mockResolvedValue({
+				buffer: new TextEncoder().encode("FROM node:20").buffer,
+				contentType: "application/octet-stream",
+			}),
+		});
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-3b" },
+			client,
+		);
+		expect(result.content[0].type).toBe("text");
+		expect(result.content[0].text).toContain("FROM node:20");
+	});
+
+	it("returns an error for a binary attachment it can't read", async () => {
+		const pdfAttachment = {
+			id: "att-4",
+			file: {
+				file_name: "report.pdf",
+				file_size: 1024,
+				content_type: "application/pdf",
+			},
+			created_by: "user-1",
+			created_at: "2024-01-01T00:00:00Z",
+		};
+		const client = makeClient({
+			listTaskAttachments: vi.fn().mockResolvedValue([pdfAttachment]),
+		});
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-4" },
+			client,
+		);
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("get_attachment_download_url");
+		expect(client.downloadAttachmentContent).not.toHaveBeenCalled();
+	});
+
+	it("returns an error when the attachment exceeds the size limit", async () => {
+		const bigAttachment = {
+			id: "att-5",
+			file: {
+				file_name: "huge.txt",
+				file_size: 3 * 1024 * 1024,
+				content_type: "text/plain",
+			},
+			created_by: "user-1",
+			created_at: "2024-01-01T00:00:00Z",
+		};
+		const client = makeClient({
+			listTaskAttachments: vi.fn().mockResolvedValue([bigAttachment]),
+		});
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "att-5" },
+			client,
+		);
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("exceeds");
+		expect(client.downloadAttachmentContent).not.toHaveBeenCalled();
+	});
+
+	it("returns an error when the attachment isn't found", async () => {
+		const client = makeClient();
+		const result = await handleAttachmentTool(
+			"read_task_attachment",
+			{ projectId: "p1", taskId: "t1", attachmentId: "does-not-exist" },
+			client,
+		);
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("not found");
 	});
 });
 

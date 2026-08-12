@@ -305,4 +305,42 @@ export class PacaAPIViewsClient {
 			`/api/v1/projects/${projectId}/tasks/${taskId}/attachments/${attachmentId}`,
 		);
 	}
+
+	/**
+	 * Downloads the raw bytes of an attachment through the Paca API itself,
+	 * rather than via a presigned object-store URL. Presigned URLs are
+	 * rewritten to a browser-facing public host (see the backend's
+	 * STORAGE_PUBLIC_URL), which server-side callers like this MCP server
+	 * often can't reach — e.g. when running inside an agent sandbox
+	 * container that can resolve `api`/`gateway` by their internal Docker
+	 * hostname but not the public one the presigned URL points at. Going
+	 * through config.baseURL instead reuses the same connectivity every
+	 * other tool call in this client already depends on.
+	 */
+	async downloadAttachmentContent(
+		projectId: string,
+		taskId: string,
+		attachmentId: string,
+	): Promise<{ buffer: ArrayBuffer; contentType?: string }> {
+		const url = `${this.config.baseURL}/api/v1/projects/${projectId}/tasks/${taskId}/attachments/${attachmentId}/content`;
+		const headers: Record<string, string> = {
+			"X-API-Key": this.config.apiKey,
+		};
+		if (this.config.agentId) {
+			headers["X-Agent-ID"] = this.config.agentId;
+		}
+
+		const response = await fetch(url, { headers });
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			throw new Error(
+				formatApiRequestError(response.status, response.statusText, errorText),
+			);
+		}
+		const buffer = await response.arrayBuffer();
+		return {
+			buffer,
+			contentType: response.headers.get("content-type") ?? undefined,
+		};
+	}
 }

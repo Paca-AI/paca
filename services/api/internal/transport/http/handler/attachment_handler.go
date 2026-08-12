@@ -195,6 +195,49 @@ func (h *AttachmentHandler) GetDownloadURL(w http.ResponseWriter, r *http.Reques
 	presenter.OK(w, r, dto.DownloadURLResponse{URL: url})
 }
 
+// GetAttachmentContent handles GET /projects/:projectId/tasks/:taskId/attachments/:attachmentId/content.
+// Unlike GetDownloadURL, this streams the file's bytes directly through the
+// API rather than handing back a presigned object-store URL — the right path
+// for server-side callers (e.g. the MCP server) that may not have network
+// access to the object store's public-facing endpoint.
+//
+// contentType comes from attacker-controlled upload metadata, so the response
+// always forces X-Content-Type-Options: nosniff and Content-Disposition:
+// attachment — unlike GetDownloadURL, this endpoint has no forceDownload=false
+// inline-preview mode, since nothing here is meant to be rendered by a browser.
+func (h *AttachmentHandler) GetAttachmentContent(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	taskID, err := parseTaskID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	attachmentID, err := parseAttachmentID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	data, contentType, err := h.svc.GetAttachmentContent(r.Context(), projectID, taskID, attachmentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", "attachment")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
 // DeleteTaskAttachment handles DELETE /projects/:projectId/tasks/:taskId/attachments/:attachmentId.
 func (h *AttachmentHandler) DeleteTaskAttachment(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)

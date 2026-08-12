@@ -1,9 +1,11 @@
 import type { TFunction } from "i18next";
 import {
 	type FilterConfig,
+	type ListTasksOptions,
 	resolveFilterConfig,
 	type Sprint,
 	type Task,
+	type TaskListResult,
 	type ViewLayout,
 } from "@/lib/interaction-api";
 import type {
@@ -499,4 +501,99 @@ export function buildColumnDropUpdate(
 	}
 
 	return {};
+}
+
+// ── Per-column "load more" extras reconciliation ─────────────────────────────
+
+/**
+ * Whether a column's `colExtraTasks` ("load more" overflow, tracked
+ * separately from the column's base query result) is now redundant and can
+ * be dropped in favor of the base query's own data.
+ *
+ * True once the base query's data either (a) has caught up to the expanded
+ * depth the extras represent, or (b) reports there's nothing left to fetch
+ * (`next_cursor` is null/undefined) — which is authoritative even when
+ * shorter than the expected depth. (b) matters when the true total has
+ * permanently shrunk below the expected depth (an already-loaded task got
+ * deleted, or moved out of this column/filter by someone else): without it,
+ * the base query can never again return `expectedDepth` items, so extras
+ * would never clear and a deleted/moved task would linger as an unclearable
+ * ghost row indefinitely.
+ */
+export function shouldClearColumnExtras(
+	data: Pick<TaskListResult, "items" | "next_cursor"> | undefined,
+	expectedDepth: number,
+): boolean {
+	if (!data) return false;
+	return data.items.length >= expectedDepth || data.next_cursor == null;
+}
+
+// ── Selected-task resolution (survives transient gaps in the task list) ──────
+
+/**
+ * Resolves the task detail dialog's target task from the currently-loaded
+ * `tasks` list, falling back to the last-resolved task for the same id when
+ * `tasks` transiently doesn't contain it (e.g. a background refetch drops it
+ * from the loaded page right before a re-fetch restores it). Without this
+ * fallback, that gap flips the dialog's `open` prop to false and it flashes
+ * closed.
+ *
+ * `nextLastKnown` mirrors exactly what the caller should store for the next
+ * call: it only changes on a genuine selection change (cleared) or a
+ * successful lookup (updated) — a transient miss for the *same* selection
+ * leaves it untouched, so a later miss can't be masked by an unrelated
+ * earlier selection's cached task.
+ */
+export function resolveSelectedTask(
+	tasks: Task[],
+	selectedTaskId: string | null,
+	lastKnownTask: Task | null,
+): { resolved: Task | null; nextLastKnown: Task | null } {
+	if (!selectedTaskId) {
+		return { resolved: null, nextLastKnown: null };
+	}
+	const found = tasks.find((t) => t.id === selectedTaskId) ?? null;
+	if (found) {
+		return { resolved: found, nextLastKnown: found };
+	}
+	const fallback = lastKnownTask?.id === selectedTaskId ? lastKnownTask : null;
+	return { resolved: fallback, nextLastKnown: lastKnownTask };
+}
+
+// ── Scoped placeholder data for pagination queries ────────────────────────────
+
+/**
+ * Builds a React Query `placeholderData` function that keeps the previous
+ * query's result only when the *only* difference between the previous
+ * request's options and `currentOpts` is `pageSize` — i.e. this queryKey
+ * change is a "load more" page-size bump or a WS-triggered depth-restore
+ * refetch, not a genuine filter/sort/search change.
+ *
+ * These queries key on the full filter-options object, so the stock
+ * `keepPreviousData` helper (which keeps previous data across *any* queryKey
+ * change) would also kick in when a user edits a filter or types a search:
+ * the previous, now non-matching results would keep rendering — with no
+ * loading skeleton and no `isPlaceholderData` indicator — until the new
+ * request resolves. Scoping the reuse to pageSize-only changes restores the
+ * loading state for genuine filter/sort/search changes while still avoiding
+ * the pagination flash this was introduced to fix.
+ */
+export function keepPreviousDataOnPageSizeChangeOnly(
+	currentOpts: ListTasksOptions,
+) {
+	return (
+		previousData: TaskListResult | undefined,
+		previousQuery: { queryKey: readonly unknown[] } | undefined,
+	): TaskListResult | undefined => {
+		if (previousData === undefined || !previousQuery) return undefined;
+		const prevOpts = previousQuery.queryKey.at(-1) as
+			| ListTasksOptions
+			| undefined;
+		if (!prevOpts || typeof prevOpts !== "object") return undefined;
+		const { pageSize: _prevPageSize, ...prevRest } = prevOpts;
+		const { pageSize: _currPageSize, ...currRest } = currentOpts;
+		return JSON.stringify(prevRest) === JSON.stringify(currRest)
+			? previousData
+			: undefined;
+	};
 }

@@ -204,6 +204,7 @@ export async function handleToolCall(
 		if (
 			name === "list_task_attachments" ||
 			name === "get_attachment_download_url" ||
+			name === "read_task_attachment" ||
 			name === "delete_task_attachment"
 		) {
 			return handleAttachmentTool(name, args, clients.viewsClient);
