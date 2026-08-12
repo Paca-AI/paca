@@ -1,4 +1,5 @@
 import {
+	keepPreviousData,
 	useInfiniteQuery,
 	useMutation,
 	useQueries,
@@ -809,6 +810,13 @@ export function InteractionLayout({
 						] as const,
 						queryFn: () => listAllTasks(projectId, colOpts),
 						staleTime: 15_000,
+						// "Load more" grows this column's pageSize, which changes the
+						// queryKey above — without this, React Query would drop `data`
+						// back to undefined for the new key until it resolves, making
+						// already-visible tasks disappear from the list mid-fetch.
+						// Keeping the previous (smaller) page's data displayed avoids
+						// that gap.
+						placeholderData: keepPreviousData,
 					};
 				})
 			: [],
@@ -866,6 +874,11 @@ export function InteractionLayout({
 	const fallbackQuery = useQuery({
 		...fallbackQueryOpts,
 		enabled: !colQueriesEnabled && !viewsQuery.isLoading,
+		// See the matching comment on the column queries above: "load more"
+		// grows pageSize (and thus the queryKey), so keep showing the smaller
+		// page's data while the larger one fetches instead of dropping to
+		// undefined.
+		placeholderData: keepPreviousData,
 	});
 
 	// Per-column load-more state
@@ -879,7 +892,8 @@ export function InteractionLayout({
 		{},
 	);
 
-	// Sync next cursors from initial column query results; reset extras on re-fetch
+	// Sync next cursors from initial column query results; reset extras once
+	// each column's own base query has re-fetched at its expanded depth.
 	const colDataUpdatedKey = columnQueries.map((q) => q.dataUpdatedAt).join(",");
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-sync only when column query data changes
 	useEffect(() => {
@@ -890,16 +904,46 @@ export function InteractionLayout({
 			if (data) updated[col.key] = data.next_cursor ?? null;
 		});
 		setColNextCursors(updated);
-		// Clear load-more extras so stale tasks don't linger after a WS refetch.
-		// A brief flash is expected; colExpandedPageSizes ensures the next refetch
-		// re-fetches the same depth, restoring all visible items from the server.
-		setColExtraTasks({});
+		// "Load more" bumps colExpandedPageSizes[col.key], which changes that
+		// column's query to fetch the same expanded depth directly — once it
+		// resolves, the base data already covers what the extras held, so the
+		// extras are redundant and can be dropped. Dropping extras for every
+		// column on *any* column's refetch (e.g. a WS-triggered invalidation
+		// of an unrelated column) used to make already-loaded tasks flash out
+		// of the list — and out from under an open task detail dialog — until
+		// that column's own expanded refetch caught up. Only drop a column's
+		// extras once its own base data has actually reached that depth.
+		setColExtraTasks((prev) => {
+			let changed = false;
+			const next = { ...prev };
+			for (const [key, extras] of Object.entries(prev)) {
+				if (extras.length === 0) continue;
+				const idx = fetchColumnDefs.findIndex((col) => col.key === key);
+				const data = idx >= 0 ? columnQueries[idx]?.data : undefined;
+				const expectedDepth = colExpandedPageSizes[key] ?? initialColPageSize;
+				if (data && data.items.length >= expectedDepth) {
+					delete next[key];
+					changed = true;
+				}
+			}
+			return changed ? next : prev;
+		});
 	}, [colDataUpdatedKey, colQueriesEnabled]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when base opts change
+	// colBaseOpts is a useMemo, but an upstream dependency (e.g. apiFilters,
+	// which depends on customFields/sprints — queries the task detail modal
+	// re-observes on open, both without an explicit staleTime) can recompute
+	// to a *new object* with the *same values* once that background refetch
+	// resolves. Comparing colBaseOpts by reference treated that as "filters
+	// changed" and wiped the "load more" depth back to the initial page size
+	// — confirmed via a network capture showing the resulting request had
+	// every filter field unchanged, only a reverted page_size. Compare by
+	// value instead, so only a genuine filter/sort/search change resets it.
+	const colBaseOptsKey = JSON.stringify(colBaseOpts);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the *value* of colBaseOpts changes
 	useEffect(() => {
 		setColExpandedPageSizes({});
-	}, [colBaseOpts]);
+	}, [colBaseOptsKey]);
 
 	const handleLoadMoreColumn = useCallback(
 		async (colKey: string) => {
@@ -1072,11 +1116,24 @@ export function InteractionLayout({
 		[epicTasks, missingEpics],
 	);
 
+	// A column's queryKey changes every time its page size grows ("load
+	// more" bumps colExpandedPageSizes), which makes React Query treat it as
+	// a brand-new query — `isLoading` (isPending && isFetching) is true for
+	// that key until it resolves, even though `placeholderData` is already
+	// showing the previous page's tasks. Driving the full-list skeleton off
+	// `isLoading` therefore replaced the whole list with a skeleton on every
+	// "load more" and every background refetch of an expanded column. Check
+	// for the absence of data instead: with `keepPreviousData` in place that
+	// only happens on a column's genuine first fetch (disabled/noop columns
+	// are excluded via fetchStatus, since they'll never fetch).
 	const tasksLoading =
 		viewsQuery.isLoading ||
 		(colQueriesEnabled
-			? columnQueries.some((q) => q.isLoading)
-			: fallbackQuery.isLoading);
+			? columnQueries.some(
+					(q) => q.data === undefined && q.fetchStatus !== "idle",
+				)
+			: fallbackQuery.data === undefined &&
+				fallbackQuery.fetchStatus !== "idle");
 
 	// Per-column pagination props for views
 	const columnPagination = useMemo(() => {
@@ -1136,13 +1193,30 @@ export function InteractionLayout({
 		[projectId],
 	);
 
-	const selectedTask = useMemo(
-		() =>
-			selectedTaskId
-				? (tasks.find((t) => t.id === selectedTaskId) ?? null)
-				: null,
-		[selectedTaskId, tasks],
-	);
+	// `tasks` is the paginated/grouped list currently loaded for the active
+	// view, so it can transiently stop containing the selected task even
+	// while the detail modal is open — e.g. the per-column "load more" extras
+	// are cleared on every background refetch (see the colExtraTasks reset
+	// effect below) before the expanded page is re-fetched. If `selectedTask`
+	// tracked `tasks` directly, that gap would flip `open` to false and the
+	// modal would flash closed. Cache the last resolved task per id so the
+	// modal stays open (backed by its own fresh-task query) across such gaps,
+	// and only clears when the selection itself changes.
+	const lastSelectedTaskRef = useRef<Task | null>(null);
+	const selectedTask = useMemo(() => {
+		if (!selectedTaskId) {
+			lastSelectedTaskRef.current = null;
+			return null;
+		}
+		const found = tasks.find((t) => t.id === selectedTaskId);
+		if (found) {
+			lastSelectedTaskRef.current = found;
+			return found;
+		}
+		return lastSelectedTaskRef.current?.id === selectedTaskId
+			? lastSelectedTaskRef.current
+			: null;
+	}, [selectedTaskId, tasks]);
 
 	const restoredFromUrl = useRef(false);
 	useEffect(() => {
