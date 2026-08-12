@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Paca-AI/agent-runner/internal/acpbridge"
+	"github.com/Paca-AI/agent-runner/internal/bundledskills"
 	"github.com/Paca-AI/agent-runner/internal/chatsandbox"
 	"github.com/Paca-AI/agent-runner/internal/config"
 	"github.com/Paca-AI/agent-runner/internal/executor"
@@ -107,6 +108,7 @@ func run(log *slog.Logger) error {
 		Gate:          config.NewGate(settings.AllowedAgentIDs),
 		AgentRepo:     agentRepo,
 		ConvRepo:      convRepo,
+		BundledSkills: bundledskills.NewClient(settings.PacaAPIURL),
 		Publisher:     publisher,
 		Executor:      exec,
 		InFlight:      inFlight,

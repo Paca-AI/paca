@@ -21,6 +21,7 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/acp"
 	"github.com/Paca-AI/agent-runner/internal/acpbridge"
 	"github.com/Paca-AI/agent-runner/internal/agent"
+	"github.com/Paca-AI/agent-runner/internal/bundledskills"
 	"github.com/Paca-AI/agent-runner/internal/chatsandbox"
 	"github.com/Paca-AI/agent-runner/internal/config"
 	"github.com/Paca-AI/agent-runner/internal/executor"
@@ -39,6 +40,7 @@ type Handler struct {
 	Gate          config.Gate
 	AgentRepo     *postgres.AgentRepository
 	ConvRepo      *postgres.ConversationRepository
+	BundledSkills *bundledskills.Client
 	Publisher     *messaging.Publisher
 	Executor      *executor.Executor
 	InFlight      *registry.Conversations
@@ -73,6 +75,22 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		// message unacknowledged so it's retried once the transient
 		// condition (if it is one) clears, matching Handler's contract.
 		return fmt.Errorf("resolve agent %s: %w", trigger.AgentID, err)
+	}
+
+	// Bundled skills (e.g. `paca`, `paca-do`) are always-active scaffolding
+	// that mirrors services/ai-agent's builder.load_default_skills() —
+	// without it, an agent has no instructions telling it a linked repo
+	// exists or how to reach it (list_repositories/clone_repository), and
+	// silently starts working against an empty sandbox. Prepended ahead of
+	// cfg.Skills so per-agent customizations still render after it. Nil
+	// only in tooling that doesn't wire a PACA_API_URL (see livecheck
+	// programs' Handler construction) — real deployments always set it.
+	if h.BundledSkills != nil {
+		bundled, err := h.BundledSkills.Load(ctx)
+		if err != nil {
+			return fmt.Errorf("load bundled skills for agent %s: %w", trigger.AgentID, err)
+		}
+		cfg.Skills = append(bundled, cfg.Skills...)
 	}
 
 	h.Log.Info("agent-runner: running conversation",

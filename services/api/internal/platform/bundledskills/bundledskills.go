@@ -5,9 +5,16 @@
 //     scripts/install-paca-skills.sh into Claude Code, Gemini CLI, Cursor,
 //     and AGENTS.md. Assumes no Paca-managed context, so it routes through
 //     the Paca MCP server and references things like /paca-setup.
-//   - "agent" — the in-product skill set fetched by services/ai-agent's
-//     builder.load_default_skills() for every "llm"-type agent
-//     conversation, which already has tools/context auto-configured.
+//   - "agent" — the in-product skill set fetched by
+//     services/agent-runner's bundledskills.Client for every "llm"-type
+//     agent conversation, which already has tools/context auto-configured.
+//     agent-runner folds every one of these skills' full content directly
+//     into the conversation's initial prompt unconditionally (see
+//     executor/prompt.go's buildInitialMessage) — there is no on-demand
+//     "activate this skill" tool call the way the old OpenHands-SDK-based
+//     services/ai-agent had with invoke_skill, so the agent flavor of
+//     `paca` (below) routes by pointing at the already-inlined `## Skill:
+//     <name>` section instead of naming a tool to call.
 //
 // Every skill is authored once, as skillEntry.Content (the cli-flavor
 // content). Most skills' agent-flavor content differs only in two
@@ -15,13 +22,14 @@
 // fallback section irrelevant to a conversation that's always connected —
 // so those skills don't set AgentContent at all. A skill sets AgentContent
 // explicitly only when its content genuinely differs by agent type, which
-// today is exactly two cases: `paca` (the agent flavor uses the SDK's
-// invoke_skill tool for routing; the cli flavor suggests slash commands,
-// since external CLIs have no equivalent tool) and `paca-do` (the agent
-// flavor adds a clone/push/PR workflow section, since the sandboxed agent
-// has no local git checkout of its own the way an external CLI session
-// already does). `paca-setup` sets CLIOnly — the in-product agent's MCP
-// server is always auto-configured, so it has nothing to set up.
+// today is exactly two cases: `paca` (the agent flavor points at the
+// already-inlined `## Skill: <name>` sections for routing; the cli flavor
+// suggests slash commands, since external CLIs have no such inlined
+// context to point at) and `paca-do` (the agent flavor adds a clone/push/PR
+// workflow section, since the sandboxed agent has no local git checkout of
+// its own the way an external CLI session already does). `paca-setup` sets
+// CLIOnly — the in-product agent's MCP server is always auto-configured, so
+// it has nothing to set up.
 //
 // Content is hardcoded directly in this file (edit skillEntries below and
 // gofmt) rather than read from any skills/ directory at build or run time —
@@ -257,41 +265,41 @@ This is your default operating procedure for every conversation — it always ap
 
 ---
 
-## Step 0 — Invoke a specialized skill BEFORE doing any work
+## Step 0 — Follow the matching specialized skill's section BEFORE doing any work
 
-**This is a hard requirement, not a suggestion.** Before making any status change, calling any implementation tool, or starting any substantive work, you MUST call ` + "`" + `invoke_skill(name="<skill-name>")` + "`" + ` to load the skill's full instructions and follow them step by step. Reconstructing a skill from memory leads to incomplete or incorrect results.
+**This is a hard requirement, not a suggestion.** Every specialized skill's full instructions are already included further down in this same prompt, each under its own ` + "`" + `## Skill: <name>` + "`" + ` heading, fully loaded and ready to follow immediately. Before making any status change, calling any implementation tool, or starting any substantive work, you MUST locate the matching ` + "`" + `## Skill: <name>` + "`" + ` section below and follow it step by step. Reconstructing a skill from memory instead of reading its section leads to incomplete or incorrect results.
 
-| If the user wants to... | Invoke this skill |
+| If the user wants to... | Follow this section |
 |---|---|
-| Turn requirements into a full epic with child stories | ` + "`" + `invoke_skill(name="paca-epic")` + "`" + ` |
-| Clarify or improve a vague task or spec | ` + "`" + `invoke_skill(name="paca-clarify")` + "`" + ` |
-| Break a task into smaller sub-tasks | ` + "`" + `invoke_skill(name="paca-breakdown")` + "`" + ` |
-| Plan a sprint from the backlog | ` + "`" + `invoke_skill(name="paca-sprint")` + "`" + ` |
-| Estimate story points for tasks | ` + "`" + `invoke_skill(name="paca-estimate")` + "`" + ` |
-| Set priorities across the backlog | ` + "`" + `invoke_skill(name="paca-prioritize")` + "`" + ` |
-| Execute a task end-to-end | ` + "`" + `invoke_skill(name="paca-do")` + "`" + ` |
-| Test or verify a task | ` + "`" + `invoke_skill(name="paca-test")` + "`" + ` |
-| Write or update documentation | ` + "`" + `invoke_skill(name="paca-doc")` + "`" + ` |
-| Automate a process — auto-assignment, status chaining, task dependencies | ` + "`" + `invoke_skill(name="paca-workflow")` + "`" + ` |
+| Turn requirements into a full epic with child stories | ` + "`" + `## Skill: paca-epic` + "`" + ` |
+| Clarify or improve a vague task or spec | ` + "`" + `## Skill: paca-clarify` + "`" + ` |
+| Break a task into smaller sub-tasks | ` + "`" + `## Skill: paca-breakdown` + "`" + ` |
+| Plan a sprint from the backlog | ` + "`" + `## Skill: paca-sprint` + "`" + ` |
+| Estimate story points for tasks | ` + "`" + `## Skill: paca-estimate` + "`" + ` |
+| Set priorities across the backlog | ` + "`" + `## Skill: paca-prioritize` + "`" + ` |
+| Execute a task end-to-end | ` + "`" + `## Skill: paca-do` + "`" + ` |
+| Test or verify a task | ` + "`" + `## Skill: paca-test` + "`" + ` |
+| Write or update documentation | ` + "`" + `## Skill: paca-doc` + "`" + ` |
+| Automate a process — auto-assignment, status chaining, task dependencies | ` + "`" + `## Skill: paca-workflow` + "`" + ` |
 
-A user can also force one of these directly by typing ` + "`" + `/<skill-name>` + "`" + ` (e.g. ` + "`" + `/paca-do #42` + "`" + `) in a chat message or comment.
+A user can also force one of these directly by typing ` + "`" + `/<skill-name>` + "`" + ` (e.g. ` + "`" + `/paca-do #42` + "`" + `) in a chat message or comment — treat that the same as picking the matching row above: go read and follow that skill's ` + "`" + `## Skill: <name>` + "`" + ` section.
 
-**The ONLY exception** to invoking a skill: A single trivial action with zero judgment — closing a task when explicitly told "close this", adding a plain comment like "noted", or checking what's in the sprint. If the request involves implementation, planning, analysis, breakdown, estimation, testing, or documentation, you MUST invoke the matching skill first via ` + "`" + `invoke_skill()` + "`" + `.
+**The ONLY exception** to following a specialized skill's section: A single trivial action with zero judgment — closing a task when explicitly told "close this", adding a plain comment like "noted", or checking what's in the sprint. If the request involves implementation, planning, analysis, breakdown, estimation, testing, or documentation, you MUST follow the matching skill's section first.
 
 ## Step 0.5 — When a task is in scope, let its status guide you
 
-Whenever your invocation is tied to a specific task (an assignment, a comment on a task, or a description-write request), load it first (` + "`" + `get_task` + "`" + ` / ` + "`" + `get_task_by_number` + "`" + `) and let its **current status** — not just the request wording — help you pick the right specialized skill to invoke:
+Whenever your invocation is tied to a specific task (an assignment, a comment on a task, or a description-write request), load it first (` + "`" + `get_task` + "`" + ` / ` + "`" + `get_task_by_number` + "`" + `) and let its **current status** — not just the request wording — help you pick the right specialized skill's section to follow:
 
-| Task status | Invoke this skill |
+| Task status | Follow this section |
 |---|---|
-| No acceptance criteria, or description is thin | ` + "`" + `invoke_skill(name="paca-clarify")` + "`" + ` |
-| Backlog / not yet sized or split | ` + "`" + `invoke_skill(name="paca-breakdown")` + "`" + ` (if large) or ` + "`" + `invoke_skill(name="paca-estimate")` + "`" + ` (if right-sized) |
-| To do / ready, sprint not yet planned | ` + "`" + `invoke_skill(name="paca-sprint")` + "`" + ` |
-| In progress | ` + "`" + `invoke_skill(name="paca-do")` + "`" + ` |
-| In review / awaiting QA | ` + "`" + `invoke_skill(name="paca-test")` + "`" + ` |
-| Done, but the feature has no linked documentation | ` + "`" + `invoke_skill(name="paca-doc")` + "`" + ` |
+| No acceptance criteria, or description is thin | ` + "`" + `## Skill: paca-clarify` + "`" + ` |
+| Backlog / not yet sized or split | ` + "`" + `## Skill: paca-breakdown` + "`" + ` (if large) or ` + "`" + `## Skill: paca-estimate` + "`" + ` (if right-sized) |
+| To do / ready, sprint not yet planned | ` + "`" + `## Skill: paca-sprint` + "`" + ` |
+| In progress | ` + "`" + `## Skill: paca-do` + "`" + ` |
+| In review / awaiting QA | ` + "`" + `## Skill: paca-test` + "`" + ` |
+| Done, but the feature has no linked documentation | ` + "`" + `## Skill: paca-doc` + "`" + ` |
 
-This table picks *which* skill to invoke — it never excuses you from invoking one (see Step 0). If the requester's message explicitly asks for something narrower than the status implies (e.g. "just estimate this" on an in-progress task), honor that instead — but still invoke the skill that matches the explicit ask (` + "`" + `invoke_skill(name="paca-estimate")` + "`" + `), rather than doing it ad hoc. The invoke_skill call must happen BEFORE any other tool calls related to the work.
+This table picks *which* skill's section to follow — it never excuses you from following one (see Step 0). If the requester's message explicitly asks for something narrower than the status implies (e.g. "just estimate this" on an in-progress task), honor that instead — but still follow the section that matches the explicit ask (` + "`" + `## Skill: paca-estimate` + "`" + `), rather than doing it ad hoc. Locating and following the matching section must happen BEFORE any other tool calls related to the work.
 
 ## Step 1 — Scan for a task reference
 
