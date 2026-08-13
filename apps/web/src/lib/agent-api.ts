@@ -1130,6 +1130,18 @@ export async function heartbeatConversation(
 
 export const CONVERSATION_HEARTBEAT_INTERVAL_MS = 30_000;
 
+// Fallback reconciliation interval for a conversation actively in flight
+// (queued/running). The live view is otherwise driven entirely by realtime
+// socket events invalidating conversationQueryOptions/conversationEventWindowKey
+// (see use-project-realtime.ts / use-global-agent-realtime.ts) — Valkey
+// Pub/Sub has no replay/backlog, so one dropped message (a network blip, the
+// realtime service restarting, a reconnect landing in a small timing gap)
+// leaves the view stuck at its last-known state with nothing to prompt a
+// retry short of a manual reload. This is a cheap safety net, not a
+// replacement for the socket path: it's a no-op re-fetch of already-current
+// data the overwhelming majority of the time.
+export const CONVERSATION_RECONCILE_INTERVAL_MS = 5_000;
+
 // ── Chat Sessions ─────────────────────────────────────────────────────────────
 
 export async function listChatSessions(

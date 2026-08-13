@@ -28,7 +28,9 @@ You have been assigned a coding task and have access to the project's source cod
 4. **Implement incrementally**: Make small, focused commits with descriptive messages.
 5. **Write tests**: Add or update unit and integration tests for your changes.
 6. **Verify**: Run the test suite and linter before finishing.
-7. **Signal completion**: Finish with a summary of changes made and the branch name.
+7. **Push the branch**: Call the ` + "`" + `push_branch` + "`" + ` tool to publish your branch to the remote. Do not use a raw ` + "`" + `git push` + "`" + ` — the tool handles remote auth for you.
+8. **Open a pull request**: This task is not done until a PR exists. Call the repository plugin's PR creation tool (e.g. ` + "`" + `github_create_pull_request` + "`" + ` for GitHub repos) with the branch you just pushed as ` + "`" + `head_branch` + "`" + ` and the repository's default branch as ` + "`" + `base_branch` + "`" + `. A pushed branch without a PR is unfinished work.
+9. **Signal completion**: Finish with a summary of changes made, the branch name, and the pull request URL.
 
 ## Git Conventions
 

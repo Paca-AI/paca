@@ -826,13 +826,25 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // Conversations
 // -------------------------------------------------------------------------
 
-// iteration_count is computed live from agent_conversation_events (one
-// ActionEvent per agent step) rather than stored: see #314 and migration
-// 000026_drop_conversation_iteration_count.sql for why.
+// iteration_count is computed live from agent_conversation_events (one step
+// per agent turn) rather than stored: see #314 and migration
+// 000026_drop_conversation_iteration_count.sql for why it's computed live at
+// all. Two different runtimes write two different event_type vocabularies
+// for what both call one "iteration": services/ai-agent and the acp-bridge
+// subprocess (apps/acp-bridge/src/paca_acp_bridge/runner.py) forward the
+// OpenHands SDK's own event class name, 'ActionEvent', one per agent step —
+// see agent_service.go's MaxIterations, which caps exactly this. The native
+// Go ACP runner (services/agent-runner/internal/handler/handler.go) has no
+// OpenHands SDK underneath it and instead persists the raw ACP
+// SessionUpdateKind, so its equivalent "one step" event is 'tool_call' (see
+// executor.go's maxToolCalls, the same MaxIterations cap applied to the
+// count of tool_call notifications for that runtime). Counting only
+// 'ActionEvent' left every conversation run by the Go runner stuck at 0
+// iterations regardless of how much work the agent actually did.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
 	triggered_by_member_id, actor_user_id, status, container_id, host_port,
 	(SELECT COUNT(*) FROM agent_conversation_events e
-	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'ActionEvent') AS iteration_count,
+	 WHERE e.conversation_id = agent_conversations.id AND e.event_type IN ('ActionEvent', 'tool_call')) AS iteration_count,
 	error_message,
 	repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
 	started_at, finished_at, created_at, updated_at`

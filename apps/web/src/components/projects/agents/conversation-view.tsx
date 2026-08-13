@@ -22,9 +22,11 @@ import {
 	type AgentConversation,
 	agentQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
+	CONVERSATION_RECONCILE_INTERVAL_MS,
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
 	chattableAgentsQueryOptions,
+	conversationEventWindowKey,
 	conversationQueryOptions,
 	globalConversationQueryOptions,
 	heartbeatConversation,
@@ -329,6 +331,28 @@ export function ConversationView({
 		projectId,
 		conversationId,
 	]);
+
+	// Safety net for a dropped realtime message — see
+	// CONVERSATION_RECONCILE_INTERVAL_MS's doc comment. Re-invalidates exactly
+	// what an "agent.*" status event already invalidates (the conversation
+	// itself and its event window), so a socket miss self-heals within one
+	// tick instead of requiring a page reload. Only while genuinely in
+	// flight: a paused/terminal conversation has nothing new to reconcile.
+	useEffect(() => {
+		if (!isRunning) return;
+		const reconcile = () => {
+			void qc.invalidateQueries({
+				queryKey: projectId
+					? ["projects", projectId, "conversations", conversationId]
+					: ["global-chat", "conversations", conversationId],
+			});
+			void qc.invalidateQueries({
+				queryKey: conversationEventWindowKey(conversationId),
+			});
+		};
+		const interval = setInterval(reconcile, CONVERSATION_RECONCILE_INTERVAL_MS);
+		return () => clearInterval(interval);
+	}, [isRunning, projectId, conversationId, qc]);
 
 	if (convLoading || eventsLoading) {
 		return (

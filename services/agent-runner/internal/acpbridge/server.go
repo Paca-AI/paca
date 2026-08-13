@@ -205,9 +205,25 @@ func (s *Server) handleEventMessage(ctx context.Context, agentID uuid.UUID, msg 
 	if eventSource == "" {
 		eventSource = "agent"
 	}
-	payload, err := json.Marshal(msg["payload"])
-	if err != nil {
-		payload = []byte("{}")
+	// paca_acp_bridge.runner._event_payload serializes the ACP event once
+	// with Pydantic and sends it as a JSON *string* (byte-for-byte, so it
+	// never diverges from the SDK's own encoding — see commit 59fea550's
+	// message on apps/acp-bridge). Re-marshaling that string here would
+	// wrap it in another layer of quotes, turning the stored/broadcast
+	// payload into a JSON string instead of the object it actually is —
+	// which is exactly what made GET .../events 500 with "cannot unmarshal
+	// string into ... map[string]interface{}" for every event a bridged
+	// (acp-type) conversation persisted. Use the string's bytes directly;
+	// only non-string payloads (or a missing one) need marshaling.
+	var payload []byte
+	if s, ok := msg["payload"].(string); ok {
+		payload = []byte(s)
+	} else {
+		var err error
+		payload, err = json.Marshal(msg["payload"])
+		if err != nil {
+			payload = []byte("{}")
+		}
 	}
 
 	id := uuid.New()
