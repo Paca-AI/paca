@@ -243,8 +243,10 @@ Go against it.
 - Ran `goose serve --host 0.0.0.0 --port 3284` in a container with
   `GOOSE_SERVER__SECRET_KEY` set, port-mapped to the host.
 - Pointed it at Paca's own existing OpenAI-compatible mock —
-  [`fake_llm_server.py`](../../services/ai-agent/tests/e2e/fake_llm_server.py),
-  already used to test the OpenHands e2e path — via `GOOSE_PROVIDER=openai`,
+  `fake_llm_server.py`, already used to test the OpenHands e2e path (deleted
+  along with `services/ai-agent`; reimplemented in Go as
+  `services/agent-runner/test/e2e/fakellm` once the E2E suite below
+  replaced the livecheck programs) — via `GOOSE_PROVIDER=openai`,
   `OPENAI_HOST=http://172.17.0.1:8901` (the Docker bridge gateway IP),
   `OPENAI_API_KEY=fake-key`. No real API key or spend involved.
 - Drove the whole thing with `curl`, no SDK, to get ground truth on the wire
@@ -1433,12 +1435,14 @@ retag loop were updated accordingly.
 config mirroring `services/api`'s (`services/agent-runner/.golangci.yml` —
 enables `bodyclose`, `gocritic`, `revive`, `noctx`, `exhaustive`, `misspell`
 on top of the defaults), a `build` job, and a `test` job running
-`go test -race`. It deliberately has no `test-e2e` job the way
-`api-pr-ci.yml` does — this service's coverage against real
-Docker/Postgres/Valkey lives in its livecheck programs
-(`cmd/agent-runner/livecheck*`, `internal/*/livecheck`), which are meant to
-be run by hand against a real dev stack (see each program's own doc
-comment), not wired into CI. Getting `services/agent-runner` to a clean
+`go test -race`. At the time this was written it deliberately had no
+`test-e2e` job the way `api-pr-ci.yml` does — this service's coverage
+against real Docker/Postgres/Valkey lived in manually-run livecheck
+programs (`cmd/agent-runner/livecheck*`, `internal/*/livecheck`) instead.
+**Update:** those programs were later replaced by an automated
+`test-e2e` job (`services/agent-runner/test/e2e/`, gated on `PACA_E2E=1`,
+required and blocking on every PR) — see that directory's own doc comments
+for what replaced what. Getting `services/agent-runner` to a clean
 `golangci-lint run` first (fixing ~50 issues across `errcheck`, `staticcheck`
 ST1005, `bodyclose`, `gocritic` `exitAfterDefer`, and `revive` exported-doc-
 comment findings) surfaced one real bug in the process: three tests in

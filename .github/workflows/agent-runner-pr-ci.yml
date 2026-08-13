@@ -49,7 +49,7 @@ jobs:
         run: golangci-lint run --timeout=5m
 
   # ---------------------------------------------------------------------------
-  # 2. Build — verify the binary (and every livecheck program) compiles
+  # 2. Build — verify the binary compiles
   # ---------------------------------------------------------------------------
   build:
     name: Build
@@ -78,11 +78,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # 3. Unit tests — in-memory fakes (miniredis, httptest), no external
   #    services needed. Coverage against real Docker/Postgres/Valkey lives
-  #    in this service's livecheck programs (cmd/agent-runner/livecheck*,
-  #    internal/*/livecheck) instead of an automated E2E job — they're
-  #    meant to be run by hand against a real dev stack (see each program's
-  #    own doc comment and docs/ai-agent/goose-migration.md), not wired into
-  #    CI, so there is no test-e2e job here to mirror api-pr-ci.yml's.
+  #    in the test-e2e job below instead.
   # ---------------------------------------------------------------------------
   test:
     name: Unit tests
@@ -114,3 +110,65 @@ jobs:
           name: coverage-report
           path: services/agent-runner/coverage.out
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. E2E tests — real Postgres/Valkey (testcontainers-go) + real Docker
+  #    sandbox containers via this service's own sandbox.Manager (the
+  #    production container-lifecycle code, not a second testcontainers-
+  #    driven reimplementation of it). Required and blocking on every PR —
+  #    this is where the former cmd/agent-runner/livecheck* /
+  #    internal/*/livecheck manually-run programs now live, as automated
+  #    tests instead of hand-run programs. See services/agent-runner/test/e2e.
+  # ---------------------------------------------------------------------------
+  test-e2e:
+    name: E2E tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [build]
+
+    defaults:
+      run:
+        working-directory: services/agent-runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/agent-runner/go.sum
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # cd.yml only publishes paca-agent-server-goose on a tagged release
+      # (no :latest) — CI has to build it fresh. GHA layer caching keys off
+      # the Dockerfile's content, so the slow apt/nodesource/npm layer is a
+      # cache hit on PRs that don't touch services/agent-server/Dockerfile.
+      - name: Build sandbox image (paca-agent-server-goose:e2e)
+        uses: docker/build-push-action@v7
+        with:
+          context: services/agent-server
+          file: services/agent-server/Dockerfile
+          tags: paca-agent-server-goose:e2e
+          push: false
+          load: true
+          cache-from: type=gha,scope=agent-server-goose
+          cache-to: type=gha,mode=max,scope=agent-server-goose
+
+      - name: Run E2E tests
+        # Lower -parallel than the unit-test job's implicit default: most of
+        # these tests spin up a real Docker sandbox container requesting 2
+        # CPU / 4GiB each (sandbox.Manager.Start's hardcoded Resources) —
+        # only the two Docker-free test files call t.Parallel(), so this
+        # mainly benefits those plus intra-suite scheduling rather than
+        # launching several 2-core/4GiB containers at once on a standard
+        # runner.
+        env:
+          PACA_E2E: "1"
+          AGENT_SERVER_IMAGE: "paca-agent-server-goose:e2e"
+        run: go test -v -timeout 600s -parallel 4 ./test/e2e/...

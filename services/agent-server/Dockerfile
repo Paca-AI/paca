@@ -21,8 +21,8 @@
 # pinned git tag would fix that gap but wasn't attempted here — see the
 # migration doc.
 #
-# When rotating this digest, re-run every livecheck under
-# services/agent-runner/internal/*/livecheck against the new one before
+# When rotating this digest, run the full E2E suite
+# (services/agent-runner/test/e2e, PACA_E2E=1) against the new one before
 # changing it here — the ACP wire format and container behavior were only
 # ever verified against this specific digest.
 FROM ghcr.io/block/goose@sha256:d85a724ee487425f38ce015323adf2003591268ee515d9018ac89450ed7d3a5a

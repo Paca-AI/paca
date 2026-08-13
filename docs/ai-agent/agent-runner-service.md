@@ -38,8 +38,7 @@ services/agent-runner/
 ├── go.mod / go.sum
 ├── Dockerfile
 ├── cmd/agent-runner/
-│   ├── main.go                    # wiring: config, repos, executor, consumer, HTTP server
-│   └── livecheck*/                # throwaway programs exercising real infra by hand — see each's doc comment
+│   └── main.go                    # wiring: config, repos, executor, consumer, HTTP server
 ├── internal/
 │   ├── acp/                       # ACP-over-HTTP+SSE client (initialize, session/new, session/prompt)
 │   ├── acpbridge/                 # acp-type dispatch: WebSocket registry + HTTP server
@@ -53,9 +52,11 @@ services/agent-runner/
 │   ├── repository/postgres/       # agent config + conversation status/event repositories
 │   ├── sandbox/                   # Docker container lifecycle for the Goose sandbox
 │   └── secret/                    # AES-256-GCM encrypt/decrypt for LLM API keys and agent env vars
+└── test/e2e/                      # automated E2E suite: real Docker/Postgres/Valkey via testcontainers-go +
+                                    # sandbox.Manager, gated on PACA_E2E=1, run by the test-e2e CI job
 ```
 
-Every `internal/*/livecheck*` program is a `package main`, not part of the library build — each verifies its package against real Docker/Postgres/Valkey/a real `goose serve` container, run by hand, not from CI. See each one's doc comment.
+Every real-infra behavior this service has (Docker/Postgres/Valkey/a real `goose serve` container) is covered by `test/e2e/` — see that directory's `common_env_test.go` doc comment and each test file's own doc comment for what it exercises. This used to be a set of manually-run `internal/*/livecheck*` programs, not wired into CI; they were replaced by this automated suite (see `.github/workflows/agent-runner-pr-ci.yml`'s `test-e2e` job).
 
 ---
 

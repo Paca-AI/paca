@@ -6,8 +6,8 @@
 //
 // This file is deliberately thin — it only constructs dependencies and
 // wires them into a handler.Handler. The actual per-message behavior lives
-// in internal/handler so it can be driven directly by tests and livecheck
-// programs without going through the full binary.
+// in internal/handler so it can be driven directly by tests (including
+// test/e2e's real-infra suite) without going through the full binary.
 package main
 
 import (

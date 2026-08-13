@@ -33,9 +33,9 @@ func testLogger() *slog.Logger {
 }
 
 // TestConsumer_RoutesControlAndTriggerMessagesSeparately confirms the
-// actual "type"-field routing a real stream entry goes through — the
-// livecheck-stop program verifies HandleControl's *effect* end to end, but
-// calls it directly; this is the missing piece, that a genuine
+// actual "type"-field routing a real stream entry goes through —
+// test/e2e/stop_control_test.go verifies HandleControl's *effect* end to
+// end, but calls it directly; this is the missing piece, that a genuine
 // agent.stop-shaped stream message (no agent_id, no trigger_type, exactly
 // what Service.StopConversation actually publishes — see
 // agent_service.go) gets identified as a control message at all, rather

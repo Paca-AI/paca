@@ -2,8 +2,8 @@
 // executor, Postgres, and the Valkey publishers — the actual behavior
 // cmd/agent-runner's main.go just constructs and hands to
 // messaging.Consumer. Split out from package main so it's importable by
-// tests (and by livecheck programs) instead of only reachable by running
-// the whole binary.
+// tests (including test/e2e's real-infra suite) instead of only reachable
+// by running the whole binary.
 package handler
 
 import (
@@ -34,8 +34,9 @@ import (
 // instance shared across every trigger and control message the process
 // handles. Exported (unlike the "Handler" name might suggest is needed for
 // a single-binary command) specifically so tests can drive Handle/
-// HandleControl directly against a real or fake backing store, the same
-// way cmd/agent-runner/livecheck already does for Handle alone.
+// HandleControl directly against a real or fake backing store — see
+// test/e2e/trigger_orchestration_test.go for Handle driven against real
+// infrastructure.
 type Handler struct {
 	Gate          config.Gate
 	AgentRepo     *postgres.AgentRepository
@@ -83,8 +84,8 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	// exists or how to reach it (list_repositories/clone_repository), and
 	// silently starts working against an empty sandbox. Prepended ahead of
 	// cfg.Skills so per-agent customizations still render after it. Nil
-	// only in tooling that doesn't wire a PACA_API_URL (see livecheck
-	// programs' Handler construction) — real deployments always set it.
+	// only in tooling that doesn't wire a PACA_API_URL (see test/e2e's
+	// Handler construction) — real deployments always set it.
 	if h.BundledSkills != nil {
 		bundled, err := h.BundledSkills.Load(ctx)
 		if err != nil {
