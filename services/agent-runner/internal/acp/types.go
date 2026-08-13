@@ -20,7 +20,10 @@
 // depending on them.
 package acp
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // ─── JSON-RPC 2.0 envelope ─────────────────────────────────────────────────
 
@@ -57,7 +60,21 @@ type rpcError struct {
 	Data    any    `json:"data,omitempty"`
 }
 
-func (e *rpcError) Error() string { return e.Message }
+// Error renders Data alongside Message when present — goose serve puts the
+// actually-useful diagnostic there (e.g. "Failed to set provider: Could not
+// configure agent: missing provider", or a wrapped provider-API error like
+// an upstream 401) while Message is often just the generic JSON-RPC
+// "Internal error". Dropping Data left every session/new or session/prompt
+// failure's DB-persisted error_message (and logs) as an unhelpful "Internal
+// error" with no way to tell a bad API key from a missing provider without
+// reproducing the call by hand. See docs/ai-agent/goose-migration.md's
+// "acp: session/new: Internal error" investigation.
+func (e *rpcError) Error() string {
+	if e.Data != nil {
+		return fmt.Sprintf("%s: %v", e.Message, e.Data)
+	}
+	return e.Message
+}
 
 // ─── initialize ─────────────────────────────────────────────────────────────
 
