@@ -160,6 +160,26 @@ jobs:
           cache-from: type=gha,scope=agent-server-goose
           cache-to: type=gha,mode=max,scope=agent-server-goose
 
+      # TestACPClientAgainstRealGooseContainer and TestSandboxManagerLifecycle
+      # (see test/e2e/helpers_test.go's rawUpstreamGooseImage) run the bare
+      # upstream image directly, not paca-agent-server-goose:e2e — and the
+      # build step above doesn't warm the classic Docker image store with it:
+      # docker/build-push-action's default buildx driver fetches FROM's base
+      # layers into BuildKit's own content store, which sandbox.Manager's
+      # ImageList-based cache check (internal/sandbox/sandbox.go's
+      # ensureImage) can't see. Without this, the first such test to run pays
+      # a full registry pull inline against its own 60s test context — and
+      # that pull, plus the same image getting pulled again if the first
+      # attempt is cancelled mid-pull, was slow/contended enough on shared
+      # runners to blow through every other Docker-backed e2e test's context
+      # deadline too (all observed hanging in sandbox.go's waitForReady, not
+      # failing outright — confirmed by re-running the full suite locally
+      # against an already-warm image cache, where it passes in under a
+      # minute). Pre-pulling here keeps that cost out of any single test's
+      # budget.
+      - name: Pull upstream Goose image (pinned in services/agent-server/Dockerfile)
+        run: docker pull "$(grep -oP '^FROM\s+\K\S+' ../agent-server/Dockerfile)"
+
       - name: Run E2E tests
         # Lower -parallel than the unit-test job's implicit default: most of
         # these tests spin up a real Docker sandbox container requesting 2
