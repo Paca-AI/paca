@@ -67,8 +67,12 @@
 				"userNotFound": "ユーザーが見つかりません。既に削除された可能性があります。",
 				"forbidden": "この操作を実行する権限がありません。",
 				"internalError": "サーバーで問題が発生しました。もう一度お試しください。",
-				"generic": "問題が発生しました。"
-			}
+				"generic": "問題が発生しました。",
+				"emailRequired": "有効なメールアドレスを入力してください。"
+			},
+			"emailLabel": "メール",
+			"emailPlaceholder": "user@example.com",
+			"emailEditHint": "メールはここでは変更できません。"
 		},
 		"resetPasswordDialog": {
 			"title": "パスワードをリセット",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "保存に失敗しました。もう一度お試しください。"
 			}
+		},
+		"email": {
+			"title": "メール設定",
+			"description": "システムメールの送信に使う SMTP サーバーを設定します。",
+			"sendOnCreateLabel": "ユーザー作成時にメールを送信",
+			"sendOnCreateHint": "有効にすると、ユーザーの作成（またはパスワードのリセット）時に認証情報をそのメールアドレスに送信します。",
+			"fromEmailLabel": "送信元メールアドレス",
+			"fromNameLabel": "表示名",
+			"fromNamePlaceholder": "例：Acme",
+			"hostLabel": "SMTP ホスト",
+			"portLabel": "SMTP ポート",
+			"usernameLabel": "ユーザー名",
+			"passwordLabel": "パスワード",
+			"passwordKeepPlaceholder": "現在の値を保持するには空欄のままにします",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "設定を保存",
+			"saved": "保存しました",
+			"errors": {
+				"saveFailed": "メール設定を保存できませんでした。"
+			},
+			"test": {
+				"title": "テストメールを送信",
+				"hint": "保存済みの設定を使用します。テスト前に保存してください。",
+				"placeholder": "recipient@example.com",
+				"button": "テストメールを送信",
+				"success": "テストメールを送信しました。",
+				"failed": "テストメールの送信に失敗しました。"
+			},
+			"skipVerifyLabel": "TLS 証明書の検証をスキップ",
+			"skipVerifyHint": "安全ではありません — ホスティングサーバーの証明書が SMTP ホスト名と一致しない場合（x509 証明書エラー）にのみ使用してください。"
 		}
 	}
 }

@@ -67,8 +67,12 @@
 				"userNotFound": "Không tìm thấy người dùng. Có thể người dùng đã bị xóa.",
 				"forbidden": "Bạn không có quyền thực hiện thao tác này.",
 				"internalError": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
-				"generic": "Đã xảy ra lỗi."
-			}
+				"generic": "Đã xảy ra lỗi.",
+				"emailRequired": "Nhập e-mail hợp lệ."
+			},
+			"emailLabel": "E-mail",
+			"emailPlaceholder": "nguoidung@vidu.com",
+			"emailEditHint": "Không thể thay đổi e-mail tại đây."
 		},
 		"resetPasswordDialog": {
 			"title": "Đặt lại mật khẩu",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "Lưu thất bại. Vui lòng thử lại."
 			}
+		},
+		"email": {
+			"title": "Cấu hình e-mail",
+			"description": "Cấu hình máy chủ SMTP dùng để gửi e-mail hệ thống.",
+			"sendOnCreateLabel": "Gửi e-mail khi tạo người dùng",
+			"sendOnCreateHint": "Khi bật, việc tạo người dùng (hoặc đặt lại mật khẩu) sẽ gửi thông tin đăng nhập tới e-mail của họ.",
+			"fromEmailLabel": "E-mail người gửi",
+			"fromNameLabel": "Tên hiển thị",
+			"fromNamePlaceholder": "Ví dụ: Acme",
+			"hostLabel": "Máy chủ SMTP",
+			"portLabel": "Cổng SMTP",
+			"usernameLabel": "Tên đăng nhập",
+			"passwordLabel": "Mật khẩu",
+			"passwordKeepPlaceholder": "Để trống để giữ mật khẩu hiện tại",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "Lưu cấu hình",
+			"saved": "Đã lưu",
+			"errors": {
+				"saveFailed": "Không thể lưu cấu hình e-mail."
+			},
+			"test": {
+				"title": "Gửi e-mail thử",
+				"hint": "Dùng cấu hình đã lưu — hãy lưu trước khi thử.",
+				"placeholder": "nguoinhan@vidu.com",
+				"button": "Gửi e-mail thử",
+				"success": "Đã gửi e-mail thử thành công.",
+				"failed": "Gửi e-mail thử thất bại."
+			},
+			"skipVerifyLabel": "Bỏ qua xác minh chứng chỉ TLS",
+			"skipVerifyHint": "Không an toàn — chỉ dùng khi máy chủ lưu trữ có chứng chỉ không khớp với máy chủ SMTP (lỗi chứng chỉ x509)."
 		}
 	}
 }

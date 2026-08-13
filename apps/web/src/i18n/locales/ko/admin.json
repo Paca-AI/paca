@@ -67,8 +67,12 @@
 				"userNotFound": "사용자를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.",
 				"forbidden": "이 작업을 수행할 권한이 없습니다.",
 				"internalError": "서버에서 문제가 발생했습니다. 다시 시도해 주세요.",
-				"generic": "문제가 발생했습니다."
-			}
+				"generic": "문제가 발생했습니다.",
+				"emailRequired": "유효한 이메일을 입력하세요."
+			},
+			"emailLabel": "이메일",
+			"emailPlaceholder": "user@example.com",
+			"emailEditHint": "여기서는 이메일을 변경할 수 없습니다."
 		},
 		"resetPasswordDialog": {
 			"title": "비밀번호 재설정",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "저장에 실패했습니다. 다시 시도해 주세요."
 			}
+		},
+		"email": {
+			"title": "이메일 설정",
+			"description": "시스템 이메일 전송에 사용할 SMTP 서버를 설정하세요.",
+			"sendOnCreateLabel": "사용자 생성 시 이메일 보내기",
+			"sendOnCreateHint": "켜져 있으면 사용자를 만들거나 비밀번호를 재설정할 때 자격 증명을 해당 이메일로 보냅니다.",
+			"fromEmailLabel": "보내는 사람 이메일",
+			"fromNameLabel": "표시 이름",
+			"fromNamePlaceholder": "예: Acme",
+			"hostLabel": "SMTP 호스트",
+			"portLabel": "SMTP 포트",
+			"usernameLabel": "사용자 이름",
+			"passwordLabel": "비밀번호",
+			"passwordKeepPlaceholder": "현재 값을 유지하려면 비워 두세요",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "설정 저장",
+			"saved": "저장됨",
+			"errors": {
+				"saveFailed": "이메일 설정을 저장하지 못했습니다."
+			},
+			"test": {
+				"title": "테스트 이메일 보내기",
+				"hint": "저장된 설정을 사용합니다 — 테스트 전에 저장하세요.",
+				"placeholder": "받는사람@example.com",
+				"button": "테스트 이메일 보내기",
+				"success": "테스트 이메일을 보냈습니다.",
+				"failed": "테스트 이메일 전송에 실패했습니다."
+			},
+			"skipVerifyLabel": "TLS 인증서 검증 건너뛰기",
+			"skipVerifyHint": "안전하지 않음 — 호스팅 서버의 인증서가 SMTP 호스트와 일치하지 않을 때(x509 인증서 오류)에만 사용하세요."
 		}
 	}
 }

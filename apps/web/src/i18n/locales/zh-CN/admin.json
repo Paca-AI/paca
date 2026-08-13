@@ -67,8 +67,12 @@
 				"userNotFound": "未找到该用户，可能已被删除。",
 				"forbidden": "您没有权限执行此操作。",
 				"internalError": "服务器出现错误，请重试。",
-				"generic": "出现错误。"
-			}
+				"generic": "出现错误。",
+				"emailRequired": "请输入有效的邮箱。"
+			},
+			"emailLabel": "邮箱",
+			"emailPlaceholder": "user@example.com",
+			"emailEditHint": "此处无法修改邮箱。"
 		},
 		"resetPasswordDialog": {
 			"title": "重置密码",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "保存失败，请重试。"
 			}
+		},
+		"email": {
+			"title": "邮件配置",
+			"description": "配置用于发送系统邮件的 SMTP 服务器。",
+			"sendOnCreateLabel": "创建用户时发送邮件",
+			"sendOnCreateHint": "开启后，创建用户（或重置其密码）时会将登录凭据发送到其邮箱。",
+			"fromEmailLabel": "发件人邮箱",
+			"fromNameLabel": "显示名称",
+			"fromNamePlaceholder": "例如：Acme",
+			"hostLabel": "SMTP 主机",
+			"portLabel": "SMTP 端口",
+			"usernameLabel": "用户名",
+			"passwordLabel": "密码",
+			"passwordKeepPlaceholder": "留空以保留当前密码",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "保存设置",
+			"saved": "已保存",
+			"errors": {
+				"saveFailed": "无法保存邮件设置。"
+			},
+			"test": {
+				"title": "发送测试邮件",
+				"hint": "使用已保存的设置——请先保存再测试。",
+				"placeholder": "收件人@example.com",
+				"button": "发送测试邮件",
+				"success": "测试邮件已成功发送。",
+				"failed": "发送测试邮件失败。"
+			},
+			"skipVerifyLabel": "跳过 TLS 证书校验",
+			"skipVerifyHint": "不安全——仅在主机服务器提供的证书与 SMTP 主机名不匹配时（即 x509 证书错误）使用。"
 		}
 	}
 }

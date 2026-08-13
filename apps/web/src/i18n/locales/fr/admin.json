@@ -67,8 +67,12 @@
 				"userNotFound": "Utilisateur introuvable. Il a peut-être déjà été supprimé.",
 				"forbidden": "Vous n'avez pas la permission d'effectuer cette action.",
 				"internalError": "Une erreur s'est produite sur le serveur. Veuillez réessayer.",
-				"generic": "Une erreur s'est produite."
-			}
+				"generic": "Une erreur s'est produite.",
+				"emailRequired": "Saisissez un e-mail valide."
+			},
+			"emailLabel": "E-mail",
+			"emailPlaceholder": "utilisateur@exemple.com",
+			"emailEditHint": "L'e-mail ne peut pas être modifié ici."
 		},
 		"resetPasswordDialog": {
 			"title": "Réinitialiser le mot de passe",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "Échec de l’enregistrement. Veuillez réessayer."
 			}
+		},
+		"email": {
+			"title": "Configuration des e-mails",
+			"description": "Configurez le serveur SMTP utilisé pour envoyer les e-mails du système.",
+			"sendOnCreateLabel": "Envoyer un e-mail à la création d'un utilisateur",
+			"sendOnCreateHint": "Lorsque activé, la création d'un utilisateur (ou la réinitialisation de son mot de passe) envoie ses identifiants à son adresse.",
+			"fromEmailLabel": "E-mail de l'expéditeur",
+			"fromNameLabel": "Nom affiché",
+			"fromNamePlaceholder": "Ex. : Acme",
+			"hostLabel": "Serveur SMTP",
+			"portLabel": "Port SMTP",
+			"usernameLabel": "Utilisateur",
+			"passwordLabel": "Mot de passe",
+			"passwordKeepPlaceholder": "Laissez vide pour conserver l'actuel",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "Enregistrer",
+			"saved": "Enregistré",
+			"errors": {
+				"saveFailed": "Impossible d'enregistrer la configuration des e-mails."
+			},
+			"test": {
+				"title": "Envoyer un e-mail de test",
+				"hint": "Utilise la configuration enregistrée — enregistrez avant de tester.",
+				"placeholder": "destinataire@exemple.com",
+				"button": "Envoyer un e-mail de test",
+				"success": "E-mail de test envoyé avec succès.",
+				"failed": "Échec de l'envoi de l'e-mail de test."
+			},
+			"skipVerifyLabel": "Ignorer la vérification du certificat TLS",
+			"skipVerifyHint": "Non sécurisé — à utiliser uniquement lorsque l'hébergeur présente un certificat qui ne correspond pas au serveur SMTP (l'erreur de certificat x509)."
 		}
 	}
 }

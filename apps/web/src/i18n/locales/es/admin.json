@@ -67,8 +67,12 @@
 				"userNotFound": "Usuario no encontrado. Puede que ya haya sido eliminado.",
 				"forbidden": "No tienes permiso para realizar esta acción.",
 				"internalError": "Algo salió mal en el servidor. Inténtalo de nuevo.",
-				"generic": "Algo salió mal."
-			}
+				"generic": "Algo salió mal.",
+				"emailRequired": "Introduce un correo válido."
+			},
+			"emailLabel": "Correo",
+			"emailPlaceholder": "usuario@ejemplo.com",
+			"emailEditHint": "El correo no se puede cambiar aquí."
 		},
 		"resetPasswordDialog": {
 			"title": "Restablecer contraseña",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "No se pudo guardar. Inténtalo de nuevo."
 			}
+		},
+		"email": {
+			"title": "Configuración de correo",
+			"description": "Configura el servidor SMTP usado para enviar los correos del sistema.",
+			"sendOnCreateLabel": "Enviar correo al crear usuario",
+			"sendOnCreateHint": "Cuando está activo, al crear un usuario (o restablecer su contraseña) se envían las credenciales a su correo.",
+			"fromEmailLabel": "Correo del remitente",
+			"fromNameLabel": "Nombre para mostrar",
+			"fromNamePlaceholder": "Ej.: Acme",
+			"hostLabel": "Servidor SMTP",
+			"portLabel": "Puerto SMTP",
+			"usernameLabel": "Usuario",
+			"passwordLabel": "Contraseña",
+			"passwordKeepPlaceholder": "Déjalo vacío para mantener la actual",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "Guardar configuración",
+			"saved": "Guardado",
+			"errors": {
+				"saveFailed": "No se pudo guardar la configuración de correo."
+			},
+			"test": {
+				"title": "Enviar correo de prueba",
+				"hint": "Usa la configuración guardada — guárdala antes de probar.",
+				"placeholder": "destinatario@ejemplo.com",
+				"button": "Enviar correo de prueba",
+				"success": "Correo de prueba enviado correctamente.",
+				"failed": "No se pudo enviar el correo de prueba."
+			},
+			"skipVerifyLabel": "Omitir la verificación del certificado TLS",
+			"skipVerifyHint": "Inseguro — úsalo solo cuando el servidor de alojamiento presenta un certificado que no coincide con el host SMTP (el error de certificado x509)."
 		}
 	}
 }

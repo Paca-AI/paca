@@ -1,0 +1,444 @@
+services:
+  api:
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+      valkey:
+        condition: service_healthy
+        required: true
+    environment:
+      ADMIN_PASSWORD: b7d77f9663abb41257d8ea66e4f9fbc7
+      ADMIN_USERNAME: admin
+      AGENT_API_KEY: ""
+      AI_AGENT_INTERNAL_KEY: 29c26dc17caf62957e1c93407b33002210dae64fb6306dcda33ea0fe0620f315
+      COOKIE_SECURE: "true"
+      DATABASE_URL: postgres://paca:35a4fd3ac1e5e71a8902c697cb08650708988c4a1c4ae6ea79b79944038cc4aa@postgres:5432/paca?sslmode=disable
+      ENCRYPTION_KEY: c8c8f87ab8d1082f7df6f950a66435f44ffb7be6bba9d2768e6ef8799f1dba52
+      ENV: production
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_SESSION_TTL: 24h
+      JWT_REFRESH_TTL: 168h
+      JWT_SECRET: b2c6c26546e8f13aca5a1e110d7701cacf68f633ca6c0c088d76729abfbb8f6c
+      PACA_VERSION: v0.12.2-evup.3
+      PLUGINS_FRONTEND_DIR: /plugins-frontend
+      PLUGINS_MCP_DIR: /plugins-mcp
+      PLUGINS_SKILLS_DIR: /plugins-skills
+      PLUGINS_WASM_DIR: /plugins
+      PORT: "8080"
+      PUBLIC_URL: https://paca.evup.com.br
+      REDIS_URL: redis://valkey:6379/0
+      RELEASE_FORK_REPO: ""
+      RELEASE_UPSTREAM_REPO: Paca-AI/paca
+      STORAGE_ACCESS_KEY_ID: 403167c903b06ef95bc95263
+      STORAGE_BUCKET: paca
+      STORAGE_ENDPOINT: minio:9000
+      STORAGE_PROVIDER: minio
+      STORAGE_PUBLIC_URL: https://paca.evup.com.br/storage
+      STORAGE_REGION: us-east-1
+      STORAGE_SECRET_ACCESS_KEY: 532c2cb38db5d5ea1e5de79f1d916157f352019c582d4cd5
+      STORAGE_USE_SSL: "false"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://localhost:8080/api/healthz
+      timeout: 5s
+      interval: 10s
+      retries: 10
+      start_period: 40s
+    image: ghcr.io/vhervatin/paca-api:0.12.2-evup.3
+    networks:
+      default: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: backend_plugins
+        target: /plugins
+        volume: {}
+      - type: volume
+        source: frontend_plugins
+        target: /plugins-frontend
+        volume: {}
+      - type: volume
+        source: mcp_plugins
+        target: /plugins-mcp
+        volume: {}
+      - type: volume
+        source: skills_plugins
+        target: /plugins-skills
+        volume: {}
+  gateway:
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+      realtime:
+        condition: service_started
+        required: true
+      web:
+        condition: service_started
+        required: true
+    expose:
+      - "80"
+    image: caddy:2-alpine
+    networks:
+      default: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: frontend_plugins
+        target: /var/www/plugins
+        read_only: true
+        volume: {}
+      - type: volume
+        source: mcp_plugins
+        target: /var/www/plugins-mcp
+        read_only: true
+        volume: {}
+      - type: volume
+        source: skills_plugins
+        target: /var/www/plugins-skills
+        read_only: true
+        volume: {}
+      - type: volume
+        source: caddy_data
+        target: /data
+        volume: {}
+      - type: volume
+        source: caddy_config
+        target: /config
+        volume: {}
+  minio:
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    environment:
+      MINIO_ROOT_PASSWORD: 532c2cb38db5d5ea1e5de79f1d916157f352019c582d4cd5
+      MINIO_ROOT_USER: 403167c903b06ef95bc95263
+    healthcheck:
+      test:
+        - CMD
+        - mc
+        - ready
+        - local
+      timeout: 5s
+      interval: 10s
+      retries: 10
+    image: minio/minio:latest
+    networks:
+      default: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: minio_data
+        target: /data
+        volume: {}
+  postgres:
+    environment:
+      POSTGRES_DB: paca
+      POSTGRES_PASSWORD: 35a4fd3ac1e5e71a8902c697cb08650708988c4a1c4ae6ea79b79944038cc4aa
+      POSTGRES_USER: paca
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U paca -d paca
+      timeout: 5s
+      interval: 10s
+      retries: 10
+    image: postgres:16-alpine
+    networks:
+      default: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+        volume: {}
+  realtime:
+    depends_on:
+      api:
+        condition: service_healthy
+        required: true
+      valkey:
+        condition: service_healthy
+        required: true
+    environment:
+      API_URL: http://api:8080
+      CORS_ORIGINS: https://paca.evup.com.br
+      LOG_LEVEL: info
+      NODE_ENV: production
+      PORT: "3001"
+      REDIS_URL: redis://valkey:6379/0
+    image: ghcr.io/vhervatin/paca-realtime:0.12.2-evup.3
+    networks:
+      default: null
+    restart: unless-stopped
+  valkey:
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+    healthcheck:
+      test:
+        - CMD
+        - valkey-cli
+        - ping
+      timeout: 5s
+      interval: 10s
+      retries: 10
+    image: valkey/valkey:8-alpine
+    networks:
+      default: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: valkey_data
+        target: /data
+        volume: {}
+  web:
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+    image: ghcr.io/vhervatin/paca-web:0.12.2-evup.3
+    networks:
+      default: null
+    restart: unless-stopped
+networks:
+  default:
+    name: deploy_default
+volumes:
+  backend_plugins:
+    name: deploy_backend_plugins
+  caddy_config:
+    name: deploy_caddy_config
+  caddy_data:
+    name: deploy_caddy_data
+  frontend_plugins:
+    name: deploy_frontend_plugins
+  mcp_plugins:
+    name: deploy_mcp_plugins
+  minio_data:
+    name: deploy_minio_data
+  postgres_data:
+    name: deploy_postgres_data
+  skills_plugins:
+    name: deploy_skills_plugins
+  valkey_data:
+    name: deploy_valkey_data
+configs:
+  caddyfile:
+    name: deploy_caddyfile
+    content: |
+      # =============================================================================
+      # Gateway Caddy configuration
+      # =============================================================================
+      #
+      # Single public entrypoint for the Paca stack:
+      #
+      #   /api/*          →  REST API service       (forwarded as-is, /api kept)
+      #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
+      #   /agent-bridge/ws → AI-agent local ACP bridge WebSocket (forwarded as-is)
+      #   /storage/*      →  MinIO                   (/storage stripped)
+      #   /plugins/*      →  Plugin frontend assets  (static files)
+      #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
+      #   /plugins-skills/* → Plugin Agent Skills bundles (static files)
+      #   /*              →  Web application         (SPA with client-side routing)
+      #
+      # This file is mounted at /etc/caddy/Caddyfile inside the gateway container.
+      #
+      # SITE_ADDRESS controls automatic HTTPS
+      # ---------------------------------------
+      #   - A bare port (the default, ":80") serves plain HTTP with no TLS at all.
+      #     Caddy can't safely provision a certificate for an unbounded catch-all
+      #     address, so use this only when something else terminates TLS in front
+      #     of this gateway.
+      #   - Any concrete address — a domain name, an IP address, "localhost", a
+      #     "*.localhost" name, etc. — gets HTTPS automatically:
+      #       • A real domain name with DNS already pointed here (e.g.
+      #         "paca.example.com") gets a trusted Let's Encrypt certificate,
+      #         renewed automatically. Ports 80 and 443 must both be reachable
+      #         from the internet for the ACME challenge to succeed.
+      #       • Anything else (an IP address, "localhost", "*.localhost", ...)
+      #         gets a certificate from Caddy's own local certificate authority
+      #         instead. Traffic is still encrypted, but browsers will show a
+      #         trust warning since that CA isn't publicly trusted.
+      #     Either way, certificates persist in the caddy_data volume so they
+      #     survive container restarts/recreations.
+      #   install.sh enables HTTPS by default and prompts for this address.
+      # =============================================================================
+
+      (mcp_skills_routes) {
+      	# -- MCP plugin bundles -------------------------------------------------------
+      	#
+      	# Self-contained ESM bundles loaded at runtime by the MCP server. Kept on a
+      	# separate path from frontend assets so WASM/CSS concerns from the
+      	# /plugins/* block don't bleed into MCP serving.
+      	#
+      	# Set remoteEntryUrl in each plugin's plugin.json mcp section to an
+      	# absolute URL, for example:
+      	#   https://paca.evup.com.br/plugins-mcp/<plugin-id>/mcp.js
+      	handle_path /plugins-mcp/* {
+      		root * /var/www/plugins-mcp
+      		header Cache-Control "public, max-age=900, immutable"
+      		file_server
+      	}
+
+      	# -- Plugin Agent Skills bundles ----------------------------------------------
+      	#
+      	# SKILL.md directories loaded at conversation start by the ai-agent service.
+      	# Kept on a separate path from frontend/MCP assets for the same reason as
+      	# the MCP block above.
+      	#
+      	# Set baseUrl in each plugin's plugin.json skills section to an absolute
+      	# URL, for example:
+      	#   https://paca.evup.com.br/plugins-skills/<plugin-id>
+      	handle_path /plugins-skills/* {
+      		root * /var/www/plugins-skills
+      		header Cache-Control "public, max-age=900, immutable"
+      		file_server
+      	}
+      }
+
+      :80 {
+      	encode gzip
+
+      	log {
+      		output stdout
+      	}
+
+      	header {
+      		X-Frame-Options "DENY"
+      		X-Content-Type-Options "nosniff"
+      		Referrer-Policy "strict-origin-when-cross-origin"
+      		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+      		X-XSS-Protection "0"
+      		-Server
+      	}
+
+      	# Reject oversized request bodies at the gateway before they reach
+      	# upstreams. Object storage uploads (handled below) are exempt.
+      	@notStorage not path /storage/*
+      	request_body @notStorage {
+      		max_size 10MB
+      	}
+
+      	# -- Object storage (MinIO) ------------------------------------------------
+      	#
+      	# The Host header is rewritten to the internal MinIO address so that AWS
+      	# Signature V4 validation succeeds: MinIO re-derives the HMAC using the
+      	# Host it receives, which must match the host that was used when the
+      	# presigned URL was generated (minio:9000).
+      	#
+      	# The API rewrites presigned URL hosts from "minio:9000" to
+      	# STORAGE_PUBLIC_URL (e.g. "http://localhost/storage") before returning
+      	# them to clients, so browsers always receive routable URLs.
+      	handle_path /storage/* {
+      		reverse_proxy minio:9000 {
+      			header_up Host minio:9000
+      		}
+      	}
+
+      	# -- Realtime service (Socket.IO) ------------------------------------------
+      	#
+      	# WebSocket upgrade requests are detected and proxied automatically.
+      	#
+      	# Client-side connection:
+      	#   io("http://localhost", { path: "/ws/socket.io", withCredentials: true })
+      	handle_path /ws/* {
+      		reverse_proxy realtime:3001
+      	}
+
+      	# -- Local plugin frontend assets -------------------------------------------
+      	#
+      	# Serves statically-built micro-frontend bundles for locally installed
+      	# plugins. Only plugins/local/frontend is mounted here (plugins/local/backend
+      	# is mounted exclusively to the API container), so WASM binaries and SQL
+      	# migrations are never reachable over HTTP.
+      	#
+      	# Set remoteEntryUrl in each plugin's plugin.json to:
+      	#   /plugins/<plugin-id>/assets/remoteEntry.js
+      	handle_path /plugins/* {
+      		root * /var/www/plugins
+
+      		@wasm path *.wasm
+      		header @wasm Content-Type "application/wasm"
+
+      		# Fingerprinted assets can be cached immutably for a long time.
+      		header Cache-Control "public, max-age=900, immutable"
+      		file_server
+      	}
+
+      	# -- MCP plugin bundles + Plugin Agent Skills bundles -------------------------
+      	#
+      	# See the `mcp_skills_routes` snippet above. Also served on the internal
+      	# :8080 block below, which the MCP server / ai-agent use instead of this
+      	# public port for their own fetches — see that block for why.
+      	import mcp_skills_routes
+
+      	# -- API routes ---------------------------------------------------------------
+      	#
+      	# Forwards the /api prefix as-is to the upstream:
+      	#   /api/v1/users  →  /api/v1/users
+      	#   /api/healthz   →  /api/healthz
+      	handle /api/* {
+      		reverse_proxy api:8080
+      	}
+
+      	# -- AI agent local ACP bridge -------------------------------------------------
+      	#
+      	# The only part of services/ai-agent exposed publicly: the WebSocket a
+      	# user's local `paca-acp-bridge` daemon connects to (see
+      	# services/ai-agent/src/routes/bridge.py). WebSocket upgrades are proxied
+      	# automatically, same as the realtime service above.
+      	#
+      	# Scoped to exactly /agent-bridge/ws — the sibling /agent-bridge/status/*
+      	# and /agent-bridge/disconnect/* routes are internal-only (called by
+      	# services/api over the docker-internal network) and must not be
+      	# reachable from here.
+      	handle /agent-bridge/ws {
+      		reverse_proxy ai-agent:8080
+      	}
+
+      	# -- Web application (SPA) -----------------------------------------------------
+      	#
+      	# WebSocket upgrades are detected and proxied automatically, so Vite HMR
+      	# and any future realtime traffic through this path work unmodified.
+      	handle {
+      		reverse_proxy web:3000
+      	}
+      }
+
+      # -- Internal MCP/Skills bundle port ------------------------------------------
+      #
+      # The MCP server and ai-agent fetch plugin MCP/skills bundles via
+      # GATEWAY_BASE_URL over plain http:// on the docker-internal network.
+      # services/ai-agent/src/config.py reads GATEWAY_BASE_URL and forwards it to
+      # the spawned MCP subprocess as PACA_GATEWAY_URL (see
+      # services/ai-agent/src/agent/builder.py), which apps/mcp/src/plugin-loader.ts
+      # then uses to resolve plugin bundle URLs. When SITE_ADDRESS above is a real
+      # domain, Caddy enables automatic HTTPS for it,
+      # which installs a catch-all HTTP→HTTPS redirect on port 80 for *any* Host
+      # header — including these internal requests. Caddy has no certificate for
+      # the "gateway" hostname, so the followed redirect's TLS handshake fails.
+      #
+      # A bare port never gets automatic HTTPS (see the SITE_ADDRESS comment at the
+      # top of this file), so this dedicated internal port sidesteps the redirect
+      # entirely. It is not published to the host in docker-compose — only reachable
+      # from other containers on the compose network. GATEWAY_BASE_URL must point
+      # here (http://gateway:8080), not at the public port.
+      :8080 {
+      	import mcp_skills_routes
+      }

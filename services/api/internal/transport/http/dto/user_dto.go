@@ -15,6 +15,9 @@ type CreateUserRequest struct {
 	Username string `json:"username"  binding:"required"`
 	Password string `json:"password"  binding:"required,min=8"`
 	FullName string `json:"full_name" binding:"required"`
+	// Email is required: every new account carries an e-mail address,
+	// used to deliver the credential e-mail when that feature is enabled.
+	Email string `json:"email" binding:"required,email"`
 	// Role is optional; defaults to "USER" when omitted.
 	// The provided role name is validated against the global_roles table.
 	Role string `json:"role" binding:"omitempty"`
@@ -48,6 +51,7 @@ type UserResponse struct {
 	ID                 uuid.UUID `json:"id"`
 	Username           string    `json:"username"`
 	FullName           string    `json:"full_name"`
+	Email              *string   `json:"email,omitempty"`
 	Role               string    `json:"role"`
 	MustChangePassword bool      `json:"must_change_password"`
 	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
@@ -56,6 +60,10 @@ type UserResponse struct {
 	AvatarURL      *string   `json:"avatar_url,omitempty"`
 	AvatarThumbURL *string   `json:"avatar_thumb_url,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
+	// EmailSent is populated only on create/reset-password responses:
+	// true if a credential e-mail was sent, false if sending was on but
+	// failed, nil/omitted when e-mail sending wasn't attempted.
+	EmailSent *bool `json:"email_sent,omitempty"`
 }
 
 // PagedUsersResponse wraps a list of users with pagination metadata.
@@ -72,6 +80,7 @@ func UserFromEntity(u *userdom.User) UserResponse {
 		ID:                 u.ID,
 		Username:           u.Username,
 		FullName:           u.FullName,
+		Email:              u.Email,
 		Role:               u.Role,
 		MustChangePassword: u.MustChangePassword,
 		CreatedAt:          u.CreatedAt,

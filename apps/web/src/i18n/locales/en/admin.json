@@ -79,8 +79,12 @@
 				"userNotFound": "User not found. They may have already been deleted.",
 				"forbidden": "You don't have permission to perform this action.",
 				"internalError": "Something went wrong on the server. Please try again.",
-				"generic": "Something went wrong."
-			}
+				"generic": "Something went wrong.",
+				"emailRequired": "Enter a valid email."
+			},
+			"emailLabel": "Email",
+			"emailPlaceholder": "user@example.com",
+			"emailEditHint": "Email can't be changed here."
 		},
 		"resetPasswordDialog": {
 			"title": "Reset password",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "Failed to save. Please try again."
 			}
+		},
+		"email": {
+			"title": "Email configuration",
+			"description": "Configure the SMTP server used to send system emails.",
+			"sendOnCreateLabel": "Send email on user creation",
+			"sendOnCreateHint": "When on, creating a user (or resetting their password) emails their credentials to their address.",
+			"fromEmailLabel": "Sender email",
+			"fromNameLabel": "Display name",
+			"fromNamePlaceholder": "e.g. Acme",
+			"hostLabel": "SMTP host",
+			"portLabel": "SMTP port",
+			"usernameLabel": "Username",
+			"passwordLabel": "Password",
+			"passwordKeepPlaceholder": "Leave blank to keep current",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "Save settings",
+			"saved": "Saved",
+			"errors": {
+				"saveFailed": "Couldn't save the email settings."
+			},
+			"test": {
+				"title": "Send a test email",
+				"hint": "Uses the saved settings — save before testing.",
+				"placeholder": "recipient@example.com",
+				"button": "Send test email",
+				"success": "Test email sent successfully.",
+				"failed": "Failed to send the test email."
+			},
+			"skipVerifyLabel": "Skip TLS certificate verification",
+			"skipVerifyHint": "Insecure — use only when the hosting server presents a certificate that doesn't match the SMTP hostname (the x509 certificate error)."
 		}
 	}
 }

@@ -20,6 +20,10 @@ type User struct {
 	Username           string
 	PasswordHash       string
 	FullName           string
+	// Email is the user's e-mail address. Optional at the storage
+	// layer (nil for pre-existing/system accounts); required when creating a
+	// new user through the admin API. Used to deliver credential e-mails.
+	Email              *string
 	MustChangePassword bool
 	// RoleID is the foreign-key reference to the global_roles table.
 	RoleID uuid.UUID

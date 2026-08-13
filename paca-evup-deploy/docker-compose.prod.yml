@@ -1,0 +1,326 @@
+# Standalone production compose — no local source tree required.
+#
+# Designed to be downloaded and run without cloning the repository.
+# All application images are pulled from DockerHub. Database schema migrations
+# are embedded in the API binary and applied automatically on every startup
+# using idempotent SQL (CREATE TABLE IF NOT EXISTS / INSERT … ON CONFLICT).
+#
+# ── Quick start ───────────────────────────────────────────────────────────────
+# The recommended way to set this up is via the install script:
+#
+#   curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh -o install.sh
+#   bash install.sh
+#
+# ── Manual setup ──────────────────────────────────────────────────────────────
+# 1. Download the Caddyfile alongside this file:
+#    mkdir -p caddy
+#    curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/Caddyfile -o caddy/Caddyfile
+#
+# 2. Create a .env file (see .env variables below).
+#
+# 3. Start the stack:
+#    docker compose --env-file .env up -d
+#
+# ── Image pinning ─────────────────────────────────────────────────────────────
+# Set these in .env to pin a specific release:
+#   PACA_API_IMAGE=pacaai/paca-api:1.2.3
+#   PACA_WEB_IMAGE=pacaai/paca-web:1.2.3
+#   PACA_REALTIME_IMAGE=pacaai/paca-realtime:1.2.3
+#   PACA_AI_AGENT_IMAGE=pacaai/paca-ai-agent:1.2.3
+#
+# ── External PostgreSQL ────────────────────────────────────────────────────────
+# Set DATABASE_URL to your managed connection string and add --scale postgres=0
+# to suppress the bundled container:
+#   docker compose --env-file .env up -d --scale postgres=0
+#
+# ── AWS S3 instead of MinIO ───────────────────────────────────────────────────
+# Set STORAGE_PROVIDER=s3 with real AWS credentials and add --scale minio=0:
+#   docker compose --env-file .env up -d --scale minio=0
+#
+# ── Skip AI agent ─────────────────────────────────────────────────────────────
+#   docker compose --env-file .env up -d --scale ai-agent=0
+#
+# ── External / CDN-hosted web app (e.g. deployed to S3 + CloudFront) ──────────
+# Suppress the web container and serve the SPA from your CDN instead.
+# The gateway still handles /api/, /ws/, and /storage/ routes.
+#   docker compose --env-file .env up -d --scale web=0
+
+name: paca
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # Suppress with --scale postgres=0 when using an external managed database.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-paca}
+      POSTGRES_USER: ${POSTGRES_USER:-paca}
+      # WARNING: override this with a strong password in your .env file.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paca} -d ${POSTGRES_DB:-paca}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Database backups ─────────────────────────────────────────────────────────
+  # Writes a gzip-compressed pg_dump to BACKUP_DIR on the schedule given by
+  # BACKUP_CRON (standard 5-field cron syntax), deleting dumps older than
+  # BACKUP_RETENTION_DAYS. Works against the bundled postgres container above
+  # or an external DATABASE_URL. Suppress with --scale db-backup=0.
+  # Scheduling is delegated to crond, which blocks until the next due minute
+  # (no polling loop), and the container is capped under resources.limits — so
+  # it stays near-idle on CPU/memory except for the brief daily dump window.
+  # Restore: gunzip -c <file>.sql.gz | docker compose exec -T postgres psql -U ${POSTGRES_USER:-paca} -d ${POSTGRES_DB:-paca}
+  db-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      # Standard 5-field cron syntax: minute hour day-of-month month day-of-week.
+      # Interpreted in TZ below (UTC by default). Default: 02:00 daily.
+      BACKUP_CRON: ${BACKUP_CRON:-0 2 * * *}
+      TZ: ${TZ:-UTC}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        if [ "$$(echo "$$BACKUP_CRON" | wc -w)" -ne 5 ]; then
+          echo "Invalid BACKUP_CRON '$$BACKUP_CRON': expected 5 fields (minute hour day month weekday)" >&2
+          exit 1
+        fi
+
+        # Cron jobs run with a minimal environment, so persist what the backup
+        # script needs and have it source this file explicitly.
+        cat > /etc/backup.env <<EOF
+        DATABASE_URL="$$DATABASE_URL"
+        BACKUP_RETENTION_DAYS="$$BACKUP_RETENTION_DAYS"
+        EOF
+
+        cat > /usr/local/bin/run-backup.sh <<'EOS'
+        #!/bin/sh
+        set -e -o pipefail
+        . /etc/backup.env
+        ts="$$(date +%Y%m%d-%H%M%S)"
+        tmp="/backups/.paca-$${ts}.sql.gz.tmp"
+        out="/backups/paca-$${ts}.sql.gz"
+        if pg_dump "$$DATABASE_URL" --no-owner | gzip > "$$tmp"; then
+          mv "$$tmp" "$$out"
+          echo "Backup written: $$out"
+          find /backups -maxdepth 1 -name 'paca-*.sql.gz' -mtime "+$${BACKUP_RETENTION_DAYS}" -delete
+        else
+          echo "Backup failed at $${ts}" >&2
+          rm -f "$$tmp"
+        fi
+        EOS
+        chmod +x /usr/local/bin/run-backup.sh
+
+        mkdir -p /var/spool/cron/crontabs
+        echo "$$BACKUP_CRON /usr/local/bin/run-backup.sh >>/proc/1/fd/1 2>>/proc/1/fd/2" > /var/spool/cron/crontabs/root
+
+        echo "Database backup service started — schedule: $$BACKUP_CRON $$TZ (retention: $$BACKUP_RETENTION_DAYS days)."
+        exec crond -f -d 8
+    volumes:
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  # ── Valkey (Redis-compatible cache / pub-sub) ────────────────────────────────
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: valkey-server --appendonly yes
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── MinIO (S3-compatible object store) ──────────────────────────────────────
+  # Suppress with --scale minio=0 when using AWS S3.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-minioadmin}
+      # WARNING: override this with a strong secret in your .env file.
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── API (Go backend) ────────────────────────────────────────────────────────
+  api:
+    image: ${PACA_API_IMAGE:-pacaai/paca-api:latest}
+    restart: unless-stopped
+    environment:
+      ENV: ${ENVIRONMENT:-production}
+      PORT: 8080
+      # Defaults to the bundled postgres. Set DATABASE_URL explicitly when using
+      # an external database (and scale postgres to 0).
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379/0}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — set it in your .env file}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-168h}
+      JWT_REFRESH_SESSION_TTL: ${JWT_REFRESH_SESSION_TTL:-24h}
+      # Set to false only when serving over plain HTTP (no TLS termination).
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required — set it in your .env file}
+      # Object storage. Defaults to MinIO. Set STORAGE_PROVIDER=s3 for AWS S3.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-minio}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-minio:9000}
+      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-http://localhost/storage}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-paca}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-minioadmin}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-minioadmin}
+      STORAGE_USE_SSL: ${STORAGE_USE_SSL:-false}
+      # 64-char hex string for encrypting plugin secrets at rest.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # Public base URL used by plugins for callback / webhook URLs.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      PLUGINS_WASM_DIR: /plugins
+      PLUGINS_FRONTEND_DIR: /plugins-frontend
+      PLUGINS_MCP_DIR: /plugins-mcp
+      # Pre-shared key matching PACA_API_KEY in the ai-agent service.
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    volumes:
+      - backend_plugins:/plugins
+      - frontend_plugins:/plugins-frontend
+      - mcp_plugins:/plugins-mcp
+
+  # ── Web (React SPA served via Caddy) ────────────────────────────────────────
+  web:
+    image: ${PACA_WEB_IMAGE:-pacaai/paca-web:latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  # ── Realtime (Socket.IO event hub) ──────────────────────────────────────────
+  realtime:
+    image: ${PACA_REALTIME_IMAGE:-pacaai/paca-realtime:latest}
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      NODE_ENV: ${ENVIRONMENT:-production}
+      API_URL: http://api:8080
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379/0}
+      CORS_ORIGINS: ${CORS_ORIGINS:-${PUBLIC_URL:-http://localhost}}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      valkey:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  # ── Gateway (Caddy reverse proxy) ───────────────────────────────────────────
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+      - "${GATEWAY_HTTPS_PORT:-443}:443"
+    environment:
+      # A domain name (e.g. paca.example.com) makes Caddy request and renew
+      # a Let's Encrypt certificate automatically. Leave unset (or ":80") for
+      # IP-only / localhost deployments served over plain HTTP.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      # Caddyfile must exist alongside this docker-compose.yml.
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - frontend_plugins:/var/www/plugins:ro
+      - mcp_plugins:/var/www/plugins-mcp:ro
+      # Persists issued TLS certificates/keys and Caddy's autosaved config
+      # across container restarts and recreations.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+        required: false  # skipped when --scale web=0 (external / CDN-hosted frontend)
+      realtime:
+        condition: service_started
+
+  # ── AI Agent (optional) ──────────────────────────────────────────────────────
+  # Suppress with --scale ai-agent=0 to skip this service.
+  # Requires Docker socket access on the host.
+  ai-agent:
+    image: ${PACA_AI_AGENT_IMAGE:-pacaai/paca-ai-agent:latest}
+    restart: unless-stopped
+    environment:
+      VALKEY_URL: ${REDIS_URL:-redis://valkey:6379/0}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
+      # Pre-shared key for authenticating requests to the AI agent service.
+      # WARNING: always set this to a strong random secret (e.g. openssl rand -hex 32).
+      # An empty key disables authentication on the agent service endpoint.
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      API_BASE_URL: http://api:8080
+      GATEWAY_BASE_URL: http://gateway
+      # Must match AGENT_API_KEY in the api service.
+      PACA_API_KEY: ${AGENT_API_KEY:-}
+      DOCKER_SOCKET: /var/run/docker.sock
+      AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE:-ghcr.io/paca-ai/paca-agent-server:latest}
+      PORT_POOL_START: ${PORT_POOL_START:-10000}
+      PORT_POOL_SIZE: ${PORT_POOL_SIZE:-100}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Must match ENCRYPTION_KEY in the api service so that LLM API keys
+      # stored encrypted in the database can be decrypted before use.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      valkey:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  valkey_data:
+  minio_data:
+  backend_plugins:
+  frontend_plugins:
+  mcp_plugins:
+  caddy_data:
+  caddy_config:

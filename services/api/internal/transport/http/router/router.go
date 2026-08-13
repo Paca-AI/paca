@@ -43,6 +43,7 @@ type Deps struct {
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
+	EmailSettings        *handler.EmailSettingsHandler
 	Log                  *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
 	// or empty slice (the zero value, so every existing caller of this
@@ -237,6 +238,16 @@ func New(deps Deps) http.Handler {
 					r.With(write).Post("/settings/favicon/avatar/initiate-upload", deps.Settings.InitiateFaviconUpload)
 					r.With(write).Post("/settings/favicon/avatar/complete-upload", deps.Settings.CompleteFaviconUpload)
 					r.With(write).Delete("/settings/favicon/avatar", deps.Settings.DeleteFavicon)
+				}
+
+				// SMTP e-mail settings — admin-only. Read and write
+				// both require the settings-write permission since SMTP
+				// config is sensitive (host/credentials).
+				if deps.EmailSettings != nil {
+					esWrite := httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionSettingsWrite)
+					r.With(esWrite).Get("/settings/email", deps.EmailSettings.GetEmailSettings)
+					r.With(esWrite).Patch("/settings/email", deps.EmailSettings.UpdateEmailSettings)
+					r.With(esWrite).Post("/settings/email/test", deps.EmailSettings.SendTestEmail)
 				}
 			})
 

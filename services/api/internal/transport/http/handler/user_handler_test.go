@@ -151,7 +151,7 @@ func TestCreateUser_Success(t *testing.T) {
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/admin/users",
-		jsonBody(t, map[string]string{"username": "alice", "password": "pass1234", "full_name": "Alice"}))
+		jsonBody(t, map[string]string{"username": "alice", "password": "pass1234", "full_name": "Alice", "email": "alice@example.com"}))
 	if w.Code != http.StatusCreated {
 		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
@@ -169,7 +169,7 @@ func TestCreateUser_WithRole(t *testing.T) {
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/admin/users",
-		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": "ADMIN"}))
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "role": "ADMIN", "email": "bob@example.com"}))
 	if w.Code != http.StatusCreated {
 		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
@@ -199,7 +199,7 @@ func TestCreateUser_UsernameTaken(t *testing.T) {
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/admin/users",
-		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob"}))
+		jsonBody(t, map[string]string{"username": "bob", "password": "pass1234", "full_name": "Bob", "email": "bob@example.com"}))
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d", w.Code)
 	}
@@ -882,7 +882,7 @@ func TestCreateUser_PasswordTooShort(t *testing.T) {
 	r := newUserRouter(&mockUserSvc{})
 
 	w := do(t, r, http.MethodPost, "/admin/users",
-		jsonBody(t, map[string]string{"username": "alice", "password": "short", "full_name": "Alice"}))
+		jsonBody(t, map[string]string{"username": "alice", "password": "short", "full_name": "Alice", "email": "alice@example.com"}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for too-short password, got %d", w.Code)
 	}
@@ -992,7 +992,7 @@ func TestCreateUser_ResponseIncludesMustChangePassword(t *testing.T) {
 	r := newUserRouter(svc)
 
 	w := do(t, r, http.MethodPost, "/admin/users",
-		jsonBody(t, map[string]string{"username": "alice", "password": "pass1234", "full_name": "Alice"}))
+		jsonBody(t, map[string]string{"username": "alice", "password": "pass1234", "full_name": "Alice", "email": "alice@example.com"}))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}

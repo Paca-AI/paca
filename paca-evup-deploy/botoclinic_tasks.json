@@ -1,0 +1,326 @@
+[
+  {
+    "row": 7,
+    "num": 1,
+    "title": "Nova permissão de acesso para funcionalidade de \"regularizar\"",
+    "status_raw": "Concluido"
+  },
+  {
+    "row": 8,
+    "num": 2,
+    "title": "Cortesia com tempo de expiração",
+    "status_raw": "Planejado"
+  },
+  {
+    "row": 9,
+    "num": 3,
+    "title": "Retirar procedimentos expirados (historico de proc) dos itens disponíveis para agendamento",
+    "status_raw": "Planejado"
+  },
+  {
+    "row": 10,
+    "num": 4,
+    "title": "Escolher tipo de Anamnese no agendamento",
+    "status_raw": "Planejado"
+  },
+  {
+    "row": 11,
+    "num": 5,
+    "title": "Segmentação de KPI/Regras por serviço para cálculo automático do comissionamento",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 12,
+    "num": 6,
+    "title": "Inativação de usuário não pode alterar o relatório Premiação Simplificado",
+    "status_raw": "Concluido"
+  },
+  {
+    "row": 13,
+    "num": 7,
+    "title": "Lançamento de venda dupla com apenas um pagamento",
+    "status_raw": "Concluido"
+  },
+  {
+    "row": 14,
+    "num": 8,
+    "title": "Anamnese obrigatória a cada procedimento que o cliente precisa executar",
+    "status_raw": "Planejado"
+  },
+  {
+    "row": 15,
+    "num": 9,
+    "title": "Expirar itens do contrato conforme o prazo estipulado",
+    "status_raw": "Planejado"
+  },
+  {
+    "row": 16,
+    "num": 41,
+    "title": "Melhoria para fazer upload de Fotos no momento do procedimento (multiplos)",
+    "status_raw": "Concluido"
+  },
+  {
+    "row": 17,
+    "num": 42,
+    "title": "Royalties - Gerar calculo de royalties para vendas e para assinaturas Bclub",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 18,
+    "num": 43,
+    "title": "Permitir o consumo fixo de insumos somente para as unidades proprias",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 19,
+    "num": 16,
+    "title": "Configuração de Agenda por Canal (APP x Sistema Web)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 20,
+    "num": 17,
+    "title": "Permitir valor flat (fixo) na taxa da forma de pagamento",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 21,
+    "num": 21,
+    "title": "(Indique) Motor não deve permitir desconto de voucher livre",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 22,
+    "num": 27,
+    "title": "(Melhoria) Congelamento do Estoque - (Auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 23,
+    "num": 40,
+    "title": "(Melhoria) Lote e Validade - Controle (Auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 24,
+    "num": 44,
+    "title": "Cancelamento de vendas do APP",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 25,
+    "num": 46,
+    "title": "Inativação de usuário não pode alterar o relatório Premiação Simplificado",
+    "status_raw": "Cancelado"
+  },
+  {
+    "row": 26,
+    "num": 10,
+    "title": "(Melhoria) Cancelamento de item por sessão",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 27,
+    "num": 12,
+    "title": "Ajuste na descrição das Notas Fiscais",
+    "status_raw": "Concluido"
+  },
+  {
+    "row": 28,
+    "num": 11,
+    "title": "(Relatório) Check-in/Checkout considerando o Fim de semana (domingo)",
+    "status_raw": "Planejado"
+  },
+  {
+    "row": 29,
+    "num": 13,
+    "title": "Trava de cancelamento para procedimentos já executados",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 30,
+    "num": 14,
+    "title": "Elos e APP - Permitir selecionar quantidades de pacotes no momento da compra",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 31,
+    "num": 15,
+    "title": "Adicionar novo status na tela de crédito",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 32,
+    "num": 18,
+    "title": "Tempo de carência para executar o procedimento",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 33,
+    "num": 19,
+    "title": "(Melhoria) Transferência de produtos entre unidades",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 34,
+    "num": 20,
+    "title": "(Melhoria) Relatório - Procedimentos",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 35,
+    "num": 22,
+    "title": "Botão para inativação de Notas Fiscais de produto",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 36,
+    "num": 23,
+    "title": "Contabilizar desconto na cortesia gerada no motor de promoções",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 37,
+    "num": 24,
+    "title": "Tela de Confirmação para Cancelamentos com Estorno",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 38,
+    "num": 25,
+    "title": "Descrição do cancelamento no mesmo dia",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 39,
+    "num": 26,
+    "title": "(Melhoria) Cancelamentos Faixa e aprovação (auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 40,
+    "num": 29,
+    "title": "(Melhoria) Encerramento de Caixa por turno",
+    "status_raw": "Cancelado"
+  },
+  {
+    "row": 41,
+    "num": 28,
+    "title": "(Melhoria) Duplo Check na baixa de serviços (Auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 42,
+    "num": 30,
+    "title": "(Melhoria) Inventário Cíclico - Auditoria",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 43,
+    "num": 37,
+    "title": "(Melhoria) Log de acessos Usuários",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 44,
+    "num": 39,
+    "title": "(Melhoria) Alerta para produtos que estão para vencer (Auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 45,
+    "num": 45,
+    "title": "Restrição de Login por Geolocalização",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 46,
+    "num": 47,
+    "title": "Venda da Massagem 2 com execução simultânea para 2 profissionais de saúde - Tranferência de Item para outro cliente com o valor já pago.",
+    "status_raw": "Cancelado"
+  },
+  {
+    "row": 47,
+    "num": 48,
+    "title": "Troca de Item nas unidades, sem necessidade de cancelamento",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 48,
+    "num": 49,
+    "title": "Preço diferenciado para Lojas no APP",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 49,
+    "num": 50,
+    "title": "Relatório de Posição de Estoque Valorado",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 50,
+    "num": 51,
+    "title": "Relatório de Custo Médio",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 51,
+    "num": 52,
+    "title": "Expiração dos Pontos do Indique",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 52,
+    "num": 53,
+    "title": "Relatório de Indicações do Profissional de Saúde",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 53,
+    "num": 54,
+    "title": "Preenchimento (não edição) e Assinatura de Anamnese no APP",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 54,
+    "num": 31,
+    "title": "(Melhoria) Disparo de relatório automático por e-mail",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 55,
+    "num": 32,
+    "title": "(Melhoria) Tempo para Logout do sistema por perfil de usuário (Auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 56,
+    "num": 33,
+    "title": "(Melhoria) Auto Save Elos",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 57,
+    "num": 34,
+    "title": "(Melhoria) Controle de Tempo para Anamnese ou Contrato (Auditoria)",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 58,
+    "num": 35,
+    "title": "(Melhoria) MFA no Elos",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 59,
+    "num": 36,
+    "title": "(Melhoria) Uso de leitor de Códigos para contagem de estoque",
+    "status_raw": "Ag. Analise"
+  },
+  {
+    "row": 60,
+    "num": 38,
+    "title": "(Melhoria) Restrição de acesso",
+    "status_raw": "Ag. Analise"
+  }
+]
