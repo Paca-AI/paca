@@ -248,6 +248,35 @@ describe("useConversationEventWindow", () => {
 		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
 	});
 
+	it("keeps already-merged live events visible when following pauses mid-turn", async () => {
+		const stream = fakeStream(200);
+		const { result, signal } = open();
+		await waitFor(() => expect(result.current.events).toHaveLength(200));
+		const callsAfterOpen = requests(PROJECT_PATH).length;
+
+		// A tool call starts streaming — still only in the live buffer, not
+		// yet paginated (a real fetch only reconciles on a status transition).
+		await signal(stream.grow(1));
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(200));
+
+		// The reader pauses following without navigating away — e.g.
+		// expanding that tool call's panel nudges the viewport off the exact
+		// bottom pixel. The event they're looking at must not disappear.
+		act(() => result.current.setFollowing(false));
+		expect(lastIndex(result.current.events)).toBe(200);
+		expect(result.current.events).toHaveLength(201);
+
+		// Further growth is still just reported, not merged, while paused.
+		await signal(stream.grow(1));
+		await waitFor(() => expect(result.current.newBelow).toBe(1));
+		expect(lastIndex(result.current.events)).toBe(200);
+		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
+
+		act(() => result.current.jumpToLatest());
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(201));
+		expect(result.current.newBelow).toBe(0);
+	});
+
 	it("takes events for a conversation that was empty when opened", async () => {
 		const stream = fakeStream(0);
 		const { result, signal } = open();

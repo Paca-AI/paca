@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
 	type AgentConversationEvent,
 	CONVERSATION_EVENTS_PAGE_SIZE,
@@ -92,14 +92,28 @@ export function useConversationEventWindow({
 	const lastPagedIndex =
 		pagedEvents.length > 0 ? (pagedEvents.at(-1)?.event_index ?? -1) : -1;
 
-	// Merge in whatever the tail has buffered live that a real fetch hasn't
-	// caught up to yet — only while following. A reader scrolled away into
-	// history sees `newBelow`'s count grow instead, so their view doesn't
-	// shift under them.
+	// Live events already merged in stay visible even after `following` flips
+	// off mid-turn — e.g. expanding a tall tool call's panel nudges the
+	// viewport off the exact bottom pixel, which reads as "scrolled away."
+	// Only *further* arrivals are withheld from that point (reported via
+	// `newBelow` instead). Without freezing this, pausing would revert to
+	// `pagedEvents` alone and retroactively drop whatever of the current turn
+	// a real fetch hasn't caught up to yet — which, per this hook's own doc
+	// comment, only happens on a status transition, not continuously while a
+	// turn is running, so anything still-streaming would stay hidden for the
+	// rest of the run instead of just not growing further.
+	const frozenExtraRef = useRef<AgentConversationEvent[]>([]);
+
 	const events = useMemo(() => {
-		if (!following) return pagedEvents;
 		const extra = liveEvents.filter((e) => e.event_index > lastPagedIndex);
-		return extra.length > 0 ? [...pagedEvents, ...extra] : pagedEvents;
+		if (following) {
+			frozenExtraRef.current = extra;
+			return extra.length > 0 ? [...pagedEvents, ...extra] : pagedEvents;
+		}
+		const frozen = frozenExtraRef.current.filter(
+			(e) => e.event_index > lastPagedIndex,
+		);
+		return frozen.length > 0 ? [...pagedEvents, ...frozen] : pagedEvents;
 	}, [pagedEvents, liveEvents, lastPagedIndex, following]);
 
 	const loaded =
