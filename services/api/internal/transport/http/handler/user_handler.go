@@ -2,8 +2,9 @@ package handler
 
 import (
 	"context"
-
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -22,11 +23,21 @@ type SessionInvalidator interface {
 	Logout(ctx context.Context, familyID string) error
 }
 
+// UserNotifier delivers credential e-mails on user lifecycle events.
+// Both methods are best-effort: they return (false, nil) when e-mail sending
+// is disabled or unconfigured, so the caller can invoke them unconditionally.
+// It is satisfied by service/email.Service.
+type UserNotifier interface {
+	NotifyUserCreated(ctx context.Context, to, username, password string) (bool, error)
+	NotifyPasswordReset(ctx context.Context, to, username, password string) (bool, error)
+}
+
 // UserHandler handles user-related endpoints.
 type UserHandler struct {
 	svc       domainuser.Service
 	authSvc   SessionInvalidator
 	avatarSvc attachmentdom.AvatarService
+	notifier  UserNotifier
 }
 
 // NewUserHandler returns a UserHandler wired to the provided user service.
@@ -43,6 +54,12 @@ func NewUserHandler(svc domainuser.Service, authSvc ...SessionInvalidator) *User
 // WithAvatarService configures avatar URL resolution for UserResponse.
 func (h *UserHandler) WithAvatarService(svc attachmentdom.AvatarService) *UserHandler {
 	h.avatarSvc = svc
+	return h
+}
+
+// WithNotifier enables credential e-mails on user creation / password reset.
+func (h *UserHandler) WithNotifier(n UserNotifier) *UserHandler {
+	h.notifier = n
 	return h
 }
 
@@ -196,15 +213,21 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "username and full_name are required"))
 		return
 	}
+	if !looksLikeEmail(req.Email) {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "a valid email is required"))
+		return
+	}
 	if len(req.Password) < 8 {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "password must be at least 8 characters"))
 		return
 	}
 
+	emailPtr := req.Email
 	u, err := h.svc.Create(r.Context(), domainuser.CreateInput{
 		Username:           req.Username,
 		Password:           req.Password,
 		FullName:           req.FullName,
+		Email:              &emailPtr,
 		Role:               req.Role,
 		MustChangePassword: true,
 	})
@@ -213,7 +236,39 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	presenter.Created(w, r, h.toUserResponse(r.Context(), u))
+	resp := h.toUserResponse(r.Context(), u)
+	resp.EmailSent = h.deliverCredentials(r, req.Email, u.Username, req.Password, true)
+	presenter.Created(w, r, resp)
+}
+
+// deliverCredentials best-effort e-mails credentials to the user. It never
+// fails the request: a nil return means no attempt (no notifier), otherwise
+// the pointed-to bool reports whether the send succeeded. Errors are logged.
+func (h *UserHandler) deliverCredentials(r *http.Request, to, username, password string, created bool) *bool {
+	if h.notifier == nil {
+		return nil
+	}
+	var sent bool
+	var err error
+	if created {
+		sent, err = h.notifier.NotifyUserCreated(r.Context(), to, username, password)
+	} else {
+		sent, err = h.notifier.NotifyPasswordReset(r.Context(), to, username, password)
+	}
+	if err != nil {
+		slog.WarnContext(r.Context(), "credential email failed", "user", username, "created", created, "error", err)
+		failed := false
+		return &failed
+	}
+	return &sent
+}
+
+// looksLikeEmail is a minimal sanity check (presence of "@" with text on both
+// sides). Full RFC validation lives in the binding layer; this guards the
+// handler path.
+func looksLikeEmail(s string) bool {
+	at := strings.IndexByte(s, '@')
+	return at > 0 && at < len(s)-1
 }
 
 // AdminUpdateUser handles PATCH /admin/users/:userId — admin update of any user.
@@ -277,6 +332,18 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.ResetPassword(r.Context(), id, req.NewPassword); err != nil {
 		presenter.Error(w, r, err)
 		return
+	}
+
+	// Best-effort: e-mail the new credentials if e-mail sending is enabled
+	// and the user has an address on file. Never fails the reset.
+	if h.notifier != nil {
+		if u, gErr := h.svc.GetByID(r.Context(), id); gErr == nil {
+			to := ""
+			if u.Email != nil {
+				to = *u.Email
+			}
+			h.deliverCredentials(r, to, u.Username, req.NewPassword, false)
+		}
 	}
 
 	presenter.NoContent(w)

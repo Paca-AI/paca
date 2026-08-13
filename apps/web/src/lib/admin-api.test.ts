@@ -189,6 +189,7 @@ describe("admin-api", () => {
 			username: "alice",
 			password: "P@ssw0rd!",
 			full_name: "Alice Smith",
+			email: "alice@example.com",
 			role: "Admin",
 		};
 

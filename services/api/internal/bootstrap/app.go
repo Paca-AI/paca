@@ -24,6 +24,7 @@ import (
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/Paca-AI/api/internal/platform/database"
 	"github.com/Paca-AI/api/internal/platform/logger"
+	"github.com/Paca-AI/api/internal/platform/mail"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
 	"github.com/Paca-AI/api/internal/platform/secret"
@@ -37,6 +38,7 @@ import (
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
+	emailsvc "github.com/Paca-AI/api/internal/service/email"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -155,6 +157,7 @@ func New(cfg *config.Config) (*App, error) {
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
 	settingsService := settingssvc.New(settingsRepo)
+	var appEncryptor *secret.Encryptor
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
 		if hexErr != nil {
@@ -162,6 +165,7 @@ func New(cfg *config.Config) (*App, error) {
 		} else if enc, encErr := secret.NewEncryptor(keyBytes); encErr != nil {
 			log.Warn("agent LLM key encryption disabled: encryptor init failed", "error", encErr)
 		} else {
+			appEncryptor = enc
 			agentService = agentService.WithEncryptor(enc)
 			log.Info("agent LLM API key at-rest encryption enabled")
 		}
@@ -173,6 +177,17 @@ func New(cfg *config.Config) (*App, error) {
 		// LLM API keys and plugin secrets end up in the database in plaintext
 		// with no error or signal anywhere. Surface it once at startup.
 		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys and plugin secrets will be stored in plaintext, not encrypted")
+	}
+
+	// E-mail service: SMTP settings + credential e-mails. Requires an
+	// encryptor to store the SMTP password at rest, so it's only wired when
+	// ENCRYPTION_KEY is configured.
+	var emailService *emailsvc.Service
+	if appEncryptor != nil {
+		emailService = emailsvc.NewService(settingsRepo, appEncryptor, mail.NewSMTPSender(), cfg.Server.PublicURL)
+		log.Info("email service enabled (SMTP settings + credential emails)")
+	} else {
+		log.Warn("email sending disabled: ENCRYPTION_KEY not set (SMTP password can't be stored encrypted)")
 	}
 	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher).
 		WithNotificationService(notificationService).
@@ -343,6 +358,13 @@ func New(cfg *config.Config) (*App, error) {
 		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
+	userHandler := handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService)
+	var emailSettingsHandler *handler.EmailSettingsHandler
+	if emailService != nil {
+		userHandler = userHandler.WithNotifier(emailService)
+		emailSettingsHandler = handler.NewEmailSettingsHandler(emailService)
+	}
+
 	deps := router.Deps{
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
@@ -350,7 +372,7 @@ func New(cfg *config.Config) (*App, error) {
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
-		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
+		User:                 userHandler,
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
 		Project: handler.NewProjectHandler(
@@ -380,6 +402,7 @@ func New(cfg *config.Config) (*App, error) {
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
+		EmailSettings:      emailSettingsHandler,
 		Log:                log,
 		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
 	}

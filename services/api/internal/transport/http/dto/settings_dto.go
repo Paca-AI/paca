@@ -34,3 +34,41 @@ type AvatarShapedImageResponse struct {
 	AvatarURL      *string `json:"avatar_url,omitempty"`
 	AvatarThumbURL *string `json:"avatar_thumb_url,omitempty"`
 }
+
+// EmailSettingsResponse is the body for GET /admin/settings/email. It
+// never includes the SMTP password — only PasswordSet reports whether one is
+// stored.
+type EmailSettingsResponse struct {
+	FromEmail            string `json:"from_email"`
+	FromName             string `json:"from_name"`
+	Host                 string `json:"host"`
+	Port                 int    `json:"port"`
+	Username             string `json:"username"`
+	UseSSL               bool   `json:"use_ssl"`
+	UseTLS               bool   `json:"use_tls"`
+	SkipVerify           bool   `json:"skip_verify"`
+	SendUserCreatedEmail bool   `json:"send_user_created_email"`
+	PasswordSet          bool   `json:"password_set"`
+	Configured           bool   `json:"configured"`
+}
+
+// UpdateEmailSettingsRequest is the body for PATCH /admin/settings/email.
+// Password is tri-state: omit/null keeps the stored password, "" clears it,
+// any other value replaces it.
+type UpdateEmailSettingsRequest struct {
+	FromEmail            string  `json:"from_email"`
+	FromName             string  `json:"from_name"`
+	Host                 string  `json:"host"`
+	Port                 int     `json:"port"`
+	Username             string  `json:"username"`
+	Password             *string `json:"password"`
+	UseSSL               bool    `json:"use_ssl"`
+	UseTLS               bool    `json:"use_tls"`
+	SkipVerify           bool    `json:"skip_verify"`
+	SendUserCreatedEmail bool    `json:"send_user_created_email"`
+}
+
+// SendTestEmailRequest is the body for POST /admin/settings/email/test.
+type SendTestEmailRequest struct {
+	To string `json:"to" binding:"required,email"`
+}

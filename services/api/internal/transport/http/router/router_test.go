@@ -338,7 +338,7 @@ func TestAdminRoute_CreateUser_RequiresAuth(t *testing.T) {
 	r := newTestRouter(t)
 
 	// Without auth token — must be rejected.
-	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice"}`)
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice","email":"alice@example.com"}`)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/users", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -353,7 +353,7 @@ func TestAdminRoute_CreateUser_WithPermission(t *testing.T) {
 	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionUsersWrite}})
 	tok := issueAccessTokenForRouterTests(t)
 
-	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice"}`)
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret12","full_name":"Alice","email":"alice@example.com"}`)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/users", body)
 	req.Header.Set("Authorization", "Bearer "+tok)

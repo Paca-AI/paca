@@ -158,6 +158,7 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 		Username:           in.Username,
 		PasswordHash:       string(hash),
 		FullName:           in.FullName,
+		Email:              in.Email,
 		RoleID:             roleID,
 		Role:               roleName,
 		MustChangePassword: in.MustChangePassword,

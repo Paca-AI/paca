@@ -15,6 +15,7 @@ type CreateInput struct {
 	Username           string
 	Password           string
 	FullName           string
+	Email              *string
 	Role               string
 	MustChangePassword bool
 }

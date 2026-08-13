@@ -2,7 +2,9 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Palette } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { BrandingSettings } from "@/components/admin/settings/BrandingSettings";
+import { EmailSettings } from "@/components/admin/settings/EmailSettings";
 import { myPermissionsQueryOptions } from "@/lib/admin-api";
+import { emailSettingsQueryOptions } from "@/lib/email-settings-api";
 import { hasPermission } from "@/lib/permissions";
 import { brandingQueryOptions } from "@/lib/settings-api";
 
@@ -17,7 +19,10 @@ export const Route = createFileRoute("/_authenticated/admin/settings/")({
 		}
 	},
 	loader: async ({ context: { queryClient } }) => {
-		await queryClient.ensureQueryData(brandingQueryOptions);
+		await Promise.all([
+			queryClient.ensureQueryData(brandingQueryOptions),
+			queryClient.ensureQueryData(emailSettingsQueryOptions).catch(() => {}),
+		]);
 	},
 	component: SettingsPage,
 });
@@ -42,6 +47,7 @@ function SettingsPage() {
 			</header>
 
 			<BrandingSettings />
+			<EmailSettings />
 		</div>
 	);
 }

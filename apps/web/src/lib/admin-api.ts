@@ -71,11 +71,15 @@ export interface User {
 	id: string;
 	username: string;
 	full_name: string;
+	email?: string | null;
 	role: string;
 	must_change_password: boolean;
 	avatar_url?: string | null;
 	avatar_thumb_url?: string | null;
 	created_at: string;
+	// email_sent is present only on the create-user response: true if the
+	// credential e-mail was sent, false if sending was on but failed.
+	email_sent?: boolean;
 }
 
 export interface PagedUsersResponse {
@@ -99,6 +103,7 @@ export async function createUser(payload: {
 	username: string;
 	password: string;
 	full_name: string;
+	email: string;
 	role?: string;
 }): Promise<User> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<User>>(

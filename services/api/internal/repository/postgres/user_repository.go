@@ -37,6 +37,7 @@ type userReadRow struct {
 	FullName           string     `db:"full_name"`
 	RoleID             string     `db:"role_id"`
 	RoleName           string     `db:"role_name"`
+	Email              *string    `db:"email"`
 	MustChangePassword bool       `db:"must_change_password"`
 	AvatarKey          *string    `db:"avatar_key"`
 	AvatarThumbKey     *string    `db:"avatar_thumb_key"`
@@ -47,7 +48,7 @@ type userReadRow struct {
 
 // userReadCols and userReadJoin are shared by all read queries.
 const (
-	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.role_id, users.must_change_password, users.avatar_key, users.avatar_thumb_key, users.created_at, users.updated_at, users.deleted_at, gr.name AS role_name`
+	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.role_id, users.email, users.must_change_password, users.avatar_key, users.avatar_thumb_key, users.created_at, users.updated_at, users.deleted_at, gr.name AS role_name`
 	userReadJoin = `JOIN global_roles gr ON gr.id = users.role_id`
 )
 
@@ -154,10 +155,10 @@ func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, use
 // Create persists a new user record.
 func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, password_hash, full_name, role_id, must_change_password, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		INSERT INTO users (id, username, password_hash, full_name, role_id, email, must_change_password, created_at, updated_at, deleted_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		u.ID.String(), u.Username, u.PasswordHash, u.FullName,
-		u.RoleID.String(), u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
+		u.RoleID.String(), u.Email, u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("user repo: create: %w", err)
@@ -202,6 +203,7 @@ func rowToEntity(row *userReadRow) *userdom.User {
 		FullName:           row.FullName,
 		RoleID:             roleID,
 		Role:               row.RoleName,
+		Email:              row.Email,
 		MustChangePassword: row.MustChangePassword,
 		AvatarKey:          row.AvatarKey,
 		AvatarThumbKey:     row.AvatarThumbKey,

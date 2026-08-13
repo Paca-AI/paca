@@ -67,8 +67,12 @@
 				"userNotFound": "Usuário não encontrado. Ele pode já ter sido excluído.",
 				"forbidden": "Você não tem permissão para executar esta ação.",
 				"internalError": "Algo deu errado no servidor. Tente novamente.",
-				"generic": "Algo deu errado."
-			}
+				"generic": "Algo deu errado.",
+				"emailRequired": "Informe um e-mail válido."
+			},
+			"emailLabel": "E-mail",
+			"emailPlaceholder": "usuario@exemplo.com",
+			"emailEditHint": "O e-mail não pode ser alterado por aqui."
 		},
 		"resetPasswordDialog": {
 			"title": "Redefinir senha",
@@ -331,6 +335,37 @@
 			"errors": {
 				"updateFailed": "Falha ao salvar. Tente novamente."
 			}
+		},
+		"email": {
+			"title": "Configuração de e-mail",
+			"description": "Configure o servidor SMTP usado para enviar e-mails do sistema.",
+			"sendOnCreateLabel": "Enviar e-mail de usuário criado",
+			"sendOnCreateHint": "Quando ativo, ao criar um usuário (ou redefinir a senha) enviamos as credenciais para o e-mail dele.",
+			"fromEmailLabel": "E-mail do remetente",
+			"fromNameLabel": "Nome de exibição",
+			"fromNamePlaceholder": "Ex.: Acme",
+			"hostLabel": "Endereço SMTP",
+			"portLabel": "Porta SMTP",
+			"usernameLabel": "Usuário",
+			"passwordLabel": "Senha",
+			"passwordKeepPlaceholder": "Deixe em branco para manter a atual",
+			"useSSL": "SSL",
+			"useTLS": "TLS",
+			"save": "Salvar configurações",
+			"saved": "Salvo",
+			"errors": {
+				"saveFailed": "Não foi possível salvar as configurações de e-mail."
+			},
+			"test": {
+				"title": "Enviar e-mail de teste",
+				"hint": "Usa as configurações já salvas — salve antes de testar.",
+				"placeholder": "destinatario@exemplo.com",
+				"button": "Enviar e-mail de teste",
+				"success": "E-mail de teste enviado com sucesso.",
+				"failed": "Falha ao enviar o e-mail de teste."
+			},
+			"skipVerifyLabel": "Ignorar verificação do certificado TLS",
+			"skipVerifyHint": "Inseguro — use apenas quando o servidor de hospedagem apresenta um certificado que não bate com o hostname do SMTP (o erro de certificado x509)."
 		}
 	}
 }

@@ -33,6 +33,11 @@ import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { validateUsername } from "@/lib/auth-validation";
 import { generatePassword } from "@/lib/generate-password";
 
+// Minimal e-mail sanity check — the backend does full RFC validation.
+function isValidEmail(value: string): boolean {
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 interface UserFormDialogProps {
 	user?: User;
 	open: boolean;
@@ -51,6 +56,7 @@ export function UserFormDialog({
 
 	const [username, setUsername] = useState(user?.username ?? "");
 	const [fullName, setFullName] = useState(user?.full_name ?? "");
+	const [email, setEmail] = useState(user?.email ?? "");
 	const [role, setRole] = useState(user?.role ?? "");
 	const [error, setError] = useState<string | null>(null);
 	const [usernameError, setUsernameError] = useState<string | null>(null);
@@ -65,6 +71,7 @@ export function UserFormDialog({
 	const reset = () => {
 		setUsername(user?.username ?? "");
 		setFullName(user?.full_name ?? "");
+		setEmail(user?.email ?? "");
 		setRole(user?.role ?? "");
 		setError(null);
 		setUsernameError(null);
@@ -101,11 +108,15 @@ export function UserFormDialog({
 			const usernameError = validateUsername(username, tCommon);
 			if (usernameError) throw new Error(usernameError);
 
+			if (!isValidEmail(email))
+				throw new Error(t("users.formDialog.errors.emailRequired"));
+
 			const password = generatePassword();
 			await createUser({
 				username: username.trim(),
 				password,
 				full_name: fullName.trim(),
+				email: email.trim(),
 				role: role || undefined,
 			});
 			return password;
@@ -294,6 +305,29 @@ export function UserFormDialog({
 							onChange={(e) => setFullName(e.target.value)}
 							autoComplete="off"
 						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<Label
+							htmlFor="user-email"
+							className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+						>
+							{t("users.formDialog.emailLabel")}
+						</Label>
+						<Input
+							id="user-email"
+							type="email"
+							placeholder={t("users.formDialog.emailPlaceholder")}
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							autoComplete="off"
+							disabled={isEdit}
+						/>
+						{isEdit ? (
+							<span className="text-xs text-muted-foreground">
+								{t("users.formDialog.emailEditHint")}
+							</span>
+						) : null}
 					</div>
 
 					<div className="flex flex-col gap-1.5">
