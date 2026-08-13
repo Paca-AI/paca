@@ -47,7 +47,7 @@ type Agent struct {
 	// built-in providers resolve a default command themselves: claude-code /
 	// codex / gemini-cli via the OpenHands SDK's own provider registry, goose
 	// via a small local override in apps/acp-bridge's runner.py (the SDK's
-	// registry doesn't know about goose — see docs/ai-agent/goose-migration.md).
+	// registry doesn't know about goose).
 	ACPCommand []string
 	// HasACPBridgeToken reports whether a local-bridge auth token has been
 	// generated; the token itself (and its hash) are never exposed here.

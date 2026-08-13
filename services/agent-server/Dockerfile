@@ -1,11 +1,9 @@
 # Sandbox image for `llm`-type agent conversations under
-# services/agent-runner (see docs/ai-agent/goose-migration.md) — the Goose-
-# based replacement for this directory's old OpenHands-based Dockerfile
-# (same filename, different content — removed along with services/ai-agent
-# itself; see the migration doc's "Full Removal of services/ai-agent"
-# section). This is now the only sandbox image in this directory and the
-# one every deployment surface (dev/prod/e2e compose, CD) actually builds
-# and publishes.
+# services/agent-runner — the Goose-based replacement for this directory's
+# old OpenHands-based Dockerfile (same filename, different content —
+# removed along with services/ai-agent itself). This is now the only
+# sandbox image in this directory and the one every deployment surface
+# (dev/prod/e2e compose, CD) actually builds and publishes.
 #
 # Pinned by DIGEST, not a version tag — ghcr.io/block/goose has no current
 # tagged release image to pin to instead. Verified directly (see the

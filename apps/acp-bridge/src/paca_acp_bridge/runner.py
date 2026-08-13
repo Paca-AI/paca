@@ -168,12 +168,12 @@ class _AssistantTextRelay:
 
 # Providers with a fixed default command that isn't in the OpenHands SDK's
 # own acp_providers registry (get_acp_provider only knows about
-# claude-code/codex/gemini-cli — verified empirically against SDK 1.36.1,
-# see docs/ai-agent/goose-migration.md). Resolved here as a small local
-# override rather than upstreaming a Goose entry into the SDK, since `goose
-# acp` was already confirmed (same doc) to speak ACP correctly as a plain
-# subprocess with no SDK-side special-casing required beyond the command
-# itself — there's nothing provider-specific left for the SDK to know.
+# claude-code/codex/gemini-cli — verified empirically against SDK 1.36.1).
+# Resolved here as a small local override rather than upstreaming a Goose
+# entry into the SDK, since `goose acp` was already confirmed to speak ACP
+# correctly as a plain subprocess with no SDK-side special-casing required
+# beyond the command itself — there's nothing provider-specific left for the
+# SDK to know.
 _LOCAL_ACP_PROVIDER_COMMANDS: dict[str, list[str]] = {
     "goose": ["goose", "acp"],
 }

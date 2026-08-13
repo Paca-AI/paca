@@ -1,8 +1,8 @@
 # Agent Skills Plugin System
 
 > **Known gap as of `services/agent-runner`**: everything below describes the
-> intended design, which `services/ai-agent` (now removed — see
-> [goose-migration.md](../ai-agent/goose-migration.md)) fully implemented.
+> intended design, which `services/ai-agent` (now fully removed from the
+> repository) implemented.
 > `services/agent-runner` has no equivalent step at all — it never queries
 > enabled plugins or fetches plugin-contributed skill content, for `llm`-type
 > agents. See [default-skills.md](../ai-agent/default-skills.md)'s own gap

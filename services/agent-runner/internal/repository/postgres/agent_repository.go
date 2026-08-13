@@ -15,10 +15,9 @@ import (
 
 // ErrNotLLMAgent is returned by FindByID for an agent that exists but isn't
 // agent_type='llm' — this service only ever executes llm-type conversations
-// (acp-type agents stay on apps/acp-bridge, see
-// docs/ai-agent/goose-migration.md), so a caller that reaches this for an
-// acp agent has a routing bug upstream, not a data problem to paper over
-// here.
+// (acp-type agents stay on apps/acp-bridge), so a caller that reaches this
+// for an acp agent has a routing bug upstream, not a data problem to paper
+// over here.
 var ErrNotLLMAgent = errors.New("postgres: agent is not agent_type=llm")
 
 type agentRecord struct {

@@ -3,8 +3,7 @@
 -- validation already updated in agentdom.ValidACPProviders/ACPProviderGoose).
 -- Goose isn't in the OpenHands SDK's own ACP provider registry, unlike
 -- claude-code/codex/gemini-cli, so apps/acp-bridge's runner.py resolves its
--- default command (`goose acp`) via a small local override instead — see
--- docs/ai-agent/goose-migration.md.
+-- default command (`goose acp`) via a small local override instead.
 --
 -- The original CHECK from 000022_add_acp_agents.sql was added inline via
 -- `ADD COLUMN ... CHECK (...)`, so Postgres auto-named it

@@ -25,8 +25,7 @@ type Event struct {
 // confirmed in the spike, where a non-terminating scripted reply produced
 // 600+ tool-call cycles with no backoff in 20 seconds — so this client owns
 // that limit, mirroring what agent_config.MaxIterations enforces today via
-// OpenHands' conversation.run(max_iterations=...). See
-// docs/ai-agent/goose-migration.md.
+// OpenHands' conversation.run(max_iterations=...).
 var ErrMaxToolCalls = errors.New("acp: exceeded max tool calls for this turn")
 
 // Client is a single conversation's connection to one container's

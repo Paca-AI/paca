@@ -3,8 +3,7 @@
 // services/ai-agent/src/agent/docker_workspace.py, adapted for Goose:
 //   - runs `ghcr.io/block/goose` instead of the OpenHands agent-server image
 //   - no repo_tools injection (that mechanism is being replaced by exposing
-//     list_repositories/clone_repository as more Paca MCP server tools —
-//     see docs/ai-agent/goose-migration.md's component mapping table)
+//     list_repositories/clone_repository as more Paca MCP server tools)
 //   - health-checks goose serve's /status endpoint instead of OpenHands'
 //     /health
 package sandbox
@@ -40,7 +39,7 @@ const (
 	// something worth rate-limiting). 100ms caps that worst case at a
 	// tenth of the cost, at the price of a handful of extra fast local
 	// requests while waiting — negligible next to the seconds a cold start
-	// otherwise takes. See docs/ai-agent/goose-migration.md.
+	// otherwise takes.
 	readyPollEvery = 100 * time.Millisecond
 	// stopTimeout is how long ContainerStop waits after SIGTERM before
 	// force-killing (SIGKILL) the sandbox. Confirmed directly, not

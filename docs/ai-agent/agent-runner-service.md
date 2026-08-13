@@ -2,7 +2,7 @@
 
 The `services/agent-runner` service is a Go service responsible for executing `llm`-type agent conversations using [Goose](https://github.com/block/goose) (via [ACP](https://agentclientprotocol.com/), the Agent Client Protocol) as the execution engine, and for brokering `acp`-type agent conversations to a user's own local coding CLI via `apps/acp-bridge`. It consumes trigger events from a Valkey Stream, manages Docker container lifecycles for `llm`-type agents, and streams conversation events back.
 
-It replaced `services/ai-agent` (Python, OpenHands SDK) — see [goose-migration.md](goose-migration.md) for the full migration record, including the concrete bugs found and fixed along the way.
+It replaced `services/ai-agent` (Python, OpenHands SDK), which has been fully removed from the repository.
 
 ## Table of Contents
 
@@ -83,7 +83,7 @@ The same stream also carries **control messages** (`agent.stop` / `agent.pause` 
 
 ### Outbound stream: `paca:agent:events`
 
-`agent-runner` appends every conversation event here as a durable log. Nothing in `services/api` currently consumes this stream directly — conversation history is read from Postgres (`agent_conversation_events`, written by `agent-runner` itself — see [Conversation Event Persistence](goose-migration.md#conversation-event-persistence)); live UI updates go through the separate `paca.events` Pub/Sub channel below.
+`agent-runner` appends every conversation event here as a durable log. Nothing in `services/api` currently consumes this stream directly — conversation history is read from Postgres (`agent_conversation_events`, written by `agent-runner` itself via `ConversationRepository.InsertEvent`/`NextEventIndex`, seeded per-conversation so a resumed chat turn's events continue the same index sequence rather than restarting at 0); live UI updates go through the separate `paca.events` Pub/Sub channel below.
 
 ### `paca.events` (Pub/Sub)
 
@@ -114,7 +114,7 @@ The core flow, in `internal/executor/executor.go`'s `Run`:
 ## Docker Container Strategy
 
 - Each conversation gets a **dedicated Docker container**, started via the Docker Engine API directly (`internal/sandbox.Manager`).
-- The sandbox image is `services/agent-server/Dockerfile` — Goose plus Node.js and the Paca MCP package pre-installed. **Must** be this image, not raw upstream Goose: the raw image has no Node.js, so the built-in Paca MCP server can never start, and Goose does not surface that failure as an ACP error — `session/new` just hangs forever (a real bug found live while wiring up the dev environment; see [goose-migration.md](goose-migration.md)).
+- The sandbox image is `services/agent-server/Dockerfile` — Goose plus Node.js and the Paca MCP package pre-installed. **Must** be this image, not raw upstream Goose: the raw image has no Node.js, so the built-in Paca MCP server can never start, and Goose does not surface that failure as an ACP error — `session/new` just hangs forever instead. This is why `executor.Run` derives a bounded `context.WithTimeout` from `cfg.TimeoutMinutes` (falling back to 30 minutes) for the whole ACP handshake/prompt sequence, rather than trusting the call to fail fast on its own.
 - The container is stopped and removed by `sandbox.Manager.Stop`, called explicitly by the caller once it decides teardown is appropriate (see [Conversation Execution](#conversation-execution) above) — not automatically on every turn's end, since a paused chat conversation's container stays alive between turns.
 - Containers are placed on this process's own Docker network, isolated from other Paca service containers.
 - Port allocation: a configurable port pool (`PORT_POOL_START`/`PORT_POOL_SIZE`, default `10000`–`10099`) tracked in-process; a port is claimed on `Start` and released on `Stop`.

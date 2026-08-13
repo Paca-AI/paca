@@ -67,7 +67,7 @@ Concerns:
 
 ## services/agent-runner
 
-Responsible for AI agent execution. Replaced `services/ai-agent` (Python/OpenHands) — see [goose-migration.md](../ai-agent/goose-migration.md) for the migration record.
+Responsible for AI agent execution. Replaced `services/ai-agent` (Python/OpenHands), which has been fully removed from the repository — see [agent-runner-service.md](../ai-agent/agent-runner-service.md) for its implementation.
 
 Concerns:
 

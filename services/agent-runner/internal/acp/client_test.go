@@ -60,7 +60,7 @@ func TestInitialize(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Acp-Session-Id", "803b1ade-8b25-416d-98a5-ba7cabcca107")
-		// Captured verbatim from the spike (see docs/ai-agent/goose-migration.md).
+		// Captured verbatim from the spike.
 		writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true},"mcpCapabilities":{"http":true,"sse":false},"sessionCapabilities":{"list":{},"close":{}},"auth":{}},"authMethods":[{"id":"goose-provider","name":"Configure Provider","description":"Run `+"`"+`goose configure`+"`"+` to set up your AI provider and API key"}]},"id":1}`))
 	}))
 	defer srv.Close()

@@ -44,8 +44,7 @@ const taskAssignedDefault = "You have been assigned a task. Load it via the Paca
 // — session/new's params are only cwd and mcpServers — so everything that
 // used to ride in a separate system suffix now has to be folded into the
 // turn's own message instead, the same way apps/acp-bridge's
-// build_acp_message already does for the acp execution path (see
-// docs/ai-agent/goose-migration.md's component mapping table).
+// build_acp_message already does for the acp execution path.
 func buildInitialMessage(cfg agent.Config, trigger agent.Trigger) string {
 	var b strings.Builder
 

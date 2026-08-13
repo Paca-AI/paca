@@ -23,7 +23,7 @@ import (
 // configured (<= 0). Goose enforces no turn cap of its own — confirmed in
 // the protocol spike, where a non-converging reply produced 600+ tool-call
 // cycles in 20 seconds with no backoff — so "unconfigured" must fail safe
-// to a bounded default, not to unlimited. See docs/ai-agent/goose-migration.md.
+// to a bounded default, not to unlimited.
 const defaultMaxToolCalls = 50
 
 // defaultTimeoutMinutes bounds a turn when an agent has no TimeoutMinutes
@@ -33,9 +33,9 @@ const defaultMaxToolCalls = 50
 //
 // This exists because of a real, live bug found while building the sandbox
 // image: a wrong mcpServers wire format made a real goose serve's
-// session/new hang forever rather than return an ACP error (see
-// docs/ai-agent/goose-migration.md). acp.Client's calls have no timeout of
-// their own — only whatever context.Context the caller supplies — so
+// session/new hang forever rather than return an ACP error. acp.Client's
+// calls have no timeout of their own — only whatever context.Context the
+// caller supplies — so
 // without this, a *different* future downstream failure (a stuck MCP
 // subprocess, a wedged provider) could hang a real conversation, and the
 // container and goroutine driving it, indefinitely.
@@ -51,10 +51,8 @@ const sandboxWorkdir = "/home/goose"
 // this process runs — the Go analog of services/ai-agent's config.Settings,
 // scoped to just the fields the executor itself needs.
 type Options struct {
-	// Image is the pinned goose image reference — see
-	// docs/ai-agent/goose-migration.md's "no current pinned Goose image
-	// tag" open risk; callers should pass a digest- or tag-pinned
-	// reference, not a floating one.
+	// Image is the pinned goose image reference; callers should pass a
+	// digest- or tag-pinned reference, not a floating one.
 	Image string
 	// PacaAPIKey/PacaAPIURL/PacaGatewayURL configure the built-in Paca MCP
 	// server appended to every conversation's MCP server list — mirrors
@@ -112,8 +110,7 @@ type Result struct {
 // depends on whether the trigger is chat-type and, if it was interrupted,
 // whether that was a pause or a full stop — information Run itself doesn't
 // have. The caller must call StopSandbox once it decides teardown is
-// appropriate. See docs/ai-agent/goose-migration.md's chat-continuity
-// section.
+// appropriate.
 //
 // resume, when non-nil, mirrors run_conversation's resume_state branch:
 // reattach to resume.Handle/resume.Client/resume.SessionID instead of
@@ -266,7 +263,7 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 // anything. That's real latency on every single conversation's cold
 // start, for a check that can never find anything to do here — the image
 // is rebuilt to update this package's version, not resolved freshly per
-// session. See docs/ai-agent/goose-migration.md.
+// session.
 const pacaMCPBinPath = "/usr/bin/paca"
 
 // buildMCPServers mirrors builder.py's build_mcp_config: the agent's own
@@ -278,7 +275,7 @@ const pacaMCPBinPath = "/usr/bin/paca"
 // discriminator, with env as an array of {name,value} pairs, not a JSON
 // object) — an earlier, hand-guessed version of this function that omitted
 // both made goose serve's session/new hang forever rather than return an
-// error. See docs/ai-agent/goose-migration.md.
+// error.
 //
 // User-configured "oauth"-transport servers (agent.MCPServer.Transport ==
 // "oauth", the fourth value the agents_mcp_servers DB CHECK allows) have no

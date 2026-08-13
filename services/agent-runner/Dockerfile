@@ -40,6 +40,6 @@ COPY --from=builder /build/data ./data
 # read/write access to the mounted Docker socket (/var/run/docker.sock) to
 # spawn/stop sandbox containers, and there's no non-root group-membership
 # dance that reliably grants that across host Docker configurations. Same
-# choice services/ai-agent's own Dockerfile already makes for the identical
-# need; see docs/ai-agent/goose-migration.md.
+# choice services/ai-agent's own (now-removed) Dockerfile already made for
+# the identical need.
 CMD ["./agent-runner"]

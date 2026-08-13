@@ -275,11 +275,10 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Agent-server sandbox image (Goose + Paca MCP pre-installed) — see
-  # docs/ai-agent/goose-migration.md's Dev Environment Wiring section on why
-  # this must be built from services/agent-server/Dockerfile specifically
-  # (the raw upstream Goose image has no Node.js, so the Paca MCP server can
-  # never start in it).
+  # Agent-server sandbox image (Goose + Paca MCP pre-installed). Must be
+  # built from services/agent-server/Dockerfile specifically — the raw
+  # upstream Goose image has no Node.js, so the Paca MCP server can never
+  # start in it.
   # ─────────────────────────────────────────────────────────────────────────────
   agent-server-goose-image:
     name: Build and push Agent Server (Goose) image

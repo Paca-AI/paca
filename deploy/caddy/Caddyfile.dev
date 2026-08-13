@@ -91,16 +91,9 @@
 	# Scoped to exactly /agent-bridge/ws — /agent-bridge/status/* and
 	# /agent-bridge/disconnect/* are internal-only routes, not for public access.
 	#
-	# Points at agent-runner (the Go replacement — see
-	# docs/ai-agent/goose-migration.md's "ACP-Type Agent Dispatch" section),
-	# not ai-agent — a deliberate dev-only test cutover so a real
-	# apps/acp-bridge daemon pointed at this dev stack actually exercises
-	# the new path end to end. services/api's own AI_AGENT_URL config is
-	# untouched by this (still points at ai-agent by default) — the two
-	# internal REST endpoints work correctly regardless, since presence is
-	# shared over Valkey between whichever service holds the live
-	# connection. The prod Caddyfile is intentionally NOT updated to match;
-	# this line does not mean prod traffic has moved anywhere.
+	# Points at agent-runner, the Go service that now owns this WebSocket
+	# endpoint (services/ai-agent, which used to serve it, has been fully
+	# removed — the prod Caddyfile points here too).
 	handle /agent-bridge/ws {
 		reverse_proxy agent-runner:8080
 	}

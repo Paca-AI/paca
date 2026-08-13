@@ -34,8 +34,7 @@ const helloTimeout = 10 * time.Second
 //     GetLLMModels; a static catalog, not a live LLM call
 //
 // Run in its own goroutine alongside messaging.Consumer.Run in
-// cmd/agent-runner/main.go — see docs/ai-agent/goose-migration.md's "same
-// process, new HTTP server" design note.
+// cmd/agent-runner/main.go.
 type Server struct {
 	Registry      *Registry
 	AgentRepo     *postgres.AgentRepository

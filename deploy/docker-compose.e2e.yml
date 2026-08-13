@@ -213,8 +213,7 @@ services:
       DOCKER_SOCKET: /var/run/docker.sock
       # For this local e2e stack, build a locally-tagged image before
       # starting this service (CD publishes ghcr.io/paca-ai/paca-agent-server-goose
-      # from this same Dockerfile for real releases — see
-      # docs/ai-agent/goose-migration.md's Dev Environment Wiring section):
+      # from this same Dockerfile for real releases):
       #   docker build -f ../services/agent-server/Dockerfile \
       #     -t paca-agent-server-goose:e2e ../services/agent-server
       AGENT_SERVER_IMAGE: "paca-agent-server-goose:e2e"

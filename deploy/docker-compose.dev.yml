@@ -146,8 +146,7 @@ services:
       AGENT_API_KEY: dev-agent-api-key-change-in-production
       # Base URL of the agent-runner service. Explicit rather than relying
       # on the Go code's own http://ai-agent:8080 default — that hostname
-      # doesn't exist in this compose file since ai-agent was removed (see
-      # docs/ai-agent/goose-migration.md's "Full Removal of services/ai-agent"),
+      # doesn't exist in this compose file since ai-agent was removed,
       # so leaving this unset would silently break GET /agents/llm-models
       # and the ACP bridge status/disconnect proxies (confirmed live: a DNS
       # lookup failure on the old default hostname, not a timeout).
@@ -284,8 +283,8 @@ services:
       retries: 30
       start_period: 120s
 
-  # Go service that runs llm- and acp-type agent conversations — see
-  # docs/ai-agent/goose-migration.md. Mirrors services/api's air-based
+  # Go service that runs llm- and acp-type agent conversations. Mirrors
+  # services/api's air-based
   # Dockerfile.dev setup: source is bind-mounted and air rebuilds/restarts
   # the binary on any .go change instead of requiring a full `docker compose
   # up --build agent-runner`.
@@ -323,15 +322,12 @@ services:
       # `npx -y @paca-ai/paca-mcp` — see PACA_API_KEY above, which enables
       # it) can never start inside the sandbox, and Goose does not surface
       # that MCP-subprocess failure as an ACP error — it just hangs
-      # session/new forever (see docs/ai-agent/goose-migration.md's
-      # mcpServers wire-format section for the earlier, related discovery
-      # of that same failure mode). This Dockerfile adds Node.js and
+      # session/new forever. This Dockerfile adds Node.js and
       # pre-installs the MCP package specifically to avoid this.
       #
       # For local dev, build a locally-tagged image before starting this
       # service (CD publishes ghcr.io/paca-ai/paca-agent-server-goose from
-      # this same Dockerfile for real releases — see
-      # docs/ai-agent/goose-migration.md). Run from the repo root, matching
+      # this same Dockerfile for real releases). Run from the repo root, matching
       # how README.md/CONTRIBUTING.md document starting this whole stack:
       #   docker build -f services/agent-server/Dockerfile \
       #     -t paca-agent-server-goose:dev services/agent-server

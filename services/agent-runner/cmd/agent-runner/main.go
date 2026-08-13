@@ -1,8 +1,7 @@
 // Command agent-runner consumes paca:agent:triggers for llm-type agents,
 // runs each conversation in a dedicated Goose sandbox container over ACP,
 // and publishes events back to paca:agent:events — the Go replacement for
-// services/ai-agent's llm-type execution path. See
-// docs/ai-agent/goose-migration.md.
+// services/ai-agent's llm-type execution path.
 //
 // This file is deliberately thin — it only constructs dependencies and
 // wires them into a handler.Handler. The actual per-message behavior lives
@@ -150,10 +149,9 @@ func run(log *slog.Logger) error {
 
 // runHTTPServer serves internal/acpbridge.Server's routes until ctx is
 // done, then shuts down gracefully. Mirrors services/ai-agent's uvicorn
-// process — this is the same-process HTTP server design note in
-// docs/ai-agent/goose-migration.md: one Go binary now covers both the
-// trigger-consuming role consumer.Run drives and the ACP bridge role this
-// covers, the same way services/ai-agent's single asyncio event loop did.
+// process — one Go binary now covers both the trigger-consuming role
+// consumer.Run drives and the ACP bridge role this covers, the same way
+// services/ai-agent's single asyncio event loop did.
 func runHTTPServer(ctx context.Context, srv *http.Server, log *slog.Logger) {
 	errCh := make(chan error, 1)
 	go func() {

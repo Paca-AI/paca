@@ -21,11 +21,9 @@ type Settings struct {
 	// two must byte-for-byte agree.
 	EncryptionKey string
 
-	// AgentServerImage is the pinned goose image reference. See
-	// docs/ai-agent/goose-migration.md's "no current pinned Goose image
-	// tag" open risk — this should be a digest- or tag-pinned reference a
-	// human chose deliberately, not a floating one, so there is no
-	// hardcoded default here.
+	// AgentServerImage is the pinned goose image reference. This should be
+	// a digest- or tag-pinned reference a human chose deliberately, not a
+	// floating one, so there is no hardcoded default here.
 	AgentServerImage string
 
 	PacaAPIKey     string

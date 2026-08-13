@@ -12,10 +12,9 @@ const (
 	StreamAgentTriggers = "paca:agent:triggers"
 	// StreamAgentEvents is a durable log this service appends every
 	// conversation event to. Confirmed (by reading the real Python source,
-	// not the docs — see docs/ai-agent/goose-migration.md) that nothing in
-	// services/api currently consumes this; it exists purely as an event
-	// history. Live UI updates go through ChannelRealtime instead, below —
-	// don't conflate the two.
+	// not the docs) that nothing in services/api currently consumes this;
+	// it exists purely as an event history. Live UI updates go through
+	// ChannelRealtime instead, below — don't conflate the two.
 	StreamAgentEvents = "paca:agent:events"
 	// ChannelRealtime is the Valkey Pub/Sub channel services/realtime
 	// subscribes to for immediate WebSocket fan-out — matches

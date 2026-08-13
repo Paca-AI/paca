@@ -79,7 +79,7 @@ Create a new agent. This also creates the corresponding `project_members` row wi
 }
 ```
 
-`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `goose`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command themselves: `claude-code`/`codex`/`gemini-cli` via the OpenHands SDK's own provider registry, `goose` via a small local override in `apps/acp-bridge` (the SDK's registry doesn't know about Goose — see [goose-migration.md](goose-migration.md)). None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
+`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `goose`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command themselves: `claude-code`/`codex`/`gemini-cli` via the OpenHands SDK's own provider registry, `goose` via a small local override in `apps/acp-bridge` (`_LOCAL_ACP_PROVIDER_COMMANDS` resolving `"goose"` → `["goose", "acp"]`, checked before falling through to the SDK's registry, which doesn't know about Goose). None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
 
 **Response:** `201 Created` with the created agent object.
 
@@ -353,28 +353,28 @@ Get full conversation detail.
 
 ### `GET /api/v1/projects/:projectId/conversations/:conversationId/events`
 
-Offset-paginated list of conversation events.
+Offset-paginated list of conversation events. `event_type`'s value space depends on the agent's `agent_type` — see [realtime-events.md](realtime-events.md#events) for the full table of values for each.
 
 **Query params:** `?offset=0&limit=50` (`limit` capped at 200, defaults to 50)
 
-**Response:**
+**Response (`llm`-type agent, via `services/agent-runner`):**
 ```json
 {
   "items": [
     {
       "id": "uuid",
       "event_index": 0,
-      "event_type": "MessageAction",
+      "event_type": "user_message",
       "event_source": "user",
-      "payload": { "message": "Implement the OAuth login flow..." },
+      "payload": { "content": { "type": "text", "text": "Implement the OAuth login flow..." } },
       "created_at": "2026-05-19T10:00:01Z"
     },
     {
       "id": "uuid",
       "event_index": 1,
-      "event_type": "CmdRunAction",
+      "event_type": "tool_call",
       "event_source": "agent",
-      "payload": { "command": "ls -la /workspace/repo/src" },
+      "payload": { "sessionUpdate": "tool_call", "toolCallId": "call_1", "title": "Developer: Shell" },
       "created_at": "2026-05-19T10:00:03Z"
     }
   ],

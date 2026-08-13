@@ -2569,8 +2569,7 @@ func TestCreateAgent_ACPGooseProviderSuccess(t *testing.T) {
 	// acp_command is required from the caller. apps/acp-bridge's runner.py
 	// resolves the default `goose acp` command itself (the OpenHands SDK's
 	// own provider registry doesn't know about goose, so this can't be
-	// resolved the same way claude-code/codex/gemini-cli are — see
-	// docs/ai-agent/goose-migration.md).
+	// resolved the same way claude-code/codex/gemini-cli are).
 	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
 		Name:          "Goose Agent",
 		Handle:        "goose-agent",

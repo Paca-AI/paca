@@ -3,7 +3,7 @@
 // (dispatch.go) — the trigger-routing path for acp-type agents. An
 // acp-type agent's "sandbox" is a WebSocket connection from a daemon the
 // user runs on their own machine (apps/acp-bridge), not a Docker
-// container this process manages — see docs/ai-agent/goose-migration.md.
+// container this process manages.
 //
 // Presence and dispatch both go through Valkey, using the exact same key
 // and channel prefixes acp_bridge.py uses, so the two work correctly
@@ -11,9 +11,7 @@
 // agent's WebSocket connection during the migration window: PUBLISH on a
 // per-agent channel is delivered to every subscriber across all replicas
 // (and across both services), and a presence key set by either service is
-// readable by the other. This is deliberate, not incidental — see
-// docs/ai-agent/goose-migration.md's "identical Valkey key/channel naming"
-// note.
+// readable by the other. This is deliberate, not incidental.
 package acpbridge
 
 import (

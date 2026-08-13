@@ -269,4 +269,3 @@ Each template also carries a set of trigger keywords (e.g. `developer` triggers 
 - [agent-runner-service.md](agent-runner-service.md) — `services/agent-runner` implementation details
 - [repository-plugin-adapter.md](repository-plugin-adapter.md) — How agents access VCS credentials
 - [realtime-events.md](realtime-events.md) — Socket.IO events emitted during conversations
-- [goose-migration.md](goose-migration.md) — the migration from `services/ai-agent` (Python/OpenHands) to `services/agent-runner` (Go/Goose)

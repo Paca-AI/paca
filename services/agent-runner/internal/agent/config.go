@@ -4,8 +4,8 @@ import "github.com/google/uuid"
 
 // Config is the subset of agentdom.Agent this service needs to run an
 // llm-type conversation — agent-runner never handles acp-type agents (those
-// stay on apps/acp-bridge, see docs/ai-agent/goose-migration.md), so
-// ACPProvider/ACPCommand and friends are intentionally omitted here.
+// stay on apps/acp-bridge), so ACPProvider/ACPCommand and friends are
+// intentionally omitted here.
 type Config struct {
 	ID     uuid.UUID
 	Name   string
@@ -42,11 +42,10 @@ type MCPServer struct {
 }
 
 // Skill mirrors agentdom.AgentSkill. Trigger-based (keyword-activated)
-// skills have no direct Goose equivalent yet — see
-// docs/ai-agent/goose-migration.md's component mapping table — so for now
-// every enabled skill's content is folded into the initial prompt
-// unconditionally, regardless of Triggers, rather than silently dropped.
-// Revisit once the slash-command prototype mentioned there lands.
+// skills have no direct Goose equivalent yet, so for now every enabled
+// skill's content is folded into the initial prompt unconditionally,
+// regardless of Triggers, rather than silently dropped. Revisit once the
+// slash-command prototype lands.
 type Skill struct {
 	SkillName    string
 	SkillContent string

@@ -206,9 +206,8 @@ services:
       # Pre-shared key matching PACA_API_KEY in the agent-runner service.
       AGENT_API_KEY: ${AGENT_API_KEY:-}
       # Where the API calls into agent-runner's internal-only routes
-      # (/agent-bridge/status, /agent-bridge/disconnect, /llm/models) — see
-      # docs/ai-agent/goose-migration.md's "ACP-Type Agent Dispatch"
-      # section. The env var keeps its historical AI_AGENT_* name (the Go
+      # (/agent-bridge/status, /agent-bridge/disconnect, /llm/models). The
+      # env var keeps its historical AI_AGENT_* name (the Go
       # code that reads it hasn't been renamed) even though it now points
       # at agent-runner, the services/ai-agent replacement.
       AI_AGENT_URL: http://agent-runner:8080
@@ -292,9 +291,9 @@ services:
         condition: service_started
 
   # ── Agent Runner (optional) ─────────────────────────────────────────────────
-  # Go replacement for the old Python "ai-agent" service — see
-  # docs/ai-agent/goose-migration.md. Suppress with --scale agent-runner=0
-  # to skip this service. Requires Docker socket access on the host.
+  # Go replacement for the old Python "ai-agent" service. Suppress with
+  # --scale agent-runner=0 to skip this service. Requires Docker socket
+  # access on the host.
   agent-runner:
     image: ${PACA_AGENT_RUNNER_IMAGE:-pacaai/paca-agent-runner:latest}
     restart: unless-stopped
@@ -314,11 +313,9 @@ services:
       # The Goose-based sandbox image — built from
       # services/agent-server/Dockerfile (adds Node.js + the Paca MCP
       # package on top of upstream Goose), NOT the raw ghcr.io/block/goose
-      # image directly. See docs/ai-agent/goose-migration.md's Dev
-      # Environment Wiring section for why that distinction is load-bearing
-      # (the raw image has no Node.js, so the built-in Paca MCP server can
-      # never start, and Goose hangs session/new forever rather than
-      # surfacing that as an error).
+      # image directly: the raw image has no Node.js, so the built-in Paca
+      # MCP server can never start, and Goose hangs session/new forever
+      # rather than surfacing that as an error.
       AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE:-ghcr.io/paca-ai/paca-agent-server-goose:latest}
       PORT_POOL_START: ${PORT_POOL_START:-10000}
       PORT_POOL_SIZE: ${PORT_POOL_SIZE:-100}

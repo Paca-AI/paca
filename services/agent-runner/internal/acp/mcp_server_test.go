@@ -9,8 +9,7 @@ import (
 // real schema.json — an earlier version of this struct (no "type"
 // discriminator, Env as a JSON object instead of an array) produced a
 // request that made a real goose serve's session/new hang forever instead
-// of returning an error. See docs/ai-agent/goose-migration.md and
-// executor.go's buildMCPServers.
+// of returning an error. See executor.go's buildMCPServers.
 func TestMCPServerConfigWireShape(t *testing.T) {
 	args := []string{}
 	envVal := []EnvVariable{{Name: "PACA_API_KEY", Value: "secret"}}

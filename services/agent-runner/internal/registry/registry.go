@@ -14,11 +14,11 @@ import (
 )
 
 // InterruptReason distinguishes why a running turn was cancelled — added for
-// chat conversation continuity (see docs/ai-agent/goose-migration.md): a
-// chat conversation's turn ending via ReasonPause keeps its sandbox alive
-// for the next reply, the same run ending via ReasonStop tears it down for
-// good. Non-chat conversations never pause, so ReasonPause is meaningless
-// for them (handler.Handle only consults this for chat triggers).
+// chat conversation continuity: a chat conversation's turn ending via
+// ReasonPause keeps its sandbox alive for the next reply, the same run
+// ending via ReasonStop tears it down for good. Non-chat conversations
+// never pause, so ReasonPause is meaningless for them (handler.Handle only
+// consults this for chat triggers).
 type InterruptReason string
 
 const (
@@ -35,7 +35,7 @@ const (
 // Single-process only: in a multi-replica deployment, a stop/pause control
 // message is only actionable on whichever replica is actually running that
 // conversation. Routing a control message to the right replica isn't
-// solved here; see docs/ai-agent/goose-migration.md.
+// solved here.
 type Conversations struct {
 	mu      sync.Mutex
 	cancels map[uuid.UUID]context.CancelFunc

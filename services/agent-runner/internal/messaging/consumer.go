@@ -96,8 +96,7 @@ func (c *Consumer) Run(ctx context.Context) {
 	// deployment of this service against a real dev Valkey replayed every
 	// trigger the stream had ever held, since a brand-new consumer group
 	// has no delivery history of its own to resume from and "0" means
-	// "start from the very first entry still in the stream." See
-	// docs/ai-agent/goose-migration.md.
+	// "start from the very first entry still in the stream."
 	if err := c.client.XGroupCreateMkStream(ctx, StreamAgentTriggers, consumerGroup, "$").Err(); err != nil {
 		if err.Error() != "BUSYGROUP Consumer Group name already exists" {
 			c.log.Error("consumer: failed to create consumer group", "error", err)

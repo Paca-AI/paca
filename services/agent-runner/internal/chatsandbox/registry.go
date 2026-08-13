@@ -2,8 +2,7 @@
 // between turns instead of tearing it down after every single message — the
 // Go analog of services/ai-agent's core/registry.py (chat_sandboxes,
 // ChatSandboxState) and the idle-reaping half of executor.py
-// (_find_idle_chat_sandboxes/reap_idle_chat_sandboxes). See
-// docs/ai-agent/goose-migration.md's chat-continuity section.
+// (_find_idle_chat_sandboxes/reap_idle_chat_sandboxes).
 package chatsandbox
 
 import (

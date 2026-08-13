@@ -14,8 +14,7 @@
 // directly. Revisit if the SDK grows a native HTTP transport.
 //
 // All wire shapes here were captured empirically against a live `goose
-// serve` (image ghcr.io/block/goose@sha256:d85a724...30, goose 1.30.0) — see
-// docs/ai-agent/goose-migration.md's spike section for the raw transcripts.
+// serve` (image ghcr.io/block/goose@sha256:d85a724...30, goose 1.30.0).
 // Fields not exercised in that spike are marked below; verify before
 // depending on them.
 package acp
@@ -67,8 +66,7 @@ type rpcError struct {
 // "Internal error". Dropping Data left every session/new or session/prompt
 // failure's DB-persisted error_message (and logs) as an unhelpful "Internal
 // error" with no way to tell a bad API key from a missing provider without
-// reproducing the call by hand. See docs/ai-agent/goose-migration.md's
-// "acp: session/new: Internal error" investigation.
+// reproducing the call by hand.
 func (e *rpcError) Error() string {
 	if e.Data != nil {
 		return fmt.Sprintf("%s: %v", e.Message, e.Data)
@@ -84,8 +82,7 @@ type initializeParams struct {
 }
 
 // AuthMethod is one entry of initialize's authMethods list. Observed with a
-// single "goose-provider" entry when no LLM provider is configured yet —
-// see the migration doc's session/new gotcha.
+// single "goose-provider" entry when no LLM provider is configured yet.
 type AuthMethod struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -107,8 +104,7 @@ type NewSessionParams struct {
 // "sse") — confirmed against the real schema
 // (https://github.com/agentclientprotocol/agent-client-protocol,
 // $defs.McpServer) after a hand-guessed shape without this field made
-// goose serve's session/new hang forever rather than return an error. See
-// docs/ai-agent/goose-migration.md.
+// goose serve's session/new hang forever rather than return an error.
 type McpServerType string
 
 const (
@@ -144,7 +140,7 @@ const (
 //     Both are pointers (not plain slices), the same trick Headers below
 //     already used for the identical http/sse problem, so "present but
 //     empty" (`&[]string{}`) can be told apart from "absent" (`nil`) at
-//     all. See docs/ai-agent/goose-migration.md.
+//     all.
 type MCPServerConfig struct {
 	Type    McpServerType  `json:"type"`
 	Name    string         `json:"name"`

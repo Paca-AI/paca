@@ -29,8 +29,8 @@ def test_resolve_builtin_provider_uses_sdk_default_command():
 
 def test_resolve_goose_provider_uses_local_default_command():
     """goose isn't in the OpenHands SDK's own acp_providers registry (only
-    claude-code/codex/gemini-cli are — see docs/ai-agent/goose-migration.md),
-    so this is resolved via a local override instead of get_acp_provider."""
+    claude-code/codex/gemini-cli are), so this is resolved via a local
+    override instead of get_acp_provider."""
     assert resolve_acp_command("goose", []) == ["goose", "acp"]
 
 

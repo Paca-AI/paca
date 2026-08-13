@@ -1,8 +1,8 @@
 # AI Agent — Default Skill Set
 
 > **Known gap as of `services/agent-runner`**: everything below describes the
-> product's intended behavior, which `services/ai-agent` (now removed —
-> see [goose-migration.md](goose-migration.md)) fully implemented.
+> product's intended behavior, which `services/ai-agent` (now fully removed
+> from the repository) implemented.
 > `services/agent-runner` does **not** currently merge in Paca's default
 > skill set or any plugin-contributed skills, and has no equivalent to the
 > fixed per-trigger-type skills described below — it only injects whatever

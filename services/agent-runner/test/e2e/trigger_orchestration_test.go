@@ -98,8 +98,8 @@ func TestTriggerOrchestration(t *testing.T) {
 		t.Fatalf("final status = %q (error_message=%v), want %q", final.Status, final.ErrorMessage, "finished")
 	}
 
-	// Phase 1 (see docs/ai-agent/goose-migration.md): Handle persists every
-	// event to agent_conversation_events, not just to the Valkey streams —
+	// Phase 1: Handle persists every event to agent_conversation_events,
+	// not just to the Valkey streams —
 	// this is what services/api's ListConversationEvents reads on page
 	// load, so an empty result here would mean a real user reloading the
 	// page sees no history at all.

@@ -57,7 +57,7 @@ func (r *Registry) subscribeLoop(ctx context.Context, channel string, handle fun
 // other way. Without this, Unregister's `<-entry.done` — reached on every
 // bridge disconnect, not just eviction — hung indefinitely in a live test,
 // only ever unblocking because the test's own redis.Client.Close() call
-// forced the issue. See docs/ai-agent/goose-migration.md.
+// forced the issue.
 func (r *Registry) drainMessages(ctx context.Context, pubsub *redis.PubSub, handle func(data []byte) (stop bool)) bool {
 	closeOnCancel := make(chan struct{})
 	defer close(closeOnCancel)

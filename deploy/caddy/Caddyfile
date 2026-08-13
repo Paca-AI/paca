@@ -54,9 +54,12 @@
 
 	# -- Plugin Agent Skills bundles ----------------------------------------------
 	#
-	# SKILL.md directories loaded at conversation start by the ai-agent service.
-	# Kept on a separate path from frontend/MCP assets for the same reason as
-	# the MCP block above.
+	# SKILL.md directories for plugin-contributed Agent Skills, served here
+	# for plugins to reference via their manifest's skills.baseUrl. Not
+	# currently loaded into any conversation by services/agent-runner (see
+	# docs/plugins/skills-plugin-system.md's gap notice). Kept on a separate
+	# path from frontend/MCP assets for the same reason as the MCP block
+	# above.
 	#
 	# Set baseUrl in each plugin's plugin.json skills section to an absolute
 	# URL, for example:

@@ -6,9 +6,8 @@
 // services/api/internal/platform/bundledskills's `paca` and `paca-do`
 // skills). Every conversation gets this regardless of what's in
 // agent_skills, mirroring services/ai-agent's builder.load_default_skills()
-// from before the Python->Go migration (see
-// docs/ai-agent/goose-migration.md) — an agent's own agent_skills rows are
-// opt-in customizations layered on top, never a replacement for it.
+// from before the Python->Go migration — an agent's own agent_skills rows
+// are opt-in customizations layered on top, never a replacement for it.
 package bundledskills
 
 import (

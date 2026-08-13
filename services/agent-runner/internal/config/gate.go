@@ -4,10 +4,10 @@ import "github.com/google/uuid"
 
 // Gate answers "does this process own execution for this agent?" —
 // originally the Go side of the migration plan's "gated per-agent or
-// per-project" rollout against the now-removed Python services/ai-agent
-// (see docs/ai-agent/goose-migration.md), back when both services read
-// every message on paca:agent:triggers via independent consumer groups and
-// something had to stop them from double-executing the same trigger.
+// per-project" rollout against the now-removed Python services/ai-agent,
+// back when both services read every message on paca:agent:triggers via
+// independent consumer groups and something had to stop them from
+// double-executing the same trigger.
 //
 // agent-runner is the only consumer of paca:agent:triggers now, so Gate no
 // longer coordinates between two services — multiple agent-runner replicas
