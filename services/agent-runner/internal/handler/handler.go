@@ -239,7 +239,19 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		})
 		persistAndPublish("agent_message_chunk", "agent", payload)
 	}
+	// Set on every event the turn produces (a reply chunk or a tool call) —
+	// used below to detect a turn that ends with no runErr and stopReason
+	// "end_turn" but zero visible content. That combination is reachable:
+	// goose can exhaust its own internal retries against a failing LLM
+	// provider (observed live: an OpenRouter account out of credits) and
+	// still answer session/prompt as an ordinary successful, empty turn
+	// with no ACP-level error to catch — see acp.ClassifyProviderError's
+	// doc comment for the error-carrying case this doesn't cover. Without
+	// this check, such a turn leaves the conversation looking like the
+	// agent simply never replied, with no error surfaced anywhere in the UI.
+	producedOutput := false
 	onEvent := func(e acp.Event) {
+		producedOutput = true
 		if e.Kind == acp.UpdateAgentMessageChunk {
 			var chunk acp.AgentMessageChunk
 			if err := json.Unmarshal(e.Raw, &chunk); err != nil {
@@ -326,6 +338,41 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 
 		h.tearDownSandbox(ctx, trigger, result)
 		errMsg := runErr.Error()
+		// A rate-limit or out-of-credits response from the LLM provider
+		// reads, in its raw wrapped form, as an unhelpful blob of relayed
+		// HTTP status/JSON (see acp.ClassifyProviderError's doc comment) —
+		// swap it for a plain-language message so the user sees what
+		// actually happened instead of a generic failure. The raw error is
+		// still captured below via h.Log.Error for debugging.
+		kind, classified := acp.ClassifyProviderError(runErr)
+		if classified {
+			errMsg = kind.FriendlyMessage()
+		}
+
+		// A classified provider error is something the user can fix outside
+		// this conversation (top up billing, wait out a rate limit) and
+		// then just retry — unlike an unrecognized failure, it shouldn't
+		// dead-end the conversation the way "failed" does (canReply goes
+		// false once a conversation is terminal). Left "paused" instead, the
+		// same non-terminal status a normal successful turn ends on, so the
+		// composer stays enabled; the next message cold-starts a fresh
+		// sandbox exactly like a brand new conversation would, since this
+		// turn's (broken) sandbox was already torn down above and never
+		// registered in ChatSandboxes. Scoped to isChat: "paused" and
+		// canReply are chat-specific concepts (see the natural-finish
+		// branch below) — a task-triggered conversation has no retry path
+		// through the UI regardless of status.
+		if classified && isChat {
+			if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", &errMsg); err != nil {
+				h.Log.Warn("agent-runner: failed to record paused-after-provider-error status",
+					"conversation_id", trigger.ConversationID, "error", err)
+			}
+			h.publishNonTerminalStatus(ctx, trigger, "agent.conversation.paused")
+			h.Log.Warn("agent-runner: conversation turn hit a recoverable provider error, left paused for retry",
+				"conversation_id", trigger.ConversationID, "kind", kind, "error", runErr)
+			return nil
+		}
+
 		if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "failed", &errMsg); err != nil {
 			h.Log.Warn("agent-runner: failed to record failure status",
 				"conversation_id", trigger.ConversationID, "error", err)
@@ -337,6 +384,20 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		h.Log.Error("agent-runner: conversation failed",
 			"conversation_id", trigger.ConversationID, "error", runErr)
 		return nil
+	}
+
+	// Carried into the UpdateStatus calls below (paused/finished) instead of
+	// being persisted as a conversation_events row: it used to render as an
+	// ordinary chat bubble, which looked inconsistent with a classified
+	// provider error (see acp.ClassifyProviderError) — the exact same "out
+	// of tokens/credits" cause renders as a plain message here but as a
+	// distinct ConversationErrorBox there, purely because goose swallowed
+	// this one internally instead of surfacing it as an ACP error. Routing
+	// both through conversation.error_message unifies the presentation.
+	var noOutputMsg *string
+	if !producedOutput {
+		msg := "I wasn't able to generate a reply for this message. This can happen if the LLM provider was rate-limited, out of credits, or had a temporary outage. Please try again in a moment."
+		noOutputMsg = &msg
 	}
 
 	stopReasonJSON, _ := json.Marshal(map[string]string{"stopReason": result.StopReason})
@@ -360,7 +421,7 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		// !shutdown is also true for an ordinary successful turn, not just
 		// an interrupt-only pause.
 		h.keepSandboxAlive(trigger, result)
-		if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", nil); err != nil {
+		if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", noOutputMsg); err != nil {
 			return fmt.Errorf("mark conversation %s paused: %w", trigger.ConversationID, err)
 		}
 		h.publishNonTerminalStatus(ctx, trigger, "agent.conversation.paused")
@@ -370,7 +431,7 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	}
 
 	h.tearDownSandbox(ctx, trigger, result)
-	if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "finished", nil); err != nil {
+	if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "finished", noOutputMsg); err != nil {
 		return fmt.Errorf("mark conversation %s finished: %w", trigger.ConversationID, err)
 	}
 	h.publishTerminalStatus(ctx, trigger.ProjectID, trigger.ConversationID, trigger.ActorUserID, "finished", "agent.conversation.finished")

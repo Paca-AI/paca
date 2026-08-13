@@ -41,6 +41,7 @@ import {
 	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
+import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
@@ -470,25 +471,21 @@ export function ConversationView({
 							/>
 						}
 						viewportOverlay={
-							<TailFollowIndicator
-								newBelow={newBelow}
-								following={following}
-								setFollowing={setFollowing}
-								jumpToLatest={jumpToLatest}
-							/>
+							<>
+								{conversation.error_message && (
+									<ConversationErrorBox message={conversation.error_message} />
+								)}
+								<TailFollowIndicator
+									newBelow={newBelow}
+									following={following}
+									setFollowing={setFollowing}
+									jumpToLatest={jumpToLatest}
+								/>
+							</>
 						}
 					/>
 				</AssistantRuntimeProvider>
 			</div>
-
-			{/* Footer */}
-			{conversation.error_message && (
-				<div className="shrink-0 border-t border-destructive/20 bg-destructive/5 px-5 py-3">
-					<p className="text-xs text-destructive">
-						{conversation.error_message}
-					</p>
-				</div>
-			)}
 		</div>
 	);
 }

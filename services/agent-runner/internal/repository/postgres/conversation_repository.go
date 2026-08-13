@@ -25,20 +25,16 @@ func NewConversationRepository(db *sqlx.DB) *ConversationRepository {
 	return &ConversationRepository{db: db}
 }
 
-// UpdateStatus mirrors update_conversation_status. errorMessage nil leaves
-// the column untouched (a run transitioning through "running" has none to
-// set); pass a non-nil value to record one alongside a "failed" status.
+// UpdateStatus mirrors update_conversation_status, always overwriting
+// error_message (to NULL when errorMessage is nil) rather than leaving a
+// prior value in place — a "paused" status can now carry one too (a
+// classified, retryable provider error — see acp.ClassifyProviderError),
+// so the next turn's "running" transition must actually clear it, not just
+// every status besides "failed" happening to never have set one before.
 func (r *ConversationRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string, errorMessage *string) error {
-	var err error
-	if errorMessage != nil {
-		_, err = r.db.ExecContext(ctx,
-			`UPDATE agent_conversations SET status = $1, error_message = $2, updated_at = now() WHERE id = $3`,
-			status, *errorMessage, id)
-	} else {
-		_, err = r.db.ExecContext(ctx,
-			`UPDATE agent_conversations SET status = $1, updated_at = now() WHERE id = $2`,
-			status, id)
-	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agent_conversations SET status = $1, error_message = $2, updated_at = now() WHERE id = $3`,
+		status, errorMessage, id)
 	if err != nil {
 		return fmt.Errorf("postgres: update conversation %s status: %w", id, err)
 	}
