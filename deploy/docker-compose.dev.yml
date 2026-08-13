@@ -335,6 +335,23 @@ services:
       #   docker build -f ../services/agent-server/Dockerfile \
       #     -t paca-agent-server-goose:dev ../services/agent-server
       AGENT_SERVER_IMAGE: "paca-agent-server-goose:dev"
+      # Runs every sandbox's built-in Paca MCP server from this checkout's
+      # apps/mcp instead of the image's globally npm-installed
+      # @paca-ai/paca-mcp (see services/agent-server/Dockerfile) — so a
+      # local apps/mcp change is live on the next conversation without
+      # publishing a new npm version and rebuilding the sandbox image.
+      # Requires `bun install && bun run build` to have been run inside
+      # apps/mcp first (needs build/ and node_modules/ on disk).
+      #
+      # ${PWD} must be this file's own directory (deploy/) — i.e. `docker
+      # compose` invoked from here, the same assumption the
+      # AGENT_SERVER_IMAGE build command above documents. This is a HOST
+      # path, not a path inside this container: agent-runner reaches the
+      # Docker daemon over the mounted socket below (sibling-container
+      # mode, not Docker-in-Docker), so the daemon resolves this bind
+      # mount's source against its own (the host's) filesystem — see
+      # sandbox.Config.MCPDevSourceDir.
+      PACA_MCP_DEV_SOURCE_DIR: ${PWD}/../apps/mcp
       PORT_POOL_START: "10000"
       PORT_POOL_SIZE: "100"
       WORKER_CONCURRENCY: "5"

@@ -70,6 +70,16 @@ type Settings struct {
 	// comment.
 	LLMModelsPath string
 
+	// MCPDevSourceDir, when set, is a HOST filesystem path (not a path
+	// inside this container — see sandbox.Config.MCPDevSourceDir's doc
+	// comment on why) to a locally-built apps/mcp checkout. When empty
+	// (the production/default case), every sandbox runs the Paca MCP server
+	// from the image's globally npm-installed @paca-ai/paca-mcp — see
+	// pacaMCPBinPath. Dev-only: lets a change to apps/mcp source show up in
+	// the next conversation without publishing a new npm version and
+	// rebuilding the sandbox image first.
+	MCPDevSourceDir string
+
 	LogLevel string
 }
 
@@ -91,6 +101,7 @@ func Load() (Settings, error) {
 		HTTPAddr:               envOr("HTTP_ADDR", ":8080"),
 		InternalAPIKey:         os.Getenv("INTERNAL_API_KEY"),
 		LLMModelsPath:          envOr("LLM_MODELS_PATH", "./data/llm_models.json"),
+		MCPDevSourceDir:        os.Getenv("PACA_MCP_DEV_SOURCE_DIR"),
 		LogLevel:               envOr("LOG_LEVEL", "INFO"),
 	}
 

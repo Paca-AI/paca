@@ -84,10 +84,11 @@ func run(log *slog.Logger) error {
 	}
 
 	exec := executor.New(sandboxMgr, encryptor, executor.Options{
-		Image:          settings.AgentServerImage,
-		PacaAPIKey:     settings.PacaAPIKey,
-		PacaAPIURL:     settings.PacaAPIURL,
-		PacaGatewayURL: settings.PacaGatewayURL,
+		Image:           settings.AgentServerImage,
+		PacaAPIKey:      settings.PacaAPIKey,
+		PacaAPIURL:      settings.PacaAPIURL,
+		PacaGatewayURL:  settings.PacaGatewayURL,
+		MCPDevSourceDir: settings.MCPDevSourceDir,
 	}, log)
 
 	chatSandboxes := chatsandbox.New()
@@ -139,6 +140,7 @@ func run(log *slog.Logger) error {
 		"allowed_agent_ids", settings.AllowedAgentIDs,
 		"chat_sandbox_idle_timeout", settings.ChatSandboxIdleTimeout,
 		"http_addr", settings.HTTPAddr,
+		"mcp_dev_source_dir", settings.MCPDevSourceDir,
 	)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go runHTTPServer(ctx, httpServer, log)

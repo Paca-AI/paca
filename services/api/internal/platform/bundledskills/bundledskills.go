@@ -632,7 +632,7 @@ If this task involves code changes AND the project has a linked repository, comp
 
 1. **Clone and branch first** (before editing):
    - ` + "`" + `list_repositories` + "`" + ` → note the ` + "`" + `plugin_id` + "`" + ` and ` + "`" + `repo_id` + "`" + `.
-   - ` + "`" + `clone_repository` + "`" + ` (clones to /workspace/repo).
+   - ` + "`" + `clone_repository` + "`" + ` (clones to /home/goose/repo by default).
    - Create and switch to a feature branch: ` + "`" + `git checkout -b feat/<task-number>-<short-description>` + "`" + `.
 
 2. **Make your changes** in the cloned repo. Verify with tests if available.

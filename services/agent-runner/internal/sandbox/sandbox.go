@@ -10,6 +10,7 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -56,6 +58,14 @@ const (
 	stopTimeout = 3 * time.Second
 )
 
+// MCPDevMountPath is where Config.MCPDevSourceDir (when set) is bind-mounted
+// inside the sandbox container. executor.buildMCPServers points the Paca MCP
+// server's stdio command at "<MCPDevMountPath>/build/index.js" via the
+// container's own /usr/bin/node when this override is active, instead of the
+// image's globally npm-installed @paca-ai/paca-mcp — see Config's doc
+// comment.
+const MCPDevMountPath = "/opt/paca-mcp-dev"
+
 // containerPort is the port `goose serve` listens on inside every sandbox
 // container — a var, not a const, since network.Port is a struct type
 // (MustParsePort can't be evaluated at compile time).
@@ -75,6 +85,16 @@ type Config struct {
 	Env               map[string]string
 	GitCommitterName  string
 	GitCommitterEmail string
+
+	// MCPDevSourceDir, when non-empty, is bind-mounted read-only into the
+	// container at MCPDevMountPath. Must be a path on the Docker daemon
+	// host's own filesystem, not a path inside this process's own
+	// container: this process reaches the daemon over a mounted
+	// /var/run/docker.sock (sibling-container/DooD, not Docker-in-Docker),
+	// so a bind mount's Source is always resolved by the daemon against its
+	// own host filesystem, regardless of what this process itself can see
+	// at that path. Dev-only — see config.Settings.MCPDevSourceDir.
+	MCPDevSourceDir string
 }
 
 // Handle is a live sandbox container. Returned by Manager.Start and
@@ -171,6 +191,9 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 			Memory:   4 << 30,       // 4 GiB
 		},
 	}
+	if cfg.MCPDevSourceDir != "" {
+		hostCfg.Binds = []string{cfg.MCPDevSourceDir + ":" + MCPDevMountPath + ":ro"}
+	}
 
 	insideDocker := isInsideDocker()
 	var netCfg *network.NetworkingConfig
@@ -262,6 +285,49 @@ func (m *Manager) Stop(ctx context.Context, h *Handle) error {
 		return fmt.Errorf("sandbox: stop container %s: %w", h.ContainerID, err)
 	}
 	return nil
+}
+
+// Exec runs cmd inside containerID (as the container's own default user —
+// "goose" on the pinned image, same as the process that owns whatever files
+// cmd inspects) and returns its combined stdout+stderr and exit code. Used
+// by the executor package to compute post-edit git diffs directly against
+// the sandbox's real filesystem — see internal/executor/diff.go — since
+// Goose's ACP-over-HTTP implementation has no fs/read_text_file-style
+// callback into the client the way some other ACP agents do (confirmed
+// against the agent-client-protocol project's own goosed-over-ACP tracking
+// issue: the only server-initiated request type it implements is
+// request_permission), so there is no protocol-level way to recover a
+// diff — this reaches into the container directly instead.
+func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string) (output string, exitCode int, err error) {
+	created, err := m.docker.ExecCreate(ctx, containerID, client.ExecCreateOptions{
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          cmd,
+	})
+	if err != nil {
+		return "", 0, fmt.Errorf("sandbox: exec create: %w", err)
+	}
+
+	attached, err := m.docker.ExecAttach(ctx, created.ID, client.ExecAttachOptions{})
+	if err != nil {
+		return "", 0, fmt.Errorf("sandbox: exec attach: %w", err)
+	}
+	defer attached.Close()
+
+	// Not a TTY (ExecAttachOptions.TTY left false above), so stdout/stderr
+	// arrive multiplexed on the one stream — stdcopy demultiplexes both into
+	// the same buffer since callers here only care about combined output,
+	// not which stream a line came from.
+	var buf bytes.Buffer
+	if _, err := stdcopy.StdCopy(&buf, &buf, attached.Reader); err != nil {
+		return "", 0, fmt.Errorf("sandbox: exec read output: %w", err)
+	}
+
+	inspected, err := m.docker.ExecInspect(ctx, created.ID, client.ExecInspectOptions{})
+	if err != nil {
+		return buf.String(), 0, fmt.Errorf("sandbox: exec inspect: %w", err)
+	}
+	return buf.String(), inspected.ExitCode, nil
 }
 
 func (m *Manager) ensureImage(ctx context.Context, ref string) error {

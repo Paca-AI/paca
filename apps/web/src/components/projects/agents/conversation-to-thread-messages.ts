@@ -286,6 +286,12 @@ export function eventsToThreadMessages(
 				typeof p.toolCallId === "string" ? p.toolCallId : undefined;
 			const status = typeof p.status === "string" ? p.status : null;
 			const resultText = extractToolCallUpdateText(p.content);
+			// agent-runner appends {type:"diff",...} content blocks for
+			// completed edit-type tool calls itself — see
+			// services/agent-runner/internal/executor/diff.go — since Goose's
+			// ACP-over-HTTP mode has no fs-delegation callback to report them
+			// through natively the way Claude Code/Codex ACP sessions do.
+			const diffs = extractDiffBlocks(p.content);
 			const openPart =
 				toolCallId && current
 					? current.openToolCalls.get(toolCallId)
@@ -293,6 +299,7 @@ export function eventsToThreadMessages(
 			if (openPart) {
 				if (resultText) openPart.result = resultText;
 				if (status === "failed") openPart.isError = true;
+				if (diffs) openPart.artifact = { diffs };
 			} else if (resultText) {
 				// No matching open tool-call in this turn (history gap) —
 				// append a standalone, already-complete tool-call part.
@@ -305,6 +312,7 @@ export function eventsToThreadMessages(
 					argsText: "",
 					result: resultText,
 					...(status === "failed" ? { isError: true } : {}),
+					...(diffs ? { artifact: { diffs } } : {}),
 				});
 			}
 			continue;

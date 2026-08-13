@@ -64,6 +64,11 @@ type Options struct {
 	PacaAPIKey     string
 	PacaAPIURL     string
 	PacaGatewayURL string
+	// MCPDevSourceDir, when set, is forwarded to every sandbox.Config so the
+	// Paca MCP server runs from a local apps/mcp checkout instead of the
+	// image's globally npm-installed @paca-ai/paca-mcp — see
+	// config.Settings.MCPDevSourceDir and buildMCPServers.
+	MCPDevSourceDir string
 }
 
 // Executor runs conversations for one process — holds the shared sandbox
@@ -157,7 +162,7 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 		maxToolCalls = defaultMaxToolCalls
 	}
 
-	stopReason, err := client.Prompt(turnCtx, sessionID, []acp.ContentBlock{acp.TextBlock(message)}, maxToolCalls, onEvent)
+	stopReason, err := client.Prompt(turnCtx, sessionID, []acp.ContentBlock{acp.TextBlock(message)}, maxToolCalls, e.attachDiffs(turnCtx, handle, onEvent))
 	result := Result{StopReason: stopReason, Handle: handle, Client: client, SessionID: sessionID}
 	if err != nil {
 		return result, fmt.Errorf("executor: acp session/prompt: %w", err)
@@ -222,6 +227,7 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 		Env:               containerEnv,
 		GitCommitterName:  gitName,
 		GitCommitterEmail: gitEmail,
+		MCPDevSourceDir:   e.opts.MCPDevSourceDir,
 	})
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("executor: start sandbox: %w", err)
@@ -338,13 +344,24 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 		// PacaConfig.repoPluginIds's doc comment there.
 		env["PACA_REPO_PLUGIN_IDS"] = strings.Join(trigger.RepoPluginIDs, ",")
 	}
-	pacaArgs := []string{}
+	// Dev override: run the Paca MCP server from a locally-mounted apps/mcp
+	// checkout (see sandbox.Config.MCPDevSourceDir) instead of the image's
+	// globally npm-installed @paca-ai/paca-mcp, so a local source change is
+	// live on the next conversation without an npm publish + image rebuild.
+	// /usr/bin/node is the same absolute-path requirement pacaMCPBinPath's
+	// doc comment explains — ACP rejects a bare command name resolved via
+	// PATH lookup.
+	command, args := pacaMCPBinPath, []string{}
+	if e.opts.MCPDevSourceDir != "" {
+		command = "/usr/bin/node"
+		args = []string{sandbox.MCPDevMountPath + "/build/index.js"}
+	}
 	pacaEnv := envMapToList(env)
 	servers = append(servers, acp.MCPServerConfig{
 		Type:    acp.McpServerStdio,
 		Name:    "paca",
-		Command: pacaMCPBinPath,
-		Args:    &pacaArgs,
+		Command: command,
+		Args:    &args,
 		Env:     &pacaEnv,
 	})
 	return servers
