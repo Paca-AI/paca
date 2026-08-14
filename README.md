@@ -12,7 +12,11 @@
   <a href="https://github.com/Paca-AI/paca/stargazers"><img src="https://img.shields.io/github/stars/Paca-AI/paca?style=social" alt="Stars" /></a>
 </p>
 
+<p align="center"><sub>✨ Sponsored by</sub></p>
+
 <p align="center">
+  <a href="https://neon.com" title="Sponsored by Neon"><img src="docs/assets/neon-logo.svg" alt="Sponsored by Neon" width="120" /></a>
+  &nbsp;&nbsp;
   <a href="https://m.do.co/c/cce1c135acd1"><img src="https://opensource.nyc3.cdn.digitaloceanspaces.com/attribution/assets/PoweredByDO/DO_Powered_by_Badge_blue.svg" alt="Powered by DigitalOcean" width="201" /></a>
   &nbsp;&nbsp;
   <a href="https://app.virtuals.io/referral?code=rXZ9nf"><img src="https://os.virtuals.io/favicon.png" alt="Sponsored by Virtuals Protocol" width="40" /></a>
@@ -283,7 +287,7 @@ docker compose --env-file .env up -d
 > **Customizing the stack:** scale down services you don't need.
 >
 > ```bash
-> # External PostgreSQL (supply DATABASE_URL in .env)
+> # External PostgreSQL (supply DATABASE_URL in .env — recommended: Neon https://neon.com)
 > docker compose --env-file .env up -d --scale postgres=0
 >
 > # AWS S3 instead of MinIO (set STORAGE_PROVIDER=s3 in .env)
