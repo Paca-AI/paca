@@ -12,7 +12,11 @@
   <a href="https://github.com/Paca-AI/paca/stargazers"><img src="https://img.shields.io/github/stars/Paca-AI/paca?style=social" alt="Stars" /></a>
 </p>
 
+<p align="center"><sub>✨ Sponsored by</sub></p>
+
 <p align="center">
+  <a href="https://neon.com" title="Sponsored by Neon"><svg xmlns="http://www.w3.org/2000/svg" width="120" height="46" viewBox="0 0 1327 512" fill="none"><rect width="1326.81" height="511.365" rx="4" fill="#161616"/><path d="M413.226 96.0894V415.365L289.837 308.315V415.365H97V96L413.226 96.0894ZM135.763 376.602H251.074V223.257L374.465 332.424V134.841L135.763 134.772V376.602Z" fill="#34D59A"/><path d="M1229.81 352.35L1107.04 243.699V350.22H1068.43V159.015L1191.19 267.666V161.146H1229.81V352.35Z" fill="white"/><path d="M945.475 352.35C891.949 352.35 848.808 309.209 848.808 255.683C848.808 202.156 891.949 159.015 945.475 159.015C999.002 159.015 1042.14 202.156 1042.14 255.683C1042.14 309.209 999.002 352.35 945.475 352.35ZM945.475 315.068C978.496 315.068 1003.26 288.438 1003.26 255.683C1003.26 222.927 978.496 196.297 945.475 196.297C912.454 196.297 887.688 222.927 887.688 255.683C887.688 288.438 912.454 315.068 945.475 315.068Z" fill="white"/><path d="M710.358 350.22V161.146H825.933V199.227H748.972V236.509H809.955V273.791H748.972V312.138H825.933V350.22H710.358Z" fill="white"/><path d="M667.85 352.35L545.085 243.699V350.22H506.471V159.015L629.236 267.666V161.146H667.85V352.35Z" fill="white"/></svg></a>
+  &nbsp;&nbsp;
   <a href="https://m.do.co/c/cce1c135acd1"><img src="https://opensource.nyc3.cdn.digitaloceanspaces.com/attribution/assets/PoweredByDO/DO_Powered_by_Badge_blue.svg" alt="Powered by DigitalOcean" width="201" /></a>
   &nbsp;&nbsp;
   <a href="https://app.virtuals.io/referral?code=rXZ9nf"><img src="https://os.virtuals.io/favicon.png" alt="Sponsored by Virtuals Protocol" width="40" /></a>
