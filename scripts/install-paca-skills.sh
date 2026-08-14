@@ -161,16 +161,16 @@ extract_host() {
 }
 
 # plugin_baseurl_allowed URL API_HOST — mirrors the same-purpose SSRF guard
-# services/ai-agent's resolve_plugin_base_url and apps/mcp/src/plugin-loader.ts's
-# resolveImportUrl already apply server-side to this exact field
-# (manifest.skills.baseUrl): a plugin manifest is admin-installed but still
+# apps/mcp/src/plugin-loader.ts's resolveImportUrl already applies server-side
+# to this exact field (manifest.skills.baseUrl): a plugin manifest is
+# admin-installed but still
 # untrusted content, and what it points at here gets installed verbatim as a
 # local slash command — so an absolute baseUrl gets the same treatment here,
 # not just on the backends. https:// is rejected for loopback/private/
 # link-local hosts; http:// is allowed only for localhost/loopback or the
 # configured Paca instance's own host. This is a best-effort static check
-# (no DNS resolution, unlike the Python guard it mirrors), but it stops the
-# obvious case: a plugin declaring an arbitrary external baseUrl.
+# (no DNS resolution, unlike the TypeScript guard it mirrors), but it stops
+# the obvious case: a plugin declaring an arbitrary external baseUrl.
 plugin_baseurl_allowed() {
   local url="$1" api_host="$2"
   local scheme host

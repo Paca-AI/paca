@@ -65,11 +65,16 @@ services:
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
       # Public base URL used by plugins to generate callback/webhook URLs.
       PUBLIC_URL: http://localhost
-      # Pre-shared key for the AI agent service to authenticate with the API.
-      # Must match PACA_API_KEY in the ai-agent service.
+      # Pre-shared key for the agent-runner service to authenticate with the API.
+      # Must match PACA_API_KEY in the agent-runner service.
       AGENT_API_KEY: e2e-agent-api-key
-      # Authenticates the reverse direction: API calling into ai-agent's
-      # internal-only routes. Must match INTERNAL_API_KEY in the ai-agent service.
+      # Base URL of the agent-runner service. Explicit rather than relying
+      # on the Go code's own http://ai-agent:8080 default — see
+      # docker-compose.dev.yml's identical note for why that default no
+      # longer resolves to anything now that ai-agent has been removed.
+      AI_AGENT_URL: http://agent-runner:8080
+      # Authenticates the reverse direction: API calling into agent-runner's
+      # internal-only routes. Must match INTERNAL_API_KEY in the agent-runner service.
       AI_AGENT_INTERNAL_KEY: e2e-internal-api-key
       # Plugin subsystem — load WASM binaries + migrations from the local plugin store.
       PLUGINS_WASM_DIR: /plugins
@@ -186,33 +191,39 @@ services:
       timeout: 5s
       retries: 20
 
-  ai-agent:
-    image: paca-ai-agent:e2e
+  agent-runner:
+    image: paca-agent-runner:e2e
     build:
-      context: ../services/ai-agent
-      dockerfile: Dockerfile.dev
+      context: ../services/agent-runner
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       VALKEY_URL: redis://valkey:6379/0
       DATABASE_URL: postgres://paca:e2e-postgres-password@postgres:5432/paca
       INTERNAL_API_KEY: e2e-internal-api-key
-      API_BASE_URL: http://api:8080
+      PACA_API_URL: http://api:8080
       # Gateway base URL — the MCP server uses this to resolve plugin MCP bundle
       # URLs (e.g. /plugins-mcp/<id>/mcp.js).  The gateway (Caddy) serves these
       # files, not the API service.
-      GATEWAY_BASE_URL: http://gateway:8080
+      PACA_GATEWAY_URL: http://gateway:8080
       # Must match AGENT_API_KEY in the api service.
       PACA_API_KEY: e2e-agent-api-key
+      # Must match ENCRYPTION_KEY in the api service.
+      ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
       DOCKER_SOCKET: /var/run/docker.sock
-      AGENT_SERVER_IMAGE: ghcr.io/paca-ai/paca-agent-server:latest
+      # For this local e2e stack, build a locally-tagged image before
+      # starting this service (CD publishes ghcr.io/paca-ai/paca-agent-server-goose
+      # from this same Dockerfile for real releases):
+      #   docker build -f ../services/agent-server/Dockerfile \
+      #     -t paca-agent-server-goose:e2e ../services/agent-server
+      AGENT_SERVER_IMAGE: "paca-agent-server-goose:e2e"
       PORT_POOL_START: "10000"
       PORT_POOL_SIZE: "100"
       WORKER_CONCURRENCY: "5"
-      LOG_LEVEL: INFO
+      CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES: "3"
+      AGENT_RUNNER_ALLOWED_AGENT_IDS: "*"
+      LOG_LEVEL: info
     volumes:
-      - ../services/ai-agent:/app
-      - ai_agent_venv:/app/.venv
-      - ../apps/mcp:/mcp:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
@@ -226,4 +237,3 @@ volumes:
   postgres_data:
   valkey_data:
   minio_data:
-  ai_agent_venv:

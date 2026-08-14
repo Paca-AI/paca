@@ -27,6 +27,20 @@ def test_resolve_builtin_provider_uses_sdk_default_command():
     assert "claude-agent-acp" in command[2]
 
 
+def test_resolve_goose_provider_uses_local_default_command():
+    """goose isn't in the OpenHands SDK's own acp_providers registry (only
+    claude-code/codex/gemini-cli are), so this is resolved via a local
+    override instead of get_acp_provider."""
+    assert resolve_acp_command("goose", []) == ["goose", "acp"]
+
+
+def test_resolve_goose_provider_ignores_any_explicit_command():
+    """Matches the built-in-provider precedent (claude-code, etc. above):
+    a fixed default always wins over acp_command for a named provider —
+    only "custom" ever consults it."""
+    assert resolve_acp_command("goose", ["should-be-ignored"]) == ["goose", "acp"]
+
+
 def test_resolve_custom_provider_uses_explicit_command():
     command = resolve_acp_command("custom", ["my-server", "--flag"])
     assert command == ["my-server", "--flag"]

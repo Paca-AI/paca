@@ -1,7 +1,7 @@
 """WebSocket client: connects to Paca's ACP bridge endpoint, reconnects with
 backoff, and dispatches start_turn/stop_turn/pause_turn messages to a
-ConversationRunner. See services/ai-agent/src/routes/bridge.py for the
-server-side counterpart.
+ConversationRunner. See services/agent-runner/internal/acpbridge/server.go
+for the server-side counterpart.
 """
 
 from __future__ import annotations

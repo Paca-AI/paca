@@ -26,9 +26,10 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
 
-// aiAgentHTTPTimeout bounds every call this handler makes into the ai-agent
-// service (LLM model listing, ACP bridge status/disconnect) so a slow or
-// wedged ai-agent instance can't hang the calling request indefinitely.
+// aiAgentHTTPTimeout bounds every call this handler makes into the
+// agent-runner service (LLM model listing, ACP bridge status/disconnect) so
+// a slow or wedged agent-runner instance can't hang the calling request
+// indefinitely.
 const aiAgentHTTPTimeout = 10 * time.Second
 
 type agentActivityRecorder interface {
@@ -58,8 +59,8 @@ type AgentHandler struct {
 // NewAgentHandler returns an AgentHandler wired to the agent service.
 // publicURL is the externally reachable base URL (e.g. https://paca.example.com)
 // used to build the local-bridge "run this command" snippet. aiAgentInternalKey
-// authenticates calls into ai-agent's internal-only routes and must match
-// ai-agent's own INTERNAL_API_KEY.
+// authenticates calls into agent-runner's internal-only routes and must match
+// agent-runner's own INTERNAL_API_KEY.
 func NewAgentHandler(svc agentdom.Service, aiAgentURL, aiAgentInternalKey, publicURL string) *AgentHandler {
 	return &AgentHandler{
 		svc:                svc,
@@ -1478,7 +1479,7 @@ func (h *AgentHandler) ListSkillTemplates(w http.ResponseWriter, r *http.Request
 // LLM models grouped by provider.
 func (h *AgentHandler) GetLLMModels(w http.ResponseWriter, r *http.Request) {
 	if h.aiAgentURL == "" {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service URL not configured"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "agent-runner service URL not configured"))
 		return
 	}
 
@@ -1489,19 +1490,19 @@ func (h *AgentHandler) GetLLMModels(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach ai-agent service"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach agent-runner service"))
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to read ai-agent response"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to read agent-runner response"))
 		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service returned an error"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "agent-runner service returned an error"))
 		return
 	}
 
@@ -1652,7 +1653,7 @@ func (h *AgentHandler) proxyACPBridgeStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if h.aiAgentURL == "" {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service URL not configured"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "agent-runner service URL not configured"))
 		return
 	}
 
@@ -1667,18 +1668,18 @@ func (h *AgentHandler) proxyACPBridgeStatus(w http.ResponseWriter, r *http.Reque
 	req.Header.Set("X-Internal-Token", h.aiAgentInternalKey)
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach ai-agent service"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to reach agent-runner service"))
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to read ai-agent response"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to read agent-runner response"))
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
-		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "ai-agent service returned an error"))
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "agent-runner service returned an error"))
 		return
 	}
 

@@ -22,9 +22,11 @@ import {
 	type AgentConversation,
 	agentQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
+	CONVERSATION_RECONCILE_INTERVAL_MS,
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
 	chattableAgentsQueryOptions,
+	conversationEventWindowKey,
 	conversationQueryOptions,
 	globalConversationQueryOptions,
 	heartbeatConversation,
@@ -39,6 +41,7 @@ import {
 	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
+import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
@@ -301,7 +304,7 @@ export function ConversationView({
 		isDisabled: !canReply,
 	});
 
-	// Pings the ai-agent service every ~30s while this chat conversation is
+	// Pings the agent-runner service every ~30s while this chat conversation is
 	// loaded, so its sandbox's idle timer never trips as long as this view
 	// stays open — mirrors the heartbeat in ai-chat-float.tsx. Only chat
 	// conversations have a sandbox that pauses between turns; task/comment
@@ -329,6 +332,28 @@ export function ConversationView({
 		projectId,
 		conversationId,
 	]);
+
+	// Safety net for a dropped realtime message — see
+	// CONVERSATION_RECONCILE_INTERVAL_MS's doc comment. Re-invalidates exactly
+	// what an "agent.*" status event already invalidates (the conversation
+	// itself and its event window), so a socket miss self-heals within one
+	// tick instead of requiring a page reload. Only while genuinely in
+	// flight: a paused/terminal conversation has nothing new to reconcile.
+	useEffect(() => {
+		if (!isRunning) return;
+		const reconcile = () => {
+			void qc.invalidateQueries({
+				queryKey: projectId
+					? ["projects", projectId, "conversations", conversationId]
+					: ["global-chat", "conversations", conversationId],
+			});
+			void qc.invalidateQueries({
+				queryKey: conversationEventWindowKey(conversationId),
+			});
+		};
+		const interval = setInterval(reconcile, CONVERSATION_RECONCILE_INTERVAL_MS);
+		return () => clearInterval(interval);
+	}, [isRunning, projectId, conversationId, qc]);
 
 	if (convLoading || eventsLoading) {
 		return (
@@ -446,25 +471,21 @@ export function ConversationView({
 							/>
 						}
 						viewportOverlay={
-							<TailFollowIndicator
-								newBelow={newBelow}
-								following={following}
-								setFollowing={setFollowing}
-								jumpToLatest={jumpToLatest}
-							/>
+							<>
+								{conversation.error_message && (
+									<ConversationErrorBox message={conversation.error_message} />
+								)}
+								<TailFollowIndicator
+									newBelow={newBelow}
+									following={following}
+									setFollowing={setFollowing}
+									jumpToLatest={jumpToLatest}
+								/>
+							</>
 						}
 					/>
 				</AssistantRuntimeProvider>
 			</div>
-
-			{/* Footer */}
-			{conversation.error_message && (
-				<div className="shrink-0 border-t border-destructive/20 bg-destructive/5 px-5 py-3">
-					<p className="text-xs text-destructive">
-						{conversation.error_message}
-					</p>
-				</div>
-			)}
 		</div>
 	);
 }

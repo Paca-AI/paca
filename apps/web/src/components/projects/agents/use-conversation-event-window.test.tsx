@@ -11,6 +11,7 @@ vi.mock("@/lib/api-client", () => ({
 
 import {
 	type AgentConversationEvent,
+	type ConversationEventsTail,
 	conversationEventsTailKey,
 	conversationEventWindowKey,
 } from "@/lib/agent-api";
@@ -93,9 +94,11 @@ function fakeStream(initialCount: number) {
 		},
 	);
 	return {
-		grow(by: number) {
+		/** The events server-side growth adds, ready to hand straight to `signal`. */
+		grow(by: number): AgentConversationEvent[] {
+			const from = count;
 			count += by;
-			return count - 1; // highest index now present
+			return range(from, count - 1);
 		},
 	};
 }
@@ -113,11 +116,14 @@ function harness() {
 		<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 	);
 	/**
-	 * What the realtime hooks do per agent event: invalidate the conversation
-	 * prefixes *and* write the tail signal. A window or signal keyed under either
-	 * prefix would be refetched or reset by the event meant to report it.
+	 * What useProjectRealtime's applyRealtimeAgentEvent does per persisted
+	 * agent event now: invalidate the conversation prefixes and append the
+	 * full event onto the tail's live buffer (mirrored here rather than
+	 * imported, to keep this test decoupled from that hook's internals). A
+	 * window or signal keyed under either invalidated prefix would be
+	 * refetched or reset by the event meant to report it.
 	 */
-	const signal = (index: number | null) =>
+	const signal = (events: AgentConversationEvent[]) =>
 		act(() => {
 			void queryClient.invalidateQueries({
 				queryKey: ["projects", PROJECT_ID, "conversations"],
@@ -127,10 +133,18 @@ function harness() {
 			});
 			queryClient.setQueryData(
 				conversationEventsTailKey(CONVERSATION_ID),
-				(prev: { tick: number; index: number | null } | undefined) => ({
-					tick: (prev?.tick ?? 0) + 1,
-					index,
-				}),
+				(prev: ConversationEventsTail | undefined): ConversationEventsTail => {
+					const base = prev ?? { tick: 0, index: null, events: [] };
+					const maxIndex = events.reduce(
+						(max, e) => Math.max(max, e.event_index),
+						base.index ?? -1,
+					);
+					return {
+						tick: base.tick + 1,
+						index: maxIndex,
+						events: [...base.events, ...events],
+					};
+				},
 			);
 		});
 	return { queryClient, wrapper, signal };
@@ -198,13 +212,17 @@ describe("useConversationEventWindow", () => {
 		expect(result.current.hasOlder).toBe(false);
 	});
 
-	it("appends events as realtime reports them", async () => {
+	it("appends events as realtime reports them, without a re-fetch", async () => {
 		const stream = fakeStream(275);
 		const { result, signal } = open();
 		await waitFor(() => expect(result.current.events).toHaveLength(200));
+		const callsAfterOpen = requests(PROJECT_PATH).length;
 
 		await signal(stream.grow(1));
 		await waitFor(() => expect(lastIndex(result.current.events)).toBe(275));
+		// The realtime message carried the full event — no GET needed to
+		// render it.
+		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
 	});
 
 	it("counts rather than fetches while the reader is scrolled away", async () => {
@@ -216,13 +234,46 @@ describe("useConversationEventWindow", () => {
 		act(() => result.current.setFollowing(false));
 		await signal(stream.grow(3));
 
-		// Reported, not downloaded.
+		// Reported, not merged in — the reader's scrolled-away view shouldn't
+		// move under them.
 		await waitFor(() => expect(result.current.newBelow).toBe(3));
 		expect(lastIndex(result.current.events)).toBe(274);
 		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
 
 		act(() => result.current.jumpToLatest());
 		await waitFor(() => expect(lastIndex(result.current.events)).toBe(277));
+		expect(result.current.newBelow).toBe(0);
+		// Jumping back to latest surfaces what the live buffer already had —
+		// still no extra fetch.
+		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
+	});
+
+	it("keeps already-merged live events visible when following pauses mid-turn", async () => {
+		const stream = fakeStream(200);
+		const { result, signal } = open();
+		await waitFor(() => expect(result.current.events).toHaveLength(200));
+		const callsAfterOpen = requests(PROJECT_PATH).length;
+
+		// A tool call starts streaming — still only in the live buffer, not
+		// yet paginated (a real fetch only reconciles on a status transition).
+		await signal(stream.grow(1));
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(200));
+
+		// The reader pauses following without navigating away — e.g.
+		// expanding that tool call's panel nudges the viewport off the exact
+		// bottom pixel. The event they're looking at must not disappear.
+		act(() => result.current.setFollowing(false));
+		expect(lastIndex(result.current.events)).toBe(200);
+		expect(result.current.events).toHaveLength(201);
+
+		// Further growth is still just reported, not merged, while paused.
+		await signal(stream.grow(1));
+		await waitFor(() => expect(result.current.newBelow).toBe(1));
+		expect(lastIndex(result.current.events)).toBe(200);
+		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
+
+		act(() => result.current.jumpToLatest());
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(201));
 		expect(result.current.newBelow).toBe(0);
 	});
 
@@ -237,16 +288,18 @@ describe("useConversationEventWindow", () => {
 		expect(lastIndex(result.current.events)).toBe(0);
 	});
 
-	it("catches up across a burst that outruns one page", async () => {
+	it("merges a burst of live events all at once, regardless of page size", async () => {
 		const stream = fakeStream(10);
 		const { result, signal } = open({ pageSize: 5 });
 		await waitFor(() => expect(lastIndex(result.current.events)).toBe(9));
+		const callsAfterOpen = requests(PROJECT_PATH).length;
 
-		// 12 new events with a 5-event page: needs three round trips.
+		// 12 new events arriving live, well past one 5-event page's worth —
+		// the live buffer isn't paginated, so this needs no extra round
+		// trips at all, unlike the old fetchNextPage-per-event catch-up.
 		await signal(stream.grow(12));
-		await waitFor(() => expect(lastIndex(result.current.events)).toBe(21), {
-			timeout: 3000,
-		});
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(21));
+		expect(requests(PROJECT_PATH)).toHaveLength(callsAfterOpen);
 	});
 
 	it("holds the first fetch until ready", async () => {

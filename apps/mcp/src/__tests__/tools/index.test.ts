@@ -92,6 +92,16 @@ vi.mock("../../tools/doc-activity-tools.js", () => ({
 		.fn()
 		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
 }));
+vi.mock("../../tools/repo-tools.js", () => ({
+	getRepoTools: vi.fn(() => [
+		{ name: "list_repositories" },
+		{ name: "clone_repository" },
+		{ name: "push_branch" },
+	]),
+	handleRepoTool: vi
+		.fn()
+		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
+}));
 
 import { handleAttachmentTool } from "../../tools/attachment-tools.js";
 import { handleAutomationTool } from "../../tools/automation-tools.js";
@@ -100,6 +110,7 @@ import { handleFilesystemDocTool } from "../../tools/filesystem-doc-tools.js";
 import { getAllTools, handleToolCall } from "../../tools/index.js";
 import { handleProjectMemberTool } from "../../tools/member-tools.js";
 import { handleProjectTool } from "../../tools/project-tools.js";
+import { handleRepoTool } from "../../tools/repo-tools.js";
 import { handleSprintTool } from "../../tools/sprint-tools.js";
 import { handleTaskActivityTool } from "../../tools/task-activity-tools.js";
 import { handleTaskTool } from "../../tools/task-tools.js";
@@ -144,6 +155,7 @@ describe("getAllTools", () => {
 		expect(names).toContain("list_task_activities");
 		expect(names).toContain("get_automation");
 		expect(names).toContain("list_doc_activities");
+		expect(names).toContain("list_repositories");
 	});
 });
 
@@ -378,6 +390,40 @@ describe("handleToolCall – doc activity routing", () => {
 			"add_doc_comment",
 			{},
 			stubClients.docClient,
+		);
+	});
+});
+
+describe("handleToolCall – repo tool routing", () => {
+	it("routes list_repositories to handleRepoTool with a default empty repoPluginIds", async () => {
+		await handleToolCall(makeRequest("list_repositories"), stubClients);
+		expect(handleRepoTool).toHaveBeenCalledWith(
+			"list_repositories",
+			{},
+			stubClients.apiClient,
+			[],
+		);
+	});
+
+	it("forwards the repoPluginIds argument through to handleRepoTool", async () => {
+		await handleToolCall(makeRequest("clone_repository"), stubClients, [
+			"com.paca.github",
+		]);
+		expect(handleRepoTool).toHaveBeenCalledWith(
+			"clone_repository",
+			{},
+			stubClients.apiClient,
+			["com.paca.github"],
+		);
+	});
+
+	it("routes push_branch to handleRepoTool", async () => {
+		await handleToolCall(makeRequest("push_branch"), stubClients);
+		expect(handleRepoTool).toHaveBeenCalledWith(
+			"push_branch",
+			{},
+			stubClients.apiClient,
+			[],
 		);
 	});
 });

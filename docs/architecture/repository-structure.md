@@ -19,7 +19,8 @@ paca/
 ├── services/
 │   ├── api/                    # Go + Gin application backend
 │   ├── realtime/               # Node.js + Socket.IO real-time fan-out
-│   └── ai-agent/               # Python + FastAPI + OpenHands SDK agent runtime
+│   ├── agent-runner/            # Go agent execution service (Goose over ACP)
+│   └── agent-server/            # Goose sandbox image (services/agent-server/Dockerfile)
 ├── plugins/
 │   └── local/                  # Local plugin store (WASM binaries + frontend bundles)
 ├── scripts/                    # Install and plugin management scripts

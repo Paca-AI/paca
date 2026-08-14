@@ -9,7 +9,7 @@ For the full workspace-wide schema (users, projects, tasks, etc.), see [`docs/ar
 | File | Purpose |
 |---|---|
 | `000008_add_ai_agents.sql` | Original tables: `agents`, `agent_mcp_servers`, `agent_skills`, `agent_chat_sessions`, `agent_conversations`, `agent_conversation_events`. Extends `project_members` with `member_type`/`agent_id` so an agent can be a project member alongside humans. |
-| `000010_add_trigger_prompts_to_agents.sql`, `000019_drop_agent_trigger_prompts.sql` | Added, then dropped, per-trigger system prompt columns on `agents` — superseded by the ai-agent service's fixed trigger-context skills. Net effect on the current schema: none. |
+| `000010_add_trigger_prompts_to_agents.sql`, `000019_drop_agent_trigger_prompts.sql` | Added, then dropped, per-trigger system prompt columns on `agents` — superseded by the agent execution service's fixed trigger-context skills. Net effect on the current schema: none. |
 | `000017_add_agent_environment_variables.sql` | Adds `agent_environment_variables`: per-agent secret env vars, encrypted at rest, injected into the sandbox at run time. |
 | `000020_drop_agent_clone_pr_permissions.sql` | Drops `agents.can_clone_repos`/`can_create_prs` — cloning and PR creation became runtime capabilities available to every agent, not a per-agent toggle. |
 | `000022_add_acp_agents.sql` | Adds ACP (Agent Client Protocol) agents: `agent_type` ('llm' \| 'acp'), `acp_provider`, `acp_command`, `acp_bridge_token_hash`. An ACP agent delegates to a coding CLI the user runs locally, connected over an authenticated bridge daemon, instead of running an LLM loop in Paca's own infrastructure. |
@@ -66,7 +66,7 @@ Table agents {
   llm_base_url varchar [null, note: 'Optional custom base URL (e.g. Azure or a local LLM)']
 
   // ACP configuration — set only for agent_type = acp
-  acp_provider varchar [null, note: 'claude-code | codex | gemini-cli | custom. Required when agent_type = acp.']
+  acp_provider varchar [null, note: 'claude-code | codex | gemini-cli | goose | custom. Required when agent_type = acp.']
   acp_command jsonb [not null, default: '[]', note: 'Launch command + args; only meaningful when acp_provider = custom']
   acp_bridge_token_hash varchar [null, note: 'SHA-256 digest of the current local-bridge auth token. Plaintext shown once, never persisted. No global-scope bridge-token endpoint exists yet — see Known Gaps.']
 
@@ -190,7 +190,7 @@ Tracks each agent run. One row per trigger invocation — a task assignment, an 
 
 ```dbml
 Table agent_conversations {
-  id uuid [primary key, note: 'Also used as the underlying OpenHands SDK conversation_id for state persistence']
+  id uuid [primary key, note: 'Also used as the ACP session/conversation identifier agent-runner passes to Goose']
   agent_id uuid [not null, ref: > agents.id]
   project_id uuid [null, ref: > projects.id, note: 'NULL for a global-chat conversation (project_id IS NULL + actor_user_id IS NOT NULL)']
 
@@ -242,7 +242,7 @@ Table agent_conversation_events {
   id uuid [primary key]
   conversation_id uuid [not null, ref: > agent_conversations.id]
   event_index integer [not null, note: 'Sequential index within the conversation (0-based)']
-  event_type varchar [not null, note: 'OpenHands SDK event type: MessageAction | CmdRunAction | FileEditAction | AgentFinishAction | CmdOutputObservation | etc.']
+  event_type varchar [not null, note: 'ACP session/update kind for llm agents: agent_message_chunk | tool_call | tool_call_update | turn_end (see services/agent-runner/internal/acp/types.go)']
   event_source varchar [not null, note: 'agent | user | system | environment']
   payload jsonb [not null, default: '{}']
   created_at timestamp [not null]

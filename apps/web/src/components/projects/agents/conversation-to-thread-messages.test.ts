@@ -211,6 +211,75 @@ function acpToolCallEvent(opts: {
 	};
 }
 
+function agentMessageChunk(text: string): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "agent_message_chunk",
+		event_source: "agent",
+		payload: {
+			content: { type: "text", text },
+			sessionUpdate: "agent_message_chunk",
+		},
+		created_at: "2026-01-01T00:00:07.000Z",
+	};
+}
+
+function acpToolCall(opts: {
+	toolCallId: string;
+	title: string;
+}): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "tool_call",
+		event_source: "agent",
+		payload: {
+			toolCallId: opts.toolCallId,
+			title: opts.title,
+			sessionUpdate: "tool_call",
+		},
+		created_at: "2026-01-01T00:00:08.000Z",
+	};
+}
+
+function acpToolCallUpdate(opts: {
+	toolCallId: string;
+	status?: string;
+	text?: string;
+}): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "tool_call_update",
+		event_source: "agent",
+		payload: {
+			toolCallId: opts.toolCallId,
+			status: opts.status ?? null,
+			content: opts.text
+				? [{ type: "content", content: { type: "text", text: opts.text } }]
+				: [],
+			sessionUpdate: "tool_call_update",
+		},
+		created_at: "2026-01-01T00:00:09.000Z",
+	};
+}
+
+function turnEnd(stopReason: string): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "turn_end",
+		event_source: "system",
+		payload: { stopReason },
+		created_at: "2026-01-01T00:00:10.000Z",
+	};
+}
+
 describe("eventsToThreadMessages", () => {
 	it("converts a text-only turn into user + assistant messages", () => {
 		const events = [userMessage("hi"), agentReply("hello!")];
@@ -770,5 +839,125 @@ describe("eventsToThreadMessages", () => {
 			Record<string, unknown>
 		>;
 		expect(parts[0]).not.toHaveProperty("artifact");
+	});
+
+	describe("services/agent-runner's ACP event types", () => {
+		it("joins consecutive agent_message_chunk events into one text part, not one part per chunk", () => {
+			const events = [
+				userMessage("hi"),
+				agentMessageChunk("Hello"),
+				agentMessageChunk("!"),
+				agentMessageChunk(" How"),
+				agentMessageChunk(" can I help?"),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(2);
+			const parts = messages[1].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts).toHaveLength(1);
+			expect(parts[0]).toMatchObject({
+				type: "text",
+				text: "Hello! How can I help?",
+			});
+		});
+
+		it("renders a tool_call/tool_call_update pair as one resolved tool-call part", () => {
+			const events = [
+				acpToolCall({ toolCallId: "tc-1", title: "Running ls" }),
+				acpToolCallUpdate({
+					toolCallId: "tc-1",
+					status: "completed",
+					text: "file1.txt\nfile2.txt",
+				}),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			const parts = messages[0].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts[0]).toMatchObject({
+				type: "tool-call",
+				toolCallId: "tc-1",
+				toolName: "Running ls",
+				result: "file1.txt\nfile2.txt",
+			});
+			expect(parts[0]).not.toHaveProperty("isError");
+		});
+
+		it("marks a tool_call_update with status=failed as an error", () => {
+			const events = [
+				acpToolCall({ toolCallId: "tc-2", title: "Running rm" }),
+				acpToolCallUpdate({
+					toolCallId: "tc-2",
+					status: "failed",
+					text: "permission denied",
+				}),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			const parts = messages[0].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts[0]).toMatchObject({
+				toolCallId: "tc-2",
+				result: "permission denied",
+				isError: true,
+			});
+		});
+
+		it("ignores turn_end — it carries no user-visible content", () => {
+			const events = [
+				userMessage("hi"),
+				agentMessageChunk("hello!"),
+				turnEnd("end_turn"),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(2);
+			const parts = messages[1].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts).toHaveLength(1);
+			expect(parts[0]).toMatchObject({ type: "text", text: "hello!" });
+		});
+
+		it("renders a full chat turn: reply chunks, a tool call, then more reply chunks", () => {
+			const events = [
+				userMessage("what files are here?"),
+				agentMessageChunk("Let me check."),
+				acpToolCall({ toolCallId: "tc-3", title: "Running ls" }),
+				acpToolCallUpdate({
+					toolCallId: "tc-3",
+					status: "completed",
+					text: "a.txt",
+				}),
+				agentMessageChunk("There's one file: a.txt"),
+				turnEnd("end_turn"),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(2);
+			const parts = messages[1].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts).toHaveLength(3);
+			expect(parts[0]).toMatchObject({ type: "text", text: "Let me check." });
+			expect(parts[1]).toMatchObject({
+				type: "tool-call",
+				toolCallId: "tc-3",
+				result: "a.txt",
+			});
+			expect(parts[2]).toMatchObject({
+				type: "text",
+				text: "There's one file: a.txt",
+			});
+		});
 	});
 });

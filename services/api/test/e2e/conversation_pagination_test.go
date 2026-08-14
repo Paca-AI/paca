@@ -1063,4 +1063,28 @@ func TestE2EConversationIterationCount(t *testing.T) {
 			t.Errorf("expected iteration_count=0, got %d", got.IterationCount)
 		}
 	})
+
+	// The Go-native ACP runner (services/agent-runner/internal/handler)
+	// has no OpenHands SDK underneath it and never emits ActionEvent — it
+	// persists the raw ACP SessionUpdateKind instead, where 'tool_call' is
+	// the equivalent one-step-per-iteration event (see executor.go's
+	// maxToolCalls). Before this fix, every conversation run by that
+	// runner was stuck at iteration_count=0 regardless of how many tool
+	// calls the agent made.
+	t.Run("conversation_with_tool_call_events_reflects_tool_call_count", func(t *testing.T) {
+		convID := createConversationAt(t, env, projID, agentID, memberID, "finished", time.Now())
+		createConversationEvent(t, env, convID, 0, "user_message")
+		createConversationEvent(t, env, convID, 1, "tool_call")
+		createConversationEvent(t, env, convID, 2, "tool_call_update")
+		createConversationEvent(t, env, convID, 3, "agent_message_chunk")
+		createConversationEvent(t, env, convID, 4, "tool_call")
+
+		got, err := env.agentRepo.FindConversationByID(env.ctx, uuid.MustParse(convID))
+		if err != nil {
+			t.Fatalf("find conversation: %v", err)
+		}
+		if got.IterationCount != 2 {
+			t.Errorf("expected iteration_count=2, got %d", got.IterationCount)
+		}
+	})
 }

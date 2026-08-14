@@ -26,7 +26,7 @@
 #   PACA_API_IMAGE=pacaai/paca-api:1.2.3
 #   PACA_WEB_IMAGE=pacaai/paca-web:1.2.3
 #   PACA_REALTIME_IMAGE=pacaai/paca-realtime:1.2.3
-#   PACA_AI_AGENT_IMAGE=pacaai/paca-ai-agent:1.2.3
+#   PACA_AGENT_RUNNER_IMAGE=pacaai/paca-agent-runner:1.2.3
 #
 # ── External PostgreSQL ────────────────────────────────────────────────────────
 # Set DATABASE_URL to your managed connection string and add --scale postgres=0
@@ -38,7 +38,7 @@
 #   docker compose --env-file .env up -d --scale minio=0
 #
 # ── Skip AI agent ─────────────────────────────────────────────────────────────
-#   docker compose --env-file .env up -d --scale ai-agent=0
+#   docker compose --env-file .env up -d --scale agent-runner=0
 #
 # ── External / CDN-hosted web app (e.g. deployed to S3 + CloudFront) ──────────
 # Suppress the web container and serve the SPA from your CDN instead.
@@ -203,10 +203,16 @@ services:
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp
       PLUGINS_SKILLS_DIR: /plugins-skills
-      # Pre-shared key matching PACA_API_KEY in the ai-agent service.
+      # Pre-shared key matching PACA_API_KEY in the agent-runner service.
       AGENT_API_KEY: ${AGENT_API_KEY:-}
-      # Authenticates the reverse direction: API calling into ai-agent's
-      # internal-only routes. Must match INTERNAL_API_KEY in the ai-agent service.
+      # Where the API calls into agent-runner's internal-only routes
+      # (/agent-bridge/status, /agent-bridge/disconnect, /llm/models). The
+      # env var keeps its historical AI_AGENT_* name (the Go
+      # code that reads it hasn't been renamed) even though it now points
+      # at agent-runner, the services/ai-agent replacement.
+      AI_AGENT_URL: http://agent-runner:8080
+      # Authenticates the reverse direction. Must match INTERNAL_API_KEY in
+      # the agent-runner service.
       AI_AGENT_INTERNAL_KEY: ${INTERNAL_API_KEY:-}
     depends_on:
       postgres:
@@ -284,28 +290,41 @@ services:
       realtime:
         condition: service_started
 
-  # ── AI Agent (optional) ──────────────────────────────────────────────────────
-  # Suppress with --scale ai-agent=0 to skip this service.
-  # Requires Docker socket access on the host.
-  ai-agent:
-    image: ${PACA_AI_AGENT_IMAGE:-pacaai/paca-ai-agent:latest}
+  # ── Agent Runner (optional) ─────────────────────────────────────────────────
+  # Go replacement for the old Python "ai-agent" service. Suppress with
+  # --scale agent-runner=0 to skip this service. Requires Docker socket
+  # access on the host.
+  agent-runner:
+    image: ${PACA_AGENT_RUNNER_IMAGE:-pacaai/paca-agent-runner:latest}
     restart: unless-stopped
     environment:
       VALKEY_URL: ${REDIS_URL:-redis://valkey:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
-      # Pre-shared key for authenticating requests to the AI agent service.
+      # Pre-shared key authenticating services/api's calls into this
+      # service's internal-only routes (/agent-bridge/status,
+      # /agent-bridge/disconnect, /llm/models — see server.go).
       # WARNING: always set this to a strong random secret (e.g. openssl rand -hex 32).
-      # An empty key disables authentication on the agent service endpoint.
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
-      API_BASE_URL: http://api:8080
-      GATEWAY_BASE_URL: http://gateway:8080
+      PACA_API_URL: http://api:8080
+      PACA_GATEWAY_URL: http://gateway:8080
       # Must match AGENT_API_KEY in the api service.
       PACA_API_KEY: ${AGENT_API_KEY:-}
       DOCKER_SOCKET: /var/run/docker.sock
-      AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE:-ghcr.io/paca-ai/paca-agent-server:latest}
+      # The Goose-based sandbox image — built from
+      # services/agent-server/Dockerfile (adds Node.js + the Paca MCP
+      # package on top of upstream Goose), NOT the raw ghcr.io/block/goose
+      # image directly: the raw image has no Node.js, so the built-in Paca
+      # MCP server can never start, and Goose hangs session/new forever
+      # rather than surfacing that as an error.
+      AGENT_SERVER_IMAGE: ${AGENT_SERVER_IMAGE:-ghcr.io/paca-ai/paca-agent-server-goose:latest}
       PORT_POOL_START: ${PORT_POOL_START:-10000}
       PORT_POOL_SIZE: ${PORT_POOL_SIZE:-100}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES: ${CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES:-3}
+      # "*" = every agent. Set to a comma-separated list of agent UUIDs
+      # instead to stage a gradual rollout — see internal/config/gate.go's
+      # doc comment for what that requires beyond this one setting.
+      AGENT_RUNNER_ALLOWED_AGENT_IDS: ${AGENT_RUNNER_ALLOWED_AGENT_IDS:-*}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Must match ENCRYPTION_KEY in the api service so that LLM API keys
       # stored encrypted in the database can be decrypted before use.

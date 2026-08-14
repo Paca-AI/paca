@@ -2551,6 +2551,39 @@ func TestCreateAgent_ACPCustomProviderSuccess(t *testing.T) {
 	assert.Equal(t, []string{"npx", "-y", "my-acp-server"}, result.ACPCommand)
 }
 
+func TestCreateAgent_ACPGooseProviderSuccess(t *testing.T) {
+	projectID := uuid.New()
+	projectRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(_ context.Context, _ *agentdom.Agent, _ uuid.UUID, _, _ uuid.UUID) error {
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	// Unlike ACPProviderCustom, goose is a built-in provider — no
+	// acp_command is required from the caller. apps/acp-bridge's runner.py
+	// resolves the default `goose acp` command itself (the OpenHands SDK's
+	// own provider registry doesn't know about goose, so this can't be
+	// resolved the same way claude-code/codex/gemini-cli are).
+	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:          "Goose Agent",
+		Handle:        "goose-agent",
+		AgentType:     agentdom.AgentTypeACP,
+		ACPProvider:   agentdom.ACPProviderGoose,
+		ProjectRoleID: projectRoleID,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, agentdom.AgentTypeACP, result.AgentType)
+	assert.Equal(t, agentdom.ACPProviderGoose, *result.ACPProvider)
+	assert.Empty(t, result.ACPCommand)
+}
+
 func TestCreateAgent_ACPIgnoresSystemPromptAndGitCommitterFields(t *testing.T) {
 	projectID := uuid.New()
 	projectRoleID := uuid.New()

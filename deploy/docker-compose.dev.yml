@@ -140,13 +140,20 @@ services:
       STORAGE_USE_SSL: "false"
       # Encryption key for sensitive values (plugin tokens/secrets).
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
-      # Pre-shared key for the AI agent service to authenticate with the API
-      # without a database-stored API key.  Must match PACA_API_KEY in the
-      # ai-agent service.
+      # Pre-shared key for the agent-runner service to authenticate with the
+      # API without a database-stored API key.  Must match PACA_API_KEY in
+      # the agent-runner service.
       AGENT_API_KEY: dev-agent-api-key-change-in-production
-      # Authenticates the reverse direction: API calling into ai-agent's
+      # Base URL of the agent-runner service. Explicit rather than relying
+      # on the Go code's own http://ai-agent:8080 default — that hostname
+      # doesn't exist in this compose file since ai-agent was removed,
+      # so leaving this unset would silently break GET /agents/llm-models
+      # and the ACP bridge status/disconnect proxies (confirmed live: a DNS
+      # lookup failure on the old default hostname, not a timeout).
+      AI_AGENT_URL: http://agent-runner:8080
+      # Authenticates the reverse direction: API calling into agent-runner's
       # internal-only routes (e.g. the ACP bridge status check). Must match
-      # INTERNAL_API_KEY in the ai-agent service.
+      # INTERNAL_API_KEY in the agent-runner service.
       AI_AGENT_INTERNAL_KEY: dev-internal-key-change-in-production
       # Public base URL used by plugins to generate callback/webhook URLs.
       PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}
@@ -276,39 +283,99 @@ services:
       retries: 30
       start_period: 120s
 
-  ai-agent:
+  # Go service that runs llm- and acp-type agent conversations. Mirrors
+  # services/api's air-based
+  # Dockerfile.dev setup: source is bind-mounted and air rebuilds/restarts
+  # the binary on any .go change instead of requiring a full `docker compose
+  # up --build agent-runner`.
+  agent-runner:
     build:
-      context: ../services/ai-agent
+      context: ../services/agent-runner
       dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    # air is already installed in the image; no per-start download needed.
+    command: air
     environment:
+      # Limit parallel package compilation to avoid OOM kills on memory-constrained
+      # Docker Desktop VMs (mirrors the -p=1 flag used in the production Dockerfile).
+      GOFLAGS: "-p=1"
       VALKEY_URL: redis://valkey:6379/0
       DATABASE_URL: postgres://paca:paca@postgres:5432/paca
+      # Used to authenticate api → agent-runner internal-only routes (e.g.
+      # the ACP bridge status check). Must match AI_AGENT_INTERNAL_KEY on
+      # the api service.
       INTERNAL_API_KEY: dev-internal-key-change-in-production
-      API_BASE_URL: http://api:8080
-      # Gateway base URL — the MCP server uses this to resolve plugin MCP bundle
-      # URLs (e.g. /plugins-mcp/<id>/mcp.js).  The gateway (Caddy) serves these
-      # files, not the API service.
-      GATEWAY_BASE_URL: http://gateway:8080
-      # API key for the built-in Paca MCP server.  Must match AGENT_API_KEY in
-      # the api service so the AI agent can authenticate via the MCP.
+      PACA_API_URL: http://api:8080
+      PACA_GATEWAY_URL: http://gateway:8080
+      # Must match AGENT_API_KEY on the api service — this is the built-in
+      # Paca MCP server's credential, not a separate concept.
       PACA_API_KEY: dev-agent-api-key-change-in-production
-      # Must match ENCRYPTION_KEY on the api service so that encrypted LLM API
-      # keys stored in the DB can be decrypted at conversation time.
+      # Must match ENCRYPTION_KEY on the api service — see internal/secret's
+      # package doc comment.
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
-      DOCKER_SOCKET: /var/run/docker.sock
-      AGENT_SERVER_IMAGE: ghcr.io/paca-ai/paca-agent-server:latest
+      # The Goose-based sandbox image.
+      #
+      # MUST be built from services/agent-server/Dockerfile, NOT the
+      # raw ghcr.io/block/goose image referenced directly — found live,
+      # the hard way, while wiring this up: the raw upstream image has no
+      # Node.js at all, so the built-in Paca MCP server (spawned via
+      # `npx -y @paca-ai/paca-mcp` — see PACA_API_KEY above, which enables
+      # it) can never start inside the sandbox, and Goose does not surface
+      # that MCP-subprocess failure as an ACP error — it just hangs
+      # session/new forever. This Dockerfile adds Node.js and
+      # pre-installs the MCP package specifically to avoid this.
+      #
+      # For local dev, build a locally-tagged image before starting this
+      # service (CD publishes ghcr.io/paca-ai/paca-agent-server-goose from
+      # this same Dockerfile for real releases). Run from the repo root, matching
+      # how README.md/CONTRIBUTING.md document starting this whole stack:
+      #   docker build -f services/agent-server/Dockerfile \
+      #     -t paca-agent-server-goose:dev services/agent-server
+      AGENT_SERVER_IMAGE: "paca-agent-server-goose:dev"
+      # Runs every sandbox's built-in Paca MCP server from this checkout's
+      # apps/mcp instead of the image's globally npm-installed
+      # @paca-ai/paca-mcp (see services/agent-server/Dockerfile) — so a
+      # local apps/mcp change is live on the next conversation without
+      # publishing a new npm version and rebuilding the sandbox image.
+      # Requires `bun install && bun run build` to have been run inside
+      # apps/mcp first (needs build/ and node_modules/ on disk).
+      #
+      # ${PWD} must be the repo root — i.e. `docker compose -f
+      # deploy/docker-compose.dev.yml up -d` invoked from there, exactly as
+      # README.md/CONTRIBUTING.md document. (Previously this assumed `docker
+      # compose` was invoked from inside deploy/ itself, one directory
+      # short of what the documented command actually does — `${PWD}` then
+      # resolved to the repo root, and the old `${PWD}/../apps/mcp` landed
+      # one level above the repo, on a nonexistent path Docker silently
+      # auto-created as an empty directory. Every sandbox's Paca MCP server
+      # then failed to start against that empty mount, failing every
+      # conversation's session/new — see the acp.rpcError.Data fix in
+      # internal/acp/types.go that made this failure's real cause visible
+      # instead of a generic "Internal error".) This is a HOST path, not a
+      # path inside this container: agent-runner reaches the Docker daemon
+      # over the mounted socket below (sibling-container mode, not
+      # Docker-in-Docker), so the daemon resolves this bind mount's source
+      # against its own (the host's) filesystem — see
+      # sandbox.Config.MCPDevSourceDir.
+      PACA_MCP_DEV_SOURCE_DIR: ${PWD}/apps/mcp
       PORT_POOL_START: "10000"
       PORT_POOL_SIZE: "100"
       WORKER_CONCURRENCY: "5"
+      CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES: "3"
+      # "*" — every agent, regardless of type — is the local-dev default
+      # (see config.go's AllowedAgentIDs doc comment); a real staged
+      # rollout would list specific agent UUIDs here instead.
+      AGENT_RUNNER_ALLOWED_AGENT_IDS: "*"
       LOG_LEVEL: INFO
-      # Use the local MCP source build instead of the published npm package.
-      # apps/mcp is mounted at /mcp so the built entry point is always available.
-      DEV_MCP_PATH: /mcp/build/index.js
     volumes:
-      - ../services/ai-agent:/app
-      - ai_agent_venv:/app/.venv
-      - ../apps/mcp:/mcp:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - ../services/agent-runner:/workspace
+      # go modules are pre-downloaded into the image layer; no volume needed.
+      # Persist the Go build cache so the first build after a container restart
+      # reuses previously compiled packages instead of starting cold. Shared
+      # with the api service's build cache volume — Go's build cache is
+      # content-addressed, so sharing it across modules is safe.
+      - go_build_cache:/root/.cache/go-build
     depends_on:
       postgres:
         condition: service_healthy
@@ -327,4 +394,3 @@ volumes:
   bun_cache:
   minio_data:
   realtime_node_modules:
-  ai_agent_venv:

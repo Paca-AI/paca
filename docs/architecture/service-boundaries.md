@@ -65,19 +65,20 @@ Concerns:
 - transformation of internal domain events into client-safe real-time payloads;
 - broadcast of updates for boards, tasks, comments, agent conversation events, and collaboration signals.
 
-## services/ai-agent
+## services/agent-runner
 
-Responsible for AI agent orchestration and execution.
+Responsible for AI agent execution. Replaced `services/ai-agent` (Python/OpenHands), which has been fully removed from the repository — see [agent-runner-service.md](../ai-agent/agent-runner-service.md) for its implementation.
 
 Concerns:
 
 - consumption of agent trigger events from the `paca:agent:triggers` Valkey Stream;
-- spawning and managing Docker containers via the OpenHands SDK (one container per active conversation);
-- running OpenHands agent conversations with per-agent LLM, skills, MCP servers, and system prompt config;
-- publishing conversation events to the `paca:agent:events` Valkey Stream for real-time delivery;
-- REST endpoints for pause, resume, stop, and history operations;
-- repository access via the repository plugin adapter (short-lived tokens, no persistent credential storage).
+- spawning and managing Docker containers running Goose (one container per active `llm`-type conversation), driven over ACP;
+- brokering `acp`-type agent dispatch to a user's own `apps/acp-bridge` daemon over WebSocket;
+- writing conversation status and events directly to Postgres (`agent_conversations`, `agent_conversation_events`) — see the Boundary Rule below;
+- publishing conversation events to the `paca:agent:events` Valkey Stream and the `paca.events` Pub/Sub channel for real-time delivery;
+- pause/resume/stop/heartbeat via control messages on `paca:agent:triggers`, not REST endpoints;
+- repository access via the repository plugin adapter, mediated by tool calls the agent itself makes against the built-in Paca MCP server (short-lived tokens, no persistent credential storage).
 
 ## Boundary Rule
 
-Keep ownership clear. `services/api` owns business rules and durable state transitions. `services/realtime` only delivers live updates derived from API-owned events. `services/ai-agent` executes agent conversations and reports results back through `services/api` — it does not write directly to the database. Shared code stays inside the owning runtime until duplication is real and proven.
+Keep ownership clear. `services/api` owns business rules and most durable state transitions. `services/realtime` only delivers live updates derived from API-owned events. `agent_conversations`/`agent_conversation_events` are a deliberate exception to "only `services/api` writes to the database": `services/api` creates the initial conversation row and publishes the trigger, then `services/agent-runner` writes status transitions and every event directly for the rest of that conversation's lifetime, rather than proxying each one through `services/api` — a round-trip per event would add latency with no ownership benefit, since `agent-runner` is the only thing that knows a given event happened as it happens. Shared code stays inside the owning runtime until duplication is real and proven.

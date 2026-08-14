@@ -11,10 +11,10 @@ name: cd
 #   <dockerhub-username>/paca-realtime:<tag> — Node realtime service Docker image
 #   ghcr.io/paca-ai/paca-web:<tag>        — Web app Docker image (Caddy)
 #   <dockerhub-username>/paca-web:<tag>   — Web app Docker image (Caddy)
-#   ghcr.io/paca-ai/paca-ai-agent:<tag>   — AI Agent service Docker image
-#   <dockerhub-username>/paca-ai-agent:<tag> — AI Agent service Docker image
-#   ghcr.io/paca-ai/paca-agent-server:<tag>   — Sandbox agent-server image (OpenHands + Paca MCP pre-installed)
-#   <dockerhub-username>/paca-agent-server:<tag> — Sandbox agent-server image (OpenHands + Paca MCP pre-installed)
+#   ghcr.io/paca-ai/paca-agent-runner:<tag>   — Agent Runner service Docker image (Go; replaces the old Python "ai-agent")
+#   <dockerhub-username>/paca-agent-runner:<tag> — Agent Runner service Docker image
+#   ghcr.io/paca-ai/paca-agent-server-goose:<tag>   — Sandbox image (Goose + Paca MCP pre-installed)
+#   <dockerhub-username>/paca-agent-server-goose:<tag> — Sandbox image (Goose + Paca MCP pre-installed)
 #   registry.npmjs.org @paca-ai/paca-mcp — MCP server npm package
 #   registry.npmjs.org @paca-ai/plugin-sdk-react — Plugin frontend SDK npm package
 #   pypi.org paca-acp-bridge — ACP bridge local daemon Python package
@@ -222,10 +222,10 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # AI Agent service image
+  # Agent Runner service image (Go — replaces the old Python "ai-agent")
   # ─────────────────────────────────────────────────────────────────────────────
-  ai-agent-image:
-    name: Build and push AI Agent image
+  agent-runner-image:
+    name: Build and push Agent Runner image
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -254,8 +254,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/paca-ai-agent
-            ${{ secrets.DOCKERHUB_USERNAME }}/paca-ai-agent
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/paca-agent-runner
+            ${{ secrets.DOCKERHUB_USERNAME }}/paca-agent-runner
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -265,8 +265,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: services/ai-agent
-          file: services/ai-agent/Dockerfile
+          context: services/agent-runner
+          file: services/agent-runner/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -275,10 +275,13 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Agent-server sandbox image (OpenHands agent-server + Paca MCP pre-installed)
+  # Agent-server sandbox image (Goose + Paca MCP pre-installed). Must be
+  # built from services/agent-server/Dockerfile specifically — the raw
+  # upstream Goose image has no Node.js, so the Paca MCP server can never
+  # start in it.
   # ─────────────────────────────────────────────────────────────────────────────
-  agent-server-image:
-    name: Build and push Agent Server image
+  agent-server-goose-image:
+    name: Build and push Agent Server (Goose) image
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -307,8 +310,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/paca-agent-server
-            ${{ secrets.DOCKERHUB_USERNAME }}/paca-agent-server
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/paca-agent-server-goose
+            ${{ secrets.DOCKERHUB_USERNAME }}/paca-agent-server-goose
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -319,6 +322,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: services/agent-server
+          file: services/agent-server/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -468,8 +472,8 @@ jobs:
         api-image,
         realtime-image,
         web-image,
-        ai-agent-image,
-        agent-server-image,
+        agent-runner-image,
+        agent-server-goose-image,
         publish-mcp,
         publish-acp-bridge,
       ]
@@ -539,8 +543,8 @@ jobs:
         api-image,
         realtime-image,
         web-image,
-        ai-agent-image,
-        agent-server-image,
+        agent-runner-image,
+        agent-server-goose-image,
         publish-mcp,
         publish-acp-bridge,
         release-assets,
@@ -575,7 +579,7 @@ jobs:
           # preserves the org's display casing (Paca-AI), which fails here, so
           # hardcode the lowercase form instead of deriving it at runtime.
           OWNER="paca-ai"
-          for image in paca-api paca-realtime paca-web paca-ai-agent paca-agent-server; do
+          for image in paca-api paca-realtime paca-web paca-agent-runner paca-agent-server-goose; do
             docker buildx imagetools create \
               -t "${{ env.REGISTRY }}/${OWNER}/${image}:latest" \
               "${{ env.REGISTRY }}/${OWNER}/${image}:${TAG}"

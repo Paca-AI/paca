@@ -37,7 +37,13 @@ const CLAUDE_OAUTH_EXPORT_COMMAND =
 // Codex and Gemini CLI don't have an equivalent "generate a token" command —
 // both read their API key straight from an env var — so unlike Claude Code
 // above, this is the only auth step they need before the bridge starts.
-// Returns null for "custom" (unknown provider, no guidance possible).
+// Returns null for "custom" (unknown provider, no guidance possible) and for
+// "goose": Goose's own setup is `goose configure` (interactive) or one of
+// several possible underlying-provider env vars depending on what the user
+// picks inside it, neither of which fits this single copy-paste-able
+// non-interactive export line the way Codex/Gemini CLI's single env var
+// does — showing one anyway would risk being actively wrong. Goose users
+// get the generic guidance in the bridge's own README instead.
 function localAuthExportCommand(provider: ACPProvider): string | null {
 	switch (provider) {
 		case "codex":
@@ -146,6 +152,8 @@ function providerLabel(
 			return t("agents.createDialog.acpProviderCodex");
 		case "gemini-cli":
 			return t("agents.createDialog.acpProviderGeminiCli");
+		case "goose":
+			return t("agents.createDialog.acpProviderGoose");
 		case "custom":
 			return t("agents.acpSetup.customProviderLabel");
 		default:

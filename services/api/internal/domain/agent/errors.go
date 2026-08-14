@@ -9,7 +9,7 @@ var (
 	ErrAgentHandleInvalid = errors.New("agent handle is invalid")
 	ErrAgentNameInvalid   = errors.New("agent name is empty or invalid")
 	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp")
-	ErrACPProviderInvalid = errors.New("acp_provider must be one of: claude-code, codex, gemini-cli, custom")
+	ErrACPProviderInvalid = errors.New("acp_provider must be one of: claude-code, codex, gemini-cli, goose, custom")
 	ErrACPCommandRequired = errors.New("acp_command is required when acp_provider is custom")
 	// ErrNotSupportedForACPAgent is returned when a caller tries to manage
 	// an MCP server, skill, or environment variable on an ACP-type agent.

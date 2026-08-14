@@ -30,6 +30,7 @@ import {
 	handleProjectMemberTool,
 } from "./member-tools.js";
 import { getProjectTools, handleProjectTool } from "./project-tools.js";
+import { getRepoTools, handleRepoTool } from "./repo-tools.js";
 import { getSprintTools, handleSprintTool } from "./sprint-tools.js";
 import {
 	getTaskActivityTools,
@@ -68,6 +69,7 @@ export function getAllTools(): Tool[] {
 		...getTaskLinkTools(),
 		...getAutomationTools(),
 		...getDocActivityTools(),
+		...getRepoTools(),
 	];
 }
 
@@ -85,6 +87,7 @@ export async function handleToolCall(
 		docClient: PacaAPIDocClient;
 		automationClient: PacaAPIAutomationClient;
 	},
+	repoPluginIds: string[] = [],
 ): Promise<any> {
 	const { name, arguments: args } = request.params;
 
@@ -244,6 +247,15 @@ export async function handleToolCall(
 			name === "delete_doc_comment"
 		) {
 			return handleDocActivityTool(name, args, clients.docClient);
+		}
+
+		// Repository tools
+		if (
+			name === "list_repositories" ||
+			name === "clone_repository" ||
+			name === "push_branch"
+		) {
+			return handleRepoTool(name, args, clients.apiClient, repoPluginIds);
 		}
 
 		throw new Error(`Unknown tool: ${name}`);

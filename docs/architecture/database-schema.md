@@ -399,7 +399,7 @@ Table agents {
   llm_model varchar [not null, note: 'LiteLLM model name, e.g. claude-sonnet-4-6. Empty string for agent_type = acp.']
   llm_api_key_secret varchar [not null, note: 'Encrypted at rest; never returned by the API. Empty string for agent_type = acp.']
   llm_base_url varchar [null]
-  acp_provider varchar [null, note: 'claude-code | codex | gemini-cli | custom. Required when agent_type = acp (ck_agents_acp_requires_provider).']
+  acp_provider varchar [null, note: 'claude-code | codex | gemini-cli | goose | custom. Required when agent_type = acp (ck_agents_acp_requires_provider).']
   acp_command jsonb [not null, default: '[]', note: 'JSON array of the launch command + args. Only meaningful when acp_provider = custom.']
   acp_bridge_token_hash varchar [null, note: 'SHA-256 hex digest of the current local-bridge auth token. The plaintext is shown once, never persisted.']
   system_prompt text [not null, default: '']
@@ -492,7 +492,7 @@ Table agent_chat_sessions {
 // automation-workflow engine (both NULL, unchanged since 000018), or a human
 // chatting with a global agent (actor_user_id set, project_id NULL).
 Table agent_conversations {
-  id uuid [primary key, note: 'Also used as the OpenHands conversation_id']
+  id uuid [primary key, note: 'Also used as the ACP session/conversation identifier agent-runner passes to Goose']
   agent_id uuid [not null, ref: > agents.id]
   project_id uuid [null, ref: > projects.id, note: 'NULL for a global-chat conversation (project_id IS NULL + actor_user_id IS NOT NULL)']
   trigger_type varchar [not null, note: 'task_assigned | comment_mention | chat_message | description_write. Global chat reuses chat_message — project_id IS NULL is what distinguishes it.']
@@ -521,7 +521,7 @@ Table agent_conversation_events {
   id uuid [primary key]
   conversation_id uuid [not null, ref: > agent_conversations.id]
   event_index integer [not null, note: 'Sequential index within the conversation (0-based)']
-  event_type varchar [not null, note: 'OpenHands SDK event type: MessageAction, CmdRunAction, FileEditAction, etc.']
+  event_type varchar [not null, note: 'ACP session/update kind for llm agents: agent_message_chunk, tool_call, tool_call_update, turn_end']
   event_source varchar [not null, note: 'agent | user | system | environment']
   payload jsonb [not null, default: '{}']
   created_at timestamp

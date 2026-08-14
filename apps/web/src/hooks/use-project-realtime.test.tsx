@@ -276,7 +276,7 @@ describe("useProjectRealtime", () => {
 		// New project joined.
 		expect(mocks.joinProject).toHaveBeenCalledWith("proj-2");
 	});
-	it("does not refetch the conversation list or detail for a persisted event", () => {
+	it("appends a full persisted event to the tail cache instead of refetching", () => {
 		renderHook(() => useProjectRealtime("proj-abc"));
 		const [, listener] = mocks.socket.on.mock.calls[0] as [
 			string,
@@ -284,18 +284,42 @@ describe("useProjectRealtime", () => {
 		];
 
 		listener({
+			type: "agent.tool_call",
+			payload: {
+				id: "evt-1",
+				conversation_id: "conv-1",
+				event_index: 42,
+				event_type: "tool_call",
+				event_source: "agent",
+				payload: { toolCallId: "tc-1", title: "Running ls" },
+				created_at: "2026-01-01T00:00:00Z",
+			},
+		});
+
+		// persistAndPublish (services/agent-runner) puts the full row on the
+		// realtime message now — appended straight into the tail cache, no
+		// GET .../events round trip needed.
+		expect(mocks.setQueryData).toHaveBeenCalled();
+		expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+	});
+
+	it("does not refetch the conversation list or detail for a legacy index-only event", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		// No `id` — an event_index alone still counts as "persisted" (so the
+		// reconciling-fetch path below stays reserved for genuine status
+		// notifications), it just has nothing to append.
+		listener({
 			type: "agent.acptoolcallevent",
 			payload: { conversation_id: "conv-1", event_index: "42" },
 		});
 
-		// The stream grew; the conversation's own fields did not.
 		expect(mocks.setQueryData).toHaveBeenCalled();
-		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
-			queryKey: ["projects", "proj-abc", "conversations", "conv-1", "events"],
-		});
-		expect(mocks.invalidateQueries).not.toHaveBeenCalledWith({
-			queryKey: ["projects", "proj-abc", "conversations"],
-		});
+		expect(mocks.invalidateQueries).not.toHaveBeenCalled();
 	});
 
 	it("refetches the conversations prefix for a lifecycle event", () => {

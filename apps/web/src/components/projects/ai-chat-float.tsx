@@ -27,6 +27,7 @@ import {
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
+import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
@@ -198,6 +199,13 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 			!!conversation.chat_session_id &&
 			(!isTerminal || isACP));
 
+	const showFailedBanner =
+		!!conversationId &&
+		isTerminal &&
+		conversation?.status === "failed" &&
+		messages.length === 0 &&
+		!canReply;
+
 	const runtime = useExternalStoreRuntime({
 		messages,
 		isRunning,
@@ -238,12 +246,12 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		setOpen((o) => !o);
 	}
 
-	// Pings the ai-agent service every ~30s while this tab has a conversation
+	// Pings the agent-runner service every ~30s while this tab has a conversation
 	// loaded (regardless of whether the panel is expanded or collapsed), so
 	// its sandbox's idle timer never trips as long as the tab stays open. If
-	// the tab closes (or the network drops), heartbeats simply stop and the
-	// ai-agent idle reaper reclaims the sandbox once ~3 minutes pass with no
-	// heartbeat — this replaces the old pagehide-triggered immediate stop.
+	// the tab closes (or the network drops), heartbeats simply stop and
+	// agent-runner's idle reaper reclaims the sandbox once ~3 minutes pass with
+	// no heartbeat — this replaces the old pagehide-triggered immediate stop.
 	// ACP conversations skip this entirely: there's no cloud sandbox to keep
 	// alive (the user's local bridge daemon owns that lifecycle instead), so
 	// heartbeating one would just be a wasted round trip.
@@ -304,16 +312,29 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 					</div>
 
 					<div className="min-h-0 flex-1 overflow-y-auto">
-						{conversationId &&
-						isTerminal &&
-						conversation?.status === "failed" &&
-						messages.length === 0 &&
-						!canReply ? (
+						{showFailedBanner ? (
 							<FloatingChatFailedBanner message={conversation?.error_message} />
 						) : (
 							<AgentPickerContext.Provider value={pickerState}>
 								<AssistantRuntimeProvider runtime={runtime}>
-									<Thread components={THREAD_COMPONENTS} />
+									<Thread
+										components={THREAD_COMPONENTS}
+										// A chat_message trigger always persists the user's own
+										// message before the agent runs (see handler.Handle), so
+										// a failed/recoverable turn almost never has
+										// messages.length === 0 — showFailedBanner above
+										// essentially never fires for the common case. Rendered
+										// inside the message flow (not a page footer below the
+										// composer, which read as small print easy to miss) so a
+										// failure with a visible message still explains itself.
+										viewportOverlay={
+											conversation?.error_message ? (
+												<ConversationErrorBox
+													message={conversation.error_message}
+												/>
+											) : undefined
+										}
+									/>
 								</AssistantRuntimeProvider>
 							</AgentPickerContext.Provider>
 						)}

@@ -383,6 +383,9 @@ function OverviewTab({
 								<SelectItem value="gemini-cli">
 									{t("agents.detail.overview.acpProviderGeminiCli")}
 								</SelectItem>
+								<SelectItem value="goose">
+									{t("agents.detail.overview.acpProviderGoose")}
+								</SelectItem>
 								<SelectSeparator />
 								<SelectItem value="custom">
 									{t("agents.detail.overview.acpProviderCustom")}

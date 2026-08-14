@@ -36,6 +36,21 @@ const ANIMATION_DURATION = 200;
 
 const pressable = "active:scale-[0.98]";
 
+// A tool call's detail panel must stay expanded for the rest of the run once
+// a user opens it, but ToolFallbackImpl's local `open` useState doesn't
+// survive every remount of this component — as new events stream in,
+// assistant-ui's grouped message tree (@assistant-ui/core's
+// MessagePrimitiveGroupedParts, wrapping consecutive tool calls into a
+// collapsible group) rebuilds and can remount a leaf that keeps the same
+// *content* but lands under a different Fragment/group node, resetting
+// local state to its default even though the tool call's own toolCallId
+// never changed. Persisting by that stable id outside component state means
+// a remount picks the same open/closed value back up instead of snapping
+// shut. Module-scoped (not per-conversation) since it's keyed by an
+// already-unique id and cleared as tools close, so it never grows large
+// enough to matter for a browser tab's lifetime.
+const openToolCallIds = new Set<string>();
+
 export type ToolFallbackRootProps = Omit<
 	React.ComponentProps<typeof Collapsible>,
 	"open" | "onOpenChange"
@@ -694,6 +709,7 @@ function ToolFallbackApproval({
 }
 
 const ToolFallbackImpl: ToolCallMessagePartComponent = ({
+	toolCallId,
 	toolName,
 	argsText,
 	artifact,
@@ -711,7 +727,20 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
 	const isRequiresAction = status?.type === "requires-action";
 	const diffs = getToolDiffs(artifact);
 
-	const [open, setOpen] = useState(isRequiresAction);
+	const [open, setOpenState] = useState(
+		() => isRequiresAction || openToolCallIds.has(toolCallId),
+	);
+	const setOpen = useCallback(
+		(next: boolean) => {
+			setOpenState(next);
+			if (next) {
+				openToolCallIds.add(toolCallId);
+			} else {
+				openToolCallIds.delete(toolCallId);
+			}
+		},
+		[toolCallId],
+	);
 	const [prevRequiresAction, setPrevRequiresAction] =
 		useState(isRequiresAction);
 	if (isRequiresAction !== prevRequiresAction) {

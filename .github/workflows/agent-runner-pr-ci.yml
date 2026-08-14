@@ -1,0 +1,194 @@
+name: agent-runner-pr-ci
+
+on:
+  pull_request:
+    paths:
+      - "services/agent-runner/**"
+      - ".github/workflows/agent-runner-pr-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-runner-pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26.4"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Lint — fast feedback, no services needed
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: services/agent-runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/agent-runner/go.sum
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
+
+  # ---------------------------------------------------------------------------
+  # 2. Build — verify the binary compiles
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: services/agent-runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/agent-runner/go.sum
+
+      - name: Build all packages
+        run: go build ./...
+
+  # ---------------------------------------------------------------------------
+  # 3. Unit tests — in-memory fakes (miniredis, httptest), no external
+  #    services needed. Coverage against real Docker/Postgres/Valkey lives
+  #    in the test-e2e job below instead.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: services/agent-runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/agent-runner/go.sum
+
+      - name: Run tests (race detector)
+        run: go test -race -timeout 60s -coverprofile=coverage.out ./...
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report
+          path: services/agent-runner/coverage.out
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 4. E2E tests — real Postgres/Valkey (testcontainers-go) + real Docker
+  #    sandbox containers via this service's own sandbox.Manager (the
+  #    production container-lifecycle code, not a second testcontainers-
+  #    driven reimplementation of it). Required and blocking on every PR —
+  #    this is where the former cmd/agent-runner/livecheck* /
+  #    internal/*/livecheck manually-run programs now live, as automated
+  #    tests instead of hand-run programs. See services/agent-runner/test/e2e.
+  # ---------------------------------------------------------------------------
+  test-e2e:
+    name: E2E tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [build]
+
+    defaults:
+      run:
+        working-directory: services/agent-runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: services/agent-runner/go.sum
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # cd.yml only publishes paca-agent-server-goose on a tagged release
+      # (no :latest) — CI has to build it fresh. GHA layer caching keys off
+      # the Dockerfile's content, so the slow apt/nodesource/npm layer is a
+      # cache hit on PRs that don't touch services/agent-server/Dockerfile.
+      - name: Build sandbox image (paca-agent-server-goose:e2e)
+        uses: docker/build-push-action@v7
+        with:
+          context: services/agent-server
+          file: services/agent-server/Dockerfile
+          tags: paca-agent-server-goose:e2e
+          push: false
+          load: true
+          cache-from: type=gha,scope=agent-server-goose
+          cache-to: type=gha,mode=max,scope=agent-server-goose
+
+      # TestACPClientAgainstRealGooseContainer and TestSandboxManagerLifecycle
+      # (see test/e2e/helpers_test.go's rawUpstreamGooseImage) run the bare
+      # upstream image directly, not paca-agent-server-goose:e2e — and the
+      # build step above doesn't warm the classic Docker image store with it:
+      # docker/build-push-action's default buildx driver fetches FROM's base
+      # layers into BuildKit's own content store, which sandbox.Manager's
+      # ImageList-based cache check (internal/sandbox/sandbox.go's
+      # ensureImage) can't see. Without this, the first such test to run pays
+      # a full registry pull inline against its own 60s test context — and
+      # that pull, plus the same image getting pulled again if the first
+      # attempt is cancelled mid-pull, was slow/contended enough on shared
+      # runners to blow through every other Docker-backed e2e test's context
+      # deadline too (all observed hanging in sandbox.go's waitForReady, not
+      # failing outright — confirmed by re-running the full suite locally
+      # against an already-warm image cache, where it passes in under a
+      # minute). Pre-pulling here keeps that cost out of any single test's
+      # budget.
+      - name: Pull upstream Goose image (pinned in services/agent-server/Dockerfile)
+        run: docker pull "$(grep -oP '^FROM\s+\K\S+' ../agent-server/Dockerfile)"
+
+      - name: Run E2E tests
+        # Lower -parallel than the unit-test job's implicit default: most of
+        # these tests spin up a real Docker sandbox container requesting 2
+        # CPU / 4GiB each (sandbox.Manager.Start's hardcoded Resources) —
+        # only the two Docker-free test files call t.Parallel(), so this
+        # mainly benefits those plus intra-suite scheduling rather than
+        # launching several 2-core/4GiB containers at once on a standard
+        # runner.
+        env:
+          PACA_E2E: "1"
+          AGENT_SERVER_IMAGE: "paca-agent-server-goose:e2e"
+        run: go test -v -timeout 600s -parallel 4 ./test/e2e/...

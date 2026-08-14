@@ -16,7 +16,9 @@
 #
 #   /api/*          →  REST API service       (forwarded as-is, /api kept)
 #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
-#   /agent-bridge/ws → AI-agent local ACP bridge WebSocket (forwarded as-is)
+#   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded
+#                       as-is — see the note on this route below; this is a
+#                       dev-only cutover, not a signal that prod has moved)
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -88,8 +90,12 @@
 
 	# Scoped to exactly /agent-bridge/ws — /agent-bridge/status/* and
 	# /agent-bridge/disconnect/* are internal-only routes, not for public access.
+	#
+	# Points at agent-runner, the Go service that now owns this WebSocket
+	# endpoint (services/ai-agent, which used to serve it, has been fully
+	# removed — the prod Caddyfile points here too).
 	handle /agent-bridge/ws {
-		reverse_proxy ai-agent:8080
+		reverse_proxy agent-runner:8080
 	}
 
 	handle {

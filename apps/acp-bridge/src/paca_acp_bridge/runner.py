@@ -166,13 +166,30 @@ class _AssistantTextRelay:
         return "".join(self._emitted).endswith(message)
 
 
+# Providers with a fixed default command that isn't in the OpenHands SDK's
+# own acp_providers registry (get_acp_provider only knows about
+# claude-code/codex/gemini-cli — verified empirically against SDK 1.36.1).
+# Resolved here as a small local override rather than upstreaming a Goose
+# entry into the SDK, since `goose acp` was already confirmed to speak ACP
+# correctly as a plain subprocess with no SDK-side special-casing required
+# beyond the command itself — there's nothing provider-specific left for the
+# SDK to know.
+_LOCAL_ACP_PROVIDER_COMMANDS: dict[str, list[str]] = {
+    "goose": ["goose", "acp"],
+}
+
+
 def resolve_acp_command(acp_provider: str | None, acp_command: list[str]) -> list[str]:
     """Resolve the command to launch the ACP server.
 
-    Built-in providers (claude-code/codex/gemini-cli) use the OpenHands SDK's
-    own default command for that provider; "custom" (or an unrecognized
-    provider) requires an explicit acp_command from the agent's config.
+    Built-in providers either use the OpenHands SDK's own default command
+    for that provider (claude-code/codex/gemini-cli) or a small local
+    override (goose — see _LOCAL_ACP_PROVIDER_COMMANDS); "custom" (or an
+    unrecognized provider) requires an explicit acp_command from the
+    agent's config.
     """
+    if acp_provider in _LOCAL_ACP_PROVIDER_COMMANDS:
+        return list(_LOCAL_ACP_PROVIDER_COMMANDS[acp_provider])
     if acp_provider and acp_provider != "custom":
         provider = get_acp_provider(acp_provider)
         if provider is not None:
@@ -188,8 +205,8 @@ def resolve_acp_command(acp_provider: str | None, acp_command: list[str]) -> lis
 class ConversationRunner:
     """Owns one local `Conversation` per active conversation_id.
 
-    Mirrors services/ai-agent's executor.py chat_sandboxes pattern (reuse a
-    live conversation across turns of the same chat), but entirely
+    Mirrors services/agent-runner's internal/chatsandbox.Registry pattern
+    (reuse a live conversation across turns of the same chat), but entirely
     in-process — there's no sandbox to start/stop here.
     """
 
@@ -330,7 +347,7 @@ class ConversationRunner:
         those chunks have gone out as ``MessageEvent``s, *both* are a verbatim
         second copy of the whole turn's narration; blanking only the action
         half would still leave the observation half persisted server-side
-        (``services/ai-agent`` persists every event unconditionally), even
+        (``services/agent-runner`` persists every event unconditionally), even
         though nothing renders or reads it — it exists only because the SDK
         pairs every action with an observation. Nothing is lost either way:
         the same text is still persisted in the events it was split into.

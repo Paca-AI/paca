@@ -9,7 +9,7 @@ Paca is a single open-source monorepo with a small set of clearly separated runt
 - `apps/e2e` — the end-to-end test suite built with Playwright; not a deployed runtime, but an external verifier of the full stack.
 - `services/api` — the main application backend built with Go, Chi, and sqlx.
 - `services/realtime` — the real-time delivery service built with Node.js and Socket.IO.
-- `services/ai-agent` — the AI agent orchestration runtime built with Python, FastAPI, and the OpenHands SDK.
+- `services/agent-runner` — the AI agent execution runtime built with Go, driving Goose over ACP for `llm`-type agents and brokering `acp`-type dispatch to `apps/acp-bridge`.
 
 ## Platform Dependencies
 
@@ -24,7 +24,7 @@ Paca is a single open-source monorepo with a small set of clearly separated runt
 - `apps/e2e` drives a real browser against the full running stack and validates cross-cutting flows that span multiple runtime surfaces.
 - `services/api` remains the system of record for product state and publishes real-time relevant domain events to a Valkey Stream.
 - `services/realtime` consumes Valkey Stream messages from `services/api` and fans out client-safe events to connected Socket.IO rooms and users.
-- `services/ai-agent` reads agent trigger events from a Valkey Stream, spawns Docker containers for each conversation via the OpenHands SDK, and publishes conversation events back to Valkey.
+- `services/agent-runner` reads agent trigger events from a Valkey Stream, spawns a Docker container per `llm`-type conversation and drives it over ACP, and publishes conversation events back to Valkey.
 
 ## Architectural Intent
 
