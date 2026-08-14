@@ -70,7 +70,22 @@ const MCPDevMountPath = "/opt/paca-mcp-dev"
 // (MustParsePort can't be evaluated at compile time).
 var containerPort = network.MustParsePort("3284/tcp")
 
-var localhostAddr = netip.MustParseAddr("127.0.0.1")
+// publishOnAllInterfaces is the HostIP used for the local-dev/CI host-port-
+// mapping fallback below (see the insideDocker branch in Start). Previously
+// pinned to 127.0.0.1; changed after every Docker-backed e2e test started
+// hanging until its own context deadline on GitHub Actions' ubuntu-latest
+// runners (Ubuntu 24.04) waiting on /status, with the container itself
+// reporting status=running the whole time — a known category of
+// iptables/nftables loopback-DNAT quirk on that runner image. Not
+// reproducible locally (same code path, since this dev environment also
+// isn't itself inside Docker), so this was diagnosed by elimination rather
+// than a captured packet trace: it's the one concrete difference between
+// this path (100% failing in that CI job) and testcontainers-go's own
+// Postgres/Valkey containers in the very same job (100% succeeding), which
+// never pin a HostIP at all — Docker defaults an unset one to all
+// interfaces. If a future CI run still hangs here after this change, this
+// theory was wrong and needs revisiting.
+var publishOnAllInterfaces = netip.IPv4Unspecified()
 
 // Config describes one conversation's sandbox. Env is the full set of
 // environment variables to inject beyond the ones this package always sets
@@ -214,7 +229,7 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 			return nil, err
 		}
 		hostCfg.PortBindings = network.PortMap{
-			containerPort: []network.PortBinding{{HostIP: localhostAddr, HostPort: fmt.Sprintf("%d", hostPort)}},
+			containerPort: []network.PortBinding{{HostIP: publishOnAllInterfaces, HostPort: fmt.Sprintf("%d", hostPort)}},
 		}
 	}
 
