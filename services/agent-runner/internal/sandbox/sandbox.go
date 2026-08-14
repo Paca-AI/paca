@@ -70,22 +70,7 @@ const MCPDevMountPath = "/opt/paca-mcp-dev"
 // (MustParsePort can't be evaluated at compile time).
 var containerPort = network.MustParsePort("3284/tcp")
 
-// publishOnAllInterfaces is the HostIP used for the local-dev/CI host-port-
-// mapping fallback below (see the insideDocker branch in Start). Previously
-// pinned to 127.0.0.1; changed after every Docker-backed e2e test started
-// hanging until its own context deadline on GitHub Actions' ubuntu-latest
-// runners (Ubuntu 24.04) waiting on /status, with the container itself
-// reporting status=running the whole time — a known category of
-// iptables/nftables loopback-DNAT quirk on that runner image. Not
-// reproducible locally (same code path, since this dev environment also
-// isn't itself inside Docker), so this was diagnosed by elimination rather
-// than a captured packet trace: it's the one concrete difference between
-// this path (100% failing in that CI job) and testcontainers-go's own
-// Postgres/Valkey containers in the very same job (100% succeeding), which
-// never pin a HostIP at all — Docker defaults an unset one to all
-// interfaces. If a future CI run still hangs here after this change, this
-// theory was wrong and needs revisiting.
-var publishOnAllInterfaces = netip.IPv4Unspecified()
+var localhostAddr = netip.MustParseAddr("127.0.0.1")
 
 // Config describes one conversation's sandbox. Env is the full set of
 // environment variables to inject beyond the ones this package always sets
@@ -229,7 +214,7 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 			return nil, err
 		}
 		hostCfg.PortBindings = network.PortMap{
-			containerPort: []network.PortBinding{{HostIP: publishOnAllInterfaces, HostPort: fmt.Sprintf("%d", hostPort)}},
+			containerPort: []network.PortBinding{{HostIP: localhostAddr, HostPort: fmt.Sprintf("%d", hostPort)}},
 		}
 	}
 
@@ -271,19 +256,52 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("sandbox: start container: %w", err)
 	}
 
-	var baseURL string
+	var candidates []string
 	if insideDocker {
 		ip, err := m.containerIP(ctx, created.ID)
 		if err != nil {
 			cleanup()
 			return nil, err
 		}
-		baseURL = fmt.Sprintf("http://%s:3284", ip)
+		candidates = []string{fmt.Sprintf("http://%s:3284", ip)}
 	} else {
-		baseURL = fmt.Sprintf("http://localhost:%d", hostPort)
+		// Two candidate addresses, tried every poll tick, first one to
+		// answer wins:
+		//
+		//  1. The container's own bridge-network IP, reachable directly
+		//     with no NAT/port-publish involved — Docker still auto-attaches
+		//     every container to the default bridge network even when this
+		//     branch's hostCfg carries no NetworkingConfig, so containerIP
+		//     (already used for the insideDocker branch above) works here
+		//     too. On a native Linux Docker host — every CI runner, plus any
+		//     dev machine that isn't running Docker Desktop — the host can
+		//     route to that bridge subnet directly, same as any other local
+		//     interface.
+		//  2. The existing host-port-mapped "localhost:<hostPort>" address,
+		//     kept as a fallback for Docker Desktop (macOS/Windows), whose
+		//     split host/VM architecture makes the bridge IP unreachable
+		//     from the host — published ports are the only thing that
+		//     crosses that boundary there.
+		//
+		// Added after every Docker-backed e2e test started hanging until
+		// its own context deadline on GitHub Actions' ubuntu-latest runners
+		// waiting on the localhost:<hostPort> address specifically, with
+		// the container itself reporting status=running the whole
+		// time — i.e. candidate 2 alone, which is all this branch used to
+		// try, was somehow unreachable on that runner even though the
+		// container was healthy. Not reproducible on any local machine
+		// tried (candidate 2 alone always worked), so the exact mechanism
+		// on the runner side (iptables/nftables port-publish quirk, most
+		// likely) was never directly confirmed — candidate 1 sidesteps
+		// whatever it is rather than working around it blindly.
+		candidates = []string{fmt.Sprintf("http://localhost:%d", hostPort)}
+		if ip, err := m.containerIP(ctx, created.ID); err == nil {
+			candidates = append([]string{fmt.Sprintf("http://%s:3284", ip)}, candidates...)
+		}
 	}
 
-	if err := waitForReady(ctx, baseURL, secretKey); err != nil {
+	baseURL, err := waitForReady(ctx, candidates, secretKey)
+	if err != nil {
 		// Captured before cleanup() removes the container — a container
 		// that never answers /status could be crash-looping, OOM-killed, or
 		// simply still starting under load, and "context deadline exceeded"
@@ -465,26 +483,36 @@ func (m *Manager) diagnoseUnready(ctx context.Context, containerID string) strin
 	return fmt.Sprintf("container %s: %s; last logs: %s", containerID, state, logs)
 }
 
-func waitForReady(ctx context.Context, baseURL, secretKey string) error {
+// waitForReady polls every candidate base URL's /status endpoint each tick
+// and returns the first one to answer with a non-5xx response — see the
+// call site's comment on why Start ever passes more than one candidate.
+// Trying every candidate on every tick (rather than exhausting one before
+// moving to the next) means a candidate that's simply unreachable (instant
+// connection-refused/no-route, the expected shape when e.g. the bridge-IP
+// candidate doesn't apply on this host) costs at most one fast failed
+// dial per tick, not a share of the overall timeout budget.
+func waitForReady(ctx context.Context, candidates []string, secretKey string) (string, error) {
 	deadline := time.Now().Add(readyTimeout)
 	httpClient := &http.Client{Timeout: 2 * time.Second}
 	for time.Now().Before(deadline) {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/status", nil)
-		req.Header.Set("X-Secret-Key", secretKey)
-		resp, err := httpClient.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode < 500 {
-				return nil
+		for _, baseURL := range candidates {
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/status", nil)
+			req.Header.Set("X-Secret-Key", secretKey)
+			resp, err := httpClient.Do(req)
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode < 500 {
+					return baseURL, nil
+				}
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		case <-time.After(readyPollEvery):
 		}
 	}
-	return fmt.Errorf("sandbox: %s/status not ready after %s", baseURL, readyTimeout)
+	return "", fmt.Errorf("sandbox: none of %v/status became ready after %s", candidates, readyTimeout)
 }
 
 func (m *Manager) acquirePort() (int, error) {
