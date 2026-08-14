@@ -232,8 +232,20 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("sandbox: create container: %w", err)
 	}
 
+	// cleanup uses its own short-lived context, never the caller's ctx —
+	// every call site below invokes cleanup() precisely because ctx just
+	// failed (expired or was cancelled), so removing the container "with
+	// ctx" would immediately no-op against an already-Done context. Since
+	// ContainerRemove's error is discarded (best-effort teardown of a
+	// container we're abandoning anyway), that failure was previously
+	// invisible: the container kept running — still holding its 2 CPU/4GiB
+	// cgroup allowance — for the rest of the process's lifetime instead of
+	// being force-removed, silently starving whatever sandbox this Manager
+	// starts next.
 	cleanup := func() {
-		_, _ = m.docker.ContainerRemove(ctx, created.ID, client.ContainerRemoveOptions{Force: true})
+		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, _ = m.docker.ContainerRemove(removeCtx, created.ID, client.ContainerRemoveOptions{Force: true})
 		if hostPort != 0 {
 			m.releasePort(hostPort)
 		}
@@ -257,8 +269,16 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 	}
 
 	if err := waitForReady(ctx, baseURL, secretKey); err != nil {
+		// Captured before cleanup() removes the container — a container
+		// that never answers /status could be crash-looping, OOM-killed, or
+		// simply still starting under load, and "context deadline exceeded"
+		// alone can't distinguish those. Uses its own context for the same
+		// reason cleanup() does: ctx is already Done() here.
+		diagCtx, diagCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		diag := m.diagnoseUnready(diagCtx, created.ID)
+		diagCancel()
 		cleanup()
-		return nil, err
+		return nil, fmt.Errorf("%w (%s)", err, diag)
 	}
 
 	return &Handle{
@@ -394,6 +414,40 @@ func (m *Manager) containerIP(ctx context.Context, containerID string) (string, 
 		}
 	}
 	return "", fmt.Errorf("sandbox: container %s has no assigned IP yet", containerID)
+}
+
+// diagnoseUnready summarizes a container's runtime state and recent output
+// for the error path when it never answers /status — a state string alone
+// ("running"/"exited"/"dead", exit code, OOM flag) plus its last few log
+// lines is usually enough to tell a slow-starting container apart from one
+// that's crash-looping (bad env, missing dependency inside the image) from
+// one that started fine but never bound the port, none of which "context
+// deadline exceeded" on its own can distinguish. Best-effort: inspect/logs
+// failures are folded into the returned string rather than propagated,
+// since this only ever augments an error the caller is already returning.
+func (m *Manager) diagnoseUnready(ctx context.Context, containerID string) string {
+	state := "inspect failed"
+	if resp, err := m.docker.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{}); err == nil && resp.Container.State != nil {
+		s := resp.Container.State
+		state = fmt.Sprintf("status=%s exitCode=%d oomKilled=%v error=%q", s.Status, s.ExitCode, s.OOMKilled, s.Error)
+	} else if err != nil {
+		state = fmt.Sprintf("inspect failed: %v", err)
+	}
+
+	var logs string
+	if rc, err := m.docker.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Tail: "40"}); err == nil {
+		var buf bytes.Buffer
+		_, _ = stdcopy.StdCopy(&buf, &buf, rc)
+		_ = rc.Close()
+		logs = buf.String()
+		if logs == "" {
+			logs = "(empty)"
+		}
+	} else {
+		logs = fmt.Sprintf("fetch failed: %v", err)
+	}
+
+	return fmt.Sprintf("container %s: %s; last logs: %s", containerID, state, logs)
 }
 
 func waitForReady(ctx context.Context, baseURL, secretKey string) error {
