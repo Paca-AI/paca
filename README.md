@@ -287,7 +287,7 @@ docker compose --env-file .env up -d
 > **Customizing the stack:** scale down services you don't need.
 >
 > ```bash
-> # External PostgreSQL (supply DATABASE_URL in .env)
+> # External PostgreSQL (supply DATABASE_URL in .env — recommended: Neon https://neon.com)
 > docker compose --env-file .env up -d --scale postgres=0
 >
 > # AWS S3 instead of MinIO (set STORAGE_PROVIDER=s3 in .env)

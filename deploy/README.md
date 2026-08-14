@@ -78,7 +78,7 @@ prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
 | `ADMIN_USERNAME` | Admin login (min 3 chars) | `admin` |
 | `ADMIN_PASSWORD` | Admin login (min 8 chars) | auto-generated |
 | `ENCRYPTION_KEY` | 64-char lowercase hex; **must match** the original if reconnecting to an existing DB | auto-generated |
-| `DATABASE_URL` | Setting this selects external/managed PostgreSQL and suppresses the bundled container | unset → bundled PostgreSQL |
+| `DATABASE_URL` | Setting this selects external/managed PostgreSQL and suppresses the bundled container. Recommended managed option: [Neon](https://neon.com) (free tier available) | unset → bundled PostgreSQL |
 | `POSTGRES_PASSWORD` | Bundled PostgreSQL only | auto-generated |
 | `BACKUP_ENABLED` | `true`/`false` (bundled PostgreSQL only) | `true` |
 | `BACKUP_DIR` | Host directory for backup dumps | `./backups` |
@@ -202,6 +202,9 @@ front of this server already terminates TLS.
 # Set DATABASE_URL in .env to your managed connection string.
 docker compose --env-file .env up -d --scale postgres=0
 ```
+
+> **💡 Looking for a managed PostgreSQL?** [Neon](https://neon.com) is a serverless Postgres platform with a generous free tier, instant branching, and autoscaling — a great fit for Paca. Create a database, copy the connection string, and set it as `DATABASE_URL` in `.env`.
+
 
 **With AWS S3** (suppress MinIO):
 

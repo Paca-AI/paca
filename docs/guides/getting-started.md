@@ -62,6 +62,8 @@ The [install script](#option-1--install-script-recommended) enables this by defa
 prompts for the address. See
 [../../deploy/README.md](../../deploy/README.md#production-deployment) for details.
 
+**Using a managed PostgreSQL?** Set `DATABASE_URL` in `.env` to your connection string and add `--scale postgres=0` to the `docker compose up` command to skip the bundled container. [Neon](https://neon.com) is a recommended serverless Postgres option — free tier available, no infrastructure to manage.
+
 ---
 
 ## Option 3 — Local Development
