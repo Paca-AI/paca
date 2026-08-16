@@ -126,7 +126,23 @@ function routeEvent(io: Server, msg: RealtimeMessage, logger: Logger): void {
 		return;
 	}
 
-	// Project-scoped events (the common case).
+	// An owner-private agent.* event carries actor_user_id (the owning user)
+	// and routes to that user's own per-user room — this covers both global
+	// chat and a project's owner-private chat conversations. Checked before
+	// project_id so a private conversation is never also broadcast into the
+	// project room; a project-shared conversation has no actor_user_id and
+	// falls through to the project-scoped branch below.
+	if (type.startsWith("agent.")) {
+		const actorUserId = payload.actor_user_id;
+		if (typeof actorUserId === "string" && actorUserId) {
+			const room = agentChatRoomName(actorUserId);
+			logger.debug({ type, room }, "routing owner-private agent event to user room");
+			io.to(room).emit("event", { type, payload });
+			return;
+		}
+	}
+
+	// Project-scoped events (project-shared conversations, tasks, docs, ...).
 	const projectId = payload.project_id;
 	if (typeof projectId === "string" && projectId) {
 		// Resolve the namespace room from the event type prefix.
@@ -140,20 +156,6 @@ function routeEvent(io: Server, msg: RealtimeMessage, logger: Logger): void {
 		logger.debug({ type, room }, "routing event to room");
 		io.to(room).emit("event", { type, payload });
 		return;
-	}
-
-	// A global agent.* event (a conversation with a global agent from the
-	// home page / admin pages — no project_id, see services/ai-agent's
-	// core.streams.publish_realtime) routes to the acting human's own
-	// per-user room instead of a project room.
-	if (type.startsWith("agent.")) {
-		const actorUserId = payload.actor_user_id;
-		if (typeof actorUserId === "string" && actorUserId) {
-			const room = agentChatRoomName(actorUserId);
-			logger.debug({ type, room }, "routing global agent event to user room");
-			io.to(room).emit("event", { type, payload });
-			return;
-		}
 	}
 
 	logger.debug({ type }, "event has no project or actor scope — skipped");
