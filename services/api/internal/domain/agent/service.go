@@ -109,17 +109,21 @@ type EnvVarService interface {
 // ConversationService defines conversation management use cases.
 type ConversationService interface {
 	ListConversations(ctx context.Context, in ListConversationsFilter, limit int) (convs []*AgentConversation, hasMore bool, err error)
-	GetConversation(ctx context.Context, projectID, conversationID uuid.UUID) (*AgentConversation, error)
+	// GetConversation returns a single project conversation after verifying
+	// it belongs to projectID and that memberID may read it (project-shared
+	// conversations are readable by any project member; owner-private ones
+	// only by their chat-session owner).
+	GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
-	// conversation's sandbox. Unchanged from before.
-	StopConversation(ctx context.Context, projectID, conversationID uuid.UUID) error
+	// conversation's sandbox. memberID gates ownership (see GetConversation).
+	StopConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	// PauseConversation interrupts the in-flight turn only — the sandbox
 	// stays alive and the conversation can be replied to again once it pauses.
-	PauseConversation(ctx context.Context, projectID, conversationID uuid.UUID) error
+	PauseConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	// Heartbeat refreshes a chat conversation's idle timer; called
 	// periodically by the frontend while a conversation is loaded in a tab.
-	Heartbeat(ctx context.Context, projectID, conversationID uuid.UUID) error
+	Heartbeat(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error
 
 	// -- Global chat conversations (ProjectID == uuid.Nil). Thin siblings of
@@ -151,7 +155,7 @@ type ChatSessionService interface {
 	ListChatSessions(ctx context.Context, projectID, agentID, memberID uuid.UUID) ([]*AgentChatSession, error)
 	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*AgentChatSession, *AgentConversation, error)
 	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*AgentConversation, error)
-	ListChatMessages(ctx context.Context, sessionID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
+	ListChatMessages(ctx context.Context, sessionID, memberID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
 
 	// -- Global chat sessions (chatting with a global agent from the home
 	// page / admin pages — no project context). See ChatSession's doc
