@@ -58,4 +58,9 @@ type Trigger struct {
 	// already split — a project can have more than one repository plugin
 	// installed.
 	RepoPluginIDs []string
+	// PriorHandoffs carries bounded prior task-level handoff summaries (see
+	// agent_task_handoffs) for a task-linked conversation, newest first.
+	// Populated by the handler from the repository before the turn runs so
+	// executor.buildInitialMessage can inject them without a DB dependency.
+	PriorHandoffs []string
 }

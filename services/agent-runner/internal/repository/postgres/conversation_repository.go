@@ -158,3 +158,84 @@ func (r *ConversationRepository) InsertEvent(ctx context.Context, id, conversati
 	}
 	return nil
 }
+
+// maxHandoffSummaryBytes bounds a persisted handoff summary so context
+// assembly never injects an unbounded transcript into a later turn.
+const maxHandoffSummaryBytes = 8000
+
+// LatestAgentReply returns the concatenated text of the conversation's
+// agent-authored message events (agent_message_chunk for llm-type agents via
+// this runner, MessageAction for acp-type agents via the bridge), or "" when
+// the agent produced no message text. This is the "final conclusion" a task
+// handoff captures.
+func (r *ConversationRepository) LatestAgentReply(ctx context.Context, conversationID uuid.UUID) (string, error) {
+	var reply string
+	err := r.db.GetContext(ctx, &reply, `
+		SELECT COALESCE(string_agg(text, E'\n'), '')
+		FROM (
+			SELECT COALESCE(
+				payload #>> '{content,text}',
+				payload->>'content',
+				payload->>'message',
+				''
+			) AS text
+			FROM agent_conversation_events
+			WHERE conversation_id = $1
+			  AND event_source = 'agent'
+			  AND event_type IN ('agent_message_chunk', 'MessageAction')
+			ORDER BY event_index ASC
+		) t
+		WHERE text <> ''
+	`, conversationID)
+	if err != nil {
+		return "", fmt.Errorf("postgres: latest agent reply for conversation %s: %w", conversationID, err)
+	}
+	if len(reply) > maxHandoffSummaryBytes {
+		reply = reply[:maxHandoffSummaryBytes]
+	}
+	return reply, nil
+}
+
+// InsertTaskHandoff persists one task-level handoff for a conversation,
+// idempotently (the UNIQUE(conversation_id) constraint makes a retry a no-op).
+func (r *ConversationRepository) InsertTaskHandoff(ctx context.Context, taskID, conversationID uuid.UUID, summary string) error {
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO agent_task_handoffs (task_id, conversation_id, summary)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (conversation_id) DO NOTHING
+	`, taskID, conversationID, summary); err != nil {
+		return fmt.Errorf("postgres: insert handoff for conversation %s: %w", conversationID, err)
+	}
+	return nil
+}
+
+// ListTaskHandoffs returns up to limit prior handoff summaries for a task,
+// newest first, for bounded context assembly on a later conversation.
+func (r *ConversationRepository) ListTaskHandoffs(ctx context.Context, taskID uuid.UUID, limit int) ([]string, error) {
+	var summaries []string
+	if err := r.db.SelectContext(ctx, &summaries, `
+		SELECT summary
+		FROM agent_task_handoffs
+		WHERE task_id = $1
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2
+	`, taskID, limit); err != nil {
+		return nil, fmt.Errorf("postgres: list handoffs for task %s: %w", taskID, err)
+	}
+	return summaries, nil
+}
+
+// GetConversationTaskID returns the conversation's task_id, or uuid.Nil when
+// the conversation is not task-linked. Used by the ACP bridge's turn_status
+// path, which has no in-memory trigger carrying the task id.
+func (r *ConversationRepository) GetConversationTaskID(ctx context.Context, conversationID uuid.UUID) (uuid.UUID, error) {
+	var taskID uuid.NullUUID
+	if err := r.db.GetContext(ctx, &taskID,
+		`SELECT task_id FROM agent_conversations WHERE id = $1`, conversationID); err != nil {
+		return uuid.Nil, fmt.Errorf("postgres: get task id for conversation %s: %w", conversationID, err)
+	}
+	if !taskID.Valid {
+		return uuid.Nil, nil
+	}
+	return taskID.UUID, nil
+}

@@ -81,6 +81,18 @@ func buildInitialMessage(cfg agent.Config, trigger agent.Trigger) string {
 		fmt.Fprintf(&b, "Chat Session ID: %s\n", trigger.ChatSessionID)
 	}
 
+	// Prior task-level agent handoffs (#392): bounded summaries of earlier
+	// conversations' conclusions on this task, newest first, so a later turn
+	// can recover context without the full transcripts.
+	if len(trigger.PriorHandoffs) > 0 {
+		b.WriteString("\n\n## Prior Agent Handoffs on This Task\n")
+		b.WriteString("These are summaries of earlier agent conclusions on this task. " +
+			"Use them as context; the full transcripts live in conversation history.\n")
+		for i, handoff := range trigger.PriorHandoffs {
+			fmt.Fprintf(&b, "\n### Handoff %d\n%s\n", i+1, handoff)
+		}
+	}
+
 	b.WriteString("\n\n## User Message\n")
 	message := strings.TrimSpace(trigger.Message)
 	if message == "" && trigger.TriggerType == agent.TriggerTaskAssigned {
