@@ -6,8 +6,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type AgentConversationEvent,
-	type ConversationEventsTail,
 	CONVERSATION_EVENTS_PAGE_SIZE,
+	type ConversationEventsTail,
 	conversationEventsTailKey,
 	conversationEventsTailQueryOptions,
 	conversationEventWindowInfiniteOptions,

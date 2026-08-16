@@ -32,7 +32,7 @@ type conversationLocks struct {
 }
 
 type refCountedMutex struct {
-	mu  sync.Mutex
+	mu   sync.Mutex
 	refs int
 }
 

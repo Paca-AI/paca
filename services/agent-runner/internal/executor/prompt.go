@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Paca-AI/agent-runner/internal/agent"
 	"github.com/google/uuid"
+
+	"github.com/Paca-AI/agent-runner/internal/agent"
 )
 
 var actionTypeLabels = map[agent.TriggerType]string{
