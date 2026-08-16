@@ -133,3 +133,30 @@ owner-private chat 会实时泄漏给全项目。
 
 - turn/outbox/fencing、幂等 handoff → PR1 / #392
 - 会话/Chats 历史 UI、上传生命周期、编辑器、开关/模型配置 → PR3 / #397
+
+## 9. 对抗审查修订（2026-08-16，独立只读审查后）
+
+审查结论：现状诊断与 P0-1~P0-4 行号全部属实；但原方案有 6 处需修正：
+
+1. **audience 改为 STORED GENERATED 列**（`CASE WHEN chat_session_id/actor_user_id
+   非空 THEN owner_private ELSE project_shared END`）。原「普通列 + DEFAULT
+   'project_shared'」是 fail-open（漏设即过度公开），且与可派生真相有漂移风险。
+2. **先修身份链路 bug**：`conversation_handler.go:399` 的 `SendConversationMessage`
+   用 `claims.Subject`（user id）当 member id，违反 `agent_handler.go:129-133`
+   的明确注释（`triggered_by_member_id`/`session.member_id` 存 `project_members.id`）。
+   owner 判定前必须把该路径改为 `resolveMemberID`。
+3. **owner 过滤必须下沉 SQL WHERE**：`ListConversations` 的 Search 走
+   `EXISTS(agent_conversation_events …)`，若只在 service 层过滤 audience，成员可
+   通过「搜索命中与否」探测他人私有 chat 的**内容**。audience/owner 过滤必须进 SQL。
+4. **realtime 前提修正**：当前 `services/realtime` 是 TS/Bun 服务，**没有**
+   `conversation:<id>` 房间（`docs/ai-agent/realtime-events.md` 是 Python 旧实现的
+   陈旧描述）；`routeEvent` 先 project_id 短路，且 payload 对项目 chat 无 user_id
+   （agent-runner 只返回 project_id/actor_user_id）。需：member→user 解析下发 +
+   路由顺序改造（owner_private 优先）+ 前端项目上下文订阅 user 房间。
+5. **MCP 拆两半**：去掉 personal-key 全量回退可在 PR0 做；「附件读带 turn/session
+   scope」在现有 `PacaConfig`（无 conversation_id/session_id/task_id）上不可实现，
+   延后到 #397 的 capability 前置 PR。
+6. **`task_shared` 不是 transcript audience 的第三值**：它是附件/交接的另一个维度，
+   由 #397 引入。transcript audience 就是两值（owner_private/project_shared），
+   两值 generated 列不与 `task_shared` 冲突。
+
