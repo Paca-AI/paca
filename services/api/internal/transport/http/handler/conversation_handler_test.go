@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
 
@@ -29,8 +30,13 @@ func fixedTime() time.Time {
 // ---------------------------------------------------------------------------
 
 func newConversationRouter(svc agentdom.Service) chi.Router {
-	h := handler.NewConversationHandler(svc)
+	h := handler.NewConversationHandler(svc).WithMemberRepo(&fakeMemberRepo{
+		findByUserProject: func(_ context.Context, _, _ uuid.UUID) (*projectdom.ProjectMember, error) {
+			return &projectdom.ProjectMember{ID: uuid.New()}, nil
+		},
+	})
 	r := chi.NewRouter()
+	r.Use(claimsMiddleware(uuid.NewString()))
 	r.Route("/projects/{projectId}/conversations", func(r chi.Router) {
 		r.Get("/", h.ListConversations)
 		r.Get("/{conversationId}/events", h.ListConversationEvents)

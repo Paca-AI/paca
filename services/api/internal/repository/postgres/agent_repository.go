@@ -871,6 +871,18 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		b.args = append(b.args, in.ActorUserID.String())
 		b.whereClauses = append(b.whereClauses, "actor_user_id = "+p)
 	}
+	if in.ViewerMemberID != nil {
+		// Audience is enforced in SQL so the search subquery never touches a
+		// private conversation the caller cannot read: project-shared
+		// conversations are visible to any member, owner-private ones only to
+		// their chat-session owner (global chat is already excluded by
+		// ProjectID above, since those rows have project_id IS NULL).
+		p := b.placeholder()
+		b.args = append(b.args, in.ViewerMemberID.String())
+		b.whereClauses = append(b.whereClauses, fmt.Sprintf(
+			"(audience = '%s' OR EXISTS (SELECT 1 FROM agent_chat_sessions cs WHERE cs.id = agent_conversations.chat_session_id AND cs.member_id = %s))",
+			agentdom.AudienceProjectShared, p))
+	}
 	if in.TaskID != nil {
 		p := b.placeholder()
 		b.args = append(b.args, in.TaskID.String())
