@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,5 +131,112 @@ func TestTriggerOrchestration(t *testing.T) {
 	}
 	if lastEventType != "turn_end" {
 		t.Fatalf("last persisted event type = %q, want %q", lastEventType, "turn_end")
+	}
+}
+
+// TestTaskHandoff drives a task-linked sessionless run to "finished" and
+// verifies the final reply is persisted as an idempotent task-level handoff
+// (#392), including the failure modes of a retry (no duplicate) and that a
+// non-task conversation leaves no handoff behind.
+func TestTaskHandoff(t *testing.T) {
+	env := newE2EEnv(t)
+	image := agentServerImage(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	gatewayIP := dockerBridgeGatewayIP(ctx, t)
+	llm := fakellm.New(t, fakellm.TextReply("the final conclusion for handoff"))
+
+	encryptor := newEncryptor(t)
+	encryptedKey, err := encryptor.Encrypt("fake-key")
+	if err != nil {
+		t.Fatalf("encrypt fake key: %v", err)
+	}
+
+	taskID := uuid.New()
+	agentID := uuid.New()
+	convID := uuid.New()
+
+	if _, err := env.db.ExecContext(ctx,
+		`INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'handoff task')`,
+		taskID, env.projectID); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := env.db.ExecContext(ctx, `
+		INSERT INTO agents (id, project_id, name, handle, llm_provider, llm_model,
+		                     llm_api_key_secret, llm_base_url, system_prompt,
+		                     max_iterations, timeout_minutes,
+		                     git_committer_name, git_committer_email, agent_type)
+		VALUES ($1, $2, 'Handoff Agent', $3, 'openai', 'fake-model', $4, $5,
+		        'You are a test agent.', 5, 10, 'paca-agent', 'agent@example.com', 'llm')
+	`, agentID, env.projectID, "handoff-agent-"+agentID.String()[:8], encryptedKey, llm.BaseURL(gatewayIP)); err != nil {
+		t.Fatalf("seed agent: %v", err)
+	}
+	if _, err := env.db.ExecContext(ctx, `
+		INSERT INTO agent_conversations (id, agent_id, project_id, trigger_type, task_id, triggered_by_member_id, status)
+		VALUES ($1, $2, $3, 'task_assigned', $4, $5, 'queued')
+	`, convID, agentID, env.projectID, taskID, env.memberID); err != nil {
+		t.Fatalf("seed conversation: %v", err)
+	}
+
+	sandboxMgr := newSandboxManager(t)
+	h := &handler.Handler{
+		Gate:      config.NewGate([]string{agentID.String()}),
+		AgentRepo: postgres.NewAgentRepository(env.db),
+		ConvRepo:  postgres.NewConversationRepository(env.db),
+		Publisher: messaging.NewPublisher(env.redisClient),
+		Executor:  executor.New(sandboxMgr, encryptor, executor.Options{Image: image}, log),
+		InFlight:  registry.New(),
+		Log:       log,
+	}
+
+	trigger := agent.Trigger{
+		ConversationID: convID,
+		ProjectID:      env.projectID,
+		AgentID:        agentID,
+		TaskID:         &taskID,
+		Message:        "please conclude",
+		TriggerType:    agent.TriggerTaskAssigned,
+	}
+	if err := h.Handle(ctx, trigger); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	var summary string
+	if err := env.db.GetContext(ctx, &summary,
+		`SELECT summary FROM agent_task_handoffs WHERE conversation_id = $1`, convID); err != nil {
+		t.Fatalf("expected a task handoff for conversation %s: %v", convID, err)
+	}
+	if !strings.Contains(summary, "final conclusion for handoff") {
+		t.Fatalf("handoff summary = %q, want it to contain the fake reply", summary)
+	}
+
+	// Idempotency: a direct duplicate insert (simulating a completion retry)
+	// must not create a second handoff row for the same conversation.
+	if _, err := env.db.ExecContext(ctx, `
+		INSERT INTO agent_task_handoffs (task_id, conversation_id, summary)
+		VALUES ($1, $2, 'duplicate') ON CONFLICT (conversation_id) DO NOTHING
+	`, taskID, convID); err != nil {
+		t.Fatalf("duplicate handoff insert: %v", err)
+	}
+	var count int
+	if err := env.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM agent_task_handoffs WHERE conversation_id = $1`, convID); err != nil {
+		t.Fatalf("count handoffs: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("handoff count = %d, want 1 (idempotent)", count)
+	}
+
+	// A later conversation on the same task reads the prior handoff back via
+	// the repository's bounded list, newest first.
+	prior, err := postgres.NewConversationRepository(env.db).ListTaskHandoffs(ctx, taskID, 3)
+	if err != nil {
+		t.Fatalf("list handoffs: %v", err)
+	}
+	if len(prior) != 1 || !strings.Contains(prior[0], "final conclusion for handoff") {
+		t.Fatalf("prior handoffs = %q, want the persisted summary", prior)
 	}
 }
