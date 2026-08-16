@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Paca-AI/agent-runner/internal/agent"
+	"github.com/Paca-AI/agent-runner/internal/convlock"
 )
 
 // consumerGroup is this service's own Valkey Stream consumer group name.
@@ -55,7 +56,7 @@ type Consumer struct {
 	log            *slog.Logger
 	consumerName   string
 	sem            chan struct{}
-	convLocks      *conversationLocks
+	convLocks      *convlock.Locks
 }
 
 // NewConsumer builds a Consumer that reads paca:agent:triggers via a
@@ -76,7 +77,7 @@ func NewConsumer(client *redis.Client, maxConcurrency int, handler Handler, cont
 		log:            log,
 		consumerName:   fmt.Sprintf("%s.%s", consumerGroup, hostname),
 		sem:            make(chan struct{}, maxConcurrency),
-		convLocks:      newConversationLocks(),
+		convLocks:      convlock.New(),
 	}
 }
 
@@ -188,12 +189,19 @@ func (c *Consumer) processTrigger(ctx context.Context, msg redis.XMessage) {
 		return
 	}
 
+	// Serializes trigger handling per conversation_id: two triggers for the
+	// same conversation must never run Handler concurrently, or they race
+	// ConversationRepository.NextEventIndex (read once per turn, then
+	// incremented purely in-memory, so two concurrent turns can compute the
+	// same starting index and silently lose one turn's events to
+	// InsertEvent's ON CONFLICT DO NOTHING) and the in-flight registry's
+	// Register/Unregister pairing. Triggers for different conversations are
+	// unaffected and still run in parallel up to sem's limit.
+	//
 	// Acquired before the semaphore below, not after: a second trigger for
 	// a conversation that already has a turn in flight should queue here
 	// (a cheap, uncontended-for-everyone-else wait) rather than occupy one
-	// of the limited semaphore slots while blocked — see conversationLocks'
-	// doc comment for why triggers for the same conversation_id must never
-	// run Handler concurrently in the first place.
+	// of the limited semaphore slots while blocked.
 	unlockConv := c.convLocks.Lock(trigger.ConversationID)
 	defer unlockConv()
 

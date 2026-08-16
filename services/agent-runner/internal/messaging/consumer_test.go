@@ -127,7 +127,7 @@ func TestConsumer_RoutesControlAndTriggerMessagesSeparately(t *testing.T) {
 // for the event_index/in-flight-registry race: two triggers for the same
 // conversation_id, published back to back (e.g. a user sending two chat
 // messages in quick succession), must never have their handler calls
-// overlap in time — see conversationLocks' doc comment for why.
+// overlap in time — see processTrigger's convLocks.Lock comment for why.
 func TestConsumer_SerializesTriggersForTheSameConversation(t *testing.T) {
 	client, cleanup := newTestRedisClient(t)
 	defer cleanup()
