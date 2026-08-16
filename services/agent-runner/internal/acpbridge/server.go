@@ -185,7 +185,7 @@ func (s *Server) handleEventMessage(ctx context.Context, agentID uuid.UUID, msg 
 		return
 	}
 
-	projectID, actorUserID, err := s.ConvRepo.GetConversationRealtimeContext(ctx, convID)
+	projectID, ownerUserID, err := s.ConvRepo.GetConversationRealtimeContext(ctx, convID)
 	if err != nil {
 		s.Log.Warn("acpbridge: failed to resolve realtime context", "conversation_id", convID, "error", err)
 		return
@@ -245,7 +245,7 @@ func (s *Server) handleEventMessage(ctx context.Context, agentID uuid.UUID, msg 
 			"event_source": eventSource,
 			"payload":      json.RawMessage(payload),
 			"created_at":   createdAt.Format(time.RFC3339Nano),
-		}, actorUserID); err != nil {
+		}, ownerUserID); err != nil {
 		s.Log.Warn("acpbridge: failed to publish realtime bridge event", "conversation_id", convID, "error", err)
 	}
 }
@@ -277,13 +277,13 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 		return
 	}
 
-	projectID, actorUserID, err := s.ConvRepo.GetConversationRealtimeContext(ctx, convID)
+	projectID, ownerUserID, err := s.ConvRepo.GetConversationRealtimeContext(ctx, convID)
 	if err != nil {
 		s.Log.Warn("acpbridge: failed to resolve realtime context", "conversation_id", convID, "error", err)
 		return
 	}
 	if err := s.Publisher.PublishRealtime(ctx, projectID, convID,
-		fmt.Sprintf("agent.conversation.%s", statusStr), nil, actorUserID); err != nil {
+		fmt.Sprintf("agent.conversation.%s", statusStr), nil, ownerUserID); err != nil {
 		s.Log.Warn("acpbridge: failed to publish turn_status realtime event", "conversation_id", convID, "error", err)
 	}
 }

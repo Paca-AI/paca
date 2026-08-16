@@ -163,10 +163,17 @@ type ListConversationsFilter struct {
 	// this actor_user_id — used by ListGlobalConversations to scope the
 	// "my global conversations" endpoint to the caller only, since global
 	// chat has no project-team visibility to share it with.
-	ActorUserID  *uuid.UUID
-	TaskID       *uuid.UUID
-	Statuses     []string
-	TriggerTypes []string
+	ActorUserID *uuid.UUID
+	// ViewerMemberID, when set, is the caller's project_members.id. It makes
+	// the listing include owner-private conversations only when the caller is
+	// that conversation's chat-session owner (audience is enforced in SQL so
+	// the search subquery never touches a private conversation the caller
+	// cannot read). project-shared conversations are always included. Only
+	// meaningful together with ProjectID.
+	ViewerMemberID *uuid.UUID
+	TaskID         *uuid.UUID
+	Statuses       []string
+	TriggerTypes   []string
 	// CreatedAfter/CreatedBefore bound created_at as [CreatedAfter,
 	// CreatedBefore) — inclusive lower bound, exclusive upper bound. Both are
 	// resolved to absolute instants by the handler (see

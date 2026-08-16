@@ -32,6 +32,7 @@ type mockAgentSvc struct {
 	startChatSession              func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
 	listConversations             func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
+	getConversation               func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error)
 	listAgentActivities           func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 	getGlobalConversation         func(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error)
 	listGlobalConversations       func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
@@ -116,8 +117,13 @@ func (m *mockAgentSvc) ListAgentActivities(ctx context.Context, filter agentdom.
 	}
 	return nil, false, nil
 }
-func (m *mockAgentSvc) GetConversation(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
-	return nil, errors.New("not found")
+func (m *mockAgentSvc) GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error) {
+	if m.getConversation != nil {
+		return m.getConversation(ctx, projectID, conversationID, memberID)
+	}
+	// Default to a readable conversation so the events handler's ownership
+	// gate passes by default; tests asserting rejection configure getConversation.
+	return &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID}, nil
 }
 func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
 	if m.listConversationEvents != nil {
@@ -125,9 +131,9 @@ func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationI
 	}
 	return nil, 0, nil
 }
-func (m *mockAgentSvc) StopConversation(_ context.Context, _, _ uuid.UUID) error  { return nil }
-func (m *mockAgentSvc) PauseConversation(_ context.Context, _, _ uuid.UUID) error { return nil }
-func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _ uuid.UUID) error         { return nil }
+func (m *mockAgentSvc) StopConversation(_ context.Context, _, _, _ uuid.UUID) error  { return nil }
+func (m *mockAgentSvc) PauseConversation(_ context.Context, _, _, _ uuid.UUID) error { return nil }
+func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error         { return nil }
 func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID) error {
 	return nil
 }
@@ -143,7 +149,7 @@ func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID,
 func (m *mockAgentSvc) SendChatMessage(_ context.Context, _, _, _ uuid.UUID, _ string) (*agentdom.AgentConversation, error) {
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
-func (m *mockAgentSvc) ListChatMessages(_ context.Context, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
+func (m *mockAgentSvc) ListChatMessages(_ context.Context, _, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
 	return nil, 0, nil
 }
 

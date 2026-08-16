@@ -12,6 +12,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -66,12 +67,43 @@ func parseCreatedBeforeBound(raw string) (*time.Time, bool) {
 
 // ConversationHandler handles agent conversation endpoints.
 type ConversationHandler struct {
-	svc agentdom.Service
+	svc        agentdom.Service
+	memberRepo projectdom.MemberRepository
 }
 
 // NewConversationHandler returns a ConversationHandler wired to the agent service.
 func NewConversationHandler(svc agentdom.Service) *ConversationHandler {
 	return &ConversationHandler{svc: svc}
+}
+
+// WithMemberRepo attaches the project member repository used to resolve the
+// authenticated caller's project_members.id (see resolveMemberID). Required
+// for every project-scoped conversation endpoint that must compare the caller
+// against an owner-private conversation's session owner.
+func (h *ConversationHandler) WithMemberRepo(repo projectdom.MemberRepository) *ConversationHandler {
+	h.memberRepo = repo
+	return h
+}
+
+// resolveMemberID maps the authenticated caller's user ID to their
+// project_members.id within projectID. Mirrors AgentHandler.resolveMemberID —
+// agent_chat_sessions.member_id and agent_conversations.triggered_by_member_id
+// both store a project_members.id, never the raw user id, so callers must not
+// use claims.Subject directly.
+func (h *ConversationHandler) resolveMemberID(r *http.Request, projectID uuid.UUID) (uuid.UUID, error) {
+	if h.memberRepo == nil {
+		return uuid.Nil, apierr.New(apierr.CodeInternalError, "member resolver not available")
+	}
+	claims := middleware.ClaimsFrom(r)
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+	}
+	member, err := h.memberRepo.FindMemberByUserProject(r.Context(), userID, projectID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return member.ID, nil
 }
 
 // parseConversationListQuery parses the query params shared by
@@ -175,7 +207,13 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 		presenter.Error(w, r, err)
 		return
 	}
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	filter.ProjectID = &projectID
+	filter.ViewerMemberID = &memberID
 
 	convs, hasMore, err := h.svc.ListConversations(r.Context(), filter, pageSize)
 	if err != nil {
@@ -220,7 +258,12 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, err)
 		return
 	}
-	conv, err := h.svc.GetConversation(r.Context(), projectID, convID)
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.GetConversation(r.Context(), projectID, convID, memberID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -302,8 +345,25 @@ func writeConversationEventWindowResponse(w http.ResponseWriter, r *http.Request
 
 // ListConversationEvents handles GET /projects/:projectId/conversations/:conversationId/events.
 func (h *ConversationHandler) ListConversationEvents(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	convID, err := parseParamUUID(r, "conversationId")
 	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	// Gate on project + audience ownership before listing events — the events
+	// query itself is conversation-scoped only (same shape as the global
+	// sibling GetGlobalConversationEvents, which gates via GetGlobalConversation).
+	if _, err := h.svc.GetConversation(r.Context(), projectID, convID, memberID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -333,7 +393,12 @@ func (h *ConversationHandler) StopConversation(w http.ResponseWriter, r *http.Re
 		presenter.Error(w, r, err)
 		return
 	}
-	if err := h.svc.StopConversation(r.Context(), projectID, convID); err != nil {
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.StopConversation(r.Context(), projectID, convID, memberID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -352,7 +417,12 @@ func (h *ConversationHandler) PauseConversation(w http.ResponseWriter, r *http.R
 		presenter.Error(w, r, err)
 		return
 	}
-	if err := h.svc.PauseConversation(r.Context(), projectID, convID); err != nil {
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.PauseConversation(r.Context(), projectID, convID, memberID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -371,7 +441,12 @@ func (h *ConversationHandler) Heartbeat(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, err)
 		return
 	}
-	if err := h.svc.Heartbeat(r.Context(), projectID, convID); err != nil {
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if err := h.svc.Heartbeat(r.Context(), projectID, convID, memberID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -395,8 +470,14 @@ func (h *ConversationHandler) SendConversationMessage(w http.ResponseWriter, r *
 		presenter.Error(w, r, err)
 		return
 	}
-	claims := middleware.ClaimsFrom(r)
-	memberID, _ := uuid.Parse(claims.Subject)
+	// Resolve the caller to a project_members.id — agent_conversations store a
+	// member id, not the raw user id (see resolveMemberID). Using claims.Subject
+	// here directly would compare/send the wrong identity on every owner check.
+	memberID, err := h.resolveMemberID(r, projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 
 	if err := h.svc.SendConversationMessage(r.Context(), projectID, convID, req.Message, memberID); err != nil {
 		presenter.Error(w, r, err)
