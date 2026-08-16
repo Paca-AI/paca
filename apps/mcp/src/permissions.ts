@@ -424,13 +424,13 @@ export async function fetchAgentPermissions(
 	const global: Record<string, boolean> = {};
 	const projects: Record<string, Record<string, boolean>> = {};
 
-	// For personal API key without project ID, no permission filtering needed
-	if (!config.agentId && !config.projectId) {
-		console.error(
-			"[permissions] Personal API key mode: permission filtering disabled",
-		);
-		return { global, projects };
-	}
+	// A personal API key (no agentId, no projectId) is filtered by the
+	// caller's own permissions like every other mode — global permissions are
+	// fetched below via /users/me/global-permissions. There is no "show every
+	// tool" fallback; a key with no permissions sees no permission-gated
+	// tools. (Project-scoped tools stay hidden for a personal key until its
+	// per-project permissions are also discovered — a follow-up, not part of
+	// the security hardening here.)
 
 	// A global-scope agent: agentId set, no fixed projectId — running
 	// "unpinned" (see index.ts). Unlike a project-scoped agent, it has its
