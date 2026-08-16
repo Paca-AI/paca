@@ -135,3 +135,31 @@ func TestActionTypeLabel_CommentMentionOnTaskVsDocument(t *testing.T) {
 		t.Errorf("actionTypeLabel(doc comment) = %q", got)
 	}
 }
+
+func TestBuildInitialMessage_PriorHandoffs(t *testing.T) {
+	trigger := agent.Trigger{
+		TriggerType:   agent.TriggerTaskAssigned,
+		PriorHandoffs: []string{"First conclusion.", "Second conclusion."},
+	}
+
+	msg := buildInitialMessage(trigger)
+
+	if !strings.Contains(msg, "## Prior Agent Handoffs on This Task") {
+		t.Errorf("expected prior handoffs section, got:\n%s", msg)
+	}
+	for _, want := range []string{"First conclusion.", "Second conclusion."} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected handoff %q, got:\n%s", want, msg)
+		}
+	}
+}
+
+func TestBuildInitialMessage_NoPriorHandoffs(t *testing.T) {
+	trigger := agent.Trigger{TriggerType: agent.TriggerTaskAssigned}
+
+	msg := buildInitialMessage(trigger)
+
+	if strings.Contains(msg, "Prior Agent Handoffs") {
+		t.Errorf("should not render a handoffs section when empty, got:\n%s", msg)
+	}
+}

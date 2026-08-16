@@ -310,6 +310,26 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 		fmt.Sprintf("agent.conversation.%s", statusStr), nil, ownerUserID); err != nil {
 		s.Log.Warn("acpbridge: failed to publish turn_status realtime event", "conversation_id", convID, "error", err)
 	}
+
+	// Task-level handoff (#392): a successful task-linked acp run persists its
+	// final reply idempotently, same as the llm path in handler.Handle.
+	if statusStr == "finished" {
+		taskID, err := s.ConvRepo.GetConversationTaskID(ctx, convID)
+		if err != nil {
+			s.Log.Warn("acpbridge: failed to resolve task id for handoff", "conversation_id", convID, "error", err)
+		} else if taskID != uuid.Nil {
+			summary, err := s.ConvRepo.LatestAgentReply(ctx, convID)
+			if err != nil {
+				s.Log.Warn("acpbridge: failed to read final reply for handoff", "conversation_id", convID, "error", err)
+			} else if summary != "" {
+				if err := s.ConvRepo.InsertTaskHandoff(ctx, taskID, convID, summary); err != nil {
+					s.Log.Warn("acpbridge: failed to persist task handoff", "task_id", taskID, "conversation_id", convID, "error", err)
+				} else {
+					s.Log.Info("acpbridge: task handoff persisted", "task_id", taskID, "conversation_id", convID)
+				}
+			}
+		}
+	}
 }
 
 // handleStatus handles GET /agent-bridge/status/{agentId} — internal,

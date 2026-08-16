@@ -32,6 +32,10 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 )
 
+// maxPriorHandoffs bounds how many prior task-level handoff summaries are
+// injected into a later task-linked conversation's context (#392).
+const maxPriorHandoffs = 3
+
 // Handler is messaging.Handler and messaging.ControlHandler both — one
 // instance shared across every trigger and control message the process
 // handles. Exported (unlike the "Handler" name might suggest is needed for
@@ -388,6 +392,19 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		persistAndPublish(string(e.Kind), "agent", e.Raw)
 	}
 
+	// Inject bounded prior task handoffs so a later task-linked conversation
+	// can recover the earlier conclusions (#392). Best-effort: a failure to
+	// load them should not block the turn.
+	if trigger.TaskID != nil {
+		prior, err := h.ConvRepo.ListTaskHandoffs(ctx, *trigger.TaskID, maxPriorHandoffs)
+		if err != nil {
+			h.Log.Warn("agent-runner: failed to load prior task handoffs",
+				"task_id", trigger.TaskID, "error", err)
+		} else {
+			trigger.PriorHandoffs = prior
+		}
+	}
+
 	// Marks the point the frontend should stop showing "setting up your
 	// environment" and switch to "thinking" — see executor.Run's onReady
 	// doc comment. Persisted (not just published) like any other event so
@@ -592,6 +609,26 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		return fmt.Errorf("mark conversation %s finished: %w", trigger.ConversationID, err)
 	}
 	h.publishTerminalStatus(ctx, trigger.ProjectID, trigger.ConversationID, trigger.ActorUserID, "finished", "agent.conversation.finished")
+
+	// Persist a task-level handoff for a successful task-linked sessionless
+	// run (#392): capture the final reply idempotently so a later conversation
+	// on the same task can recover the conclusion even after this one is
+	// terminal. Best-effort — the conversation is already finished.
+	if trigger.TaskID != nil {
+		summary, err := h.ConvRepo.LatestAgentReply(ctx, trigger.ConversationID)
+		if err != nil {
+			h.Log.Warn("agent-runner: failed to read final reply for handoff",
+				"conversation_id", trigger.ConversationID, "error", err)
+		} else if summary != "" {
+			if err := h.ConvRepo.InsertTaskHandoff(ctx, *trigger.TaskID, trigger.ConversationID, summary); err != nil {
+				h.Log.Warn("agent-runner: failed to persist task handoff",
+					"task_id", trigger.TaskID, "conversation_id", trigger.ConversationID, "error", err)
+			} else {
+				h.Log.Info("agent-runner: task handoff persisted",
+					"task_id", trigger.TaskID, "conversation_id", trigger.ConversationID)
+			}
+		}
+	}
 
 	h.Log.Info("agent-runner: conversation finished",
 		"conversation_id", trigger.ConversationID, "stop_reason", result.StopReason)
