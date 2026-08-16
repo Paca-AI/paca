@@ -86,14 +86,6 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 				return true;
 			}
 
-			// For personal API key without project ID, show all tools (backward compatibility)
-			if (!config.agentId && !config.projectId) {
-				console.error(
-					`[server] Personal API key mode, allowing tool ${tool.name}`,
-				);
-				return true;
-			}
-
 			if (config.projectId) {
 				const hasPerm = hasPermission(
 					permissionMap,

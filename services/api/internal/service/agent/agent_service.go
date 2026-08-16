@@ -1102,8 +1102,9 @@ func (s *Service) ListAgentActivities(ctx context.Context, in agentdom.ListAgent
 	return s.repo.ListAgentActivities(ctx, in, limit)
 }
 
-// GetConversation returns a single conversation after verifying project ownership.
-func (s *Service) GetConversation(ctx context.Context, projectID, conversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+// GetConversation returns a single conversation after verifying project
+// ownership and, for owner-private conversations, chat-session ownership.
+func (s *Service) GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error) {
 	c, err := s.repo.FindConversationByID(ctx, conversationID)
 	if err != nil {
 		return nil, err
@@ -1111,7 +1112,32 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 	if c.ProjectID != projectID {
 		return nil, agentdom.ErrConversationNotFound
 	}
+	if err := s.authorizeConversationAccess(ctx, c, memberID); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+// authorizeConversationAccess fails closed (ErrConversationNotFound) when a
+// project-scoped owner-private conversation is not owned by memberID.
+// project-shared conversations are readable by any project member, whose
+// membership is already enforced by the router's project-scope middleware.
+func (s *Service) authorizeConversationAccess(ctx context.Context, c *agentdom.AgentConversation, memberID uuid.UUID) error {
+	if c.Audience != agentdom.AudienceOwnerPrivate {
+		return nil
+	}
+	// A project-scoped owner-private conversation is always session-backed
+	// (global chat has project_id IS NULL and never reaches this path), so the
+	// owner is the chat session's member, not triggered_by_member_id (which a
+	// pre-fix cross-member send could have pointed at a different member).
+	if c.ChatSessionID == nil {
+		return agentdom.ErrConversationNotFound
+	}
+	session, err := s.repo.FindChatSessionByID(ctx, *c.ChatSessionID)
+	if err != nil || session.MemberID != memberID {
+		return agentdom.ErrConversationNotFound
+	}
+	return nil
 }
 
 // ListConversationEvents returns one keyset-paginated window of events for a
@@ -1131,8 +1157,8 @@ func (s *Service) ListConversationEvents(ctx context.Context, conversationID uui
 // trigger_ai_agent-started conversation it might be waiting on just reached
 // a terminal status — ai-agent has no turn-end hook to do it from here,
 // since the stop can land while no turn is even in flight.
-func (s *Service) StopConversation(ctx context.Context, projectID, conversationID uuid.UUID) error {
-	c, err := s.GetConversation(ctx, projectID, conversationID)
+func (s *Service) StopConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error {
+	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
 	if err != nil {
 		return err
 	}
@@ -1162,8 +1188,8 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 // touching its sandbox — it goes back to "paused" once ai-agent processes
 // the interrupt. No DB write here: ai-agent's run_conversation writes the
 // resulting status itself once the turn actually pauses.
-func (s *Service) PauseConversation(ctx context.Context, projectID, conversationID uuid.UUID) error {
-	c, err := s.GetConversation(ctx, projectID, conversationID)
+func (s *Service) PauseConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error {
+	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
 	if err != nil {
 		return err
 	}
@@ -1183,8 +1209,8 @@ func (s *Service) PauseConversation(ctx context.Context, projectID, conversation
 // still called here so the API layer itself enforces project ownership,
 // rather than resting the whole authorization boundary on ai-agent's
 // in-memory check.
-func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID uuid.UUID) error {
-	if _, err := s.GetConversation(ctx, projectID, conversationID); err != nil {
+func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error {
+	if _, err := s.GetConversation(ctx, projectID, conversationID, memberID); err != nil {
 		return err
 	}
 	return s.publishTrigger(ctx, events.TopicAgentHeartbeat, map[string]any{
@@ -1203,7 +1229,7 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID uuid.
 // not just chat_message), so it can always be resumed here too — mirroring
 // SendChatMessage's terminal-status resume for chat sessions.
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
-	c, err := s.GetConversation(ctx, projectID, conversationID)
+	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
 	if err != nil {
 		return err
 	}
@@ -1456,6 +1482,12 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	if session.ProjectID != projectID {
 		return nil, agentdom.ErrChatSessionNotFound
 	}
+	// A chat session is owner-private: only its owning member may post to it
+	// (previously any project member could, which let a non-owner both read
+	// and inject into someone else's session).
+	if session.MemberID != memberID {
+		return nil, agentdom.ErrChatSessionNotFound
+	}
 
 	latest, err := s.repo.FindLatestConversationByChatSession(ctx, sessionID)
 	if err != nil {
@@ -1651,17 +1683,24 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 
 // ListChatMessages returns conversation events for a chat session. Unreached
 // by any route (see agentdom.ChatSessionService) — kept only to satisfy the
-// interface until it grows a real caller.
-func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
-	// TODO: We'd need to aggregate events from all conversations in this session.
-	// For now, return events from the most recent conversation with this session_id.
-	filter := agentdom.ListConversationsFilter{}
-	_ = sessionID
-	convs, _, err := s.repo.ListConversations(ctx, filter, 1)
+// interface until it grows a real caller. memberID is the caller's
+// project_members.id and gates ownership so the eventual caller cannot read
+// another member's private session.
+func (s *Service) ListChatMessages(ctx context.Context, sessionID, memberID uuid.UUID, offset, limit int) ([]*agentdom.AgentConversationEvent, int64, error) {
+	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, 0, err
 	}
-	if len(convs) == 0 {
+	if session.MemberID != memberID {
+		return nil, 0, agentdom.ErrChatSessionNotFound
+	}
+	// TODO: We'd need to aggregate events from all conversations in this session.
+	// For now, return events from the most recent conversation with this session_id.
+	latest, err := s.repo.FindLatestConversationByChatSession(ctx, sessionID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if latest == nil {
 		return []*agentdom.AgentConversationEvent{}, 0, nil
 	}
 	// offset has no cursor equivalent (see agentdom.ConversationEventWindow):
@@ -1670,7 +1709,7 @@ func (s *Service) ListChatMessages(ctx context.Context, sessionID uuid.UUID, off
 	if offset != 0 {
 		return nil, 0, fmt.Errorf("ListChatMessages: non-zero offset %d is not supported by cursor-based ListConversationEvents", offset)
 	}
-	return s.repo.ListConversationEvents(ctx, convs[0].ID, agentdom.ConversationEventWindow{Limit: limit})
+	return s.repo.ListConversationEvents(ctx, latest.ID, agentdom.ConversationEventWindow{Limit: limit})
 }
 
 // -------------------------------------------------------------------------

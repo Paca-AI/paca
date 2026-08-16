@@ -96,6 +96,7 @@ type agentConversationRecord struct {
 	ChatSessionID       *string    `db:"chat_session_id"`
 	TriggeredByMemberID *string    `db:"triggered_by_member_id"`
 	ActorUserID         *string    `db:"actor_user_id"`
+	Audience            string     `db:"audience"`
 	Status              string     `db:"status"`
 	ContainerID         *string    `db:"container_id"`
 	HostPort            *int       `db:"host_port"`
@@ -842,7 +843,7 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // 'ActionEvent' left every conversation run by the Go runner stuck at 0
 // iterations regardless of how much work the agent actually did.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-	triggered_by_member_id, actor_user_id, status, container_id, host_port,
+	triggered_by_member_id, actor_user_id, audience, status, container_id, host_port,
 	(SELECT COUNT(*) FROM agent_conversation_events e
 	 WHERE e.conversation_id = agent_conversations.id AND e.event_type IN ('ActionEvent', 'tool_call')) AS iteration_count,
 	error_message,
@@ -869,6 +870,18 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		p := b.placeholder()
 		b.args = append(b.args, in.ActorUserID.String())
 		b.whereClauses = append(b.whereClauses, "actor_user_id = "+p)
+	}
+	if in.ViewerMemberID != nil {
+		// Audience is enforced in SQL so the search subquery never touches a
+		// private conversation the caller cannot read: project-shared
+		// conversations are visible to any member, owner-private ones only to
+		// their chat-session owner (global chat is already excluded by
+		// ProjectID above, since those rows have project_id IS NULL).
+		p := b.placeholder()
+		b.args = append(b.args, in.ViewerMemberID.String())
+		b.whereClauses = append(b.whereClauses, fmt.Sprintf(
+			"(audience = '%s' OR EXISTS (SELECT 1 FROM agent_chat_sessions cs WHERE cs.id = agent_conversations.chat_session_id AND cs.member_id = %s))",
+			agentdom.AudienceProjectShared, p))
 	}
 	if in.TaskID != nil {
 		p := b.placeholder()
@@ -1426,6 +1439,7 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		AgentID:        mustParseUUID(rec.AgentID),
 		ProjectID:      uuidFromNullable(rec.ProjectID),
 		TriggerType:    rec.TriggerType,
+		Audience:       agentdom.ConversationAudience(rec.Audience),
 		Status:         rec.Status,
 		ContainerID:    rec.ContainerID,
 		HostPort:       rec.HostPort,

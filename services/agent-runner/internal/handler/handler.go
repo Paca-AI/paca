@@ -83,6 +83,19 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		return nil
 	}
 
+	// Chat conversations are owner-private: their realtime events must route
+	// to the owner's user room, not the project room. Resolve the owner user
+	// id once here (sessionless triggers have ChatSessionID == nil and keep a
+	// nil ActorUserID, staying project-shared) so both the llm path and the
+	// acp dispatch path below publish the right room.
+	if trigger.ChatSessionID != nil {
+		_, ownerUserID, err := h.ConvRepo.GetConversationRealtimeContext(ctx, trigger.ConversationID)
+		if err != nil {
+			return fmt.Errorf("resolve realtime owner for conversation %s: %w", trigger.ConversationID, err)
+		}
+		trigger.ActorUserID = ownerUserID
+	}
+
 	cfg, err := h.AgentRepo.FindByID(ctx, trigger.AgentID)
 	if err != nil {
 		if errors.Is(err, postgres.ErrNotLLMAgent) {

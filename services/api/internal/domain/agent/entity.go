@@ -195,6 +195,24 @@ type SkillTemplate struct {
 	Triggers    []string `json:"triggers"`
 }
 
+// ConversationAudience discriminates who may read/write a conversation's
+// transcript. It is a STORED GENERATED column (see migration
+// 000038_add_agent_conversation_audience) derived from chat_session_id /
+// actor_user_id, so it can never drift from those source columns.
+type ConversationAudience string
+
+// ConversationAudience values.
+const (
+	// AudienceOwnerPrivate marks a chat conversation (project chat backed by a
+	// chat session, or global chat backed by actor_user_id): only the acting
+	// member (project) or actor user (global) may read/write the transcript.
+	AudienceOwnerPrivate ConversationAudience = "owner_private"
+	// AudienceProjectShared marks a sessionless run (task_assigned /
+	// comment_mention / description_write / automation_message): any project
+	// member with agents:read may read it.
+	AudienceProjectShared ConversationAudience = "project_shared"
+)
+
 // AgentConversation tracks each OpenHands conversation session.
 type AgentConversation struct {
 	ID            uuid.UUID
@@ -212,7 +230,11 @@ type AgentConversation struct {
 	// ActorUserID is set only for a global-chat conversation (ProjectID is
 	// uuid.Nil): the human user who sent the message, identified directly
 	// since there may be no project_members row for them at all.
-	ActorUserID    *uuid.UUID
+	ActorUserID *uuid.UUID
+	// Audience is the derived transcript audience (owner_private |
+	// project_shared) — see ConversationAudience. Read-only on this entity:
+	// it is a generated column, never set by the repository on write.
+	Audience       ConversationAudience
 	Status         string // queued | running | paused | finished | failed | stopped
 	ContainerID    *string
 	HostPort       *int
