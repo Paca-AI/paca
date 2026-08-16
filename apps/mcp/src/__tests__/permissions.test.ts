@@ -222,15 +222,24 @@ describe("fetchAgentPermissions", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("returns empty maps when no agentId and no projectId (personal key mode)", async () => {
+	it("fetches global permissions when no agentId and no projectId (personal key mode)", async () => {
+		vi.mocked(fetch).mockResolvedValueOnce({
+			ok: true,
+			json: async () => ({ permissions: { "projects.read": true } }),
+		} as Response);
+
 		const result = await fetchAgentPermissions({
 			apiKey: "key-123",
 			baseURL: "http://localhost:8080",
 		});
-		expect(result.global).toEqual({});
+
+		// A personal key is no longer "show everything": it fetches the
+		// caller's own global permissions and gets no project map.
+		expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+		const [url] = vi.mocked(fetch).mock.calls[0];
+		expect(url as string).toContain("users/me/global-permissions");
+		expect(result.global).toEqual({ "projects.read": true });
 		expect(result.projects).toEqual({});
-		// fetch should NOT have been called
-		expect(vi.mocked(fetch)).not.toHaveBeenCalled();
 	});
 
 	it("fetches project permissions when projectId is provided", async () => {
