@@ -136,7 +136,10 @@ function routeEvent(io: Server, msg: RealtimeMessage, logger: Logger): void {
 		const actorUserId = payload.actor_user_id;
 		if (typeof actorUserId === "string" && actorUserId) {
 			const room = agentChatRoomName(actorUserId);
-			logger.debug({ type, room }, "routing owner-private agent event to user room");
+			logger.debug(
+				{ type, room },
+				"routing owner-private agent event to user room",
+			);
 			io.to(room).emit("event", { type, payload });
 			return;
 		}
