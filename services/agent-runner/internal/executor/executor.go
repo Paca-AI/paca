@@ -332,8 +332,8 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 	if trigger.ProjectID != uuid.Nil {
 		env["PACA_PROJECT_ID"] = trigger.ProjectID.String()
 	}
-	if trigger.ActorMemberID != nil {
-		env["PACA_ACTOR_USER_ID"] = trigger.ActorMemberID.String()
+	if trigger.ActorUserID != nil {
+		env["PACA_ACTOR_USER_ID"] = trigger.ActorUserID.String()
 	}
 	if len(trigger.RepoPluginIDs) > 0 {
 		// Read by apps/mcp's repo-tools.ts to scope list_repositories and

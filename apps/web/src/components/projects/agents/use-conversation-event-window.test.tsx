@@ -347,6 +347,67 @@ describe("useConversationEventWindow", () => {
 			expect(key[0]).not.toBe("global-chat");
 		}
 	});
+	it("prunes the tail cache once a real fetch catches up to what it buffered", async () => {
+		// Regression test: applyRealtimeAgentEvent only ever appends to the
+		// tail cache's `events` array, and its own doc comment claims pruning
+		// "happens there [in useConversationEventWindow], not here" — this
+		// confirms that promise is actually kept, otherwise the tail grows
+		// unboundedly for the life of the tab.
+		const stream = fakeStream(200);
+		const { result, signal, queryClient } = open();
+		await waitFor(() => expect(result.current.events).toHaveLength(200));
+
+		await signal(stream.grow(3));
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(202));
+		expect(
+			queryClient.getQueryData<ConversationEventsTail>(
+				conversationEventsTailKey(CONVERSATION_ID),
+			)?.events,
+		).toHaveLength(3);
+
+		// A real fetch reconciling the window (mirrors useProjectRealtime
+		// invalidating conversationEventWindowKey on a status transition) now
+		// covers the same 3 events the tail was buffering.
+		await act(() =>
+			queryClient.invalidateQueries({
+				queryKey: conversationEventWindowKey(CONVERSATION_ID),
+			}),
+		);
+		await waitFor(() =>
+			expect(
+				queryClient.getQueryData<ConversationEventsTail>(
+					conversationEventsTailKey(CONVERSATION_ID),
+				)?.events,
+			).toHaveLength(0),
+		);
+
+		// The window still shows the newest events — now sourced from the
+		// refetched page (capped at pageSize=200, so it holds indices 3..202)
+		// instead of the tail buffer, which is exactly why the buffer's own
+		// 3 events are now safe to have pruned away.
+		expect(result.current.events).toHaveLength(200);
+		expect(result.current.events[0].event_index).toBe(3);
+		expect(lastIndex(result.current.events)).toBe(202);
+	});
+
+	it("does not prune tail events a real fetch hasn't reached yet", async () => {
+		// The inverse of the above: a live event past what's currently paged
+		// in must survive pruning — only events already redundant with
+		// pagedEvents get dropped.
+		const stream = fakeStream(200);
+		const { result, signal, queryClient } = open();
+		await waitFor(() => expect(result.current.events).toHaveLength(200));
+
+		await signal(stream.grow(1));
+		await waitFor(() => expect(lastIndex(result.current.events)).toBe(200));
+
+		expect(
+			queryClient.getQueryData<ConversationEventsTail>(
+				conversationEventsTailKey(CONVERSATION_ID),
+			)?.events,
+		).toHaveLength(1);
+	});
+
 	it("keeps paging back to the start without overlapping what is held", async () => {
 		fakeStream(250);
 		const { result } = open({ pageSize: 100 });

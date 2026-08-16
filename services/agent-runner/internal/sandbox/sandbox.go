@@ -121,6 +121,12 @@ type Manager struct {
 	portPoolSize  int
 	portMu        sync.Mutex
 	portsInUse    map[int]bool
+
+	// confirmedImages caches which image refs ensureImage has already
+	// confirmed present on this Docker host (via ImageList or a successful
+	// ImagePull) — see ensureImage's doc comment.
+	imageMu         sync.Mutex
+	confirmedImages map[string]bool
 }
 
 // NewManager builds a Manager from the standard Docker environment
@@ -134,10 +140,11 @@ func NewManager(portPoolStart, portPoolSize int) (*Manager, error) {
 		return nil, fmt.Errorf("sandbox: create docker client: %w", err)
 	}
 	return &Manager{
-		docker:        docker,
-		portPoolStart: portPoolStart,
-		portPoolSize:  portPoolSize,
-		portsInUse:    make(map[int]bool),
+		docker:          docker,
+		portPoolStart:   portPoolStart,
+		portPoolSize:    portPoolSize,
+		portsInUse:      make(map[int]bool),
+		confirmedImages: make(map[string]bool),
 	}, nil
 }
 
@@ -382,17 +389,31 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string) (o
 	return buf.String(), inspected.ExitCode, nil
 }
 
+// ensureImage confirms ref is present on this Docker host, pulling it if
+// not — called on every sandbox Start, the hottest path in this service.
+// The image ref is pinned for the process's lifetime (it comes from
+// Executor's own startup Options, not anything per-conversation), so once
+// ref has been confirmed present here — whether by finding it in
+// ImageList or by a successful ImagePull — every later Start for the same
+// ref skips both calls entirely instead of re-listing every image on the
+// host each time.
 func (m *Manager) ensureImage(ctx context.Context, ref string) error {
+	if m.imageConfirmed(ref) {
+		return nil
+	}
+
 	list, err := m.docker.ImageList(ctx, client.ImageListOptions{})
 	if err == nil {
 		for _, img := range list.Items {
 			for _, tag := range img.RepoTags {
 				if tag == ref {
+					m.confirmImage(ref)
 					return nil
 				}
 			}
 			for _, digest := range img.RepoDigests {
 				if digest == ref {
+					m.confirmImage(ref)
 					return nil
 				}
 			}
@@ -408,7 +429,20 @@ func (m *Manager) ensureImage(ctx context.Context, ref string) error {
 	}
 	defer func() { _ = rc.Close() }()
 	_, _ = io.Copy(io.Discard, rc)
+	m.confirmImage(ref)
 	return nil
+}
+
+func (m *Manager) imageConfirmed(ref string) bool {
+	m.imageMu.Lock()
+	defer m.imageMu.Unlock()
+	return m.confirmedImages[ref]
+}
+
+func (m *Manager) confirmImage(ref string) {
+	m.imageMu.Lock()
+	defer m.imageMu.Unlock()
+	m.confirmedImages[ref] = true
 }
 
 // ownNetworkName returns the first Docker network this process's own

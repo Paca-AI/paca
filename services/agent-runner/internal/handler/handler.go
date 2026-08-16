@@ -78,6 +78,20 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		return fmt.Errorf("resolve agent %s: %w", trigger.AgentID, err)
 	}
 
+	// Marked "running" before loading bundled skills below, not after —
+	// mirrors run_conversation's own ordering (it wrote RUNNING before
+	// loading default skills) so a load failure is caught by this
+	// function's own error handling and surfaced as a visible "failed"
+	// status, rather than leaving the conversation's status untouched at
+	// whatever it was pre-trigger. Without this ordering, a transient
+	// services/api outage during BundledSkills.Load left conversations
+	// stuck indefinitely with no visible error and no retry — this
+	// service's Valkey consumer has no XCLAIM/XAUTOCLAIM reclaim logic, so
+	// a message left unacknowledged on error is never actually redelivered.
+	if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "running", nil); err != nil {
+		return fmt.Errorf("mark conversation %s running: %w", trigger.ConversationID, err)
+	}
+
 	// Bundled skills (e.g. `paca`, `paca-do`) are always-active scaffolding
 	// that mirrors services/ai-agent's builder.load_default_skills() —
 	// without it, an agent has no instructions telling it a linked repo
@@ -89,7 +103,18 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	if h.BundledSkills != nil {
 		bundled, err := h.BundledSkills.Load(ctx)
 		if err != nil {
-			return fmt.Errorf("load bundled skills for agent %s: %w", trigger.AgentID, err)
+			errMsg := fmt.Sprintf("failed to load bundled skills: %v", err)
+			if statusErr := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "failed", &errMsg); statusErr != nil {
+				h.Log.Warn("agent-runner: failed to record failure status after a bundled-skills load error",
+					"conversation_id", trigger.ConversationID, "error", statusErr)
+			}
+			h.publishTerminalStatus(ctx, trigger.ProjectID, trigger.ConversationID, trigger.ActorUserID, "failed", "agent.conversation.failed")
+			h.Log.Error("agent-runner: failed to load bundled skills",
+				"conversation_id", trigger.ConversationID, "agent_id", trigger.AgentID, "error", err)
+			// The failure is already recorded and visible, so ack (return
+			// nil) rather than leave it stuck redelivering forever — same
+			// contract every other terminal failure in this function uses.
+			return nil
 		}
 		cfg.Skills = append(bundled, cfg.Skills...)
 	}
@@ -103,6 +128,25 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	// between turns; every other trigger type is torn down after its one
 	// turn exactly as before this feature existed.
 	isChat := trigger.TriggerType == agent.TriggerChatMessage
+
+	// Derived, cancellable independently of ctx (the consumer's own
+	// lifetime context) so HandleControl can interrupt just this one
+	// conversation's turn via InFlight.Interrupt — see registry.Conversations.
+	//
+	// Registered *before* the ChatSandboxes.Get below, not after: this is
+	// what makes this conversation visible as in-flight (InFlight.IsRegistered)
+	// to a concurrent TeardownPausedChatSandbox call (the idle reaper or a
+	// stop control message) before this turn reads — and starts relying on
+	// — a reference to the paused sandbox. Registering afterward left a
+	// window where a concurrent teardown could see IsRegistered==false and
+	// stop/pop the very sandbox this turn had already read a handle to.
+	runCtx, cancelRun := context.WithCancel(ctx)
+	regToken := h.InFlight.Register(trigger.ConversationID, cancelRun)
+	defer func() {
+		h.InFlight.Unregister(trigger.ConversationID, regToken)
+		cancelRun()
+	}()
+
 	var resume *chatsandbox.State
 	if isChat {
 		// A plain Get, not Pop — the entry (if any) stays live in the
@@ -111,20 +155,6 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		// still find and refresh it (see HandleControl's ControlHeartbeat
 		// case). Mirrors run_conversation's resume_state = chat_sandboxes.get(...).
 		resume, _ = h.ChatSandboxes.Get(trigger.ConversationID)
-	}
-
-	// Derived, cancellable independently of ctx (the consumer's own
-	// lifetime context) so HandleControl can interrupt just this one
-	// conversation's turn via InFlight.Interrupt — see registry.Conversations.
-	runCtx, cancelRun := context.WithCancel(ctx)
-	h.InFlight.Register(trigger.ConversationID, cancelRun)
-	defer func() {
-		h.InFlight.Unregister(trigger.ConversationID)
-		cancelRun()
-	}()
-
-	if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "running", nil); err != nil {
-		return fmt.Errorf("mark conversation %s running: %w", trigger.ConversationID, err)
 	}
 
 	// Seeded from existing history, not always 0 — event_index is unique for
@@ -581,11 +611,19 @@ func (h *Handler) HandleControl(ctx context.Context, c messaging.Control) error 
 //
 // Safe against the race teardown_paused_chat_sandbox's own docstring calls
 // out (a turn for this conversation starting concurrently on this replica):
-// Handle's resume lookup uses ChatSandboxes.Get, not Pop, so it doesn't
-// itself remove the entry — but Pop here still only succeeds once, so at
+// Handle registers with InFlight *before* it reads ChatSandboxes.Get (see
+// Handle's own comment on that ordering), so the InFlight.IsRegistered check
+// below reliably catches an in-progress turn that has already started
+// relying on this sandbox and refuses to tear it down out from under it —
+// callers (the idle reaper, HandleControl's stop path) get false back and
+// simply treat that conversation as "not idle"/"nothing to stop" this time
+// around. If no turn has registered yet, Pop still only succeeds once, so at
 // most one of "a turn starts and reattaches" or "this stop tears it down"
 // wins, never both partially.
 func (h *Handler) TeardownPausedChatSandbox(ctx context.Context, conversationID uuid.UUID) bool {
+	if h.InFlight.IsRegistered(conversationID) {
+		return false
+	}
 	state, ok := h.ChatSandboxes.Pop(conversationID)
 	if !ok {
 		return false

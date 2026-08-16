@@ -61,6 +61,73 @@ func TestActionTypeLabel_AutomationTriggeredTaskAssignment(t *testing.T) {
 	}
 }
 
+func TestBuildInitialMessage_GlobalChatGetsGlobalContextNotAProjectUUID(t *testing.T) {
+	trigger := agent.Trigger{
+		ProjectID:   uuid.Nil,
+		Message:     "what's on my plate today?",
+		TriggerType: agent.TriggerChatMessage,
+	}
+
+	msg := buildInitialMessage(agent.Config{}, trigger)
+
+	if strings.Contains(msg, uuid.Nil.String()) {
+		t.Errorf("global-chat message should never mention the nil project UUID, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "global Paca agent") {
+		t.Errorf("expected global-agent framing, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "call `list_projects`") {
+		t.Errorf("expected global-agent framing to point the agent at list_projects, got:\n%s", msg)
+	}
+}
+
+func TestBuildInitialMessage_ProjectScopedChatStillGetsProjectUUID(t *testing.T) {
+	projectID := uuid.New()
+	trigger := agent.Trigger{
+		ProjectID:   projectID,
+		Message:     "hi",
+		TriggerType: agent.TriggerChatMessage,
+	}
+
+	msg := buildInitialMessage(agent.Config{}, trigger)
+
+	if !strings.Contains(msg, projectID.String()) {
+		t.Errorf("project-scoped message should mention the project UUID, got:\n%s", msg)
+	}
+	if strings.Contains(msg, "global Paca agent") {
+		t.Errorf("project-scoped message should not use global-agent framing, got:\n%s", msg)
+	}
+}
+
+func TestBuildInitialMessage_AutomationTriggerGetsNoHumanWatchingNote(t *testing.T) {
+	trigger := agent.Trigger{
+		TriggerType:   agent.TriggerTaskAssigned,
+		ActorMemberID: nil,
+		Message:       "do the thing",
+	}
+
+	msg := buildInitialMessage(agent.Config{}, trigger)
+
+	if !strings.Contains(msg, "no human watching this conversation live") {
+		t.Errorf("expected automation-invocation note, got:\n%s", msg)
+	}
+}
+
+func TestBuildInitialMessage_HumanTriggerGetsNoAutomationNote(t *testing.T) {
+	actorMemberID := uuid.New()
+	trigger := agent.Trigger{
+		TriggerType:   agent.TriggerTaskAssigned,
+		ActorMemberID: &actorMemberID,
+		Message:       "do the thing",
+	}
+
+	msg := buildInitialMessage(agent.Config{}, trigger)
+
+	if strings.Contains(msg, "no human watching this conversation live") {
+		t.Errorf("human-triggered message should not include the automation note, got:\n%s", msg)
+	}
+}
+
 func TestActionTypeLabel_CommentMentionOnTaskVsDocument(t *testing.T) {
 	taskID := uuid.New()
 	onTask := agent.Trigger{TriggerType: agent.TriggerCommentMention, TaskID: &taskID}

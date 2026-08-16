@@ -223,6 +223,49 @@ func TestRegister_ASecondRegistrationEvictsTheFirstConnection(t *testing.T) {
 	}
 }
 
+// TestRegister_SecondRegistrationCancelsAndClosesThePreviousEntry is a
+// regression test: a same-process reconnect (a second Register for the same
+// agent_id) must cancel the old entry's context so its
+// forwardDispatchedMessages/watchForEviction goroutines actually exit and
+// release their Redis Pub/Sub subscriptions — not just evict the old
+// WebSocket connection while leaving those goroutines running forever
+// against an orphaned connection. Unlike
+// TestRegister_ASecondRegistrationEvictsTheFirstConnection, this doesn't
+// need the eviction-broadcast settle time: the cancel-and-close happens
+// synchronously inside the second Register call, before it returns.
+func TestRegister_SecondRegistrationCancelsAndClosesThePreviousEntry(t *testing.T) {
+	r, _ := newTestRegistry(t)
+	ctx := context.Background()
+	agentID := uuid.New()
+	first := newFakeConn()
+
+	if _, err := r.Register(ctx, agentID, nil, first); err != nil {
+		t.Fatalf("Register (first): %v", err)
+	}
+
+	r.mu.Lock()
+	firstEntry := r.connections[agentID]
+	r.mu.Unlock()
+	if firstEntry == nil {
+		t.Fatal("no entry recorded in the registry after the first Register")
+	}
+
+	second := newFakeConn()
+	if _, err := r.Register(ctx, agentID, nil, second); err != nil {
+		t.Fatalf("Register (second): %v", err)
+	}
+
+	select {
+	case <-firstEntry.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the first entry's forwarder/eviction-watcher goroutines never exited after a second Register — leaked")
+	}
+
+	if !first.wasClosed(t, 2*time.Second) {
+		t.Error("the first connection was never closed by the second Register")
+	}
+}
+
 func TestDispatch_ReturnsFalseWithoutPublishingWhenOffline(t *testing.T) {
 	r, client := newTestRegistry(t)
 	ctx := context.Background()

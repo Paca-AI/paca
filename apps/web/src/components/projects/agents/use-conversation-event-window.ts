@@ -1,8 +1,14 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import {
+	useInfiniteQuery,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type AgentConversationEvent,
+	type ConversationEventsTail,
 	CONVERSATION_EVENTS_PAGE_SIZE,
+	conversationEventsTailKey,
 	conversationEventsTailQueryOptions,
 	conversationEventWindowInfiniteOptions,
 } from "@/lib/agent-api";
@@ -63,6 +69,8 @@ export function useConversationEventWindow({
 	// silently appended under them — see `events` below.
 	const [following, setFollowing] = useState(true);
 
+	const queryClient = useQueryClient();
+
 	const { data: tail } = useQuery(
 		conversationEventsTailQueryOptions(conversationId),
 	);
@@ -91,6 +99,31 @@ export function useConversationEventWindow({
 	);
 	const lastPagedIndex =
 		pagedEvents.length > 0 ? (pagedEvents.at(-1)?.event_index ?? -1) : -1;
+
+	// Shrinks the tail cache's `events` array down to just the events past
+	// lastPagedIndex, the actual pruning conversationEventsTailQueryOptions'
+	// own doc comment promises happens "there, not here" — a promise
+	// applyRealtimeAgentEvent (the "here" in question) never kept on its
+	// own, since it only ever appends. Runs whenever a real fetch advances
+	// lastPagedIndex (the initial page load, or the reconciling refetch
+	// useProjectRealtime triggers on a status transition): any tail event
+	// at or below that index is now redundant with what's in pagedEvents,
+	// so without this the tail's events array grows for as long as a
+	// conversation keeps streaming, for the life of the browser tab.
+	useEffect(() => {
+		if (lastPagedIndex < 0) return;
+		queryClient.setQueryData(
+			conversationEventsTailKey(conversationId),
+			(prev: ConversationEventsTail | undefined) => {
+				if (!prev || prev.events.length === 0) return prev;
+				const pruned = prev.events.filter(
+					(e) => e.event_index > lastPagedIndex,
+				);
+				if (pruned.length === prev.events.length) return prev;
+				return { ...prev, events: pruned };
+			},
+		);
+	}, [queryClient, conversationId, lastPagedIndex]);
 
 	// Live events already merged in stay visible even after `following` flips
 	// off mid-turn — e.g. expanding a tall tool call's panel nudges the

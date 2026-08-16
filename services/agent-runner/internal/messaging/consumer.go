@@ -55,6 +55,7 @@ type Consumer struct {
 	log            *slog.Logger
 	consumerName   string
 	sem            chan struct{}
+	convLocks      *conversationLocks
 }
 
 // NewConsumer builds a Consumer that reads paca:agent:triggers via a
@@ -75,6 +76,7 @@ func NewConsumer(client *redis.Client, maxConcurrency int, handler Handler, cont
 		log:            log,
 		consumerName:   fmt.Sprintf("%s.%s", consumerGroup, hostname),
 		sem:            make(chan struct{}, maxConcurrency),
+		convLocks:      newConversationLocks(),
 	}
 }
 
@@ -151,11 +153,20 @@ func (c *Consumer) dispatch(ctx context.Context, msg redis.XMessage) {
 	go c.processTrigger(ctx, msg)
 }
 
+// ack acknowledges msg, logging (not returning) a failure to do so — used
+// identically by both processControl and processTrigger, on both the
+// malformed-message-drop path and the successful-handling path.
+func (c *Consumer) ack(ctx context.Context, msg redis.XMessage) {
+	if err := c.client.XAck(ctx, StreamAgentTriggers, consumerGroup, msg.ID).Err(); err != nil {
+		c.log.Warn("consumer: ack failed", "id", msg.ID, "error", err)
+	}
+}
+
 func (c *Consumer) processControl(ctx context.Context, msg redis.XMessage, controlType ControlType) {
 	control, err := decodeControl(controlType, msg.Values)
 	if err != nil {
 		c.log.Error("consumer: dropping malformed control message", "id", msg.ID, "error", err)
-		_ = c.client.XAck(ctx, StreamAgentTriggers, consumerGroup, msg.ID).Err()
+		c.ack(ctx, msg)
 		return
 	}
 	if err := c.controlHandler(ctx, control); err != nil {
@@ -163,9 +174,7 @@ func (c *Consumer) processControl(ctx context.Context, msg redis.XMessage, contr
 			"id", msg.ID, "conversation_id", control.ConversationID, "error", err)
 		return
 	}
-	if err := c.client.XAck(ctx, StreamAgentTriggers, consumerGroup, msg.ID).Err(); err != nil {
-		c.log.Warn("consumer: ack failed", "id", msg.ID, "error", err)
-	}
+	c.ack(ctx, msg)
 }
 
 func (c *Consumer) processTrigger(ctx context.Context, msg redis.XMessage) {
@@ -175,9 +184,18 @@ func (c *Consumer) processTrigger(ctx context.Context, msg redis.XMessage) {
 		// ack it so it doesn't block the stream forever, and log loudly
 		// since this indicates a real producer/consumer schema drift.
 		c.log.Error("consumer: dropping malformed trigger", "id", msg.ID, "error", err)
-		_ = c.client.XAck(ctx, StreamAgentTriggers, consumerGroup, msg.ID).Err()
+		c.ack(ctx, msg)
 		return
 	}
+
+	// Acquired before the semaphore below, not after: a second trigger for
+	// a conversation that already has a turn in flight should queue here
+	// (a cheap, uncontended-for-everyone-else wait) rather than occupy one
+	// of the limited semaphore slots while blocked — see conversationLocks'
+	// doc comment for why triggers for the same conversation_id must never
+	// run Handler concurrently in the first place.
+	unlockConv := c.convLocks.Lock(trigger.ConversationID)
+	defer unlockConv()
 
 	select {
 	case c.sem <- struct{}{}:
@@ -192,7 +210,5 @@ func (c *Consumer) processTrigger(ctx context.Context, msg redis.XMessage) {
 		return
 	}
 
-	if err := c.client.XAck(ctx, StreamAgentTriggers, consumerGroup, msg.ID).Err(); err != nil {
-		c.log.Warn("consumer: ack failed", "id", msg.ID, "error", err)
-	}
+	c.ack(ctx, msg)
 }

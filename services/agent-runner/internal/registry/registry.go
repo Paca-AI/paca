@@ -28,8 +28,18 @@ const (
 	ReasonPause InterruptReason = "pause"
 )
 
+// entry is one conversation's in-flight-turn bookkeeping: the way to cancel
+// it, plus the reason it was last interrupted (if any). token identifies
+// which specific Register call created this entry — see Register/Unregister.
+type entry struct {
+	token     uint64
+	cancel    context.CancelFunc
+	reason    InterruptReason
+	hasReason bool
+}
+
 // Conversations is a process-local map of conversation_id to that
-// conversation's cancel function, live only while a turn is actually
+// conversation's in-flight-turn entry, live only while a turn is actually
 // running. Safe for concurrent use.
 //
 // Single-process only: in a multi-replica deployment, a stop/pause control
@@ -38,36 +48,48 @@ const (
 // solved here.
 type Conversations struct {
 	mu      sync.Mutex
-	cancels map[uuid.UUID]context.CancelFunc
-	reasons map[uuid.UUID]InterruptReason
+	entries map[uuid.UUID]*entry
+	lastTok uint64
 }
 
 // New builds an empty Conversations registry.
 func New() *Conversations {
-	return &Conversations{
-		cancels: make(map[uuid.UUID]context.CancelFunc),
-		reasons: make(map[uuid.UUID]InterruptReason),
-	}
+	return &Conversations{entries: make(map[uuid.UUID]*entry)}
 }
 
 // Register records cancel as the way to interrupt conversationID's
-// in-flight turn. Call Unregister (typically via defer) once the turn
-// ends, whether it finished, failed, or was itself cancelled.
-func (c *Conversations) Register(conversationID uuid.UUID, cancel context.CancelFunc) {
+// in-flight turn and returns a token identifying this specific
+// registration. Call Unregister with that same token (typically via defer)
+// once the turn ends, whether it finished, failed, or was itself cancelled.
+//
+// The token exists because a conversation can have a second turn registered
+// for the same conversationID before the first turn's own deferred
+// Unregister runs — e.g. turn 1 pauses and turn 2 (a resumed chat turn) is
+// dispatched and registers before turn 1's Handle() goroutine reaches its
+// deferred cleanup. Without a token, turn 1's Unregister would delete turn
+// 2's live entry regardless of who owns it, leaving turn 2 uncancellable by
+// any later stop/pause. Unregister only clears an entry that still matches
+// the token it was handed, so a turn only ever removes the registration it
+// itself created.
+func (c *Conversations) Register(conversationID uuid.UUID, cancel context.CancelFunc) uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.cancels[conversationID] = cancel
+	c.lastTok++
+	tok := c.lastTok
+	c.entries[conversationID] = &entry{token: tok, cancel: cancel}
+	return tok
 }
 
-// Unregister also clears any recorded InterruptReason — callers that care
-// about the reason (see TakeReason) must read it before Unregister runs
-// (typically: read it, then let the caller's own deferred Unregister fire
-// as usual), or it's lost.
-func (c *Conversations) Unregister(conversationID uuid.UUID) {
+// Unregister clears conversationID's registry entry, but only if it's still
+// the same registration identified by token — see Register's doc comment.
+// A stale token (the entry has since been overwritten by a newer Register)
+// is a silent no-op: the newer registration is left untouched.
+func (c *Conversations) Unregister(conversationID uuid.UUID, token uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.cancels, conversationID)
-	delete(c.reasons, conversationID)
+	if e, ok := c.entries[conversationID]; ok && e.token == token {
+		delete(c.entries, conversationID)
+	}
 }
 
 // Interrupt cancels conversationID's in-flight turn if one is running on
@@ -85,15 +107,16 @@ func (c *Conversations) Interrupt(conversationID uuid.UUID) bool {
 // cancelled.
 func (c *Conversations) InterruptWithReason(conversationID uuid.UUID, reason InterruptReason) bool {
 	c.mu.Lock()
-	cancel, ok := c.cancels[conversationID]
+	e, ok := c.entries[conversationID]
 	if ok {
-		c.reasons[conversationID] = reason
+		e.reason = reason
+		e.hasReason = true
 	}
 	c.mu.Unlock()
 	if !ok {
 		return false
 	}
-	cancel()
+	e.cancel()
 	return true
 }
 
@@ -105,7 +128,7 @@ func (c *Conversations) InterruptWithReason(conversationID uuid.UUID, reason Int
 func (c *Conversations) IsRegistered(conversationID uuid.UUID) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, ok := c.cancels[conversationID]
+	_, ok := c.entries[conversationID]
 	return ok
 }
 
@@ -116,6 +139,9 @@ func (c *Conversations) IsRegistered(conversationID uuid.UUID) bool {
 func (c *Conversations) TakeReason(conversationID uuid.UUID) (InterruptReason, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	r, ok := c.reasons[conversationID]
-	return r, ok
+	e, ok := c.entries[conversationID]
+	if !ok || !e.hasReason {
+		return "", false
+	}
+	return e.reason, true
 }
