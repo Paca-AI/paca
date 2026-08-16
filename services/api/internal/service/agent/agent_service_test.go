@@ -1310,6 +1310,93 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+func TestGetConversation_OwnerPrivate_OwnerAllowed(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	ownerMemberID := uuid.New()
+	sessionID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:            conversationID,
+		ProjectID:     projectID,
+		ChatSessionID: &sessionID,
+		Audience:      agentdom.AudienceOwnerPrivate,
+		Status:        "running",
+	}
+	session := &agentdom.AgentChatSession{ID: sessionID, MemberID: ownerMemberID}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversation(context.Background(), projectID, conversationID, ownerMemberID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversation_OwnerPrivate_WrongMember(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	ownerMemberID := uuid.New()
+	otherMemberID := uuid.New()
+	sessionID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:            conversationID,
+		ProjectID:     projectID,
+		ChatSessionID: &sessionID,
+		Audience:      agentdom.AudienceOwnerPrivate,
+		Status:        "running",
+	}
+	session := &agentdom.AgentChatSession{ID: sessionID, MemberID: ownerMemberID}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversation(context.Background(), projectID, conversationID, otherMemberID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+func TestSendChatMessage_WrongMember(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	ownerMemberID := uuid.New()
+	otherMemberID := uuid.New()
+	sessionID := uuid.New()
+	session := &agentdom.AgentChatSession{
+		ID:        sessionID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		MemberID:  ownerMemberID,
+	}
+
+	repo := &mockAgentRepo{
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, otherMemberID, "Hello")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
+}
+
 func TestGetGlobalConversation_Success(t *testing.T) {
 	actorUserID := uuid.New()
 	conversationID := uuid.New()
