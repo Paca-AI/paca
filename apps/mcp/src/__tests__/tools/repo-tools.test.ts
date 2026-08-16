@@ -8,7 +8,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // the real filesystem, regardless of whether the guard being tested is
 // actually correct.
 const rmMock = vi.fn().mockResolvedValue(undefined);
-vi.mock("node:fs/promises", () => ({ rm: (...args: unknown[]) => rmMock(...args) }));
+vi.mock("node:fs/promises", () => ({
+	rm: (...args: unknown[]) => rmMock(...args),
+}));
 
 beforeEach(() => {
 	rmMock.mockClear();
@@ -295,31 +297,31 @@ describe("handleRepoTool – clone_repository", () => {
 	it.each([
 		["/", "/"],
 		["/home", "/home"],
+		["/home/goose", "/home/goose"],
+		["/home/goose/", "/home/goose"],
 		["/etc", "/etc"],
 		["/etc/", "/etc"],
 		["/tmp", "/tmp"],
 		["/../../etc", "/etc"],
 		["/home/goose/../../etc", "/etc"],
-	])(
-		"refuses to clone into the protected system directory %s",
-		async (targetDir, _resolved) => {
-			const client = makeClient({
-				getRepositoryCloneInfo: vi.fn().mockResolvedValue(cloneInfo),
-			});
-			const gitExec = vi.fn();
-			const result = await handleRepoTool(
-				"clone_repository",
-				{ projectId: "p1", pluginId: "com.paca.github", repoId: "r1", targetDir },
-				client,
-				[],
-				gitExec,
-			);
-			expect(rmMock).not.toHaveBeenCalled();
-			expect(gitExec).not.toHaveBeenCalled();
-			expect(result.content[0].text).toContain("Failed to clone repository");
-			expect(result.content[0].text).toMatch(/protected system directory/i);
-		},
-	);
+		["/home/goose/../", "/home"],
+	])("refuses to clone into the protected system directory %s", async (targetDir, _resolved) => {
+		const client = makeClient({
+			getRepositoryCloneInfo: vi.fn().mockResolvedValue(cloneInfo),
+		});
+		const gitExec = vi.fn();
+		const result = await handleRepoTool(
+			"clone_repository",
+			{ projectId: "p1", pluginId: "com.paca.github", repoId: "r1", targetDir },
+			client,
+			[],
+			gitExec,
+		);
+		expect(rmMock).not.toHaveBeenCalled();
+		expect(gitExec).not.toHaveBeenCalled();
+		expect(result.content[0].text).toContain("Failed to clone repository");
+		expect(result.content[0].text).toMatch(/protected system directory/i);
+	});
 
 	it("still allows cloning into a subdirectory of a protected top-level directory", async () => {
 		const client = makeClient({

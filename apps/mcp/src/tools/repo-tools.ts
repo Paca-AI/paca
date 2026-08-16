@@ -75,6 +75,12 @@ function authenticatedCloneURL(cloneURL: string, token: string): string {
  * refused. Ported forward as a new safety check, not a regression fix:
  * the Python this replaces (repo_tools.py) ran the equivalent `rm -rf`
  * with no such guard either.
+ *
+ * /home/goose is listed explicitly alongside /home itself: it's the
+ * container user's actual home directory (DEFAULT_REPO_DIR's own parent),
+ * so it's at least as likely a target for an accidental or confused
+ * targetDir as any of the OS-level directories below it, even though the
+ * OS itself would keep running without it.
  */
 const FORBIDDEN_DELETE_TARGETS = new Set([
 	"/",
@@ -83,6 +89,7 @@ const FORBIDDEN_DELETE_TARGETS = new Set([
 	"/dev",
 	"/etc",
 	"/home",
+	"/home/goose",
 	"/lib",
 	"/lib64",
 	"/opt",

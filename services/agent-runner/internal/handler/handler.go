@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/bundledskills"
 	"github.com/Paca-AI/agent-runner/internal/chatsandbox"
 	"github.com/Paca-AI/agent-runner/internal/config"
+	"github.com/Paca-AI/agent-runner/internal/convlock"
 	"github.com/Paca-AI/agent-runner/internal/executor"
 	"github.com/Paca-AI/agent-runner/internal/messaging"
 	"github.com/Paca-AI/agent-runner/internal/registry"
@@ -49,6 +51,23 @@ type Handler struct {
 	ACPDispatcher *acpbridge.Dispatcher
 	ACPRegistry   *acpbridge.Registry
 	Log           *slog.Logger
+
+	// resumeLocks serializes, per conversation_id, Handle's "register
+	// in-flight then read the paused sandbox" sequence against
+	// TeardownPausedChatSandbox's "check in-flight then pop the paused
+	// sandbox" sequence — see resumeLock's doc comment for the race this
+	// closes. Lazily built (not a constructor-only field) so every
+	// existing Handler{...} struct literal — cmd/agent-runner/main.go and
+	// four test/e2e files — keeps working unchanged.
+	resumeLocksOnce sync.Once
+	resumeLocks     *convlock.Locks
+}
+
+// resumeLock returns this Handler's per-conversation resume/teardown lock,
+// building it on first use.
+func (h *Handler) resumeLock() *convlock.Locks {
+	h.resumeLocksOnce.Do(func() { h.resumeLocks = convlock.New() })
+	return h.resumeLocks
 }
 
 // Handle runs one conversation turn for trigger, dispatching to the ACP
@@ -141,21 +160,45 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	// window where a concurrent teardown could see IsRegistered==false and
 	// stop/pop the very sandbox this turn had already read a handle to.
 	runCtx, cancelRun := context.WithCancel(ctx)
-	regToken := h.InFlight.Register(trigger.ConversationID, cancelRun)
+
+	// Register-then-Get itself still isn't safe on its own: IsRegistered and
+	// Pop in TeardownPausedChatSandbox are two separate operations too (see
+	// that function's own comment), so a concurrent stop control message or
+	// idle-reaper tick could observe IsRegistered==false *before* the
+	// Register call below runs, decide to proceed, and then Pop (and tear
+	// down) the very sandbox this turn reads a handle to via Get —
+	// regardless of Register having already happened by the time Get runs.
+	// resumeLock closes that gap by making "Register+Get" and
+	// TeardownPausedChatSandbox's "IsRegistered-check+Pop" mutually
+	// exclusive for this conversation_id: whichever side gets there first
+	// completes its whole sequence before the other can begin, so they can
+	// no longer interleave into a torn-down-mid-use sandbox. Held only
+	// across these two fast, in-memory-map calls — not the rest of this
+	// turn — so it doesn't stand between a stop message and an
+	// already-in-flight turn the way the per-conversation trigger lock in
+	// messaging.Consumer deliberately doesn't either.
+	var resume *chatsandbox.State
+	regToken := func() uint64 {
+		unlock := h.resumeLock().Lock(trigger.ConversationID)
+		defer unlock()
+
+		tok := h.InFlight.Register(trigger.ConversationID, cancelRun)
+		if isChat {
+			// A plain Get, not Pop — the entry (if any) stays live in the
+			// registry for this turn's *entire* duration, not just until
+			// the run starts, so a heartbeat control message arriving
+			// mid-turn can still find and refresh it (see HandleControl's
+			// ControlHeartbeat case). Mirrors run_conversation's
+			// resume_state = chat_sandboxes.get(...).
+			resume, _ = h.ChatSandboxes.Get(trigger.ConversationID)
+		}
+		return tok
+	}()
+
 	defer func() {
 		h.InFlight.Unregister(trigger.ConversationID, regToken)
 		cancelRun()
 	}()
-
-	var resume *chatsandbox.State
-	if isChat {
-		// A plain Get, not Pop — the entry (if any) stays live in the
-		// registry for this turn's *entire* duration, not just until the
-		// run starts, so a heartbeat control message arriving mid-turn can
-		// still find and refresh it (see HandleControl's ControlHeartbeat
-		// case). Mirrors run_conversation's resume_state = chat_sandboxes.get(...).
-		resume, _ = h.ChatSandboxes.Get(trigger.ConversationID)
-	}
 
 	// Seeded from existing history, not always 0 — event_index is unique for
 	// a conversation's entire lifetime, not just this turn. Only matters
@@ -620,12 +663,28 @@ func (h *Handler) HandleControl(ctx context.Context, c messaging.Control) error 
 // around. If no turn has registered yet, Pop still only succeeds once, so at
 // most one of "a turn starts and reattaches" or "this stop tears it down"
 // wins, never both partially.
+//
+// That "IsRegistered reliably catches it" claim only holds because the
+// check and the Pop below share resumeLock with Handle's own
+// Register-then-Get sequence: on its own, IsRegistered-then-Pop is just as
+// much a check-then-act race as Register-then-Get is — a concurrent Handle
+// call could Register and Get in the gap between this function's own check
+// and its Pop, no less than this function could Pop in the gap Handle's
+// comment describes. resumeLock makes the two sequences mutually exclusive
+// per conversation_id instead of independently racy, so whichever of
+// "resume" or "tear down" reaches the lock first is the one that actually
+// happens.
 func (h *Handler) TeardownPausedChatSandbox(ctx context.Context, conversationID uuid.UUID) bool {
-	if h.InFlight.IsRegistered(conversationID) {
-		return false
+	unlock := h.resumeLock().Lock(conversationID)
+	registered := h.InFlight.IsRegistered(conversationID)
+	var state *chatsandbox.State
+	var ok bool
+	if !registered {
+		state, ok = h.ChatSandboxes.Pop(conversationID)
 	}
-	state, ok := h.ChatSandboxes.Pop(conversationID)
-	if !ok {
+	unlock()
+
+	if registered || !ok {
 		return false
 	}
 	if err := h.Executor.StopSandbox(context.WithoutCancel(ctx), state.Handle); err != nil {
