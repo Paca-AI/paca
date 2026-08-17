@@ -4,11 +4,15 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"os"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Paca-AI/paca/apps/acp-bridge/internal/acpclient"
 )
 
 const testTimeout = 10 * time.Second
@@ -97,12 +101,13 @@ func TestStartTurnRejectsWhenPreviousTurnStillRunning(t *testing.T) {
 		"message":         "a follow-up message",
 	})
 
+	// reportStatus enqueues onto state's own local outbound queue (see
+	// ensureOutbound) rather than delivering synchronously, so this waits
+	// for the dedicated forwarder goroutine to actually send it.
+	waitForStatus(t, sent, "failed")
 	msgs := sent.all()
 	if len(msgs) != 1 {
 		t.Fatalf("got %d messages, want 1: %+v", len(msgs), msgs)
-	}
-	if msgs[0]["type"] != "turn_status" || msgs[0]["status"] != "failed" {
-		t.Fatalf("unexpected message: %+v", msgs[0])
 	}
 	if r.conversations["conv-1"] != state {
 		t.Fatalf("expected the still-running conversation's state to be left untouched")
@@ -120,12 +125,13 @@ func TestStartTurnReportsFailureForUnresolvableCustomProvider(t *testing.T) {
 		"acp_command":     []any{},
 	})
 
+	// reportStatus enqueues onto state's own local outbound queue (see
+	// ensureOutbound) rather than delivering synchronously, so this waits
+	// for the dedicated forwarder goroutine to actually send it.
+	waitForStatus(t, sent, "failed")
 	msgs := sent.all()
 	if len(msgs) != 1 {
 		t.Fatalf("got %d messages, want 1: %+v", len(msgs), msgs)
-	}
-	if msgs[0]["type"] != "turn_status" || msgs[0]["status"] != "failed" {
-		t.Fatalf("unexpected message: %+v", msgs[0])
 	}
 
 	r.mu.Lock()
@@ -143,6 +149,54 @@ func TestInterruptIsANoOpForUnknownOrIdleConversation(t *testing.T) {
 
 	r.conversations["conv-idle"] = &conversationState{chunks: newChunkBuffer()}
 	r.Interrupt("conv-idle") // turnRunning is false; must not panic or block
+}
+
+// TestHandleUpdateNeverBlocksOnAStalledSend is the core guarantee
+// ensureOutbound exists for: handleUpdate runs synchronously on the ACP
+// client's own stdout-reading goroutine (see acpclient.Spawn's doc
+// comment), so it must return promptly even if delivery to the bridge is
+// completely stuck — otherwise a prolonged bridge outage would stall
+// draining the ACP subprocess's stdout pipe and could deadlock it.
+func TestHandleUpdateNeverBlocksOnAStalledSend(t *testing.T) {
+	blockSend := make(chan struct{})
+	unblockSend := make(chan struct{})
+	r := &Runner{
+		workspace: t.TempDir(),
+		log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		send: func(ctx context.Context, msg map[string]any) error {
+			close(blockSend) // signals the first send actually started
+			<-unblockSend    // and now hangs until the test releases it
+			return nil
+		},
+		conversations: make(map[string]*conversationState),
+	}
+	t.Cleanup(func() { close(unblockSend) })
+
+	state := &conversationState{chunks: newChunkBuffer()}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.handleUpdate(state, "conv-1", "proj-1", acpclient.Update{
+			SessionID: "sess-1",
+			Kind:      "tool_call",
+			Raw:       json.RawMessage(`{"sessionUpdate":"tool_call","toolCallId":"tc-1"}`),
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(testTimeout):
+		t.Fatal("handleUpdate blocked on a stalled send instead of returning promptly")
+	}
+
+	// Confirm the send genuinely was attempted (and is genuinely stuck) —
+	// otherwise this test would trivially pass for the wrong reason.
+	select {
+	case <-blockSend:
+	case <-time.After(testTimeout):
+		t.Fatal("forwardEvents never attempted to send the enqueued update")
+	}
 }
 
 func TestChunkBufferAccumulatesAndTakes(t *testing.T) {
@@ -228,6 +282,9 @@ func runFakeACPAgent(behavior string) {
 		}
 		switch msg.Method {
 		case "initialize":
+			if behavior == "stall_init" {
+				continue // never respond, simulating a slow npx cold start
+			}
 			write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID),
 				"result": map[string]any{"protocolVersion": 1}})
 		case "session/new":
@@ -353,6 +410,76 @@ func TestEndToEndInterruptSuppressesTurnStatus(t *testing.T) {
 	for _, m := range sent.all() {
 		if m["type"] == "turn_status" {
 			t.Fatalf("expected no turn_status for an interrupted turn, got %+v", m)
+		}
+	}
+}
+
+// TestEndToEndInterruptDuringSessionSetupSuppressesTurnStatus covers the
+// other half of Interrupt's two branches: interrupting while state.client
+// is still nil (still spawning/initializing) must be just as silent as
+// interrupting an in-flight Prompt call above — see Interrupt's own
+// "still spawning/initializing" comment. ensureSession's ctx-cancellation
+// error needs the same errors.Is(err, context.Canceled) treatment runTurn
+// already gives client.Prompt's error.
+func TestEndToEndInterruptDuringSessionSetupSuppressesTurnStatus(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	setFakeAgentEnv(t, "stall_init")
+
+	r, sent := newTestRunner(t)
+	state := &conversationState{
+		chunks:      newChunkBuffer(),
+		acpProvider: "custom",
+		command:     []string{os.Args[0]},
+	}
+	r.mu.Lock()
+	r.conversations["conv-1"] = state
+	r.mu.Unlock()
+
+	r.StartTurn(context.Background(), map[string]any{
+		"conversation_id": "conv-1",
+		"project_id":      "proj-1",
+		"message":         "hi",
+	})
+
+	// Give the subprocess a moment to actually be spawned and stuck inside
+	// Initialize (state.client is still nil at this point) before
+	// interrupting — otherwise this could race and hit the client.Prompt
+	// path TestEndToEndInterruptSuppressesTurnStatus already covers.
+	deadline := time.Now().Add(testTimeout)
+	for {
+		state.mu.Lock()
+		spawning := state.turnRunning && state.client == nil
+		state.mu.Unlock()
+		if spawning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the turn to be mid session-setup")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	r.Interrupt("conv-1")
+
+	deadline = time.Now().Add(testTimeout)
+	for {
+		state.mu.Lock()
+		running := state.turnRunning
+		state.mu.Unlock()
+		if !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the interrupted turn to finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	for _, m := range sent.all() {
+		if m["type"] == "turn_status" {
+			t.Fatalf("expected no turn_status for an interrupt during session setup, got %+v", m)
 		}
 	}
 }

@@ -34,6 +34,15 @@ import (
 // actually does.
 const interruptGracePeriod = 15 * time.Second
 
+// outboundQueueSize bounds each conversation's own local event queue (see
+// conversationState.outbound) — deliberately far larger than
+// bridge.outboxSize, since this buffer's job is to absorb the entire gap
+// between event production and the bridge connection coming back, not just
+// smooth over a brief hiccup. Still finite rather than truly unbounded so a
+// conversation can't grow without limit forever, but reaching this many
+// undelivered messages needs a genuinely extreme, sustained outage.
+const outboundQueueSize = 100_000
+
 // conversationState is one active or resumable conversation — mirrors the
 // old bridge's _ConversationHandle, but the ACP session (subprocess +
 // sessionID) is established lazily on the first turn rather than eagerly at
@@ -65,6 +74,16 @@ type conversationState struct {
 	sessionID string
 
 	chunks *chunkBuffer
+
+	// outbound is this conversation's own local queue of not-yet-delivered
+	// bridge messages (events and turn_status), drained in order by a
+	// single dedicated forwardEvents goroutine — see ensureOutbound's doc
+	// comment for why sending here must never call bridge.SendFunc
+	// directly. Lazily created (via outboundOnce) rather than at
+	// conversationState construction time so tests that build one as a
+	// plain struct literal still work correctly.
+	outboundOnce sync.Once
+	outbound     chan map[string]any
 }
 
 // Runner implements bridge.Handler.
@@ -119,7 +138,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 		state.mu.Unlock()
 		r.log.Warn("runner: ignoring start_turn: a previous turn is still running",
 			"conversation_id", conversationID)
-		r.reportStatus(conversationID, projectID, "failed",
+		r.reportStatus(state, conversationID, projectID, "failed",
 			"A previous turn for this conversation is still running; please retry.")
 		return
 	}
@@ -133,7 +152,7 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 			r.mu.Lock()
 			delete(r.conversations, conversationID)
 			r.mu.Unlock()
-			r.reportStatus(conversationID, projectID, "failed", err.Error())
+			r.reportStatus(state, conversationID, projectID, "failed", err.Error())
 			return
 		}
 		state.acpProvider = acpProvider
@@ -215,12 +234,20 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 
 	client, sessionID, err := r.ensureSession(ctx, state, conversationID, projectID)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			// Interrupted before the session was even established (still
+			// spawning the subprocess, or mid initialize/session/new) —
+			// same "no turn_status" treatment as an interrupt during
+			// client.Prompt below; Interrupt's own "still spawning" branch
+			// is exactly what cancelled ctx here.
+			return
+		}
 		r.log.Error("runner: failed to start ACP session", "conversation_id", conversationID, "error", err)
-		r.reportStatus(conversationID, projectID, "failed", err.Error())
+		r.reportStatus(state, conversationID, projectID, "failed", err.Error())
 		return
 	}
 
-	r.emitUserMessage(conversationID, projectID, message)
+	r.emitUserMessage(state, conversationID, projectID, message)
 
 	stopReason, err := client.Prompt(ctx, sessionID, message)
 	// Whatever's still buffered when the turn ends — successfully,
@@ -237,11 +264,11 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 			return
 		}
 		r.log.Error("runner: conversation turn failed", "conversation_id", conversationID, "error", err)
-		r.reportStatus(conversationID, projectID, "failed", err.Error())
+		r.reportStatus(state, conversationID, projectID, "failed", err.Error())
 		return
 	}
 
-	r.emitTurnEnd(conversationID, projectID, stopReason)
+	r.emitTurnEnd(state, conversationID, projectID, stopReason)
 	if stopReason == "cancelled" {
 		// The agent honored session/cancel cooperatively and answered
 		// session/prompt normally — a real response, not a transport
@@ -251,7 +278,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 		// server-side as sufficient on its own.
 		return
 	}
-	r.reportStatus(conversationID, projectID, "finished", "")
+	r.reportStatus(state, conversationID, projectID, "finished", "")
 }
 
 // ensureSession returns the conversation's ACP client and session id,
@@ -316,7 +343,11 @@ func (r *Runner) finishTurn(state *conversationState) {
 // handleUpdate is the ACP client's onUpdate callback for one conversation.
 // Text-bearing kinds are paragraph-buffered (see chunkBuffer); everything
 // else is forwarded as its own event, flushing any pending text first so
-// the persisted order matches the order things actually happened in.
+// the persisted order matches the order things actually happened in. Called
+// synchronously on the ACP client's own stdout-reading goroutine (see
+// acpclient.Spawn's doc comment), so everything reachable from here enqueues
+// onto state.outbound (see ensureOutbound) rather than ever calling
+// bridge.SendFunc directly.
 func (r *Runner) handleUpdate(state *conversationState, conversationID, projectID string, u acpclient.Update) {
 	if u.Kind == "agent_message_chunk" || u.Kind == "agent_thought_chunk" {
 		text := extractChunkText(u.Raw)
@@ -327,7 +358,7 @@ func (r *Runner) handleUpdate(state *conversationState, conversationID, projectI
 		return
 	}
 	r.flushChunks(state, conversationID, projectID)
-	r.emitEvent(conversationID, projectID, u.Kind, "agent", u.Raw)
+	r.emitEvent(state, conversationID, projectID, u.Kind, "agent", u.Raw)
 }
 
 func (r *Runner) flushChunks(state *conversationState, conversationID, projectID string) {
@@ -343,11 +374,11 @@ func (r *Runner) flushChunks(state *conversationState, conversationID, projectID
 		payload, _ := json.Marshal(map[string]any{
 			"content": map[string]any{"type": "text", "text": text},
 		})
-		r.emitEvent(conversationID, projectID, kind, "agent", payload)
+		r.emitEvent(state, conversationID, projectID, kind, "agent", payload)
 	}
 }
 
-func (r *Runner) emitUserMessage(conversationID, projectID, message string) {
+func (r *Runner) emitUserMessage(state *conversationState, conversationID, projectID, message string) {
 	text := strings.TrimSpace(message)
 	if text == "" {
 		return
@@ -355,38 +386,30 @@ func (r *Runner) emitUserMessage(conversationID, projectID, message string) {
 	payload, _ := json.Marshal(map[string]any{
 		"content": map[string]any{"type": "text", "text": text},
 	})
-	r.emitEvent(conversationID, projectID, "user_message", "user", payload)
+	r.emitEvent(state, conversationID, projectID, "user_message", "user", payload)
 }
 
-func (r *Runner) emitTurnEnd(conversationID, projectID, stopReason string) {
+func (r *Runner) emitTurnEnd(state *conversationState, conversationID, projectID, stopReason string) {
 	payload, _ := json.Marshal(map[string]string{"stopReason": stopReason})
-	r.emitEvent(conversationID, projectID, "turn_end", "system", payload)
+	r.emitEvent(state, conversationID, projectID, "turn_end", "system", payload)
 }
 
-func (r *Runner) emitEvent(conversationID, projectID, eventType, eventSource string, payload json.RawMessage) {
-	msg := map[string]any{
+func (r *Runner) emitEvent(state *conversationState, conversationID, projectID, eventType, eventSource string, payload json.RawMessage) {
+	r.enqueue(state, map[string]any{
 		"type":            "event",
 		"conversation_id": conversationID,
 		"project_id":      projectID,
 		"event_type":      eventType,
 		"event_source":    eventSource,
 		"payload":         payload,
-	}
-	// context.Background(): a full outbox deliberately backpressures the
-	// caller rather than dropping the event — see bridge.outboxSize's doc
-	// comment. The process is shutting down in the only case this would
-	// actually block forever, at which point a blocked goroutine here is
-	// harmless.
-	if err := r.send(context.Background(), msg); err != nil {
-		r.log.Warn("runner: failed to report event", "event_type", eventType,
-			"conversation_id", conversationID, "error", err)
-	}
+	})
 }
 
-// reportStatus is a thin, always-non-fatal wrapper around send: a failure
-// to *report* status must never be conflated with the conversation itself
-// failing, and must never panic or propagate out of a turn's goroutine.
-func (r *Runner) reportStatus(conversationID, projectID, status, errorMessage string) {
+// reportStatus hands a turn_status message to state's outbound queue: a
+// failure to *deliver* status must never be conflated with the conversation
+// itself failing, and must never panic or propagate out of a turn's
+// goroutine — see forwardEvents for how delivery failures are handled.
+func (r *Runner) reportStatus(state *conversationState, conversationID, projectID, status, errorMessage string) {
 	msg := map[string]any{
 		"type":            "turn_status",
 		"conversation_id": conversationID,
@@ -396,9 +419,46 @@ func (r *Runner) reportStatus(conversationID, projectID, status, errorMessage st
 	if errorMessage != "" {
 		msg["error_message"] = errorMessage
 	}
-	if err := r.send(context.Background(), msg); err != nil {
-		r.log.Warn("runner: failed to report turn_status", "conversation_id", conversationID,
-			"status", status, "error", err)
+	r.enqueue(state, msg)
+}
+
+// enqueue hands msg to state's local outbound queue — never to bridge.SendFunc
+// directly. See ensureOutbound for why: everything that reaches enqueue can
+// run on the ACP client's own stdout-reading goroutine, which must never
+// block on the network.
+func (r *Runner) enqueue(state *conversationState, msg map[string]any) {
+	r.ensureOutbound(state) <- msg
+}
+
+// ensureOutbound lazily starts state's local event queue and its single
+// forwardEvents goroutine, exactly once. handleUpdate — called synchronously
+// on the ACP client's own stdout-reading goroutine (see acpclient.Spawn's
+// doc comment) — must never block on the network-bound bridge connection: a
+// prolonged disconnect combined with a chatty turn could otherwise fill
+// bridge's own (deliberately bounded, see bridge.outboxSize) outbox and
+// stall draining the ACP subprocess's own stdout pipe indefinitely, which
+// can in turn prevent even a pending Cancel's follow-up response from ever
+// being read. Routing every outbound message through this per-conversation
+// queue instead keeps r.send's blocking entirely on forwardEvents, well
+// away from the ACP read loop. sync.Once (rather than initializing outbound
+// in a constructor) so a conversationState built as a plain struct literal —
+// as several tests do — still works correctly.
+func (r *Runner) ensureOutbound(state *conversationState) chan map[string]any {
+	state.outboundOnce.Do(func() {
+		state.outbound = make(chan map[string]any, outboundQueueSize)
+		go r.forwardEvents(state)
+	})
+	return state.outbound
+}
+
+// forwardEvents drains state's outbound queue in order for the lifetime of
+// the process — the only thing that ever calls bridge.SendFunc, and so the
+// only thing that ever blocks on the network connection being down.
+func (r *Runner) forwardEvents(state *conversationState) {
+	for msg := range state.outbound {
+		if err := r.send(context.Background(), msg); err != nil {
+			r.log.Warn("runner: failed to report message", "type", msg["type"], "error", err)
+		}
 	}
 }
 
