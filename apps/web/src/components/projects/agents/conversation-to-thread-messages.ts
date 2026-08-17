@@ -347,11 +347,11 @@ export function eventsToThreadMessages(
 
 		// turn_usage carries only token/cost accounting (see
 		// services/agent-runner/internal/handler/handler.go) — surfaced via
-		// AgentConversation.total_tokens/cost_usd (the header's usage pill,
-		// see conversation-view.tsx), never as a transcript bubble. Currently
-		// falls through harmlessly to the fallback case below anyway (its
-		// payload has no content/thought/message key), but skipped
-		// explicitly rather than relying on that.
+		// AgentConversation.total_tokens/cost_usd (the usage pill on each
+		// conversation list item, see conversations-layout.tsx), never as a
+		// transcript bubble. Currently falls through harmlessly to the
+		// fallback case below anyway (its payload has no content/thought/
+		// message key), but skipped explicitly rather than relying on that.
 		if (t === "turn_usage") continue;
 
 		if (t === "MessageEvent") {
