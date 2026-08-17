@@ -32,6 +32,17 @@ const (
 	// blocks rather than dropping on overflow (deliberate backpressure on
 	// the caller instead of unbounded memory growth).
 	outboxSize = 5000
+	// messageReadLimit overrides coder/websocket's 32KiB default (see
+	// connectOnce) — this daemon routinely sends "event" frames larger than
+	// that (a verbose command's output, a sizeable file diff, forwarded
+	// through from a raw ACP session/update almost verbatim), which
+	// otherwise gets the connection killed by the server with a
+	// StatusMessageTooBig close frame. Set here too, symmetrically, in case
+	// the server ever needs to send something this large back. Must match
+	// services/agent-runner/internal/acpbridge/server.go's
+	// bridgeMessageReadLimit — a mismatch just means whichever side has the
+	// smaller limit is still the one that can get disconnected.
+	messageReadLimit = 10 * 1024 * 1024 // 10 MiB
 )
 
 // SendFunc enqueues one outbound message (an "event" or "turn_status"
@@ -148,6 +159,7 @@ func (c *Client) connectOnce(ctx context.Context) error {
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer func() { _ = conn.CloseNow() }()
+	conn.SetReadLimit(messageReadLimit)
 
 	c.conn.Store(conn)
 	defer c.conn.Store(nil)
