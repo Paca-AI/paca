@@ -248,6 +248,15 @@ func (s *Server) handleEventMessage(ctx context.Context, agentID uuid.UUID, msg 
 	if err := s.Publisher.PublishEvent(ctx, convID, projectID, eventType, eventSource, eventIndex, payload, "running"); err != nil {
 		s.Log.Warn("acpbridge: failed to publish bridge event", "conversation_id", convID, "error", err)
 	}
+	if eventType == "turn_usage" {
+		// Durably persisted/streamed above (so services/api's
+		// conversationCols can sum/read it the same way it already does for
+		// llm-type agents' turn_usage rows), but never broadcast to the live
+		// chat transcript — mirrors internal/handler.Handler's own
+		// turn_usage persistence, which likewise skips PublishRealtime: a
+		// usage snapshot has no place there.
+		return
+	}
 	// Full row, not just event_index — see
 	// internal/handler.Handler.persistAndPublish's doc comment on why: the
 	// frontend needs enough here to append the event directly instead of

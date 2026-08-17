@@ -315,27 +315,44 @@ func (c *Client) SetMode(ctx context.Context, sessionID, modeID string) error {
 	return nil
 }
 
+// Usage is session/prompt's per-turn token accounting — ACP's
+// PromptResponse.usage (schema.unstable.json gates it "UNSTABLE", but
+// goose populates it unconditionally; other ACP agents may or may not).
+// Reflects only THIS turn's tokens, not a running session total — nil when
+// the agent reported none for this turn at all. Mirrors
+// services/agent-runner/internal/acp.Usage field-for-field so both
+// services persist the identical {input_tokens, output_tokens,
+// total_tokens} shape into a 'turn_usage' event.
+type Usage struct {
+	TotalTokens  int64 `json:"totalTokens"`
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+}
+
 // Prompt sends one turn's message and blocks until the agent's response
 // arrives (after streaming zero or more session/update notifications to
-// OnUpdate). Returns the turn's stopReason ("end_turn", "cancelled", ...).
+// OnUpdate). Returns the turn's stopReason ("end_turn", "cancelled", ...)
+// and, when the agent reported one, this turn's own token usage — see
+// Usage's doc comment.
 // A context cancellation or a call to Cancel unblocks this the same way: by
 // the agent eventually returning a real response — see Cancel's doc comment.
-func (c *Client) Prompt(ctx context.Context, sessionID, text string) (stopReason string, err error) {
+func (c *Client) Prompt(ctx context.Context, sessionID, text string) (stopReason string, usage *Usage, err error) {
 	params := map[string]any{
 		"sessionId": sessionID,
 		"prompt":    []map[string]any{{"type": "text", "text": text}},
 	}
 	raw, err := c.call(ctx, "session/prompt", params)
 	if err != nil {
-		return "", fmt.Errorf("acpclient: session/prompt: %w", err)
+		return "", nil, fmt.Errorf("acpclient: session/prompt: %w", err)
 	}
 	var result struct {
 		StopReason string `json:"stopReason"`
+		Usage      *Usage `json:"usage,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", fmt.Errorf("acpclient: session/prompt: decoding result: %w", err)
+		return "", nil, fmt.Errorf("acpclient: session/prompt: decoding result: %w", err)
 	}
-	return result.StopReason, nil
+	return result.StopReason, result.Usage, nil
 }
 
 // Cancel sends session/cancel — a notification, not a request. Per the ACP

@@ -848,15 +848,19 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // need to count correctly. Dropping either value from this list would leave
 // the affected conversations' iteration_count stuck at (or frozen at) 0.
 // input_tokens/output_tokens/total_tokens/cost_usd are likewise computed
-// live rather than stored, for the identical reason iteration_count is:
-// services/agent-runner's handler.Handler persists one 'turn_usage' event
-// per turn (see its own doc comment there) with a JSON payload of
-// {input_tokens, output_tokens, total_tokens, cost_usd} — the first three
-// are that turn's own token counts (ACP's PromptResponse.usage, confirmed
-// per-turn not cumulative), so they're summed across every turn_usage row;
-// cost_usd is goose's own session-cumulative total as of that turn (ACP's
-// usage_update notification, backed by totals.accumulated_cost), so only
-// the latest row's value is used, not a sum — summing it would double-count
+// live rather than stored, for the identical reason iteration_count is, and
+// from the identical two origins: services/agent-runner's handler.Handler
+// (llm-type/Goose conversations, see its own doc comment) and
+// apps/acp-bridge's runner package (acp-type conversations, see
+// runner.emitTurnUsage) each persist one 'turn_usage' event per turn with a
+// JSON payload of {input_tokens, output_tokens, total_tokens, cost_usd} —
+// the first three are that turn's own token counts (ACP's
+// PromptResponse.usage, confirmed per-turn not cumulative), so they're
+// summed across every turn_usage row; cost_usd is the underlying agent's
+// (goose's, or whichever local ACP CLI the user's bridge is driving) own
+// session-cumulative total as of that turn (ACP's usage_update
+// notification, backed by totals.accumulated_cost for goose), so only the
+// latest row's value is used, not a sum — summing it would double-count
 // every earlier turn's already-cumulative figure.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
 	triggered_by_member_id, actor_user_id, audience, status, container_id, host_port,
