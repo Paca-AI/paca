@@ -95,6 +95,8 @@ Every individual conversation event *and* every status transition is published h
 
 A terminal status (`finished` / `failed` / `stopped` — never `paused`) is appended here once a conversation ends. `services/api`'s automation engine consumes this to resume a graph walk paused at a `trigger_ai_agent` node.
 
+For a **task-linked** conversation that reaches `finished`, `agent-runner` first persists a durable task-level handoff — the final agent reply, keyed idempotently by `conversation_id` in `agent_task_handoffs` (migration `000039`) — *before* appending `finished` here. That ordering is load-bearing: `services/api` resolves the handoff synchronously when it consumes the `finished` status to record an `agent.session.finished` task activity, so persisting after the publish would race the read. Later task-linked conversations also inject up to three prior handoffs into their prompt (`internal/handler`, `internal/executor/prompt.go`) for cross-conversation continuity (#392).
+
 ---
 
 ## Conversation Execution
