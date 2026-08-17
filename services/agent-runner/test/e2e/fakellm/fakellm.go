@@ -14,8 +14,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -66,6 +68,9 @@ type Server struct {
 	ln      net.Listener
 	script  []ScriptedReply
 	callIdx atomic.Int64
+
+	mu       sync.Mutex
+	requests [][]byte
 }
 
 // New starts a Server bound to 0.0.0.0 on an OS-assigned port, driven by
@@ -121,6 +126,18 @@ func (s *Server) CallCount() int {
 	return int(s.callIdx.Load())
 }
 
+// Requests returns the raw JSON body of every /v1/chat/completions request
+// received so far, in order — lets a test inspect exactly what a real
+// `goose serve` sandbox sent the model (e.g. which role a given piece of
+// text arrived under), not just that a call happened.
+func (s *Server) Requests() [][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([][]byte, len(s.requests))
+	copy(out, s.requests)
+	return out
+}
+
 func (s *Server) nextReply() ScriptedReply {
 	idx := s.callIdx.Add(1) - 1
 	if int(idx) >= len(s.script) {
@@ -137,10 +154,15 @@ func (s *Server) handleModels(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	s.mu.Lock()
+	s.requests = append(s.requests, body)
+	s.mu.Unlock()
+
 	var payload struct {
 		Stream bool `json:"stream"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	_ = json.Unmarshal(body, &payload)
 
 	reply := s.nextReply()
 	switch {

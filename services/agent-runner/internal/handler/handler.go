@@ -594,6 +594,7 @@ func (h *Handler) keepSandboxAlive(trigger agent.Trigger, result executor.Result
 // path (error, full stop, or a non-chat trigger's ordinary finish).
 func (h *Handler) tearDownSandbox(ctx context.Context, trigger agent.Trigger, result executor.Result) {
 	h.ChatSandboxes.Pop(trigger.ConversationID)
+	result.Client.Close()
 	if result.Handle == nil {
 		return
 	}
@@ -700,6 +701,7 @@ func (h *Handler) TeardownPausedChatSandbox(ctx context.Context, conversationID 
 	if registered || !ok {
 		return false
 	}
+	state.Client.Close()
 	if err := h.Executor.StopSandbox(context.WithoutCancel(ctx), state.Handle); err != nil {
 		h.Log.Warn("agent-runner: failed to stop paused chat sandbox",
 			"conversation_id", conversationID, "error", err)

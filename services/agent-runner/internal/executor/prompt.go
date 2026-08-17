@@ -69,31 +69,28 @@ const globalProjectContext = "\n\n## Current Context\n" +
 const taskAssignedDefault = "You have been assigned a task. Load it via the Paca MCP tool and " +
 	"follow the default `paca` skill's routing to pick the right specialized skill for its status."
 
-// buildInitialMessage mirrors prompt.py's build_initial_prompt +
-// build_trigger_suffix + build_project_context_suffix, combined into one
-// function: Goose's ACP session/new has no system-message-suffix channel
-// (unlike OpenHands SDK's AgentContext), confirmed empirically in the spike
-// — session/new's params are only cwd and mcpServers — so everything that
-// used to ride in a separate system suffix now has to be folded into the
-// turn's own message instead, the same way apps/acp-bridge's
-// build_acp_message already does for the acp execution path.
-func buildInitialMessage(cfg agent.Config, trigger agent.Trigger) string {
+// buildInitialMessage mirrors prompt.py's build_trigger_suffix +
+// build_project_context_suffix (build_initial_prompt's job — the agent's
+// own persona/instructions — moved to a .goosehints file in coldStart; see
+// hints.go's buildGooseHints doc comment for why, including why an earlier
+// version of this comment's claim that GOOSE_MOIM_MESSAGE_TEXT was the
+// right replacement turned out to be wrong). Goose's ACP session/new itself
+// has no system-message-suffix channel (unlike OpenHands SDK's
+// AgentContext), confirmed empirically in the spike — session/new's params
+// are only cwd and mcpServers — but that's not the same as Goose having no
+// system-prompt channel at all: .goosehints is a real one, delivered as a
+// file in the sandbox's cwd rather than an ACP protocol field.
+//
+// No skill content is folded in here, or anywhere else any more. An earlier
+// version of this function kept a fallback that inlined any skill Goose's
+// own file-based discovery couldn't take (malformed frontmatter) directly
+// into this message — skills.go's prepareFileSkills now synthesizes
+// frontmatter instead of ever needing that fallback, so every enabled
+// skill is discoverable via `load_skill`, never dumped as raw text. What's
+// left here is genuinely per-turn, request-scoped content only: project
+// context, trigger context, and the user's own message.
+func buildInitialMessage(trigger agent.Trigger) string {
 	var b strings.Builder
-
-	b.WriteString(cfg.SystemPrompt)
-
-	for _, s := range cfg.Skills {
-		if !s.IsEnabled {
-			continue
-		}
-		// Trigger-based (keyword-activated) skills have no Goose analog
-		// yet — see agent.Skill's doc comment — so every enabled skill is
-		// included unconditionally for now.
-		b.WriteString("\n\n## Skill: ")
-		b.WriteString(s.SkillName)
-		b.WriteString("\n")
-		b.WriteString(s.SkillContent)
-	}
 
 	if trigger.ProjectID == uuid.Nil {
 		b.WriteString(globalProjectContext)
@@ -127,5 +124,9 @@ func buildInitialMessage(cfg agent.Config, trigger agent.Trigger) string {
 	}
 	b.WriteString(message)
 
-	return b.String()
+	// TrimLeft, not the whole message: b's first Write is always one of the
+	// "\n\n## ..." section separators above (there's no longer a
+	// leading system prompt to separate from), which would otherwise leave
+	// the turn's actual text starting with a couple of blank lines.
+	return strings.TrimLeft(b.String(), "\n")
 }

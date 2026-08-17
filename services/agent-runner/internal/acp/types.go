@@ -14,9 +14,11 @@
 // directly. Revisit if the SDK grows a native HTTP transport.
 //
 // All wire shapes here were captured empirically against a live `goose
-// serve` (image ghcr.io/block/goose@sha256:d85a724...30, goose 1.30.0).
-// Fields not exercised in that spike are marked below; verify before
-// depending on them.
+// serve` (originally image ghcr.io/block/goose@sha256:d85a724...30, goose
+// 1.30.0; re-verified against ghcr.io/aaif-goose/goose@sha256:3c961bac...46,
+// goose 1.46.0 — see services/agent-server/Dockerfile's doc comment on the
+// block->aaif-goose rename). Fields not exercised in that spike are marked
+// below; verify before depending on them.
 package acp
 
 import (
@@ -91,12 +93,84 @@ type AuthMethod struct {
 
 // ─── session/new ────────────────────────────────────────────────────────────
 
-// NewSessionParams are the params for "session/new". See
-// MCPServerConfig's doc comment for the (now verified against the real ACP
-// schema, not guessed) shape of a non-empty MCPServers entry.
+// NewSessionParams are the params for "session/new". MCPServers is always
+// sent empty (present, not omitted — see the historical "missing required
+// field hangs session/new" gotcha on MCPServerConfig) — the real servers
+// travel in Meta.EnabledExtensions instead, alongside the "skills" platform
+// extension; see GooseExtension's doc comment for why both must go
+// together.
 type NewSessionParams struct {
 	Cwd        string            `json:"cwd"`
 	MCPServers []MCPServerConfig `json:"mcpServers"`
+	Meta       *NewSessionMeta   `json:"_meta,omitempty"`
+}
+
+// NewSessionMeta is session/new's `_meta` field.
+type NewSessionMeta struct {
+	EnabledExtensions []GooseExtension `json:"enabledExtensions"`
+}
+
+// GooseExtension is one entry of session/new's `_meta.enabledExtensions` —
+// goose's own mechanism for requesting a platform extension (like "skills")
+// alongside MCP servers in the same session. Necessary because goose's
+// session/new handler picks exactly one of "use _meta.enabledExtensions" or
+// "use the plain top-level mcpServers field" for a fresh session, never
+// both — confirmed directly against a real container (not guessed from
+// docs): a non-empty mcpServers field alone activates the requested MCP
+// servers but silently skips every config-driven default extension,
+// including "skills". Only the "platform" and "mcp" variants are modeled
+// here — this package never needs to request goose's third variant,
+// "builtin".
+type GooseExtension struct {
+	Type string `json:"type"` // "platform" | "mcp"
+
+	// Name is set for Type == "platform".
+	Name string `json:"name,omitempty"`
+
+	// Server/EnvKeys are set for Type == "mcp". For a stdio server,
+	// Server.Env must stay empty (a present, empty array — see
+	// UntaggedMcpServer's doc comment) — goose rejects any *inline* env
+	// value reaching it through this path ("extension env values must be
+	// passed via envKeys referencing stored secrets, not inline env").
+	// EnvKeys instead names environment variables the mcp server subprocess
+	// should inherit from its own container's OS environment — confirmed
+	// empirically that this resolves real values there, not only from
+	// goose's own (here, nonexistent) stored-secrets config. The caller
+	// (executor.go) is responsible for actually setting those names in the
+	// container's env (see coldStart) before this request goes out — an
+	// EnvKeys name with no matching container env var resolves to empty,
+	// not an error.
+	//
+	// A StreamableHttp server's Headers, by contrast, travel inline with
+	// real values with no equivalent restriction — confirmed against the
+	// same source: only the stdio variant's env is routed through
+	// secret_updates.
+	Server  *UntaggedMcpServer `json:"server,omitempty"`
+	EnvKeys []string           `json:"envKeys,omitempty"`
+}
+
+// UntaggedMcpServer is the MCP server shape used inside a GooseExtension's
+// "mcp" variant — deliberately a separate type from MCPServerConfig:
+// confirmed empirically (a probe container, not guessed) that this
+// specific field deserializes as an UNTAGGED enum, discriminated
+// structurally by which fields are present (Command for stdio, URL for
+// http) — unlike MCPServerConfig's internally-tagged Type field, which
+// this endpoint rejects outright ("data did not match any variant of
+// untagged enum McpServer") if present here at all. Args and Env must be
+// present (even empty, via the pointer trick — see MCPServerConfig's
+// identical doc comment) for a stdio entry to structurally match; omitting
+// either produced the same "no variant matched" error in the probe.
+// Goose's own SSE variant is unsupported ("SSE is unsupported, migrate to
+// streamable_http" — a hard session/new error, not a soft skip) and has no
+// representation here; callers must not construct one for an "sse"
+// transport MCPServerConfig.
+type UntaggedMcpServer struct {
+	Name    string         `json:"name"`
+	Command string         `json:"command,omitempty"`
+	Args    *[]string      `json:"args,omitempty"`
+	Env     *[]EnvVariable `json:"env,omitempty"`
+	URL     string         `json:"url,omitempty"`
+	Headers *[]HTTPHeader  `json:"headers,omitempty"`
 }
 
 // McpServerType is the "type" discriminator ACP's schema.json requires on

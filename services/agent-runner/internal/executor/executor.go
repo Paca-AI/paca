@@ -116,8 +116,14 @@ type Result struct {
 // reattach to resume.Handle/resume.Client/resume.SessionID instead of
 // starting a new container and ACP session, and send only trigger.Message
 // as the turn's prompt (the agent already has full context from earlier
-// turns) instead of the full system-prompt/skills/trigger-context message
-// buildInitialMessage assembles for a cold start.
+// turns) instead of the skills/trigger-context message buildInitialMessage
+// assembles for a cold start. The agent's own system prompt isn't part of
+// that either way any more (see hints.go's buildGooseHints) — it's written
+// to the container's filesystem once at cold start as a .goosehints file,
+// and Goose's own default system.md template re-renders it into every
+// turn's system-role message from there for as long as that file exists,
+// resumed turns included (same container, same filesystem), so there's
+// nothing for this branch to resend.
 //
 // onEvent is called for every session/update notification during the turn
 // — the caller is responsible for translating each into an
@@ -146,12 +152,14 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 		handle, client, sessionID = resume.Handle, resume.Client, resume.SessionID
 		message = trigger.Message
 	} else {
+		fileSkills := prepareFileSkills(cfg.Skills)
+
 		var err error
-		handle, client, sessionID, err = e.coldStart(ctx, turnCtx, cfg, trigger)
+		handle, client, sessionID, err = e.coldStart(ctx, turnCtx, cfg, trigger, fileSkills)
 		if err != nil {
 			return Result{Handle: handle}, err
 		}
-		message = buildInitialMessage(cfg, trigger)
+		message = buildInitialMessage(trigger)
 	}
 
 	maxToolCalls := cfg.MaxIterations
@@ -180,7 +188,7 @@ func (e *Executor) StopSandbox(ctx context.Context, h *sandbox.Handle) error {
 // continuity split "start" from "decide whether to keep alive or stop".
 // ctx bounds sandboxMgr.Start (unaffected by the turn timeout); turnCtx
 // bounds Initialize/NewSession, same as it bounds Prompt in Run.
-func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger) (*sandbox.Handle, *acp.Client, string, error) {
+func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger, fileSkills []agent.Skill) (*sandbox.Handle, *acp.Client, string, error) {
 	apiKey, err := e.encryptor.Decrypt(cfg.LLMAPIKeySecret)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("executor: decrypt llm api key: %w", err)
@@ -209,6 +217,24 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 		containerEnv[ev.Key] = val
 	}
 
+	// Built before Start, not inline in the NewSession call below, so its
+	// stdio servers' env (e.g. the built-in Paca MCP server's PACA_API_KEY)
+	// can also be folded into containerEnv here — session/new's
+	// _meta.enabledExtensions mechanism (see acp.GooseExtension's doc
+	// comment) only accepts a stdio mcp server's env as *names* referencing
+	// values already present in the container's own OS environment, not
+	// inline values, so those values have to land in containerEnv too, not
+	// only in the MCPServerConfig entries themselves.
+	mcpServers := e.buildMCPServers(trigger, cfg)
+	for _, s := range mcpServers {
+		if s.Type != acp.McpServerStdio || s.Env == nil {
+			continue
+		}
+		for _, ev := range *s.Env {
+			containerEnv[ev.Name] = ev.Value
+		}
+	}
+
 	gitName := cfg.GitCommitterName
 	if gitName == "" {
 		gitName = "paca-agent"
@@ -230,12 +256,42 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 		return nil, nil, "", fmt.Errorf("executor: start sandbox: %w", err)
 	}
 
+	// Written before Initialize/NewSession, not after — Goose's own skills
+	// platform extension discovers SKILL.md files from disk (see skills.go's
+	// package doc comment), so they must already be there before anything
+	// that might read them, not just before the first Prompt call.
+	skillsTar, err := buildSkillsTar(fileSkills)
+	if err != nil {
+		return handle, nil, "", fmt.Errorf("executor: build skills tar: %w", err)
+	}
+	if skillsTar != nil {
+		if err := e.sandboxMgr.CopyToContainer(ctx, handle.ContainerID, sandboxWorkdir, skillsTar); err != nil {
+			return handle, nil, "", fmt.Errorf("executor: write skills to sandbox: %w", err)
+		}
+	}
+
+	// Same "before Initialize" timing as the skills tar above, and for the
+	// same reason: goose's default system.md template renders .goosehints
+	// unconditionally into the real system-role message on every turn (see
+	// hints.go's buildGooseHints doc comment for how this was verified),
+	// so it has to exist before anything that might trigger a render.
+	hints := buildGooseHints(cfg, fileSkills)
+	hintsTar, err := buildHintsTar(hints)
+	if err != nil {
+		return handle, nil, "", fmt.Errorf("executor: build goosehints tar: %w", err)
+	}
+	if hintsTar != nil {
+		if err := e.sandboxMgr.CopyToContainer(ctx, handle.ContainerID, sandboxWorkdir, hintsTar); err != nil {
+			return handle, nil, "", fmt.Errorf("executor: write goosehints to sandbox: %w", err)
+		}
+	}
+
 	client := acp.NewClient(handle.BaseURL, handle.SecretKey, nil)
 	if err := client.Initialize(turnCtx); err != nil {
 		return handle, nil, "", fmt.Errorf("executor: acp initialize: %w", err)
 	}
 
-	sessionID, err := client.NewSession(turnCtx, sandboxWorkdir, e.buildMCPServers(trigger, cfg))
+	sessionID, err := client.NewSession(turnCtx, sandboxWorkdir, mcpServers)
 	if err != nil {
 		return handle, nil, "", fmt.Errorf("executor: acp session/new: %w", err)
 	}

@@ -316,7 +316,7 @@ services:
       # The Goose-based sandbox image.
       #
       # MUST be built from services/agent-server/Dockerfile, NOT the
-      # raw ghcr.io/block/goose image referenced directly — found live,
+      # raw ghcr.io/aaif-goose/goose image referenced directly — found live,
       # the hard way, while wiring this up: the raw upstream image has no
       # Node.js at all, so the built-in Paca MCP server (spawned via
       # `npx -y @paca-ai/paca-mcp` — see PACA_API_KEY above, which enables

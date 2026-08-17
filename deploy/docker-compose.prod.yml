@@ -312,7 +312,7 @@ services:
       DOCKER_SOCKET: /var/run/docker.sock
       # The Goose-based sandbox image — built from
       # services/agent-server/Dockerfile (adds Node.js + the Paca MCP
-      # package on top of upstream Goose), NOT the raw ghcr.io/block/goose
+      # package on top of upstream Goose), NOT the raw ghcr.io/aaif-goose/goose
       # image directly: the raw image has no Node.js, so the built-in Paca
       # MCP server can never start, and Goose hangs session/new forever
       # rather than surfacing that as an error.

@@ -5,25 +5,39 @@
 # sandbox image in this directory and the one every deployment surface
 # (dev/prod/e2e compose, CD) actually builds and publishes.
 #
-# Pinned by DIGEST, not a version tag — ghcr.io/block/goose has no current
-# tagged release image to pin to instead. Verified directly (see the
-# migration doc's "no current pinned Goose image tag" open risk): the
-# registry only publishes floating `main`/`main-<shortsha>` CI builds plus
-# one stale `1.9.0` release, despite GitHub releases going up to v1.45.0 at
-# the time this was written. A digest is fully immutable regardless of what
-# upstream does to `main` afterward, which solves the actual reproducibility
-# risk — but note it does NOT correspond to any particular git tag or
-# changelog entry the way the old OpenHands-based Dockerfile's pin did; it's
-# whatever commit `main` happened to be at when this digest was published upstream
-# (goose --version inside it reports 1.30.0). Building from source at a
-# pinned git tag would fix that gap but wasn't attempted here — see the
-# migration doc.
+# Pinned by DIGEST to the ghcr.io/aaif-goose/goose:1.46.0 release tag's own
+# manifest — this now DOES correspond to a real git tag/changelog entry
+# (github.com/aaif-goose/goose's v1.46.0 release, 2026-08-12), unlike the
+# previous pin. Two things changed since that previous pin was chosen, both
+# confirmed directly rather than assumed:
+#   - The GitHub org this was published under was renamed block -> aaif-goose
+#     sometime after the previous digest was published (same repo ID,
+#     confirmed via the GitHub API — `repos/block/goose` now redirects to
+#     `aaif-goose/goose`). ghcr.io does NOT rename container packages when a
+#     GitHub org renames, so ghcr.io/block/goose's `main`/`latest` tags are
+#     now permanently frozen at whatever they were just before the rename —
+#     any future rotation must pull from ghcr.io/aaif-goose/goose instead.
+#   - That renamed path publishes proper semver release tags now (confirmed:
+#     ghcr.io/aaif-goose/goose:1.46.0 exists and resolves to this digest),
+#     not just floating `main`/`main-<shortsha>` CI builds — so this pin
+#     could in principle track a tag instead of a bare digest, but stays
+#     digest-pinned for the same full-immutability reason as before (a tag
+#     can be force-moved upstream; a digest can't).
 #
-# When rotating this digest, run the full E2E suite
+# The previous pin (goose 1.30.0, built 2026-04-06) was replaced because it
+# predates Goose's own "skills" feature entirely — confirmed by grepping
+# that image's `goose` binary for the string `load_skill`: zero matches,
+# vs. 8 in this one. crates/goose/src/skills/mod.rs wasn't added upstream
+# until 2026-04-23, about 2.5 weeks after that old digest was built. Paca's
+# own bundled `paca` skill (services/api/internal/platform/bundledskills.go)
+# now routes specialized skills through Goose's `load_skill` tool, which
+# does not exist below this version.
+#
+# When rotating this digest again, run the full E2E suite
 # (services/agent-runner/test/e2e, PACA_E2E=1) against the new one before
 # changing it here — the ACP wire format and container behavior were only
 # ever verified against this specific digest.
-FROM ghcr.io/block/goose@sha256:d85a724ee487425f38ce015323adf2003591268ee515d9018ac89450ed7d3a5a
+FROM ghcr.io/aaif-goose/goose@sha256:3c961bac6e4dcdb61a35f9ded3fe9a81fba33107dd804c611ebac862f5d72b46
 
 # The base image has no Node.js at all (confirmed directly: `node`/`npm` are
 # both "not found") — needed because the Paca MCP server executor.go spawns

@@ -1,7 +1,9 @@
 // Package sandbox manages the lifecycle of one Docker container per active
 // conversation, each running `goose serve`. Go analog of
 // services/ai-agent/src/agent/docker_workspace.py, adapted for Goose:
-//   - runs `ghcr.io/block/goose` instead of the OpenHands agent-server image
+//   - runs the Goose image (services/agent-server/Dockerfile, built on
+//     ghcr.io/aaif-goose/goose — see that Dockerfile's doc comment) instead
+//     of the OpenHands agent-server image
 //   - no repo_tools injection (that mechanism is being replaced by exposing
 //     list_repositories/clone_repository as more Paca MCP server tools)
 //   - health-checks goose serve's /status endpoint instead of OpenHands'
@@ -342,6 +344,25 @@ func (m *Manager) Stop(ctx context.Context, h *Handle) error {
 	}
 	if err != nil {
 		return fmt.Errorf("sandbox: stop container %s: %w", h.ContainerID, err)
+	}
+	return nil
+}
+
+// CopyToContainer uploads tarContent (a tar archive stream) into containerID
+// at destPath — a thin, domain-agnostic wrapper around the Docker
+// archive-copy API (PUT /containers/{id}/archive). Used by the executor
+// package to place Goose skill files (SKILL.md, under destPath's
+// .agents/skills/<name>/ subdirectory) on the sandbox's real filesystem
+// before the ACP session starts, since Goose only discovers skills already
+// present on disk under its session's own working directory — there is no
+// ACP-level "load these skills" parameter, only cwd (see
+// executor.buildInitialMessage's doc comment on session/new's params).
+func (m *Manager) CopyToContainer(ctx context.Context, containerID, destPath string, tarContent io.Reader) error {
+	if _, err := m.docker.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
+		DestinationPath: destPath,
+		Content:         tarContent,
+	}); err != nil {
+		return fmt.Errorf("sandbox: copy to container %s: %w", containerID, err)
 	}
 	return nil
 }

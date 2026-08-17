@@ -6,36 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-// writeSSE writes one SSE `data:` frame and flushes it immediately — tests
-// that care about streaming behavior (notifications before the terminal
-// response, or a server that never sends one) depend on frames actually
-// reaching the client as they're written, not buffered until the handler
-// returns.
-func writeSSE(t *testing.T, w http.ResponseWriter, v any) {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("marshaling SSE frame: %v", err)
-	}
-	fmt.Fprintf(w, "data: %s\n\n", b)
-	w.(http.Flusher).Flush()
-}
-
-// requireHeaders checks the two headers every /acp call in this package
-// must send, mirroring what the spike found goose serve actually enforces.
-func requireHeaders(t *testing.T, r *http.Request, wantSecret string) {
-	t.Helper()
-	if got := r.Header.Get("X-Secret-Key"); got != wantSecret {
-		t.Errorf("X-Secret-Key = %q, want %q", got, wantSecret)
-	}
-	if got := r.Header.Get("Accept"); got != "application/json, text/event-stream" {
-		t.Errorf("Accept = %q, want both application/json and text/event-stream", got)
-	}
-}
+const testSecret = "spike-secret-test"
 
 func decodeBody(t *testing.T, r *http.Request) rpcRequest {
 	t.Helper()
@@ -46,53 +23,182 @@ func decodeBody(t *testing.T, r *http.Request) rpcRequest {
 	return req
 }
 
-const testSecret = "spike-secret-test"
+// acpMockServer is a minimal server-side mock of the new async ACP HTTP
+// transport every test in this file drives Client against: POST /acp
+// enqueues a frame (session/new's onto the connection stream, everything
+// else's onto its session stream) that GET /acp then delivers over SSE —
+// mirroring exactly the split Client itself expects (see client.go's
+// package doc comment on why: `initialize` alone gets a synchronous JSON
+// body, every other call gets a bare 202 and its real response arrives
+// asynchronously). Just enough to drive Client's real request/response
+// correlation logic, not a reimplementation of goose's own server.
+type acpMockServer struct {
+	t *testing.T
+
+	connID string
+
+	mu       sync.Mutex
+	connCh   chan string
+	sessions map[string]chan string
+
+	// onInitialize returns the synchronous response body for POST
+	// initialize (still not SSE-framed on this protocol) and its HTTP
+	// status.
+	onInitialize func(req rpcRequest) (body string, status int)
+	// onPost is called for every non-initialize POST — implementations
+	// enqueue whatever frame(s) that call should eventually produce via
+	// enqueueConn/enqueueSession. hdrSessionID is the request's
+	// Acp-Session-Id header, if any.
+	onPost func(s *acpMockServer, req rpcRequest, hdrSessionID string)
+}
+
+func newACPMockServer(t *testing.T) *acpMockServer {
+	return &acpMockServer{
+		t:        t,
+		connID:   "conn-1",
+		connCh:   make(chan string, 512),
+		sessions: make(map[string]chan string),
+	}
+}
+
+func (s *acpMockServer) sessionChan(sessionID string) chan string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ch, ok := s.sessions[sessionID]
+	if !ok {
+		ch = make(chan string, 512)
+		s.sessions[sessionID] = ch
+	}
+	return ch
+}
+
+func (s *acpMockServer) enqueueConn(raw string) { s.connCh <- raw }
+func (s *acpMockServer) enqueueSession(sessionID, raw string) {
+	s.sessionChan(sessionID) <- raw
+}
+
+func (s *acpMockServer) handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			s.handlePost(w, r)
+		case http.MethodGet:
+			s.handleGet(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func (s *acpMockServer) handlePost(w http.ResponseWriter, r *http.Request) {
+	if got := r.Header.Get("X-Secret-Key"); got != testSecret {
+		s.t.Errorf("POST X-Secret-Key = %q, want %q", got, testSecret)
+	}
+	req := decodeBody(s.t, r)
+	if req.Method == "initialize" {
+		if got := r.Header.Get("Acp-Connection-Id"); got != "" {
+			s.t.Errorf("initialize must not send Acp-Connection-Id — it's the response that establishes one")
+		}
+		body, status := s.onInitialize(req)
+		w.Header().Set("Acp-Connection-Id", s.connID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+		return
+	}
+	if got := r.Header.Get("Acp-Connection-Id"); got != s.connID {
+		s.t.Errorf("POST %s Acp-Connection-Id = %q, want %q", req.Method, got, s.connID)
+	}
+	if s.onPost != nil {
+		s.onPost(s, req, r.Header.Get("Acp-Session-Id"))
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *acpMockServer) handleGet(w http.ResponseWriter, r *http.Request) {
+	if got := r.Header.Get("Acp-Connection-Id"); got != s.connID {
+		s.t.Errorf("GET Acp-Connection-Id = %q, want %q", got, s.connID)
+	}
+	sessionID := r.Header.Get("Acp-Session-Id")
+	var ch chan string
+	if sessionID != "" {
+		ch = s.sessionChan(sessionID)
+	} else {
+		ch = s.connCh
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		s.t.Fatal("httptest ResponseWriter does not implement http.Flusher")
+	}
+	flusher.Flush()
+	for {
+		select {
+		case msg := <-ch:
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// standardSessionNew replies to session/new with sessionID immediately —
+// shared by every Prompt test, all of which need a real session
+// established first: Prompt requires NewSession to have already opened
+// this session's own SSE stream (see client.go's package doc comment).
+func standardSessionNew(sessionID string) func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+	return func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		if req.Method != "session/new" {
+			return
+		}
+		s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"sessionId":%q}}`, req.ID, sessionID))
+	}
+}
+
+func initializeOK(req rpcRequest) (string, int) {
+	return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{}}`, req.ID), http.StatusOK
+}
 
 func TestInitialize(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requireHeaders(t, r, testSecret)
-		req := decodeBody(t, r)
+	srv := newACPMockServer(t)
+	srv.onInitialize = func(req rpcRequest) (string, int) {
 		if req.Method != "initialize" {
 			t.Fatalf("method = %q, want initialize", req.Method)
 		}
-		if r.Header.Get("Acp-Session-Id") != "" {
-			t.Errorf("initialize must not send Acp-Session-Id — it's the response that establishes one")
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Acp-Session-Id", "803b1ade-8b25-416d-98a5-ba7cabcca107")
-		// Captured verbatim from the spike.
-		writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true},"mcpCapabilities":{"http":true,"sse":false},"sessionCapabilities":{"list":{},"close":{}},"auth":{}},"authMethods":[{"id":"goose-provider","name":"Configure Provider","description":"Run `+"`"+`goose configure`+"`"+` to set up your AI provider and API key"}]},"id":1}`))
-	}))
-	defer srv.Close()
+		// Captured verbatim from the spike, re-verified against goose 1.46.0.
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true},"mcpCapabilities":{"http":true,"sse":false},"sessionCapabilities":{"list":{},"close":{}},"auth":{}},"authMethods":[{"id":"goose-provider","name":"Configure Provider","description":"Run `+"`"+`goose configure`+"`"+` to set up your AI provider and API key"}]}}`, req.ID), http.StatusOK
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	if c.transportSessionID != "803b1ade-8b25-416d-98a5-ba7cabcca107" {
-		t.Errorf("transportSessionID = %q, want the Acp-Session-Id from the response header", c.transportSessionID)
+	if c.connectionID != "conn-1" {
+		t.Errorf("connectionID = %q, want the Acp-Connection-Id from the response header", c.connectionID)
 	}
 }
 
 func TestNewSession_MissingProvider(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"protocolVersion":1},"id":1}`))
-		case "session/new":
-			if got := r.Header.Get("Acp-Session-Id"); got != "conn-1" {
-				t.Errorf("session/new Acp-Session-Id = %q, want the value from initialize's response", got)
-			}
-			// Captured verbatim: session/new against a container with no
-			// GOOSE_PROVIDER configured.
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","error":{"code":-32603,"message":"Internal error","data":"Failed to set provider: Could not configure agent: missing provider"},"id":2}`))
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		if req.Method != "session/new" {
+			return
 		}
-	}))
-	defer srv.Close()
+		// Captured verbatim: session/new against a container with no
+		// GOOSE_PROVIDER configured.
+		s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"error":{"code":-32603,"message":"Internal error","data":"Failed to set provider: Could not configure agent: missing provider"}}`, req.ID))
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
@@ -103,26 +209,35 @@ func TestNewSession_MissingProvider(t *testing.T) {
 }
 
 func TestNewSession_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"protocolVersion":1},"id":1}`))
-		case "session/new":
-			var params NewSessionParams
-			raw, _ := json.Marshal(req.Params)
-			_ = json.Unmarshal(raw, &params)
-			if params.Cwd != "/home/goose" {
-				t.Errorf("session/new cwd = %q, want /home/goose", params.Cwd)
-			}
-			// Captured verbatim (trimmed of the unused configOptions block).
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"sessionId":"20260810_1","modes":{"currentModeId":"auto"},"models":{"currentModelId":"fake-model"}},"id":2}`))
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		if req.Method != "session/new" {
+			return
 		}
-	}))
-	defer srv.Close()
+		var params NewSessionParams
+		raw, _ := json.Marshal(req.Params)
+		_ = json.Unmarshal(raw, &params)
+		if params.Cwd != "/home/goose" {
+			t.Errorf("session/new cwd = %q, want /home/goose", params.Cwd)
+		}
+		if len(params.MCPServers) != 0 {
+			t.Errorf("session/new mcpServers = %+v, want empty — real servers travel in _meta.enabledExtensions", params.MCPServers)
+		}
+		if params.Meta == nil || len(params.Meta.EnabledExtensions) != 1 {
+			t.Fatalf("session/new _meta.enabledExtensions = %+v, want exactly one entry for a call with no mcp servers", params.Meta)
+		}
+		if got := params.Meta.EnabledExtensions[0]; got.Type != "platform" || got.Name != "skills" {
+			t.Errorf("session/new _meta.enabledExtensions[0] = %+v, want {platform skills}", got)
+		}
+		// Captured verbatim (trimmed of the unused configOptions block).
+		s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"sessionId":"20260810_1","modes":{"currentModeId":"auto"},"models":{"currentModelId":"fake-model"}}}`, req.ID))
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
@@ -135,28 +250,97 @@ func TestNewSession_Success(t *testing.T) {
 	}
 }
 
-func TestPrompt_AgentMessageChunk(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{},"id":1}`))
-		case "session/prompt":
-			// Captured verbatim.
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260810_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Spike confirmed: ACP session/prompt round-trip through goose serve works."}}}}`))
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"stopReason":"end_turn"},"id":2}`))
+// TestNewSession_StdioServerEnvNeverTravelsInline is the regression guard
+// for the actual security-relevant property this conversion depends on:
+// a stdio MCPServerConfig's env VALUES (e.g. a real PACA_API_KEY) must
+// never appear in the request body at all, only the variable NAMES via
+// envKeys — goose itself enforces this server-side (rejects any inline env
+// value reaching it through _meta.enabledExtensions), but this asserts the
+// client never even attempts to send one, and that the "paca" server's
+// secret survives the round trip as a name, not a value, callers can
+// inspect on the wire.
+func TestNewSession_StdioServerEnvNeverTravelsInline(t *testing.T) {
+	const secretValue = "sk-super-secret-do-not-leak"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	var capturedBody string
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		if req.Method != "session/new" {
+			return
 		}
-	}))
-	defer srv.Close()
+		raw, _ := json.Marshal(req)
+		capturedBody = string(raw)
 
-	c := NewClient(srv.URL, testSecret, nil)
+		var params NewSessionParams
+		paramsRaw, _ := json.Marshal(req.Params)
+		_ = json.Unmarshal(paramsRaw, &params)
+		if params.Meta == nil || len(params.Meta.EnabledExtensions) != 2 {
+			t.Fatalf("enabledExtensions = %+v, want [skills, paca]", params.Meta)
+		}
+		mcpExt := params.Meta.EnabledExtensions[1]
+		if mcpExt.Type != "mcp" || mcpExt.Server == nil || mcpExt.Server.Name != "paca" {
+			t.Fatalf("second extension = %+v, want the paca mcp server", mcpExt)
+		}
+		if mcpExt.Server.Env == nil || len(*mcpExt.Server.Env) != 0 {
+			t.Errorf("Server.Env = %v, want a present-but-empty array", mcpExt.Server.Env)
+		}
+		if len(mcpExt.EnvKeys) != 1 || mcpExt.EnvKeys[0] != "PACA_API_KEY" {
+			t.Errorf("EnvKeys = %v, want [PACA_API_KEY]", mcpExt.EnvKeys)
+		}
+		s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"sessionId":"s1"}}`, req.ID))
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
+	env := []EnvVariable{{Name: "PACA_API_KEY", Value: secretValue}}
+	pacaServer := MCPServerConfig{
+		Type:    McpServerStdio,
+		Name:    "paca",
+		Command: "/usr/bin/paca",
+		Args:    &[]string{},
+		Env:     &env,
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", []MCPServerConfig{pacaServer}); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if strings.Contains(capturedBody, secretValue) {
+		t.Errorf("session/new request body contained the raw secret value:\n%s", capturedBody)
+	}
+}
+
+func TestPrompt_AgentMessageChunk(t *testing.T) {
+	const sessionID = "20260810_1"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		if req.Method != "session/prompt" {
+			return
+		}
+		// Captured verbatim.
+		s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260810_1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Spike confirmed: ACP session/prompt round-trip through goose serve works."}}}}`)
+		s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn"}}`, req.ID))
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 
 	var events []Event
-	stopReason, err := c.Prompt(context.Background(), "20260810_1", []ContentBlock{TextBlock("hi")}, 0, func(e Event) {
+	stopReason, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("hi")}, 0, func(e Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -178,28 +362,34 @@ func TestPrompt_AgentMessageChunk(t *testing.T) {
 }
 
 func TestPrompt_ToolCallSequence(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{},"id":1}`))
-		case "session/prompt":
-			// Captured verbatim, post-cwd-fix (real "completed" shell run).
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260810_1","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`))
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260810_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_fake_1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"hello-from-goose-acp-spike"}}]}}}`))
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{"stopReason":"end_turn"},"id":2}`))
+	const sessionID = "20260810_1"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		if req.Method != "session/prompt" {
+			return
 		}
-	}))
-	defer srv.Close()
+		// Captured verbatim, post-cwd-fix (real "completed" shell run).
+		s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260810_1","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`)
+		s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260810_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_fake_1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"hello-from-goose-acp-spike"}}]}}}`)
+		s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn"}}`, req.ID))
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 
 	var events []Event
-	stopReason, err := c.Prompt(context.Background(), "20260810_1", []ContentBlock{TextBlock("run echo")}, 5, func(e Event) {
+	stopReason, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("run echo")}, 5, func(e Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -228,33 +418,39 @@ func TestPrompt_ToolCallSequence(t *testing.T) {
 // with no server-side cap) and asserts the client's own limit actually cuts
 // the turn off instead of reading forever.
 func TestPrompt_MaxToolCallsExceeded(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{},"id":1}`))
-		case "session/prompt":
-			// Never sends a terminal response — same shape as the spike's
-			// non-converging loop. The client must give up on its own.
-			for i := 0; i < 50; i++ {
-				writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`))
-				writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_fake_1","status":"completed","content":[]}}}`))
-			}
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		if req.Method != "session/prompt" {
+			return
 		}
-	}))
-	defer srv.Close()
+		// Never sends a terminal response — same shape as the spike's
+		// non-converging loop. The client must give up on its own.
+		for range 50 {
+			s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`)
+			s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_fake_1","status":"completed","content":[]}}}`)
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	toolCalls := 0
-	_, err := c.Prompt(ctx, "s", []ContentBlock{TextBlock("loop forever")}, 3, func(e Event) {
+	_, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("loop forever")}, 3, func(e Event) {
 		if e.Kind == UpdateToolCall {
 			toolCalls++
 		}
@@ -272,49 +468,40 @@ func TestPrompt_MaxToolCallsExceeded(t *testing.T) {
 
 // TestPrompt_RespectsContextDeadlineOnAHungServer is the mechanism
 // executor.go's turn-level timeout actually relies on (see its
-// defaultTimeoutMinutes doc comment): a server that accepts the connection
-// and then never writes a single byte back reproduces, in miniature, the
-// real bug found while building the sandbox image — a wrong mcpServers
-// wire format made a real goose serve's session/new hang forever rather
-// than return an ACP error. Confirms Prompt actually returns once the
-// caller's context expires, instead of blocking for however long the
-// server chooses never to respond.
+// defaultTimeoutMinutes doc comment): a server that never sends a terminal
+// response on the session stream reproduces, in miniature, the real bug
+// found while building the sandbox image — a wrong mcpServers wire format
+// made a real goose serve's session/new hang forever rather than return an
+// ACP error. Confirms Prompt actually returns once the caller's context
+// expires, instead of blocking for however long the server chooses never to
+// respond.
 func TestPrompt_RespectsContextDeadlineOnAHungServer(t *testing.T) {
-	initialized := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{},"id":1}`))
-			close(initialized)
-		case "session/prompt":
-			// Accepts the connection, sends response headers (so the
-			// client's Do() call returns and it starts reading the body),
-			// then never writes another byte — the server-side shape of
-			// the real hang, independent of whatever upstream cause
-			// produced it that day.
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(http.StatusOK)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-			<-r.Context().Done() // hang until the client gives up
-		}
-	}))
-	defer srv.Close()
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	srv.onPost = standardSessionNew(sessionID)
+	// No "session/prompt" case at all: the session's SSE stream (already
+	// opened by NewSession, before this Prompt call even starts) accepts
+	// the connection and then never delivers anything — the server-side
+	// shape of the real hang, independent of whatever upstream cause
+	// produced it that day.
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	<-initialized
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	_, err := c.Prompt(ctx, "s", []ContentBlock{TextBlock("hello")}, 0, nil)
+	_, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, nil)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -329,36 +516,42 @@ func TestPrompt_RespectsContextDeadlineOnAHungServer(t *testing.T) {
 // bug found running this against a real goose serve driving a
 // non-converging tool-call loop: the server writes a burst of frames
 // rapidly, several land in the client's read buffer before it's even
-// consumed the first one, and — if ctx is only checked when sse.Next()
-// itself returns a read error, not on every loop iteration — cancelling
-// mid-backlog had no effect until every already-buffered frame was
-// processed first. Against the real server, with onEvent's two blocking
-// Redis calls per event, that turned a "stop" button press into a ~30s
-// delay. This confirms Prompt actually bails out between frames instead.
+// consumed the first one, and — if ctx is only checked when the frame
+// source itself signals an error, not on every loop iteration —
+// cancelling mid-backlog had no effect until every already-buffered frame
+// was processed first. Against the real server, with onEvent's two
+// blocking Redis calls per event, that turned a "stop" button press into a
+// ~30s delay. This confirms Prompt actually bails out between frames
+// instead.
 func TestPrompt_CancelledMidBacklogReturnsPromptly(t *testing.T) {
+	const sessionID = "s"
 	const backlogSize = 300
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req := decodeBody(t, r)
-		switch req.Method {
-		case "initialize":
-			w.Header().Set("Acp-Session-Id", "conn-1")
-			writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","result":{},"id":1}`))
-		case "session/prompt":
-			// Written and flushed as fast as the loopback connection
-			// allows — by the time a slow-consuming client reads its
-			// first frame, most or all of this is already sitting in the
-			// client's read buffer, not pending on the network.
-			for range backlogSize {
-				writeSSE(t, w, json.RawMessage(`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`))
-			}
-			<-r.Context().Done()
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		if req.Method != "session/prompt" {
+			return
 		}
-	}))
-	defer srv.Close()
+		// Enqueued as fast as this handler can push them — by the time a
+		// slow-consuming client reads its first frame, most or all of this
+		// is already sitting in the client's own channel buffer, not
+		// pending on the network. No terminal response ever follows.
+		for range backlogSize {
+			s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call_fake_1","title":"Developer: Shell"}}}`)
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
 
-	c := NewClient(srv.URL, testSecret, nil)
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
 	if err := c.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -367,10 +560,10 @@ func TestPrompt_CancelledMidBacklogReturnsPromptly(t *testing.T) {
 		cancel()
 	}()
 
-	// A slow onEvent, standing in for onEvent's two blocking Redis calls
-	// in the real handler.Handler — see the doc comment above.
+	// A slow onEvent, standing in for onEvent's two blocking Redis calls in
+	// the real handler.Handler — see the doc comment above.
 	start := time.Now()
-	_, err := c.Prompt(ctx, "s", []ContentBlock{TextBlock("hello")}, 0, func(Event) {
+	_, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, func(Event) {
 		time.Sleep(20 * time.Millisecond)
 	})
 	elapsed := time.Since(start)
