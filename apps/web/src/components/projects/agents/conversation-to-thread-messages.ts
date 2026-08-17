@@ -322,6 +322,15 @@ export function eventsToThreadMessages(
 		// user-visible content.
 		if (t === "turn_end") continue;
 
+		// turn_usage carries only token/cost accounting (see
+		// services/agent-runner/internal/handler/handler.go) — surfaced via
+		// AgentConversation.total_tokens/cost_usd (the header's usage pill,
+		// see conversation-view.tsx), never as a transcript bubble. Currently
+		// falls through harmlessly to the fallback case below anyway (its
+		// payload has no content/thought/message key), but skipped
+		// explicitly rather than relying on that.
+		if (t === "turn_usage") continue;
+
 		if (t === "MessageEvent") {
 			const llmMsg = p.llm_message as { content?: unknown } | undefined;
 			const text =

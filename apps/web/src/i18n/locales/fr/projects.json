@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "Rédaction de description",
 		"triggerTask": "Tâche",
 		"triggerAutomation": "Automatisation",
-		"iterations_one": "{{count}} itération",
-		"iterations_other": "{{count}} itérations",
+		"usageTitle": "{{tokens}} jetons · {{cost}}",
 		"prOpened": "PR ouverte",
 		"filters": {
 			"title": "Filtres",

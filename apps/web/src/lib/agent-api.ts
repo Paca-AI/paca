@@ -185,6 +185,10 @@ export interface AgentConversation {
 	actor_user_id?: string | null;
 	status: ConversationStatus;
 	iteration_count: number;
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+	cost_usd?: number | null;
 	error_message?: string | null;
 	branch_name?: string | null;
 	pr_url?: string | null;

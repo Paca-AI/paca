@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "説明の作成",
 		"triggerTask": "タスク",
 		"triggerAutomation": "自動化",
-		"iterations_one": "{{count}}回の反復",
-		"iterations_other": "{{count}}回の反復",
+		"usageTitle": "{{tokens}}トークン · {{cost}}",
 		"prOpened": "PRを作成しました",
 		"filters": {
 			"title": "フィルター",

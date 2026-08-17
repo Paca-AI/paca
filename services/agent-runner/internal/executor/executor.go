@@ -92,9 +92,12 @@ func New(sandboxMgr *sandbox.Manager, encryptor *secret.Encryptor, opts Options,
 // whether to tear the sandbox down.
 type Result struct {
 	StopReason string
-	Handle     *sandbox.Handle
-	Client     *acp.Client
-	SessionID  string
+	// Usage is this turn's token accounting, when goose reported one — see
+	// acp.Usage's doc comment. Nil on any error return from client.Prompt.
+	Usage     *acp.Usage
+	Handle    *sandbox.Handle
+	Client    *acp.Client
+	SessionID string
 }
 
 // Run drives one ACP turn — a cold-started sandbox by default, or an
@@ -167,8 +170,8 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 		maxToolCalls = defaultMaxToolCalls
 	}
 
-	stopReason, err := client.Prompt(turnCtx, sessionID, []acp.ContentBlock{acp.TextBlock(message)}, maxToolCalls, e.attachDiffs(turnCtx, handle, onEvent))
-	result := Result{StopReason: stopReason, Handle: handle, Client: client, SessionID: sessionID}
+	stopReason, usage, err := client.Prompt(turnCtx, sessionID, []acp.ContentBlock{acp.TextBlock(message)}, maxToolCalls, e.attachDiffs(turnCtx, handle, onEvent))
+	result := Result{StopReason: stopReason, Usage: usage, Handle: handle, Client: client, SessionID: sessionID}
 	if err != nil {
 		return result, fmt.Errorf("executor: acp session/prompt: %w", err)
 	}

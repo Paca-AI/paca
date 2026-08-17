@@ -292,7 +292,10 @@ func mcpServerToGooseExtension(s MCPServerConfig) (ext GooseExtension, ok bool) 
 }
 
 // Prompt sends one turn's message and streams session/update notifications
-// to onEvent as they arrive. Returns the turn's stopReason on success.
+// to onEvent as they arrive. Returns the turn's stopReason and, when goose
+// reported one, this turn's token usage (see Usage's doc comment — nil on
+// any error return, and possibly nil even on success per promptResult.Usage's
+// doc comment).
 //
 // maxToolCalls bounds the number of tool_call notifications this turn may
 // receive before Prompt cancels the request and returns ErrMaxToolCalls —
@@ -314,17 +317,17 @@ func (c *Client) Prompt(
 	prompt []ContentBlock,
 	maxToolCalls int,
 	onEvent func(Event),
-) (stopReason string, err error) {
+) (stopReason string, usage *Usage, err error) {
 	if c.connectionID == "" {
-		return "", errors.New("acp: Prompt called before Initialize")
+		return "", nil, errors.New("acp: Prompt called before Initialize")
 	}
 	if c.sessionStream == nil {
-		return "", errors.New("acp: Prompt called before NewSession")
+		return "", nil, errors.New("acp: Prompt called before NewSession")
 	}
 
 	id := c.nextID.Add(1)
 	if err := c.post(ctx, id, "session/prompt", promptParams{SessionID: sessionID, Prompt: prompt}, sessionID); err != nil {
-		return "", fmt.Errorf("acp: session/prompt: %w", err)
+		return "", nil, fmt.Errorf("acp: session/prompt: %w", err)
 	}
 
 	toolCalls := 0
@@ -340,25 +343,25 @@ func (c *Client) Prompt(
 		// publishes could drain them) turned a "stop" press into a ~30s
 		// delay.
 		if ctx.Err() != nil {
-			return "", ctx.Err()
+			return "", nil, ctx.Err()
 		}
 
 		select {
 		case frame, ok := <-stream.Frames:
 			if !ok {
-				return "", fmt.Errorf("session stream ended before a terminal response for id=%d: %w", id, stream.Err())
+				return "", nil, fmt.Errorf("session stream ended before a terminal response for id=%d: %w", id, stream.Err())
 			}
 
 			switch {
 			case frame.isNotification() && frame.Method == "session/update":
 				var note sessionUpdateNotification
 				if err := json.Unmarshal(frame.Params, &note); err != nil {
-					return "", fmt.Errorf("decoding session/update: %w", err)
+					return "", nil, fmt.Errorf("decoding session/update: %w", err)
 				}
 				if note.Update.Kind == UpdateToolCall {
 					toolCalls++
 					if maxToolCalls > 0 && toolCalls > maxToolCalls {
-						return "", ErrMaxToolCalls
+						return "", nil, ErrMaxToolCalls
 					}
 				}
 				if onEvent != nil {
@@ -367,13 +370,13 @@ func (c *Client) Prompt(
 
 			case frame.isResponse() && frame.ID != nil && *frame.ID == id:
 				if frame.Error != nil {
-					return "", fmt.Errorf("%w", frame.Error)
+					return "", nil, fmt.Errorf("%w", frame.Error)
 				}
 				var result promptResult
 				if err := json.Unmarshal(frame.Result, &result); err != nil {
-					return "", fmt.Errorf("decoding result: %w", err)
+					return "", nil, fmt.Errorf("decoding result: %w", err)
 				}
-				return result.StopReason, nil
+				return result.StopReason, result.Usage, nil
 
 			default:
 				// A response to some other (e.g. an earlier, since-abandoned)
@@ -384,7 +387,7 @@ func (c *Client) Prompt(
 			}
 
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", nil, ctx.Err()
 		}
 	}
 }
