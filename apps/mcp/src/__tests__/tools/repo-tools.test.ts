@@ -1,4 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// clone_repository calls node:fs/promises' rm(targetDir, {recursive:true,
+// force:true}) directly (no injection seam like gitExec has). Mocked here
+// so a test — especially the protected-directory regression tests below,
+// which deliberately exercise targetDir values like "/etc" and "/home"
+// that really exist on whatever machine runs this suite — can never touch
+// the real filesystem, regardless of whether the guard being tested is
+// actually correct.
+const rmMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("node:fs/promises", () => ({
+	rm: (...args: unknown[]) => rmMock(...args),
+}));
+
+beforeEach(() => {
+	rmMock.mockClear();
+});
+
 import {
 	getRepoTools,
 	handleRepoTool,
@@ -269,6 +286,66 @@ describe("handleRepoTool – clone_repository", () => {
 		);
 		expect(result.content[0].text).not.toContain("ghs_secret");
 		expect(result.content[0].text).toContain("git clone failed");
+	});
+
+	// Regression tests: clone_repository force-deletes targetDir before
+	// cloning into it (`rm(targetDir, { recursive: true, force: true })`),
+	// and targetDir was previously taken as-is from agent-supplied input
+	// with no validation — a task/prompt that got the agent to pass a
+	// catastrophic targetDir (e.g. "/", "/home") could wipe it out with no
+	// confirmation. None of these should ever reach gitExec or the delete.
+	it.each([
+		["/", "/"],
+		["/home", "/home"],
+		["/home/goose", "/home/goose"],
+		["/home/goose/", "/home/goose"],
+		["/etc", "/etc"],
+		["/etc/", "/etc"],
+		["/tmp", "/tmp"],
+		["/../../etc", "/etc"],
+		["/home/goose/../../etc", "/etc"],
+		["/home/goose/../", "/home"],
+	])("refuses to clone into the protected system directory %s", async (targetDir, _resolved) => {
+		const client = makeClient({
+			getRepositoryCloneInfo: vi.fn().mockResolvedValue(cloneInfo),
+		});
+		const gitExec = vi.fn();
+		const result = await handleRepoTool(
+			"clone_repository",
+			{ projectId: "p1", pluginId: "com.paca.github", repoId: "r1", targetDir },
+			client,
+			[],
+			gitExec,
+		);
+		expect(rmMock).not.toHaveBeenCalled();
+		expect(gitExec).not.toHaveBeenCalled();
+		expect(result.content[0].text).toContain("Failed to clone repository");
+		expect(result.content[0].text).toMatch(/protected system directory/i);
+	});
+
+	it("still allows cloning into a subdirectory of a protected top-level directory", async () => {
+		const client = makeClient({
+			getRepositoryCloneInfo: vi.fn().mockResolvedValue(cloneInfo),
+		});
+		const gitExec = vi
+			.fn()
+			.mockResolvedValueOnce({ stdout: "", stderr: "" })
+			.mockResolvedValueOnce({ stdout: "main\n", stderr: "" });
+
+		const result = await handleRepoTool(
+			"clone_repository",
+			{
+				projectId: "p1",
+				pluginId: "com.paca.github",
+				repoId: "r1",
+				targetDir: "/home/goose/repo",
+			},
+			client,
+			[],
+			gitExec,
+		);
+		expect(gitExec).toHaveBeenCalled();
+		expect(result.content[0].text).toContain("cloned successfully");
 	});
 
 	it("throws a ZodError when repoId is missing", async () => {

@@ -1,5 +1,6 @@
 import { execFile as execFileCb } from "node:child_process";
 import { rm } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import { promisify } from "node:util";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -60,6 +61,61 @@ function authenticatedCloneURL(cloneURL: string, token: string): string {
 		? `${parsed.hostname}:${parsed.port}`
 		: parsed.hostname;
 	return `https://x-access-token:${encodeURIComponent(token)}@${host}${parsed.pathname}`;
+}
+
+/**
+ * The small set of top-level directories a container image actually needs
+ * intact to keep running — `clone_repository` must never recursively
+ * delete any of these, however it got there (an agent-chosen targetDir, a
+ * confused task instruction, or plain prompt injection from cloned repo
+ * content). Deliberately not a fixed-prefix jail: targetDir is documented
+ * as any absolute path (see CloneRepositorySchema), so a specific
+ * subdirectory of any of these — e.g. /home/goose/repo, the actual
+ * default — is still allowed; only the bare top-level directory itself is
+ * refused. Ported forward as a new safety check, not a regression fix:
+ * the Python this replaces (repo_tools.py) ran the equivalent `rm -rf`
+ * with no such guard either.
+ *
+ * /home/goose is listed explicitly alongside /home itself: it's the
+ * container user's actual home directory (DEFAULT_REPO_DIR's own parent),
+ * so it's at least as likely a target for an accidental or confused
+ * targetDir as any of the OS-level directories below it, even though the
+ * OS itself would keep running without it.
+ */
+const FORBIDDEN_DELETE_TARGETS = new Set([
+	"/",
+	"/bin",
+	"/boot",
+	"/dev",
+	"/etc",
+	"/home",
+	"/home/goose",
+	"/lib",
+	"/lib64",
+	"/opt",
+	"/proc",
+	"/root",
+	"/run",
+	"/sbin",
+	"/srv",
+	"/sys",
+	"/tmp",
+	"/usr",
+	"/var",
+]);
+
+/**
+ * Throws if targetDir resolves (after normalizing `..`/`.` segments) to one
+ * of FORBIDDEN_DELETE_TARGETS — called before every recursive delete this
+ * file performs on an agent-supplied path.
+ */
+function assertSafeDeleteTarget(targetDir: string): void {
+	const resolved = resolvePath("/", targetDir);
+	if (FORBIDDEN_DELETE_TARGETS.has(resolved)) {
+		throw new Error(
+			`refusing to delete ${resolved} — it's a protected system directory, not a valid clone target`,
+		);
+	}
 }
 
 function errorMessage(error: unknown): string {
@@ -312,6 +368,8 @@ export async function handleRepoTool(
 			const targetDir: string = args.targetDir || DEFAULT_REPO_DIR;
 
 			try {
+				assertSafeDeleteTarget(targetDir);
+
 				const info = await client.getRepositoryCloneInfo(
 					pluginId,
 					projectId,

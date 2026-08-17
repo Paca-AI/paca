@@ -223,6 +223,129 @@ func TestRegister_ASecondRegistrationEvictsTheFirstConnection(t *testing.T) {
 	}
 }
 
+// TestRegister_SecondRegistrationCancelsAndClosesThePreviousEntry is a
+// regression test: a same-process reconnect (a second Register for the same
+// agent_id) must cancel the old entry's context so its
+// forwardDispatchedMessages/watchForEviction goroutines actually exit and
+// release their Redis Pub/Sub subscriptions — not just evict the old
+// WebSocket connection while leaving those goroutines running forever
+// against an orphaned connection. Unlike
+// TestRegister_ASecondRegistrationEvictsTheFirstConnection, this doesn't
+// need the eviction-broadcast settle time: the cancel-and-close happens
+// synchronously inside the second Register call, before it returns.
+func TestRegister_SecondRegistrationCancelsAndClosesThePreviousEntry(t *testing.T) {
+	r, _ := newTestRegistry(t)
+	ctx := context.Background()
+	agentID := uuid.New()
+	first := newFakeConn()
+
+	if _, err := r.Register(ctx, agentID, nil, first); err != nil {
+		t.Fatalf("Register (first): %v", err)
+	}
+
+	r.mu.Lock()
+	firstEntry := r.connections[agentID]
+	r.mu.Unlock()
+	if firstEntry == nil {
+		t.Fatal("no entry recorded in the registry after the first Register")
+	}
+
+	second := newFakeConn()
+	if _, err := r.Register(ctx, agentID, nil, second); err != nil {
+		t.Fatalf("Register (second): %v", err)
+	}
+
+	select {
+	case <-firstEntry.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the first entry's forwarder/eviction-watcher goroutines never exited after a second Register — leaked")
+	}
+
+	if !first.wasClosed(t, 2*time.Second) {
+		t.Error("the first connection was never closed by the second Register")
+	}
+}
+
+// blockingCloseConn is a Conn whose Close blocks until the test signals
+// proceed — used below to hold a Register call inside its
+// evict-the-previous-entry step indefinitely, so a concurrent Register for
+// a *different* agent_id can be observed either blocking behind it (bug) or
+// completing promptly (fixed).
+type blockingCloseConn struct {
+	*fakeConn
+	proceed chan struct{}
+}
+
+func newBlockingCloseConn() *blockingCloseConn {
+	return &blockingCloseConn{fakeConn: newFakeConn(), proceed: make(chan struct{})}
+}
+
+func (b *blockingCloseConn) Close(code int, reason string) error {
+	<-b.proceed
+	return b.fakeConn.Close(code, reason)
+}
+
+// TestRegister_DifferentAgentsDoNotBlockOnEachOthersEviction is a regression
+// test for the review finding that registerLocks (formerly a single
+// process-wide registerMu) must be keyed per agent_id: Register now waits
+// on a superseded connection's own goroutines actually exiting (see
+// TestRegister_SecondRegistrationCancelsAndClosesThePreviousEntry above),
+// which isn't bounded the way the original presence-check-and-map-write
+// critical section was — a single global lock would let one agent's slow
+// reconnect stall every other agent's Register on this replica for that
+// entire wait.
+func TestRegister_DifferentAgentsDoNotBlockOnEachOthersEviction(t *testing.T) {
+	r, _ := newTestRegistry(t)
+	ctx := context.Background()
+	agentA := uuid.New()
+	agentB := uuid.New()
+
+	stuck := newBlockingCloseConn()
+	if _, err := r.Register(ctx, agentA, nil, stuck); err != nil {
+		t.Fatalf("Register (agentA, first): %v", err)
+	}
+
+	// A second Register for agentA evicts `stuck`, which blocks inside
+	// Close until the test releases it — simulating a slow-to-close
+	// connection or slow-to-exit forwarder goroutine.
+	agentAUnblocked := make(chan struct{})
+	go func() {
+		defer close(agentAUnblocked)
+		if _, err := r.Register(ctx, agentA, nil, newFakeConn()); err != nil {
+			t.Errorf("Register (agentA, second): %v", err)
+		}
+	}()
+
+	// Give the goroutine above a moment to actually reach the blocked
+	// Close call before racing agentB's Register against it.
+	select {
+	case <-agentAUnblocked:
+		t.Fatal("agentA's second Register returned before its blockingCloseConn was released — Close was never actually reached")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	agentBDone := make(chan struct{})
+	go func() {
+		defer close(agentBDone)
+		if _, err := r.Register(ctx, agentB, nil, newFakeConn()); err != nil {
+			t.Errorf("Register (agentB): %v", err)
+		}
+	}()
+
+	select {
+	case <-agentBDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Register for agentB blocked behind agentA's still-evicting Register — registerLocks is not actually per-agent")
+	}
+
+	close(stuck.proceed)
+	select {
+	case <-agentAUnblocked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("agentA's second Register never completed after its blockingCloseConn was released")
+	}
+}
+
 func TestDispatch_ReturnsFalseWithoutPublishingWhenOffline(t *testing.T) {
 	r, client := newTestRegistry(t)
 	ctx := context.Background()

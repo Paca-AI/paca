@@ -41,11 +41,15 @@ type MCPServer struct {
 	IsEnabled  bool
 }
 
-// Skill mirrors agentdom.AgentSkill. Trigger-based (keyword-activated)
-// skills have no direct Goose equivalent yet, so for now every enabled
-// skill's content is folded into the initial prompt unconditionally,
-// regardless of Triggers, rather than silently dropped. Revisit once the
-// slash-command prototype lands.
+// Skill mirrors agentdom.AgentSkill. executor.splitSkills decides per-skill
+// whether it's written to the sandbox as a real SKILL.md for Goose's own
+// skill discovery/`load_skill` tool, or (the `paca` root skill, plus any
+// skill whose content isn't already a well-formed SKILL.md) folded directly
+// into the initial prompt — see executor/skills.go's package doc comment.
+// Trigger-based (keyword-activated) skills have no direct Goose equivalent
+// — Triggers is unused for now, since Goose's own discovery already
+// provides on-demand loading gated on the model's own judgment of
+// relevance, which supersedes what Triggers was meant to eventually do.
 type Skill struct {
 	SkillName    string
 	SkillContent string

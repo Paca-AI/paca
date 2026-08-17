@@ -35,16 +35,63 @@ var ErrMaxToolCalls = errors.New("acp: exceeded max tool calls for this turn")
 // model already in place for OpenHands (see docker_workspace.py), so
 // there's exactly one caller driving one Client for the container's
 // lifetime.
+//
+// Since goose switched its ACP HTTP transport to the official
+// agent-client-protocol-http crate (see types.go's doc comment on the
+// goose version this was re-verified against), a POST no longer carries its
+// own response inline: `initialize` alone still gets a synchronous JSON
+// body, but every other call gets back a bare `202 Accepted` and its actual
+// response (and, for session/prompt, every session/update notification
+// along the way) arrives asynchronously over a *separate*, long-lived SSE
+// stream opened via `GET /acp` — one connection-scoped stream (no
+// Acp-Session-Id header) established right after Initialize, and one
+// session-scoped stream (with Acp-Session-Id) established once NewSession's
+// result is observed to carry a sessionId. Frames are correlated back to
+// the request that's waiting for them by JSON-RPC id. Verified directly
+// against both a real running container and the exact pinned commit of
+// github.com/agentclientprotocol/rust-sdk goose depends on (its own
+// client.rs and http_server.rs) — not guessed from the "202" status code
+// alone.
+//
+// Both streams are read by a background goroutine each (started in
+// Initialize and NewSession respectively) that outlives any single turn —
+// necessary because a chat conversation reattaches to the same Client
+// across multiple turns (see chatsandbox.State) without calling Initialize
+// or NewSession again. Close tears them down; callers must call it once
+// this Client is done for good (see internal/handler's tearDownSandbox and
+// TeardownPausedChatSandbox).
 type Client struct {
 	baseURL    string
 	secretKey  string
 	httpClient *http.Client
 
-	// transportSessionID is the Acp-Session-Id returned by initialize's
-	// response header — required on every following request. Distinct from
-	// the ACP-level sessionId returned by session/new; see the migration
-	// doc's "two distinct session concepts" note.
-	transportSessionID string
+	// connectionID is the Acp-Connection-Id returned by initialize's
+	// response header — required on every following request and on the
+	// connection-scoped SSE stream. Distinct from the ACP-level sessionId
+	// returned by session/new; see the migration doc's "two distinct
+	// session concepts" note.
+	connectionID string
+	// sessionID/sessionStream are set once, by NewSession — this Client
+	// only ever drives exactly one ACP session for its container's whole
+	// lifetime (including across resumed chat turns), never session/fork or
+	// multiple concurrent sessions, so a single field each is enough; no
+	// need for the map-of-sessions generality the reference client needs.
+	sessionID     string
+	sessionStream *frameStream
+
+	// connStream is the connection-scoped SSE stream established by
+	// Initialize — carries session/new's response (and, in principle, any
+	// other connection-scoped traffic, though this Client never sends any).
+	connStream *frameStream
+
+	// streamCtx/cancelStreams bound both background streams' lifetime —
+	// deliberately independent of any single turn's context (which ends
+	// when that turn's Prompt call returns), since the streams must survive
+	// across every turn of a chat conversation reattaching to this same
+	// Client. Close cancels it, ending both streams' underlying GET
+	// requests.
+	streamCtx     context.Context
+	cancelStreams context.CancelFunc
 
 	nextID atomic.Int64
 }
@@ -56,27 +103,85 @@ func NewClient(baseURL, secretKey string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{baseURL: baseURL, secretKey: secretKey, httpClient: httpClient}
+	streamCtx, cancel := context.WithCancel(context.Background())
+	return &Client{
+		baseURL:       baseURL,
+		secretKey:     secretKey,
+		httpClient:    httpClient,
+		streamCtx:     streamCtx,
+		cancelStreams: cancel,
+	}
 }
 
-// Initialize performs the ACP handshake and captures the transport session
-// id. Must be called exactly once, before NewSession.
+// Close ends this client's background SSE streams. Safe to call on a nil
+// *Client (no-op, so callers don't need a separate nil check at every
+// teardown call site) and safe to call more than once.
+func (c *Client) Close() {
+	if c == nil {
+		return
+	}
+	c.cancelStreams()
+}
+
+// Initialize performs the ACP handshake and captures the connection id.
+// Must be called exactly once, before NewSession. Unlike every other call
+// in this package, initialize's response arrives synchronously in this
+// POST's own body (still plain JSON, not SSE-framed) — see the package doc
+// comment on Client for why every other call differs.
 func (c *Client) Initialize(ctx context.Context) error {
-	frame, headers, err := c.call(ctx, "initialize", initializeParams{
-		ProtocolVersion:    1,
-		ClientCapabilities: map[string]any{},
+	id := c.nextID.Add(1)
+	body, err := json.Marshal(rpcRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  "initialize",
+		Params:  initializeParams{ProtocolVersion: 1, ClientCapabilities: map[string]any{}},
 	})
 	if err != nil {
-		return fmt.Errorf("acp: initialize: %w", err)
+		return fmt.Errorf("acp: initialize: encoding request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/acp", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("acp: initialize: building request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// application/json only, not "application/json, text/event-stream" —
+	// initialize's response is never SSE-framed regardless of what's
+	// accepted here, and every other call in this package sends the same
+	// application/json-only Accept (see post's doc comment).
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Secret-Key", c.secretKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("acp: initialize: sending request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	connectionID := resp.Header.Get("Acp-Connection-Id")
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("acp: initialize: unexpected status %d: %s", resp.StatusCode, msg)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("acp: initialize: reading response: %w", err)
+	}
+	var frame rpcFrame
+	if err := json.Unmarshal(respBody, &frame); err != nil {
+		return fmt.Errorf("acp: initialize: decoding response: %w", err)
 	}
 	if frame.Error != nil {
 		return fmt.Errorf("acp: initialize: %w", frame.Error)
 	}
-	sessID := headers.Get("Acp-Session-Id")
-	if sessID == "" {
-		return errors.New("acp: initialize response missing Acp-Session-Id header")
+	if connectionID == "" {
+		return errors.New("acp: initialize response missing Acp-Connection-Id header")
 	}
-	c.transportSessionID = sessID
+
+	c.connectionID = connectionID
+	c.connStream = c.startStream(c.streamCtx, "")
 	return nil
 }
 
@@ -86,13 +191,20 @@ func (c *Client) Initialize(ctx context.Context) error {
 // on the stock goose image (uid 1000, user "goose"); see the migration
 // doc's session/new gotcha.
 func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPServerConfig) (string, error) {
-	if c.transportSessionID == "" {
+	if c.connectionID == "" {
 		return "", errors.New("acp: NewSession called before Initialize")
 	}
-	if mcpServers == nil {
-		mcpServers = []MCPServerConfig{}
+	id := c.nextID.Add(1)
+	params := NewSessionParams{
+		Cwd:        cwd,
+		MCPServers: []MCPServerConfig{},
+		Meta:       &NewSessionMeta{EnabledExtensions: buildEnabledExtensions(mcpServers)},
 	}
-	frame, _, err := c.call(ctx, "session/new", NewSessionParams{Cwd: cwd, MCPServers: mcpServers})
+	if err := c.post(ctx, id, "session/new", params, ""); err != nil {
+		return "", fmt.Errorf("acp: session/new: %w", err)
+	}
+
+	frame, err := c.awaitResponse(ctx, id, c.connStream)
 	if err != nil {
 		return "", fmt.Errorf("acp: session/new: %w", err)
 	}
@@ -106,7 +218,77 @@ func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPSer
 	if result.SessionID == "" {
 		return "", errors.New("acp: session/new: empty sessionId in result")
 	}
+
+	// session/prompt's response and every session/update notification for
+	// this session arrive on this session's own stream, never the
+	// connection-scoped one — must be established before the first Prompt
+	// call, so do it now rather than lazily.
+	c.sessionID = result.SessionID
+	c.sessionStream = c.startStream(c.streamCtx, result.SessionID)
 	return result.SessionID, nil
+}
+
+// buildEnabledExtensions turns mcpServers into session/new's
+// _meta.enabledExtensions, always prepending the "skills" platform
+// extension — see GooseExtension's doc comment for why both must travel
+// together here instead of mcpServers going through the plain top-level
+// field.
+func buildEnabledExtensions(mcpServers []MCPServerConfig) []GooseExtension {
+	extensions := make([]GooseExtension, 0, len(mcpServers)+1)
+	extensions = append(extensions, GooseExtension{Type: "platform", Name: "skills"})
+	for _, s := range mcpServers {
+		if ext, ok := mcpServerToGooseExtension(s); ok {
+			extensions = append(extensions, ext)
+		}
+	}
+	return extensions
+}
+
+// mcpServerToGooseExtension converts one MCPServerConfig into the "mcp"
+// variant of GooseExtension. ok is false for a transport this variant has
+// no representation for (see UntaggedMcpServer's doc comment on "sse") —
+// the server is dropped rather than sent malformed, matching
+// executor.buildMCPServers's own tolerance for skipping an unsupported
+// transport ("oauth") rather than erroring.
+func mcpServerToGooseExtension(s MCPServerConfig) (ext GooseExtension, ok bool) {
+	switch s.Type {
+	case McpServerStdio:
+		args := []string{}
+		if s.Args != nil {
+			args = *s.Args
+		}
+		envKeys := make([]string, 0)
+		if s.Env != nil {
+			for _, ev := range *s.Env {
+				envKeys = append(envKeys, ev.Name)
+			}
+		}
+		return GooseExtension{
+			Type: "mcp",
+			Server: &UntaggedMcpServer{
+				Name:    s.Name,
+				Command: s.Command,
+				Args:    &args,
+				Env:     &[]EnvVariable{},
+			},
+			EnvKeys: envKeys,
+		}, true
+
+	case McpServerHTTP:
+		// Headers travel inline with real values, unlike stdio's env — see
+		// GooseExtension's doc comment.
+		return GooseExtension{
+			Type: "mcp",
+			Server: &UntaggedMcpServer{
+				Name:    s.Name,
+				URL:     s.URL,
+				Headers: s.Headers,
+			},
+		}, true
+
+	default:
+		return GooseExtension{}, false
+	}
 }
 
 // Prompt sends one turn's message and streams session/update notifications
@@ -117,9 +299,15 @@ func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPSer
 // see ErrMaxToolCalls's doc comment for why this exists at all. Pass 0 for
 // no limit (not recommended against a real, paid LLM).
 //
-// ctx cancellation (e.g. from a user-initiated "stop") aborts the in-flight
-// HTTP request; callers should treat ctx.Err() coming back through the
-// returned error as a clean stop, not a failure.
+// ctx cancellation (e.g. from a user-initiated "stop") stops Prompt from
+// waiting any further; callers should treat ctx.Err() coming back through
+// the returned error as a clean stop, not a failure. Note this only ends
+// *this call's* wait — the underlying session/prompt request already sent
+// to goose isn't itself cancelled (this transport has no session/cancel
+// call), so a late response or trailing notifications for this same
+// request may still arrive on the session stream and are silently ignored
+// by the next Prompt call's own wait (see awaitResponse's tolerance for
+// non-matching frames).
 func (c *Client) Prompt(
 	ctx context.Context,
 	sessionID string,
@@ -127,61 +315,45 @@ func (c *Client) Prompt(
 	maxToolCalls int,
 	onEvent func(Event),
 ) (stopReason string, err error) {
-	if c.transportSessionID == "" {
+	if c.connectionID == "" {
 		return "", errors.New("acp: Prompt called before Initialize")
+	}
+	if c.sessionStream == nil {
+		return "", errors.New("acp: Prompt called before NewSession")
 	}
 
 	id := c.nextID.Add(1)
-	body, err := json.Marshal(rpcRequest{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  "session/prompt",
-		Params:  promptParams{SessionID: sessionID, Prompt: prompt},
-	})
-	if err != nil {
-		return "", fmt.Errorf("acp: session/prompt: encoding request: %w", err)
-	}
-
-	resp, err := c.post(ctx, body)
-	if err != nil {
+	if err := c.post(ctx, id, "session/prompt", promptParams{SessionID: sessionID, Prompt: prompt}, sessionID); err != nil {
 		return "", fmt.Errorf("acp: session/prompt: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 
 	toolCalls := 0
-	sse := newSSEReader(resp.Body)
+	stream := c.sessionStream
 	for {
-		// Checked at the top of every iteration, not only when sse.Next()
-		// itself returns an error — found live, against a real goose serve
-		// producing a rapid-fire non-converging tool-call loop (the exact
-		// scenario ErrMaxToolCalls exists for): a bufio.Reader can have
-		// several already-received frames sitting in its buffer, and
-		// sse.Next() keeps returning them successfully (no read error)
-		// purely from that buffer, with no new network read and therefore
-		// no chance for a cancelled ctx to surface as a read error. Without
-		// this check, a caller cancelling ctx (e.g. a stop/pause control
-		// message — see handler.Handler.HandleControl) only actually
-		// interrupted the loop once the buffer ran dry and a real network
-		// read finally failed — observed as a ~30s delay between sending
-		// an interrupt and Prompt actually returning, against a server
-		// producing frames faster than onEvent's own (blocking) publish
-		// calls could drain them.
+		// Checked at the top of every iteration, not only when a channel
+		// receive itself fails — mirrors the previous single-stream
+		// client's identical guard (see its history): a channel receive
+		// racing against an already-cancelled ctx isn't guaranteed to pick
+		// the ctx.Done() case first if a frame is also immediately
+		// available, which previously (against a real non-converging
+		// server producing frames faster than onEvent's own blocking Redis
+		// publishes could drain them) turned a "stop" press into a ~30s
+		// delay.
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
 
-		data, readErr := sse.Next()
-		if len(data) > 0 {
-			var frame rpcFrame
-			if err := json.Unmarshal(data, &frame); err != nil {
-				return "", fmt.Errorf("acp: session/prompt: decoding frame: %w", err)
+		select {
+		case frame, ok := <-stream.Frames:
+			if !ok {
+				return "", fmt.Errorf("session stream ended before a terminal response for id=%d: %w", id, stream.Err())
 			}
 
 			switch {
 			case frame.isNotification() && frame.Method == "session/update":
 				var note sessionUpdateNotification
 				if err := json.Unmarshal(frame.Params, &note); err != nil {
-					return "", fmt.Errorf("acp: session/prompt: decoding session/update: %w", err)
+					return "", fmt.Errorf("decoding session/update: %w", err)
 				}
 				if note.Update.Kind == UpdateToolCall {
 					toolCalls++
@@ -193,106 +365,174 @@ func (c *Client) Prompt(
 					onEvent(Event{Kind: note.Update.Kind, Raw: note.Update.raw})
 				}
 
-			case frame.isResponse() && *frame.ID == id:
+			case frame.isResponse() && frame.ID != nil && *frame.ID == id:
 				if frame.Error != nil {
-					return "", fmt.Errorf("acp: session/prompt: %w", frame.Error)
+					return "", fmt.Errorf("%w", frame.Error)
 				}
 				var result promptResult
 				if err := json.Unmarshal(frame.Result, &result); err != nil {
-					return "", fmt.Errorf("acp: session/prompt: decoding result: %w", err)
+					return "", fmt.Errorf("decoding result: %w", err)
 				}
 				return result.StopReason, nil
 
 			default:
-				// Any other notification/response shape (e.g. a future
-				// permission-request method) is intentionally ignored
-				// rather than treated as fatal — session/new's default
-				// "auto" currentModeId (confirmed in the spike) means
-				// Prompt doesn't expect to need to answer one, but a
-				// protocol addition here shouldn't take the whole turn
-				// down.
+				// A response to some other (e.g. an earlier, since-abandoned)
+				// request id, or any other unrecognized shape — not expected
+				// given this Client drives exactly one request at a time per
+				// session, but not fatal either; keep waiting for the
+				// response that matters.
 			}
-		}
 
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
-				return "", fmt.Errorf("acp: session/prompt: stream closed before a terminal response for id=%d", id)
-			}
-			if ctx.Err() != nil {
-				return "", ctx.Err()
-			}
-			return "", fmt.Errorf("acp: session/prompt: reading stream: %w", readErr)
+		case <-ctx.Done():
+			return "", ctx.Err()
 		}
 	}
 }
 
-// call performs a single request/response round trip (used for initialize
-// and session/new, neither of which produced intermediate notifications in
-// the spike) and returns the terminal frame plus the raw response headers
-// (initialize needs Acp-Session-Id off of these; session/new doesn't).
-func (c *Client) call(ctx context.Context, method string, params any) (rpcFrame, http.Header, error) {
-	id := c.nextID.Add(1)
+// post sends one JSON-RPC request over POST and confirms goose accepted it
+// — the actual response arrives asynchronously on the relevant stream
+// (connection-scoped for session/new, session-scoped for everything else),
+// never in this call's own HTTP response body. Accept is application/json
+// only (not text/event-stream) since a POST's own response is now always a
+// bare status with no body worth negotiating a format for.
+func (c *Client) post(ctx context.Context, id int64, method string, params any, sessionID string) error {
 	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
 	if err != nil {
-		return rpcFrame{}, nil, fmt.Errorf("encoding request: %w", err)
+		return fmt.Errorf("encoding request: %w", err)
 	}
-
-	resp, err := c.post(ctx, body)
-	if err != nil {
-		return rpcFrame{}, nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	sse := newSSEReader(resp.Body)
-	for {
-		// See Prompt's identical check for why this has to be at the top
-		// of the loop, not only inside the readErr branch below.
-		if ctx.Err() != nil {
-			return rpcFrame{}, nil, ctx.Err()
-		}
-
-		data, readErr := sse.Next()
-		if len(data) > 0 {
-			var frame rpcFrame
-			if err := json.Unmarshal(data, &frame); err != nil {
-				return rpcFrame{}, nil, fmt.Errorf("decoding frame: %w", err)
-			}
-			if frame.isResponse() && *frame.ID == id {
-				return frame, resp.Header, nil
-			}
-			// A notification arriving before the terminal response to a
-			// single-shot call isn't expected per the spike, but isn't
-			// fatal either — keep reading for the response that matters.
-		}
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
-				return rpcFrame{}, nil, fmt.Errorf("stream closed before a response for id=%d", id)
-			}
-			return rpcFrame{}, nil, fmt.Errorf("reading stream: %w", readErr)
-		}
-	}
-}
-
-func (c *Client) post(ctx context.Context, body []byte) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/acp", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("building request: %w", err)
+		return fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-Secret-Key", c.secretKey)
-	if c.transportSessionID != "" {
-		req.Header.Set("Acp-Session-Id", c.transportSessionID)
+	req.Header.Set("Acp-Connection-Id", c.connectionID)
+	if sessionID != "" {
+		req.Header.Set("Acp-Session-Id", sessionID)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("sending request: %w", err)
+		return fmt.Errorf("sending request: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusAccepted && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, msg)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, msg)
 	}
-	return resp, nil
+	return nil
+}
+
+// awaitResponse blocks until the frame matching id arrives on stream —
+// used only by NewSession, which (unlike Prompt) neither expects nor needs
+// to forward any notifications while waiting.
+func (c *Client) awaitResponse(ctx context.Context, id int64, stream *frameStream) (rpcFrame, error) {
+	for {
+		if ctx.Err() != nil {
+			return rpcFrame{}, ctx.Err()
+		}
+		select {
+		case frame, ok := <-stream.Frames:
+			if !ok {
+				return rpcFrame{}, fmt.Errorf("connection stream ended before a response for id=%d: %w", id, stream.Err())
+			}
+			if frame.isResponse() && frame.ID != nil && *frame.ID == id {
+				return frame, nil
+			}
+			// Not expected on a fresh connection stream with exactly one
+			// pending request, but tolerated rather than treated as fatal —
+			// same rationale as Prompt's identical default case.
+		case <-ctx.Done():
+			return rpcFrame{}, ctx.Err()
+		}
+	}
+}
+
+// frameStream reads SSE-framed JSON-RPC messages off a long-lived `GET
+// /acp` request in the background, forwarding each decoded frame on
+// Frames. Frames is closed once the stream ends for any reason (server
+// close, network error, or ctx cancellation) — Err returns why, and is
+// only meaningful once Frames has been drained and found closed.
+type frameStream struct {
+	Frames chan rpcFrame
+
+	done chan struct{}
+	err  error
+}
+
+// Err returns the reason this stream ended. Only valid to call after
+// Frames has been observed closed (reading it any earlier is a data race
+// with the goroutine that still owns it).
+func (s *frameStream) Err() error {
+	<-s.done
+	return s.err
+}
+
+// startStream opens the connection-scoped (sessionID == "") or
+// session-scoped SSE stream and reads it in the background until ctx is
+// done or the stream itself ends. goose's ACP HTTP transport allows
+// exactly one active subscriber per logical stream — a second concurrent
+// GET for the same scope gets 409 Conflict — so callers must not call this
+// twice for the same connection/session.
+func (c *Client) startStream(ctx context.Context, sessionID string) *frameStream {
+	s := &frameStream{Frames: make(chan rpcFrame), done: make(chan struct{})}
+	go func() {
+		defer close(s.done)
+		defer close(s.Frames)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/acp", nil)
+		if err != nil {
+			s.err = fmt.Errorf("acp: stream: building request: %w", err)
+			return
+		}
+		req.Header.Set("Accept", "text/event-stream")
+		req.Header.Set("X-Secret-Key", c.secretKey)
+		req.Header.Set("Acp-Connection-Id", c.connectionID)
+		if sessionID != "" {
+			req.Header.Set("Acp-Session-Id", sessionID)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			s.err = fmt.Errorf("acp: stream: sending request: %w", err)
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			s.err = fmt.Errorf("acp: stream: unexpected status %d: %s", resp.StatusCode, msg)
+			return
+		}
+
+		sse := newSSEReader(resp.Body)
+		for {
+			data, readErr := sse.Next()
+			if len(data) > 0 {
+				var frame rpcFrame
+				if jsonErr := json.Unmarshal(data, &frame); jsonErr != nil {
+					s.err = fmt.Errorf("acp: stream: decoding frame: %w", jsonErr)
+					return
+				}
+				select {
+				case s.Frames <- frame:
+				case <-ctx.Done():
+					s.err = ctx.Err()
+					return
+				}
+			}
+			if readErr != nil {
+				switch {
+				case errors.Is(readErr, io.EOF):
+					s.err = errors.New("acp: stream: closed by server")
+				case ctx.Err() != nil:
+					s.err = ctx.Err()
+				default:
+					s.err = fmt.Errorf("acp: stream: reading stream: %w", readErr)
+				}
+				return
+			}
+		}
+	}()
+	return s
 }

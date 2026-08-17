@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/Paca-AI/agent-runner/internal/convlock"
 	"github.com/Paca-AI/agent-runner/internal/messaging"
 )
 
@@ -90,17 +91,28 @@ type Registry struct {
 	mu          sync.Mutex
 	connections map[uuid.UUID]*connEntry
 
-	// registerMu serializes Register's check-then-act sequence (presence
-	// check through the map writes) — without this, two Register calls
+	// registerLocks serializes Register's check-then-act sequence (presence
+	// check through the map writes, and evicting/waiting on any prior local
+	// connection for the same agent_id) — without this, two Register calls
 	// racing for the same agent_id (e.g. a reconnect overlapping the still-
-	// live old connection) can both observe "not already online", both
-	// write connections, and the loser's goroutines are then silently
-	// overwritten rather than cancelled, leaking a forwarder spinning
-	// forever against a now-orphaned connection. A single process-wide lock
-	// (not per-agent) is fine — Register is only called at WebSocket
-	// connect time, so the critical section is rare and fast. Mirrors
-	// acp_bridge.py's _register_lock exactly.
-	registerMu sync.Mutex
+	// live old connection) can both observe "not already online" and both
+	// decide not to broadcastEviction, so a genuinely-superseded old
+	// connection on this or another replica is never told to close. (The
+	// map swap itself is separately made leak-safe below by cancelling and
+	// waiting on any previously-registered local entry, regardless of this
+	// lock.)
+	//
+	// Keyed per agent_id, not a single process-wide lock: Register now waits
+	// on the evicted entry's forwarder/eviction-watcher goroutines actually
+	// exiting (see the <-prev.done wait below), which — unlike the plain
+	// presence-check-and-map-write this lock originally covered — isn't
+	// bounded by anything this process controls (it depends on when those
+	// goroutines notice ctx cancellation). A single global lock would let
+	// one agent's slow reconnect stall every other agent's Register on this
+	// replica for that whole wait; per-agent locking confines the wait to
+	// the agent actually reconnecting. Mirrors acp_bridge.py's
+	// _register_lock, generalized from a single lock to one per agent_id.
+	registerLocks *convlock.Locks
 }
 
 // Logger is the small logging surface Registry needs — satisfied by
@@ -116,10 +128,11 @@ type Logger interface {
 // New builds a Registry ready to accept WebSocket connections.
 func New(redisClient *redis.Client, publisher *messaging.Publisher, log Logger) *Registry {
 	return &Registry{
-		redis:       redisClient,
-		publisher:   publisher,
-		log:         log,
-		connections: make(map[uuid.UUID]*connEntry),
+		redis:         redisClient,
+		publisher:     publisher,
+		log:           log,
+		connections:   make(map[uuid.UUID]*connEntry),
+		registerLocks: convlock.New(),
 	}
 }
 
@@ -140,8 +153,8 @@ func controlChannel(agentID uuid.UUID) string  { return controlPrefix + agentID.
 // replica — or the other service — too), it is evicted. Only one bridge
 // session per agent is allowed at a time.
 func (r *Registry) Register(ctx context.Context, agentID uuid.UUID, projectID *uuid.UUID, conn Conn) (string, error) {
-	r.registerMu.Lock()
-	defer r.registerMu.Unlock()
+	unlock := r.registerLocks.Lock(agentID)
+	defer unlock()
 
 	n, err := r.redis.Exists(ctx, presenceKey(agentID)).Result()
 	if err != nil {
@@ -158,8 +171,40 @@ func (r *Registry) Register(ctx context.Context, agentID uuid.UUID, projectID *u
 	entry := &connEntry{conn: conn, sessionID: sessionID, cancel: cancel, done: make(chan struct{})}
 
 	r.mu.Lock()
+	prev, hadPrev := r.connections[agentID]
 	r.connections[agentID] = entry
 	r.mu.Unlock()
+
+	if hadPrev {
+		// A same-process reconnect for this agent_id (or a Register that
+		// still found an entry despite registerLocks serializing the
+		// check-then-act sequence above — e.g. the old connection's own
+		// disconnect hasn't reached Unregister yet). Without this, the
+		// evicted entry's forwardDispatchedMessages/watchForEviction
+		// goroutines and their Redis Pub/Sub subscription would run
+		// forever: the old connection's own disconnect-driven Unregister
+		// call carries its own (now stale) sessionID, which Unregister's
+		// sessionID check correctly treats as a no-op against this newer
+		// entry, so cancel() would otherwise never be called for it at
+		// all.
+		//
+		// Closing prev.conn directly (rather than relying solely on
+		// broadcastEviction's round trip through Redis, which
+		// watchForEviction below would otherwise need to receive before it
+		// calls Close) means this local eviction doesn't depend on Pub/Sub
+		// delivery at all, and — importantly — cancelling ctx alone does
+		// NOT close the connection: watchForEviction only calls conn.Close
+		// when it *receives* an eviction message, not merely when its ctx
+		// is cancelled (see forwarders.go's subscribeLoop). Order mirrors
+		// Unregister's own cancel-then-wait sequence, plus the explicit
+		// close watchForEviction would otherwise have been responsible for.
+		prev.cancel()
+		if err := prev.conn.Close(evictionCloseCode, "evicted"); err != nil {
+			r.log.Warn("acpbridge: failed to close a superseded local connection",
+				"agent_id", agentID, "error", err)
+		}
+		<-prev.done
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)

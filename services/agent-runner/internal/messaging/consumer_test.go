@@ -123,6 +123,80 @@ func TestConsumer_RoutesControlAndTriggerMessagesSeparately(t *testing.T) {
 	}
 }
 
+// TestConsumer_SerializesTriggersForTheSameConversation is a regression test
+// for the event_index/in-flight-registry race: two triggers for the same
+// conversation_id, published back to back (e.g. a user sending two chat
+// messages in quick succession), must never have their handler calls
+// overlap in time — see processTrigger's convLocks.Lock comment for why.
+func TestConsumer_SerializesTriggersForTheSameConversation(t *testing.T) {
+	client, cleanup := newTestRedisClient(t)
+	defer cleanup()
+
+	var mu sync.Mutex
+	inHandler := 0
+	maxConcurrent := 0
+	handled := make(chan struct{}, 2)
+
+	consumer := NewConsumer(client, 5,
+		func(_ context.Context, _ agent.Trigger) error {
+			mu.Lock()
+			inHandler++
+			if inHandler > maxConcurrent {
+				maxConcurrent = inHandler
+			}
+			mu.Unlock()
+
+			// Give a concurrent second call a real chance to interleave if
+			// the lock weren't actually serializing — without this sleep, a
+			// buggy implementation could still pass by sheer luck.
+			time.Sleep(50 * time.Millisecond)
+
+			mu.Lock()
+			inHandler--
+			mu.Unlock()
+			handled <- struct{}{}
+			return nil
+		},
+		func(_ context.Context, _ Control) error { return nil },
+		testLogger(),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
+	waitForGroup(t, client, StreamAgentTriggers, consumerGroup)
+
+	agentID := uuid.New()
+	convID := uuid.New()
+	projectID := uuid.New()
+
+	for range 2 {
+		if err := client.XAdd(ctx, &redis.XAddArgs{
+			Stream: StreamAgentTriggers,
+			Values: map[string]any{
+				"type":            "agent.chat_message",
+				"trigger_type":    "chat_message",
+				"conversation_id": convID.String(),
+				"agent_id":        agentID.String(),
+				"project_id":      projectID.String(),
+				"message":         "hi",
+			},
+		}).Err(); err != nil {
+			t.Fatalf("XAdd trigger: %v", err)
+		}
+	}
+
+	waitOrFail(t, handled, "first handler call")
+	waitOrFail(t, handled, "second handler call")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if maxConcurrent > 1 {
+		t.Errorf("handler ran concurrently for the same conversation_id (max concurrent = %d), want serialized", maxConcurrent)
+	}
+}
+
 func waitForGroup(t *testing.T, client *redis.Client, stream, group string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

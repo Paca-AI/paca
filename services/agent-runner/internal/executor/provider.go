@@ -8,6 +8,21 @@ import "strings"
 // larger LiteLLM-backed catalog than this; extend this table as real agents
 // hit an unmapped provider rather than trying to enumerate every provider
 // up front.
+//
+// "cohere" is kept here even though Goose cannot actually run it (verified
+// directly against block/goose: no dedicated Rust provider, no declarative
+// JSON definition under crates/goose-providers/src/declarative/definitions/
+// — "cohere" only ever appears there as a model-name prefix under other
+// aggregator providers, e.g. an OpenRouter-style "cohere/command-r..." model
+// id, never as a standalone GOOSE_PROVIDER value). Unlike gemini/deepseek
+// below, there's no id gooseProviderID could alias it to that would work —
+// removing the entry instead would silently reroute a Cohere-configured
+// agent through the generic openai fallback below with OPENAI_API_KEY
+// (almost certainly unset for such an agent), trading a clear "unknown
+// provider: cohere" failure for a confusing OpenAI auth error. Left as a
+// dead end deliberately: Paca's data/llm_models.json inherited "cohere"
+// from the old LiteLLM-backed catalog, and removing it from the model
+// picker (not resolvable here) is the actual fix.
 var providerAPIKeyEnvVar = map[string]string{
 	"anthropic":  "ANTHROPIC_API_KEY",
 	"openai":     "OPENAI_API_KEY",
@@ -21,6 +36,28 @@ var providerAPIKeyEnvVar = map[string]string{
 	"xai":        "XAI_API_KEY",
 }
 
+// gooseProviderID translates a Paca llm_provider value onto the provider id
+// Goose actually registers it under, for the cases where the two names
+// diverge — an unmapped GOOSE_PROVIDER value here means every conversation
+// for that provider fails to initialize its LLM provider at all. Both
+// entries verified directly against block/goose's source, not just its
+// docs (which get this wrong — see the "gemini" entry's own history):
+//   - "gemini" -> "google": Paca accepts "gemini" (matching the model
+//     catalog's naming), but Goose's own provider registry
+//     (crates/goose-providers/src/google.rs's GOOGLE_PROVIDER_NAME) calls it
+//     "google". Confirmed via the provider's own source, not the public
+//     docs site — a page claiming to be Goose's provider docs
+//     (goose-docs.ai) asserted the internal id is "gemini" itself, which
+//     doesn't match any of the three real Gemini-related provider names in
+//     the source ("google", "gemini-cli", "gemini_oauth").
+//   - "deepseek" -> "custom_deepseek": Goose's declarative provider
+//     definition for DeepSeek (declarative/definitions/deepseek.json) is
+//     registered under "custom_deepseek", not "deepseek".
+var gooseProviderID = map[string]string{
+	"gemini":   "google",
+	"deepseek": "custom_deepseek",
+}
+
 // resolveProviderEnv maps a Paca llm_provider value onto the Goose
 // GOOSE_PROVIDER value and the env var its API key needs. Providers outside
 // the table above fall back to routing through Goose's own "openai"
@@ -29,8 +66,12 @@ var providerAPIKeyEnvVar = map[string]string{
 // providers outside its own catalog.
 func resolveProviderEnv(llmProvider string) (gooseProvider, apiKeyEnvVar string) {
 	provider := strings.ToLower(llmProvider)
-	if envVar, ok := providerAPIKeyEnvVar[provider]; ok {
-		return provider, envVar
+	envVar, ok := providerAPIKeyEnvVar[provider]
+	if !ok {
+		return "openai", "OPENAI_API_KEY"
 	}
-	return "openai", "OPENAI_API_KEY"
+	if alias, ok := gooseProviderID[provider]; ok {
+		provider = alias
+	}
+	return provider, envVar
 }

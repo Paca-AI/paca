@@ -1,7 +1,9 @@
 // Package sandbox manages the lifecycle of one Docker container per active
 // conversation, each running `goose serve`. Go analog of
 // services/ai-agent/src/agent/docker_workspace.py, adapted for Goose:
-//   - runs `ghcr.io/block/goose` instead of the OpenHands agent-server image
+//   - runs the Goose image (services/agent-server/Dockerfile, built on
+//     ghcr.io/aaif-goose/goose — see that Dockerfile's doc comment) instead
+//     of the OpenHands agent-server image
 //   - no repo_tools injection (that mechanism is being replaced by exposing
 //     list_repositories/clone_repository as more Paca MCP server tools)
 //   - health-checks goose serve's /status endpoint instead of OpenHands'
@@ -108,7 +110,8 @@ type Handle struct {
 	BaseURL   string
 	SecretKey string
 
-	hostPort int // 0 unless this handle used host-port-mapping mode
+	hostPort int          // 0 unless this handle used host-port-mapping mode
+	dind     *dindSidecar // this container's paired Docker-access sidecar — see dind.go
 }
 
 // Manager owns the Docker client and (in local-dev, non-networked mode) a
@@ -121,6 +124,12 @@ type Manager struct {
 	portPoolSize  int
 	portMu        sync.Mutex
 	portsInUse    map[int]bool
+
+	// confirmedImages caches which image refs ensureImage has already
+	// confirmed present on this Docker host (via ImageList or a successful
+	// ImagePull) — see ensureImage's doc comment.
+	imageMu         sync.Mutex
+	confirmedImages map[string]bool
 }
 
 // NewManager builds a Manager from the standard Docker environment
@@ -134,10 +143,11 @@ func NewManager(portPoolStart, portPoolSize int) (*Manager, error) {
 		return nil, fmt.Errorf("sandbox: create docker client: %w", err)
 	}
 	return &Manager{
-		docker:        docker,
-		portPoolStart: portPoolStart,
-		portPoolSize:  portPoolSize,
-		portsInUse:    make(map[int]bool),
+		docker:          docker,
+		portPoolStart:   portPoolStart,
+		portPoolSize:    portPoolSize,
+		portsInUse:      make(map[int]bool),
+		confirmedImages: make(map[string]bool),
 	}, nil
 }
 
@@ -155,7 +165,27 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("sandbox: generate secret key: %w", err)
 	}
 
-	env := make([]string, 0, len(cfg.Env)+7)
+	// Started before the sandbox's own image/container so DOCKER_HOST can
+	// be set in its env from the very first line of the container's own
+	// config below — see dind.go's package doc comment for why this is a
+	// dedicated per-conversation sidecar rather than this process's own
+	// docker.sock. sidecarOK flips true only once the sandbox container
+	// this pairs with has actually started; every return between here and
+	// there — this function's own early errors and every cleanup() call
+	// below alike — leaves it false, so this defer tears the sidecar back
+	// down instead of leaking a privileged container on any failure path.
+	sidecar, err := m.startDindSidecar(ctx, cfg.ConversationID)
+	if err != nil {
+		return nil, fmt.Errorf("sandbox: start dind sidecar: %w", err)
+	}
+	sidecarOK := false
+	defer func() {
+		if !sidecarOK {
+			m.stopDindSidecar(context.Background(), sidecar)
+		}
+	}()
+
+	env := make([]string, 0, len(cfg.Env)+8)
 	// User-configured env vars first, so the hardcoded infra vars below
 	// always win on a name collision — matches docker_workspace.py's
 	// "hardcoded infra keys always win" ordering rationale.
@@ -168,6 +198,7 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		"GIT_AUTHOR_EMAIL="+cfg.GitCommitterEmail,
 		"GIT_COMMITTER_NAME="+cfg.GitCommitterName,
 		"GIT_COMMITTER_EMAIL="+cfg.GitCommitterEmail,
+		"DOCKER_HOST="+dindDockerHost(cfg.ConversationID),
 	)
 
 	if err := m.ensureImage(ctx, cfg.Image); err != nil {
@@ -197,15 +228,27 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 	insideDocker := isInsideDocker()
 	var netCfg *network.NetworkingConfig
 	var hostPort int
+	// Set only in the insideDocker branch below, and only read in the
+	// matching insideDocker branch of the candidates block further down —
+	// declared out here, not inside that first branch, specifically so
+	// containerIP there can be told which of the sandbox's now-multiple
+	// networks (see the NetworkConnect call below) this process's own
+	// container can actually route to. Getting this wrong doesn't fail
+	// loudly: Go's randomized map iteration order means containerIP would
+	// pick the right network roughly half the time, so the other half
+	// silently burns the full readyTimeout and reports a plausible-looking
+	// "never got healthy" instead of what actually happened.
+	var ownNetName string
 
 	if insideDocker {
-		netName, err := m.ownNetworkName(ctx)
+		var err error
+		ownNetName, err = m.ownNetworkName(ctx)
 		if err != nil {
 			return nil, err
 		}
 		netCfg = &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
-				netName: {},
+				ownNetName: {},
 			},
 		}
 	} else {
@@ -251,6 +294,34 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		}
 	}
 
+	// Second network, alongside whatever netCfg above already attached at
+	// create time (ownNetworkName for api/gateway reachability, or nothing
+	// — the implicit default bridge — in host-port-mapped mode): the one
+	// this container's own dind sidecar is on and nothing else is (see
+	// dind.go's package doc comment). Attached by NetworkConnect rather
+	// than a second NetworkingConfig.EndpointsConfig entry at create time —
+	// confirmed directly (not assumed) that Docker's own container-create
+	// API only actually attaches one network from that map even when given
+	// several; a separate connect call is the verified way to add more.
+	//
+	// containerIP below now has to be told which network to prefer
+	// (ownNetName, insideDocker branch only) rather than picking whichever
+	// of this container's now-multiple networks Go's randomized map
+	// iteration happens to return first: an earlier version of this
+	// comment claimed that didn't matter since goose serve binds
+	// 0.0.0.0:3284 and answers on every interface the container has — true
+	// as far as it goes, but irrelevant to whether the *caller* (this
+	// process, running inside its own container when insideDocker) can
+	// route to whichever address it got handed. This process is only ever
+	// attached to ownNetName, never the private per-conversation network
+	// docker creates — Docker does not route between distinct user-defined
+	// bridge networks — so a wrong pick there isn't harmless, it's a
+	// coin-flip-odds full readyTimeout followed by a failed Start.
+	if _, err := m.docker.NetworkConnect(ctx, sidecar.networkID, client.NetworkConnectOptions{Container: created.ID}); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("sandbox: attach to conversation network: %w", err)
+	}
+
 	if _, err := m.docker.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("sandbox: start container: %w", err)
@@ -258,7 +329,7 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 
 	var candidates []string
 	if insideDocker {
-		ip, err := m.containerIP(ctx, created.ID)
+		ip, err := m.containerIP(ctx, created.ID, ownNetName)
 		if err != nil {
 			cleanup()
 			return nil, err
@@ -295,7 +366,13 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		// likely) was never directly confirmed — candidate 1 sidesteps
 		// whatever it is rather than working around it blindly.
 		candidates = []string{fmt.Sprintf("http://localhost:%d", hostPort)}
-		if ip, err := m.containerIP(ctx, created.ID); err == nil {
+		// No preferred network here (unlike the insideDocker branch above):
+		// this process isn't itself containerized in this branch, so it can
+		// route to any of the sandbox's networks' bridge subnets directly —
+		// which one containerIP picks doesn't affect reachability, only
+		// which literal IP shows up in the candidate list. localhost above
+		// remains a guaranteed-reachable fallback regardless either way.
+		if ip, err := m.containerIP(ctx, created.ID, ""); err == nil {
 			candidates = append([]string{fmt.Sprintf("http://%s:3284", ip)}, candidates...)
 		}
 	}
@@ -314,11 +391,13 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("%w (%s)", err, diag)
 	}
 
+	sidecarOK = true
 	return &Handle{
 		ContainerID: created.ID,
 		BaseURL:     baseURL,
 		SecretKey:   secretKey,
 		hostPort:    hostPort,
+		dind:        sidecar,
 	}, nil
 }
 
@@ -333,8 +412,46 @@ func (m *Manager) Stop(ctx context.Context, h *Handle) error {
 	if h.hostPort != 0 {
 		m.releasePort(h.hostPort)
 	}
+
+	if h.dind != nil {
+		teardownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Force-disconnect first, not left to AutoRemove's own timing: the
+		// conversation network can't be removed while any container is
+		// still attached to it, and there's no guarantee AutoRemove has
+		// actually finished detaching the main container by the moment
+		// ContainerStop above returns — an unremoved network would
+		// otherwise silently leak, since stopDindSidecar's own
+		// NetworkRemove call is best-effort (matching this whole method's
+		// contract) and won't retry a failure or surface it.
+		_, _ = m.docker.NetworkDisconnect(teardownCtx, h.dind.networkID, client.NetworkDisconnectOptions{
+			Container: h.ContainerID,
+			Force:     true,
+		})
+		m.stopDindSidecar(teardownCtx, h.dind)
+		cancel()
+	}
+
 	if err != nil {
 		return fmt.Errorf("sandbox: stop container %s: %w", h.ContainerID, err)
+	}
+	return nil
+}
+
+// CopyToContainer uploads tarContent (a tar archive stream) into containerID
+// at destPath — a thin, domain-agnostic wrapper around the Docker
+// archive-copy API (PUT /containers/{id}/archive). Used by the executor
+// package to place Goose skill files (SKILL.md, under destPath's
+// .agents/skills/<name>/ subdirectory) on the sandbox's real filesystem
+// before the ACP session starts, since Goose only discovers skills already
+// present on disk under its session's own working directory — there is no
+// ACP-level "load these skills" parameter, only cwd (see
+// executor.buildInitialMessage's doc comment on session/new's params).
+func (m *Manager) CopyToContainer(ctx context.Context, containerID, destPath string, tarContent io.Reader) error {
+	if _, err := m.docker.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
+		DestinationPath: destPath,
+		Content:         tarContent,
+	}); err != nil {
+		return fmt.Errorf("sandbox: copy to container %s: %w", containerID, err)
 	}
 	return nil
 }
@@ -382,17 +499,31 @@ func (m *Manager) Exec(ctx context.Context, containerID string, cmd []string) (o
 	return buf.String(), inspected.ExitCode, nil
 }
 
+// ensureImage confirms ref is present on this Docker host, pulling it if
+// not — called on every sandbox Start, the hottest path in this service.
+// The image ref is pinned for the process's lifetime (it comes from
+// Executor's own startup Options, not anything per-conversation), so once
+// ref has been confirmed present here — whether by finding it in
+// ImageList or by a successful ImagePull — every later Start for the same
+// ref skips both calls entirely instead of re-listing every image on the
+// host each time.
 func (m *Manager) ensureImage(ctx context.Context, ref string) error {
+	if m.imageConfirmed(ref) {
+		return nil
+	}
+
 	list, err := m.docker.ImageList(ctx, client.ImageListOptions{})
 	if err == nil {
 		for _, img := range list.Items {
 			for _, tag := range img.RepoTags {
 				if tag == ref {
+					m.confirmImage(ref)
 					return nil
 				}
 			}
 			for _, digest := range img.RepoDigests {
 				if digest == ref {
+					m.confirmImage(ref)
 					return nil
 				}
 			}
@@ -408,7 +539,20 @@ func (m *Manager) ensureImage(ctx context.Context, ref string) error {
 	}
 	defer func() { _ = rc.Close() }()
 	_, _ = io.Copy(io.Discard, rc)
+	m.confirmImage(ref)
 	return nil
+}
+
+func (m *Manager) imageConfirmed(ref string) bool {
+	m.imageMu.Lock()
+	defer m.imageMu.Unlock()
+	return m.confirmedImages[ref]
+}
+
+func (m *Manager) confirmImage(ref string) {
+	m.imageMu.Lock()
+	defer m.imageMu.Unlock()
+	m.confirmedImages[ref] = true
 }
 
 // ownNetworkName returns the first Docker network this process's own
@@ -433,7 +577,18 @@ func (m *Manager) ownNetworkName(ctx context.Context) (string, error) {
 	return "bridge", nil
 }
 
-func (m *Manager) containerIP(ctx context.Context, containerID string) (string, error) {
+// containerIP returns containerID's address on preferredNetwork if it's
+// attached to one by that name, falling back to the first valid address
+// found otherwise (preferredNetwork == "", or the container isn't actually
+// on it). The fallback is fine when the caller can reach the container on
+// any of its networks — e.g. the non-insideDocker branch below, which
+// always has a host-port-mapped candidate as a backstop regardless of
+// which address this returns — but is NOT fine for a caller that can only
+// route to one specific network itself; that caller must pass its own
+// network by name. See Start's insideDocker branch's own doc comment on
+// why this container ended up multi-homed and what went wrong here before
+// this parameter existed.
+func (m *Manager) containerIP(ctx context.Context, containerID, preferredNetwork string) (string, error) {
 	resp, err := m.docker.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("sandbox: inspect container %s: %w", containerID, err)
@@ -441,12 +596,31 @@ func (m *Manager) containerIP(ctx context.Context, containerID string) (string, 
 	if resp.Container.NetworkSettings == nil {
 		return "", fmt.Errorf("sandbox: container %s has no network settings", containerID)
 	}
-	for _, ep := range resp.Container.NetworkSettings.Networks {
-		if ep.IPAddress.IsValid() {
-			return ep.IPAddress.String(), nil
+	ip, ok := selectContainerIP(resp.Container.NetworkSettings.Networks, preferredNetwork)
+	if !ok {
+		return "", fmt.Errorf("sandbox: container %s has no assigned IP yet", containerID)
+	}
+	return ip, nil
+}
+
+// selectContainerIP is containerIP's own network-selection rule, pulled
+// out as a pure function of a NetworkSettings.Networks map so the
+// deterministic-preference behavior can be unit tested directly — no
+// Docker daemon, no ContainerInspect call, no mocking required — instead
+// of only being exercisable through a real container's live network
+// state. See containerIP's doc comment for what preferredNetwork is for.
+func selectContainerIP(networks map[string]*network.EndpointSettings, preferredNetwork string) (string, bool) {
+	if preferredNetwork != "" {
+		if ep, ok := networks[preferredNetwork]; ok && ep.IPAddress.IsValid() {
+			return ep.IPAddress.String(), true
 		}
 	}
-	return "", fmt.Errorf("sandbox: container %s has no assigned IP yet", containerID)
+	for _, ep := range networks {
+		if ep.IPAddress.IsValid() {
+			return ep.IPAddress.String(), true
+		}
+	}
+	return "", false
 }
 
 // diagnoseUnready summarizes a container's runtime state and recent output

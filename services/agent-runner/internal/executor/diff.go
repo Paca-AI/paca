@@ -59,15 +59,24 @@ func (e *Executor) attachDiffs(ctx context.Context, handle *sandbox.Handle, onEv
 	if onEvent == nil || handle == nil {
 		return onEvent
 	}
+	// Tracks, per path, the file's content the last time a diff was
+	// computed for it *within this turn* — so if the agent edits the same
+	// file more than once in one turn (no commit happens between tool
+	// calls), the second tool_call_update's diff is against the first
+	// edit's result, not always against git HEAD. Scoped to this closure's
+	// lifetime (one turn — Run calls attachDiffs fresh for each
+	// client.Prompt call), not the Executor itself, so it never grows
+	// across turns or leaks between conversations.
+	turnBaseline := make(map[string]string)
 	return func(ev acp.Event) {
 		if ev.Kind == acp.UpdateToolCallUpdate {
-			ev.Raw = e.enrichToolCallUpdateWithDiffs(ctx, handle.ContainerID, ev.Raw)
+			ev.Raw = e.enrichToolCallUpdateWithDiffs(ctx, handle.ContainerID, ev.Raw, turnBaseline)
 		}
 		onEvent(ev)
 	}
 }
 
-func (e *Executor) enrichToolCallUpdateWithDiffs(ctx context.Context, containerID string, raw json.RawMessage) json.RawMessage {
+func (e *Executor) enrichToolCallUpdateWithDiffs(ctx context.Context, containerID string, raw json.RawMessage, turnBaseline map[string]string) json.RawMessage {
 	var shape toolCallUpdateShape
 	if err := json.Unmarshal(raw, &shape); err != nil || shape.Status != "completed" || len(shape.Locations) == 0 {
 		return raw
@@ -81,7 +90,7 @@ func (e *Executor) enrichToolCallUpdateWithDiffs(ctx context.Context, containerI
 		}
 		seen[loc.Path] = true
 
-		oldText, newText, ok := e.gitDiffForPath(ctx, containerID, loc.Path)
+		oldText, newText, ok := e.gitDiffForPath(ctx, containerID, loc.Path, turnBaseline)
 		if !ok || (oldText != nil && *oldText == newText) {
 			continue
 		}
@@ -129,15 +138,29 @@ func (e *Executor) enrichToolCallUpdateWithDiffs(ctx context.Context, containerI
 // when path can't be read at all (deleted, permission error) or isn't
 // inside a git checkout, in which case no diff can be produced.
 //
+// "before" means what turnBaseline last recorded for this path — the
+// content as of the previous diff computed for it *this turn*, if any —
+// not always git HEAD. Without this, a file edited twice in one turn (no
+// commit happens between tool calls) would have its second diff computed
+// against HEAD both times, showing the cumulative change across both edits
+// on the second tool_call_update's card instead of just that edit's own
+// incremental change. turnBaseline[path] is updated to newText before
+// returning either way, so the next call for the same path (if any) diffs
+// from here forward.
+//
 // path is used as-is (no assumption about the repo's clone location —
 // clone_repository's targetDir is caller-chosen, see repo-tools.ts): `-C
 // <path's own directory>` lets git discover the enclosing checkout by
 // walking upward itself, the same way it would from a real shell cd'd
 // there, rather than this package having to know or guess the repo root.
-func (e *Executor) gitDiffForPath(ctx context.Context, containerID, path string) (oldText *string, newText string, ok bool) {
+func (e *Executor) gitDiffForPath(ctx context.Context, containerID, path string, turnBaseline map[string]string) (oldText *string, newText string, ok bool) {
 	newContent, exitCode, err := e.sandboxMgr.Exec(ctx, containerID, []string{"cat", path})
 	if err != nil || exitCode != 0 {
 		return nil, "", false
+	}
+
+	if prev, cached := turnBaselineOldText(path, newContent, turnBaseline); cached {
+		return prev, newContent, true
 	}
 
 	dir := filepath.Dir(path)
@@ -152,6 +175,7 @@ func (e *Executor) gitDiffForPath(ctx context.Context, containerID, path string)
 	}
 
 	oldContent, exitCode, err := e.sandboxMgr.Exec(ctx, containerID, []string{"git", "-C", root, "show", "HEAD:" + rel})
+	turnBaseline[path] = newContent
 	if err != nil || exitCode != 0 {
 		// No HEAD version — a file the agent created this turn, not one it
 		// modified. Still a valid diff (an all-additions one), just with a
@@ -159,4 +183,27 @@ func (e *Executor) gitDiffForPath(ctx context.Context, containerID, path string)
 		return nil, newContent, true
 	}
 	return &oldContent, newContent, true
+}
+
+// turnBaselineOldText reports whether path was already diffed earlier in
+// this turn — per turnBaseline, keyed by path to the content last recorded
+// for it — and, if so, returns that prior content as oldText: the
+// incremental baseline for *this* edit, not git HEAD. Either way,
+// turnBaseline[path] is advanced to newContent so a later edit of the same
+// path this turn diffs from here forward.
+//
+// cached is false the first time a path is seen this turn; turnBaseline is
+// left untouched in that case so the caller can fall through to computing
+// oldText from git HEAD instead, and is responsible for setting
+// turnBaseline[path] itself once it does (gitDiffForPath does this
+// regardless of whether the HEAD lookup itself succeeds, so a
+// newly-created file — no HEAD version — still seeds a baseline for its
+// next edit this turn).
+func turnBaselineOldText(path, newContent string, turnBaseline map[string]string) (oldText *string, cached bool) {
+	prev, seenThisTurn := turnBaseline[path]
+	if !seenThisTurn {
+		return nil, false
+	}
+	turnBaseline[path] = newContent
+	return &prev, true
 }
