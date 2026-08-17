@@ -101,7 +101,7 @@
 			"statusConnected": "Connected",
 			"statusDisconnected": "Not connected",
 			"step1Title": "Install the ACP bridge",
-			"step1Description": "Requires Python 3.12+. Install the daemon once with uv pip (or skip this — the run command below uses uvx, which fetches it automatically).",
+			"step1Description": "Downloads a prebuilt binary to your PATH — no Python, uv, or Go required.",
 			"step2Title": "Run the local bridge",
 			"step2Description": "Generate a token, then run this in your project folder.",
 			"noTokenYet": "Generate a token to reveal the run command.",

@@ -220,13 +220,18 @@ export function eventsToThreadMessages(
 			continue;
 		}
 
-		// user_message / agent_message_chunk / tool_call / tool_call_update /
-		// turn_end are services/agent-runner's own event types — the only
-		// ones an `llm`-type agent produces now that services/ai-agent (which
-		// wrote the OpenHands-style types below) has been removed. Handled
-		// separately from those rather than folded in, since a conversation
-		// from before this migration can still have OpenHands-typed rows in
-		// its history that must keep rendering correctly.
+		// user_message / agent_message_chunk / agent_thought_chunk / tool_call
+		// / tool_call_update / turn_end are the shared ACP event vocabulary
+		// services/agent-runner's internal/handler established for `llm`-type
+		// (Goose-in-sandbox) agents and apps/acp-bridge's Go daemon reuses
+		// as-is for `acp`-type (local bridge) agents — both ultimately relay
+		// the same raw ACP session/update notifications, so there was never a
+		// reason for the local-bridge path to invent a second, OpenHands-
+		// shaped vocabulary of its own. Handled separately from the
+		// OpenHands-style types below rather than folded in, since a
+		// conversation from before both of those migrations can still have
+		// OpenHands-typed rows in its history that must keep rendering
+		// correctly.
 		//
 		// user_message records what the user actually sent, written once at
 		// the start of a turn (internal/handler/handler.go) — ACP itself has
@@ -260,6 +265,24 @@ export function eventsToThreadMessages(
 				lastPart.text += text;
 			} else {
 				current.parts.push({ type: "text", text });
+			}
+			continue;
+		}
+
+		if (t === "agent_thought_chunk") {
+			const text = extractAcpBlockText(p.content);
+			if (!text) continue;
+			if (!current)
+				current = startAssistantMessage(ev.id, new Date(ev.created_at));
+			// Same streaming-append shape as agent_message_chunk above, but
+			// into a "reasoning" part instead of a "text" one — the model's
+			// thinking, kept visually distinct (and collapsible) from its
+			// actual reply.
+			const lastPart = current.parts.at(-1);
+			if (lastPart && lastPart.type === "reasoning") {
+				lastPart.text += text;
+			} else {
+				current.parts.push({ type: "reasoning", text });
 			}
 			continue;
 		}

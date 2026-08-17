@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.12"
+  GO_VERSION: "1.26.4"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -36,24 +36,51 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Setup Go
+        uses: actions/setup-go@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: "apps/acp-bridge/uv.lock"
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/acp-bridge/go.sum
 
-      - name: Install dev dependencies
-        run: uv sync --locked
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
-      - name: Run ruff (lint)
-        run: uv run ruff check src/
-
-      - name: Run ruff (format check)
-        run: uv run ruff format --check src/
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
 
   # ---------------------------------------------------------------------------
-  # 2. Unit tests
+  # 2. Build — verify the binary compiles
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: apps/acp-bridge
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/acp-bridge/go.sum
+
+      - name: Build all packages
+        run: go build ./...
+
+  # ---------------------------------------------------------------------------
+  # 3. Unit tests — no external services needed: the ACP subprocess and the
+  #    bridge's own WebSocket server are both faked in-process (an io.Pipe
+  #    stand-in for the ACP CLI, an httptest.Server for the bridge), plus a
+  #    couple of end-to-end cases that re-exec this test binary itself as a
+  #    scripted fake agent (see internal/runner/runner_test.go's TestMain).
   # ---------------------------------------------------------------------------
   test:
     name: Unit tests
@@ -70,45 +97,18 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Setup Go
+        uses: actions/setup-go@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: "apps/acp-bridge/uv.lock"
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/acp-bridge/go.sum
 
-      - name: Install dev dependencies
-        run: uv sync --locked
+      - name: Run tests (race detector)
+        run: go test -race -timeout 120s -coverprofile=coverage.out ./...
 
-      - name: Run pytest
-        run: uv run pytest --tb=short
-
-  # ---------------------------------------------------------------------------
-  # 3. Package build — verify the sdist/wheel builds cleanly, since this
-  #    package is distributed via PyPI (uvx / pip install), not a Docker image.
-  # ---------------------------------------------------------------------------
-  build:
-    name: Package build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [lint, test]
-
-    defaults:
-      run:
-        working-directory: apps/acp-bridge
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
         with:
-          fetch-depth: 1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: "apps/acp-bridge/uv.lock"
-
-      - name: Build sdist and wheel
-        run: uv build
+          name: coverage-report
+          path: apps/acp-bridge/coverage.out
+          retention-days: 7

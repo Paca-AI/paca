@@ -17,13 +17,16 @@ name: cd
 #   <dockerhub-username>/paca-agent-server-goose:<tag> — Sandbox image (Goose + Paca MCP pre-installed)
 #   registry.npmjs.org @paca-ai/paca-mcp — MCP server npm package
 #   registry.npmjs.org @paca-ai/plugin-sdk-react — Plugin frontend SDK npm package
-#   pypi.org paca-acp-bridge — ACP bridge local daemon Python package
 #   GitHub Release assets:
 #     install.sh         — one-shot interactive install script
 #     upgrade.sh         — upgrades an existing installation in place
 #     docker-compose.yml — standalone compose (no source tree required)
 #     Caddyfile          — Caddy gateway configuration
 #     .env.production.example — environment variable template
+#     install-acp-bridge.sh — installs the paca-acp-bridge binary below
+#     paca-acp-bridge_<version>_<os>_<arch>.{tar.gz,zip} — ACP bridge local
+#       daemon (Go binary; end users run this on their own machine, so it
+#       ships as release assets rather than a Docker image)
 #
 # "Latest" tag sequencing (promote-release, the last job below): no image is
 # pushed with a :latest Docker tag until every job in this workflow has
@@ -405,44 +408,96 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # ACP bridge Python package → pypi.org
+  # ACP bridge Go binary → GitHub Release assets
+  #
+  # apps/acp-bridge is a CLI end users run on their own machine, not a
+  # service Paca deploys — unlike every Docker-image job above, it ships as
+  # cross-compiled binaries attached directly to this release rather than a
+  # container. scripts/install-acp-bridge.sh (built and uploaded by the
+  # "Deployment assets" job below, right alongside install.sh/upgrade.sh)
+  # is what the "Install the ACP bridge" step in Paca's Agents UI actually
+  # tells users to run; it detects the caller's OS/arch and downloads
+  # whichever archive this job produced matches.
   # ─────────────────────────────────────────────────────────────────────────────
-  publish-acp-bridge:
-    name: Publish ACP bridge package
+  build-acp-bridge:
+    name: Build ACP bridge (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
-      # Required for PyPI Trusted Publishing (OIDC) — no stored API token needed.
-      id-token: write
+      contents: write # gh release upload
 
     defaults:
       run:
         working-directory: apps/acp-bridge
 
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Setup Go
+        uses: actions/setup-go@v6
         with:
-          python-version: "3.12"
+          go-version: "1.26.4"
+          cache-dependency-path: apps/acp-bridge/go.sum
 
-      # Strip the leading 'v' from the release tag (v1.2.3 → 1.2.3) so it
-      # matches PyPI's version format, then stamp pyproject.toml without
-      # touching uv.lock. Must run BEFORE build so the version is baked
-      # into the built sdist/wheel.
-      - name: Set package version
+      # Strip the leading 'v' from the release tag (v1.2.3 → 1.2.3) so the
+      # binary's own `paca-acp-bridge version` output — and the archive name
+      # below — matches every other artefact's version format.
+      - name: Build binary
         env:
-          VERSION: ${{ github.event.release.tag_name }}
-        run: uv version --frozen "${VERSION#v}"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          BINARY="paca-acp-bridge"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY="paca-acp-bridge.exe"
+          fi
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+            -o "dist/${BINARY}" ./cmd/paca-acp-bridge
 
-      - name: Build sdist and wheel
-        run: uv build
+      # tar.gz for macOS/Linux, zip for Windows — matches what each
+      # platform's users actually expect to extract.
+      - name: Package archive
+        id: package
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          NAME="paca-acp-bridge_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          cd dist
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "../${NAME}.zip" paca-acp-bridge.exe
+            echo "asset=${NAME}.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -czf "../${NAME}.tar.gz" paca-acp-bridge
+            echo "asset=${NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Publish to PyPI
-        run: uv publish --trusted-publishing always
+      - name: Upload archive to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "apps/acp-bridge/${{ steps.package.outputs.asset }}" --clobber
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Deployment assets → GitHub Release
@@ -475,7 +530,7 @@ jobs:
         agent-runner-image,
         agent-server-goose-image,
         publish-mcp,
-        publish-acp-bridge,
+        build-acp-bridge,
       ]
     permissions:
       contents: write
@@ -492,18 +547,21 @@ jobs:
           cp deploy/.env.production.example        .env.production.example
           cp scripts/install.sh                    install.sh
           cp scripts/upgrade.sh                    upgrade.sh
-          chmod +x install.sh upgrade.sh
+          cp scripts/install-acp-bridge.sh         install-acp-bridge.sh
+          chmod +x install.sh upgrade.sh install-acp-bridge.sh
 
           # Stamp this release's own tag as the scripts' default version. A
-          # plain `bash install.sh` / `bash upgrade.sh` downloaded from this
-          # release then pins to a version that's guaranteed to exist,
-          # instead of the floating :latest Docker tag, which promote-release
-          # only updates once this job has already succeeded. Targets the
-          # single `PACA_DEFAULT_VERSION="latest"` line each script keeps for
+          # plain `bash install.sh` / `bash upgrade.sh` / `bash
+          # install-acp-bridge.sh` downloaded from this release then pins to
+          # a version that's guaranteed to exist, instead of the floating
+          # :latest tag, which promote-release only updates once this job
+          # has already succeeded. Targets the single
+          # `PACA_DEFAULT_VERSION="latest"` line each script keeps for
           # exactly this purpose — see the comment above it in install.sh /
-          # upgrade.sh before changing this pattern.
+          # upgrade.sh / install-acp-bridge.sh before changing this pattern.
           VERSION="${{ github.event.release.tag_name }}"
-          sed -i "s/^PACA_DEFAULT_VERSION=\"latest\"$/PACA_DEFAULT_VERSION=\"${VERSION}\"/" install.sh upgrade.sh
+          sed -i "s/^PACA_DEFAULT_VERSION=\"latest\"$/PACA_DEFAULT_VERSION=\"${VERSION}\"/" \
+            install.sh upgrade.sh install-acp-bridge.sh
 
       - name: Upload assets to GitHub Release
         env:
@@ -512,6 +570,7 @@ jobs:
           gh release upload "${{ github.event.release.tag_name }}" \
             install.sh \
             upgrade.sh \
+            install-acp-bridge.sh \
             docker-compose.yml \
             Caddyfile \
             .env.production.example \
@@ -546,7 +605,7 @@ jobs:
         agent-runner-image,
         agent-server-goose-image,
         publish-mcp,
-        publish-acp-bridge,
+        build-acp-bridge,
         release-assets,
       ]
     permissions:

@@ -101,7 +101,7 @@
 			"statusConnected": "接続済み",
 			"statusDisconnected": "未接続",
 			"step1Title": "ACPブリッジをインストール",
-			"step1Description": "Python 3.12以上が必要です。uv pipでデーモンを一度インストールします（またはこの手順をスキップしても構いません — 下記の実行コマンドはuvxを使用し、自動的に取得されます）。",
+			"step1Description": "ビルド済みバイナリをPATHにダウンロードします — Python、uv、Goは不要です。",
 			"step2Title": "ローカルブリッジを実行",
 			"step2Description": "トークンを生成し、プロジェクトフォルダでこれを実行します。",
 			"noTokenYet": "トークンを生成すると実行コマンドが表示されます。",

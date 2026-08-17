@@ -17,8 +17,13 @@ import {
 
 // Fixed commands for the setup steps that don't depend on any
 // server-generated value — only the bridge run command comes back from the
-// API, since it embeds the freshly generated token.
-const BRIDGE_INSTALL_COMMAND = "uv pip install paca-acp-bridge";
+// API, since it embeds the freshly generated token. Installs a prebuilt
+// binary (see scripts/install-acp-bridge.sh, uploaded to every GitHub
+// release alongside the binaries themselves) — no Go toolchain, Python, or
+// uv required on the end user's machine, only Node.js for the `npx`-launched
+// ACP CLI itself.
+const BRIDGE_INSTALL_COMMAND =
+	"curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install-acp-bridge.sh | bash";
 
 // Claude Code's CLI needs its own one-time interactive login, separate from
 // (and prior to) authenticating the bridge to Paca — the bridge invokes

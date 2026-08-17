@@ -26,6 +26,12 @@ import (
 // _HELLO_TIMEOUT_SECONDS.
 const helloTimeout = 10 * time.Second
 
+// bridgeMessageReadLimit overrides coder/websocket's 32KiB default (see
+// handleWS) — generous enough for a large tool-call payload (verbose
+// command output, a sizeable file diff) without leaving this per-connection
+// read buffer unbounded.
+const bridgeMessageReadLimit = 10 * 1024 * 1024 // 10 MiB
+
 // Server exposes the same HTTP surface routes/bridge.py does:
 //   - GET  /agent-bridge/ws                    — the bridge daemon's WebSocket
 //   - GET  /agent-bridge/status/{agentId}      — internal, proxied by services/api
@@ -90,6 +96,15 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	// coder/websocket defaults to a 32KiB read limit — comfortably too
+	// small for a bridge daemon relaying a raw ACP event verbatim (a large
+	// command's output, or a sizeable file diff, both routinely exceed it),
+	// which surfaced as the daemon getting disconnected mid-conversation
+	// with "received close frame: status = StatusMessageTooBig". Bridge
+	// events are the only traffic this endpoint ever reads at any real
+	// size (hello/ping frames are tiny), so this is scoped to the whole
+	// connection rather than per-message.
+	conn.SetReadLimit(bridgeMessageReadLimit)
 
 	helloCtx, cancel := context.WithTimeout(r.Context(), helloTimeout)
 	var hello helloFrame
