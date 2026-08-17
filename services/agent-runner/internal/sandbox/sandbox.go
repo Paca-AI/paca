@@ -228,15 +228,27 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 	insideDocker := isInsideDocker()
 	var netCfg *network.NetworkingConfig
 	var hostPort int
+	// Set only in the insideDocker branch below, and only read in the
+	// matching insideDocker branch of the candidates block further down —
+	// declared out here, not inside that first branch, specifically so
+	// containerIP there can be told which of the sandbox's now-multiple
+	// networks (see the NetworkConnect call below) this process's own
+	// container can actually route to. Getting this wrong doesn't fail
+	// loudly: Go's randomized map iteration order means containerIP would
+	// pick the right network roughly half the time, so the other half
+	// silently burns the full readyTimeout and reports a plausible-looking
+	// "never got healthy" instead of what actually happened.
+	var ownNetName string
 
 	if insideDocker {
-		netName, err := m.ownNetworkName(ctx)
+		var err error
+		ownNetName, err = m.ownNetworkName(ctx)
 		if err != nil {
 			return nil, err
 		}
 		netCfg = &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{
-				netName: {},
+				ownNetName: {},
 			},
 		}
 	} else {
@@ -292,11 +304,19 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 	// API only actually attaches one network from that map even when given
 	// several; a separate connect call is the verified way to add more.
 	//
-	// containerIP below may now non-deterministically return either
-	// network's address (Go map iteration order), not necessarily the one
-	// this comment's neighbors were written assuming — harmless in
-	// practice, since goose serve binds 0.0.0.0:3284 and answers on every
-	// interface the container has, this one included.
+	// containerIP below now has to be told which network to prefer
+	// (ownNetName, insideDocker branch only) rather than picking whichever
+	// of this container's now-multiple networks Go's randomized map
+	// iteration happens to return first: an earlier version of this
+	// comment claimed that didn't matter since goose serve binds
+	// 0.0.0.0:3284 and answers on every interface the container has — true
+	// as far as it goes, but irrelevant to whether the *caller* (this
+	// process, running inside its own container when insideDocker) can
+	// route to whichever address it got handed. This process is only ever
+	// attached to ownNetName, never the private per-conversation network
+	// docker creates — Docker does not route between distinct user-defined
+	// bridge networks — so a wrong pick there isn't harmless, it's a
+	// coin-flip-odds full readyTimeout followed by a failed Start.
 	if _, err := m.docker.NetworkConnect(ctx, sidecar.networkID, client.NetworkConnectOptions{Container: created.ID}); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("sandbox: attach to conversation network: %w", err)
@@ -309,7 +329,7 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 
 	var candidates []string
 	if insideDocker {
-		ip, err := m.containerIP(ctx, created.ID)
+		ip, err := m.containerIP(ctx, created.ID, ownNetName)
 		if err != nil {
 			cleanup()
 			return nil, err
@@ -346,7 +366,13 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		// likely) was never directly confirmed — candidate 1 sidesteps
 		// whatever it is rather than working around it blindly.
 		candidates = []string{fmt.Sprintf("http://localhost:%d", hostPort)}
-		if ip, err := m.containerIP(ctx, created.ID); err == nil {
+		// No preferred network here (unlike the insideDocker branch above):
+		// this process isn't itself containerized in this branch, so it can
+		// route to any of the sandbox's networks' bridge subnets directly —
+		// which one containerIP picks doesn't affect reachability, only
+		// which literal IP shows up in the candidate list. localhost above
+		// remains a guaranteed-reachable fallback regardless either way.
+		if ip, err := m.containerIP(ctx, created.ID, ""); err == nil {
 			candidates = append([]string{fmt.Sprintf("http://%s:3284", ip)}, candidates...)
 		}
 	}
@@ -551,13 +577,29 @@ func (m *Manager) ownNetworkName(ctx context.Context) (string, error) {
 	return "bridge", nil
 }
 
-func (m *Manager) containerIP(ctx context.Context, containerID string) (string, error) {
+// containerIP returns containerID's address on preferredNetwork if it's
+// attached to one by that name, falling back to the first valid address
+// found otherwise (preferredNetwork == "", or the container isn't actually
+// on it). The fallback is fine when the caller can reach the container on
+// any of its networks — e.g. the non-insideDocker branch below, which
+// always has a host-port-mapped candidate as a backstop regardless of
+// which address this returns — but is NOT fine for a caller that can only
+// route to one specific network itself; that caller must pass its own
+// network by name. See Start's insideDocker branch's own doc comment on
+// why this container ended up multi-homed and what went wrong here before
+// this parameter existed.
+func (m *Manager) containerIP(ctx context.Context, containerID, preferredNetwork string) (string, error) {
 	resp, err := m.docker.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("sandbox: inspect container %s: %w", containerID, err)
 	}
 	if resp.Container.NetworkSettings == nil {
 		return "", fmt.Errorf("sandbox: container %s has no network settings", containerID)
+	}
+	if preferredNetwork != "" {
+		if ep, ok := resp.Container.NetworkSettings.Networks[preferredNetwork]; ok && ep.IPAddress.IsValid() {
+			return ep.IPAddress.String(), nil
+		}
 	}
 	for _, ep := range resp.Container.NetworkSettings.Networks {
 		if ep.IPAddress.IsValid() {

@@ -293,6 +293,13 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 
 	sessionID, err := client.NewSession(turnCtx, sandboxWorkdir, mcpServers)
 	if err != nil {
+		// Initialize above already started client's connection-scoped SSE
+		// reader goroutine (see client.go's Close doc comment) — dropping
+		// client here by returning nil instead of it would otherwise leak
+		// that goroutine until whatever eventually stops this sandbox
+		// closes the underlying connection out from under it, rather than
+		// being torn down cleanly the moment this turn actually fails.
+		client.Close()
 		return handle, nil, "", fmt.Errorf("executor: acp session/new: %w", err)
 	}
 
