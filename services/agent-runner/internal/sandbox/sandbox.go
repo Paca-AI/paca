@@ -596,17 +596,31 @@ func (m *Manager) containerIP(ctx context.Context, containerID, preferredNetwork
 	if resp.Container.NetworkSettings == nil {
 		return "", fmt.Errorf("sandbox: container %s has no network settings", containerID)
 	}
+	ip, ok := selectContainerIP(resp.Container.NetworkSettings.Networks, preferredNetwork)
+	if !ok {
+		return "", fmt.Errorf("sandbox: container %s has no assigned IP yet", containerID)
+	}
+	return ip, nil
+}
+
+// selectContainerIP is containerIP's own network-selection rule, pulled
+// out as a pure function of a NetworkSettings.Networks map so the
+// deterministic-preference behavior can be unit tested directly — no
+// Docker daemon, no ContainerInspect call, no mocking required — instead
+// of only being exercisable through a real container's live network
+// state. See containerIP's doc comment for what preferredNetwork is for.
+func selectContainerIP(networks map[string]*network.EndpointSettings, preferredNetwork string) (string, bool) {
 	if preferredNetwork != "" {
-		if ep, ok := resp.Container.NetworkSettings.Networks[preferredNetwork]; ok && ep.IPAddress.IsValid() {
-			return ep.IPAddress.String(), nil
+		if ep, ok := networks[preferredNetwork]; ok && ep.IPAddress.IsValid() {
+			return ep.IPAddress.String(), true
 		}
 	}
-	for _, ep := range resp.Container.NetworkSettings.Networks {
+	for _, ep := range networks {
 		if ep.IPAddress.IsValid() {
-			return ep.IPAddress.String(), nil
+			return ep.IPAddress.String(), true
 		}
 	}
-	return "", fmt.Errorf("sandbox: container %s has no assigned IP yet", containerID)
+	return "", false
 }
 
 // diagnoseUnready summarizes a container's runtime state and recent output

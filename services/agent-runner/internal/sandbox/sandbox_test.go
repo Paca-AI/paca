@@ -1,6 +1,74 @@
 package sandbox
 
-import "testing"
+import (
+	"net/netip"
+	"testing"
+
+	"github.com/moby/moby/api/types/network"
+)
+
+// TestSelectContainerIP_PrefersNamedNetworkOverOthers is a regression test
+// for the containerIP coin-flip finding in review: a container attached to
+// two networks (e.g. this process's own ownNetworkName plus a private
+// per-conversation dind network — see Start's insideDocker branch) used to
+// get an arbitrary one of their addresses via Go's randomized map
+// iteration, which silently broke reachability whenever it picked the
+// network this process itself isn't attached to. Constructs the multi-
+// network map directly rather than a real container, so this exercises the
+// selection rule on its own — no Docker daemon required.
+func TestSelectContainerIP_PrefersNamedNetworkOverOthers(t *testing.T) {
+	networks := map[string]*network.EndpointSettings{
+		"own-network":      {IPAddress: netip.MustParseAddr("172.18.0.5")},
+		"conversation-net": {IPAddress: netip.MustParseAddr("172.19.0.7")},
+	}
+
+	got, ok := selectContainerIP(networks, "own-network")
+	if !ok {
+		t.Fatal("selectContainerIP reported no IP found")
+	}
+	if got != "172.18.0.5" {
+		t.Errorf("selectContainerIP with preferredNetwork=%q = %q, want the preferred network's address %q",
+			"own-network", got, "172.18.0.5")
+	}
+}
+
+func TestSelectContainerIP_FallsBackToAnyValidAddressWhenPreferredAbsent(t *testing.T) {
+	networks := map[string]*network.EndpointSettings{
+		"bridge": {IPAddress: netip.MustParseAddr("172.17.0.3")},
+	}
+
+	got, ok := selectContainerIP(networks, "own-network")
+	if !ok {
+		t.Fatal("selectContainerIP reported no IP found")
+	}
+	if got != "172.17.0.3" {
+		t.Errorf("selectContainerIP with an absent preferred network = %q, want fallback %q", got, "172.17.0.3")
+	}
+}
+
+func TestSelectContainerIP_EmptyPreferredNetworkAcceptsAnyValidAddress(t *testing.T) {
+	networks := map[string]*network.EndpointSettings{
+		"bridge": {IPAddress: netip.MustParseAddr("172.17.0.3")},
+	}
+
+	got, ok := selectContainerIP(networks, "")
+	if !ok {
+		t.Fatal("selectContainerIP reported no IP found")
+	}
+	if got != "172.17.0.3" {
+		t.Errorf("selectContainerIP(\"\") = %q, want %q", got, "172.17.0.3")
+	}
+}
+
+func TestSelectContainerIP_NoValidAddressReturnsFalse(t *testing.T) {
+	networks := map[string]*network.EndpointSettings{
+		"bridge": {}, // no IPAddress assigned yet
+	}
+
+	if _, ok := selectContainerIP(networks, ""); ok {
+		t.Error("selectContainerIP should report not-found when no network has a valid address yet")
+	}
+}
 
 // TestImageConfirmed_UnconfirmedRefReturnsFalse is a regression test for
 // the efficiency finding in review: ensureImage called docker.ImageList
