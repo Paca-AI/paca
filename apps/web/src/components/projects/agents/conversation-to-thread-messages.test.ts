@@ -226,6 +226,21 @@ function agentMessageChunk(text: string): AgentConversationEvent {
 	};
 }
 
+function agentThoughtChunk(text: string): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "agent_thought_chunk",
+		event_source: "agent",
+		payload: {
+			content: { type: "text", text },
+			sessionUpdate: "agent_thought_chunk",
+		},
+		created_at: "2026-01-01T00:00:07.500Z",
+	};
+}
+
 function acpToolCall(opts: {
 	toolCallId: string;
 	title: string;
@@ -862,6 +877,28 @@ describe("eventsToThreadMessages", () => {
 				type: "text",
 				text: "Hello! How can I help?",
 			});
+		});
+
+		it("joins consecutive agent_thought_chunk events into one reasoning part, separate from reply text", () => {
+			const events = [
+				userMessage("what's 2+2?"),
+				agentThoughtChunk("Let me "),
+				agentThoughtChunk("think about this."),
+				agentMessageChunk("It's 4."),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(2);
+			const parts = messages[1].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts).toHaveLength(2);
+			expect(parts[0]).toMatchObject({
+				type: "reasoning",
+				text: "Let me think about this.",
+			});
+			expect(parts[1]).toMatchObject({ type: "text", text: "It's 4." });
 		});
 
 		it("renders a tool_call/tool_call_update pair as one resolved tool-call part", () => {

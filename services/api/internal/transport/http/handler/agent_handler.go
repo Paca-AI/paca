@@ -1538,7 +1538,7 @@ func (h *AgentHandler) GenerateACPBridgeToken(w http.ResponseWriter, r *http.Req
 	// Run in the background (own context, not r.Context()) so a slow or
 	// unreachable ai-agent doesn't add latency to token generation itself.
 	go h.disconnectACPBridge(agentID)
-	runCommand := fmt.Sprintf("uvx paca-acp-bridge run --agent-id %s --token %s", agentID, token)
+	runCommand := fmt.Sprintf("paca-acp-bridge run --agent-id %s --token %s", agentID, token)
 	if h.publicURL != "" {
 		runCommand += fmt.Sprintf(" --server %s", h.publicURL)
 	}
@@ -1563,7 +1563,7 @@ func (h *AgentHandler) GenerateGlobalACPBridgeToken(w http.ResponseWriter, r *ht
 		return
 	}
 	go h.disconnectACPBridge(agentID)
-	runCommand := fmt.Sprintf("uvx paca-acp-bridge run --agent-id %s --token %s", agentID, token)
+	runCommand := fmt.Sprintf("paca-acp-bridge run --agent-id %s --token %s", agentID, token)
 	if h.publicURL != "" {
 		runCommand += fmt.Sprintf(" --server %s", h.publicURL)
 	}

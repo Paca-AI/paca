@@ -830,18 +830,19 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // iteration_count is computed live from agent_conversation_events (one step
 // per agent turn) rather than stored: see #314 and migration
 // 000026_drop_conversation_iteration_count.sql for why it's computed live at
-// all. Two different runtimes write two different event_type vocabularies
-// for what both call one "iteration": services/ai-agent and the acp-bridge
-// subprocess (apps/acp-bridge/src/paca_acp_bridge/runner.py) forward the
-// OpenHands SDK's own event class name, 'ActionEvent', one per agent step —
-// see agent_service.go's MaxIterations, which caps exactly this. The native
-// Go ACP runner (services/agent-runner/internal/handler/handler.go) has no
-// OpenHands SDK underneath it and instead persists the raw ACP
-// SessionUpdateKind, so its equivalent "one step" event is 'tool_call' (see
-// executor.go's maxToolCalls, the same MaxIterations cap applied to the
-// count of tool_call notifications for that runtime). Counting only
-// 'ActionEvent' left every conversation run by the Go runner stuck at 0
-// iterations regardless of how much work the agent actually did.
+// all. 'tool_call' is what both of today's live runtimes count as one
+// "iteration": services/agent-runner's native Go ACP path
+// (internal/handler/handler.go, for llm-type/Goose conversations) and
+// apps/acp-bridge's own Go daemon (for acp-type conversations) both persist
+// the raw ACP SessionUpdateKind directly, with no OpenHands SDK underneath
+// either one — see executor.go's maxToolCalls, the same cap
+// agent_service.go's MaxIterations applies against this count.
+// 'ActionEvent' is kept in the IN-clause only for conversations from before
+// both of those were Go: services/ai-agent and apps/acp-bridge's original
+// Python/OpenHands-SDK-based daemon forwarded the SDK's own event class
+// name, 'ActionEvent', one per agent step, and those historical rows still
+// need to count correctly. Dropping either value from this list would leave
+// the affected conversations' iteration_count stuck at (or frozen at) 0.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
 	triggered_by_member_id, actor_user_id, audience, status, container_id, host_port,
 	(SELECT COUNT(*) FROM agent_conversation_events e

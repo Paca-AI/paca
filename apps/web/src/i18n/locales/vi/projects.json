@@ -101,7 +101,7 @@
 			"statusConnected": "Đã kết nối",
 			"statusDisconnected": "Chưa kết nối",
 			"step1Title": "Cài đặt ACP bridge",
-			"step1Description": "Yêu cầu Python 3.12+. Cài đặt daemon một lần bằng uv pip (hoặc bỏ qua bước này — lệnh chạy bên dưới dùng uvx, tự động tải về).",
+			"step1Description": "Tải xuống một binary dựng sẵn vào PATH của bạn — không cần Python, uv hoặc Go.",
 			"step2Title": "Chạy bridge cục bộ",
 			"step2Description": "Tạo một token, sau đó chạy lệnh này trong thư mục dự án của bạn.",
 			"noTokenYet": "Tạo một token để hiển thị lệnh chạy.",
