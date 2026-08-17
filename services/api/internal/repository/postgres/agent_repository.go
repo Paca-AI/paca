@@ -14,6 +14,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // -------------------------------------------------------------------------
@@ -966,6 +967,39 @@ func (r *AgentRepository) FindConversationByID(ctx context.Context, id uuid.UUID
 		return nil, err
 	}
 	return conversationFromRecord(rec), nil
+}
+
+// FindTaskHandoffForActivity returns the durable task handoff for a finished
+// conversation joined with its owning project/agent, for recording an
+// "agent.session.finished" activity. Returns (nil, nil) when the conversation
+// has no handoff (e.g. it was not task-linked or produced no conclusion).
+func (r *AgentRepository) FindTaskHandoffForActivity(ctx context.Context, conversationID uuid.UUID) (*taskdom.AgentSessionFinished, error) {
+	var row struct {
+		TaskID         uuid.UUID `db:"task_id"`
+		ProjectID      uuid.UUID `db:"project_id"`
+		AgentID        uuid.UUID `db:"agent_id"`
+		ConversationID uuid.UUID `db:"conversation_id"`
+		Summary        string    `db:"summary"`
+	}
+	err := r.db.GetContext(ctx, &row, `
+		SELECT h.task_id, c.project_id, c.agent_id, h.conversation_id, h.summary
+		FROM agent_task_handoffs h
+		JOIN agent_conversations c ON c.id = h.conversation_id
+		WHERE h.conversation_id = $1
+	`, conversationID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("postgres: find task handoff for conversation %s: %w", conversationID, err)
+	}
+	return &taskdom.AgentSessionFinished{
+		TaskID:         row.TaskID,
+		ProjectID:      row.ProjectID,
+		AgentID:        row.AgentID,
+		ConversationID: row.ConversationID,
+		Summary:        row.Summary,
+	}, nil
 }
 
 // FindLatestConversationByChatSession returns the most recently created

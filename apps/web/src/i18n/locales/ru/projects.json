@@ -991,6 +991,7 @@
 			"addedTaskLink": "добавил(а) связь задачи ({{linkType}})",
 			"removedTaskLink": "удалил(а) связь задачи",
 			"startedAiSession": "запустил(а) AI-сессию",
+			"finishedAiSession": "завершил(а) AI-сессию",
 			"watchSession": "Смотреть сессию",
 			"madeChange": "внёс(ла) изменение",
 			"descriptionChangeDiff": "Diff изменения описания"

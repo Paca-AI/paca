@@ -135,6 +135,38 @@ export function TaskActivityPane({
 						</span>
 					);
 				}
+				case "agent.session.finished": {
+					const convId = (c as Record<string, unknown>).conversation_id as
+						| string
+						| undefined;
+					const summary = (c as Record<string, unknown>).summary as
+						| string
+						| undefined;
+					return (
+						<span className="flex flex-col gap-1">
+							<span className="flex items-center gap-1.5 flex-wrap">
+								<span>{t("taskDetail.activity.finishedAiSession")}</span>
+								{convId && (
+									<Link
+										to="/projects/$projectId/conversations/$conversationId"
+										params={{ projectId, conversationId: convId }}
+										target="_blank"
+										rel="noreferrer"
+										className="inline-flex items-center gap-1 text-xs font-medium text-primary/80 hover:text-primary underline-offset-2 hover:underline transition-colors"
+									>
+										<Bot className="size-3" />
+										{t("taskDetail.activity.watchSession")}
+									</Link>
+								)}
+							</span>
+							{summary && (
+								<span className="text-xs text-muted-foreground whitespace-pre-wrap">
+									{summary}
+								</span>
+							)}
+						</span>
+					);
+				}
 				default:
 					return (
 						((c as Record<string, unknown>)._description as
