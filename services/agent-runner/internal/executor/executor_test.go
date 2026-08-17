@@ -65,4 +65,3 @@ func TestBuildMCPServers_OmitsRepoPluginIDsWhenAbsent(t *testing.T) {
 		t.Errorf("PACA_REPO_PLUGIN_IDS should be omitted when trigger.RepoPluginIDs is empty, env: %+v", paca.Env)
 	}
 }
-

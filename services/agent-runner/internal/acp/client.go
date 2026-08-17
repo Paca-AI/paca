@@ -522,11 +522,12 @@ func (c *Client) startStream(ctx context.Context, sessionID string) *frameStream
 				}
 			}
 			if readErr != nil {
-				if errors.Is(readErr, io.EOF) {
+				switch {
+				case errors.Is(readErr, io.EOF):
 					s.err = errors.New("acp: stream: closed by server")
-				} else if ctx.Err() != nil {
+				case ctx.Err() != nil:
 					s.err = ctx.Err()
-				} else {
+				default:
 					s.err = fmt.Errorf("acp: stream: reading stream: %w", readErr)
 				}
 				return
