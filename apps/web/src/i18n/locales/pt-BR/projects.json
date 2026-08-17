@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "Escrever descrição",
 		"triggerTask": "Tarefa",
 		"triggerAutomation": "Automação",
-		"iterations_one": "{{count}} iteração",
-		"iterations_other": "{{count}} iterações",
+		"usageTitle": "{{tokens}} tokens · {{cost}}",
 		"prOpened": "PR aberto",
 		"filters": {
 			"title": "Filtros",

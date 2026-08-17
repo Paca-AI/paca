@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "Viết mô tả",
 		"triggerTask": "Nhiệm vụ",
 		"triggerAutomation": "Tự động hóa",
-		"iterations_one": "{{count}} lượt lặp",
-		"iterations_other": "{{count}} lượt lặp",
+		"usageTitle": "{{tokens}} token · {{cost}}",
 		"prOpened": "PR đã mở",
 		"filters": {
 			"title": "Bộ lọc",
