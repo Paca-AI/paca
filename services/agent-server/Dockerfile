@@ -74,6 +74,46 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @paca-ai/paca-mcp \
     && rm -rf /home/goose/.npm \
-    && apt-get purge -y curl gnupg \
+    && apt-get purge -y gnupg \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+# curl is deliberately kept (not purged above like gnupg is) — it's also
+# one of the general-purpose tools this next layer exists to provide.
+
+# General-purpose developer tools an agent commonly reaches for mid-task
+# that the base image (and the layer above, which only covers what Node/the
+# Paca MCP server itself needs) doesn't provide — installed once here so a
+# conversation never has to `apt-get install` them itself the way one
+# actually did (see the `sudo`/permission-denied failure this whole image's
+# root-user switch above was written to fix): ripgrep and tree specifically
+# close a real gap, not a hypothetical one — Goose's own default system
+# prompt tells the model to "prefer rg" for search and use tree to
+# understand a codebase's structure, but neither ever actually shipped in
+# this image before now, so every conversation silently fell back to
+# slower alternatives without ever being told those two commands were
+# missing.
+#
+# --no-install-recommends throughout, same as the layer above — most
+# consequential for python3-pip, whose *recommended* (not required)
+# packages pull in python3-dev, a full C header/build-tooling set roughly
+# the same size as build-essential itself for a package whose only job here
+# is running `pip install`.
+#
+# Measured directly, not assumed, against this exact package list (`docker
+# inspect --format '{{.Size}}'` before and after): ripgrep, tree, jq,
+# unzip/zip, less, nano, sqlite3, openssh-client, and python3-pip alone add
+# +13MB; the full list below, build-essential/postgresql-client/shellcheck
+# included, adds +106MB total — comfortably inside the 256MB budget this
+# layer was given, with build-essential (a real C/C++ toolchain — needed
+# for native Node/Python extensions that ship source instead of prebuilt
+# binaries, a common cause of an otherwise-inexplicable `npm
+# install`/`pip install` failure) accounting for most of that. Re-measure
+# the same way before adding to this list — several individually-
+# small-looking packages can add up faster than they look, python3-pip's
+# recommends above being the clearest example already caught here.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       ripgrep tree jq unzip zip less nano sqlite3 openssh-client python3-pip \
+       build-essential postgresql-client shellcheck \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
