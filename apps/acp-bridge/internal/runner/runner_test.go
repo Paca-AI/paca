@@ -15,7 +15,19 @@ import (
 	"github.com/Paca-AI/paca/apps/acp-bridge/internal/acpclient"
 )
 
-const testTimeout = 10 * time.Second
+// testTimeout bounds both this file's message-wait helpers (waitFor and
+// friends) and the two end-to-end interrupt tests' own turnRunning polling
+// loops. For the latter it must clear runner.go's interruptGracePeriod
+// (15s) — Interrupt's own documented worst-case bound for how long an
+// uncooperative agent can legitimately take to resolve — plus real headroom
+// for a loaded CI runner (these tests spawn actual subprocesses under the
+// race detector, on a shared 2-core GitHub Actions runner running every
+// other package in this module concurrently). 10s used to be enough because
+// the fake agent always answers session/cancel near-instantly, but that
+// left zero margin against interruptGracePeriod itself, let alone CI
+// slowness — see the "timed out waiting for the interrupted turn to
+// finish" flake this replaced.
+const testTimeout = 30 * time.Second
 
 // capturedSends is a fake bridge.SendFunc that records every message and
 // also fans it out on notify so tests can wait for a specific message
