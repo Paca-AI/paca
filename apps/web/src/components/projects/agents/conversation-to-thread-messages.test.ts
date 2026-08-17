@@ -295,6 +295,28 @@ function turnEnd(stopReason: string): AgentConversationEvent {
 	};
 }
 
+function turnUsage(opts: {
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens: number;
+	costUSD?: number;
+}): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "turn_usage",
+		event_source: "system",
+		payload: {
+			input_tokens: opts.inputTokens,
+			output_tokens: opts.outputTokens,
+			total_tokens: opts.totalTokens,
+			...(opts.costUSD !== undefined ? { cost_usd: opts.costUSD } : {}),
+		},
+		created_at: "2026-01-01T00:00:11.000Z",
+	};
+}
+
 describe("eventsToThreadMessages", () => {
 	it("converts a text-only turn into user + assistant messages", () => {
 		const events = [userMessage("hi"), agentReply("hello!")];
@@ -952,6 +974,29 @@ describe("eventsToThreadMessages", () => {
 				userMessage("hi"),
 				agentMessageChunk("hello!"),
 				turnEnd("end_turn"),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(2);
+			const parts = messages[1].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts).toHaveLength(1);
+			expect(parts[0]).toMatchObject({ type: "text", text: "hello!" });
+		});
+
+		it("ignores turn_usage — token/cost accounting never renders as a transcript bubble", () => {
+			const events = [
+				userMessage("hi"),
+				agentMessageChunk("hello!"),
+				turnEnd("end_turn"),
+				turnUsage({
+					inputTokens: 80,
+					outputTokens: 40,
+					totalTokens: 120,
+					costUSD: 0.0034,
+				}),
 			];
 
 			const messages = eventsToThreadMessages(events, false);

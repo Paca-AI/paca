@@ -274,6 +274,26 @@ type promptResult struct {
 	// max-turn-requests reason) are plausible per the ACP spec but not seen
 	// here — surfaced as-is rather than validated against an enum.
 	StopReason string `json:"stopReason"`
+	// Usage is this turn's token accounting — ACP's PromptResponse.usage,
+	// which schema.unstable.json gates "UNSTABLE" but which goose populates
+	// unconditionally regardless of negotiated client capabilities (verified
+	// against aaif-goose/goose's build_prompt_usage, same file/version as
+	// UpdateUsage's doc comment). Omitted (nil) when goose has no total
+	// token count for this turn at all (e.g. the turn never reached a
+	// provider call) — see build_prompt_usage's own
+	// test_build_prompt_usage_requires_total_tokens.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Usage is session/prompt's per-turn token accounting. Reflects only THIS
+// turn's tokens, not a running session total — confirmed against goose's
+// own test, test_build_prompt_usage_uses_current_turn_tokens. Callers that
+// want a conversation-wide total must sum this across every turn themselves
+// (see handler.Handler's persisted "turn_usage" events).
+type Usage struct {
+	TotalTokens  int64 `json:"totalTokens"`
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
 }
 
 // ─── session/update notifications ──────────────────────────────────────────
@@ -291,7 +311,34 @@ const (
 	UpdateToolCall SessionUpdateKind = "tool_call"
 	// UpdateToolCallUpdate reports a status change for an existing tool call.
 	UpdateToolCallUpdate SessionUpdateKind = "tool_call_update"
+	// UpdateUsage is a token/cost usage snapshot, sent once near the end of
+	// each session/prompt turn. Verified against ACP's stable schema.json
+	// ($defs.UsageUpdate) and aaif-goose/goose's build_usage_updates
+	// (crates/goose/src/acp/server.rs, v1.46.0): its Cost is
+	// totals.accumulated_cost — the SESSION's running total so far, not a
+	// per-turn delta — unlike Usage below (promptResult.Usage), which is
+	// explicitly this-turn-only. Used/Size are a context-window gauge (can
+	// shrink after compaction), not a cumulative token-spend counter — not
+	// useful for a "tokens used" total, which is why this package sums
+	// promptResult.Usage across turns instead of reading Used here.
+	UpdateUsage SessionUpdateKind = "usage_update"
 )
+
+// UsageUpdate is the payload of an UpdateUsage event — see its doc comment
+// on why Cost is cumulative-for-the-session rather than a per-turn delta.
+type UsageUpdate struct {
+	Used int64 `json:"used"`
+	Size int64 `json:"size"`
+	Cost *Cost `json:"cost,omitempty"`
+}
+
+// Cost is UsageUpdate's optional cost field. Goose always reports "USD"
+// (crates/goose/src/acp/server.rs's build_usage_updates hardcodes it) —
+// Currency is still carried rather than assumed, in case that ever changes.
+type Cost struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
 
 type sessionUpdateNotification struct {
 	SessionID string                `json:"sessionId"`

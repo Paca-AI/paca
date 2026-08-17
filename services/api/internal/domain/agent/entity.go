@@ -239,6 +239,15 @@ type AgentConversation struct {
 	ContainerID    *string
 	HostPort       *int
 	IterationCount int
+	// InputTokens/OutputTokens/TotalTokens/CostUSD are computed live from
+	// agent_conversation_events (event_type = 'turn_usage'), the same
+	// pattern IterationCount uses — see conversationCols's doc comment in
+	// the postgres repository. CostUSD is nil until at least one turn has
+	// reported a cost.
+	InputTokens    int64
+	OutputTokens   int64
+	TotalTokens    int64
+	CostUSD        *float64
 	ErrorMessage   *string
 	RepoPluginID   *uuid.UUID
 	RepoCloneURL   *string

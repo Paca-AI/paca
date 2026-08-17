@@ -101,6 +101,10 @@ type agentConversationRecord struct {
 	ContainerID         *string    `db:"container_id"`
 	HostPort            *int       `db:"host_port"`
 	IterationCount      int64      `db:"iteration_count"`
+	InputTokens         int64      `db:"input_tokens"`
+	OutputTokens        int64      `db:"output_tokens"`
+	TotalTokens         int64      `db:"total_tokens"`
+	CostUSD             *float64   `db:"cost_usd"`
 	ErrorMessage        *string    `db:"error_message"`
 	RepoPluginID        *string    `db:"repo_plugin_id"`
 	RepoCloneURL        *string    `db:"repo_clone_url"`
@@ -843,10 +847,34 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // name, 'ActionEvent', one per agent step, and those historical rows still
 // need to count correctly. Dropping either value from this list would leave
 // the affected conversations' iteration_count stuck at (or frozen at) 0.
+// input_tokens/output_tokens/total_tokens/cost_usd are likewise computed
+// live rather than stored, for the identical reason iteration_count is, and
+// from the identical two origins: services/agent-runner's handler.Handler
+// (llm-type/Goose conversations, see its own doc comment) and
+// apps/acp-bridge's runner package (acp-type conversations, see
+// runner.emitTurnUsage) each persist one 'turn_usage' event per turn with a
+// JSON payload of {input_tokens, output_tokens, total_tokens, cost_usd} —
+// the first three are that turn's own token counts (ACP's
+// PromptResponse.usage, confirmed per-turn not cumulative), so they're
+// summed across every turn_usage row; cost_usd is the underlying agent's
+// (goose's, or whichever local ACP CLI the user's bridge is driving) own
+// session-cumulative total as of that turn (ACP's usage_update
+// notification, backed by totals.accumulated_cost for goose), so only the
+// latest row's value is used, not a sum — summing it would double-count
+// every earlier turn's already-cumulative figure.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
 	triggered_by_member_id, actor_user_id, audience, status, container_id, host_port,
 	(SELECT COUNT(*) FROM agent_conversation_events e
 	 WHERE e.conversation_id = agent_conversations.id AND e.event_type IN ('ActionEvent', 'tool_call')) AS iteration_count,
+	COALESCE((SELECT SUM((e.payload->>'input_tokens')::bigint) FROM agent_conversation_events e
+	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'turn_usage'), 0) AS input_tokens,
+	COALESCE((SELECT SUM((e.payload->>'output_tokens')::bigint) FROM agent_conversation_events e
+	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'turn_usage'), 0) AS output_tokens,
+	COALESCE((SELECT SUM((e.payload->>'total_tokens')::bigint) FROM agent_conversation_events e
+	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'turn_usage'), 0) AS total_tokens,
+	(SELECT (e.payload->>'cost_usd')::numeric FROM agent_conversation_events e
+	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'turn_usage' AND e.payload ? 'cost_usd'
+	 ORDER BY e.event_index DESC LIMIT 1) AS cost_usd,
 	error_message,
 	repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
 	started_at, finished_at, created_at, updated_at`
@@ -1445,6 +1473,10 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		ContainerID:    rec.ContainerID,
 		HostPort:       rec.HostPort,
 		IterationCount: int(rec.IterationCount),
+		InputTokens:    rec.InputTokens,
+		OutputTokens:   rec.OutputTokens,
+		TotalTokens:    rec.TotalTokens,
+		CostUSD:        rec.CostUSD,
 		ErrorMessage:   rec.ErrorMessage,
 		RepoCloneURL:   rec.RepoCloneURL,
 		BranchName:     rec.BranchName,

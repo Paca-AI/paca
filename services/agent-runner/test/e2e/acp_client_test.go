@@ -83,7 +83,7 @@ func TestACPClientAgainstRealGooseContainer(t *testing.T) {
 	}
 
 	var toolCallEvents int
-	_, err = c.Prompt(ctx, sessionID, []acp.ContentBlock{acp.TextBlock("please run: echo e2e-acp-client-check")}, 5,
+	_, _, err = c.Prompt(ctx, sessionID, []acp.ContentBlock{acp.TextBlock("please run: echo e2e-acp-client-check")}, 5,
 		func(e acp.Event) {
 			if e.Kind == acp.UpdateToolCall {
 				toolCallEvents++

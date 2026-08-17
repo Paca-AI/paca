@@ -390,6 +390,10 @@ type AgentConversationResponse struct {
 	ActorUserID         *uuid.UUID `json:"actor_user_id,omitempty"`
 	Status              string     `json:"status"`
 	IterationCount      int        `json:"iteration_count"`
+	InputTokens         int64      `json:"input_tokens"`
+	OutputTokens        int64      `json:"output_tokens"`
+	TotalTokens         int64      `json:"total_tokens"`
+	CostUSD             *float64   `json:"cost_usd,omitempty"`
 	ErrorMessage        *string    `json:"error_message,omitempty"`
 	BranchName          *string    `json:"branch_name,omitempty"`
 	PRUrl               *string    `json:"pr_url,omitempty"`
@@ -428,6 +432,10 @@ func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResp
 		ActorUserID:         c.ActorUserID,
 		Status:              c.Status,
 		IterationCount:      c.IterationCount,
+		InputTokens:         c.InputTokens,
+		OutputTokens:        c.OutputTokens,
+		TotalTokens:         c.TotalTokens,
+		CostUSD:             c.CostUSD,
 		ErrorMessage:        c.ErrorMessage,
 		BranchName:          c.BranchName,
 		PRUrl:               c.PRUrl,

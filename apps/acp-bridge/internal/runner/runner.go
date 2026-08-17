@@ -75,6 +75,17 @@ type conversationState struct {
 
 	chunks *chunkBuffer
 
+	// turnCostUSD is the current turn's latest reported cost, set from
+	// "usage_update" session/update notifications (see recordUsageUpdate)
+	// and read back once the turn's client.Prompt call returns (see
+	// emitTurnUsage) — mirrors handler.Handler's latestCostUSD local
+	// variable, but must live on conversationState rather than as a runTurn
+	// local since handleUpdate (which observes the notifications) runs on
+	// the ACP client's own read goroutine, not runTurn's. Reset to nil at
+	// the start of every turn so a later turn with no usage_update at all
+	// doesn't inherit a stale cost from an earlier one.
+	turnCostUSD *float64
+
 	// outbound is this conversation's own local queue of not-yet-delivered
 	// bridge messages (events and turn_status), drained in order by a
 	// single dedicated forwardEvents goroutine — see ensureOutbound's doc
@@ -232,6 +243,10 @@ func (r *Runner) Interrupt(conversationID string) {
 func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversationID, projectID, message string) {
 	defer r.finishTurn(state)
 
+	state.mu.Lock()
+	state.turnCostUSD = nil
+	state.mu.Unlock()
+
 	client, sessionID, err := r.ensureSession(ctx, state, conversationID, projectID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -249,7 +264,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 
 	r.emitUserMessage(state, conversationID, projectID, message)
 
-	stopReason, err := client.Prompt(ctx, sessionID, message)
+	stopReason, usage, err := client.Prompt(ctx, sessionID, message)
 	// Whatever's still buffered when the turn ends — successfully,
 	// interrupted, or failed — is genuine partial output, not scratch
 	// state to discard.
@@ -269,6 +284,7 @@ func (r *Runner) runTurn(ctx context.Context, state *conversationState, conversa
 	}
 
 	r.emitTurnEnd(state, conversationID, projectID, stopReason)
+	r.emitTurnUsage(state, conversationID, projectID, usage)
 	if stopReason == "cancelled" {
 		// The agent honored session/cancel cooperatively and answered
 		// session/prompt normally — a real response, not a transport
@@ -357,8 +373,80 @@ func (r *Runner) handleUpdate(state *conversationState, conversationID, projectI
 		}
 		return
 	}
+	if u.Kind == "usage_update" {
+		// Recorded onto state.turnCostUSD for emitTurnUsage to pick up once
+		// the turn ends, not forwarded as its own event: a usage snapshot
+		// has no place in the chat transcript — mirrors
+		// services/agent-runner/internal/handler.Handler's onEvent, which
+		// likewise returns before ever routing a usage_update through
+		// persistAndPublish (and, notably, before flushing pending chunk
+		// text the way every other update kind below does).
+		r.recordUsageUpdate(state, u.Raw)
+		return
+	}
 	r.flushChunks(state, conversationID, projectID)
 	r.emitEvent(state, conversationID, projectID, u.Kind, "agent", u.Raw)
+}
+
+// recordUsageUpdate decodes a "usage_update" notification's cost (ACP's
+// $defs.UsageUpdate) and stores it on state.turnCostUSD. Verified against
+// the same schema services/agent-runner/internal/acp.UsageUpdate targets;
+// see that type's doc comment for why Cost — when a given ACP agent reports
+// it the way goose does — is typically a session-running total rather than
+// a per-turn delta, and why capturing only the LATEST notification seen
+// during the turn (last write wins, no accumulation here) is the correct
+// read of that regardless.
+func (r *Runner) recordUsageUpdate(state *conversationState, raw json.RawMessage) {
+	var payload struct {
+		Cost *struct {
+			Amount float64 `json:"amount"`
+		} `json:"cost,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		r.log.Warn("runner: failed to decode usage_update", "error", err)
+		return
+	}
+	if payload.Cost == nil {
+		return
+	}
+	cost := payload.Cost.Amount
+	state.mu.Lock()
+	state.turnCostUSD = &cost
+	state.mu.Unlock()
+}
+
+// emitTurnUsage reports this turn's token/cost accounting as its own
+// "turn_usage"/"system" event — the identical {input_tokens, output_tokens,
+// total_tokens, cost_usd} JSON shape
+// services/agent-runner/internal/handler.Handler already persists for
+// llm-type (Goose-in-sandbox) conversations, so services/api's
+// conversationCols query (already agent_type-agnostic — it just sums/reads
+// 'turn_usage' rows under agent_conversation_events) picks this up for
+// acp-type conversations with no changes needed on that end. usage is this
+// turn's own token count straight from session/prompt's result (nil if the
+// agent reported none); cost comes from state.turnCostUSD, populated by
+// recordUsageUpdate above. A no-op (nothing emitted) when neither is
+// present, matching handler.Handler's own `if result.Usage != nil ||
+// latestCostUSD != nil` gate.
+func (r *Runner) emitTurnUsage(state *conversationState, conversationID, projectID string, usage *acpclient.Usage) {
+	state.mu.Lock()
+	costUSD := state.turnCostUSD
+	state.mu.Unlock()
+
+	if usage == nil && costUSD == nil {
+		return
+	}
+	payload := map[string]any{}
+	if usage != nil {
+		payload["input_tokens"] = usage.InputTokens
+		payload["output_tokens"] = usage.OutputTokens
+		payload["total_tokens"] = usage.TotalTokens
+	}
+	if costUSD != nil {
+		payload["cost_usd"] = *costUSD
+	}
+	payloadJSON, _ := json.Marshal(payload)
+	r.emitEvent(state, conversationID, projectID, "turn_usage", "system", payloadJSON)
 }
 
 func (r *Runner) flushChunks(state *conversationState, conversationID, projectID string) {

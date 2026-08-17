@@ -1082,10 +1082,7 @@
 		"triggerWriteDescription": "Написать описание",
 		"triggerTask": "Задача",
 		"triggerAutomation": "Автоматизация",
-		"iterations_one": "{{count}} итерация",
-		"iterations_few": "{{count}} итерации",
-		"iterations_many": "{{count}} итераций",
-		"iterations_other": "{{count}} итерации",
+		"usageTitle": "{{tokens}} токенов · {{cost}}",
 		"prOpened": "PR открыт",
 		"filters": {
 			"title": "Фильтры",

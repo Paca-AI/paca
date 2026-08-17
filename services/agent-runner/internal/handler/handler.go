@@ -337,7 +337,31 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	// this check, such a turn leaves the conversation looking like the
 	// agent simply never replied, with no error surfaced anywhere in the UI.
 	producedOutput := false
+	// Captured from the last UpdateUsage notification seen during the turn
+	// (there's normally at most one, near the turn's end) — see acp.
+	// UpdateUsage's doc comment on why this is already the session's
+	// cumulative cost, not a per-turn delta that needs summing the way
+	// result.Usage's token counts do below.
+	var latestCostUSD *float64
 	onEvent := func(e acp.Event) {
+		if e.Kind == acp.UpdateUsage {
+			// Not routed through persistAndPublish: a usage snapshot has no
+			// place in the chat transcript, and isn't itself the "turn
+			// produced output" signal producedOutput exists to track (see
+			// its own doc comment above) — recorded, but this must return
+			// before that flag is set.
+			var u acp.UsageUpdate
+			if err := json.Unmarshal(e.Raw, &u); err != nil {
+				h.Log.Warn("agent-runner: failed to decode usage_update",
+					"conversation_id", trigger.ConversationID, "error", err)
+				return
+			}
+			if u.Cost != nil {
+				cost := u.Cost.Amount
+				latestCostUSD = &cost
+			}
+			return
+		}
 		producedOutput = true
 		if e.Kind == acp.UpdateAgentMessageChunk {
 			var chunk acp.AgentMessageChunk
@@ -500,6 +524,43 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	); pubErr != nil {
 		h.Log.Warn("agent-runner: failed to publish turn_end event",
 			"conversation_id", trigger.ConversationID, "error", pubErr)
+	}
+
+	// A separate row from turn_end (not folded into its payload) so
+	// services/api's conversationCols can sum input_tokens/output_tokens/
+	// total_tokens and read the latest cost_usd across every turn via a
+	// plain `event_type = 'turn_usage'` filter — mirrors iteration_count's
+	// own live-computed-from-events pattern (see migration
+	// 000026_drop_conversation_iteration_count.sql) rather than a stored,
+	// incrementally-updated column on agent_conversations that could drift
+	// out of sync the same way that dropped column did. Never published over
+	// PublishRealtime — like turn_end, this has no place in the live chat
+	// transcript.
+	if result.Usage != nil || latestCostUSD != nil {
+		eventIndex++
+		usagePayload := map[string]any{}
+		if result.Usage != nil {
+			usagePayload["input_tokens"] = result.Usage.InputTokens
+			usagePayload["output_tokens"] = result.Usage.OutputTokens
+			usagePayload["total_tokens"] = result.Usage.TotalTokens
+		}
+		if latestCostUSD != nil {
+			usagePayload["cost_usd"] = *latestCostUSD
+		}
+		usageJSON, _ := json.Marshal(usagePayload)
+		if err := h.ConvRepo.InsertEvent(
+			ctx, uuid.New(), trigger.ConversationID, "turn_usage", "system", eventIndex, usageJSON, time.Now().UTC(),
+		); err != nil {
+			h.Log.Warn("agent-runner: failed to persist turn_usage event",
+				"conversation_id", trigger.ConversationID, "error", err)
+		}
+		if pubErr := h.Publisher.PublishEvent(
+			ctx, trigger.ConversationID, trigger.ProjectID,
+			"turn_usage", "system", eventIndex, usageJSON, "finished",
+		); pubErr != nil {
+			h.Log.Warn("agent-runner: failed to publish turn_usage event",
+				"conversation_id", trigger.ConversationID, "error", pubErr)
+		}
 	}
 
 	if isChat {

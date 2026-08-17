@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "Write description",
 		"triggerTask": "Task",
 		"triggerAutomation": "Automation",
-		"iterations_one": "{{count}} iteration",
-		"iterations_other": "{{count}} iterations",
+		"usageTitle": "{{tokens}} tokens · {{cost}}",
 		"prOpened": "PR opened",
 		"filters": {
 			"title": "Filters",

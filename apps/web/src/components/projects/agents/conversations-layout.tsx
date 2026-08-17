@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useParams } from "@tanstack/react-router";
-import { Clock, MessageSquare, Plus, Zap } from "lucide-react";
+import { Clock, Coins, MessageSquare, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,6 +20,7 @@ import {
 	conversationsQueryOptions,
 	globalConversationsQueryOptions,
 } from "@/lib/agent-api";
+import { formatCompactTokens, formatUsageCost } from "@/lib/format-usage";
 import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
 import { ConversationFilters } from "./conversation-filters";
@@ -106,12 +107,24 @@ function ConversationListItem({
 				</Badge>
 			</div>
 			<div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-8">
-				<span className="flex items-center gap-1 shrink-0">
-					<Zap className="size-3" />
-					{t("conversationsPage.iterations", { count: conv.iteration_count })}
-				</span>
-				<span className="text-muted-foreground/40">·</span>
 				<span className="truncate">{triggerLabel}</span>
+				{conv.total_tokens > 0 && (
+					<>
+						<span className="text-muted-foreground/40">·</span>
+						<span
+							className="flex items-center gap-1 shrink-0"
+							title={t("conversationsPage.usageTitle", {
+								tokens: conv.total_tokens.toLocaleString(),
+								cost:
+									conv.cost_usd != null ? formatUsageCost(conv.cost_usd) : "—",
+							})}
+						>
+							<Coins className="size-3" />
+							{formatCompactTokens(conv.total_tokens)}
+							{conv.cost_usd != null && ` · ${formatUsageCost(conv.cost_usd)}`}
+						</span>
+					</>
+				)}
 				<span className="ml-auto shrink-0 flex items-center gap-1">
 					<Clock className="size-3" />
 					{new Date(conv.created_at).toLocaleDateString()}

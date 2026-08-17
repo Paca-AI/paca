@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "설명 작성",
 		"triggerTask": "작업",
 		"triggerAutomation": "자동화",
-		"iterations_one": "{{count}}회 반복",
-		"iterations_other": "{{count}}회 반복",
+		"usageTitle": "{{tokens}} 토큰 · {{cost}}",
 		"prOpened": "PR 열림",
 		"filters": {
 			"title": "필터",

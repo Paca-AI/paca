@@ -1064,8 +1064,7 @@
 		"triggerWriteDescription": "编写描述",
 		"triggerTask": "任务",
 		"triggerAutomation": "自动化",
-		"iterations_one": "{{count}} 次迭代",
-		"iterations_other": "{{count}} 次迭代",
+		"usageTitle": "{{tokens}} 个令牌 · {{cost}}",
 		"prOpened": "PR 已创建",
 		"filters": {
 			"title": "筛选",

@@ -220,12 +220,13 @@ func TestPromptStreamsUpdatesInOrderThenReturnsStopReason(t *testing.T) {
 
 	type result struct {
 		stopReason string
+		usage      *Usage
 		err        error
 	}
 	resCh := make(chan result, 1)
 	go func() {
-		stopReason, err := c.Prompt(ctx, "sess-1", "hello")
-		resCh <- result{stopReason, err}
+		stopReason, usage, err := c.Prompt(ctx, "sess-1", "hello")
+		resCh <- result{stopReason, usage, err}
 	}()
 
 	req := peer.next()
@@ -254,7 +255,10 @@ func TestPromptStreamsUpdatesInOrderThenReturnsStopReason(t *testing.T) {
 		"sessionId": "sess-1",
 		"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tc-1", "title": "Bash: ls"},
 	})
-	peer.respond(req.ID, map[string]any{"stopReason": "end_turn"})
+	peer.respond(req.ID, map[string]any{
+		"stopReason": "end_turn",
+		"usage":      map[string]any{"totalTokens": 150, "inputTokens": 100, "outputTokens": 50},
+	})
 
 	res := <-resCh
 	if res.err != nil {
@@ -262,6 +266,9 @@ func TestPromptStreamsUpdatesInOrderThenReturnsStopReason(t *testing.T) {
 	}
 	if res.stopReason != "end_turn" {
 		t.Errorf("stopReason = %q, want end_turn", res.stopReason)
+	}
+	if res.usage == nil || res.usage.TotalTokens != 150 || res.usage.InputTokens != 100 || res.usage.OutputTokens != 50 {
+		t.Errorf("usage = %+v, want {150 100 50}", res.usage)
 	}
 
 	// onUpdate must observe both notifications, in order, before Prompt's
@@ -276,6 +283,32 @@ func TestPromptStreamsUpdatesInOrderThenReturnsStopReason(t *testing.T) {
 	}
 	if got[0].SessionID != "sess-1" {
 		t.Errorf("sessionID = %q, want sess-1", got[0].SessionID)
+	}
+}
+
+func TestPromptReturnsNilUsageWhenAgentReportsNone(t *testing.T) {
+	c, peer := newTestClient(t, nil)
+	ctx := withTimeout(t)
+
+	type result struct {
+		usage *Usage
+		err   error
+	}
+	resCh := make(chan result, 1)
+	go func() {
+		_, usage, err := c.Prompt(ctx, "sess-1", "hello")
+		resCh <- result{usage, err}
+	}()
+
+	req := peer.next()
+	peer.respond(req.ID, map[string]any{"stopReason": "end_turn"})
+
+	res := <-resCh
+	if res.err != nil {
+		t.Fatalf("Prompt returned error: %v", res.err)
+	}
+	if res.usage != nil {
+		t.Errorf("usage = %+v, want nil", res.usage)
 	}
 }
 
@@ -361,7 +394,7 @@ func TestCancelIsANotificationAndPromptReturnsOnSubsequentResponse(t *testing.T)
 	}
 	resCh := make(chan result, 1)
 	go func() {
-		stopReason, err := c.Prompt(ctx, "sess-1", "do something long-running")
+		stopReason, _, err := c.Prompt(ctx, "sess-1", "do something long-running")
 		resCh <- result{stopReason, err}
 	}()
 

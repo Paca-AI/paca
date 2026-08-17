@@ -15,7 +15,19 @@ import (
 	"github.com/Paca-AI/paca/apps/acp-bridge/internal/acpclient"
 )
 
-const testTimeout = 10 * time.Second
+// testTimeout bounds both this file's message-wait helpers (waitFor and
+// friends) and the two end-to-end interrupt tests' own turnRunning polling
+// loops. For the latter it must clear runner.go's interruptGracePeriod
+// (15s) — Interrupt's own documented worst-case bound for how long an
+// uncooperative agent can legitimately take to resolve — plus real headroom
+// for a loaded CI runner (these tests spawn actual subprocesses under the
+// race detector, on a shared 2-core GitHub Actions runner running every
+// other package in this module concurrently). 10s used to be enough because
+// the fake agent always answers session/cancel near-instantly, but that
+// left zero margin against interruptGracePeriod itself, let alone CI
+// slowness — see the "timed out waiting for the interrupted turn to
+// finish" flake this replaced.
+const testTimeout = 30 * time.Second
 
 // capturedSends is a fake bridge.SendFunc that records every message and
 // also fans it out on notify so tests can wait for a specific message
@@ -199,6 +211,91 @@ func TestHandleUpdateNeverBlocksOnAStalledSend(t *testing.T) {
 	}
 }
 
+// --- Usage/cost accounting tests ---------------------------------------
+
+func TestHandleUpdateRecordsUsageCostAndSuppressesEvent(t *testing.T) {
+	r, sent := newTestRunner(t)
+	state := &conversationState{chunks: newChunkBuffer()}
+
+	r.handleUpdate(state, "conv-1", "proj-1", acpclient.Update{
+		SessionID: "sess-1",
+		Kind:      "usage_update",
+		Raw: json.RawMessage(
+			`{"sessionUpdate":"usage_update","used":100,"size":1000,"cost":{"amount":0.0042,"currency":"USD"}}`),
+	})
+
+	state.mu.Lock()
+	cost := state.turnCostUSD
+	state.mu.Unlock()
+	if cost == nil || *cost != 0.0042 {
+		t.Fatalf("turnCostUSD = %v, want 0.0042", cost)
+	}
+	// usage_update must never reach the transcript — handleUpdate returns
+	// before ever enqueueing anything for it, so this is deterministic, not
+	// a race that needs a sleep.
+	if msgs := sent.all(); len(msgs) != 0 {
+		t.Fatalf("expected usage_update to produce no outbound message, got %+v", msgs)
+	}
+}
+
+func TestHandleUpdateIgnoresUsageUpdateWithNoCost(t *testing.T) {
+	r, _ := newTestRunner(t)
+	state := &conversationState{chunks: newChunkBuffer()}
+
+	r.handleUpdate(state, "conv-1", "proj-1", acpclient.Update{
+		SessionID: "sess-1",
+		Kind:      "usage_update",
+		Raw:       json.RawMessage(`{"sessionUpdate":"usage_update","used":100,"size":1000}`),
+	})
+
+	state.mu.Lock()
+	cost := state.turnCostUSD
+	state.mu.Unlock()
+	if cost != nil {
+		t.Fatalf("turnCostUSD = %v, want nil", cost)
+	}
+}
+
+func TestEmitTurnUsageIncludesTokensAndCost(t *testing.T) {
+	r, sent := newTestRunner(t)
+	cost := 0.0042
+	state := &conversationState{chunks: newChunkBuffer(), turnCostUSD: &cost}
+
+	r.emitTurnUsage(state, "conv-1", "proj-1", &acpclient.Usage{TotalTokens: 150, InputTokens: 100, OutputTokens: 50})
+
+	msg := waitForEventType(t, sent, "turn_usage")
+	if msg["event_source"] != "system" {
+		t.Errorf("event_source = %v, want system", msg["event_source"])
+	}
+	payload, ok := msg["payload"].(json.RawMessage)
+	if !ok {
+		t.Fatalf("payload is not json.RawMessage: %T", msg["payload"])
+	}
+	var decoded struct {
+		InputTokens  int64   `json:"input_tokens"`
+		OutputTokens int64   `json:"output_tokens"`
+		TotalTokens  int64   `json:"total_tokens"`
+		CostUSD      float64 `json:"cost_usd"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decoding payload: %v", err)
+	}
+	if decoded.InputTokens != 100 || decoded.OutputTokens != 50 || decoded.TotalTokens != 150 || decoded.CostUSD != 0.0042 {
+		t.Fatalf("unexpected payload: %+v", decoded)
+	}
+}
+
+func TestEmitTurnUsageIsNoOpWhenNothingReported(t *testing.T) {
+	r, sent := newTestRunner(t)
+	state := &conversationState{chunks: newChunkBuffer()}
+
+	r.emitTurnUsage(state, "conv-1", "proj-1", nil)
+
+	if msgs := sent.all(); len(msgs) != 0 {
+		t.Fatalf("expected no message when neither usage nor cost was reported, got %+v", msgs)
+	}
+}
+
 func TestChunkBufferAccumulatesAndTakes(t *testing.T) {
 	b := newChunkBuffer()
 	b.append("agent_message_chunk", "Hello, ")
@@ -309,6 +406,22 @@ func runFakeACPAgent(behavior string) {
 					"result": map[string]any{"stopReason": "cancelled"}})
 				continue
 			}
+			if behavior == "usage" {
+				write(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
+					"sessionId": "sess-1",
+					"update": map[string]any{"sessionUpdate": "agent_message_chunk",
+						"content": map[string]any{"type": "text", "text": "Done."}},
+				}})
+				write(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
+					"sessionId": "sess-1",
+					"update": map[string]any{"sessionUpdate": "usage_update", "used": 100, "size": 1000,
+						"cost": map[string]any{"amount": 0.0042, "currency": "USD"}},
+				}})
+				write(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(msg.ID),
+					"result": map[string]any{"stopReason": "end_turn",
+						"usage": map[string]any{"totalTokens": 150, "inputTokens": 100, "outputTokens": 50}}})
+				continue
+			}
 			write(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
 				"sessionId": "sess-1",
 				"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tc-1", "title": "Bash: ls"},
@@ -362,6 +475,75 @@ func TestEndToEndTurnEmitsEventsAndFinishes(t *testing.T) {
 	want := []string{"user_message", "tool_call", "agent_message_chunk", "turn_end"}
 	if !reflect.DeepEqual(eventTypes, want) {
 		t.Fatalf("event types = %v, want %v", eventTypes, want)
+	}
+}
+
+// TestEndToEndTurnEmitsTurnUsageWithTokensAndCost covers the full pipeline
+// this feature adds: a real subprocess reporting both a "usage_update"
+// session/update notification (cost) and a session/prompt result usage
+// field (tokens) for the same turn, verifying they're combined into one
+// "turn_usage" event — the same shape
+// services/agent-runner/internal/handler.Handler persists for llm-type
+// agents — rather than the usage_update notification leaking into the
+// transcript as its own event.
+func TestEndToEndTurnEmitsTurnUsageWithTokensAndCost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spawns a real subprocess")
+	}
+	setFakeAgentEnv(t, "usage")
+
+	r, sent := newTestRunner(t)
+	r.mu.Lock()
+	r.conversations["conv-1"] = &conversationState{
+		chunks:      newChunkBuffer(),
+		acpProvider: "custom",
+		command:     []string{os.Args[0]},
+	}
+	r.mu.Unlock()
+
+	r.StartTurn(context.Background(), map[string]any{
+		"conversation_id": "conv-1",
+		"project_id":      "proj-1",
+		"message":         "do something",
+	})
+
+	waitForStatus(t, sent, "finished")
+
+	var eventTypes []string
+	for _, m := range sent.all() {
+		if m["type"] == "event" {
+			eventTypes = append(eventTypes, m["event_type"].(string))
+		}
+	}
+	want := []string{"user_message", "agent_message_chunk", "turn_end", "turn_usage"}
+	if !reflect.DeepEqual(eventTypes, want) {
+		t.Fatalf("event types = %v, want %v", eventTypes, want)
+	}
+
+	var usageMsg map[string]any
+	for _, m := range sent.all() {
+		if m["type"] == "event" && m["event_type"] == "turn_usage" {
+			usageMsg = m
+		}
+	}
+	if usageMsg["event_source"] != "system" {
+		t.Errorf("event_source = %v, want system", usageMsg["event_source"])
+	}
+	payload, ok := usageMsg["payload"].(json.RawMessage)
+	if !ok {
+		t.Fatalf("payload is not json.RawMessage: %T", usageMsg["payload"])
+	}
+	var decoded struct {
+		InputTokens  int64   `json:"input_tokens"`
+		OutputTokens int64   `json:"output_tokens"`
+		TotalTokens  int64   `json:"total_tokens"`
+		CostUSD      float64 `json:"cost_usd"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decoding payload: %v", err)
+	}
+	if decoded.InputTokens != 100 || decoded.OutputTokens != 50 || decoded.TotalTokens != 150 || decoded.CostUSD != 0.0042 {
+		t.Fatalf("unexpected payload: %+v", decoded)
 	}
 }
 

@@ -340,7 +340,7 @@ func TestPrompt_AgentMessageChunk(t *testing.T) {
 	}
 
 	var events []Event
-	stopReason, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("hi")}, 0, func(e Event) {
+	stopReason, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("hi")}, 0, func(e Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -389,7 +389,7 @@ func TestPrompt_ToolCallSequence(t *testing.T) {
 	}
 
 	var events []Event
-	stopReason, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("run echo")}, 5, func(e Event) {
+	stopReason, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("run echo")}, 5, func(e Event) {
 		events = append(events, e)
 	})
 	if err != nil {
@@ -410,6 +410,71 @@ func TestPrompt_ToolCallSequence(t *testing.T) {
 	}
 	if update.Text() != "hello-from-goose-acp-spike" {
 		t.Errorf("Text() = %q, want hello-from-goose-acp-spike", update.Text())
+	}
+}
+
+// TestPrompt_UsageUpdateAndPromptResponseUsage covers the two usage-carrying
+// wire shapes handler.Handler relies on for token/cost accounting: a
+// "usage_update" session/update notification (forwarded to onEvent like any
+// other notification kind — see UpdateUsage's doc comment on why its Cost is
+// session-cumulative) and session/prompt's own terminal result carrying a
+// "usage" object (this-turn-only tokens — see promptResult.Usage's doc
+// comment). Shapes below mirror ACP's real schema field names, not guessed.
+func TestPrompt_UsageUpdateAndPromptResponseUsage(t *testing.T) {
+	const sessionID = "s"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK
+	newSession := standardSessionNew(sessionID)
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		newSession(s, req, hdrSessionID)
+		if req.Method != "session/prompt" {
+			return
+		}
+		s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"usage_update","used":1200,"size":128000,"cost":{"amount":0.0034,"currency":"USD"}}}}`)
+		s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn","usage":{"totalTokens":120,"inputTokens":80,"outputTokens":40}}}`, req.ID))
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if _, err := c.NewSession(context.Background(), "/home/goose", nil); err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	var events []Event
+	stopReason, usage, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("hi")}, 0, func(e Event) {
+		events = append(events, e)
+	})
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stopReason = %q, want end_turn", stopReason)
+	}
+
+	if len(events) != 1 || events[0].Kind != UpdateUsage {
+		t.Fatalf("events = %+v, want exactly one usage_update", events)
+	}
+	var update UsageUpdate
+	if err := json.Unmarshal(events[0].Raw, &update); err != nil {
+		t.Fatalf("decoding UsageUpdate: %v", err)
+	}
+	if update.Used != 1200 || update.Size != 128000 {
+		t.Errorf("UsageUpdate.{Used,Size} = {%d,%d}, want {1200,128000}", update.Used, update.Size)
+	}
+	if update.Cost == nil || update.Cost.Amount != 0.0034 || update.Cost.Currency != "USD" {
+		t.Errorf("UsageUpdate.Cost = %+v, want {0.0034 USD}", update.Cost)
+	}
+
+	if usage == nil {
+		t.Fatal("Prompt returned nil usage, want promptResult.usage decoded")
+	}
+	if usage.TotalTokens != 120 || usage.InputTokens != 80 || usage.OutputTokens != 40 {
+		t.Errorf("usage = %+v, want {120 80 40}", usage)
 	}
 }
 
@@ -450,7 +515,7 @@ func TestPrompt_MaxToolCallsExceeded(t *testing.T) {
 	defer cancel()
 
 	toolCalls := 0
-	_, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("loop forever")}, 3, func(e Event) {
+	_, _, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("loop forever")}, 3, func(e Event) {
 		if e.Kind == UpdateToolCall {
 			toolCalls++
 		}
@@ -501,7 +566,7 @@ func TestPrompt_RespectsContextDeadlineOnAHungServer(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, nil)
+	_, _, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, nil)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -563,7 +628,7 @@ func TestPrompt_CancelledMidBacklogReturnsPromptly(t *testing.T) {
 	// A slow onEvent, standing in for onEvent's two blocking Redis calls in
 	// the real handler.Handler — see the doc comment above.
 	start := time.Now()
-	_, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, func(Event) {
+	_, _, err := c.Prompt(ctx, sessionID, []ContentBlock{TextBlock("hello")}, 0, func(Event) {
 		time.Sleep(20 * time.Millisecond)
 	})
 	elapsed := time.Since(start)
