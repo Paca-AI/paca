@@ -147,7 +147,7 @@ Plan  →  Act  →  Check  →  Adapt
 
 ## What's New in v0.10.0
 
-- **ACP agent support** — connect any [Agent Client Protocol](https://docs.openhands.dev/sdk/guides/agent-acp) coding CLI as a Paca AI agent: Claude Code, Codex, Gemini CLI, or a custom ACP server. A lightweight local bridge (`paca-acp-bridge`) runs from your project's source directory and streams the conversation back to Paca over an authenticated WebSocket — no code is cloned into a cloud sandbox, and the agent uses your own local auth, git/`gh` credentials, and whatever MCP servers or skills you've already set up for that CLI. See [apps/acp-bridge/README.md](apps/acp-bridge/README.md) for setup.
+- **ACP agent support** — connect any [Agent Client Protocol](https://agentclientprotocol.com) coding CLI as a Paca AI agent: Claude Code, Codex, Gemini CLI, or a custom ACP server. A lightweight local bridge (`paca-acp-bridge`) runs from your project's source directory and streams the conversation back to Paca over an authenticated WebSocket — no code is cloned into a cloud sandbox, and the agent uses your own local auth, git/`gh` credentials, and whatever MCP servers or skills you've already set up for that CLI. See [apps/acp-bridge/README.md](apps/acp-bridge/README.md) for setup.
 
 ---
 

@@ -7,7 +7,7 @@ All endpoints follow the existing Paca API conventions: JWT authentication, proj
 Every agent has an `agent_type` of either `llm` or `acp` (default `llm` when omitted). The two types are mutually exclusive in both configuration and execution:
 
 - **`llm`** — Paca runs the conversation itself, in an isolated Docker container, using the `llm_provider`/`llm_model`/`llm_api_key`/`llm_base_url` fields. See [overview.md](overview.md) for the sandboxed execution model.
-- **`acp`** — the conversation runs on the user's own machine via the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon, connecting to a coding CLI (Claude Code, Codex, Gemini CLI, or a custom [ACP](https://docs.openhands.dev/sdk/guides/agent-acp) server) the user already has installed and authenticated there. Paca never sees, stores, or requests an LLM credential for `acp` agents — `llm_api_key` is neither required nor read for this type. The only credential Paca manages is the bridge connection token described below, which authenticates the WebSocket link, not the LLM.
+- **`acp`** — the conversation runs on the user's own machine via the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon, connecting to a coding CLI (Claude Code, Codex, Gemini CLI, or a custom [ACP](https://agentclientprotocol.com) server) the user already has installed and authenticated there. Paca never sees, stores, or requests an LLM credential for `acp` agents — `llm_api_key` is neither required nor read for this type. The only credential Paca manages is the bridge connection token described below, which authenticates the WebSocket link, not the LLM.
 
 ---
 
@@ -79,7 +79,7 @@ Create a new agent. This also creates the corresponding `project_members` row wi
 }
 ```
 
-`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `goose`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command themselves: `claude-code`/`codex`/`gemini-cli` via the OpenHands SDK's own provider registry, `goose` via a small local override in `apps/acp-bridge` (`_LOCAL_ACP_PROVIDER_COMMANDS` resolving `"goose"` → `["goose", "acp"]`, checked before falling through to the SDK's registry, which doesn't know about Goose). None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
+`acp_provider` (one of `claude-code`, `codex`, `gemini-cli`, `goose`, `custom`) is required when `agent_type` is `acp`. `acp_command` is required only when `acp_provider` is `custom` — built-in providers resolve a default launch command themselves, via a small registry in the bridge daemon itself (`apps/acp-bridge/internal/provider`, e.g. `"goose"` → `["goose", "acp"]`), not anything Paca's own backend knows about. None of the `llm_*` fields apply to `acp` agents, nor do `system_prompt`, `git_committer_name`, or `git_committer_email` — the local ACP client owns its own system prompt and git identity, so Paca silently ignores those fields for `acp` agents rather than persisting them.
 
 **Response:** `201 Created` with the created agent object.
 
@@ -145,7 +145,7 @@ Issue a new local-bridge connection token, invalidating any previous one. The pl
 ```json
 {
   "token": "<plaintext-token>",
-  "run_command": "uvx paca-acp-bridge run --agent-id <agent-id> --token <plaintext-token> --server https://your-paca-instance.example.com"
+  "run_command": "paca-acp-bridge run --agent-id <agent-id> --token <plaintext-token> --server https://your-paca-instance.example.com"
 }
 ```
 
