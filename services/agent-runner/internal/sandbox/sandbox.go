@@ -110,7 +110,8 @@ type Handle struct {
 	BaseURL   string
 	SecretKey string
 
-	hostPort int // 0 unless this handle used host-port-mapping mode
+	hostPort int          // 0 unless this handle used host-port-mapping mode
+	dind     *dindSidecar // this container's paired Docker-access sidecar — see dind.go
 }
 
 // Manager owns the Docker client and (in local-dev, non-networked mode) a
@@ -164,7 +165,27 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("sandbox: generate secret key: %w", err)
 	}
 
-	env := make([]string, 0, len(cfg.Env)+7)
+	// Started before the sandbox's own image/container so DOCKER_HOST can
+	// be set in its env from the very first line of the container's own
+	// config below — see dind.go's package doc comment for why this is a
+	// dedicated per-conversation sidecar rather than this process's own
+	// docker.sock. sidecarOK flips true only once the sandbox container
+	// this pairs with has actually started; every return between here and
+	// there — this function's own early errors and every cleanup() call
+	// below alike — leaves it false, so this defer tears the sidecar back
+	// down instead of leaking a privileged container on any failure path.
+	sidecar, err := m.startDindSidecar(ctx, cfg.ConversationID)
+	if err != nil {
+		return nil, fmt.Errorf("sandbox: start dind sidecar: %w", err)
+	}
+	sidecarOK := false
+	defer func() {
+		if !sidecarOK {
+			m.stopDindSidecar(context.Background(), sidecar)
+		}
+	}()
+
+	env := make([]string, 0, len(cfg.Env)+8)
 	// User-configured env vars first, so the hardcoded infra vars below
 	// always win on a name collision — matches docker_workspace.py's
 	// "hardcoded infra keys always win" ordering rationale.
@@ -177,6 +198,7 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		"GIT_AUTHOR_EMAIL="+cfg.GitCommitterEmail,
 		"GIT_COMMITTER_NAME="+cfg.GitCommitterName,
 		"GIT_COMMITTER_EMAIL="+cfg.GitCommitterEmail,
+		"DOCKER_HOST="+dindDockerHost(cfg.ConversationID),
 	)
 
 	if err := m.ensureImage(ctx, cfg.Image); err != nil {
@@ -260,6 +282,26 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		}
 	}
 
+	// Second network, alongside whatever netCfg above already attached at
+	// create time (ownNetworkName for api/gateway reachability, or nothing
+	// — the implicit default bridge — in host-port-mapped mode): the one
+	// this container's own dind sidecar is on and nothing else is (see
+	// dind.go's package doc comment). Attached by NetworkConnect rather
+	// than a second NetworkingConfig.EndpointsConfig entry at create time —
+	// confirmed directly (not assumed) that Docker's own container-create
+	// API only actually attaches one network from that map even when given
+	// several; a separate connect call is the verified way to add more.
+	//
+	// containerIP below may now non-deterministically return either
+	// network's address (Go map iteration order), not necessarily the one
+	// this comment's neighbors were written assuming — harmless in
+	// practice, since goose serve binds 0.0.0.0:3284 and answers on every
+	// interface the container has, this one included.
+	if _, err := m.docker.NetworkConnect(ctx, sidecar.networkID, client.NetworkConnectOptions{Container: created.ID}); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("sandbox: attach to conversation network: %w", err)
+	}
+
 	if _, err := m.docker.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
 		cleanup()
 		return nil, fmt.Errorf("sandbox: start container: %w", err)
@@ -323,11 +365,13 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("%w (%s)", err, diag)
 	}
 
+	sidecarOK = true
 	return &Handle{
 		ContainerID: created.ID,
 		BaseURL:     baseURL,
 		SecretKey:   secretKey,
 		hostPort:    hostPort,
+		dind:        sidecar,
 	}, nil
 }
 
@@ -342,6 +386,25 @@ func (m *Manager) Stop(ctx context.Context, h *Handle) error {
 	if h.hostPort != 0 {
 		m.releasePort(h.hostPort)
 	}
+
+	if h.dind != nil {
+		teardownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Force-disconnect first, not left to AutoRemove's own timing: the
+		// conversation network can't be removed while any container is
+		// still attached to it, and there's no guarantee AutoRemove has
+		// actually finished detaching the main container by the moment
+		// ContainerStop above returns — an unremoved network would
+		// otherwise silently leak, since stopDindSidecar's own
+		// NetworkRemove call is best-effort (matching this whole method's
+		// contract) and won't retry a failure or surface it.
+		_, _ = m.docker.NetworkDisconnect(teardownCtx, h.dind.networkID, client.NetworkDisconnectOptions{
+			Container: h.ContainerID,
+			Force:     true,
+		})
+		m.stopDindSidecar(teardownCtx, h.dind)
+		cancel()
+	}
+
 	if err != nil {
 		return fmt.Errorf("sandbox: stop container %s: %w", h.ContainerID, err)
 	}

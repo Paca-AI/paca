@@ -50,24 +50,26 @@ FROM ghcr.io/aaif-goose/goose@sha256:3c961bac6e4dcdb61a35f9ded3fe9a81fba33107dd8
 # every ephemeral sandbox container boot — same rationale as the old
 # OpenHands-based Dockerfile's equivalent step.
 #
-# The base image runs as the unprivileged `goose` user (uid 1000), which
-# doesn't own apt's or npm's install dirs — switch to root for the install,
-# then drop back so the container still runs unprivileged at runtime.
-# Caught by actually running `npx -y @paca-ai/paca-mcp` as the goose user
-# after an earlier version of this Dockerfile built successfully: `npm
-# install -g` below runs as root, and on this base image root's $HOME is
-# already /home/goose (the goose user's home, not /root) — so npm quietly
-# wrote its build-time *cache* there too, root-owned. At runtime `npx`
-# (running as the unprivileged goose user) refuses to touch a cache
-# containing root-owned files and fails with EACCES — and Goose doesn't
-# surface that MCP-subprocess failure as an ACP error, it just hangs
-# `session/new` forever. The cache is discarded entirely here rather than
-# reconciled to the right owner: npx works fine regenerating it fresh as
-# goose, and the actually-important part (the global package install
-# itself, correctly under root-owned /usr/lib/node_modules) is unaffected.
+# Also installs the `docker` CLI (client only — `docker.io`'s bundled dockerd
+# is never started here) so a conversation can run `docker` commands at all.
+# sandbox.go points DOCKER_HOST at a dedicated `docker:dind` sidecar it
+# starts and tears down alongside this container, on a private
+# per-conversation network nothing else can reach — see sandbox.go's
+# startDindSidecar doc comment for the isolation properties that gives.
+#
+# The base image runs as the unprivileged `goose` user (uid 1000) by
+# default; this switches to root both for the install below (the base image
+# doesn't give goose write access to apt's or npm's install dirs) and,
+# since nothing switches back afterward, for the container's runtime user
+# too — specifically so a conversation isn't blocked on ordinary
+# package-manager operations (apt-get, etc.) the way an earlier version of
+# this image was. Every sandbox is a disposable, ephemeral per-conversation
+# container torn down at the end of the turn (see sandbox.Manager.Stop),
+# not a shared or long-lived host, so the usual reasons to run a service
+# unprivileged don't carry the same weight here.
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg docker.io \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @paca-ai/paca-mcp \
@@ -75,4 +77,3 @@ RUN apt-get update \
     && apt-get purge -y curl gnupg \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
-USER goose
