@@ -977,6 +977,7 @@
 			"addedTaskLink": "a ajouté un lien de tâche ({{linkType}})",
 			"removedTaskLink": "a retiré un lien de tâche",
 			"startedAiSession": "a démarré une session IA",
+			"finishedAiSession": "a terminé une session IA",
 			"watchSession": "Suivre la session",
 			"madeChange": "a effectué une modification",
 			"descriptionChangeDiff": "Différences des modifications de la description"

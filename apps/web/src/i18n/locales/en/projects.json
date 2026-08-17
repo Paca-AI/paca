@@ -977,6 +977,7 @@
 			"addedTaskLink": "added task link ({{linkType}})",
 			"removedTaskLink": "removed task link",
 			"startedAiSession": "started an AI session",
+			"finishedAiSession": "finished an AI session",
 			"watchSession": "Watch session",
 			"madeChange": "made a change",
 			"descriptionChangeDiff": "Description change diff"

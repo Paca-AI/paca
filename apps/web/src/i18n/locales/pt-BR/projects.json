@@ -977,6 +977,7 @@
 			"addedTaskLink": "adicionou vínculo de tarefa ({{linkType}})",
 			"removedTaskLink": "removeu vínculo de tarefa",
 			"startedAiSession": "iniciou uma sessão de IA",
+			"finishedAiSession": "finalizou uma sessão de IA",
 			"watchSession": "Assistir sessão",
 			"madeChange": "fez uma alteração",
 			"descriptionChangeDiff": "Diferença de alteração da descrição"

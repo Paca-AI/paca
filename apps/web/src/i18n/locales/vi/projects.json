@@ -977,6 +977,7 @@
 			"addedTaskLink": "đã thêm liên kết nhiệm vụ ({{linkType}})",
 			"removedTaskLink": "đã gỡ liên kết nhiệm vụ",
 			"startedAiSession": "đã bắt đầu một phiên AI",
+			"finishedAiSession": "đã kết thúc một phiên AI",
 			"watchSession": "Theo dõi phiên",
 			"madeChange": "đã thực hiện một thay đổi",
 			"descriptionChangeDiff": "Thay đổi mô tả"

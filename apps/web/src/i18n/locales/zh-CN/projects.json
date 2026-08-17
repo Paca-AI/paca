@@ -977,6 +977,7 @@
 			"addedTaskLink": "添加了任务关联（{{linkType}}）",
 			"removedTaskLink": "移除了任务关联",
 			"startedAiSession": "启动了一个 AI 会话",
+			"finishedAiSession": "结束了一个 AI 会话",
 			"watchSession": "查看会话",
 			"madeChange": "进行了更改",
 			"descriptionChangeDiff": "描述更改差异"

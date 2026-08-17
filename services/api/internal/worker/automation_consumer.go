@@ -113,6 +113,13 @@ type automationActivityRecorder interface {
 	RecordActivity(ctx context.Context, in taskdom.RecordActivityInput) error
 }
 
+// agentHandoffReader resolves the durable task handoff for a finished
+// conversation so the consumer can record an "agent.session.finished"
+// activity (#392).
+type agentHandoffReader interface {
+	FindTaskHandoffForActivity(ctx context.Context, conversationID uuid.UUID) (*taskdom.AgentSessionFinished, error)
+}
+
 // automationPluginRuntime is the minimal plugin-runtime surface the engine
 // needs to dispatch plugin-contributed condition/action nodes (both calls
 // use the exact same WASM calling convention as HandleRequest — see
@@ -178,6 +185,7 @@ type AutomationConsumer struct {
 	taskRepo       automationTaskReader
 	taskSvc        automationTaskUpdater
 	activityRec    automationActivityRecorder
+	handoffReader  agentHandoffReader
 	pluginRuntime  automationPluginRuntime
 	memberRepo     automationMemberReader
 	agentMessenger automationAgentMessenger
@@ -218,6 +226,14 @@ func (c *AutomationConsumer) WithHTTPClient(client *http.Client) *AutomationCons
 func (c *AutomationConsumer) WithAgentMessaging(memberRepo automationMemberReader, agentMessenger automationAgentMessenger) *AutomationConsumer {
 	c.memberRepo = memberRepo
 	c.agentMessenger = agentMessenger
+	return c
+}
+
+// WithHandoffReader attaches the reader used to record an
+// "agent.session.finished" task activity when a task-linked conversation
+// finishes (#392). Without it the activity is skipped (best-effort).
+func (c *AutomationConsumer) WithHandoffReader(reader agentHandoffReader) *AutomationConsumer {
+	c.handoffReader = reader
 	return c
 }
 
@@ -999,6 +1015,14 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 		return
 	}
 
+	// Record the durable task handoff as an "agent.session.finished" activity
+	// so the conclusion is visible on the task (#392). Best-effort and
+	// independent of the automation-wait resume below — every task-linked
+	// conversation benefits, not just trigger_ai_agent walks.
+	if status == "finished" {
+		c.recordAgentSessionFinished(ctx, convID)
+	}
+
 	wait, err := c.repo.FindPendingAgentWait(ctx, convID)
 	if err != nil {
 		c.log.Error("automation consumer: find pending agent wait", "conversation_id", convID, "err", err)
@@ -1026,7 +1050,40 @@ func (c *AutomationConsumer) handleAgentConversationStatus(msg redis.XMessage) {
 	c.ack(ctx, events.StreamAgentConversationStatus, msg.ID)
 }
 
-// resumeWalk continues a graph walk that paused at wait.NodeID once its
+// recordAgentSessionFinished records an "agent.session.finished" task activity
+// carrying the durable handoff summary, so the conclusion is visible on the
+// task without opening the conversation. Best-effort: no reader wired or no
+// handoff present is a silent no-op, never a retry.
+func (c *AutomationConsumer) recordAgentSessionFinished(ctx context.Context, convID uuid.UUID) {
+	if c.handoffReader == nil {
+		return
+	}
+	handoff, err := c.handoffReader.FindTaskHandoffForActivity(ctx, convID)
+	if err != nil {
+		c.log.Warn("automation consumer: resolve task handoff", "conversation_id", convID, "err", err)
+		return
+	}
+	if handoff == nil {
+		return
+	}
+	content, err := json.Marshal(map[string]any{
+		"conversation_id": handoff.ConversationID.String(),
+		"summary":         handoff.Summary,
+	})
+	if err != nil {
+		return
+	}
+	if err := c.activityRec.RecordActivity(ctx, taskdom.RecordActivityInput{
+		TaskID:       handoff.TaskID,
+		ProjectID:    handoff.ProjectID,
+		ActorAgentID: &handoff.AgentID,
+		ActivityType: taskdom.ActivityTypeAgentSessionFinished,
+		Content:      content,
+	}); err != nil {
+		c.log.Warn("automation consumer: record agent session finished activity",
+			"task_id", handoff.TaskID, "conversation_id", convID, "err", err)
+	}
+}
 // conversation reaches a terminal status. On anything other than "finished"
 // (the agent session itself failed or was stopped), the node's step is
 // recorded as failed and the walk does not continue past it — mirroring how

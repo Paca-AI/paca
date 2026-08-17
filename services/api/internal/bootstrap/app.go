@@ -189,7 +189,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithNotificationService(notificationService)
 	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
-	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
+	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log).
+		WithHandoffReader(agentRepo)
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)

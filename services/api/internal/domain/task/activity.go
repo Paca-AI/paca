@@ -48,6 +48,12 @@ const (
 	// conversation session triggered by a task assignment.
 	ActivityTypeAgentSessionStarted ActivityType = "agent.session.started"
 
+	// ActivityTypeAgentSessionFinished is recorded when a task-linked agent
+	// conversation finishes successfully, carrying the durable handoff
+	// summary so the conclusion is visible on the task without opening the
+	// conversation (#392). Content carries {conversation_id, summary}.
+	ActivityTypeAgentSessionFinished ActivityType = "agent.session.finished"
+
 	// --- Automation events -----------------------------------------------------
 
 	// ActivityTypeAutomationApplied is recorded when the automation graph
@@ -56,6 +62,18 @@ const (
 	// attribute the change to the automation instead of a human actor.
 	ActivityTypeAutomationApplied ActivityType = "automation.applied"
 )
+
+// AgentSessionFinished is the data needed to record an
+// ActivityTypeAgentSessionFinished task activity for a finished task-linked
+// conversation — the durable handoff summary joined with the conversation's
+// owning project/agent (#392).
+type AgentSessionFinished struct {
+	TaskID         uuid.UUID
+	ProjectID      uuid.UUID
+	AgentID        uuid.UUID
+	ConversationID uuid.UUID
+	Summary        string
+}
 
 // Activity is a single entry in a task's activity log.  It represents either
 // a system-generated change event (e.g. status change) or a user comment.

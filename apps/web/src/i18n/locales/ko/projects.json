@@ -977,6 +977,7 @@
 			"addedTaskLink": "작업 링크를 추가했습니다 ({{linkType}})",
 			"removedTaskLink": "작업 링크를 제거했습니다",
 			"startedAiSession": "AI 세션을 시작했습니다",
+			"finishedAiSession": "AI 세션을 종료했습니다",
 			"watchSession": "세션 지켜보기",
 			"madeChange": "변경했습니다",
 			"descriptionChangeDiff": "설명 변경 차이"
