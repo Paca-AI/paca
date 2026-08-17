@@ -330,6 +330,18 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 			}
 		}
 	}
+
+	// Durable terminal status: mirror handler.publishTerminalStatus so
+	// services/api's automation engine can record the "agent.session.finished"
+	// task activity (resolving the handoff persisted above — it must come
+	// first, same ordering as the llm path) and resume a trigger_ai_agent
+	// walk paused on this conversation. Best-effort.
+	if statusStr == "finished" || statusStr == "failed" || statusStr == "stopped" {
+		if err := s.Publisher.PublishConversationStatus(ctx, convID, statusStr); err != nil {
+			s.Log.Warn("acpbridge: failed to publish conversation status",
+				"conversation_id", convID, "status", statusStr, "error", err)
+		}
+	}
 }
 
 // handleStatus handles GET /agent-bridge/status/{agentId} — internal,

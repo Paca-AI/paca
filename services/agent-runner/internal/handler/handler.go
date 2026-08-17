@@ -608,12 +608,14 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "finished", noOutputMsg); err != nil {
 		return fmt.Errorf("mark conversation %s finished: %w", trigger.ConversationID, err)
 	}
-	h.publishTerminalStatus(ctx, trigger.ProjectID, trigger.ConversationID, trigger.ActorUserID, "finished", "agent.conversation.finished")
 
 	// Persist a task-level handoff for a successful task-linked sessionless
 	// run (#392): capture the final reply idempotently so a later conversation
 	// on the same task can recover the conclusion even after this one is
-	// terminal. Best-effort — the conversation is already finished.
+	// terminal. This MUST run before publishTerminalStatus below: the durable
+	// "finished" status is what makes services/api record the
+	// "agent.session.finished" task activity, and it resolves that handoff
+	// synchronously — publishing first would race the read.
 	if trigger.TaskID != nil {
 		summary, err := h.ConvRepo.LatestAgentReply(ctx, trigger.ConversationID)
 		if err != nil {
@@ -629,6 +631,8 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 			}
 		}
 	}
+
+	h.publishTerminalStatus(ctx, trigger.ProjectID, trigger.ConversationID, trigger.ActorUserID, "finished", "agent.conversation.finished")
 
 	h.Log.Info("agent-runner: conversation finished",
 		"conversation_id", trigger.ConversationID, "stop_reason", result.StopReason)
