@@ -1235,7 +1235,9 @@
 				"error": "Échec de la mise à jour du sprint. Veuillez réessayer.",
 				"cancel": "Annuler",
 				"saving": "Enregistrement…",
-				"save": "Enregistrer les modifications"
+				"save": "Enregistrer les modifications",
+				"delete": "Supprimer le sprint",
+				"deleteError": "Impossible de supprimer le sprint. Veuillez réessayer."
 			},
 			"completeSprint": "Terminer le sprint",
 			"completeSprintModal": {
@@ -1248,6 +1250,13 @@
 				"cancel": "Annuler",
 				"completing": "Finalisation…",
 				"completeSprint": "Terminer le sprint"
+			},
+			"deleteSprintModal": {
+				"title": "Supprimer le sprint ?",
+				"message": "Le sprint « {{name}} » sera définitivement supprimé. Ses tâches retournent au backlog produit. Cette action est irréversible.",
+				"cancel": "Annuler",
+				"confirm": "Supprimer le sprint",
+				"deleting": "Suppression…"
 			}
 		},
 		"conversation": {

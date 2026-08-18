@@ -1235,7 +1235,9 @@
 				"error": "スプリントの更新に失敗しました。もう一度お試しください。",
 				"cancel": "キャンセル",
 				"saving": "保存中…",
-				"save": "変更を保存"
+				"save": "変更を保存",
+				"delete": "スプリントを削除",
+				"deleteError": "スプリントを削除できませんでした。もう一度お試しください。"
 			},
 			"completeSprint": "スプリントを完了",
 			"completeSprintModal": {
@@ -1248,6 +1250,13 @@
 				"cancel": "キャンセル",
 				"completing": "完了処理中…",
 				"completeSprint": "スプリントを完了"
+			},
+			"deleteSprintModal": {
+				"title": "スプリントを削除しますか？",
+				"message": "スプリント「{{name}}」は完全に削除されます。タスクはプロダクトバックログに戻ります。この操作は取り消せません。",
+				"cancel": "キャンセル",
+				"confirm": "スプリントを削除",
+				"deleting": "削除中…"
 			}
 		},
 		"conversation": {

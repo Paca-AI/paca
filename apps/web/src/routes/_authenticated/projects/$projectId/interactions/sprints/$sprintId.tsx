@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, Pencil, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +9,7 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { formatDate } from "@/lib/format-date";
 import {
 	completeSprint,
+	deleteSprint,
 	sprintQueryOptions,
 	sprintsQueryOptions,
 	sprintTasksQueryOptions,
@@ -75,6 +76,8 @@ function SprintPage() {
 	const [editEndDate, setEditEndDate] = useState("");
 	const [editError, setEditError] = useState<string | null>(null);
 
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
 	const dateRangeInvalid = Boolean(
 		editStartDate && editEndDate && editEndDate < editStartDate,
 	);
@@ -138,6 +141,24 @@ function SprintPage() {
 		},
 		onError: () => {
 			setEditError(t("layout.sprintDetail.editSprintModal.error"));
+		},
+	});
+
+	const deleteSprintMutation = useMutation({
+		mutationFn: () => deleteSprint(projectId, sprintId),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "tasks"] });
+			setDeleteConfirmOpen(false);
+			setEditOpen(false);
+			navigate({
+				to: "/projects/$projectId/interactions/backlog",
+				params: { projectId },
+			});
+		},
+		onError: () => {
+			setDeleteConfirmOpen(false);
+			setEditError(t("layout.sprintDetail.editSprintModal.deleteError"));
 		},
 	});
 
@@ -319,37 +340,47 @@ function SprintPage() {
 								</p>
 							)}
 						</div>
-						<div className="mt-6 flex justify-end gap-2">
+						<div className="mt-6 flex items-center justify-between gap-2">
 							<button
 								type="button"
-								onClick={() => setEditOpen(false)}
-								className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
+								onClick={() => setDeleteConfirmOpen(true)}
+								className="flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/20 transition-all"
 							>
-								{t("layout.sprintDetail.editSprintModal.cancel")}
+								<Trash2 className="size-3.5 shrink-0" />
+								{t("layout.sprintDetail.editSprintModal.delete")}
 							</button>
-							<button
-								type="button"
-								onClick={() =>
-									updateSprintMutation.mutate({
-										name: editName.trim(),
-										goal: editGoal.trim() || null,
-										start_date: editStartDate
-											? `${editStartDate}T00:00:00Z`
-											: null,
-										end_date: editEndDate ? `${editEndDate}T00:00:00Z` : null,
-									})
-								}
-								disabled={
-									updateSprintMutation.isPending ||
-									!editName.trim() ||
-									dateRangeInvalid
-								}
-								className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
-							>
-								{updateSprintMutation.isPending
-									? t("layout.sprintDetail.editSprintModal.saving")
-									: t("layout.sprintDetail.editSprintModal.save")}
-							</button>
+							<div className="flex gap-2">
+								<button
+									type="button"
+									onClick={() => setEditOpen(false)}
+									className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
+								>
+									{t("layout.sprintDetail.editSprintModal.cancel")}
+								</button>
+								<button
+									type="button"
+									onClick={() =>
+										updateSprintMutation.mutate({
+											name: editName.trim(),
+											goal: editGoal.trim() || null,
+											start_date: editStartDate
+												? `${editStartDate}T00:00:00Z`
+												: null,
+											end_date: editEndDate ? `${editEndDate}T00:00:00Z` : null,
+										})
+									}
+									disabled={
+										updateSprintMutation.isPending ||
+										!editName.trim() ||
+										dateRangeInvalid
+									}
+									className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
+								>
+									{updateSprintMutation.isPending
+										? t("layout.sprintDetail.editSprintModal.saving")
+										: t("layout.sprintDetail.editSprintModal.save")}
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -472,6 +503,55 @@ function SprintPage() {
 								{completeSprintMutation.isPending
 									? t("layout.sprintDetail.completeSprintModal.completing")
 									: t("layout.sprintDetail.completeSprintModal.completeSprint")}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{/* Delete Sprint Confirmation Modal */}
+			{deleteConfirmOpen && (
+				// biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+					onClick={(e) => {
+						if (e.target === e.currentTarget) setDeleteConfirmOpen(false);
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") setDeleteConfirmOpen(false);
+					}}
+				>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: modal panel */}
+					<div
+						className="relative w-full max-w-md rounded-xl border border-border/50 bg-background p-6 shadow-2xl mx-4"
+						onClick={(e) => e.stopPropagation()}
+						onKeyDown={(e) => e.stopPropagation()}
+					>
+						<h2 className="font-[Syne] text-lg font-bold tracking-tight mb-1">
+							{t("layout.sprintDetail.deleteSprintModal.title")}
+						</h2>
+						<p className="text-sm text-muted-foreground mb-5">
+							{t("layout.sprintDetail.deleteSprintModal.message", {
+								name: sprint.name,
+							})}
+						</p>
+						<div className="flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={() => setDeleteConfirmOpen(false)}
+								className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
+							>
+								{t("layout.sprintDetail.deleteSprintModal.cancel")}
+							</button>
+							<button
+								type="button"
+								onClick={() => deleteSprintMutation.mutate()}
+								disabled={deleteSprintMutation.isPending}
+								className="flex items-center gap-1.5 rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-all"
+							>
+								<Trash2 className="size-3.5 shrink-0" />
+								{deleteSprintMutation.isPending
+									? t("layout.sprintDetail.deleteSprintModal.deleting")
+									: t("layout.sprintDetail.deleteSprintModal.confirm")}
 							</button>
 						</div>
 					</div>

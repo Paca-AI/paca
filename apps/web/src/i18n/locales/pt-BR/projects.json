@@ -1235,7 +1235,9 @@
 				"error": "Não foi possível atualizar a sprint. Tente novamente.",
 				"cancel": "Cancelar",
 				"saving": "Salvando…",
-				"save": "Salvar alterações"
+				"save": "Salvar alterações",
+				"delete": "Deletar sprint",
+				"deleteError": "Não foi possível deletar a sprint. Tente novamente."
 			},
 			"completeSprint": "Concluir sprint",
 			"completeSprintModal": {
@@ -1248,6 +1250,13 @@
 				"cancel": "Cancelar",
 				"completing": "Concluindo…",
 				"completeSprint": "Concluir sprint"
+			},
+			"deleteSprintModal": {
+				"title": "Deletar sprint?",
+				"message": "A sprint \"{{name}}\" será deletada permanentemente. As tarefas dela voltam para o backlog do produto. Esta ação não pode ser desfeita.",
+				"cancel": "Cancelar",
+				"confirm": "Deletar sprint",
+				"deleting": "Deletando…"
 			}
 		},
 		"conversation": {
