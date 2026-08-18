@@ -88,11 +88,15 @@ function SprintPage() {
 	useEffect(() => {
 		if (!editOpen) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
+			// While the delete-confirm dialog is layered on top, let it own
+			// Escape so a single press dismisses only the topmost dialog and
+			// leaves the edit modal open underneath.
+			if (deleteConfirmOpen) return;
 			if (e.key === "Escape") setEditOpen(false);
 		};
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [editOpen]);
+	}, [editOpen, deleteConfirmOpen]);
 
 	const sprintTasks = tasksResult?.items ?? [];
 
@@ -149,6 +153,12 @@ function SprintPage() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "sprints"] });
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "tasks"] });
+			// Drop the deleted sprint's own cached detail/tasks queries so the
+			// still-warm cache (30s/15s staleTime) can't render a phantom sprint
+			// if its URL is revisited before the loader's 404 → backlog redirect.
+			qc.removeQueries({
+				queryKey: ["projects", projectId, "sprints", sprintId],
+			});
 			setDeleteConfirmOpen(false);
 			setEditOpen(false);
 			navigate({
