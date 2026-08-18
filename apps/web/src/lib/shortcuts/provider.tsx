@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { ShortcutHelpDialog } from "@/components/shortcuts/shortcut-help-dialog";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { currentUserOptionalQueryOptions } from "@/lib/auth-api";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import { sprintsQueryOptions } from "@/lib/interaction-api";
 import { useShortcutHelpStore } from "./help-dialog-store";
 import { useHoveredTaskStore } from "./hovered-task-store";
@@ -31,7 +31,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function ShortcutProvider({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
 	const { projectId } = useParams({ strict: false });
-	const { data: user } = useQuery(currentUserOptionalQueryOptions);
+	const { data: user } = useQuery(currentUserQueryOptions);
 	const isAnonymous = !user;
 	const { hasPermission } = usePermissions();
 	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");

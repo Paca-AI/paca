@@ -68,6 +68,22 @@ describe("auth-api", () => {
 		expect(mockGet).toHaveBeenCalledWith("/users/me");
 	});
 
+	it("resolves null on a 401 instead of throwing", async () => {
+		mockGet.mockRejectedValue({
+			isAxiosError: true,
+			response: { status: 401 },
+		});
+
+		await expect(getMe()).resolves.toBeNull();
+	});
+
+	it("re-throws non-401 errors", async () => {
+		const err = { isAxiosError: true, response: { status: 403 } };
+		mockGet.mockRejectedValue(err);
+
+		await expect(getMe()).rejects.toEqual(err);
+	});
+
 	it("exposes query options for current user", () => {
 		expect(currentUserQueryOptions.queryKey).toEqual(["auth", "me"]);
 		expect(currentUserQueryOptions.retry).toBe(false);
