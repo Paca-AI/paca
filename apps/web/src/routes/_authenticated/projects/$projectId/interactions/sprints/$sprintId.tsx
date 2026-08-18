@@ -88,11 +88,14 @@ function SprintPage() {
 	useEffect(() => {
 		if (!editOpen) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
-			// While the delete-confirm dialog is layered on top, let it own
-			// Escape so a single press dismisses only the topmost dialog and
-			// leaves the edit modal open underneath.
-			if (deleteConfirmOpen) return;
-			if (e.key === "Escape") setEditOpen(false);
+			if (e.key !== "Escape") return;
+			// Escape closes only the topmost dialog. After clicking "Delete
+			// sprint" focus stays in the edit-modal subtree, so the confirm
+			// overlay's own onKeyDown never fires — this handler must close the
+			// confirm dialog itself, and only fall through to the edit modal
+			// when the confirm dialog isn't open.
+			if (deleteConfirmOpen) setDeleteConfirmOpen(false);
+			else setEditOpen(false);
 		};
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
