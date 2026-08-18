@@ -18,6 +18,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
@@ -30,12 +31,13 @@ import (
 
 // TaskHandler handles task management endpoints.
 type TaskHandler struct {
-	svc         taskdom.Service
-	viewSvc     sprintdom.ViewService
-	activitySvc taskdom.ActivityService
-	publisher   *messaging.Publisher
-	projectSvc  projectServiceForAssigned
-	avatarSvc   attachmentdom.AvatarService
+	svc             taskdom.Service
+	viewSvc         sprintdom.ViewService
+	activitySvc     taskdom.ActivityService
+	publisher       *messaging.Publisher
+	projectSvc      projectServiceForAssigned
+	avatarSvc       attachmentdom.AvatarService
+	notificationSvc notificationdom.Service
 }
 
 // NewTaskHandler returns a TaskHandler wired to the task service, view service,
@@ -64,6 +66,15 @@ func WithTaskPublisher(p *messaging.Publisher) TaskHandlerOption {
 func WithTaskAvatarService(svc attachmentdom.AvatarService) TaskHandlerOption {
 	return func(h *TaskHandler) {
 		h.avatarSvc = svc
+	}
+}
+
+// WithTaskNotificationService configures dispatching a plugin event (no
+// in-app row) when a task's description is updated to newly @mention a
+// user (see notificationdom.Service.NotifyTaskDescriptionMentioned).
+func WithTaskNotificationService(svc notificationdom.Service) TaskHandlerOption {
+	return func(h *TaskHandler) {
+		h.notificationSvc = svc
 	}
 }
 
@@ -1063,6 +1074,15 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				_ = events.PublishAssignmentChanged(r.Context(), h.publisher, taskID, projectID, memberID, nil, actorID, agentIDPtr, nil)
+			}
+		}
+
+		// Publish a plugin event for each user newly @mentioned in the
+		// description (no in-app row — see
+		// notificationSvc.NotifyTaskDescriptionMentioned's doc comment).
+		if h.notificationSvc != nil && req.Description.Set && req.Description.Value != nil {
+			for _, mentionedID := range newlyMentionedUserIDs(oldTask.Description, req.Description.Value) {
+				h.notificationSvc.NotifyTaskDescriptionMentioned(r.Context(), mentionedID, actorID, projectID, taskID)
 			}
 		}
 	}

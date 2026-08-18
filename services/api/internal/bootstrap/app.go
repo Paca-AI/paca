@@ -112,6 +112,7 @@ func New(cfg *config.Config) (*App, error) {
 	refreshStore := redisRepo.NewRefreshTokenStore(redisClient)
 	pluginRepo := pgRepo.NewPluginRepository(db)
 	settingsRepo := pgRepo.NewSettingsRepository(db)
+	passwordSetTokenRepo := pgRepo.NewPasswordSetTokenRepository(db)
 	rawAutomationRepo := pgRepo.NewAutomationRepository(db)
 	// Wraps rawAutomationRepo with a cache for graph reads, invalidated on
 	// writes — shared between automationService and automationConsumer
@@ -144,7 +145,9 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Services -----------------------------------------------------------
 	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
-	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo)
+	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo).
+		WithPasswordSetTokenRepo(passwordSetTokenRepo).
+		WithEventPublishing(publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
@@ -152,7 +155,8 @@ func New(cfg *config.Config) (*App, error) {
 	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
-	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher)
+	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
+		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
@@ -254,13 +258,46 @@ func New(cfg *config.Config) (*App, error) {
 
 	pluginMigrationRunner := pluginrt.NewMigrationRunner(sqlDB, pluginStore, log)
 
+	// settingsReader resolves live branding for the paca.settings_get host
+	// function so plugin-rendered content reflects an admin's logo/color
+	// changes immediately, rather than a value baked in earlier — see
+	// pluginrt.SettingsReader's doc comment.
+	settingsReader := pluginrt.SettingsReaderFunc(func(ctx context.Context) (pluginrt.BrandingSnapshot, error) {
+		ws, err := settingsService.Get(ctx)
+		if err != nil {
+			return pluginrt.BrandingSnapshot{}, err
+		}
+		var snap pluginrt.BrandingSnapshot
+		if ws.BrandName != nil {
+			snap.BrandName = *ws.BrandName
+		}
+		if ws.PrimaryColorLight != nil {
+			snap.PrimaryColorLight = *ws.PrimaryColorLight
+		}
+		if ws.PrimaryColorDark != nil {
+			snap.PrimaryColorDark = *ws.PrimaryColorDark
+		}
+		if logoURL, _ := attachmentService.ResolveAvatarURL(ctx, ws.LogoKey); logoURL != nil {
+			snap.LogoURL = *logoURL
+		}
+		return snap, nil
+	})
+
+	// passwordSetTokenIssuer backs the paca.password_set_token_issue host
+	// function with userService's existing token issuance — a plugin calls
+	// this on demand, per user_id, rather than the raw token ever being
+	// embedded in the user.created event payload every subscriber receives.
+	passwordSetTokenIssuer := pluginrt.PasswordSetTokenIssuerFunc(userService.IssuePasswordSetToken)
+
 	pluginRuntime := pluginrt.NewRuntime(pluginStore, pluginrt.HostServices{
-		DB:         sqlDB,
-		Log:        log,
-		Publisher:  publisher,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
-		Authorizer: authorizer,
-		Cache:      cacheStore,
+		DB:                     sqlDB,
+		Log:                    log,
+		Publisher:              publisher,
+		HTTPClient:             &http.Client{Timeout: 30 * time.Second},
+		Authorizer:             authorizer,
+		Cache:                  cacheStore,
+		SettingsReader:         settingsReader,
+		PasswordSetTokenIssuer: passwordSetTokenIssuer,
 		Config: map[string]string{
 			"ENCRYPTION_KEY": cfg.Security.EncryptionKey,
 			"PUBLIC_URL":     cfg.Server.PublicURL,
@@ -363,14 +400,17 @@ func New(cfg *config.Config) (*App, error) {
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskPublisher(publisher),
 			handler.WithTaskAssignedProjectService(projectService),
-			handler.WithTaskAvatarService(attachmentService)),
+			handler.WithTaskAvatarService(attachmentService),
+			handler.WithTaskNotificationService(notificationService)),
 		Sprint: handler.NewSprintHandler(sprintService, viewService,
 			handler.WithSprintDefaultTaskTypes(taskService),
 			handler.WithSprintDefaultTaskStatuses(taskService),
 		),
-		View:               handler.NewViewHandler(viewService),
-		Attachment:         handler.NewAttachmentHandler(attachmentService),
-		Document:           handler.NewDocumentHandler(docService, docActivityService).WithDocAvatarService(attachmentService),
+		View:       handler.NewViewHandler(viewService),
+		Attachment: handler.NewAttachmentHandler(attachmentService),
+		Document: handler.NewDocumentHandler(docService, docActivityService).
+			WithDocAvatarService(attachmentService).
+			WithDocNotificationService(notificationService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
 		Notification:       handler.NewNotificationHandler(notificationService, handler.WithNotificationAvatarService(attachmentService)),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),

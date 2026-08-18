@@ -71,6 +71,7 @@ export interface User {
 	id: string;
 	username: string;
 	full_name: string;
+	email?: string | null;
 	role: string;
 	must_change_password: boolean;
 	avatar_url?: string | null;
@@ -99,6 +100,7 @@ export async function createUser(payload: {
 	username: string;
 	password: string;
 	full_name: string;
+	email?: string;
 	role?: string;
 }): Promise<User> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<User>>(
@@ -110,7 +112,7 @@ export async function createUser(payload: {
 
 export async function updateUser(
 	userId: string,
-	payload: { full_name?: string; role?: string },
+	payload: { full_name?: string; email?: string; role?: string },
 ): Promise<User> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<User>>(
 		`/admin/users/${userId}`,

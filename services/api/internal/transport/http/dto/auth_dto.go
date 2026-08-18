@@ -12,3 +12,10 @@ type LoginRequest struct {
 // HttpOnly cookie instead. The body is ignored and this type is retained
 // only for backwards-compatible API/schema compatibility.
 type RefreshRequest struct{}
+
+// SetPasswordRequest is the body for POST /auth/password/set — the public,
+// unauthenticated endpoint a password-set-link email points to.
+type SetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}

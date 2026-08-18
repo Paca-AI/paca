@@ -16,10 +16,13 @@ const (
 // User is the core user aggregate.  PasswordHash must never leave the domain
 // boundary; the transport layer uses DTOs without this field.
 type User struct {
-	ID                 uuid.UUID
-	Username           string
-	PasswordHash       string
-	FullName           string
+	ID           uuid.UUID
+	Username     string
+	PasswordHash string
+	FullName     string
+	// Email is optional — used for notification delivery (e.g. a mail
+	// plugin's welcome/invite email), not for login.
+	Email              *string
 	MustChangePassword bool
 	// RoleID is the foreign-key reference to the global_roles table.
 	RoleID uuid.UUID

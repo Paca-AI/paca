@@ -3,6 +3,7 @@ package notificationsvc
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -11,9 +12,19 @@ import (
 
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 )
+
+// userLookup resolves a recipient's name/email for the notification.assigned/
+// notification.mentioned/notification.doc_mentioned/
+// notification.task_description_mentioned plugin-event payloads —
+// ProjectMember doesn't carry email, and a subscribing plugin has no direct
+// DB access to resolve it itself.
+type userLookup interface {
+	FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, error)
+}
 
 // mentionRegexp matches @username tokens in comment text.
 // Usernames consist of letters, digits, dots, hyphens, and underscores.
@@ -35,12 +46,84 @@ type Svc struct {
 	repo       notificationdom.Repository
 	memberRepo memberLookup
 	publisher  *messaging.Publisher
+	userRepo   userLookup
+	publicURL  string
 }
 
 // New returns a configured Svc.
 // publisher may be nil; real-time events are then skipped silently.
 func New(repo notificationdom.Repository, memberRepo memberLookup, publisher *messaging.Publisher) *Svc {
 	return &Svc{repo: repo, memberRepo: memberRepo, publisher: publisher}
+}
+
+// WithEventPublishing configures publishing notification.assigned/
+// notification.mentioned/notification.doc_mentioned/
+// notification.task_description_mentioned events to the plugin event stream
+// alongside this service's existing in-app notification — what, if
+// anything, a subscribing plugin does with them is up to the plugin.
+// publicURL is the workspace's public base URL, used to build a direct link
+// to the task/document. When userRepo is nil, the plugin event is skipped —
+// the in-app notification is unaffected.
+func (s *Svc) WithEventPublishing(userRepo userLookup, publicURL string) *Svc {
+	s.userRepo = userRepo
+	s.publicURL = publicURL
+	return s
+}
+
+// publishNotificationEvent resolves recipientUserID's name/email and
+// publishes topic to the plugin event stream with recipient/actor names and
+// a direct link to whatever was mentioned/assigned — the same event fires
+// regardless of whether the recipient has an email on file, since paca has
+// no visibility into what a subscribing plugin does with it (an email
+// plugin cares about recipient_email; some other plugin might not).
+// recipient_email is simply empty in the payload when unset. Best-effort —
+// errors are swallowed, matching publishCreated's existing convention,
+// since the in-app notification (already created by the caller, where one
+// exists) is this service's primary responsibility.
+func (s *Svc) publishNotificationEvent(ctx context.Context, topic string, recipientUserID uuid.UUID, actorName, linkURL string) {
+	if s.publisher == nil || s.userRepo == nil {
+		return
+	}
+	recipient, err := s.userRepo.FindByID(ctx, recipientUserID)
+	if err != nil {
+		return
+	}
+	recipientEmail := ""
+	if recipient.Email != nil {
+		recipientEmail = *recipient.Email
+	}
+
+	payload := map[string]any{
+		"recipient_user_id": recipientUserID,
+		"recipient_email":   recipientEmail,
+		"recipient_name":    recipient.FullName,
+		"actor_name":        actorName,
+		"link_url":          linkURL,
+	}
+	_ = s.publisher.Append(ctx, events.StreamPluginEvents, topic, payload)
+}
+
+// resolveUserName returns userID's full name, or "" if it can't be resolved
+// (no userRepo configured, or the lookup fails).
+func (s *Svc) resolveUserName(ctx context.Context, userID uuid.UUID) string {
+	if s.userRepo == nil {
+		return ""
+	}
+	u, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return ""
+	}
+	return u.FullName
+}
+
+// taskURL builds a direct link to a task.
+func (s *Svc) taskURL(projectID, taskID uuid.UUID) string {
+	return fmt.Sprintf("%s/projects/%s/tasks/%s", strings.TrimRight(s.publicURL, "/"), projectID, taskID)
+}
+
+// docURL builds a direct link to a document.
+func (s *Svc) docURL(projectID, docID uuid.UUID) string {
+	return fmt.Sprintf("%s/projects/%s/docs/%s", strings.TrimRight(s.publicURL, "/"), projectID, docID)
 }
 
 // --- Service methods --------------------------------------------------------
@@ -88,6 +171,12 @@ func (s *Svc) NotifyAssigned(ctx context.Context, in notificationdom.NotifyAssig
 		return err
 	}
 	s.publishCreated(ctx, n, assigneeMember.UserID)
+
+	actorName := ""
+	if actorMember != nil {
+		actorName = actorMember.FullName
+	}
+	s.publishNotificationEvent(ctx, events.TopicNotificationAssigned, assigneeMember.UserID, actorName, s.taskURL(in.ProjectID, taskID))
 	return nil
 }
 
@@ -128,6 +217,12 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 	}
 
 	actorID := in.ActorMemberID
+	// Resolved once (not per-mentioned-user) since the actor is the same
+	// commenter for every notification created below.
+	actorName := ""
+	if actorMember, err := s.memberRepo.FindMemberByID(ctx, actorID); err == nil {
+		actorName = actorMember.FullName
+	}
 	seen := make(map[uuid.UUID]bool) // avoid duplicate notifications
 	for _, mentionedUserID := range mentionedUserIDs {
 		// Skip self-mention.
@@ -160,8 +255,40 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 			continue // best-effort; don't abort for one failure
 		}
 		s.publishCreated(ctx, n, mentionedUserID)
+		s.publishNotificationEvent(ctx, events.TopicNotificationMentioned, mentionedUserID, actorName, s.taskURL(in.ProjectID, taskID))
 	}
 	return nil
+}
+
+// NotifyDocMentioned publishes a notification.doc_mentioned plugin event for
+// a user newly @mentioned in a document's content. Unlike
+// NotifyAssigned/NotifyMentioned, this does not create an in-app
+// Notification row — the notifications table's task_id is a non-null FK, so
+// it cannot yet represent a doc-scoped target (see
+// docsvc.ActivitySvc.AddComment's doc-comment mention handling, which hits
+// the same constraint), so the plugin event stream is the only way this
+// reaches a subscribing plugin today. The caller is expected to have
+// already diffed old vs. new content so this is only called for genuinely
+// new mentions.
+func (s *Svc) NotifyDocMentioned(ctx context.Context, mentionedUserID, actorUserID uuid.UUID, projectID, docID uuid.UUID) {
+	if mentionedUserID == actorUserID {
+		return
+	}
+	actorName := s.resolveUserName(ctx, actorUserID)
+	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, mentionedUserID, actorName, s.docURL(projectID, docID))
+}
+
+// NotifyTaskDescriptionMentioned publishes a
+// notification.task_description_mentioned plugin event for a user newly
+// @mentioned in a task's description field (as opposed to a comment, which
+// NotifyMentioned already handles). See NotifyDocMentioned's doc comment for
+// why this doesn't create an in-app row.
+func (s *Svc) NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorUserID uuid.UUID, projectID, taskID uuid.UUID) {
+	if mentionedUserID == actorUserID {
+		return
+	}
+	actorName := s.resolveUserName(ctx, actorUserID)
+	s.publishNotificationEvent(ctx, events.TopicNotificationTaskDescriptionMentioned, mentionedUserID, actorName, s.taskURL(projectID, taskID))
 }
 
 // ListNotifications returns up to limit notifications for the user, newest

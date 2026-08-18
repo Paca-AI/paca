@@ -37,6 +37,12 @@ func (m *mockNotificationSvc) NotifyMentioned(_ context.Context, _ notificationd
 	return nil
 }
 
+func (m *mockNotificationSvc) NotifyDocMentioned(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {
+}
+
+func (m *mockNotificationSvc) NotifyTaskDescriptionMentioned(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {
+}
+
 func (m *mockNotificationSvc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
 	if m.listNotifications != nil {
 		return m.listNotifications(ctx, userID, limit, cursorAfter)

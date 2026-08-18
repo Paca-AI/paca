@@ -2,6 +2,7 @@ package userdom
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,9 +13,11 @@ import (
 // Role is optional and defaults to RoleUser when empty.
 // MustChangePassword defaults to false when omitted.
 type CreateInput struct {
-	Username           string
-	Password           string
-	FullName           string
+	Username string
+	Password string
+	FullName string
+	// Email is optional; empty means the account has no email on file.
+	Email              string
 	Role               string
 	MustChangePassword bool
 }
@@ -23,12 +26,18 @@ type CreateInput struct {
 // their own account.
 type UpdateProfileInput struct {
 	FullName string
+	// Email is left unchanged when empty, matching FullName/Role's
+	// "empty means no change" convention elsewhere in this input.
+	Email string
 }
 
 // AdminUpdateInput carries the fields an admin may change on any user account.
 type AdminUpdateInput struct {
 	FullName string
 	Role     string
+	// Email is left unchanged when empty, matching FullName/Role's
+	// "empty means no change" convention above.
+	Email string
 }
 
 // Service defines the user use-case contract.
@@ -52,6 +61,16 @@ type Service interface {
 	// currentPassword against the stored hash, then replaces it with
 	// newPassword and clears MustChangePassword.
 	ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error
+	// IssuePasswordSetToken creates a single-use token that lets userID set
+	// their password via an emailed link, without ever transmitting the
+	// password itself. Returns the raw token — obtainable only here, since
+	// only its hash is persisted — and its expiry.
+	IssuePasswordSetToken(ctx context.Context, userID uuid.UUID) (rawToken string, expiresAt time.Time, err error)
+	// SetPasswordWithToken validates rawToken (as issued by
+	// IssuePasswordSetToken) and, if it is unused and unexpired, sets the
+	// account's password and marks the token used. Returns
+	// ErrPasswordSetTokenInvalid for any invalid/expired/already-used token.
+	SetPasswordWithToken(ctx context.Context, rawToken, newPassword string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// InitiateAvatarUpload starts an avatar upload for the user's own

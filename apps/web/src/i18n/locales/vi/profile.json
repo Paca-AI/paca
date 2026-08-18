@@ -6,6 +6,8 @@
 	"fields": {
 		"fullName": "Họ và tên",
 		"fullNamePlaceholder": "Nhập họ và tên của bạn",
+		"email": "Email",
+		"emailPlaceholder": "Nhập địa chỉ email của bạn",
 		"notSet": "Chưa đặt",
 		"username": "Tên đăng nhập"
 	},
@@ -16,7 +18,9 @@
 		"cancel": "Hủy"
 	},
 	"errors": {
-		"updateFailed": "Cập nhật hồ sơ thất bại. Vui lòng thử lại."
+		"updateFailed": "Cập nhật hồ sơ thất bại. Vui lòng thử lại.",
+		"invalidEmail": "Vui lòng nhập địa chỉ email hợp lệ.",
+		"emailTaken": "Email này đã được sử dụng bởi một tài khoản khác."
 	},
 	"avatar": {
 		"change": "Đổi ảnh đại diện",

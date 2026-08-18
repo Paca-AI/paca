@@ -6,6 +6,8 @@
 	"fields": {
 		"fullName": "姓名",
 		"fullNamePlaceholder": "请输入您的姓名",
+		"email": "电子邮箱",
+		"emailPlaceholder": "请输入您的电子邮箱地址",
 		"notSet": "未设置",
 		"username": "用户名"
 	},
@@ -16,7 +18,9 @@
 		"cancel": "取消"
 	},
 	"errors": {
-		"updateFailed": "更新资料失败，请重试。"
+		"updateFailed": "更新资料失败，请重试。",
+		"invalidEmail": "请输入有效的电子邮箱地址。",
+		"emailTaken": "该邮箱已被其他账户使用。"
 	},
 	"avatar": {
 		"change": "更换头像",

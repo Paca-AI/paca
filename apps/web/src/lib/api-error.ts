@@ -16,7 +16,9 @@ export const ApiErrorCode = {
 	// User domain errors.
 	UserNotFound: "USER_NOT_FOUND",
 	UsernameTaken: "USER_USERNAME_TAKEN",
+	EmailTaken: "USER_EMAIL_TAKEN",
 	InvalidCurrentPassword: "USER_INVALID_CURRENT_PASSWORD",
+	PasswordSetTokenInvalid: "USER_PASSWORD_SET_TOKEN_INVALID",
 	Forbidden: "FORBIDDEN",
 
 	// Global role domain errors.

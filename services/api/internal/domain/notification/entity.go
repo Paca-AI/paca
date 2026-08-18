@@ -102,6 +102,15 @@ type Service interface {
 	// NotifyMentioned creates notifications for all @mentioned users found in
 	// commentText who are members of the project.
 	NotifyMentioned(ctx context.Context, in NotifyMentionedInput) error
+	// NotifyDocMentioned publishes a plugin event (no in-app row — see the
+	// implementation's doc comment) for a user newly @mentioned in a
+	// document's content. Does nothing if mentionedUserID == actorUserID.
+	NotifyDocMentioned(ctx context.Context, mentionedUserID, actorUserID uuid.UUID, projectID, docID uuid.UUID)
+	// NotifyTaskDescriptionMentioned publishes a plugin event for a user
+	// newly @mentioned in a task's description (as opposed to a comment,
+	// which NotifyMentioned handles). Does nothing if mentionedUserID ==
+	// actorUserID.
+	NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorUserID uuid.UUID, projectID, taskID uuid.UUID)
 	// ListNotifications returns up to limit notifications for the authenticated
 	// user, keyset-paginated via cursorAfter — see Repository.ListForUser.
 	ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) (items []*Notification, hasMore bool, err error)

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
@@ -45,6 +46,11 @@ import { Route as AuthenticatedProjectsProjectIdAgentsAgentIdIndexRouteImport } 
 import { Route as AuthenticatedProjectsProjectIdPluginsPluginIdSlugRouteImport } from './routes/_authenticated/projects/$projectId/plugins/$pluginId/$slug'
 import { Route as AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRouteImport } from './routes/_authenticated/projects/$projectId/interactions/sprints/$sprintId'
 
+const SetPasswordRoute = SetPasswordRouteImport.update({
+  id: '/set-password',
+  path: '/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
   id: '/change-password',
   path: '/change-password',
@@ -254,6 +260,7 @@ const AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
+  '/set-password': typeof SetPasswordRoute
   '/conversations': typeof AuthenticatedConversationsRouteWithChildren
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/profile/api-keys': typeof AuthenticatedProfileApiKeysRoute
@@ -290,6 +297,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/change-password': typeof ChangePasswordRoute
+  '/set-password': typeof SetPasswordRoute
   '/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/profile/api-keys': typeof AuthenticatedProfileApiKeysRoute
   '/conversations': typeof AuthenticatedConversationsIndexRoute
@@ -325,6 +333,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
+  '/set-password': typeof SetPasswordRoute
   '/_authenticated/conversations': typeof AuthenticatedConversationsRouteWithChildren
   '/_authenticated/conversations/$conversationId': typeof AuthenticatedConversationsConversationIdRoute
   '/_authenticated/profile/api-keys': typeof AuthenticatedProfileApiKeysRoute
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/change-password'
+    | '/set-password'
     | '/conversations'
     | '/conversations/$conversationId'
     | '/profile/api-keys'
@@ -399,6 +409,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/change-password'
+    | '/set-password'
     | '/conversations/$conversationId'
     | '/profile/api-keys'
     | '/conversations'
@@ -433,6 +444,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/change-password'
+    | '/set-password'
     | '/_authenticated/conversations'
     | '/_authenticated/conversations/$conversationId'
     | '/_authenticated/profile/api-keys'
@@ -471,10 +483,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ChangePasswordRoute: typeof ChangePasswordRoute
+  SetPasswordRoute: typeof SetPasswordRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/set-password': {
+      id: '/set-password'
+      path: '/set-password'
+      fullPath: '/set-password'
+      preLoaderRoute: typeof SetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/change-password': {
       id: '/change-password'
       path: '/change-password'
@@ -859,6 +879,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ChangePasswordRoute: ChangePasswordRoute,
+  SetPasswordRoute: SetPasswordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

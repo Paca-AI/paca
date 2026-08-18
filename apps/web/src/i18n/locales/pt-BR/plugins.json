@@ -44,7 +44,8 @@
 			"projectSettingsTab": "Aba de configurações do projeto",
 			"customView": "Visualização personalizada",
 			"projectPage": "Página do Projeto",
-			"adminPage": "Página de Administração"
+			"adminPage": "Página de Administração",
+			"userSettingsTab": "Aba de configurações do usuário"
 		}
 	}
 }

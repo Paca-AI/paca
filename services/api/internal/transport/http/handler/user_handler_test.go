@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -30,6 +31,8 @@ type mockUserSvc struct {
 	adminUpdate           func(ctx context.Context, id uuid.UUID, in domainuser.AdminUpdateInput) (*domainuser.User, error)
 	resetPassword         func(ctx context.Context, id uuid.UUID, newPassword string) error
 	changeMyPassword      func(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error
+	issuePasswordSetToken func(ctx context.Context, userID uuid.UUID) (string, time.Time, error)
+	setPasswordWithToken  func(ctx context.Context, rawToken, newPassword string) error
 	delete                func(ctx context.Context, id uuid.UUID) error
 	initiateAvatarUpload  func(ctx context.Context, userID uuid.UUID, fileName, contentType string, fileSize int64) (*attachmentdom.UploadSession, error)
 	completeAvatarUpload  func(ctx context.Context, userID, fileID uuid.UUID) (*domainuser.User, error)
@@ -90,6 +93,19 @@ func (m *mockUserSvc) ResetPassword(ctx context.Context, id uuid.UUID, newPasswo
 func (m *mockUserSvc) ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error {
 	if m.changeMyPassword != nil {
 		return m.changeMyPassword(ctx, id, currentPassword, newPassword)
+	}
+	return nil
+}
+
+func (m *mockUserSvc) IssuePasswordSetToken(ctx context.Context, userID uuid.UUID) (string, time.Time, error) {
+	if m.issuePasswordSetToken != nil {
+		return m.issuePasswordSetToken(ctx, userID)
+	}
+	return "", time.Time{}, nil
+}
+func (m *mockUserSvc) SetPasswordWithToken(ctx context.Context, rawToken, newPassword string) error {
+	if m.setPasswordWithToken != nil {
+		return m.setPasswordWithToken(ctx, rawToken, newPassword)
 	}
 	return nil
 }

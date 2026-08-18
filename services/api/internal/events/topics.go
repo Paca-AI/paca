@@ -74,6 +74,25 @@ const (
 	TopicUserDeleted = "user.deleted"
 	TopicAuthLogin   = "auth.login"
 	TopicAuthLogout  = "auth.logout"
+	// TopicUserPasswordReset fires whenever an admin resets a user's
+	// password (see usersvc.Service.ResetPassword) — carries the same
+	// denormalized identity fields as TopicUserCreated (user_id, username,
+	// full_name, email) and is published to the plugin event stream so a
+	// subscribing plugin can react the same way it reacts to
+	// TopicUserCreated (e.g. emailing a "set your password" link), since
+	// both events leave the account in the same must-change-password state.
+	TopicUserPasswordReset = "user.password_reset"
+
+	// --- Notification events (distinct from TopicNotificationCreated, which
+	// is the lightweight realtime-channel payload for the in-app bell icon;
+	// these are published to the plugin event stream and carry denormalized
+	// fields (recipient name/email, actor name, a direct link) so a
+	// subscribing plugin doesn't need direct DB access to resolve them
+	// itself — what a plugin does with them is up to the plugin) -----------
+	TopicNotificationAssigned                 = "notification.assigned"
+	TopicNotificationMentioned                = "notification.mentioned"
+	TopicNotificationDocMentioned             = "notification.doc_mentioned"
+	TopicNotificationTaskDescriptionMentioned = "notification.task_description_mentioned"
 
 	// --- Task events --------------------------------------------------------
 	TopicTaskCreated = "task.created"

@@ -44,7 +44,8 @@
 			"projectSettingsTab": "项目设置标签页",
 			"customView": "自定义视图",
 			"projectPage": "项目页面",
-			"adminPage": "管理页面"
+			"adminPage": "管理页面",
+			"userSettingsTab": "用户设置标签页"
 		}
 	}
 }

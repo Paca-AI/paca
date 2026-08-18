@@ -186,7 +186,8 @@ export type ExtensionPointId =
 	| "project.settings.tab"
 	| "view"
 	| "project.page"
-	| "admin.page";
+	| "admin.page"
+	| "user.settings.tab";
 
 export interface PluginRegistration {
 	pluginUUID: string; // The database UUID for API calls

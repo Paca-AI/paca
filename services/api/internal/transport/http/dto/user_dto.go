@@ -15,6 +15,10 @@ type CreateUserRequest struct {
 	Username string `json:"username"  binding:"required"`
 	Password string `json:"password"  binding:"required,min=8"`
 	FullName string `json:"full_name" binding:"required"`
+	// Email is optional, used for notification delivery (e.g. a mail
+	// plugin's welcome/invite email) — not for login. When set, a
+	// user.created event carrying it is published for plugins to act on.
+	Email string `json:"email" binding:"omitempty"`
 	// Role is optional; defaults to "USER" when omitted.
 	// The provided role name is validated against the global_roles table.
 	Role string `json:"role" binding:"omitempty"`
@@ -23,6 +27,8 @@ type CreateUserRequest struct {
 // UpdateProfileRequest is the body for PATCH /users/me (self-service update).
 type UpdateProfileRequest struct {
 	FullName string `json:"full_name" binding:"required"`
+	// Email is left unchanged when omitted/empty.
+	Email string `json:"email" binding:"omitempty"`
 }
 
 // AdminUpdateUserRequest is the body for PATCH /admin/users/:userId.
@@ -30,6 +36,8 @@ type AdminUpdateUserRequest struct {
 	FullName string `json:"full_name" binding:"omitempty"`
 	// Role is optional; the provided name is validated against the global_roles table.
 	Role string `json:"role" binding:"omitempty"`
+	// Email is left unchanged when omitted/empty.
+	Email string `json:"email" binding:"omitempty"`
 }
 
 // ResetPasswordRequest is the body for PATCH /admin/users/:userId/password.
@@ -48,6 +56,7 @@ type UserResponse struct {
 	ID                 uuid.UUID `json:"id"`
 	Username           string    `json:"username"`
 	FullName           string    `json:"full_name"`
+	Email              *string   `json:"email,omitempty"`
 	Role               string    `json:"role"`
 	MustChangePassword bool      `json:"must_change_password"`
 	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
@@ -72,6 +81,7 @@ func UserFromEntity(u *userdom.User) UserResponse {
 		ID:                 u.ID,
 		Username:           u.Username,
 		FullName:           u.FullName,
+		Email:              u.Email,
 		Role:               u.Role,
 		MustChangePassword: u.MustChangePassword,
 		CreatedAt:          u.CreatedAt,

@@ -62,6 +62,15 @@ func (r *fakeUserRepo) FindByUsernameIncludingDeleted(ctx context.Context, usern
 	return r.FindByUsername(ctx, username)
 }
 
+func (r *fakeUserRepo) FindByEmail(_ context.Context, email string) (*userdom.User, error) {
+	for _, u := range r.byID {
+		if u.Email != nil && *u.Email == email {
+			return u, nil
+		}
+	}
+	return nil, userdom.ErrNotFound
+}
+
 func (r *fakeUserRepo) FindByName(_ context.Context, name string) (*globalroledom.GlobalRole, error) {
 	switch name {
 	case userdom.RoleUser:

@@ -21,6 +21,8 @@ const (
 	CodeUserNotFound Code = "USER_NOT_FOUND"
 	// CodeUsernameTaken represents a username that is already taken.
 	CodeUsernameTaken Code = "USER_USERNAME_TAKEN"
+	// CodeEmailTaken represents an email that is already taken.
+	CodeEmailTaken Code = "USER_EMAIL_TAKEN"
 	// CodeForbidden represents a forbidden action.
 	CodeForbidden Code = "FORBIDDEN"
 	// CodeGlobalRoleNotFound represents a global role that was not found.
@@ -42,6 +44,9 @@ const (
 	CodePasswordChangeRequired Code = "AUTH_PASSWORD_CHANGE_REQUIRED"
 	// CodeInvalidCurrentPassword indicates the supplied current password is wrong.
 	CodeInvalidCurrentPassword Code = "USER_INVALID_CURRENT_PASSWORD"
+	// CodePasswordSetTokenInvalid indicates the password-set token is
+	// unknown, expired, or already used.
+	CodePasswordSetTokenInvalid Code = "USER_PASSWORD_SET_TOKEN_INVALID"
 
 	// CodeProjectNotFound indicates the requested project does not exist.
 	CodeProjectNotFound Code = "PROJECT_NOT_FOUND"

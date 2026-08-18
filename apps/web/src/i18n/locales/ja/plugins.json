@@ -44,7 +44,8 @@
 			"projectSettingsTab": "プロジェクト設定タブ",
 			"customView": "カスタムビュー",
 			"projectPage": "プロジェクトページ",
-			"adminPage": "管理者ページ"
+			"adminPage": "管理者ページ",
+			"userSettingsTab": "ユーザー設定タブ"
 		}
 	}
 }

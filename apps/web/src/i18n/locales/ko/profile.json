@@ -6,6 +6,8 @@
 	"fields": {
 		"fullName": "전체 이름",
 		"fullNamePlaceholder": "전체 이름을 입력하세요",
+		"email": "이메일",
+		"emailPlaceholder": "이메일 주소를 입력하세요",
 		"notSet": "설정되지 않음",
 		"username": "사용자 이름"
 	},
@@ -16,7 +18,9 @@
 		"cancel": "취소"
 	},
 	"errors": {
-		"updateFailed": "프로필 업데이트에 실패했습니다. 다시 시도해 주세요."
+		"updateFailed": "프로필 업데이트에 실패했습니다. 다시 시도해 주세요.",
+		"invalidEmail": "올바른 이메일 주소를 입력해 주세요.",
+		"emailTaken": "이 이메일은 다른 계정에서 이미 사용 중입니다."
 	},
 	"avatar": {
 		"change": "아바타 변경",

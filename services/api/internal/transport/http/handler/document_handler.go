@@ -11,6 +11,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
+	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
@@ -18,9 +19,10 @@ import (
 
 // DocumentHandler handles documentation endpoints.
 type DocumentHandler struct {
-	svc         docdom.Service
-	activitySvc docdom.ActivityService
-	avatarSvc   attachmentdom.AvatarService
+	svc             docdom.Service
+	activitySvc     docdom.ActivityService
+	avatarSvc       attachmentdom.AvatarService
+	notificationSvc notificationdom.Service
 }
 
 // NewDocumentHandler returns a DocumentHandler wired to the doc service and
@@ -33,6 +35,14 @@ func NewDocumentHandler(svc docdom.Service, activitySvc docdom.ActivityService) 
 // responses (comments/system events show the actor's avatar).
 func (h *DocumentHandler) WithDocAvatarService(svc attachmentdom.AvatarService) *DocumentHandler {
 	h.avatarSvc = svc
+	return h
+}
+
+// WithDocNotificationService configures dispatching a plugin event (no
+// in-app row) when a document's content is updated to newly @mention a
+// user (see notificationdom.Service.NotifyDocMentioned).
+func (h *DocumentHandler) WithDocNotificationService(svc notificationdom.Service) *DocumentHandler {
+	h.notificationSvc = svc
 	return h
 }
 
@@ -326,6 +336,15 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 				ActivityType: docdom.ActivityTypeDocUpdated,
 				Content:      content,
 			})
+		}
+
+		// Publish a plugin event for each user newly @mentioned in the
+		// content (no in-app row — see notificationSvc.NotifyDocMentioned's
+		// doc comment).
+		if h.notificationSvc != nil && req.Content.Set && req.Content.Value != nil {
+			for _, mentionedID := range newlyMentionedUserIDs(oldDoc.Content, req.Content.Value) {
+				h.notificationSvc.NotifyDocMentioned(r.Context(), mentionedID, *updatedBy, oldDoc.ProjectID, docID)
+			}
 		}
 	}
 

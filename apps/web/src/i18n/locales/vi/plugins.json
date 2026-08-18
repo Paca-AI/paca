@@ -44,7 +44,8 @@
 			"projectSettingsTab": "Tab cài đặt dự án",
 			"customView": "Chế độ xem tùy chỉnh",
 			"projectPage": "Trang dự án",
-			"adminPage": "Trang quản trị"
+			"adminPage": "Trang quản trị",
+			"userSettingsTab": "Tab cài đặt người dùng"
 		}
 	}
 }
