@@ -172,7 +172,11 @@ func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, use
 	return rowToEntity(&row), nil
 }
 
-// Create persists a new user record.
+// Create persists a new user record. A username/email that collides with an
+// active row surfaces as the corresponding userdom sentinel (checked
+// up front by the service layer already, but that pre-check can still lose
+// a race to a concurrent request — see userRepoErr) rather than a raw
+// constraint-violation error.
 func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO users (id, username, password_hash, full_name, email, role_id, must_change_password, created_at, updated_at, deleted_at)
@@ -181,12 +185,13 @@ func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 		u.RoleID.String(), u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("user repo: create: %w", err)
+		return userRepoErr("create", err)
 	}
 	return nil
 }
 
-// Update saves changes to an existing user record.
+// Update saves changes to an existing user record. See Create's doc comment
+// re: username/email uniqueness errors.
 func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE users SET username = $1, password_hash = $2, full_name = $3, email = $4, role_id = $5,
@@ -196,9 +201,31 @@ func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 		u.MustChangePassword, u.AvatarKey, u.AvatarThumbKey, u.UpdatedAt, u.DeletedAt, u.ID.String(),
 	)
 	if err != nil {
-		return fmt.Errorf("user repo: update: %w", err)
+		return userRepoErr("update", err)
 	}
 	return nil
+}
+
+// userRepoErr maps a users-table write error to the matching userdom
+// sentinel when it's a unique-constraint violation on username or email
+// (see uniqueViolationConstraint), otherwise wrapping it generically. This
+// is what makes the uniqueness pre-checks in service/user race-safe:
+// usersvc.Service.checkEmailAvailable and its username equivalent check
+// before the write, but two concurrent requests can both pass that check
+// for the same value — the database's unique index is the actual guarantee,
+// and this turns its violation into the same userdom.ErrUsernameTaken /
+// userdom.ErrEmailTaken the pre-check itself returns, instead of an
+// unhandled 500 built from a raw driver error string.
+func userRepoErr(op string, err error) error {
+	if constraint, ok := uniqueViolationConstraint(err); ok {
+		switch constraint {
+		case "uni_users_username_active":
+			return userdom.ErrUsernameTaken
+		case "uni_users_email_active":
+			return userdom.ErrEmailTaken
+		}
+	}
+	return fmt.Errorf("user repo: %s: %w", op, err)
 }
 
 // Delete soft-deletes the user by setting deleted_at.

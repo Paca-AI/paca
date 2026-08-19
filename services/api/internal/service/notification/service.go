@@ -269,10 +269,21 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 // the same constraint), so the plugin event stream is the only way this
 // reaches a subscribing plugin today. The caller is expected to have
 // already diffed old vs. new content so this is only called for genuinely
-// new mentions.
+// new mentions. mentionedUserID comes straight from client-supplied
+// BlockNote content (mentionpkg.ExtractTeamMentionsFromBlocks reads it
+// verbatim from a teamMention block's "id" prop), not from a server-side
+// picker restricted to project members — so, exactly like NotifyMentioned's
+// FindMemberByUserProject check, membership must be re-verified here before
+// resolving and publishing the mentioned user's name/email; otherwise any
+// editor could name an arbitrary user ID to leak that user's identity to a
+// subscribing plugin (and trigger it to email them) despite them having no
+// relationship to this project.
 func (s *Svc) NotifyDocMentioned(ctx context.Context, mentionedUserID, actorUserID uuid.UUID, projectID, docID uuid.UUID) {
 	if mentionedUserID == actorUserID {
 		return
+	}
+	if _, err := s.memberRepo.FindMemberByUserProject(ctx, mentionedUserID, projectID); err != nil {
+		return // mentioned user isn't a member of this project; nothing to notify
 	}
 	actorName := s.resolveUserName(ctx, actorUserID)
 	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, mentionedUserID, actorName, s.docURL(projectID, docID))
@@ -282,10 +293,14 @@ func (s *Svc) NotifyDocMentioned(ctx context.Context, mentionedUserID, actorUser
 // notification.task_description_mentioned plugin event for a user newly
 // @mentioned in a task's description field (as opposed to a comment, which
 // NotifyMentioned already handles). See NotifyDocMentioned's doc comment for
-// why this doesn't create an in-app row.
+// why this doesn't create an in-app row and why project membership must be
+// re-verified against the client-supplied mention ID.
 func (s *Svc) NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorUserID uuid.UUID, projectID, taskID uuid.UUID) {
 	if mentionedUserID == actorUserID {
 		return
+	}
+	if _, err := s.memberRepo.FindMemberByUserProject(ctx, mentionedUserID, projectID); err != nil {
+		return // mentioned user isn't a member of this project; nothing to notify
 	}
 	actorName := s.resolveUserName(ctx, actorUserID)
 	s.publishNotificationEvent(ctx, events.TopicNotificationTaskDescriptionMentioned, mentionedUserID, actorName, s.taskURL(projectID, taskID))

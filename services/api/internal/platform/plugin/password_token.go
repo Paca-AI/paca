@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 // PasswordSetTokenIssuer issues single-use password-set tokens for the
@@ -94,7 +96,15 @@ func (r *Runtime) registerPasswordSetTokenFunction(b wazero.HostModuleBuilder, p
 
 			token, expiresAt, err := r.services.PasswordSetTokenIssuer.IssuePasswordSetToken(ctx, userID)
 			if err != nil {
-				writeErr("password_set_token_issue: " + err.Error())
+				// Only the well-known "no such user" case gets a specific
+				// message; anything else (e.g. a repository/driver error)
+				// is collapsed to a generic message so internal DB detail
+				// never reaches the plugin.
+				if errors.Is(err, userdom.ErrNotFound) {
+					writeErr("password_set_token_issue: user not found")
+				} else {
+					writeErr("password_set_token_issue: failed to issue token")
+				}
 				return
 			}
 			writeBack(writeJSONResult(m, passwordSetTokenIssueResult{

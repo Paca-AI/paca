@@ -12,6 +12,7 @@ import (
 
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
 type fakeNotificationRepo struct {
@@ -189,6 +190,41 @@ func (r *fakeMemberRepo) ListMembers(_ context.Context, projectID uuid.UUID) ([]
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.byProj[projectID], nil
+}
+
+// fakeUserRepo is a spy userLookup: it records every ID passed to FindByID
+// so tests can assert whether a lookup happened at all (e.g. to prove a
+// membership check short-circuited before ever resolving the mentioned
+// user's name/email).
+type fakeUserRepo struct {
+	mu    sync.Mutex
+	byID  map[uuid.UUID]*userdom.User
+	calls []uuid.UUID
+}
+
+func newFakeUserRepo() *fakeUserRepo {
+	return &fakeUserRepo{byID: make(map[uuid.UUID]*userdom.User)}
+}
+
+func (r *fakeUserRepo) add(u *userdom.User) {
+	r.byID[u.ID] = u
+}
+
+func (r *fakeUserRepo) FindByID(_ context.Context, id uuid.UUID) (*userdom.User, error) {
+	r.mu.Lock()
+	r.calls = append(r.calls, id)
+	r.mu.Unlock()
+	u, ok := r.byID[id]
+	if !ok {
+		return nil, userdom.ErrNotFound
+	}
+	return u, nil
+}
+
+func (r *fakeUserRepo) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.calls)
 }
 
 type errCreateRepo struct {
@@ -973,5 +1009,110 @@ func TestListNotifications_InvalidCursorErrors(t *testing.T) {
 	_, _, err := svc.ListNotifications(ctx, uuid.New(), 20, &bad)
 	if err == nil {
 		t.Fatal("expected error for invalid cursor, got nil")
+	}
+}
+
+// --- NotifyDocMentioned / NotifyTaskDescriptionMentioned --------------------
+//
+// mentionedUserID for both of these comes straight from client-supplied
+// BlockNote content, not a server-restricted picker, so a project-membership
+// check is the only thing standing between "any editor" and "leak an
+// arbitrary user's name/email to a subscribing plugin". These tests use a
+// nil publisher (as the rest of this file's Svc instances do), which makes
+// publishNotificationEvent a no-op before it would otherwise resolve the
+// *recipient* — so a passing membership check is observed via exactly one
+// fakeUserRepo.FindByID call (resolveUserName resolving the *actor*'s name),
+// and a failing one via zero calls, proving the check runs before any lookup
+// that could leak the mentioned user's identity.
+
+func TestNotifyDocMentioned_NonMemberIgnored(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example")
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	strangerID := uuid.New() // never added as a member of projectID
+
+	svc.NotifyDocMentioned(ctx, strangerID, actorUserID, projectID, uuid.New())
+
+	if got := users.callCount(); got != 0 {
+		t.Errorf("expected no user lookup for a mention naming a non-member, got %d calls", got)
+	}
+}
+
+func TestNotifyDocMentioned_MemberNotified(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example")
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	mentionedUserID := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentionedUserID, Username: "alice"})
+
+	svc.NotifyDocMentioned(ctx, mentionedUserID, actorUserID, projectID, uuid.New())
+
+	if got := users.callCount(); got != 1 {
+		t.Errorf("expected the actor-name lookup to proceed for a mentioned project member, got %d calls", got)
+	}
+}
+
+func TestNotifyDocMentioned_SelfMentionSuppressed(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example")
+
+	projectID := uuid.New()
+	userID := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: userID, Username: "myself"})
+
+	svc.NotifyDocMentioned(ctx, userID, userID, projectID, uuid.New())
+
+	if got := users.callCount(); got != 0 {
+		t.Errorf("expected self-mention to short-circuit before any lookup, got %d calls", got)
+	}
+}
+
+func TestNotifyTaskDescriptionMentioned_NonMemberIgnored(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example")
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	strangerID := uuid.New() // never added as a member of projectID
+
+	svc.NotifyTaskDescriptionMentioned(ctx, strangerID, actorUserID, projectID, uuid.New())
+
+	if got := users.callCount(); got != 0 {
+		t.Errorf("expected no user lookup for a mention naming a non-member, got %d calls", got)
+	}
+}
+
+func TestNotifyTaskDescriptionMentioned_MemberNotified(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	users := newFakeUserRepo()
+	svc := New(repo, members, nil).WithEventPublishing(users, "https://paca.example")
+
+	projectID := uuid.New()
+	actorUserID := uuid.New()
+	mentionedUserID := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentionedUserID, Username: "alice"})
+
+	svc.NotifyTaskDescriptionMentioned(ctx, mentionedUserID, actorUserID, projectID, uuid.New())
+
+	if got := users.callCount(); got != 1 {
+		t.Errorf("expected the actor-name lookup to proceed for a mentioned project member, got %d calls", got)
 	}
 }

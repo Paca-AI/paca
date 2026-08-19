@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -523,9 +524,15 @@ type stubTokenRepo struct {
 	findActiveByTokenHash func(ctx context.Context, hash string) (*userdom.PasswordSetToken, error)
 	markUsedCalled        bool
 	markUsedClaimed       *bool
+	createCalled          bool
+	created               *userdom.PasswordSetToken
 }
 
-func (r *stubTokenRepo) Create(_ context.Context, _ *userdom.PasswordSetToken) error { return nil }
+func (r *stubTokenRepo) Create(_ context.Context, t *userdom.PasswordSetToken) error {
+	r.createCalled = true
+	r.created = t
+	return nil
+}
 func (r *stubTokenRepo) FindActiveByTokenHash(ctx context.Context, hash string) (*userdom.PasswordSetToken, error) {
 	if r.findActiveByTokenHash != nil {
 		return r.findActiveByTokenHash(ctx, hash)
@@ -538,6 +545,61 @@ func (r *stubTokenRepo) MarkUsed(_ context.Context, _ uuid.UUID) (bool, error) {
 		return *r.markUsedClaimed, nil
 	}
 	return true, nil
+}
+
+// TestIssuePasswordSetToken_UserNotFound pins IssuePasswordSetToken checking
+// the user exists up front: the plugin host function
+// (registerPasswordSetTokenFunction) forwards this error's message straight
+// back to the calling plugin, so a nonexistent user_id must surface as the
+// clean userdom.ErrNotFound sentinel — not a raw FK-violation string from
+// the token insert, which would otherwise leak internal DB detail. No token
+// row should be created for a user that doesn't exist.
+func TestIssuePasswordSetToken_UserNotFound(t *testing.T) {
+	tokenRepo := &stubTokenRepo{}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return nil, userdom.ErrNotFound
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	_, _, err := svc.IssuePasswordSetToken(context.Background(), uuid.New())
+	if !errors.Is(err, userdom.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if tokenRepo.createCalled {
+		t.Error("expected no token to be created for a nonexistent user")
+	}
+}
+
+// TestIssuePasswordSetToken_Success guards the happy path: a token is
+// created scoped to the requested user, and the raw token returned to the
+// caller hashes to what was persisted (so FindActiveByTokenHash can find it
+// later).
+func TestIssuePasswordSetToken_Success(t *testing.T) {
+	userID := uuid.New()
+	tokenRepo := &stubTokenRepo{}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, id uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id}, nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	raw, expiresAt, err := svc.IssuePasswordSetToken(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if raw == "" {
+		t.Fatal("expected a non-empty raw token")
+	}
+	if !tokenRepo.createCalled || tokenRepo.created == nil {
+		t.Fatal("expected a token to be persisted")
+	}
+	if tokenRepo.created.UserID != userID {
+		t.Errorf("expected token scoped to user %s, got %s", userID, tokenRepo.created.UserID)
+	}
+	if !expiresAt.After(time.Now()) {
+		t.Errorf("expected expiresAt in the future, got %v", expiresAt)
+	}
 }
 
 func TestSetPasswordWithToken_Success_WhenMustChangePassword(t *testing.T) {

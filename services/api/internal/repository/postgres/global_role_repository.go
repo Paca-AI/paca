@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
@@ -261,4 +262,21 @@ func normalizeUUIDs(ids []uuid.UUID) []string {
 func isUniqueViolation(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique")
+}
+
+// uniqueViolationConstraint reports whether err is a Postgres unique-
+// constraint violation (SQLSTATE 23505) and, if so, which constraint it
+// violated — letting a repository disambiguate between two unique indexes
+// on the same table (e.g. users has separate ones for username and email)
+// instead of isUniqueViolation's cruder single yes/no, which can't tell them
+// apart. Unlike isUniqueViolation's string match, this asserts the
+// concrete *pgconn.PgError (via errors.As, which unwraps through
+// database/sql's error wrapping) so it can read the constraint name pgx
+// reports directly, without guessing from the message text.
+func uniqueViolationConstraint(err error) (string, bool) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return pgErr.ConstraintName, true
+	}
+	return "", false
 }

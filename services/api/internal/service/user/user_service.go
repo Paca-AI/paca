@@ -384,10 +384,19 @@ func (s *Service) ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPas
 
 // IssuePasswordSetToken creates a single-use token letting userID set their
 // password via an emailed link. Only the token's SHA-256 hash is persisted;
-// the raw token is returned here and nowhere else.
+// the raw token is returned here and nowhere else. Checking userID exists
+// up front, rather than letting a bad ID surface as the token insert's FK
+// violation, keeps the error a clean userdom.ErrNotFound instead of a raw
+// repository/driver error string — this is called directly by a plugin (see
+// platform/plugin.registerPasswordSetTokenFunction), which forwards err's
+// message back to the plugin, so it must never carry internal DB detail.
 func (s *Service) IssuePasswordSetToken(ctx context.Context, userID uuid.UUID) (string, time.Time, error) {
 	if s.tokenRepo == nil {
 		return "", time.Time{}, ErrPasswordSetTokenRepoRequired
+	}
+
+	if _, err := s.repo.FindByID(ctx, userID); err != nil {
+		return "", time.Time{}, err
 	}
 
 	raw := make([]byte, 32)
