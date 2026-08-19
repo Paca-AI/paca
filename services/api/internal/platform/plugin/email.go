@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"time"
 
@@ -53,6 +54,16 @@ func (req smtpSendRequest) validate() error {
 	}
 	if req.From == "" || req.To == "" {
 		return fmt.Errorf("from and to are required")
+	}
+	// From/To are written verbatim into MIME headers and passed as-is to
+	// the SMTP envelope (MAIL FROM/RCPT TO); requiring a valid RFC 5322
+	// address here rejects the CR/LF a malicious plugin could otherwise use
+	// to inject extra headers or SMTP commands.
+	if _, err := mail.ParseAddress(req.From); err != nil {
+		return fmt.Errorf("invalid from address: %w", err)
+	}
+	if _, err := mail.ParseAddress(req.To); err != nil {
+		return fmt.Errorf("invalid to address: %w", err)
 	}
 	if req.HTMLBody == "" && req.TextBody == "" {
 		return fmt.Errorf("html_body or text_body is required")

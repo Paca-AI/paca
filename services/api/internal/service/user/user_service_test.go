@@ -522,6 +522,7 @@ func TestResetPassword_UserNotFound(t *testing.T) {
 type stubTokenRepo struct {
 	findActiveByTokenHash func(ctx context.Context, hash string) (*userdom.PasswordSetToken, error)
 	markUsedCalled        bool
+	markUsedClaimed       *bool
 }
 
 func (r *stubTokenRepo) Create(_ context.Context, _ *userdom.PasswordSetToken) error { return nil }
@@ -531,9 +532,12 @@ func (r *stubTokenRepo) FindActiveByTokenHash(ctx context.Context, hash string) 
 	}
 	return nil, userdom.ErrPasswordSetTokenInvalid
 }
-func (r *stubTokenRepo) MarkUsed(_ context.Context, _ uuid.UUID) error {
+func (r *stubTokenRepo) MarkUsed(_ context.Context, _ uuid.UUID) (bool, error) {
 	r.markUsedCalled = true
-	return nil
+	if r.markUsedClaimed != nil {
+		return *r.markUsedClaimed, nil
+	}
+	return true, nil
 }
 
 func TestSetPasswordWithToken_Success_WhenMustChangePassword(t *testing.T) {
@@ -603,6 +607,40 @@ func TestSetPasswordWithToken_RejectsWhenPasswordAlreadySet(t *testing.T) {
 	}
 	if tokenRepo.markUsedCalled {
 		t.Fatal("expected token left unused on rejection")
+	}
+}
+
+// TestSetPasswordWithToken_RejectsLostRace pins the fix for the redemption
+// race: MarkUsed atomically claims the token, and losing that claim (a
+// concurrent request already redeemed it) must reject the request without
+// writing a password, even though FindActiveByTokenHash and the
+// must-change-password check both still passed.
+func TestSetPasswordWithToken_RejectsLostRace(t *testing.T) {
+	userID := uuid.New()
+	updateCalled := false
+	lost := false
+	tokenRepo := &stubTokenRepo{
+		findActiveByTokenHash: func(_ context.Context, _ string) (*userdom.PasswordSetToken, error) {
+			return &userdom.PasswordSetToken{ID: uuid.New(), UserID: userID}, nil
+		},
+		markUsedClaimed: &lost,
+	}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+		},
+		update: func(_ context.Context, _ *userdom.User) error {
+			updateCalled = true
+			return nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	err := svc.SetPasswordWithToken(context.Background(), "raw-token", "newpassword123")
+	if !errors.Is(err, userdom.ErrPasswordSetTokenInvalid) {
+		t.Fatalf("expected ErrPasswordSetTokenInvalid, got %v", err)
+	}
+	if updateCalled {
+		t.Fatal("expected no password update when the claim was lost to a concurrent redemption")
 	}
 }
 

@@ -441,6 +441,18 @@ func (s *Service) SetPasswordWithToken(ctx context.Context, rawToken, newPasswor
 		return userdom.ErrPasswordSetTokenInvalid
 	}
 
+	// Claim the token atomically before writing the password: this is what
+	// makes redemption single-use under concurrent requests. If two
+	// requests race on the same token, only one MarkUsed call wins the
+	// claim, so at most one of them goes on to change the password.
+	claimed, err := s.tokenRepo.MarkUsed(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return userdom.ErrPasswordSetTokenInvalid
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("user svc: set password with token: hash: %w", err)
@@ -448,11 +460,7 @@ func (s *Service) SetPasswordWithToken(ctx context.Context, rawToken, newPasswor
 	u.PasswordHash = string(hash)
 	u.MustChangePassword = false
 	u.UpdatedAt = time.Now()
-	if err := s.repo.Update(ctx, u); err != nil {
-		return err
-	}
-
-	return s.tokenRepo.MarkUsed(ctx, t.ID)
+	return s.repo.Update(ctx, u)
 }
 
 // hashPasswordSetToken derives the storage/lookup hash for a raw

@@ -27,5 +27,8 @@ type PasswordSetTokenRepository interface {
 	// FindActiveByTokenHash returns the token row for hash if it exists, is
 	// unused, and has not expired; otherwise ErrPasswordSetTokenInvalid.
 	FindActiveByTokenHash(ctx context.Context, hash string) (*PasswordSetToken, error)
-	MarkUsed(ctx context.Context, id uuid.UUID) error
+	// MarkUsed atomically claims the token for redemption, succeeding only
+	// if it had not already been claimed. The bool reports whether this
+	// call won the claim; false means another redemption already used it.
+	MarkUsed(ctx context.Context, id uuid.UUID) (bool, error)
 }

@@ -77,12 +77,18 @@ func (r *PasswordSetTokenRepository) FindActiveByTokenHash(ctx context.Context, 
 	}, nil
 }
 
-// MarkUsed sets used_at on the token so it cannot be redeemed again.
-func (r *PasswordSetTokenRepository) MarkUsed(ctx context.Context, id uuid.UUID) error {
+// MarkUsed sets used_at on the token, guarded so a token already claimed by
+// a concurrent redemption cannot be claimed again. The returned bool
+// reports whether this call won the claim.
+func (r *PasswordSetTokenRepository) MarkUsed(ctx context.Context, id uuid.UUID) (bool, error) {
 	now := time.Now().UTC()
-	_, err := r.db.ExecContext(ctx, `UPDATE password_set_tokens SET used_at = $1 WHERE id = $2`, now, id.String())
+	res, err := r.db.ExecContext(ctx, `UPDATE password_set_tokens SET used_at = $1 WHERE id = $2 AND used_at IS NULL`, now, id.String())
 	if err != nil {
-		return fmt.Errorf("password set token repo: mark used: %w", err)
+		return false, fmt.Errorf("password set token repo: mark used: %w", err)
 	}
-	return nil
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("password set token repo: mark used: rows affected: %w", err)
+	}
+	return affected == 1, nil
 }

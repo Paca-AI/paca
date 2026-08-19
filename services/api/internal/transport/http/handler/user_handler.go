@@ -19,10 +19,14 @@ import (
 )
 
 // normalizeEmail trims raw and, if non-empty, validates it as an RFC 5322
-// address, returning the canonical address. An empty/whitespace-only input
-// passes through as "" unchanged — every Email input field in this package
-// treats "" as "not provided" (create) or "no change" (update), matching
-// FullName/Role's existing convention.
+// address, returning the canonical address lowercased. An empty/whitespace
+// -only input passes through as "" unchanged — every Email input field in
+// this package treats "" as "not provided" (create) or "no change"
+// (update), matching FullName/Role's existing convention. Lowercasing keeps
+// the uniqueness pre-check consistent with the case-sensitive
+// uni_users_email_active index: without it, "User@x.com" and "user@x.com"
+// would be stored as distinct rows for what mail servers treat as the same
+// mailbox.
 func normalizeEmail(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -32,7 +36,7 @@ func normalizeEmail(raw string) (string, error) {
 	if err != nil {
 		return "", apierr.New(apierr.CodeBadRequest, "invalid email address")
 	}
-	return addr.Address, nil
+	return strings.ToLower(addr.Address), nil
 }
 
 // SessionInvalidator revokes an authentication session by family ID.
