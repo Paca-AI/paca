@@ -371,7 +371,7 @@ services:
       # Sibling-container mode (see PACA_MCP_DEV_SOURCE_DIR's comment
       # above) — this same socket is also how agent-runner spins up each
       # conversation's dedicated `docker:dind` sidecar (see
-      # internal/sandbox/dind.go), not just the sandbox container itself.
+      # internal/sandbox/docker/dind.go), not just the sandbox container itself.
       - /var/run/docker.sock:/var/run/docker.sock
       - ../services/agent-runner:/workspace
       # go modules are pre-downloaded into the image layer; no volume needed.

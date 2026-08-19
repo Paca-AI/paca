@@ -1,0 +1,217 @@
+# =============================================================================
+# Gateway Caddy configuration
+# =============================================================================
+#
+# This is a copy of deploy/caddy/Caddyfile, kept in sync by hand — the
+# Kubernetes gateway Deployment loads this copy into a ConfigMap since Helm
+# can only package files that live inside the chart directory (this one
+# can't reference the other by path). Update both together.
+#
+# Single public entrypoint for the Paca stack:
+#
+#   /api/*          →  REST API service       (forwarded as-is, /api kept)
+#   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
+#   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded as-is)
+#   /storage/*      →  MinIO                   (/storage stripped)
+#   /plugins/*      →  Plugin frontend assets  (static files)
+#   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
+#   /plugins-skills/* → Plugin Agent Skills bundles (static files)
+#   /*              →  Web application         (SPA with client-side routing)
+#
+# This file is mounted at /etc/caddy/Caddyfile inside the gateway container.
+#
+# SITE_ADDRESS controls automatic HTTPS
+# ---------------------------------------
+#   - A bare port (the default, ":80") serves plain HTTP with no TLS at all.
+#     Caddy can't safely provision a certificate for an unbounded catch-all
+#     address, so use this only when something else terminates TLS in front
+#     of this gateway.
+#   - Any concrete address — a domain name, an IP address, "localhost", a
+#     "*.localhost" name, etc. — gets HTTPS automatically:
+#       • A real domain name with DNS already pointed here (e.g.
+#         "paca.example.com") gets a trusted Let's Encrypt certificate,
+#         renewed automatically. Ports 80 and 443 must both be reachable
+#         from the internet for the ACME challenge to succeed.
+#       • Anything else (an IP address, "localhost", "*.localhost", ...)
+#         gets a certificate from Caddy's own local certificate authority
+#         instead. Traffic is still encrypted, but browsers will show a
+#         trust warning since that CA isn't publicly trusted.
+#     Either way, certificates persist in the caddy_data volume so they
+#     survive container restarts/recreations.
+#   install.sh enables HTTPS by default and prompts for this address.
+#
+# Upstream hostnames (*_UPSTREAM) default to Docker Compose's own service
+# names ("api", "web", "realtime", "agent-runner", "minio") but can be
+# overridden by env var — deploy/helm/paca sets these to the real
+# Kubernetes Service names (which carry a release-name prefix Compose's
+# bare names don't need), so this one file routes correctly under either
+# deployment without templating its own content.
+# =============================================================================
+
+(mcp_skills_routes) {
+	# -- MCP plugin bundles -------------------------------------------------------
+	#
+	# Self-contained ESM bundles loaded at runtime by the MCP server. Kept on a
+	# separate path from frontend assets so WASM/CSS concerns from the
+	# /plugins/* block don't bleed into MCP serving.
+	#
+	# Set remoteEntryUrl in each plugin's plugin.json mcp section to an
+	# absolute URL, for example:
+	#   ${PUBLIC_URL}/plugins-mcp/<plugin-id>/mcp.js
+	handle_path /plugins-mcp/* {
+		root * /var/www/plugins-mcp
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+
+	# -- Plugin Agent Skills bundles ----------------------------------------------
+	#
+	# SKILL.md directories for plugin-contributed Agent Skills, served here
+	# for plugins to reference via their manifest's skills.baseUrl. Not
+	# currently loaded into any conversation by services/agent-runner (see
+	# docs/plugins/skills-plugin-system.md's gap notice). Kept on a separate
+	# path from frontend/MCP assets for the same reason as the MCP block
+	# above.
+	#
+	# Set baseUrl in each plugin's plugin.json skills section to an absolute
+	# URL, for example:
+	#   ${PUBLIC_URL}/plugins-skills/<plugin-id>
+	handle_path /plugins-skills/* {
+		root * /var/www/plugins-skills
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	log {
+		output stdout
+	}
+
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		X-XSS-Protection "0"
+		-Server
+	}
+
+	# Reject oversized request bodies at the gateway before they reach
+	# upstreams. Object storage uploads (handled below) are exempt.
+	@notStorage not path /storage/*
+	request_body @notStorage {
+		max_size 10MB
+	}
+
+	# -- Object storage (MinIO) ------------------------------------------------
+	#
+	# The Host header is rewritten to the internal MinIO address so that AWS
+	# Signature V4 validation succeeds: MinIO re-derives the HMAC using the
+	# Host it receives, which must match the host that was used when the
+	# presigned URL was generated (minio:9000).
+	#
+	# The API rewrites presigned URL hosts from "minio:9000" to
+	# STORAGE_PUBLIC_URL (e.g. "http://localhost/storage") before returning
+	# them to clients, so browsers always receive routable URLs.
+	handle_path /storage/* {
+		reverse_proxy {$MINIO_UPSTREAM:minio:9000} {
+			header_up Host {$MINIO_UPSTREAM:minio:9000}
+		}
+	}
+
+	# -- Realtime service (Socket.IO) ------------------------------------------
+	#
+	# WebSocket upgrade requests are detected and proxied automatically.
+	#
+	# Client-side connection:
+	#   io("http://localhost", { path: "/ws/socket.io", withCredentials: true })
+	handle_path /ws/* {
+		reverse_proxy {$REALTIME_UPSTREAM:realtime:3001}
+	}
+
+	# -- Local plugin frontend assets -------------------------------------------
+	#
+	# Serves statically-built micro-frontend bundles for locally installed
+	# plugins. Only plugins/local/frontend is mounted here (plugins/local/backend
+	# is mounted exclusively to the API container), so WASM binaries and SQL
+	# migrations are never reachable over HTTP.
+	#
+	# Set remoteEntryUrl in each plugin's plugin.json to:
+	#   /plugins/<plugin-id>/assets/remoteEntry.js
+	handle_path /plugins/* {
+		root * /var/www/plugins
+
+		@wasm path *.wasm
+		header @wasm Content-Type "application/wasm"
+
+		# Fingerprinted assets can be cached immutably for a long time.
+		header Cache-Control "public, max-age=900, immutable"
+		file_server
+	}
+
+	# -- MCP plugin bundles + Plugin Agent Skills bundles -------------------------
+	#
+	# See the `mcp_skills_routes` snippet above. Also served on the internal
+	# :8080 block below, which the MCP server / agent-runner use instead of
+	# this public port for their own fetches — see that block for why.
+	import mcp_skills_routes
+
+	# -- API routes ---------------------------------------------------------------
+	#
+	# Forwards the /api prefix as-is to the upstream:
+	#   /api/v1/users  →  /api/v1/users
+	#   /api/healthz   →  /api/healthz
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:api:8080}
+	}
+
+	# -- Agent Runner local ACP bridge ---------------------------------------------
+	#
+	# The only part of agent-runner exposed publicly: the WebSocket a user's
+	# local `paca-acp-bridge` daemon connects to (see
+	# internal/acpbridge/server.go's handleWS — the Go replacement for the
+	# old services/ai-agent's routes/bridge.py). WebSocket upgrades are
+	# proxied automatically, same as the realtime service above.
+	#
+	# Scoped to exactly /agent-bridge/ws — the sibling /agent-bridge/status/*
+	# and /agent-bridge/disconnect/* routes are internal-only (called by
+	# services/api over the docker-internal network) and must not be
+	# reachable from here.
+	handle /agent-bridge/ws {
+		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
+	}
+
+	# -- Web application (SPA) -----------------------------------------------------
+	#
+	# WebSocket upgrades are detected and proxied automatically, so Vite HMR
+	# and any future realtime traffic through this path work unmodified.
+	handle {
+		reverse_proxy {$WEB_UPSTREAM:web:3000}
+	}
+}
+
+# -- Internal MCP/Skills bundle port ------------------------------------------
+#
+# The MCP server and agent-runner fetch plugin MCP/skills bundles via
+# GATEWAY_BASE_URL over plain http:// on the docker-internal network.
+# services/agent-runner reads PACA_GATEWAY_URL directly (see
+# internal/executor/executor.go's Options.PacaGatewayURL) and forwards it to
+# the spawned MCP subprocess the same way services/ai-agent's
+# src/agent/builder.py used to, which apps/mcp/src/plugin-loader.ts
+# then uses to resolve plugin bundle URLs. When SITE_ADDRESS above is a real
+# domain, Caddy enables automatic HTTPS for it,
+# which installs a catch-all HTTP→HTTPS redirect on port 80 for *any* Host
+# header — including these internal requests. Caddy has no certificate for
+# the "gateway" hostname, so the followed redirect's TLS handshake fails.
+#
+# A bare port never gets automatic HTTPS (see the SITE_ADDRESS comment at the
+# top of this file), so this dedicated internal port sidesteps the redirect
+# entirely. It is not published to the host in docker-compose — only reachable
+# from other containers on the compose network. GATEWAY_BASE_URL must point
+# here (http://gateway:8080), not at the public port.
+:8080 {
+	import mcp_skills_routes
+}

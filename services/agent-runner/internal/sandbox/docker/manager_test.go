@@ -1,4 +1,4 @@
-package sandbox
+package docker
 
 import (
 	"net/netip"
@@ -111,5 +111,27 @@ func TestNewManager_StartsWithNoImagesConfirmed(t *testing.T) {
 	}
 	if m.imageConfirmed("ghcr.io/block/goose:latest") {
 		t.Error("a freshly-constructed Manager should have no images confirmed yet")
+	}
+}
+
+// TestSetStateThenPopState_RoundTripsAndForgets is a regression test for
+// the Handle-vs-Manager-state split this package's own doc comment on
+// handleState explains: state set for a container ID must come back out
+// exactly once (from Stop, via popState) and not linger afterward — a
+// leftover entry would be silently reused (or silently leaked) if a
+// container ID were ever reissued, which Docker doesn't in practice but
+// the map's own contract shouldn't quietly rely on that.
+func TestSetStateThenPopState_RoundTripsAndForgets(t *testing.T) {
+	m := &Manager{state: make(map[string]handleState)}
+	want := handleState{hostPort: 32941}
+	m.setState("container-1", want)
+
+	got := m.popState("container-1")
+	if got != want {
+		t.Errorf("popState = %+v, want %+v", got, want)
+	}
+
+	if again := m.popState("container-1"); again != (handleState{}) {
+		t.Errorf("popState after the entry was already popped = %+v, want the zero value", again)
 	}
 }

@@ -1,0 +1,123 @@
+{{- if .Values.agentRunner.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paca.fullname" . }}-agent-runner
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "agent-runner") | nindent 4 }}
+spec:
+  replicas: {{ .Values.agentRunner.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "agent-runner") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "agent-runner") | nindent 8 }}
+    spec:
+      {{- if eq .Values.agentRunner.sandbox.backend "kubernetes" }}
+      serviceAccountName: {{ include "paca.fullname" . }}-agent-runner
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent-runner
+          image: "{{ .Values.agentRunner.image.repository }}:{{ .Values.agentRunner.image.tag }}"
+          imagePullPolicy: {{ .Values.agentRunner.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: VALKEY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: REDIS_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: DATABASE_URL
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: INTERNAL_API_KEY
+            - name: PACA_API_URL
+              value: "http://{{ include "paca.fullname" . }}-api:8080"
+            - name: PACA_GATEWAY_URL
+              value: "http://{{ include "paca.fullname" . }}-gateway:8080"
+            - name: PACA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: AGENT_API_KEY
+            - name: AGENT_SERVER_IMAGE
+              value: "{{ .Values.agentRunner.sandbox.image.repository }}:{{ .Values.agentRunner.sandbox.image.tag }}"
+            - name: SANDBOX_BACKEND
+              value: {{ .Values.agentRunner.sandbox.backend | quote }}
+            {{- if eq .Values.agentRunner.sandbox.backend "kubernetes" }}
+            {{- if .Values.agentRunner.sandbox.namespace }}
+            - name: SANDBOX_NAMESPACE
+              value: {{ .Values.agentRunner.sandbox.namespace | quote }}
+            {{- end }}
+            - name: SANDBOX_CPU_LIMIT
+              value: {{ .Values.agentRunner.sandbox.cpuLimit | quote }}
+            - name: SANDBOX_MEMORY_LIMIT
+              value: {{ .Values.agentRunner.sandbox.memoryLimit | quote }}
+            {{- if .Values.agentRunner.sandbox.imagePullSecrets }}
+            - name: SANDBOX_IMAGE_PULL_SECRETS
+              value: {{ join "," .Values.agentRunner.sandbox.imagePullSecrets | quote }}
+            {{- end }}
+            {{- else }}
+            - name: DOCKER_SOCKET
+              value: /var/run/docker.sock
+            {{- end }}
+            - name: WORKER_CONCURRENCY
+              value: {{ .Values.agentRunner.workerConcurrency | quote }}
+            - name: CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES
+              value: {{ .Values.agentRunner.chatSandboxIdleTimeoutMinutes | quote }}
+            - name: AGENT_RUNNER_ALLOWED_AGENT_IDS
+              value: {{ .Values.agentRunner.allowedAgentIds | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.agentRunner.logLevel | quote }}
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: ENCRYPTION_KEY
+          {{- if ne .Values.agentRunner.sandbox.backend "kubernetes" }}
+          volumeMounts:
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /llm/models
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /llm/models
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.agentRunner.resources | nindent 12 }}
+      {{- if ne .Values.agentRunner.sandbox.backend "kubernetes" }}
+      volumes:
+        # Only meaningful when this node's container runtime actually
+        # exposes a Docker socket here — see
+        # agentRunner.sandbox.backend's own doc comment in values.yaml on
+        # why "kubernetes" (not this) is the right choice for most
+        # clusters.
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+      {{- end }}
+{{- end }}

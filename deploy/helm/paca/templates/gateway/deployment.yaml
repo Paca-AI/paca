@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paca.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "gateway") | nindent 8 }}
+      annotations:
+        # Forces a rollout when the Caddyfile ConfigMap changes — Caddy
+        # doesn't hot-reload a bind-mounted file the way `caddy reload`
+        # against its admin API does.
+        checksum/caddyfile: {{ .Files.Get "files/Caddyfile" | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 443
+              name: https
+            - containerPort: 8080
+              name: internal
+          env:
+            - name: SITE_ADDRESS
+              value: {{ include "paca.gatewaySiteAddress" . | quote }}
+            - name: API_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-api:8080"
+            - name: REALTIME_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-realtime:3001"
+            - name: WEB_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-web:3000"
+            {{- if .Values.agentRunner.enabled }}
+            - name: AGENT_RUNNER_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-agent-runner:8080"
+            {{- end }}
+            {{- if .Values.minio.enabled }}
+            - name: MINIO_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-minio:9000"
+            {{- end }}
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+              readOnly: true
+            - name: plugins
+              mountPath: /var/www/plugins
+              subPath: frontend
+              readOnly: true
+            - name: plugins
+              mountPath: /var/www/plugins-mcp
+              subPath: mcp
+              readOnly: true
+            - name: plugins
+              mountPath: /var/www/plugins-skills
+              subPath: skills
+              readOnly: true
+            - name: caddy-data
+              mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: {{ include "paca.fullname" . }}-gateway
+        - name: plugins
+          {{- include "paca.pluginsVolume" . | nindent 10 }}
+        # Caddy's own TLS certificate/state storage — see the Caddyfile's
+        # SITE_ADDRESS doc comment. emptyDir is fine even for automatic
+        # HTTPS: a Pod recreation triggers one re-issuance, not a lost
+        # deployment, since Let's Encrypt/Caddy's local CA both reissue on
+        # demand. Use a PVC here instead if avoiding that re-issuance on
+        # every rollout matters to you.
+        - name: caddy-data
+          emptyDir: {}

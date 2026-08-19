@@ -1,4 +1,4 @@
-package sandbox
+package docker
 
 import (
 	"strings"

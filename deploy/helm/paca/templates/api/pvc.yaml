@@ -1,0 +1,17 @@
+{{- if .Values.api.plugins.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "paca.fullname" . }}-plugins
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.labels" . | nindent 4 }}
+spec:
+  accessModes: [{{ .Values.api.plugins.persistence.accessMode | quote }}]
+  {{- if .Values.api.plugins.persistence.storageClassName }}
+  storageClassName: {{ .Values.api.plugins.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.api.plugins.persistence.size }}
+{{- end }}

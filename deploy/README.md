@@ -1,9 +1,10 @@
 # Deploy
 
-This directory contains deployment assets for two distinct use cases:
+This directory contains deployment assets for three distinct use cases:
 
 - contributor-friendly local development;
-- production container deployment for self-hosters.
+- production container deployment for self-hosters (Docker Compose);
+- production deployment on Kubernetes — see [helm/README.md](helm/README.md).
 
 ## Contents
 
@@ -14,6 +15,7 @@ This directory contains deployment assets for two distinct use cases:
 | `docker-compose.e2e.yml` | End-to-end test stack mirroring production topology with fixed test credentials |
 | `.env.dev.example` | Optional environment file for `docker-compose.dev.yml` (tunnel / custom domain) |
 | `.env.production.example` | Example environment file for manual production deployments |
+| `helm/` | Kubernetes Helm chart — same stack, deployed via `helm install` instead of `docker compose up` |
 
 Service container definitions live with each service:
 - [`services/api/Dockerfile`](../services/api/Dockerfile)

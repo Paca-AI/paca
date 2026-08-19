@@ -13,13 +13,13 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
-// TestSandboxRunsAsRootWithDockerAccess runs sandbox.Manager against the
+// TestSandboxRunsAsRootWithDockerAccess runs docker.Manager against the
 // real Docker daemon — not mocks — using the actual agent-server image
 // (root user + docker CLI, see services/agent-server/Dockerfile) to verify
 // the two things this whole feature exists for: a conversation's sandbox
 // runs as root (no more "are you root?" package-manager failures), and it
-// can drive Docker via the DOCKER_HOST env var sandbox.Start points at its
-// dedicated per-conversation dind sidecar (see internal/sandbox/dind.go).
+// can drive Docker via the DOCKER_HOST env var Start points at its
+// dedicated per-conversation dind sidecar (see internal/sandbox/docker/dind.go).
 func TestSandboxRunsAsRootWithDockerAccess(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping Docker-heavy test in -short mode")

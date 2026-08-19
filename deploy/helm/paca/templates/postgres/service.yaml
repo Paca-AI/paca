@@ -1,0 +1,17 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "postgres") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "postgres") | nindent 4 }}
+  ports:
+    - port: 5432
+      targetPort: postgres
+      name: postgres
+{{- end }}

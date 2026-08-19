@@ -70,19 +70,24 @@ type Options struct {
 }
 
 // Executor runs conversations for one process — holds the shared sandbox
-// manager and secret decryptor, not any per-conversation state (mirrors
-// sandbox.Manager: safe to call Run concurrently for different
-// conversations, since each gets its own container and acp.Client).
+// backend and secret decryptor, not any per-conversation state (mirrors
+// every sandbox.Backend implementation's own contract: safe to call Run
+// concurrently for different conversations, since each gets its own
+// sandbox and acp.Client).
 type Executor struct {
-	sandboxMgr *sandbox.Manager
+	sandboxMgr sandbox.Backend
 	encryptor  *secret.Encryptor
 	opts       Options
 	log        *slog.Logger
 }
 
-// New builds an Executor sharing the given sandbox manager and decryptor
-// across every conversation it runs.
-func New(sandboxMgr *sandbox.Manager, encryptor *secret.Encryptor, opts Options, log *slog.Logger) *Executor {
+// New builds an Executor sharing the given sandbox backend and decryptor
+// across every conversation it runs. sandboxMgr is a sandbox.Backend, not a
+// concrete implementation, so the same Executor code drives either the
+// Docker backend (internal/sandbox/docker.Manager) or the Kubernetes-Job
+// backend (internal/sandbox/k8s.Manager) depending on which one main.go
+// wires up.
+func New(sandboxMgr sandbox.Backend, encryptor *secret.Encryptor, opts Options, log *slog.Logger) *Executor {
 	return &Executor{sandboxMgr: sandboxMgr, encryptor: encryptor, opts: opts, log: log}
 }
 
@@ -191,7 +196,7 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 }
 
 // StopSandbox tears down a sandbox previously returned in a Result's Handle
-// — a thin pass-through to the sandbox.Manager this Executor was built
+// — a thin pass-through to the sandbox.Backend this Executor was built
 // with, so callers (handler.Handle) don't need their own reference to it
 // just to finish what Run used to do unconditionally.
 func (e *Executor) StopSandbox(ctx context.Context, h *sandbox.Handle) error {

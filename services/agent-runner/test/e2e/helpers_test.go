@@ -18,7 +18,7 @@ import (
 	"github.com/moby/moby/client"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/Paca-AI/agent-runner/internal/sandbox"
+	"github.com/Paca-AI/agent-runner/internal/sandbox/docker"
 	"github.com/Paca-AI/agent-runner/internal/secret"
 )
 
@@ -119,17 +119,17 @@ func seedBaseProject(t *testing.T, db *sqlx.DB) (projectID, memberID, userID uui
 	return projectID, memberID, userID
 }
 
-// portAllocSeq hands each sandbox.Manager a non-overlapping 100-wide host
-// port range: sandbox.Manager.acquirePort does no OS-level collision
+// portAllocSeq hands each docker.Manager a non-overlapping 100-wide host
+// port range: docker.Manager.acquirePort does no OS-level collision
 // detection, and every Docker-heavy test file in this package shares one go
 // test process (see sandbox_manager_test.go and friends).
 var portAllocSeq atomic.Int64
 
-func newSandboxManager(t *testing.T) *sandbox.Manager {
+func newSandboxManager(t *testing.T) *docker.Manager {
 	t.Helper()
 	n := portAllocSeq.Add(1) - 1
 	start := 20000 + int(n)*100
-	mgr, err := sandbox.NewManager(start, 100)
+	mgr, err := docker.NewManager(start, 100)
 	if err != nil {
 		t.Fatalf("new sandbox manager: %v", err)
 	}
@@ -155,21 +155,21 @@ func newEncryptor(t *testing.T) *secret.Encryptor {
 
 // dockerBridgeGatewayIP returns the Docker default bridge network's gateway
 // IP, resolved at run time rather than hardcoded (e.g. as 172.17.0.1) — a
-// CI runner isn't itself inside a container, so sandbox.Manager places every
+// CI runner isn't itself inside a container, so docker.Manager places every
 // sandbox container on that default bridge with host-mapped ports (see
-// sandbox.go's isInsideDocker branch), and the fake LLM / MCP-permissions
-// stub servers those containers need to call out to must be reachable at
-// this address, not "localhost" (which resolves inside the container's own
-// network namespace).
+// internal/sandbox/docker/manager.go's isInsideDocker branch), and the fake
+// LLM / MCP-permissions stub servers those containers need to call out to
+// must be reachable at this address, not "localhost" (which resolves
+// inside the container's own network namespace).
 func dockerBridgeGatewayIP(ctx context.Context, t *testing.T) string {
 	t.Helper()
-	docker, err := client.New(client.FromEnv)
+	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Fatalf("create docker client: %v", err)
 	}
-	defer func() { _ = docker.Close() }()
+	defer func() { _ = dockerClient.Close() }()
 
-	info, err := docker.NetworkInspect(ctx, "bridge", client.NetworkInspectOptions{})
+	info, err := dockerClient.NetworkInspect(ctx, "bridge", client.NetworkInspectOptions{})
 	if err != nil {
 		t.Fatalf("inspect docker bridge network: %v", err)
 	}

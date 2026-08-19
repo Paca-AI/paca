@@ -1,0 +1,64 @@
+{{- if .Values.valkey.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "paca.fullname" . }}-valkey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "valkey") | nindent 4 }}
+spec:
+  serviceName: {{ include "paca.fullname" . }}-valkey
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "valkey") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: valkey
+          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
+          args: ["valkey-server", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+              name: valkey
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.valkey.resources | nindent 12 }}
+      {{- if not .Values.valkey.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.valkey.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.valkey.persistence.storageClassName }}
+        storageClassName: {{ .Values.valkey.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.valkey.persistence.size }}
+  {{- end }}
+{{- end }}
