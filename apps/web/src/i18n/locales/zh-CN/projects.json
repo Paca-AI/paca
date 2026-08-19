@@ -1235,7 +1235,9 @@
 				"error": "更新冲刺失败,请重试。",
 				"cancel": "取消",
 				"saving": "保存中…",
-				"save": "保存更改"
+				"save": "保存更改",
+				"delete": "删除冲刺",
+				"deleteError": "无法删除冲刺，请重试。"
 			},
 			"completeSprint": "完成冲刺",
 			"completeSprintModal": {
@@ -1248,6 +1250,13 @@
 				"cancel": "取消",
 				"completing": "正在完成…",
 				"completeSprint": "完成冲刺"
+			},
+			"deleteSprintModal": {
+				"title": "删除冲刺？",
+				"message": "冲刺“{{name}}”将被永久删除。其任务将返回产品待办列表。此操作无法撤销。",
+				"cancel": "取消",
+				"confirm": "删除冲刺",
+				"deleting": "正在删除…"
 			}
 		},
 		"conversation": {

@@ -460,6 +460,16 @@ export async function completeSprint(
 	return data.data;
 }
 
+// Deletes a sprint. Its tasks are unassigned (their sprint_id is set to null,
+// so they return to the product backlog) and any sprint-scoped views are
+// removed; the tasks themselves are not deleted.
+export async function deleteSprint(
+	projectId: string,
+	sprintId: string,
+): Promise<void> {
+	await apiClient.instance.delete(`/projects/${projectId}/sprints/${sprintId}`);
+}
+
 // ── Task API ──────────────────────────────────────────────────────────────────
 
 export interface ListTasksOptions {

@@ -1235,7 +1235,9 @@
 				"error": "Failed to update sprint. Please try again.",
 				"cancel": "Cancel",
 				"saving": "Saving…",
-				"save": "Save changes"
+				"save": "Save changes",
+				"delete": "Delete sprint",
+				"deleteError": "Could not delete the sprint. Please try again."
 			},
 			"completeSprint": "Complete sprint",
 			"completeSprintModal": {
@@ -1248,6 +1250,13 @@
 				"cancel": "Cancel",
 				"completing": "Completing…",
 				"completeSprint": "Complete sprint"
+			},
+			"deleteSprintModal": {
+				"title": "Delete sprint?",
+				"message": "\"{{name}}\" will be permanently deleted. Its tasks return to the product backlog. This can't be undone.",
+				"cancel": "Cancel",
+				"confirm": "Delete sprint",
+				"deleting": "Deleting…"
 			}
 		},
 		"conversation": {

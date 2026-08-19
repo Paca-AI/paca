@@ -1235,7 +1235,9 @@
 				"error": "Không thể cập nhật sprint. Vui lòng thử lại.",
 				"cancel": "Hủy",
 				"saving": "Đang lưu…",
-				"save": "Lưu thay đổi"
+				"save": "Lưu thay đổi",
+				"delete": "Xóa sprint",
+				"deleteError": "Không thể xóa sprint. Vui lòng thử lại."
 			},
 			"completeSprint": "Hoàn thành sprint",
 			"completeSprintModal": {
@@ -1248,6 +1250,13 @@
 				"cancel": "Hủy",
 				"completing": "Đang hoàn thành…",
 				"completeSprint": "Hoàn thành sprint"
+			},
+			"deleteSprintModal": {
+				"title": "Xóa sprint?",
+				"message": "Sprint \"{{name}}\" sẽ bị xóa vĩnh viễn. Các công việc của nó sẽ quay lại backlog sản phẩm. Hành động này không thể hoàn tác.",
+				"cancel": "Hủy",
+				"confirm": "Xóa sprint",
+				"deleting": "Đang xóa…"
 			}
 		},
 		"conversation": {
