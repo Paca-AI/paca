@@ -345,20 +345,27 @@ fi
 # agent-server protocol — neither the raw upstream image nor Paca's own
 # pre-Agent-Runner build of it works with Agent Runner at all, so an install
 # still on either one needs this value changed for agents to work post
-# upgrade, not just as a nice-to-have. Only offer to rewrite installs still on
-# one of these exact known-old defaults — never touch a value the user
-# deliberately customized. Asked rather than applied silently since it's
-# still worth a confirmation, same as the version re-pin above.
-OLD_AGENT_SERVER_IMAGE_DEFAULTS=(
-    "ghcr.io/openhands/agent-server:latest-python"
-    "ghcr.io/paca-ai/paca-agent-server:latest"
-    "ghcr.io/paca-ai/paca-agent-server:${IMAGE_TAG}"
-)
+# upgrade, not just as a nice-to-have. Matched by repo prefix, not an
+# exact-string allowlist of known tags: an earlier version of this check only
+# matched "ghcr.io/paca-ai/paca-agent-server:latest" or the *current*
+# release's own tag, so an install pinned to any other old version (e.g.
+# ":0.12.2", left over from before this repo existed) sailed through
+# undetected — AGENT_SERVER_IMAGE stayed on the incompatible OpenHands-based
+# image while Agent Runner started fine, and every conversation failed with a
+# sandbox that starts, never answers /status, and is gone (AutoRemove) by the
+# time diagnostics run. A prefix match catches every tag under either old
+# repo, known or not — "ghcr.io/paca-ai/paca-agent-server:" (no trailing
+# "-goose") never matches the current good default, which is always
+# "...-agent-server-goose:...". Never touches a value the user deliberately
+# customized to something outside both old repos. Asked rather than applied
+# silently since it's still worth a confirmation, same as the version re-pin
+# above.
 _current_agent_server_image="$(get_env_var .env AGENT_SERVER_IMAGE)"
 _agent_server_image_is_old=0
-for _old in "${OLD_AGENT_SERVER_IMAGE_DEFAULTS[@]}"; do
-    [[ "$_current_agent_server_image" == "$_old" ]] && _agent_server_image_is_old=1
-done
+case "$_current_agent_server_image" in
+    ghcr.io/openhands/agent-server:*)   _agent_server_image_is_old=1 ;;
+    ghcr.io/paca-ai/paca-agent-server:*) _agent_server_image_is_old=1 ;;
+esac
 if [[ "$_agent_server_image_is_old" == "1" ]]; then
     heading "Agent-server image"
     info "AGENT_SERVER_IMAGE is still set to an OpenHands-based image (${_current_agent_server_image}), which Agent Runner cannot use."
@@ -522,6 +529,22 @@ fi
 # ── Pull and restart ──────────────────────────────────────────────────────────
 
 heading "Pulling images and restarting"
+
+# AGENT_SERVER_IMAGE isn't a docker-compose service, just an env var
+# agent-runner reads and pulls for itself — lazily, the first time a
+# conversation actually needs a sandbox (see
+# services/agent-runner/internal/sandbox/sandbox.go's ensureImage). Left
+# alone, that first conversation after every upgrade pays for a cold pull (or
+# times out entirely on a slow link/large image) instead of just running.
+# Pulling it here too, best-effort: ensureImage's own pull-on-first-use stays
+# the real safety net, so a failure here only costs the win, not correctness.
+if [[ "$(get_env_var .env PACA_AGENT_RUNNER)" != "no" ]]; then
+    _agent_server_image="$(get_env_var .env AGENT_SERVER_IMAGE)"
+    if [[ -n "$_agent_server_image" ]]; then
+        info "Pre-pulling agent-server image (${_agent_server_image})..."
+        docker pull "$_agent_server_image" || warn "Could not pre-pull ${_agent_server_image} — agent-runner will pull it on first use instead."
+    fi
+fi
 
 # shellcheck disable=SC2086
 $COMPOSE_CMD --env-file .env pull
