@@ -883,6 +883,21 @@ fi
 
 heading "Starting Paca"
 
+# AGENT_SERVER_IMAGE isn't a docker-compose service, just an env var
+# agent-runner reads and pulls for itself — lazily, the first time a
+# conversation actually needs a sandbox (see
+# services/agent-runner/internal/sandbox/sandbox.go's ensureImage), so
+# `--pull always` below never touches it. Left alone, the very first
+# conversation on a fresh install pays for that cold pull (or times out
+# entirely on a slow link/large image) instead of just running. Pulling it
+# here too, best-effort: ensureImage's own pull-on-first-use stays the real
+# safety net, so a failure here only costs the win, not correctness.
+if [[ "$INCLUDE_AGENT_RUNNER" != "no" ]]; then
+    _agent_server_image="ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}"
+    info "Pre-pulling agent-server image (${_agent_server_image})..."
+    docker pull "$_agent_server_image" || warn "Could not pre-pull ${_agent_server_image} — agent-runner will pull it on first use instead."
+fi
+
 SCALE_OPTS=()
 [[ -n "$SCALE_POSTGRES"  ]] && SCALE_OPTS+=($SCALE_POSTGRES)
 [[ -n "$SCALE_DB_BACKUP" ]] && SCALE_OPTS+=($SCALE_DB_BACKUP)
