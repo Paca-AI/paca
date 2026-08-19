@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
+	"github.com/moby/moby/client"
+
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
@@ -141,5 +144,80 @@ func TestSandboxDindSidecarsAreIsolatedPerConversation(t *testing.T) {
 	}
 	if strings.Contains(out, markerContainerName) {
 		t.Errorf("conversation B can see conversation A's marker container — dind sidecars are not isolated:\n%s", out)
+	}
+}
+
+// TestSandboxDindSidecarNotStartedWhenDisabled is the negative-path
+// counterpart to the two tests above: both of those only ever exercise
+// DockerEnabled: true, so a regression that started the privileged sidecar,
+// created its private network, or set DOCKER_HOST even when the agent never
+// opted in would pass unnoticed. Confirms none of that happens for a
+// DockerEnabled: false (the default) conversation.
+func TestSandboxDindSidecarNotStartedWhenDisabled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping Docker-heavy test in -short mode")
+	}
+	if os.Getenv("PACA_E2E") != "1" {
+		t.Skip("set PACA_E2E=1 to run e2e tests (requires Docker)")
+	}
+	checkDockerAvailable(t)
+
+	mgr := newSandboxManager(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	// rawUpstreamGooseImage, not agentServerImage: this test never touches
+	// Docker from inside the sandbox, so it doesn't need the MCP-enabled
+	// image agentServerImage requires building first (see that helper's doc
+	// comment) — it only needs any goose serve container to inspect from
+	// the outside.
+	const convID = "e2e-dind-conv-disabled"
+	handle, err := mgr.Start(ctx, sandbox.Config{
+		ConversationID:    convID,
+		Image:             rawUpstreamGooseImage(t),
+		Env:               map[string]string{"GOOSE_PROVIDER": "openai", "GOOSE_MODEL": "fake-model"},
+		GitCommitterName:  "paca-agent",
+		GitCommitterEmail: "agent@example.com",
+		// DockerEnabled intentionally omitted (false, the default) — the
+		// whole point of this test.
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := mgr.Stop(context.Background(), handle); err != nil {
+			t.Errorf("cleanup: stop sandbox: %v", err)
+		}
+	})
+
+	docker, err := client.New(client.FromEnv)
+	if err != nil {
+		t.Fatalf("create docker client: %v", err)
+	}
+	defer func() { _ = docker.Close() }()
+
+	// Names replicated from dind.go's dindContainerName/
+	// conversationNetworkName formulas rather than imported — this package
+	// is e2e_test, outside package sandbox, so it has no access to those
+	// unexported functions and has to assert black-box, the same as any
+	// other caller would.
+	if _, err := docker.ContainerInspect(ctx, "paca-dind-"+convID, client.ContainerInspectOptions{}); !errdefs.IsNotFound(err) {
+		t.Errorf("dind sidecar container exists for a DockerEnabled=false conversation (inspect err=%v, want not-found)", err)
+	}
+	if _, err := docker.NetworkInspect(ctx, "paca-sbx-net-"+convID, client.NetworkInspectOptions{}); !errdefs.IsNotFound(err) {
+		t.Errorf("conversation network exists for a DockerEnabled=false conversation (inspect err=%v, want not-found)", err)
+	}
+
+	inspected, err := docker.ContainerInspect(ctx, handle.ContainerID, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatalf("inspect sandbox container: %v", err)
+	}
+	if inspected.Container.Config == nil {
+		t.Fatal("sandbox container inspect response has no Config")
+	}
+	for _, e := range inspected.Container.Config.Env {
+		if strings.HasPrefix(e, "DOCKER_HOST=") {
+			t.Errorf("sandbox container has %q set despite DockerEnabled=false", e)
+		}
 	}
 }
