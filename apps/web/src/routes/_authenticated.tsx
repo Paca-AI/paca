@@ -5,11 +5,10 @@ import {
 	redirect,
 	useRouterState,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
-import { GlobalAIChatFloat } from "@/components/projects/ai-chat-float-global";
 import {
 	SidebarInset,
 	SidebarProvider,
@@ -17,10 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { onTokenRefreshed } from "@/lib/api-client";
 import { isPasswordChangeRequired } from "@/lib/api-error";
-import {
-	currentUserOptionalQueryOptions,
-	currentUserQueryOptions,
-} from "@/lib/auth-api";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import { playNotificationSound } from "@/lib/notification-sound";
 import { PluginRegistryProvider } from "@/lib/plugins/registry";
 import { ShortcutProvider } from "@/lib/shortcuts/provider";
@@ -29,6 +25,15 @@ import {
 	disconnectSocket,
 	getSocket,
 } from "@/lib/socket-client";
+
+// Lazy: pulls in @assistant-ui/react and the agent/conversation stack, which
+// is otherwise dead weight on every authenticated page (dashboard, admin,
+// settings, ...) since the panel starts closed and most loads never open it.
+const GlobalAIChatFloat = lazy(() =>
+	import("@/components/projects/ai-chat-float-global").then((m) => ({
+		default: m.GlobalAIChatFloat,
+	})),
+);
 
 const PROJECT_ROUTE_RE = /^\/projects\/[^/]+/;
 // The global Conversations page (and its nested $conversationId route) has
@@ -44,23 +49,6 @@ export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async ({ context: { queryClient }, location }) => {
 		const isProjectRoute = PROJECT_ROUTE_RE.test(location.pathname);
 
-		if (isProjectRoute) {
-			const user = await queryClient
-				.fetchQuery(currentUserOptionalQueryOptions)
-				.catch((err: unknown) => {
-					if (isPasswordChangeRequired(err)) {
-						throw redirect({ to: "/change-password" });
-					}
-					return null;
-				});
-
-			if (user?.must_change_password) {
-				throw redirect({ to: "/change-password" });
-			}
-
-			return { user };
-		}
-
 		const user = await queryClient
 			.fetchQuery(currentUserQueryOptions)
 			.catch((err: unknown) => {
@@ -70,11 +58,14 @@ export const Route = createFileRoute("/_authenticated")({
 				return null;
 			});
 
-		if (!user) {
+		// Project routes tolerate an anonymous user (some project pages are
+		// reachable without being signed in); every other authenticated route
+		// requires one.
+		if (!user && !isProjectRoute) {
 			throw redirect({ to: "/" });
 		}
 
-		if (user.must_change_password) {
+		if (user?.must_change_password) {
 			throw redirect({ to: "/change-password" });
 		}
 
@@ -85,7 +76,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
 	const queryClient = useQueryClient();
-	const { data: user } = useQuery(currentUserOptionalQueryOptions);
+	const { data: user } = useQuery(currentUserQueryOptions);
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	// Global agent chat is available everywhere except inside a project
 	// (project pages already mount their own project-scoped AIChatFloat, see
@@ -158,7 +149,11 @@ function AuthenticatedLayout() {
 						</div>
 					</SidebarInset>
 				</SidebarProvider>
-				{showGlobalChat && <GlobalAIChatFloat />}
+				{showGlobalChat && (
+					<Suspense fallback={null}>
+						<GlobalAIChatFloat />
+					</Suspense>
+				)}
 			</ShortcutProvider>
 		</PluginRegistryProvider>
 	);

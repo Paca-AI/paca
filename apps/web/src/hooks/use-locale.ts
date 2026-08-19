@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import i18n, {
 	LOCALE_LABELS,
+	loadLanguage,
+	resolveLocale,
 	SUPPORTED_LANGUAGES,
 	type SupportedLanguage,
 } from "@/i18n";
@@ -13,15 +15,6 @@ export interface LocaleOption {
 export const SUPPORTED_LOCALES: LocaleOption[] = SUPPORTED_LANGUAGES.map(
 	(code) => ({ code, nativeLabel: LOCALE_LABELS[code] }),
 );
-
-function resolveLocale(language: string): SupportedLanguage {
-	const exact = SUPPORTED_LANGUAGES.find((code) => code === language);
-	if (exact) return exact;
-
-	const base = language.split("-")[0];
-	const baseMatch = SUPPORTED_LANGUAGES.find((code) => code === base);
-	return baseMatch ?? "en";
-}
 
 export function useLocale() {
 	const [locale, setLocale] = useState<SupportedLanguage>(() =>
@@ -40,7 +33,11 @@ export function useLocale() {
 	}, []);
 
 	function set(next: SupportedLanguage) {
-		void i18n.changeLanguage(next);
+		loadLanguage(next)
+			.then(() => i18n.changeLanguage(next))
+			.catch((error) => {
+				console.error(`i18n: failed to load language "${next}"`, error);
+			});
 	}
 
 	return { locale, set, supportedLocales: SUPPORTED_LOCALES };

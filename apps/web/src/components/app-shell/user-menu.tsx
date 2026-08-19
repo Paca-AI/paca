@@ -31,7 +31,7 @@ import {
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useLocale } from "@/hooks/use-locale";
-import { currentUserOptionalQueryOptions, logout } from "@/lib/auth-api";
+import { currentUserQueryOptions, logout } from "@/lib/auth-api";
 import { useShortcutHelpStore } from "@/lib/shortcuts/help-dialog-store";
 import { getInitials } from "@/lib/utils";
 
@@ -40,7 +40,7 @@ export function UserMenu() {
 	const { t: tShortcuts } = useTranslation("shortcuts");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const { data: user } = useQuery(currentUserOptionalQueryOptions);
+	const { data: user } = useQuery(currentUserQueryOptions);
 	const [isLoggingOut, setIsLoggingOut] = useState(false);
 	const { locale, set: setLocale } = useLocale();
 	const openShortcutHelp = useShortcutHelpStore((s) => s.setOpen);

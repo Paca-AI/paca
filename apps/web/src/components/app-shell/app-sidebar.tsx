@@ -76,7 +76,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import type { ThemeMode } from "@/hooks/use-theme-mode";
 import { useThemeMode } from "@/hooks/use-theme-mode";
-import { currentUserOptionalQueryOptions } from "@/lib/auth-api";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	createDocument,
 	createFolder,
@@ -746,7 +746,7 @@ function ProjectSwitcher({
 		? getProjectInitials(currentProject.name)
 		: null;
 
-	const { data: user } = useQuery(currentUserOptionalQueryOptions);
+	const { data: user } = useQuery(currentUserQueryOptions);
 
 	if (!user) {
 		return (
@@ -1465,7 +1465,7 @@ export function AppSidebar() {
 	const { hasPermission } = usePermissions();
 	const { resolvedMode } = useThemeMode();
 	const { projectId } = useParams({ strict: false });
-	const { data: user } = useQuery(currentUserOptionalQueryOptions);
+	const { data: user } = useQuery(currentUserQueryOptions);
 	const { getNavItems } = usePluginRegistry();
 	const branding = useBranding();
 	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;

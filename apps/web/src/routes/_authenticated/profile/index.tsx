@@ -22,10 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import type { SuccessEnvelope } from "@/lib/api-error";
 import type { User as UserType } from "@/lib/auth-api";
-import {
-	currentUserOptionalQueryOptions,
-	currentUserQueryOptions,
-} from "@/lib/auth-api";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import { formatDate } from "@/lib/format-date";
 
 export const Route = createFileRoute("/_authenticated/profile/")({
@@ -194,16 +191,8 @@ function ProfilePage() {
 								removeFailed: t("avatar.errors.removeFailed"),
 							}}
 							onChange={(result) => {
-								// Two separate caches back "who am I" (this page's own query,
-								// and user-menu.tsx's optional variant used in the top-nav) —
-								// both need the update or one keeps showing the pre-upload
-								// avatar until its staleTime lapses.
 								queryClient.setQueryData(
 									currentUserQueryOptions.queryKey,
-									(old) => (old ? { ...old, ...result } : old),
-								);
-								queryClient.setQueryData(
-									currentUserOptionalQueryOptions.queryKey,
 									(old) => (old ? { ...old, ...result } : old),
 								);
 							}}
