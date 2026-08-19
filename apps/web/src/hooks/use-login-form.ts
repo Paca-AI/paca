@@ -36,9 +36,9 @@ export function useLoginForm() {
 			setServerError(null);
 			try {
 				await login(value.username, value.password, value.rememberMe);
-				// Invalidate the entire "auth" query namespace so both the required
-				// ("auth"/"me") and the optional ("auth"/"me-optional") caches are
-				// refreshed. Without this the sidebar keeps the previous user's data.
+				// Invalidate the entire "auth" query namespace so the ("auth"/"me")
+				// cache is refreshed. Without this the sidebar keeps the previous
+				// user's data.
 				await queryClient.invalidateQueries({ queryKey: ["auth"] });
 				await navigate({ to: "/home" });
 			} catch (err: unknown) {

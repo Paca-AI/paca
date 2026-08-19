@@ -33,7 +33,11 @@ export function useLocale() {
 	}, []);
 
 	function set(next: SupportedLanguage) {
-		void loadLanguage(next).then(() => i18n.changeLanguage(next));
+		loadLanguage(next)
+			.then(() => i18n.changeLanguage(next))
+			.catch((error) => {
+				console.error(`i18n: failed to load language "${next}"`, error);
+			});
 	}
 
 	return { locale, set, supportedLocales: SUPPORTED_LOCALES };

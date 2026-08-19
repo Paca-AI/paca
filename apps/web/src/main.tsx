@@ -25,13 +25,23 @@ void queryClient.prefetchQuery(brandingQueryOptions);
 
 // Waits for the active language's translations (see i18n/config.ts) so the
 // app never mounts with untranslated/raw keys. Resolves immediately for the
-// "en" default since that locale ships eagerly.
-void i18nReady.then(() => {
-	createRoot(rootElement).render(
-		<StrictMode>
-			<QueryProvider>
-				<RouterProvider router={router} />
-			</QueryProvider>
-		</StrictMode>,
-	);
-});
+// "en" default since that locale ships eagerly. If the dynamic locale chunk
+// fails to load (stale chunk hash after a deploy, transient network error),
+// fall back to rendering anyway — i18next's fallbackLng ("en") covers any
+// missing keys, which beats a permanently blank app.
+i18nReady
+	.catch((error) => {
+		console.error(
+			"i18n: failed to load initial language resources, falling back to defaults",
+			error,
+		);
+	})
+	.then(() => {
+		createRoot(rootElement).render(
+			<StrictMode>
+				<QueryProvider>
+					<RouterProvider router={router} />
+				</QueryProvider>
+			</StrictMode>,
+		);
+	});

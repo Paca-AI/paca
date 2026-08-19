@@ -127,7 +127,11 @@ if (typeof window !== "undefined") {
 	onStorageKeyChange(LOCALE_STORAGE_KEY, (event) => {
 		if (event.newValue && event.newValue !== i18next.language) {
 			const next = resolveLocale(event.newValue);
-			void loadLanguage(next).then(() => i18next.changeLanguage(next));
+			loadLanguage(next)
+				.then(() => i18next.changeLanguage(next))
+				.catch((error) => {
+					console.error(`i18n: failed to load language "${next}"`, error);
+				});
 		}
 	});
 
