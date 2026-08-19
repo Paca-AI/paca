@@ -133,7 +133,7 @@ type Result struct {
 // AgentConversationEvent and publishing/persisting it, the same role
 // make_event_callback plays in executor.py. Not done inside this package so
 // Run stays testable without a live Valkey/Postgres connection.
-func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trigger, resume *chatsandbox.State, onEvent func(acp.Event)) (Result, error) {
+func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trigger, resume *chatsandbox.State, onEvent func(acp.Event), onReady func()) (Result, error) {
 	timeoutMinutes := cfg.TimeoutMinutes
 	if timeoutMinutes <= 0 {
 		timeoutMinutes = defaultTimeoutMinutes
@@ -163,6 +163,18 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 			return Result{Handle: handle}, err
 		}
 		message = buildInitialMessage(trigger)
+	}
+
+	// Fires once the sandbox/session is ready to receive session/prompt,
+	// whether it was just cold-started or resumed from a paused chat
+	// sandbox — the UI's cue to stop saying "setting up your environment"
+	// and start saying "thinking", since from here on any further wait is
+	// the LLM itself, not container/ACP-handshake setup. Called on every
+	// turn (not just cold starts) rather than relying on an earlier turn's
+	// marker still being loaded — a long conversation's event window is
+	// paginated, so an old turn's readiness event can page out.
+	if onReady != nil {
+		onReady()
 	}
 
 	maxToolCalls := cfg.MaxIterations

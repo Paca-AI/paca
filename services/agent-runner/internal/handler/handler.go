@@ -388,7 +388,16 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		persistAndPublish(string(e.Kind), "agent", e.Raw)
 	}
 
-	result, runErr := h.Executor.Run(runCtx, *cfg, trigger, resume, onEvent)
+	// Marks the point the frontend should stop showing "setting up your
+	// environment" and switch to "thinking" — see executor.Run's onReady
+	// doc comment. Persisted (not just published) like any other event so
+	// it survives a page reload and stays visible even once older turns'
+	// events page out of the frontend's loaded window.
+	onReady := func() {
+		persistAndPublish("environment_ready", "system", []byte("{}"))
+	}
+
+	result, runErr := h.Executor.Run(runCtx, *cfg, trigger, resume, onEvent, onReady)
 	// Whatever's still buffered when the turn ends — successfully,
 	// interrupted, or failed — is a genuine partial reply, not scratch
 	// state to discard; flush it unconditionally before any of the

@@ -183,6 +183,21 @@ function toThreadMessage(
 }
 
 /**
+ * Whether the given event window has seen an `environment_ready` marker —
+ * services/agent-runner persists one right before every session/prompt call
+ * (see executor.Run's `onReady`), once the sandbox/ACP session is actually
+ * ready to run a turn. Callers use this to switch the Thread's empty-message
+ * indicator from "setting up your environment" to "thinking": before this
+ * event, any wait is container/handshake setup; after it, any further wait
+ * is the LLM itself.
+ */
+export function hasEnvironmentReadyEvent(
+	events: AgentConversationEvent[],
+): boolean {
+	return events.some((e) => e.event_type === "environment_ready");
+}
+
+/**
  * Converts raw conversation events into assistant-ui's ThreadMessageLike[],
  * grouping each agent turn's thought/tool-calls/reply into one assistant
  * message's content parts (rather than one bubble per raw event) — the
@@ -212,10 +227,14 @@ export function eventsToThreadMessages(
 
 		// Non-user-visible bookkeeping events — already filtered server-side,
 		// skipped here too as a defensive guard against legacy/unfiltered data.
+		// environment_ready never renders as a bubble either — it's a marker
+		// consumed separately via hasEnvironmentReadyEvent below, not part of
+		// the transcript.
 		if (
 			t === "ConversationStateUpdateEvent" ||
 			t === "SystemPromptEvent" ||
-			t === "StreamingDeltaEvent"
+			t === "StreamingDeltaEvent" ||
+			t === "environment_ready"
 		) {
 			continue;
 		}

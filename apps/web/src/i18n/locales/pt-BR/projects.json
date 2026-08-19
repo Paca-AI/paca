@@ -292,6 +292,8 @@
 			"sendMessage": "Enviar mensagem",
 			"stopGeneratingAriaLabel": "Parar geração",
 			"assistantWorkingAriaLabel": "O assistente está trabalhando",
+			"environmentInitializing": "Configurando seu ambiente…",
+			"thinking": "Pensando…",
 			"copy": "Copiar",
 			"refresh": "Atualizar",
 			"more": "Mais",

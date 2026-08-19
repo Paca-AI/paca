@@ -31,6 +31,7 @@ import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
+	hasEnvironmentReadyEvent,
 } from "./agents/conversation-to-thread-messages";
 
 interface AIChatFloatProps {
@@ -103,6 +104,9 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		enabled: !!conversation?.agent_id,
 	});
 	const isACP = agent?.agent_type === "acp";
+	// See conversation-view.tsx's identical computation: ACP conversations
+	// have no sandbox to set up, so they're always "ready".
+	const environmentReady = isACP || hasEnvironmentReadyEvent(events);
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -319,6 +323,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 								<AssistantRuntimeProvider runtime={runtime}>
 									<Thread
 										components={THREAD_COMPONENTS}
+										environmentReady={environmentReady}
 										// A chat_message trigger always persists the user's own
 										// message before the agent runs (see handler.Handle), so
 										// a failed/recoverable turn almost never has

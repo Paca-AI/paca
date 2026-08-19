@@ -292,6 +292,8 @@
 			"sendMessage": "Gửi tin nhắn",
 			"stopGeneratingAriaLabel": "Dừng tạo phản hồi",
 			"assistantWorkingAriaLabel": "Agent đang xử lý",
+			"environmentInitializing": "Đang thiết lập môi trường…",
+			"thinking": "Đang suy nghĩ…",
 			"copy": "Sao chép",
 			"refresh": "Làm mới",
 			"more": "Thêm",
