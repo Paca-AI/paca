@@ -45,7 +45,7 @@ import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
-	hasEnvironmentReadyEvent,
+	isEnvironmentReady,
 } from "./conversation-to-thread-messages";
 import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
 import { useConversationEventWindow } from "./use-conversation-event-window";
@@ -199,7 +199,7 @@ export function ConversationView({
 	// entirely on the user's own machine — see internal/acpbridge/dispatch.go's
 	// doc comment), so there's no "setting up your environment" phase for
 	// them at all; they're ready as soon as they're dispatched.
-	const environmentReady = isACP || hasEnvironmentReadyEvent(events);
+	const environmentReady = isEnvironmentReady(isACP, events);
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";

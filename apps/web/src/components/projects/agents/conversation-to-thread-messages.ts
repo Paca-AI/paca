@@ -212,6 +212,23 @@ export function hasEnvironmentReadyEvent(
 }
 
 /**
+ * Whether the Thread's empty-message indicator should read "thinking"
+ * instead of "setting up your environment" — the single computation all
+ * three chat surfaces (conversation-view, ai-chat-float,
+ * ai-chat-float-global) need, so it lives here once instead of being
+ * re-derived at each call site. ACP (local bridge) conversations have no
+ * sandbox to provision at all (see conversation-view.tsx's isACP doc
+ * comment), so they're always ready; everything else defers to
+ * hasEnvironmentReadyEvent's turn-boundary check.
+ */
+export function isEnvironmentReady(
+	isACP: boolean,
+	events: AgentConversationEvent[],
+): boolean {
+	return isACP || hasEnvironmentReadyEvent(events);
+}
+
+/**
  * Converts raw conversation events into assistant-ui's ThreadMessageLike[],
  * grouping each agent turn's thought/tool-calls/reply into one assistant
  * message's content parts (rather than one bubble per raw event) — the

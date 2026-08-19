@@ -131,4 +131,52 @@ func TestTriggerOrchestration(t *testing.T) {
 	if lastEventType != "turn_end" {
 		t.Fatalf("last persisted event type = %q, want %q", lastEventType, "turn_end")
 	}
+
+	// Phase 2: executor.Run's onReady fired handler.Handle's
+	// "environment_ready" marker exactly once, persisted (not just
+	// published) after the user's own message and before the sandbox's
+	// first agent event — see executor.go's onReady doc comment and
+	// conversation-to-thread-messages.ts's hasEnvironmentReadyEvent, which
+	// depends on this exact ordering to decide when the frontend should
+	// stop showing "setting up your environment".
+	var eventRows []struct {
+		EventIndex  int    `db:"event_index"`
+		EventType   string `db:"event_type"`
+		EventSource string `db:"event_source"`
+	}
+	if err := env.db.SelectContext(ctx, &eventRows,
+		`SELECT event_index, event_type, event_source FROM agent_conversation_events
+		 WHERE conversation_id = $1 ORDER BY event_index`, convID); err != nil {
+		t.Fatalf("verify environment_ready ordering: %v", err)
+	}
+
+	var userMessageIndex, readyIndex, firstAgentEventIndex = -1, -1, -1
+	readyCount := 0
+	for _, row := range eventRows {
+		switch {
+		case row.EventType == "user_message" && userMessageIndex == -1:
+			userMessageIndex = row.EventIndex
+		case row.EventType == "environment_ready":
+			readyCount++
+			readyIndex = row.EventIndex
+			if row.EventSource != "system" {
+				t.Fatalf("environment_ready event_source = %q, want %q", row.EventSource, "system")
+			}
+		case row.EventSource == "agent" && firstAgentEventIndex == -1:
+			firstAgentEventIndex = row.EventIndex
+		}
+	}
+
+	if readyCount != 1 {
+		t.Fatalf("expected exactly one environment_ready event, got %d", readyCount)
+	}
+	if userMessageIndex == -1 {
+		t.Fatalf("expected a user_message event to have been persisted for this trigger, found none among %+v", eventRows)
+	}
+	if readyIndex <= userMessageIndex {
+		t.Fatalf("environment_ready event_index (%d) must be greater than user_message event_index (%d) — the frontend reads this ordering to detect a fresh turn's own readiness", readyIndex, userMessageIndex)
+	}
+	if firstAgentEventIndex != -1 && readyIndex >= firstAgentEventIndex {
+		t.Fatalf("environment_ready event_index (%d) must precede the first agent-sourced event (index %d) — it marks readiness before the LLM turn starts, not after", readyIndex, firstAgentEventIndex)
+	}
 }

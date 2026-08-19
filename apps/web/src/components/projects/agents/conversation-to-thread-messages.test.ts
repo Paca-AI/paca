@@ -3,6 +3,7 @@ import type { AgentConversationEvent } from "@/lib/agent-api";
 import {
 	eventsToThreadMessages,
 	hasEnvironmentReadyEvent,
+	isEnvironmentReady,
 } from "./conversation-to-thread-messages";
 
 let nextIndex = 0;
@@ -1138,5 +1139,21 @@ describe("hasEnvironmentReadyEvent", () => {
 		];
 
 		expect(hasEnvironmentReadyEvent(events)).toBe(true);
+	});
+});
+
+describe("isEnvironmentReady", () => {
+	it("is always ready for an ACP conversation, even with no environment_ready event", () => {
+		const events = [userMessage("hi")];
+
+		expect(isEnvironmentReady(true, events)).toBe(true);
+	});
+
+	it("defers to hasEnvironmentReadyEvent for a non-ACP conversation", () => {
+		const notReady = [userMessage("hi")];
+		const ready = [userMessage("hi"), environmentReadyEvent()];
+
+		expect(isEnvironmentReady(false, notReady)).toBe(false);
+		expect(isEnvironmentReady(false, ready)).toBe(true);
 	});
 });

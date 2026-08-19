@@ -31,7 +31,7 @@ import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
-	hasEnvironmentReadyEvent,
+	isEnvironmentReady,
 } from "./agents/conversation-to-thread-messages";
 
 interface AIChatFloatProps {
@@ -104,9 +104,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		enabled: !!conversation?.agent_id,
 	});
 	const isACP = agent?.agent_type === "acp";
-	// See conversation-view.tsx's identical computation: ACP conversations
-	// have no sandbox to set up, so they're always "ready".
-	const environmentReady = isACP || hasEnvironmentReadyEvent(events);
+	const environmentReady = isEnvironmentReady(isACP, events);
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
