@@ -163,6 +163,8 @@
 				"gitCommitterHint": "이 에이전트가 만드는 커밋에 사용되는 이름과 이메일입니다.",
 				"committerNameLabel": "커미터 이름",
 				"committerEmailLabel": "커미터 이메일",
+				"dockerEnabledLabel": "Docker 액세스",
+				"dockerEnabledHint": "이 에이전트의 샌드박스 내에 전용 Docker 데몬을 제공합니다. 기본적으로 비활성화되어 있습니다 — 모든 대화의 시작 시간이 늘어나므로 실제로 Docker 명령을 실행하는 에이전트에만 활성화하세요.",
 				"saveChanges": "변경사항 저장",
 				"saved": "저장됨",
 				"saveFailed": "저장에 실패했습니다. 다시 시도해 주세요.",

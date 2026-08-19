@@ -36,6 +36,7 @@ func TestSandboxRunsAsRootWithDockerAccess(t *testing.T) {
 		Env:               map[string]string{"GOOSE_PROVIDER": "openai", "GOOSE_MODEL": "fake-model"},
 		GitCommitterName:  "paca-agent",
 		GitCommitterEmail: "agent@example.com",
+		DockerEnabled:     true,
 	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -104,6 +105,7 @@ func TestSandboxDindSidecarsAreIsolatedPerConversation(t *testing.T) {
 			Env:               map[string]string{"GOOSE_PROVIDER": "openai", "GOOSE_MODEL": "fake-model"},
 			GitCommitterName:  "paca-agent",
 			GitCommitterEmail: "agent@example.com",
+			DockerEnabled:     true,
 		})
 		if err != nil {
 			t.Fatalf("Start(%s): %v", convID, err)

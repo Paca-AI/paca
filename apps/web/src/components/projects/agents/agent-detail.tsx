@@ -145,6 +145,7 @@ function OverviewTab({
 	const [committerEmail, setCommitterEmail] = useState(
 		agent.git_committer_email,
 	);
+	const [dockerEnabled, setDockerEnabled] = useState(agent.docker_enabled);
 	const [acpProviderSelect, setAcpProviderSelect] = useState<ACPProvider>(
 		agent.acp_provider ?? "claude-code",
 	);
@@ -188,7 +189,8 @@ function OverviewTab({
 				llmBaseUrl !== (agent.llm_base_url ?? "") ||
 				systemPrompt !== agent.system_prompt ||
 				committerName !== agent.git_committer_name ||
-				committerEmail !== agent.git_committer_email);
+				committerEmail !== agent.git_committer_email ||
+				dockerEnabled !== agent.docker_enabled);
 
 	const saveMutation = useMutation({
 		mutationFn: () => {
@@ -209,6 +211,7 @@ function OverviewTab({
 							system_prompt: systemPrompt,
 							git_committer_name: committerName.trim(),
 							git_committer_email: committerEmail.trim(),
+							docker_enabled: dockerEnabled,
 						}),
 			};
 			return projectId
@@ -484,6 +487,24 @@ function OverviewTab({
 								/>
 							</div>
 						</div>
+					</div>
+
+					<Separator />
+
+					<div className="flex items-center justify-between gap-3">
+						<div>
+							<p className="text-sm font-medium">
+								{t("agents.detail.overview.dockerEnabledLabel")}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								{t("agents.detail.overview.dockerEnabledHint")}
+							</p>
+						</div>
+						<Switch
+							checked={dockerEnabled}
+							onCheckedChange={setDockerEnabled}
+							disabled={!canWrite}
+						/>
 					</div>
 				</>
 			)}

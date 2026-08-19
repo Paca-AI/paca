@@ -43,6 +43,7 @@ type agentRecord struct {
 	TimeoutMinutes     int        `db:"timeout_minutes"`
 	GitCommitterName   string     `db:"git_committer_name"`
 	GitCommitterEmail  string     `db:"git_committer_email"`
+	DockerEnabled      bool       `db:"docker_enabled"`
 	CreatedBy          *string    `db:"created_by"`
 	CreatedAt          time.Time  `db:"created_at"`
 	UpdatedAt          time.Time  `db:"updated_at"`
@@ -156,7 +157,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
-	a.git_committer_name, a.git_committer_email, a.created_by, a.created_at, a.updated_at, a.deleted_at`
+	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.created_by, a.created_at, a.updated_at, a.deleted_at`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
 // aliased pm, populating member_id from that join.
@@ -372,14 +373,14 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 		INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
-		  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
-		rec.GitCommitterName, rec.GitCommitterEmail, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
 }
@@ -399,13 +400,13 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  acp_provider=$8, acp_command=$9,
 			  system_prompt=$10,
 			  max_iterations=$11, timeout_minutes=$12,
-			  git_committer_name=$13, git_committer_email=$14, global_role_id=$15, updated_at=$16
-			WHERE id=$17`,
+			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16, updated_at=$17
+			WHERE id=$18`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
-			a.GitCommitterName, a.GitCommitterEmail, rec.GlobalRoleID, time.Now(), a.ID.String(),
+			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID, time.Now(), a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -480,14 +481,14 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
-			  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+			  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
 			rec.MaxIterations, rec.TimeoutMinutes,
-			rec.GitCommitterName, rec.GitCommitterEmail, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -548,14 +549,14 @@ func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Age
 		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
-		  git_committer_name, git_committer_email, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
 		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
-		rec.GitCommitterName, rec.GitCommitterEmail, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
 }
@@ -1282,6 +1283,7 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		TimeoutMinutes:    row.TimeoutMinutes,
 		GitCommitterName:  row.GitCommitterName,
 		GitCommitterEmail: row.GitCommitterEmail,
+		DockerEnabled:     row.DockerEnabled,
 		CreatedAt:         row.CreatedAt,
 		UpdatedAt:         row.UpdatedAt,
 		DeletedAt:         row.DeletedAt,
@@ -1351,6 +1353,7 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		TimeoutMinutes:    a.TimeoutMinutes,
 		GitCommitterName:  a.GitCommitterName,
 		GitCommitterEmail: a.GitCommitterEmail,
+		DockerEnabled:     a.DockerEnabled,
 		CreatedAt:         a.CreatedAt,
 		UpdatedAt:         a.UpdatedAt,
 	}

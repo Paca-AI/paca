@@ -96,6 +96,15 @@ type Config struct {
 	// own host filesystem, regardless of what this process itself can see
 	// at that path. Dev-only — see config.Settings.MCPDevSourceDir.
 	MCPDevSourceDir string
+
+	// DockerEnabled opts this conversation into the per-conversation
+	// Docker-in-Docker sidecar (see dind.go) — off by default (agent.Config.
+	// DockerEnabled, sourced from agents.docker_enabled, defaults to false).
+	// Most agents never run a Docker command, and the sidecar is a real
+	// per-session cost (a privileged container plus a private network) to
+	// pay on every cold start regardless — this flag lets an agent that
+	// actually needs Docker opt in, without taxing every other agent.
+	DockerEnabled bool
 }
 
 // Handle is a live sandbox container. Returned by Manager.Start and
@@ -165,22 +174,59 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		return nil, fmt.Errorf("sandbox: generate secret key: %w", err)
 	}
 
-	// Started before the sandbox's own image/container so DOCKER_HOST can
-	// be set in its env from the very first line of the container's own
-	// config below — see dind.go's package doc comment for why this is a
-	// dedicated per-conversation sidecar rather than this process's own
-	// docker.sock. sidecarOK flips true only once the sandbox container
-	// this pairs with has actually started; every return between here and
-	// there — this function's own early errors and every cleanup() call
-	// below alike — leaves it false, so this defer tears the sidecar back
-	// down instead of leaking a privileged container on any failure path.
-	sidecar, err := m.startDindSidecar(ctx, cfg.ConversationID)
-	if err != nil {
-		return nil, fmt.Errorf("sandbox: start dind sidecar: %w", err)
+	// Only started when this conversation's agent opted in (cfg.DockerEnabled
+	// — see Config's doc comment): most agents never run a Docker command,
+	// so most conversations skip this container/network pair, and the
+	// DOCKER_HOST env line below, entirely. sidecarOK flips true only once
+	// the sandbox container this pairs with has actually started; every
+	// return between here and there — this function's own early errors and
+	// every cleanup() call below alike — leaves it false, so this defer
+	// tears the sidecar back down instead of leaking a privileged container
+	// on any failure path.
+	//
+	// startDindSidecar itself only creates the network and starts the
+	// sidecar container — it does NOT wait for dockerd inside it to answer
+	// `docker info` (that used to be folded into the same call, blocking
+	// the sandbox container below from even starting until it finished).
+	// That wait (waitForDindReady) instead runs concurrently, in the
+	// dindReady goroutine below, alongside this function's own sandbox
+	// container boot: the two are independent of each other (the sandbox
+	// container only needs sidecar.networkID, available immediately after
+	// NetworkCreate, to attach via NetworkConnect further down — not a live
+	// dockerd), so there is nothing to gain by making one wait on the
+	// other's full readiness before even starting. dindReady is joined
+	// just before this function returns a Handle, so callers still never
+	// see a Handle whose DOCKER_HOST isn't actually live yet.
+	//
+	// The goroutine runs against dindCtx, a child of ctx cancelled by the
+	// deferred cancelDindWait() below on every return path — not the
+	// happy-path join alone. Without that, a sandbox-container failure
+	// after this goroutine starts (any cleanup() call further down) would
+	// abandon it mid-poll: waitForDindReady would keep Exec'ing `docker
+	// info` against a container that's about to be force-removed by this
+	// function's own sidecarOK defer, for up to dindReadyTimeout (90s),
+	// with nothing left reading its result. Cancelling here instead makes
+	// it exit on its own next poll tick (or mid-Exec, since the Docker
+	// client's calls respect ctx) as soon as this function is done with it.
+	dindCtx, cancelDindWait := context.WithCancel(ctx)
+	defer cancelDindWait()
+
+	var sidecar *dindSidecar
+	var dindReady chan error
+	if cfg.DockerEnabled {
+		var err error
+		sidecar, err = m.startDindSidecar(ctx, cfg.ConversationID)
+		if err != nil {
+			return nil, fmt.Errorf("sandbox: start dind sidecar: %w", err)
+		}
+		dindReady = make(chan error, 1)
+		go func() {
+			dindReady <- m.waitForDindReady(dindCtx, sidecar.containerID)
+		}()
 	}
 	sidecarOK := false
 	defer func() {
-		if !sidecarOK {
+		if !sidecarOK && sidecar != nil {
 			m.stopDindSidecar(context.Background(), sidecar)
 		}
 	}()
@@ -198,8 +244,10 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		"GIT_AUTHOR_EMAIL="+cfg.GitCommitterEmail,
 		"GIT_COMMITTER_NAME="+cfg.GitCommitterName,
 		"GIT_COMMITTER_EMAIL="+cfg.GitCommitterEmail,
-		"DOCKER_HOST="+dindDockerHost(cfg.ConversationID),
 	)
+	if cfg.DockerEnabled {
+		env = append(env, "DOCKER_HOST="+dindDockerHost(cfg.ConversationID))
+	}
 
 	if err := m.ensureImage(ctx, cfg.Image); err != nil {
 		return nil, err
@@ -298,11 +346,13 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 	// create time (ownNetworkName for api/gateway reachability, or nothing
 	// — the implicit default bridge — in host-port-mapped mode): the one
 	// this container's own dind sidecar is on and nothing else is (see
-	// dind.go's package doc comment). Attached by NetworkConnect rather
-	// than a second NetworkingConfig.EndpointsConfig entry at create time —
-	// confirmed directly (not assumed) that Docker's own container-create
-	// API only actually attaches one network from that map even when given
-	// several; a separate connect call is the verified way to add more.
+	// dind.go's package doc comment). Only attached when DockerEnabled —
+	// with no sidecar, there's no second network to join. Attached by
+	// NetworkConnect rather than a second NetworkingConfig.EndpointsConfig
+	// entry at create time — confirmed directly (not assumed) that Docker's
+	// own container-create API only actually attaches one network from that
+	// map even when given several; a separate connect call is the verified
+	// way to add more.
 	//
 	// containerIP below now has to be told which network to prefer
 	// (ownNetName, insideDocker branch only) rather than picking whichever
@@ -317,9 +367,11 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 	// docker creates — Docker does not route between distinct user-defined
 	// bridge networks — so a wrong pick there isn't harmless, it's a
 	// coin-flip-odds full readyTimeout followed by a failed Start.
-	if _, err := m.docker.NetworkConnect(ctx, sidecar.networkID, client.NetworkConnectOptions{Container: created.ID}); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("sandbox: attach to conversation network: %w", err)
+	if sidecar != nil {
+		if _, err := m.docker.NetworkConnect(ctx, sidecar.networkID, client.NetworkConnectOptions{Container: created.ID}); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("sandbox: attach to conversation network: %w", err)
+		}
 	}
 
 	if _, err := m.docker.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
@@ -389,6 +441,18 @@ func (m *Manager) Start(ctx context.Context, cfg Config) (*Handle, error) {
 		diagCancel()
 		cleanup()
 		return nil, fmt.Errorf("%w (%s)", err, diag)
+	}
+
+	// Joined here, not left running past this function's return, so a
+	// caller never gets back a Handle whose DOCKER_HOST isn't actually live
+	// yet even though it was started concurrently with the sandbox
+	// container above — see the dindReady goroutine's own comment for why
+	// that concurrency is safe to begin with.
+	if dindReady != nil {
+		if err := <-dindReady; err != nil {
+			cleanup()
+			return nil, fmt.Errorf("sandbox: dind sidecar not ready: %w", err)
+		}
 	}
 
 	sidecarOK = true
