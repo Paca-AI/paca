@@ -258,6 +258,11 @@ download() {
     fi
 }
 
+# get_env_var FILE VAR
+get_env_var() {
+    grep "^${2}=" "$1" 2>/dev/null | head -1 | cut -d= -f2-
+}
+
 # ── Version / URL resolution ──────────────────────────────────────────────────
 
 # CD stamps this to the exact tag of the release install.sh ships with (see
@@ -892,8 +897,18 @@ heading "Starting Paca"
 # entirely on a slow link/large image) instead of just running. Pulling it
 # here too, best-effort: ensureImage's own pull-on-first-use stays the real
 # safety net, so a failure here only costs the win, not correctness.
+#
+# Read back from .env rather than assuming the fresh-install default: when an
+# existing .env was kept (KEEP_ENV=yes above), AGENT_SERVER_IMAGE may already
+# be pinned to something else, and pre-pulling the wrong ref would fetch an
+# image this deployment won't use while leaving the actually-configured one
+# cold — the exact outcome this feature exists to prevent. Falls back to the
+# same default the freshly-written .env above uses when the kept .env
+# predates AGENT_SERVER_IMAGE entirely. Mirrors upgrade.sh's own
+# get_env_var-based read of the effective value.
 if [[ "$INCLUDE_AGENT_RUNNER" != "no" ]]; then
-    _agent_server_image="ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}"
+    _agent_server_image="$(get_env_var .env AGENT_SERVER_IMAGE)"
+    _agent_server_image="${_agent_server_image:-ghcr.io/paca-ai/paca-agent-server-goose:${IMAGE_TAG}}"
     info "Pre-pulling agent-server image (${_agent_server_image})..."
     docker pull "$_agent_server_image" || warn "Could not pre-pull ${_agent_server_image} — agent-runner will pull it on first use instead."
 fi
