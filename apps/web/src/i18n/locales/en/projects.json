@@ -292,6 +292,8 @@
 			"sendMessage": "Send message",
 			"stopGeneratingAriaLabel": "Stop generating",
 			"assistantWorkingAriaLabel": "Assistant is working",
+			"environmentInitializing": "Setting up your environment…",
+			"thinking": "Thinking…",
 			"copy": "Copy",
 			"refresh": "Refresh",
 			"more": "More",

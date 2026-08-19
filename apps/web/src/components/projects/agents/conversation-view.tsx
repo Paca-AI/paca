@@ -45,6 +45,7 @@ import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
+	isEnvironmentReady,
 } from "./conversation-to-thread-messages";
 import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
 import { useConversationEventWindow } from "./use-conversation-event-window";
@@ -194,6 +195,11 @@ export function ConversationView({
 		? projectAgent
 		: chattableAgents.find((a) => a.id === conversation?.agent_id);
 	const isACP = agent?.agent_type === "acp";
+	// ACP conversations never spin up a sandbox (the local bridge daemon runs
+	// entirely on the user's own machine — see internal/acpbridge/dispatch.go's
+	// doc comment), so there's no "setting up your environment" phase for
+	// them at all; they're ready as soon as they're dispatched.
+	const environmentReady = isEnvironmentReady(isACP, events);
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -463,6 +469,7 @@ export function ConversationView({
 						// A run starting must not pull a reader who is paging back
 						// through history.
 						scrollToBottomOnRunStart={false}
+						environmentReady={environmentReady}
 						viewportHeader={
 							<LoadOlderEvents
 								hasOlder={hasOlder}

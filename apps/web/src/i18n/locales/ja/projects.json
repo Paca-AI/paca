@@ -292,6 +292,8 @@
 			"sendMessage": "メッセージを送信",
 			"stopGeneratingAriaLabel": "生成を停止",
 			"assistantWorkingAriaLabel": "エージェントが作業中です",
+			"environmentInitializing": "環境をセットアップしています…",
+			"thinking": "考えています…",
 			"copy": "コピー",
 			"refresh": "更新",
 			"more": "その他",

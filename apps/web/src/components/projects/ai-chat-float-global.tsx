@@ -32,6 +32,7 @@ import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
+	isEnvironmentReady,
 } from "./agents/conversation-to-thread-messages";
 
 // Global sibling of ai-chat-float.tsx's AIChatFloat — same floating-panel UX,
@@ -102,6 +103,7 @@ export function GlobalAIChatFloat() {
 	const { data: agents = [] } = useQuery(chattableAgentsQueryOptions);
 	const agent = agents.find((a) => a.id === conversation?.agent_id);
 	const isACP = agent?.agent_type === "acp";
+	const environmentReady = isEnvironmentReady(isACP, events);
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -282,6 +284,7 @@ export function GlobalAIChatFloat() {
 								<AssistantRuntimeProvider runtime={runtime}>
 									<Thread
 										components={THREAD_COMPONENTS}
+										environmentReady={environmentReady}
 										// A chat_message trigger always persists the user's own
 										// message before the agent runs (see handler.Handle), so
 										// a failed/recoverable turn almost never has

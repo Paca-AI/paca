@@ -75,7 +75,7 @@ func TestExecutorRun(t *testing.T) {
 	var events []acp.Event
 	result, err := exec.Run(ctx, cfg, trigger, nil, func(e acp.Event) {
 		events = append(events, e)
-	})
+	}, nil)
 	if result.Handle != nil {
 		t.Cleanup(func() {
 			if err := exec.StopSandbox(context.Background(), result.Handle); err != nil {
@@ -200,7 +200,7 @@ func TestExecutorRunWithMCP(t *testing.T) {
 	var events []acp.Event
 	result, err := exec.Run(ctx, cfg, trigger, nil, func(e acp.Event) {
 		events = append(events, e)
-	})
+	}, nil)
 	if result.Handle != nil {
 		t.Cleanup(func() {
 			if err := exec.StopSandbox(context.Background(), result.Handle); err != nil {

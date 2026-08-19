@@ -300,6 +300,8 @@
 			"sendMessage": "Отправить сообщение",
 			"stopGeneratingAriaLabel": "Остановить генерацию",
 			"assistantWorkingAriaLabel": "Ассистент работает",
+			"environmentInitializing": "Настройка среды…",
+			"thinking": "Обдумывание…",
 			"copy": "Копировать",
 			"refresh": "Обновить",
 			"more": "Ещё",

@@ -292,6 +292,8 @@
 			"sendMessage": "메시지 보내기",
 			"stopGeneratingAriaLabel": "생성 중지",
 			"assistantWorkingAriaLabel": "에이전트가 작업 중입니다",
+			"environmentInitializing": "환경을 설정하는 중입니다…",
+			"thinking": "생각하는 중입니다…",
 			"copy": "복사",
 			"refresh": "새로고침",
 			"more": "더 보기",

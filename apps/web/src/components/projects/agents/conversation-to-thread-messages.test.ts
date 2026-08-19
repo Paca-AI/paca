@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentConversationEvent } from "@/lib/agent-api";
-import { eventsToThreadMessages } from "./conversation-to-thread-messages";
+import {
+	eventsToThreadMessages,
+	hasEnvironmentReadyEvent,
+	isEnvironmentReady,
+} from "./conversation-to-thread-messages";
 
 let nextIndex = 0;
 
@@ -211,6 +215,23 @@ function acpToolCallEvent(opts: {
 	};
 }
 
+// Mirrors handler.Handle's persistAndPublish("user_message", "user", ...)
+// shape — distinct from userMessage() above, which builds the legacy
+// MessageEvent vocabulary. Only conversations using this ACP vocabulary
+// ever get an environment_ready marker, so hasEnvironmentReadyEvent's
+// turn-boundary comparison needs this shape, not userMessage()'s.
+function acpUserMessage(text: string): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "user_message",
+		event_source: "user",
+		payload: { content: { type: "text", text } },
+		created_at: "2026-01-01T00:00:00.250Z",
+	};
+}
+
 function agentMessageChunk(text: string): AgentConversationEvent {
 	return {
 		id: `evt-${nextIndex}`,
@@ -314,6 +335,18 @@ function turnUsage(opts: {
 			...(opts.costUSD !== undefined ? { cost_usd: opts.costUSD } : {}),
 		},
 		created_at: "2026-01-01T00:00:11.000Z",
+	};
+}
+
+function environmentReadyEvent(): AgentConversationEvent {
+	return {
+		id: `evt-${nextIndex}`,
+		conversation_id: "conv-1",
+		event_index: nextIndex++,
+		event_type: "environment_ready",
+		event_source: "system",
+		payload: {},
+		created_at: "2026-01-01T00:00:00.500Z",
 	};
 }
 
@@ -1009,6 +1042,23 @@ describe("eventsToThreadMessages", () => {
 			expect(parts[0]).toMatchObject({ type: "text", text: "hello!" });
 		});
 
+		it("ignores environment_ready — it's a readiness marker, never a transcript bubble", () => {
+			const events = [
+				userMessage("hi"),
+				environmentReadyEvent(),
+				agentMessageChunk("hello!"),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(2);
+			const parts = messages[1].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			expect(parts).toHaveLength(1);
+			expect(parts[0]).toMatchObject({ type: "text", text: "hello!" });
+		});
+
 		it("renders a full chat turn: reply chunks, a tool call, then more reply chunks", () => {
 			const events = [
 				userMessage("what files are here?"),
@@ -1041,5 +1091,69 @@ describe("eventsToThreadMessages", () => {
 				text: "There's one file: a.txt",
 			});
 		});
+	});
+});
+
+describe("hasEnvironmentReadyEvent", () => {
+	it("returns true once an environment_ready event is present", () => {
+		const events = [
+			userMessage("hi"),
+			environmentReadyEvent(),
+			agentMessageChunk("hello!"),
+		];
+
+		expect(hasEnvironmentReadyEvent(events)).toBe(true);
+	});
+
+	it("returns false when no environment_ready event has arrived yet", () => {
+		const events = [userMessage("hi")];
+
+		expect(hasEnvironmentReadyEvent(events)).toBe(false);
+	});
+
+	it("returns false for an empty event window", () => {
+		expect(hasEnvironmentReadyEvent([])).toBe(false);
+	});
+
+	it("returns false once a new turn starts before its own environment_ready arrives", () => {
+		// A prior turn's marker is still in the window (e.g. the sandbox was
+		// idle-reaped and needs a fresh cold start for this reply) — the stale
+		// marker predates the new user_message, so this must not read as ready.
+		const events = [
+			acpUserMessage("hi"),
+			environmentReadyEvent(),
+			agentMessageChunk("hello!"),
+			acpUserMessage("are you still there?"),
+		];
+
+		expect(hasEnvironmentReadyEvent(events)).toBe(false);
+	});
+
+	it("returns true again once the new turn gets its own environment_ready", () => {
+		const events = [
+			acpUserMessage("hi"),
+			environmentReadyEvent(),
+			agentMessageChunk("hello!"),
+			acpUserMessage("are you still there?"),
+			environmentReadyEvent(),
+		];
+
+		expect(hasEnvironmentReadyEvent(events)).toBe(true);
+	});
+});
+
+describe("isEnvironmentReady", () => {
+	it("is always ready for an ACP conversation, even with no environment_ready event", () => {
+		const events = [userMessage("hi")];
+
+		expect(isEnvironmentReady(true, events)).toBe(true);
+	});
+
+	it("defers to hasEnvironmentReadyEvent for a non-ACP conversation", () => {
+		const notReady = [userMessage("hi")];
+		const ready = [userMessage("hi"), environmentReadyEvent()];
+
+		expect(isEnvironmentReady(false, notReady)).toBe(false);
+		expect(isEnvironmentReady(false, ready)).toBe(true);
 	});
 });
