@@ -192,6 +192,7 @@ type CreateAgentInput struct {
 	TimeoutMinutes    int
 	GitCommitterName  string
 	GitCommitterEmail string
+	DockerEnabled     bool
 	ProjectRoleID     uuid.UUID
 	CreatedBy         *uuid.UUID
 }
@@ -215,6 +216,7 @@ type CreateGlobalAgentInput struct {
 	TimeoutMinutes    int
 	GitCommitterName  string
 	GitCommitterEmail string
+	DockerEnabled     bool
 	GlobalRoleID      *uuid.UUID
 	CreatedBy         *uuid.UUID
 }
@@ -234,6 +236,7 @@ type UpdateAgentInput struct {
 	TimeoutMinutes    *int
 	GitCommitterName  *string
 	GitCommitterEmail *string
+	DockerEnabled     *bool
 	// GlobalRoleID is only meaningful for AgentScopeGlobal agents (see
 	// UpdateGlobalAgent); ignored by UpdateAgent for project-scoped agents.
 	GlobalRoleID *uuid.UUID

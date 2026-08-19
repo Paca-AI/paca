@@ -270,6 +270,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		TimeoutMinutes:    req.TimeoutMinutes,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
+		DockerEnabled:     req.DockerEnabled,
 		ProjectRoleID:     req.ProjectRoleID,
 		CreatedBy:         &callerID,
 	})
@@ -311,6 +312,7 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		TimeoutMinutes:    req.TimeoutMinutes,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
+		DockerEnabled:     req.DockerEnabled,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -428,6 +430,7 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		TimeoutMinutes:    req.TimeoutMinutes,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
+		DockerEnabled:     req.DockerEnabled,
 		GlobalRoleID:      req.GlobalRoleID,
 		CreatedBy:         &callerID,
 	})
@@ -464,6 +467,7 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		TimeoutMinutes:    req.TimeoutMinutes,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
+		DockerEnabled:     req.DockerEnabled,
 		GlobalRoleID:      req.GlobalRoleID,
 	})
 	if err != nil {

@@ -254,6 +254,7 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 		GitCommitterName:  gitName,
 		GitCommitterEmail: gitEmail,
 		MCPDevSourceDir:   e.opts.MCPDevSourceDir,
+		DockerEnabled:     cfg.DockerEnabled,
 	})
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("executor: start sandbox: %w", err)

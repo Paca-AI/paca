@@ -163,6 +163,8 @@
 				"gitCommitterHint": "Tên và email dùng cho các commit do agent này thực hiện.",
 				"committerNameLabel": "Tên committer",
 				"committerEmailLabel": "Email committer",
+				"dockerEnabledLabel": "Quyền truy cập Docker",
+				"dockerEnabledHint": "Cấp cho agent này một daemon Docker riêng bên trong sandbox của nó. Mặc định tắt — chỉ bật cho các agent thực sự chạy lệnh Docker, vì việc này làm tăng thời gian khởi động cho mỗi cuộc hội thoại.",
 				"saveChanges": "Lưu thay đổi",
 				"saved": "Đã lưu",
 				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",

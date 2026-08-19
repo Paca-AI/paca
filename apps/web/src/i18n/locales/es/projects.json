@@ -163,6 +163,8 @@
 				"gitCommitterHint": "Nombre y correo electrónico usados en los commits realizados por este agente.",
 				"committerNameLabel": "Nombre del autor",
 				"committerEmailLabel": "Correo del autor",
+				"dockerEnabledLabel": "Acceso a Docker",
+				"dockerEnabledHint": "Otorga a este agente un daemon de Docker privado dentro de su sandbox. Desactivado de forma predeterminada: actívalo solo para agentes que realmente ejecutan comandos de Docker, ya que añade tiempo de inicio a cada conversación.",
 				"saveChanges": "Guardar cambios",
 				"saved": "Guardado",
 				"saveFailed": "Error al guardar. Inténtalo de nuevo.",

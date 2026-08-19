@@ -148,6 +148,7 @@ export interface Agent {
 	system_prompt: string;
 	git_committer_name: string;
 	git_committer_email: string;
+	docker_enabled: boolean;
 	member_id?: string | null;
 	mcp_servers?: AgentMCPServer[];
 	skills?: AgentSkill[];
@@ -263,6 +264,7 @@ export async function createAgent(
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
+		docker_enabled?: boolean;
 		project_role_id: string;
 	},
 ): Promise<Agent> {
@@ -288,6 +290,7 @@ export async function updateAgent(
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
+		docker_enabled?: boolean;
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
@@ -332,6 +335,7 @@ export interface CreateGlobalAgentPayload {
 	system_prompt?: string;
 	git_committer_name?: string;
 	git_committer_email?: string;
+	docker_enabled?: boolean;
 	global_role_id?: string | null;
 }
 
@@ -357,6 +361,7 @@ export interface UpdateGlobalAgentPayload {
 	system_prompt?: string;
 	git_committer_name?: string;
 	git_committer_email?: string;
+	docker_enabled?: boolean;
 	global_role_id?: string | null;
 }
 

@@ -73,10 +73,19 @@ type Agent struct {
 	TimeoutMinutes    int
 	GitCommitterName  string
 	GitCommitterEmail string
-	CreatedBy         *uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	DeletedAt         *time.Time
+	// DockerEnabled opts this agent into agent-runner's per-conversation
+	// Docker-in-Docker sandbox sidecar (see
+	// services/agent-runner/internal/sandbox/dind.go) — off by default, since
+	// most agents never run a Docker command and the sidecar is a real
+	// per-session cost (a privileged container plus a private network) to
+	// start unconditionally. LLM-only, same as SystemPrompt/GitCommitter*
+	// above — an ACP agent's sandboxing is owned by the user's own local ACP
+	// client, not agent-runner.
+	DockerEnabled bool
+	CreatedBy     *uuid.UUID
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer

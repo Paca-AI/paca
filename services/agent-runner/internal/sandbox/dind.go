@@ -94,12 +94,17 @@ type dindSidecar struct {
 // Engine API is reachable only by the one sandbox container Start's caller
 // attaches to the same network afterward.
 //
-// Blocks until dockerd inside the sidecar is actually answering `docker
-// info`, so callers never hand a conversation a DOCKER_HOST that isn't live
-// yet. On any failure partway through, tears down whatever it already
-// created before returning — callers don't need their own partial-failure
-// cleanup for this pairing the way Start's own cleanup() already doesn't
-// need to know about it on success.
+// Does NOT wait for dockerd inside the sidecar to actually answer `docker
+// info` — that used to be blocking here, but Start now runs that wait
+// (waitForDindReady) concurrently with its own sandbox container's boot
+// instead, since the two don't depend on each other (see Start's doc
+// comment on the sidecar/dindReady goroutine). Callers that need a live
+// dockerd before returning must call waitForDindReady themselves.
+//
+// On any failure partway through, tears down whatever it already created
+// before returning — callers don't need their own partial-failure cleanup
+// for this pairing the way Start's own cleanup() already doesn't need to
+// know about it on success.
 func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (sidecar *dindSidecar, err error) {
 	if err := m.ensureImage(ctx, dindImage); err != nil {
 		return nil, err
@@ -150,10 +155,6 @@ func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (
 
 	if _, err = m.docker.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
 		return nil, fmt.Errorf("sandbox: start dind sidecar: %w", err)
-	}
-
-	if err = m.waitForDindReady(ctx, created.ID); err != nil {
-		return nil, err
 	}
 
 	return sidecar, nil

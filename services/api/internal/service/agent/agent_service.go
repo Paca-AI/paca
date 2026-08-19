@@ -151,6 +151,7 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.SystemPrompt = in.SystemPrompt
 		a.GitCommitterName = in.GitCommitterName
 		a.GitCommitterEmail = in.GitCommitterEmail
+		a.DockerEnabled = in.DockerEnabled
 		if a.GitCommitterName == "" {
 			a.GitCommitterName = "paca-agent"
 		}
@@ -244,6 +245,9 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		}
 		if in.GitCommitterEmail != nil {
 			a.GitCommitterEmail = *in.GitCommitterEmail
+		}
+		if in.DockerEnabled != nil {
+			a.DockerEnabled = *in.DockerEnabled
 		}
 	}
 	if a.AgentType == agentdom.AgentTypeACP {
@@ -396,6 +400,7 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		a.SystemPrompt = in.SystemPrompt
 		a.GitCommitterName = in.GitCommitterName
 		a.GitCommitterEmail = in.GitCommitterEmail
+		a.DockerEnabled = in.DockerEnabled
 		if a.GitCommitterName == "" {
 			a.GitCommitterName = "paca-agent"
 		}
@@ -471,6 +476,9 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 		}
 		if in.GitCommitterEmail != nil {
 			a.GitCommitterEmail = *in.GitCommitterEmail
+		}
+		if in.DockerEnabled != nil {
+			a.DockerEnabled = *in.DockerEnabled
 		}
 	}
 	if a.AgentType == agentdom.AgentTypeACP {

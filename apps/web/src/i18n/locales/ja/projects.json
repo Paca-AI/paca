@@ -163,6 +163,8 @@
 				"gitCommitterHint": "このエージェントによるコミットで使用される名前とメールアドレスです。",
 				"committerNameLabel": "コミッター名",
 				"committerEmailLabel": "コミッターのメールアドレス",
+				"dockerEnabledLabel": "Dockerアクセス",
+				"dockerEnabledHint": "このエージェントのサンドボックス内に専用のDockerデーモンを提供します。デフォルトでは無効です。すべての会話の起動時間が増えるため、実際にDockerコマンドを実行するエージェントにのみ有効にしてください。",
 				"saveChanges": "変更を保存",
 				"saved": "保存しました",
 				"saveFailed": "保存に失敗しました。もう一度お試しください。",
