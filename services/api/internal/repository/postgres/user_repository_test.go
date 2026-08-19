@@ -3,10 +3,12 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
@@ -37,6 +39,7 @@ func openUserRepoTestDB(t *testing.T) (*sqlx.DB, uuid.UUID) {
 			username TEXT NOT NULL,
 			password_hash TEXT NOT NULL,
 			full_name TEXT NOT NULL,
+			email TEXT,
 			role_id TEXT NOT NULL,
 			must_change_password INTEGER NOT NULL DEFAULT 0,
 			avatar_key TEXT,
@@ -45,7 +48,8 @@ func openUserRepoTestDB(t *testing.T) (*sqlx.DB, uuid.UUID) {
 			updated_at DATETIME,
 			deleted_at DATETIME
 		);
-		CREATE UNIQUE INDEX uni_users_username_active ON users (username) WHERE deleted_at IS NULL;`
+		CREATE UNIQUE INDEX uni_users_username_active ON users (username) WHERE deleted_at IS NULL;
+		CREATE UNIQUE INDEX uni_users_email_active ON users (email) WHERE deleted_at IS NULL AND email IS NOT NULL;`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
@@ -222,5 +226,68 @@ func TestUserRepository_Create_AllowsUsernameReuseAfterDelete(t *testing.T) {
 	}
 	if got.ID != replacement.ID {
 		t.Fatalf("expected active user to be the replacement %s, got %s", replacement.ID, got.ID)
+	}
+}
+
+// --- uniqueViolationConstraint / userRepoErr --------------------------------
+//
+// The SQLite-backed harness above can't produce a real *pgconn.PgError (its
+// driver reports constraint violations differently), so these construct one
+// directly to test the Postgres-specific mapping in isolation: it's what
+// makes Create/Update race-safe against usersvc.Service's
+// check-then-write uniqueness pre-check for username/email (two concurrent
+// requests can both pass the pre-check for the same value; the database's
+// unique index is the actual guarantee, and its violation must still come
+// back as the same domain sentinel the pre-check itself returns).
+
+func TestUniqueViolationConstraint_MatchesPgUniqueViolation(t *testing.T) {
+	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "uni_users_email_active"}
+	wrapped := fmt.Errorf("insert: %w", pgErr)
+
+	constraint, ok := uniqueViolationConstraint(wrapped)
+	if !ok {
+		t.Fatal("expected a unique violation to be recognized")
+	}
+	if constraint != "uni_users_email_active" {
+		t.Errorf("expected constraint uni_users_email_active, got %q", constraint)
+	}
+}
+
+func TestUniqueViolationConstraint_IgnoresOtherPgErrorCodes(t *testing.T) {
+	pgErr := &pgconn.PgError{Code: "23503", ConstraintName: "users_role_id_fkey"} // FK violation, not unique
+	if _, ok := uniqueViolationConstraint(fmt.Errorf("insert: %w", pgErr)); ok {
+		t.Error("expected a non-unique-violation PgError not to be recognized")
+	}
+}
+
+func TestUniqueViolationConstraint_IgnoresNonPgErrors(t *testing.T) {
+	if _, ok := uniqueViolationConstraint(errors.New("boom")); ok {
+		t.Error("expected a plain error not to be recognized as a unique violation")
+	}
+}
+
+func TestUserRepoErr_MapsUsernameConstraint(t *testing.T) {
+	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "uni_users_username_active"}
+	err := userRepoErr("create", fmt.Errorf("insert: %w", pgErr))
+	if !errors.Is(err, userdom.ErrUsernameTaken) {
+		t.Errorf("expected ErrUsernameTaken, got %v", err)
+	}
+}
+
+func TestUserRepoErr_MapsEmailConstraint(t *testing.T) {
+	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "uni_users_email_active"}
+	err := userRepoErr("update", fmt.Errorf("update: %w", pgErr))
+	if !errors.Is(err, userdom.ErrEmailTaken) {
+		t.Errorf("expected ErrEmailTaken, got %v", err)
+	}
+}
+
+func TestUserRepoErr_WrapsUnrelatedErrorsGenerically(t *testing.T) {
+	err := userRepoErr("create", errors.New("connection reset"))
+	if err == nil {
+		t.Fatal("expected a non-nil wrapped error")
+	}
+	if errors.Is(err, userdom.ErrUsernameTaken) || errors.Is(err, userdom.ErrEmailTaken) {
+		t.Errorf("unrelated error should not map to a uniqueness sentinel, got %v", err)
 	}
 }

@@ -21,9 +21,11 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import type { SuccessEnvelope } from "@/lib/api-error";
+import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import type { User as UserType } from "@/lib/auth-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import { formatDate } from "@/lib/format-date";
+import { ExtensionPoint } from "@/lib/plugins/extension-point";
 
 export const Route = createFileRoute("/_authenticated/profile/")({
 	component: ProfilePage,
@@ -31,12 +33,19 @@ export const Route = createFileRoute("/_authenticated/profile/")({
 
 async function updateProfile(payload: {
 	full_name: string;
+	email: string;
 }): Promise<UserType> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<UserType>>(
 		"/users/me",
 		payload,
 	);
 	return data.data;
+}
+
+/** Loose RFC 5322-ish check — the server is the source of truth for validity;
+ * this only catches obviously-malformed input before a round trip. */
+function isValidEmail(value: string): boolean {
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function getInitials(name: string): string {
@@ -56,17 +65,23 @@ function ProfilePage() {
 
 	const [editing, setEditing] = useState(false);
 	const [fullName, setFullName] = useState(user?.full_name ?? "");
+	const [email, setEmail] = useState(user?.email ?? "");
 	const [serverError, setServerError] = useState<string | null>(null);
 
 	const mutation = useMutation({
-		mutationFn: () => updateProfile({ full_name: fullName.trim() }),
+		mutationFn: () =>
+			updateProfile({ full_name: fullName.trim(), email: email.trim() }),
 		onSuccess: (updated) => {
 			queryClient.setQueryData(currentUserQueryOptions.queryKey, updated);
 			setEditing(false);
 			setServerError(null);
 		},
-		onError: () => {
-			setServerError(t("errors.updateFailed"));
+		onError: (err: unknown) => {
+			setServerError(
+				getApiErrorCode(err) === ApiErrorCode.EmailTaken
+					? t("errors.emailTaken")
+					: t("errors.updateFailed"),
+			);
 		},
 	});
 
@@ -147,9 +162,13 @@ function ProfilePage() {
 
 	const handleEdit = () => {
 		setFullName(user.full_name ?? "");
+		setEmail(user.email ?? "");
 		setServerError(null);
 		setEditing(true);
 	};
+
+	const emailInvalid =
+		editing && email.trim() !== "" && !isValidEmail(email.trim());
 
 	const handleCancel = () => {
 		setEditing(false);
@@ -249,6 +268,36 @@ function ProfilePage() {
 							</p>
 						</div>
 
+						{/* Email field */}
+						<div className="flex flex-col gap-1.5">
+							<Label htmlFor="email">{t("fields.email")}</Label>
+							{editing ? (
+								<>
+									<Input
+										id="email"
+										type="email"
+										value={email}
+										onChange={(e) => setEmail(e.target.value)}
+										placeholder={t("fields.emailPlaceholder")}
+										aria-invalid={emailInvalid}
+									/>
+									{emailInvalid ? (
+										<p className="text-xs text-destructive">
+											{t("errors.invalidEmail")}
+										</p>
+									) : null}
+								</>
+							) : (
+								<p className="text-sm py-1.5">
+									{user.email || (
+										<span className="text-muted-foreground italic">
+											{t("fields.notSet")}
+										</span>
+									)}
+								</p>
+							)}
+						</div>
+
 						{serverError ? (
 							<p className="text-sm text-destructive">{serverError}</p>
 						) : null}
@@ -261,7 +310,9 @@ function ProfilePage() {
 							<Button
 								size="sm"
 								onClick={() => mutation.mutate()}
-								disabled={mutation.isPending || !fullName.trim()}
+								disabled={
+									mutation.isPending || !fullName.trim() || emailInvalid
+								}
 							>
 								{mutation.isPending
 									? t("actions.saving")
@@ -286,6 +337,13 @@ function ProfilePage() {
 
 			{/* Change Password card */}
 			<ChangePasswordCard mustChange={user.must_change_password} />
+
+			{/* Plugin-contributed personal settings (e.g. a plugin's
+			    per-event notification preferences) */}
+			<ExtensionPoint
+				point="user.settings.tab"
+				componentProps={{ userId: user.id }}
+			/>
 		</div>
 	);
 }

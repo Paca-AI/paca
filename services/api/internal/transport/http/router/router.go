@@ -84,6 +84,10 @@ func New(deps Deps) http.Handler {
 				r.Post("/login", deps.Auth.Login)
 				r.Post("/refresh", deps.Auth.Refresh)
 				r.With(httpmw.Authn(deps.TokenManager)).Post("/logout", deps.Auth.Logout)
+				// Public — the link a password-set-token email points to;
+				// the token itself (not a session) proves the caller's right
+				// to act on the account.
+				r.Post("/password/set", deps.User.SetPassword)
 			})
 
 			// Users

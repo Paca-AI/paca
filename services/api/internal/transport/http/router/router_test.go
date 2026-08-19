@@ -60,7 +60,11 @@ func (m *mockUserSvc) AdminUpdate(context.Context, uuid.UUID, userdom.AdminUpdat
 }
 func (m *mockUserSvc) ResetPassword(context.Context, uuid.UUID, string) error            { return nil }
 func (m *mockUserSvc) ChangeMyPassword(context.Context, uuid.UUID, string, string) error { return nil }
-func (m *mockUserSvc) Delete(context.Context, uuid.UUID) error                           { return nil }
+func (m *mockUserSvc) IssuePasswordSetToken(context.Context, uuid.UUID) (string, time.Time, error) {
+	return "", time.Time{}, nil
+}
+func (m *mockUserSvc) SetPasswordWithToken(context.Context, string, string) error { return nil }
+func (m *mockUserSvc) Delete(context.Context, uuid.UUID) error                    { return nil }
 func (m *mockUserSvc) InitiateAvatarUpload(context.Context, uuid.UUID, string, string, int64) (*attachmentdom.UploadSession, error) {
 	return &attachmentdom.UploadSession{}, nil
 }

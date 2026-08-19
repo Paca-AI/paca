@@ -6,6 +6,8 @@
 	"fields": {
 		"fullName": "Nombre completo",
 		"fullNamePlaceholder": "Introduce tu nombre completo",
+		"email": "Correo electrónico",
+		"emailPlaceholder": "Introduce tu correo electrónico",
 		"notSet": "No definido",
 		"username": "Nombre de usuario"
 	},
@@ -16,7 +18,9 @@
 		"cancel": "Cancelar"
 	},
 	"errors": {
-		"updateFailed": "No se pudo actualizar el perfil. Inténtalo de nuevo."
+		"updateFailed": "No se pudo actualizar el perfil. Inténtalo de nuevo.",
+		"invalidEmail": "Introduce una dirección de correo electrónico válida.",
+		"emailTaken": "Este correo electrónico ya está en uso por otra cuenta."
 	},
 	"avatar": {
 		"change": "Cambiar avatar",

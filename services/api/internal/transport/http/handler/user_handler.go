@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"net/http"
+	"net/mail"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -15,6 +17,27 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
+
+// normalizeEmail trims raw and, if non-empty, validates it as an RFC 5322
+// address, returning the canonical address lowercased. An empty/whitespace
+// -only input passes through as "" unchanged — every Email input field in
+// this package treats "" as "not provided" (create) or "no change"
+// (update), matching FullName/Role's existing convention. Lowercasing keeps
+// the uniqueness pre-check consistent with the case-sensitive
+// uni_users_email_active index: without it, "User@x.com" and "user@x.com"
+// would be stored as distinct rows for what mail servers treat as the same
+// mailbox.
+func normalizeEmail(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	addr, err := mail.ParseAddress(trimmed)
+	if err != nil {
+		return "", apierr.New(apierr.CodeBadRequest, "invalid email address")
+	}
+	return strings.ToLower(addr.Address), nil
+}
 
 // SessionInvalidator revokes an authentication session by family ID.
 // It is satisfied by domain/auth.Service.
@@ -100,9 +123,15 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 
 	u, err := h.svc.UpdateProfile(r.Context(), id, domainuser.UpdateProfileInput{
 		FullName: req.FullName,
+		Email:    email,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -200,11 +229,17 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "password must be at least 8 characters"))
 		return
 	}
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 
 	u, err := h.svc.Create(r.Context(), domainuser.CreateInput{
 		Username:           req.Username,
 		Password:           req.Password,
 		FullName:           req.FullName,
+		Email:              email,
 		Role:               req.Role,
 		MustChangePassword: true,
 	})
@@ -228,10 +263,16 @@ func (h *UserHandler) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 
 	u, err := h.svc.AdminUpdate(r.Context(), id, domainuser.AdminUpdateInput{
 		FullName: req.FullName,
 		Role:     req.Role,
+		Email:    email,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -322,6 +363,28 @@ func (h *UserHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 			presenter.Error(w, r, err)
 			return
 		}
+	}
+
+	presenter.NoContent(w)
+}
+
+// SetPassword handles POST /auth/password/set — the public, unauthenticated
+// endpoint a password-set-link email points to. It never requires knowing
+// the account's current/previous password, only a valid single-use token
+// (see domainuser.Service.IssuePasswordSetToken).
+func (h *UserHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
+	var req dto.SetPasswordRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "new_password must be at least 8 characters"))
+		return
+	}
+
+	if err := h.svc.SetPasswordWithToken(r.Context(), req.Token, req.NewPassword); err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 
 	presenter.NoContent(w)

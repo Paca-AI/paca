@@ -85,6 +85,41 @@ type HostServices struct {
 	// plugin's Cache is meant for recomputable data, so a missing cache
 	// backend degrades to "always recompute" rather than failing calls.
 	Cache *cache.Store
+	// SettingsReader backs the paca.settings_get host function with the
+	// workspace's public branding (the same data GET /branding exposes). May
+	// be nil, in which case settings_get always returns an error.
+	SettingsReader SettingsReader
+	// PasswordSetTokenIssuer backs the paca.password_set_token_issue host
+	// function. May be nil, in which case password_set_token_issue always
+	// returns an error.
+	PasswordSetTokenIssuer PasswordSetTokenIssuer
+}
+
+// SettingsReader resolves the workspace's current public branding for the
+// paca.settings_get host function.
+type SettingsReader interface {
+	GetBranding(ctx context.Context) (BrandingSnapshot, error)
+}
+
+// SettingsReaderFunc adapts a plain function to SettingsReader, so bootstrap
+// wiring can close over its existing settings/avatar services without a
+// dedicated adapter type or extra imports.
+type SettingsReaderFunc func(ctx context.Context) (BrandingSnapshot, error)
+
+// GetBranding calls f.
+func (f SettingsReaderFunc) GetBranding(ctx context.Context) (BrandingSnapshot, error) {
+	return f(ctx)
+}
+
+// BrandingSnapshot is the JSON shape returned to a plugin calling
+// paca.settings_get — deliberately the same field set as the public
+// GET /branding response. Empty fields mean the admin hasn't customized that
+// value; callers should fall back to their own defaults.
+type BrandingSnapshot struct {
+	LogoURL           string `json:"logo_url"`
+	BrandName         string `json:"brand_name"`
+	PrimaryColorLight string `json:"primary_color_light"`
+	PrimaryColorDark  string `json:"primary_color_dark"`
 }
 
 // EventPublisher abstracts the messaging.Publisher to avoid a circular import.
@@ -429,7 +464,12 @@ func (r *Runtime) callExport(ctx context.Context, pluginName, exportName string,
 }
 
 // EmitEvent serialises the event payload and dispatches it to every loaded
-// plugin that has subscribed to the topic.
+// plugin that has subscribed to the topic. Event payloads only ever carry
+// non-sensitive, denormalized data (IDs, names, etc.) — a value like a
+// password-set token that would let the holder act as another user is never
+// included here; see paca.password_set_token_issue (registerPasswordSetTokenFunction)
+// for how a plugin instead fetches that kind of value on demand, gated by
+// its own manifest permission, only once it has decided it needs it.
 func (r *Runtime) EmitEvent(ctx context.Context, topic string, payload any) {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -637,6 +677,15 @@ func (r *Runtime) registerHostModule(ctx context.Context, rt wazero.Runtime, p p
 
 	// --- Event and utility functions (PLUG-BE-07) --------------------------
 	r.registerEventFunctions(builder, p)
+
+	// --- Workspace branding read-only function -------------------------------
+	r.registerSettingsFunction(builder, p)
+
+	// --- Outbound SMTP send function (permission-gated) ---------------------
+	r.registerEmailFunction(builder, p)
+
+	// --- Password-set token issuance (permission-gated) ----------------------
+	r.registerPasswordSetTokenFunction(builder, p)
 
 	_, err := builder.Instantiate(ctx)
 	return err
@@ -1561,6 +1610,42 @@ func (r *Runtime) registerCoreFunctions(b wazero.HostModuleBuilder, _ plugindom.
 		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64},
 			[]api.ValueType{api.ValueTypeI64, api.ValueTypeI64}).
 		Export("members_list")
+}
+
+// -------------------------------------------------------------------------
+// Workspace branding read-only function
+// -------------------------------------------------------------------------
+
+// registerSettingsFunction adds paca.settings_get to the host module
+// builder. Follows the same out-pointer-args convention as
+// registerFetchFunction (no WASM result values; the guest passes pointers
+// to where the host should write the response ptr/len).
+func (r *Runtime) registerSettingsFunction(b wazero.HostModuleBuilder, _ plugindom.Plugin) {
+	// paca.settings_get(resPtrPtr, resLenPtr)
+	//   resPtrPtr – pointer to uint32 that receives response JSON ptr
+	//   resLenPtr – pointer to uint32 that receives response JSON len
+	//
+	// Response JSON is a BrandingSnapshot on success, or {"error":"<msg>"} on
+	// failure. No permission gate: this mirrors the public, unauthenticated
+	// GET /branding endpoint, which already exposes the same data to anyone.
+	b.NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(func(ctx context.Context, m api.Module, stack []uint64) {
+			writeBack := func(ptrLen []uint64) {
+				m.Memory().WriteUint32Le(uint32(stack[0]), uint32(ptrLen[0]))
+				m.Memory().WriteUint32Le(uint32(stack[1]), uint32(ptrLen[1]))
+			}
+			if r.services.SettingsReader == nil {
+				writeBack(writeJSONResult(m, map[string]string{"error": "settings_get: not configured"}))
+				return
+			}
+			snap, err := r.services.SettingsReader.GetBranding(ctx)
+			if err != nil {
+				writeBack(writeJSONResult(m, map[string]string{"error": "settings_get: " + err.Error()}))
+				return
+			}
+			writeBack(writeJSONResult(m, snap))
+		}), []api.ValueType{api.ValueTypeI64, api.ValueTypeI64}, nil).
+		Export("settings_get")
 }
 
 // -------------------------------------------------------------------------

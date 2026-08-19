@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -59,6 +60,7 @@ func (s *stubAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*stri
 type stubRepo struct {
 	findByID                       func(ctx context.Context, id uuid.UUID) (*userdom.User, error)
 	findByUsername                 func(ctx context.Context, username string) (*userdom.User, error)
+	findByEmail                    func(ctx context.Context, email string) (*userdom.User, error)
 	findByUsernameIncludingDeleted func(ctx context.Context, username string) (*userdom.User, error)
 	create                         func(ctx context.Context, u *userdom.User) error
 	update                         func(ctx context.Context, u *userdom.User) error
@@ -97,6 +99,12 @@ func (r *stubRepo) FindByID(ctx context.Context, id uuid.UUID) (*userdom.User, e
 func (r *stubRepo) FindByUsername(ctx context.Context, username string) (*userdom.User, error) {
 	if r.findByUsername != nil {
 		return r.findByUsername(ctx, username)
+	}
+	return nil, userdom.ErrNotFound
+}
+func (r *stubRepo) FindByEmail(ctx context.Context, email string) (*userdom.User, error) {
+	if r.findByEmail != nil {
+		return r.findByEmail(ctx, email)
 	}
 	return nil, userdom.ErrNotFound
 }
@@ -505,6 +513,196 @@ func TestResetPassword_UserNotFound(t *testing.T) {
 	err := svc.ResetPassword(context.Background(), uuid.New(), "newpassword123")
 	if !errors.Is(err, userdom.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SetPasswordWithToken
+// ---------------------------------------------------------------------------
+
+type stubTokenRepo struct {
+	findActiveByTokenHash func(ctx context.Context, hash string) (*userdom.PasswordSetToken, error)
+	markUsedCalled        bool
+	markUsedClaimed       *bool
+	createCalled          bool
+	created               *userdom.PasswordSetToken
+}
+
+func (r *stubTokenRepo) Create(_ context.Context, t *userdom.PasswordSetToken) error {
+	r.createCalled = true
+	r.created = t
+	return nil
+}
+func (r *stubTokenRepo) FindActiveByTokenHash(ctx context.Context, hash string) (*userdom.PasswordSetToken, error) {
+	if r.findActiveByTokenHash != nil {
+		return r.findActiveByTokenHash(ctx, hash)
+	}
+	return nil, userdom.ErrPasswordSetTokenInvalid
+}
+func (r *stubTokenRepo) MarkUsed(_ context.Context, _ uuid.UUID) (bool, error) {
+	r.markUsedCalled = true
+	if r.markUsedClaimed != nil {
+		return *r.markUsedClaimed, nil
+	}
+	return true, nil
+}
+
+// TestIssuePasswordSetToken_UserNotFound pins IssuePasswordSetToken checking
+// the user exists up front: the plugin host function
+// (registerPasswordSetTokenFunction) forwards this error's message straight
+// back to the calling plugin, so a nonexistent user_id must surface as the
+// clean userdom.ErrNotFound sentinel — not a raw FK-violation string from
+// the token insert, which would otherwise leak internal DB detail. No token
+// row should be created for a user that doesn't exist.
+func TestIssuePasswordSetToken_UserNotFound(t *testing.T) {
+	tokenRepo := &stubTokenRepo{}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return nil, userdom.ErrNotFound
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	_, _, err := svc.IssuePasswordSetToken(context.Background(), uuid.New())
+	if !errors.Is(err, userdom.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if tokenRepo.createCalled {
+		t.Error("expected no token to be created for a nonexistent user")
+	}
+}
+
+// TestIssuePasswordSetToken_Success guards the happy path: a token is
+// created scoped to the requested user, and the raw token returned to the
+// caller hashes to what was persisted (so FindActiveByTokenHash can find it
+// later).
+func TestIssuePasswordSetToken_Success(t *testing.T) {
+	userID := uuid.New()
+	tokenRepo := &stubTokenRepo{}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, id uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: id}, nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	raw, expiresAt, err := svc.IssuePasswordSetToken(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if raw == "" {
+		t.Fatal("expected a non-empty raw token")
+	}
+	if !tokenRepo.createCalled || tokenRepo.created == nil {
+		t.Fatal("expected a token to be persisted")
+	}
+	if tokenRepo.created.UserID != userID {
+		t.Errorf("expected token scoped to user %s, got %s", userID, tokenRepo.created.UserID)
+	}
+	if !expiresAt.After(time.Now()) {
+		t.Errorf("expected expiresAt in the future, got %v", expiresAt)
+	}
+}
+
+func TestSetPasswordWithToken_Success_WhenMustChangePassword(t *testing.T) {
+	userID := uuid.New()
+	var savedHash string
+	tokenRepo := &stubTokenRepo{
+		findActiveByTokenHash: func(_ context.Context, _ string) (*userdom.PasswordSetToken, error) {
+			return &userdom.PasswordSetToken{ID: uuid.New(), UserID: userID}, nil
+		},
+	}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+		},
+		update: func(_ context.Context, u *userdom.User) error {
+			savedHash = u.PasswordHash
+			if u.MustChangePassword {
+				t.Fatalf("expected MustChangePassword cleared after setting password")
+			}
+			return nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	if err := svc.SetPasswordWithToken(context.Background(), "raw-token", "newpassword123"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if savedHash == "oldhash" || savedHash == "newpassword123" {
+		t.Fatalf("expected bcrypt hash, got %q", savedHash)
+	}
+	if !tokenRepo.markUsedCalled {
+		t.Fatal("expected token to be marked used")
+	}
+}
+
+// TestSetPasswordWithToken_RejectsWhenPasswordAlreadySet pins the fix for a
+// token that was issued (e.g. via a plugin's welcome email) but never
+// consumed because the recipient instead logged in with their temporary
+// password and changed it through the normal UI: the still-unused,
+// unexpired token must no longer be redeemable once the account has left
+// the must-change-password state, or anyone who later gets hold of the old
+// invite link could reset the account's password without ever knowing its
+// current one.
+func TestSetPasswordWithToken_RejectsWhenPasswordAlreadySet(t *testing.T) {
+	userID := uuid.New()
+	updateCalled := false
+	tokenRepo := &stubTokenRepo{
+		findActiveByTokenHash: func(_ context.Context, _ string) (*userdom.PasswordSetToken, error) {
+			return &userdom.PasswordSetToken{ID: uuid.New(), UserID: userID}, nil
+		},
+	}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: false}, nil
+		},
+		update: func(_ context.Context, _ *userdom.User) error {
+			updateCalled = true
+			return nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	err := svc.SetPasswordWithToken(context.Background(), "raw-token", "newpassword123")
+	if !errors.Is(err, userdom.ErrPasswordSetTokenInvalid) {
+		t.Fatalf("expected ErrPasswordSetTokenInvalid, got %v", err)
+	}
+	if updateCalled {
+		t.Fatal("expected no password update when account isn't in must-change-password state")
+	}
+	if tokenRepo.markUsedCalled {
+		t.Fatal("expected token left unused on rejection")
+	}
+}
+
+// TestSetPasswordWithToken_RejectsLostRace pins the fix for the redemption
+// race: MarkUsed atomically claims the token, and losing that claim (a
+// concurrent request already redeemed it) must reject the request without
+// writing a password, even though FindActiveByTokenHash and the
+// must-change-password check both still passed.
+func TestSetPasswordWithToken_RejectsLostRace(t *testing.T) {
+	userID := uuid.New()
+	updateCalled := false
+	lost := false
+	tokenRepo := &stubTokenRepo{
+		findActiveByTokenHash: func(_ context.Context, _ string) (*userdom.PasswordSetToken, error) {
+			return &userdom.PasswordSetToken{ID: uuid.New(), UserID: userID}, nil
+		},
+		markUsedClaimed: &lost,
+	}
+	svc := usersvc.New(&stubRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
+			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+		},
+		update: func(_ context.Context, _ *userdom.User) error {
+			updateCalled = true
+			return nil
+		},
+	}).WithPasswordSetTokenRepo(tokenRepo)
+
+	err := svc.SetPasswordWithToken(context.Background(), "raw-token", "newpassword123")
+	if !errors.Is(err, userdom.ErrPasswordSetTokenInvalid) {
+		t.Fatalf("expected ErrPasswordSetTokenInvalid, got %v", err)
+	}
+	if updateCalled {
+		t.Fatal("expected no password update when the claim was lost to a concurrent redemption")
 	}
 }
 

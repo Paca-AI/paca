@@ -33,6 +33,10 @@ import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { validateUsername } from "@/lib/auth-validation";
 import { generatePassword } from "@/lib/generate-password";
 
+/** Loose RFC 5322-ish check — the server is the source of truth for validity;
+ * this only catches obviously-malformed input before a round trip. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface UserFormDialogProps {
 	user?: User;
 	open: boolean;
@@ -51,9 +55,11 @@ export function UserFormDialog({
 
 	const [username, setUsername] = useState(user?.username ?? "");
 	const [fullName, setFullName] = useState(user?.full_name ?? "");
+	const [email, setEmail] = useState(user?.email ?? "");
 	const [role, setRole] = useState(user?.role ?? "");
 	const [error, setError] = useState<string | null>(null);
 	const [usernameError, setUsernameError] = useState<string | null>(null);
+	const [emailError, setEmailError] = useState<string | null>(null);
 
 	// Created-state: holds the generated password to display after creation
 	const [createdPassword, setCreatedPassword] = useState<string | null>(null);
@@ -65,9 +71,11 @@ export function UserFormDialog({
 	const reset = () => {
 		setUsername(user?.username ?? "");
 		setFullName(user?.full_name ?? "");
+		setEmail(user?.email ?? "");
 		setRole(user?.role ?? "");
 		setError(null);
 		setUsernameError(null);
+		setEmailError(null);
 		setCreatedPassword(null);
 		setShowPassword(false);
 		setCopied(false);
@@ -90,10 +98,15 @@ export function UserFormDialog({
 		mutationFn: async () => {
 			if (!fullName.trim())
 				throw new Error(t("users.formDialog.errors.fullNameRequired"));
+			const trimmedEmail = email.trim();
+			if (trimmedEmail && !EMAIL_PATTERN.test(trimmedEmail)) {
+				throw new Error(t("users.formDialog.errors.invalidEmail"));
+			}
 
 			if (isEdit && user) {
 				return updateUser(user.id, {
 					full_name: fullName.trim(),
+					email: trimmedEmail || undefined,
 					role: role || undefined,
 				});
 			}
@@ -106,6 +119,7 @@ export function UserFormDialog({
 				username: username.trim(),
 				password,
 				full_name: fullName.trim(),
+				email: trimmedEmail || undefined,
 				role: role || undefined,
 			});
 			return password;
@@ -124,9 +138,14 @@ export function UserFormDialog({
 		},
 		onError: (err: unknown) => {
 			setUsernameError(null);
+			setEmailError(null);
 			const code = getApiErrorCode(err);
 			if (code === ApiErrorCode.UsernameTaken) {
 				setUsernameError(t("users.formDialog.errors.usernameTaken"));
+				return;
+			}
+			if (code === ApiErrorCode.EmailTaken) {
+				setEmailError(t("users.formDialog.errors.emailTaken"));
 				return;
 			}
 			if (
@@ -294,6 +313,40 @@ export function UserFormDialog({
 							onChange={(e) => setFullName(e.target.value)}
 							autoComplete="off"
 						/>
+					</div>
+
+					<div className="flex flex-col gap-1.5">
+						<Label
+							htmlFor="user-email"
+							className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+						>
+							{t("users.formDialog.emailLabel")}{" "}
+							<span className="normal-case font-normal text-muted-foreground/70">
+								{t("users.formDialog.emailOptionalHint")}
+							</span>
+						</Label>
+						<Input
+							id="user-email"
+							type="email"
+							placeholder={t("users.formDialog.emailPlaceholder")}
+							value={email}
+							onChange={(e) => {
+								setEmail(e.target.value);
+								if (emailError) setEmailError(null);
+							}}
+							autoComplete="off"
+							className={
+								emailError
+									? "border-destructive focus-visible:ring-destructive"
+									: undefined
+							}
+							aria-describedby={emailError ? "email-error" : undefined}
+						/>
+						{emailError ? (
+							<p id="email-error" className="text-xs text-destructive">
+								{emailError}
+							</p>
+						) : null}
 					</div>
 
 					<div className="flex flex-col gap-1.5">

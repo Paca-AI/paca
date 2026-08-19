@@ -44,7 +44,8 @@
 			"projectSettingsTab": "Onglet Paramètres du Projet",
 			"customView": "Vue personnalisée",
 			"projectPage": "Page du Projet",
-			"adminPage": "Page d'Administration"
+			"adminPage": "Page d'Administration",
+			"userSettingsTab": "Onglet Paramètres Utilisateur"
 		}
 	}
 }
