@@ -497,7 +497,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
-            "apps/acp-bridge/${{ steps.package.outputs.asset }}" --clobber
+            "${{ steps.package.outputs.asset }}" --clobber
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Deployment assets → GitHub Release
