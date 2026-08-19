@@ -240,7 +240,7 @@ if [[ "$REMOVE_ARTIFACTS_ONLY" = false ]]; then
 
     # Remove plugin registration
     print_step "Removing plugin registration..."
-    DELETE_RESPONSE=$(curl -s -X DELETE "${API_ENDPOINT}/plugins/${PLUGIN_UUID}" \
+    DELETE_RESPONSE=$(curl -s -X DELETE "${API_ENDPOINT}/admin/plugins/${PLUGIN_UUID}" \
         -H "${AUTH_HEADER}" \
         -w "\n%{http_code}")
 
