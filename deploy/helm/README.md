@@ -39,6 +39,20 @@ agents.
 
 ## Quick start
 
+No repository clone required — the chart is published as an OCI artifact to
+GHCR alongside every other release image:
+
+```bash
+kubectl create namespace paca
+helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> -n paca -f my-values.yaml
+```
+
+`<release-version>` is a [release](https://github.com/Paca-AI/paca/releases)
+tag without its leading `v` (e.g. `0.13.1` for `v0.13.1`); omit `--version` to
+install the newest chart published. To install from a repository checkout
+instead — e.g. to try an unreleased chart change — point at the chart
+directory itself:
+
 ```bash
 kubectl create namespace paca
 helm install paca deploy/helm/paca -n paca -f my-values.yaml

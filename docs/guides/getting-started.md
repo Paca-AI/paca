@@ -14,8 +14,8 @@ Open `http://your-server-ip` when it finishes.
 required for unattended use, since without it the script can block on a prompt
 nobody is there to answer. Every other setting is also steerable via environment
 variable instead of accepting its default. AI agents installing Paca on someone's
-behalf should prefer this over hand-writing `docker-compose.yml` / `.env` from
-Option 2 below — it stays in sync with what each release actually needs.
+behalf should prefer this over hand-writing `docker-compose.yml` / `.env`
+themselves — it stays in sync with what each release actually needs.
 
 ```bash
 PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/install.sh)
@@ -24,60 +24,31 @@ PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/dow
 See [../../deploy/README.md](../../deploy/README.md#non-interactive-install-ci-scripts-ai-coding-agents)
 for the full environment variable reference.
 
----
-
-## Option 2 — Docker Compose (manual)
-
-Pulls pre-built images. No repository clone required.
-
-```bash
-# Download compose file and Caddyfile
-mkdir paca && cd paca
-curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/docker-compose.yml -o docker-compose.yml
-mkdir -p caddy
-curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/Caddyfile -o caddy/Caddyfile
-
-# Create an environment file
-cat > .env <<'EOF'
-JWT_SECRET=<run: openssl rand -hex 32>
-ADMIN_PASSWORD=<your-admin-password>
-POSTGRES_PASSWORD=<run: openssl rand -hex 32>
-AGENT_API_KEY=<run: openssl rand -hex 32>
-INTERNAL_API_KEY=<run: openssl rand -hex 32>
-ENCRYPTION_KEY=<run: openssl rand -hex 32>
-PUBLIC_URL=http://localhost
-EOF
-
-# Start the stack
-docker compose --env-file .env up -d
-```
-
-Open `http://localhost` — log in with `admin` and the password you set.
-
 Want HTTPS? Set `SITE_ADDRESS` to a domain or IP address, with `PUBLIC_URL=https://…`
 and `COOKIE_SECURE=true` to match. A real domain with DNS pointed here gets a trusted
 Let's Encrypt certificate; an IP address or `localhost` gets one from Caddy's own local
 CA instead (browsers will show a trust warning, but the connection is still encrypted).
-The [install script](#option-1--install-script-recommended) enables this by default and
-prompts for the address. See
+The install script enables this by default and prompts for the address. See
 [../../deploy/README.md](../../deploy/README.md#production-deployment) for details.
 
-**Using a managed PostgreSQL?** Set `DATABASE_URL` in `.env` to your connection string and add `--scale postgres=0` to the `docker compose up` command to skip the bundled container. [Neon](https://neon.com) is a recommended serverless Postgres option — free tier available, no infrastructure to manage.
+Prefer a manual Docker Compose setup, or a local dev environment instead? See
+[../../deploy/README.md](../../deploy/README.md#manual-setup) and
+[local-development.md](local-development.md).
 
 ---
 
-## Option 3 — Local Development
+## Option 2 — Kubernetes (Helm chart)
 
-For contributors. Clone the repo, then start everything with one command:
+For an existing Kubernetes cluster instead of a single Docker host. No repository clone required — the chart is published as an OCI artifact alongside every other release image.
 
 ```bash
-git clone https://github.com/Paca-AI/paca.git && cd paca
-docker compose -f deploy/docker-compose.dev.yml up -d
+kubectl create namespace paca
+helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> -n paca -f my-values.yaml
 ```
 
-All services start with hot-reload — the API, web app, and realtime service all watch your local source files and rebuild automatically. Open `http://localhost:3000` when the stack is healthy.
+`<release-version>` is a [release](https://github.com/Paca-AI/paca/releases) tag without its leading `v` (e.g. `0.13.1` for `v0.13.1`); omit `--version` to install the newest chart published. `my-values.yaml` needs `publicUrl` plus the required secrets (`jwtSecret`, `adminPassword`, `encryptionKey`, and others) — there are no guessable defaults.
 
-See [local-development.md](local-development.md) for details on the dev stack and running services on the host.
+See [../../deploy/helm/README.md](../../deploy/helm/README.md) for the full values reference, Ingress/TLS setup, what's bundled vs. external, and troubleshooting.
 
 ---
 
@@ -135,4 +106,5 @@ See [mcp-server-setup.md](mcp-server-setup.md) for platform-specific instruction
 | [../architecture/overview.md](../architecture/overview.md) | Understanding the system architecture |
 | [../plugins/overview.md](../plugins/overview.md) | Writing or installing plugins |
 | [../../deploy/README.md](../../deploy/README.md) | Production deployment reference |
+| [../../deploy/helm/README.md](../../deploy/helm/README.md) | Kubernetes / Helm chart deployment reference |
 | [../../CHANGELOG.md](../../CHANGELOG.md) | Release history |
