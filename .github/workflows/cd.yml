@@ -425,6 +425,15 @@ jobs:
       - name: Set up oras
         uses: oras-project/setup-oras@v1
 
+      # oras reads credentials from the Docker config, not Helm's registry
+      # config that "Log in to GitHub Container Registry" above wrote to —
+      # the two CLIs don't share credential storage, so oras needs its own
+      # login or the push goes out anonymous and GHCR rejects it with 401.
+      - name: Log in to GHCR with oras
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | oras login ${{ env.REGISTRY }} \
+            --username ${{ github.actor }} --password-stdin
+
       - name: Push Artifact Hub repository metadata
         run: |
           oras push ${{ env.REGISTRY }}/paca-ai/charts/paca:artifacthub.io \
