@@ -9,6 +9,7 @@ version: 0.1.0
 # published.
 appVersion: "latest"
 home: https://github.com/Paca-AI/paca
+icon: https://raw.githubusercontent.com/Paca-AI/paca/master/docs/assets/paca-logo.svg
 sources:
   - https://github.com/Paca-AI/paca
 keywords:
@@ -18,3 +19,8 @@ keywords:
 maintainers:
   - name: Paca AI
     url: https://github.com/Paca-AI
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/Paca-AI/paca/blob/master/deploy/helm/README.md
