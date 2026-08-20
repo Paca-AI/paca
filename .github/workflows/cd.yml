@@ -20,6 +20,9 @@ name: cd
 #     see the helm-chart job below for why OCI instead of a gh-pages index.yaml. Registering
 #     oci://ghcr.io/paca-ai/charts/paca with Artifact Hub itself is a one-time manual step on
 #     https://artifacthub.io/control-panel/repositories, not something this workflow can do.
+#   oci://ghcr.io/paca-ai/charts/paca:artifacthub.io — Artifact Hub repository metadata
+#     (deploy/helm/paca/artifacthub-repo.yml), lets Artifact Hub mark the repo "verified
+#     publisher" once its repositoryID matches the one registered above.
 #   registry.npmjs.org @paca-ai/paca-mcp — MCP server npm package
 #   registry.npmjs.org @paca-ai/plugin-sdk-react — Plugin frontend SDK npm package
 #   GitHub Release assets:
@@ -412,6 +415,30 @@ jobs:
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
           helm push "dist/paca-${VERSION}.tgz" oci://${{ env.REGISTRY }}/paca-ai/charts
+
+      # Lets Artifact Hub mark this repository as a "verified publisher" —
+      # it proves control over the OCI ref by matching the repositoryID
+      # here against the one shown in Artifact Hub's control panel for
+      # oci://ghcr.io/paca-ai/charts/paca. Pushed under the fixed
+      # "artifacthub.io" tag that Artifact Hub looks for, separate from
+      # the chart's own version tags above.
+      - name: Set up oras
+        uses: oras-project/setup-oras@v1
+
+      # oras reads credentials from the Docker config, not Helm's registry
+      # config that "Log in to GitHub Container Registry" above wrote to —
+      # the two CLIs don't share credential storage, so oras needs its own
+      # login or the push goes out anonymous and GHCR rejects it with 401.
+      - name: Log in to GHCR with oras
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | oras login ${{ env.REGISTRY }} \
+            --username ${{ github.actor }} --password-stdin
+
+      - name: Push Artifact Hub repository metadata
+        run: |
+          oras push ${{ env.REGISTRY }}/paca-ai/charts/paca:artifacthub.io \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            deploy/helm/paca/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
 
   # ─────────────────────────────────────────────────────────────────────────────
   # MCP server npm package → npmjs.com
