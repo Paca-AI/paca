@@ -267,6 +267,7 @@
 		},
 		"conversationView": {
 			"stop": "停止",
+			"stopPermanently": "会話を完全に停止",
 			"notFound": "会話が見つかりません",
 			"chatSession": "チャットセッション",
 			"taskSession": "タスクセッション",
@@ -288,6 +289,7 @@
 			"stopDictation": "音声入力を停止",
 			"stopVoiceInputAriaLabel": "音声入力を停止",
 			"sendMessage": "メッセージを送信",
+			"interruptTurnAriaLabel": "現在のターンを中断",
 			"stopGeneratingAriaLabel": "生成を停止",
 			"assistantWorkingAriaLabel": "エージェントが作業中です",
 			"copy": "コピー",

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +61,91 @@ func (r *ConversationRepository) FailIfNotTerminal(ctx context.Context, id uuid.
 		return false, fmt.Errorf("postgres: fail-if-not-terminal conversation %s: rows affected: %w", id, err)
 	}
 	return n == 1, nil
+}
+
+// UpdateStatusIfNotTerminal applies a bridge-reported status only while the
+// conversation is still active. A late frame from an executor that was
+// stopped or replaced must not resurrect a durable stopped/failed row.
+func (r *ConversationRepository) UpdateStatusIfNotTerminal(ctx context.Context, id uuid.UUID, status string, errorMessage *string) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE agent_conversations
+		SET status = $1, error_message = $2, updated_at = now()
+		WHERE id = $3 AND status NOT IN ('finished', 'failed', 'stopped')
+	`, status, errorMessage, id)
+	if err != nil {
+		return false, fmt.Errorf("postgres: update non-terminal conversation %s status: %w", id, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("postgres: update non-terminal conversation %s rows affected: %w", id, err)
+	}
+	return n == 1, nil
+}
+
+// StaleACPConversation identifies an ACP conversation that was durable
+// running but was absent from a freshly connected bridge's active session
+// list. Realtime ownership is resolved through GetConversationRealtimeContext
+// after the atomic update, keeping this query's RETURNING clause limited to
+// columns of the updated table.
+type StaleACPConversation struct {
+	ID        uuid.UUID
+	ProjectID uuid.UUID
+}
+
+// ReconcileStaleACPConversations atomically fails running ACP conversations
+// owned by agentID that the reconnecting bridge did not report. The active
+// list is passed as individual parameters rather than relying on driver-
+// specific UUID-array encoders, keeping this compatible with sqlx/pgx.
+func (r *ConversationRepository) ReconcileStaleACPConversations(
+	ctx context.Context,
+	agentID uuid.UUID,
+	active []uuid.UUID,
+	connectedAt time.Time,
+	errorMessage string,
+) ([]StaleACPConversation, error) {
+	args := []any{agentID, errorMessage, connectedAt}
+	filters := []string{
+		"c.agent_id = $1",
+		"a.agent_type = 'acp'",
+		"c.status = 'running'",
+		"c.updated_at < $3",
+	}
+	for _, id := range active {
+		args = append(args, id)
+		filters = append(filters, fmt.Sprintf("c.id <> $%d", len(args)))
+	}
+
+	query := fmt.Sprintf(`
+		WITH stale AS (
+			SELECT c.id
+			FROM agent_conversations c
+			JOIN agents a ON a.id = c.agent_id
+			WHERE %s
+		)
+		UPDATE agent_conversations c
+		SET status = 'failed', error_message = $2, updated_at = now()
+		FROM stale
+		WHERE c.id = stale.id
+		RETURNING c.id, c.project_id
+	`, strings.Join(filters, " AND "))
+
+	var rows []struct {
+		ID        uuid.UUID     `db:"id"`
+		ProjectID uuid.NullUUID `db:"project_id"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("postgres: reconcile stale ACP conversations for agent %s: %w", agentID, err)
+	}
+
+	stale := make([]StaleACPConversation, 0, len(rows))
+	for _, row := range rows {
+		item := StaleACPConversation{ID: row.ID}
+		if row.ProjectID.Valid {
+			item.ProjectID = row.ProjectID.UUID
+		}
+		stale = append(stale, item)
+	}
+	return stale, nil
 }
 
 // NextEventIndex mirrors get_next_event_index: event_index is unique per

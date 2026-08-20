@@ -273,6 +273,7 @@
 		},
 		"conversationView": {
 			"stop": "Остановить",
+			"stopPermanently": "Остановить навсегда",
 			"notFound": "Диалог не найден",
 			"chatSession": "Чат-сессия",
 			"taskSession": "Сессия задачи",
@@ -296,6 +297,7 @@
 			"stopDictation": "Остановить надиктовку",
 			"stopVoiceInputAriaLabel": "Остановить голосовой ввод",
 			"sendMessage": "Отправить сообщение",
+			"interruptTurnAriaLabel": "Прервать текущий ход",
 			"stopGeneratingAriaLabel": "Остановить генерацию",
 			"assistantWorkingAriaLabel": "Ассистент работает",
 			"copy": "Копировать",

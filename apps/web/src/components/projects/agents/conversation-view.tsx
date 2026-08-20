@@ -41,6 +41,7 @@ import {
 	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
+import { shouldShowPermanentStop } from "./conversation-control-state";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
@@ -54,12 +55,10 @@ import { useConversationEventWindow } from "./use-conversation-event-window";
 function ConversationControls({
 	projectId,
 	conversation,
-	isACP,
 }: {
 	/** Absent for a global-chat conversation (home/admin pages, no project). */
 	projectId?: string;
 	conversation: AgentConversation;
-	isACP: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -91,22 +90,7 @@ function ConversationControls({
 		onSuccess: invalidate,
 	});
 
-	// assistant-ui's own composer shows a Cancel button while running, but
-	// only for chat conversations — its composer is hidden entirely for
-	// task/comment-triggered ones (see `isDisabled` below), which would
-	// otherwise have no way to stop a running conversation at all. Show this
-	// control for every non-terminal status (queued, running, paused) so a
-	// stop action is always available, regardless of trigger type.
-	//
-	// ACP is the exception: its composer is now shown for every trigger type
-	// (see canReply below), so the composer's own Cancel/pause button is
-	// always reachable there — this header Stop button (a full teardown,
-	// distinct from pause) would just be redundant.
-	const isTerminal =
-		conversation.status === "finished" ||
-		conversation.status === "failed" ||
-		conversation.status === "stopped";
-	if (isTerminal || isACP) return null;
+	if (!shouldShowPermanentStop(conversation.status)) return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -122,7 +106,9 @@ function ConversationControls({
 				) : (
 					<Square className="size-3" />
 				)}
-				{t("agents.conversationView.stop")}
+				{t("agents.conversationView.stopPermanently", {
+					defaultValue: "Stop permanently",
+				})}
 			</Button>
 		</div>
 	);
@@ -450,7 +436,6 @@ export function ConversationView({
 					<ConversationControls
 						projectId={projectId}
 						conversation={conversation}
-						isACP={isACP}
 					/>
 				</div>
 			</div>
@@ -459,6 +444,13 @@ export function ConversationView({
 			<div className="flex-1 min-h-0">
 				<AssistantRuntimeProvider runtime={runtime}>
 					<Thread
+						components={{
+							ComposerCancelLabel: isACP
+								? t("agents.thread.interruptTurnAriaLabel", {
+										defaultValue: "Interrupt current turn",
+									})
+								: undefined,
+						}}
 						turnAnchor="bottom"
 						// A run starting must not pull a reader who is paging back
 						// through history.

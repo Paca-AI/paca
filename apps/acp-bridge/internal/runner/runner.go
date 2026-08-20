@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -122,6 +123,31 @@ func New(workspace string, log *slog.Logger) func(bridge.SendFunc) bridge.Handle
 			conversations: make(map[string]*conversationState),
 		}
 	}
+}
+
+// ActiveConversationIDs reports ACP sessions the bridge process still owns.
+// A completed turn keeps its ACP client for the conversation's next turn, so
+// retaining that id is intentional: a reconnect must not mark its durable row
+// stale merely because the process was between turns.
+func (r *Runner) ActiveConversationIDs() []string {
+	r.mu.Lock()
+	states := make(map[string]*conversationState, len(r.conversations))
+	for id, state := range r.conversations {
+		states[id] = state
+	}
+	r.mu.Unlock()
+
+	active := make([]string, 0, len(states))
+	for id, state := range states {
+		state.mu.Lock()
+		owned := state.turnRunning || state.client != nil
+		state.mu.Unlock()
+		if owned {
+			active = append(active, id)
+		}
+	}
+	sort.Strings(active)
+	return active
 }
 
 // StartTurn handles a start_turn message: begins a new conversation or

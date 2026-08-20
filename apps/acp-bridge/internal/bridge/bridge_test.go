@@ -24,6 +24,7 @@ type fakeHandler struct {
 	mu         sync.Mutex
 	startTurns []map[string]any
 	interrupts []string
+	active     []string
 }
 
 func (h *fakeHandler) StartTurn(_ context.Context, msg map[string]any) {
@@ -36,6 +37,12 @@ func (h *fakeHandler) Interrupt(conversationID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.interrupts = append(h.interrupts, conversationID)
+}
+
+func (h *fakeHandler) ActiveConversationIDs() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.active...)
 }
 
 func (h *fakeHandler) startTurnCount() int {
@@ -139,6 +146,27 @@ func TestHandshakeAndStartTurnDispatch(t *testing.T) {
 			t.Fatalf("timed out waiting for StartTurn; got %d calls", handler.startTurnCount())
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestHandshakeIncludesActiveConversationIDs(t *testing.T) {
+	ts := newTestServer(t)
+	handler := &fakeHandler{active: []string{"conv-1", "conv-2"}}
+	client := New(ts.srv.URL, "agent-1", "tok", "/workspace", testLogger(),
+		func(SendFunc) Handler { return handler })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go func() { _ = client.RunForever(ctx) }()
+
+	conn := ts.accept(t)
+	hello := handshake(t, conn)
+	active, ok := hello["active_conversations"].([]any)
+	if !ok {
+		t.Fatalf("hello active_conversations = %T, want []any: %+v", hello["active_conversations"], hello)
+	}
+	if len(active) != 2 || active[0] != "conv-1" || active[1] != "conv-2" {
+		t.Fatalf("hello active_conversations = %v, want [conv-1 conv-2]", active)
 	}
 }
 

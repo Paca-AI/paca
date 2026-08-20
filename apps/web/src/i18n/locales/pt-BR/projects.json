@@ -267,6 +267,7 @@
 		},
 		"conversationView": {
 			"stop": "Parar",
+			"stopPermanently": "Parar permanentemente",
 			"notFound": "Conversa não encontrada",
 			"chatSession": "Sessão de chat",
 			"taskSession": "Sessão de tarefa",
@@ -288,6 +289,7 @@
 			"stopDictation": "Parar ditado",
 			"stopVoiceInputAriaLabel": "Parar entrada de voz",
 			"sendMessage": "Enviar mensagem",
+			"interruptTurnAriaLabel": "Interromper turno atual",
 			"stopGeneratingAriaLabel": "Parar geração",
 			"assistantWorkingAriaLabel": "O assistente está trabalhando",
 			"copy": "Copiar",

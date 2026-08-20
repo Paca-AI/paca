@@ -59,6 +59,14 @@ type Handler interface {
 	Interrupt(conversationID string)
 }
 
+// ActiveConversationReporter is implemented by handlers that can describe
+// the ACP sessions they still own after a bridge reconnect. It is optional so
+// older/custom handlers remain wire-compatible; the built-in runner uses it
+// to let Paca reconcile durable running rows after an executor restart.
+type ActiveConversationReporter interface {
+	ActiveConversationIDs() []string
+}
+
 // Client is the bridge daemon's connection to one Paca instance.
 type Client struct {
 	url       string
@@ -164,9 +172,17 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	c.conn.Store(conn)
 	defer c.conn.Store(nil)
 
-	if err := wsjson.Write(ctx, conn, map[string]string{
+	hello := map[string]any{
 		"type": "hello", "agent_id": c.agentID, "token": c.token,
-	}); err != nil {
+	}
+	if reporter, ok := c.handler.(ActiveConversationReporter); ok {
+		active := reporter.ActiveConversationIDs()
+		if active == nil {
+			active = []string{}
+		}
+		hello["active_conversations"] = active
+	}
+	if err := wsjson.Write(ctx, conn, hello); err != nil {
 		return fmt.Errorf("sending hello: %w", err)
 	}
 	var ack map[string]any

@@ -73,6 +73,9 @@ export type ThreadComponents = {
 	/** Rendered at the start of the composer's action row (left of the mic/send
 	 * controls) — e.g. an agent picker shown inline while starting a new chat. */
 	ComposerStart?: ComponentType | undefined;
+	/** Accessible label for the composer Cancel action. Callers can distinguish
+	 * an interrupt/pause from a separate durable conversation stop control. */
+	ComposerCancelLabel?: string | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
 	ToolGroup?:
 		| ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
@@ -309,7 +312,9 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
 	const { t } = useTranslation("projects");
-	const { ComposerStart } = useContext(ThreadComponentsContext);
+	const { ComposerStart, ComposerCancelLabel } = useContext(
+		ThreadComponentsContext,
+	);
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
 			{ComposerStart ? <ComposerStart /> : <div />}
@@ -375,7 +380,10 @@ const ComposerAction: FC = () => {
 								variant="default"
 								size="icon"
 								className="aui-composer-cancel size-7 rounded-full"
-								aria-label={t("agents.thread.stopGeneratingAriaLabel")}
+								aria-label={
+									ComposerCancelLabel ??
+									t("agents.thread.stopGeneratingAriaLabel")
+								}
 							/>
 						}
 					>

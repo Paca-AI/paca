@@ -102,6 +102,20 @@ func waitForEventType(t *testing.T, sent *capturedSends, eventType string) map[s
 
 // --- Guard-rail tests: no subprocess involved -------------------------------
 
+func TestActiveConversationIDsReportsOwnedSessionsInStableOrder(t *testing.T) {
+	r := &Runner{conversations: map[string]*conversationState{
+		"idle":   {chunks: newChunkBuffer()},
+		"turn":   {chunks: newChunkBuffer(), turnRunning: true},
+		"zombie": {chunks: newChunkBuffer(), client: &acpclient.Client{}},
+	}}
+
+	got := r.ActiveConversationIDs()
+	want := []string{"turn", "zombie"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ActiveConversationIDs() = %v, want %v", got, want)
+	}
+}
+
 func TestStartTurnRejectsWhenPreviousTurnStillRunning(t *testing.T) {
 	r, sent := newTestRunner(t)
 	state := &conversationState{chunks: newChunkBuffer(), turnRunning: true, turnDone: make(chan struct{})}

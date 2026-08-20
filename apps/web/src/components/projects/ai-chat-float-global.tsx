@@ -4,7 +4,7 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, Plus, X } from "lucide-react";
+import { AlertTriangle, Bot, Loader2, Plus, Square, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -79,6 +79,7 @@ export function GlobalAIChatFloat() {
 	const [open, setOpen] = useState(false);
 	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [isStopping, setIsStopping] = useState(false);
 	const qc = useQueryClient();
 
 	useGlobalAgentRealtime();
@@ -175,6 +176,17 @@ export function GlobalAIChatFloat() {
 		invalidate();
 	};
 
+	const stopCurrentConversation = async () => {
+		if (!conversationId) return;
+		setIsStopping(true);
+		try {
+			await stopGlobalConversation(conversationId);
+			invalidate();
+		} finally {
+			setIsStopping(false);
+		}
+	};
+
 	const canReply =
 		!conversationId ||
 		(conversation?.trigger_type === "chat_message" &&
@@ -262,15 +274,35 @@ export function GlobalAIChatFloat() {
 							</span>
 						</div>
 						{conversationId && (
-							<Button
-								size="sm"
-								variant="outline"
-								className="h-7 gap-1.5 text-xs"
-								onClick={handleNewConversation}
-							>
-								<Plus className="size-3" />
-								{t("aiChat.newConversation")}
-							</Button>
+							<div className="flex items-center gap-2">
+								{conversation && !isTerminal && (
+									<Button
+										size="sm"
+										variant="outline"
+										className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+										onClick={() => void stopCurrentConversation()}
+										disabled={isStopping}
+									>
+										{isStopping ? (
+											<Loader2 className="size-3 animate-spin" />
+										) : (
+											<Square className="size-3" />
+										)}
+										{t("agents.conversationView.stopPermanently", {
+											defaultValue: "Stop permanently",
+										})}
+									</Button>
+								)}
+								<Button
+									size="sm"
+									variant="outline"
+									className="h-7 gap-1.5 text-xs"
+									onClick={handleNewConversation}
+								>
+									<Plus className="size-3" />
+									{t("aiChat.newConversation")}
+								</Button>
+							</div>
 						)}
 					</div>
 
@@ -281,7 +313,14 @@ export function GlobalAIChatFloat() {
 							<AgentPickerContext.Provider value={pickerState}>
 								<AssistantRuntimeProvider runtime={runtime}>
 									<Thread
-										components={THREAD_COMPONENTS}
+										components={{
+											...THREAD_COMPONENTS,
+											ComposerCancelLabel: isACP
+												? t("agents.thread.interruptTurnAriaLabel", {
+														defaultValue: "Interrupt current turn",
+													})
+												: undefined,
+										}}
 										// A chat_message trigger always persists the user's own
 										// message before the agent runs (see handler.Handle), so
 										// a failed/recoverable turn almost never has

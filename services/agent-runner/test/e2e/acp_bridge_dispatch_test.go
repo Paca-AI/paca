@@ -210,6 +210,55 @@ func TestACPBridgeDispatch(t *testing.T) {
 	}
 }
 
+func TestACPBridgeReconnectReconcilesStaleRunningConversation(t *testing.T) {
+	env := newE2EEnv(t)
+	ctx := context.Background()
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	agentID, convID := seedACPAgentAndConversation(t, env)
+	if _, err := env.db.ExecContext(ctx,
+		`UPDATE agent_conversations SET status = 'running' WHERE id = $1`, convID); err != nil {
+		t.Fatalf("mark conversation running: %v", err)
+	}
+
+	publisher := messaging.NewPublisher(env.redisClient)
+	server := &acpbridge.Server{
+		Registry:      acpbridge.New(env.redisClient, publisher, log),
+		AgentRepo:     postgres.NewAgentRepository(env.db),
+		ConvRepo:      postgres.NewConversationRepository(env.db),
+		Publisher:     publisher,
+		InternalToken: acpDispatchInternalToken,
+		Log:           log,
+	}
+	httpSrv := httptest.NewServer(server.Routes())
+	t.Cleanup(httpSrv.Close)
+
+	wsURL := "ws" + strings.TrimPrefix(httpSrv.URL, "http") + "/agent-bridge/ws"
+	bridgeConn, dialResp, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial bridge ws: %v", err)
+	}
+	if dialResp != nil && dialResp.Body != nil {
+		_ = dialResp.Body.Close()
+	}
+	t.Cleanup(func() { _ = bridgeConn.CloseNow() })
+
+	if err := wsjson.Write(ctx, bridgeConn, map[string]any{
+		"type": "hello", "agent_id": agentID.String(), "token": acpDispatchBridgeToken,
+		"active_conversations": []string{},
+	}); err != nil {
+		t.Fatalf("send hello: %v", err)
+	}
+	var ack map[string]string
+	if err := wsjson.Read(ctx, bridgeConn, &ack); err != nil {
+		t.Fatalf("read hello_ack: %v", err)
+	}
+
+	if err := waitForStatus(ctx, env.db, convID, "failed"); err != nil {
+		t.Fatalf("stale running conversation was not reconciled: %v", err)
+	}
+}
+
 func seedACPAgentAndConversation(t *testing.T, env *e2eEnv) (agentID, convID uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
