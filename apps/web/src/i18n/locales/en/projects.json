@@ -267,7 +267,7 @@
 		},
 		"conversationView": {
 			"stop": "Stop",
-			"stopPermanently": "Stop permanently",
+			"stopConversation": "Stop conversation",
 			"notFound": "Conversation not found",
 			"chatSession": "Chat session",
 			"taskSession": "Task session",
@@ -289,7 +289,7 @@
 			"stopDictation": "Stop dictation",
 			"stopVoiceInputAriaLabel": "Stop voice input",
 			"sendMessage": "Send message",
-			"interruptTurnAriaLabel": "Interrupt current turn",
+			"stopCurrentResponseAriaLabel": "Stop current response",
 			"stopGeneratingAriaLabel": "Stop generating",
 			"assistantWorkingAriaLabel": "Assistant is working",
 			"copy": "Copy",

@@ -267,7 +267,7 @@
 		},
 		"conversationView": {
 			"stop": "중지",
-			"stopPermanently": "대화 영구 중지",
+			"stopConversation": "대화 중지",
 			"notFound": "대화를 찾을 수 없습니다",
 			"chatSession": "채팅 세션",
 			"taskSession": "작업 세션",
@@ -289,7 +289,7 @@
 			"stopDictation": "음성 입력 중지",
 			"stopVoiceInputAriaLabel": "음성 입력 중지",
 			"sendMessage": "메시지 보내기",
-			"interruptTurnAriaLabel": "현재 턴 중단",
+			"stopCurrentResponseAriaLabel": "현재 응답 중지",
 			"stopGeneratingAriaLabel": "생성 중지",
 			"assistantWorkingAriaLabel": "에이전트가 작업 중입니다",
 			"copy": "복사",

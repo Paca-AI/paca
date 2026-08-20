@@ -6,9 +6,11 @@ const TERMINAL_STATUSES = new Set<ConversationStatus>([
 	"stopped",
 ]);
 
-// The permanent stop action is available for every non-terminal conversation,
-// including ACP conversations whose composer Cancel action only interrupts the
-// current turn.
-export function shouldShowPermanentStop(status: ConversationStatus): boolean {
+// The durable stop action is available for every non-terminal conversation,
+// including ACP conversations whose composer Cancel action only stops the
+// current response.
+export function shouldShowConversationStop(
+	status: ConversationStatus,
+): boolean {
 	return !TERMINAL_STATUSES.has(status);
 }

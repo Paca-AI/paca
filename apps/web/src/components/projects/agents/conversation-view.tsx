@@ -41,7 +41,7 @@ import {
 	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
-import { shouldShowPermanentStop } from "./conversation-control-state";
+import { shouldShowConversationStop } from "./conversation-control-state";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
@@ -90,7 +90,7 @@ function ConversationControls({
 		onSuccess: invalidate,
 	});
 
-	if (!shouldShowPermanentStop(conversation.status)) return null;
+	if (!shouldShowConversationStop(conversation.status)) return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -106,8 +106,8 @@ function ConversationControls({
 				) : (
 					<Square className="size-3" />
 				)}
-				{t("agents.conversationView.stopPermanently", {
-					defaultValue: "Stop permanently",
+				{t("agents.conversationView.stopConversation", {
+					defaultValue: "Stop conversation",
 				})}
 			</Button>
 		</div>
@@ -446,8 +446,8 @@ export function ConversationView({
 					<Thread
 						components={{
 							ComposerCancelLabel: isACP
-								? t("agents.thread.interruptTurnAriaLabel", {
-										defaultValue: "Interrupt current turn",
+								? t("agents.thread.stopCurrentResponseAriaLabel", {
+										defaultValue: "Stop current response",
 									})
 								: undefined,
 						}}

@@ -149,6 +149,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		s.Registry.Unregister(context.WithoutCancel(r.Context()), agentID, cfg.ProjectID, sessionID)
 		return
 	}
+	// Reconciliation relies on Registry's one-bridge-session-per-agent
+	// contract: once Register succeeds, this connection is authoritative for
+	// the agent's process-owned ACP sessions. Supporting concurrent bridge
+	// daemons would require per-run executor ownership rather than this
+	// agent-wide snapshot.
+	//
 	// A nil slice means an older bridge that does not know the reconciliation
 	// field; an explicit [] means a current bridge with no surviving ACP
 	// sessions, which is exactly the restart/orphan signal we need.

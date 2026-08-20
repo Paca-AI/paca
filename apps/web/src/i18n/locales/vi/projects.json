@@ -267,7 +267,7 @@
 		},
 		"conversationView": {
 			"stop": "Dừng",
-			"stopPermanently": "Dừng vĩnh viễn",
+			"stopConversation": "Dừng cuộc trò chuyện",
 			"notFound": "Không tìm thấy hội thoại",
 			"chatSession": "Phiên trò chuyện",
 			"taskSession": "Phiên nhiệm vụ",
@@ -289,7 +289,7 @@
 			"stopDictation": "Dừng nhập giọng nói",
 			"stopVoiceInputAriaLabel": "Dừng nhập bằng giọng nói",
 			"sendMessage": "Gửi tin nhắn",
-			"interruptTurnAriaLabel": "Ngắt lượt hiện tại",
+			"stopCurrentResponseAriaLabel": "Dừng phản hồi hiện tại",
 			"stopGeneratingAriaLabel": "Dừng tạo phản hồi",
 			"assistantWorkingAriaLabel": "Agent đang xử lý",
 			"copy": "Sao chép",

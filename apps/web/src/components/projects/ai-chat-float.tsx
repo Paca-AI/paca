@@ -325,8 +325,8 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 										) : (
 											<Square className="size-3" />
 										)}
-										{t("agents.conversationView.stopPermanently", {
-											defaultValue: "Stop permanently",
+										{t("agents.conversationView.stopConversation", {
+											defaultValue: "Stop conversation",
 										})}
 									</Button>
 								)}
@@ -353,8 +353,8 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 										components={{
 											...THREAD_COMPONENTS,
 											ComposerCancelLabel: isACP
-												? t("agents.thread.interruptTurnAriaLabel", {
-														defaultValue: "Interrupt current turn",
+												? t("agents.thread.stopCurrentResponseAriaLabel", {
+														defaultValue: "Stop current response",
 													})
 												: undefined,
 										}}

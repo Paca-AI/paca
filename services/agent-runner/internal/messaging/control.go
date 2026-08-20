@@ -11,7 +11,8 @@ import (
 type ControlType string
 
 const (
-	// ControlStop tears a running or paused conversation's sandbox down.
+	// ControlStop durably ends a conversation and interrupts active work. LLM
+	// executors also tear down their sandbox; ACP executors retain the session.
 	ControlStop ControlType = "agent.stop"
 	// ControlPause interrupts a running turn but keeps its sandbox alive.
 	ControlPause ControlType = "agent.pause"

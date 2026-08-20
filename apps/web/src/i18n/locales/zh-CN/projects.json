@@ -267,7 +267,7 @@
 		},
 		"conversationView": {
 			"stop": "停止",
-			"stopPermanently": "永久停止",
+			"stopConversation": "停止会话",
 			"notFound": "未找到对话",
 			"chatSession": "聊天会话",
 			"taskSession": "任务会话",
@@ -289,7 +289,7 @@
 			"stopDictation": "停止语音输入",
 			"stopVoiceInputAriaLabel": "停止语音输入",
 			"sendMessage": "发送消息",
-			"interruptTurnAriaLabel": "中断当前回合",
+			"stopCurrentResponseAriaLabel": "停止当前响应",
 			"stopGeneratingAriaLabel": "停止生成",
 			"assistantWorkingAriaLabel": "代理正在处理",
 			"copy": "复制",

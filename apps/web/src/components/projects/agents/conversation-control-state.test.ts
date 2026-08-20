@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowPermanentStop } from "./conversation-control-state";
+import { shouldShowConversationStop } from "./conversation-control-state";
 
-describe("shouldShowPermanentStop", () => {
-	it("keeps the permanent stop action available for a running ACP conversation", () => {
-		expect(shouldShowPermanentStop("running")).toBe(true);
+describe("shouldShowConversationStop", () => {
+	it("keeps the durable stop action available for a running ACP conversation", () => {
+		expect(shouldShowConversationStop("running")).toBe(true);
 	});
 
-	it("hides the permanent stop action after a terminal status", () => {
-		expect(shouldShowPermanentStop("stopped")).toBe(false);
+	it("hides the durable stop action after a terminal status", () => {
+		expect(shouldShowConversationStop("stopped")).toBe(false);
 	});
 });

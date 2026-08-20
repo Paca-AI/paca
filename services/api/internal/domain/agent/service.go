@@ -115,8 +115,8 @@ type ConversationService interface {
 	// only by their chat-session owner).
 	GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
-	// StopConversation interrupts (if running) and permanently tears down the
-	// conversation's sandbox. memberID gates ownership (see GetConversation).
+	// StopConversation durably stops the conversation and asks its executor to
+	// interrupt any active work. memberID gates ownership (see GetConversation).
 	StopConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	// PauseConversation interrupts the in-flight turn only — the sandbox
 	// stays alive and the conversation can be replied to again once it pauses.
