@@ -150,7 +150,11 @@ api:
     refreshSessionTtl: 24h
   # Set to false only when TLS isn't terminated anywhere in front of this
   # deployment (plain HTTP end to end) — matches docker-compose.prod.yml's
-  # COOKIE_SECURE.
+  # COOKIE_SECURE. This includes the no-Ingress, empty-publicUrl quick
+  # start (gateway.service.type: LoadBalancer with no domain to
+  # auto-provision HTTPS for): the gateway then serves plain HTTP, so
+  # leaving this at true makes browsers silently drop the auth cookie and
+  # login never sticks — set it to false in that case.
   cookieSecure: true
 
   # Installed-plugin storage (backend WASM, frontend bundles, MCP bundles,
@@ -211,7 +215,11 @@ realtime:
     limits:
       memory: 256Mi
   logLevel: info
-  # Empty defaults to publicUrl (or "*" when publicUrl is also empty).
+  # Empty defaults to publicUrl (or "http://localhost" when publicUrl is
+  # also empty — matches docker-compose.prod.yml's
+  # ${CORS_ORIGINS:-${PUBLIC_URL:-http://localhost}}; a bare "*" is never
+  # produced since a wildcard origin plus Socket.IO's credentialed CORS is
+  # rejected by browsers anyway).
   corsOrigins: ""
 
 # ---------------------------------------------------------------------------

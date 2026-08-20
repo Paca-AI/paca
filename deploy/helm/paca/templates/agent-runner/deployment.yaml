@@ -46,10 +46,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "paca.secretName" . }}
                   key: INTERNAL_API_KEY
+            # Fully-qualified (not bare) service DNS: these are forwarded
+            # verbatim into every sandbox Job's env (see executor.go's
+            # Options.PacaAPIURL/PacaGatewayURL), which for the kubernetes
+            # sandbox backend may run in a different namespace than this
+            # Deployment (agentRunner.sandbox.namespace) — a bare name only
+            # resolves within the *same* namespace as the Pod using it.
             - name: PACA_API_URL
-              value: "http://{{ include "paca.fullname" . }}-api:8080"
+              value: "http://{{ include "paca.fullname" . }}-api.{{ .Release.Namespace }}.svc:8080"
             - name: PACA_GATEWAY_URL
-              value: "http://{{ include "paca.fullname" . }}-gateway:8080"
+              value: "http://{{ include "paca.fullname" . }}-gateway.{{ .Release.Namespace }}.svc:8080"
             - name: PACA_API_KEY
               valueFrom:
                 secretKeyRef:

@@ -13,9 +13,16 @@ spec:
     - port: {{ .Values.gateway.service.port }}
       targetPort: http
       name: http
+    {{- if ne (include "paca.gatewaySiteAddress" .) ":80" }}
+    # Caddy only binds 443 when SITE_ADDRESS is a real address (automatic
+    # HTTPS) — see paca.gatewaySiteAddress. When it falls back to the bare
+    # ":80" (ingress.enabled, or no publicUrl), nothing listens on 443, so
+    # advertising this port on a LoadBalancer/NodePort Service would just
+    # be a dead port.
     - port: 443
       targetPort: https
       name: https
+    {{- end }}
     # Internal-only mcp/skills bundle port — see the Caddyfile's own doc
     # comment on why agent-runner/the MCP server fetch plugin bundles here
     # instead of the public port above. Not meant to be reachable outside

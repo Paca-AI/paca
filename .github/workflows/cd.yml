@@ -386,6 +386,20 @@ jobs:
           set -euo pipefail
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
+
+          # Pin the five paca-built images to this release before
+          # packaging — values.yaml checks in "latest" for local dev, but
+          # a versioned chart install must not depend on whatever :latest
+          # happens to point at (promote-release above only retags
+          # :latest once this job has already succeeded, so it can be
+          # ahead or behind the release being installed). Postgres/
+          # valkey/minio/caddy tags are real pinned upstream versions and
+          # are deliberately left untouched.
+          for repo in paca-api paca-web paca-realtime paca-agent-runner paca-agent-server-goose; do
+            sed -i "/repository: ghcr.io\/paca-ai\/${repo}\$/{n;s/tag: \"latest\"/tag: \"${VERSION}\"/}" \
+              deploy/helm/paca/values.yaml
+          done
+
           mkdir -p dist
           helm package deploy/helm/paca \
             --version "$VERSION" \

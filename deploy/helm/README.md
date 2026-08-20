@@ -81,6 +81,12 @@ Then either point DNS at your ingress controller and set
 `gateway.service.type: LoadBalancer` to expose the gateway directly without
 an Ingress controller at all.
 
+If you don't have a domain yet and leave `publicUrl` empty for a
+ClusterIP/NodePort-only deployment, the gateway has nothing to
+auto-provision HTTPS for and serves plain HTTP — also set
+`api.cookieSecure: false` in that case, or the auth cookie won't stick
+(see that value's own comment in `values.yaml`).
+
 ## What's bundled vs. external
 
 Every stateful dependency mirrors Compose's own `--scale <service>=0`
@@ -95,6 +101,10 @@ pattern — disable the bundled version and point at a managed one instead:
 `web.enabled: false` drops the bundled frontend entirely if you're serving
 the SPA from a CDN instead — the gateway keeps routing `/api`, `/ws`, and
 `/storage` regardless.
+
+One exception to the component-for-component mirror: Compose's `db-backup`
+sidecar (the scheduled `pg_dump`) has no Helm equivalent — backups are left
+to your cluster's own CronJob/operator tooling instead.
 
 ## Plugin storage (advanced)
 

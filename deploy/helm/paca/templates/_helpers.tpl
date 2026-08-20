@@ -117,11 +117,6 @@ own doc comment in values.yaml on why that matters).
 {{- end -}}
 
 {{/*
-The plugins volume shared between api (writer) and gateway (reader) — see
-values.yaml's api.plugins.persistence doc comment. One definition so the
-api and gateway Deployments can never reference the volume differently.
-*/}}
-{{/*
 SITE_ADDRESS for the gateway's Caddyfile (see that file's own doc comment
 on what this controls). When an Ingress fronts the gateway, TLS is
 terminated there, so Caddy itself should stay plain HTTP — provisioning
@@ -142,6 +137,11 @@ plain ":80" when neither is configured.
 {{- end -}}
 {{- end -}}
 
+{{/*
+The plugins volume shared between api (writer) and gateway (reader) — see
+values.yaml's api.plugins.persistence doc comment. One definition so the
+api and gateway Deployments can never reference the volume differently.
+*/}}
 {{- define "paca.pluginsVolume" -}}
 {{- if .Values.api.plugins.persistence.enabled -}}
 persistentVolumeClaim:
