@@ -465,8 +465,14 @@ jobs:
       # Rekor's public transparency log, so an unpinned, drifting cosign
       # version would make those log entries harder to reason about after
       # the fact.
+      # @v4.1.2, not the floating @v3 major tag: @v3's installer script only
+      # knows how to verify the legacy .sig/.pem scheme cosign itself
+      # dropped after v3.0.0 (releases now ship a .sigstore.json bundle
+      # instead) — pinning cosign-release below to a 3.x release with an
+      # installer that still expects a .sig file 404s trying to fetch one.
+      # No floating @v4 tag exists yet for this action, only exact ones.
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.2
         with:
           cosign-release: "v3.1.3"
 
