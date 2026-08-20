@@ -48,7 +48,7 @@ helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> 
 
 `<release-version>` is a [release](https://github.com/Paca-AI/paca/releases) tag without its leading `v` (e.g. `0.13.1` for `v0.13.1`); omit `--version` to install the newest chart published. `my-values.yaml` needs `publicUrl` plus the required secrets (`jwtSecret`, `adminPassword`, `encryptionKey`, and others) — there are no guessable defaults.
 
-See [../../deploy/helm/README.md](../../deploy/helm/README.md) for the full values reference, Ingress/TLS setup, what's bundled vs. external, and troubleshooting.
+See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full values reference, Ingress/TLS setup, what's bundled vs. external, and troubleshooting.
 
 ---
 
