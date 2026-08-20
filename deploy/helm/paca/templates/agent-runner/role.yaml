@@ -1,0 +1,34 @@
+{{/*
+Grants agent-runner exactly what internal/sandbox/k8s needs to run the AI
+agent sandbox as one Kubernetes Job per conversation — create/get/list/
+watch/delete on batch/jobs (the sandbox's own lifecycle), get/list/watch on
+pods (finding the Job's Pod and its IP/status), and the pods/log and
+pods/exec subresources (diagnostics on a failed start, and the CopyToContainer/
+Exec operations executor.go relies on for skill files and git-diff
+computation — see that package's own doc comment). Scoped to exactly the
+sandbox namespace (see paca.sandboxNamespace) — no cluster-scoped
+permissions, and no access to any other resource type (Secrets, other
+Deployments, etc.) in that namespace either.
+*/}}
+{{- if and .Values.agentRunner.enabled (eq .Values.agentRunner.sandbox.backend "kubernetes") }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "paca.fullname" . }}-agent-runner-sandbox
+  namespace: {{ include "paca.sandboxNamespace" . }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "agent-runner") | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+{{- end }}

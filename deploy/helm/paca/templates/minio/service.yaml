@@ -1,0 +1,20 @@
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "minio") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "minio") | nindent 4 }}
+  ports:
+    - port: 9000
+      targetPort: api
+      name: api
+    - port: 9001
+      targetPort: console
+      name: console
+{{- end }}

@@ -15,6 +15,11 @@ name: cd
 #   <dockerhub-username>/paca-agent-runner:<tag> — Agent Runner service Docker image
 #   ghcr.io/paca-ai/paca-agent-server-goose:<tag>   — Sandbox image (Goose + Paca MCP pre-installed)
 #   <dockerhub-username>/paca-agent-server-goose:<tag> — Sandbox image (Goose + Paca MCP pre-installed)
+#   oci://ghcr.io/paca-ai/charts/paca:<tag> — Helm chart (deploy/helm/paca), pushed as an
+#     OCI artifact so it can be added to Artifact Hub as a "Helm charts (OCI)" repository —
+#     see the helm-chart job below for why OCI instead of a gh-pages index.yaml. Registering
+#     oci://ghcr.io/paca-ai/charts/paca with Artifact Hub itself is a one-time manual step on
+#     https://artifacthub.io/control-panel/repositories, not something this workflow can do.
 #   registry.npmjs.org @paca-ai/paca-mcp — MCP server npm package
 #   registry.npmjs.org @paca-ai/plugin-sdk-react — Plugin frontend SDK npm package
 #   GitHub Release assets:
@@ -334,6 +339,81 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # Helm chart → ghcr.io as an OCI artifact
+  #
+  # Pushed OCI-native (`helm push oci://...`) rather than the more common
+  # gh-pages/index.yaml layout, because every other artefact this workflow
+  # produces already lives under ghcr.io/paca-ai — this keeps the chart in
+  # the same place instead of standing up a second, differently-shaped
+  # publishing path (GitHub Pages, a gh-pages branch, chart-releaser-action).
+  # Artifact Hub's "Helm charts (OCI)" repository kind reads this directly;
+  # each chart needs its own OCI ref (one repository entry per chart on
+  # Artifact Hub's side), hence .../charts/paca rather than a shared charts/
+  # index the way the index.yaml layout would allow.
+  #
+  # Deliberately no :latest tag here unlike the Docker images above — OCI
+  # Helm repos are versioned through each immutable semver tag (Artifact Hub
+  # reads the version straight out of Chart.yaml/the tag, not a floating
+  # pointer), so a :latest tag would just be unused noise.
+  # ─────────────────────────────────────────────────────────────────────────────
+  helm-chart:
+    name: Package and push Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint deploy/helm/paca
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} \
+            --username ${{ github.actor }} --password-stdin
+
+      # Chart.yaml's own version/appVersion stay at their checked-in
+      # placeholders for local dev (helm lint/template need no release tag to
+      # run) — this release's real version is stamped on here instead, the
+      # same way build-acp-bridge/publish-mcp strip the leading "v" from the
+      # tag rather than editing a checked-in version field.
+      - name: Package chart
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+
+          # Pin the five paca-built images to this release before
+          # packaging — values.yaml checks in "latest" for local dev, but
+          # a versioned chart install must not depend on whatever :latest
+          # happens to point at (promote-release above only retags
+          # :latest once this job has already succeeded, so it can be
+          # ahead or behind the release being installed). Postgres/
+          # valkey/minio/caddy tags are real pinned upstream versions and
+          # are deliberately left untouched.
+          for repo in paca-api paca-web paca-realtime paca-agent-runner paca-agent-server-goose; do
+            sed -i "/repository: ghcr.io\/paca-ai\/${repo}\$/{n;s/tag: \"latest\"/tag: \"${VERSION}\"/}" \
+              deploy/helm/paca/values.yaml
+          done
+
+          mkdir -p dist
+          helm package deploy/helm/paca \
+            --version "$VERSION" \
+            --app-version "$VERSION" \
+            --destination dist
+
+      - name: Push chart
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          helm push "dist/paca-${VERSION}.tgz" oci://${{ env.REGISTRY }}/paca-ai/charts
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # MCP server npm package → npmjs.com
   # ─────────────────────────────────────────────────────────────────────────────
   publish-mcp:
@@ -529,6 +609,7 @@ jobs:
         web-image,
         agent-runner-image,
         agent-server-goose-image,
+        helm-chart,
         publish-mcp,
         build-acp-bridge,
       ]
@@ -604,6 +685,7 @@ jobs:
         web-image,
         agent-runner-image,
         agent-server-goose-image,
+        helm-chart,
         publish-mcp,
         build-acp-bridge,
         release-assets,

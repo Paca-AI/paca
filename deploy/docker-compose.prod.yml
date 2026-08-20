@@ -298,7 +298,7 @@ services:
   # Every sandbox container this spins up runs as root (see
   # services/agent-server/Dockerfile) and, via a dedicated `docker:dind`
   # sidecar this service also creates per conversation (see
-  # internal/sandbox/dind.go), can run arbitrary Docker containers of its
+  # internal/sandbox/docker/dind.go), can run arbitrary Docker containers of its
   # own — network-isolated from the host's real Docker daemon and from
   # every other conversation's sidecar, but still a meaningfully broad
   # capability handed to whatever an agent's own LLM decides to do. Run
@@ -342,7 +342,7 @@ services:
     volumes:
       # Sibling-container mode — also how this service spins up each
       # conversation's dedicated `docker:dind` sidecar (see this service's
-      # own doc comment above and internal/sandbox/dind.go), not just the
+      # own doc comment above and internal/sandbox/docker/dind.go), not just the
       # sandbox container itself.
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

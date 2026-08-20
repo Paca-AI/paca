@@ -1,7 +1,7 @@
 // Package e2e_test contains end-to-end tests for services/agent-runner.
 // Tests spin up real Postgres and Valkey containers via testcontainers-go
 // (shared for the whole suite) plus, where needed, real Docker sandbox
-// containers via this service's own sandbox.Manager — the same
+// containers via this service's own docker.Manager — the same
 // container-lifecycle code cmd/agent-runner's production binary uses, not a
 // second, testcontainers-driven reimplementation of it (see
 // helpers_test.go's rawUpstreamGooseImage doc comment).

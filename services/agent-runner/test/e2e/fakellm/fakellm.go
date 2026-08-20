@@ -80,7 +80,7 @@ type Server struct {
 // empty. Registers t.Cleanup to shut the server down.
 //
 // Binds 0.0.0.0, not "localhost": a sandbox container run by
-// sandbox.Manager on a CI runner (not itself inside Docker) reaches this
+// docker.Manager on a CI runner (not itself inside Docker) reaches this
 // process via the Docker default bridge's gateway IP, not loopback — see
 // BaseURL and helpers_test.go's dockerBridgeGatewayIP.
 func New(t *testing.T, script ...ScriptedReply) *Server {

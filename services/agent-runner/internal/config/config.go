@@ -31,7 +31,7 @@ type Settings struct {
 	PacaGatewayURL string
 
 	// PortPoolStart/PortPoolSize size the local-dev host-port pool (see
-	// sandbox.Manager).
+	// internal/sandbox/docker.Manager).
 	PortPoolStart int
 	PortPoolSize  int
 
@@ -78,6 +78,35 @@ type Settings struct {
 	// rebuilding the sandbox image first.
 	MCPDevSourceDir string
 
+	// SandboxBackend selects which internal/sandbox.Backend runs each
+	// conversation's sandbox: "docker" (default — internal/sandbox/docker.Manager,
+	// a Docker container reached via a mounted /var/run/docker.sock) or
+	// "kubernetes" (internal/sandbox/k8s.Manager, a Kubernetes Job — see
+	// that package's doc comment). Defaults to "docker" so an existing
+	// Docker Compose deployment needs no env changes.
+	SandboxBackend string
+
+	// SandboxNamespace is where the kubernetes backend creates every
+	// sandbox Job/Pod — only read when SandboxBackend is "kubernetes".
+	// Falls back to this process's own namespace (the file Kubernetes
+	// mounts into every Pod) when unset, so the common case — sandboxes
+	// alongside agent-runner itself — needs no explicit configuration.
+	SandboxNamespace string
+
+	// SandboxCPULimit/SandboxMemoryLimit set both the request and the
+	// limit on the kubernetes backend's sandbox containers, in
+	// resource.ParseQuantity syntax (e.g. "2", "4Gi"). Defaults match the
+	// docker backend's own hardcoded values — see
+	// internal/sandbox/k8s.defaultCPULimit/defaultMemoryLimit.
+	SandboxCPULimit    string
+	SandboxMemoryLimit string
+
+	// SandboxImagePullSecrets names Secrets already present in
+	// SandboxNamespace, attached to every sandbox Pod — needed when
+	// AgentServerImage is pulled from a private registry. Only read when
+	// SandboxBackend is "kubernetes".
+	SandboxImagePullSecrets []string
+
 	LogLevel string
 }
 
@@ -100,6 +129,10 @@ func Load() (Settings, error) {
 		InternalAPIKey:         os.Getenv("INTERNAL_API_KEY"),
 		LLMModelsPath:          envOr("LLM_MODELS_PATH", "./data/llm_models.json"),
 		MCPDevSourceDir:        os.Getenv("PACA_MCP_DEV_SOURCE_DIR"),
+		SandboxBackend:         envOr("SANDBOX_BACKEND", "docker"),
+		SandboxNamespace:       envOr("SANDBOX_NAMESPACE", inClusterNamespace()),
+		SandboxCPULimit:        os.Getenv("SANDBOX_CPU_LIMIT"),
+		SandboxMemoryLimit:     os.Getenv("SANDBOX_MEMORY_LIMIT"),
 		LogLevel:               envOr("LOG_LEVEL", "INFO"),
 	}
 
@@ -107,6 +140,14 @@ func Load() (Settings, error) {
 		for _, id := range strings.Split(raw, ",") {
 			if id = strings.TrimSpace(id); id != "" {
 				s.AllowedAgentIDs = append(s.AllowedAgentIDs, id)
+			}
+		}
+	}
+
+	if raw := os.Getenv("SANDBOX_IMAGE_PULL_SECRETS"); raw != "" {
+		for _, name := range strings.Split(raw, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				s.SandboxImagePullSecrets = append(s.SandboxImagePullSecrets, name)
 			}
 		}
 	}
@@ -136,7 +177,36 @@ func Load() (Settings, error) {
 				"(local dev / a fully cut-over deployment only)")
 	}
 
+	switch s.SandboxBackend {
+	case "docker":
+		// PortPoolStart/PortPoolSize above already default when unset —
+		// nothing further to validate for this backend.
+	case "kubernetes":
+		if s.SandboxNamespace == "" {
+			return Settings{}, fmt.Errorf(
+				"config: SANDBOX_NAMESPACE is required when SANDBOX_BACKEND=kubernetes " +
+					"and this process isn't running in a pod (no in-cluster namespace to fall back to)")
+		}
+	default:
+		return Settings{}, fmt.Errorf(`config: SANDBOX_BACKEND must be "docker" or "kubernetes", got %q`, s.SandboxBackend)
+	}
+
 	return s, nil
+}
+
+// inClusterNamespace reads the namespace Kubernetes mounts into every Pod
+// via its ServiceAccount projection — the same file client-go's own
+// rest.InClusterConfig-adjacent tooling (e.g. clientcmd's
+// InClusterNamespace) reads. Returns "" when absent (not running in a pod,
+// or SANDBOX_BACKEND=docker where this file was never expected to exist)
+// so SandboxNamespace's SANDBOX_NAMESPACE env var can still be set
+// explicitly either way.
+func inClusterNamespace() string {
+	b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func envOr(key, fallback string) string {

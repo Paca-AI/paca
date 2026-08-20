@@ -75,7 +75,8 @@ type Agent struct {
 	GitCommitterEmail string
 	// DockerEnabled opts this agent into agent-runner's per-conversation
 	// Docker-in-Docker sandbox sidecar (see
-	// services/agent-runner/internal/sandbox/dind.go) — off by default, since
+	// services/agent-runner/internal/sandbox/docker/dind.go and
+	// services/agent-runner/internal/sandbox/k8s/dind.go) — off by default, since
 	// most agents never run a Docker command and the sidecar is a real
 	// per-session cost (a privileged container plus a private network) to
 	// start unconditionally. LLM-only, same as SystemPrompt/GitCommitter*

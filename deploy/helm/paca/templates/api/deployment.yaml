@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paca.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "api") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: ENV
+              value: "production"
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: REDIS_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: JWT_SECRET
+            - name: JWT_ACCESS_TTL
+              value: {{ .Values.api.jwt.accessTtl | quote }}
+            - name: JWT_REFRESH_TTL
+              value: {{ .Values.api.jwt.refreshTtl | quote }}
+            - name: JWT_REFRESH_SESSION_TTL
+              value: {{ .Values.api.jwt.refreshSessionTtl | quote }}
+            - name: COOKIE_SECURE
+              value: {{ .Values.api.cookieSecure | quote }}
+            - name: ADMIN_USERNAME
+              value: {{ .Values.api.admin.username | quote }}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: ADMIN_PASSWORD
+            - name: STORAGE_PROVIDER
+              value: {{ .Values.storage.provider | quote }}
+            - name: STORAGE_ENDPOINT
+              value: {{ include "paca.storageEndpoint" . | quote }}
+            - name: STORAGE_PUBLIC_URL
+              value: {{ include "paca.storagePublicUrl" . | quote }}
+            - name: STORAGE_REGION
+              value: {{ .Values.storage.region | quote }}
+            - name: STORAGE_BUCKET
+              value: {{ .Values.storage.bucket | quote }}
+            - name: STORAGE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: STORAGE_ACCESS_KEY_ID
+            - name: STORAGE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: STORAGE_SECRET_ACCESS_KEY
+            - name: STORAGE_USE_SSL
+              value: {{ .Values.storage.useSSL | quote }}
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: ENCRYPTION_KEY
+            - name: PUBLIC_URL
+              value: {{ .Values.publicUrl | quote }}
+            - name: PLUGINS_WASM_DIR
+              value: /plugins
+            - name: PLUGINS_FRONTEND_DIR
+              value: /plugins-frontend
+            - name: PLUGINS_MCP_DIR
+              value: /plugins-mcp
+            - name: PLUGINS_SKILLS_DIR
+              value: /plugins-skills
+            {{- if .Values.agentRunner.enabled }}
+            - name: AGENT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: AGENT_API_KEY
+            - name: AI_AGENT_URL
+              value: "http://{{ include "paca.fullname" . }}-agent-runner:8080"
+            - name: AI_AGENT_INTERNAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: INTERNAL_API_KEY
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: plugins
+              mountPath: /plugins
+              subPath: backend
+            - name: plugins
+              mountPath: /plugins-frontend
+              subPath: frontend
+            - name: plugins
+              mountPath: /plugins-mcp
+              subPath: mcp
+            - name: plugins
+              mountPath: /plugins-skills
+              subPath: skills
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+      volumes:
+        - name: plugins
+          {{- include "paca.pluginsVolume" . | nindent 10 }}

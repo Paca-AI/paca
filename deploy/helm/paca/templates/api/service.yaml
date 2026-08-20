@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-realtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "realtime") | nindent 4 }}
+spec:
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "realtime") | nindent 4 }}
+  ports:
+    - port: 3001
+      targetPort: http
+      name: http

@@ -32,6 +32,8 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/registry"
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
+	dockersandbox "github.com/Paca-AI/agent-runner/internal/sandbox/docker"
+	k8ssandbox "github.com/Paca-AI/agent-runner/internal/sandbox/k8s"
 	"github.com/Paca-AI/agent-runner/internal/secret"
 )
 
@@ -77,12 +79,12 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("main: %w", err)
 	}
 
-	sandboxMgr, err := sandbox.NewManager(settings.PortPoolStart, settings.PortPoolSize)
+	sandboxBackend, err := newSandboxBackend(settings)
 	if err != nil {
 		return fmt.Errorf("main: %w", err)
 	}
 
-	exec := executor.New(sandboxMgr, encryptor, executor.Options{
+	exec := executor.New(sandboxBackend, encryptor, executor.Options{
 		Image:           settings.AgentServerImage,
 		PacaAPIKey:      settings.PacaAPIKey,
 		PacaAPIURL:      settings.PacaAPIURL,
@@ -136,6 +138,7 @@ func run(log *slog.Logger) error {
 
 	log.Info("agent-runner: starting",
 		"image", settings.AgentServerImage,
+		"sandbox_backend", settings.SandboxBackend,
 		"allowed_agent_ids", settings.AllowedAgentIDs,
 		"chat_sandbox_idle_timeout", settings.ChatSandboxIdleTimeout,
 		"http_addr", settings.HTTPAddr,
@@ -145,6 +148,30 @@ func run(log *slog.Logger) error {
 	go runHTTPServer(ctx, httpServer, log)
 	consumer.Run(ctx)
 	return nil
+}
+
+// newSandboxBackend builds the sandbox.Backend settings.SandboxBackend
+// selects — dockersandbox.Manager (one Docker container per conversation,
+// reached via a mounted /var/run/docker.sock) for "docker", or
+// k8ssandbox.Manager (one Kubernetes Job per conversation) for
+// "kubernetes". config.Load already rejects any other value, so the
+// switch's default case here is unreachable in practice — kept as an
+// explicit error rather than a silent fallback so a future third backend
+// value can't slip through unwired.
+func newSandboxBackend(settings config.Settings) (sandbox.Backend, error) {
+	switch settings.SandboxBackend {
+	case "kubernetes":
+		return k8ssandbox.NewManager(k8ssandbox.Options{
+			Namespace:        settings.SandboxNamespace,
+			CPULimit:         settings.SandboxCPULimit,
+			MemoryLimit:      settings.SandboxMemoryLimit,
+			ImagePullSecrets: settings.SandboxImagePullSecrets,
+		})
+	case "docker":
+		return dockersandbox.NewManager(settings.PortPoolStart, settings.PortPoolSize)
+	default:
+		return nil, fmt.Errorf("main: unknown SANDBOX_BACKEND %q", settings.SandboxBackend)
+	}
 }
 
 // runHTTPServer serves internal/acpbridge.Server's routes until ctx is
