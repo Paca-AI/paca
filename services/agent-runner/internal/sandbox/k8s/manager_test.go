@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	utilexec "k8s.io/utils/exec"
@@ -148,7 +149,11 @@ func TestExitCodeFromExecErr_FalseForUnrelatedError(t *testing.T) {
 }
 
 func TestDindContainer_IsPrivilegedAndUsesPinnedImage(t *testing.T) {
-	c := dindContainer()
+	limits := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2"), corev1.ResourceMemory: resource.MustParse("4Gi")},
+		Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2"), corev1.ResourceMemory: resource.MustParse("4Gi")},
+	}
+	c := dindContainer(limits)
 	if c.Name != dindContainerName {
 		t.Errorf("dindContainer name = %q, want %q", c.Name, dindContainerName)
 	}
@@ -157,6 +162,9 @@ func TestDindContainer_IsPrivilegedAndUsesPinnedImage(t *testing.T) {
 	}
 	if c.Image == "" {
 		t.Error("dindContainer has no image set")
+	}
+	if c.Resources.Limits.Cpu().IsZero() || c.Resources.Limits.Memory().IsZero() {
+		t.Error("dindContainer has no resource limits set — an unbounded privileged sidecar can starve its node")
 	}
 }
 

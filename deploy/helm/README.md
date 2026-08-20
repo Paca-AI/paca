@@ -26,16 +26,38 @@ namespace) allowing it to create/get/list/watch/delete `batch/jobs`,
 get/list/watch `pods`, and use the `pods/log` and `pods/exec` subresources
 (needed to write skill files into a sandbox and compute git diffs after a
 turn — see that package's own doc comments for why). No cluster-scoped
-permissions, and no access to anything outside that one namespace.
+permissions, and no access to any *other resource type* (Secrets, other
+Deployments/StatefulSets, etc.) in that namespace.
+
+**This does not mean no access to other Pods in that namespace.**
+Kubernetes RBAC can't scope `pods/exec`/`pods/log` to only the Pods a Role's
+own subject created — `get`/`list`/`watch`/`exec`/`log` on `pods` grants
+those verbs against *every* Pod in the namespace, not just agent-runner's
+own sandbox Jobs. By default `agentRunner.sandbox.namespace` is the same
+namespace as every other component this chart deploys — postgres, valkey,
+minio, api, web, gateway — so a default install grants agent-runner's
+ServiceAccount `pods/exec` into (and log access on) those Pods too, not
+only sandbox Jobs. **Set `agentRunner.sandbox.namespace` to a namespace
+dedicated to sandboxes only** (nothing else deployed into it) if you want
+that RBAC grant's blast radius actually bounded to sandboxes — this chart
+doesn't create that namespace for you; create and reference it via that
+value.
+
+Every sandbox Pod's primary container runs as root — the same reason
+`services/agent-runner/Dockerfile` itself runs as root, just for the
+sandbox image instead: an AI coding agent installing packages,
+chown/chmod-ing arbitrary repo files, etc. needs it. A namespace enforcing
+the **Restricted** Pod Security Standard will reject *every* sandbox Pod
+outright on that basis alone, whether or not the agent has `docker_enabled`
+— **Baseline** is the strictest Pod Security Standard the kubernetes
+sandbox backend supports.
 
 If an agent has `docker_enabled: true` in the database, its sandbox Pod
 additionally gets a privileged `docker:dind` sidecar so it can run Docker
 commands. That's the same trade-off `docker-compose.prod.yml`'s own
 per-conversation sidecar makes, just running inside the sandbox's own Pod
-instead of a paired container. A namespace enforcing the **Restricted** Pod
-Security Standard will reject that Pod outright — see
-`agentRunner.sandbox` in `values.yaml` if you plan to use `docker_enabled`
-agents.
+instead of a paired container — see `agentRunner.sandbox` in `values.yaml`
+if you plan to use `docker_enabled` agents.
 
 ## Quick start
 
@@ -146,9 +168,10 @@ after any `values.yaml` change.
 
 - **A sandbox Job never starts a Pod / stays Pending**: check
   `kubectl describe job -n <sandbox namespace> <job-name>` — usually a
-  resource quota, an unavailable `agentRunner.sandbox.image`, or (for
-  `docker_enabled` agents) a Pod Security Standard rejecting the
-  privileged `dind` sidecar (see above).
+  resource quota, an unavailable `agentRunner.sandbox.image`, or a Pod
+  Security Standard stricter than **Baseline** rejecting the sandbox Pod
+  outright (or, for `docker_enabled` agents specifically, its privileged
+  `dind` sidecar) — see above.
 - **`Forbidden` errors from agent-runner creating/watching Jobs**: the
   Role this chart grants is scoped to `agentRunner.sandbox.namespace` —
   if you changed that value after first install, `helm upgrade` moves the

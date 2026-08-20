@@ -43,13 +43,28 @@ const (
 )
 
 // dindContainer returns the docker:dind sidecar container spec appended to
-// a sandbox Pod's Containers when cfg.DockerEnabled.
-func dindContainer() corev1.Container {
+// a sandbox Pod's Containers when cfg.DockerEnabled. resources is the same
+// ResourceRequirements Start already computed for the primary container —
+// reused here rather than left unset, matching ../docker/dind.go's own
+// sidecar (which has always requested/limited its dind container, 2
+// CPU/4GiB hardcoded); without a limit here specifically, this privileged
+// sidecar could consume unbounded CPU/memory on whatever node it lands on,
+// a bigger blast radius on Kubernetes' typical multi-pod-per-node
+// bin-packing than the docker backend's one-sidecar-per-dedicated-host
+// model.
+func dindContainer(resources corev1.ResourceRequirements) corev1.Container {
 	return corev1.Container{
-		Name:  dindContainerName,
-		Image: sandbox.DindImage,
-		Env:   []corev1.EnvVar{{Name: "DOCKER_TLS_CERTDIR", Value: ""}},
+		Name:      dindContainerName,
+		Image:     sandbox.DindImage,
+		Env:       []corev1.EnvVar{{Name: "DOCKER_TLS_CERTDIR", Value: ""}},
+		Resources: resources,
 		SecurityContext: &corev1.SecurityContext{
+			// Privileged implies AllowPrivilegeEscalation and root
+			// regardless of what else is set here — dockerd needs to
+			// manage its own cgroups/mounts/iptables, nothing less grants
+			// that (see the package doc comment). No capabilities/seccomp
+			// hardening applies on top of Privileged: true; it overrides
+			// them.
 			Privileged: ptr.To(true),
 		},
 	}

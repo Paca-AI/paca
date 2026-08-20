@@ -269,6 +269,15 @@ agentRunner:
     # namespace this resolves to, so changing it without also placing
     # equivalent RBAC there yourself will make sandbox creation fail with
     # a Forbidden error.
+    #
+    # Recommended: point this at a namespace dedicated to sandboxes only,
+    # not the default (this release's own namespace, alongside postgres/
+    # valkey/minio/api/web/gateway). Kubernetes RBAC can't scope the
+    # pods/exec and pods/log grant below to only agent-runner's own Jobs —
+    # it's every Pod in whichever namespace this resolves to. Left at the
+    # default, agent-runner's ServiceAccount can exec into and read logs
+    # from this release's own datastores too. See deploy/helm/README.md's
+    # RBAC section.
     namespace: ""
     # Requests == limits on every sandbox Pod's primary container —
     # matches the docker backend's own hardcoded 2 CPU / 4GiB.

@@ -233,9 +233,15 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 		Env:       env,
 		Resources: resources,
 		Ports:     []corev1.ContainerPort{{ContainerPort: int32(sandbox.GooseServePort)}},
+		// No SecurityContext/RunAsNonRoot here: the sandbox needs to run as
+		// root (package installs, chown/chmod across arbitrary repo files,
+		// etc. — the same reason services/agent-runner/Dockerfile itself
+		// runs as root), so a namespace enforcing the Restricted Pod
+		// Security Standard rejects every sandbox Pod outright, not only
+		// DockerEnabled ones — see deploy/helm/paca's own README.
 	}}
 	if cfg.DockerEnabled {
-		containers = append(containers, dindContainer())
+		containers = append(containers, dindContainer(resources))
 	}
 
 	terminationGrace := int64(sandbox.StopTimeout.Seconds())
