@@ -363,6 +363,13 @@ jobs:
     name: Package and push Helm chart
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      # Needed for cosign's keyless signing below — it exchanges this job's
+      # OIDC token for a short-lived cert from Sigstore's Fulcio instead of
+      # a stored private key.
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -433,6 +440,23 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | oras login ${{ env.REGISTRY }} \
             --username ${{ github.actor }} --password-stdin
+
+      # Keyless signing (no key material to generate/store/rotate): cosign
+      # trades this job's GitHub OIDC token for a short-lived cert from
+      # Sigstore's Fulcio, signs with that, and records the signature in
+      # Rekor's transparency log. Artifact Hub's OCI Helm tracker checks
+      # for exactly this — see HasCosignSignature in artifacthub/hub. Runs
+      # after the oras login above since cosign reads the same Docker
+      # credential store oras does (not Helm's registry config).
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign chart with cosign
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          cosign sign --yes "${{ env.REGISTRY }}/paca-ai/charts/paca:${VERSION}"
 
       - name: Push Artifact Hub repository metadata
         run: |

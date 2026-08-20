@@ -1,0 +1,298 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "paca",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "publicUrl": { "type": "string" },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "jwtSecret": { "type": "string" },
+        "adminPassword": { "type": "string" },
+        "encryptionKey": { "type": "string" },
+        "internalApiKey": { "type": "string" },
+        "agentApiKey": { "type": "string" },
+        "postgresPassword": { "type": "string" },
+        "storageAccessKeyId": { "type": "string" },
+        "storageSecretAccessKey": { "type": "string" }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" }
+          }
+        },
+        "database": { "type": "string" },
+        "username": { "type": "string" },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "size": { "type": "string" },
+            "storageClassName": { "type": "string" }
+          }
+        },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    },
+    "externalDatabaseUrl": { "type": "string" },
+    "valkey": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" }
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "size": { "type": "string" },
+            "storageClassName": { "type": "string" }
+          }
+        },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    },
+    "externalRedisUrl": { "type": "string" },
+    "minio": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" }
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "size": { "type": "string" },
+            "storageClassName": { "type": "string" }
+          }
+        },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "type": "string", "enum": ["minio", "s3"] },
+        "endpoint": { "type": "string" },
+        "publicUrl": { "type": "string" },
+        "region": { "type": "string" },
+        "bucket": { "type": "string" },
+        "useSSL": { "type": "boolean" }
+      }
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/definitions/image" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "admin": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "username": { "type": "string" }
+          }
+        },
+        "jwt": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "accessTtl": { "type": "string" },
+            "refreshTtl": { "type": "string" },
+            "refreshSessionTtl": { "type": "string" }
+          }
+        },
+        "cookieSecure": { "type": "boolean" },
+        "plugins": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "persistence": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "accessMode": { "type": "string" },
+                "storageClassName": { "type": "string" },
+                "size": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "web": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/definitions/image" },
+        "resources": { "$ref": "#/definitions/resources" }
+      }
+    },
+    "realtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/definitions/image" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "logLevel": { "type": "string" },
+        "corsOrigins": { "type": "string" }
+      }
+    },
+    "agentRunner": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/definitions/image" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "allowedAgentIds": { "type": "string" },
+        "workerConcurrency": { "type": "integer", "minimum": 1 },
+        "chatSandboxIdleTimeoutMinutes": { "type": "integer", "minimum": 0 },
+        "logLevel": { "type": "string" },
+        "sandbox": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "backend": { "type": "string", "enum": ["kubernetes", "docker"] },
+            "image": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string" }
+              }
+            },
+            "namespace": { "type": "string" },
+            "cpuLimit": { "type": "string" },
+            "memoryLimit": { "type": "string" },
+            "imagePullSecrets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/definitions/image" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "service": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "type": { "type": "string", "enum": ["ClusterIP", "LoadBalancer", "NodePort"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "type": "object", "additionalProperties": true },
+        "host": { "type": "string" },
+        "tls": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "secretName": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
