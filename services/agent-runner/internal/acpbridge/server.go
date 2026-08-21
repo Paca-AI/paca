@@ -159,7 +159,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	// field; an explicit [] means a current bridge with no surviving ACP
 	// sessions, which is exactly the restart/orphan signal we need.
 	if hello.ActiveConversations != nil {
-		s.reconcileStaleConversations(r.Context(), agentID, hello.ActiveConversations, connectedAt)
+		s.reconcileStaleConversations(context.WithoutCancel(r.Context()), agentID, hello.ActiveConversations, connectedAt)
 	}
 
 	s.relayMessages(r.Context(), conn, agentID)
