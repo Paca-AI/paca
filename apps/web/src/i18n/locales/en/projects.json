@@ -1043,7 +1043,8 @@
 				"startDate": "Start Date",
 				"dueDate": "Due Date",
 				"epic": "Epic",
-				"created": "Created"
+				"created": "Created",
+				"tags": "Tags"
 			},
 			"unassigned": "Unassigned",
 			"noEpic": "No Epic"
@@ -1321,7 +1322,8 @@
 			"reporter": "Reporter",
 			"startDate": "Start Date",
 			"dueDate": "Due Date",
-			"created": "Created"
+			"created": "Created",
+			"tags": "Tags"
 		}
 	},
 	"automation": {

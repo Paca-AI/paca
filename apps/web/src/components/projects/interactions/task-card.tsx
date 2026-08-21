@@ -509,7 +509,11 @@ export function TaskCard({
 						key="start_date"
 						className="text-xs text-muted-foreground/70 shrink-0"
 					>
-						{formatDate(task.start_date, { month: "short", day: "numeric" })}
+						{formatDate(
+							task.start_date,
+							{ month: "short", day: "numeric" },
+							{ dateOnly: true },
+						)}
 					</span>
 				) : null;
 
@@ -519,7 +523,11 @@ export function TaskCard({
 						key="due_date"
 						className="text-xs text-muted-foreground/70 shrink-0"
 					>
-						{formatDate(task.due_date, { month: "short", day: "numeric" })}
+						{formatDate(
+							task.due_date,
+							{ month: "short", day: "numeric" },
+							{ dateOnly: true },
+						)}
 					</span>
 				) : null;
 
@@ -681,7 +689,11 @@ export function TaskCard({
 								key={fieldKey}
 								className="text-xs text-muted-foreground/70 shrink-0"
 							>
-								{formatDate(String(val), { month: "short", day: "numeric" })}
+								{formatDate(
+									String(val),
+									{ month: "short", day: "numeric" },
+									{ dateOnly: true },
+								)}
 							</span>
 						);
 					case "select":

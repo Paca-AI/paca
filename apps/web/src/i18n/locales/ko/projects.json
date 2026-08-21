@@ -1043,7 +1043,8 @@
 				"startDate": "시작일",
 				"dueDate": "마감일",
 				"epic": "에픽",
-				"created": "생성일"
+				"created": "생성일",
+				"tags": "태그"
 			},
 			"unassigned": "담당자 없음",
 			"noEpic": "에픽 없음"
@@ -1321,7 +1322,8 @@
 			"reporter": "보고자",
 			"startDate": "시작일",
 			"dueDate": "마감일",
-			"created": "생성일"
+			"created": "생성일",
+			"tags": "태그"
 		}
 	},
 	"automation": {
