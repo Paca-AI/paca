@@ -387,6 +387,7 @@ func New(cfg *config.Config) (*App, error) {
 	// misconfigured IdP fails fast at startup instead of at first login.
 	var oidcHandler *handler.OIDCHandler
 	if cfg.OIDC.Enabled {
+		identityRepo := pgRepo.NewExternalIdentityRepository(db)
 		oidcSvc, err := oidcsvc.New(context.Background(), oidcsvc.Options{
 			IssuerURL:     cfg.OIDC.IssuerURL,
 			ClientID:      cfg.OIDC.ClientID,
@@ -394,13 +395,12 @@ func New(cfg *config.Config) (*App, error) {
 			RedirectURL:   cfg.OIDC.RedirectURL,
 			Scopes:        cfg.OIDC.Scopes,
 			DisplayName:   cfg.OIDC.DisplayName,
-			JITProvision:  cfg.OIDC.JITProvision,
 			DefaultRole:   cfg.OIDC.DefaultRole,
 			UsernameClaim: cfg.OIDC.UsernameClaim,
 		},
 			redisRepo.NewOIDCLoginTxStore(redisClient),
 			userRepo,
-			pgRepo.NewExternalIdentityRepository(db),
+			identityRepo,
 			globalRoleRepo,
 			authService,
 			log)
@@ -412,6 +412,22 @@ func New(cfg *config.Config) (*App, error) {
 		if _, err := globalRoleRepo.FindByName(context.Background(), cfg.OIDC.DefaultRole); err != nil {
 			return nil, fmt.Errorf("bootstrap: oidc: default role %q not found: %w", cfg.OIDC.DefaultRole, err)
 		}
+		if !cfg.OIDC.LocalLoginEnabled {
+			// SSO-only lockout guard: with password login off, the only way to
+			// administer Paca is an SSO-bound ADMIN/SUPER_ADMIN user. JIT users
+			// never get elevated roles automatically, so a fresh deployment that
+			// starts SSO-only would have no administrator at all. Require the
+			// staged rollout instead: enable SSO alongside local login, promote
+			// an SSO user to admin, then disable local login.
+			privileged, err := identityRepo.HasSSOUserWithRole(context.Background(), []string{"ADMIN", "SUPER_ADMIN"})
+			if err != nil {
+				return nil, fmt.Errorf("bootstrap: oidc: sso-only admin check: %w", err)
+			}
+			if !privileged {
+				return nil, errors.New("bootstrap: oidc: LOCAL_LOGIN_ENABLED=false requires at least one ADMIN/SUPER_ADMIN user bound to SSO " +
+					"(staged rollout: enable SSO with local login on, promote an SSO user to admin, then disable local login)")
+			}
+		}
 		// Where the browser lands after the callback — the web app's public
 		// base URL, or the API origin's root when PUBLIC_URL is unset.
 		webBaseURL := cfg.Server.PublicURL
@@ -421,7 +437,6 @@ func New(cfg *config.Config) (*App, error) {
 		oidcHandler = handler.NewOIDCHandler(oidcSvc, cookieCfg, webBaseURL)
 		log.Info("oidc sso enabled",
 			"issuer", cfg.OIDC.IssuerURL,
-			"jit_provision", cfg.OIDC.JITProvision,
 			"local_login_enabled", cfg.OIDC.LocalLoginEnabled)
 	}
 

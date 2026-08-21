@@ -266,7 +266,10 @@ func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
 		return cfg, nil
 	}
 
-	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(env("OIDC_ISSUER_URL", "")), "/")
+	// The issuer is an identifier, not a normalizable URL: discovery metadata
+	// and ID-token iss claims must match it exactly, and some providers issue
+	// identifiers with a trailing slash. Only trim surrounding whitespace.
+	cfg.IssuerURL = strings.TrimSpace(env("OIDC_ISSUER_URL", ""))
 	cfg.ClientID = strings.TrimSpace(env("OIDC_CLIENT_ID", ""))
 	cfg.ClientSecret = env("OIDC_CLIENT_SECRET", "")
 	cfg.DisplayName = env("OIDC_DISPLAY_NAME", "Single Sign-On")
@@ -304,12 +307,10 @@ func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
 		cfg.Scopes = append([]string{"openid"}, cfg.Scopes...)
 	}
 
-	jit, err := strconv.ParseBool(env("OIDC_JIT_PROVISION", "true"))
-	if err != nil {
-		return cfg, fmt.Errorf("config: OIDC_JIT_PROVISION: %w", err)
-	}
-	cfg.JITProvision = jit
-
+	// Note: JIT provisioning is intentionally not configurable — it is
+	// always on. The provisioning flow is the only supported write path for
+	// user_external_identities, so a "no JIT" mode would leave first logins
+	// with no way to succeed. Revisit when an admin linking API exists.
 	cfg.DefaultRole = strings.TrimSpace(env("OIDC_DEFAULT_ROLE", "USER"))
 	if cfg.DefaultRole == "" {
 		cfg.DefaultRole = "USER"

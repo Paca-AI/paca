@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -40,10 +41,17 @@ type mockIdP struct {
 
 	// tokenClaims overrides the claims embedded in issued ID tokens.
 	tokenClaims map[string]any
+	// userInfoClaims overrides the claims served by the userinfo endpoint.
+	userInfoClaims map[string]any
 	// signKey, when non-nil, replaces the signing key (bad-signature tests).
 	altKey *rsa.PrivateKey
 	// breakTokenEndpoint makes the token endpoint return a 500.
 	breakTokenEndpoint bool
+	// breakUserInfo makes the userinfo endpoint return a 500.
+	breakUserInfo bool
+	// lastBearerToken records the Authorization header of the last userinfo
+	// request (the access token from the code exchange).
+	lastBearerToken string
 }
 
 func newMockIdP(t *testing.T) *mockIdP {
@@ -61,6 +69,7 @@ func newMockIdP(t *testing.T) *mockIdP {
 			"issuer":                 base,
 			"authorization_endpoint": base + "/authorize",
 			"token_endpoint":         base + "/token",
+			"userinfo_endpoint":      base + "/userinfo",
 			"jwks_uri":               base + "/keys",
 		})
 	})
@@ -91,6 +100,27 @@ func newMockIdP(t *testing.T) *mockIdP {
 			"expires_in":   3600,
 			"id_token":     idToken,
 		})
+	})
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+		idp.mu.Lock()
+		bearer := r.Header.Get("Authorization")
+		idp.lastBearerToken = bearer
+		claims := idp.userInfoClaims
+		breakUserInfo := idp.breakUserInfo
+		idp.mu.Unlock()
+		if !strings.HasPrefix(bearer, "Bearer ") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if breakUserInfo {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		resp := map[string]any{"sub": "user-1234"}
+		for k, v := range claims {
+			resp[k] = v
+		}
+		writeJSON(w, resp)
 	})
 
 	idp.server = httptest.NewServer(mux)
@@ -259,6 +289,10 @@ type stubIdentities struct {
 	// usernameTakenOnFirst makes the next ProvisionWithUser call fail with
 	// ErrUsernameTaken (simulating a race the pre-check lost).
 	usernameTakenOnFirst bool
+	// identityTakenOnFirst makes the next ProvisionWithUser call fail with
+	// ErrIdentityTaken (simulating a concurrent first login that won the
+	// (issuer, subject) unique-index race).
+	identityTakenOnFirst bool
 }
 
 func newStubIdentities() *stubIdentities {
@@ -285,6 +319,11 @@ func (s *stubIdentities) TouchLastLogin(_ context.Context, _ uuid.UUID) error {
 
 func (s *stubIdentities) ProvisionWithUser(_ context.Context, u *userdom.User, identity *extiddom.Identity) error {
 	s.mu.Lock()
+	if s.identityTakenOnFirst {
+		s.identityTakenOnFirst = false
+		s.mu.Unlock()
+		return extiddom.ErrIdentityTaken
+	}
 	if s.usernameTakenOnFirst {
 		s.usernameTakenOnFirst = false
 		s.mu.Unlock()
@@ -353,7 +392,6 @@ func newHarness(t *testing.T, mutate func(*Options)) *harness {
 		RedirectURL:   "https://paca.example.com/api/v1/auth/oidc/callback",
 		Scopes:        []string{"openid", "profile", "email"},
 		DisplayName:   "Company SSO",
-		JITProvision:  true,
 		DefaultRole:   "USER",
 		UsernameClaim: "preferred_username",
 	}
@@ -371,7 +409,7 @@ func newHarness(t *testing.T, mutate func(*Options)) *harness {
 // of the resulting authorization URL.
 func (h *harness) beginLoginAndExtract(t *testing.T) (authURL *url.URL, state, nonce, challenge string) {
 	t.Helper()
-	raw, err := h.svc.BeginLogin(context.Background())
+	raw, state, err := h.svc.BeginLogin(context.Background())
 	if err != nil {
 		t.Fatalf("BeginLogin: %v", err)
 	}
@@ -380,7 +418,12 @@ func (h *harness) beginLoginAndExtract(t *testing.T) (authURL *url.URL, state, n
 		t.Fatalf("parse auth url: %v", err)
 	}
 	q := u.Query()
-	return u, q.Get("state"), q.Get("nonce"), q.Get("code_challenge")
+	// The returned state must be the one carried in the authorization URL —
+	// the handler mirrors it into the browser-binding cookie.
+	if q.Get("state") != state {
+		t.Fatalf("BeginLogin state %q does not match auth url state %q", state, q.Get("state"))
+	}
+	return u, state, q.Get("nonce"), q.Get("code_challenge")
 }
 
 // runCallback performs a full BeginLogin → Callback round-trip using the
@@ -394,6 +437,7 @@ func (h *harness) runCallback(t *testing.T) error {
 		"preferred_username": "alice",
 		"name":               "Alice Example",
 		"email":              "alice@example.com",
+		"email_verified":     true,
 	}
 	h.idp.mu.Unlock()
 	_, err := h.svc.Callback(context.Background(), "auth-code-1", state)
@@ -659,13 +703,6 @@ func TestCallback_TokenEndpointFailureIsGeneric(t *testing.T) {
 // Identity resolution / JIT
 // ---------------------------------------------------------------------------
 
-func TestCallback_JITDisabledRejectsUnknownIdentity(t *testing.T) {
-	h := newHarness(t, func(o *Options) { o.JITProvision = false })
-	if err := h.runCallback(t); !errors.Is(err, ErrUserNotProvisioned) {
-		t.Fatalf("expected ErrUserNotProvisioned, got %v", err)
-	}
-}
-
 func TestCallback_DeletedUserRejected(t *testing.T) {
 	h := newHarness(t, nil)
 	if err := h.runCallback(t); err != nil {
@@ -743,20 +780,196 @@ func TestCallback_UsernameRaceRetried(t *testing.T) {
 	}
 }
 
+// wantFallback mirrors the opaque username fallback: sso- + first 12 hex
+// chars of SHA-256(issuer NUL subject).
+func wantFallback(issuer, subject string) string {
+	sum := sha256.Sum256([]byte(issuer + "\x00" + subject))
+	return "sso-" + hex.EncodeToString(sum[:])[:12]
+}
+
 func TestUsernameCandidate(t *testing.T) {
+	const issuer = "https://id.example.com"
 	cases := []struct {
 		claim, subject, want string
 	}{
 		{"Alice_Example", "s", "alice_example"},
 		{"alice@example.com", "s", "alice-example.com"},
-		{"ab", "abcdefgh123", "sso-abcdefgh"}, // too short → subject fallback
-		{"", "abcdefgh123", "sso-abcdefgh"},   // missing claim → fallback
+		{"ab", "abcdefgh123", wantFallback(issuer, "abcdefgh123")}, // too short → opaque fallback
+		{"", "abcdefgh123", wantFallback(issuer, "abcdefgh123")},   // missing claim → fallback
+		// The raw subject is an arbitrary IdP-local string — the fallback
+		// must never leak it into the username.
+		{"", "!!!---raw-subject---!!!", wantFallback(issuer, "!!!---raw-subject---!!!")},
 		{"UPPER", "s", "upper"},
 		{"--leader--", "abcdefgh123", "leader"}, // surrounding dashes trimmed
 	}
 	for _, tc := range cases {
-		if got := usernameCandidate(tc.claim, tc.subject); got != tc.want {
+		if got := usernameCandidate(tc.claim, issuer, tc.subject); got != tc.want {
 			t.Errorf("usernameCandidate(%q, %q) = %q, want %q", tc.claim, tc.subject, got, tc.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UserInfo enrichment
+// ---------------------------------------------------------------------------
+
+// TestCallback_UserInfoEnrichesProfile verifies that profile claims served
+// only by the UserInfo endpoint (not the ID token) still reach the JIT user —
+// many standard providers do not put profile/email into the ID token.
+func TestCallback_UserInfoEnrichesProfile(t *testing.T) {
+	h := newHarness(t, nil)
+	_, state, nonce, _ := h.beginLoginAndExtract(t)
+
+	// ID token carries identity only; the profile lives in UserInfo.
+	h.idp.mu.Lock()
+	h.idp.tokenClaims = map[string]any{"nonce": nonce}
+	h.idp.userInfoClaims = map[string]any{
+		"preferred_username": "alice",
+		"name":               "Alice Example",
+		"email":              "alice@example.com",
+		"email_verified":     true,
+	}
+	h.idp.mu.Unlock()
+
+	if _, err := h.svc.Callback(context.Background(), "code", state); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	created := h.identities.provisionUser[0]
+	if created.Username != "alice" || created.FullName != "Alice Example" {
+		t.Errorf("expected userinfo-derived profile, got %+v", created)
+	}
+	if created.Email == nil || *created.Email != "alice@example.com" {
+		t.Errorf("expected userinfo email, got %v", created.Email)
+	}
+	// The userinfo request must have been authenticated with the access
+	// token issued by the code exchange.
+	h.idp.mu.Lock()
+	bearer := h.idp.lastBearerToken
+	h.idp.mu.Unlock()
+	if !strings.HasPrefix(bearer, "Bearer ") || strings.TrimPrefix(bearer, "Bearer ") == "" {
+		t.Errorf("userinfo must be called with the exchanged access token, got %q", bearer)
+	}
+}
+
+// TestCallback_UserInfoSubjectMismatchIgnored: a UserInfo response about a
+// different subject must never be merged into the login.
+func TestCallback_UserInfoSubjectMismatchIgnored(t *testing.T) {
+	h := newHarness(t, nil)
+	_, state, nonce, _ := h.beginLoginAndExtract(t)
+
+	h.idp.mu.Lock()
+	h.idp.tokenClaims = map[string]any{
+		"nonce":              nonce,
+		"preferred_username": "idtoken-name",
+		"name":               "ID Token Name",
+	}
+	h.idp.userInfoClaims = map[string]any{
+		"sub":                "someone-else",
+		"preferred_username": "attacker",
+		"name":               "Attacker Name",
+		"email":              "attacker@example.com",
+		"email_verified":     true,
+	}
+	h.idp.mu.Unlock()
+
+	if _, err := h.svc.Callback(context.Background(), "code", state); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	created := h.identities.provisionUser[0]
+	if created.Username != "idtoken-name" || created.FullName != "ID Token Name" {
+		t.Errorf("mismatched userinfo must be ignored, got %+v", created)
+	}
+}
+
+// TestCallback_UserInfoUnavailableFallsBack: when the userinfo endpoint
+// fails, the ID-token claims stand — identity was already established.
+func TestCallback_UserInfoUnavailableFallsBack(t *testing.T) {
+	h := newHarness(t, nil)
+	_, state, nonce, _ := h.beginLoginAndExtract(t)
+
+	h.idp.mu.Lock()
+	h.idp.tokenClaims = map[string]any{
+		"nonce":              nonce,
+		"preferred_username": "alice",
+		"name":               "Alice Example",
+		"email":              "alice@example.com",
+		"email_verified":     true,
+	}
+	h.idp.breakUserInfo = true
+	h.idp.mu.Unlock()
+
+	if _, err := h.svc.Callback(context.Background(), "code", state); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	created := h.identities.provisionUser[0]
+	if created.Username != "alice" || created.FullName != "Alice Example" {
+		t.Errorf("expected id-token fallback profile, got %+v", created)
+	}
+}
+
+// TestCallback_UnverifiedEmailNotStored: an email the IdP has not verified
+// (email_verified missing or false) must not be written to the user record.
+func TestCallback_UnverifiedEmailNotStored(t *testing.T) {
+	h := newHarness(t, nil)
+	_, state, nonce, _ := h.beginLoginAndExtract(t)
+
+	h.idp.mu.Lock()
+	h.idp.tokenClaims = map[string]any{
+		"nonce":              nonce,
+		"preferred_username": "alice",
+		"name":               "Alice Example",
+		"email":              "alice@example.com",
+		// email_verified intentionally absent → false
+	}
+	h.idp.userInfoClaims = map[string]any{
+		"email": "alice@elsewhere.example",
+		// email_verified intentionally absent → false
+	}
+	h.idp.mu.Unlock()
+
+	if _, err := h.svc.Callback(context.Background(), "code", state); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	created := h.identities.provisionUser[0]
+	if created.Email != nil {
+		t.Errorf("unverified email must not be stored, got %q", *created.Email)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent first-login race
+// ---------------------------------------------------------------------------
+
+// TestCallback_IdentityRaceResolvesWinner: when two concurrent first logins
+// race and this one loses the (issuer, subject) unique-index race, the
+// winner's bound user must be resolved instead of failing the login.
+func TestCallback_IdentityRaceResolvesWinner(t *testing.T) {
+	h := newHarness(t, nil)
+	// Pre-register the winner: another request already bound (iss, sub) to
+	// this user and committed.
+	winner := &userdom.User{
+		ID:                   uuid.New(),
+		Username:             "winner",
+		PasswordHash:         "hash",
+		Role:                 "USER",
+		PasswordLoginEnabled: false,
+	}
+	h.users.add(winner)
+	h.identities.mu.Lock()
+	h.identities.byIssuerSub[key(h.idp.server.URL, "user-1234")] = &extiddom.Identity{
+		ID: uuid.New(), UserID: winner.ID, Provider: "oidc",
+		Issuer: h.idp.server.URL, Subject: "user-1234",
+	}
+	h.identities.identityTakenOnFirst = true // simulate losing the insert race
+	h.identities.mu.Unlock()
+
+	if err := h.runCallback(t); err != nil {
+		t.Fatalf("callback must resolve the race winner, got %v", err)
+	}
+	if len(h.sessions.issued) != 1 || h.sessions.issued[0] != winner.ID {
+		t.Fatalf("expected a session for the winner user, got %v", h.sessions.issued)
+	}
+	if len(h.identities.provisionUser) != 0 {
+		t.Fatalf("no new user must be provisioned when the race is lost")
 	}
 }

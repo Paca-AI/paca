@@ -16,6 +16,12 @@ import (
 // ErrNotFound is returned when no external identity matches the given key.
 var ErrNotFound = errors.New("external identity: not found")
 
+// ErrIdentityTaken is returned when inserting an identity whose (issuer,
+// subject) pair is already bound — the loser of a concurrent first login.
+// The winner's binding is the source of truth; the caller should re-resolve
+// it instead of failing the login.
+var ErrIdentityTaken = errors.New("external identity: issuer/subject already bound")
+
 // Identity binds one external IdP identity to one Paca user.
 type Identity struct {
 	ID uuid.UUID

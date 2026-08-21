@@ -39,7 +39,6 @@ type Config struct {
 //	OIDC_SCOPES           – comma-separated (default: openid,profile,email)
 //	OIDC_REDIRECT_URL     – override; default PUBLIC_URL + /api/v1/auth/oidc/callback
 //	OIDC_DISPLAY_NAME     – label shown on the SSO button (default: "Single Sign-On")
-//	OIDC_JIT_PROVISION    – create users on first login (default: true)
 //	OIDC_DEFAULT_ROLE     – global role for JIT users (default: USER)
 //	OIDC_USERNAME_CLAIM   – claim used as username candidate (default: preferred_username)
 //	LOCAL_LOGIN_ENABLED   – whether username/password login stays available (default: true)
@@ -51,7 +50,6 @@ type OIDCConfig struct {
 	Scopes        []string
 	RedirectURL   string
 	DisplayName   string
-	JITProvision  bool
 	DefaultRole   string
 	UsernameClaim string
 	// LocalLoginEnabled mirrors LOCAL_LOGIN_ENABLED: false hides the

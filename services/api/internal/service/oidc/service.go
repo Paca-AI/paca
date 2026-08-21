@@ -8,12 +8,20 @@
 //   - Paca RBAC, API keys, ACP bridge tokens and agent MCP keys are untouched;
 //   - no IdP token is ever stored in the database or handed to the browser
 //     or an agent.
+//
+// Login CSRF defense: the caller (HTTP handler) binds the state to the
+// initiating browser with a short-lived HttpOnly cookie, and the callback is
+// only honored when the cookie matches the state in the callback URL. The
+// server-side login transaction alone is NOT browser-bound, so the handler's
+// cookie check is a mandatory part of the flow — see oidc_handler.go.
 package oidc
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,9 +75,6 @@ var (
 	// ErrInvalidState covers unknown, expired, and already-used states alike
 	// — deliberately undistinguished so a caller cannot probe them.
 	ErrInvalidState = errors.New("oidc: invalid or expired login state")
-	// ErrUserNotProvisioned is returned when JIT provisioning is disabled and
-	// no Paca user is bound to the (issuer, sub) identity.
-	ErrUserNotProvisioned = errors.New("oidc: no paca user bound to this identity")
 	// ErrUserRejected is returned when the bound user no longer exists (e.g.
 	// soft-deleted) — the binding stays but the account may not log in.
 	ErrUserRejected = errors.New("oidc: bound user is not eligible for login")
@@ -78,8 +83,14 @@ var (
 	ErrExchangeFailed = errors.New("oidc: authorization failed")
 )
 
-// loginTxTTL bounds how long a login redirect stays redeemable.
-const loginTxTTL = 10 * time.Minute
+const (
+	// loginTxTTL bounds how long a login redirect stays redeemable.
+	loginTxTTL = 10 * time.Minute
+	// httpTimeout bounds every outbound call to the IdP: discovery at
+	// startup, the code exchange, JWKS fetches, and the UserInfo call. An
+	// IdP that is half-up must fail fast rather than hang the request.
+	httpTimeout = 10 * time.Second
+)
 
 // Options configures the OIDC service (mirrors the validated config.OIDCConfig).
 type Options struct {
@@ -89,7 +100,6 @@ type Options struct {
 	RedirectURL   string
 	Scopes        []string
 	DisplayName   string
-	JITProvision  bool
 	DefaultRole   string
 	UsernameClaim string
 }
@@ -106,15 +116,19 @@ type Service struct {
 	roles      RoleByNameFinder
 	sessions   SessionIssuer
 	log        *slog.Logger
-	// httpClient is used for the code exchange (and can be swapped in tests).
+	// httpClient is used for the code exchange, UserInfo, and JWKS fetches,
+	// with a bounded timeout (see httpTimeout).
 	httpClient *http.Client
 }
 
 // New performs OIDC discovery against the issuer and returns a ready
 // Service. Failing fast here — an SSO-enabled deployment whose IdP is
-// unreachable must not start half-configured.
+// unreachable must not start half-configured. All outbound IdP traffic goes
+// through a dedicated HTTP client with a fixed timeout so a half-dead IdP
+// fails fast instead of hanging startup or requests.
 func New(ctx context.Context, opts Options, txStore LoginTxStore, users userdom.Repository, identities extiddom.Repository, roles RoleByNameFinder, sessions SessionIssuer, log *slog.Logger) (*Service, error) {
-	provider, err := oidc.NewProvider(ctx, opts.IssuerURL)
+	httpClient := &http.Client{Timeout: httpTimeout}
+	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, httpClient), opts.IssuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("oidc: discovery against %s: %w", opts.IssuerURL, err)
 	}
@@ -135,7 +149,7 @@ func New(ctx context.Context, opts Options, txStore LoginTxStore, users userdom.
 		roles:      roles,
 		sessions:   sessions,
 		log:        log,
-		httpClient: http.DefaultClient,
+		httpClient: httpClient,
 	}, nil
 }
 
@@ -151,27 +165,32 @@ func randomState() (string, error) {
 
 // BeginLogin starts a fresh Authorization Code + PKCE flow: it stores the
 // single-use login transaction server-side (keyed by a random state) and
-// returns the IdP authorization URL to redirect the browser to.
-func (s *Service) BeginLogin(ctx context.Context) (string, error) {
-	state, err := randomState()
+// returns the IdP authorization URL plus the state value itself. The caller
+// MUST bind the returned state to the initiating browser (short-lived
+// HttpOnly cookie) and verify that binding in the callback — the server-side
+// transaction alone does not bind the flow to a browser, and without the
+// cookie check a callback URL forwarded to another browser completes a login
+// CSRF.
+func (s *Service) BeginLogin(ctx context.Context) (authURL string, state string, err error) {
+	state, err = randomState()
 	if err != nil {
-		return "", fmt.Errorf("oidc: generate state: %w", err)
+		return "", "", fmt.Errorf("oidc: generate state: %w", err)
 	}
 	nonce, err := randomState()
 	if err != nil {
-		return "", fmt.Errorf("oidc: generate nonce: %w", err)
+		return "", "", fmt.Errorf("oidc: generate nonce: %w", err)
 	}
 	verifier, err := randomState()
 	if err != nil {
-		return "", fmt.Errorf("oidc: generate pkce verifier: %w", err)
+		return "", "", fmt.Errorf("oidc: generate pkce verifier: %w", err)
 	}
 
 	payload, err := json.Marshal(LoginTx{Nonce: nonce, Verifier: verifier})
 	if err != nil {
-		return "", fmt.Errorf("oidc: marshal login tx: %w", err)
+		return "", "", fmt.Errorf("oidc: marshal login tx: %w", err)
 	}
 	if err := s.txStore.Save(ctx, state, payload, loginTxTTL); err != nil {
-		return "", fmt.Errorf("oidc: store login tx: %w", err)
+		return "", "", fmt.Errorf("oidc: store login tx: %w", err)
 	}
 
 	s.log.Info("oidc: login initiated", "issuer", s.opts.IssuerURL)
@@ -179,15 +198,29 @@ func (s *Service) BeginLogin(ctx context.Context) (string, error) {
 		state,
 		oidc.Nonce(nonce),
 		oauth2.S256ChallengeOption(verifier),
-	), nil
+	), state, nil
 }
 
 // userClaims carries the profile claims used for JIT provisioning. They are
-// display data only — identity always comes from (iss, sub).
+// display data only — identity always comes from the ID token's (iss, sub).
 type userClaims struct {
 	PreferredUsername string
 	Name              string
 	Email             string
+	// EmailVerified mirrors the OIDC email_verified claim. Paca only stores
+	// an email the IdP has actually confirmed the user controls — see
+	// provisionUser.
+	EmailVerified bool
+}
+
+// userInfoClaims is the wire shape for the UserInfo endpoint (standard OIDC
+// claim names).
+type userInfoClaims struct {
+	Sub               string `json:"sub"`
+	PreferredUsername string `json:"preferred_username"`
+	Name              string `json:"name"`
+	Email             string `json:"email"`
+	EmailVerified     bool   `json:"email_verified"`
 }
 
 // Callback completes the flow: consume the login transaction, exchange the
@@ -223,7 +256,7 @@ func (s *Service) Callback(ctx context.Context, code, state string) (*domainauth
 		return nil, ErrExchangeFailed
 	}
 
-	idToken, err := s.verifier.Verify(ctx, rawIDToken)
+	idToken, err := s.verifier.Verify(authCtx, rawIDToken)
 	if err != nil {
 		s.log.Warn("oidc: id token verification failed", "issuer", s.opts.IssuerURL)
 		return nil, ErrExchangeFailed
@@ -241,7 +274,14 @@ func (s *Service) Callback(ctx context.Context, code, state string) (*domainauth
 		PreferredUsername: stringClaim(raw, s.opts.UsernameClaim),
 		Name:              stringClaim(raw, "name"),
 		Email:             stringClaim(raw, "email"),
+		EmailVerified:     boolClaim(raw, "email_verified"),
 	}
+
+	// Profile/email claims are not guaranteed to live in the ID token — under
+	// the standard code flow they may only be available from the UserInfo
+	// endpoint. Identity stays anchored to the ID token's (iss, sub); this
+	// call only enriches the profile, and the returned sub must agree.
+	claims = s.enrichFromUserInfo(authCtx, token, idToken.Subject, claims)
 
 	user, err := s.resolveUser(ctx, idToken.Issuer, idToken.Subject, claims)
 	if err != nil {
@@ -258,6 +298,41 @@ func (s *Service) Callback(ctx context.Context, code, state string) (*domainauth
 	return pair, nil
 }
 
+// enrichFromUserInfo calls the provider's UserInfo endpoint with the access
+// token and overlays profile/email claims on top of the ID-token-derived
+// ones. A UserInfo sub that disagrees with the ID token's subject is never
+// merged. If the endpoint is unreachable or unsupported the ID-token claims
+// stand — identity was already established by the ID token, so only display
+// data is at stake.
+func (s *Service) enrichFromUserInfo(ctx context.Context, token *oauth2.Token, idTokenSub string, claims userClaims) userClaims {
+	ui, err := s.provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
+	if err != nil {
+		s.log.Warn("oidc: userinfo unavailable, falling back to id token claims", "issuer", s.opts.IssuerURL)
+		return claims
+	}
+	var uic userInfoClaims
+	if err := ui.Claims(&uic); err != nil {
+		s.log.Warn("oidc: userinfo claims undecodable, falling back to id token claims", "issuer", s.opts.IssuerURL)
+		return claims
+	}
+	if uic.Sub != idTokenSub {
+		// The UserInfo response is about a different subject — never merge it.
+		s.log.Warn("oidc: userinfo subject mismatch", "issuer", s.opts.IssuerURL)
+		return claims
+	}
+	if uic.PreferredUsername != "" {
+		claims.PreferredUsername = uic.PreferredUsername
+	}
+	if uic.Name != "" {
+		claims.Name = uic.Name
+	}
+	if uic.Email != "" {
+		claims.Email = uic.Email
+		claims.EmailVerified = uic.EmailVerified
+	}
+	return claims
+}
+
 // stringClaim pulls a string-valued claim from the decoded ID-token payload;
 // missing or non-string claims yield "".
 func stringClaim(raw map[string]any, key string) string {
@@ -270,39 +345,61 @@ func stringClaim(raw map[string]any, key string) string {
 	return ""
 }
 
+// boolClaim pulls a bool-valued claim; missing or non-bool yields false.
+func boolClaim(raw map[string]any, key string) bool {
+	if key == "" {
+		return false
+	}
+	if v, ok := raw[key].(bool); ok {
+		return v
+	}
+	return false
+}
+
 // resolveUser maps the verified (issuer, subject) to a Paca user — loading
-// the existing binding, or JIT-provisioning a new SSO-only account when
-// enabled. Email/username are never used to match an existing account: only
-// the (issuer, sub) binding proves account ownership.
+// the existing binding, or JIT-provisioning a new SSO-only account. JIT
+// provisioning is always on in this MVP: the only supported write path for
+// user_external_identities is this provisioning flow, so a "no JIT" mode
+// would leave first logins with no way to succeed at all.
+// Email/username are never used to match an existing account: only the
+// (issuer, sub) binding proves account ownership.
 func (s *Service) resolveUser(ctx context.Context, issuer, subject string, claims userClaims) (*userdom.User, error) {
-	identity, err := s.identities.FindByIssuerSubject(ctx, issuer, subject)
+	user, err := s.resolveExistingUser(ctx, issuer, subject)
 	if err == nil {
-		user, err := s.users.FindByID(ctx, identity.UserID)
-		if err != nil {
-			// Deleted or missing user: the binding exists but the account is
-			// not eligible. Fail closed.
-			s.log.Warn("oidc: bound user not found or deleted",
-				"issuer", issuer, "user_id", identity.UserID.String())
-			return nil, ErrUserRejected
-		}
-		if err := s.identities.TouchLastLogin(ctx, identity.ID); err != nil {
-			return nil, fmt.Errorf("oidc: touch last login: %w", err)
-		}
 		return user, nil
 	}
 	if !errors.Is(err, extiddom.ErrNotFound) {
-		return nil, fmt.Errorf("oidc: find identity: %w", err)
-	}
-
-	if !s.opts.JITProvision {
-		s.log.Warn("oidc: unknown identity and jit disabled", "issuer", issuer)
-		return nil, ErrUserNotProvisioned
+		return nil, err
 	}
 	return s.provisionUser(ctx, issuer, subject, claims)
 }
 
+// resolveExistingUser loads the user bound to (issuer, subject), refreshing
+// the binding's last-login timestamp, or returns extiddom.ErrNotFound.
+func (s *Service) resolveExistingUser(ctx context.Context, issuer, subject string) (*userdom.User, error) {
+	identity, err := s.identities.FindByIssuerSubject(ctx, issuer, subject)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.users.FindByID(ctx, identity.UserID)
+	if err != nil {
+		// Deleted or missing user: the binding exists but the account is
+		// not eligible. Fail closed.
+		s.log.Warn("oidc: bound user not found or deleted",
+			"issuer", issuer, "user_id", identity.UserID.String())
+		return nil, ErrUserRejected
+	}
+	if err := s.identities.TouchLastLogin(ctx, identity.ID); err != nil {
+		return nil, fmt.Errorf("oidc: touch last login: %w", err)
+	}
+	return user, nil
+}
+
 // provisionUser JIT-creates a new SSO-only Paca user together with its
-// external-identity binding, in a single transaction.
+// external-identity binding, in a single transaction. If a concurrent login
+// already created the binding in between the pre-check and the insert, the
+// unique-index conflict is resolved by loading that winner's user instead of
+// failing the login.
 func (s *Service) provisionUser(ctx context.Context, issuer, subject string, claims userClaims) (*userdom.User, error) {
 	role, err := s.roles.FindByName(ctx, s.opts.DefaultRole)
 	if err != nil {
@@ -325,16 +422,18 @@ func (s *Service) provisionUser(ctx context.Context, issuer, subject string, cla
 		return nil, fmt.Errorf("oidc: hash random password: %w", err)
 	}
 
-	// Email is display data only. A collision with an existing account's
-	// email never links the accounts — the email is simply dropped.
+	// Email is display/notification data only, and only stored when the IdP
+	// has verified the user controls it (email_verified=true). A collision
+	// with an existing account's email never links the accounts — the email
+	// is simply dropped.
 	email := ""
-	if claims.Email != "" {
+	if claims.Email != "" && claims.EmailVerified {
 		if _, err := s.users.FindByEmail(ctx, claims.Email); errors.Is(err, userdom.ErrNotFound) {
 			email = claims.Email
 		}
 	}
 
-	baseUsername := usernameCandidate(claims.PreferredUsername, subject)
+	baseUsername := usernameCandidate(claims.PreferredUsername, issuer, subject)
 	now := time.Now().UTC()
 
 	// Try successive username candidates; each attempt is race-safe because
@@ -375,37 +474,63 @@ func (s *Service) provisionUser(ctx context.Context, issuer, subject string, cla
 			CreatedAt:   now,
 			LastLoginAt: now,
 		}
-		if err := s.identities.ProvisionWithUser(ctx, u, identity); err != nil {
-			if errors.Is(err, userdom.ErrUsernameTaken) {
-				continue // lost a race — try the next candidate
+		err := s.identities.ProvisionWithUser(ctx, u, identity)
+		if err == nil {
+			s.log.Info("oidc: jit user provisioned",
+				"issuer", issuer, "user_id", u.ID.String())
+			return u, nil
+		}
+		switch {
+		case errors.Is(err, extiddom.ErrIdentityTaken):
+			// A concurrent first login bound this exact (issuer, subject)
+			// first — its user is the answer, not a new account.
+			s.log.Info("oidc: identity provision lost race, resolving winner",
+				"issuer", issuer)
+			winner, rerr := s.resolveExistingUser(ctx, issuer, subject)
+			if rerr == nil {
+				return winner, nil
 			}
-			if errors.Is(err, userdom.ErrEmailTaken) && u.Email != nil {
-				// Lost a race on the email — retry once without it.
-				u.Email = nil
-				email = ""
-				if err := s.identities.ProvisionWithUser(ctx, u, identity); err != nil {
-					if errors.Is(err, userdom.ErrUsernameTaken) {
-						continue
+			if errors.Is(rerr, extiddom.ErrNotFound) || errors.Is(rerr, ErrUserRejected) {
+				return nil, ErrUserRejected
+			}
+			return nil, rerr
+		case errors.Is(err, userdom.ErrUsernameTaken):
+			continue // lost a race on the username — try the next candidate
+		case errors.Is(err, userdom.ErrEmailTaken) && u.Email != nil:
+			// Lost a race on the email — retry without it.
+			u.Email = nil
+			email = ""
+			if err := s.identities.ProvisionWithUser(ctx, u, identity); err != nil {
+				if errors.Is(err, extiddom.ErrIdentityTaken) {
+					winner, rerr := s.resolveExistingUser(ctx, issuer, subject)
+					if rerr == nil {
+						return winner, nil
 					}
-					return nil, err
+					if errors.Is(rerr, extiddom.ErrNotFound) || errors.Is(rerr, ErrUserRejected) {
+						return nil, ErrUserRejected
+					}
+					return nil, rerr
 				}
-				s.log.Info("oidc: jit user provisioned",
-					"issuer", issuer, "user_id", u.ID.String())
-				return u, nil
+				if errors.Is(err, userdom.ErrUsernameTaken) {
+					continue
+				}
+				return nil, err
 			}
+			s.log.Info("oidc: jit user provisioned",
+				"issuer", issuer, "user_id", u.ID.String())
+			return u, nil
+		default:
 			return nil, err
 		}
-		s.log.Info("oidc: jit user provisioned",
-			"issuer", issuer, "user_id", u.ID.String())
-		return u, nil
 	}
 	return nil, fmt.Errorf("oidc: could not derive a free username for new sso user")
 }
 
 // usernameCandidate sanitizes the configured username claim into a valid
-// Paca username, falling back to an opaque subject-derived name when the
-// claim is missing or unusable.
-func usernameCandidate(claimValue, subject string) string {
+// Paca username, falling back to an opaque but stable name derived from a
+// hash of (issuer, subject) — the subject itself is an arbitrary IdP-local
+// string and must never be used raw.
+func usernameCandidate(claimValue, issuer, subject string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(claimValue) {
 		switch {
@@ -417,13 +542,11 @@ func usernameCandidate(claimValue, subject string) string {
 	}
 	name := strings.Trim(b.String(), "-")
 	if len(name) < 3 || len(name) > 64 {
-		// Fall back to an opaque but stable, readable name derived from the
-		// subject (which is what actually identifies the user).
-		suffix := subject
-		if len(suffix) > 8 {
-			suffix = suffix[:8]
-		}
-		name = "sso-" + suffix
+		// Opaque fallback: 12 hex chars of SHA-256(issuer NUL subject).
+		// Stable across logins, safe in every Paca username context, and
+		// leaks nothing about the raw subject.
+		sum := sha256.Sum256([]byte(issuer + "\x00" + subject))
+		name = "sso-" + hex.EncodeToString(sum[:])[:12]
 	}
 	return name
 }

@@ -85,10 +85,41 @@ func (r *ExternalIdentityRepository) ProvisionWithUser(ctx context.Context, u *u
 			identity.ID.String(), identity.UserID.String(), identity.Provider,
 			identity.Issuer, identity.Subject, identity.CreatedAt, identity.LastLoginAt,
 		); err != nil {
+			// A (issuer, subject) collision means a concurrent first login
+			// already created this binding: surface it as a distinct sentinel
+			// so the caller can resolve the winner's user instead of failing
+			// the login.
+			if constraint, ok := uniqueViolationConstraint(err); ok && constraint == "uni_external_identity_issuer_subject" {
+				return extiddom.ErrIdentityTaken
+			}
 			return fmt.Errorf("external identity repo: provision identity: %w", err)
 		}
 		return nil
 	})
+}
+
+// HasSSOUserWithRole reports whether at least one external identity is bound
+// to an active user holding one of the named global roles. Used by the
+// startup guard that refuses an SSO-only configuration until an
+// administrator can actually log in via SSO.
+func (r *ExternalIdentityRepository) HasSSOUserWithRole(ctx context.Context, roleNames []string) (bool, error) {
+	if len(roleNames) == 0 {
+		return false, nil
+	}
+	query, args, err := sqlx.In(`
+		SELECT COUNT(*)
+		FROM user_external_identities ei
+		JOIN users u ON u.id = ei.user_id
+		JOIN global_roles gr ON gr.id = u.role_id
+		WHERE gr.name IN (?) AND u.deleted_at IS NULL`, roleNames)
+	if err != nil {
+		return false, fmt.Errorf("external identity repo: has sso user with role: %w", err)
+	}
+	var count int
+	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), args...); err != nil {
+		return false, fmt.Errorf("external identity repo: has sso user with role: %w", err)
+	}
+	return count > 0, nil
 }
 
 func identityRowToEntity(row *identityRow) *extiddom.Identity {

@@ -316,7 +316,6 @@ func TestLoad_OIDC_DisabledByDefault(t *testing.T) {
 func TestLoad_OIDC_Success(t *testing.T) {
 	setOIDCEnv(t)
 	t.Setenv("OIDC_DISPLAY_NAME", "Company SSO")
-	t.Setenv("OIDC_JIT_PROVISION", "false")
 	t.Setenv("OIDC_DEFAULT_ROLE", "MEMBER")
 	t.Setenv("OIDC_USERNAME_CLAIM", "nickname")
 	t.Setenv("LOCAL_LOGIN_ENABLED", "false")
@@ -338,8 +337,23 @@ func TestLoad_OIDC_Success(t *testing.T) {
 	if o.RedirectURL != "https://paca.example.com/api/v1/auth/oidc/callback" {
 		t.Fatalf("expected redirect URL derived from PUBLIC_URL, got %q", o.RedirectURL)
 	}
-	if o.DisplayName != "Company SSO" || o.JITProvision || o.DefaultRole != "MEMBER" || o.UsernameClaim != "nickname" {
+	if o.DisplayName != "Company SSO" || o.DefaultRole != "MEMBER" || o.UsernameClaim != "nickname" {
 		t.Fatalf("unexpected OIDC settings: %+v", o)
+	}
+}
+
+// The issuer is an identifier that must match discovery metadata and ID-token
+// iss claims exactly — a trailing slash must be preserved, not normalized away.
+func TestLoad_OIDC_IssuerKeepsTrailingSlash(t *testing.T) {
+	setOIDCEnv(t)
+	t.Setenv("OIDC_ISSUER_URL", "https://id.example.com/realms/company/")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.IssuerURL != "https://id.example.com/realms/company/" {
+		t.Fatalf("issuer must keep its trailing slash, got %q", cfg.OIDC.IssuerURL)
 	}
 }
 
