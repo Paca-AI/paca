@@ -5,7 +5,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -147,12 +149,20 @@ func Load() (*Config, error) {
 		errs = append(errs, err)
 	}
 
+	environment := env("ENV", "development")
+	publicURL := env("PUBLIC_URL", "")
+
+	oidc, oidcErr := loadOIDCConfig(environment, publicURL)
+	if oidcErr != nil {
+		errs = append(errs, oidcErr)
+	}
+
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
 
 	return &Config{
-		Env: env("ENV", "development"),
+		Env: environment,
 		Server: ServerConfig{
 			Port:               env("PORT", "8080"),
 			CookieSecure:       cookieSecure,
@@ -224,9 +234,122 @@ func Load() (*Config, error) {
 			CacheTTL:     releaseCacheTTL,
 			Timeout:      releaseTimeout,
 		},
+		OIDC:               oidc,
 		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
 		AIAgentInternalKey: aiAgentInternalKey,
 	}, nil
+}
+
+// loadOIDCConfig reads and validates the OIDC_* and LOCAL_LOGIN_ENABLED
+// variables. All OIDC requirements fail fast at startup rather than at first
+// login: an SSO-only deployment that cannot reach its IdP must not come up
+// half-configured.
+func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
+	cfg := OIDCConfig{}
+
+	enabled, err := strconv.ParseBool(env("OIDC_ENABLED", "false"))
+	if err != nil {
+		return cfg, fmt.Errorf("config: OIDC_ENABLED: %w", err)
+	}
+	cfg.Enabled = enabled
+
+	localLogin, err := strconv.ParseBool(env("LOCAL_LOGIN_ENABLED", "true"))
+	if err != nil {
+		return cfg, fmt.Errorf("config: LOCAL_LOGIN_ENABLED: %w", err)
+	}
+	cfg.LocalLoginEnabled = localLogin
+
+	if !enabled {
+		// Password login is the only entry point when SSO is off — a stray
+		// LOCAL_LOGIN_ENABLED=false would otherwise lock every human out.
+		cfg.LocalLoginEnabled = true
+		return cfg, nil
+	}
+
+	cfg.IssuerURL = strings.TrimRight(strings.TrimSpace(env("OIDC_ISSUER_URL", "")), "/")
+	cfg.ClientID = strings.TrimSpace(env("OIDC_CLIENT_ID", ""))
+	cfg.ClientSecret = env("OIDC_CLIENT_SECRET", "")
+	cfg.DisplayName = env("OIDC_DISPLAY_NAME", "Single Sign-On")
+
+	cfg.RedirectURL = strings.TrimSpace(env("OIDC_REDIRECT_URL", ""))
+	if cfg.RedirectURL == "" {
+		if publicURL == "" {
+			return cfg, errors.New("config: OIDC_REDIRECT_URL or PUBLIC_URL must be set when OIDC is enabled")
+		}
+		cfg.RedirectURL = strings.TrimRight(publicURL, "/") + "/api/v1/auth/oidc/callback"
+	}
+
+	if cfg.IssuerURL == "" {
+		return cfg, errors.New("config: OIDC_ISSUER_URL must be set when OIDC is enabled")
+	}
+	if !strings.HasPrefix(cfg.IssuerURL, "https://") && !isLoopbackIssuer(cfg.IssuerURL) {
+		return cfg, errors.New("config: OIDC_ISSUER_URL must use https (http allowed only for localhost/127.0.0.1 dev issuers)")
+	}
+	if cfg.ClientID == "" {
+		return cfg, errors.New("config: OIDC_CLIENT_ID must be set when OIDC is enabled")
+	}
+	// Paca is a confidential web client: the code exchange happens
+	// server-side, so a client secret is always required.
+	if cfg.ClientSecret == "" {
+		return cfg, errors.New("config: OIDC_CLIENT_SECRET must be set when OIDC is enabled")
+	}
+	if !strings.HasPrefix(cfg.RedirectURL, "https://") && environment == "production" {
+		return cfg, errors.New("config: OIDC_REDIRECT_URL must be https in production")
+	}
+
+	cfg.Scopes = parseScopes(env("OIDC_SCOPES", "openid,profile,email"))
+	if !slices.Contains(cfg.Scopes, "openid") {
+		// "openid" is what turns an OAuth2 flow into an OIDC one — without
+		// it there is no ID token to validate.
+		cfg.Scopes = append([]string{"openid"}, cfg.Scopes...)
+	}
+
+	jit, err := strconv.ParseBool(env("OIDC_JIT_PROVISION", "true"))
+	if err != nil {
+		return cfg, fmt.Errorf("config: OIDC_JIT_PROVISION: %w", err)
+	}
+	cfg.JITProvision = jit
+
+	cfg.DefaultRole = strings.TrimSpace(env("OIDC_DEFAULT_ROLE", "USER"))
+	if cfg.DefaultRole == "" {
+		cfg.DefaultRole = "USER"
+	}
+	if cfg.DefaultRole == "ADMIN" || cfg.DefaultRole == "SUPER_ADMIN" {
+		// JIT users get whatever global role the IdP proves they are entitled
+		// to — which is none. Elevated roles must be granted manually in
+		// Paca, never handed out automatically at first login.
+		return cfg, fmt.Errorf("config: OIDC_DEFAULT_ROLE must not be %s — grant elevated roles manually in Paca", cfg.DefaultRole)
+	}
+
+	cfg.UsernameClaim = env("OIDC_USERNAME_CLAIM", "preferred_username")
+
+	return cfg, nil
+}
+
+// parseScopes splits a comma-separated scope list, trimming whitespace and
+// dropping empty entries.
+func parseScopes(v string) []string {
+	parts := strings.Split(v, ",")
+	scopes := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			scopes = append(scopes, p)
+		}
+	}
+	return scopes
+}
+
+// isLoopbackIssuer reports whether an http:// issuer URL points at the local
+// machine — the only case where plain http is acceptable (local development
+// with a containerized Keycloak/Authentik).
+func isLoopbackIssuer(issuer string) bool {
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "::1")
 }
 
 // parseCORSOrigins splits a comma-separated CORS_ORIGINS value into an

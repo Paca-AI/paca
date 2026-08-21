@@ -11,14 +11,6 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
 
-const (
-	accessCookieName  = "access_token"
-	refreshCookieName = "refresh_token"
-	// refreshCookiePath restricts the refresh cookie to the rotation endpoint
-	// so browsers never send it on regular API requests.
-	refreshCookiePath = "/api/v1/auth/refresh"
-)
-
 // CookieConfig carries compile-time-safe settings for auth cookies.
 type CookieConfig struct {
 	Secure            bool
@@ -27,15 +19,48 @@ type CookieConfig struct {
 	RefreshSessionTTL time.Duration // ephemeral session (remember me = false)
 }
 
+// LoginOptions tells the login page which entry points exist. It mirrors the
+// instance's OIDC/local-login configuration for the public /auth/config
+// endpoint — display data only, never credentials or IdP metadata.
+type LoginOptions struct {
+	LocalEnabled    bool
+	OIDCEnabled     bool
+	OIDCDisplayName string
+}
+
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
 	svc    domainauth.Service
 	cookie CookieConfig
+	login  LoginOptions
 }
 
 // NewAuthHandler returns an AuthHandler wired to the provided auth service.
 func NewAuthHandler(svc domainauth.Service, cookie CookieConfig) *AuthHandler {
-	return &AuthHandler{svc: svc, cookie: cookie}
+	// Defaults keep every existing caller (and the local-only deployment)
+	// working unchanged: local login shown, SSO hidden.
+	return &AuthHandler{svc: svc, cookie: cookie, login: LoginOptions{LocalEnabled: true}}
+}
+
+// WithLoginOptions overrides which login entry points the public /auth/config
+// endpoint advertises (SSO enabled/disabled, local login shown/hidden).
+func (h *AuthHandler) WithLoginOptions(opts LoginOptions) *AuthHandler {
+	h.login = opts
+	return h
+}
+
+// Config handles GET /auth/config — the public, unauthenticated endpoint the
+// login page reads to decide which entry points to render. Exposes only
+// display data; client secrets, issuer metadata and endpoints stay internal.
+func (h *AuthHandler) Config(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]any{
+		"local_login_enabled": h.login.LocalEnabled,
+		"oidc": map[string]any{
+			"enabled":      h.login.OIDCEnabled,
+			"display_name": h.login.OIDCDisplayName,
+		},
+	}
+	presenter.OK(w, r, resp)
 }
 
 // Login handles POST /auth/login.
@@ -104,48 +129,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"message": "logged out"})
 }
 
-// setTokenCookies writes both tokens into HttpOnly Set-Cookie headers.
-// refreshTTL controls the MaxAge of the refresh cookie and should match the
-// TTL embedded in the refresh JWT (see TokenPair.RefreshTTL).
+// setTokenCookies writes both tokens into HttpOnly Set-Cookie headers (see
+// setAuthCookies, shared with the OIDC callback handler).
 func (h *AuthHandler) setTokenCookies(w http.ResponseWriter, pair *domainauth.TokenPair, refreshTTL time.Duration) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     accessCookieName,
-		Value:    pair.AccessToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   h.cookie.Secure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(h.cookie.AccessTTL.Seconds()),
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     refreshCookieName,
-		Value:    pair.RefreshToken,
-		Path:     refreshCookiePath,
-		HttpOnly: true,
-		Secure:   h.cookie.Secure,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   int(refreshTTL.Seconds()),
-	})
+	setAuthCookies(w, h.cookie, pair, refreshTTL)
 }
 
 // clearCookies expires both auth cookies immediately.
 func (h *AuthHandler) clearCookies(w http.ResponseWriter, _ *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     accessCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   h.cookie.Secure,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     refreshCookieName,
-		Value:    "",
-		Path:     refreshCookiePath,
-		HttpOnly: true,
-		Secure:   h.cookie.Secure,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
-	})
+	clearAuthCookies(w, h.cookie)
 }

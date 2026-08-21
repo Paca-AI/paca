@@ -140,6 +140,16 @@ services:
       STORAGE_USE_SSL: "false"
       # Encryption key for sensitive values (plugin tokens/secrets).
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
+      # ----- OIDC SSO (optional; see docs/deployment/oidc-sso.md) -----
+      # Pass through from the host environment so a local IdP (e.g. a
+      # containerized Keycloak reachable at http://localhost:*) can be wired
+      # up without editing this file. Unset → OIDC stays disabled.
+      OIDC_ENABLED: ${OIDC_ENABLED:-false}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      LOCAL_LOGIN_ENABLED: ${LOCAL_LOGIN_ENABLED:-true}
       # Pre-shared key for the agent-runner service to authenticate with the
       # API without a database-stored API key.  Must match PACA_API_KEY in
       # the agent-runner service.

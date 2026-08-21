@@ -16,4 +16,9 @@ var (
 	// ErrSessionInvalidated is returned when the token's session family has
 	// been explicitly revoked (e.g. due to detected token reuse or logout).
 	ErrSessionInvalidated = errors.New("session has been invalidated")
+
+	// ErrLocalLoginDisabled is returned when username/password login has been
+	// turned off instance-wide (LOCAL_LOGIN_ENABLED=false) and an SSO-only
+	// deployment rejects a password login attempt.
+	ErrLocalLoginDisabled = errors.New("local login is disabled")
 )

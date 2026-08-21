@@ -1,5 +1,7 @@
 # Deployment Documentation
 
+> Human OIDC / SSO 登录接入指南见 [oidc-sso.md](oidc-sso.md)。
+
 Paca ships three Docker Compose entry points under [`deploy/`](../../deploy/README.md):
 
 - `docker-compose.dev.yml` for local development;

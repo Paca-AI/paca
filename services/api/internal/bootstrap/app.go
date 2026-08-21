@@ -39,6 +39,7 @@ import (
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
+	oidcsvc "github.com/Paca-AI/api/internal/service/oidc"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	settingssvc "github.com/Paca-AI/api/internal/service/settings"
@@ -144,7 +145,8 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Services -----------------------------------------------------------
-	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL)
+	authService := authsvc.New(userRepo, tokenManager, refreshStore, cfg.JWT.RefreshTTL, cfg.JWT.RefreshSessionTTL).
+		WithLocalLoginEnabled(cfg.OIDC.LocalLoginEnabled)
 	userService := usersvc.New(userRepo, permissionStore, globalRoleRepo).
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher)
@@ -380,13 +382,62 @@ func New(cfg *config.Config) (*App, error) {
 		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
+	// --- OIDC SSO (optional) --------------------------------------------------
+	// Constructed only when enabled. Discovery runs here so an unreachable or
+	// misconfigured IdP fails fast at startup instead of at first login.
+	var oidcHandler *handler.OIDCHandler
+	if cfg.OIDC.Enabled {
+		oidcSvc, err := oidcsvc.New(context.Background(), oidcsvc.Options{
+			IssuerURL:     cfg.OIDC.IssuerURL,
+			ClientID:      cfg.OIDC.ClientID,
+			ClientSecret:  cfg.OIDC.ClientSecret,
+			RedirectURL:   cfg.OIDC.RedirectURL,
+			Scopes:        cfg.OIDC.Scopes,
+			DisplayName:   cfg.OIDC.DisplayName,
+			JITProvision:  cfg.OIDC.JITProvision,
+			DefaultRole:   cfg.OIDC.DefaultRole,
+			UsernameClaim: cfg.OIDC.UsernameClaim,
+		},
+			redisRepo.NewOIDCLoginTxStore(redisClient),
+			userRepo,
+			pgRepo.NewExternalIdentityRepository(db),
+			globalRoleRepo,
+			authService,
+			log)
+		if err != nil {
+			return nil, fmt.Errorf("bootstrap: oidc: %w", err)
+		}
+		// Fail fast when the configured JIT default role does not exist —
+		// better at startup than on the first provisioned login.
+		if _, err := globalRoleRepo.FindByName(context.Background(), cfg.OIDC.DefaultRole); err != nil {
+			return nil, fmt.Errorf("bootstrap: oidc: default role %q not found: %w", cfg.OIDC.DefaultRole, err)
+		}
+		// Where the browser lands after the callback — the web app's public
+		// base URL, or the API origin's root when PUBLIC_URL is unset.
+		webBaseURL := cfg.Server.PublicURL
+		if webBaseURL == "" {
+			webBaseURL = "/"
+		}
+		oidcHandler = handler.NewOIDCHandler(oidcSvc, cookieCfg, webBaseURL)
+		log.Info("oidc sso enabled",
+			"issuer", cfg.OIDC.IssuerURL,
+			"jit_provision", cfg.OIDC.JITProvision,
+			"local_login_enabled", cfg.OIDC.LocalLoginEnabled)
+	}
+
 	deps := router.Deps{
-		TokenManager:         tokenManager,
-		APIKeyAuth:           apiKeyService,
-		Authorizer:           authorizer,
-		Health:               handler.NewHealthHandler(),
-		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
-		Auth:                 handler.NewAuthHandler(authService, cookieCfg),
+		TokenManager: tokenManager,
+		APIKeyAuth:   apiKeyService,
+		Authorizer:   authorizer,
+		Health:       handler.NewHealthHandler(),
+		Version:      handler.NewVersionHandler(cfg.Release, cacheStore, log),
+		Auth: handler.NewAuthHandler(authService, cookieCfg).
+			WithLoginOptions(handler.LoginOptions{
+				LocalEnabled:    cfg.OIDC.LocalLoginEnabled,
+				OIDCEnabled:     cfg.OIDC.Enabled,
+				OIDCDisplayName: cfg.OIDC.DisplayName,
+			}),
+		OIDC:                 oidcHandler,
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,
@@ -495,14 +546,15 @@ func seedAdmin(ctx context.Context, repo userdom.Repository, globalRoleRepo *pgR
 
 	now := time.Now()
 	admin := &userdom.User{
-		ID:           uuid.New(),
-		Username:     cfg.Username,
-		PasswordHash: string(hash),
-		FullName:     "Admin",
-		RoleID:       adminRole.ID,
-		Role:         adminRole.Name,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                   uuid.New(),
+		Username:             cfg.Username,
+		PasswordHash:         string(hash),
+		FullName:             "Admin",
+		RoleID:               adminRole.ID,
+		Role:                 adminRole.Name,
+		PasswordLoginEnabled: true,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 
 	if err := repo.Create(ctx, admin); err != nil {
@@ -544,14 +596,15 @@ func seedAgentBotUser(ctx context.Context, repo userdom.Repository, globalRoleRe
 
 	now := time.Now()
 	bot := &userdom.User{
-		ID:           agentBotUserID,
-		Username:     "_paca_agent_bot",
-		PasswordHash: "!", // intentionally invalid — bot cannot log in with a password
-		FullName:     "Paca Agent Bot",
-		RoleID:       superAdminRole.ID,
-		Role:         superAdminRole.Name,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:                   agentBotUserID,
+		Username:             "_paca_agent_bot",
+		PasswordHash:         "!", // intentionally invalid — bot cannot log in with a password
+		FullName:             "Paca Agent Bot",
+		RoleID:               superAdminRole.ID,
+		Role:                 superAdminRole.Name,
+		PasswordLoginEnabled: true,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if err := repo.Create(ctx, bot); err != nil {
 		return fmt.Errorf("seed agent bot: create: %w", err)

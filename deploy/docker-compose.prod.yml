@@ -199,6 +199,20 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       # Public base URL used by plugins for callback / webhook URLs.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # ----- OIDC SSO (optional; see docs/deployment/oidc-sso.md) -----
+      # All vars pass through unset by default: OIDC stays disabled unless
+      # explicitly configured via the .env file.
+      OIDC_ENABLED: ${OIDC_ENABLED:-false}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid,profile,email}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-Single Sign-On}
+      OIDC_JIT_PROVISION: ${OIDC_JIT_PROVISION:-true}
+      OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-USER}
+      OIDC_USERNAME_CLAIM: ${OIDC_USERNAME_CLAIM:-preferred_username}
+      LOCAL_LOGIN_ENABLED: ${LOCAL_LOGIN_ENABLED:-true}
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
       PLUGINS_MCP_DIR: /plugins-mcp

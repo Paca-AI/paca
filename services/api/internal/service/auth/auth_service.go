@@ -38,9 +38,11 @@ type Service struct {
 	refreshStore      RefreshTokenStore
 	refreshTTL        time.Duration
 	refreshSessionTTL time.Duration
+	localLoginEnabled bool
 }
 
-// New returns a configured auth Service.
+// New returns a configured auth Service. Local password login is enabled by
+// default; SSO-only deployments disable it via WithLocalLoginEnabled(false).
 func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore RefreshTokenStore, refreshTTL, refreshSessionTTL time.Duration) *Service {
 	return &Service{
 		users:             users,
@@ -48,7 +50,17 @@ func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore Refres
 		refreshStore:      refreshStore,
 		refreshTTL:        refreshTTL,
 		refreshSessionTTL: refreshSessionTTL,
+		localLoginEnabled: true,
 	}
+}
+
+// WithLocalLoginEnabled configures whether username/password login is
+// accepted at all. When false, every password login is rejected at the
+// service layer (SSO-only deployments) — enforced here, not only in the UI,
+// so the endpoint cannot be reached by bypassing the login form.
+func (s *Service) WithLocalLoginEnabled(enabled bool) *Service {
+	s.localLoginEnabled = enabled
+	return s
 }
 
 // Login validates credentials and returns a fresh token pair.
@@ -56,6 +68,10 @@ func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore Refres
 // (JWT_REFRESH_TTL); when false, the shorter session TTL is used
 // (JWT_REFRESH_SESSION_TTL, default 24 h).
 func (s *Service) Login(ctx context.Context, username, password string, rememberMe bool) (*domainauth.TokenPair, error) {
+	if !s.localLoginEnabled {
+		return nil, domainauth.ErrLocalLoginDisabled
+	}
+
 	u, err := s.users.FindByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, userdom.ErrNotFound) {
@@ -64,8 +80,32 @@ func (s *Service) Login(ctx context.Context, username, password string, remember
 		return nil, err
 	}
 
+	// SSO-only accounts carry an unknown random password hash; a deliberate
+	// compare against it keeps timing uniform with the not-found path.
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
 		return nil, domainauth.ErrInvalidCredentials
+	}
+
+	if !u.PasswordLoginEnabled {
+		// Same error as bad credentials — no oracle distinguishing SSO-only
+		// accounts from nonexistent ones.
+		return nil, domainauth.ErrInvalidCredentials
+	}
+
+	return s.IssueSessionForUser(ctx, u.ID, rememberMe)
+}
+
+// IssueSessionForUser issues a fresh token pair for the given user without
+// checking credentials. The user (and its current role) is re-read from the
+// repository so callers never pass in stale user state. It is the shared
+// issuance path behind password login and external-identity (OIDC) login.
+func (s *Service) IssueSessionForUser(ctx context.Context, userID uuid.UUID, rememberMe bool) (*domainauth.TokenPair, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, userdom.ErrNotFound) {
+			return nil, domainauth.ErrInvalidCredentials
+		}
+		return nil, err
 	}
 
 	familyID := uuid.NewString()

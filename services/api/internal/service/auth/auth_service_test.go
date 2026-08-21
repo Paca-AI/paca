@@ -102,13 +102,15 @@ var _ domainauth.Service = (*authsvc.Service)(nil)
 
 func TestLogin_Success(t *testing.T) {
 	u := &userdom.User{
-		ID:           uuid.New(),
-		Username:     "alice",
-		Role:         userdom.RoleUser,
-		PasswordHash: hashedPassword(t, "secret123"),
+		ID:                   uuid.New(),
+		Username:             "alice",
+		Role:                 userdom.RoleUser,
+		PasswordHash:         hashedPassword(t, "secret123"),
+		PasswordLoginEnabled: true,
 	}
 	svc := newAuthSvc(&stubUserRepo{
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+		findByID:       func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{})
 
 	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
@@ -137,6 +139,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	}
 	svc := newAuthSvc(&stubUserRepo{
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+		findByID:       func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
 	}, &stubRefreshStore{})
 
 	_, err := svc.Login(context.Background(), "alice", "wrongpass", true)
@@ -337,14 +340,16 @@ func TestLogin_RememberMe_True_UsesLongTTL(t *testing.T) {
 	const sessionTTL = 24 * time.Hour
 
 	u := &userdom.User{
-		ID:           uuid.New(),
-		Username:     "alice",
-		Role:         userdom.RoleUser,
-		PasswordHash: hashedPassword(t, "secret123"),
+		ID:                   uuid.New(),
+		Username:             "alice",
+		Role:                 userdom.RoleUser,
+		PasswordHash:         hashedPassword(t, "secret123"),
+		PasswordLoginEnabled: true,
 	}
 	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
 	svc := authsvc.New(&stubUserRepo{
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+		findByID:       func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
 	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
 
 	pair, err := svc.Login(context.Background(), "alice", "secret123", true)
@@ -370,14 +375,16 @@ func TestLogin_RememberMe_False_UsesSessionTTL(t *testing.T) {
 	const sessionTTL = 24 * time.Hour
 
 	u := &userdom.User{
-		ID:           uuid.New(),
-		Username:     "alice",
-		Role:         userdom.RoleUser,
-		PasswordHash: hashedPassword(t, "secret123"),
+		ID:                   uuid.New(),
+		Username:             "alice",
+		Role:                 userdom.RoleUser,
+		PasswordHash:         hashedPassword(t, "secret123"),
+		PasswordLoginEnabled: true,
 	}
 	tm := jwttoken.New("test-secret", 15*time.Minute, refreshTTL)
 	svc := authsvc.New(&stubUserRepo{
 		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+		findByID:       func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
 	}, tm, &stubRefreshStore{}, refreshTTL, sessionTTL)
 
 	pair, err := svc.Login(context.Background(), "alice", "secret123", false)

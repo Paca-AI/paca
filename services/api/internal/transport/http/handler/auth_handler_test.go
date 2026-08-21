@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -53,6 +54,9 @@ func (m *mockAuthSvc) Logout(ctx context.Context, familyID string) error {
 		return m.logout(ctx, familyID)
 	}
 	return errors.New("mock: logout not configured")
+}
+func (m *mockAuthSvc) IssueSessionForUser(ctx context.Context, userID uuid.UUID, rememberMe bool) (*domainauth.TokenPair, error) {
+	return nil, errors.New("mock: issue session not configured")
 }
 
 // verify mock satisfies the interface at compile time
@@ -464,4 +468,95 @@ func TestRefresh_CookieMaxAge_ReflectsServiceTTL(t *testing.T) {
 		}
 	}
 	t.Fatal("refresh_token cookie not found in refresh response")
+}
+
+// ---------------------------------------------------------------------------
+// GET /auth/config — public login entry-point discovery
+// ---------------------------------------------------------------------------
+
+func TestConfig_DefaultLocalOnly(t *testing.T) {
+	svc := &mockAuthSvc{}
+	r := chi.NewRouter()
+	r.Get("/auth/config", handler.NewAuthHandler(svc, testCookieConfig).Config)
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/config", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Data struct {
+			LocalLoginEnabled bool `json:"local_login_enabled"`
+			OIDC              struct {
+				Enabled     bool   `json:"enabled"`
+				DisplayName string `json:"display_name"`
+			} `json:"oidc"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Data.LocalLoginEnabled || body.Data.OIDC.Enabled {
+		t.Fatalf("expected default local-only config, got %+v", body.Data)
+	}
+}
+
+func TestConfig_SSOWithOptions(t *testing.T) {
+	svc := &mockAuthSvc{}
+	h := handler.NewAuthHandler(svc, testCookieConfig).
+		WithLoginOptions(handler.LoginOptions{
+			LocalEnabled:    false,
+			OIDCEnabled:     true,
+			OIDCDisplayName: "Company SSO",
+		})
+	r := chi.NewRouter()
+	r.Get("/auth/config", h.Config)
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/config", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var body struct {
+		Data struct {
+			LocalLoginEnabled bool `json:"local_login_enabled"`
+			OIDC              struct {
+				Enabled     bool   `json:"enabled"`
+				DisplayName string `json:"display_name"`
+			} `json:"oidc"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Data.LocalLoginEnabled {
+		t.Error("expected local login disabled")
+	}
+	if !body.Data.OIDC.Enabled || body.Data.OIDC.DisplayName != "Company SSO" {
+		t.Errorf("unexpected oidc block: %+v", body.Data.OIDC)
+	}
+}
+
+func TestLogin_LocalLoginDisabled(t *testing.T) {
+	svc := &mockAuthSvc{}
+	h := handler.NewAuthHandler(svc, testCookieConfig)
+	// Service-level enforcement is what matters; simulate it by having the
+	// mock surface the domain error the real service returns when
+	// LOCAL_LOGIN_ENABLED=false.
+	svc.login = func(context.Context, string, string, bool) (*domainauth.TokenPair, error) {
+		return nil, domainauth.ErrLocalLoginDisabled
+	}
+	r := chi.NewRouter()
+	r.Post("/auth/login", h.Login)
+
+	body, _ := json.Marshal(map[string]any{"username": "alice", "password": "secret123"})
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
 }

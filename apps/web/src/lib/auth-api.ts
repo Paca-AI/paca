@@ -55,6 +55,32 @@ export async function login(
 	});
 }
 
+/**
+ * Public login entry-point configuration from GET /auth/config — which login
+ * methods the instance offers (local password form and/or SSO). Display data
+ * only; the endpoint never exposes client credentials or IdP metadata.
+ */
+export interface AuthConfig {
+	local_login_enabled: boolean;
+	oidc: {
+		enabled: boolean;
+		display_name: string;
+	};
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+	const { data } =
+		await apiClient.instance.get<SuccessEnvelope<AuthConfig>>("/auth/config");
+	return data.data;
+}
+
+export const authConfigQueryOptions = queryOptions({
+	queryKey: ["auth", "config"],
+	queryFn: getAuthConfig,
+	staleTime: 5 * 60 * 1000,
+	retry: 1,
+});
+
 export async function logout(): Promise<void> {
 	await apiClient.instance.post("/auth/logout");
 }

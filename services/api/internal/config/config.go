@@ -15,12 +15,49 @@ type Config struct {
 	Security   SecurityConfig
 	Plugins    PluginsConfig
 	Release    ReleaseConfig
+	OIDC       OIDCConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
 	// AIAgentInternalKey authenticates server-to-server calls into ai-agent's
 	// internal-only routes (see services/ai-agent's _require_internal_key) —
 	// must match ai-agent's own INTERNAL_API_KEY.
 	AIAgentInternalKey string
 	Env                string // development | production
+}
+
+// OIDCConfig holds settings for the single, provider-neutral OIDC identity
+// provider. OIDC is a human authentication *entry point* only: a successful
+// login still resolves to a Paca user and issues the same Paca JWT session
+// (see docs/deployment/oidc-sso.md). External identity is keyed by
+// (issuer, subject) — never by email or username.
+//
+// Environment variables (loaded by config.Load):
+//
+//	OIDC_ENABLED          – master switch (default: false)
+//	OIDC_ISSUER_URL       – IdP issuer, e.g. https://id.example.com/realms/company
+//	OIDC_CLIENT_ID        – OAuth2 client id registered with the IdP
+//	OIDC_CLIENT_SECRET    – confidential-web-client secret (server-side exchange)
+//	OIDC_SCOPES           – comma-separated (default: openid,profile,email)
+//	OIDC_REDIRECT_URL     – override; default PUBLIC_URL + /api/v1/auth/oidc/callback
+//	OIDC_DISPLAY_NAME     – label shown on the SSO button (default: "Single Sign-On")
+//	OIDC_JIT_PROVISION    – create users on first login (default: true)
+//	OIDC_DEFAULT_ROLE     – global role for JIT users (default: USER)
+//	OIDC_USERNAME_CLAIM   – claim used as username candidate (default: preferred_username)
+//	LOCAL_LOGIN_ENABLED   – whether username/password login stays available (default: true)
+type OIDCConfig struct {
+	Enabled       bool
+	IssuerURL     string
+	ClientID      string
+	ClientSecret  string
+	Scopes        []string
+	RedirectURL   string
+	DisplayName   string
+	JITProvision  bool
+	DefaultRole   string
+	UsernameClaim string
+	// LocalLoginEnabled mirrors LOCAL_LOGIN_ENABLED: false hides the
+	// username/password form and rejects password login server-side, leaving
+	// SSO as the only entry point. Forced back to true when OIDC is disabled.
+	LocalLoginEnabled bool
 }
 
 // ReleaseConfig holds settings for the "new version available" check that the

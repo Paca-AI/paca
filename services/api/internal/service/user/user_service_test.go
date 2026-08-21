@@ -492,7 +492,7 @@ func TestResetPassword_Success(t *testing.T) {
 	var savedHash string
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: id, Role: userdom.RoleUser, PasswordHash: "oldhash"}, nil
+			return &userdom.User{ID: id, Role: userdom.RoleUser, PasswordHash: "oldhash", PasswordLoginEnabled: true}, nil
 		},
 		update: func(_ context.Context, u *userdom.User) error {
 			savedHash = u.PasswordHash
@@ -580,7 +580,7 @@ func TestIssuePasswordSetToken_Success(t *testing.T) {
 	tokenRepo := &stubTokenRepo{}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, id uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: id}, nil
+			return &userdom.User{ID: id, PasswordLoginEnabled: true}, nil
 		},
 	}).WithPasswordSetTokenRepo(tokenRepo)
 
@@ -612,7 +612,7 @@ func TestSetPasswordWithToken_Success_WhenMustChangePassword(t *testing.T) {
 	}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true, PasswordLoginEnabled: true}, nil
 		},
 		update: func(_ context.Context, u *userdom.User) error {
 			savedHash = u.PasswordHash
@@ -689,7 +689,7 @@ func TestSetPasswordWithToken_RejectsLostRace(t *testing.T) {
 	}
 	svc := usersvc.New(&stubRepo{
 		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) {
-			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true}, nil
+			return &userdom.User{ID: userID, Role: userdom.RoleUser, PasswordHash: "oldhash", MustChangePassword: true, PasswordLoginEnabled: true}, nil
 		},
 		update: func(_ context.Context, _ *userdom.User) error {
 			updateCalled = true

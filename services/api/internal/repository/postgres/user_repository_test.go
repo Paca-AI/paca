@@ -42,6 +42,7 @@ func openUserRepoTestDB(t *testing.T) (*sqlx.DB, uuid.UUID) {
 			email TEXT,
 			role_id TEXT NOT NULL,
 			must_change_password INTEGER NOT NULL DEFAULT 0,
+			password_login_enabled INTEGER NOT NULL DEFAULT 1,
 			avatar_key TEXT,
 			avatar_thumb_key TEXT,
 			created_at DATETIME,

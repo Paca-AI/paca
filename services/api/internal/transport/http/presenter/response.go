@@ -127,6 +127,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
 	case errors.Is(err, domainauth.ErrSessionInvalidated):
 		return http.StatusUnauthorized, apierr.CodeTokenInvalid
+	case errors.Is(err, domainauth.ErrLocalLoginDisabled):
+		return http.StatusForbidden, apierr.CodeLocalLoginDisabled
 	case errors.Is(err, userdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeUserNotFound
 	case errors.Is(err, userdom.ErrUsernameTaken):
@@ -139,6 +141,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnprocessableEntity, apierr.CodeInvalidCurrentPassword
 	case errors.Is(err, userdom.ErrPasswordSetTokenInvalid):
 		return http.StatusUnprocessableEntity, apierr.CodePasswordSetTokenInvalid
+	case errors.Is(err, userdom.ErrPasswordLoginDisabled):
+		return http.StatusForbidden, apierr.CodePasswordLoginDisabled
 	case errors.Is(err, globalroledom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeGlobalRoleNotFound
 	case errors.Is(err, globalroledom.ErrNameTaken):
@@ -427,7 +431,10 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeEmailTaken,
 		apierr.CodeAgentConversationBusy:
 		return http.StatusConflict
-	case apierr.CodeForbidden:
+	case apierr.CodeForbidden,
+		apierr.CodeLocalLoginDisabled,
+		apierr.CodePasswordLoginDisabled,
+		apierr.CodeSSOUnavailable:
 		return http.StatusForbidden
 	case apierr.CodeGlobalRoleNotFound:
 		return http.StatusNotFound

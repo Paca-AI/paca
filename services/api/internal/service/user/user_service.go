@@ -192,15 +192,16 @@ func (s *Service) Create(ctx context.Context, in userdom.CreateInput) (*userdom.
 
 	now := time.Now()
 	u := &userdom.User{
-		ID:                 uuid.New(),
-		Username:           in.Username,
-		PasswordHash:       string(hash),
-		FullName:           in.FullName,
-		RoleID:             roleID,
-		Role:               roleName,
-		MustChangePassword: in.MustChangePassword,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		ID:                   uuid.New(),
+		Username:             in.Username,
+		PasswordHash:         string(hash),
+		FullName:             in.FullName,
+		RoleID:               roleID,
+		Role:                 roleName,
+		MustChangePassword:   in.MustChangePassword,
+		PasswordLoginEnabled: true,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if in.Email != "" {
 		u.Email = &in.Email
@@ -340,6 +341,11 @@ func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, newPassword s
 	if err != nil {
 		return err
 	}
+	if !u.PasswordLoginEnabled {
+		// SSO-only account: a password reset would silently open a second
+		// (password) login path. Fail closed.
+		return userdom.ErrPasswordLoginDisabled
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -364,6 +370,10 @@ func (s *Service) ChangeMyPassword(ctx context.Context, id uuid.UUID, currentPas
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
+	}
+	if !u.PasswordLoginEnabled {
+		// SSO-only account: there is no local password to change. Fail closed.
+		return userdom.ErrPasswordLoginDisabled
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
@@ -395,8 +405,13 @@ func (s *Service) IssuePasswordSetToken(ctx context.Context, userID uuid.UUID) (
 		return "", time.Time{}, ErrPasswordSetTokenRepoRequired
 	}
 
-	if _, err := s.repo.FindByID(ctx, userID); err != nil {
+	u, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
 		return "", time.Time{}, err
+	}
+	if !u.PasswordLoginEnabled {
+		// SSO-only account: no password to set via an emailed link. Fail closed.
+		return "", time.Time{}, userdom.ErrPasswordLoginDisabled
 	}
 
 	raw := make([]byte, 32)
@@ -448,6 +463,10 @@ func (s *Service) SetPasswordWithToken(ctx context.Context, rawToken, newPasswor
 		// not distinguished, so a caller can't use response differences to
 		// probe an account's password-change state.
 		return userdom.ErrPasswordSetTokenInvalid
+	}
+	if !u.PasswordLoginEnabled {
+		// SSO-only account: no local password to set. Fail closed.
+		return userdom.ErrPasswordLoginDisabled
 	}
 
 	// Claim the token atomically before writing the password: this is what

@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.99.0
+	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -18,9 +19,11 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/tetratelabs/wazero v1.11.0
 	golang.org/x/crypto v0.52.0
+	golang.org/x/image v0.44.0
+	golang.org/x/oauth2 v0.30.0
 )
 
-require golang.org/x/image v0.44.0
+require github.com/go-jose/go-jose/v4 v4.0.5
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

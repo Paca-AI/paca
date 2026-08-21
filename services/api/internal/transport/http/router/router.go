@@ -26,24 +26,28 @@ type Deps struct {
 	Health               *handler.HealthHandler
 	Version              *handler.VersionHandler
 	Auth                 *handler.AuthHandler
-	User                 *handler.UserHandler
-	GlobalRole           *handler.GlobalRoleHandler
-	Project              *handler.ProjectHandler
-	Task                 *handler.TaskHandler
-	Sprint               *handler.SprintHandler
-	View                 *handler.ViewHandler
-	Attachment           *handler.AttachmentHandler
-	Document             *handler.DocumentHandler
-	DocFile              *handler.DocFileHandler
-	Notification         *handler.NotificationHandler
-	APIKey               *handler.APIKeyHandler
-	Plugin               *handler.PluginHandler
-	Skills               *handler.SkillsHandler
-	Agent                *handler.AgentHandler
-	Conversation         *handler.ConversationHandler
-	Automation           *handler.AutomationHandler
-	Settings             *handler.SettingsHandler
-	Log                  *slog.Logger
+	// OIDC is nil when SSO is disabled — the /auth/oidc/* routes are simply
+	// not registered in that case. /auth/config always exists (on Auth) so
+	// the login page can discover the instance's login entry points.
+	OIDC         *handler.OIDCHandler
+	User         *handler.UserHandler
+	GlobalRole   *handler.GlobalRoleHandler
+	Project      *handler.ProjectHandler
+	Task         *handler.TaskHandler
+	Sprint       *handler.SprintHandler
+	View         *handler.ViewHandler
+	Attachment   *handler.AttachmentHandler
+	Document     *handler.DocumentHandler
+	DocFile      *handler.DocFileHandler
+	Notification *handler.NotificationHandler
+	APIKey       *handler.APIKeyHandler
+	Plugin       *handler.PluginHandler
+	Skills       *handler.SkillsHandler
+	Agent        *handler.AgentHandler
+	Conversation *handler.ConversationHandler
+	Automation   *handler.AutomationHandler
+	Settings     *handler.SettingsHandler
+	Log          *slog.Logger
 	// CORSAllowedOrigins is the CORS allow-list — see corsMiddleware. A nil
 	// or empty slice (the zero value, so every existing caller of this
 	// struct literal keeps working unchanged) is treated the same as ["*"]:
@@ -88,6 +92,17 @@ func New(deps Deps) http.Handler {
 				// the token itself (not a session) proves the caller's right
 				// to act on the account.
 				r.Post("/password/set", deps.User.SetPassword)
+
+				// Public — login entry-point discovery for the login page
+				// (which login methods exist; display data only).
+				r.Get("/config", deps.Auth.Config)
+
+				// Public — OIDC SSO browser endpoints. The whole flow runs
+				// server-side; the SPA only navigates to /oidc/login.
+				if deps.OIDC != nil {
+					r.Get("/oidc/login", deps.OIDC.Login)
+					r.Get("/oidc/callback", deps.OIDC.Callback)
+				}
 			})
 
 			// Users

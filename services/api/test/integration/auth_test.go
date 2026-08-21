@@ -83,6 +83,12 @@ func (r *fakeUserRepo) FindByName(_ context.Context, name string) (*globalroledo
 }
 
 func (r *fakeUserRepo) Create(_ context.Context, u *userdom.User) error {
+	// Every user created through this fake is a local (password) user unless
+	// the test explicitly says otherwise — mirrors the production default on
+	// the users.password_login_enabled column.
+	if !u.PasswordLoginEnabled {
+		u.PasswordLoginEnabled = true
+	}
 	r.byUsername[u.Username] = u
 	r.byID[u.ID] = u
 	return nil

@@ -24,6 +24,11 @@ type User struct {
 	// plugin's welcome/invite email), not for login.
 	Email              *string
 	MustChangePassword bool
+	// PasswordLoginEnabled reports whether this account may authenticate with
+	// its local password at all. False for JIT-provisioned SSO-only accounts:
+	// their password_hash holds an unknown random value, and every password
+	// operation (login, change, admin reset) fails closed for them.
+	PasswordLoginEnabled bool
 	// RoleID is the foreign-key reference to the global_roles table.
 	RoleID uuid.UUID
 	// Role holds the role name populated by a JOIN on global_roles; it is not

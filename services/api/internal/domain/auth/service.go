@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // TokenPair holds an access token and a companion refresh token.
@@ -20,6 +22,12 @@ type Service interface {
 	// rememberMe=false issues a short-lived session (see JWT_REFRESH_SESSION_TTL);
 	// rememberMe=true issues a long-lived persistent session (JWT_REFRESH_TTL).
 	Login(ctx context.Context, username, password string, rememberMe bool) (*TokenPair, error)
+	// IssueSessionForUser issues a fresh token pair for the given user without
+	// checking credentials. The service re-reads the user (and its current
+	// role) from the repository so callers never pass in stale user state.
+	// It is the shared session-issuance path behind both password login and
+	// external-identity (e.g. OIDC SSO) login.
+	IssueSessionForUser(ctx context.Context, userID uuid.UUID, rememberMe bool) (*TokenPair, error)
 	// Refresh validates a refresh token and issues a rotated token pair.
 	// Token reuse outside the grace period revokes the entire session family.
 	Refresh(ctx context.Context, refreshToken string) (*TokenPair, error)

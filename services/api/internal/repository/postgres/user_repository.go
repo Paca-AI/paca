@@ -17,39 +17,41 @@ import (
 // userRecord is the sqlx write model for the users table. It mirrors the
 // columns defined in 000001_init.sql.
 type userRecord struct {
-	ID                 string     `db:"id"`
-	Username           string     `db:"username"`
-	PasswordHash       string     `db:"password_hash"`
-	FullName           string     `db:"full_name"`
-	Email              *string    `db:"email"`
-	RoleID             string     `db:"role_id"`
-	MustChangePassword bool       `db:"must_change_password"`
-	CreatedAt          time.Time  `db:"created_at"`
-	UpdatedAt          time.Time  `db:"updated_at"`
-	DeletedAt          *time.Time `db:"deleted_at"`
+	ID                   string     `db:"id"`
+	Username             string     `db:"username"`
+	PasswordHash         string     `db:"password_hash"`
+	FullName             string     `db:"full_name"`
+	Email                *string    `db:"email"`
+	RoleID               string     `db:"role_id"`
+	MustChangePassword   bool       `db:"must_change_password"`
+	PasswordLoginEnabled bool       `db:"password_login_enabled"`
+	CreatedAt            time.Time  `db:"created_at"`
+	UpdatedAt            time.Time  `db:"updated_at"`
+	DeletedAt            *time.Time `db:"deleted_at"`
 }
 
 // userReadRow is the result of a SELECT … JOIN global_roles used for all read
 // operations so that the role name is always available alongside the FK.
 type userReadRow struct {
-	ID                 string     `db:"id"`
-	Username           string     `db:"username"`
-	PasswordHash       string     `db:"password_hash"`
-	FullName           string     `db:"full_name"`
-	Email              *string    `db:"email"`
-	RoleID             string     `db:"role_id"`
-	RoleName           string     `db:"role_name"`
-	MustChangePassword bool       `db:"must_change_password"`
-	AvatarKey          *string    `db:"avatar_key"`
-	AvatarThumbKey     *string    `db:"avatar_thumb_key"`
-	CreatedAt          time.Time  `db:"created_at"`
-	UpdatedAt          time.Time  `db:"updated_at"`
-	DeletedAt          *time.Time `db:"deleted_at"`
+	ID                   string     `db:"id"`
+	Username             string     `db:"username"`
+	PasswordHash         string     `db:"password_hash"`
+	FullName             string     `db:"full_name"`
+	Email                *string    `db:"email"`
+	RoleID               string     `db:"role_id"`
+	RoleName             string     `db:"role_name"`
+	MustChangePassword   bool       `db:"must_change_password"`
+	PasswordLoginEnabled bool       `db:"password_login_enabled"`
+	AvatarKey            *string    `db:"avatar_key"`
+	AvatarThumbKey       *string    `db:"avatar_thumb_key"`
+	CreatedAt            time.Time  `db:"created_at"`
+	UpdatedAt            time.Time  `db:"updated_at"`
+	DeletedAt            *time.Time `db:"deleted_at"`
 }
 
 // userReadCols and userReadJoin are shared by all read queries.
 const (
-	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.email, users.role_id, users.must_change_password, users.avatar_key, users.avatar_thumb_key, users.created_at, users.updated_at, users.deleted_at, gr.name AS role_name`
+	userReadCols = `users.id, users.username, users.password_hash, users.full_name, users.email, users.role_id, users.must_change_password, users.password_login_enabled, users.avatar_key, users.avatar_thumb_key, users.created_at, users.updated_at, users.deleted_at, gr.name AS role_name`
 	userReadJoin = `JOIN global_roles gr ON gr.id = users.role_id`
 )
 
@@ -179,10 +181,10 @@ func (r *UserRepository) FindByUsernameIncludingDeleted(ctx context.Context, use
 // constraint-violation error.
 func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, password_hash, full_name, email, role_id, must_change_password, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		INSERT INTO users (id, username, password_hash, full_name, email, role_id, must_change_password, password_login_enabled, created_at, updated_at, deleted_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		u.ID.String(), u.Username, u.PasswordHash, u.FullName, u.Email,
-		u.RoleID.String(), u.MustChangePassword, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
+		u.RoleID.String(), u.MustChangePassword, u.PasswordLoginEnabled, u.CreatedAt, u.UpdatedAt, u.DeletedAt,
 	)
 	if err != nil {
 		return userRepoErr("create", err)
@@ -195,10 +197,10 @@ func (r *UserRepository) Create(ctx context.Context, u *userdom.User) error {
 func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE users SET username = $1, password_hash = $2, full_name = $3, email = $4, role_id = $5,
-		  must_change_password = $6, avatar_key = $7, avatar_thumb_key = $8, updated_at = $9, deleted_at = $10
-		WHERE id = $11`,
+		  must_change_password = $6, password_login_enabled = $7, avatar_key = $8, avatar_thumb_key = $9, updated_at = $10, deleted_at = $11
+		WHERE id = $12`,
 		u.Username, u.PasswordHash, u.FullName, u.Email, u.RoleID.String(),
-		u.MustChangePassword, u.AvatarKey, u.AvatarThumbKey, u.UpdatedAt, u.DeletedAt, u.ID.String(),
+		u.MustChangePassword, u.PasswordLoginEnabled, u.AvatarKey, u.AvatarThumbKey, u.UpdatedAt, u.DeletedAt, u.ID.String(),
 	)
 	if err != nil {
 		return userRepoErr("update", err)
@@ -244,18 +246,19 @@ func rowToEntity(row *userReadRow) *userdom.User {
 	id, _ := uuid.Parse(row.ID)
 	roleID, _ := uuid.Parse(row.RoleID)
 	return &userdom.User{
-		ID:                 id,
-		Username:           row.Username,
-		PasswordHash:       row.PasswordHash,
-		FullName:           row.FullName,
-		Email:              row.Email,
-		RoleID:             roleID,
-		Role:               row.RoleName,
-		MustChangePassword: row.MustChangePassword,
-		AvatarKey:          row.AvatarKey,
-		AvatarThumbKey:     row.AvatarThumbKey,
-		CreatedAt:          row.CreatedAt,
-		UpdatedAt:          row.UpdatedAt,
-		DeletedAt:          row.DeletedAt,
+		ID:                   id,
+		Username:             row.Username,
+		PasswordHash:         row.PasswordHash,
+		FullName:             row.FullName,
+		Email:                row.Email,
+		RoleID:               roleID,
+		Role:                 row.RoleName,
+		MustChangePassword:   row.MustChangePassword,
+		PasswordLoginEnabled: row.PasswordLoginEnabled,
+		AvatarKey:            row.AvatarKey,
+		AvatarThumbKey:       row.AvatarThumbKey,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		DeletedAt:            row.DeletedAt,
 	}
 }

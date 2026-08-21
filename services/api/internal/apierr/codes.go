@@ -47,6 +47,16 @@ const (
 	// CodePasswordSetTokenInvalid indicates the password-set token is
 	// unknown, expired, or already used.
 	CodePasswordSetTokenInvalid Code = "USER_PASSWORD_SET_TOKEN_INVALID"
+	// CodeSSOUnavailable indicates the SSO login entry point failed to start
+	// (misconfigured or unreachable IdP). The message stays generic on
+	// purpose — provider details never reach the client.
+	CodeSSOUnavailable Code = "AUTH_SSO_UNAVAILABLE"
+	// CodeLocalLoginDisabled indicates password login is turned off
+	// instance-wide (SSO-only deployment).
+	CodeLocalLoginDisabled Code = "AUTH_LOCAL_LOGIN_DISABLED"
+	// CodePasswordLoginDisabled indicates the account may not use a local
+	// password at all (SSO-only account) — e.g. an admin password reset.
+	CodePasswordLoginDisabled Code = "USER_PASSWORD_LOGIN_DISABLED"
 
 	// CodeProjectNotFound indicates the requested project does not exist.
 	CodeProjectNotFound Code = "PROJECT_NOT_FOUND"

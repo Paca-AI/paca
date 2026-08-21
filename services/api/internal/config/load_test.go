@@ -275,3 +275,156 @@ func setLoadDefaults(t *testing.T) {
 	t.Setenv("STORAGE_SECRET_ACCESS_KEY", "secret-key")
 	t.Setenv("AI_AGENT_INTERNAL_KEY", "internal-key")
 }
+
+// ---------------------------------------------------------------------------
+// OIDC
+// ---------------------------------------------------------------------------
+
+func setOIDCEnv(t *testing.T) {
+	t.Helper()
+	setLoadDefaults(t)
+	t.Setenv("OIDC_ENABLED", "true")
+	t.Setenv("OIDC_ISSUER_URL", "https://id.example.com/realms/company")
+	t.Setenv("OIDC_CLIENT_ID", "paca")
+	t.Setenv("OIDC_CLIENT_SECRET", "s3cret")
+	t.Setenv("PUBLIC_URL", "https://paca.example.com")
+}
+
+func TestLoad_OIDC_DisabledByDefault(t *testing.T) {
+	setLoadDefaults(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.Enabled {
+		t.Fatal("expected OIDC disabled by default")
+	}
+	// Local login must stay enabled when SSO is off — password login is the
+	// only entry point, and a stray LOCAL_LOGIN_ENABLED=false would lock
+	// every human out.
+	t.Setenv("LOCAL_LOGIN_ENABLED", "false")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.OIDC.LocalLoginEnabled {
+		t.Fatal("expected LocalLoginEnabled forced true when OIDC is disabled")
+	}
+}
+
+func TestLoad_OIDC_Success(t *testing.T) {
+	setOIDCEnv(t)
+	t.Setenv("OIDC_DISPLAY_NAME", "Company SSO")
+	t.Setenv("OIDC_JIT_PROVISION", "false")
+	t.Setenv("OIDC_DEFAULT_ROLE", "MEMBER")
+	t.Setenv("OIDC_USERNAME_CLAIM", "nickname")
+	t.Setenv("LOCAL_LOGIN_ENABLED", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	o := cfg.OIDC
+	if !o.Enabled {
+		t.Fatal("expected OIDC enabled")
+	}
+	if o.LocalLoginEnabled {
+		t.Fatal("expected LocalLoginEnabled false when explicitly disabled with OIDC on")
+	}
+	if o.IssuerURL != "https://id.example.com/realms/company" {
+		t.Fatalf("unexpected issuer: %q", o.IssuerURL)
+	}
+	if o.RedirectURL != "https://paca.example.com/api/v1/auth/oidc/callback" {
+		t.Fatalf("expected redirect URL derived from PUBLIC_URL, got %q", o.RedirectURL)
+	}
+	if o.DisplayName != "Company SSO" || o.JITProvision || o.DefaultRole != "MEMBER" || o.UsernameClaim != "nickname" {
+		t.Fatalf("unexpected OIDC settings: %+v", o)
+	}
+}
+
+func TestLoad_OIDC_MissingRequired(t *testing.T) {
+	cases := []struct {
+		name string
+		set  func()
+		want string
+	}{
+		{"missing issuer", func() {
+			t.Setenv("OIDC_ISSUER_URL", "")
+		}, "OIDC_ISSUER_URL"},
+		{"missing client id", func() {
+			t.Setenv("OIDC_CLIENT_ID", "")
+		}, "OIDC_CLIENT_ID"},
+		{"missing client secret", func() {
+			t.Setenv("OIDC_CLIENT_SECRET", "")
+		}, "OIDC_CLIENT_SECRET"},
+		{"missing redirect fallback", func() {
+			t.Setenv("OIDC_REDIRECT_URL", "")
+			t.Setenv("PUBLIC_URL", "")
+		}, "OIDC_REDIRECT_URL"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setOIDCEnv(t)
+			tc.set()
+			_, err := Load()
+			if err == nil {
+				t.Fatal("expected error for invalid OIDC config")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error to mention %s, got %q", tc.want, err.Error())
+			}
+		})
+	}
+}
+
+func TestLoad_OIDC_ScopesDefaultContainOpenID(t *testing.T) {
+	setOIDCEnv(t)
+	t.Setenv("OIDC_SCOPES", "profile,email")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.Scopes[0] != "openid" {
+		t.Fatalf("expected openid forced into scopes, got %v", cfg.OIDC.Scopes)
+	}
+	if len(cfg.OIDC.Scopes) != 3 {
+		t.Fatalf("unexpected scopes: %v", cfg.OIDC.Scopes)
+	}
+}
+
+func TestLoad_OIDC_RejectsAdminDefaultRole(t *testing.T) {
+	setOIDCEnv(t)
+	t.Setenv("OIDC_DEFAULT_ROLE", "ADMIN")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for ADMIN as JIT default role")
+	}
+}
+
+func TestLoad_OIDC_HTTPSRequiredInProduction(t *testing.T) {
+	setOIDCEnv(t)
+	t.Setenv("ENV", "production")
+	t.Setenv("PUBLIC_URL", "http://paca.example.com")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected https redirect requirement in production")
+	}
+}
+
+func TestLoad_OIDC_HTTPIssuerAllowedOnlyForLoopback(t *testing.T) {
+	setOIDCEnv(t)
+
+	// Loopback http issuer is fine for local dev (e.g. a containerized IdP).
+	t.Setenv("OIDC_ISSUER_URL", "http://localhost:8080/realms/dev")
+	if _, err := Load(); err != nil {
+		t.Fatalf("unexpected error for loopback http issuer: %v", err)
+	}
+
+	// A remote http issuer is rejected.
+	t.Setenv("OIDC_ISSUER_URL", "http://id.example.com/realms/company")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for non-https remote issuer")
+	}
+}
