@@ -135,7 +135,21 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(4401, "unauthorized")
 		return
 	}
-	connectedAt := time.Now().UTC()
+
+	// Capture the reconciliation cutoff from PostgreSQL before the bridge is
+	// registered as online. agent_conversations.updated_at is also generated
+	// by PostgreSQL, so using the database clock avoids cross-host clock skew;
+	// taking the cutoff before Register ensures any newly dispatched turn that
+	// starts after this bridge becomes authoritative sorts after the cutoff.
+	var reconcileCutoff time.Time
+	if hello.ActiveConversations != nil {
+		reconcileCutoff, err = s.ConvRepo.CurrentDatabaseTime(r.Context())
+		if err != nil {
+			s.Log.Error("acpbridge: failed to capture reconciliation cutoff", "agent_id", agentID, "error", err)
+			_ = conn.Close(websocket.StatusInternalError, "reconciliation setup failed")
+			return
+		}
+	}
 
 	sessionID, err := s.Registry.Register(r.Context(), agentID, cfg.ProjectID, wsConn{conn})
 	if err != nil {
@@ -159,7 +173,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	// field; an explicit [] means a current bridge with no surviving ACP
 	// sessions, which is exactly the restart/orphan signal we need.
 	if hello.ActiveConversations != nil {
-		s.reconcileStaleConversations(context.WithoutCancel(r.Context()), agentID, hello.ActiveConversations, connectedAt)
+		s.reconcileStaleConversations(context.WithoutCancel(r.Context()), agentID, hello.ActiveConversations, reconcileCutoff)
 	}
 
 	s.relayMessages(r.Context(), conn, agentID)
