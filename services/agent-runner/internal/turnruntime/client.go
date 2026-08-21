@@ -17,8 +17,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// StableOutputEventType identifies the single publishable agent output event.
 const StableOutputEventType = "agent.turn.output.stable"
 
+// ToolPolicy is the validated capability envelope supplied by the API.
 type ToolPolicy struct {
 	Version             int      `json:"version"`
 	Mode                string   `json:"mode"`
@@ -26,6 +28,7 @@ type ToolPolicy struct {
 	ContextMayGrant     bool     `json:"context_may_grant"`
 }
 
+// Envelope contains the immutable execution state for one claimed turn.
 type Envelope struct {
 	TurnID                 uuid.UUID       `json:"turn_id"`
 	RunID                  uuid.UUID       `json:"run_id"`
@@ -49,6 +52,7 @@ type Envelope struct {
 	TerminalStatus         *string         `json:"terminal_status,omitempty"`
 }
 
+// Event is one fenced, sequenced runtime event appended to the API.
 type Event struct {
 	ID          uuid.UUID       `json:"id"`
 	RunID       uuid.UUID       `json:"run_id"`
@@ -60,6 +64,7 @@ type Event struct {
 	CreatedAt   time.Time       `json:"created_at"`
 }
 
+// FinalizeInput contains the fenced terminal result contract.
 type FinalizeInput struct {
 	RunID               uuid.UUID  `json:"run_id"`
 	ClaimToken          uuid.UUID  `json:"claim_token"`
@@ -72,6 +77,7 @@ type FinalizeInput struct {
 	FinalSequence       *int       `json:"final_sequence,omitempty"`
 }
 
+// APIError carries the stable error code returned by turn-control endpoints.
 type APIError struct {
 	Status  int
 	Code    string
@@ -82,6 +88,7 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("turn runtime: %s (%d): %s", e.Code, e.Status, e.Message)
 }
 
+// ErrorCode extracts a stable turn-control error code when present.
 func ErrorCode(err error) string {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
@@ -90,6 +97,7 @@ func ErrorCode(err error) string {
 	return ""
 }
 
+// IsTerminalOrExpired reports whether retrying the same run is no longer useful.
 func IsTerminalOrExpired(err error) bool {
 	switch ErrorCode(err) {
 	case "TURN_FINALIZED", "TURN_DEADLINE_EXCEEDED", "TURN_AUTHORIZATION_REVOKED", "TURN_NOT_FOUND":
@@ -99,12 +107,14 @@ func IsTerminalOrExpired(err error) bool {
 	}
 }
 
+// Client calls the API's internal authoritative turn-control endpoints.
 type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
 }
 
+// NewClient constructs an authenticated turn-control client.
 func NewClient(baseURL, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"), token: token,
@@ -112,6 +122,7 @@ func NewClient(baseURL, token string) *Client {
 	}
 }
 
+// Claim leases a turn and returns its immutable execution envelope.
 func (c *Client) Claim(ctx context.Context, turnID uuid.UUID, workerID string, lease time.Duration) (*Envelope, error) {
 	var out Envelope
 	err := c.request(ctx, http.MethodPost, c.turnPath(turnID, "/claim"), map[string]any{
@@ -120,12 +131,14 @@ func (c *Client) Claim(ctx context.Context, turnID uuid.UUID, workerID string, l
 	return &out, err
 }
 
+// Get retrieves the current immutable execution envelope for a turn.
 func (c *Client) Get(ctx context.Context, turnID uuid.UUID) (*Envelope, error) {
 	var out Envelope
 	err := c.request(ctx, http.MethodGet, c.turnPath(turnID, "/"), nil, &out)
 	return &out, err
 }
 
+// Renew extends a valid fenced execution lease.
 func (c *Client) Renew(ctx context.Context, turnID, runID, claimToken uuid.UUID, lease time.Duration) (time.Time, error) {
 	var out struct {
 		LeaseExpiresAt time.Time `json:"lease_expires_at"`
@@ -136,10 +149,12 @@ func (c *Client) Renew(ctx context.Context, turnID, runID, claimToken uuid.UUID,
 	return out.LeaseExpiresAt, err
 }
 
+// AppendEvent stores one fenced, sequenced runtime event.
 func (c *Client) AppendEvent(ctx context.Context, turnID uuid.UUID, event Event) error {
 	return c.request(ctx, http.MethodPost, c.turnPath(turnID, "/events"), event, nil)
 }
 
+// Finalize records the fenced terminal result for a turn.
 func (c *Client) Finalize(ctx context.Context, turnID uuid.UUID, input FinalizeInput) error {
 	return c.request(ctx, http.MethodPost, c.turnPath(turnID, "/finalize"), input, nil)
 }

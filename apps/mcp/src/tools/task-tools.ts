@@ -1,5 +1,5 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import * as z from "zod";
 import type {
 	PacaAPIClient,
 	PacaAPITaskExtendedClient,

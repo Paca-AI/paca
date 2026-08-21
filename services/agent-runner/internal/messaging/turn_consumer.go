@@ -23,6 +23,7 @@ const (
 	turnReclaimPoll   = 10 * time.Second
 )
 
+// TurnHandler executes one authoritative turn delivery.
 type TurnHandler func(ctx context.Context, turnID uuid.UUID) error
 
 // TurnConsumer is deliberately separate from the legacy conversation trigger
@@ -38,6 +39,7 @@ type TurnConsumer struct {
 	active       sync.Map
 }
 
+// NewTurnConsumer constructs the durable authoritative turn consumer.
 func NewTurnConsumer(client *redis.Client, maxConcurrency int, handler TurnHandler, log *slog.Logger) *TurnConsumer {
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
@@ -53,6 +55,7 @@ func NewTurnConsumer(client *redis.Client, maxConcurrency int, handler TurnHandl
 	}
 }
 
+// Run consumes turn deliveries until the context is canceled.
 func (c *TurnConsumer) Run(ctx context.Context) {
 	if !ensureStreamGroup(ctx, c.client, StreamAgentTurnRequests, turnConsumerGroup, c.log, "turn consumer") {
 		return

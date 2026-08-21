@@ -209,6 +209,13 @@ export interface AgentConversationEvent {
 	created_at: string;
 }
 
+export interface ProjectChatTurnEvent extends AgentConversationEvent {
+	turn_id?: string | null;
+	turn_run_id?: string | null;
+	turn_run_attempt?: number | null;
+	turn_sequence?: number | null;
+}
+
 export interface AgentChatSession {
 	id: string;
 	agent_id: string;
@@ -1525,6 +1532,18 @@ export async function getProjectChatTurn(
 	return data.data;
 }
 
+export async function listProjectChatTurnEvents(
+	projectId: string,
+	turnId: string,
+): Promise<ProjectChatTurnEvent[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: ProjectChatTurnEvent[] }>
+	>(`/projects/${projectId}/turns/${turnId}/events`, {
+		params: { limit: 500 },
+	});
+	return data.data.items;
+}
+
 export async function appendProjectChatTurn(
 	projectId: string,
 	sessionId: string,
@@ -1578,10 +1597,7 @@ export async function prepareProjectConclusion(
 	turnId: string,
 	payload: {
 		target_task_id: string;
-		summary_override?: string;
 		update_description?: boolean;
-		description_base?: unknown[] | null;
-		proposed_description?: unknown[];
 		expires_at: string;
 	},
 	idempotencyKey: string,
@@ -1878,6 +1894,15 @@ export const projectChatTurnQueryOptions = (
 			turnId,
 		] as const,
 		queryFn: () => getProjectChatTurn(projectId, sessionId, turnId),
+	});
+
+export const projectChatTurnEventsQueryOptions = (
+	projectId: string,
+	turnId: string,
+) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "turns", turnId, "events"] as const,
+		queryFn: () => listProjectChatTurnEvents(projectId, turnId),
 	});
 
 export const projectChatContextSourcesQueryOptions = (

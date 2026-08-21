@@ -116,13 +116,7 @@ describe("ProjectChatWritebackPrompt", () => {
 			sourceItem.turn.id,
 			expect.objectContaining({
 				target_task_id: task.id,
-				summary_override: sourceItem.result?.stable_output,
 				update_description: true,
-				description_base: task.description,
-				proposed_description: expect.arrayContaining([
-					expect.objectContaining({ type: "heading" }),
-					expect.objectContaining({ type: "bulletListItem" }),
-				]),
 			}),
 			expect.any(String),
 		);
@@ -167,6 +161,35 @@ describe("ProjectChatWritebackPrompt", () => {
 			);
 		});
 		expect(apiMocks.prepareProjectConclusion).not.toHaveBeenCalled();
+	});
+
+	it("keeps typed feedback when equal turn details refetch", async () => {
+		const view = render(
+			<ProjectChatWritebackPrompt
+				projectId={task.project_id}
+				sessionId="session-refetch"
+				sourceItem={sourceItem}
+				relatedTaskIds={[task.id]}
+				onContinue={vi.fn()}
+			/>,
+			{ wrapper: wrapper() },
+		);
+		const revisionInput = await screen.findByRole("textbox", {
+			name: /describe what to adjust/i,
+		});
+		fireEvent.change(revisionInput, { target: { value: "Keep this draft" } });
+
+		view.rerender(
+			<ProjectChatWritebackPrompt
+				projectId={task.project_id}
+				sessionId="session-refetch"
+				sourceItem={sourceItem}
+				relatedTaskIds={[task.id]}
+				onContinue={vi.fn()}
+			/>,
+		);
+
+		expect(revisionInput).toHaveValue("Keep this draft");
 	});
 
 	it("does not offer a second writeback when the source turn is published", async () => {

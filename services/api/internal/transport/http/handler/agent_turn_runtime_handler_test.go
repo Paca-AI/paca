@@ -71,7 +71,7 @@ func TestAgentTurnRuntimeClaimRequiresInternalToken(t *testing.T) {
 	handler := NewAgentTurnRuntimeHandler(repo, "secret")
 	router := chi.NewRouter()
 	router.Post("/{turnId}/claim", handler.Claim)
-	request := httptest.NewRequest(http.MethodPost, "/"+repo.claim.Bundle.Turn.ID.String()+"/claim", strings.NewReader(`{"worker_id":"w","lease_ms":60000}`))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/"+repo.claim.Bundle.Turn.ID.String()+"/claim", strings.NewReader(`{"worker_id":"w","lease_ms":60000}`))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
@@ -96,7 +96,7 @@ func TestAgentTurnRuntimeAllExecutionEndpointsRequireInternalToken(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			router := chi.NewRouter()
 			router.Method(test.method, "/{turnId}"+test.suffix, test.handle)
-			request := httptest.NewRequest(test.method, "/"+claim.Bundle.Turn.ID.String()+test.suffix, strings.NewReader(test.body))
+			request := httptest.NewRequestWithContext(context.Background(), test.method, "/"+claim.Bundle.Turn.ID.String()+test.suffix, strings.NewReader(test.body))
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			if response.Code != http.StatusUnauthorized {
@@ -115,7 +115,7 @@ func TestAgentTurnRuntimeClaimReturnsCheckedExecutionEnvelope(t *testing.T) {
 	handler := NewAgentTurnRuntimeHandler(repo, "secret")
 	router := chi.NewRouter()
 	router.Post("/{turnId}/claim", handler.Claim)
-	request := httptest.NewRequest(http.MethodPost, "/"+repo.claim.Bundle.Turn.ID.String()+"/claim", strings.NewReader(`{"worker_id":"worker-1","lease_ms":60000}`))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/"+repo.claim.Bundle.Turn.ID.String()+"/claim", strings.NewReader(`{"worker_id":"worker-1","lease_ms":60000}`))
 	request.Header.Set("X-Internal-Token", "secret")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -142,7 +142,7 @@ func TestAgentTurnRuntimeClaimBusyIsRetryableConflict(t *testing.T) {
 	handler := NewAgentTurnRuntimeHandler(repo, "secret")
 	router := chi.NewRouter()
 	router.Post("/{turnId}/claim", handler.Claim)
-	request := httptest.NewRequest(http.MethodPost, "/"+claim.Bundle.Turn.ID.String()+"/claim", strings.NewReader(`{"worker_id":"w","lease_ms":60000}`))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/"+claim.Bundle.Turn.ID.String()+"/claim", strings.NewReader(`{"worker_id":"w","lease_ms":60000}`))
 	request.Header.Set("X-Internal-Token", "secret")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -157,7 +157,7 @@ func TestAgentTurnRuntimeFinalizeRejectsRunFromDifferentTurnURL(t *testing.T) {
 	handler := NewAgentTurnRuntimeHandler(repo, "secret")
 	router := chi.NewRouter()
 	router.Post("/{turnId}/finalize", handler.Finalize)
-	request := httptest.NewRequest(http.MethodPost, "/"+claim.Bundle.Turn.ID.String()+"/finalize", strings.NewReader(`{
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/"+claim.Bundle.Turn.ID.String()+"/finalize", strings.NewReader(`{
 		"run_id":"`+uuid.NewString()+`",
 		"claim_token":"`+claim.ClaimToken.String()+`",
 		"terminal_status":"failed",

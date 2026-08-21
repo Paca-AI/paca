@@ -194,6 +194,14 @@ func TestAgentTurnMigrationUpgradesEmptyDraft(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, string(migration)); err != nil {
 		t.Fatalf("upgrade empty PACA-3 draft: %v", err)
 	}
+	uniquenessMigrationPath := filepath.Join(filepath.Dir(filename), "..", "..", "..", "migrations", "000044_enforce_agent_conclusion_source_uniqueness.sql")
+	uniquenessMigration, err := os.ReadFile(uniquenessMigrationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, string(uniquenessMigration)); err != nil {
+		t.Fatalf("apply conclusion source uniqueness migration: %v", err)
+	}
 
 	for _, column := range []string{"tool_policy_sha256", "command_sha256", "request_sha256"} {
 		var nullable string
@@ -255,6 +263,14 @@ func TestAgentTurnMigrationUpgradesEmptyDraft(t *testing.T) {
 	if oldPublicationIndexes != 0 || unifiedPublicationIndexes != 1 {
 		t.Fatalf("publication parent indexes old=%d unified=%d", oldPublicationIndexes, unifiedPublicationIndexes)
 	}
+	var sourceTaskUniquenessIndexes int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM pg_indexes
+		WHERE schemaname=$1 AND indexname='uq_agent_conclusion_publication_source_task'`, schema).Scan(&sourceTaskUniquenessIndexes); err != nil {
+		t.Fatal(err)
+	}
+	if sourceTaskUniquenessIndexes != 1 {
+		t.Fatalf("conclusion source/task uniqueness indexes=%d", sourceTaskUniquenessIndexes)
+	}
 	var outboxConstraint string
 	if err := conn.QueryRowContext(ctx, `SELECT pg_get_constraintdef(c.oid)
 		FROM pg_constraint c
@@ -271,6 +287,9 @@ func TestAgentTurnMigrationUpgradesEmptyDraft(t *testing.T) {
 
 	if _, err := conn.ExecContext(ctx, string(migration)); err != nil {
 		t.Fatalf("repeat upgraded migration: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx, string(uniquenessMigration)); err != nil {
+		t.Fatalf("repeat conclusion source uniqueness migration: %v", err)
 	}
 	if _, err := conn.ExecContext(ctx, "DROP SCHEMA "+schema+" CASCADE"); err != nil {
 		t.Fatal(err)

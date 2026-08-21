@@ -17,6 +17,7 @@ const (
 	turnControlReclaimIdle = 15 * time.Second
 )
 
+// TurnControl is a fenced stop request for an active turn.
 type TurnControl struct {
 	TurnID         uuid.UUID
 	RunID          uuid.UUID
@@ -28,6 +29,7 @@ type TurnControl struct {
 	Reason         string
 }
 
+// TurnControlHandler processes one authoritative turn control request.
 type TurnControlHandler func(context.Context, TurnControl) error
 
 // TurnControlConsumer delivers durable owner/deadline/revocation stops. The
@@ -41,6 +43,7 @@ type TurnControlConsumer struct {
 	consumerName string
 }
 
+// NewTurnControlConsumer constructs the durable turn control consumer.
 func NewTurnControlConsumer(client *redis.Client, handler TurnControlHandler, log *slog.Logger) *TurnControlConsumer {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -50,6 +53,7 @@ func NewTurnControlConsumer(client *redis.Client, handler TurnControlHandler, lo
 		consumerName: fmt.Sprintf("%s.%s.%s", turnControlGroup, host, uuid.NewString())}
 }
 
+// Run consumes turn control requests until the context is canceled.
 func (c *TurnControlConsumer) Run(ctx context.Context) {
 	if !ensureStreamGroup(ctx, c.client, StreamAgentTurnControls, turnControlGroup, c.log, "turn control consumer") {
 		return

@@ -1039,6 +1039,7 @@ func (r *AgentRepository) UpdateConversationStatus(ctx context.Context, id uuid.
 	return err
 }
 
+// HasAuthoritativeTurnForConversation reports whether a legacy conversation is anchored to a turn.
 func (r *AgentRepository) HasAuthoritativeTurnForConversation(ctx context.Context, conversationID uuid.UUID) (bool, error) {
 	var exists bool
 	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS (

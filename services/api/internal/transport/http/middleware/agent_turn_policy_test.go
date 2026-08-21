@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +14,7 @@ func TestAgentTurnPolicyRejectsAgentMutation(t *testing.T) {
 	handler := EnforceAgentTurnReadOnly()(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		nextCalled = true
 	}))
-	request := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/p/tasks/t", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPatch, "/api/v1/projects/p/tasks/t", nil)
 	request.Header.Set("X-Agent-Turn-ID", uuid.NewString())
 	request = request.WithContext(WithAgentID(request.Context(), uuid.New()))
 	response := httptest.NewRecorder()
@@ -29,7 +30,7 @@ func TestAgentTurnPolicyAllowsAgentRead(t *testing.T) {
 		nextCalled = true
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/projects/p/tasks/t", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/projects/p/tasks/t", nil)
 	request.Header.Set("X-Agent-Turn-ID", uuid.NewString())
 	request = request.WithContext(WithAgentID(request.Context(), uuid.New()))
 	response := httptest.NewRecorder()
@@ -45,7 +46,7 @@ func TestAgentTurnPolicyDoesNotTreatHumanHeaderAsTurnCredential(t *testing.T) {
 		nextCalled = true
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/projects/p/chat-sessions", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/projects/p/chat-sessions", nil)
 	request.Header.Set("X-Agent-Turn-ID", uuid.NewString())
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

@@ -10,7 +10,13 @@ export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/chats/$sessionId",
 )({
 	validateSearch: (search: Record<string, unknown>) => ({
-		turnId: typeof search.turnId === "string" ? search.turnId : undefined,
+		turnId:
+			typeof search.turnId === "string" &&
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+				search.turnId,
+			)
+				? search.turnId
+				: undefined,
 	}),
 	loader: async ({
 		context: { queryClient },
@@ -31,5 +37,12 @@ export const Route = createFileRoute(
 
 function ProjectChatSessionPage() {
 	const { projectId, sessionId } = Route.useParams();
-	return <ProjectChatView projectId={projectId} sessionId={sessionId} />;
+	const { turnId } = Route.useSearch();
+	return (
+		<ProjectChatView
+			projectId={projectId}
+			sessionId={sessionId}
+			focusTurnId={turnId}
+		/>
+	);
 }

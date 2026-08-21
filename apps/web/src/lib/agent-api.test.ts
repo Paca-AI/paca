@@ -655,12 +655,7 @@ describe("agent-api", () => {
 			mockPost.mockResolvedValue(ok({ replayed: false }));
 			const preparePayload = {
 				target_task_id: "task-1",
-				summary_override: "Frozen summary",
 				update_description: true,
-				description_base: null,
-				proposed_description: [
-					{ type: "paragraph", content: [{ text: "Frozen summary" }] },
-				],
 				expires_at: "2026-08-18T12:15:00.000Z",
 			};
 

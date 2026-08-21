@@ -367,6 +367,7 @@ func (r *Registry) DispatchWithAck(ctx context.Context, agentID uuid.UUID, messa
 	return false, fmt.Errorf("acpbridge: authoritative dispatch was not acknowledged")
 }
 
+// AcknowledgeDispatch records durable acceptance of an authoritative delivery.
 func (r *Registry) AcknowledgeDispatch(ctx context.Context, agentID uuid.UUID, sessionID, deliveryID string) error {
 	if _, err := uuid.Parse(deliveryID); err != nil {
 		return fmt.Errorf("acpbridge: invalid dispatch acknowledgement")

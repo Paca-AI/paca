@@ -8,7 +8,6 @@ import {
 	type ProjectChatTurnHistoryItem,
 	prepareProjectConclusion,
 } from "@/lib/agent-api";
-import { descriptionFromMarkdown } from "@/lib/conclusion-description";
 import { taskQueryOptions } from "@/lib/interaction-api";
 import { parseProjectChatCommand } from "@/lib/project-chat-commands";
 import {
@@ -122,19 +121,21 @@ export function ProjectChatWritebackPrompt({
 	const publicationStateLoading = publicationQueries.some(
 		(query) => query.isLoading,
 	);
+	const relatedTaskIdsIdentity = relatedTaskIds.join("\u001f");
 
 	useEffect(() => {
+		const stableTaskIds = relatedTaskIdsIdentity
+			? relatedTaskIdsIdentity.split("\u001f")
+			: [];
 		setHandled(
 			sourceTurnId ? readHandledTurns(sessionId).includes(sourceTurnId) : false,
 		);
 		setAction("writeback");
 		setFeedback("");
-		setTargetTaskId(
-			relatedTaskIds.length === 1 ? relatedTaskIds[0] : undefined,
-		);
+		setTargetTaskId(stableTaskIds.length === 1 ? stableTaskIds[0] : undefined);
 		prepareKeyRef.current = null;
 		confirmKeyRef.current = null;
-	}, [relatedTaskIds, sessionId, sourceTurnId]);
+	}, [relatedTaskIdsIdentity, sessionId, sourceTurnId]);
 
 	const markHandled = () => {
 		if (sourceTurnId) writeHandledTurn(sessionId, sourceTurnId);
@@ -158,16 +159,10 @@ export function ProjectChatWritebackPrompt({
 			const content = sourceItem.result?.stable_output?.trim();
 			if (!content) throw new Error("missing stable output");
 			const updateDescription = command.kind === "update-description";
-			const proposedDescription = updateDescription
-				? descriptionFromMarkdown(content)
-				: undefined;
 			const preparationFingerprint = JSON.stringify({
 				turnId: sourceItem.turn.id,
 				targetTaskId: targetTask.id,
-				content,
 				updateDescription,
-				currentDescription: targetTask.description ?? null,
-				proposedDescription,
 			});
 			if (prepareKeyRef.current?.fingerprint !== preparationFingerprint) {
 				prepareKeyRef.current = {
@@ -181,14 +176,7 @@ export function ProjectChatWritebackPrompt({
 				sourceItem.turn.id,
 				{
 					target_task_id: targetTask.id,
-					summary_override: content,
 					update_description: updateDescription,
-					...(proposedDescription
-						? {
-								description_base: targetTask.description ?? null,
-								proposed_description: proposedDescription,
-							}
-						: {}),
 					expires_at: prepareKeyRef.current.expiresAt,
 				},
 				prepareKeyRef.current.key,

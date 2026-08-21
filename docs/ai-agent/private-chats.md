@@ -4,9 +4,9 @@ Project Chats are persistent, owner-private conversations between one human
 project member and an agent. They are deliberately separate from task-triggered
 agent executions and from task comments.
 
-This document describes the contract introduced by migration `000040`. The SQL
-schema remains the storage source of truth; the terms and invariants below are
-the product and service contract.
+This document describes the contract introduced by migration `000043` and
+hardened by migration `000044`. The SQL schema remains the storage source of
+truth; the terms and invariants below are the product and service contract.
 
 ## Scope
 
@@ -140,11 +140,12 @@ stable result. Cancel is a local UI dismissal. A publication-history check
 prevents a published source turn from being offered again after reload or on
 another client.
 
-Target selection is scoped to task context explicitly attached to the chat. A
-single related task is selected without asking again. Multiple related tasks
-show only those candidates in the same compact card; unrelated project tasks
-are never listed. With no task context the writeback commands remain unavailable
-until one is added.
+Target selection is scoped to the task context frozen on the command's source
+turn, not the session's mutable next-turn selection. A single related task is
+selected without asking again. Multiple related tasks show only those
+candidates in the same compact card; unrelated project tasks are rejected by
+both the client and API. With no task context the writeback commands remain
+unavailable until one is added.
 
 The composer's `+` action is independent from commands and opens an extensible
 resource menu rather than launching a picker directly. Its only current item
@@ -168,17 +169,21 @@ The two commands are mutually exclusive workflows:
 
 Writeback is two phase:
 
-1. `prepare` selects one same-project target task and freezes the command turn's
-   stable output, version, hash, expiry, and idempotency record. Description
-   mode also freezes the current description and hash plus the proposed
-   BlockNote description and hash. Summary-only mode freezes the same visible
+1. `prepare` selects a task from the source turn's immutable context and freezes
+   that command turn's exact stable output, version, hash, expiry, and
+   idempotency record. Description mode compares the live task against the
+   description captured before generation, then derives the BlockNote proposal
+   on the server from the stable output. Client-supplied summaries, baselines,
+   and proposals are not accepted. Summary-only mode freezes the same visible
    stable output as the activity summary.
 2. `confirm` revalidates current ownership and permissions, locks the source and
    target, and atomically inserts the append-only audit publication and outbox
    record. Description mode locks the target task, rejects a changed baseline,
    applies the proposal, and inserts only the `task.updated` activity. Summary
    mode inserts only the minimal `agent.conclusion.published` activity
-   projection. A conflict publishes nothing.
+   projection. A conflict publishes nothing. A source turn can be published to
+   a target task only once; the confirm transaction serializes that scope and a
+   partial unique index is the final database guard.
 
 Each publication records the source turn, target task, human publisher, source
 agent, frozen summary/version/hash, and idempotency key. New Project Chats

@@ -1,5 +1,5 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import * as z from "zod";
 import type { PacaAPIAutomationClient } from "../api/index.js";
 import type { Automation, AutomationGraph } from "../types/index.js";
 import { formatToolError } from "../utils/index.js";

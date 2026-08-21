@@ -1,6 +1,13 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { FilePenLine, ListChecks, SquareSlash } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
@@ -26,11 +33,18 @@ export function ProjectChatCommandMenu({
 }) {
 	const { t } = useTranslation("projects");
 	const aui = useAui();
+	const menuId = useId();
 	const composerText = useAuiState((state) => state.composer.text);
 	const rootRef = useRef<HTMLDivElement>(null);
 	const [iconOpen, setIconOpen] = useState(false);
 	const [dismissedQuery, setDismissedQuery] = useState<string>();
 	const [activeIndex, setActiveIndex] = useState(0);
+	const focusComposer = useCallback(() => {
+		requestAnimationFrame(() => {
+			const input = document.querySelector<HTMLElement>(".aui-composer-input");
+			input?.focus();
+		});
+	}, []);
 	const menuLabel = t("chats.conclusion.commandMenu");
 	const items = useMemo<CommandItem[]>(
 		() => [
@@ -64,6 +78,33 @@ export function ProjectChatCommandMenu({
 	const open = !disabled && (iconOpen || typedOpen);
 
 	useEffect(() => {
+		const input = document.querySelector<HTMLElement>(".aui-composer-input");
+		if (!input) return;
+		input.setAttribute("aria-haspopup", "listbox");
+		if (open) {
+			input.setAttribute("aria-controls", menuId);
+			input.setAttribute("aria-expanded", "true");
+			const activeItem = filteredItems[activeIndex];
+			if (activeItem) {
+				input.setAttribute(
+					"aria-activedescendant",
+					`${menuId}-${activeItem.kind}`,
+				);
+			}
+		} else {
+			input.removeAttribute("aria-controls");
+			input.removeAttribute("aria-expanded");
+			input.removeAttribute("aria-activedescendant");
+		}
+		return () => {
+			input.removeAttribute("aria-haspopup");
+			input.removeAttribute("aria-controls");
+			input.removeAttribute("aria-expanded");
+			input.removeAttribute("aria-activedescendant");
+		};
+	}, [activeIndex, filteredItems, menuId, open]);
+
+	useEffect(() => {
 		setActiveIndex(0);
 		if (dismissedQuery && dismissedQuery !== composerText) {
 			setDismissedQuery(undefined);
@@ -71,14 +112,21 @@ export function ProjectChatCommandMenu({
 	}, [composerText, dismissedQuery]);
 
 	useEffect(() => {
-		if (!iconOpen) return;
+		if (!open) return;
 		const closeOnOutsidePress = (event: PointerEvent) => {
-			if (!rootRef.current?.contains(event.target as Node)) setIconOpen(false);
+			const target = event.target as HTMLElement | null;
+			if (
+				rootRef.current?.contains(target) ||
+				target?.closest(".aui-composer-input")
+			)
+				return;
+			setIconOpen(false);
+			if (typedOpen) setDismissedQuery(composerText);
 		};
 		document.addEventListener("pointerdown", closeOnOutsidePress);
 		return () =>
 			document.removeEventListener("pointerdown", closeOnOutsidePress);
-	}, [iconOpen]);
+	}, [composerText, open, typedOpen]);
 
 	const choose = useCallback(
 		(item: CommandItem) => {
@@ -86,13 +134,15 @@ export function ProjectChatCommandMenu({
 			aui.composer().setText(`${item.token} `);
 			setIconOpen(false);
 			setDismissedQuery(undefined);
+			focusComposer();
 		},
-		[aui, hasTaskContext],
+		[aui, focusComposer, hasTaskContext],
 	);
 
 	useEffect(() => {
 		if (!open) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.isComposing) return;
 			const target = event.target as HTMLElement | null;
 			if (!target?.classList.contains("aui-composer-input")) return;
 			if (event.key === "Escape") {
@@ -112,7 +162,14 @@ export function ProjectChatCommandMenu({
 				});
 				return;
 			}
-			if (event.key === "Enter" && hasTaskContext) {
+			if (
+				event.key === "Enter" &&
+				!event.shiftKey &&
+				!event.ctrlKey &&
+				!event.metaKey &&
+				!event.altKey &&
+				hasTaskContext
+			) {
 				event.preventDefault();
 				const item = filteredItems[activeIndex];
 				if (item) choose(item);
@@ -139,13 +196,25 @@ export function ProjectChatCommandMenu({
 				className="size-7 rounded-full"
 				tooltip={menuLabel}
 				aria-label={menuLabel}
+				aria-expanded={open}
+				aria-controls={open ? menuId : undefined}
 				disabled={disabled}
-				onClick={() => setIconOpen((value) => !value)}
+				onClick={() => {
+					if (open) {
+						setIconOpen(false);
+						if (typedOpen) setDismissedQuery(composerText);
+					} else {
+						setIconOpen(true);
+						setDismissedQuery(undefined);
+					}
+					focusComposer();
+				}}
 			>
 				<SquareSlash className="size-4" />
 			</TooltipIconButton>
 			{open && (
 				<div
+					id={menuId}
 					role="listbox"
 					aria-label={menuLabel}
 					className="absolute bottom-9 left-0 z-50 w-64 rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10"
@@ -154,6 +223,7 @@ export function ProjectChatCommandMenu({
 						const Icon = item.icon;
 						return (
 							<button
+								id={`${menuId}-${item.kind}`}
 								type="button"
 								role="option"
 								aria-selected={index === activeIndex}

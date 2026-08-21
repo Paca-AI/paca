@@ -67,6 +67,7 @@ func (d *Dispatcher) DispatchAuthoritative(ctx context.Context, claim *turnrunti
 	return online, err
 }
 
+// StopAuthoritative forwards a fenced stop request to the active ACP runtime.
 func (d *Dispatcher) StopAuthoritative(ctx context.Context, control messaging.TurnControl) (bool, error) {
 	return d.Registry.DispatchWithAck(ctx, control.AgentID, map[string]any{
 		"type": "stop_turn", "conversation_id": control.ConversationID.String(),

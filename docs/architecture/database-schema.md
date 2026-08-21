@@ -22,6 +22,7 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | `000038_add_agent_conversation_audience.sql` | Adds explicit owner-private/project-shared conversation audience metadata and constraints. |
 | `000042_add_agent_task_handoffs.sql` | Adds internal task-run handoffs for later task execution continuity; handoffs are not task publications. |
 | `000043_add_agent_turns_and_conclusions.sql` | Adds authoritative agent turns, fenced run attempts, immutable context snapshots/results, reliable outbox delivery, and append-only human-confirmed conclusion publications for owner-private Project Chats. See [`docs/ai-agent/private-chats.md`](../ai-agent/private-chats.md). |
+| `000044_enforce_agent_conclusion_source_uniqueness.sql` | Adds the database-level uniqueness guard that prevents the same authoritative source turn from being published to the same task twice. |
 
 *(Migrations between `000008` and `000017`/`000022`/`000031` that touch other subsystems — tasks, sprints, docs, notifications, etc. — are omitted here; see `services/api/migrations/` for the full, authoritative list.)*
 

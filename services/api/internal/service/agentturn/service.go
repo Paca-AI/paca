@@ -29,6 +29,7 @@ type projectAgentFinder interface {
 	FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
 }
 
+// Service coordinates authorization and durable project chat turn workflows.
 type Service struct {
 	repo       agentdom.TurnRepository
 	agents     projectAgentFinder
@@ -36,10 +37,12 @@ type Service struct {
 	now        func() time.Time
 }
 
+// New constructs an authoritative project chat service.
 func New(repo agentdom.TurnRepository, agents projectAgentFinder, authorizer permissionChecker) *Service {
 	return &Service{repo: repo, agents: agents, authorizer: authorizer, now: time.Now}
 }
 
+// ListChatSessions returns owner-scoped project chat sessions.
 func (s *Service) ListChatSessions(ctx context.Context, filter agentdom.ChatSessionListFilter, actor agentdom.ChatActor) ([]*agentdom.ChatSessionSummary, bool, error) {
 	if err := s.authorize(ctx, filter.ProjectID, actor, authz.PermissionAgentsRead); err != nil {
 		return nil, false, err
@@ -48,6 +51,7 @@ func (s *Service) ListChatSessions(ctx context.Context, filter agentdom.ChatSess
 	return s.repo.ListOwnerChatSessions(ctx, filter)
 }
 
+// GetChatSession returns one owner-scoped project chat session.
 func (s *Service) GetChatSession(ctx context.Context, projectID, sessionID uuid.UUID, actor agentdom.ChatActor) (*agentdom.AgentChatSession, error) {
 	if err := s.authorizeOwnerRead(ctx, projectID, actor); err != nil {
 		return nil, err
@@ -55,6 +59,7 @@ func (s *Service) GetChatSession(ctx context.Context, projectID, sessionID uuid.
 	return s.repo.GetOwnerChatSession(ctx, projectID, sessionID, actor.MemberID)
 }
 
+// GetChatTurn returns one owner-scoped turn and its immutable execution data.
 func (s *Service) GetChatTurn(ctx context.Context, projectID, sessionID, turnID uuid.UUID, actor agentdom.ChatActor) (*agentdom.TurnBundle, error) {
 	if err := s.authorizeOwnerRead(ctx, projectID, actor); err != nil {
 		return nil, err
@@ -69,6 +74,7 @@ func (s *Service) GetChatTurn(ctx context.Context, projectID, sessionID, turnID 
 	return bundle, nil
 }
 
+// ListChatTurns returns paginated turns for an owner-scoped session.
 func (s *Service) ListChatTurns(ctx context.Context, projectID, sessionID uuid.UUID, actor agentdom.ChatActor, limit int, beforeIndex *int) ([]*agentdom.TurnBundle, bool, error) {
 	if err := s.authorizeOwnerRead(ctx, projectID, actor); err != nil {
 		return nil, false, err
@@ -76,6 +82,7 @@ func (s *Service) ListChatTurns(ctx context.Context, projectID, sessionID uuid.U
 	return s.repo.ListOwnerSessionTurns(ctx, projectID, sessionID, actor.MemberID, limit, beforeIndex)
 }
 
+// ListChatTurnEvents returns paginated durable events for an owner-scoped turn.
 func (s *Service) ListChatTurnEvents(ctx context.Context, filter agentdom.TurnEventListFilter, actor agentdom.ChatActor) ([]*agentdom.AgentConversationEvent, bool, error) {
 	if err := s.authorizeOwnerRead(ctx, filter.ProjectID, actor); err != nil {
 		return nil, false, err
@@ -84,6 +91,7 @@ func (s *Service) ListChatTurnEvents(ctx context.Context, filter agentdom.TurnEv
 	return s.repo.ListOwnerTurnEvents(ctx, filter)
 }
 
+// ListLegacyChatExecutions returns read-only pre-turn chat history.
 func (s *Service) ListLegacyChatExecutions(ctx context.Context, filter agentdom.LegacyExecutionListFilter, actor agentdom.ChatActor) ([]agentdom.LegacyChatExecution, bool, error) {
 	if err := s.authorizeOwnerRead(ctx, filter.ProjectID, actor); err != nil {
 		return nil, false, err
@@ -92,6 +100,7 @@ func (s *Service) ListLegacyChatExecutions(ctx context.Context, filter agentdom.
 	return s.repo.ListOwnerSessionLegacyExecutions(ctx, filter)
 }
 
+// ListChatContextSources returns the live selection for the session's next turn.
 func (s *Service) ListChatContextSources(ctx context.Context, projectID, sessionID uuid.UUID, actor agentdom.ChatActor) ([]agentdom.SessionContextSource, error) {
 	if err := s.authorizeOwnerRead(ctx, projectID, actor); err != nil {
 		return nil, err
@@ -99,6 +108,7 @@ func (s *Service) ListChatContextSources(ctx context.Context, projectID, session
 	return s.repo.ListSessionContextSources(ctx, projectID, sessionID, actor.MemberID)
 }
 
+// ReplaceChatContextSources replaces the authorized next-turn context selection.
 func (s *Service) ReplaceChatContextSources(ctx context.Context, in agentdom.ReplaceChatContextInput) ([]agentdom.SessionContextSource, error) {
 	sources, err := buildSessionSources(in.ProjectID, in.SessionID, in.Actor.MemberID, in.Sources, s.now().UTC())
 	if err != nil {
@@ -121,6 +131,7 @@ func (s *Service) ReplaceChatContextSources(ctx context.Context, in agentdom.Rep
 		in.Actor.UserID, in.Actor.LegacyRole, sources)
 }
 
+// CreateProjectChat creates a session and its first immutable turn.
 func (s *Service) CreateProjectChat(ctx context.Context, in agentdom.CreateProjectChatInput) (*agentdom.TurnBundle, bool, error) {
 	if err := validateActor(in.Actor); err != nil {
 		return nil, false, err
@@ -183,6 +194,7 @@ func (s *Service) CreateProjectChat(ctx context.Context, in agentdom.CreateProje
 	return s.repo.CreateSessionTurn(ctx, bundleInput)
 }
 
+// AppendProjectChatTurn creates a follow-up turn from the current live context.
 func (s *Service) AppendProjectChatTurn(ctx context.Context, in agentdom.AppendProjectChatTurnInput) (*agentdom.TurnBundle, bool, error) {
 	if err := validateActor(in.Actor); err != nil {
 		return nil, false, err
@@ -278,6 +290,7 @@ func (s *Service) AppendProjectChatTurn(ctx context.Context, in agentdom.AppendP
 		snapshot, requestedDeadline, defaultTimeout, now))
 }
 
+// StopProjectChatTurn cancels a queued or running turn for its session owner.
 func (s *Service) StopProjectChatTurn(ctx context.Context, in agentdom.StopProjectChatTurnInput) (*agentdom.TurnResult, error) {
 	if err := validateActor(in.Actor); err != nil {
 		return nil, err
@@ -294,6 +307,7 @@ func (s *Service) StopProjectChatTurn(ctx context.Context, in agentdom.StopProje
 	})
 }
 
+// PrepareProjectConclusion freezes an agent-generated write-back proposal.
 func (s *Service) PrepareProjectConclusion(ctx context.Context, in agentdom.PrepareProjectConclusionInput) (*agentdom.ConclusionPreparation, bool, error) {
 	if err := validateActor(in.Actor); err != nil {
 		return nil, false, err
@@ -315,13 +329,12 @@ func (s *Service) PrepareProjectConclusion(ctx context.Context, in agentdom.Prep
 		ID: uuid.New(), ProjectID: in.ProjectID, SourceTurnID: in.SourceTurnID,
 		TargetTaskID: in.TargetTaskID, PreparedByUserID: in.Actor.UserID,
 		PreparedByMemberID: in.Actor.MemberID, LegacyRole: in.Actor.LegacyRole, Kind: in.Kind,
-		RelatedPublicationID: in.RelatedPublicationID, SummaryOverride: in.SummaryOverride,
-		UpdateDescription: in.UpdateDescription, DescriptionBase: in.DescriptionBase,
-		ProposedDescription: in.ProposedDescription,
-		IdempotencyKey:      in.IdempotencyKey, ExpiresAt: in.ExpiresAt,
+		RelatedPublicationID: in.RelatedPublicationID, UpdateDescription: in.UpdateDescription,
+		IdempotencyKey: in.IdempotencyKey, ExpiresAt: in.ExpiresAt,
 	})
 }
 
+// ConfirmProjectConclusion atomically publishes a frozen write-back proposal.
 func (s *Service) ConfirmProjectConclusion(ctx context.Context, in agentdom.ConfirmProjectConclusionInput) (*agentdom.ConclusionPublicationView, bool, error) {
 	if err := validateActor(in.Actor); err != nil {
 		return nil, false, err
@@ -369,6 +382,7 @@ func (s *Service) ConfirmProjectConclusion(ctx context.Context, in agentdom.Conf
 	}, replayed, nil
 }
 
+// ListProjectTaskConclusions returns viewer-safe publications for a task.
 func (s *Service) ListProjectTaskConclusions(ctx context.Context, filter agentdom.ConclusionPublicationListFilter, actor agentdom.ChatActor) ([]agentdom.ConclusionPublicationView, bool, error) {
 	// The task route has already enforced the task's public-or-tasks.read
 	// audience. An authenticated project member is resolved here only so the

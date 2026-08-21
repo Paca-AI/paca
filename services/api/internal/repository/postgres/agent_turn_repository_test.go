@@ -84,3 +84,19 @@ func TestCanonicalTaskDescriptionPreservesLargeIntegers(t *testing.T) {
 		t.Fatal("adjacent large integer descriptions produced the same audit hash")
 	}
 }
+
+func TestTaskDescriptionFromMarkdownDerivesEditableBlocks(t *testing.T) {
+	description, err := taskDescriptionFromMarkdown("# Plan\n\nIntro with **bold**.\n\n- First\n1. Second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(description, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 4 || blocks[0]["type"] != "heading" ||
+		blocks[1]["type"] != "paragraph" || blocks[2]["type"] != "bulletListItem" ||
+		blocks[3]["type"] != "numberedListItem" {
+		t.Fatalf("unexpected derived description: %s", description)
+	}
+}

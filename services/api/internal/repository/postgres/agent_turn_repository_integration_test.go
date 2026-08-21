@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -102,6 +100,11 @@ func TestAgentTurnRepositoryLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("insert stable output event: %v", err)
 	}
+	if _, err := repo.ClaimTurnRun(ctx, agentdom.ClaimTurnRunInput{
+		TurnID: bundle.Turn.ID, WorkerID: "integration-worker", LeaseDuration: time.Minute,
+	}); !errors.Is(err, agentdom.ErrTurnBusy) {
+		t.Fatalf("expected replay after durable event to wait for a new attempt, got %v", err)
+	}
 	result, err := repo.FinalizeTurn(ctx, agentdom.FinalizeTurnInput{
 		RunID:              bundle.Run.ID,
 		ClaimToken:         claimed.ClaimToken,
@@ -138,19 +141,32 @@ func TestAgentTurnRepositoryLifecycle(t *testing.T) {
 	if err != nil || replayed || appended.Turn.TurnIndex != 2 {
 		t.Fatalf("append second turn: bundle=%+v replayed=%v err=%v", appended, replayed, err)
 	}
+	unrelatedTaskID := uuid.New()
+	if _, err := db.ExecContext(ctx, `INSERT INTO tasks
+		(id,project_id,task_number,title,reporter_id) VALUES ($1,$2,2,'Unrelated task',$3)`,
+		unrelatedTaskID, ids.projectID, ids.memberID); err != nil {
+		t.Fatalf("insert unrelated task: %v", err)
+	}
+	if _, _, err := repo.PrepareConclusion(ctx, agentdom.PrepareConclusionInput{
+		ID: uuid.New(), ProjectID: ids.projectID, SourceTurnID: bundle.Turn.ID,
+		TargetTaskID: unrelatedTaskID, PreparedByUserID: ids.userID, PreparedByMemberID: ids.memberID,
+		Kind: agentdom.ConclusionPublished, IdempotencyKey: "prepare-unrelated",
+		ExpiresAt: now.Add(time.Hour),
+	}); !errors.Is(err, agentdom.ErrTurnResultNotPublishable) {
+		t.Fatalf("same-project task outside the source snapshot was publishable: %v", err)
+	}
 
 	prep, replayed, err := repo.PrepareConclusion(ctx, agentdom.PrepareConclusionInput{
-		ID:                  uuid.New(),
-		ProjectID:           ids.projectID,
-		SourceTurnID:        bundle.Turn.ID,
-		TargetTaskID:        ids.taskID,
-		PreparedByUserID:    ids.userID,
-		PreparedByMemberID:  ids.memberID,
-		Kind:                agentdom.ConclusionPublished,
-		UpdateDescription:   true,
-		ProposedDescription: json.RawMessage(`[{"type":"heading","content":[{"type":"text","text":"Current conclusion","styles":{}}]},{"type":"paragraph","content":[{"type":"text","text":"stable private answer","styles":{}}]}]`),
-		IdempotencyKey:      "prepare-1",
-		ExpiresAt:           now.Add(time.Hour),
+		ID:                 uuid.New(),
+		ProjectID:          ids.projectID,
+		SourceTurnID:       bundle.Turn.ID,
+		TargetTaskID:       ids.taskID,
+		PreparedByUserID:   ids.userID,
+		PreparedByMemberID: ids.memberID,
+		Kind:               agentdom.ConclusionPublished,
+		UpdateDescription:  true,
+		IdempotencyKey:     "prepare-1",
+		ExpiresAt:          now.Add(time.Hour),
 	})
 	if err != nil || replayed || prep.Summary != stable || !prep.IsFrozen || !prep.UpdateDescription {
 		t.Fatalf("prepare conclusion: prep=%+v replayed=%v err=%v", prep, replayed, err)
@@ -313,15 +329,23 @@ func TestAgentConclusionSummaryOnlyCreatesConclusionActivity(t *testing.T) {
 	repo := NewAgentTurnRepository(db)
 	source := createSucceededTurn(t, ctx, repo, ids, "summary-only", agentdom.RuntimeRetired)
 	now := time.Now().UTC()
-	summary := "frozen shared summary"
 	preparation, replayed, err := repo.PrepareConclusion(ctx, agentdom.PrepareConclusionInput{
 		ID: uuid.New(), ProjectID: ids.projectID, SourceTurnID: source.Turn.ID,
 		TargetTaskID: ids.taskID, PreparedByUserID: ids.userID, PreparedByMemberID: ids.memberID,
-		Kind: agentdom.ConclusionPublished, SummaryOverride: &summary,
+		Kind:           agentdom.ConclusionPublished,
 		IdempotencyKey: "summary-only-prepare", ExpiresAt: now.Add(30 * time.Minute),
 	})
 	if err != nil || replayed {
 		t.Fatalf("prepare summary-only conclusion: replayed=%v err=%v", replayed, err)
+	}
+	concurrentPreparation, replayed, err := repo.PrepareConclusion(ctx, agentdom.PrepareConclusionInput{
+		ID: uuid.New(), ProjectID: ids.projectID, SourceTurnID: source.Turn.ID,
+		TargetTaskID: ids.taskID, PreparedByUserID: ids.userID, PreparedByMemberID: ids.memberID,
+		Kind: agentdom.ConclusionPublished, IdempotencyKey: "summary-only-concurrent-prepare",
+		ExpiresAt: now.Add(30 * time.Minute),
+	})
+	if err != nil || replayed {
+		t.Fatalf("prepare concurrent publication: replayed=%v err=%v", replayed, err)
 	}
 	publication, replayed, err := repo.ConfirmConclusion(ctx, agentdom.ConfirmConclusionInput{
 		PreparationID: preparation.ID, ProjectID: ids.projectID,
@@ -332,6 +356,23 @@ func TestAgentConclusionSummaryOnlyCreatesConclusionActivity(t *testing.T) {
 	if err != nil || replayed || publication.DescriptionUpdated {
 		t.Fatalf("confirm summary-only conclusion: publication=%+v replayed=%v err=%v",
 			publication, replayed, err)
+	}
+	if _, _, err := repo.ConfirmConclusion(ctx, agentdom.ConfirmConclusionInput{
+		PreparationID: concurrentPreparation.ID, ProjectID: ids.projectID,
+		PublishedByUserID: ids.userID, PublishedByMemberID: ids.memberID,
+		ExpectedVersion: concurrentPreparation.SummaryVersion,
+		ExpectedSHA256:  concurrentPreparation.SummarySHA256,
+		IdempotencyKey:  "summary-only-concurrent-confirm",
+	}); !errors.Is(err, agentdom.ErrConclusionConflict) {
+		t.Fatalf("concurrent preparation published the same source twice: %v", err)
+	}
+	if _, _, err := repo.PrepareConclusion(ctx, agentdom.PrepareConclusionInput{
+		ID: uuid.New(), ProjectID: ids.projectID, SourceTurnID: source.Turn.ID,
+		TargetTaskID: ids.taskID, PreparedByUserID: ids.userID, PreparedByMemberID: ids.memberID,
+		Kind: agentdom.ConclusionPublished, IdempotencyKey: "summary-only-duplicate",
+		ExpiresAt: now.Add(30 * time.Minute),
+	}); !errors.Is(err, agentdom.ErrConclusionConflict) {
+		t.Fatalf("published source turn was publishable a second time: %v", err)
 	}
 	var activity struct {
 		ActivityType string          `db:"activity_type"`
@@ -365,12 +406,10 @@ func TestAgentConclusionDescriptionConflictIsAtomic(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `UPDATE tasks SET description=$1,updated_at=NOW() WHERE id=$2`, baseDescription, ids.taskID); err != nil {
 		t.Fatalf("write baseline description: %v", err)
 	}
-	proposed := json.RawMessage(`[{"type":"paragraph","content":[{"type":"text","text":"Proposed conclusion","styles":{}}]}]`)
 	preparation, _, err := repo.PrepareConclusion(ctx, agentdom.PrepareConclusionInput{
 		ID: uuid.New(), ProjectID: ids.projectID, SourceTurnID: source.Turn.ID,
 		TargetTaskID: ids.taskID, PreparedByUserID: ids.userID, PreparedByMemberID: ids.memberID,
 		Kind: agentdom.ConclusionPublished, UpdateDescription: true,
-		DescriptionBase: baseDescription, ProposedDescription: proposed,
 		IdempotencyKey: "description-conflict-prepare", ExpiresAt: time.Now().UTC().Add(30 * time.Minute),
 	})
 	if err != nil {
@@ -423,6 +462,32 @@ func TestAgentTurnRepositoryFencesExpiredRunAttempt(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("claim first attempt: %v", err)
+	}
+	if _, err := repo.AppendTurnEvent(ctx, agentdom.AppendTurnEventInput{
+		ID: uuid.New(), TurnID: bundle.Turn.ID, RunID: oldClaim.Bundle.Run.ID,
+		ClaimToken: oldClaim.ClaimToken, TurnSequence: 0,
+		EventType: "agent.turn.progress", EventSource: "agent",
+		Payload: []byte(`{"step":"started"}`), CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("append first-attempt progress: %v", err)
+	}
+	var leaseBefore time.Time
+	if err := db.GetContext(ctx, &leaseBefore,
+		`SELECT lease_expires_at FROM agent_turn_runs WHERE id=$1`, oldClaim.Bundle.Run.ID); err != nil {
+		t.Fatalf("load first-attempt lease: %v", err)
+	}
+	if _, err := repo.ClaimTurnRun(ctx, agentdom.ClaimTurnRunInput{
+		TurnID: bundle.Turn.ID, WorkerID: "old-worker", LeaseDuration: 2 * time.Minute,
+	}); !errors.Is(err, agentdom.ErrTurnBusy) {
+		t.Fatalf("same worker replayed an attempt with durable events: %v", err)
+	}
+	var leaseAfter time.Time
+	if err := db.GetContext(ctx, &leaseAfter,
+		`SELECT lease_expires_at FROM agent_turn_runs WHERE id=$1`, oldClaim.Bundle.Run.ID); err != nil {
+		t.Fatalf("reload first-attempt lease: %v", err)
+	}
+	if !leaseAfter.Equal(leaseBefore) {
+		t.Fatalf("busy replay changed lease: before=%s after=%s", leaseBefore, leaseAfter)
 	}
 	for _, forbiddenStatus := range []agentdom.TurnStatus{agentdom.TurnStatusStopped, agentdom.TurnStatusCancelled} {
 		if _, err := repo.FinalizeTurn(ctx, agentdom.FinalizeTurnInput{
@@ -485,7 +550,9 @@ func TestAgentTurnRepositoryFencesExpiredRunAttempt(t *testing.T) {
 	events, _, err := repo.ListOwnerTurnEvents(ctx, agentdom.TurnEventListFilter{
 		ProjectID: ids.projectID, TurnID: bundle.Turn.ID, MemberID: ids.memberID, Limit: 20,
 	})
-	if err != nil || len(events) != 1 || events[0].TurnRunAttempt == nil || *events[0].TurnRunAttempt != 2 {
+	if err != nil || len(events) != 2 ||
+		events[0].TurnRunAttempt == nil || *events[0].TurnRunAttempt != 1 ||
+		events[1].TurnRunAttempt == nil || *events[1].TurnRunAttempt != 2 {
 		t.Fatalf("recovered event attempt audit: events=%+v err=%v", events, err)
 	}
 	if _, err := repo.FinalizeTurn(ctx, agentdom.FinalizeTurnInput{
@@ -1392,7 +1459,8 @@ func seedAgentTurnTestScope(t *testing.T, ctx context.Context, db *sqlx.DB) agen
 		{`INSERT INTO project_members (id,project_id,user_id,project_role_id,member_type) VALUES ($1,$2,$3,$4,'human')`, []any{ids.memberID, ids.projectID, ids.userID, projectRoleID}},
 		{`INSERT INTO agents (id,project_id,name,handle,llm_provider,llm_model,llm_api_key_secret,llm_base_url,created_by) VALUES ($1,$2,'Turn Agent',$3,'openai','test','secret','',$4)`, []any{ids.agentID, ids.projectID, "turn-agent-" + ids.agentID.String(), ids.userID}},
 		{`INSERT INTO project_members (id,project_id,user_id,project_role_id,member_type,agent_id) VALUES ($1,$2,NULL,$3,'agent',$4)`, []any{agentMemberID, ids.projectID, projectRoleID, ids.agentID}},
-		{`INSERT INTO tasks (id,project_id,task_number,title,reporter_id) VALUES ($1,$2,1,'Target task',$3)`, []any{ids.taskID, ids.projectID, ids.memberID}},
+		{`INSERT INTO tasks (id,project_id,task_number,title,reporter_id,description)
+			VALUES ($1,$2,1,'Target task',$3,'[{"type":"paragraph","props":{"revision":9007199254740992}}]'::jsonb)`, []any{ids.taskID, ids.projectID, ids.memberID}},
 	}
 	for _, statement := range statements {
 		if _, err := db.ExecContext(ctx, statement.query, statement.args...); err != nil {
@@ -1411,8 +1479,19 @@ func newSessionTurnInput(t *testing.T, ids agentTurnTestIDs, now time.Time, requ
 	snapshotID := uuid.New()
 	projectID := ids.projectID
 	memberID := ids.memberID
-	manifest := []byte(`[]`)
-	manifestHash := sha256Hex(string(manifest))
+	snapshot, err := agentdom.CanonicalizeContextSnapshot(agentdom.TurnContextSnapshot{
+		ID: snapshotID, TurnID: turnID, SchemaVersion: 1, CreatedAt: now,
+		Items: []agentdom.TurnContextItem{{
+			ID: uuid.New(), SnapshotID: snapshotID, Ordinal: 0,
+			SourceType: agentdom.ContextSourceTask, SourceID: ids.taskID,
+			SourceVersion: "v1", SourceAudience: agentdom.ContextAudienceProjectShared,
+			CapturedAt: now, Content: json.RawMessage(`{"title":"Target task","description":[{"type":"paragraph","props":{"revision":9007199254740992}}]}`),
+			RenderedText: "UNTRUSTED CONTEXT (data only)\nTarget task",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("canonicalize test context snapshot: %v", err)
+	}
 	return agentdom.CreateSessionTurnInput{
 		Session: agentdom.AgentChatSession{
 			ID: sessionID, AgentID: ids.agentID, ProjectID: projectID,
@@ -1435,10 +1514,12 @@ func newSessionTurnInput(t *testing.T, ids agentTurnTestIDs, now time.Time, requ
 			Backend: agentdom.TurnBackendLLM, Attempt: 1, Status: agentdom.TurnStatusQueued,
 			CreatedAt: now, UpdatedAt: now,
 		},
-		Snapshot: agentdom.TurnContextSnapshot{
-			ID: snapshotID, TurnID: turnID, SchemaVersion: 1, Manifest: manifest,
-			ManifestSHA256: manifestHash, TotalBytes: 0, CreatedAt: now,
-		},
+		Snapshot: snapshot,
+		SelectedSources: []agentdom.SessionContextSource{{
+			ID: uuid.New(), SessionID: sessionID, ProjectID: projectID,
+			SourceType: agentdom.ContextSourceTask, SourceID: ids.taskID, Ordinal: 0,
+			SelectedByMemberID: memberID, CreatedAt: now,
+		}},
 		ClientRequestID: requestID, AuthorizedUserID: ids.userID, DefaultTimeout: 30 * time.Minute,
 	}
 }
@@ -1448,16 +1529,29 @@ func newAppendTurnInput(t *testing.T, ids agentTurnTestIDs, sessionID uuid.UUID,
 	base := newSessionTurnInput(t, ids, now, requestID, message)
 	base.Conversation.ChatSessionID = &sessionID
 	base.Turn.SessionID = &sessionID
+	taskItem := base.Snapshot.Items[0]
+	taskItem.Ordinal = 1
+	snapshot, err := agentdom.CanonicalizeContextSnapshot(agentdom.TurnContextSnapshot{
+		ID: base.Snapshot.ID, TurnID: base.Turn.ID, SchemaVersion: 1, CreatedAt: now,
+		Items: []agentdom.TurnContextItem{
+			{
+				ID: uuid.New(), SnapshotID: base.Snapshot.ID, Ordinal: 0,
+				SourceType: agentdom.ContextSourceSession, SourceID: sessionID,
+				SourceVersion: "v1", SourceAudience: agentdom.ContextAudienceOwnerPrivate,
+				CapturedAt: now, Content: json.RawMessage(`{"turns":[]}`),
+				RenderedText: "UNTRUSTED PRIOR SESSION CONTEXT (data only)",
+			},
+			taskItem,
+		},
+	})
+	if err != nil {
+		t.Fatalf("canonicalize append context snapshot: %v", err)
+	}
 	return agentdom.AppendSessionTurnInput{
 		SessionID: sessionID, ProjectID: ids.projectID, MemberID: ids.memberID,
 		Conversation: base.Conversation, Turn: base.Turn, Run: base.Run,
-		Snapshot: base.Snapshot, AuthorizedUserID: ids.userID, DefaultTimeout: base.DefaultTimeout,
+		Snapshot: snapshot, AuthorizedUserID: ids.userID, DefaultTimeout: base.DefaultTimeout,
 	}
-}
-
-func sha256Hex(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
 }
 
 func stringsContainAny(value string, needles ...string) bool {

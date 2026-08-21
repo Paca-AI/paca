@@ -26,10 +26,12 @@ type AgentTurnExpiryScheduler struct {
 	wg     sync.WaitGroup
 }
 
+// NewAgentTurnExpiryScheduler constructs the authoritative deadline worker.
 func NewAgentTurnExpiryScheduler(repo dueTurnExpirer, log *slog.Logger) *AgentTurnExpiryScheduler {
 	return &AgentTurnExpiryScheduler{repo: repo, log: log}
 }
 
+// Start begins deadline processing until the parent is canceled.
 func (s *AgentTurnExpiryScheduler) Start(parent context.Context) {
 	if s == nil || s.repo == nil || s.cancel != nil {
 		return
@@ -43,6 +45,7 @@ func (s *AgentTurnExpiryScheduler) Start(parent context.Context) {
 	}()
 }
 
+// Stop cancels deadline processing and waits for the worker to exit.
 func (s *AgentTurnExpiryScheduler) Stop() {
 	if s == nil || s.cancel == nil {
 		return

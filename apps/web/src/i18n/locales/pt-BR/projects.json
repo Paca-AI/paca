@@ -1065,11 +1065,11 @@
 	},
 	"chats": {
 		"title": "Chats",
-		"new": "New chat",
+		"new": "Nova conversa",
 		"search": "Search chats…",
 		"empty": "Ainda não há conversas",
 		"emptyDescription": "Start a new chat or discuss a task with an agent.",
-		"backToList": "Back to chats",
+		"backToList": "Voltar para as conversas",
 		"taskEntryContext": "The current text of \"{{task}}\" will be included in the first turn.",
 		"acpUnavailable": "As conversas atualmente oferecem suporte apenas a agentes LLM. Agentes ACP exigem um ambiente local isolado.",
 		"acpUnavailableShort": "Indisponível nas conversas",
@@ -1109,10 +1109,11 @@
 		},
 		"errors": {
 			"missingSession": "The server did not return the chat session.",
-			"turnActive": "Wait for the active turn to finish or stop it first."
+			"turnActive": "Wait for the active turn to finish or stop it first.",
+			"sendFailed": "A mensagem não foi enviada. O rascunho foi restaurado; tente novamente."
 		},
 		"context": {
-			"add": "Add context",
+			"add": "Adicionar contexto",
 			"compact": "Context {{count}}",
 			"remove": "Remove context",
 			"title": "Adicionar contexto",
@@ -1124,7 +1125,7 @@
 			"searchTasks": "Search tasks…",
 			"chooseSessionForRuns": "Choose a chat to inspect its runs…",
 			"loadMore": "Load more",
-			"cancel": "Cancel",
+			"cancel": "Cancelar",
 			"apply": "Adicionar {{count}} itens",
 			"type": { "task": "Task", "session": "Chat", "run": "Run" }
 		},
@@ -1166,8 +1167,8 @@
 			"prepareDescription": "Generate diff preview",
 			"prepareSummary": "Freeze summary",
 			"editDescriptionDraft": "Edit proposed content",
-			"confirmDescription": "Update description",
-			"confirmSummary": "Record conclusion",
+			"confirmDescription": "Atualizar descrição",
+			"confirmSummary": "Registrar conclusão",
 			"updateDescription": "Also update task description (recommended)",
 			"updateDescriptionHint": "Merge the frozen conclusion into a description proposal and review the diff before confirmation.",
 			"descriptionHeading": "Current conclusion",
@@ -1182,7 +1183,7 @@
 			"unlock": "Unlock edit",
 			"refreeze": "Freeze new summary",
 			"prepare": "Prepare frozen summary",
-			"cancel": "Cancel",
+			"cancel": "Cancelar",
 			"confirmAction": "Confirmar",
 			"confirm": "Confirm publication",
 			"writeBack": "Write back to task",

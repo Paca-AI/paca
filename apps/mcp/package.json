@@ -29,10 +29,11 @@
     "@modelcontextprotocol/sdk": "1.26.0",
     "jsdom": "^29.0.2",
     "rehype-stringify": "^10.0.1",
-    "remark-parse": "^11.0.0",
-    "remark-rehype": "^11.1.2",
-    "unified": "^11.0.5"
-  },
+		"remark-parse": "^11.0.0",
+		"remark-rehype": "^11.1.2",
+		"unified": "^11.0.5",
+		"zod": "^3.25.76"
+	},
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@types/jsdom": "^28.0.1",

@@ -3,9 +3,9 @@ import {
 	AssistantRuntimeProvider,
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -16,7 +16,6 @@ import {
 	type ProjectChatContextSourceRef,
 	projectChatSessionQueryOptions,
 } from "@/lib/agent-api";
-import { taskQueryOptions } from "@/lib/interaction-api";
 import {
 	mergeRequiredProjectChatSources,
 	taskChatInitialContextSources,
@@ -27,6 +26,7 @@ import {
 	usePrivateChatAgentPicker,
 } from "./agent-picker";
 import { extractTextOnlyContent } from "./conversation-to-thread-messages";
+import { ProjectChatCommandMenu } from "./project-chat-command-menu";
 import { ProjectChatContextPicker } from "./project-chat-context-picker";
 
 interface PendingCommand {
@@ -46,18 +46,16 @@ export function ProjectChatNew({
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const navigate = useNavigate();
-	const { canUseTaskContext } = useProjectChatPermissions(projectId);
+	const { canUseTaskContext, canPublishConclusion } =
+		useProjectChatPermissions(projectId);
 	const picker = usePrivateChatAgentPicker(projectId, { initialAgentId });
 	const requiredSources = taskChatInitialContextSources(initialTaskId);
 	const [sources, setSources] = useState<ProjectChatContextSourceRef[]>(
 		() => requiredSources,
 	);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [sendError, setSendError] = useState<string>();
 	const pendingRef = useRef<PendingCommand | null>(null);
-	const { data: initialTask } = useQuery({
-		...taskQueryOptions(projectId, initialTaskId ?? ""),
-		enabled: !!initialTaskId,
-	});
 
 	useEffect(() => {
 		setSources(taskChatInitialContextSources(initialTaskId));
@@ -83,6 +81,7 @@ export function ProjectChatNew({
 			pendingRef.current = { fingerprint, key: crypto.randomUUID() };
 		}
 
+		setSendError(undefined);
 		setIsSubmitting(true);
 		try {
 			const result = await createProjectChatSession(
@@ -109,6 +108,11 @@ export function ProjectChatNew({
 				params: { projectId, sessionId: session.id },
 				search: { turnId: undefined },
 			});
+		} catch {
+			if (runtime.thread.composer.getState().text.length === 0) {
+				runtime.thread.composer.setText(text);
+			}
+			setSendError(t("chats.errors.sendFailed"));
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -124,60 +128,71 @@ export function ProjectChatNew({
 			isSubmitting ||
 			(!!initialTaskId && !canUseTaskContext),
 	});
+	const hasTaskContext = sources.some((source) => source.type === "task");
+	const ChatComposerStart = () => (
+		<div className="flex items-center gap-1">
+			<AgentPickerInline />
+			<ProjectChatContextPicker
+				projectId={projectId}
+				value={sources}
+				requiredSources={requiredSources}
+				canSelectTasks={canUseTaskContext}
+				iconOnly
+				onChange={setSources}
+				disabled={isSubmitting}
+			/>
+			{canPublishConclusion && (
+				<ProjectChatCommandMenu
+					hasTaskContext={hasTaskContext}
+					disabled={isSubmitting}
+				/>
+			)}
+		</div>
+	);
+	const ChatComposerPrompt = () =>
+		sendError ? (
+			<div
+				role="alert"
+				className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+			>
+				{sendError}
+			</div>
+		) : null;
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<div className="shrink-0 border-b border-border/50 px-4 py-3">
-				<div className="mx-auto flex max-w-3xl flex-col gap-2">
-					<div className="flex items-center gap-2 md:hidden">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							nativeButton={false}
-							render={
-								<Link
-									to="/projects/$projectId/chats"
-									params={{ projectId }}
-									search={{
-										contextTaskId: undefined,
-										draft: undefined,
-										agentId: undefined,
-									}}
-								/>
-							}
-						>
-							<ArrowLeft className="size-4" />
-							<span className="sr-only">{t("chats.backToList")}</span>
-						</Button>
-					</div>
-					{initialTask && (
-						<p className="text-xs text-muted-foreground">
-							{t("chats.taskEntryContext", { task: initialTask.title })}
-						</p>
-					)}
-					<ProjectChatContextPicker
-						projectId={projectId}
-						value={sources}
-						requiredSources={requiredSources}
-						canSelectTasks={canUseTaskContext}
-						onChange={(next) => {
-							setSources(next);
-						}}
-						disabled={isSubmitting}
-					/>
-					{picker.agents.some((agent) => agent.agent_type === "acp") && (
-						<div className="flex items-start gap-2 rounded-lg bg-amber-500/8 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-							<ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-							<span>{t("chats.acpUnavailable")}</span>
-						</div>
-					)}
-				</div>
-			</div>
-
 			<div className="min-h-0 flex-1">
 				<AgentPickerContext.Provider value={picker.pickerState}>
 					<AssistantRuntimeProvider runtime={runtime}>
-						<Thread components={{ ComposerStart: AgentPickerInline }} />
+						<Thread
+							components={{
+								ComposerStart: ChatComposerStart,
+								ComposerPrompt: ChatComposerPrompt,
+							}}
+							viewportHeader={
+								<div className="mb-2 md:hidden">
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										nativeButton={false}
+										render={
+											<Link
+												to="/projects/$projectId/chats"
+												params={{ projectId }}
+												search={{
+													contextTaskId: undefined,
+													draft: undefined,
+													agentId: undefined,
+												}}
+											/>
+										}
+									>
+										<ArrowLeft className="size-4" />
+										<span className="sr-only">{t("chats.backToList")}</span>
+									</Button>
+								</div>
+							}
+						/>
 					</AssistantRuntimeProvider>
 				</AgentPickerContext.Provider>
 			</div>

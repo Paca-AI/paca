@@ -67,7 +67,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest(http.MethodPost,
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost,
 			"/projects/"+projectID.String()+"/chat-sessions", bytes.NewReader(encoded))
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
@@ -94,7 +94,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 	}
 	stopRequest := func(authToken string, sessionID, turnID uuid.UUID) (int, stopProjectChatHTTPEnvelope) {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodPost, "/projects/"+projectID.String()+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+
 			"/chat-sessions/"+sessionID.String()+"/turns/"+turnID.String()+"/stop", nil)
 		req.Header.Set("Authorization", "Bearer "+authToken)
 		response := httptest.NewRecorder()
@@ -134,7 +134,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 	appendRequest := func(value map[string]any, key string) (int, createProjectChatHTTPEnvelope) {
 		t.Helper()
 		encoded, _ := json.Marshal(value)
-		req := httptest.NewRequest(http.MethodPost, "/projects/"+projectID.String()+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+
 			"/chat-sessions/"+sessionID.String()+"/turns", bytes.NewReader(encoded))
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
@@ -199,7 +199,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 	prepareRequest := func(key string) (int, prepareProjectConclusionHTTPEnvelope) {
 		t.Helper()
 		encoded, _ := json.Marshal(prepareBody)
-		req := httptest.NewRequest(http.MethodPost, "/projects/"+projectID.String()+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+
 			"/turns/"+first.Data.Bundle.Turn.ID.String()+"/conclusion-publications/prepare", bytes.NewReader(encoded))
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
@@ -229,7 +229,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 			"expected_version": prepared.Data.Preparation.SummaryVersion,
 			"expected_sha256":  expectedSHA,
 		})
-		req := httptest.NewRequest(http.MethodPost, "/projects/"+projectID.String()+
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+
 			"/conclusion-publications/confirm", bytes.NewReader(encoded))
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
@@ -259,7 +259,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 	apiKeyReadRouter := chi.NewRouter()
 	apiKeyReadRouter.Use(httpmw.Authn(tokens, projectChatTestAPIKeyAuth{userID: userID}))
 	apiKeyReadRouter.Get("/projects/{projectId}/tasks/{taskId}/agent-conclusions", h.ListTaskConclusions)
-	apiKeyReadRequest := httptest.NewRequest(http.MethodGet, "/projects/"+projectID.String()+
+	apiKeyReadRequest := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String()+
 		"/tasks/"+taskID.String()+"/agent-conclusions", nil)
 	apiKeyReadRequest.Header.Set("Authorization", "ApiKey project-chat-test-key")
 	apiKeyReadResponse := httptest.NewRecorder()
@@ -284,7 +284,7 @@ func TestProjectChatHTTPCreateSessionIdempotentRetryUsesFrozenBundle(t *testing.
 	apiKeyRouter.Use(httpmw.RequireJWTAuth())
 	apiKeyRouter.Post("/projects/{projectId}/chat-sessions", h.CreateSession)
 	encoded, _ := json.Marshal(body)
-	apiKeyRequest := httptest.NewRequest(http.MethodPost,
+	apiKeyRequest := httptest.NewRequestWithContext(ctx, http.MethodPost,
 		"/projects/"+projectID.String()+"/chat-sessions", bytes.NewReader(encoded))
 	apiKeyRequest.Header.Set("Authorization", "ApiKey project-chat-test-key")
 	apiKeyRequest.Header.Set("Idempotency-Key", "api-key-forbidden")

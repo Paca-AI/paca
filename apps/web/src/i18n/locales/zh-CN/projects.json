@@ -1109,7 +1109,8 @@
 		},
 		"errors": {
 			"missingSession": "服务端没有返回对话。",
-			"turnActive": "请先等待当前轮次结束或停止它。"
+			"turnActive": "请先等待当前轮次结束或停止它。",
+			"sendFailed": "消息未发送，草稿已恢复，请重试。"
 		},
 		"context": {
 			"add": "添加上下文",

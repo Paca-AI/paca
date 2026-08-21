@@ -1065,11 +1065,11 @@
 	},
 	"chats": {
 		"title": "Chats",
-		"new": "New chat",
+		"new": "새 대화",
 		"search": "Search chats…",
 		"empty": "아직 대화가 없습니다",
 		"emptyDescription": "Start a new chat or discuss a task with an agent.",
-		"backToList": "Back to chats",
+		"backToList": "대화 목록으로 돌아가기",
 		"taskEntryContext": "The current text of \"{{task}}\" will be included in the first turn.",
 		"acpUnavailable": "현재 대화는 LLM 에이전트만 지원합니다. ACP 에이전트에는 격리된 로컬 실행 환경이 필요합니다.",
 		"acpUnavailableShort": "대화에서 사용할 수 없음",
@@ -1109,10 +1109,11 @@
 		},
 		"errors": {
 			"missingSession": "The server did not return the chat session.",
-			"turnActive": "Wait for the active turn to finish or stop it first."
+			"turnActive": "Wait for the active turn to finish or stop it first.",
+			"sendFailed": "메시지를 보내지 못했습니다. 초안을 복원했으니 다시 시도하세요."
 		},
 		"context": {
-			"add": "Add context",
+			"add": "컨텍스트 추가",
 			"compact": "Context {{count}}",
 			"remove": "Remove context",
 			"title": "컨텍스트 추가",
@@ -1124,7 +1125,7 @@
 			"searchTasks": "Search tasks…",
 			"chooseSessionForRuns": "Choose a chat to inspect its runs…",
 			"loadMore": "Load more",
-			"cancel": "Cancel",
+			"cancel": "취소",
 			"apply": "{{count}}개 추가",
 			"type": { "task": "Task", "session": "Chat", "run": "Run" }
 		},
@@ -1166,8 +1167,8 @@
 			"prepareDescription": "Generate diff preview",
 			"prepareSummary": "Freeze summary",
 			"editDescriptionDraft": "Edit proposed content",
-			"confirmDescription": "Update description",
-			"confirmSummary": "Record conclusion",
+			"confirmDescription": "설명 업데이트",
+			"confirmSummary": "결론 기록",
 			"updateDescription": "Also update task description (recommended)",
 			"updateDescriptionHint": "Merge the frozen conclusion into a description proposal and review the diff before confirmation.",
 			"descriptionHeading": "Current conclusion",
@@ -1182,7 +1183,7 @@
 			"unlock": "Unlock edit",
 			"refreeze": "Freeze new summary",
 			"prepare": "Prepare frozen summary",
-			"cancel": "Cancel",
+			"cancel": "취소",
 			"confirmAction": "확인",
 			"confirm": "Confirm publication",
 			"writeBack": "Write back to task",

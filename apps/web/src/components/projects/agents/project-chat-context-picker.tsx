@@ -286,10 +286,14 @@ export function ProjectChatContextPicker({
 										tasks.map((task) => {
 											const source = { type: "task", id: task.id } as const;
 											const selected = selectedKeys.has(sourceKey(source));
+											const required = requiredKeys.has(sourceKey(source));
 											return (
 												<button
 													type="button"
 													key={task.id}
+													aria-pressed={selected}
+													aria-disabled={required}
+													disabled={required}
 													className={itemClass(selected)}
 													onClick={() => toggle(source)}
 												>
@@ -329,10 +333,14 @@ export function ProjectChatContextPicker({
 									id: item.session.id,
 								} as const;
 								const selected = selectedKeys.has(sourceKey(source));
+								const required = requiredKeys.has(sourceKey(source));
 								return (
 									<button
 										type="button"
 										key={item.session.id}
+										aria-pressed={selected}
+										aria-disabled={required}
+										disabled={required}
 										className={itemClass(selected)}
 										onClick={() => toggle(source)}
 									>
@@ -366,6 +374,7 @@ export function ProjectChatContextPicker({
 								className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
 							/>
 							<select
+								aria-label={t("chats.context.chooseSessionForRuns")}
 								value={runSessionId}
 								onChange={(event) => setRunSessionId(event.target.value)}
 								className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
@@ -394,10 +403,14 @@ export function ProjectChatContextPicker({
 								{runs.map(({ turn, run }) => {
 									const source = { type: "run", id: run.id } as const;
 									const selected = selectedKeys.has(sourceKey(source));
+									const required = requiredKeys.has(sourceKey(source));
 									return (
 										<button
 											type="button"
 											key={run.id}
+											aria-pressed={selected}
+											aria-disabled={required}
+											disabled={required}
 											className={itemClass(selected)}
 											onClick={() => toggle(source)}
 										>
@@ -406,7 +419,7 @@ export function ProjectChatContextPicker({
 												{selectedRunSession?.session.title ||
 													selectedRunSession?.agent_name}{" "}
 												· {t("chats.turnLabel", { index: turn.turn_index })} ·{" "}
-												{run.status} · #{run.attempt}
+												{t(`chats.status.${run.status}`)} · #{run.attempt}
 											</span>
 											{selected && <Check className="size-4 text-primary" />}
 										</button>

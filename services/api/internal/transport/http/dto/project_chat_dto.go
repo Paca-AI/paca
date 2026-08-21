@@ -9,11 +9,13 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 )
 
+// ContextSourceRefRequest identifies a client-selected context resource.
 type ContextSourceRefRequest struct {
 	Type agentdom.ContextSourceType `json:"type"`
 	ID   uuid.UUID                  `json:"id"`
 }
 
+// CreateProjectChatRequest is the first-turn HTTP request payload.
 type CreateProjectChatRequest struct {
 	AgentID        uuid.UUID                 `json:"agent_id"`
 	Message        string                    `json:"message"`
@@ -22,30 +24,32 @@ type CreateProjectChatRequest struct {
 	DeadlineAt     *time.Time                `json:"deadline_at,omitempty"`
 }
 
+// AppendProjectChatTurnRequest is a follow-up turn HTTP request payload.
 type AppendProjectChatTurnRequest struct {
 	Message    string     `json:"message"`
 	DeadlineAt *time.Time `json:"deadline_at,omitempty"`
 }
 
+// ReplaceProjectChatContextRequest replaces the next-turn context selection.
 type ReplaceProjectChatContextRequest struct {
 	Sources []ContextSourceRefRequest `json:"sources"`
 }
 
+// PrepareProjectConclusionRequest requests a frozen write-back preview.
 type PrepareProjectConclusionRequest struct {
-	TargetTaskID        uuid.UUID       `json:"target_task_id"`
-	SummaryOverride     *string         `json:"summary_override,omitempty"`
-	UpdateDescription   bool            `json:"update_description"`
-	DescriptionBase     json.RawMessage `json:"description_base,omitempty"`
-	ProposedDescription json.RawMessage `json:"proposed_description,omitempty"`
-	ExpiresAt           time.Time       `json:"expires_at"`
+	TargetTaskID      uuid.UUID `json:"target_task_id"`
+	UpdateDescription bool      `json:"update_description"`
+	ExpiresAt         time.Time `json:"expires_at"`
 }
 
+// ConfirmProjectConclusionRequest confirms a frozen write-back preview.
 type ConfirmProjectConclusionRequest struct {
 	PreparationID   uuid.UUID `json:"preparation_id"`
 	ExpectedVersion int       `json:"expected_version"`
 	ExpectedSHA256  string    `json:"expected_sha256"`
 }
 
+// ProjectChatSessionResponse is the public project chat session projection.
 type ProjectChatSessionResponse struct {
 	ID            uuid.UUID  `json:"id"`
 	AgentID       uuid.UUID  `json:"agent_id"`
@@ -56,6 +60,7 @@ type ProjectChatSessionResponse struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+// ProjectChatSessionSummaryResponse is the chat history list projection.
 type ProjectChatSessionSummaryResponse struct {
 	Session             ProjectChatSessionResponse `json:"session"`
 	AgentName           string                     `json:"agent_name"`
@@ -65,6 +70,7 @@ type ProjectChatSessionSummaryResponse struct {
 	HasLegacyExecutions bool                       `json:"has_legacy_executions"`
 }
 
+// LegacyChatExecutionResponse is a pre-authoritative compatibility record.
 type LegacyChatExecutionResponse struct {
 	ConversationID uuid.UUID  `json:"conversation_id"`
 	Status         string     `json:"status"`
@@ -72,6 +78,7 @@ type LegacyChatExecutionResponse struct {
 	FinishedAt     *time.Time `json:"finished_at,omitempty"`
 }
 
+// ProjectChatTurnResponse is the public logical turn projection.
 type ProjectChatTurnResponse struct {
 	ID               uuid.UUID           `json:"id"`
 	SessionID        *uuid.UUID          `json:"session_id,omitempty"`
@@ -90,6 +97,7 @@ type ProjectChatTurnResponse struct {
 	UpdatedAt        time.Time           `json:"updated_at"`
 }
 
+// ProjectChatRunResponse is the public execution-attempt projection.
 type ProjectChatRunResponse struct {
 	ID                 uuid.UUID            `json:"id"`
 	TurnID             uuid.UUID            `json:"turn_id"`
@@ -104,6 +112,7 @@ type ProjectChatRunResponse struct {
 	UpdatedAt          time.Time            `json:"updated_at"`
 }
 
+// ProjectChatTurnResultResponse is the public immutable terminal result.
 type ProjectChatTurnResultResponse struct {
 	TurnID              uuid.UUID                   `json:"turn_id"`
 	RunID               uuid.UUID                   `json:"run_id"`
@@ -118,6 +127,7 @@ type ProjectChatTurnResultResponse struct {
 	CreatedAt           time.Time                   `json:"created_at"`
 }
 
+// ProjectChatContextItemResponse is one captured context resource.
 type ProjectChatContextItemResponse struct {
 	ID             uuid.UUID                  `json:"id"`
 	Ordinal        int                        `json:"ordinal"`
@@ -132,6 +142,7 @@ type ProjectChatContextItemResponse struct {
 	ByteCount      int                        `json:"byte_count"`
 }
 
+// ProjectChatContextSnapshotResponse is the full immutable context projection.
 type ProjectChatContextSnapshotResponse struct {
 	ID             uuid.UUID                        `json:"id"`
 	TurnID         uuid.UUID                        `json:"turn_id"`
@@ -144,6 +155,7 @@ type ProjectChatContextSnapshotResponse struct {
 	Items          []ProjectChatContextItemResponse `json:"items"`
 }
 
+// ProjectChatTurnBundleResponse groups the records needed by the chat client.
 type ProjectChatTurnBundleResponse struct {
 	Session  *ProjectChatSessionResponse        `json:"session,omitempty"`
 	Turn     ProjectChatTurnResponse            `json:"turn"`
@@ -153,6 +165,7 @@ type ProjectChatTurnBundleResponse struct {
 	Snapshot ProjectChatContextSnapshotResponse `json:"context_snapshot"`
 }
 
+// ProjectChatContextSnapshotSummaryResponse omits private captured content.
 type ProjectChatContextSnapshotSummaryResponse struct {
 	ID             uuid.UUID `json:"id"`
 	SchemaVersion  int       `json:"schema_version"`
@@ -162,6 +175,7 @@ type ProjectChatContextSnapshotSummaryResponse struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// ProjectChatTurnHistoryResponse is the privacy-safe history projection.
 type ProjectChatTurnHistoryResponse struct {
 	Turn            ProjectChatTurnResponse                   `json:"turn"`
 	Run             ProjectChatRunResponse                    `json:"run"`
@@ -170,6 +184,7 @@ type ProjectChatTurnHistoryResponse struct {
 	ContextSnapshot ProjectChatContextSnapshotSummaryResponse `json:"context_snapshot"`
 }
 
+// ProjectChatEventResponse is one owner-visible durable turn event.
 type ProjectChatEventResponse struct {
 	ID             uuid.UUID      `json:"id"`
 	ConversationID uuid.UUID      `json:"conversation_id"`
@@ -184,6 +199,7 @@ type ProjectChatEventResponse struct {
 	CreatedAt      time.Time      `json:"created_at"`
 }
 
+// ProjectChatContextSourceResponse is a next-turn context selection.
 type ProjectChatContextSourceResponse struct {
 	ID         uuid.UUID                  `json:"id"`
 	SourceType agentdom.ContextSourceType `json:"source_type"`
@@ -192,6 +208,7 @@ type ProjectChatContextSourceResponse struct {
 	CreatedAt  time.Time                  `json:"created_at"`
 }
 
+// ConclusionPreparationResponse is the frozen write-back preview projection.
 type ConclusionPreparationResponse struct {
 	ID                      uuid.UUID               `json:"id"`
 	SourceTurnID            uuid.UUID               `json:"source_turn_id"`
@@ -213,6 +230,7 @@ type ConclusionPreparationResponse struct {
 	CreatedAt               time.Time               `json:"created_at"`
 }
 
+// ConclusionPublicationResponse is a viewer-filtered task publication.
 type ConclusionPublicationResponse struct {
 	ID                      uuid.UUID               `json:"id"`
 	TargetTaskID            uuid.UUID               `json:"target_task_id"`
@@ -235,6 +253,7 @@ type ConclusionPublicationResponse struct {
 	CreatedAt               time.Time               `json:"created_at"`
 }
 
+// ContextSourceRefsFromRequest converts HTTP context references to domain values.
 func ContextSourceRefsFromRequest(values []ContextSourceRefRequest) []agentdom.ContextSourceRef {
 	refs := make([]agentdom.ContextSourceRef, 0, len(values))
 	for _, value := range values {
@@ -243,6 +262,7 @@ func ContextSourceRefsFromRequest(values []ContextSourceRefRequest) []agentdom.C
 	return refs
 }
 
+// ProjectChatSessionFromEntity converts a session to its HTTP projection.
 func ProjectChatSessionFromEntity(value *agentdom.AgentChatSession) ProjectChatSessionResponse {
 	return ProjectChatSessionResponse{
 		ID: value.ID, AgentID: value.AgentID, ProjectID: value.ProjectID,
@@ -251,6 +271,7 @@ func ProjectChatSessionFromEntity(value *agentdom.AgentChatSession) ProjectChatS
 	}
 }
 
+// ProjectChatTurnFromEntity converts a turn to its HTTP projection.
 func ProjectChatTurnFromEntity(value *agentdom.AgentTurn) ProjectChatTurnResponse {
 	return ProjectChatTurnResponse{
 		ID: value.ID, SessionID: value.SessionID, ConversationID: value.ConversationID,
@@ -263,6 +284,7 @@ func ProjectChatTurnFromEntity(value *agentdom.AgentTurn) ProjectChatTurnRespons
 	}
 }
 
+// ProjectChatRunFromEntity converts a run to its HTTP projection.
 func ProjectChatRunFromEntity(value *agentdom.TurnRun) ProjectChatRunResponse {
 	return ProjectChatRunResponse{
 		ID: value.ID, TurnID: value.TurnID, ConversationID: value.ConversationID,
@@ -272,6 +294,7 @@ func ProjectChatRunFromEntity(value *agentdom.TurnRun) ProjectChatRunResponse {
 	}
 }
 
+// ProjectChatTurnResultFromEntity converts an optional terminal result.
 func ProjectChatTurnResultFromEntity(value *agentdom.TurnResult) *ProjectChatTurnResultResponse {
 	if value == nil {
 		return nil
@@ -286,6 +309,7 @@ func ProjectChatTurnResultFromEntity(value *agentdom.TurnResult) *ProjectChatTur
 	}
 }
 
+// ProjectChatSnapshotFromEntity converts a complete immutable snapshot.
 func ProjectChatSnapshotFromEntity(value *agentdom.TurnContextSnapshot) ProjectChatContextSnapshotResponse {
 	items := make([]ProjectChatContextItemResponse, 0, len(value.Items))
 	for _, item := range value.Items {
@@ -305,6 +329,7 @@ func ProjectChatSnapshotFromEntity(value *agentdom.TurnContextSnapshot) ProjectC
 	}
 }
 
+// ProjectChatBundleFromEntity converts a complete turn bundle.
 func ProjectChatBundleFromEntity(value *agentdom.TurnBundle) ProjectChatTurnBundleResponse {
 	runs := make([]ProjectChatRunResponse, 0, len(value.Runs))
 	for _, run := range value.Runs {
@@ -323,6 +348,7 @@ func ProjectChatBundleFromEntity(value *agentdom.TurnBundle) ProjectChatTurnBund
 	return response
 }
 
+// ProjectChatTurnHistoryFromEntity converts a bundle to its history projection.
 func ProjectChatTurnHistoryFromEntity(value *agentdom.TurnBundle) ProjectChatTurnHistoryResponse {
 	runs := make([]ProjectChatRunResponse, 0, len(value.Runs))
 	for _, run := range value.Runs {
@@ -340,6 +366,7 @@ func ProjectChatTurnHistoryFromEntity(value *agentdom.TurnBundle) ProjectChatTur
 	}
 }
 
+// ConclusionPreparationFromEntity converts a frozen write-back preview.
 func ConclusionPreparationFromEntity(value *agentdom.ConclusionPreparation) ConclusionPreparationResponse {
 	return ConclusionPreparationResponse{
 		ID: value.ID, SourceTurnID: value.SourceTurnID, TargetTaskID: value.TargetTaskID,
@@ -356,6 +383,7 @@ func ConclusionPreparationFromEntity(value *agentdom.ConclusionPreparation) Conc
 	}
 }
 
+// ConclusionPublicationFromEntity converts a publication and redacts its private source when required.
 func ConclusionPublicationFromEntity(value *agentdom.ConclusionPublication, sourceAccessible bool, sourceSessionID, sourceTurnID *uuid.UUID) ConclusionPublicationResponse {
 	if !sourceAccessible {
 		sourceSessionID = nil

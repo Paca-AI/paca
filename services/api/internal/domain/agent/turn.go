@@ -35,6 +35,7 @@ func CanonicalizeJSON(raw []byte) ([]byte, error) {
 	return json.Marshal(value)
 }
 
+// Turn payload and context size limits bound durable storage and model input.
 const (
 	MaxTurnInputBytes       = 32 * 1024
 	MaxContextSources       = 64
@@ -44,8 +45,10 @@ const (
 	MaxConclusionBytes      = 16 * 1024
 )
 
+// TurnStatus describes the lifecycle state of an authoritative agent turn.
 type TurnStatus string
 
+// Authoritative turn lifecycle states.
 const (
 	TurnStatusQueued    TurnStatus = "queued"
 	TurnStatusRunning   TurnStatus = "running"
@@ -57,6 +60,7 @@ const (
 	TurnStatusNoOutput  TurnStatus = "no_output"
 )
 
+// IsTerminal reports whether no further execution may occur for the turn.
 func (s TurnStatus) IsTerminal() bool {
 	switch s {
 	case TurnStatusSucceeded, TurnStatusFailed, TurnStatusStopped,
@@ -67,23 +71,29 @@ func (s TurnStatus) IsTerminal() bool {
 	}
 }
 
+// TurnBackend identifies the execution protocol used for a run.
 type TurnBackend string
 
+// Supported authoritative execution backends.
 const (
 	TurnBackendLLM TurnBackend = "llm"
 	TurnBackendACP TurnBackend = "acp"
 )
 
+// ContextSourceType identifies a resource selected as turn context.
 type ContextSourceType string
 
+// Supported context source kinds.
 const (
 	ContextSourceTask    ContextSourceType = "task"
 	ContextSourceSession ContextSourceType = "session"
 	ContextSourceRun     ContextSourceType = "run"
 )
 
+// ContextAudience records who may observe a captured context item.
 type ContextAudience string
 
+// Supported context visibility audiences.
 const (
 	ContextAudienceOwnerPrivate  ContextAudience = "owner_private"
 	ContextAudienceProjectShared ContextAudience = "project_shared"
@@ -103,6 +113,7 @@ type SessionContextSource struct {
 	CreatedAt          time.Time
 }
 
+// TurnContextItem is one immutable resource captured for a turn.
 type TurnContextItem struct {
 	ID             uuid.UUID
 	SnapshotID     uuid.UUID
@@ -118,6 +129,7 @@ type TurnContextItem struct {
 	ByteCount      int
 }
 
+// TurnContextSnapshot is the immutable, auditable context supplied to a turn.
 type TurnContextSnapshot struct {
 	ID             uuid.UUID
 	TurnID         uuid.UUID
@@ -255,6 +267,7 @@ type TurnToolPolicy struct {
 	ContextMayGrant     bool     `json:"context_may_grant"`
 }
 
+// PrivateChatToolPolicy returns the deny-by-default policy for project chats.
 func PrivateChatToolPolicy() TurnToolPolicy {
 	return TurnToolPolicy{
 		Version: 1,
@@ -271,6 +284,7 @@ func PrivateChatToolPolicy() TurnToolPolicy {
 	}
 }
 
+// CanonicalJSON validates and deterministically encodes the policy.
 func (p TurnToolPolicy) CanonicalJSON() ([]byte, error) {
 	if p.Version != 1 || p.Mode != "deny_by_default" || p.ContextMayGrant {
 		return nil, errors.New("agent turn tool policy: unsafe envelope")
@@ -290,6 +304,7 @@ func (p TurnToolPolicy) CanonicalJSON() ([]byte, error) {
 	return json.Marshal(normalized)
 }
 
+// SHA256 returns the digest of the validated canonical policy.
 func (p TurnToolPolicy) SHA256() (string, error) {
 	canonical, err := p.CanonicalJSON()
 	if err != nil {
@@ -312,6 +327,7 @@ func isReadCapability(capability string) bool {
 	return true
 }
 
+// AgentTurn is the durable logical unit of authoritative agent work.
 type AgentTurn struct {
 	ID                  uuid.UUID
 	SessionID           *uuid.UUID
@@ -336,6 +352,7 @@ type AgentTurn struct {
 	UpdatedAt           time.Time
 }
 
+// TurnRun is one claimed execution attempt for an AgentTurn.
 type TurnRun struct {
 	ID                 uuid.UUID
 	TurnID             uuid.UUID
@@ -353,13 +370,16 @@ type TurnRun struct {
 	UpdatedAt          time.Time
 }
 
+// RuntimeDisposition describes whether an execution runtime may be reused.
 type RuntimeDisposition string
 
+// Supported post-run runtime dispositions.
 const (
 	RuntimeReusable RuntimeDisposition = "reusable"
 	RuntimeRetired  RuntimeDisposition = "retired"
 )
 
+// TurnResult is the immutable terminal result of an AgentTurn.
 type TurnResult struct {
 	TurnID              uuid.UUID
 	RunID               uuid.UUID
@@ -374,6 +394,7 @@ type TurnResult struct {
 	CreatedAt           time.Time
 }
 
+// TurnBundle groups the durable records required to render or execute a turn.
 type TurnBundle struct {
 	Session      *AgentChatSession
 	Conversation *AgentConversation
@@ -397,6 +418,7 @@ type ChatSessionListFilter struct {
 	CursorID   *uuid.UUID
 }
 
+// ChatSessionSummary is the session-first projection used by chat history.
 type ChatSessionSummary struct {
 	Session             AgentChatSession
 	AgentName           string
@@ -406,11 +428,13 @@ type ChatSessionSummary struct {
 	HasLegacyExecutions bool
 }
 
+// TurnEventCursor identifies a stable position in a turn event stream.
 type TurnEventCursor struct {
 	EventIndex int
 	ID         uuid.UUID
 }
 
+// TurnEventListFilter scopes and paginates owner-visible turn events.
 type TurnEventListFilter struct {
 	ProjectID uuid.UUID
 	TurnID    uuid.UUID
@@ -419,6 +443,7 @@ type TurnEventListFilter struct {
 	Cursor    *TurnEventCursor
 }
 
+// LegacyExecutionListFilter scopes compatibility chat execution history.
 type LegacyExecutionListFilter struct {
 	ProjectID  uuid.UUID
 	SessionID  uuid.UUID
@@ -428,6 +453,7 @@ type LegacyExecutionListFilter struct {
 	CursorID   *uuid.UUID
 }
 
+// ConclusionPublicationListFilter scopes and paginates task publications.
 type ConclusionPublicationListFilter struct {
 	ProjectID      uuid.UUID
 	TaskID         uuid.UUID
@@ -447,6 +473,7 @@ type LegacyChatExecution struct {
 	FinishedAt     *time.Time
 }
 
+// ConclusionPublicationView applies viewer-specific source visibility.
 type ConclusionPublicationView struct {
 	Publication      ConclusionPublication
 	SourceAccessible bool
@@ -454,12 +481,14 @@ type ConclusionPublicationView struct {
 	SourceTurnID     *uuid.UUID
 }
 
+// ChatActor carries the authenticated identity for project chat operations.
 type ChatActor struct {
 	UserID     uuid.UUID
 	MemberID   uuid.UUID
 	LegacyRole string
 }
 
+// ContextSourceRef identifies a live resource selected for future context.
 type ContextSourceRef struct {
 	Type ContextSourceType
 	ID   uuid.UUID
@@ -480,6 +509,7 @@ type ProjectChatCommand struct {
 	Title               *string
 }
 
+// SHA256 returns the semantic idempotency fingerprint of the command.
 func (command ProjectChatCommand) SHA256() (string, error) {
 	if command.NewSession {
 		command.SessionID = nil
@@ -521,6 +551,7 @@ func (command ProjectChatCommand) SHA256() (string, error) {
 	return fmt.Sprintf("%x", sum[:]), nil
 }
 
+// CreateProjectChatInput contains the authenticated first-turn command.
 type CreateProjectChatInput struct {
 	ProjectID      uuid.UUID
 	AgentID        uuid.UUID
@@ -532,6 +563,7 @@ type CreateProjectChatInput struct {
 	DeadlineAt     *time.Time
 }
 
+// AppendProjectChatTurnInput contains an authenticated follow-up command.
 type AppendProjectChatTurnInput struct {
 	ProjectID      uuid.UUID
 	SessionID      uuid.UUID
@@ -541,6 +573,7 @@ type AppendProjectChatTurnInput struct {
 	DeadlineAt     *time.Time
 }
 
+// StopProjectChatTurnInput identifies an owner-requested turn cancellation.
 type StopProjectChatTurnInput struct {
 	ProjectID uuid.UUID
 	SessionID uuid.UUID
@@ -548,6 +581,7 @@ type StopProjectChatTurnInput struct {
 	Actor     ChatActor
 }
 
+// ReplaceChatContextInput replaces the live selection for the next turn.
 type ReplaceChatContextInput struct {
 	ProjectID uuid.UUID
 	SessionID uuid.UUID
@@ -555,6 +589,7 @@ type ReplaceChatContextInput struct {
 	Sources   []ContextSourceRef
 }
 
+// PrepareProjectConclusionInput requests a frozen task write-back proposal.
 type PrepareProjectConclusionInput struct {
 	ProjectID            uuid.UUID
 	SourceTurnID         uuid.UUID
@@ -562,14 +597,12 @@ type PrepareProjectConclusionInput struct {
 	Actor                ChatActor
 	Kind                 ConclusionKind
 	RelatedPublicationID *uuid.UUID
-	SummaryOverride      *string
 	UpdateDescription    bool
-	DescriptionBase      json.RawMessage
-	ProposedDescription  json.RawMessage
 	IdempotencyKey       string
 	ExpiresAt            time.Time
 }
 
+// ConfirmProjectConclusionInput confirms one frozen write-back proposal.
 type ConfirmProjectConclusionInput struct {
 	ProjectID       uuid.UUID
 	PreparationID   uuid.UUID
@@ -579,6 +612,7 @@ type ConfirmProjectConclusionInput struct {
 	IdempotencyKey  string
 }
 
+// ProjectChatService defines owner-scoped chat and write-back operations.
 type ProjectChatService interface {
 	ListChatSessions(ctx context.Context, filter ChatSessionListFilter, actor ChatActor) ([]*ChatSessionSummary, bool, error)
 	GetChatSession(ctx context.Context, projectID, sessionID uuid.UUID, actor ChatActor) (*AgentChatSession, error)
@@ -613,9 +647,8 @@ type CreateSessionTurnInput struct {
 	DefaultTimeout    time.Duration
 }
 
-// CreateSessionTurn atomically creates the first turn of a new, project chat
-// session. AppendSessionTurn does the same for a later turn after locking the
-// owner-private session. Both return replayed=true for an idempotent replay.
+// AppendSessionTurnInput atomically appends a later turn after locking the
+// owner-private session and returns replayed=true for an idempotent replay.
 type AppendSessionTurnInput struct {
 	SessionID         uuid.UUID
 	ProjectID         uuid.UUID
@@ -631,23 +664,27 @@ type AppendSessionTurnInput struct {
 	DefaultTimeout    time.Duration
 }
 
+// ClaimTurnRunInput identifies a worker and its requested execution lease.
 type ClaimTurnRunInput struct {
 	TurnID        uuid.UUID
 	WorkerID      string
 	LeaseDuration time.Duration
 }
 
+// ClaimedTurnRun contains the immutable execution envelope and fencing token.
 type ClaimedTurnRun struct {
 	Bundle     TurnBundle
 	ClaimToken uuid.UUID
 }
 
+// RenewTurnRunLeaseInput renews a fenced worker lease.
 type RenewTurnRunLeaseInput struct {
 	RunID         uuid.UUID
 	ClaimToken    uuid.UUID
 	LeaseDuration time.Duration
 }
 
+// StopOwnerTurnInput identifies an authenticated owner cancellation.
 type StopOwnerTurnInput struct {
 	ProjectID  uuid.UUID
 	SessionID  uuid.UUID
@@ -657,8 +694,10 @@ type StopOwnerTurnInput struct {
 	LegacyRole string
 }
 
+// StableOutputEventType identifies the single publishable agent output event.
 const StableOutputEventType = "agent.turn.output.stable"
 
+// AppendTurnEventInput appends one fenced, sequenced event to a run.
 type AppendTurnEventInput struct {
 	ID           uuid.UUID
 	TurnID       uuid.UUID
@@ -671,6 +710,7 @@ type AppendTurnEventInput struct {
 	CreatedAt    time.Time
 }
 
+// FinalizeTurnInput atomically records the terminal run and turn result.
 type FinalizeTurnInput struct {
 	RunID              uuid.UUID
 	ClaimToken         uuid.UUID
@@ -683,14 +723,17 @@ type FinalizeTurnInput struct {
 	FinalEventSequence *int
 }
 
+// ConclusionKind describes how a publication changes task-visible knowledge.
 type ConclusionKind string
 
+// Supported conclusion publication operations.
 const (
 	ConclusionPublished ConclusionKind = "published"
 	ConclusionRevised   ConclusionKind = "revised"
 	ConclusionWithdrawn ConclusionKind = "withdrawn"
 )
 
+// ConclusionPreparation is the immutable preview awaiting confirmation.
 type ConclusionPreparation struct {
 	ID                      uuid.UUID
 	ProjectID               uuid.UUID
@@ -718,6 +761,7 @@ type ConclusionPreparation struct {
 	UpdatedAt               time.Time
 }
 
+// PrepareConclusionInput contains repository-level preparation fields.
 type PrepareConclusionInput struct {
 	ID                   uuid.UUID
 	ProjectID            uuid.UUID
@@ -728,14 +772,12 @@ type PrepareConclusionInput struct {
 	LegacyRole           string
 	Kind                 ConclusionKind
 	RelatedPublicationID *uuid.UUID
-	SummaryOverride      *string
 	UpdateDescription    bool
-	DescriptionBase      json.RawMessage
-	ProposedDescription  json.RawMessage
 	IdempotencyKey       string
 	ExpiresAt            time.Time
 }
 
+// ConclusionPublication is an immutable task-visible agent conclusion.
 type ConclusionPublication struct {
 	ID                      uuid.UUID
 	ProjectID               uuid.UUID
@@ -759,6 +801,7 @@ type ConclusionPublication struct {
 	CreatedAt               time.Time
 }
 
+// ConfirmConclusionInput contains the optimistic confirmation contract.
 type ConfirmConclusionInput struct {
 	PreparationID       uuid.UUID
 	ProjectID           uuid.UUID
@@ -770,8 +813,10 @@ type ConfirmConclusionInput struct {
 	IdempotencyKey      string
 }
 
+// OutboxStatus describes durable event delivery state.
 type OutboxStatus string
 
+// Supported durable outbox delivery states.
 const (
 	OutboxPending    OutboxStatus = "pending"
 	OutboxPublishing OutboxStatus = "publishing"
@@ -779,6 +824,7 @@ const (
 	OutboxDead       OutboxStatus = "dead"
 )
 
+// OutboxEvent is one durable notification awaiting publication.
 type OutboxEvent struct {
 	ID             uuid.UUID
 	AggregateType  string
@@ -810,6 +856,7 @@ type OutboxAudience struct {
 	TaskID      *uuid.UUID
 }
 
+// TurnRepository defines durable authoritative turn and publication storage.
 type TurnRepository interface {
 	ListOwnerChatSessions(ctx context.Context, filter ChatSessionListFilter) ([]*ChatSessionSummary, bool, error)
 	GetOwnerChatSession(ctx context.Context, projectID, sessionID, memberID uuid.UUID) (*AgentChatSession, error)
@@ -842,6 +889,7 @@ type TurnRepository interface {
 	ResolveOutboxAudience(ctx context.Context, event *OutboxEvent) (*OutboxAudience, error)
 }
 
+// Authoritative turn, context, idempotency, and publication errors.
 var (
 	ErrTurnNotFound             = errors.New("agent turn: not found")
 	ErrTurnBusy                 = errors.New("agent turn: session has an active turn")

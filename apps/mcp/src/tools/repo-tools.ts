@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { promisify } from "node:util";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import * as z from "zod";
 import type { PacaAPIClient } from "../api/index.js";
 
 const execFileAsync = promisify(execFileCb);

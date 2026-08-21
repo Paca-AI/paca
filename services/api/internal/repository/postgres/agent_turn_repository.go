@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -28,6 +29,7 @@ type AgentTurnRepository struct {
 	db *sqlx.DB
 }
 
+// NewAgentTurnRepository constructs authoritative turn persistence.
 func NewAgentTurnRepository(db *sqlx.DB) *AgentTurnRepository {
 	return &AgentTurnRepository{db: db}
 }
@@ -280,6 +282,7 @@ const claimedOutboxColumns = `e.id, e.aggregate_type, e.aggregate_id, e.event_ty
 	e.lock_token, e.lock_expires_at,
 	e.published_at, e.last_error, e.created_at`
 
+// ListOwnerChatSessions returns paginated owner-private chat sessions.
 func (r *AgentTurnRepository) ListOwnerChatSessions(ctx context.Context, filter agentdom.ChatSessionListFilter) ([]*agentdom.ChatSessionSummary, bool, error) {
 	limit := filter.Limit
 	if limit < 1 {
@@ -357,6 +360,7 @@ func (r *AgentTurnRepository) ListOwnerChatSessions(ctx context.Context, filter 
 	return out, hasMore, nil
 }
 
+// GetOwnerChatSession returns one owner-private chat session.
 func (r *AgentTurnRepository) GetOwnerChatSession(ctx context.Context, projectID, sessionID, memberID uuid.UUID) (*agentdom.AgentChatSession, error) {
 	var row agentChatSessionRecord
 	if err := r.db.GetContext(ctx, &row, `SELECT `+chatSessionCols+`
@@ -370,6 +374,7 @@ func (r *AgentTurnRepository) GetOwnerChatSession(ctx context.Context, projectID
 	return chatSessionFromRecord(row), nil
 }
 
+// GetOwnerCreatedChatByRequest loads the original idempotent session creation.
 func (r *AgentTurnRepository) GetOwnerCreatedChatByRequest(ctx context.Context, projectID, memberID uuid.UUID, clientRequestID string) (*agentdom.TurnBundle, error) {
 	clientRequestID = strings.TrimSpace(clientRequestID)
 	if clientRequestID == "" {
@@ -395,6 +400,7 @@ func (r *AgentTurnRepository) GetOwnerCreatedChatByRequest(ctx context.Context, 
 	return bundle, err
 }
 
+// ListOwnerSessionTurns returns paginated immutable turn bundles.
 func (r *AgentTurnRepository) ListOwnerSessionTurns(ctx context.Context, projectID, sessionID, memberID uuid.UUID, limit int, beforeIndex *int) ([]*agentdom.TurnBundle, bool, error) {
 	if limit < 1 {
 		limit = 30
@@ -436,6 +442,7 @@ func (r *AgentTurnRepository) ListOwnerSessionTurns(ctx context.Context, project
 	return out, hasMore, nil
 }
 
+// GetOwnerTurn returns one immutable owner-private turn bundle.
 func (r *AgentTurnRepository) GetOwnerTurn(ctx context.Context, projectID, turnID, memberID uuid.UUID) (*agentdom.TurnBundle, error) {
 	var allowed bool
 	if err := r.db.GetContext(ctx, &allowed, `SELECT EXISTS (
@@ -457,6 +464,7 @@ func (r *AgentTurnRepository) GetOwnerTurn(ctx context.Context, projectID, turnI
 	return bundle, err
 }
 
+// GetOwnerSessionTurnByIdempotency loads the original idempotent append.
 func (r *AgentTurnRepository) GetOwnerSessionTurnByIdempotency(ctx context.Context, projectID, sessionID, memberID uuid.UUID, idempotencyKey string) (*agentdom.TurnBundle, error) {
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if idempotencyKey == "" {
@@ -497,6 +505,7 @@ func (r *AgentTurnRepository) GetTurnRuntime(ctx context.Context, turnID uuid.UU
 	return bundle, err
 }
 
+// ListOwnerTurnEvents returns paginated durable events for one owner turn.
 func (r *AgentTurnRepository) ListOwnerTurnEvents(ctx context.Context, filter agentdom.TurnEventListFilter) ([]*agentdom.AgentConversationEvent, bool, error) {
 	limit := filter.Limit
 	if limit < 1 {
@@ -551,6 +560,7 @@ func (r *AgentTurnRepository) ListOwnerTurnEvents(ctx context.Context, filter ag
 	return out, hasMore, nil
 }
 
+// ListOwnerSessionLegacyExecutions returns pre-authoritative compatibility history.
 func (r *AgentTurnRepository) ListOwnerSessionLegacyExecutions(ctx context.Context, filter agentdom.LegacyExecutionListFilter) ([]agentdom.LegacyChatExecution, bool, error) {
 	limit := filter.Limit
 	if limit < 1 {
@@ -599,6 +609,7 @@ func (r *AgentTurnRepository) ListOwnerSessionLegacyExecutions(ctx context.Conte
 	return result, hasMore, nil
 }
 
+// ListSessionContextSources returns the live next-turn context selection.
 func (r *AgentTurnRepository) ListSessionContextSources(ctx context.Context, projectID, sessionID, memberID uuid.UUID) ([]agentdom.SessionContextSource, error) {
 	var rows []struct {
 		ID                 string    `db:"id"`
@@ -636,6 +647,7 @@ func (r *AgentTurnRepository) ListSessionContextSources(ctx context.Context, pro
 	return out, nil
 }
 
+// ReplaceSessionContextSources atomically replaces the live context selection.
 func (r *AgentTurnRepository) ReplaceSessionContextSources(ctx context.Context, projectID, sessionID, memberID, userID uuid.UUID, legacyRole string, sources []agentdom.SessionContextSource) ([]agentdom.SessionContextSource, error) {
 	if len(sources) > agentdom.MaxContextSources {
 		return nil, agentdom.ErrContextSnapshotTooLarge
@@ -697,6 +709,7 @@ func (r *AgentTurnRepository) ReplaceSessionContextSources(ctx context.Context, 
 	return sources, err
 }
 
+// ResolveContextItems authorizes and captures selected resources immutably.
 func (r *AgentTurnRepository) ResolveContextItems(ctx context.Context, projectID, memberID, snapshotID uuid.UUID, sources []agentdom.SessionContextSource) ([]agentdom.TurnContextItem, error) {
 	if len(sources) > agentdom.MaxContextSources {
 		return nil, agentdom.ErrContextSnapshotTooLarge
@@ -841,6 +854,7 @@ func truncateUTF8Bytes(value string, limit int) string {
 	return value
 }
 
+// ListTaskConclusionPublications returns paginated task-visible publications.
 func (r *AgentTurnRepository) ListTaskConclusionPublications(ctx context.Context, filter agentdom.ConclusionPublicationListFilter) ([]agentdom.ConclusionPublicationView, bool, error) {
 	limit := filter.Limit
 	if limit < 1 {
@@ -888,6 +902,7 @@ func (r *AgentTurnRepository) ListTaskConclusionPublications(ctx context.Context
 	return out, hasMore, nil
 }
 
+// GetOwnerConclusionPreparation returns one owner-private frozen preview.
 func (r *AgentTurnRepository) GetOwnerConclusionPreparation(ctx context.Context, projectID, preparationID, memberID, userID uuid.UUID) (*agentdom.ConclusionPreparation, error) {
 	var row conclusionPreparationRecord
 	err := r.db.GetContext(ctx, &row, `SELECT `+preparationViewColumns+`
@@ -907,6 +922,7 @@ func (r *AgentTurnRepository) GetOwnerConclusionPreparation(ctx context.Context,
 	return preparationFromRecord(row), nil
 }
 
+// CreateSessionTurn atomically creates a session and first turn.
 func (r *AgentTurnRepository) CreateSessionTurn(ctx context.Context, in agentdom.CreateSessionTurnInput) (*agentdom.TurnBundle, bool, error) {
 	if strings.TrimSpace(in.ClientRequestID) == "" {
 		return nil, false, fmt.Errorf("create session turn: client request id is required")
@@ -1007,6 +1023,7 @@ func (r *AgentTurnRepository) CreateSessionTurn(ctx context.Context, in agentdom
 	return bundle, replayed, err
 }
 
+// AppendSessionTurn atomically appends a turn under the session lock.
 func (r *AgentTurnRepository) AppendSessionTurn(ctx context.Context, in agentdom.AppendSessionTurnInput) (*agentdom.TurnBundle, bool, error) {
 	if err := normalizeTurnCommand(&in.Conversation, &in.Turn, &in.Run, &in.Snapshot,
 		false, in.ReuseConversation, nil, nil, in.RequestedDeadline); err != nil {
@@ -1125,6 +1142,7 @@ func (r *AgentTurnRepository) AppendSessionTurn(ctx context.Context, in agentdom
 	return bundle, replayed, err
 }
 
+// ClaimTurnRun creates or renews a fenced execution attempt.
 func (r *AgentTurnRepository) ClaimTurnRun(ctx context.Context, in agentdom.ClaimTurnRunInput) (*agentdom.ClaimedTurnRun, error) {
 	if strings.TrimSpace(in.WorkerID) == "" || in.LeaseDuration <= 0 {
 		return nil, fmt.Errorf("claim turn run: worker and positive lease are required")
@@ -1183,6 +1201,21 @@ func (r *AgentTurnRepository) ClaimTurnRun(ctx context.Context, in agentdom.Clai
 		}
 		if status == agentdom.TurnStatusRunning && leaseLive {
 			if row.ClaimedBy != nil && *row.ClaimedBy == in.WorkerID && row.ClaimToken != nil {
+				var hasEvents bool
+				if err := tx.GetContext(ctx, &hasEvents, `SELECT EXISTS (
+					SELECT 1 FROM agent_conversation_events
+					WHERE turn_id=$1 AND turn_run_id=$2
+				)`, in.TurnID, uuid.MustParse(row.ID)); err != nil {
+					return fmt.Errorf("check claimed turn run events: %w", err)
+				}
+				// Replaying an unanswered claim is safe only before execution has
+				// emitted durable output. Once an event exists, restarting the
+				// handler at sequence zero would mix a second execution into this
+				// fenced attempt. Leave the lease untouched so expiry can create a
+				// fresh attempt instead.
+				if hasEvents {
+					return agentdom.ErrTurnBusy
+				}
 				bundle, loadErr := loadTurnBundleTx(ctx, tx, in.TurnID)
 				if loadErr != nil {
 					return loadErr
@@ -1576,6 +1609,7 @@ func (r *AgentTurnRepository) StopOwnerTurn(ctx context.Context, in agentdom.Sto
 	return result, err
 }
 
+// RenewTurnRunLease extends a valid fenced run lease.
 func (r *AgentTurnRepository) RenewTurnRunLease(ctx context.Context, in agentdom.RenewTurnRunLeaseInput) (time.Time, error) {
 	if in.LeaseDuration <= 0 {
 		return time.Time{}, fmt.Errorf("renew turn run lease: positive lease is required")
@@ -1664,6 +1698,7 @@ func (r *AgentTurnRepository) RenewTurnRunLease(ctx context.Context, in agentdom
 	return lease, err
 }
 
+// AppendTurnEvent stores one fenced and idempotent run event.
 func (r *AgentTurnRepository) AppendTurnEvent(ctx context.Context, in agentdom.AppendTurnEventInput) (*agentdom.AgentConversationEvent, error) {
 	if in.TurnSequence < 0 || in.ID == uuid.Nil {
 		return nil, agentdom.ErrTurnEventInvalid
@@ -1786,6 +1821,7 @@ func (r *AgentTurnRepository) AppendTurnEvent(ctx context.Context, in agentdom.A
 	return event, err
 }
 
+// FinalizeTurn atomically stores terminal state and stable output.
 func (r *AgentTurnRepository) FinalizeTurn(ctx context.Context, in agentdom.FinalizeTurnInput) (*agentdom.TurnResult, error) {
 	switch in.TerminalStatus {
 	case agentdom.TurnStatusSucceeded, agentdom.TurnStatusFailed,
@@ -1963,6 +1999,11 @@ func (r *AgentTurnRepository) FinalizeTurn(ctx context.Context, in agentdom.Fina
 			}
 		case agentdom.TurnStatusStopped, agentdom.TurnStatusCancelled:
 			conversationStatus = "stopped"
+		case agentdom.TurnStatusQueued, agentdom.TurnStatusRunning, agentdom.TurnStatusFailed,
+			agentdom.TurnStatusTimedOut, agentdom.TurnStatusNoOutput:
+			// Non-success terminal states retain the default failed status. Queued and
+			// running are rejected by the validation above, but remain explicit here
+			// so additions to TurnStatus cannot silently change this mapping.
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE agent_conversations
 			SET status=$1, finished_at=$2, error_message=$3, updated_at=$2
@@ -1978,16 +2019,14 @@ func (r *AgentTurnRepository) FinalizeTurn(ctx context.Context, in agentdom.Fina
 	return result, err
 }
 
+// PrepareConclusion freezes a source-anchored task write-back preview.
 func (r *AgentTurnRepository) PrepareConclusion(ctx context.Context, in agentdom.PrepareConclusionInput) (*agentdom.ConclusionPreparation, bool, error) {
-	descriptionBase, proposedDescription, err := normalizeConclusionDescriptionProposal(in)
-	if err != nil {
-		return nil, false, err
+	if in.UpdateDescription && in.Kind == agentdom.ConclusionWithdrawn {
+		return nil, false, agentdom.ErrProjectChatInvalid
 	}
-	in.DescriptionBase = descriptionBase
-	in.ProposedDescription = proposedDescription
 	var prepared *agentdom.ConclusionPreparation
 	var replayed bool
-	err = WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		if err := authorizeProjectHumanTx(ctx, tx, in.PreparedByUserID, in.PreparedByMemberID,
 			in.ProjectID, in.LegacyRole, authz.PermissionAgentsRead,
 			authz.PermissionTasksRead, authz.PermissionTasksWrite); err != nil {
@@ -2017,17 +2056,22 @@ func (r *AgentTurnRepository) PrepareConclusion(ctx context.Context, in agentdom
 			return fmt.Errorf("find conclusion preparation replay: %w", err)
 		}
 		var source struct {
-			GeneratedByAgentID string          `db:"generated_by_agent_id"`
-			StableOutput       *string         `db:"stable_output"`
-			TargetDescription  json.RawMessage `db:"target_description"`
+			GeneratedByAgentID    string          `db:"generated_by_agent_id"`
+			StableOutput          *string         `db:"stable_output"`
+			TargetDescription     json.RawMessage `db:"target_description"`
+			TargetSnapshotContent json.RawMessage `db:"target_snapshot_content"`
 		}
 		err = tx.GetContext(ctx, &source, `
 			SELECT r.generated_by_agent_id, r.stable_output,
-			       COALESCE(target.description,'null'::jsonb) AS target_description
+			       COALESCE(target.description,'null'::jsonb) AS target_description,
+			       source_task.content AS target_snapshot_content
 			FROM agent_turns t
 			JOIN agent_chat_sessions s ON s.id=t.session_id
 			JOIN agent_turn_results r ON r.turn_id=t.id AND r.terminal_status='succeeded'
 			JOIN tasks target ON target.id=$2 AND target.project_id=$3 AND target.deleted_at IS NULL
+			JOIN agent_turn_context_snapshots snapshot ON snapshot.turn_id=t.id
+			JOIN agent_turn_context_items source_task ON source_task.snapshot_id=snapshot.id
+				AND source_task.source_type='task' AND source_task.source_id=target.id
 			JOIN project_members pm ON pm.id=$4 AND pm.project_id=$3
 				AND pm.user_id=$5 AND pm.deleted_at IS NULL
 			WHERE t.id=$1 AND t.project_id=$3 AND s.member_id=$4
@@ -2046,11 +2090,8 @@ func (r *AgentTurnRepository) PrepareConclusion(ctx context.Context, in agentdom
 		if err := validateConclusionRelationTx(ctx, tx, in.ProjectID, in.TargetTaskID, in.Kind, in.RelatedPublicationID); err != nil {
 			return err
 		}
-		summary := *source.StableOutput
-		if in.SummaryOverride != nil {
-			summary = *in.SummaryOverride
-		}
-		if strings.TrimSpace(summary) == "" || len([]byte(summary)) > agentdom.MaxConclusionBytes {
+		summary := strings.TrimSpace(*source.StableOutput)
+		if summary == "" || len([]byte(summary)) > agentdom.MaxConclusionBytes {
 			return fmt.Errorf("prepare conclusion: invalid summary")
 		}
 		sum := sha256.Sum256([]byte(summary))
@@ -2058,14 +2099,27 @@ func (r *AgentTurnRepository) PrepareConclusion(ctx context.Context, in agentdom
 		var descriptionBefore, descriptionAfter json.RawMessage
 		var descriptionBeforeHash, descriptionAfterHash *string
 		if in.UpdateDescription {
-			descriptionBefore, err = canonicalTaskDescription(source.TargetDescription, true)
+			var frozenTask struct {
+				Description json.RawMessage `json:"description"`
+			}
+			if err := json.Unmarshal(source.TargetSnapshotContent, &frozenTask); err != nil || len(frozenTask.Description) == 0 {
+				return agentdom.ErrTurnResultNotPublishable
+			}
+			descriptionBefore, err = canonicalTaskDescription(frozenTask.Description, true)
 			if err != nil {
 				return fmt.Errorf("prepare conclusion description baseline: %w", err)
 			}
-			descriptionAfter = in.ProposedDescription
 			beforeHash := conclusionContentSHA256(descriptionBefore)
-			if beforeHash != conclusionContentSHA256(in.DescriptionBase) {
+			currentDescription, currentErr := canonicalTaskDescription(source.TargetDescription, true)
+			if currentErr != nil {
+				return fmt.Errorf("prepare conclusion current description: %w", currentErr)
+			}
+			if beforeHash != conclusionContentSHA256(currentDescription) {
 				return agentdom.ErrConclusionConflict
+			}
+			descriptionAfter, err = taskDescriptionFromMarkdown(summary)
+			if err != nil {
+				return err
 			}
 			afterHash := conclusionContentSHA256(descriptionAfter)
 			if beforeHash == afterHash {
@@ -2085,6 +2139,18 @@ func (r *AgentTurnRepository) PrepareConclusion(ctx context.Context, in agentdom
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,
 			"conclusion-version:"+in.SourceTurnID.String()+":"+in.TargetTaskID.String()); err != nil {
 			return fmt.Errorf("lock conclusion summary version: %w", err)
+		}
+		if in.Kind == agentdom.ConclusionPublished {
+			var alreadyPublished bool
+			if err := tx.GetContext(ctx, &alreadyPublished, `SELECT EXISTS (
+				SELECT 1 FROM agent_conclusion_publications
+				WHERE source_turn_id=$1 AND target_task_id=$2 AND kind='published'
+			)`, in.SourceTurnID, in.TargetTaskID); err != nil {
+				return fmt.Errorf("check existing conclusion publication: %w", err)
+			}
+			if alreadyPublished {
+				return agentdom.ErrConclusionConflict
+			}
 		}
 		var version int
 		if err := tx.GetContext(ctx, &version, `SELECT COALESCE(MAX(summary_version),0)+1
@@ -2122,6 +2188,7 @@ func (r *AgentTurnRepository) PrepareConclusion(ctx context.Context, in agentdom
 	return prepared, replayed, err
 }
 
+// ConfirmConclusion atomically publishes a valid frozen preview.
 func (r *AgentTurnRepository) ConfirmConclusion(ctx context.Context, in agentdom.ConfirmConclusionInput) (*agentdom.ConclusionPublication, bool, error) {
 	var publication *agentdom.ConclusionPublication
 	var replayed bool
@@ -2200,6 +2267,13 @@ func (r *AgentTurnRepository) ConfirmConclusion(ctx context.Context, in agentdom
 				AND pm.user_id=$5 AND pm.deleted_at IS NULL
 			WHERE t.id=$1 AND t.project_id=$3 AND s.member_id=$4
 			  AND r.generated_by_agent_id=$6
+			  AND EXISTS (
+				SELECT 1
+				FROM agent_turn_context_snapshots snapshot
+				JOIN agent_turn_context_items item ON item.snapshot_id=snapshot.id
+				WHERE snapshot.turn_id=t.id AND item.source_type='task'
+				  AND item.source_id=target.id
+			  )
 		)`, uuid.MustParse(prep.SourceTurnID), uuid.MustParse(prep.TargetTaskID), in.ProjectID,
 			in.PublishedByMemberID, in.PublishedByUserID, uuid.MustParse(prep.GeneratedByAgentID))
 		if err != nil {
@@ -2210,6 +2284,22 @@ func (r *AgentTurnRepository) ConfirmConclusion(ctx context.Context, in agentdom
 		}
 
 		kind := agentdom.ConclusionKind(prep.PublicationKind)
+		if kind == agentdom.ConclusionPublished {
+			publicationScope := "conclusion-publish:" + prep.SourceTurnID + ":" + prep.TargetTaskID
+			if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, publicationScope); err != nil {
+				return fmt.Errorf("lock conclusion publication scope: %w", err)
+			}
+			var alreadyPublished bool
+			if err := tx.GetContext(ctx, &alreadyPublished, `SELECT EXISTS (
+				SELECT 1 FROM agent_conclusion_publications
+				WHERE source_turn_id=$1 AND target_task_id=$2 AND kind='published'
+			)`, uuid.MustParse(prep.SourceTurnID), uuid.MustParse(prep.TargetTaskID)); err != nil {
+				return fmt.Errorf("check duplicate conclusion publication: %w", err)
+			}
+			if alreadyPublished {
+				return agentdom.ErrConclusionConflict
+			}
+		}
 		var rootID, revisesID, withdrawsID *uuid.UUID
 		if prep.RelatedPublicationID != nil {
 			relatedID := uuid.MustParse(*prep.RelatedPublicationID)
@@ -2358,6 +2448,7 @@ func (r *AgentTurnRepository) ConfirmConclusion(ctx context.Context, in agentdom
 	return publication, replayed, err
 }
 
+// ClaimOutbox leases pending durable notifications for one worker.
 func (r *AgentTurnRepository) ClaimOutbox(ctx context.Context, workerID string, limit int, lease time.Duration) ([]*agentdom.OutboxEvent, error) {
 	if strings.TrimSpace(workerID) == "" || lease <= 0 {
 		return nil, fmt.Errorf("claim outbox: worker and positive lease are required")
@@ -2395,6 +2486,7 @@ func (r *AgentTurnRepository) ClaimOutbox(ctx context.Context, workerID string, 
 	return out, nil
 }
 
+// RenewOutboxLease extends a fenced notification delivery lease.
 func (r *AgentTurnRepository) RenewOutboxLease(ctx context.Context, eventID, lockToken uuid.UUID, lease time.Duration) (time.Time, error) {
 	if lease <= 0 {
 		return time.Time{}, fmt.Errorf("renew outbox lease: positive lease is required")
@@ -2410,6 +2502,7 @@ func (r *AgentTurnRepository) RenewOutboxLease(ctx context.Context, eventID, loc
 	return expiresAt, err
 }
 
+// MarkOutboxPublished completes a fenced notification delivery.
 func (r *AgentTurnRepository) MarkOutboxPublished(ctx context.Context, eventID, lockToken uuid.UUID, _ time.Time) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE agent_outbox_events
 		SET status='published', published_at=NOW(), locked_at=NULL, locked_by=NULL,
@@ -2421,6 +2514,7 @@ func (r *AgentTurnRepository) MarkOutboxPublished(ctx context.Context, eventID, 
 	return requireOneRow(res, "mark outbox published")
 }
 
+// RetryOutbox reschedules or dead-letters a fenced notification delivery.
 func (r *AgentTurnRepository) RetryOutbox(ctx context.Context, eventID, lockToken uuid.UUID, next time.Time, lastError string, dead bool) error {
 	status := string(agentdom.OutboxPending)
 	if dead {
@@ -2437,6 +2531,7 @@ func (r *AgentTurnRepository) RetryOutbox(ctx context.Context, eventID, lockToke
 	return requireOneRow(res, "retry outbox")
 }
 
+// ResolveOutboxAudience returns the minimum routing projection for an event.
 func (r *AgentTurnRepository) ResolveOutboxAudience(ctx context.Context, event *agentdom.OutboxEvent) (*agentdom.OutboxAudience, error) {
 	if event == nil || event.AggregateID == uuid.Nil {
 		return nil, agentdom.ErrTurnNotFound
@@ -2892,14 +2987,11 @@ func conclusionPreparationRequestSHA(in agentdom.PrepareConclusionInput) (string
 		PreparedByMemberID   uuid.UUID               `json:"prepared_by_member_id"`
 		Kind                 agentdom.ConclusionKind `json:"kind"`
 		RelatedPublicationID *uuid.UUID              `json:"related_publication_id"`
-		SummaryOverride      *string                 `json:"summary_override"`
 		UpdateDescription    bool                    `json:"update_description"`
-		DescriptionBase      json.RawMessage         `json:"description_base,omitempty"`
-		ProposedDescription  json.RawMessage         `json:"proposed_description,omitempty"`
 		ExpiresAt            time.Time               `json:"expires_at"`
 	}{in.ProjectID, in.SourceTurnID, in.TargetTaskID, in.PreparedByUserID,
-		in.PreparedByMemberID, in.Kind, in.RelatedPublicationID, in.SummaryOverride,
-		in.UpdateDescription, in.DescriptionBase, in.ProposedDescription, in.ExpiresAt.UTC()}
+		in.PreparedByMemberID, in.Kind, in.RelatedPublicationID,
+		in.UpdateDescription, in.ExpiresAt.UTC()}
 	encoded, err := json.Marshal(fingerprint)
 	if err != nil {
 		return "", err
@@ -2910,25 +3002,114 @@ func conclusionPreparationRequestSHA(in agentdom.PrepareConclusionInput) (string
 
 const maxConclusionDescriptionBytes = 1024 * 1024
 
-func normalizeConclusionDescriptionProposal(in agentdom.PrepareConclusionInput) (json.RawMessage, json.RawMessage, error) {
-	if !in.UpdateDescription {
-		if len(bytes.TrimSpace(in.DescriptionBase)) != 0 || len(bytes.TrimSpace(in.ProposedDescription)) != 0 {
-			return nil, nil, agentdom.ErrProjectChatInvalid
+var (
+	markdownHeadingPattern = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
+	markdownBulletPattern  = regexp.MustCompile(`^[-*+]\s+(.+)$`)
+	markdownNumberPattern  = regexp.MustCompile(`^\d+[.)]\s+(.+)$`)
+	markdownLinkPattern    = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	markdownInlinePattern  = regexp.MustCompile("(\\*\\*[^*]+\\*\\*|`[^`]+`)")
+)
+
+// taskDescriptionFromMarkdown derives the persisted BlockNote proposal from
+// the immutable stable output. The client never supplies attributed content.
+func taskDescriptionFromMarkdown(markdown string) (json.RawMessage, error) {
+	blocks := make([]map[string]any, 0)
+	paragraph := make([]string, 0)
+	insideFence := false
+	appendBlock := func(blockType, text string, headingLevel int) {
+		block := map[string]any{
+			"type": blockType, "content": markdownInlineContent(text), "children": []any{},
 		}
-		return nil, nil, nil
+		if blockType == "heading" {
+			block["props"] = map[string]int{"level": headingLevel}
+		}
+		blocks = append(blocks, block)
 	}
-	if in.Kind == agentdom.ConclusionWithdrawn {
-		return nil, nil, agentdom.ErrProjectChatInvalid
+	flushParagraph := func() {
+		text := strings.TrimSpace(strings.Join(paragraph, " "))
+		if text != "" {
+			appendBlock("paragraph", text, 0)
+		}
+		paragraph = paragraph[:0]
 	}
-	base, err := canonicalTaskDescription(in.DescriptionBase, true)
+
+	normalized := strings.ReplaceAll(markdown, "\r\n", "\n")
+	for _, rawLine := range strings.Split(normalized, "\n") {
+		value := strings.TrimSpace(rawLine)
+		if strings.HasPrefix(value, "```") {
+			flushParagraph()
+			insideFence = !insideFence
+			continue
+		}
+		if value == "" {
+			flushParagraph()
+			continue
+		}
+		if insideFence {
+			paragraph = append(paragraph, value)
+			continue
+		}
+		if match := markdownHeadingPattern.FindStringSubmatch(value); match != nil {
+			flushParagraph()
+			level := len(match[1])
+			if level > 3 {
+				level = 3
+			}
+			appendBlock("heading", match[2], level)
+			continue
+		}
+		if match := markdownBulletPattern.FindStringSubmatch(value); match != nil {
+			flushParagraph()
+			appendBlock("bulletListItem", match[1], 0)
+			continue
+		}
+		if match := markdownNumberPattern.FindStringSubmatch(value); match != nil {
+			flushParagraph()
+			appendBlock("numberedListItem", match[1], 0)
+			continue
+		}
+		paragraph = append(paragraph, strings.TrimSpace(strings.TrimPrefix(value, ">")))
+	}
+	flushParagraph()
+	if len(blocks) == 0 {
+		appendBlock("paragraph", strings.TrimSpace(markdown), 0)
+	}
+	encoded, err := json.Marshal(blocks)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	proposed, err := canonicalTaskDescription(in.ProposedDescription, false)
-	if err != nil {
-		return nil, nil, err
+	return canonicalTaskDescription(encoded, false)
+}
+
+func markdownInlineContent(text string) []map[string]any {
+	normalized := markdownLinkPattern.ReplaceAllString(text, "$1 ($2)")
+	matches := markdownInlinePattern.FindAllStringIndex(normalized, -1)
+	content := make([]map[string]any, 0, len(matches)*2+1)
+	appendText := func(value string, styles map[string]bool) {
+		content = append(content, map[string]any{
+			"type": "text", "text": value, "styles": styles,
+		})
 	}
-	return base, proposed, nil
+	cursor := 0
+	for _, match := range matches {
+		if match[0] > cursor {
+			appendText(normalized[cursor:match[0]], map[string]bool{})
+		}
+		token := normalized[match[0]:match[1]]
+		if strings.HasPrefix(token, "**") {
+			appendText(token[2:len(token)-2], map[string]bool{"bold": true})
+		} else {
+			appendText(token[1:len(token)-1], map[string]bool{"code": true})
+		}
+		cursor = match[1]
+	}
+	if cursor < len(normalized) {
+		appendText(normalized[cursor:], map[string]bool{})
+	}
+	if len(content) == 0 {
+		appendText("", map[string]bool{})
+	}
+	return content
 }
 
 func canonicalTaskDescription(raw json.RawMessage, allowNull bool) (json.RawMessage, error) {

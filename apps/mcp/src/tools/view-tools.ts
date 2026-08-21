@@ -1,5 +1,5 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import * as z from "zod";
 import type { PacaAPIViewsClient } from "../api/index.js";
 import type { ViewConfig } from "../types/index.js";
 import { formatList } from "../utils/index.js";

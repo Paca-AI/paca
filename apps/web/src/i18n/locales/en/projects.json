@@ -1109,7 +1109,8 @@
 		},
 		"errors": {
 			"missingSession": "The server did not return the chat session.",
-			"turnActive": "Wait for the active turn to finish or stop it first."
+			"turnActive": "Wait for the active turn to finish or stop it first.",
+			"sendFailed": "The message was not sent. Your draft has been restored; try again."
 		},
 		"context": {
 			"add": "Add context",

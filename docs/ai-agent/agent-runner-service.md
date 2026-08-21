@@ -1,6 +1,6 @@
 # Agent Runner — `services/agent-runner` Implementation
 
-The `services/agent-runner` service is a Go service responsible for executing `llm`-type agent conversations using [Goose](https://github.com/block/goose) (via [ACP](https://agentclientprotocol.com/), the Agent Client Protocol) as the execution engine, and for brokering `acp`-type agent conversations to a user's own local coding CLI via `apps/acp-bridge`. It consumes trigger events from a Valkey Stream, manages Docker container lifecycles for `llm`-type agents, and streams conversation events back.
+The `services/agent-runner` service is a Go service responsible for executing `llm`-type agent conversations using [Goose](https://github.com/block/goose) (via [ACP](https://agentclientprotocol.com/), the Agent Client Protocol) as the execution engine, and for brokering `acp`-type agent conversations to a user's own local coding CLI via `apps/acp-bridge`. It consumes trigger events from Valkey Streams, runs `llm` sandboxes through either the Docker or Kubernetes backend, and streams conversation events back.
 
 It replaced `services/ai-agent` (Python, OpenHands SDK), which has been fully removed from the repository.
 
@@ -10,7 +10,7 @@ It replaced `services/ai-agent` (Python, OpenHands SDK), which has been fully re
 - [Project Structure](#project-structure)
 - [Valkey Stream Protocol](#valkey-stream-protocol)
 - [Conversation Execution](#conversation-execution)
-- [Docker Container Strategy](#docker-container-strategy)
+- [Sandbox Backend Strategy](#sandbox-backend-strategy)
 - [Repository Access](#repository-access)
 - [Skills & MCP Server Injection](#skills--mcp-server-injection)
 - [Pause / Resume / Stop / Heartbeat](#pause--resume--stop--heartbeat)
@@ -24,7 +24,7 @@ It replaced `services/ai-agent` (Python, OpenHands SDK), which has been fully re
 | Component | Choice | Reason |
 |---|---|---|
 | Execution engine | [Goose](https://github.com/block/goose) `goose serve`, driven over ACP (HTTP + SSE) | No Go SDK equivalent to OpenHands exists; ACP is a stable, documented wire protocol Goose implements natively |
-| Container orchestration | Docker Engine API (`github.com/moby/moby/client`) | Direct control over container lifecycle — no framework wrapper equivalent to OpenHands' `DockerWorkspace` exists for Go |
+| Sandbox orchestration | Docker Engine API (`github.com/moby/moby/client`) or Kubernetes Jobs (`k8s.io/client-go`) | Selected by `SANDBOX_BACKEND`; both implement the shared `sandbox.Backend` contract |
 | Stream consumer/producer | `github.com/redis/go-redis/v9` (Valkey-compatible) | Consume `paca:agent:triggers`, publish `paca:agent:events` |
 | DB client | `github.com/jmoiron/sqlx` + `github.com/jackc/pgx/v5` | Read agent config, write conversation status/events |
 | HTTP | Go stdlib `net/http` | Serves the ACP bridge WebSocket + two internal endpoints + `/llm/models`; no framework needed for this small a surface |
@@ -50,10 +50,12 @@ services/agent-runner/
 │   ├── messaging/                 # Valkey stream consumer, control-message routing, event/status publisher
 │   ├── registry/                  # process-local map of conversation_id → in-flight turn's cancel func
 │   ├── repository/postgres/       # agent config + conversation status/event repositories
-│   ├── sandbox/                   # Docker container lifecycle for the Goose sandbox
+│   ├── sandbox/                   # shared sandbox contract and readiness helpers
+│   │   ├── docker/                # Docker container/network/DinD backend
+│   │   └── k8s/                   # Kubernetes Job/Pod/DinD backend
 │   └── secret/                    # AES-256-GCM encrypt/decrypt for LLM API keys and agent env vars
 └── test/e2e/                      # automated E2E suite: real Docker/Postgres/Valkey via testcontainers-go +
-                                    # sandbox.Manager, gated on PACA_E2E=1, run by the test-e2e CI job
+                                    # Docker backend, gated on PACA_E2E=1, run by the test-e2e CI job
 ```
 
 Every real-infra behavior this service has (Docker/Postgres/Valkey/a real `goose serve` container) is covered by `test/e2e/` — see that directory's `common_env_test.go` doc comment and each test file's own doc comment for what it exercises. This used to be a set of manually-run `internal/*/livecheck*` programs, not wired into CI; they were replaced by this automated suite (see `.github/workflows/agent-runner-pr-ci.yml`'s `test-e2e` job).
@@ -113,8 +115,8 @@ API, heartbeats pending delivery, and dispatches `handler.HandleTurn`.
 Each claim has a lease token and attempt identity. Events, renewals,
 finalization, and stop control must present the exact turn, run, attempt, and
 token; stale workers cannot append or finish a recovered turn. A startup and
-periodic orphan reaper removes Docker resources only after verifying that their
-run is no longer the active fenced attempt.
+periodic orphan reaper removes Docker containers/networks or Kubernetes Jobs
+only after verifying that their run is no longer the active fenced attempt.
 
 Authoritative private `llm` execution uses an immutable context snapshot and a
 deny-by-default tool policy. The sandbox receives only the model provider
@@ -131,7 +133,7 @@ The core flow, in `internal/executor/executor.go`'s `Run`:
 
 1. Decrypt the agent's LLM API key and any per-agent environment variables (`internal/secret.Encryptor`).
 2. Resolve the LLM provider to Goose's own env var shape (`GOOSE_PROVIDER`, `GOOSE_MODEL`, and a provider-specific API key env var — see `resolveProviderEnv`). A handful of Paca's `llm_provider` values don't match the provider id Goose actually registers them under (verified directly against `block/goose`'s source, not its docs site — see `gooseProviderID`'s doc comment): `"gemini"` is Goose's `"google"` provider, and `"deepseek"` is Goose's `"custom_deepseek"`. An unmapped mismatch here means every conversation for that provider silently fails to initialize at all, with no ACP-level error to surface — this is why `gooseProviderID` exists as an explicit alias table rather than passing `llm_provider` straight through.
-3. Start a dedicated sandbox container (`sandbox.Manager.Start`) — or, for a resumed chat turn, reuse an existing one (see [Pause / Resume / Stop / Heartbeat](#pause--resume--stop--heartbeat)).
+3. Start a dedicated sandbox workload (`sandbox.Backend.Start`) — or, for a resumed chat turn, reuse an existing one (see [Pause / Resume / Stop / Heartbeat](#pause--resume--stop--heartbeat)).
 4. Complete the ACP handshake: `initialize`, then `session/new` with the working directory and the agent's MCP server list (see [Skills & MCP Server Injection](#skills--mcp-server-injection)).
 5. Build the turn's message. For a cold start this combines project/trigger context, the immutable turn snapshot, and the user's message (`internal/executor/prompt.go`). The agent's system prompt is delivered through `.goosehints`, while enabled skills use Goose's file-based skill discovery. A resumed turn normally sends just the new message because the agent already has full conversation context. Recognized owner-private writeback slash commands additionally receive deterministic, non-persisted command guidance on both cold and resumed turns; the transcript still stores and displays only the user's raw command.
 6. `session/prompt` the message, capped at `MaxIterations` tool calls (default 50) and `TimeoutMinutes` (default 30) — Goose enforces no turn cap of its own, confirmed in the protocol spike where a non-converging reply produced 600+ tool-call cycles with no backoff.
@@ -141,13 +143,14 @@ The core flow, in `internal/executor/executor.go`'s `Run`:
 
 ---
 
-## Docker Container Strategy
+## Sandbox Backend Strategy
 
-- Each conversation gets a **dedicated Docker container**, started via the Docker Engine API directly (`internal/sandbox.Manager`).
+- Each conversation gets a **dedicated sandbox workload** through the shared `internal/sandbox.Backend` interface. `SANDBOX_BACKEND=docker` uses a Docker container; `SANDBOX_BACKEND=kubernetes` uses a Kubernetes Job and Pod.
 - The sandbox image is `services/agent-server/Dockerfile` — Goose plus Node.js and the Paca MCP package pre-installed. **Must** be this image, not raw upstream Goose: the raw image has no Node.js, so the built-in Paca MCP server can never start, and Goose does not surface that failure as an ACP error — `session/new` just hangs forever instead. This is why `executor.Run` derives a bounded `context.WithTimeout` from `cfg.TimeoutMinutes` (falling back to 30 minutes) for the whole ACP handshake/prompt sequence, rather than trusting the call to fail fast on its own.
-- The container is stopped and removed by `sandbox.Manager.Stop`, called explicitly by the caller once it decides teardown is appropriate (see [Conversation Execution](#conversation-execution) above) — not automatically on every turn's end, since a paused chat conversation's container stays alive between turns.
-- Containers are placed on this process's own Docker network, isolated from other Paca service containers.
-- Port allocation: a configurable port pool (`PORT_POOL_START`/`PORT_POOL_SIZE`, default `10000`–`10099`) tracked in-process; a port is claimed on `Start` and released on `Stop`.
+- The workload is stopped and removed by `sandbox.Backend.Stop`, called explicitly by the caller once it decides teardown is appropriate (see [Conversation Execution](#conversation-execution) above) — not automatically on every turn's end, since a paused chat conversation's workload stays alive between turns.
+- The Docker backend creates an isolated network when Docker-in-Docker is enabled and uses an in-process host-port pool (`PORT_POOL_START`/`PORT_POOL_SIZE`, default `10000`–`10099`) when it cannot reach the container network directly.
+- The Kubernetes backend creates one Job per conversation in `SANDBOX_NAMESPACE`; the Pod IP is used for ACP readiness and the optional Docker-in-Docker daemon runs as a sidecar in the same Pod.
+- Authoritative project-chat resources carry exact turn/run labels. A lease-aware reaper is implemented by both built-in backends and fails safe on control-plane lookup errors.
 - **Container resource limits**, matching `services/ai-agent`'s own defaults:
   - CPU: 2 cores
   - Memory: 4 GB
@@ -218,3 +221,7 @@ The three internal endpoints require `X-Internal-Token` matching `INTERNAL_API_K
 | `LLM_MODELS_PATH` | | Path to the static model catalog. Default: `./data/llm_models.json` |
 | `LOG_LEVEL` | | Default: `info` |
 | `PACA_MCP_DEV_SOURCE_DIR` | | Dev-only: a host path to a local `apps/mcp` checkout. When set, every sandbox runs the built-in Paca MCP server from this mount instead of the image's globally npm-installed `@paca-ai/paca-mcp` — a local `apps/mcp` change is live on the next conversation with no npm publish or image rebuild. See `sandbox.Config.MCPDevSourceDir`'s doc comment for the sibling-container path-resolution gotcha (this is a *host* path, resolved by the Docker daemon, not a path inside this container). |
+| `SANDBOX_BACKEND` | | `docker` (default) or `kubernetes`. Both built-in backends implement authoritative orphan cleanup. |
+| `SANDBOX_NAMESPACE` | Kubernetes | Namespace for sandbox Jobs. Defaults to the agent-runner Pod's namespace when available. |
+| `SANDBOX_CPU_LIMIT` / `SANDBOX_MEMORY_LIMIT` | | Kubernetes resource request/limit quantities; defaults match the Docker backend (`2` CPU, `4Gi`). |
+| `SANDBOX_IMAGE_PULL_SECRETS` | | Comma-separated Kubernetes image pull Secret names. |

@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "@paca-ai/paca-mcp",
@@ -12,6 +11,7 @@
         "remark-parse": "^11.0.0",
         "remark-rehype": "^11.1.2",
         "unified": "^11.0.5",
+        "zod": "^3.25.76",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.12",

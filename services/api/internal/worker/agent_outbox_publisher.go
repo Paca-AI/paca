@@ -55,6 +55,7 @@ type AgentOutboxPublisher struct {
 	wg        sync.WaitGroup
 }
 
+// NewAgentOutboxPublisher constructs the durable agent notification worker.
 func NewAgentOutboxPublisher(repo agentOutboxRepository, publisher agentOutboxPublisher, log *slog.Logger) *AgentOutboxPublisher {
 	return &AgentOutboxPublisher{
 		repo: repo, publisher: publisher,
@@ -62,6 +63,7 @@ func NewAgentOutboxPublisher(repo agentOutboxRepository, publisher agentOutboxPu
 	}
 }
 
+// Start begins background publication until the parent is canceled.
 func (w *AgentOutboxPublisher) Start(parent context.Context) {
 	if w == nil || w.repo == nil || w.publisher == nil || w.cancel != nil {
 		return
@@ -75,6 +77,7 @@ func (w *AgentOutboxPublisher) Start(parent context.Context) {
 	}()
 }
 
+// Stop cancels publication and waits for the worker to exit.
 func (w *AgentOutboxPublisher) Stop() {
 	if w == nil || w.cancel == nil {
 		return

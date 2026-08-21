@@ -17,6 +17,7 @@ For the full workspace-wide schema (users, projects, tasks, etc.), see [`docs/ar
 | `000038_add_agent_conversation_audience.sql` | Makes conversation audience explicit and preserves owner-private versus project-shared read boundaries. |
 | `000042_add_agent_task_handoffs.sql` | Adds durable internal task-run handoffs. Handoffs are execution continuity, not user-visible task publications. |
 | `000043_add_agent_turns_and_conclusions.sql` | Adds authoritative turns/runs/results, immutable bounded context snapshots, selected context references, fenced outbox delivery, append-only human-confirmed writeback publications, and frozen task-description proposals with optimistic baseline hashes. Composer slash commands expose mutually exclusive description-update and summary-only flows; both keep the same internal audit anchor. See [private-chats.md](private-chats.md). |
+| `000044_enforce_agent_conclusion_source_uniqueness.sql` | Ensures one authoritative source turn can publish to a target task only once, closing pagination, concurrent-client, and direct-API duplicate writeback paths. |
 
 ---
 

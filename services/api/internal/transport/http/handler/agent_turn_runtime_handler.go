@@ -18,6 +18,7 @@ import (
 
 const maxRuntimeBodyBytes = 2 << 20
 
+// AgentTurnRuntimeHandler exposes authenticated runner-control endpoints.
 type AgentTurnRuntimeHandler struct {
 	repo  agentTurnRuntimeRepository
 	token string
@@ -31,6 +32,7 @@ type agentTurnRuntimeRepository interface {
 	FinalizeTurn(context.Context, agentdom.FinalizeTurnInput) (*agentdom.TurnResult, error)
 }
 
+// NewAgentTurnRuntimeHandler constructs an internal runner-control handler.
 func NewAgentTurnRuntimeHandler(repo agentTurnRuntimeRepository, token string) *AgentTurnRuntimeHandler {
 	return &AgentTurnRuntimeHandler{repo: repo, token: token}
 }
@@ -92,6 +94,7 @@ func runtimeEnvelopeFromBundle(bundle *agentdom.TurnBundle, claimToken *uuid.UUI
 	return envelope
 }
 
+// Claim leases an authoritative turn to the authenticated runner.
 func (h *AgentTurnRuntimeHandler) Claim(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		runtimeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal token")
@@ -119,6 +122,7 @@ func (h *AgentTurnRuntimeHandler) Claim(w http.ResponseWriter, r *http.Request) 
 	writeRuntimeOK(w, runtimeEnvelopeFromBundle(&claim.Bundle, &claim.ClaimToken))
 }
 
+// Get returns the immutable execution envelope for a turn.
 func (h *AgentTurnRuntimeHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		runtimeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal token")
@@ -136,6 +140,7 @@ func (h *AgentTurnRuntimeHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeRuntimeOK(w, runtimeEnvelopeFromBundle(bundle, nil))
 }
 
+// Renew extends a valid fenced run lease.
 func (h *AgentTurnRuntimeHandler) Renew(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		runtimeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal token")
@@ -169,6 +174,7 @@ func (h *AgentTurnRuntimeHandler) Renew(w http.ResponseWriter, r *http.Request) 
 	writeRuntimeOK(w, map[string]any{"lease_expires_at": expiresAt})
 }
 
+// AppendEvent stores one fenced, sequenced runtime event.
 func (h *AgentTurnRuntimeHandler) AppendEvent(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		runtimeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal token")
@@ -208,6 +214,7 @@ func (h *AgentTurnRuntimeHandler) AppendEvent(w http.ResponseWriter, r *http.Req
 	writeRuntimeOK(w, map[string]any{"id": event.ID, "event_index": event.EventIndex, "sequence": request.Sequence})
 }
 
+// Finalize records the fenced terminal run result.
 func (h *AgentTurnRuntimeHandler) Finalize(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
 		runtimeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal token")

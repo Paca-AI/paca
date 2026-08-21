@@ -21,15 +21,18 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
 
+// ProjectChatHandler exposes owner-scoped project chat HTTP endpoints.
 type ProjectChatHandler struct {
 	svc        agentdom.ProjectChatService
 	memberRepo projectdom.MemberRepository
 }
 
+// NewProjectChatHandler constructs a project chat HTTP handler.
 func NewProjectChatHandler(svc agentdom.ProjectChatService, memberRepo projectdom.MemberRepository) *ProjectChatHandler {
 	return &ProjectChatHandler{svc: svc, memberRepo: memberRepo}
 }
 
+// ListSessions returns owner-private project chat sessions.
 func (h *ProjectChatHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -93,6 +96,7 @@ func (h *ProjectChatHandler) ListSessions(w http.ResponseWriter, r *http.Request
 	presenter.OK(w, r, map[string]any{"items": responses, "next_cursor": nextCursor})
 }
 
+// CreateSession creates a project chat and its first turn.
 func (h *ProjectChatHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -122,6 +126,7 @@ func (h *ProjectChatHandler) CreateSession(w http.ResponseWriter, r *http.Reques
 	presenter.Created(w, r, map[string]any{"bundle": dto.ProjectChatBundleFromEntity(bundle), "replayed": replayed})
 }
 
+// GetSession returns one owner-private project chat session.
 func (h *ProjectChatHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -141,6 +146,7 @@ func (h *ProjectChatHandler) GetSession(w http.ResponseWriter, r *http.Request) 
 	presenter.OK(w, r, dto.ProjectChatSessionFromEntity(session))
 }
 
+// GetTurn returns one owner-private immutable turn bundle.
 func (h *ProjectChatHandler) GetTurn(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -165,6 +171,7 @@ func (h *ProjectChatHandler) GetTurn(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, dto.ProjectChatBundleFromEntity(bundle))
 }
 
+// ListTurns returns paginated turns for an owner-private session.
 func (h *ProjectChatHandler) ListTurns(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -207,6 +214,7 @@ func (h *ProjectChatHandler) ListTurns(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"items": responses, "next_before_index": nextBeforeIndex})
 }
 
+// AppendTurn appends a follow-up turn to an owner-private session.
 func (h *ProjectChatHandler) AppendTurn(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -239,6 +247,7 @@ func (h *ProjectChatHandler) AppendTurn(w http.ResponseWriter, r *http.Request) 
 	presenter.Created(w, r, map[string]any{"bundle": dto.ProjectChatBundleFromEntity(bundle), "replayed": replayed})
 }
 
+// StopTurn cancels a queued or running owner turn.
 func (h *ProjectChatHandler) StopTurn(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -265,6 +274,7 @@ func (h *ProjectChatHandler) StopTurn(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, dto.ProjectChatTurnResultFromEntity(result))
 }
 
+// ListTurnEvents returns paginated durable events for one turn.
 func (h *ProjectChatHandler) ListTurnEvents(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -315,6 +325,7 @@ func (h *ProjectChatHandler) ListTurnEvents(w http.ResponseWriter, r *http.Reque
 	presenter.OK(w, r, map[string]any{"items": responses, "next_cursor": nextCursor})
 }
 
+// ListLegacyExecutions returns pre-authoritative compatibility history.
 func (h *ProjectChatHandler) ListLegacyExecutions(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -362,6 +373,7 @@ func (h *ProjectChatHandler) ListLegacyExecutions(w http.ResponseWriter, r *http
 	presenter.OK(w, r, map[string]any{"items": responses, "next_cursor": nextCursor})
 }
 
+// ListContextSources returns the live next-turn context selection.
 func (h *ProjectChatHandler) ListContextSources(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -381,6 +393,7 @@ func (h *ProjectChatHandler) ListContextSources(w http.ResponseWriter, r *http.R
 	presenter.OK(w, r, map[string]any{"items": contextSourceResponses(sources)})
 }
 
+// ReplaceContextSources replaces the live next-turn context selection.
 func (h *ProjectChatHandler) ReplaceContextSources(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -408,6 +421,7 @@ func (h *ProjectChatHandler) ReplaceContextSources(w http.ResponseWriter, r *htt
 	presenter.OK(w, r, map[string]any{"items": contextSourceResponses(sources)})
 }
 
+// PrepareConclusion freezes a source-anchored write-back preview.
 func (h *ProjectChatHandler) PrepareConclusion(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -432,10 +446,8 @@ func (h *ProjectChatHandler) PrepareConclusion(w http.ResponseWriter, r *http.Re
 	preparation, replayed, err := h.svc.PrepareProjectConclusion(r.Context(), agentdom.PrepareProjectConclusionInput{
 		ProjectID: projectID, SourceTurnID: turnID, TargetTaskID: request.TargetTaskID,
 		Actor: actor, Kind: agentdom.ConclusionPublished,
-		SummaryOverride: request.SummaryOverride, UpdateDescription: request.UpdateDescription,
-		DescriptionBase:     request.DescriptionBase,
-		ProposedDescription: request.ProposedDescription,
-		IdempotencyKey:      key, ExpiresAt: request.ExpiresAt,
+		UpdateDescription: request.UpdateDescription,
+		IdempotencyKey:    key, ExpiresAt: request.ExpiresAt,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -446,6 +458,7 @@ func (h *ProjectChatHandler) PrepareConclusion(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// ConfirmConclusion atomically publishes a frozen write-back preview.
 func (h *ProjectChatHandler) ConfirmConclusion(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.actor(r)
 	if err != nil {
@@ -478,6 +491,7 @@ func (h *ProjectChatHandler) ConfirmConclusion(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// ListTaskConclusions returns viewer-safe publications for a task.
 func (h *ProjectChatHandler) ListTaskConclusions(w http.ResponseWriter, r *http.Request) {
 	projectID, actor, err := h.taskConclusionActor(r)
 	if err != nil {

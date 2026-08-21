@@ -1065,11 +1065,11 @@
 	},
 	"chats": {
 		"title": "Chats",
-		"new": "New chat",
+		"new": "Cuộc trò chuyện mới",
 		"search": "Search chats…",
 		"empty": "Chưa có cuộc trò chuyện nào",
 		"emptyDescription": "Start a new chat or discuss a task with an agent.",
-		"backToList": "Back to chats",
+		"backToList": "Quay lại danh sách cuộc trò chuyện",
 		"taskEntryContext": "The current text of \"{{task}}\" will be included in the first turn.",
 		"acpUnavailable": "Hiện tại cuộc trò chuyện chỉ hỗ trợ tác nhân LLM. Tác nhân ACP cần môi trường chạy cục bộ được cô lập.",
 		"acpUnavailableShort": "Không khả dụng trong cuộc trò chuyện",
@@ -1109,10 +1109,11 @@
 		},
 		"errors": {
 			"missingSession": "The server did not return the chat session.",
-			"turnActive": "Wait for the active turn to finish or stop it first."
+			"turnActive": "Wait for the active turn to finish or stop it first.",
+			"sendFailed": "Không thể gửi tin nhắn. Bản nháp đã được khôi phục; hãy thử lại."
 		},
 		"context": {
-			"add": "Add context",
+			"add": "Thêm ngữ cảnh",
 			"compact": "Context {{count}}",
 			"remove": "Remove context",
 			"title": "Thêm ngữ cảnh",
@@ -1124,7 +1125,7 @@
 			"searchTasks": "Search tasks…",
 			"chooseSessionForRuns": "Choose a chat to inspect its runs…",
 			"loadMore": "Load more",
-			"cancel": "Cancel",
+			"cancel": "Hủy",
 			"apply": "Thêm {{count}} mục",
 			"type": { "task": "Task", "session": "Chat", "run": "Run" }
 		},
@@ -1166,8 +1167,8 @@
 			"prepareDescription": "Generate diff preview",
 			"prepareSummary": "Freeze summary",
 			"editDescriptionDraft": "Edit proposed content",
-			"confirmDescription": "Update description",
-			"confirmSummary": "Record conclusion",
+			"confirmDescription": "Cập nhật mô tả",
+			"confirmSummary": "Ghi nhận kết luận",
 			"updateDescription": "Also update task description (recommended)",
 			"updateDescriptionHint": "Merge the frozen conclusion into a description proposal and review the diff before confirmation.",
 			"descriptionHeading": "Current conclusion",
@@ -1182,7 +1183,7 @@
 			"unlock": "Unlock edit",
 			"refreeze": "Freeze new summary",
 			"prepare": "Prepare frozen summary",
-			"cancel": "Cancel",
+			"cancel": "Hủy",
 			"confirmAction": "Xác nhận",
 			"confirm": "Confirm publication",
 			"writeBack": "Write back to task",

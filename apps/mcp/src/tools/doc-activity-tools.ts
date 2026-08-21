@@ -1,5 +1,5 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import * as z from "zod";
 import type { PacaAPIDocClient } from "../api/index.js";
 import { blocknoteToMarkdown, formatToolError } from "../utils/index.js";
 

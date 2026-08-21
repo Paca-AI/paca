@@ -1083,11 +1083,11 @@
 	},
 	"chats": {
 		"title": "Chats",
-		"new": "New chat",
+		"new": "Новый диалог",
 		"search": "Search chats…",
 		"empty": "Пока нет диалогов",
 		"emptyDescription": "Start a new chat or discuss a task with an agent.",
-		"backToList": "Back to chats",
+		"backToList": "Вернуться к чатам",
 		"taskEntryContext": "The current text of \"{{task}}\" will be included in the first turn.",
 		"acpUnavailable": "Сейчас в диалогах поддерживаются только LLM-агенты. Для ACP-агентов требуется изолированная локальная среда.",
 		"acpUnavailableShort": "Недоступно в диалогах",
@@ -1127,10 +1127,11 @@
 		},
 		"errors": {
 			"missingSession": "The server did not return the chat session.",
-			"turnActive": "Wait for the active turn to finish or stop it first."
+			"turnActive": "Wait for the active turn to finish or stop it first.",
+			"sendFailed": "Сообщение не отправлено. Черновик восстановлен; повторите попытку."
 		},
 		"context": {
-			"add": "Add context",
+			"add": "Добавить контекст",
 			"compact": "Context {{count}}",
 			"remove": "Remove context",
 			"title": "Добавить контекст",
@@ -1142,7 +1143,7 @@
 			"searchTasks": "Search tasks…",
 			"chooseSessionForRuns": "Choose a chat to inspect its runs…",
 			"loadMore": "Load more",
-			"cancel": "Cancel",
+			"cancel": "Отмена",
 			"apply": "Добавить: {{count}}",
 			"type": { "task": "Task", "session": "Chat", "run": "Run" }
 		},
@@ -1184,8 +1185,8 @@
 			"prepareDescription": "Generate diff preview",
 			"prepareSummary": "Freeze summary",
 			"editDescriptionDraft": "Edit proposed content",
-			"confirmDescription": "Update description",
-			"confirmSummary": "Record conclusion",
+			"confirmDescription": "Обновить описание",
+			"confirmSummary": "Записать вывод",
 			"updateDescription": "Also update task description (recommended)",
 			"updateDescriptionHint": "Merge the frozen conclusion into a description proposal and review the diff before confirmation.",
 			"descriptionHeading": "Current conclusion",
@@ -1200,7 +1201,7 @@
 			"unlock": "Unlock edit",
 			"refreeze": "Freeze new summary",
 			"prepare": "Prepare frozen summary",
-			"cancel": "Cancel",
+			"cancel": "Отмена",
 			"confirmAction": "Подтвердить",
 			"confirm": "Confirm publication",
 			"writeBack": "Write back to task",
