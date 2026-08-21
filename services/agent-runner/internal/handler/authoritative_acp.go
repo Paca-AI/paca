@@ -13,6 +13,9 @@ func (h *Handler) runAuthoritativeACP(ctx context.Context, claim *turnruntime.En
 		return h.finalizeAuthoritativeFailure(ctx, claim, "acp_runtime_unavailable",
 			"The isolated ACP runtime is not configured on this runner.")
 	}
+	if claim.LeaseExpiresAt == nil {
+		return errors.New("authoritative ACP claim did not include a lease expiration")
+	}
 	cfg, err := h.AgentRepo.FindACPByID(ctx, claim.AgentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -29,7 +32,6 @@ func (h *Handler) runAuthoritativeACP(ctx context.Context, claim *turnruntime.En
 		return h.finalizeAuthoritativeFailure(ctx, claim, "acp_bridge_offline",
 			"The local ACP bridge is not connected. Reconnect it and start a new turn.")
 	}
-
 	// ACP completion is persisted by the bridge server through the same
 	// fenced turn runtime contract as LLM completion. Reuse the same split
 	// poll/renew watcher so a slow state read cannot starve the lease.
@@ -40,7 +42,7 @@ func (h *Handler) runAuthoritativeACP(ctx context.Context, claim *turnruntime.En
 	defer cancel()
 	go func() {
 		defer close(exited)
-		h.watchAuthoritativeState(watchCtx, claim, done, watchErr, cancel)
+		h.watchAuthoritativeState(watchCtx, claim, *claim.LeaseExpiresAt, authoritativeLease, done, watchErr, cancel)
 	}()
 	<-watchCtx.Done()
 	close(done)

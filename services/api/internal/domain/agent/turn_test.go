@@ -40,6 +40,37 @@ func TestCanonicalizeContextSnapshotHashesRenderedText(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeContextSnapshotNormalizesCapturedAtToDatabasePrecision(t *testing.T) {
+	capturedAt := time.Date(2026, time.August, 21, 12, 34, 56, 123456789, time.FixedZone("test", 8*60*60))
+	snapshotID := uuid.New()
+	snapshot, err := CanonicalizeContextSnapshot(TurnContextSnapshot{
+		ID: snapshotID, TurnID: uuid.New(), SchemaVersion: 1,
+		Items: []TurnContextItem{{
+			ID: uuid.New(), SnapshotID: snapshotID, Ordinal: 0,
+			SourceType: ContextSourceTask, SourceID: uuid.New(), SourceVersion: "v1",
+			SourceAudience: ContextAudienceProjectShared, CapturedAt: capturedAt,
+			Content: []byte(`{"title":"task"}`), RenderedText: "UNTRUSTED\ntask",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := capturedAt.UTC().Truncate(time.Microsecond)
+	if !snapshot.Items[0].CapturedAt.Equal(want) || snapshot.Items[0].CapturedAt.Location() != time.UTC {
+		t.Fatalf("captured_at = %s (%s), want %s (UTC)", snapshot.Items[0].CapturedAt, snapshot.Items[0].CapturedAt.Location(), want)
+	}
+	roundTrip := snapshot
+	roundTrip.Items = append([]TurnContextItem(nil), snapshot.Items...)
+	roundTrip.Items[0].CapturedAt = want
+	canonical, err := CanonicalizeContextSnapshot(roundTrip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canonical.ManifestSHA256 != snapshot.ManifestSHA256 {
+		t.Fatalf("database precision round trip changed manifest hash: %s != %s", canonical.ManifestSHA256, snapshot.ManifestSHA256)
+	}
+}
+
 func TestCanonicalizeContextSnapshotBoundsContentAndRenderedText(t *testing.T) {
 	snapshotID := uuid.New()
 	content := append([]byte(`{"value":"`), bytes.Repeat([]byte("x"), MaxContextItemBytes)...)

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,38 @@ type fakeTurnRuntimeClient struct {
 	renewTurnID   uuid.UUID
 	renewRunID    uuid.UUID
 	renewToken    uuid.UUID
+}
+
+type fakeRenewResult struct {
+	expiresAt time.Time
+	err       error
+}
+
+type scriptedRenewRuntimeClient struct {
+	*fakeTurnRuntimeClient
+	mu         sync.Mutex
+	results    []fakeRenewResult
+	defaultErr error
+	renewed    chan struct{}
+}
+
+func (f *scriptedRenewRuntimeClient) Renew(_ context.Context, turnID, runID, claimToken uuid.UUID, _ time.Duration) (time.Time, error) {
+	f.mu.Lock()
+	f.renewCalls++
+	f.renewTurnID = turnID
+	f.renewRunID = runID
+	f.renewToken = claimToken
+	result := fakeRenewResult{err: f.defaultErr}
+	if len(f.results) > 0 {
+		result = f.results[0]
+		f.results = f.results[1:]
+	}
+	f.mu.Unlock()
+	select {
+	case f.renewed <- struct{}{}:
+	default:
+	}
+	return result.expiresAt, result.err
 }
 
 func (f *fakeTurnRuntimeClient) Claim(_ context.Context, _ uuid.UUID, workerID string, _ time.Duration) (*turnruntime.Envelope, error) {
@@ -135,5 +168,87 @@ func TestHandleTurnLeavesTransientClaimFailurePending(t *testing.T) {
 	handler := &Handler{TurnRuntime: runtime, WorkerID: "runner-test", Gate: config.NewGate([]string{"*"})}
 	if err := handler.HandleTurn(context.Background(), uuid.New()); !errors.Is(err, want) {
 		t.Fatalf("transient claim error = %v, want %v", err, want)
+	}
+}
+
+func TestWatchAuthoritativeStateRetriesTransientRenewFailureWithinLiveLease(t *testing.T) {
+	claim := authoritativeClaimFixture()
+	lease := 150 * time.Millisecond
+	now := time.Now()
+	runtime := &scriptedRenewRuntimeClient{
+		fakeTurnRuntimeClient: &fakeTurnRuntimeClient{claim: claim},
+		results: []fakeRenewResult{
+			{err: errors.New("temporary control-plane outage")},
+			{expiresAt: now.Add(3 * lease)},
+		},
+		renewed: make(chan struct{}, 4),
+	}
+	handler := &Handler{TurnRuntime: runtime}
+	watchCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	errCh := make(chan error, 1)
+	exited := make(chan struct{})
+	go func() {
+		handler.watchAuthoritativeState(watchCtx, claim, now.Add(lease), lease, done, errCh, cancel)
+		close(exited)
+	}()
+
+	for call := 0; call < 2; call++ {
+		select {
+		case <-runtime.renewed:
+		case <-time.After(time.Second):
+			t.Fatalf("renew call %d did not occur", call+1)
+		}
+	}
+	close(done)
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("state watcher did not stop")
+	}
+	if watchCtx.Err() != nil {
+		t.Fatalf("transient renewal failure cancelled a live execution: %v", watchCtx.Err())
+	}
+	select {
+	case err := <-errCh:
+		t.Fatalf("transient renewal failure was reported as ownership loss: %v", err)
+	default:
+	}
+}
+
+func TestWatchAuthoritativeStateCancelsAfterConfirmedLeaseExpires(t *testing.T) {
+	claim := authoritativeClaimFixture()
+	lease := 90 * time.Millisecond
+	runtime := &scriptedRenewRuntimeClient{
+		fakeTurnRuntimeClient: &fakeTurnRuntimeClient{claim: claim},
+		defaultErr:            errors.New("control plane unavailable"),
+		renewed:               make(chan struct{}, 4),
+	}
+	handler := &Handler{TurnRuntime: runtime}
+	watchCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	exited := make(chan struct{})
+	go func() {
+		handler.watchAuthoritativeState(watchCtx, claim, time.Now().Add(lease), lease, make(chan struct{}), errCh, cancel)
+		close(exited)
+	}()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, errAuthoritativeLeaseExpired) {
+			t.Fatalf("watch error = %v, want lease expiration", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("state watcher did not stop after lease expiration")
+	}
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("state watcher goroutines did not exit")
+	}
+	if watchCtx.Err() == nil {
+		t.Fatal("expired lease did not cancel execution")
 	}
 }

@@ -19,7 +19,10 @@ import (
 
 const authoritativeLease = 60 * time.Second
 
-var errAuthoritativeTerminal = errors.New("authoritative turn reached terminal state")
+var (
+	errAuthoritativeTerminal     = errors.New("authoritative turn reached terminal state")
+	errAuthoritativeLeaseExpired = errors.New("authoritative turn lease expired")
+)
 
 type turnRuntimeClient interface {
 	Claim(ctx context.Context, turnID uuid.UUID, workerID string, lease time.Duration) (*turnruntime.Envelope, error)
@@ -74,7 +77,7 @@ func (h *Handler) HandleTurn(ctx context.Context, turnID uuid.UUID) error {
 	// lease window. Keep the preflight short so a degraded control plane cannot
 	// consume most of the lease before physical execution starts.
 	preflightCtx, stopPreflight := context.WithTimeout(runCtx, 5*time.Second)
-	_, err = h.TurnRuntime.Renew(preflightCtx, claim.TurnID, claim.RunID, *claim.ClaimToken, authoritativeLease)
+	leaseExpiresAt, err := h.TurnRuntime.Renew(preflightCtx, claim.TurnID, claim.RunID, *claim.ClaimToken, authoritativeLease)
 	stopPreflight()
 	if err != nil {
 		if turnruntime.IsTerminalOrExpired(err) {
@@ -87,7 +90,7 @@ func (h *Handler) HandleTurn(ctx context.Context, turnID uuid.UUID) error {
 	watchErr := make(chan error, 1)
 	go func() {
 		defer close(watchExited)
-		h.watchAuthoritativeState(runCtx, claim, watchStop, watchErr, cancel)
+		h.watchAuthoritativeState(runCtx, claim, leaseExpiresAt, authoritativeLease, watchStop, watchErr, cancel)
 	}()
 	runErr := h.handleAuthoritativeLLM(runCtx, claim, cancel)
 	close(watchStop)
@@ -246,7 +249,7 @@ func authoritativeTrigger(claim *turnruntime.Envelope) agent.Trigger {
 	}
 }
 
-func (h *Handler) watchAuthoritativeState(ctx context.Context, claim *turnruntime.Envelope, done <-chan struct{}, errCh chan<- error, cancel context.CancelFunc) {
+func (h *Handler) watchAuthoritativeState(ctx context.Context, claim *turnruntime.Envelope, leaseExpiresAt time.Time, leaseDuration time.Duration, done <-chan struct{}, errCh chan<- error, cancel context.CancelFunc) {
 	var wg sync.WaitGroup
 	var reportOnce sync.Once
 	report := func(err error) {
@@ -274,8 +277,15 @@ func (h *Handler) watchAuthoritativeState(ctx context.Context, claim *turnruntim
 				state, err := h.TurnRuntime.Get(pollCtx, claim.TurnID)
 				stopPoll()
 				if err != nil {
-					report(err)
-					return
+					if turnruntime.IsExecutionOwnershipLost(err) {
+						report(err)
+						return
+					}
+					if h.Log != nil {
+						h.Log.Warn("authoritative turn: transient state poll failure",
+							"turn_id", claim.TurnID, "run_id", claim.RunID, "error", err)
+					}
+					continue
 				}
 				if state.TerminalStatus != nil {
 					report(errAuthoritativeTerminal)
@@ -286,26 +296,73 @@ func (h *Handler) watchAuthoritativeState(ctx context.Context, claim *turnruntim
 	}()
 	go func() {
 		defer wg.Done()
-		ticker := time.NewTicker(authoritativeLease / 3)
+		if leaseDuration <= 0 {
+			report(fmt.Errorf("%w: invalid lease duration %s", errAuthoritativeLeaseExpired, leaseDuration))
+			return
+		}
+		ticker := time.NewTicker(leaseDuration / 3)
 		defer ticker.Stop()
+		leaseTimer := time.NewTimer(remainingLease(leaseExpiresAt))
+		defer leaseTimer.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-done:
 				return
+			case <-leaseTimer.C:
+				report(fmt.Errorf("%w at %s", errAuthoritativeLeaseExpired, leaseExpiresAt.UTC().Format(time.RFC3339Nano)))
+				return
 			case <-ticker.C:
-				renewCtx, stopRenew := context.WithTimeout(ctx, authoritativeLease/6)
-				_, err := h.TurnRuntime.Renew(renewCtx, claim.TurnID, claim.RunID, *claim.ClaimToken, authoritativeLease)
-				stopRenew()
-				if err != nil {
-					report(err)
+				remaining := time.Until(leaseExpiresAt)
+				if remaining <= 0 {
+					report(fmt.Errorf("%w at %s", errAuthoritativeLeaseExpired, leaseExpiresAt.UTC().Format(time.RFC3339Nano)))
 					return
 				}
+				renewTimeout := leaseDuration / 6
+				if renewTimeout <= 0 || renewTimeout > remaining {
+					renewTimeout = remaining
+				}
+				renewCtx, stopRenew := context.WithTimeout(ctx, renewTimeout)
+				renewedUntil, err := h.TurnRuntime.Renew(renewCtx, claim.TurnID, claim.RunID, *claim.ClaimToken, leaseDuration)
+				stopRenew()
+				if err != nil {
+					if turnruntime.IsExecutionOwnershipLost(err) {
+						report(err)
+						return
+					}
+					if time.Now().Before(leaseExpiresAt) {
+						if h.Log != nil {
+							h.Log.Warn("authoritative turn: transient lease renewal failure",
+								"turn_id", claim.TurnID, "run_id", claim.RunID,
+								"lease_expires_at", leaseExpiresAt, "error", err)
+						}
+						continue
+					}
+					report(fmt.Errorf("%w at %s: last renewal error: %v",
+						errAuthoritativeLeaseExpired, leaseExpiresAt.UTC().Format(time.RFC3339Nano), err))
+					return
+				}
+				leaseExpiresAt = renewedUntil
+				if !leaseTimer.Stop() {
+					select {
+					case <-leaseTimer.C:
+					default:
+					}
+				}
+				leaseTimer.Reset(remainingLease(leaseExpiresAt))
 			}
 		}
 	}()
 	wg.Wait()
+}
+
+func remainingLease(expiresAt time.Time) time.Duration {
+	remaining := time.Until(expiresAt)
+	if remaining <= 0 {
+		return time.Nanosecond
+	}
+	return remaining
 }
 
 func (h *Handler) finalizeAuthoritativeFailure(ctx context.Context, claim *turnruntime.Envelope, code, message string) error {

@@ -86,6 +86,11 @@ stream. A runner claims the current run with a random claim token and lease.
 Every event, lease renewal, finalization, and control action is fenced by the
 exact turn, run, attempt, and claim token.
 
+The runner keeps executing across a transient control-plane poll or renewal
+failure only while the last confirmed lease remains live. A definitive claim
+loss, terminal response, or actual lease expiry cancels the physical execution
+and leaves the durable request available for safe recovery.
+
 An expired lease is retired before another attempt is created. Late events and
 finalization from an older attempt are rejected. Deadlines, authorization
 revocation, user stop, and runner terminalization all create exactly one

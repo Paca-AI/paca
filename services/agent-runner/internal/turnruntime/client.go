@@ -107,6 +107,14 @@ func IsTerminalOrExpired(err error) bool {
 	}
 }
 
+// IsExecutionOwnershipLost reports whether the current run must stop rather
+// than retrying a control-plane request. A transient transport/5xx failure is
+// deliberately not ownership loss: the caller may continue while its last
+// confirmed lease remains live.
+func IsExecutionOwnershipLost(err error) bool {
+	return IsTerminalOrExpired(err) || ErrorCode(err) == "TURN_CLAIM_LOST"
+}
+
 // Client calls the API's internal authoritative turn-control endpoints.
 type Client struct {
 	baseURL string

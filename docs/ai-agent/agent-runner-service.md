@@ -114,9 +114,11 @@ API, heartbeats pending delivery, and dispatches `handler.HandleTurn`.
 
 Each claim has a lease token and attempt identity. Events, renewals,
 finalization, and stop control must present the exact turn, run, attempt, and
-token; stale workers cannot append or finish a recovered turn. A startup and
-periodic orphan reaper removes Docker containers/networks or Kubernetes Jobs
-only after verifying that their run is no longer the active fenced attempt.
+token; stale workers cannot append or finish a recovered turn. Transient
+control-plane failures do not cancel a run while its last confirmed lease is
+still live; definitive claim loss or lease expiry does. A startup and periodic
+orphan reaper removes Docker containers/networks or Kubernetes Jobs only after
+verifying that their run is no longer the active fenced attempt.
 
 Authoritative private `llm` execution uses an immutable context snapshot and a
 deny-by-default tool policy. The sandbox receives only the model provider

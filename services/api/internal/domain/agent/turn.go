@@ -173,6 +173,10 @@ func CanonicalizeContextSnapshot(snapshot TurnContextSnapshot) (TurnContextSnaps
 			return TurnContextSnapshot{}, errors.New("agent context snapshot: invalid item order or identity")
 		}
 		item.SnapshotID = snapshot.ID
+		// PostgreSQL timestamptz stores microsecond precision. Normalize before
+		// hashing so the manifest survives a write/read round trip on platforms
+		// whose time.Now exposes nanoseconds (notably Linux CI runners).
+		item.CapturedAt = item.CapturedAt.UTC().Truncate(time.Microsecond)
 		canonical, err := CanonicalizeJSON(item.Content)
 		if err != nil {
 			return TurnContextSnapshot{}, fmt.Errorf("agent context snapshot: invalid item content: %w", err)
