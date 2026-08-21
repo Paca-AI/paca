@@ -73,6 +73,9 @@ export type ThreadComponents = {
 	/** Rendered at the start of the composer's action row (left of the mic/send
 	 * controls) — e.g. an agent picker shown inline while starting a new chat. */
 	ComposerStart?: ComponentType | undefined;
+	/** Rendered immediately above the composer inside the sticky footer. Use for
+	 * compact, turn-scoped choices that should not replace assistant messages. */
+	ComposerPrompt?: ComponentType | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
 	ToolGroup?:
 		| ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
@@ -165,7 +168,9 @@ const ThreadRoot: FC<{
 	turnAnchor,
 	scrollToBottomOnRunStart,
 }) => {
-	const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
+	const { Welcome = ThreadWelcome, ComposerPrompt } = useContext(
+		ThreadComponentsContext,
+	);
 
 	return (
 		<ThreadPrimitive.Root
@@ -217,7 +222,10 @@ const ThreadRoot: FC<{
 						<ThreadScrollToBottom />
 						<ThreadFollowupSuggestions />
 						<AuiIf condition={(s) => !s.thread.isDisabled}>
-							<Composer />
+							<div className="contents">
+								{ComposerPrompt && <ComposerPrompt />}
+								<Composer />
+							</div>
 						</AuiIf>
 						<AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
 							<ThreadSuggestions />

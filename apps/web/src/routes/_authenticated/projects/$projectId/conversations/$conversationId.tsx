@@ -13,9 +13,10 @@ export const Route = createFileRoute(
 		// Prefetches the conversation itself (agent, status, etc.) — the events
 		// window is fetched separately by useConversationEventWindow and opens
 		// on the newest page on its own, with no dependency on this data.
-		await queryClient.ensureQueryData(
+		const conversation = await queryClient.ensureQueryData(
 			conversationQueryOptions(projectId, conversationId),
 		);
+		return { readOnly: conversation.chat_session_id != null };
 	},
 	// Without an errorComponent, a loader failure (e.g. deleted conversation,
 	// API 500) bubbles up and crashes the router's internal Lazy wrapper.
@@ -25,8 +26,13 @@ export const Route = createFileRoute(
 
 function ConversationPage() {
 	const { projectId, conversationId } = Route.useParams();
+	const { readOnly } = Route.useLoaderData();
 
 	return (
-		<ConversationView projectId={projectId} conversationId={conversationId} />
+		<ConversationView
+			projectId={projectId}
+			conversationId={conversationId}
+			readOnly={readOnly}
+		/>
 	);
 }

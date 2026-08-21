@@ -24,7 +24,10 @@ Paca AI Agents are first-class project members, triggered by task assignment, co
 | **Agent Member** | A `project_members` row with `member_type = 'agent'` and a reference to the `agents` table. Agents are treated identically to human members in all product surfaces. |
 | **Agent Type** | `llm` (default) or `acp` — determines *where and how* an agent's conversations execute. See [Execution Models](#execution-models) below. Not to be confused with the pre-refactor "Agent Type" template concept (PO Assistant, Business Analyst, etc.); those are now [Skill Templates](#skill-templates). |
 | **Skill Template** | A built-in, reusable skill (`developer`, `ba`, `manual-tester`, `po-assistant`) that any agent — `llm` or `acp` — can attach, instead of a full agent preset. See [Skill Templates](#skill-templates). |
-| **Agent Conversation** | A single execution session for one trigger event. For `llm` agents, a Goose ACP session spawned in a dedicated Docker container; for `acp` agents, a turn dispatched to the user's own locally-run bridge. |
+| **Project Chat Session** | The owner-private, user-visible persistent thread and permanent Chats URL. A session may contain many turns and is never bound to one task. |
+| **Agent Turn** | One user input through one immutable terminal result. It is the authoritative status, result, context, cancellation, and conclusion boundary for Project Chats. |
+| **Agent Conversation** | Backend runtime continuity. It may be reused across turns and must not be treated as either a user-visible thread or a stable-answer boundary. |
+| **Agent Turn Run** | One fenced execution attempt for a turn. Retries create another run; run events are diagnostic execution history. |
 | **Conversation Event** | An atomic action/observation within a conversation (LLM message, bash command, file edit, etc.). Persisted to the database for history and real-time monitoring. |
 | **Trigger** | An event that creates an agent conversation: task assignment, comment @mention, or direct chat message. Applies identically to both agent types — only how the resulting conversation executes differs. |
 
@@ -85,7 +88,7 @@ Paca AI Agents are first-class project members, triggered by task assignment, co
 
 ## Execution Models
 
-Every agent has an `agent_type` of `llm` (default) or `acp`, fixed at creation. The trigger model, comment/chat surfaces, and conversation history all work identically for both — only *where the conversation actually runs* differs:
+Every agent has an `agent_type` of `llm` (default) or `acp`, fixed at creation. Task, comment, and automation triggers share the same product surfaces; where the execution runs differs:
 
 | | `llm` | `acp` |
 |---|---|---|
@@ -96,6 +99,13 @@ Every agent has an `agent_type` of `llm` (default) or `acp`, fixed at creation. 
 | Connection to Paca | N/A — the container is spawned and controlled by `services/agent-runner` directly | An authenticated WebSocket from the [`paca-acp-bridge`](../../apps/acp-bridge/README.md) daemon to `services/agent-runner`, using a per-agent bridge token generated in the Agents UI (`POST .../agents/:agentId/acp-bridge-token`) |
 
 `acp` exists for users who already have a coding CLI configured the way they want (auth, MCP servers, skills, git access) and would rather point Paca at that setup than duplicate it in a sandboxed container. See [api-design.md](api-design.md) for the full field-level split between the two types, and the bridge's own README for its local setup and auth model.
+
+Owner-private Project Chats are a deliberate exception. They currently execute
+only `llm` agents. An `acp` private turn fails closed before input is sent to the
+local bridge because a same-user local process cannot enforce the private
+turn's deny-by-default task-mutation boundary. Task-, comment-, and
+automation-triggered ACP executions are unchanged. See
+[private-chats.md](private-chats.md).
 
 ---
 
@@ -139,24 +149,37 @@ The agent responds directly in the comment thread.
 
 ### 3. Direct Chat
 
-A dedicated chat API allows users to send messages to an agent member. Internally this publishes an `agent.chat.message` event and opens (or resumes) a persistent conversation per agent per user.
+A project Chat is an owner-private persistent session containing authoritative
+turns. Opening Chat from task detail, board, list, or timeline always creates a
+new local draft; the first message creates a new session and captures the
+current task as immutable, untrusted turn context. Existing sessions can only
+be opened explicitly from Chats history.
 
 ```json
 {
-  "trigger_type": "chat_message",
-  "agent_id": "<uuid>",
-  "project_id": "<uuid>",
-  "chat_session_id": "<uuid>",
-  "message": "...",
-  "actor_member_id": "<uuid>"
+	"agent_id": "<uuid>",
+	"message": "...",
+	"context_sources": [{"type": "task", "id": "<uuid>"}]
 }
 ```
+
+The API transaction creates the session, turn, canonical context snapshot,
+runtime conversation, first run, and `agent.turn.requested` outbox record. A
+private result never becomes task-visible automatically. A human may separately
+prepare and confirm one frozen conclusion for one same-project task. Context
+selection, snapshot creation, and publication confirmation each re-authorize
+the sources and target. See [private-chats.md](private-chats.md) for the complete
+contract.
 
 ---
 
 ## Conversation Lifecycle
 
-This describes the `llm` execution path (see [Execution Models](#execution-models)). `acp` conversations skip container spawning entirely — the trigger is dispatched as a `start_turn` message to the user's already-running bridge, which runs the turn locally and streams events back over the bridge's WebSocket instead.
+This describes the legacy task/comment/automation `llm` execution path (see
+[Execution Models](#execution-models)). `acp` executions for those triggers skip
+container spawning and dispatch to the user's bridge. Owner-private Project
+Chats instead use the durable, fenced turn protocol in
+[private-chats.md](private-chats.md#execution-and-recovery).
 
 ```
 Trigger event published
@@ -267,5 +290,6 @@ Each template also carries a set of trigger keywords (e.g. `developer` triggers 
 - [database-schema.md](database-schema.md) — Agent tables and modifications to `project_members`
 - [api-design.md](api-design.md) — REST endpoints for agent management
 - [agent-runner-service.md](agent-runner-service.md) — `services/agent-runner` implementation details
+- [private-chats.md](private-chats.md) — Owner-private session/turn/context/publication contract
 - [repository-plugin-adapter.md](repository-plugin-adapter.md) — How agents access VCS credentials
 - [realtime-events.md](realtime-events.md) — Socket.IO events emitted during conversations

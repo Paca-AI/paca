@@ -1,13 +1,17 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { NewConversationThread } from "@/components/projects/agents/new-conversation-thread";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/conversations/",
 )({
-	component: ProjectNewConversationThread,
+	beforeLoad: ({ params: { projectId } }) => {
+		throw redirect({
+			to: "/projects/$projectId/chats",
+			params: { projectId },
+			search: {
+				contextTaskId: undefined,
+				draft: undefined,
+				agentId: undefined,
+			},
+		});
+	},
 });
-
-function ProjectNewConversationThread() {
-	const { projectId } = Route.useParams();
-	return <NewConversationThread projectId={projectId} />;
-}

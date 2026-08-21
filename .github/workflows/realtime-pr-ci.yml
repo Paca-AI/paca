@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   realtime-quality:
-    name: Lint, typecheck, and build
+    name: Lint, test, typecheck, and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -48,6 +48,9 @@ jobs:
 
       - name: Run Biome lint
         run: bun run lint
+
+      - name: Run tests
+        run: bun run test
 
       - name: Typecheck
         run: bun run check

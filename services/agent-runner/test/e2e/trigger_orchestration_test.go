@@ -266,7 +266,8 @@ func TestTaskHandoff(t *testing.T) {
 	// must not create a second handoff row for the same conversation.
 	if _, err := env.db.ExecContext(ctx, `
 		INSERT INTO agent_task_handoffs (task_id, conversation_id, summary)
-		VALUES ($1, $2, 'duplicate') ON CONFLICT (conversation_id) DO NOTHING
+		VALUES ($1, $2, 'duplicate')
+		ON CONFLICT (conversation_id) WHERE source_turn_id IS NULL DO NOTHING
 	`, taskID, convID); err != nil {
 		t.Fatalf("duplicate handoff insert: %v", err)
 	}

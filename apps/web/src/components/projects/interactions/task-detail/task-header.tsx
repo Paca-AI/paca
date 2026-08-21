@@ -4,6 +4,7 @@ import {
 	ChevronRight,
 	Hash,
 	Loader2,
+	MessageSquare,
 	MoreVertical,
 	Share2,
 	Trash2,
@@ -26,10 +27,12 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useCanStartTaskChat } from "@/hooks/use-can-use-project-chats";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
 import { deleteTask } from "@/lib/interaction-api";
 import { cn } from "@/lib/utils";
+import { TaskChatLauncher } from "../task-chat-agent-dialog";
 import { shortId } from "./helpers";
 
 interface TaskHeaderProps {
@@ -56,6 +59,7 @@ export function TaskHeader({
 	onDeleted,
 }: TaskHeaderProps) {
 	const { t } = useTranslation("projects");
+	const canChat = useCanStartTaskChat(projectId ?? task.project_id);
 	const qc = useQueryClient();
 	const [linkCopied, setLinkCopied] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
@@ -128,6 +132,26 @@ export function TaskHeader({
 			</span>
 
 			<div className="ml-auto flex items-center gap-1">
+				{projectId && canChat && (
+					<TaskChatLauncher
+						projectId={projectId}
+						taskId={task.id}
+						taskTitle={task.title}
+					>
+						{(openAgentPicker) => (
+							<button
+								type="button"
+								onClick={openAgentPicker}
+								className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+							>
+								<MessageSquare className="size-3.5" />
+								<span className="hidden sm:inline">
+									{t("chats.discussTask")}
+								</span>
+							</button>
+						)}
+					</TaskChatLauncher>
+				)}
 				<button
 					type="button"
 					onClick={handleShare}

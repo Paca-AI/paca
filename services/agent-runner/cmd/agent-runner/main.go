@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Paca-AI/agent-runner/internal/acpbridge"
@@ -35,12 +36,16 @@ import (
 	dockersandbox "github.com/Paca-AI/agent-runner/internal/sandbox/docker"
 	k8ssandbox "github.com/Paca-AI/agent-runner/internal/sandbox/k8s"
 	"github.com/Paca-AI/agent-runner/internal/secret"
+	"github.com/Paca-AI/agent-runner/internal/turnruntime"
 )
 
 // idleReaperInterval is how often the chat-sandbox idle reaper wakes up to
 // check for conversations past ChatSandboxIdleTimeout — mirrors
 // reap_idle_chat_sandboxes's asyncio.sleep(20).
-const idleReaperInterval = 20 * time.Second
+const (
+	idleReaperInterval          = 20 * time.Second
+	authoritativeReaperInterval = 30 * time.Second
+)
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -83,6 +88,10 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("main: %w", err)
 	}
+	sandboxReaper, ok := sandboxBackend.(sandbox.AuthoritativeOrphanReaper)
+	if !ok {
+		return fmt.Errorf("main: sandbox backend %q does not implement authoritative orphan cleanup", settings.SandboxBackend)
+	}
 
 	exec := executor.New(sandboxBackend, encryptor, executor.Options{
 		Image:           settings.AgentServerImage,
@@ -106,6 +115,7 @@ func run(log *slog.Logger) error {
 		Log:       log,
 	}
 
+	turnClient := turnruntime.NewClient(settings.PacaAPIURL, settings.InternalAPIKey)
 	h := &handler.Handler{
 		Gate:          config.NewGate(settings.AllowedAgentIDs),
 		AgentRepo:     agentRepo,
@@ -117,16 +127,21 @@ func run(log *slog.Logger) error {
 		ChatSandboxes: chatSandboxes,
 		ACPDispatcher: acpDispatcher,
 		ACPRegistry:   acpRegistry,
+		TurnRuntime:   turnClient,
+		WorkerID:      "agent-runner:" + uuid.NewString(),
 		Log:           log,
 	}
 
 	consumer := messaging.NewConsumer(redisClient, settings.WorkerConcurrency, h.Handle, h.HandleControl, log)
+	turnConsumer := messaging.NewTurnConsumer(redisClient, settings.WorkerConcurrency, h.HandleTurn, log)
+	turnControlConsumer := messaging.NewTurnControlConsumer(redisClient, h.HandleTurnControl, log)
 
 	acpServer := &acpbridge.Server{
 		Registry:      acpRegistry,
 		AgentRepo:     agentRepo,
 		ConvRepo:      convRepo,
 		Publisher:     publisher,
+		TurnRuntime:   turnClient,
 		InternalToken: settings.InternalAPIKey,
 		LLMModelsPath: settings.LLMModelsPath,
 		Log:           log,
@@ -145,7 +160,10 @@ func run(log *slog.Logger) error {
 		"mcp_dev_source_dir", settings.MCPDevSourceDir,
 	)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
+	go reapAuthoritativeSandboxes(ctx, sandboxReaper, turnClient, log)
 	go runHTTPServer(ctx, httpServer, log)
+	go turnConsumer.Run(ctx)
+	go turnControlConsumer.Run(ctx)
 	consumer.Run(ctx)
 	return nil
 }
@@ -171,6 +189,45 @@ func newSandboxBackend(settings config.Settings) (sandbox.Backend, error) {
 		return dockersandbox.NewManager(settings.PortPoolStart, settings.PortPoolSize)
 	default:
 		return nil, fmt.Errorf("main: unknown SANDBOX_BACKEND %q", settings.SandboxBackend)
+	}
+}
+
+func reapAuthoritativeSandboxes(ctx context.Context, manager sandbox.AuthoritativeOrphanReaper, runtimeClient *turnruntime.Client, log *slog.Logger) {
+	reap := func() {
+		reapCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		count, err := manager.ReapAuthoritativeOrphans(reapCtx,
+			func(checkCtx context.Context, turnID, runID uuid.UUID) (bool, error) {
+				envelope, err := runtimeClient.Get(checkCtx, turnID)
+				if err != nil {
+					var apiErr *turnruntime.APIError
+					if errors.As(err, &apiErr) && apiErr.Code == "TURN_NOT_FOUND" {
+						return false, nil
+					}
+					return false, err
+				}
+				if envelope.RunID != runID || envelope.TerminalStatus != nil || envelope.LeaseExpiresAt == nil {
+					return false, nil
+				}
+				return envelope.LeaseExpiresAt.After(time.Now().UTC()), nil
+			})
+		if err != nil && reapCtx.Err() == nil {
+			log.Warn("agent-runner: authoritative sandbox reaper incomplete", "error", err)
+		}
+		if count > 0 {
+			log.Info("agent-runner: reaped authoritative sandbox resources", "count", count)
+		}
+	}
+	reap()
+	ticker := time.NewTicker(authoritativeReaperInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			reap()
+		}
 	}
 }
 

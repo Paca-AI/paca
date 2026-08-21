@@ -6,7 +6,8 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "check": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "test": "bun test"
   },
   "dependencies": {
     "ioredis": "^5.4.2",

@@ -153,16 +153,17 @@ func newEncryptor(t *testing.T) *secret.Encryptor {
 	return enc
 }
 
-// dockerBridgeGatewayIP returns the Docker default bridge network's gateway
-// IP, resolved at run time rather than hardcoded (e.g. as 172.17.0.1) — a
-// CI runner isn't itself inside a container, so docker.Manager places every
-// sandbox container on that default bridge with host-mapped ports (see
-// internal/sandbox/docker/manager.go's isInsideDocker branch), and the fake
-// LLM / MCP-permissions stub servers those containers need to call out to
-// must be reachable at this address, not "localhost" (which resolves
-// inside the container's own network namespace).
+// dockerBridgeGatewayIP returns the host address sandbox containers use to
+// reach the fake LLM / MCP-permissions servers in this test process. Docker
+// Desktop's bridge gateway lives inside its Linux VM, so it cannot route back
+// to a listener on the macOS or Windows host; Docker Desktop's documented
+// host.docker.internal name is required there. Native Linux uses the default
+// bridge gateway resolved at runtime rather than assuming 172.17.0.1.
 func dockerBridgeGatewayIP(ctx context.Context, t *testing.T) string {
 	t.Helper()
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return "host.docker.internal"
+	}
 	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Fatalf("create docker client: %v", err)

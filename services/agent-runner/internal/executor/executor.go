@@ -5,6 +5,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -122,10 +123,11 @@ type Result struct {
 //
 // resume, when non-nil, mirrors run_conversation's resume_state branch:
 // reattach to resume.Handle/resume.Client/resume.SessionID instead of
-// starting a new container and ACP session, and send only trigger.Message
-// as the turn's prompt (the agent already has full context from earlier
-// turns) instead of the skills/trigger-context message buildInitialMessage
-// assembles for a cold start. The agent's own system prompt isn't part of
+// starting a new container and ACP session, and send the new user message
+// (plus deterministic private-chat command guidance when it is a recognized
+// slash command) as the turn's prompt. The agent already has full context from
+// earlier turns, so this does not repeat the skills/trigger-context message
+// buildInitialMessage assembles for a cold start. The agent's own system prompt isn't part of
 // that either way any more (see hints.go's buildGooseHints) — it's written
 // to the container's filesystem once at cold start as a .goosehints file,
 // and Goose's own default system.md template re-renders it into every
@@ -158,7 +160,7 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 
 	if resume != nil {
 		handle, client, sessionID = resume.Handle, resume.Client, resume.SessionID
-		message = trigger.Message
+		message = buildResumedMessage(trigger)
 	} else {
 		fileSkills := prepareFileSkills(cfg.Skills)
 
@@ -209,50 +211,9 @@ func (e *Executor) StopSandbox(ctx context.Context, h *sandbox.Handle) error {
 // ctx bounds sandboxMgr.Start (unaffected by the turn timeout); turnCtx
 // bounds Initialize/NewSession, same as it bounds Prompt in Run.
 func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger, fileSkills []agent.Skill) (*sandbox.Handle, *acp.Client, string, error) {
-	apiKey, err := e.encryptor.Decrypt(cfg.LLMAPIKeySecret)
+	containerEnv, mcpServers, err := e.buildContainerEnvironment(trigger, cfg)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("executor: decrypt llm api key: %w", err)
-	}
-
-	gooseProvider, apiKeyEnvVar := resolveProviderEnv(cfg.LLMProvider)
-	containerEnv := map[string]string{
-		"GOOSE_PROVIDER": gooseProvider,
-		"GOOSE_MODEL":    cfg.LLMModel,
-		apiKeyEnvVar:     apiKey,
-	}
-	if cfg.LLMBaseURL != "" {
-		// Only meaningful for the openai-routed fallback path (see
-		// resolveProviderEnv) — OPENAI_HOST is the env var confirmed
-		// against a real goose serve in the protocol spike. A custom base
-		// URL for a *named* provider (e.g. a private Anthropic-compatible
-		// gateway) isn't wired here; extend this once that case is real.
-		containerEnv["OPENAI_HOST"] = cfg.LLMBaseURL
-	}
-
-	for _, ev := range cfg.EnvVars {
-		val, err := e.encryptor.Decrypt(ev.EncryptedValue)
-		if err != nil {
-			return nil, nil, "", fmt.Errorf("executor: decrypt env var %q: %w", ev.Key, err)
-		}
-		containerEnv[ev.Key] = val
-	}
-
-	// Built before Start, not inline in the NewSession call below, so its
-	// stdio servers' env (e.g. the built-in Paca MCP server's PACA_API_KEY)
-	// can also be folded into containerEnv here — session/new's
-	// _meta.enabledExtensions mechanism (see acp.GooseExtension's doc
-	// comment) only accepts a stdio mcp server's env as *names* referencing
-	// values already present in the container's own OS environment, not
-	// inline values, so those values have to land in containerEnv too, not
-	// only in the MCPServerConfig entries themselves.
-	mcpServers := e.buildMCPServers(trigger, cfg)
-	for _, s := range mcpServers {
-		if s.Type != acp.McpServerStdio || s.Env == nil {
-			continue
-		}
-		for _, ev := range *s.Env {
-			containerEnv[ev.Name] = ev.Value
-		}
+		return nil, nil, "", err
 	}
 
 	gitName := cfg.GitCommitterName
@@ -264,8 +225,20 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 		gitEmail = "280579135+paca-agent@users.noreply.github.com"
 	}
 
+	runtimeID := trigger.ConversationID
+	turnID := ""
+	if trigger.TurnID != nil && trigger.RuntimeID == nil {
+		return nil, nil, "", errors.New("executor: authoritative turn is missing runtime id")
+	}
+	if trigger.RuntimeID != nil {
+		runtimeID = *trigger.RuntimeID
+	}
+	if trigger.TurnID != nil {
+		turnID = trigger.TurnID.String()
+	}
 	handle, err := e.sandboxMgr.Start(ctx, sandbox.Config{
-		ConversationID:    trigger.ConversationID.String(),
+		ConversationID:    runtimeID.String(),
+		TurnID:            turnID,
 		Image:             e.opts.Image,
 		Env:               containerEnv,
 		GitCommitterName:  gitName,
@@ -327,6 +300,55 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 	return handle, client, sessionID, nil
 }
 
+// buildContainerEnvironment is the auditable credential/tool boundary used
+// before a sandbox starts. Authoritative private turns receive only the model
+// provider credential needed to answer the turn: agent-defined environment
+// variables, user MCP servers, and the built-in Paca MCP credential are all
+// excluded. Keeping this assembly in one pure-ish seam makes that negative
+// security property deterministic to test without starting Docker.
+func (e *Executor) buildContainerEnvironment(trigger agent.Trigger, cfg agent.Config) (map[string]string, []acp.MCPServerConfig, error) {
+	apiKey, err := e.encryptor.Decrypt(cfg.LLMAPIKeySecret)
+	if err != nil {
+		return nil, nil, fmt.Errorf("executor: decrypt llm api key: %w", err)
+	}
+
+	gooseProvider, apiKeyEnvVar := resolveProviderEnv(cfg.LLMProvider)
+	containerEnv := map[string]string{
+		"GOOSE_PROVIDER": gooseProvider,
+		"GOOSE_MODEL":    cfg.LLMModel,
+		apiKeyEnvVar:     apiKey,
+	}
+	if cfg.LLMBaseURL != "" {
+		// Only meaningful for the openai-routed fallback path (see
+		// resolveProviderEnv) — OPENAI_HOST is the env var confirmed
+		// against a real goose serve in the protocol spike.
+		containerEnv["OPENAI_HOST"] = cfg.LLMBaseURL
+	}
+
+	if trigger.TurnID == nil {
+		for _, ev := range cfg.EnvVars {
+			val, decryptErr := e.encryptor.Decrypt(ev.EncryptedValue)
+			if decryptErr != nil {
+				return nil, nil, fmt.Errorf("executor: decrypt env var %q: %w", ev.Key, decryptErr)
+			}
+			containerEnv[ev.Key] = val
+		}
+	}
+
+	// Built before Start so stdio MCP values can be injected into the
+	// container environment and referenced by name from session/new.
+	mcpServers := e.buildMCPServers(trigger, cfg)
+	for _, server := range mcpServers {
+		if server.Type != acp.McpServerStdio || server.Env == nil {
+			continue
+		}
+		for _, env := range *server.Env {
+			containerEnv[env.Name] = env.Value
+		}
+	}
+	return containerEnv, mcpServers, nil
+}
+
 // pacaMCPBinPath is the absolute path to the Paca MCP server's own
 // executable inside the pinned Goose sandbox image
 // (services/agent-server/Dockerfile) — `npm install -g @paca-ai/paca-mcp`
@@ -367,6 +389,13 @@ const pacaMCPBinPath = "/usr/bin/paca"
 // entirely for now — mapping OAuth to an http entry's bearer-token header
 // wasn't attempted this pass.
 func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []acp.MCPServerConfig {
+	// The long-lived PACA_API_KEY is intentionally absent from private turns.
+	// Until a short-lived turn credential exists, omitting every MCP server is
+	// the only server-enforceable way to prevent shell code from reading that
+	// key and bypassing a tools/list or tools/call filter with direct HTTP.
+	if trigger.TurnID != nil {
+		return nil
+	}
 	servers := make([]acp.MCPServerConfig, 0, len(cfg.MCPServers)+1)
 	for _, s := range cfg.MCPServers {
 		if !s.IsEnabled {

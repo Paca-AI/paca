@@ -1,17 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGet, mockPost, mockPatch, mockDelete } = vi.hoisted(() => ({
-	mockGet: vi.fn(),
-	mockPost: vi.fn(),
-	mockPatch: vi.fn(),
-	mockDelete: vi.fn(),
-}));
+const { mockGet, mockPost, mockPut, mockPatch, mockDelete } = vi.hoisted(
+	() => ({
+		mockGet: vi.fn(),
+		mockPost: vi.fn(),
+		mockPut: vi.fn(),
+		mockPatch: vi.fn(),
+		mockDelete: vi.fn(),
+	}),
+);
 
 vi.mock("./api-client", () => ({
 	apiClient: {
 		instance: {
 			get: mockGet,
 			post: mockPost,
+			put: mockPut,
 			patch: mockPatch,
 			delete: mockDelete,
 		},
@@ -22,7 +26,10 @@ import {
 	addGlobalEnvVar,
 	addGlobalMCPServer,
 	addGlobalSkill,
+	appendProjectChatTurn,
+	confirmProjectConclusion,
 	createGlobalAgent,
+	createProjectChatSession,
 	deleteGlobalAgent,
 	deleteGlobalEnvVar,
 	deleteGlobalMCPServer,
@@ -42,7 +49,13 @@ import {
 	listGlobalEnvVars,
 	listGlobalMCPServers,
 	listGlobalSkills,
+	listLegacyProjectChatExecutions,
+	listProjectChatSessions,
+	listProjectChatTurns,
+	listTaskConclusions,
 	pauseGlobalConversation,
+	prepareProjectConclusion,
+	replaceProjectChatContextSources,
 	sendGlobalChatMessage,
 	sendGlobalConversationMessage,
 	startGlobalChatSession,
@@ -534,6 +547,169 @@ describe("agent-api", () => {
 			expect(mockGet).toHaveBeenCalledWith(
 				`/projects/${PROJECT_ID}/conversations/conv-1/events`,
 				{ params: { limit: 200, before: "cur-c" } },
+			);
+		});
+	});
+
+	describe("authoritative project Chats", () => {
+		it("forwards opaque session and turn cursors without decoding them", async () => {
+			mockGet
+				.mockResolvedValueOnce(ok({ items: [], next_cursor: null }))
+				.mockResolvedValueOnce(ok({ items: [], next_before_index: null }))
+				.mockResolvedValueOnce(ok({ items: [], next_cursor: null }));
+
+			await listProjectChatSessions(PROJECT_ID, {
+				cursor: "opaque/session+cursor=",
+				search: "  retained context  ",
+				limit: 17,
+			});
+			await listProjectChatTurns(PROJECT_ID, "session-1", {
+				beforeIndex: 42,
+				limit: 11,
+			});
+			await listTaskConclusions(PROJECT_ID, "task-1", {
+				cursor: "opaque/publication+cursor=",
+				limit: 7,
+			});
+
+			expect(mockGet).toHaveBeenNthCalledWith(
+				1,
+				`/projects/${PROJECT_ID}/chat-sessions`,
+				{
+					params: {
+						limit: 17,
+						cursor: "opaque/session+cursor=",
+						search: "retained context",
+					},
+				},
+			);
+			expect(mockGet).toHaveBeenNthCalledWith(
+				2,
+				`/projects/${PROJECT_ID}/chat-sessions/session-1/turns`,
+				{ params: { limit: 11, before_index: 42 } },
+			);
+			expect(mockGet).toHaveBeenNthCalledWith(
+				3,
+				`/projects/${PROJECT_ID}/tasks/task-1/conclusion-publications`,
+				{
+					params: { limit: 7, cursor: "opaque/publication+cursor=" },
+				},
+			);
+		});
+
+		it("pages read-only legacy execution records inside the canonical session", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], next_cursor: "next-legacy-page" }),
+			);
+
+			await listLegacyProjectChatExecutions(PROJECT_ID, "session-1", {
+				cursor: "opaque-legacy-cursor",
+				limit: 9,
+			});
+
+			expect(mockGet).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/chat-sessions/session-1/legacy-executions`,
+				{ params: { limit: 9, cursor: "opaque-legacy-cursor" } },
+			);
+		});
+
+		it("keeps caller-owned idempotency keys on create and append retries", async () => {
+			const response = { bundle: { turn: { id: "turn-1" } }, replayed: false };
+			mockPost.mockResolvedValue(ok(response));
+			const createPayload = {
+				agent_id: "agent-1",
+				message: "hello",
+				context_sources: [{ type: "task" as const, id: "task-1" }],
+			};
+
+			await createProjectChatSession(PROJECT_ID, createPayload, "create-key");
+			await createProjectChatSession(PROJECT_ID, createPayload, "create-key");
+			await appendProjectChatTurn(
+				PROJECT_ID,
+				"session-1",
+				{ message: "next" },
+				"append-key",
+			);
+
+			expect(mockPost).toHaveBeenNthCalledWith(
+				1,
+				`/projects/${PROJECT_ID}/chat-sessions`,
+				createPayload,
+				{ headers: { "Idempotency-Key": "create-key" } },
+			);
+			expect(mockPost).toHaveBeenNthCalledWith(
+				2,
+				`/projects/${PROJECT_ID}/chat-sessions`,
+				createPayload,
+				{ headers: { "Idempotency-Key": "create-key" } },
+			);
+			expect(mockPost).toHaveBeenNthCalledWith(
+				3,
+				`/projects/${PROJECT_ID}/chat-sessions/session-1/turns`,
+				{ message: "next" },
+				{ headers: { "Idempotency-Key": "append-key" } },
+			);
+		});
+
+		it("uses separate exact commands for prepare and confirm", async () => {
+			mockPost.mockResolvedValue(ok({ replayed: false }));
+			const preparePayload = {
+				target_task_id: "task-1",
+				summary_override: "Frozen summary",
+				update_description: true,
+				description_base: null,
+				proposed_description: [
+					{ type: "paragraph", content: [{ text: "Frozen summary" }] },
+				],
+				expires_at: "2026-08-18T12:15:00.000Z",
+			};
+
+			await prepareProjectConclusion(
+				PROJECT_ID,
+				"turn-1",
+				preparePayload,
+				"prepare-key",
+			);
+			await confirmProjectConclusion(
+				PROJECT_ID,
+				{
+					preparation_id: "preparation-1",
+					expected_version: 3,
+					expected_sha256: "summary-sha",
+				},
+				"confirm-key",
+			);
+
+			expect(mockPost).toHaveBeenNthCalledWith(
+				1,
+				`/projects/${PROJECT_ID}/turns/turn-1/conclusion-publications/prepare`,
+				preparePayload,
+				{ headers: { "Idempotency-Key": "prepare-key" } },
+			);
+			expect(mockPost).toHaveBeenNthCalledWith(
+				2,
+				`/projects/${PROJECT_ID}/conclusion-publications/confirm`,
+				{
+					preparation_id: "preparation-1",
+					expected_version: 3,
+					expected_sha256: "summary-sha",
+				},
+				{ headers: { "Idempotency-Key": "confirm-key" } },
+			);
+		});
+
+		it("replaces ordered context sources without converting run ids", async () => {
+			mockPut.mockResolvedValue(ok({ items: [] }));
+			const sources = [
+				{ type: "session" as const, id: "session-2" },
+				{ type: "run" as const, id: "turn-run-9" },
+			];
+
+			await replaceProjectChatContextSources(PROJECT_ID, "session-1", sources);
+
+			expect(mockPut).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/chat-sessions/session-1/context-sources`,
+				{ sources },
 			);
 		});
 	});

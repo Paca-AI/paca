@@ -4,6 +4,11 @@ package messaging
 // see that file for the authoritative list. Must stay byte-identical:
 // these are literal Valkey key names every service reads/writes.
 const (
+	// StreamAgentTurnRequests carries authoritative, turn-first project chat
+	// execution requests emitted from services/api's PostgreSQL outbox.
+	StreamAgentTurnRequests = "paca:agent:turn_requests"
+	StreamAgentTurnControls = "paca:agent:turn_controls"
+
 	// StreamAgentTriggers is written by services/api and consumed here.
 	// Also carries stop/pause/heartbeat control messages for an
 	// already-running conversation, distinguished from a new-conversation

@@ -7,6 +7,17 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
+func TestManagedLabelsOnlyFenceAuthoritativeRuns(t *testing.T) {
+	legacy := managedLabels("conversation", "")
+	if _, ok := legacy[labelTurnID]; ok {
+		t.Fatalf("legacy labels unexpectedly contain %q", labelTurnID)
+	}
+	authoritative := managedLabels("run", "turn")
+	if authoritative[labelConvID] != "run" || authoritative[labelTurnID] != "turn" || authoritative[labelManaged] != "true" {
+		t.Fatalf("authoritative labels = %#v", authoritative)
+	}
+}
+
 // TestSelectContainerIP_PrefersNamedNetworkOverOthers is a regression test
 // for the containerIP coin-flip finding in review: a container attached to
 // two networks (e.g. this process's own ownNetworkName plus a private

@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
+	type Agent,
+	type AgentType,
 	agentsQueryOptions,
 	chattableAgentsQueryOptions,
 } from "@/lib/agent-api";
@@ -27,7 +29,12 @@ import {
 // Conversations page's inline "new conversation" thread — same UX, same code.
 
 export interface AgentPickerState {
-	agents: { id: string; name: string }[];
+	agents: {
+		id: string;
+		name: string;
+		agent_type?: AgentType;
+		disabledReason?: "acp_private_unavailable";
+	}[];
 	agentsLoading: boolean;
 	agentId: string;
 	onAgentChange: (id: string) => void;
@@ -45,6 +52,17 @@ export interface AgentPickerState {
 }
 
 export const AgentPickerContext = createContext<AgentPickerState | null>(null);
+
+export function privateChatAgentOptions(
+	agents: Agent[],
+): AgentPickerState["agents"] {
+	return agents.map((agent) => ({
+		...agent,
+		...(agent.agent_type === "acp"
+			? { disabledReason: "acp_private_unavailable" as const }
+			: {}),
+	}));
+}
 
 // Fetches the project's agents and owns the selected-agent state that feeds
 // `AgentPickerState` — shared by the floating chat widget and the
@@ -87,6 +105,66 @@ export function useAgentPicker(
 	);
 
 	return { agentId, setAgentId, agents, agentsLoading, pickerState };
+}
+
+// Project Chats use the authoritative turn contract. The first release only
+// executes LLM agents: ACP stays visible so the limitation is explicit, but it
+// is not selectable until a genuinely isolated local runtime exists.
+export function usePrivateChatAgentPicker(
+	projectId: string,
+	options?: {
+		disabled?: boolean;
+		enabled?: boolean;
+		initialAgentId?: string;
+	},
+) {
+	const { data: agents = [], isLoading: agentsLoading } = useQuery({
+		...agentsQueryOptions(projectId),
+		enabled: options?.enabled ?? true,
+	});
+	const [agentId, setAgentId] = useState(options?.initialAgentId ?? "");
+	const availableAgents = agents.filter((agent) => agent.agent_type === "llm");
+
+	useEffect(() => {
+		if (options?.initialAgentId) setAgentId(options.initialAgentId);
+	}, [options?.initialAgentId]);
+
+	useEffect(() => {
+		if (agentsLoading) return;
+		if (availableAgents.some((agent) => agent.id === agentId)) return;
+		if (availableAgents.length === 1 && availableAgents[0]) {
+			setAgentId(availableAgents[0].id);
+		} else if (agentId) {
+			setAgentId("");
+		}
+	}, [availableAgents, agentId, agentsLoading]);
+
+	const disabled = options?.disabled;
+	const pickerAgents = useMemo(() => privateChatAgentOptions(agents), [agents]);
+	const pickerState = useMemo<AgentPickerState>(
+		() => ({
+			agents: pickerAgents,
+			agentsLoading,
+			agentId,
+			onAgentChange: setAgentId,
+			disabled,
+			emptyStateLink: {
+				to: "/projects/$projectId/agents",
+				params: { projectId },
+				search: { create: true },
+			},
+		}),
+		[pickerAgents, agentsLoading, agentId, disabled, projectId],
+	);
+
+	return {
+		agentId,
+		setAgentId,
+		agents,
+		availableAgents,
+		agentsLoading,
+		pickerState,
+	};
 }
 
 // Global-scope sibling of useAgentPicker: sources from every agent any
@@ -181,8 +259,19 @@ export function AgentPickerInline() {
 			</SelectTrigger>
 			<SelectContent align="start">
 				{agents.map((agent) => (
-					<SelectItem key={agent.id} value={agent.id}>
-						{agent.name}
+					<SelectItem
+						key={agent.id}
+						value={agent.id}
+						disabled={!!agent.disabledReason}
+					>
+						<span className="flex min-w-0 items-center gap-2">
+							<span className="truncate">{agent.name}</span>
+							{agent.disabledReason === "acp_private_unavailable" && (
+								<span className="text-[10px] text-muted-foreground">
+									{t("chats.acpUnavailableShort")}
+								</span>
+							)}
+						</span>
 					</SelectItem>
 				))}
 			</SelectContent>

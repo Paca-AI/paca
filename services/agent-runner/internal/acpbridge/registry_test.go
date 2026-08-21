@@ -3,8 +3,10 @@ package acpbridge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -220,6 +222,124 @@ func TestRegister_ASecondRegistrationEvictsTheFirstConnection(t *testing.T) {
 	}
 	if second.closed {
 		t.Error("the second (winning) connection should not have been closed")
+	}
+}
+
+func TestRegistry_CrossReplicaTakeoverFencesDispatchAndStaleUnregister(t *testing.T) {
+	_, client := newTestRegistry(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r1 := New(client, messaging.NewPublisher(client), log)
+	r2 := New(client, messaging.NewPublisher(client), log)
+	ctx := context.Background()
+	agentID := uuid.New()
+	projectID := uuid.New()
+	first, second := newFakeConn(), newFakeConn()
+	firstSession, err := r1.Register(ctx, agentID, &projectID, first)
+	if err != nil {
+		t.Fatalf("register first replica: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	secondSession, err := r2.Register(ctx, agentID, &projectID, second)
+	if err != nil {
+		t.Fatalf("register second replica: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	dispatched, err := r1.Dispatch(ctx, agentID, map[string]any{"type": "start_turn"})
+	if err != nil || !dispatched {
+		t.Fatalf("dispatch through shared registry = %v, %v", dispatched, err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for len(second.messagesSent()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := len(first.messagesSent()); got != 0 {
+		t.Fatalf("stale replica received %d dispatches", got)
+	}
+	if got := len(second.messagesSent()); got != 1 {
+		t.Fatalf("winning replica received %d dispatches, want 1", got)
+	}
+
+	statusSubscription := client.Subscribe(ctx, messaging.ChannelRealtime)
+	t.Cleanup(func() { _ = statusSubscription.Close() })
+	if _, err := statusSubscription.Receive(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r1.Unregister(ctx, agentID, &projectID, firstSession)
+	if online, err := r2.IsOnline(ctx, agentID); err != nil || !online {
+		t.Fatalf("stale unregister cleared winner presence: online=%v err=%v", online, err)
+	}
+	staleStatusCtx, cancelStaleStatus := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancelStaleStatus()
+	if message, err := statusSubscription.ReceiveMessage(staleStatusCtx); err == nil {
+		t.Fatalf("stale unregister published false bridge status: %s", message.Payload)
+	}
+	_ = statusSubscription.Close()
+	if err := r1.Heartbeat(ctx, agentID, firstSession); err == nil {
+		t.Fatal("stale replica refreshed winner presence")
+	}
+	if err := r2.Heartbeat(ctx, agentID, secondSession); err != nil {
+		t.Fatalf("winner heartbeat: %v", err)
+	}
+	winnerStatusSubscription := client.Subscribe(ctx, messaging.ChannelRealtime)
+	t.Cleanup(func() { _ = winnerStatusSubscription.Close() })
+	if _, err := winnerStatusSubscription.Receive(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r2.Unregister(ctx, agentID, &projectID, secondSession)
+	winnerStatusCtx, cancelWinnerStatus := context.WithTimeout(ctx, time.Second)
+	defer cancelWinnerStatus()
+	message, err := winnerStatusSubscription.ReceiveMessage(winnerStatusCtx)
+	if err != nil || !strings.Contains(message.Payload, `"connected":false`) {
+		t.Fatalf("winner unregister status=%v err=%v", message, err)
+	}
+}
+
+func TestDispatchWithAck_RetriesSameDeliveryUntilDaemonAcknowledges(t *testing.T) {
+	r, _ := newTestRegistry(t)
+	ctx := context.Background()
+	agentID := uuid.New()
+	conn := newFakeConn()
+	sessionID, err := r.Register(ctx, agentID, nil, conn)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	result := make(chan error, 1)
+	go func() {
+		dispatched, dispatchErr := r.DispatchWithAck(ctx, agentID,
+			map[string]any{"type": "start_turn"}, 50*time.Millisecond)
+		if dispatchErr == nil && !dispatched {
+			dispatchErr = fmt.Errorf("dispatch returned false")
+		}
+		result <- dispatchErr
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	var deliveryID string
+	for time.Now().Before(deadline) {
+		messages := conn.messagesSent()
+		if len(messages) >= 2 {
+			payload, _ := messages[len(messages)-1].(map[string]any)
+			deliveryID, _ = payload["delivery_id"].(string)
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if deliveryID == "" {
+		t.Fatal("dispatch was not retried with a delivery id")
+	}
+	if err := r.AcknowledgeDispatch(ctx, agentID, sessionID, deliveryID); err != nil {
+		t.Fatalf("AcknowledgeDispatch: %v", err)
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("DispatchWithAck: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("DispatchWithAck did not return after acknowledgement")
 	}
 }
 
@@ -449,9 +569,18 @@ func TestEvict_UnregisteredAgentIsANoOp(t *testing.T) {
 	}
 }
 
-func TestHeartbeat_UnregisteredAgentDoesNotError(t *testing.T) {
+func TestHeartbeat_OnlyCurrentSessionCanRefreshPresence(t *testing.T) {
 	r, _ := newTestRegistry(t)
-	if err := r.Heartbeat(context.Background(), uuid.New()); err != nil {
-		t.Fatalf("Heartbeat: %v", err)
+	ctx := context.Background()
+	agentID := uuid.New()
+	sessionID, err := r.Register(ctx, agentID, nil, newFakeConn())
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := r.Heartbeat(ctx, agentID, sessionID); err != nil {
+		t.Fatalf("Heartbeat current session: %v", err)
+	}
+	if err := r.Heartbeat(ctx, agentID, uuid.NewString()); err == nil {
+		t.Fatal("Heartbeat stale session succeeded")
 	}
 }

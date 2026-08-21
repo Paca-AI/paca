@@ -1,6 +1,6 @@
 # AI Agent — Real-time Events
 
-This document describes the Socket.IO events emitted by `services/realtime` to web clients during AI agent conversation lifecycle.
+This document describes the Socket.IO events emitted by `services/realtime` to web clients during AI agent execution and owner-private Chat lifecycles.
 
 ---
 
@@ -139,27 +139,6 @@ Emitted when the agent successfully creates a pull request.
 
 ---
 
-### `agent:chat:reply`
-
-Emitted when an agent sends a reply in a direct chat session.
-
-**Room:** `project:<projectId>`
-
-> The client should also filter by `session_id` to match the active chat session.
-
-**Payload:**
-```json
-{
-  "session_id": "uuid",
-  "conversation_id": "uuid",
-  "agent_id": "uuid",
-  "message": "Here are the acceptance criteria for PACA-42:\n\n**Given** the user is on the login page...",
-  "timestamp": "2026-05-19T10:02:30Z"
-}
-```
-
----
-
 ### `agent:task:commented`
 
 Emitted when an agent posts a reply comment on a task (e.g., after completing a `comment_mention` trigger).
@@ -178,6 +157,55 @@ Emitted when an agent posts a reply comment on a task (e.g., after completing a 
 ```
 
 Clients should re-fetch the task comments upon receiving this event to display the agent's response.
+
+---
+
+### `agent.turn.finished`
+
+Emitted for an authoritative owner-private Chat turn terminal state.
+
+**Room:** `user:<actorUserId>:agent-chat` only. It is never broadcast to the
+project room.
+
+**Payload:**
+
+```json
+{
+  "turn_id": "uuid",
+  "session_id": "uuid",
+  "project_id": "uuid",
+  "actor_user_id": "uuid",
+  "status": "succeeded"
+}
+```
+
+The payload deliberately contains no prompt, context, event text, or stable
+output. Clients invalidate the session and turn queries, then fetch the
+owner-gated immutable result. They must not synthesize an answer from realtime
+data.
+
+---
+
+### `agent.conclusion.published`, `.revised`, `.withdrawn`
+
+Emitted after a human-confirmed conclusion publication commits.
+New Project Chats writebacks emit only `.published`; `.revised` and
+`.withdrawn` remain documented for legacy outbox/read compatibility.
+
+**Room:** task/project audience.
+
+```json
+{
+  "publication_id": "uuid",
+  "project_id": "uuid",
+  "target_task_id": "uuid",
+  "kind": "published"
+}
+```
+
+Clients refetch the append-only conclusion history and task activity. The event
+contains neither the frozen summary nor private source identifiers, so it
+cannot bypass task audience checks or owner-only source-link redaction.
 
 ---
 
@@ -207,9 +235,12 @@ socket.on("agent:conversation:pr_created", (data) => {
   toast.success(`PR created: ${data.pr_url}`);
 });
 
-socket.on("agent:chat:reply", (data) => {
-  if (data.session_id === activeChatSessionId) {
-    appendChatMessage({ role: "agent", content: data.message });
-  }
+socket.on("agent.turn.finished", (data) => {
+  invalidateChatSession(data.project_id, data.session_id);
+  invalidateChatTurn(data.project_id, data.turn_id);
+});
+
+socket.on("agent.conclusion.published", (data) => {
+  invalidateTaskConclusions(data.project_id, data.target_task_id);
 });
 ```

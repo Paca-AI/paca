@@ -54,6 +54,8 @@ type Handler struct {
 	ChatSandboxes *chatsandbox.Registry
 	ACPDispatcher *acpbridge.Dispatcher
 	ACPRegistry   *acpbridge.Registry
+	TurnRuntime   turnRuntimeClient
+	WorkerID      string
 	Log           *slog.Logger
 
 	// resumeLocks serializes, per conversation_id, Handle's "register
@@ -63,8 +65,9 @@ type Handler struct {
 	// closes. Lazily built (not a constructor-only field) so every
 	// existing Handler{...} struct literal — cmd/agent-runner/main.go and
 	// four test/e2e files — keeps working unchanged.
-	resumeLocksOnce sync.Once
-	resumeLocks     *convlock.Locks
+	resumeLocksOnce   sync.Once
+	resumeLocks       *convlock.Locks
+	authoritativeRuns sync.Map // run UUID -> authoritativeRunCancel
 }
 
 // resumeLock returns this Handler's per-conversation resume/teardown lock,
@@ -609,13 +612,9 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		return fmt.Errorf("mark conversation %s finished: %w", trigger.ConversationID, err)
 	}
 
-	// Persist a task-level handoff for a successful task-linked sessionless
-	// run (#392): capture the final reply idempotently so a later conversation
-	// on the same task can recover the conclusion even after this one is
-	// terminal. This MUST run before publishTerminalStatus below: the durable
-	// "finished" status is what makes services/api record the
-	// "agent.session.finished" task activity, and it resolves that handoff
-	// synchronously — publishing first would race the read.
+	// Persist an internal task-level handoff for a successful task-linked
+	// sessionless run. It is recovery context for later task execution only;
+	// it is never a human conclusion publication or a task activity.
 	if trigger.TaskID != nil {
 		summary, err := h.ConvRepo.LatestAgentReply(ctx, trigger.ConversationID)
 		if err != nil {

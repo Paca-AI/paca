@@ -83,11 +83,18 @@ func (r *Registry) drainMessages(ctx context.Context, pubsub *redis.PubSub, hand
 // forwardDispatchedMessages subscribes to agentID's dispatch channel and
 // forwards each message to conn until ctx is cancelled — mirrors
 // acp_bridge.py's _forward_dispatched_messages.
-func (r *Registry) forwardDispatchedMessages(ctx context.Context, agentID uuid.UUID, conn Conn) {
+func (r *Registry) forwardDispatchedMessages(ctx context.Context, agentID uuid.UUID, sessionID string, conn Conn) {
 	r.subscribeLoop(ctx, dispatchChannel(agentID), func(data []byte) bool {
 		var payload map[string]any
 		if err := json.Unmarshal(data, &payload); err != nil {
 			r.log.Warn("acpbridge: dropping malformed dispatch message", "agent_id", agentID, "error", err)
+			return false
+		}
+		if payloadSession, _ := payload["bridge_session_id"].(string); payloadSession != sessionID {
+			return false
+		}
+		currentSession, err := r.redis.Get(ctx, presenceKey(agentID)).Result()
+		if err != nil || currentSession != sessionID {
 			return false
 		}
 		if err := conn.SendJSON(ctx, payload); err != nil {

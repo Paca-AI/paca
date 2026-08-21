@@ -9,6 +9,7 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/agent"
 	"github.com/Paca-AI/agent-runner/internal/messaging"
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
+	"github.com/Paca-AI/agent-runner/internal/turnruntime"
 )
 
 const (
@@ -22,13 +23,57 @@ const (
 // bridge — mirrors agent/acp_dispatch.py's role for LLM agents
 // (executor.Run/handler.Handler), but never spins up a sandbox: the ACP CLI
 // runs entirely on the user's own machine via apps/acp-bridge, connected
-// through Registry/server.go. Auth, MCP servers, and skills are all the
-// user's own local responsibility — nothing is forwarded from Paca.
+// through Registry/server.go. Legacy executions use the user's local auth and
+// tools. Authoritative private turns additionally carry an immutable policy;
+// the bridge strips inherited Paca credentials and retires the subprocess at
+// the end of the turn so that policy cannot leak into a later turn.
 type Dispatcher struct {
 	Registry  *Registry
 	ConvRepo  *postgres.ConversationRepository
 	Publisher *messaging.Publisher
 	Log       Logger
+}
+
+// DispatchAuthoritative sends one already-claimed turn to the local bridge.
+// DB lease/deadline recovery is the watchdog; the legacy conversation timer
+// must never mutate an authoritative turn's underlying conversation.
+func (d *Dispatcher) DispatchAuthoritative(ctx context.Context, claim *turnruntime.Envelope, trigger agent.Trigger, cfg *agent.ACPConfig) (bool, error) {
+	online, err := d.Registry.IsOnline(ctx, cfg.ID)
+	if err != nil || !online {
+		return false, err
+	}
+	dispatched, err := d.Registry.DispatchWithAck(ctx, cfg.ID, map[string]any{
+		"type":                      "start_turn",
+		"conversation_id":           claim.ConversationID.String(),
+		"project_id":                projectIDOrEmpty(claim.ProjectID),
+		"turn_id":                   claim.TurnID.String(),
+		"run_id":                    claim.RunID.String(),
+		"claim_token":               claim.ClaimToken.String(),
+		"attempt":                   claim.Attempt,
+		"message":                   BuildAuthoritativeACPMessage(trigger),
+		"trigger_type":              string(trigger.TriggerType),
+		"acp_provider":              cfg.ACPProvider,
+		"acp_command":               cfg.ACPCommand,
+		"snapshot_manifest_sha256":  claim.SnapshotManifestSHA256,
+		"turn_allowed_capabilities": []string{},
+	}, 3*time.Second)
+	if err != nil {
+		return false, err
+	}
+	if !dispatched {
+		return false, nil
+	}
+	online, err = d.Registry.IsOnline(ctx, cfg.ID)
+	return online, err
+}
+
+func (d *Dispatcher) StopAuthoritative(ctx context.Context, control messaging.TurnControl) (bool, error) {
+	return d.Registry.DispatchWithAck(ctx, control.AgentID, map[string]any{
+		"type": "stop_turn", "conversation_id": control.ConversationID.String(),
+		"turn_id": control.TurnID.String(), "run_id": control.RunID.String(),
+		"claim_token": control.ClaimToken.String(), "attempt": control.Attempt,
+		"reason": control.Reason,
+	}, 3*time.Second)
 }
 
 // DispatchTrigger hands trigger off to cfg's connected local ACP bridge.

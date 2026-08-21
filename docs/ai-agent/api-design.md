@@ -311,7 +311,12 @@ Lists the built-in skill templates (`developer`, `ba`, `manual-tester`, `po-assi
 
 ## Conversations
 
-Conversations are project-scoped, not nested under a specific agent — a project's conversation history spans all of its agents.
+Conversations are project-scoped execution records, not user-visible Chat
+threads or stable-answer boundaries. These endpoints remain for task,
+comment, automation, and legacy execution inspection. A conversation attached
+to an owner-private chat session is read-only through this surface: message,
+pause, heartbeat, and stop writes return `CONVERSATION_TURN_MANAGED`. New
+project chat writes use the session/turn endpoints below.
 
 ### `GET /api/v1/projects/:projectId/conversations`
 
@@ -421,31 +426,24 @@ Send an additional message to a conversation. Requires the conversation to alrea
 
 ---
 
-## Agent Chat Sessions
+## Project Chats
 
-Chat sessions are nested under their agent, not the project — a session is always between one member and one agent.
+Project Chats are owner-private and session-first. Session history spans agents
+for the current owner; turns, not conversations, define messages and immutable
+results. Create, append, prepare, and confirm requests require an
+`Idempotency-Key`. The complete DTO, authorization, context, result, and
+publication contract is in [private-chats.md](private-chats.md).
 
-### `GET /api/v1/projects/:projectId/agents/:agentId/chat-sessions`
-
-List chat sessions for the calling member with this agent. **Response:** `{"items": [...]}`.
-
----
-
-### `POST /api/v1/projects/:projectId/agents/:agentId/chat-sessions`
-
-Start a new chat session with an agent.
-
-**Request body:**
-```json
-{
-  "message": "Can you help me write the acceptance criteria for PACA-42?"
-}
-```
-
-**Response:** `201 Created` `{"session": {...}, "conversation": {...}}`.
-
----
-
-### `POST /api/v1/projects/:projectId/agents/:agentId/chat-sessions/:sessionId/messages`
-
-Send a follow-up message in an existing chat session. **Response:** `201 Created` `{"conversation": {...}}` — the (possibly new) conversation this message triggered. There is no separate "list messages" endpoint — a session's `conversation_id` links to its conversation, whose message history is read via the conversation events endpoint above.
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/projects/:projectId/chat-sessions` | Cursor-paginated owner history. |
+| `POST` | `/api/v1/projects/:projectId/chat-sessions` | Atomically create a session and first turn. |
+| `GET` | `/api/v1/projects/:projectId/chat-sessions/:sessionId` | Owner-gated permanent-link record. |
+| `GET/POST` | `/api/v1/projects/:projectId/chat-sessions/:sessionId/turns` | List turns or append one turn. |
+| `GET` | `/api/v1/projects/:projectId/chat-sessions/:sessionId/turns/:turnId` | Turn, attempts, result, and context snapshot. |
+| `POST` | `/api/v1/projects/:projectId/chat-sessions/:sessionId/turns/:turnId/stop` | Idempotently stop the owner turn. |
+| `GET` | `/api/v1/projects/:projectId/turns/:turnId/events` | Fenced diagnostic events. |
+| `GET/PUT` | `/api/v1/projects/:projectId/chat-sessions/:sessionId/context-sources` | Read or replace sources for the next turn. |
+| `POST` | `/api/v1/projects/:projectId/turns/:turnId/conclusion-publications/prepare` | Freeze one mutually exclusive description-writeback or summary-only preparation. |
+| `POST` | `/api/v1/projects/:projectId/conclusion-publications/confirm` | Atomically update the description with one `task.updated` activity, or publish one frozen-summary activity. |
+| `GET` | `/api/v1/projects/:projectId/tasks/:taskId/conclusion-publications` | Read append-only task-audience publications. |

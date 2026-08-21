@@ -89,7 +89,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 					if (!isAnonymous) goto(`${base}/agents`);
 					return;
 				case "goto.conversations":
-					if (!isAnonymous) goto(`${base}/conversations`);
+					if (!isAnonymous) goto(`${base}/chats`);
 					return;
 				case "goto.automation":
 					if (!isAnonymous) goto(`${base}/automation`);

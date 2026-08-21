@@ -17,7 +17,11 @@ import {
 	hasPermission,
 	type PermissionMap,
 } from "./permissions.js";
-import { loadPlugins, type PluginContextSection } from "./plugin-loader.js";
+import {
+	loadPlugins,
+	type PluginContextSection,
+	PluginRegistry,
+} from "./plugin-loader.js";
 import { getAllTools, handleToolCall } from "./tools/index.js";
 import type { PacaConfig } from "./types/index.js";
 
@@ -27,6 +31,16 @@ const REPO_TOOL_NAMES = new Set([
 	"push_branch",
 ]);
 
+export function turnPolicyAllowsTool(
+	toolName: string,
+	agentTurnId?: string,
+	allowedCapabilities: string[] = [],
+): boolean {
+	if (!agentTurnId) return true;
+	const mapping = getToolPermission(toolName);
+	return mapping != null && allowedCapabilities.includes(mapping.permissionKey);
+}
+
 /**
  * Creates and configures the Paca MCP server.
  * Loads plugin MCP modules from the Paca API before returning.
@@ -34,7 +48,10 @@ const REPO_TOOL_NAMES = new Set([
  * @param config - Paca configuration
  * @returns Configured MCP server
  */
-export async function createServer(config: PacaConfig): Promise<Server> {
+export async function createServer(
+	config: PacaConfig,
+	pluginLoader: (input: PacaConfig) => Promise<PluginRegistry> = loadPlugins,
+): Promise<Server> {
 	// Initialize all API clients
 	const apiClient = new PacaAPIClient(config);
 	const extendedClient = new PacaAPIExtendedClient(config);
@@ -43,9 +60,12 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	const docClient = new PacaAPIDocClient(config);
 	const automationClient = new PacaAPIAutomationClient(config);
 
-	// Load plugin MCP modules from the Paca API.
-	// Failures for individual plugins are logged and skipped.
-	const pluginRegistry = await loadPlugins(config);
+	// A private authoritative turn must not execute plugin module initialization or
+	// context hooks: plugin code is outside the turn capability boundary. Legacy
+	// MCP processes retain the existing plugin behavior.
+	const pluginRegistry = config.agentTurnId
+		? new PluginRegistry([])
+		: await pluginLoader(config);
 
 	const clients = {
 		apiClient,
@@ -58,6 +78,33 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 
 	// Fetch agent permissions at startup
 	const permissionMap: PermissionMap = await fetchAgentPermissions(config);
+	const turnCapabilities = config.agentTurnId
+		? new Set(config.turnAllowedCapabilities ?? [])
+		: null;
+	const allowedByTurnPolicy = (toolName: string): boolean => {
+		return turnPolicyAllowsTool(
+			toolName,
+			config.agentTurnId,
+			turnCapabilities === null ? [] : [...turnCapabilities],
+		);
+	};
+	const allowedByAgentPermissions = (toolName: string): boolean => {
+		const toolPerm = getToolPermission(toolName);
+		if (!toolPerm) return turnCapabilities === null;
+		if (config.projectId) {
+			return hasPermission(
+				permissionMap,
+				toolPerm.permissionKey,
+				config.projectId,
+			);
+		}
+		if (toolPerm.requiresProject) {
+			return Object.keys(permissionMap.projects).some((projectId) =>
+				hasPermission(permissionMap, toolPerm.permissionKey, projectId),
+			);
+		}
+		return hasPermission(permissionMap, toolPerm.permissionKey);
+	};
 
 	const server = new Server(
 		{
@@ -78,38 +125,15 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 
 		// Filter core tools based on permissions
 		const filteredCoreTools = allCoreTools.filter((tool) => {
+			if (!allowedByTurnPolicy(tool.name)) return false;
 			const toolPerm = getToolPermission(tool.name);
 			if (!toolPerm) {
-				console.error(
-					`[server] Tool ${tool.name} has no permission mapping, allowing by default`,
-				);
-				return true;
+				console.error(`[server] Tool ${tool.name} has no permission mapping`);
+				return turnCapabilities === null;
 			}
-
-			if (config.projectId) {
-				const hasPerm = hasPermission(
-					permissionMap,
-					toolPerm.permissionKey,
-					config.projectId,
-				);
-				console.error(
-					`[server] Tool ${tool.name} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-				);
-				return hasPerm;
-			}
-
-			if (toolPerm.requiresProject) {
-				const hasPerm = Object.keys(permissionMap.projects).some((projectId) =>
-					hasPermission(permissionMap, toolPerm.permissionKey, projectId),
-				);
-				console.error(
-					`[server] Tool ${tool.name} requires project permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-				);
-				return hasPerm;
-			}
-			const hasPerm = hasPermission(permissionMap, toolPerm.permissionKey);
+			const hasPerm = allowedByAgentPermissions(tool.name);
 			console.error(
-				`[server] Tool ${tool.name} requires global permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+				`[server] Tool ${tool.name} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
 			);
 			return hasPerm;
 		});
@@ -130,13 +154,27 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		// Note: Plugin tools are not filtered by permissions at this level
 		// Permissions are enforced at the API level
 		return {
-			tools: [...visibleCoreTools, ...allPluginTools],
+			tools:
+				turnCapabilities === null
+					? [...visibleCoreTools, ...allPluginTools]
+					: visibleCoreTools,
 		};
 	});
 
 	// Handler for executing tool calls
 	server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		const { name, arguments: args } = request.params;
+		if (!allowedByTurnPolicy(name) || !allowedByAgentPermissions(name)) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Error: tool ${name} is not allowed by this turn's capability policy`,
+					},
+				],
+				isError: true,
+			};
+		}
 
 		// Validate projectId in single-project mode
 		if (
@@ -161,11 +199,14 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		// Try plugin registry first (plugin tool names are chosen by developers,
 		// so we check plugins before falling through to core tools to make
 		// routing explicit).
-		const pluginResult = await pluginRegistry.handleToolCall(
-			name,
-			(args ?? {}) as Record<string, unknown>,
-			config,
-		);
+		const pluginResult =
+			turnCapabilities === null
+				? await pluginRegistry.handleToolCall(
+						name,
+						(args ?? {}) as Record<string, unknown>,
+						config,
+					)
+				: null;
 		if (pluginResult !== null) {
 			return pluginResult;
 		}
@@ -180,7 +221,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		// Let every loaded plugin optionally attach context to this core
 		// tool's response (e.g. linked GitHub branches on get_task). Skipped
 		// for error results so a failure isn't buried under unrelated data.
-		if (!result?.isError) {
+		if (turnCapabilities === null && !result?.isError) {
 			const sections = await pluginRegistry.getToolContext(
 				name,
 				(args ?? {}) as Record<string, unknown>,

@@ -1,10 +1,15 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Bot } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityPane } from "@/components/shared/activity-pane";
 import { textToBlocks } from "@/components/shared/comment-blocknote";
+import { taskConclusionsQueryOptions } from "@/lib/agent-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	type Activity,
@@ -20,6 +25,7 @@ import {
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
 } from "@/lib/project-api";
+import { projectChatPublicationSource } from "@/lib/project-chat-publication";
 import { describeTaskChange } from "./activity-item";
 
 type FieldChange = {
@@ -34,6 +40,30 @@ interface TaskActivityPaneProps {
 	canEdit?: boolean;
 }
 
+export function useLoadAllConclusionPages({
+	hasNextPage,
+	isFetchingNextPage,
+	isFetchNextPageError,
+	fetchNextPage,
+}: {
+	hasNextPage: boolean;
+	isFetchingNextPage: boolean;
+	isFetchNextPageError: boolean;
+	fetchNextPage: () => Promise<unknown>;
+}) {
+	useEffect(() => {
+		if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+			void fetchNextPage();
+		}
+	}, [fetchNextPage, hasNextPage, isFetchNextPageError, isFetchingNextPage]);
+}
+
+export function shouldDisplayTaskActivity(entry: Activity) {
+	if (!entry.activity_type.startsWith("agent.conclusion.")) return true;
+	const content = entry.content as Record<string, unknown> | null;
+	return content?.description_updated !== true;
+}
+
 export function TaskActivityPane({
 	projectId,
 	taskId,
@@ -41,6 +71,24 @@ export function TaskActivityPane({
 }: TaskActivityPaneProps) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
+	const conclusionQuery = useInfiniteQuery(
+		taskConclusionsQueryOptions(projectId, taskId),
+	);
+	useLoadAllConclusionPages({
+		hasNextPage: conclusionQuery.hasNextPage,
+		isFetchingNextPage: conclusionQuery.isFetchingNextPage,
+		isFetchNextPageError: conclusionQuery.isFetchNextPageError,
+		fetchNextPage: conclusionQuery.fetchNextPage,
+	});
+	const publications = useMemo(
+		() => conclusionQuery.data?.pages.flatMap((page) => page.items) ?? [],
+		[conclusionQuery.data],
+	);
+	const publicationById = useMemo(
+		() =>
+			new Map(publications.map((publication) => [publication.id, publication])),
+		[publications],
+	);
 	const { data: membersData } = useQuery(projectMembersQueryOptions(projectId));
 	const { data: sprintsData } = useQuery(sprintsQueryOptions(projectId));
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
@@ -167,6 +215,49 @@ export function TaskActivityPane({
 						</span>
 					);
 				}
+				case "agent.conclusion.published":
+				case "agent.conclusion.revised":
+				case "agent.conclusion.withdrawn": {
+					const publicationId = (c as Record<string, unknown>).publication_id;
+					const publication =
+						typeof publicationId === "string"
+							? publicationById.get(publicationId)
+							: undefined;
+					const source = publication
+						? projectChatPublicationSource(publication)
+						: null;
+					const label =
+						entry.activity_type === "agent.conclusion.published"
+							? t("chats.conclusion.summaryRecordedActivity")
+							: entry.activity_type === "agent.conclusion.revised"
+								? t("chats.conclusion.revised")
+								: t("chats.conclusion.withdrawn");
+					return (
+						<span className="flex flex-col gap-1">
+							<span className="flex flex-wrap items-center gap-1.5">
+								<span>{label}</span>
+								{source && (
+									<Link
+										to="/projects/$projectId/chats/$sessionId"
+										params={{ projectId, sessionId: source.sessionId }}
+										search={{ turnId: source.turnId }}
+										target="_blank"
+										rel="noreferrer"
+										className="inline-flex items-center gap-1 text-xs font-medium text-primary/80 hover:text-primary underline-offset-2 hover:underline transition-colors"
+									>
+										<Bot className="size-3" />
+										{t("taskDetail.activity.watchSession")}
+									</Link>
+								)}
+							</span>
+							{publication?.summary && (
+								<span className="text-xs text-muted-foreground whitespace-pre-wrap">
+									{publication.summary}
+								</span>
+							)}
+						</span>
+					);
+				}
 				default:
 					return (
 						((c as Record<string, unknown>)._description as
@@ -175,7 +266,7 @@ export function TaskActivityPane({
 					);
 			}
 		},
-		[nameMaps, projectId, t],
+		[nameMaps, projectId, publicationById, t],
 	);
 
 	const queryKey = [
@@ -307,7 +398,11 @@ export function TaskActivityPane({
 			projectId={projectId}
 			entityId={taskId}
 			queryKey={queryKey}
-			queryFn={() => listTaskActivities(projectId, taskId)}
+			queryFn={() =>
+				listTaskActivities(projectId, taskId).then((items) =>
+					items.filter(shouldDisplayTaskActivity),
+				)
+			}
 			addComment={
 				canEdit ? (blocks) => addComment(projectId, taskId, blocks) : undefined
 			}

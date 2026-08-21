@@ -187,7 +187,7 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
 	const newConversationHref = projectId
-		? `/projects/${projectId}/conversations`
+		? `/projects/${projectId}/chats`
 		: "/conversations";
 
 	return (

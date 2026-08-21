@@ -88,6 +88,11 @@ export function useProjectRealtime(projectId: string | undefined): void {
 
 		function handleEvent(event: RealtimeEvent) {
 			const { type } = event;
+			const payloadProjectId =
+				typeof event.payload.project_id === "string"
+					? event.payload.project_id
+					: null;
+			if (payloadProjectId && payloadProjectId !== currentProjectId) return;
 
 			if (type.startsWith("task.")) {
 				void queryClient.invalidateQueries({
@@ -173,6 +178,44 @@ export function useProjectRealtime(projectId: string | undefined): void {
 						],
 						{ connected: event.payload.connected },
 					);
+				}
+				return;
+			}
+
+			// Authoritative private Chats are session/turn-first. The finished
+			// notification deliberately carries no answer text; refetch the frozen
+			// turn result instead of synthesising a message from realtime payloads.
+			if (type === "agent.turn.finished") {
+				const sessionId =
+					typeof event.payload.session_id === "string"
+						? event.payload.session_id
+						: null;
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", currentProjectId, "chat-sessions"],
+				});
+				if (sessionId) {
+					void queryClient.invalidateQueries({
+						queryKey: [
+							"projects",
+							currentProjectId,
+							"chat-sessions",
+							sessionId,
+							"turns",
+						],
+					});
+				}
+				return;
+			}
+
+			if (type.startsWith("agent.conclusion.")) {
+				const taskId =
+					typeof event.payload.target_task_id === "string"
+						? event.payload.target_task_id
+						: null;
+				if (taskId) {
+					void queryClient.invalidateQueries({
+						queryKey: ["projects", currentProjectId, "tasks", taskId],
+					});
 				}
 				return;
 			}

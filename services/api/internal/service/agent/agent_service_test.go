@@ -97,6 +97,7 @@ type mockAgentRepo struct {
 	findConversationByID            func(ctx context.Context, id uuid.UUID) (*agentdom.AgentConversation, error)
 	findLatestConversationBySession func(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error)
 	createConversation              func(ctx context.Context, conv *agentdom.AgentConversation) error
+	hasAuthoritativeTurn            func(ctx context.Context, conversationID uuid.UUID) (bool, error)
 	updateConversationStatus        func(ctx context.Context, id uuid.UUID, status string) error
 	claimConversationStatus         func(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
 	updateConversation              func(ctx context.Context, conv *agentdom.AgentConversation) error
@@ -398,6 +399,13 @@ func (m *mockAgentRepo) CreateConversation(ctx context.Context, conv *agentdom.A
 		return m.createConversation(ctx, conv)
 	}
 	return nil
+}
+
+func (m *mockAgentRepo) HasAuthoritativeTurnForConversation(ctx context.Context, conversationID uuid.UUID) (bool, error) {
+	if m.hasAuthoritativeTurn != nil {
+		return m.hasAuthoritativeTurn(ctx, conversationID)
+	}
+	return false, nil
 }
 
 func (m *mockAgentRepo) UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error {
@@ -1755,6 +1763,64 @@ func TestSendConversationMessage_ACPBusyWhenQueued(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
 
+func TestLegacyOwnerPrivateChatControlsAreReadOnly(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	sessionID := uuid.New()
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{
+				ID:            conversationID,
+				ProjectID:     projectID,
+				AgentID:       uuid.New(),
+				ChatSessionID: &sessionID,
+				Audience:      agentdom.AudienceOwnerPrivate,
+				Status:        string(agentdom.ConversationStatusPaused),
+			}, nil
+		},
+		findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return &agentdom.AgentChatSession{ID: sessionID, MemberID: memberID}, nil
+		},
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			t.Fatal("legacy owner-private chat reached agent dispatch")
+			return nil, nil
+		},
+		hasAuthoritativeTurn: func(_ context.Context, _ uuid.UUID) (bool, error) {
+			t.Fatal("session-backed legacy chat reached authoritative-turn lookup")
+			return false, nil
+		},
+		updateConversationStatus: func(_ context.Context, _ uuid.UUID, _ string) error {
+			t.Fatal("legacy owner-private chat status was updated")
+			return nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			t.Fatal("legacy owner-private chat was claimed")
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	tests := map[string]func() error{
+		"stop": func() error {
+			return svc.StopConversation(context.Background(), projectID, conversationID, memberID)
+		},
+		"pause": func() error {
+			return svc.PauseConversation(context.Background(), projectID, conversationID, memberID)
+		},
+		"heartbeat": func() error {
+			return svc.Heartbeat(context.Background(), projectID, conversationID, memberID)
+		},
+		"message": func() error {
+			return svc.SendConversationMessage(context.Background(), projectID, conversationID, "bypass", memberID)
+		},
+	}
+	for name, run := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.ErrorIs(t, run(), agentdom.ErrConversationTurnManaged)
+		})
+	}
+}
+
 func TestSendConversationMessage_ACPResumeRaceLoses(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -1843,6 +1909,45 @@ func TestStopConversation_AlreadyStopped(t *testing.T) {
 			assert.Error(t, err)
 			assert.ErrorIs(t, err, agentdom.ErrConversationAlreadyStopped)
 			assert.False(t, updateCalled)
+		})
+	}
+}
+
+func TestLegacyConversationControlsRejectAuthoritativeTurnConversation(t *testing.T) {
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{
+				ID: conversationID, ProjectID: projectID, Status: "running",
+			}, nil
+		},
+		hasAuthoritativeTurn: func(_ context.Context, _ uuid.UUID) (bool, error) {
+			return true, nil
+		},
+		updateConversationStatus: func(_ context.Context, _ uuid.UUID, _ string) error {
+			t.Fatal("legacy control mutated authoritative turn conversation")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+	tests := map[string]func() error{
+		"stop": func() error {
+			return svc.StopConversation(context.Background(), projectID, conversationID, uuid.Nil)
+		},
+		"pause": func() error {
+			return svc.PauseConversation(context.Background(), projectID, conversationID, uuid.Nil)
+		},
+		"heartbeat": func() error {
+			return svc.Heartbeat(context.Background(), projectID, conversationID, uuid.Nil)
+		},
+		"message": func() error {
+			return svc.SendConversationMessage(context.Background(), projectID, conversationID, "legacy bypass", uuid.Nil)
+		},
+	}
+	for name, run := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.ErrorIs(t, run(), agentdom.ErrConversationTurnManaged)
 		})
 	}
 }

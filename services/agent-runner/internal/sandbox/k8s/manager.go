@@ -50,6 +50,7 @@ const (
 	// same names in spirit, same purpose (identify/filter this package's
 	// own managed resources), just spelled as valid Kubernetes label keys.
 	labelConvID  = "paca.ai/conversation-id"
+	labelTurnID  = "paca.ai/turn-id"
 	labelManaged = "paca.ai/managed-by"
 	managedValue = "agent-runner"
 
@@ -196,6 +197,9 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 	labels := map[string]string{
 		labelConvID:  cfg.ConversationID,
 		labelManaged: managedValue,
+	}
+	if cfg.TurnID != "" {
+		labels[labelTurnID] = cfg.TurnID
 	}
 
 	// User-configured env vars first, so the hardcoded infra vars below

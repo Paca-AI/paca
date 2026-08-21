@@ -95,7 +95,33 @@ Every individual conversation event *and* every status transition is published h
 
 A terminal status (`finished` / `failed` / `stopped` — never `paused`) is appended here once a conversation ends. `services/api`'s automation engine consumes this to resume a graph walk paused at a `trigger_ai_agent` node.
 
-For a **task-linked** conversation that reaches `finished`, `agent-runner` first persists a durable task-level handoff — the final agent reply, keyed idempotently by `conversation_id` in `agent_task_handoffs` (migration `000039`) — *before* appending `finished` here. That ordering is load-bearing: `services/api` resolves the handoff synchronously when it consumes the `finished` status to record an `agent.session.finished` task activity, so persisting after the publish would race the read. Later task-linked conversations also inject up to three prior handoffs into their prompt (`internal/handler`, `internal/executor/prompt.go`) for cross-conversation continuity (#392).
+For a **task-linked** legacy conversation that reaches `finished`,
+`agent-runner` persists a durable task-level handoff before appending the
+terminal status. Later task-triggered conversations may inject up to three
+prior handoffs (`internal/handler`, `internal/executor/prompt.go`). A handoff is
+an internal execution-continuity artifact: it does not create task activity and
+must not be used as a user publication. Owner-private Chats publish only through
+the human-confirmed conclusion flow in [private-chats.md](private-chats.md).
+
+### Authoritative private-turn streams
+
+Owner-private Project Chats use separate durable request and control streams.
+The API transaction writes an outbox record; the outbox publisher appends the
+minimal turn ID to the stream. `messaging.TurnConsumer` claims a run from the
+API, heartbeats pending delivery, and dispatches `handler.HandleTurn`.
+
+Each claim has a lease token and attempt identity. Events, renewals,
+finalization, and stop control must present the exact turn, run, attempt, and
+token; stale workers cannot append or finish a recovered turn. A startup and
+periodic orphan reaper removes Docker resources only after verifying that their
+run is no longer the active fenced attempt.
+
+Authoritative private `llm` execution uses an immutable context snapshot and a
+deny-by-default tool policy. The sandbox receives only the model provider
+credential: agent environment variables, configured MCP servers, and the
+built-in Paca MCP credential are excluded. Private `acp` turns deterministically
+finalize `failed` with `acp_private_runtime_not_isolated` before input is sent
+to the local bridge. Task/comment/automation ACP dispatch is unchanged.
 
 ---
 
@@ -107,7 +133,7 @@ The core flow, in `internal/executor/executor.go`'s `Run`:
 2. Resolve the LLM provider to Goose's own env var shape (`GOOSE_PROVIDER`, `GOOSE_MODEL`, and a provider-specific API key env var — see `resolveProviderEnv`). A handful of Paca's `llm_provider` values don't match the provider id Goose actually registers them under (verified directly against `block/goose`'s source, not its docs site — see `gooseProviderID`'s doc comment): `"gemini"` is Goose's `"google"` provider, and `"deepseek"` is Goose's `"custom_deepseek"`. An unmapped mismatch here means every conversation for that provider silently fails to initialize at all, with no ACP-level error to surface — this is why `gooseProviderID` exists as an explicit alias table rather than passing `llm_provider` straight through.
 3. Start a dedicated sandbox container (`sandbox.Manager.Start`) — or, for a resumed chat turn, reuse an existing one (see [Pause / Resume / Stop / Heartbeat](#pause--resume--stop--heartbeat)).
 4. Complete the ACP handshake: `initialize`, then `session/new` with the working directory and the agent's MCP server list (see [Skills & MCP Server Injection](#skills--mcp-server-injection)).
-5. Build the turn's message. For a cold start this folds together the agent's system prompt, its enabled skills' content, project/trigger context, and the user's message into one string — Goose's `session/new` has no system-message-suffix channel the way OpenHands SDK's `AgentContext` did, confirmed empirically against a real `goose serve`, so everything rides in the turn's own message instead (`internal/executor/prompt.go`). A resumed turn sends just the new message — the agent already has full context from earlier turns.
+5. Build the turn's message. For a cold start this combines project/trigger context, the immutable turn snapshot, and the user's message (`internal/executor/prompt.go`). The agent's system prompt is delivered through `.goosehints`, while enabled skills use Goose's file-based skill discovery. A resumed turn normally sends just the new message because the agent already has full conversation context. Recognized owner-private writeback slash commands additionally receive deterministic, non-persisted command guidance on both cold and resumed turns; the transcript still stores and displays only the user's raw command.
 6. `session/prompt` the message, capped at `MaxIterations` tool calls (default 50) and `TimeoutMinutes` (default 30) — Goose enforces no turn cap of its own, confirmed in the protocol spike where a non-converging reply produced 600+ tool-call cycles with no backoff.
 7. Every `session/update` notification is forwarded to `onEvent`, supplied by the caller (`handler.Handle`) — `Run` itself has no Valkey/Postgres dependency, so it stays testable without either.
 

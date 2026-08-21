@@ -19,6 +19,9 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | `000017_add_agent_environment_variables.sql` | Adds `agent_environment_variables` (per-agent secret env vars, encrypted at rest). |
 | `000022_add_acp_agents.sql` | Adds ACP (Agent Client Protocol) agent support to `agents`: `agent_type` ('llm' \| 'acp'), `acp_provider`, `acp_command`, `acp_bridge_token_hash` — a second agent "shape" that delegates to a local coding CLI over a bridge daemon instead of running an LLM loop in-cluster. |
 | `000031_add_global_agents.sql` | Adds "global" agents — an agent with no owning project (`agents.project_id` nullable, `agent_scope` discriminator, `global_role_id`) that is instead attached to zero or more projects via ordinary `project_members` rows, the same mechanism used to add a human member. Adds `actor_user_id` to `agent_chat_sessions` and `agent_conversations` for chat sessions/conversations started from the home page or admin pages, outside any project. See the comment above the `agents` table below. |
+| `000038_add_agent_conversation_audience.sql` | Adds explicit owner-private/project-shared conversation audience metadata and constraints. |
+| `000042_add_agent_task_handoffs.sql` | Adds internal task-run handoffs for later task execution continuity; handoffs are not task publications. |
+| `000043_add_agent_turns_and_conclusions.sql` | Adds authoritative agent turns, fenced run attempts, immutable context snapshots/results, reliable outbox delivery, and append-only human-confirmed conclusion publications for owner-private Project Chats. See [`docs/ai-agent/private-chats.md`](../ai-agent/private-chats.md). |
 
 *(Migrations between `000008` and `000017`/`000022`/`000031` that touch other subsystems — tasks, sprints, docs, notifications, etc. — are omitted here; see `services/api/migrations/` for the full, authoritative list.)*
 

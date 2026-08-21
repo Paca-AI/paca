@@ -1170,6 +1170,9 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 	if err != nil {
 		return err
 	}
+	if err := s.rejectManagedConversationWrite(ctx, c); err != nil {
+		return err
+	}
 	if agentdom.ConversationStatus(c.Status).IsTerminal() {
 		return agentdom.ErrConversationAlreadyStopped
 	}
@@ -1201,6 +1204,9 @@ func (s *Service) PauseConversation(ctx context.Context, projectID, conversation
 	if err != nil {
 		return err
 	}
+	if err := s.rejectManagedConversationWrite(ctx, c); err != nil {
+		return err
+	}
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
 		return agentdom.ErrConversationNotRunning
 	}
@@ -1218,13 +1224,35 @@ func (s *Service) PauseConversation(ctx context.Context, projectID, conversation
 // rather than resting the whole authorization boundary on ai-agent's
 // in-memory check.
 func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error {
-	if _, err := s.GetConversation(ctx, projectID, conversationID, memberID); err != nil {
+	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
+	if err != nil {
+		return err
+	}
+	if err := s.rejectManagedConversationWrite(ctx, c); err != nil {
 		return err
 	}
 	return s.publishTrigger(ctx, events.TopicAgentHeartbeat, map[string]any{
 		"conversation_id": conversationID.String(),
 		"project_id":      projectID.String(),
 	})
+}
+
+func (s *Service) rejectAuthoritativeTurnControl(ctx context.Context, conversationID uuid.UUID) error {
+	managed, err := s.repo.HasAuthoritativeTurnForConversation(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if managed {
+		return agentdom.ErrConversationTurnManaged
+	}
+	return nil
+}
+
+func (s *Service) rejectManagedConversationWrite(ctx context.Context, conversation *agentdom.AgentConversation) error {
+	if conversation.ChatSessionID != nil {
+		return agentdom.ErrConversationTurnManaged
+	}
+	return s.rejectAuthoritativeTurnControl(ctx, conversation.ID)
 }
 
 // SendConversationMessage publishes a chat message to an active conversation.
@@ -1239,6 +1267,13 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID, memb
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
 	if err != nil {
+		return err
+	}
+	// Historical owner-private chat sessions remain readable through the
+	// session-first compatibility view, but they must never resume through the
+	// legacy conversation trigger: that path has no turn snapshot/tool policy.
+	// Sessionless ACP task/automation executions remain resumable below.
+	if err := s.rejectManagedConversationWrite(ctx, c); err != nil {
 		return err
 	}
 

@@ -48,11 +48,17 @@ const (
 	// conversation session triggered by a task assignment.
 	ActivityTypeAgentSessionStarted ActivityType = "agent.session.started"
 
-	// ActivityTypeAgentSessionFinished is recorded when a task-linked agent
-	// conversation finishes successfully, carrying the durable handoff
-	// summary so the conclusion is visible on the task without opening the
-	// conversation (#392). Content carries {conversation_id, summary}.
+	// ActivityTypeAgentSessionFinished is a legacy pre-publication projection.
+	// New code must never emit it: private turn completion is not a human
+	// publication. It remains so historical rows can still be rendered.
 	ActivityTypeAgentSessionFinished ActivityType = "agent.session.finished"
+
+	// Explicit, human-confirmed conclusion publication projections. Content
+	// carries only {publication_id, kind}; the append-only publication row is
+	// authoritative and source transcript access is authorized separately.
+	ActivityTypeAgentConclusionPublished ActivityType = "agent.conclusion.published"
+	ActivityTypeAgentConclusionRevised   ActivityType = "agent.conclusion.revised"
+	ActivityTypeAgentConclusionWithdrawn ActivityType = "agent.conclusion.withdrawn"
 
 	// --- Automation events -----------------------------------------------------
 
@@ -62,18 +68,6 @@ const (
 	// attribute the change to the automation instead of a human actor.
 	ActivityTypeAutomationApplied ActivityType = "automation.applied"
 )
-
-// AgentSessionFinished is the data needed to record an
-// ActivityTypeAgentSessionFinished task activity for a finished task-linked
-// conversation — the durable handoff summary joined with the conversation's
-// owning project/agent (#392).
-type AgentSessionFinished struct {
-	TaskID         uuid.UUID
-	ProjectID      uuid.UUID
-	AgentID        uuid.UUID
-	ConversationID uuid.UUID
-	Summary        string
-}
 
 // Activity is a single entry in a task's activity log.  It represents either
 // a system-generated change event (e.g. status change) or a user comment.

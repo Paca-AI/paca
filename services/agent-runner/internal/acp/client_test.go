@@ -23,8 +23,8 @@ func decodeBody(t *testing.T, r *http.Request) rpcRequest {
 	return req
 }
 
-// acpMockServer is a minimal server-side mock of the new async ACP HTTP
-// transport every test in this file drives Client against: POST /acp
+// acpMockServer is a minimal server-side mock of the older async ACP HTTP
+// transport used by the compatibility tests in this file: POST /acp
 // enqueues a frame (session/new's onto the connection stream, everything
 // else's onto its session stream) that GET /acp then delivers over SSE —
 // mirroring exactly the split Client itself expects (see client.go's
@@ -94,6 +94,9 @@ func (s *acpMockServer) handlePost(w http.ResponseWriter, r *http.Request) {
 	if got := r.Header.Get("X-Secret-Key"); got != testSecret {
 		s.t.Errorf("POST X-Secret-Key = %q, want %q", got, testSecret)
 	}
+	if got := r.Header.Get("Accept"); got != acpAccept {
+		s.t.Errorf("POST Accept = %q, want %q", got, acpAccept)
+	}
 	req := decodeBody(s.t, r)
 	if req.Method == "initialize" {
 		if got := r.Header.Get("Acp-Connection-Id"); got != "" {
@@ -146,8 +149,8 @@ func (s *acpMockServer) handleGet(w http.ResponseWriter, r *http.Request) {
 
 // standardSessionNew replies to session/new with sessionID immediately —
 // shared by every Prompt test, all of which need a real session
-// established first: Prompt requires NewSession to have already opened
-// this session's own SSE stream (see client.go's package doc comment).
+// established first: the legacy Prompt path requires NewSession to have
+// already opened this session's own SSE stream.
 func standardSessionNew(sessionID string) func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
 	return func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
 		if req.Method != "session/new" {
@@ -180,6 +183,77 @@ func TestInitialize(t *testing.T) {
 	}
 	if c.connectionID != "conn-1" {
 		t.Errorf("connectionID = %q, want the Acp-Connection-Id from the response header", c.connectionID)
+	}
+}
+
+func TestStreamableHTTPInlineSSEFlow(t *testing.T) {
+	const (
+		transportSessionID = "transport-1"
+		conversationID     = "conversation-1"
+	)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Secret-Key"); got != testSecret {
+			t.Errorf("X-Secret-Key = %q, want %q", got, testSecret)
+		}
+		if got := r.Header.Get("Accept"); got != acpAccept {
+			t.Errorf("Accept = %q, want %q", got, acpAccept)
+		}
+		req := decodeBody(t, r)
+		if req.Method == "initialize" {
+			if got := r.Header.Get("Acp-Session-Id"); got != "" {
+				t.Errorf("initialize Acp-Session-Id = %q, want empty", got)
+			}
+			w.Header().Set("Acp-Session-Id", transportSessionID)
+		} else if got := r.Header.Get("Acp-Session-Id"); got != transportSessionID {
+			t.Errorf("%s Acp-Session-Id = %q, want transport id %q", req.Method, got, transportSessionID)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		switch req.Method {
+		case "initialize":
+			fmt.Fprintf(w, "data: {\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":{}}\n\n", req.ID)
+		case "session/new":
+			fmt.Fprintf(w, "data: {\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":{\"sessionId\":%q}}\n\n", req.ID, conversationID)
+		case "session/prompt":
+			fmt.Fprintf(w, "data: {\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":%q,\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"inline-sse-ok\"}}}}\n\n", conversationID)
+			fmt.Fprintf(w, "data: {\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":{\"stopReason\":\"end_turn\",\"usage\":{\"totalTokens\":9,\"inputTokens\":5,\"outputTokens\":4}}}\n\n", req.ID)
+		default:
+			t.Errorf("unexpected method %q", req.Method)
+		}
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if !c.inlineSSE || c.transportSessionID != transportSessionID {
+		t.Fatalf("transport = inline:%t session:%q, want inline session %q", c.inlineSSE, c.transportSessionID, transportSessionID)
+	}
+	sessionID, err := c.NewSession(context.Background(), "/home/goose", nil)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if sessionID != conversationID {
+		t.Fatalf("sessionID = %q, want %q", sessionID, conversationID)
+	}
+
+	var events []Event
+	stopReason, usage, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("hello")}, 0, func(event Event) {
+		events = append(events, event)
+	})
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stopReason = %q, want end_turn", stopReason)
+	}
+	if usage == nil || usage.TotalTokens != 9 || usage.InputTokens != 5 || usage.OutputTokens != 4 {
+		t.Errorf("usage = %+v, want {9 5 4}", usage)
+	}
+	if len(events) != 1 || events[0].Kind != UpdateAgentMessageChunk {
+		t.Fatalf("events = %+v, want one agent_message_chunk", events)
 	}
 }
 

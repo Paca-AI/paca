@@ -40,6 +40,8 @@ type Deps struct {
 	Plugin               *handler.PluginHandler
 	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
+	ProjectChat          *handler.ProjectChatHandler
+	AgentTurnRuntime     *handler.AgentTurnRuntimeHandler
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
@@ -64,6 +66,15 @@ func New(deps Deps) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		// Public routes
 		r.Get("/healthz", deps.Health.Check)
+		if deps.AgentTurnRuntime != nil {
+			r.Route("/internal/v1/agent-turns/{turnId}", func(r chi.Router) {
+				r.Get("/", deps.AgentTurnRuntime.Get)
+				r.Post("/claim", deps.AgentTurnRuntime.Claim)
+				r.Post("/lease", deps.AgentTurnRuntime.Renew)
+				r.Post("/events", deps.AgentTurnRuntime.AppendEvent)
+				r.Post("/finalize", deps.AgentTurnRuntime.Finalize)
+			})
+		}
 
 		r.Route("/v1", func(r chi.Router) {
 			// Version / update check — public, no auth required.
@@ -315,6 +326,7 @@ func New(deps Deps) http.Handler {
 			r.Route("/projects/{projectId}", func(r chi.Router) {
 				r.Use(httpmw.OptionalAuthn(deps.TokenManager, deps.APIKeyAuth))
 				r.Use(httpmw.RequireFreshPassword())
+				r.Use(httpmw.EnforceAgentTurnReadOnly())
 
 				r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 					httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
@@ -324,6 +336,33 @@ func New(deps Deps) http.Handler {
 					Patch("/", deps.Project.UpdateProject)
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsDelete)).
 					Delete("/", deps.Project.DeleteProject)
+
+				// Session-first owner-private agent chats. These routes are human-only:
+				// a project agent API key must never impersonate a publisher or chat owner.
+				if deps.ProjectChat != nil {
+					r.Group(func(r chi.Router) {
+						r.Use(httpmw.RequireJWTAuth())
+						readChats := httpmw.RequirePermissions(deps.Authorizer,
+							httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)
+						publishConclusion := httpmw.RequirePermissions(deps.Authorizer,
+							httpmw.ProjectScopeFromParam("projectId"),
+							authz.PermissionAgentsRead, authz.PermissionTasksRead, authz.PermissionTasksWrite)
+
+						r.With(readChats).Get("/chat-sessions", deps.ProjectChat.ListSessions)
+						r.With(readChats).Post("/chat-sessions", deps.ProjectChat.CreateSession)
+						r.With(readChats).Get("/chat-sessions/{sessionId}", deps.ProjectChat.GetSession)
+						r.With(readChats).Get("/chat-sessions/{sessionId}/turns", deps.ProjectChat.ListTurns)
+						r.With(readChats).Get("/chat-sessions/{sessionId}/turns/{turnId}", deps.ProjectChat.GetTurn)
+						r.With(readChats).Post("/chat-sessions/{sessionId}/turns", deps.ProjectChat.AppendTurn)
+						r.With(readChats).Post("/chat-sessions/{sessionId}/turns/{turnId}/stop", deps.ProjectChat.StopTurn)
+						r.With(readChats).Get("/chat-sessions/{sessionId}/legacy-executions", deps.ProjectChat.ListLegacyExecutions)
+						r.With(readChats).Get("/chat-sessions/{sessionId}/context-sources", deps.ProjectChat.ListContextSources)
+						r.With(readChats).Put("/chat-sessions/{sessionId}/context-sources", deps.ProjectChat.ReplaceContextSources)
+						r.With(readChats).Get("/turns/{turnId}/events", deps.ProjectChat.ListTurnEvents)
+						r.With(publishConclusion).Post("/turns/{turnId}/conclusion-publications/prepare", deps.ProjectChat.PrepareConclusion)
+						r.With(publishConclusion).Post("/conclusion-publications/confirm", deps.ProjectChat.ConfirmConclusion)
+					})
+				}
 
 				// Avatar
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectsWrite)).
@@ -508,6 +547,12 @@ func New(deps Deps) http.Handler {
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
 						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/{taskId}", deps.Task.GetTask)
+					if deps.ProjectChat != nil {
+						r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
+							httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
+							httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
+						)).Get("/{taskId}/conclusion-publications", deps.ProjectChat.ListTaskConclusions)
+					}
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
 						Patch("/{taskId}", deps.Task.UpdateTask)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionTasksWrite)).
@@ -724,13 +769,11 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Delete("/{agentId}/env-vars/{envVarId}", deps.Agent.DeleteEnvVar)
 
-						// Chat sessions
+						// Legacy project chat sessions are read-only compatibility data.
+						// All new project chat writes go through the session/turn routes
+						// below so callers cannot bypass snapshots, idempotency or outbox.
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
 							Get("/{agentId}/chat-sessions", deps.Agent.ListChatSessions)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
-							Post("/{agentId}/chat-sessions", deps.Agent.StartChatSession)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
-							Post("/{agentId}/chat-sessions/{sessionId}/messages", deps.Agent.SendChatMessage)
 					})
 				}
 

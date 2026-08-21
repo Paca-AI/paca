@@ -1,6 +1,71 @@
-import { describe, expect, it } from "vitest";
-import type { PluginContextSection } from "../plugin-loader.js";
-import { mergePluginContext } from "../server.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { type PluginContextSection, PluginRegistry } from "../plugin-loader.js";
+import {
+	createServer,
+	mergePluginContext,
+	turnPolicyAllowsTool,
+} from "../server.js";
+
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+});
+
+describe("turnPolicyAllowsTool", () => {
+	it("does not fetch or load plugin modules for an authoritative turn", async () => {
+		globalThis.fetch = async () =>
+			new Response(
+				JSON.stringify({ success: true, data: { permissions: {} } }),
+				{
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				},
+			);
+		let loaderCalls = 0;
+		const loader = async () => {
+			loaderCalls++;
+			return new PluginRegistry([]);
+		};
+
+		await createServer(
+			{
+				apiKey: "turn-scoped-only",
+				baseURL: "https://paca.invalid",
+				agentId: "agent-1",
+				projectId: "project-1",
+				agentTurnId: "turn-1",
+				turnAllowedCapabilities: ["tasks.read"],
+			},
+			loader,
+		);
+
+		expect(loaderCalls).toBe(0);
+	});
+
+	it("allows mapped read tools in an authoritative private turn", () => {
+		expect(turnPolicyAllowsTool("get_task", "turn-1", ["tasks.read"])).toBe(
+			true,
+		);
+	});
+
+	it("rejects task mutation tools even when the agent role is broader", () => {
+		expect(turnPolicyAllowsTool("update_task", "turn-1", ["tasks.read"])).toBe(
+			false,
+		);
+	});
+
+	it("fails closed for unknown and plugin tools", () => {
+		expect(
+			turnPolicyAllowsTool("plugin_mutate_task", "turn-1", ["tasks.read"]),
+		).toBe(false);
+	});
+
+	it("preserves legacy tool discovery outside an authoritative turn", () => {
+		expect(turnPolicyAllowsTool("plugin_mutate_task", undefined, [])).toBe(
+			true,
+		);
+	});
+});
 
 // ---------------------------------------------------------------------------
 // mergePluginContext

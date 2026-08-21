@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/Paca-AI/agent-runner/internal/messaging"
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
+	"github.com/Paca-AI/agent-runner/internal/turnruntime"
 )
 
 // helloTimeout bounds how long an unauthenticated WebSocket connection can
@@ -46,11 +48,17 @@ type Server struct {
 	AgentRepo     *postgres.AgentRepository
 	ConvRepo      *postgres.ConversationRepository
 	Publisher     *messaging.Publisher
+	TurnRuntime   authoritativeTurnRuntime
 	InternalToken string
 	// LLMModelsPath is the path to the static provider/model catalog file
 	// (data/llm_models.json) served verbatim at GET /llm/models.
 	LLMModelsPath string
 	Log           Logger
+}
+
+type authoritativeTurnRuntime interface {
+	AppendEvent(context.Context, uuid.UUID, turnruntime.Event) error
+	Finalize(context.Context, uuid.UUID, turnruntime.FinalizeInput) error
 }
 
 // Routes returns the HTTP handler for all of the bridge's endpoints.
@@ -146,7 +154,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.relayMessages(r.Context(), conn, agentID)
+	s.relayMessages(r.Context(), conn, agentID, sessionID)
 
 	s.Registry.Unregister(context.WithoutCancel(r.Context()), agentID, cfg.ProjectID, sessionID)
 	s.Log.Info("acpbridge: bridge disconnected", "agent_id", agentID)
@@ -155,7 +163,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 // relayMessages reads event/turn_status/ping messages from the daemon until
 // the connection closes — mirrors bridge_ws's `while True: ... receive_json()`
 // loop.
-func (s *Server) relayMessages(ctx context.Context, conn *websocket.Conn, agentID uuid.UUID) {
+func (s *Server) relayMessages(ctx context.Context, conn *websocket.Conn, agentID uuid.UUID, sessionID string) {
 	for {
 		var msg map[string]any
 		if err := wsjson.Read(ctx, conn, &msg); err != nil {
@@ -167,12 +175,26 @@ func (s *Server) relayMessages(ctx context.Context, conn *websocket.Conn, agentI
 		}
 		switch msgType, _ := msg["type"].(string); msgType {
 		case "event":
-			s.handleEventMessage(ctx, agentID, msg)
+			if _, authoritative := msg["turn_id"].(string); authoritative {
+				s.ackAuthoritativeDelivery(ctx, conn, msg, s.handleAuthoritativeEvent(ctx, agentID, msg))
+			} else {
+				s.handleEventMessage(ctx, agentID, msg)
+			}
 		case "turn_status":
-			s.handleTurnStatusMessage(ctx, agentID, msg)
+			if _, authoritative := msg["turn_id"].(string); authoritative {
+				s.ackAuthoritativeDelivery(ctx, conn, msg, s.handleAuthoritativeStatus(ctx, agentID, msg))
+			} else {
+				s.handleTurnStatusMessage(ctx, agentID, msg)
+			}
+		case "dispatch_ack":
+			deliveryID, _ := msg["ack_delivery_id"].(string)
+			if err := s.Registry.AcknowledgeDispatch(ctx, agentID, sessionID, deliveryID); err != nil {
+				s.Log.Warn("acpbridge: rejected start acknowledgement", "agent_id", agentID, "error", err)
+			}
 		case "ping":
-			if err := s.Registry.Heartbeat(ctx, agentID); err != nil {
+			if err := s.Registry.Heartbeat(ctx, agentID, sessionID); err != nil {
 				s.Log.Warn("acpbridge: failed to refresh heartbeat", "agent_id", agentID, "error", err)
+				return
 			}
 			if err := wsjson.Write(ctx, conn, map[string]string{"type": "pong"}); err != nil {
 				return
@@ -331,16 +353,186 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 		}
 	}
 
-	// Durable terminal status: mirror handler.publishTerminalStatus so
-	// services/api's automation engine can record the "agent.session.finished"
-	// task activity (resolving the handoff persisted above — it must come
-	// first, same ordering as the llm path) and resume a trigger_ai_agent
-	// walk paused on this conversation. Best-effort.
+	// Durable terminal status mirrors handler.publishTerminalStatus so a
+	// trigger_ai_agent automation walk paused on this execution can resume.
+	// The internal handoff above is not projected to task activity.
 	if statusStr == "finished" || statusStr == "failed" || statusStr == "stopped" {
 		if err := s.Publisher.PublishConversationStatus(ctx, convID, statusStr); err != nil {
 			s.Log.Warn("acpbridge: failed to publish conversation status",
 				"conversation_id", convID, "status", statusStr, "error", err)
 		}
+	}
+}
+
+func (s *Server) handleAuthoritativeEvent(ctx context.Context, agentID uuid.UUID, msg map[string]any) error {
+	if s.TurnRuntime == nil {
+		return errors.New("authoritative turn runtime is unavailable")
+	}
+	turnID, runID, claimToken, ok := authoritativeIDs(msg)
+	if !ok {
+		return errors.New("invalid authoritative turn identity")
+	}
+	sequence, ok := messageInt(msg["sequence"])
+	if !ok || sequence < 0 {
+		return errors.New("invalid authoritative event sequence")
+	}
+	eventID, err := uuid.Parse(stringValue(msg["event_id"]))
+	if err != nil {
+		return errors.New("invalid authoritative event id")
+	}
+	eventType := stringValue(msg["event_type"])
+	if eventType == "" {
+		eventType = "ACPEvent"
+	}
+	eventSource := stringValue(msg["event_source"])
+	if eventSource == "" {
+		eventSource = "agent"
+	}
+	payload := rawBridgePayload(msg["payload"])
+	createdAt, err := time.Parse(time.RFC3339Nano, stringValue(msg["created_at"]))
+	if err != nil {
+		return errors.New("invalid authoritative event timestamp")
+	}
+	if err := s.TurnRuntime.AppendEvent(ctx, turnID, turnruntime.Event{
+		ID: eventID, RunID: runID, ClaimToken: claimToken, Sequence: sequence,
+		EventType: eventType, EventSource: eventSource, Payload: payload, CreatedAt: createdAt,
+	}); err != nil {
+		s.Log.Warn("acpbridge: rejected authoritative turn event", "turn_id", turnID, "run_id", runID, "agent_id", agentID, "error", err)
+		return err
+	}
+	return nil
+}
+
+func (s *Server) handleAuthoritativeStatus(ctx context.Context, agentID uuid.UUID, msg map[string]any) error {
+	if s.TurnRuntime == nil {
+		return errors.New("authoritative turn runtime is unavailable")
+	}
+	turnID, runID, claimToken, ok := authoritativeIDs(msg)
+	if !ok {
+		return errors.New("invalid authoritative turn identity")
+	}
+	status := stringValue(msg["status"])
+	disposition := "retired"
+	var stableEventID *uuid.UUID
+	var finalSequence *int
+	var errorCode, errorMessage *string
+	switch status {
+	case "finished":
+		stable := strings.TrimSpace(stringValue(msg["stable_output"]))
+		if stable == "" {
+			status = "no_output"
+			code, message := "no_stable_output", "The ACP agent completed without a stable response."
+			errorCode, errorMessage = &code, &message
+			break
+		}
+		sequence, sequenceOK := messageInt(msg["stable_sequence"])
+		eventID, idErr := uuid.Parse(stringValue(msg["stable_event_id"]))
+		createdAt, timeErr := time.Parse(time.RFC3339Nano, stringValue(msg["stable_created_at"]))
+		if !sequenceOK || sequence < 0 || idErr != nil || timeErr != nil {
+			return errors.New("invalid authoritative stable output metadata")
+		}
+		payload, _ := json.Marshal(map[string]string{"text": stable})
+		if err := s.TurnRuntime.AppendEvent(ctx, turnID, turnruntime.Event{
+			ID: eventID, RunID: runID, ClaimToken: claimToken, Sequence: sequence,
+			EventType: turnruntime.StableOutputEventType, EventSource: "agent",
+			Payload: payload, CreatedAt: createdAt,
+		}); err != nil {
+			s.Log.Warn("acpbridge: rejected authoritative stable event", "turn_id", turnID, "error", err)
+			return err
+		}
+		// The local ACP subprocess environment is turn-scoped. Retire it after
+		// success until the bridge can rotate policy/credentials inside a live
+		// runtime without inheriting the prior turn's authority.
+		status, disposition, stableEventID, finalSequence = "succeeded", "retired", &eventID, &sequence
+	case "failed":
+		code, message := "acp_execution_failed", stringValue(msg["error_message"])
+		if message == "" {
+			message = "The ACP agent failed to complete this turn."
+		}
+		errorCode, errorMessage = &code, &message
+	case "stopped", "cancelled":
+		code, message := "acp_"+status, "The ACP turn was "+status+"."
+		errorCode, errorMessage = &code, &message
+	default:
+		return errors.New("invalid authoritative terminal status")
+	}
+	if err := s.TurnRuntime.Finalize(ctx, turnID, turnruntime.FinalizeInput{
+		RunID: runID, ClaimToken: claimToken, TerminalStatus: status,
+		StableOutputEventID: stableEventID, GeneratedByAgentID: agentID,
+		ErrorCode: errorCode, ErrorMessage: errorMessage,
+		RuntimeDisposition: disposition, FinalSequence: finalSequence,
+	}); err != nil {
+		s.Log.Warn("acpbridge: rejected authoritative turn status", "turn_id", turnID, "run_id", runID, "agent_id", agentID, "status", status, "error", err)
+		return err
+	}
+	return nil
+}
+
+func (s *Server) ackAuthoritativeDelivery(ctx context.Context, conn *websocket.Conn, msg map[string]any, deliveryErr error) {
+	deliveryID := stringValue(msg["delivery_id"])
+	if deliveryID == "" || !authoritativeDeliveryComplete(deliveryErr) {
+		return
+	}
+	ack := map[string]any{"type": "delivery_ack", "delivery_id": deliveryID, "accepted": deliveryErr == nil}
+	if deliveryErr != nil {
+		code := turnruntime.ErrorCode(deliveryErr)
+		if code == "" {
+			code = "INVALID_DELIVERY"
+		}
+		ack["error_code"] = code
+	}
+	if err := wsjson.Write(ctx, conn, ack); err != nil {
+		s.Log.Warn("acpbridge: failed to acknowledge authoritative delivery", "delivery_id", deliveryID, "error", err)
+	}
+}
+
+func authoritativeDeliveryComplete(err error) bool {
+	if err == nil {
+		return true
+	}
+	var apiErr *turnruntime.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= 400 && apiErr.Status < 500
+	}
+	// Locally invalid wire data is permanent. Network/control-plane failures
+	// arrive as other concrete errors from the runtime client and are retried.
+	return strings.HasPrefix(err.Error(), "invalid authoritative")
+}
+
+func authoritativeIDs(msg map[string]any) (uuid.UUID, uuid.UUID, uuid.UUID, bool) {
+	turnID, turnErr := uuid.Parse(stringValue(msg["turn_id"]))
+	runID, runErr := uuid.Parse(stringValue(msg["run_id"]))
+	claimToken, claimErr := uuid.Parse(stringValue(msg["claim_token"]))
+	return turnID, runID, claimToken, turnErr == nil && runErr == nil && claimErr == nil
+}
+
+func rawBridgePayload(value any) json.RawMessage {
+	if raw, ok := value.(string); ok && json.Valid([]byte(raw)) {
+		return json.RawMessage(raw)
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return encoded
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func messageInt(value any) (int, bool) {
+	switch number := value.(type) {
+	case float64:
+		return int(number), number == float64(int(number))
+	case int:
+		return number, true
+	case json.Number:
+		integer, err := number.Int64()
+		return int(integer), err == nil
+	default:
+		return 0, false
 	}
 }
 

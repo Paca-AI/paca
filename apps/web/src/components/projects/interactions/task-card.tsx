@@ -4,6 +4,7 @@ import {
 	Layers,
 	Link,
 	Loader2,
+	MessageSquare,
 	Search,
 	User,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { useCanStartTaskChat } from "@/hooks/use-can-use-project-chats";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
 import {
@@ -41,6 +43,7 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
+import { TaskChatLauncher } from "./task-chat-agent-dialog";
 import { useEpicSearch } from "./use-epic-search";
 import {
 	createEpicScrollHandler,
@@ -103,6 +106,7 @@ export function TaskCard({
 	onMoveRight,
 }: TaskCardProps) {
 	const { t } = useTranslation("projects");
+	const canChat = useCanStartTaskChat(task.project_id);
 	const [isHovered, setIsHovered] = useState(false);
 	const [typePopoverOpen, setTypePopoverOpen] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);
@@ -750,6 +754,33 @@ export function TaskCard({
 				draggable && "cursor-grab active:cursor-grabbing",
 			)}
 		>
+			{canChat && (
+				<TaskChatLauncher
+					projectId={task.project_id}
+					taskId={task.id}
+					taskTitle={task.title}
+				>
+					{(openAgentPicker) => (
+						<button
+							type="button"
+							draggable={false}
+							onClick={(event) => {
+								event.stopPropagation();
+								openAgentPicker();
+							}}
+							onMouseDown={(event) => event.stopPropagation()}
+							onDragStart={(event) => {
+								event.preventDefault();
+								event.stopPropagation();
+							}}
+							aria-label={t("chats.discussTask")}
+							className="nodrag absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-md bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border/50 transition-opacity hover:text-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+						>
+							<MessageSquare className="size-3.5" />
+						</button>
+					)}
+				</TaskChatLauncher>
+			)}
 			{draggable && (
 				<div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
 					<GripVertical className="size-3.5 text-muted-foreground/60" />

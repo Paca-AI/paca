@@ -7,6 +7,7 @@ import (
 
 	"github.com/Paca-AI/agent-runner/internal/acp"
 	"github.com/Paca-AI/agent-runner/internal/agent"
+	"github.com/Paca-AI/agent-runner/internal/secret"
 )
 
 func findPacaServer(t *testing.T, servers []acp.MCPServerConfig) acp.MCPServerConfig {
@@ -63,5 +64,69 @@ func TestBuildMCPServers_OmitsRepoPluginIDsWhenAbsent(t *testing.T) {
 
 	if _, ok := envValue(paca.Env, "PACA_REPO_PLUGIN_IDS"); ok {
 		t.Errorf("PACA_REPO_PLUGIN_IDS should be omitted when trigger.RepoPluginIDs is empty, env: %+v", paca.Env)
+	}
+}
+
+func TestAuthoritativePrivateTurnExcludesAgentCredentialsAndMCP(t *testing.T) {
+	encryptor, err := secret.NewEncryptor(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypt := func(value string) string {
+		t.Helper()
+		ciphertext, encryptErr := encryptor.Encrypt(value)
+		if encryptErr != nil {
+			t.Fatal(encryptErr)
+		}
+		return ciphertext
+	}
+
+	e := &Executor{
+		encryptor: encryptor,
+		opts: Options{
+			PacaAPIKey:     "long-lived-paca-key",
+			PacaAPIURL:     "http://api",
+			PacaGatewayURL: "http://gateway",
+		},
+	}
+	turnID := uuid.New()
+	trigger := agent.Trigger{
+		ConversationID: uuid.New(),
+		AgentID:        uuid.New(),
+		TurnID:         &turnID,
+		RepoPluginIDs:  []string{"com.paca.github"},
+	}
+	cfg := agent.Config{
+		ID:              uuid.New(),
+		LLMProvider:     "openai",
+		LLMModel:        "gpt-test",
+		LLMAPIKeySecret: encrypt("provider-key"),
+		EnvVars: []agent.EnvVar{
+			{Key: "PACA_API_KEY", EncryptedValue: encrypt("agent-paca-key")},
+			{Key: "USER_SECRET", EncryptedValue: encrypt("agent-secret")},
+		},
+		MCPServers: []agent.MCPServer{{
+			ServerName: "user-mcp",
+			Transport:  "stdio",
+			Command:    "/usr/bin/user-mcp",
+			Env:        map[string]string{"MCP_SECRET": "mcp-secret"},
+			IsEnabled:  true,
+		}},
+	}
+
+	env, servers, err := e.buildContainerEnvironment(trigger, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 0 {
+		t.Fatalf("authoritative private turn received MCP servers: %+v", servers)
+	}
+	for _, forbidden := range []string{"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL", "PACA_REPO_PLUGIN_IDS", "USER_SECRET", "MCP_SECRET"} {
+		if _, ok := env[forbidden]; ok {
+			t.Errorf("authoritative private turn received forbidden environment variable %q", forbidden)
+		}
+	}
+	if env["OPENAI_API_KEY"] != "provider-key" || env["GOOSE_PROVIDER"] != "openai" || env["GOOSE_MODEL"] != "gpt-test" {
+		t.Fatalf("required provider environment missing or changed: %+v", env)
 	}
 }

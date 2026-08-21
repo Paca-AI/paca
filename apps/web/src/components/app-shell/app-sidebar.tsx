@@ -889,9 +889,9 @@ function NavItem({
 const PROJECT_NAV_ITEMS = [
 	{ segment: "agents", icon: Bot, labelKey: "nav.agents" },
 	{
-		segment: "conversations",
+		segment: "chats",
 		icon: MessageSquare,
-		labelKey: "nav.conversations",
+		labelKey: "nav.chats",
 	},
 	{ segment: "automation", icon: Workflow, labelKey: "nav.automation" },
 	{ segment: "team", icon: Users, labelKey: "nav.team" },
@@ -922,7 +922,7 @@ function ProjectNav() {
 
 const ANON_HIDDEN_SEGMENTS = new Set([
 	"agents",
-	"conversations",
+	"chats",
 	"automation",
 	"team",
 	"settings",
@@ -937,6 +937,10 @@ function ProjectNavItems({
 }) {
 	const { t } = useTranslation("appShell");
 	const location = useRouterState({ select: (s) => s.location.pathname });
+	const { hasPermission } = usePermissions();
+	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const canReadChats =
+		hasPermission("agents.read") || hasProjectPermission("agents.read");
 
 	const [collapsed, setCollapsed] = useState(() => {
 		try {
@@ -983,7 +987,9 @@ function ProjectNavItems({
 				<SidebarGroupContent>
 					<SidebarMenu>
 						{PROJECT_NAV_ITEMS.filter(
-							(item) => !isAnonymous || !ANON_HIDDEN_SEGMENTS.has(item.segment),
+							(item) =>
+								(!isAnonymous || !ANON_HIDDEN_SEGMENTS.has(item.segment)) &&
+								(item.segment !== "chats" || canReadChats),
 						).map(({ segment, icon: Icon, labelKey }) => {
 							const href = segment
 								? `/projects/${projectId}/${segment}`

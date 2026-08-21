@@ -312,6 +312,18 @@ const (
 	CodeAgentConversationEventInvalidCursor Code = "AGENT_CONVERSATION_EVENT_INVALID_CURSOR"
 	// CodeAgentChatSessionNotFound indicates the requested chat session does not exist.
 	CodeAgentChatSessionNotFound Code = "AGENT_CHAT_SESSION_NOT_FOUND"
+	// CodeAgentTurnNotFound indicates the requested authoritative turn does not exist.
+	CodeAgentTurnNotFound Code = "AGENT_TURN_NOT_FOUND"
+	// CodeAgentTurnConflict indicates an active, expired, or already-finalized turn transition.
+	CodeAgentTurnConflict Code = "AGENT_TURN_CONFLICT"
+	// CodeAgentContextSourceNotFound hides missing and unauthorized context sources alike.
+	CodeAgentContextSourceNotFound Code = "AGENT_CONTEXT_SOURCE_NOT_FOUND"
+	// CodeAgentConclusionNotFound indicates the requested preparation/publication does not exist.
+	CodeAgentConclusionNotFound Code = "AGENT_CONCLUSION_NOT_FOUND"
+	// CodeAgentConclusionConflict indicates a stale, expired, or non-publishable conclusion request.
+	CodeAgentConclusionConflict Code = "AGENT_CONCLUSION_CONFLICT"
+	// CodeIdempotencyConflict indicates one idempotency key was reused with a different command.
+	CodeIdempotencyConflict Code = "IDEMPOTENCY_CONFLICT"
 	// CodeAgentEnvVarNotFound indicates the requested environment variable does not exist.
 	CodeAgentEnvVarNotFound Code = "AGENT_ENV_VAR_NOT_FOUND"
 	// CodeAgentEnvVarKeyTaken indicates the environment variable key is already in use on this agent.

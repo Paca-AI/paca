@@ -119,6 +119,10 @@ type ConversationRepository interface {
 	// yet — an unstarted chat session is a normal state, not an error.
 	FindLatestConversationByChatSession(ctx context.Context, chatSessionID uuid.UUID) (*AgentConversation, error)
 	CreateConversation(ctx context.Context, c *AgentConversation) error
+	// HasAuthoritativeTurnForConversation reports whether conversationID is
+	// runtime continuity owned by the session/turn contract. Legacy control
+	// endpoints must not mutate such a conversation independently.
+	HasAuthoritativeTurnForConversation(ctx context.Context, conversationID uuid.UUID) (bool, error)
 	UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error
 	// ClaimConversationStatus atomically transitions a conversation from
 	// fromStatus to toStatus and reports whether it won the race (false means

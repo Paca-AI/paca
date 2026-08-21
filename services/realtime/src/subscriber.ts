@@ -102,7 +102,11 @@ export function createSubscriber(
 	return client;
 }
 
-function routeEvent(io: Server, msg: RealtimeMessage, logger: Logger): void {
+export function routeEvent(
+	io: Server,
+	msg: RealtimeMessage,
+	logger: Logger,
+): void {
 	const { type } = msg;
 	const payload = eventPayload(msg);
 	if (!payload) {
@@ -141,6 +145,16 @@ function routeEvent(io: Server, msg: RealtimeMessage, logger: Logger): void {
 				"routing owner-private agent event to user room",
 			);
 			io.to(room).emit("event", { type, payload });
+			return;
+		}
+		// A finished authoritative chat turn is owner-private by definition.
+		// Fail closed when a malformed producer omits its owner scope instead
+		// of falling through to the project room via project_id.
+		if (type === "agent.turn.finished") {
+			logger.debug(
+				{ type },
+				"owner-private agent event has no actor_user_id — skipped",
+			);
 			return;
 		}
 	}

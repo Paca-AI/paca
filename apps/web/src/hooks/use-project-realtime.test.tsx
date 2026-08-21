@@ -338,4 +338,69 @@ describe("useProjectRealtime", () => {
 			queryKey: ["projects", "proj-abc", "conversations"],
 		});
 	});
+
+	it("refetches authoritative session and turn results on agent.turn.finished", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({
+			type: "agent.turn.finished",
+			payload: {
+				project_id: "proj-abc",
+				session_id: "session-1",
+				turn_id: "turn-1",
+				status: "succeeded",
+				stable_output: "must never be accepted from realtime",
+			},
+		});
+
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "chat-sessions"],
+		});
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "chat-sessions", "session-1", "turns"],
+		});
+		expect(mocks.setQueryData).not.toHaveBeenCalled();
+	});
+
+	it("ignores authoritative Chat events for another project", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({
+			type: "agent.turn.finished",
+			payload: { project_id: "proj-other", session_id: "session-1" },
+		});
+
+		expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+		expect(mocks.setQueryData).not.toHaveBeenCalled();
+	});
+
+	it("refetches a task's publication and activity projection", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({
+			type: "agent.conclusion.revised",
+			payload: {
+				project_id: "proj-abc",
+				target_task_id: "task-1",
+				publication_id: "publication-2",
+			},
+		});
+
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "tasks", "task-1"],
+		});
+		expect(mocks.setQueryData).not.toHaveBeenCalled();
+	});
 });

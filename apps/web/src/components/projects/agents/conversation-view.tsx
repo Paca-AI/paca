@@ -135,11 +135,14 @@ interface ConversationViewProps {
 	/** Absent for a global-chat conversation (home/admin pages, no project). */
 	projectId?: string;
 	conversationId: string;
+	/** Session-backed legacy conversations are execution records only. */
+	readOnly?: boolean;
 }
 
 export function ConversationView({
 	projectId,
 	conversationId: routeConversationId,
+	readOnly = false,
 }: ConversationViewProps) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -216,9 +219,11 @@ export function ConversationView({
 	// always continue it. LLM conversations are unchanged: only chat_message
 	// ones with a live session, and never once terminal (handled
 	// transparently by onNew below via the returned conversation id).
-	const canReply = isACP
-		? !isChatMessage || !!conversation?.chat_session_id
-		: isChatMessage && !!conversation?.chat_session_id && !isTerminal;
+	const canReply =
+		!readOnly &&
+		(isACP
+			? !isChatMessage || !!conversation?.chat_session_id
+			: isChatMessage && !!conversation?.chat_session_id && !isTerminal);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -303,7 +308,7 @@ export function ConversationView({
 
 	const runtime = useExternalStoreRuntime({
 		messages,
-		isRunning,
+		isRunning: !readOnly && isRunning,
 		convertMessage: (m) => m,
 		onNew,
 		onCancel,
@@ -319,7 +324,12 @@ export function ConversationView({
 	// local bridge daemon owns their lifecycle instead), so heartbeating one
 	// would just be a wasted round trip.
 	useEffect(() => {
-		if (conversation?.trigger_type !== "chat_message" || isTerminal || isACP)
+		if (
+			readOnly ||
+			conversation?.trigger_type !== "chat_message" ||
+			isTerminal ||
+			isACP
+		)
 			return;
 		const ping = () => {
 			void (
@@ -335,6 +345,7 @@ export function ConversationView({
 		conversation?.trigger_type,
 		isTerminal,
 		isACP,
+		readOnly,
 		projectId,
 		conversationId,
 	]);
@@ -433,6 +444,11 @@ export function ConversationView({
 					>
 						{statusLabel}
 					</Badge>
+					{readOnly && (
+						<Badge variant="secondary" className="text-[10px]">
+							{t("chats.legacyExecutionsReadOnly")}
+						</Badge>
+					)}
 				</div>
 
 				<div className="flex items-center gap-3 shrink-0">
@@ -453,11 +469,13 @@ export function ConversationView({
 							{t("agents.conversationView.pr")}
 						</a>
 					)}
-					<ConversationControls
-						projectId={projectId}
-						conversation={conversation}
-						isACP={isACP}
-					/>
+					{!readOnly && (
+						<ConversationControls
+							projectId={projectId}
+							conversation={conversation}
+							isACP={isACP}
+						/>
+					)}
 				</div>
 			</div>
 

@@ -99,14 +99,15 @@ type dindSidecar struct {
 // before returning — callers don't need their own partial-failure cleanup
 // for this pairing the way Start's own cleanup() already doesn't need to
 // know about it on success.
-func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (sidecar *dindSidecar, err error) {
+func (m *Manager) startDindSidecar(ctx context.Context, conversationID, turnID string) (sidecar *dindSidecar, err error) {
 	if err := m.ensureImage(ctx, sandbox.DindImage); err != nil {
 		return nil, err
 	}
 
+	labels := managedLabels(conversationID, turnID)
 	netResult, err := m.docker.NetworkCreate(ctx, conversationNetworkName(conversationID), client.NetworkCreateOptions{
 		Driver: "bridge",
-		Labels: map[string]string{labelConvID: conversationID, labelManaged: "true"},
+		Labels: labels,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sandbox/docker: create conversation network: %w", err)
@@ -121,12 +122,9 @@ func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (
 	created, err := m.docker.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Name: dindContainerName(conversationID),
 		Config: &container.Config{
-			Image: sandbox.DindImage,
-			Env:   []string{"DOCKER_TLS_CERTDIR="},
-			Labels: map[string]string{
-				labelConvID:  conversationID,
-				labelManaged: "true",
-			},
+			Image:  sandbox.DindImage,
+			Env:    []string{"DOCKER_TLS_CERTDIR="},
+			Labels: labels,
 		},
 		HostConfig: &container.HostConfig{
 			AutoRemove: true,

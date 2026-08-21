@@ -163,3 +163,85 @@ func TestBuildInitialMessage_NoPriorHandoffs(t *testing.T) {
 		t.Errorf("should not render a handoffs section when empty, got:\n%s", msg)
 	}
 }
+
+func TestBuildInitialMessage_ExpandsPrivateChatUpdateDescriptionCommand(t *testing.T) {
+	chatSessionID := uuid.New()
+	trigger := agent.Trigger{
+		TriggerType:   agent.TriggerChatMessage,
+		ChatSessionID: &chatSessionID,
+		Message:       "/更新描述 保留原有验收标准",
+	}
+
+	msg := buildInitialMessage(trigger)
+
+	for _, want := range []string{
+		"## Paca Chat Command",
+		"complete standalone replacement description",
+		"/更新描述 保留原有验收标准",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected command prompt to contain %q, got:\n%s", want, msg)
+		}
+	}
+}
+
+func TestBuildInitialMessage_ExpandsPrivateChatRecordConclusionCommand(t *testing.T) {
+	chatSessionID := uuid.New()
+	trigger := agent.Trigger{
+		TriggerType:   agent.TriggerChatMessage,
+		ChatSessionID: &chatSessionID,
+		Message:       "/record-conclusion",
+	}
+
+	msg := buildInitialMessage(trigger)
+	if !strings.Contains(msg, "standalone conclusion suitable for the target task's activity history") {
+		t.Errorf("expected record-conclusion instruction, got:\n%s", msg)
+	}
+}
+
+func TestBuildInitialMessage_DoesNotExpandSlashTextOutsidePrivateChat(t *testing.T) {
+	trigger := agent.Trigger{
+		TriggerType: agent.TriggerChatMessage,
+		Message:     "/更新描述",
+	}
+
+	msg := buildInitialMessage(trigger)
+	if strings.Contains(msg, "## Paca Chat Command") {
+		t.Errorf("non-private chat should not receive command instruction, got:\n%s", msg)
+	}
+}
+
+func TestBuildResumedMessage_ExpandsPrivateChatCommandWithoutRepeatingContext(t *testing.T) {
+	chatSessionID := uuid.New()
+	trigger := agent.Trigger{
+		ChatSessionID: &chatSessionID,
+		Message:       "/记录结论 只保留已经确认的决定",
+	}
+
+	msg := buildResumedMessage(trigger)
+	for _, want := range []string{
+		"## Paca Chat Command",
+		"standalone conclusion",
+		"## User Message",
+		"/记录结论 只保留已经确认的决定",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("expected resumed command prompt to contain %q, got:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "Current Project Context") {
+		t.Errorf("resumed command should not repeat cold-start context, got:\n%s", msg)
+	}
+}
+
+func TestBuildResumedMessage_LeavesOrdinaryMessageUnchanged(t *testing.T) {
+	chatSessionID := uuid.New()
+	trigger := agent.Trigger{
+		ChatSessionID: &chatSessionID,
+		Message:       "ordinary follow-up",
+	}
+
+	if got := buildResumedMessage(trigger); got != trigger.Message {
+		t.Errorf("ordinary resumed message changed: %q", got)
+	}
+}

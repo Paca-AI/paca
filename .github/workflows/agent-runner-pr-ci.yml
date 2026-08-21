@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "services/agent-runner/**"
+      - "services/agent-server/**"
       - ".github/workflows/agent-runner-pr-ci.yml"
   workflow_dispatch:
 

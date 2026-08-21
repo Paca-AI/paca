@@ -6,6 +6,18 @@ import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
 import { TaskCard } from "./task-card";
 
+vi.mock("@/hooks/use-can-use-project-chats", () => ({
+	useCanStartTaskChat: () => true,
+}));
+
+vi.mock("./task-chat-agent-dialog", () => ({
+	TaskChatLauncher: ({
+		children,
+	}: {
+		children: (open: () => void) => ReactNode;
+	}) => children(() => {}),
+}));
+
 // TaskCard's epic-picker field now calls useEpicSearch (useInfiniteQuery)
 // unconditionally, so it needs a QueryClientProvider ancestor even though the
 // query stays disabled (epicOpen is never toggled true) in these tests.
@@ -150,6 +162,26 @@ describe("TaskCard", () => {
 		const card = container.querySelector("[data-task-id='task-1']") as Element;
 		fireEvent.dragStart(card);
 		expect(onDragStart).toHaveBeenCalledOnce();
+	});
+
+	it("does not start a task drag from the chat link", () => {
+		const onDragStart = vi.fn();
+		render(
+			<TaskCard
+				task={makeTask()}
+				statuses={NO_STATUSES}
+				taskTypes={NO_TYPES}
+				canEdit={true}
+				onDragStart={onDragStart}
+			/>,
+			{ wrapper },
+		);
+		const chatButton = screen.getByRole("button", {
+			name: /discuss with agent/i,
+		});
+		expect(chatButton).toHaveAttribute("draggable", "false");
+		fireEvent.dragStart(chatButton);
+		expect(onDragStart).not.toHaveBeenCalled();
 	});
 
 	it("calls onDragEnd when drag ends", () => {

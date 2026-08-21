@@ -5,6 +5,7 @@ import {
 	Layers,
 	Link,
 	Loader2,
+	MessageSquare,
 	Search,
 	User,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { useCanStartTaskChat } from "@/hooks/use-can-use-project-chats";
 import { formatDate } from "@/lib/format-date";
 import type { Task } from "@/lib/interaction-api";
 import {
@@ -41,6 +43,7 @@ import {
 	IMPORTANCE_BUCKET_VALUES,
 	PRIORITY_LEVELS,
 } from "./priority";
+import { TaskChatLauncher } from "./task-chat-agent-dialog";
 import { TaskTypeSelector } from "./task-type-selector";
 import { useEpicSearch } from "./use-epic-search";
 import {
@@ -187,6 +190,7 @@ export function TaskRow({
 	onMoveRight,
 }: TaskRowProps) {
 	const { t } = useTranslation("projects");
+	const canChat = useCanStartTaskChat(task.project_id);
 	const status = statuses.find((s) => s.id === task.status_id);
 	const [isHovered, setIsHovered] = useState(false);
 	const [epicOpen, setEpicOpen] = useState(false);
@@ -853,6 +857,34 @@ export function TaskRow({
 
 			{/* Dynamic field columns */}
 			{visibleFields.map(renderCell)}
+
+			{canChat && (
+				<TaskChatLauncher
+					projectId={task.project_id}
+					taskId={task.id}
+					taskTitle={task.title}
+				>
+					{(openAgentPicker) => (
+						<button
+							type="button"
+							draggable={false}
+							onClick={(event) => {
+								event.stopPropagation();
+								openAgentPicker();
+							}}
+							onMouseDown={(event) => event.stopPropagation()}
+							onDragStart={(event) => {
+								event.preventDefault();
+								event.stopPropagation();
+							}}
+							aria-label={t("chats.discussTask")}
+							className="nodrag flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+						>
+							<MessageSquare className="size-3.5" />
+						</button>
+					)}
+				</TaskChatLauncher>
+			)}
 		</div>
 	);
 }

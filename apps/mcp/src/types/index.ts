@@ -39,6 +39,10 @@ export interface PacaConfig {
 	 * entirely — see server.ts's tool-listing handler.
 	 */
 	repoPluginIds?: string[];
+	/** Authoritative private turn identity forwarded on every API request. */
+	agentTurnId?: string;
+	/** Deny-by-default capability intersection supplied by the turn claim. */
+	turnAllowedCapabilities?: string[];
 }
 
 export interface PermissionMap {

@@ -32,6 +32,7 @@ import (
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	redisRepo "github.com/Paca-AI/api/internal/repository/redis"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
+	agentturnsvc "github.com/Paca-AI/api/internal/service/agentturn"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
@@ -67,6 +68,8 @@ type App struct {
 	notificationConsumer *worker.NotificationConsumer
 	pluginEventConsumer  *worker.PluginEventConsumer
 	automationConsumer   *worker.AutomationConsumer
+	agentOutboxPublisher *worker.AgentOutboxPublisher
+	agentTurnExpiry      *worker.AgentTurnExpiryScheduler
 	dueDateScheduler     *worker.DueDateScheduler
 	cronScheduler        *worker.CronScheduler
 	waitScheduler        *worker.WaitScheduler
@@ -149,6 +152,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
+	agentTurnRepo := pgRepo.NewAgentTurnRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
 	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
@@ -158,6 +162,7 @@ func New(cfg *config.Config) (*App, error) {
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
 		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
+	projectChatService := agentturnsvc.New(agentTurnRepo, agentRepo, authorizer)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
@@ -189,11 +194,12 @@ func New(cfg *config.Config) (*App, error) {
 		WithNotificationService(notificationService)
 	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
-	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log).
-		WithHandoffReader(agentRepo)
+	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log)
 	dueDateScheduler := worker.NewDueDateScheduler(redisClient, automationConsumer, log)
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
+	agentOutboxPublisher := worker.NewAgentOutboxPublisher(agentTurnRepo, publisher, log)
+	agentTurnExpiry := worker.NewAgentTurnExpiryScheduler(agentTurnRepo, log)
 
 	// Object storage — defaults to MinIO; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
@@ -370,6 +376,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService)
+	projectChatHandler := handler.NewProjectChatHandler(projectChatService, projectRepo)
+	agentTurnRuntimeHandler := handler.NewAgentTurnRuntimeHandler(agentTurnRepo, cfg.AIAgentInternalKey)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)
 	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 
@@ -418,6 +426,8 @@ func New(cfg *config.Config) (*App, error) {
 		Skills:             handler.NewSkillsHandler(pluginService, cfg.Plugins.SkillsDir),
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
+		ProjectChat:        projectChatHandler,
+		AgentTurnRuntime:   agentTurnRuntimeHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
@@ -435,7 +445,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, agentOutboxPublisher: agentOutboxPublisher, agentTurnExpiry: agentTurnExpiry, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -447,6 +457,8 @@ func (a *App) Run() error {
 	a.notificationConsumer.Start(context.Background())
 	a.pluginEventConsumer.Start(context.Background())
 	a.automationConsumer.Start(context.Background())
+	a.agentOutboxPublisher.Start(context.Background())
+	a.agentTurnExpiry.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
 	a.waitScheduler.Start(context.Background())
@@ -461,6 +473,8 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.notificationConsumer.Stop()
 	a.pluginEventConsumer.Stop()
 	a.automationConsumer.Stop()
+	a.agentOutboxPublisher.Stop()
+	a.agentTurnExpiry.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()
 	a.waitScheduler.Stop()

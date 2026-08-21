@@ -279,6 +279,11 @@ type AgentConversationEvent struct {
 	ID             uuid.UUID
 	ConversationID uuid.UUID
 	EventIndex     int
+	TurnID         *uuid.UUID
+	TurnRunID      *uuid.UUID
+	TurnRunAttempt *int
+	TurnSequence   *int
+	TurnClaimToken *uuid.UUID
 	EventType      string
 	EventSource    string // agent | user | system
 	Payload        map[string]any

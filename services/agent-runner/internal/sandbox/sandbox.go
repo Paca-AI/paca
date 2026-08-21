@@ -82,7 +82,11 @@ const MCPDevMountPath = "/opt/paca-mcp-dev"
 // var/PACA_* MCP vars, since that mapping is agent-config logic, not
 // sandbox-lifecycle logic.
 type Config struct {
-	ConversationID    string
+	ConversationID string
+	// TurnID is populated only for authoritative project-chat runs. Backends
+	// persist it as resource metadata so the lease-aware orphan reaper can
+	// distinguish these workloads from legacy conversation sandboxes.
+	TurnID            string
 	Image             string
 	Env               map[string]string
 	GitCommitterName  string

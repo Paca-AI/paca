@@ -80,9 +80,21 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	seq := testDBSeq.Add(1)
 	testDBName := fmt.Sprintf("e2e_ar_%04d", seq)
 
-	adminDB, err := postgres.Open(sharedPGDSN)
-	if err != nil {
-		t.Fatalf("open admin db for test isolation: %v", err)
+	// The log readiness strategy can observe Postgres's first temporary ready
+	// phase before its startup restart has completed. Retry the first SQL
+	// connection so a fresh suite never flakes with SQLSTATE 57P03.
+	var adminDB *sqlx.DB
+	var err error
+	adminDeadline := time.Now().Add(15 * time.Second)
+	for {
+		adminDB, err = postgres.Open(sharedPGDSN)
+		if err == nil {
+			break
+		}
+		if time.Now().After(adminDeadline) {
+			t.Fatalf("open admin db for test isolation: %v", err)
+		}
+		time.Sleep(300 * time.Millisecond)
 	}
 	if _, err := adminDB.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %q`, testDBName)); err != nil {
 		_ = adminDB.Close()

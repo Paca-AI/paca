@@ -1,4 +1,4 @@
--- Durable task-level agent handoffs (#392).
+-- Migration 000042: durable task-level agent handoffs (#392).
 --
 -- A successful task-linked agent conversation's final reply is persisted here
 -- so a later conversation on the same task can recover the prior conclusion,

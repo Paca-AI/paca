@@ -76,12 +76,40 @@ jobs:
         run: make build
 
   # ---------------------------------------------------------------------------
-  # 3. Unit & integration tests — in-memory fakes, no external services needed
+  # 3. Unit & integration tests — fakes plus blocking PostgreSQL/Valkey checks
   # ---------------------------------------------------------------------------
   test:
     name: Unit & integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: paca_test
+          POSTGRES_PASSWORD: paca_test
+          POSTGRES_DB: paca_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paca_test -d paca_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PACA_TEST_DATABASE_URL: postgres://paca_test:paca_test@127.0.0.1:5432/paca_test?sslmode=disable
+      PACA_TEST_VALKEY_URL: redis://127.0.0.1:6379/0
 
     defaults:
       run:
@@ -99,8 +127,17 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: services/api/go.sum
 
+      - name: Apply database migrations
+        run: |
+          for migration in migrations/*.sql; do
+            psql "$PACA_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+          done
+
       - name: Run tests (race detector)
-        run: go test -race -timeout 60s -coverprofile=coverage.out $(go list ./... | grep -v '/test/e2e')
+        # Keep opt-in PostgreSQL/Valkey packages sequential. Their rows are
+        # cleaned per package, and the outbox publisher intentionally claims a
+        # batch rather than a test-only event ID.
+        run: go test -race -p=1 -timeout 180s -coverprofile=coverage.out $(go list ./... | grep -v '/test/e2e')
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v6

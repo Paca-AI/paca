@@ -14,6 +14,9 @@ For the full workspace-wide schema (users, projects, tasks, etc.), see [`docs/ar
 | `000020_drop_agent_clone_pr_permissions.sql` | Drops `agents.can_clone_repos`/`can_create_prs` — cloning and PR creation became runtime capabilities available to every agent, not a per-agent toggle. |
 | `000022_add_acp_agents.sql` | Adds ACP (Agent Client Protocol) agents: `agent_type` ('llm' \| 'acp'), `acp_provider`, `acp_command`, `acp_bridge_token_hash`. An ACP agent delegates to a coding CLI the user runs locally, connected over an authenticated bridge daemon, instead of running an LLM loop in Paca's own infrastructure. |
 | `000031_add_global_agents.sql` | Adds **global agents** — see below. |
+| `000038_add_agent_conversation_audience.sql` | Makes conversation audience explicit and preserves owner-private versus project-shared read boundaries. |
+| `000042_add_agent_task_handoffs.sql` | Adds durable internal task-run handoffs. Handoffs are execution continuity, not user-visible task publications. |
+| `000043_add_agent_turns_and_conclusions.sql` | Adds authoritative turns/runs/results, immutable bounded context snapshots, selected context references, fenced outbox delivery, append-only human-confirmed writeback publications, and frozen task-description proposals with optimistic baseline hashes. Composer slash commands expose mutually exclusive description-update and summary-only flows; both keep the same internal audit anchor. See [private-chats.md](private-chats.md). |
 
 ---
 
@@ -160,7 +163,11 @@ Table agent_skills {
 
 ### `agent_chat_sessions`
 
-Persistent chat sessions between a human and an agent. Each session accumulates messages across possibly-many conversations and can be resumed.
+Persistent chat sessions between a human and an agent. For project Chats the
+session is the owner-private, user-visible thread and permanent URL; its
+authoritative messages are `agent_turns`, while conversations remain backend
+runtime records. Global legacy chat keeps its existing conversation-backed
+behavior.
 
 ```dbml
 Table agent_chat_sessions {

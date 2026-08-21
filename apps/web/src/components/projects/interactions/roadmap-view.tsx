@@ -1,7 +1,8 @@
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, MessageSquare } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useCanStartTaskChat } from "@/hooks/use-can-use-project-chats";
 import type { Sprint, Task } from "@/lib/interaction-api";
 import type {
 	CustomFieldDefinition,
@@ -11,6 +12,7 @@ import type {
 } from "@/lib/project-api";
 import { cn } from "@/lib/utils";
 import { AddTaskRow } from "./add-task-row";
+import { TaskChatLauncher } from "./task-chat-agent-dialog";
 import {
 	type ColumnGroupDef,
 	getColumnGroupDefs,
@@ -90,6 +92,7 @@ export function RoadmapView({
 	pagination,
 }: RoadmapViewProps) {
 	const { t } = useTranslation("projects");
+	const canChat = useCanStartTaskChat(tasks[0]?.project_id ?? "");
 	// Stable "now" — fixed at mount so all bars are consistent
 	const now = useMemo(() => Date.now(), []);
 
@@ -249,11 +252,7 @@ export function RoadmapView({
 		const type = taskTypes.find((tt) => tt.id === task.task_type_id) ?? null;
 
 		return (
-			<button
-				type="button"
-				className="group flex w-full cursor-pointer border-b border-border/10 text-left last:border-0"
-				onClick={() => onTaskClick(task)}
-			>
+			<div className="group flex w-full border-b border-border/10 text-left last:border-0">
 				{/* Sticky task name */}
 				<div
 					className={cn(
@@ -263,21 +262,50 @@ export function RoadmapView({
 					)}
 					style={{ width: LEFT_COL_W }}
 				>
-					<span
-						className="size-1.5 shrink-0 rounded-full"
-						style={{
-							background:
-								type?.color ?? "oklch(var(--muted-foreground) / 0.25)",
-						}}
-					/>
-					<span className="min-w-0 truncate text-sm font-medium text-foreground/85">
-						{task.title}
-					</span>
+					<button
+						type="button"
+						onClick={() => onTaskClick(task)}
+						className="flex min-w-0 flex-1 items-center gap-2 text-left"
+					>
+						<span
+							className="size-1.5 shrink-0 rounded-full"
+							style={{
+								background:
+									type?.color ?? "oklch(var(--muted-foreground) / 0.25)",
+							}}
+						/>
+						<span className="min-w-0 truncate text-sm font-medium text-foreground/85">
+							{task.title}
+						</span>
+					</button>
+					{canChat && (
+						<TaskChatLauncher
+							projectId={task.project_id}
+							taskId={task.id}
+							taskTitle={task.title}
+						>
+							{(openAgentPicker) => (
+								<button
+									type="button"
+									draggable={false}
+									onClick={openAgentPicker}
+									onDragStart={(event) => {
+										event.preventDefault();
+										event.stopPropagation();
+									}}
+									aria-label={t("chats.discussTask")}
+									className="nodrag ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+								>
+									<MessageSquare className="size-3.5" />
+								</button>
+							)}
+						</TaskChatLauncher>
+					)}
 				</div>
 
 				{/* Chart area */}
 				<ChartCell bar={bar} />
-			</button>
+			</div>
 		);
 	}
 

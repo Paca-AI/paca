@@ -29,9 +29,10 @@ import (
 )
 
 const (
-	presencePrefix = "paca:acp-bridge:online:"
-	dispatchPrefix = "paca:acp-bridge:dispatch:"
-	controlPrefix  = "paca:acp-bridge:control:"
+	presencePrefix    = "paca:acp-bridge:online:"
+	dispatchPrefix    = "paca:acp-bridge:dispatch:"
+	controlPrefix     = "paca:acp-bridge:control:"
+	dispatchAckPrefix = "paca:acp-bridge:dispatch-ack:"
 
 	// presenceTTL — the daemon must ping (see server.go's "ping" handling)
 	// well within this window; comfortably longer than the daemon's own
@@ -51,6 +52,24 @@ const (
 	// Evict). Never equal to a real session_id (those are uuid4 hex strings).
 	forceEvictSessionID = "__force_evict__"
 )
+
+const replacePresenceScript = `
+local previous = redis.call('GET', KEYS[1])
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+return previous or ''`
+
+const refreshPresenceScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('PEXPIRE', KEYS[1], ARGV[2])
+  return 1
+end
+return 0`
+
+const deletePresenceScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`
 
 // Conn is the subset of a WebSocket connection Registry needs — matches
 // server.go's real connection type and acp_bridge.py's _SendsJSON Protocol,
@@ -136,9 +155,10 @@ func New(redisClient *redis.Client, publisher *messaging.Publisher, log Logger) 
 	}
 }
 
-func presenceKey(agentID uuid.UUID) string     { return presencePrefix + agentID.String() }
-func dispatchChannel(agentID uuid.UUID) string { return dispatchPrefix + agentID.String() }
-func controlChannel(agentID uuid.UUID) string  { return controlPrefix + agentID.String() }
+func presenceKey(agentID uuid.UUID) string        { return presencePrefix + agentID.String() }
+func dispatchChannel(agentID uuid.UUID) string    { return dispatchPrefix + agentID.String() }
+func controlChannel(agentID uuid.UUID) string     { return controlPrefix + agentID.String() }
+func dispatchAckChannel(deliveryID string) string { return dispatchAckPrefix + deliveryID }
 
 // Register marks agentID's local bridge as connected on this process.
 // Publishes an "agent.acp_bridge.status" realtime event so the frontend can
@@ -156,16 +176,13 @@ func (r *Registry) Register(ctx context.Context, agentID uuid.UUID, projectID *u
 	unlock := r.registerLocks.Lock(agentID)
 	defer unlock()
 
-	n, err := r.redis.Exists(ctx, presenceKey(agentID)).Result()
-	if err != nil {
-		return "", fmt.Errorf("acpbridge: check presence for agent %s: %w", agentID, err)
-	}
-	alreadyOnline := n > 0
-
 	sessionID := uuid.New().String()
-	if err := r.redis.Set(ctx, presenceKey(agentID), "1", presenceTTL).Err(); err != nil {
-		return "", fmt.Errorf("acpbridge: set presence for agent %s: %w", agentID, err)
+	previous, err := r.redis.Eval(ctx, replacePresenceScript,
+		[]string{presenceKey(agentID)}, sessionID, presenceTTL.Milliseconds()).Text()
+	if err != nil {
+		return "", fmt.Errorf("acpbridge: acquire presence for agent %s: %w", agentID, err)
 	}
+	alreadyOnline := previous != ""
 
 	connCtx, cancel := context.WithCancel(context.Background())
 	entry := &connEntry{conn: conn, sessionID: sessionID, cancel: cancel, done: make(chan struct{})}
@@ -208,7 +225,7 @@ func (r *Registry) Register(ctx context.Context, agentID uuid.UUID, projectID *u
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); r.forwardDispatchedMessages(connCtx, agentID, conn) }()
+	go func() { defer wg.Done(); r.forwardDispatchedMessages(connCtx, agentID, sessionID, conn) }()
 	go func() { defer wg.Done(); r.watchForEviction(connCtx, agentID, sessionID, conn) }()
 	go func() { wg.Wait(); close(entry.done) }()
 
@@ -249,17 +266,26 @@ func (r *Registry) Unregister(ctx context.Context, agentID uuid.UUID, projectID 
 	entry.cancel()
 	<-entry.done
 
-	if err := r.redis.Del(ctx, presenceKey(agentID)).Err(); err != nil {
+	deleted, err := r.redis.Eval(ctx, deletePresenceScript, []string{presenceKey(agentID)}, sessionID).Int()
+	if err != nil {
 		r.log.Warn("acpbridge: failed to clear presence", "agent_id", agentID, "error", err)
+		return
 	}
-	r.publishStatus(ctx, agentID, projectID, false)
+	if deleted == 1 {
+		r.publishStatus(ctx, agentID, projectID, false)
+	}
 }
 
 // Heartbeat refreshes agentID's presence TTL — called on each "ping" from
 // the daemon.
-func (r *Registry) Heartbeat(ctx context.Context, agentID uuid.UUID) error {
-	if err := r.redis.Expire(ctx, presenceKey(agentID), presenceTTL).Err(); err != nil {
+func (r *Registry) Heartbeat(ctx context.Context, agentID uuid.UUID, sessionID string) error {
+	refreshed, err := r.redis.Eval(ctx, refreshPresenceScript,
+		[]string{presenceKey(agentID)}, sessionID, presenceTTL.Milliseconds()).Int()
+	if err != nil {
 		return fmt.Errorf("acpbridge: refresh presence for agent %s: %w", agentID, err)
+	}
+	if refreshed != 1 {
+		return fmt.Errorf("acpbridge: bridge session %s no longer owns agent %s", sessionID, agentID)
 	}
 	return nil
 }
@@ -267,11 +293,14 @@ func (r *Registry) Heartbeat(ctx context.Context, agentID uuid.UUID) error {
 // IsOnline reports whether *any* replica (of either service) currently
 // holds a live bridge connection for agentID.
 func (r *Registry) IsOnline(ctx context.Context, agentID uuid.UUID) (bool, error) {
-	n, err := r.redis.Exists(ctx, presenceKey(agentID)).Result()
+	value, err := r.redis.Get(ctx, presenceKey(agentID)).Result()
+	if err == redis.Nil {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("acpbridge: check presence for agent %s: %w", agentID, err)
 	}
-	return n > 0, nil
+	return value != "", nil
 }
 
 // Dispatch publishes a message (start_turn/stop_turn/pause_turn) to
@@ -280,21 +309,76 @@ func (r *Registry) IsOnline(ctx context.Context, agentID uuid.UUID) (bool, error
 // no subscriber rather than queuing them, so callers must not rely on
 // eventual delivery).
 func (r *Registry) Dispatch(ctx context.Context, agentID uuid.UUID, message map[string]any) (bool, error) {
-	online, err := r.IsOnline(ctx, agentID)
-	if err != nil {
-		return false, err
-	}
-	if !online {
+	sessionID, err := r.redis.Get(ctx, presenceKey(agentID)).Result()
+	if err == redis.Nil || sessionID == "" {
 		return false, nil
 	}
-	data, err := json.Marshal(message)
+	if err != nil {
+		return false, fmt.Errorf("acpbridge: resolve dispatch owner for agent %s: %w", agentID, err)
+	}
+	payload := make(map[string]any, len(message)+1)
+	for key, value := range message {
+		payload[key] = value
+	}
+	payload["bridge_session_id"] = sessionID
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return false, fmt.Errorf("acpbridge: marshal dispatch message: %w", err)
 	}
-	if err := r.redis.Publish(ctx, dispatchChannel(agentID), data).Err(); err != nil {
+	subscribers, err := r.redis.Publish(ctx, dispatchChannel(agentID), data).Result()
+	if err != nil {
 		return false, fmt.Errorf("acpbridge: publish dispatch for agent %s: %w", agentID, err)
 	}
-	return true, nil
+	return subscribers > 0, nil
+}
+
+// DispatchWithAck retries a Pub/Sub dispatch while an acknowledgement
+// subscription is already live. The daemon treats a repeated authoritative
+// run identity as a no-op and acknowledges it again, so an ACK loss cannot
+// repeat execution side effects.
+func (r *Registry) DispatchWithAck(ctx context.Context, agentID uuid.UUID, message map[string]any, timeout time.Duration) (bool, error) {
+	deliveryID := uuid.NewString()
+	ackChannel := dispatchAckChannel(deliveryID)
+	pubsub := r.redis.Subscribe(ctx, ackChannel)
+	defer func() { _ = pubsub.Close() }()
+	if _, err := pubsub.Receive(ctx); err != nil {
+		return false, fmt.Errorf("acpbridge: subscribe dispatch ack: %w", err)
+	}
+	payload := make(map[string]any, len(message)+1)
+	for key, value := range message {
+		payload[key] = value
+	}
+	payload["delivery_id"] = deliveryID
+	for attempt := 0; attempt < 3; attempt++ {
+		dispatched, err := r.Dispatch(ctx, agentID, payload)
+		if err != nil || !dispatched {
+			return dispatched, err
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, timeout)
+		_, err = pubsub.ReceiveMessage(waitCtx)
+		cancel()
+		if err == nil {
+			return true, nil
+		}
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+	}
+	return false, fmt.Errorf("acpbridge: authoritative dispatch was not acknowledged")
+}
+
+func (r *Registry) AcknowledgeDispatch(ctx context.Context, agentID uuid.UUID, sessionID, deliveryID string) error {
+	if _, err := uuid.Parse(deliveryID); err != nil {
+		return fmt.Errorf("acpbridge: invalid dispatch acknowledgement")
+	}
+	current, err := r.redis.Get(ctx, presenceKey(agentID)).Result()
+	if err != nil {
+		return fmt.Errorf("acpbridge: resolve acknowledgement owner: %w", err)
+	}
+	if current != sessionID {
+		return fmt.Errorf("acpbridge: stale bridge session cannot acknowledge dispatch")
+	}
+	return r.redis.Publish(ctx, dispatchAckChannel(deliveryID), sessionID).Err()
 }
 
 func (r *Registry) broadcastEviction(ctx context.Context, agentID uuid.UUID, winningSessionID string) error {

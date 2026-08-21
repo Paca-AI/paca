@@ -34,7 +34,19 @@ const (
 // Service.publishTrigger/publishChatTrigger (AppendFlat — no JSON envelope,
 // see internal/messaging for the decode side).
 type Trigger struct {
-	ConversationID uuid.UUID
+	// TurnID is set only for the authoritative session-first execution path.
+	// A nil value identifies a legacy task/comment/automation trigger.
+	TurnID *uuid.UUID
+	// RuntimeID is the physical execution identity. Authoritative retries use
+	// a fresh run ID so an orphaned attempt cannot collide with its recovery.
+	RuntimeID *uuid.UUID
+	// Authoritative private turns receive one immutable snapshot and one
+	// deny-by-default tool policy from the claim response. Context is data only
+	// and can never add capabilities.
+	ContextSnapshot         string
+	ContextManifestSHA256   string
+	AllowedToolCapabilities []string
+	ConversationID          uuid.UUID
 	// ProjectID is the zero value (uuid.Nil) for a global-chat trigger — see
 	// agentdom.AgentConversation's own doc comment on the same convention.
 	ProjectID     uuid.UUID

@@ -39,8 +39,17 @@ import (
 
 const (
 	labelConvID  = "paca.conversation_id"
+	labelTurnID  = "paca.turn_id"
 	labelManaged = "paca.managed"
 )
+
+func managedLabels(conversationID, turnID string) map[string]string {
+	labels := map[string]string{labelConvID: conversationID, labelManaged: "true"}
+	if turnID != "" {
+		labels[labelTurnID] = turnID
+	}
+	return labels
+}
 
 // containerPort is the port `goose serve` listens on inside every sandbox
 // container — a var, not a const, since network.Port is a struct type
@@ -159,7 +168,7 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 	var dindReady chan error
 	if cfg.DockerEnabled {
 		var err error
-		sidecar, err = m.startDindSidecar(ctx, cfg.ConversationID)
+		sidecar, err = m.startDindSidecar(ctx, cfg.ConversationID, cfg.TurnID)
 		if err != nil {
 			return nil, fmt.Errorf("sandbox/docker: start dind sidecar: %w", err)
 		}
@@ -198,13 +207,10 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 	}
 
 	containerCfg := &container.Config{
-		Image: cfg.Image,
-		Cmd:   []string{"serve", "--host", "0.0.0.0", "--port", fmt.Sprintf("%d", sandbox.GooseServePort)},
-		Env:   env,
-		Labels: map[string]string{
-			labelConvID:  cfg.ConversationID,
-			labelManaged: "true",
-		},
+		Image:  cfg.Image,
+		Cmd:    []string{"serve", "--host", "0.0.0.0", "--port", fmt.Sprintf("%d", sandbox.GooseServePort)},
+		Env:    env,
+		Labels: managedLabels(cfg.ConversationID, cfg.TurnID),
 	}
 	hostCfg := &container.HostConfig{
 		AutoRemove: true,

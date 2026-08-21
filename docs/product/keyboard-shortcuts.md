@@ -52,7 +52,7 @@ tabs):
 | `Mod+I` | Product backlog | `/projects/:id/interactions/backlog` |
 | `Mod+Shift+A` | Active sprint (first open sprint in sidebar order) | `/projects/:id/interactions/sprints/:sprintId` |
 | `Mod+G` | Agents | `/projects/:id/agents` |
-| `Mod+Shift+X` | Conversations | `/projects/:id/conversations` |
+| `Mod+Shift+X` | Chats | `/projects/:id/chats` |
 | `Mod+Shift+W` | Automation (workflows) | `/projects/:id/automation` |
 | `Mod+J` | Team | `/projects/:id/team` |
 | `Mod+D` | Docs | `/projects/:id/docs` |

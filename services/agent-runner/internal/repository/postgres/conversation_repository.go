@@ -202,7 +202,7 @@ func (r *ConversationRepository) InsertTaskHandoff(ctx context.Context, taskID, 
 	if _, err := r.db.ExecContext(ctx, `
 		INSERT INTO agent_task_handoffs (task_id, conversation_id, summary)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (conversation_id) DO NOTHING
+		ON CONFLICT (conversation_id) WHERE source_turn_id IS NULL DO NOTHING
 	`, taskID, conversationID, summary); err != nil {
 		return fmt.Errorf("postgres: insert handoff for conversation %s: %w", conversationID, err)
 	}

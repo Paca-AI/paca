@@ -351,6 +351,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeAgentConversationNotRunning
 	case errors.Is(err, agentdom.ErrConversationAlreadyStopped):
 		return http.StatusConflict, apierr.CodeAgentConversationAlreadyStopped
+	case errors.Is(err, agentdom.ErrConversationTurnManaged):
+		return http.StatusConflict, apierr.CodeAgentTurnConflict
 	case errors.Is(err, agentdom.ErrConversationBusy):
 		return http.StatusConflict, apierr.CodeAgentConversationBusy
 	case errors.Is(err, agentdom.ErrConversationInvalidCursor):
@@ -361,6 +363,31 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentConversationEventInvalidCursor
 	case errors.Is(err, agentdom.ErrChatSessionNotFound):
 		return http.StatusNotFound, apierr.CodeAgentChatSessionNotFound
+	case errors.Is(err, agentdom.ErrTurnNotFound):
+		return http.StatusNotFound, apierr.CodeAgentTurnNotFound
+	case errors.Is(err, agentdom.ErrContextSourceForbidden):
+		return http.StatusNotFound, apierr.CodeAgentContextSourceNotFound
+	case errors.Is(err, agentdom.ErrConclusionNotFound):
+		return http.StatusNotFound, apierr.CodeAgentConclusionNotFound
+	case errors.Is(err, agentdom.ErrProjectChatForbidden):
+		return http.StatusForbidden, apierr.CodeForbidden
+	case errors.Is(err, agentdom.ErrProjectChatInvalid),
+		errors.Is(err, agentdom.ErrTurnEventInvalid),
+		errors.Is(err, agentdom.ErrConclusionNotFrozen):
+		return http.StatusBadRequest, apierr.CodeBadRequest
+	case errors.Is(err, agentdom.ErrContextSnapshotTooLarge):
+		return http.StatusRequestEntityTooLarge, apierr.CodePayloadTooLarge
+	case errors.Is(err, agentdom.ErrIdempotencyConflict):
+		return http.StatusConflict, apierr.CodeIdempotencyConflict
+	case errors.Is(err, agentdom.ErrTurnBusy),
+		errors.Is(err, agentdom.ErrTurnClaimLost),
+		errors.Is(err, agentdom.ErrTurnDeadlineExceeded),
+		errors.Is(err, agentdom.ErrTurnAlreadyFinalized):
+		return http.StatusConflict, apierr.CodeAgentTurnConflict
+	case errors.Is(err, agentdom.ErrTurnResultNotPublishable),
+		errors.Is(err, agentdom.ErrConclusionConflict),
+		errors.Is(err, agentdom.ErrConclusionExpired):
+		return http.StatusConflict, apierr.CodeAgentConclusionConflict
 	case errors.Is(err, agentdom.ErrEnvVarNotFound):
 		return http.StatusNotFound, apierr.CodeAgentEnvVarNotFound
 	case errors.Is(err, agentdom.ErrEnvVarKeyTaken):

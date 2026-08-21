@@ -14,7 +14,6 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
-	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // -------------------------------------------------------------------------
@@ -999,39 +998,6 @@ func (r *AgentRepository) FindConversationByID(ctx context.Context, id uuid.UUID
 	return conversationFromRecord(rec), nil
 }
 
-// FindTaskHandoffForActivity returns the durable task handoff for a finished
-// conversation joined with its owning project/agent, for recording an
-// "agent.session.finished" activity. Returns (nil, nil) when the conversation
-// has no handoff (e.g. it was not task-linked or produced no conclusion).
-func (r *AgentRepository) FindTaskHandoffForActivity(ctx context.Context, conversationID uuid.UUID) (*taskdom.AgentSessionFinished, error) {
-	var row struct {
-		TaskID         uuid.UUID `db:"task_id"`
-		ProjectID      uuid.UUID `db:"project_id"`
-		AgentID        uuid.UUID `db:"agent_id"`
-		ConversationID uuid.UUID `db:"conversation_id"`
-		Summary        string    `db:"summary"`
-	}
-	err := r.db.GetContext(ctx, &row, `
-		SELECT h.task_id, c.project_id, c.agent_id, h.conversation_id, h.summary
-		FROM agent_task_handoffs h
-		JOIN agent_conversations c ON c.id = h.conversation_id
-		WHERE h.conversation_id = $1
-	`, conversationID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("postgres: find task handoff for conversation %s: %w", conversationID, err)
-	}
-	return &taskdom.AgentSessionFinished{
-		TaskID:         row.TaskID,
-		ProjectID:      row.ProjectID,
-		AgentID:        row.AgentID,
-		ConversationID: row.ConversationID,
-		Summary:        row.Summary,
-	}, nil
-}
-
 // FindLatestConversationByChatSession returns the most recently created
 // conversation for a chat session, or (nil, nil) if none exists yet.
 func (r *AgentRepository) FindLatestConversationByChatSession(ctx context.Context, chatSessionID uuid.UUID) (*agentdom.AgentConversation, error) {
@@ -1071,6 +1037,17 @@ func (r *AgentRepository) CreateConversation(ctx context.Context, c *agentdom.Ag
 func (r *AgentRepository) UpdateConversationStatus(ctx context.Context, id uuid.UUID, status string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE agent_conversations SET status=$1, updated_at=$2 WHERE id=$3`, status, time.Now(), id.String())
 	return err
+}
+
+func (r *AgentRepository) HasAuthoritativeTurnForConversation(ctx context.Context, conversationID uuid.UUID) (bool, error) {
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS (
+		SELECT 1 FROM agent_turns
+		WHERE conversation_id=$1 AND session_id IS NOT NULL
+	)`, conversationID); err != nil {
+		return false, fmt.Errorf("check authoritative conversation turn: %w", err)
+	}
+	return exists, nil
 }
 
 // ClaimConversationStatus atomically moves a conversation from fromStatus to

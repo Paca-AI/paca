@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -36,30 +37,18 @@ var ErrMaxToolCalls = errors.New("acp: exceeded max tool calls for this turn")
 // there's exactly one caller driving one Client for the container's
 // lifetime.
 //
-// Since goose switched its ACP HTTP transport to the official
-// agent-client-protocol-http crate (see types.go's doc comment on the
-// goose version this was re-verified against), a POST no longer carries its
-// own response inline: `initialize` alone still gets a synchronous JSON
-// body, but every other call gets back a bare `202 Accepted` and its actual
-// response (and, for session/prompt, every session/update notification
-// along the way) arrives asynchronously over a *separate*, long-lived SSE
-// stream opened via `GET /acp` — one connection-scoped stream (no
-// Acp-Session-Id header) established right after Initialize, and one
-// session-scoped stream (with Acp-Session-Id) established once NewSession's
-// result is observed to carry a sessionId. Frames are correlated back to
-// the request that's waiting for them by JSON-RPC id. Verified directly
-// against both a real running container and the exact pinned commit of
-// github.com/agentclientprotocol/rust-sdk goose depends on (its own
-// client.rs and http_server.rs) — not guessed from the "202" status code
-// alone.
+// Current pinned Goose uses the official Streamable HTTP shape: every POST
+// returns an SSE body containing zero or more notifications followed by the
+// matching JSON-RPC response, while Acp-Session-Id identifies the transport
+// session established by initialize. Frames are correlated by JSON-RPC id.
+// This was verified against a real container, not inferred from status codes.
 //
-// Both streams are read by a background goroutine each (started in
-// Initialize and NewSession respectively) that outlives any single turn —
-// necessary because a chat conversation reattaches to the same Client
-// across multiple turns (see chatsandbox.State) without calling Initialize
-// or NewSession again. Close tears them down; callers must call it once
-// this Client is done for good (see internal/handler's tearDownSandbox and
-// TeardownPausedChatSandbox).
+// The connectionID and background GET streams below preserve compatibility
+// with the older Goose hybrid transport, where initialize returned JSON plus
+// Acp-Connection-Id and later calls returned 202 while their frames arrived
+// on long-lived connection/session GET streams. Close tears those legacy
+// streams down; current inline-SSE calls close each POST body as soon as its
+// terminal response is observed.
 type Client struct {
 	baseURL    string
 	secretKey  string
@@ -71,6 +60,12 @@ type Client struct {
 	// returned by session/new; see the migration doc's "two distinct
 	// session concepts" note.
 	connectionID string
+	// inlineSSE is the current official Streamable HTTP shape used by pinned
+	// Goose: each POST returns its JSON-RPC frames in that response's SSE body
+	// and Acp-Session-Id identifies the transport session. connectionID and
+	// the background GET streams remain as compatibility for older servers.
+	inlineSSE          bool
+	transportSessionID string
 	// sessionID/sessionStream are set once, by NewSession — this Client
 	// only ever drives exactly one ACP session for its container's whole
 	// lifetime (including across resumed chat turns), never session/fork or
@@ -96,6 +91,12 @@ type Client struct {
 	nextID atomic.Int64
 }
 
+// The official ACP HTTP transport follows Streamable HTTP negotiation: every
+// POST must advertise both response media types. Current Goose answers with
+// SSE; older compatible servers may answer initialize with JSON and later
+// calls with 202. Newer Goose rejects application/json-only clients with 406.
+const acpAccept = "application/json, text/event-stream"
+
 // NewClient builds a client for a container reachable at baseURL (e.g.
 // "http://172.18.0.5:3284"), authenticated with the same secret passed to
 // that container as GOOSE_SERVER__SECRET_KEY.
@@ -113,9 +114,9 @@ func NewClient(baseURL, secretKey string, httpClient *http.Client) *Client {
 	}
 }
 
-// Close ends this client's background SSE streams. Safe to call on a nil
-// *Client (no-op, so callers don't need a separate nil check at every
-// teardown call site) and safe to call more than once.
+// Close ends any legacy background SSE streams. Current inline-SSE response
+// bodies are scoped to their calls and already closed on return. Safe to call
+// on a nil *Client and safe to call more than once.
 func (c *Client) Close() {
 	if c == nil {
 		return
@@ -123,11 +124,9 @@ func (c *Client) Close() {
 	c.cancelStreams()
 }
 
-// Initialize performs the ACP handshake and captures the connection id.
-// Must be called exactly once, before NewSession. Unlike every other call
-// in this package, initialize's response arrives synchronously in this
-// POST's own body (still plain JSON, not SSE-framed) — see the package doc
-// comment on Client for why every other call differs.
+// Initialize performs the ACP handshake and captures the transport session.
+// Must be called exactly once, before NewSession. It prefers current inline
+// SSE and detects the older JSON/Acp-Connection-Id transport for compatibility.
 func (c *Client) Initialize(ctx context.Context) error {
 	id := c.nextID.Add(1)
 	body, err := json.Marshal(rpcRequest{
@@ -145,11 +144,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 		return fmt.Errorf("acp: initialize: building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// application/json only, not "application/json, text/event-stream" —
-	// initialize's response is never SSE-framed regardless of what's
-	// accepted here, and every other call in this package sends the same
-	// application/json-only Accept (see post's doc comment).
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", acpAccept)
 	req.Header.Set("X-Secret-Key", c.secretKey)
 
 	resp, err := c.httpClient.Do(req)
@@ -158,30 +153,43 @@ func (c *Client) Initialize(ctx context.Context) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	connectionID := resp.Header.Get("Acp-Connection-Id")
-
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("acp: initialize: unexpected status %d: %s", resp.StatusCode, msg)
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("acp: initialize: reading response: %w", err)
-	}
 	var frame rpcFrame
-	if err := json.Unmarshal(respBody, &frame); err != nil {
-		return fmt.Errorf("acp: initialize: decoding response: %w", err)
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		frame, err = awaitInlineResponse(ctx, id, resp.Body)
+		if err != nil {
+			return fmt.Errorf("acp: initialize: %w", err)
+		}
+		transportSessionID := resp.Header.Get("Acp-Session-Id")
+		if transportSessionID == "" {
+			return errors.New("acp: initialize response missing Acp-Session-Id header")
+		}
+		c.inlineSSE = true
+		c.transportSessionID = transportSessionID
+	} else {
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("acp: initialize: reading response: %w", readErr)
+		}
+		if err := json.Unmarshal(respBody, &frame); err != nil {
+			return fmt.Errorf("acp: initialize: decoding response: %w", err)
+		}
+		connectionID := resp.Header.Get("Acp-Connection-Id")
+		if connectionID == "" {
+			return errors.New("acp: initialize response missing Acp-Connection-Id header")
+		}
+		c.connectionID = connectionID
 	}
 	if frame.Error != nil {
 		return fmt.Errorf("acp: initialize: %w", frame.Error)
 	}
-	if connectionID == "" {
-		return errors.New("acp: initialize response missing Acp-Connection-Id header")
+	if !c.inlineSSE {
+		c.connStream = c.startStream(c.streamCtx, "")
 	}
-
-	c.connectionID = connectionID
-	c.connStream = c.startStream(c.streamCtx, "")
 	return nil
 }
 
@@ -191,7 +199,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 // on the stock goose image (uid 1000, user "goose"); see the migration
 // doc's session/new gotcha.
 func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPServerConfig) (string, error) {
-	if c.connectionID == "" {
+	if c.connectionID == "" && !c.inlineSSE {
 		return "", errors.New("acp: NewSession called before Initialize")
 	}
 	id := c.nextID.Add(1)
@@ -200,11 +208,15 @@ func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPSer
 		MCPServers: []MCPServerConfig{},
 		Meta:       &NewSessionMeta{EnabledExtensions: buildEnabledExtensions(mcpServers)},
 	}
-	if err := c.post(ctx, id, "session/new", params, ""); err != nil {
-		return "", fmt.Errorf("acp: session/new: %w", err)
+	var frame rpcFrame
+	var err error
+	if c.inlineSSE {
+		frame, err = c.callInline(ctx, id, "session/new", params)
+	} else {
+		if err = c.post(ctx, id, "session/new", params, ""); err == nil {
+			frame, err = c.awaitResponse(ctx, id, c.connStream)
+		}
 	}
-
-	frame, err := c.awaitResponse(ctx, id, c.connStream)
 	if err != nil {
 		return "", fmt.Errorf("acp: session/new: %w", err)
 	}
@@ -224,7 +236,9 @@ func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPSer
 	// connection-scoped one — must be established before the first Prompt
 	// call, so do it now rather than lazily.
 	c.sessionID = result.SessionID
-	c.sessionStream = c.startStream(c.streamCtx, result.SessionID)
+	if !c.inlineSSE {
+		c.sessionStream = c.startStream(c.streamCtx, result.SessionID)
+	}
 	return result.SessionID, nil
 }
 
@@ -318,14 +332,17 @@ func (c *Client) Prompt(
 	maxToolCalls int,
 	onEvent func(Event),
 ) (stopReason string, usage *Usage, err error) {
-	if c.connectionID == "" {
+	if c.connectionID == "" && !c.inlineSSE {
 		return "", nil, errors.New("acp: Prompt called before Initialize")
 	}
-	if c.sessionStream == nil {
+	if c.sessionID == "" || (!c.inlineSSE && c.sessionStream == nil) {
 		return "", nil, errors.New("acp: Prompt called before NewSession")
 	}
 
 	id := c.nextID.Add(1)
+	if c.inlineSSE {
+		return c.promptInline(ctx, id, sessionID, prompt, maxToolCalls, onEvent)
+	}
 	if err := c.post(ctx, id, "session/prompt", promptParams{SessionID: sessionID, Prompt: prompt}, sessionID); err != nil {
 		return "", nil, fmt.Errorf("acp: session/prompt: %w", err)
 	}
@@ -392,12 +409,124 @@ func (c *Client) Prompt(
 	}
 }
 
-// post sends one JSON-RPC request over POST and confirms goose accepted it
-// — the actual response arrives asynchronously on the relevant stream
-// (connection-scoped for session/new, session-scoped for everything else),
-// never in this call's own HTTP response body. Accept is application/json
-// only (not text/event-stream) since a POST's own response is now always a
-// bare status with no body worth negotiating a format for.
+func (c *Client) promptInline(
+	ctx context.Context,
+	id int64,
+	sessionID string,
+	prompt []ContentBlock,
+	maxToolCalls int,
+	onEvent func(Event),
+) (string, *Usage, error) {
+	resp, err := c.postInline(ctx, id, "session/prompt", promptParams{SessionID: sessionID, Prompt: prompt})
+	if err != nil {
+		return "", nil, fmt.Errorf("acp: session/prompt: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	sse := newSSEReader(resp.Body)
+	toolCalls := 0
+	for {
+		frame, readErr := nextInlineFrame(ctx, sse)
+		if readErr != nil {
+			return "", nil, readErr
+		}
+		switch {
+		case frame.isNotification() && frame.Method == "session/update":
+			var note sessionUpdateNotification
+			if err := json.Unmarshal(frame.Params, &note); err != nil {
+				return "", nil, fmt.Errorf("decoding session/update: %w", err)
+			}
+			if note.Update.Kind == UpdateToolCall {
+				toolCalls++
+				if maxToolCalls > 0 && toolCalls > maxToolCalls {
+					return "", nil, ErrMaxToolCalls
+				}
+			}
+			if onEvent != nil {
+				onEvent(Event{Kind: note.Update.Kind, Raw: note.Update.raw})
+			}
+		case frame.isResponse() && frame.ID != nil && *frame.ID == id:
+			if frame.Error != nil {
+				return "", nil, fmt.Errorf("%w", frame.Error)
+			}
+			var result promptResult
+			if err := json.Unmarshal(frame.Result, &result); err != nil {
+				return "", nil, fmt.Errorf("decoding result: %w", err)
+			}
+			return result.StopReason, result.Usage, nil
+		}
+	}
+}
+
+func (c *Client) callInline(ctx context.Context, id int64, method string, params any) (rpcFrame, error) {
+	resp, err := c.postInline(ctx, id, method, params)
+	if err != nil {
+		return rpcFrame{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return awaitInlineResponse(ctx, id, resp.Body)
+}
+
+func (c *Client) postInline(ctx context.Context, id int64, method string, params any) (*http.Response, error) {
+	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
+	if err != nil {
+		return nil, fmt.Errorf("encoding request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/acp", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", acpAccept)
+	req.Header.Set("X-Secret-Key", c.secretKey)
+	req.Header.Set("Acp-Session-Id", c.transportSessionID)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("sending request: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer func() { _ = resp.Body.Close() }()
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, msg)
+	}
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("unexpected content type %q", resp.Header.Get("Content-Type"))
+	}
+	return resp, nil
+}
+
+func awaitInlineResponse(ctx context.Context, id int64, body io.Reader) (rpcFrame, error) {
+	sse := newSSEReader(body)
+	for {
+		frame, err := nextInlineFrame(ctx, sse)
+		if err != nil {
+			return rpcFrame{}, err
+		}
+		if frame.isResponse() && frame.ID != nil && *frame.ID == id {
+			return frame, nil
+		}
+	}
+}
+
+func nextInlineFrame(ctx context.Context, sse *sseReader) (rpcFrame, error) {
+	if ctx.Err() != nil {
+		return rpcFrame{}, ctx.Err()
+	}
+	data, err := sse.Next()
+	if len(data) == 0 && err != nil {
+		return rpcFrame{}, err
+	}
+	var frame rpcFrame
+	if jsonErr := json.Unmarshal(data, &frame); jsonErr != nil {
+		return rpcFrame{}, fmt.Errorf("decoding SSE frame: %w", jsonErr)
+	}
+	return frame, nil
+}
+
+// post is the older hybrid-transport compatibility path: it sends one
+// JSON-RPC request and confirms Goose accepted it while the actual response
+// arrives asynchronously on the relevant background stream. The transport
+// still requires both JSON and SSE in Accept; see acpAccept.
 func (c *Client) post(ctx context.Context, id int64, method string, params any, sessionID string) error {
 	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
 	if err != nil {
@@ -408,7 +537,7 @@ func (c *Client) post(ctx context.Context, id int64, method string, params any, 
 		return fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", acpAccept)
 	req.Header.Set("X-Secret-Key", c.secretKey)
 	req.Header.Set("Acp-Connection-Id", c.connectionID)
 	if sessionID != "" {

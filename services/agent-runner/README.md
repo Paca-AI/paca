@@ -23,9 +23,12 @@ covers day-to-day orientation and local development instead.
   image), drive it over ACP, and persist/publish every `session/update` event.
 - Keep a paused chat conversation's sandbox alive between turns (`internal/chatsandbox`) instead of
   cold-starting a new container on every reply, reaped after an idle timeout.
-- Persist a task-level handoff on each successful task-linked conversation's finish and inject the
-  most recent prior handoffs into later task-linked conversations (`internal/handler`,
-  `agent_task_handoffs`), so a task keeps agent context across conversations (#392).
+- Persist an internal task-level handoff on each successful task-linked conversation and inject the
+  most recent handoffs into later task-triggered executions (`internal/handler`,
+  `agent_task_handoffs`). Handoffs are not task activity or a user publication.
+- Consume durable authoritative private-turn requests and controls, claim/fence each run attempt,
+  and finalize one immutable turn result. Private `llm` turns exclude agent env vars and all MCP
+  servers; private `acp` turns fail closed until a real isolated local runtime exists.
 - Broker `acp`-type conversations to a user's locally-running `apps/acp-bridge` daemon over a
   WebSocket connection (`internal/acpbridge`).
 - Never clone a repository itself — all git operations happen inside the sandbox via the agent's own

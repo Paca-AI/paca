@@ -203,6 +203,16 @@ const (
 
 // Streams for AI Agent pipeline.
 const (
+	// StreamAgentTurnRequests is the authoritative, turn-first execution queue.
+	// Entries contain only stable routing identifiers; the runner must claim the
+	// turn through the API before it can read input, context, or tool policy.
+	StreamAgentTurnRequests = "paca:agent:turn_requests"
+	// StreamAgentTurnControls carries durable, fenced stop requests. Unlike a
+	// consumer-group work queue, any runner can forward an ACP control through
+	// the shared bridge registry; active LLM workers also observe terminal state
+	// directly through the runtime API.
+	StreamAgentTurnControls = "paca:agent:turn_controls"
+
 	// StreamAgentTriggers is the Valkey Stream key that services/api publishes
 	// trigger events to. services/ai-agent consumes with consumer group "ai-agent-workers".
 	StreamAgentTriggers = "paca:agent:triggers"

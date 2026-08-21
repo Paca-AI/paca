@@ -223,6 +223,232 @@ export interface AgentChatSession {
 	updated_at: string;
 }
 
+// ── Owner-private project Chats ──────────────────────────────────────────────
+//
+// These shapes intentionally do not reuse AgentConversation. A chat session is
+// the user-visible thread, a turn is one authoritative user-input → stable-
+// result boundary, and a run is only an execution attempt. Keeping the types
+// separate prevents project Chats from drifting back to conversation-first
+// URLs or rendering an execution event as the authoritative answer.
+
+export type ProjectChatTurnStatus =
+	| "queued"
+	| "running"
+	| "succeeded"
+	| "failed"
+	| "stopped"
+	| "cancelled"
+	| "timed_out"
+	| "no_output";
+
+export type ProjectChatBackend = "llm" | "acp";
+export type ProjectChatRuntimeDisposition = "reusable" | "retired";
+export type ProjectChatContextSourceType = "task" | "session" | "run";
+export type ProjectChatContextAudience = "owner_private" | "project_shared";
+export type ConclusionKind = "published" | "revised" | "withdrawn";
+
+export interface ProjectChatContextSourceRef {
+	type: ProjectChatContextSourceType;
+	id: string;
+}
+
+export interface ProjectChatSession {
+	id: string;
+	agent_id: string;
+	project_id: string;
+	title?: string | null;
+	last_message_at?: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ProjectChatTurn {
+	id: string;
+	session_id?: string | null;
+	conversation_id: string;
+	turn_index: number;
+	input_text: string;
+	status: ProjectChatTurnStatus;
+	tool_policy_sha256: string;
+	command_sha256: string;
+	request_sha256: string;
+	state_version: number;
+	deadline_at?: string | null;
+	started_at?: string | null;
+	finished_at?: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ProjectChatRun {
+	id: string;
+	turn_id: string;
+	conversation_id: string;
+	backend: ProjectChatBackend;
+	attempt: number;
+	status: ProjectChatTurnStatus;
+	final_event_sequence?: number | null;
+	started_at?: string | null;
+	finished_at?: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ProjectChatTurnResult {
+	turn_id: string;
+	run_id: string;
+	terminal_status: ProjectChatTurnStatus;
+	stable_output?: string | null;
+	stable_output_sha256?: string | null;
+	stable_output_event_id?: string | null;
+	generated_by_agent_id: string;
+	error_code?: string | null;
+	error_message?: string | null;
+	runtime_disposition: ProjectChatRuntimeDisposition;
+	created_at: string;
+}
+
+export interface ProjectChatContextItem {
+	id: string;
+	ordinal: number;
+	source_type: ProjectChatContextSourceType;
+	source_id: string;
+	source_version: string;
+	source_audience: ProjectChatContextAudience;
+	captured_at: string;
+	content: unknown;
+	rendered_text: string;
+	content_sha256: string;
+	byte_count: number;
+}
+
+export interface ProjectChatContextSnapshot {
+	id: string;
+	turn_id: string;
+	schema_version: number;
+	manifest: unknown;
+	rendered_text: string;
+	manifest_sha256: string;
+	total_bytes: number;
+	created_at: string;
+	items: ProjectChatContextItem[];
+}
+
+export interface ProjectChatContextSnapshotSummary {
+	id: string;
+	schema_version: number;
+	manifest_sha256: string;
+	total_bytes: number;
+	source_count: number;
+	created_at: string;
+}
+
+export interface ProjectChatTurnBundle {
+	session?: ProjectChatSession | null;
+	turn: ProjectChatTurn;
+	run: ProjectChatRun;
+	runs: ProjectChatRun[];
+	result?: ProjectChatTurnResult | null;
+	context_snapshot: ProjectChatContextSnapshot;
+}
+
+export interface ProjectChatTurnHistoryItem {
+	turn: ProjectChatTurn;
+	run: ProjectChatRun;
+	runs: ProjectChatRun[];
+	result?: ProjectChatTurnResult | null;
+	context_snapshot: ProjectChatContextSnapshotSummary;
+}
+
+export interface ProjectChatSessionSummary {
+	session: ProjectChatSession;
+	agent_name: string;
+	agent_handle: string;
+	latest_turn?: ProjectChatTurn | null;
+	latest_run?: ProjectChatRun | null;
+	has_legacy_executions: boolean;
+}
+
+export interface LegacyProjectChatExecution {
+	conversation_id: string;
+	status: ConversationStatus;
+	created_at: string;
+	finished_at?: string;
+}
+
+export interface ProjectChatSessionListResult {
+	items: ProjectChatSessionSummary[];
+	next_cursor: string | null;
+}
+
+export interface ProjectChatTurnListResult {
+	items: ProjectChatTurnHistoryItem[];
+	next_before_index: number | null;
+}
+
+export interface ProjectChatContextSource {
+	id: string;
+	source_type: ProjectChatContextSourceType;
+	source_id: string;
+	ordinal: number;
+	created_at: string;
+}
+
+export interface ConclusionPreparation {
+	id: string;
+	source_turn_id: string;
+	target_task_id: string;
+	generated_by_agent_id: string;
+	kind: ConclusionKind;
+	related_publication_id?: string | null;
+	summary: string;
+	summary_version: number;
+	summary_sha256: string;
+	update_description: boolean;
+	description_before?: unknown[] | null;
+	description_before_sha256?: string;
+	description_after?: unknown[] | null;
+	description_after_sha256?: string;
+	is_frozen: boolean;
+	state: string;
+	expires_at: string;
+	created_at: string;
+}
+
+interface ConclusionPublicationBase {
+	id: string;
+	target_task_id: string;
+	source_accessible: boolean;
+	source_session_id?: string | null;
+	source_turn_id?: string | null;
+	published_by_user_id: string;
+	published_by_member_id: string;
+	generated_by_agent_id: string;
+	kind: ConclusionKind;
+	root_publication_id?: string | null;
+	revises_publication_id?: string | null;
+	withdraws_publication_id?: string | null;
+	description_before_sha256?: string | null;
+	description_after_sha256?: string | null;
+	created_at: string;
+}
+
+export type ConclusionPublication = ConclusionPublicationBase &
+	(
+		| {
+				description_updated: true;
+				summary?: never;
+				summary_version?: never;
+				summary_sha256?: never;
+		  }
+		| {
+				description_updated: false;
+				summary: string;
+				summary_version: number;
+				summary_sha256: string;
+		  }
+	);
+
 // ── Agents ────────────────────────────────────────────────────────────────────
 
 // scope narrows the result to just that AgentScope server-side (e.g.
@@ -1194,6 +1420,224 @@ export async function sendChatMessage(
 	return data.data.conversation;
 }
 
+// ── Authoritative owner-private project Chats ────────────────────────────────
+
+export const PROJECT_CHAT_PAGE_SIZE = 30;
+export const PROJECT_CHAT_RECONCILE_INTERVAL_MS = 3_000;
+
+export async function listProjectChatSessions(
+	projectId: string,
+	options: {
+		cursor?: string;
+		search?: string;
+		agentId?: string;
+		limit?: number;
+	} = {},
+): Promise<ProjectChatSessionListResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ProjectChatSessionListResult>
+	>(`/projects/${projectId}/chat-sessions`, {
+		params: {
+			limit: options.limit ?? PROJECT_CHAT_PAGE_SIZE,
+			...(options.cursor ? { cursor: options.cursor } : {}),
+			...(options.search?.trim() ? { search: options.search.trim() } : {}),
+			...(options.agentId ? { agent_id: options.agentId } : {}),
+		},
+	});
+	return data.data;
+}
+
+export async function createProjectChatSession(
+	projectId: string,
+	payload: {
+		agent_id: string;
+		message: string;
+		title?: string;
+		context_sources?: ProjectChatContextSourceRef[];
+		deadline_at?: string;
+	},
+	idempotencyKey: string,
+): Promise<{ bundle: ProjectChatTurnBundle; replayed: boolean }> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{ bundle: ProjectChatTurnBundle; replayed: boolean }>
+	>(`/projects/${projectId}/chat-sessions`, payload, {
+		headers: { "Idempotency-Key": idempotencyKey },
+	});
+	return data.data;
+}
+
+export async function getProjectChatSession(
+	projectId: string,
+	sessionId: string,
+): Promise<ProjectChatSession> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ProjectChatSession>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}`);
+	return data.data;
+}
+
+export async function listLegacyProjectChatExecutions(
+	projectId: string,
+	sessionId: string,
+	options: { cursor?: string; limit?: number } = {},
+): Promise<{
+	items: LegacyProjectChatExecution[];
+	next_cursor: string | null;
+}> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{
+			items: LegacyProjectChatExecution[];
+			next_cursor: string | null;
+		}>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/legacy-executions`, {
+		params: {
+			limit: options.limit ?? PROJECT_CHAT_PAGE_SIZE,
+			...(options.cursor ? { cursor: options.cursor } : {}),
+		},
+	});
+	return data.data;
+}
+
+export async function listProjectChatTurns(
+	projectId: string,
+	sessionId: string,
+	options: { beforeIndex?: number; limit?: number } = {},
+): Promise<ProjectChatTurnListResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ProjectChatTurnListResult>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/turns`, {
+		params: {
+			limit: options.limit ?? PROJECT_CHAT_PAGE_SIZE,
+			...(options.beforeIndex ? { before_index: options.beforeIndex } : {}),
+		},
+	});
+	return data.data;
+}
+
+export async function getProjectChatTurn(
+	projectId: string,
+	sessionId: string,
+	turnId: string,
+): Promise<ProjectChatTurnBundle> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ProjectChatTurnBundle>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/turns/${turnId}`);
+	return data.data;
+}
+
+export async function appendProjectChatTurn(
+	projectId: string,
+	sessionId: string,
+	payload: { message: string; deadline_at?: string },
+	idempotencyKey: string,
+): Promise<{ bundle: ProjectChatTurnBundle; replayed: boolean }> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{ bundle: ProjectChatTurnBundle; replayed: boolean }>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/turns`, payload, {
+		headers: { "Idempotency-Key": idempotencyKey },
+	});
+	return data.data;
+}
+
+export async function stopProjectChatTurn(
+	projectId: string,
+	sessionId: string,
+	turnId: string,
+): Promise<ProjectChatTurnResult> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<ProjectChatTurnResult>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/turns/${turnId}/stop`);
+	return data.data;
+}
+
+export async function listProjectChatContextSources(
+	projectId: string,
+	sessionId: string,
+): Promise<ProjectChatContextSource[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: ProjectChatContextSource[] }>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/context-sources`);
+	return data.data.items;
+}
+
+export async function replaceProjectChatContextSources(
+	projectId: string,
+	sessionId: string,
+	sources: ProjectChatContextSourceRef[],
+): Promise<ProjectChatContextSource[]> {
+	const { data } = await apiClient.instance.put<
+		SuccessEnvelope<{ items: ProjectChatContextSource[] }>
+	>(`/projects/${projectId}/chat-sessions/${sessionId}/context-sources`, {
+		sources,
+	});
+	return data.data.items;
+}
+
+export async function prepareProjectConclusion(
+	projectId: string,
+	turnId: string,
+	payload: {
+		target_task_id: string;
+		summary_override?: string;
+		update_description?: boolean;
+		description_base?: unknown[] | null;
+		proposed_description?: unknown[];
+		expires_at: string;
+	},
+	idempotencyKey: string,
+): Promise<{ preparation: ConclusionPreparation; replayed: boolean }> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{
+			preparation: ConclusionPreparation;
+			replayed: boolean;
+		}>
+	>(
+		`/projects/${projectId}/turns/${turnId}/conclusion-publications/prepare`,
+		payload,
+		{ headers: { "Idempotency-Key": idempotencyKey } },
+	);
+	return data.data;
+}
+
+export async function confirmProjectConclusion(
+	projectId: string,
+	payload: {
+		preparation_id: string;
+		expected_version: number;
+		expected_sha256: string;
+	},
+	idempotencyKey: string,
+): Promise<{ publication: ConclusionPublication; replayed: boolean }> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<{
+			publication: ConclusionPublication;
+			replayed: boolean;
+		}>
+	>(`/projects/${projectId}/conclusion-publications/confirm`, payload, {
+		headers: { "Idempotency-Key": idempotencyKey },
+	});
+	return data.data;
+}
+
+export async function listTaskConclusions(
+	projectId: string,
+	taskId: string,
+	options: { cursor?: string; limit?: number } = {},
+): Promise<{ items: ConclusionPublication[]; next_cursor: string | null }> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{
+			items: ConclusionPublication[];
+			next_cursor: string | null;
+		}>
+	>(`/projects/${projectId}/tasks/${taskId}/conclusion-publications`, {
+		params: {
+			limit: options.limit ?? 50,
+			...(options.cursor ? { cursor: options.cursor } : {}),
+		},
+	});
+	return data.data;
+}
+
 // ── Query Options ─────────────────────────────────────────────────────────────
 
 export const agentsQueryOptions = (projectId: string) =>
@@ -1345,6 +1789,125 @@ export const chatSessionsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "chat-sessions"],
 		queryFn: () => listChatSessions(projectId, agentId),
+	});
+
+export const projectChatSessionsQueryOptions = (
+	projectId: string,
+	options: { search?: string; agentId?: string } = {},
+) =>
+	infiniteQueryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"chat-sessions",
+			{ search: options.search ?? "", agentId: options.agentId ?? "" },
+		] as const,
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listProjectChatSessions(projectId, {
+				...options,
+				cursor: pageParam,
+				limit: PROJECT_CHAT_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
+
+export const projectChatSessionQueryOptions = (
+	projectId: string,
+	sessionId: string,
+) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "chat-sessions", sessionId] as const,
+		queryFn: () => getProjectChatSession(projectId, sessionId),
+	});
+
+export const legacyProjectChatExecutionsQueryOptions = (
+	projectId: string,
+	sessionId: string,
+) =>
+	infiniteQueryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"chat-sessions",
+			sessionId,
+			"legacy-executions",
+		] as const,
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listLegacyProjectChatExecutions(projectId, sessionId, {
+				cursor: pageParam,
+				limit: PROJECT_CHAT_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+	});
+
+export const projectChatTurnsQueryOptions = (
+	projectId: string,
+	sessionId: string,
+) =>
+	infiniteQueryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"chat-sessions",
+			sessionId,
+			"turns",
+		] as const,
+		queryFn: ({ pageParam }: { pageParam: number | undefined }) =>
+			listProjectChatTurns(projectId, sessionId, {
+				beforeIndex: pageParam,
+				limit: PROJECT_CHAT_PAGE_SIZE,
+			}),
+		initialPageParam: undefined as number | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_before_index ?? undefined,
+	});
+
+export const projectChatTurnQueryOptions = (
+	projectId: string,
+	sessionId: string,
+	turnId: string,
+) =>
+	queryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"chat-sessions",
+			sessionId,
+			"turns",
+			turnId,
+		] as const,
+		queryFn: () => getProjectChatTurn(projectId, sessionId, turnId),
+	});
+
+export const projectChatContextSourcesQueryOptions = (
+	projectId: string,
+	sessionId: string,
+) =>
+	queryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"chat-sessions",
+			sessionId,
+			"context-sources",
+		] as const,
+		queryFn: () => listProjectChatContextSources(projectId, sessionId),
+	});
+
+export const taskConclusionsQueryOptions = (
+	projectId: string,
+	taskId: string,
+) =>
+	infiniteQueryOptions({
+		queryKey: ["projects", projectId, "tasks", taskId, "conclusions"] as const,
+		queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+			listTaskConclusions(projectId, taskId, {
+				cursor: pageParam,
+				limit: 50,
+			}),
+		initialPageParam: undefined as string | undefined,
+		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 	});
 
 // ── Global Agent / Global Chat Query Options ────────────────────────────────

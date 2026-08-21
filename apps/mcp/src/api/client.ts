@@ -51,6 +51,9 @@ export class PacaAPIClient {
 		if (this.config.agentId) {
 			headers["X-Agent-ID"] = this.config.agentId;
 		}
+		if (this.config.agentTurnId) {
+			headers["X-Agent-Turn-ID"] = this.config.agentTurnId;
+		}
 		// Only ever meaningful alongside X-Agent-ID (see PacaConfig.actorUserId's
 		// doc comment: "unset for a personal API key"). Gating on agentId here
 		// too — not just trusting actorUserId's own truthiness — means a stray

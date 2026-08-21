@@ -157,6 +157,7 @@ func Load() (Settings, error) {
 		"VALKEY_URL":         s.ValkeyURL,
 		"ENCRYPTION_KEY":     s.EncryptionKey,
 		"AGENT_SERVER_IMAGE": s.AgentServerImage,
+		"PACA_API_URL":       s.PacaAPIURL,
 		// Required even though llm-type gating doesn't need it: an empty
 		// InternalAPIKey would make internal/acpbridge.Server's internal
 		// endpoints accept any request with no X-Internal-Token header at
