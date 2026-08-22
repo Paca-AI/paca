@@ -1043,7 +1043,8 @@
 				"startDate": "開始日",
 				"dueDate": "期日",
 				"epic": "エピック",
-				"created": "作成日"
+				"created": "作成日",
+				"tags": "タグ"
 			},
 			"unassigned": "未割り当て",
 			"noEpic": "エピックなし"
@@ -1321,7 +1322,8 @@
 			"reporter": "報告者",
 			"startDate": "開始日",
 			"dueDate": "期日",
-			"created": "作成日"
+			"created": "作成日",
+			"tags": "タグ"
 		}
 	},
 	"automation": {

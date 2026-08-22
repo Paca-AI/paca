@@ -1043,7 +1043,8 @@
 				"startDate": "开始日期",
 				"dueDate": "截止日期",
 				"epic": "史诗",
-				"created": "创建时间"
+				"created": "创建时间",
+				"tags": "标签"
 			},
 			"unassigned": "未分配",
 			"noEpic": "无史诗"
@@ -1321,7 +1322,8 @@
 			"reporter": "报告人",
 			"startDate": "开始日期",
 			"dueDate": "截止日期",
-			"created": "创建时间"
+			"created": "创建时间",
+			"tags": "标签"
 		}
 	},
 	"automation": {
