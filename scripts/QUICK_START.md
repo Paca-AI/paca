@@ -35,7 +35,7 @@ PACA_DIR="/Volumes/HaiSSD/Projects/paca"
 
 # 1. Build backend WASM
 cd "$PLUGIN_DIR/backend"
-GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o backend.wasm .
+tinygo build -target=wasip1 -buildmode=c-shared -o backend.wasm .
 
 # 2. Populate backend store
 BACKEND_DIR="$PACA_DIR/plugins/local/backend/$PLUGIN_ID"

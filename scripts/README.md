@@ -115,7 +115,7 @@ source ~/.bashrc
 
 1. **Validates the plugin directory** - Checks for `plugin.json`, `backend/`, and `frontend/`
 2. **Extracts plugin metadata** - Reads plugin ID and version from `plugin.json`
-3. **Builds backend WASM** - Compiles Go backend to WASM using `GOOS=wasip1 GOARCH=wasm`
+3. **Builds backend WASM** - Compiles Go backend to WASM using TinyGo (`tinygo build -target=wasip1 -buildmode=c-shared`) — requires TinyGo to be installed
 4. **Populates backend store** - Copies WASM binary, migrations, and manifest to `plugins/local/backend/<plugin-id>/`
 5. **Builds frontend** - Runs `bun run build` to create frontend bundles
 6. **Populates frontend store** - Copies built assets to `plugins/local/frontend/<plugin-id>/`

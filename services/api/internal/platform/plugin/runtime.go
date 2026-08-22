@@ -52,8 +52,8 @@ type ResourceLimits struct {
 func DefaultResourceLimits() ResourceLimits {
 	return ResourceLimits{
 		MaxCallDuration:     5 * time.Second,
-		MaxMemoryPages:      1024,             // 64 MiB
-		MaxRequestBodyBytes: 10 * 1024 * 1024, // 10 MiB
+		MaxMemoryPages:      1024,            // 64 MiB
+		MaxRequestBodyBytes: 1 * 1024 * 1024, // 1 MiB — keep in sync with plugin-sdk-go's mallocBuffer size
 	}
 }
 
@@ -2197,9 +2197,12 @@ func writeToMemory(m api.Module, data []byte) ([]uint64, error) {
 	if len(data) == 0 {
 		return []uint64{0, 0}, nil
 	}
-	malloc := m.ExportedFunction("malloc")
+	// Exported as paca_malloc, not malloc: TinyGo-built plugins already
+	// export "malloc"/"free" from their own bundled wasi-libc allocator, so
+	// plugin-sdk-go's exports use a name that can't collide with those.
+	malloc := m.ExportedFunction("paca_malloc")
 	if malloc == nil {
-		return nil, fmt.Errorf("plugin: malloc not exported")
+		return nil, fmt.Errorf("plugin: paca_malloc not exported")
 	}
 	results, err := malloc.Call(context.Background(), uint64(len(data)))
 	if err != nil || len(results) == 0 {

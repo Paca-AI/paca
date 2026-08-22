@@ -18,7 +18,7 @@ var mallocBuf [4096]byte
 var mallocOffset uint32
 var mallocBase uint32
 
-//go:wasmexport malloc
+//go:wasmexport paca_malloc
 func malloc(size uint32) uint32 {
 	if mallocBase == 0 {
 		mallocBase = uint32(uintptr(unsafe.Pointer(&mallocBuf[0])))

@@ -311,7 +311,28 @@ function afterMutation(pluginId: string) {
 go get github.com/Paca-AI/plugin-sdk-go
 ```
 
-Build target must be `GOARCH=wasm GOOS=wasip1`. Standard Go 1.21+ WASI preview 1 is supported; TinyGo produces smaller binaries.
+Build with TinyGo, targeting `wasip1`:
+
+```sh
+tinygo build -target=wasip1 -buildmode=c-shared -o plugin.wasm .
+```
+
+`-buildmode=c-shared` is required — without it, TinyGo skips the WASI
+reactor entry point (`_initialize`) that the runtime depends on, and every
+call into the plugin panics at runtime with "//go:wasmexport function
+called before runtime initialization". TinyGo produces a much smaller
+binary than the standard Go compiler, because it doesn't statically link
+Go's full runtime (GC, scheduler, reflection) — every loaded plugin gets
+its own independent copy of that runtime on the host, so this is a real
+difference in production memory use, not just download size.
+
+Standard Go 1.21+ (`GOARCH=wasm GOOS=wasip1 go build -buildmode=c-shared`)
+is also supported, and is the right fallback if your plugin hits a TinyGo
+compatibility limitation (TinyGo implements a subset of the stdlib, notably
+around `reflect`). If your plugin declares its own `//go:wasmimport` host
+function, call it directly by name rather than passing it as a value (e.g.
+into a generic helper) — TinyGo doesn't support taking the address of a
+`go:wasmimport` function, only calling it.
 
 ---
 
