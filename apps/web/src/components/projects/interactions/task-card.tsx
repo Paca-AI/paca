@@ -541,6 +541,20 @@ export function TaskCard({
 					</span>
 				);
 
+			case "tags":
+				return task.tags && task.tags.length > 0 ? (
+					<span key="tags" className="inline-flex gap-0.5 flex-wrap">
+						{task.tags.map((tag) => (
+							<span
+								key={tag}
+								className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary/80"
+							>
+								{tag}
+							</span>
+						))}
+					</span>
+				) : null;
+
 			case "epic": {
 				const epic = task.parent_task_id
 					? epics.find((e) => e.id === task.parent_task_id)

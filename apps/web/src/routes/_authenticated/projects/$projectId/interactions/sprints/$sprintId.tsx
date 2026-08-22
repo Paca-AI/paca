@@ -203,7 +203,9 @@ function SprintPage() {
 						: sprint.start_date
 							? t("layout.sprintDetail.descriptionWithStartDate", {
 									status: statusBadge,
-									date: formatDate(sprint.start_date),
+									date: formatDate(sprint.start_date, undefined, {
+										dateOnly: true,
+									}),
 								})
 							: t("layout.sprintDetail.description", { status: statusBadge })
 				}

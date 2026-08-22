@@ -15,6 +15,13 @@ import { describe, expect, it } from "vitest";
 import { formatDate } from "./format-date";
 
 describe("formatDate", () => {
+	it("runs under a negative UTC offset (guards the TZ setup)", () => {
+		// If process.env.TZ was silently ignored (can happen on ICU-backed Node),
+		// these tests would pass vacuously in UTC. America/Sao_Paulo is UTC-3, so
+		// getTimezoneOffset() must be positive; fail loudly otherwise.
+		expect(new Date(0).getTimezoneOffset()).toBeGreaterThan(0);
+	});
+
 	it("dateOnly renders the stored calendar day regardless of timezone", () => {
 		expect(
 			formatDate(
