@@ -419,7 +419,7 @@ func New(cfg *config.Config) (*App, error) {
 			// starts SSO-only would have no administrator at all. Require the
 			// staged rollout instead: enable SSO alongside local login, promote
 			// an SSO user to admin, then disable local login.
-			privileged, err := identityRepo.HasSSOUserWithRole(context.Background(), []string{"ADMIN", "SUPER_ADMIN"})
+			privileged, err := identityRepo.HasSSOUserWithRole(context.Background(), cfg.OIDC.IssuerURL, []string{"ADMIN", "SUPER_ADMIN"})
 			if err != nil {
 				return nil, fmt.Errorf("bootstrap: oidc: sso-only admin check: %w", err)
 			}

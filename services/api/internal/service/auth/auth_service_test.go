@@ -194,6 +194,78 @@ func TestRefresh_Success(t *testing.T) {
 	}
 }
 
+// TestRefresh_PicksUpCurrentRole verifies promotion: a USER whose role was
+// elevated after the session started gets the NEW role on the very next
+// refresh — the old refresh token's stale role claim must not survive.
+func TestRefresh_PicksUpCurrentRole_Promotion(t *testing.T) {
+	userID := uuid.New()
+	// The session started when the user was a plain USER...
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleAdmin}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
+
+	// ...so the refresh token still carries the USER claim.
+	refresh, err := tm.IssueRefresh(userID.String(), "alice", userdom.RoleUser, "fam1")
+	if err != nil {
+		t.Fatalf("IssueRefresh: %v", err)
+	}
+
+	pair, err := svc.Refresh(context.Background(), refresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	claims, err := tm.Verify(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("verify new access token: %v", err)
+	}
+	if claims.Role != userdom.RoleAdmin {
+		t.Fatalf("refresh must pick up the current role, got %q", claims.Role)
+	}
+}
+
+// TestRefresh_PicksUpCurrentRole_Demotion verifies the security-critical
+// direction: an ADMIN demoted while holding an active session loses the
+// elevated role at the next refresh, not at the next full login.
+func TestRefresh_PicksUpCurrentRole_Demotion(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleUser}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)
+
+	// The session started while the user was still an ADMIN.
+	refresh, err := tm.IssueRefresh(userID.String(), "alice", userdom.RoleAdmin, "fam1")
+	if err != nil {
+		t.Fatalf("IssueRefresh: %v", err)
+	}
+
+	pair, err := svc.Refresh(context.Background(), refresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	claims, err := tm.Verify(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("verify new access token: %v", err)
+	}
+	if claims.Role != userdom.RoleUser {
+		t.Fatalf("demoted admin must lose ADMIN at refresh, got %q", claims.Role)
+	}
+	// The rotated refresh token must carry the demoted role too, so the
+	// staleness cannot survive further rotations.
+	refreshClaims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify rotated refresh token: %v", err)
+	}
+	if refreshClaims.Role != userdom.RoleUser {
+		t.Fatalf("rotated refresh token must carry the current role, got %q", refreshClaims.Role)
+	}
+}
+
 func TestRefresh_WrongKind(t *testing.T) {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)

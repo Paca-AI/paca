@@ -307,20 +307,12 @@ func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
 		cfg.Scopes = append([]string{"openid"}, cfg.Scopes...)
 	}
 
-	// Note: JIT provisioning is intentionally not configurable — it is
-	// always on. The provisioning flow is the only supported write path for
-	// user_external_identities, so a "no JIT" mode would leave first logins
-	// with no way to succeed. Revisit when an admin linking API exists.
-	cfg.DefaultRole = strings.TrimSpace(env("OIDC_DEFAULT_ROLE", "USER"))
-	if cfg.DefaultRole == "" {
-		cfg.DefaultRole = "USER"
-	}
-	if cfg.DefaultRole == "ADMIN" || cfg.DefaultRole == "SUPER_ADMIN" {
-		// JIT users get whatever global role the IdP proves they are entitled
-		// to — which is none. Elevated roles must be granted manually in
-		// Paca, never handed out automatically at first login.
-		return cfg, fmt.Errorf("config: OIDC_DEFAULT_ROLE must not be %s — grant elevated roles manually in Paca", cfg.DefaultRole)
-	}
+	// The JIT default role is fixed to the built-in USER role on purpose:
+	// global roles are customizable permission sets, so any configurable
+	// default could be pointed at a role with elevated permissions (e.g. a
+	// custom role carrying "*"). Elevated roles are granted manually in
+	// Paca. Revisit when IdP group→role mapping lands.
+	cfg.DefaultRole = "USER"
 
 	cfg.UsernameClaim = env("OIDC_USERNAME_CLAIM", "preferred_username")
 

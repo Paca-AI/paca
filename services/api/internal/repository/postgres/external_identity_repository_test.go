@@ -49,7 +49,12 @@ created_at DATETIME,
 last_login_at DATETIME
 );
 CREATE UNIQUE INDEX uni_external_identity_issuer_subject
-ON user_external_identities (issuer, subject);`
+ON user_external_identities (issuer, subject);
+CREATE TABLE global_roles (
+id TEXT PRIMARY KEY,
+name TEXT NOT NULL,
+description TEXT NOT NULL DEFAULT ''
+);`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
@@ -131,6 +136,73 @@ func TestExternalIdentity_TouchLastLogin(t *testing.T) {
 
 	if err := repo.TouchLastLogin(ctx, ident.ID); err != nil {
 		t.Fatalf("touch: %v", err)
+	}
+}
+
+// The SSO-only startup guard must only trust admins bound to the currently
+// configured issuer — an admin on a retired IdP must not satisfy it.
+func TestExternalIdentity_HasSSOUserWithRole(t *testing.T) {
+	db := openIdentityTestDB(t)
+	repo := NewExternalIdentityRepository(db)
+	ctx := context.Background()
+
+	seed := func(username, roleName string) *userdom.User {
+		u := newSSOUser(username)
+		u.Role = roleName
+		var roleID string
+		if err := db.GetContext(ctx, &roleID, "SELECT id FROM global_roles WHERE name = ?", roleName); err != nil {
+			t.Fatalf("lookup role %s: %v", roleName, err)
+		}
+		u.RoleID = uuid.MustParse(roleID)
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO users (id, username, password_hash, full_name, role_id, must_change_password, password_login_enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+			u.ID.String(), u.Username, u.PasswordHash, u.FullName, u.RoleID.String(), 0, 1, u.CreatedAt, u.UpdatedAt); err != nil {
+			t.Fatalf("seed user: %v", err)
+		}
+		return u
+	}
+	bind := func(u *userdom.User, issuer, subject string) {
+		ident := newIdentity(u.ID, issuer, subject)
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO user_external_identities (id, user_id, provider, issuer, subject, created_at, last_login_at) VALUES (?,?,?,?,?,?,?)",
+			ident.ID.String(), ident.UserID.String(), ident.Provider, ident.Issuer, ident.Subject, ident.CreatedAt, ident.LastLoginAt); err != nil {
+			t.Fatalf("seed identity: %v", err)
+		}
+	}
+
+	currentIssuer := "https://id.example.com"
+	oldIssuer := "https://old-id.example.com"
+
+	// Seed the role rows the guard joins against.
+	for name := range map[string]bool{"USER": true, "ADMIN": true, "SUPER_ADMIN": true} {
+		if _, err := db.ExecContext(ctx, "INSERT INTO global_roles (id, name, description) VALUES (?,?,?)", uuid.NewString(), name, ""); err != nil {
+			t.Fatalf("seed role %s: %v", name, err)
+		}
+	}
+
+	// An admin bound to the CURRENT issuer.
+	admin := seed("admin", "ADMIN")
+	bind(admin, currentIssuer, "admin-sub")
+	// A plain user on the current issuer.
+	user := seed("bob", "USER")
+	bind(user, currentIssuer, "bob-sub")
+
+	ok, err := repo.HasSSOUserWithRole(ctx, currentIssuer, []string{"ADMIN", "SUPER_ADMIN"})
+	if err != nil || !ok {
+		t.Fatalf("expected an SSO admin on the current issuer, got ok=%v err=%v", ok, err)
+	}
+	// No privileged binding on the other issuer — must NOT satisfy the guard.
+	ok, err = repo.HasSSOUserWithRole(ctx, oldIssuer, []string{"ADMIN", "SUPER_ADMIN"})
+	if err != nil || ok {
+		t.Fatalf("an admin on a different issuer must not satisfy the guard, got ok=%v err=%v", ok, err)
+	}
+	// A deleted admin no longer counts.
+	if _, err := db.ExecContext(ctx, "UPDATE users SET deleted_at = ? WHERE id = ?", time.Now().UTC(), admin.ID.String()); err != nil {
+		t.Fatalf("soft-delete admin: %v", err)
+	}
+	ok, err = repo.HasSSOUserWithRole(ctx, currentIssuer, []string{"ADMIN", "SUPER_ADMIN"})
+	if err != nil || ok {
+		t.Fatalf("a deleted admin must not satisfy the guard, got ok=%v err=%v", ok, err)
 	}
 }
 

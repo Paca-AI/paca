@@ -214,13 +214,16 @@ type userClaims struct {
 }
 
 // userInfoClaims is the wire shape for the UserInfo endpoint (standard OIDC
-// claim names).
+// claim names); the username is resolved from Raw via the same configured
+// claim name as the ID-token path, so a custom OIDC_USERNAME_CLAIM works
+// from either source.
 type userInfoClaims struct {
-	Sub               string `json:"sub"`
-	PreferredUsername string `json:"preferred_username"`
-	Name              string `json:"name"`
-	Email             string `json:"email"`
-	EmailVerified     bool   `json:"email_verified"`
+	Sub           string `json:"sub"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	// Raw keeps every claim so the configured username claim (e.g.
+	// "nickname") can be resolved the same way as from the ID token.
+	Raw map[string]any
 }
 
 // Callback completes the flow: consume the login transaction, exchange the
@@ -299,11 +302,12 @@ func (s *Service) Callback(ctx context.Context, code, state string) (*domainauth
 }
 
 // enrichFromUserInfo calls the provider's UserInfo endpoint with the access
-// token and overlays profile/email claims on top of the ID-token-derived
-// ones. A UserInfo sub that disagrees with the ID token's subject is never
-// merged. If the endpoint is unreachable or unsupported the ID-token claims
-// stand — identity was already established by the ID token, so only display
-// data is at stake.
+// token and fills in profile/email claims MISSING from the ID token — the ID
+// token's own claims always win; UserInfo only completes the picture. A
+// UserInfo sub that disagrees with the ID token's subject is never merged.
+// If the endpoint is unreachable or unsupported the ID-token claims stand —
+// identity was already established by the ID token, so only display data is
+// at stake.
 func (s *Service) enrichFromUserInfo(ctx context.Context, token *oauth2.Token, idTokenSub string, claims userClaims) userClaims {
 	ui, err := s.provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
 	if err != nil {
@@ -320,13 +324,20 @@ func (s *Service) enrichFromUserInfo(ctx context.Context, token *oauth2.Token, i
 		s.log.Warn("oidc: userinfo subject mismatch", "issuer", s.opts.IssuerURL)
 		return claims
 	}
-	if uic.PreferredUsername != "" {
-		claims.PreferredUsername = uic.PreferredUsername
+	// Decode the raw claims as well, so the configured username claim and
+	// the standard name claim resolve exactly like the ID-token path.
+	var raw map[string]any
+	if err := ui.Claims(&raw); err != nil {
+		s.log.Warn("oidc: userinfo raw claims undecodable", "issuer", s.opts.IssuerURL)
+		return claims
 	}
-	if uic.Name != "" {
-		claims.Name = uic.Name
+	if claims.PreferredUsername == "" {
+		claims.PreferredUsername = stringClaim(raw, s.opts.UsernameClaim)
 	}
-	if uic.Email != "" {
+	if claims.Name == "" {
+		claims.Name = stringClaim(raw, "name")
+	}
+	if claims.Email == "" {
 		claims.Email = uic.Email
 		claims.EmailVerified = uic.EmailVerified
 	}

@@ -851,6 +851,60 @@ func TestCallback_UserInfoEnrichesProfile(t *testing.T) {
 	}
 }
 
+// TestCallback_UserInfoOnlyFillsMissingClaims: ID-token claims always win;
+// UserInfo only completes what the ID token lacks.
+func TestCallback_UserInfoOnlyFillsMissingClaims(t *testing.T) {
+	h := newHarness(t, nil)
+	_, state, nonce, _ := h.beginLoginAndExtract(t)
+
+	h.idp.mu.Lock()
+	h.idp.tokenClaims = map[string]any{
+		"nonce":              nonce,
+		"preferred_username": "idtoken-name",
+		"name":               "ID Token Name",
+		"email":              "idtoken@example.com",
+		"email_verified":     true,
+	}
+	h.idp.userInfoClaims = map[string]any{
+		"preferred_username": "userinfo-name",
+		"name":               "UserInfo Name",
+		"email":              "userinfo@example.com",
+		"email_verified":     true,
+	}
+	h.idp.mu.Unlock()
+
+	if _, err := h.svc.Callback(context.Background(), "code", state); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	created := h.identities.provisionUser[0]
+	if created.Username != "idtoken-name" || created.FullName != "ID Token Name" {
+		t.Errorf("id-token claims must win, got %+v", created)
+	}
+	if created.Email == nil || *created.Email != "idtoken@example.com" {
+		t.Errorf("id-token email must win, got %v", created.Email)
+	}
+}
+
+// TestCallback_UserInfoHonorsCustomUsernameClaim: the configured username
+// claim resolves from UserInfo too, not only from the ID token.
+func TestCallback_UserInfoHonorsCustomUsernameClaim(t *testing.T) {
+	h := newHarness(t, func(o *Options) { o.UsernameClaim = "nickname" })
+	_, state, nonce, _ := h.beginLoginAndExtract(t)
+
+	h.idp.mu.Lock()
+	h.idp.tokenClaims = map[string]any{"nonce": nonce}
+	h.idp.userInfoClaims = map[string]any{"nickname": "alice"}
+	h.idp.mu.Unlock()
+
+	if _, err := h.svc.Callback(context.Background(), "code", state); err != nil {
+		t.Fatalf("callback: %v", err)
+	}
+	created := h.identities.provisionUser[0]
+	if created.Username != "alice" {
+		t.Errorf("expected username from configured claim via userinfo, got %q", created.Username)
+	}
+}
+
 // TestCallback_UserInfoSubjectMismatchIgnored: a UserInfo response about a
 // different subject must never be merged into the login.
 func TestCallback_UserInfoSubjectMismatchIgnored(t *testing.T) {

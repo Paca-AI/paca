@@ -98,11 +98,13 @@ func (r *ExternalIdentityRepository) ProvisionWithUser(ctx context.Context, u *u
 	})
 }
 
-// HasSSOUserWithRole reports whether at least one external identity is bound
-// to an active user holding one of the named global roles. Used by the
-// startup guard that refuses an SSO-only configuration until an
-// administrator can actually log in via SSO.
-func (r *ExternalIdentityRepository) HasSSOUserWithRole(ctx context.Context, roleNames []string) (bool, error) {
+// HasSSOUserWithRole reports whether at least one OIDC identity from the
+// given issuer is bound to an active user holding one of the named global
+// roles. Scoped to the issuer on purpose: the guard protects the ability to
+// log in via the *currently configured* IdP, so an admin bound to a previous
+// provider must not satisfy it. Used by the startup guard that refuses an
+// SSO-only configuration until an administrator can actually log in via SSO.
+func (r *ExternalIdentityRepository) HasSSOUserWithRole(ctx context.Context, issuer string, roleNames []string) (bool, error) {
 	if len(roleNames) == 0 {
 		return false, nil
 	}
@@ -111,12 +113,14 @@ func (r *ExternalIdentityRepository) HasSSOUserWithRole(ctx context.Context, rol
 		FROM user_external_identities ei
 		JOIN users u ON u.id = ei.user_id
 		JOIN global_roles gr ON gr.id = u.role_id
-		WHERE gr.name IN (?) AND u.deleted_at IS NULL`, roleNames)
+		WHERE ei.provider = 'oidc' AND ei.issuer = ? AND gr.name IN (?) AND u.deleted_at IS NULL`,
+		issuer, roleNames)
 	if err != nil {
 		return false, fmt.Errorf("external identity repo: has sso user with role: %w", err)
 	}
+	query = r.db.Rebind(query)
 	var count int
-	if err := r.db.GetContext(ctx, &count, r.db.Rebind(query), args...); err != nil {
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
 		return false, fmt.Errorf("external identity repo: has sso user with role: %w", err)
 	}
 	return count > 0, nil

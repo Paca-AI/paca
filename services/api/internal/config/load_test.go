@@ -316,7 +316,6 @@ func TestLoad_OIDC_DisabledByDefault(t *testing.T) {
 func TestLoad_OIDC_Success(t *testing.T) {
 	setOIDCEnv(t)
 	t.Setenv("OIDC_DISPLAY_NAME", "Company SSO")
-	t.Setenv("OIDC_DEFAULT_ROLE", "MEMBER")
 	t.Setenv("OIDC_USERNAME_CLAIM", "nickname")
 	t.Setenv("LOCAL_LOGIN_ENABLED", "false")
 
@@ -337,8 +336,18 @@ func TestLoad_OIDC_Success(t *testing.T) {
 	if o.RedirectURL != "https://paca.example.com/api/v1/auth/oidc/callback" {
 		t.Fatalf("expected redirect URL derived from PUBLIC_URL, got %q", o.RedirectURL)
 	}
-	if o.DisplayName != "Company SSO" || o.DefaultRole != "MEMBER" || o.UsernameClaim != "nickname" {
+	if o.DisplayName != "Company SSO" || o.DefaultRole != "USER" || o.UsernameClaim != "nickname" {
 		t.Fatalf("unexpected OIDC settings: %+v", o)
+	}
+	// The JIT default role is fixed regardless of what is configured.
+	t.Setenv("OIDC_DEFAULT_ROLE", "ADMIN")
+	t.Setenv("LOCAL_LOGIN_ENABLED", "true")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.DefaultRole != "USER" {
+		t.Fatalf("default role must be fixed to USER, got %q", cfg.OIDC.DefaultRole)
 	}
 }
 
@@ -408,12 +417,19 @@ func TestLoad_OIDC_ScopesDefaultContainOpenID(t *testing.T) {
 	}
 }
 
-func TestLoad_OIDC_RejectsAdminDefaultRole(t *testing.T) {
+func TestLoad_OIDC_DefaultRoleAlwaysUser(t *testing.T) {
 	setOIDCEnv(t)
-	t.Setenv("OIDC_DEFAULT_ROLE", "ADMIN")
+	// The JIT default role is fixed to the built-in USER role — not merely
+	// name-blocked from ADMIN/SUPER_ADMIN, since custom roles can carry
+	// elevated permission sets too.
+	t.Setenv("OIDC_DEFAULT_ROLE", "SUPER_ADMIN")
 
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error for ADMIN as JIT default role")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.DefaultRole != "USER" {
+		t.Fatalf("default role must be fixed to USER, got %q", cfg.OIDC.DefaultRole)
 	}
 }
 

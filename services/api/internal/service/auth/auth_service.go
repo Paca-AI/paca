@@ -170,9 +170,12 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		return nil, domainauth.ErrSessionInvalidated
 	}
 
-	// Look up the user to get the current MustChangePassword flag; this
-	// ensures that if an admin resets the password while the user has an
-	// active session, the very next Refresh call will carry the updated flag.
+	// Look up the user for the CURRENT username, role, and
+	// MustChangePassword flag — the refresh token's claims may be stale: an
+	// SSO/local user promoted or demoted after this session started must not
+	// keep generating access tokens with the old role (legacy authz grants
+	// ADMIN/SUPER_ADMIN PermissionAll, so a stale elevated role is a real
+	// privilege-retention issue, not a cosmetic one).
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
 		return nil, domainauth.ErrSessionInvalidated
@@ -190,11 +193,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*domainauth
 		refreshTTL = s.refreshSessionTTL
 	}
 
-	access, err := s.tokens.IssueAccess(claims.Subject, claims.Username, claims.Role, claims.FamilyID, u.MustChangePassword)
+	access, err := s.tokens.IssueAccess(u.ID.String(), u.Username, u.Role, claims.FamilyID, u.MustChangePassword)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := s.tokens.IssueRefreshWithTTL(claims.Subject, claims.Username, claims.Role, claims.FamilyID, claims.RememberMe, refreshTTL)
+	refresh, err := s.tokens.IssueRefreshWithTTL(u.ID.String(), u.Username, u.Role, claims.FamilyID, claims.RememberMe, refreshTTL)
 	if err != nil {
 		return nil, err
 	}
