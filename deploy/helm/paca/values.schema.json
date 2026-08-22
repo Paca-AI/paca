@@ -27,7 +27,8 @@
         "agentApiKey": { "type": "string" },
         "postgresPassword": { "type": "string" },
         "storageAccessKeyId": { "type": "string" },
-        "storageSecretAccessKey": { "type": "string" }
+        "storageSecretAccessKey": { "type": "string" },
+        "oidcClientSecret": { "type": "string" }
       }
     },
     "postgres": {
@@ -145,6 +146,20 @@
           }
         },
         "cookieSecure": { "type": "boolean" },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuerUrl": { "type": "string" },
+            "clientId": { "type": "string" },
+            "scopes": { "type": "string" },
+            "redirectUrl": { "type": "string" },
+            "displayName": { "type": "string" },
+            "usernameClaim": { "type": "string" },
+            "localLoginEnabled": { "type": "boolean" }
+          }
+        },
         "plugins": {
           "type": "object",
           "additionalProperties": true,

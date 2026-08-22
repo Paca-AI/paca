@@ -90,6 +90,31 @@ spec:
                   key: ENCRYPTION_KEY
             - name: PUBLIC_URL
               value: {{ .Values.publicUrl | quote }}
+            {{- if .Values.api.oidc.enabled }}
+            - name: OIDC_ENABLED
+              value: "true"
+            - name: OIDC_ISSUER_URL
+              value: {{ required "api.oidc.issuerUrl is required when api.oidc.enabled" .Values.api.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ required "api.oidc.clientId is required when api.oidc.enabled" .Values.api.oidc.clientId | quote }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: OIDC_CLIENT_SECRET
+            - name: OIDC_SCOPES
+              value: {{ .Values.api.oidc.scopes | quote }}
+            {{- with .Values.api.oidc.redirectUrl }}
+            - name: OIDC_REDIRECT_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: OIDC_DISPLAY_NAME
+              value: {{ .Values.api.oidc.displayName | quote }}
+            - name: OIDC_USERNAME_CLAIM
+              value: {{ .Values.api.oidc.usernameClaim | quote }}
+            - name: LOCAL_LOGIN_ENABLED
+              value: {{ .Values.api.oidc.localLoginEnabled | quote }}
+            {{- end }}
             - name: PLUGINS_WASM_DIR
               value: /plugins
             - name: PLUGINS_FRONTEND_DIR

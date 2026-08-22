@@ -107,6 +107,15 @@ Generate strong values yourself, e.g. `openssl rand -hex 32`.
 | `api.cookieSecure` | Set `false` only when TLS isn't terminated anywhere in front of this deployment — otherwise browsers silently drop the auth cookie and login never sticks | `true` |
 | `api.plugins.persistence.enabled` | Shared storage for installed plugins (backend WASM, frontend/MCP/skills bundles) — needs a `ReadWriteMany` StorageClass; set `false` to fall back to a per-Pod `emptyDir` (installed plugins then won't survive a restart or be visible to the gateway) | `true` |
 | `api.plugins.persistence.accessMode` / `.storageClassName` / `.size` | | `ReadWriteMany` / `""` / `5Gi` |
+| `api.oidc.enabled` | OIDC SSO for human login (single provider). See [docs/deployment/oidc-sso.md](https://github.com/Paca-AI/paca/blob/master/docs/deployment/oidc-sso.md) — staged rollout: keep `localLoginEnabled=true` until an SSO-bound `ADMIN`/`SUPER_ADMIN` user exists, or the API refuses to start | `false` |
+| `api.oidc.issuerUrl` | IdP issuer URL (required when enabled; https except loopback dev) | `""` |
+| `api.oidc.clientId` | OAuth2 client id (required when enabled) | `""` |
+| `secrets.oidcClientSecret` | Confidential-web-client secret (required when enabled; lands in the Secret, not the Deployment) | `""` |
+| `api.oidc.scopes` | Comma-separated scopes; `openid` is forced in | `"openid,profile,email"` |
+| `api.oidc.redirectUrl` | Override for the callback URL (default `<publicUrl>/api/v1/auth/oidc/callback`) | `""` |
+| `api.oidc.displayName` | Label on the login page's SSO button | `"Single Sign-On"` |
+| `api.oidc.usernameClaim` | ID-token/UserInfo claim used as the username candidate | `preferred_username` |
+| `api.oidc.localLoginEnabled` | `false` = SSO-only (hides the password form and rejects password login server-side) | `true` |
 
 ### Web (React SPA via Caddy)
 
