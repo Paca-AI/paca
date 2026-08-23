@@ -48,11 +48,20 @@ Options:
   --api-key KEY       API key for authentication (required)
   --skip-build        Skip building (only install)
   --skip-install      Skip installing (only build)
+  --go-toolchain TOOL "tinygo" (default) or "go" — most plugins build with
+                      TinyGo for a much smaller binary; use "go" (the
+                      standard compiler) only if your plugin hits a TinyGo
+                      stdlib limitation, e.g. it uses html/template or
+                      text/template — TinyGo's reflect package doesn't fully
+                      support what those need and the plugin will panic at
+                      runtime the first time it's actually invoked, not at
+                      build time.
 
 Environment Variables:
   PACA_DIR            Same as --paca-dir
   API_URL             Same as --api-url
   API_KEY             Same as --api-key (required)
+  GO_TOOLCHAIN        Same as --go-toolchain
 
 Examples:
   # Basic usage with API key
@@ -75,6 +84,7 @@ EOF
 # Parse arguments
 SKIP_BUILD=false
 SKIP_INSTALL=false
+GO_TOOLCHAIN="${GO_TOOLCHAIN:-tinygo}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -101,6 +111,10 @@ while [[ $# -gt 0 ]]; do
         --skip-install)
             SKIP_INSTALL=true
             shift
+            ;;
+        --go-toolchain)
+            GO_TOOLCHAIN="$2"
+            shift 2
             ;;
         -*)
             print_error "Unknown option: $1"
@@ -140,6 +154,11 @@ fi
 
 if ! command -v jq >/dev/null 2>&1; then
     print_error "jq is required but not installed"
+    exit 1
+fi
+
+if [[ "$GO_TOOLCHAIN" != "tinygo" && "$GO_TOOLCHAIN" != "go" ]]; then
+    print_error "--go-toolchain must be \"tinygo\" or \"go\", got: $GO_TOOLCHAIN"
     exit 1
 fi
 
@@ -185,8 +204,20 @@ if [[ "$SKIP_BUILD" = false ]]; then
         print_error "go.mod not found in backend directory"
         exit 1
     fi
-    
-    GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o backend.wasm .
+
+    if [[ "$GO_TOOLCHAIN" = "tinygo" ]]; then
+        if ! command -v tinygo >/dev/null 2>&1; then
+            print_error "tinygo is required but not installed (see https://tinygo.org/getting-started/install/), or pass --go-toolchain go"
+            exit 1
+        fi
+        tinygo build -target=wasip1 -buildmode=c-shared -o backend.wasm .
+    else
+        if ! command -v go >/dev/null 2>&1; then
+            print_error "go is required but not installed"
+            exit 1
+        fi
+        GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o backend.wasm .
+    fi
     
     if [[ ! -f "backend.wasm" ]]; then
         print_error "backend.wasm build failed"

@@ -44,7 +44,7 @@ func arenaBase() uint32 {
 // malloc returns the current cursor and advances it by size with no check
 // against the arena's actual capacity. See the package doc above.
 //
-//go:wasmexport malloc
+//go:wasmexport paca_malloc
 func malloc(size uint32) uint32 {
 	ptr := arenaBase() + offset
 	offset += size

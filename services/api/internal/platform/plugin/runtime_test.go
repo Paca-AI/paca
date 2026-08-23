@@ -195,6 +195,131 @@ func TestDispatchEvent_OversizedPayload_RejectedWithoutTouchingPlugin(t *testing
 	}
 }
 
+const legacyMallocPluginName = "test.legacymalloc"
+
+var (
+	legacyMallocWasmOnce sync.Once
+	legacyMallocWasmPath string
+	legacyMallocWasmErr  error
+)
+
+// buildLegacyMallocFixture compiles testdata/legacymallocplugin, which
+// exports only "malloc" -- never "paca_malloc" -- the same shape as every
+// plugin binary built against the plugin-sdk-go version before the
+// allocator export was renamed.
+func buildLegacyMallocFixture(t *testing.T) string {
+	t.Helper()
+	legacyMallocWasmOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "legacymallocplugin-*")
+		if err != nil {
+			legacyMallocWasmErr = err
+			return
+		}
+		wd, err := os.Getwd()
+		if err != nil {
+			legacyMallocWasmErr = err
+			return
+		}
+		out := filepath.Join(dir, "legacymalloc.wasm")
+		cmd := exec.CommandContext(t.Context(), "go", "build", "-buildmode=c-shared", "-o", out, "./testdata/legacymallocplugin")
+		cmd.Dir = wd
+		cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+		if output, buildErr := cmd.CombinedOutput(); buildErr != nil {
+			legacyMallocWasmErr = fmt.Errorf("build legacymalloc fixture: %w: %s", buildErr, output)
+			return
+		}
+		legacyMallocWasmPath = out
+	})
+	if legacyMallocWasmErr != nil {
+		t.Fatalf("build legacymalloc fixture: %v", legacyMallocWasmErr)
+	}
+	return legacyMallocWasmPath
+}
+
+// loadLegacyMallocPlugin compiles (see buildLegacyMallocFixture) and loads
+// the legacymalloc fixture into a fresh Runtime.
+func loadLegacyMallocPlugin(t *testing.T, limits ResourceLimits) *Runtime {
+	t.Helper()
+
+	wasmPath := buildLegacyMallocFixture(t)
+	wasmBytes, err := os.ReadFile(wasmPath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, legacyMallocPluginName)
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir fixture plugin dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "backend.wasm"), wasmBytes, 0o644); err != nil {
+		t.Fatalf("write fixture wasm: %v", err)
+	}
+
+	store := &Store{cfg: StoreConfig{Store: "local", WASMDir: dir}}
+	rt := NewRuntime(store, HostServices{}, limits, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	p := plugindom.Plugin{
+		Name:    legacyMallocPluginName,
+		Enabled: true,
+		Manifest: plugindom.PluginManifest{
+			Backend: &plugindom.BackendManifest{},
+		},
+	}
+	ctx := context.Background()
+	if err := rt.Load(ctx, p); err != nil {
+		t.Fatalf("load fixture plugin: %v", err)
+	}
+	t.Cleanup(func() { rt.Unload(ctx, legacyMallocPluginName) })
+	return rt
+}
+
+// TestHandleRequest_LegacyMallocExport_FallbackStillWorks pins
+// writeToMemory's backward-compatibility fallback: a plugin binary compiled
+// against the pre-rename SDK exports only "malloc", never "paca_malloc".
+// The host must still be able to write the request payload into such a
+// plugin's memory and call it successfully -- if the fallback ever
+// regresses, every already-deployed plugin of this shape breaks the moment
+// the host redeploys, silently, since callers of writeToMemory often ignore
+// its error.
+func TestHandleRequest_LegacyMallocExport_FallbackStillWorks(t *testing.T) {
+	rt := loadLegacyMallocPlugin(t, DefaultResourceLimits())
+	ctx := context.Background()
+
+	if _, err := rt.HandleRequest(ctx, legacyMallocPluginName, []byte("hello")); err != nil {
+		t.Fatalf("expected request to a legacy-malloc-only plugin to succeed via the fallback, got: %v", err)
+	}
+}
+
+// TestMaxHTTPBodyBytes covers the three cases callers of MaxHTTPBodyBytes
+// must distinguish: the limit disabled entirely (0, "no limit"), the known
+// envelope overhead alone already exceeding the limit (-1, "reject
+// outright, not even an empty body fits"), and the normal case where the
+// base64 expansion factor is applied to whatever room remains after
+// subtracting the caller-measured overhead.
+func TestMaxHTTPBodyBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxBytes int64
+		overhead int64
+		want     int64
+	}{
+		{name: "disabled limit means no limit", maxBytes: 0, overhead: 500, want: 0},
+		{name: "negative limit also means no limit", maxBytes: -1, overhead: 500, want: 0},
+		{name: "overhead equal to limit leaves no room", maxBytes: 1000, overhead: 1000, want: -1},
+		{name: "overhead exceeding limit leaves no room", maxBytes: 1000, overhead: 1500, want: -1},
+		{name: "remaining room is reduced by the base64 factor", maxBytes: 1000, overhead: 200, want: 600}, // (1000-200)*3/4
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := &Runtime{limits: ResourceLimits{MaxRequestBodyBytes: tt.maxBytes}}
+			if got := rt.MaxHTTPBodyBytes(tt.overhead); got != tt.want {
+				t.Fatalf("MaxHTTPBodyBytes(%d) with MaxRequestBodyBytes=%d = %d, want %d", tt.overhead, tt.maxBytes, got, tt.want)
+			}
+		})
+	}
+}
+
 // callerPlugin builds a plugindom.Plugin for use as execQuery/execStatement's
 // caller argument, with an optional RequestedSensitiveFields declaration.
 func callerPlugin(name string, requested ...string) plugindom.Plugin {
