@@ -655,27 +655,6 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Read request body, capped so an oversized body can never reach the
-	// plugin's WASM memory (see Runtime.HandleRequest for why that matters).
-	// MaxHTTPBodyBytes (not MaxRequestBodyBytes) is used here because the raw
-	// body is base64-encoded and wrapped in a JSON envelope before it reaches
-	// the runtime's own size check — using the same limit for both would let
-	// a body the HTTP layer accepts still get rejected downstream.
-	if maxBody := h.runtime.MaxHTTPBodyBytes(); maxBody > 0 {
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-	}
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			presenter.Error(w, r, apierr.New(apierr.CodePayloadTooLarge,
-				fmt.Sprintf("request body exceeds the %d byte limit", maxBytesErr.Limit)))
-			return
-		}
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "failed to read request body"))
-		return
-	}
-
 	// Build flattened headers map (first value per header name).
 	headers := make(map[string]string, len(r.Header))
 	for k, vs := range r.Header {
@@ -692,6 +671,53 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 		if len(vs) > 0 {
 			query[k] = vs[0]
 		}
+	}
+
+	// Measure the envelope's exact overhead for this request (everything but
+	// the body) before reading the body, so the size cap accounts for the
+	// real headers/query/path instead of a guessed constant — those vary a
+	// lot in practice (large cookies, forwarded headers, long query strings).
+	envelopeProbe := &pluginrt.HTTPRequest{
+		Method:     r.Method,
+		Path:       subPath,
+		Query:      query,
+		ProjectID:  pathParams[projectParamName],
+		CallerID:   callerID,
+		UserID:     userIDStr,
+		CallerRole: callerRole,
+		Headers:    headers,
+	}
+	probeBytes, err := json.Marshal(envelopeProbe)
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "failed to serialise request"))
+		return
+	}
+
+	// Read request body, capped so an oversized body can never reach the
+	// plugin's WASM memory (see Runtime.HandleRequest for why that matters).
+	// MaxHTTPBodyBytes (not MaxRequestBodyBytes) is used here because the raw
+	// body is base64-encoded and wrapped in the JSON envelope above before it
+	// reaches the runtime's own size check — using the same limit for both
+	// would let a body the HTTP layer accepts still get rejected downstream.
+	maxBody := h.runtime.MaxHTTPBodyBytes(int64(len(probeBytes)))
+	if maxBody < 0 {
+		presenter.Error(w, r, apierr.New(apierr.CodePayloadTooLarge,
+			"request headers/path/query leave no room for a body under the plugin payload limit"))
+		return
+	}
+	if maxBody > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			presenter.Error(w, r, apierr.New(apierr.CodePayloadTooLarge,
+				fmt.Sprintf("request body exceeds the %d byte limit", maxBytesErr.Limit)))
+			return
+		}
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "failed to read request body"))
+		return
 	}
 
 	req := &pluginrt.HTTPRequest{

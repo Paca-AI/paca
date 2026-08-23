@@ -221,30 +221,31 @@ func (r *Runtime) MaxRequestBodyBytes() int64 {
 	return r.limits.MaxRequestBodyBytes
 }
 
-// httpEnvelopeOverheadBytes is slack reserved for the JSON envelope fields
-// (method, path, headers, query, etc.) that accompany the base64-encoded
-// body when computing MaxHTTPBodyBytes from MaxRequestBodyBytes.
-const httpEnvelopeOverheadBytes = 8 * 1024
-
 // MaxHTTPBodyBytes returns the largest raw HTTP request body that is
 // guaranteed to still fit under MaxRequestBodyBytes once base64-encoded and
 // wrapped in the JSON envelope passed to a plugin's HandleRequest export.
-// Base64 inflates the body by ~4/3, so this is strictly smaller than
-// MaxRequestBodyBytes: without the reduction, a raw body accepted by the
-// HTTP layer's cap could still be rejected downstream by callExport's
-// envelope-size check.  0 means "no limit".
-func (r *Runtime) MaxHTTPBodyBytes() int64 {
+// knownOverheadBytes is the exact marshaled size of that envelope with an
+// empty body (method, path, query, headers, ids, and the JSON field syntax
+// itself) for this specific request — callers must measure it per-request
+// rather than guessing, since headers/query/path size varies a lot in
+// practice. Base64 inflates the body by ~4/3, so the result is strictly
+// smaller than MaxRequestBodyBytes-knownOverheadBytes.
+//
+// Returns 0 when the configured limit is disabled (<=0) — the only case
+// where 0 means "no limit". Returns -1 when knownOverheadBytes alone already
+// consumes the whole limit, meaning no body — not even an empty one — can
+// fit; callers must reject the request outright rather than treating -1 as
+// "no limit".
+func (r *Runtime) MaxHTTPBodyBytes(knownOverheadBytes int64) int64 {
 	max := r.limits.MaxRequestBodyBytes
 	if max <= 0 {
 		return 0
 	}
-	// If the configured limit is too small to accommodate the overhead
-	// reservation, fall back to the unreduced limit rather than returning 0
-	// (which means "no limit" — the opposite of intent).
-	if raw := (max - httpEnvelopeOverheadBytes) * 3 / 4; raw > 0 {
-		return raw
+	remaining := max - knownOverheadBytes
+	if remaining <= 0 {
+		return -1
 	}
-	return max
+	return remaining * 3 / 4
 }
 
 // LoadAll instantiates wazero modules for every enabled plugin in the list.

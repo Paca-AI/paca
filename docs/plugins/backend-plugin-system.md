@@ -279,7 +279,7 @@ Limits are configurable via environment variables (see `services/api/.env.exampl
 |---|---|---|
 | `PLUGINS_MAX_CALL_DURATION` | `5s` | Max time for a single plugin function call |
 | `PLUGINS_MAX_MEMORY_PAGES` | `1024` (64 MiB) | Max WASM linear-memory pages per module instance |
-| `PLUGINS_MAX_REQUEST_BODY_BYTES` | `10485760` (10 MiB) | Max inbound HTTP request body / event payload size |
+| `PLUGINS_MAX_REQUEST_BODY_BYTES` | `1048576` (1 MiB) | Max inbound HTTP request body / event payload size |
 
 ## Plugin Storage Location
 
