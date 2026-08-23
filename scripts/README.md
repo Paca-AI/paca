@@ -53,12 +53,14 @@ export API_KEY=your-api-key-here
 - `--api-key KEY`: API key for authentication (required)
 - `--skip-build`: Skip building (only install via API)
 - `--skip-install`: Skip API installation (only build)
+- `--go-toolchain TOOL`: `tinygo` (default) or `go` — use `go` only if your plugin hits a TinyGo stdlib limitation
 
 ### Environment Variables
 
 - `PACA_DIR`: Path to Paca project directory
 - `API_URL`: API base URL
 - `API_KEY`: API key for authentication (required)
+- `GO_TOOLCHAIN`: Same as `--go-toolchain`
 
 ## Examples
 
@@ -176,7 +178,7 @@ Do you want to update the existing plugin? (y/N)
 
 ### Build Fails
 
-- Ensure Go and Bun are installed and in your PATH
+- Ensure TinyGo (or Go, if using `--go-toolchain go`) and Bun are installed and in your PATH
 - Check that `go.mod` exists in the `backend/` directory
 - Check that `package.json` exists in the `frontend/` directory
 - Verify dependencies can be installed: `cd backend && go mod tidy`, `cd frontend && bun install`
@@ -193,7 +195,7 @@ The script needs write permissions to the `plugins/local/` directory and its sub
 
 ## Requirements
 
-- **Go** (for building WASM backend)
+- **TinyGo** (default, for building WASM backend — see [tinygo.org/getting-started/install](https://tinygo.org/getting-started/install/)), or **Go** if you pass `--go-toolchain go`
 - **Bun** (for building frontend)
 - **jq** (for JSON parsing, used when checking existing plugins)
 - **curl** (for API calls)

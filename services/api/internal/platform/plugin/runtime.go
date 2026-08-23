@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,6 +28,11 @@ import (
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/Paca-AI/api/internal/platform/netguard"
 )
+
+// ErrPayloadTooLarge is wrapped into the error callExport returns when a
+// payload exceeds MaxRequestBodyBytes, so HTTP transport code can map it to
+// a proper "payload too large" response instead of a generic internal error.
+var ErrPayloadTooLarge = errors.New("plugin: payload exceeds limit")
 
 // ResourceLimits controls per-plugin execution constraints.
 type ResourceLimits struct {
@@ -213,6 +219,32 @@ func NewRuntime(store *Store, services HostServices, limits ResourceLimits, log 
 // plugin's WASM memory.  0 means "no limit".
 func (r *Runtime) MaxRequestBodyBytes() int64 {
 	return r.limits.MaxRequestBodyBytes
+}
+
+// httpEnvelopeOverheadBytes is slack reserved for the JSON envelope fields
+// (method, path, headers, query, etc.) that accompany the base64-encoded
+// body when computing MaxHTTPBodyBytes from MaxRequestBodyBytes.
+const httpEnvelopeOverheadBytes = 8 * 1024
+
+// MaxHTTPBodyBytes returns the largest raw HTTP request body that is
+// guaranteed to still fit under MaxRequestBodyBytes once base64-encoded and
+// wrapped in the JSON envelope passed to a plugin's HandleRequest export.
+// Base64 inflates the body by ~4/3, so this is strictly smaller than
+// MaxRequestBodyBytes: without the reduction, a raw body accepted by the
+// HTTP layer's cap could still be rejected downstream by callExport's
+// envelope-size check.  0 means "no limit".
+func (r *Runtime) MaxHTTPBodyBytes() int64 {
+	max := r.limits.MaxRequestBodyBytes
+	if max <= 0 {
+		return 0
+	}
+	// If the configured limit is too small to accommodate the overhead
+	// reservation, fall back to the unreduced limit rather than returning 0
+	// (which means "no limit" — the opposite of intent).
+	if raw := (max - httpEnvelopeOverheadBytes) * 3 / 4; raw > 0 {
+		return raw
+	}
+	return max
 }
 
 // LoadAll instantiates wazero modules for every enabled plugin in the list.
@@ -402,7 +434,7 @@ func (r *Runtime) callExport(ctx context.Context, pluginName, exportName string,
 	}
 
 	if maxBytes := r.limits.MaxRequestBodyBytes; maxBytes > 0 && int64(len(payload)) > maxBytes {
-		return nil, fmt.Errorf("plugin %q: %s payload of %d bytes exceeds limit of %d bytes", pluginName, exportName, len(payload), maxBytes)
+		return nil, fmt.Errorf("%w: plugin %q: %s payload of %d bytes exceeds limit of %d bytes", ErrPayloadTooLarge, pluginName, exportName, len(payload), maxBytes)
 	}
 
 	fn := inst.mod.ExportedFunction(exportName)
@@ -2202,13 +2234,21 @@ func writeToMemory(m api.Module, data []byte) ([]uint64, error) {
 	// plugin-sdk-go's exports use a name that can't collide with those.
 	malloc := m.ExportedFunction("paca_malloc")
 	if malloc == nil {
-		return nil, fmt.Errorf("plugin: paca_malloc not exported")
+		// Fall back to the pre-rename export so plugins built against the
+		// previous SDK keep working until they're rebuilt.
+		malloc = m.ExportedFunction("malloc")
+	}
+	if malloc == nil {
+		return nil, fmt.Errorf("plugin: paca_malloc or malloc not exported")
 	}
 	results, err := malloc.Call(context.Background(), uint64(len(data)))
 	if err != nil || len(results) == 0 {
 		return nil, fmt.Errorf("plugin: malloc failed: %w", err)
 	}
 	ptr := results[0]
+	if ptr == 0 {
+		return nil, fmt.Errorf("plugin: malloc returned 0 (buffer exhausted)")
+	}
 	if !m.Memory().Write(uint32(ptr), data) {
 		return nil, fmt.Errorf("plugin: memory write out of bounds")
 	}

@@ -657,7 +657,11 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Read request body, capped so an oversized body can never reach the
 	// plugin's WASM memory (see Runtime.HandleRequest for why that matters).
-	if maxBody := h.runtime.MaxRequestBodyBytes(); maxBody > 0 {
+	// MaxHTTPBodyBytes (not MaxRequestBodyBytes) is used here because the raw
+	// body is base64-encoded and wrapped in a JSON envelope before it reaches
+	// the runtime's own size check — using the same limit for both would let
+	// a body the HTTP layer accepts still get rejected downstream.
+	if maxBody := h.runtime.MaxHTTPBodyBytes(); maxBody > 0 {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	}
 	bodyBytes, err := io.ReadAll(r.Body)
@@ -713,6 +717,10 @@ func (h *PluginHandler) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	respBytes, err := h.runtime.HandleRequest(reqCtx, pluginID, reqBytes)
 	if err != nil {
+		if errors.Is(err, pluginrt.ErrPayloadTooLarge) {
+			presenter.Error(w, r, apierr.New(apierr.CodePayloadTooLarge, "request payload too large"))
+			return
+		}
 		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "plugin execution error: "+err.Error()))
 		return
 	}
