@@ -72,9 +72,8 @@ LOCAL_LOGIN_ENABLED=true
 约束（后台保存时校验，并在启动加载有效配置时 fail fast）：
 
 - `OIDC_ENABLED=true` 时 Issuer / Client ID / Client Secret / 回调地址（显式或由 `PUBLIC_URL` 推导）缺一不可；
-- issuer 与回调地址必须 HTTPS（`http://localhost` 等环回地址例外，便于本地联调）；
+- issuer 必须 HTTPS（`http://localhost` 等环回地址例外，便于本地联调）；
 - issuer 是**标识符**而非可规范化 URL：配置原样使用（只去首尾空白，保留尾斜杠），必须与 Discovery metadata 及 ID Token `iss` 完全一致；
-- `ENV=production` 时回调地址必须 HTTPS；
 - IdP Discovery 在启用配置保存前和 API 启动时执行，IdP 不可达时保存失败或 API 拒绝启动；对 IdP 的所有出站调用（Discovery、code exchange、JWKS、UserInfo）走独立 HTTP client，10 秒超时——半死不活的 IdP 会快速失败而不是挂住启动或请求；
 - JIT 用户的 Global Role 固定为内置 `USER`（不可配置——Global Role 是可自定义权限集，任何可配置的默认角色都可能被指向高权限自定义角色；特权角色只能在 Paca 内手动授予）；
 - `LOCAL_LOGIN_ENABLED=false` 时保存和启动均校验：必须已存在至少一个绑定**当前 issuer** SSO 的 `ADMIN`/`SUPER_ADMIN` 用户，否则拒绝变更或启动（防止管理员锁死；换 IdP 后旧绑定不满足守卫，见下文）。

@@ -434,13 +434,13 @@ func TestLoad_OIDC_DefaultRoleAlwaysUser(t *testing.T) {
 	}
 }
 
-func TestLoad_OIDC_HTTPSRequiredInProduction(t *testing.T) {
+func TestLoad_OIDC_HTTPRedirectAllowed(t *testing.T) {
 	setOIDCEnv(t)
 	t.Setenv("ENV", "production")
-	t.Setenv("PUBLIC_URL", "http://paca.example.com")
+	t.Setenv("OIDC_REDIRECT_URL", "http://paca.example.com/api/v1/auth/oidc/callback")
 
-	if _, err := Load(); err == nil {
-		t.Fatal("expected https redirect requirement in production")
+	if _, err := Load(); err != nil {
+		t.Fatalf("unexpected redirect URL validation error: %v", err)
 	}
 }
 

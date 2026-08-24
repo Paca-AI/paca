@@ -273,7 +273,7 @@ func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
 // environment-backed and administrator-managed OIDC settings. Keeping one
 // pure path prevents the runtime configuration UI from drifting away from
 // startup's security checks.
-func NormalizeOIDCConfig(cfg OIDCConfig, environment, publicURL string) (OIDCConfig, error) {
+func NormalizeOIDCConfig(cfg OIDCConfig, _ string, publicURL string) (OIDCConfig, error) {
 	// The issuer is an identifier, not a normalizable URL: discovery metadata
 	// and ID-token iss claims must match it exactly, and some providers issue
 	// identifiers with a trailing slash. Only trim surrounding whitespace.
@@ -320,10 +320,6 @@ func NormalizeOIDCConfig(cfg OIDCConfig, environment, publicURL string) (OIDCCon
 	if cfg.ClientSecret == "" {
 		return cfg, errors.New("config: OIDC_CLIENT_SECRET must be set when OIDC is enabled")
 	}
-	if !strings.HasPrefix(cfg.RedirectURL, "https://") && environment == "production" {
-		return cfg, errors.New("config: OIDC_REDIRECT_URL must be https in production")
-	}
-
 	if !slices.Contains(cfg.Scopes, "openid") {
 		// "openid" is what turns an OAuth2 flow into an OIDC one — without
 		// it there is no ID token to validate.

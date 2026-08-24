@@ -211,10 +211,11 @@ func (s *memTxStore) Consume(_ context.Context, state string) ([]byte, error) {
 
 // stubUsers implements userdom.Repository.
 type stubUsers struct {
-	mu      sync.Mutex
-	byName  map[string]*userdom.User
-	byID    map[uuid.UUID]*userdom.User
-	byEmail map[string]*userdom.User
+	mu             sync.Mutex
+	byName         map[string]*userdom.User
+	byID           map[uuid.UUID]*userdom.User
+	byEmail        map[string]*userdom.User
+	findByEmailErr error
 }
 
 func newStubUsers() *stubUsers {
@@ -261,6 +262,9 @@ func (s *stubUsers) FindByUsernameIncludingDeleted(ctx context.Context, name str
 func (s *stubUsers) FindByEmail(_ context.Context, email string) (*userdom.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.findByEmailErr != nil {
+		return nil, s.findByEmailErr
+	}
 	if u, ok := s.byEmail[email]; ok && u.DeletedAt == nil {
 		return u, nil
 	}
@@ -748,6 +752,25 @@ func TestCallback_SameEmailDifferentSubjectDoesNotLink(t *testing.T) {
 	}
 	if created.Email != nil {
 		t.Errorf("colliding email must be dropped, got %q", *created.Email)
+	}
+}
+
+func TestCallback_EmailLookupFailureStopsJITProvisioning(t *testing.T) {
+	h := newHarness(t, nil)
+	wantErr := errors.New("database unavailable")
+	h.users.mu.Lock()
+	h.users.findByEmailErr = wantErr
+	h.users.mu.Unlock()
+
+	err := h.runCallback(t)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected email lookup failure, got %v", err)
+	}
+	if len(h.identities.provisionUser) != 0 {
+		t.Fatal("must not provision a user after an email lookup failure")
+	}
+	if len(h.sessions.issued) != 0 {
+		t.Fatal("must not issue a session after an email lookup failure")
 	}
 }
 

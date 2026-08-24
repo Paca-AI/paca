@@ -439,8 +439,12 @@ func (s *Service) provisionUser(ctx context.Context, issuer, subject string, cla
 	// is simply dropped.
 	email := ""
 	if claims.Email != "" && claims.EmailVerified {
-		if _, err := s.users.FindByEmail(ctx, claims.Email); errors.Is(err, userdom.ErrNotFound) {
+		_, err := s.users.FindByEmail(ctx, claims.Email)
+		switch {
+		case errors.Is(err, userdom.ErrNotFound):
 			email = claims.Email
+		case err != nil:
+			return nil, fmt.Errorf("oidc: find user by email: %w", err)
 		}
 	}
 
