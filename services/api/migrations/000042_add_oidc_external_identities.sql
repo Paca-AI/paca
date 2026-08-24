@@ -1,4 +1,4 @@
--- 000041_add_oidc_external_identities.sql
+-- 000042_add_oidc_external_identities.sql
 -- OIDC SSO support. user_external_identities maps an external IdP identity
 -- (issuer, subject) — the only stable identity key the OIDC spec guarantees —
 -- to an internal Paca user. users.password_login_enabled marks JIT-provisioned
