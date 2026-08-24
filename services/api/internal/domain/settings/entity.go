@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// WorkspaceSettings is the singleton branding row. Image fields hold
-// object-storage keys for the two server-generated variants (see
-// attachmentdom.AvatarService), nil when no image has been uploaded, mirroring
-// how AvatarKey/AvatarThumbKey work on users/agents/projects.
+// WorkspaceSettings is the singleton instance-settings row. Image fields hold
+// object-storage keys for branding; OIDC fields hold administrator-managed
+// authentication configuration. The OIDC client secret is encrypted before it
+// reaches this entity and is never exposed by a public or admin read DTO.
 type WorkspaceSettings struct {
 	LogoKey           *string
 	LogoThumbKey      *string
@@ -23,9 +23,19 @@ type WorkspaceSettings struct {
 	// BrandName overrides the product name instance-wide — used as both the
 	// browser tab title (<title>) and the wordmark text shown next to the
 	// logo — nil meaning "use the app's default ('Paca')".
-	BrandName *string
-	UpdatedAt time.Time
-	UpdatedBy *uuid.UUID
+	BrandName           *string
+	OIDCConfigured      bool
+	OIDCEnabled         bool
+	OIDCIssuerURL       *string
+	OIDCClientID        *string
+	OIDCClientSecretEnc *string
+	OIDCScopes          *string
+	OIDCRedirectURL     *string
+	OIDCDisplayName     *string
+	OIDCUsernameClaim   *string
+	LocalLoginEnabled   bool
+	UpdatedAt           time.Time
+	UpdatedBy           *uuid.UUID
 }
 
 // ImageSlot discriminates the two image slots a WorkspaceSettings row holds.

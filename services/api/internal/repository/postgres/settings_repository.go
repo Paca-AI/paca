@@ -15,20 +15,30 @@ import (
 
 // settingsColumns is shared between Get and WithLock's locked read so the
 // two queries can't drift apart.
-const settingsColumns = `logo_key, logo_thumb_key, favicon_key, favicon_thumb_key, primary_color_light, primary_color_dark, brand_name, updated_at, updated_by`
+const settingsColumns = `logo_key, logo_thumb_key, favicon_key, favicon_thumb_key, primary_color_light, primary_color_dark, brand_name, oidc_configured, oidc_enabled, oidc_issuer_url, oidc_client_id, oidc_client_secret_enc, oidc_scopes, oidc_redirect_url, oidc_display_name, oidc_username_claim, local_login_enabled, updated_at, updated_by`
 
 // workspaceSettingsRecord is the sqlx write model for the singleton
 // workspace_settings row.
 type workspaceSettingsRecord struct {
-	LogoKey           *string   `db:"logo_key"`
-	LogoThumbKey      *string   `db:"logo_thumb_key"`
-	FaviconKey        *string   `db:"favicon_key"`
-	FaviconThumbKey   *string   `db:"favicon_thumb_key"`
-	PrimaryColorLight *string   `db:"primary_color_light"`
-	PrimaryColorDark  *string   `db:"primary_color_dark"`
-	BrandName         *string   `db:"brand_name"`
-	UpdatedAt         time.Time `db:"updated_at"`
-	UpdatedBy         *string   `db:"updated_by"`
+	LogoKey             *string   `db:"logo_key"`
+	LogoThumbKey        *string   `db:"logo_thumb_key"`
+	FaviconKey          *string   `db:"favicon_key"`
+	FaviconThumbKey     *string   `db:"favicon_thumb_key"`
+	PrimaryColorLight   *string   `db:"primary_color_light"`
+	PrimaryColorDark    *string   `db:"primary_color_dark"`
+	BrandName           *string   `db:"brand_name"`
+	OIDCConfigured      bool      `db:"oidc_configured"`
+	OIDCEnabled         bool      `db:"oidc_enabled"`
+	OIDCIssuerURL       *string   `db:"oidc_issuer_url"`
+	OIDCClientID        *string   `db:"oidc_client_id"`
+	OIDCClientSecretEnc *string   `db:"oidc_client_secret_enc"`
+	OIDCScopes          *string   `db:"oidc_scopes"`
+	OIDCRedirectURL     *string   `db:"oidc_redirect_url"`
+	OIDCDisplayName     *string   `db:"oidc_display_name"`
+	OIDCUsernameClaim   *string   `db:"oidc_username_claim"`
+	LocalLoginEnabled   bool      `db:"local_login_enabled"`
+	UpdatedAt           time.Time `db:"updated_at"`
+	UpdatedBy           *string   `db:"updated_by"`
 }
 
 func workspaceSettingsToEntity(r *workspaceSettingsRecord) (*settingsdom.WorkspaceSettings, error) {
@@ -41,15 +51,25 @@ func workspaceSettingsToEntity(r *workspaceSettingsRecord) (*settingsdom.Workspa
 		updatedBy = &id
 	}
 	return &settingsdom.WorkspaceSettings{
-		LogoKey:           r.LogoKey,
-		LogoThumbKey:      r.LogoThumbKey,
-		FaviconKey:        r.FaviconKey,
-		FaviconThumbKey:   r.FaviconThumbKey,
-		PrimaryColorLight: r.PrimaryColorLight,
-		PrimaryColorDark:  r.PrimaryColorDark,
-		BrandName:         r.BrandName,
-		UpdatedAt:         r.UpdatedAt,
-		UpdatedBy:         updatedBy,
+		LogoKey:             r.LogoKey,
+		LogoThumbKey:        r.LogoThumbKey,
+		FaviconKey:          r.FaviconKey,
+		FaviconThumbKey:     r.FaviconThumbKey,
+		PrimaryColorLight:   r.PrimaryColorLight,
+		PrimaryColorDark:    r.PrimaryColorDark,
+		BrandName:           r.BrandName,
+		OIDCConfigured:      r.OIDCConfigured,
+		OIDCEnabled:         r.OIDCEnabled,
+		OIDCIssuerURL:       r.OIDCIssuerURL,
+		OIDCClientID:        r.OIDCClientID,
+		OIDCClientSecretEnc: r.OIDCClientSecretEnc,
+		OIDCScopes:          r.OIDCScopes,
+		OIDCRedirectURL:     r.OIDCRedirectURL,
+		OIDCDisplayName:     r.OIDCDisplayName,
+		OIDCUsernameClaim:   r.OIDCUsernameClaim,
+		LocalLoginEnabled:   r.LocalLoginEnabled,
+		UpdatedAt:           r.UpdatedAt,
+		UpdatedBy:           updatedBy,
 	}, nil
 }
 
@@ -131,8 +151,10 @@ func updateRow(ctx context.Context, tx *sqlx.Tx, s *settingsdom.WorkspaceSetting
 		id := s.UpdatedBy.String()
 		updatedBy = &id
 	}
-	_, err := tx.ExecContext(ctx, `UPDATE workspace_settings SET logo_key = $1, logo_thumb_key = $2, favicon_key = $3, favicon_thumb_key = $4, primary_color_light = $5, primary_color_dark = $6, brand_name = $7, updated_at = $8, updated_by = $9 WHERE id = true`,
-		s.LogoKey, s.LogoThumbKey, s.FaviconKey, s.FaviconThumbKey, s.PrimaryColorLight, s.PrimaryColorDark, s.BrandName, s.UpdatedAt, updatedBy,
+	_, err := tx.ExecContext(ctx, `UPDATE workspace_settings SET logo_key = $1, logo_thumb_key = $2, favicon_key = $3, favicon_thumb_key = $4, primary_color_light = $5, primary_color_dark = $6, brand_name = $7, oidc_configured = $8, oidc_enabled = $9, oidc_issuer_url = $10, oidc_client_id = $11, oidc_client_secret_enc = $12, oidc_scopes = $13, oidc_redirect_url = $14, oidc_display_name = $15, oidc_username_claim = $16, local_login_enabled = $17, updated_at = $18, updated_by = $19 WHERE id = true`,
+		s.LogoKey, s.LogoThumbKey, s.FaviconKey, s.FaviconThumbKey, s.PrimaryColorLight, s.PrimaryColorDark, s.BrandName,
+		s.OIDCConfigured, s.OIDCEnabled, s.OIDCIssuerURL, s.OIDCClientID, s.OIDCClientSecretEnc, s.OIDCScopes, s.OIDCRedirectURL, s.OIDCDisplayName, s.OIDCUsernameClaim, s.LocalLoginEnabled,
+		s.UpdatedAt, updatedBy,
 	)
 	if err != nil {
 		return fmt.Errorf("settings repo: update: %w", err)

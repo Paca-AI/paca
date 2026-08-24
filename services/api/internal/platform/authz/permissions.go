@@ -56,4 +56,9 @@ const (
 	// settings.read: the branding itself is served by an unauthenticated
 	// public endpoint, so the only thing to gate is writing to it.
 	PermissionSettingsWrite Permission = "settings.write"
+
+	// PermissionAuthenticationWrite gates reading and changing sensitive,
+	// instance-wide human authentication settings. It is deliberately separate
+	// from settings.write, whose contract is limited to public branding.
+	PermissionAuthenticationWrite Permission = "authentication.write"
 )
