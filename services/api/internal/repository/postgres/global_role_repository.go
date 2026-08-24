@@ -15,6 +15,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
+	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
@@ -94,6 +95,9 @@ func (r *GlobalRoleRepository) Create(ctx context.Context, role *globalroledom.G
 		rec.ID, rec.Name, rec.Permissions, rec.CreatedAt, rec.UpdatedAt,
 	)
 	if err != nil {
+		if isSSOAdminGuardViolation(err) {
+			return settingsdom.ErrSSOAdminRequired
+		}
 		if isUniqueViolation(err) {
 			return globalroledom.ErrNameTaken
 		}
@@ -113,6 +117,9 @@ func (r *GlobalRoleRepository) Update(ctx context.Context, role *globalroledom.G
 		rec.Name, rec.Permissions, rec.UpdatedAt, rec.ID,
 	)
 	if err != nil {
+		if isSSOAdminGuardViolation(err) {
+			return settingsdom.ErrSSOAdminRequired
+		}
 		if isUniqueViolation(err) {
 			return globalroledom.ErrNameTaken
 		}
@@ -129,6 +136,9 @@ func (r *GlobalRoleRepository) Update(ctx context.Context, role *globalroledom.G
 func (r *GlobalRoleRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	result, err := r.db.ExecContext(ctx, `DELETE FROM global_roles WHERE id = $1`, id.String())
 	if err != nil {
+		if isSSOAdminGuardViolation(err) {
+			return settingsdom.ErrSSOAdminRequired
+		}
 		return fmt.Errorf("global role repo: delete: %w", err)
 	}
 	n, _ := result.RowsAffected()
@@ -147,7 +157,7 @@ func (r *GlobalRoleRepository) ReplaceUserRoles(ctx context.Context, userID uuid
 	}
 	roleID := normalized[0]
 
-	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		var userCount int64
 		if err := tx.GetContext(ctx, &userCount, `SELECT COUNT(*) FROM users WHERE id = $1 AND deleted_at IS NULL`, userID.String()); err != nil {
 			return fmt.Errorf("global role repo: check user exists: %w", err)
@@ -174,6 +184,10 @@ func (r *GlobalRoleRepository) ReplaceUserRoles(ctx context.Context, userID uuid
 		}
 		return nil
 	})
+	if isSSOAdminGuardViolation(err) {
+		return settingsdom.ErrSSOAdminRequired
+	}
+	return err
 }
 
 // ListUserRoles returns the single global role assigned to the provided user via users.role_id.
@@ -279,4 +293,9 @@ func uniqueViolationConstraint(err error) (string, bool) {
 		return pgErr.ConstraintName, true
 	}
 	return "", false
+}
+
+func isSSOAdminGuardViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == "paca_sso_admin_required"
 }

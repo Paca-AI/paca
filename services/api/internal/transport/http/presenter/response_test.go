@@ -10,6 +10,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
 )
@@ -177,5 +178,12 @@ func TestStatusAndCodeFor_DomainAuthErrors(t *testing.T) {
 		if status != tc.wantStatus || code != tc.wantCode {
 			t.Fatalf("for %v expected (%d,%s), got (%d,%s)", tc.err, tc.wantStatus, tc.wantCode, status, code)
 		}
+	}
+}
+
+func TestStatusAndCodeFor_SSOAdminInvariant(t *testing.T) {
+	status, code := statusAndCodeFor(settingsdom.ErrSSOAdminRequired)
+	if status != http.StatusConflict || code != apierr.CodeSSOAdminRequired {
+		t.Fatalf("expected (409,%s), got (%d,%s)", apierr.CodeSSOAdminRequired, status, code)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 )
 
@@ -219,6 +220,9 @@ func (r *UserRepository) Update(ctx context.Context, u *userdom.User) error {
 // userdom.ErrEmailTaken the pre-check itself returns, instead of an
 // unhandled 500 built from a raw driver error string.
 func userRepoErr(op string, err error) error {
+	if isSSOAdminGuardViolation(err) {
+		return settingsdom.ErrSSOAdminRequired
+	}
 	if constraint, ok := uniqueViolationConstraint(err); ok {
 		switch constraint {
 		case "uni_users_username_active":
@@ -235,6 +239,9 @@ func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	now := time.Now().UTC()
 	_, err := r.db.ExecContext(ctx, `UPDATE users SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL`, now, id.String())
 	if err != nil {
+		if isSSOAdminGuardViolation(err) {
+			return settingsdom.ErrSSOAdminRequired
+		}
 		return fmt.Errorf("user repo: delete: %w", err)
 	}
 	return nil

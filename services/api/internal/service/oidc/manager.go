@@ -38,7 +38,7 @@ var (
 	ErrInvalidConfig         = errors.New("oidc: invalid configuration")
 	ErrEncryptionUnavailable = errors.New("oidc: encrypted secret storage unavailable")
 	ErrProviderValidation    = errors.New("oidc: provider validation failed")
-	ErrSSOAdminRequired      = errors.New("oidc: sso-only mode requires an administrator bound to the configured issuer")
+	ErrSSOAdminRequired      = settingsdom.ErrSSOAdminRequired
 )
 
 // ServiceFactory performs provider construction and Discovery for a candidate

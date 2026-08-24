@@ -299,7 +299,12 @@ rollout:
 Paca rejects step 5 unless an active `ADMIN` or `SUPER_ADMIN` has an OIDC
 binding for the exact currently configured issuer. A privileged binding from
 an old or different provider does not satisfy the guard. Deleted users do not
-satisfy it either.
+satisfy it either. PostgreSQL maintains this as a deferred transactional
+invariant after SSO-only mode is active: configuration changes, demotion or
+deletion of a qualifying user, privileged-role renames, and identity-binding
+changes cannot commit if they would remove the final eligible administrator.
+The shared database constraint also serializes conflicting changes from
+different API replicas.
 
 Disabling OIDC always forces local login enabled. This prevents an
 installation with no human login entry point.
@@ -363,7 +368,9 @@ whose current contract only grants logo, favicon, name, and color changes.
 Add `authentication.write` as a global permission. Grant it to the built-in
 `ADMIN` role and, through wildcard permission, `SUPER_ADMIN`. Custom roles do
 not gain it automatically. Both reading the non-secret SSO configuration and
-updating it require this permission.
+updating it require this permission and an interactive user JWT session.
+Personal and Agent API keys are rejected: a machine credential must not be
+able to replace or disable the installation's human login path.
 
 ### Admin UI
 
@@ -595,7 +602,8 @@ Recommended rollout:
 - fixed `USER` role;
 - password operations rejected for SSO-only accounts;
 - role promotion and demotion reflected at session refresh;
-- issuer-scoped SSO-only lockout guard.
+- issuer-scoped SSO-only lockout guard, including concurrent demotion/delete
+  attempts and later mutations while SSO-only remains active.
 
 ### Admin Configuration
 

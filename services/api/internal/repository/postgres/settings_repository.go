@@ -138,6 +138,9 @@ func (r *SettingsRepository) WithLock(ctx context.Context, fn func(*settingsdom.
 		return nil
 	})
 	if err != nil {
+		if isSSOAdminGuardViolation(err) {
+			return nil, settingsdom.ErrSSOAdminRequired
+		}
 		return nil, err
 	}
 	return result, nil

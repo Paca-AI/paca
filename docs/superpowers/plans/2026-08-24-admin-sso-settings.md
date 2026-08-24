@@ -15,6 +15,7 @@
 **Files:**
 - Rename: `services/api/migrations/000041_add_oidc_external_identities.sql` to `services/api/migrations/000042_add_oidc_external_identities.sql`
 - Create: `services/api/migrations/000043_add_oidc_settings.sql`
+- Create: `services/api/migrations/000044_enforce_sso_admin_invariant.sql`
 - Modify: `services/api/internal/domain/settings/entity.go`
 - Modify: `services/api/internal/repository/postgres/settings_repository.go`
 - Create: `services/api/internal/repository/postgres/settings_repository_test.go`
@@ -55,6 +56,12 @@ ALTER TABLE workspace_settings
 ```
 
 Mirror these fields on `settingsdom.WorkspaceSettings`, in `settingsColumns`, the SQL record, entity mapping, and the locked update query.
+
+Add a deferred PostgreSQL constraint trigger that rejects any settings, user,
+global-role, or external-identity mutation that would leave an enabled
+SSO-only installation without an active `ADMIN` or `SUPER_ADMIN` bound to the
+configured issuer. Serialize those checks through the singleton settings row
+so concurrent writes across API replicas cannot violate the invariant.
 
 - [ ] **Step 4: Add the independent global permission**
 
@@ -215,7 +222,8 @@ Run the Task 4 test command and require exit 0.
 
 Cover secret masking, acting-user propagation, JSON validation,
 `authentication.write` protection on both GET/PATCH, and rejection for a role
-holding only `settings.write`.
+holding only `settings.write`. Assert both endpoints reject API-key
+authentication even when that key's user has `authentication.write`.
 
 - [ ] **Step 2: Run tests and verify RED**
 

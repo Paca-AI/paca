@@ -163,6 +163,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeBadRequest
 	case errors.Is(err, settingsdom.ErrBrandNameTooLong):
 		return http.StatusBadRequest, apierr.CodeBadRequest
+	case errors.Is(err, settingsdom.ErrSSOAdminRequired):
+		return http.StatusConflict, apierr.CodeSSOAdminRequired
 	case errors.Is(err, projectdom.ErrRoleNotFound):
 		return http.StatusNotFound, apierr.CodeProjectRoleNotFound
 	case errors.Is(err, projectdom.ErrRoleNameTaken):

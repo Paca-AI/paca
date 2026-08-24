@@ -3,6 +3,8 @@ package oidc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -274,6 +276,63 @@ func TestManagerDisabledOIDCForcesLocalLogin(t *testing.T) {
 	}
 	if _, _, err := m.BeginLogin(context.Background()); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("disabled manager BeginLogin error = %v", err)
+	}
+}
+
+func TestManagerConcurrentUpdatesExposeOnlyCompleteSnapshots(t *testing.T) {
+	repo := &managerSettingsRepo{row: &settingsdom.WorkspaceSettings{LocalLoginEnabled: true}}
+	factory := &managerFactory{}
+	initial := validManagerConfig("sso-initial")
+	initial.ClientID = "client-initial"
+	m := newTestManager(t, initial, repo, factory, managerEncryptor(t), &managerAdminGuard{allowed: true})
+
+	const writerCount = 12
+	const readerCount = 8
+	start := make(chan struct{})
+	errCh := make(chan error, writerCount+readerCount)
+	var wg sync.WaitGroup
+
+	for i := range writerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			cfg := validManagerConfig(fmt.Sprintf("sso-%d", i))
+			cfg.ClientID = fmt.Sprintf("client-%d", i)
+			if _, err := m.Update(context.Background(), updateFromConfig(cfg), uuid.New()); err != nil {
+				errCh <- fmt.Errorf("update %d: %w", i, err)
+			}
+		}()
+	}
+
+	for range readerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for range 500 {
+				cfg := m.AdminConfig()
+				if strings.TrimPrefix(cfg.DisplayName, "sso-") != strings.TrimPrefix(cfg.ClientID, "client-") {
+					errCh <- fmt.Errorf("mixed snapshot: display_name=%q client_id=%q", cfg.DisplayName, cfg.ClientID)
+					return
+				}
+				options := m.LoginOptions()
+				if !options.OIDCEnabled || !strings.HasPrefix(options.DisplayName, "sso-") {
+					errCh <- fmt.Errorf("invalid login options: %+v", options)
+					return
+				}
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Error(err)
+	}
+	if repo.writes != writerCount {
+		t.Fatalf("expected %d serialized writes, got %d", writerCount, repo.writes)
 	}
 }
 

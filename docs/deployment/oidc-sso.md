@@ -163,7 +163,7 @@ GET   /api/v1/admin/settings/sso
 PATCH /api/v1/admin/settings/sso
 ```
 
-两个接口都要求 `authentication.write`。响应不包含明文 Secret 或数据库密文，只包含 `client_secret_configured` 和 `encrypted_secret_storage_available`。公开的 `GET /api/v1/auth/config` 每次读取当前运行时快照，因此登录页会跟随同进程内的成功保存立即更新。
+两个接口都要求用户 JWT 会话和 `authentication.write`；个人 API Key 与 Agent API Key 均不允许读写全站登录配置。响应不包含明文 Secret 或数据库密文，只包含 `client_secret_configured` 和 `encrypted_secret_storage_available`。公开的 `GET /api/v1/auth/config` 每次读取当前运行时快照，因此登录页会跟随同进程内的成功保存立即更新。
 
 本地联调可用 `http://localhost:8080/realms/...` 形式的 issuer（环回地址允许 http），Keycloak 可用 `deploy/docker-compose.dev.yml` 同网络起容器。
 
@@ -177,6 +177,7 @@ PATCH /api/v1/admin/settings/sso
 - 审计日志只记录 issuer、Paca user id、成败类别，**不记录** token / code / 内部错误详情；
 - 回调响应带 `Referrer-Policy: no-referrer`；
 - 错误一律泛化，不泄露 Provider 内部响应。
+- SSO-only 模式由 PostgreSQL 延迟约束持续保护：降权、删除用户、角色改名或身份绑定变更若会移除最后一名同 issuer 的 SSO 管理员，事务会以 `AUTH_SSO_ADMIN_REQUIRED` 拒绝；并发写入也通过单例设置行串行判定。
 
 ## 明确不做（后续演进）
 

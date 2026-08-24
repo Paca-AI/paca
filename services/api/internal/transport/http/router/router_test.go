@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
@@ -24,6 +25,7 @@ import (
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
 	"github.com/Paca-AI/api/internal/service/oidc"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
+	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 )
 
 type mockAuthSvc struct{}
@@ -199,6 +201,14 @@ type staticPermissionStore struct {
 	globalPerms []authz.Permission
 }
 
+type staticAPIKeyAuth struct {
+	userID uuid.UUID
+}
+
+func (s *staticAPIKeyAuth) Authenticate(context.Context, string) (*apikeydom.APIKey, error) {
+	return &apikeydom.APIKey{ID: uuid.New(), UserID: s.userID}, nil
+}
+
 type fakeSSORouterService struct{}
 
 func (*fakeSSORouterService) AdminConfig() oidc.AdminConfig {
@@ -222,11 +232,16 @@ func newTestRouter(t *testing.T) http.Handler {
 }
 
 func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Handler {
+	return newTestRouterWithAuth(t, store, nil)
+}
+
+func newTestRouterWithAuth(t *testing.T, store authz.PermissionStore, apiKeyAuth httpmw.APIKeyAuthenticator) http.Handler {
 	t.Helper()
 
 	authorizer := authz.NewAuthorizer(store)
 	deps := Deps{
 		TokenManager: jwttoken.New("test-secret", 15*time.Minute, 24*time.Hour),
+		APIKeyAuth:   apiKeyAuth,
 		Authorizer:   authorizer,
 		Health:       handler.NewHealthHandler(),
 		Auth: handler.NewAuthHandler(&mockAuthSvc{}, handler.CookieConfig{
@@ -471,6 +486,26 @@ func TestAdminRoute_SSOSettings_WithAuthenticationPermission(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with authentication.write permission, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminRoute_SSOSettings_RejectsAPIKey(t *testing.T) {
+	userID := uuid.New()
+	r := newTestRouterWithAuth(
+		t,
+		&staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionAuthenticationWrite}},
+		&staticAPIKeyAuth{userID: userID},
+	)
+
+	for _, method := range []string{http.MethodGet, http.MethodPatch} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), method, "/api/v1/admin/settings/sso", strings.NewReader(`{"enabled":false}`))
+		req.Header.Set("X-API-Key", "machine-credential")
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("%s: expected 403 for API key, got %d (%s)", method, w.Code, w.Body.String())
+		}
 	}
 }
 

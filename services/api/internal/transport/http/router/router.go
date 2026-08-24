@@ -259,8 +259,8 @@ func New(deps Deps) http.Handler {
 				}
 				if deps.SSOSettings != nil {
 					authenticationWrite := httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAuthenticationWrite)
-					r.With(authenticationWrite).Get("/settings/sso", deps.SSOSettings.Get)
-					r.With(authenticationWrite).Patch("/settings/sso", deps.SSOSettings.Update)
+					r.With(httpmw.RequireJWTAuth(), authenticationWrite).Get("/settings/sso", deps.SSOSettings.Get)
+					r.With(httpmw.RequireJWTAuth(), authenticationWrite).Patch("/settings/sso", deps.SSOSettings.Update)
 				}
 			})
 
