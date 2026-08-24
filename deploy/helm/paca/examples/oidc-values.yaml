@@ -1,0 +1,23 @@
+# Overlay this file on top of the required deployment values:
+#   helm install paca deploy/helm/paca -f my-values.yaml -f oidc-values.yaml
+#
+# Register api.oidc.redirectUrl exactly as written in the IdP client.
+# Keep localLoginEnabled=true until an SSO user has been promoted to
+# ADMIN/SUPER_ADMIN through the Paca admin UI.
+
+publicUrl: "https://paca.example.com"
+
+api:
+  oidc:
+    enabled: true
+    issuerUrl: "https://idp.example.com/realms/paca"
+    clientId: "paca-web"
+    scopes: "openid,profile,email"
+    redirectUrl: "https://paca.example.com/api/v1/auth/oidc/callback"
+    displayName: "Company SSO"
+    usernameClaim: "preferred_username"
+    localLoginEnabled: true
+
+secrets:
+  # Replace this value through your secret manager or use existingSecret.
+  oidcClientSecret: "replace-with-client-secret"

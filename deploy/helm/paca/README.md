@@ -36,6 +36,31 @@ no auto-generated default) — set them explicitly or point
 Configuration table below and the deployment guide for how to generate
 them.
 
+### Enabling OIDC on the first install
+
+The chart includes a copyable OIDC overlay at
+[`examples/oidc-values.yaml`](examples/oidc-values.yaml). Merge it with your
+normal deployment values after replacing its issuer, client ID, callback URL,
+and client secret:
+
+```bash
+helm install paca deploy/helm/paca -n paca \
+  -f my-values.yaml \
+  -f deploy/helm/paca/examples/oidc-values.yaml
+```
+
+Register `api.oidc.redirectUrl` exactly at the IdP. If it is empty, the API
+derives the callback as `<publicUrl>/api/v1/auth/oidc/callback`. Keep
+`api.oidc.localLoginEnabled: true` for the first deployment, sign in through
+SSO, and promote that account to `ADMIN` or `SUPER_ADMIN` before disabling
+password login in a later Helm upgrade.
+
+Helm values are the startup fallback only. Until the admin SSO page is saved,
+the API uses them as its environment configuration. The first successful save
+persists an encrypted client secret and the rest of the provider settings in
+`workspace_settings`; from then on the database configuration is authoritative
+and Helm upgrades do not replace it.
+
 ## Configuration
 
 ### Global
@@ -60,6 +85,7 @@ Generate strong values yourself, e.g. `openssl rand -hex 32`.
 | `secrets.postgresPassword` | PostgreSQL password | `""` |
 | `secrets.storageAccessKeyId` | Object storage access key ID | `""` |
 | `secrets.storageSecretAccessKey` | Object storage secret access key | `""` |
+| `secrets.oidcClientSecret` | OIDC confidential-web-client secret (required when `api.oidc.enabled`; use `OIDC_CLIENT_SECRET` when `secrets.existingSecret` is set) | `""` |
 
 ### PostgreSQL (bundled)
 

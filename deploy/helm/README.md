@@ -158,6 +158,7 @@ Secret's `POSTGRES_PASSWORD` key must match whatever password your own
 
 ```bash
 helm lint deploy/helm/paca
+deploy/helm/paca/tests/render-oidc.sh
 helm template paca deploy/helm/paca -f my-values.yaml | less
 ```
 

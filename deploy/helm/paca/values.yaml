@@ -48,7 +48,8 @@ secrets:
   storageSecretAccessKey: ""
   # OIDC confidential-web-client secret. Only required when
   # api.oidc.enabled — kept here (not under api.oidc) so it lands in the
-  # Secret instead of a world-readable Deployment spec.
+  # Secret instead of a world-readable Deployment spec. When existingSecret
+  # is set, that Secret must provide the same OIDC_CLIENT_SECRET key.
   oidcClientSecret: ""
 
 # ---------------------------------------------------------------------------
@@ -167,6 +168,11 @@ api:
   # api.oidc.redirectUrl overrides it. See docs/deployment/oidc-sso.md
   # (staged rollout: keep localLoginEnabled=true until an SSO-bound
   # ADMIN/SUPER_ADMIN user exists, or the API refuses to start).
+  #
+  # These values initialize the environment-backed source on a fresh
+  # deployment. After an administrator saves the SSO settings page,
+  # workspace_settings becomes authoritative and later Helm upgrades do not
+  # overwrite the database-backed configuration.
   oidc:
     enabled: false
     issuerUrl: ""

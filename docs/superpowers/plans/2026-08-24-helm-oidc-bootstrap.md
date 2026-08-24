@@ -35,6 +35,7 @@ Expected: `yaml ok`.
 
 **Files:**
 - Modify: `deploy/helm/paca/README.md`
+- Modify: `deploy/helm/README.md`
 - Modify: `deploy/helm/paca/values.yaml`
 
 - [ ] **Step 1: Add the OIDC secret to the Secrets table**
