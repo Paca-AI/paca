@@ -217,14 +217,42 @@ CREATE INDEX ON my_items (task_id);
 
 ### Building the WASM Binary
 
+Use TinyGo — it produces a dramatically smaller binary than the standard Go
+compiler, because it doesn't statically link Go's full runtime (GC,
+goroutine scheduler, reflection). This matters a lot in production: every
+loaded plugin gets its own independent copy of that runtime, so a plugin
+built with standard Go can cost tens of MiB of *host* memory once loaded,
+versus a few MiB for the same plugin built with TinyGo.
+
 ```sh
 cd backend
-GOOS=wasip1 GOARCH=wasm tinygo build -o ../dist/my-plugin.wasm -target wasip1 .
+tinygo build -target=wasip1 -buildmode=c-shared -o ../dist/my-plugin.wasm .
 ```
 
-Or with standard Go (larger binary):
+`-buildmode=c-shared` is required, not optional: without it, TinyGo doesn't
+wire up the WASI reactor entry point (`_initialize`) that the runtime
+depends on to set up before any `//go:wasmexport` function runs. The plugin
+will still compile without it, but every call into it will panic at runtime
+with `"//go:wasmexport function called before runtime initialization"`.
+
+If your plugin declares its own `//go:wasmimport` host functions beyond
+what this SDK provides, TinyGo requires them to be called directly by name —
+never passed around as a function value. If you use
+[`plugin.CallHostFunction`](https://pkg.go.dev/github.com/Paca-AI/plugin-sdk-go#CallHostFunction),
+wrap your import in a small closure instead of passing it directly:
+
+```go
+// Works under both standard Go and TinyGo:
+err := plugin.CallHostFunction(func(a, b, c, d int64) { hostMyImport(a, b, c, d) }, req, &res)
+
+// Compiles under standard Go, but fails to build under TinyGo:
+err := plugin.CallHostFunction(hostMyImport, req, &res)
+```
+
+Or with standard Go (only if you hit a TinyGo compatibility issue — TinyGo
+supports a subset of the stdlib, notably around `reflect`):
 ```sh
-GOOS=wasip1 GOARCH=wasm go build -o ../dist/my-plugin.wasm .
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o ../dist/my-plugin.wasm .
 ```
 
 ---

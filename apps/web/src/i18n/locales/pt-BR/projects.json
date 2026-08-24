@@ -1043,7 +1043,8 @@
 				"startDate": "Data de início",
 				"dueDate": "Data de entrega",
 				"epic": "Épico",
-				"created": "Criada"
+				"created": "Criada",
+				"tags": "Tags"
 			},
 			"unassigned": "Sem responsável",
 			"noEpic": "Sem épico"
@@ -1321,7 +1322,8 @@
 			"reporter": "Relator",
 			"startDate": "Data de início",
 			"dueDate": "Data de entrega",
-			"created": "Criada"
+			"created": "Criada",
+			"tags": "Tags"
 		}
 	},
 	"automation": {

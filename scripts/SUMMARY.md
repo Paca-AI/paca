@@ -43,7 +43,7 @@ export API_KEY=your-api-key
 The script automates the complete plugin installation process:
 
 1. ✅ **Validates plugin structure** - Checks for required files
-2. ✅ **Builds backend WASM** - Compiles Go backend using `GOOS=wasip1 GOARCH=wasm`
+2. ✅ **Builds backend WASM** - Compiles Go backend using TinyGo (`tinygo build -target=wasip1 -buildmode=c-shared`)
 3. ✅ **Populates backend store** - Copies artifacts to `plugins/local/backend/<plugin-id>/`
 4. ✅ **Builds frontend** - Runs `bun run build` to create bundles
 5. ✅ **Populates frontend store** - Copies assets to `plugins/local/frontend/<plugin-id>/`

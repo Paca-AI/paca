@@ -102,7 +102,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: PLUGINS_MAX_MEMORY_PAGES: %w", err)
 	}
-	pluginMaxRequestBodyBytes, err := parseInt64(env("PLUGINS_MAX_REQUEST_BODY_BYTES", "10485760"))
+	pluginMaxRequestBodyBytes, err := parseInt64(env("PLUGINS_MAX_REQUEST_BODY_BYTES", "1048576"))
 	if err != nil {
 		return nil, fmt.Errorf("config: PLUGINS_MAX_REQUEST_BODY_BYTES: %w", err)
 	}
