@@ -258,23 +258,47 @@ func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
 		return cfg, fmt.Errorf("config: LOCAL_LOGIN_ENABLED: %w", err)
 	}
 	cfg.LocalLoginEnabled = localLogin
+	cfg.IssuerURL = env("OIDC_ISSUER_URL", "")
+	cfg.ClientID = env("OIDC_CLIENT_ID", "")
+	cfg.ClientSecret = env("OIDC_CLIENT_SECRET", "")
+	cfg.Scopes = parseScopes(env("OIDC_SCOPES", "openid,profile,email"))
+	cfg.RedirectURL = env("OIDC_REDIRECT_URL", "")
+	cfg.DisplayName = env("OIDC_DISPLAY_NAME", "")
+	cfg.UsernameClaim = env("OIDC_USERNAME_CLAIM", "")
 
-	if !enabled {
+	return NormalizeOIDCConfig(cfg, environment, publicURL)
+}
+
+// NormalizeOIDCConfig applies the same validation and defaults to
+// environment-backed and administrator-managed OIDC settings. Keeping one
+// pure path prevents the runtime configuration UI from drifting away from
+// startup's security checks.
+func NormalizeOIDCConfig(cfg OIDCConfig, environment, publicURL string) (OIDCConfig, error) {
+	// The issuer is an identifier, not a normalizable URL: discovery metadata
+	// and ID-token iss claims must match it exactly, and some providers issue
+	// identifiers with a trailing slash. Only trim surrounding whitespace.
+	cfg.IssuerURL = strings.TrimSpace(cfg.IssuerURL)
+	cfg.ClientID = strings.TrimSpace(cfg.ClientID)
+	cfg.RedirectURL = strings.TrimSpace(cfg.RedirectURL)
+	cfg.DisplayName = strings.TrimSpace(cfg.DisplayName)
+	cfg.UsernameClaim = strings.TrimSpace(cfg.UsernameClaim)
+	cfg.Scopes = normalizeScopes(cfg.Scopes)
+	cfg.DefaultRole = "USER"
+	if cfg.DisplayName == "" {
+		cfg.DisplayName = "Single Sign-On"
+	}
+	if cfg.UsernameClaim == "" {
+		cfg.UsernameClaim = "preferred_username"
+	}
+
+	if !cfg.Enabled {
 		// Password login is the only entry point when SSO is off — a stray
-		// LOCAL_LOGIN_ENABLED=false would otherwise lock every human out.
+		// false value would otherwise lock every human out. Provider fields stay
+		// available so an admin can prepare them before enabling OIDC.
 		cfg.LocalLoginEnabled = true
 		return cfg, nil
 	}
 
-	// The issuer is an identifier, not a normalizable URL: discovery metadata
-	// and ID-token iss claims must match it exactly, and some providers issue
-	// identifiers with a trailing slash. Only trim surrounding whitespace.
-	cfg.IssuerURL = strings.TrimSpace(env("OIDC_ISSUER_URL", ""))
-	cfg.ClientID = strings.TrimSpace(env("OIDC_CLIENT_ID", ""))
-	cfg.ClientSecret = env("OIDC_CLIENT_SECRET", "")
-	cfg.DisplayName = env("OIDC_DISPLAY_NAME", "Single Sign-On")
-
-	cfg.RedirectURL = strings.TrimSpace(env("OIDC_REDIRECT_URL", ""))
 	if cfg.RedirectURL == "" {
 		if publicURL == "" {
 			return cfg, errors.New("config: OIDC_REDIRECT_URL or PUBLIC_URL must be set when OIDC is enabled")
@@ -300,23 +324,30 @@ func loadOIDCConfig(environment, publicURL string) (OIDCConfig, error) {
 		return cfg, errors.New("config: OIDC_REDIRECT_URL must be https in production")
 	}
 
-	cfg.Scopes = parseScopes(env("OIDC_SCOPES", "openid,profile,email"))
 	if !slices.Contains(cfg.Scopes, "openid") {
 		// "openid" is what turns an OAuth2 flow into an OIDC one — without
 		// it there is no ID token to validate.
 		cfg.Scopes = append([]string{"openid"}, cfg.Scopes...)
 	}
 
-	// The JIT default role is fixed to the built-in USER role on purpose:
-	// global roles are customizable permission sets, so any configurable
-	// default could be pointed at a role with elevated permissions (e.g. a
-	// custom role carrying "*"). Elevated roles are granted manually in
-	// Paca. Revisit when IdP group→role mapping lands.
-	cfg.DefaultRole = "USER"
-
-	cfg.UsernameClaim = env("OIDC_USERNAME_CLAIM", "preferred_username")
-
 	return cfg, nil
+}
+
+func normalizeScopes(scopes []string) []string {
+	seen := make(map[string]struct{}, len(scopes))
+	normalized := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		if _, exists := seen[scope]; exists {
+			continue
+		}
+		seen[scope] = struct{}{}
+		normalized = append(normalized, scope)
+	}
+	return normalized
 }
 
 // parseScopes splits a comma-separated scope list, trimming whitespace and

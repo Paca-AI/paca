@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -457,4 +458,64 @@ func TestLoad_OIDC_HTTPIssuerAllowedOnlyForLoopback(t *testing.T) {
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for non-https remote issuer")
 	}
+}
+
+func TestNormalizeOIDCConfig_AdminSettings(t *testing.T) {
+	t.Run("disabled forces local login and keeps editable provider fields", func(t *testing.T) {
+		got, err := NormalizeOIDCConfig(OIDCConfig{
+			Enabled:           false,
+			IssuerURL:         "  https://id.example.com/realm/  ",
+			LocalLoginEnabled: false,
+		}, "production", "https://paca.example.com")
+		if err != nil {
+			t.Fatalf("NormalizeOIDCConfig: %v", err)
+		}
+		if !got.LocalLoginEnabled {
+			t.Fatal("disabled OIDC must force local login on")
+		}
+		if got.IssuerURL != "https://id.example.com/realm/" {
+			t.Fatalf("issuer must be trimmed but keep trailing slash, got %q", got.IssuerURL)
+		}
+	})
+
+	t.Run("enabled derives defaults and forces openid", func(t *testing.T) {
+		got, err := NormalizeOIDCConfig(OIDCConfig{
+			Enabled:           true,
+			IssuerURL:         "https://id.example.com/realm/",
+			ClientID:          " paca ",
+			ClientSecret:      "secret",
+			Scopes:            []string{" profile ", "email", "profile", ""},
+			LocalLoginEnabled: true,
+		}, "production", "https://paca.example.com/")
+		if err != nil {
+			t.Fatalf("NormalizeOIDCConfig: %v", err)
+		}
+		if got.RedirectURL != "https://paca.example.com/api/v1/auth/oidc/callback" {
+			t.Fatalf("unexpected redirect URL %q", got.RedirectURL)
+		}
+		if got.DisplayName != "Single Sign-On" || got.UsernameClaim != "preferred_username" || got.DefaultRole != "USER" {
+			t.Fatalf("defaults missing: %+v", got)
+		}
+		wantScopes := []string{"openid", "profile", "email"}
+		if !slices.Equal(got.Scopes, wantScopes) {
+			t.Fatalf("scopes = %v, want %v", got.Scopes, wantScopes)
+		}
+	})
+
+	t.Run("enabled validates required fields", func(t *testing.T) {
+		_, err := NormalizeOIDCConfig(OIDCConfig{Enabled: true}, "production", "")
+		if err == nil || !strings.Contains(err.Error(), "OIDC_REDIRECT_URL or PUBLIC_URL") {
+			t.Fatalf("expected redirect requirement first, got %v", err)
+		}
+	})
+
+	t.Run("loopback http issuer is allowed", func(t *testing.T) {
+		_, err := NormalizeOIDCConfig(OIDCConfig{
+			Enabled: true, IssuerURL: "http://127.0.0.1:8080/realms/dev",
+			ClientID: "paca", ClientSecret: "secret", RedirectURL: "http://localhost/callback",
+		}, "development", "")
+		if err != nil {
+			t.Fatalf("loopback development config rejected: %v", err)
+		}
+	})
 }

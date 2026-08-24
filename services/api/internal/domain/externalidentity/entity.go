@@ -30,7 +30,8 @@ type Identity struct {
 	// Provider labels the protocol family ("oidc" for the built-in flow).
 	Provider string
 	// Issuer is the OIDC issuer URL (the "iss" claim), e.g.
-	// https://id.example.com/realms/company. Stored without a trailing slash.
+	// https://id.example.com/realms/company. Stored exactly as verified because
+	// the issuer is an identifier; a trailing slash may be significant.
 	Issuer string
 	// Subject is the OIDC subject ("sub" claim) — opaque, IdP-specific.
 	Subject string
