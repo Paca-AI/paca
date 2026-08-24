@@ -538,6 +538,55 @@ func TestConfig_SSOWithOptions(t *testing.T) {
 	}
 }
 
+func TestConfig_LoginOptionsProviderIsReadForEveryRequest(t *testing.T) {
+	opts := handler.LoginOptions{LocalEnabled: true}
+	h := handler.NewAuthHandler(&mockAuthSvc{}, testCookieConfig).
+		WithLoginOptionsProvider(func() handler.LoginOptions { return opts })
+	r := chi.NewRouter()
+	r.Get("/auth/config", h.Config)
+
+	readConfig := func() struct {
+		Data struct {
+			LocalLoginEnabled bool `json:"local_login_enabled"`
+			OIDC              struct {
+				Enabled     bool   `json:"enabled"`
+				DisplayName string `json:"display_name"`
+			} `json:"oidc"`
+		} `json:"data"`
+	} {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/auth/config", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var body struct {
+			Data struct {
+				LocalLoginEnabled bool `json:"local_login_enabled"`
+				OIDC              struct {
+					Enabled     bool   `json:"enabled"`
+					DisplayName string `json:"display_name"`
+				} `json:"oidc"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return body
+	}
+
+	first := readConfig()
+	if !first.Data.LocalLoginEnabled || first.Data.OIDC.Enabled {
+		t.Fatalf("unexpected initial config: %+v", first.Data)
+	}
+
+	opts = handler.LoginOptions{OIDCEnabled: true, OIDCDisplayName: "Company SSO"}
+	second := readConfig()
+	if second.Data.LocalLoginEnabled || !second.Data.OIDC.Enabled || second.Data.OIDC.DisplayName != "Company SSO" {
+		t.Fatalf("provider change was not reflected: %+v", second.Data)
+	}
+}
+
 func TestLogin_LocalLoginDisabled(t *testing.T) {
 	svc := &mockAuthSvc{}
 	h := handler.NewAuthHandler(svc, testCookieConfig)

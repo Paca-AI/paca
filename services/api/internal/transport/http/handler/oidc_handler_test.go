@@ -11,11 +11,22 @@ import (
 	"testing"
 	"time"
 
+	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	"github.com/go-chi/chi/v5"
 
 	oidcsvc "github.com/Paca-AI/api/internal/service/oidc"
 	handler "github.com/Paca-AI/api/internal/transport/http/handler"
 )
+
+type unavailableOIDCService struct{}
+
+func (unavailableOIDCService) BeginLogin(context.Context) (string, string, error) {
+	return "", "", oidcsvc.ErrDisabled
+}
+
+func (unavailableOIDCService) Callback(context.Context, string, string) (*domainauth.TokenPair, error) {
+	return nil, oidcsvc.ErrDisabled
+}
 
 // memTxStore is a minimal in-memory oidc.LoginTxStore for handler tests.
 type memTxStore struct {
@@ -143,6 +154,22 @@ func TestOIDCLogin_SetsBrowserBindingStateCookie(t *testing.T) {
 	}
 	if cookie.MaxAge != 600 {
 		t.Errorf("state cookie MaxAge must match the login tx TTL (600s), got %d", cookie.MaxAge)
+	}
+}
+
+func TestOIDCLogin_DisabledRuntimeReturnsGenericUnavailable(t *testing.T) {
+	h := handler.NewOIDCHandler(unavailableOIDCService{}, testCookieConfig, "https://paca.example.com")
+	r := chi.NewRouter()
+	r.Get("/auth/oidc/login", h.Login)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/auth/oidc/login", nil))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), oidcsvc.ErrDisabled.Error()) {
+		t.Fatalf("response must not expose the runtime cause: %s", w.Body.String())
 	}
 }
 

@@ -30,22 +30,37 @@ type LoginOptions struct {
 
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
-	svc    domainauth.Service
-	cookie CookieConfig
-	login  LoginOptions
+	svc          domainauth.Service
+	cookie       CookieConfig
+	loginOptions func() LoginOptions
 }
 
 // NewAuthHandler returns an AuthHandler wired to the provided auth service.
 func NewAuthHandler(svc domainauth.Service, cookie CookieConfig) *AuthHandler {
 	// Defaults keep every existing caller (and the local-only deployment)
 	// working unchanged: local login shown, SSO hidden.
-	return &AuthHandler{svc: svc, cookie: cookie, login: LoginOptions{LocalEnabled: true}}
+	return &AuthHandler{
+		svc:          svc,
+		cookie:       cookie,
+		loginOptions: func() LoginOptions { return LoginOptions{LocalEnabled: true} },
+	}
 }
 
 // WithLoginOptions overrides which login entry points the public /auth/config
 // endpoint advertises (SSO enabled/disabled, local login shown/hidden).
 func (h *AuthHandler) WithLoginOptions(opts LoginOptions) *AuthHandler {
-	h.login = opts
+	h.loginOptions = func() LoginOptions { return opts }
+	return h
+}
+
+// WithLoginOptionsProvider configures live login-page options. The provider
+// is evaluated for every request so successful admin changes are visible on
+// the login page immediately.
+func (h *AuthHandler) WithLoginOptionsProvider(provider func() LoginOptions) *AuthHandler {
+	if provider == nil {
+		provider = func() LoginOptions { return LoginOptions{LocalEnabled: true} }
+	}
+	h.loginOptions = provider
 	return h
 }
 
@@ -53,11 +68,12 @@ func (h *AuthHandler) WithLoginOptions(opts LoginOptions) *AuthHandler {
 // login page reads to decide which entry points to render. Exposes only
 // display data; client secrets, issuer metadata and endpoints stay internal.
 func (h *AuthHandler) Config(w http.ResponseWriter, r *http.Request) {
+	login := h.loginOptions()
 	resp := map[string]any{
-		"local_login_enabled": h.login.LocalEnabled,
+		"local_login_enabled": login.LocalEnabled,
 		"oidc": map[string]any{
-			"enabled":      h.login.OIDCEnabled,
-			"display_name": h.login.OIDCDisplayName,
+			"enabled":      login.OIDCEnabled,
+			"display_name": login.OIDCDisplayName,
 		},
 	}
 	presenter.OK(w, r, resp)

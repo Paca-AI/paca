@@ -122,6 +122,30 @@ func TestLogin_Success(t *testing.T) {
 	}
 }
 
+func TestLogin_LocalLoginPolicyIsReadForEveryRequest(t *testing.T) {
+	u := &userdom.User{
+		ID:                   uuid.New(),
+		Username:             "alice",
+		Role:                 userdom.RoleUser,
+		PasswordHash:         hashedPassword(t, "secret123"),
+		PasswordLoginEnabled: true,
+	}
+	enabled := true
+	svc := newAuthSvc(&stubUserRepo{
+		findByUsername: func(_ context.Context, _ string) (*userdom.User, error) { return u, nil },
+		findByID:       func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}, &stubRefreshStore{}).WithLocalLoginPolicy(func() bool { return enabled })
+
+	if _, err := svc.Login(context.Background(), "alice", "secret123", true); err != nil {
+		t.Fatalf("login while enabled: %v", err)
+	}
+
+	enabled = false
+	if _, err := svc.Login(context.Background(), "alice", "secret123", true); !errors.Is(err, domainauth.ErrLocalLoginDisabled) {
+		t.Fatalf("expected ErrLocalLoginDisabled after policy change, got %v", err)
+	}
+}
+
 func TestLogin_UserNotFound(t *testing.T) {
 	svc := newAuthSvc(&stubUserRepo{}, &stubRefreshStore{})
 	_, err := svc.Login(context.Background(), "ghost", "pass1234", true)

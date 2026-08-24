@@ -38,7 +38,7 @@ type Service struct {
 	refreshStore      RefreshTokenStore
 	refreshTTL        time.Duration
 	refreshSessionTTL time.Duration
-	localLoginEnabled bool
+	localLoginPolicy  func() bool
 }
 
 // New returns a configured auth Service. Local password login is enabled by
@@ -50,7 +50,7 @@ func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore Refres
 		refreshStore:      refreshStore,
 		refreshTTL:        refreshTTL,
 		refreshSessionTTL: refreshSessionTTL,
-		localLoginEnabled: true,
+		localLoginPolicy:  func() bool { return true },
 	}
 }
 
@@ -59,7 +59,18 @@ func New(users userdom.Repository, tokens *jwttoken.Manager, refreshStore Refres
 // service layer (SSO-only deployments) — enforced here, not only in the UI,
 // so the endpoint cannot be reached by bypassing the login form.
 func (s *Service) WithLocalLoginEnabled(enabled bool) *Service {
-	s.localLoginEnabled = enabled
+	s.localLoginPolicy = func() bool { return enabled }
+	return s
+}
+
+// WithLocalLoginPolicy configures a live policy for password login. The
+// callback is evaluated for every request so an admin SSO settings update can
+// take effect without rebuilding the auth service or restarting the process.
+func (s *Service) WithLocalLoginPolicy(policy func() bool) *Service {
+	if policy == nil {
+		policy = func() bool { return true }
+	}
+	s.localLoginPolicy = policy
 	return s
 }
 
@@ -68,7 +79,7 @@ func (s *Service) WithLocalLoginEnabled(enabled bool) *Service {
 // (JWT_REFRESH_TTL); when false, the shorter session TTL is used
 // (JWT_REFRESH_SESSION_TTL, default 24 h).
 func (s *Service) Login(ctx context.Context, username, password string, rememberMe bool) (*domainauth.TokenPair, error) {
-	if !s.localLoginEnabled {
+	if !s.localLoginPolicy() {
 		return nil, domainauth.ErrLocalLoginDisabled
 	}
 

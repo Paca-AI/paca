@@ -35,7 +35,7 @@ const (
 // the API completes everything server-side, ending with the same HttpOnly
 // session cookies the password login writes.
 type OIDCHandler struct {
-	svc    *oidc.Service
+	svc    oidc.LoginService
 	cookie CookieConfig
 	// webBaseURL is where the browser is sent after the callback — the web
 	// app's base URL (or "/" when PUBLIC_URL is unset).
@@ -43,7 +43,7 @@ type OIDCHandler struct {
 }
 
 // NewOIDCHandler returns an OIDCHandler for the given service.
-func NewOIDCHandler(svc *oidc.Service, cookie CookieConfig, webBaseURL string) *OIDCHandler {
+func NewOIDCHandler(svc oidc.LoginService, cookie CookieConfig, webBaseURL string) *OIDCHandler {
 	return &OIDCHandler{svc: svc, cookie: cookie, webBaseURL: webBaseURL}
 }
 
