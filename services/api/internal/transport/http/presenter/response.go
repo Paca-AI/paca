@@ -429,13 +429,20 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusNotFound
 	case apierr.CodeUsernameTaken,
 		apierr.CodeEmailTaken,
-		apierr.CodeAgentConversationBusy:
+		apierr.CodeAgentConversationBusy,
+		apierr.CodeSSOAdminRequired:
 		return http.StatusConflict
 	case apierr.CodeForbidden,
 		apierr.CodeLocalLoginDisabled,
 		apierr.CodePasswordLoginDisabled,
 		apierr.CodeSSOUnavailable:
 		return http.StatusForbidden
+	case apierr.CodeSSOConfigInvalid:
+		return http.StatusBadRequest
+	case apierr.CodeSSOProviderValidationFailed:
+		return http.StatusUnprocessableEntity
+	case apierr.CodeSSOEncryptionUnavailable:
+		return http.StatusServiceUnavailable
 	case apierr.CodeGlobalRoleNotFound:
 		return http.StatusNotFound
 	case apierr.CodeGlobalRoleNameTaken:

@@ -22,6 +22,7 @@ import (
 	userdom "github.com/Paca-AI/api/internal/domain/user"
 	"github.com/Paca-AI/api/internal/platform/authz"
 	jwttoken "github.com/Paca-AI/api/internal/platform/token"
+	"github.com/Paca-AI/api/internal/service/oidc"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 )
 
@@ -198,6 +199,16 @@ type staticPermissionStore struct {
 	globalPerms []authz.Permission
 }
 
+type fakeSSORouterService struct{}
+
+func (*fakeSSORouterService) AdminConfig() oidc.AdminConfig {
+	return oidc.AdminConfig{LocalLoginEnabled: true}
+}
+
+func (*fakeSSORouterService) Update(_ context.Context, in oidc.UpdateConfig, _ uuid.UUID) (oidc.AdminConfig, error) {
+	return oidc.AdminConfig{Source: oidc.ConfigSourceDatabase, Enabled: in.Enabled, LocalLoginEnabled: in.LocalLoginEnabled}, nil
+}
+
 func (s *staticPermissionStore) ListGlobalPermissions(context.Context, uuid.UUID) ([]authz.Permission, error) {
 	return s.globalPerms, nil
 }
@@ -224,11 +235,12 @@ func newTestRouterWithStore(t *testing.T, store authz.PermissionStore) http.Hand
 			RefreshTTL:        24 * time.Hour,
 			RefreshSessionTTL: 12 * time.Hour,
 		}),
-		User:       handler.NewUserHandler(&mockUserSvc{}),
-		GlobalRole: handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}),
-		Project:    handler.NewProjectHandler(&stubProjectSvc{}, authorizer),
-		Settings:   handler.NewSettingsHandler(&fakeSettingsSvc{}),
-		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		User:        handler.NewUserHandler(&mockUserSvc{}),
+		GlobalRole:  handler.NewGlobalRoleHandler(&mockGlobalRoleSvc{}),
+		Project:     handler.NewProjectHandler(&stubProjectSvc{}, authorizer),
+		Settings:    handler.NewSettingsHandler(&fakeSettingsSvc{}),
+		SSOSettings: handler.NewSSOSettingsHandler(&fakeSSORouterService{}),
+		Log:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	return New(deps)
@@ -431,6 +443,34 @@ func TestAdminRoute_UpdateSettings_WithWritePermission(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with settings.write permission, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminRoute_SSOSettings_DoesNotAcceptBrandingPermission(t *testing.T) {
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionSettingsWrite}})
+	tok := issueAccessTokenForRouterTests(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/admin/settings/sso", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without authentication.write permission, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminRoute_SSOSettings_WithAuthenticationPermission(t *testing.T) {
+	r := newTestRouterWithStore(t, &staticPermissionStore{globalPerms: []authz.Permission{authz.PermissionAuthenticationWrite}})
+	tok := issueAccessTokenForRouterTests(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/admin/settings/sso", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 with authentication.write permission, got %d (%s)", w.Code, w.Body.String())
 	}
 }
 

@@ -175,6 +175,22 @@ func TestManagerDiscoveryFailurePreservesPriorState(t *testing.T) {
 	}
 }
 
+func TestManagerInvalidConfigPreservesPriorState(t *testing.T) {
+	repo := &managerSettingsRepo{row: &settingsdom.WorkspaceSettings{LocalLoginEnabled: true}}
+	factory := &managerFactory{}
+	m := newTestManager(t, validManagerConfig("Old SSO"), repo, factory, managerEncryptor(t), &managerAdminGuard{allowed: true})
+
+	in := updateFromConfig(validManagerConfig("Broken SSO"))
+	in.IssuerURL = ""
+	_, err := m.Update(context.Background(), in, uuid.New())
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("expected ErrInvalidConfig, got %v", err)
+	}
+	if repo.writes != 0 || m.AdminConfig().DisplayName != "Old SSO" {
+		t.Fatalf("invalid config changed state: writes=%d active=%+v", repo.writes, m.AdminConfig())
+	}
+}
+
 func TestManagerPersistenceFailurePreservesPriorState(t *testing.T) {
 	repo := &managerSettingsRepo{row: &settingsdom.WorkspaceSettings{LocalLoginEnabled: true}}
 	factory := &managerFactory{}

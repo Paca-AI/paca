@@ -26,10 +26,10 @@ type Deps struct {
 	Health               *handler.HealthHandler
 	Version              *handler.VersionHandler
 	Auth                 *handler.AuthHandler
-	// OIDC is nil when SSO is disabled — the /auth/oidc/* routes are simply
-	// not registered in that case. /auth/config always exists (on Auth) so
-	// the login page can discover the instance's login entry points.
+	// OIDC is backed by the runtime manager and remains registered while SSO
+	// is disabled so an administrator can activate it without a restart.
 	OIDC         *handler.OIDCHandler
+	SSOSettings  *handler.SSOSettingsHandler
 	User         *handler.UserHandler
 	GlobalRole   *handler.GlobalRoleHandler
 	Project      *handler.ProjectHandler
@@ -256,6 +256,11 @@ func New(deps Deps) http.Handler {
 					r.With(write).Post("/settings/favicon/avatar/initiate-upload", deps.Settings.InitiateFaviconUpload)
 					r.With(write).Post("/settings/favicon/avatar/complete-upload", deps.Settings.CompleteFaviconUpload)
 					r.With(write).Delete("/settings/favicon/avatar", deps.Settings.DeleteFavicon)
+				}
+				if deps.SSOSettings != nil {
+					authenticationWrite := httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionAuthenticationWrite)
+					r.With(authenticationWrite).Get("/settings/sso", deps.SSOSettings.Get)
+					r.With(authenticationWrite).Patch("/settings/sso", deps.SSOSettings.Update)
 				}
 			})
 

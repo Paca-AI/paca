@@ -35,6 +35,7 @@ const (
 
 var (
 	ErrDisabled              = errors.New("oidc: disabled")
+	ErrInvalidConfig         = errors.New("oidc: invalid configuration")
 	ErrEncryptionUnavailable = errors.New("oidc: encrypted secret storage unavailable")
 	ErrProviderValidation    = errors.New("oidc: provider validation failed")
 	ErrSSOAdminRequired      = errors.New("oidc: sso-only mode requires an administrator bound to the configured issuer")
@@ -247,7 +248,7 @@ func (m *Manager) Update(ctx context.Context, in UpdateConfig, actor uuid.UUID) 
 		LocalLoginEnabled: in.LocalLoginEnabled,
 	}, m.environmentName, m.publicURL)
 	if err != nil {
-		return AdminConfig{}, err
+		return AdminConfig{}, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
 	if m.encryptor == nil {
 		return AdminConfig{}, ErrEncryptionUnavailable

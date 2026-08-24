@@ -161,6 +161,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
 	settingsService := settingssvc.New(settingsRepo)
+	var secretsEncryptor *secret.Encryptor
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
 		if hexErr != nil {
@@ -168,8 +169,9 @@ func New(cfg *config.Config) (*App, error) {
 		} else if enc, encErr := secret.NewEncryptor(keyBytes); encErr != nil {
 			log.Warn("agent LLM key encryption disabled: encryptor init failed", "error", encErr)
 		} else {
+			secretsEncryptor = enc
 			agentService = agentService.WithEncryptor(enc)
-			log.Info("agent LLM API key at-rest encryption enabled")
+			log.Info("secret at-rest encryption enabled")
 		}
 	} else {
 		// Not fatal — deployments using only ACP-type agents and no plugins
@@ -382,63 +384,58 @@ func New(cfg *config.Config) (*App, error) {
 		RefreshSessionTTL: cfg.JWT.RefreshSessionTTL,
 	}
 
-	// --- OIDC SSO (optional) --------------------------------------------------
-	// Constructed only when enabled. Discovery runs here so an unreachable or
-	// misconfigured IdP fails fast at startup instead of at first login.
-	var oidcHandler *handler.OIDCHandler
-	if cfg.OIDC.Enabled {
-		identityRepo := pgRepo.NewExternalIdentityRepository(db)
-		oidcSvc, err := oidcsvc.New(context.Background(), oidcsvc.Options{
-			IssuerURL:     cfg.OIDC.IssuerURL,
-			ClientID:      cfg.OIDC.ClientID,
-			ClientSecret:  cfg.OIDC.ClientSecret,
-			RedirectURL:   cfg.OIDC.RedirectURL,
-			Scopes:        cfg.OIDC.Scopes,
-			DisplayName:   cfg.OIDC.DisplayName,
-			DefaultRole:   cfg.OIDC.DefaultRole,
-			UsernameClaim: cfg.OIDC.UsernameClaim,
+	// --- OIDC SSO runtime -----------------------------------------------------
+	// The manager always exists. It chooses database settings after the first
+	// successful admin save, otherwise it preserves deployment configuration.
+	// Enabled candidates complete Discovery before an atomic in-process switch.
+	identityRepo := pgRepo.NewExternalIdentityRepository(db)
+	oidcManager, err := oidcsvc.NewManager(context.Background(), oidcsvc.ManagerDeps{
+		EnvironmentConfig: cfg.OIDC,
+		EnvironmentName:   cfg.Env,
+		PublicURL:         cfg.Server.PublicURL,
+		Settings:          settingsRepo,
+		Encryptor:         secretsEncryptor,
+		AdminGuard:        identityRepo,
+		Factory: func(ctx context.Context, oidcConfig config.OIDCConfig) (oidcsvc.LoginService, error) {
+			// JIT authorization is intentionally fixed to the built-in USER role.
+			// Verify it on each enabled candidate before accepting the config.
+			if _, err := globalRoleRepo.FindByName(ctx, oidcConfig.DefaultRole); err != nil {
+				return nil, fmt.Errorf("default role %q not found: %w", oidcConfig.DefaultRole, err)
+			}
+			return oidcsvc.New(ctx, oidcsvc.Options{
+				IssuerURL:     oidcConfig.IssuerURL,
+				ClientID:      oidcConfig.ClientID,
+				ClientSecret:  oidcConfig.ClientSecret,
+				RedirectURL:   oidcConfig.RedirectURL,
+				Scopes:        oidcConfig.Scopes,
+				DisplayName:   oidcConfig.DisplayName,
+				DefaultRole:   oidcConfig.DefaultRole,
+				UsernameClaim: oidcConfig.UsernameClaim,
+			},
+				redisRepo.NewOIDCLoginTxStore(redisClient),
+				userRepo,
+				identityRepo,
+				globalRoleRepo,
+				authService,
+				log)
 		},
-			redisRepo.NewOIDCLoginTxStore(redisClient),
-			userRepo,
-			identityRepo,
-			globalRoleRepo,
-			authService,
-			log)
-		if err != nil {
-			return nil, fmt.Errorf("bootstrap: oidc: %w", err)
-		}
-		// Fail fast when the configured JIT default role does not exist —
-		// better at startup than on the first provisioned login.
-		if _, err := globalRoleRepo.FindByName(context.Background(), cfg.OIDC.DefaultRole); err != nil {
-			return nil, fmt.Errorf("bootstrap: oidc: default role %q not found: %w", cfg.OIDC.DefaultRole, err)
-		}
-		if !cfg.OIDC.LocalLoginEnabled {
-			// SSO-only lockout guard: with password login off, the only way to
-			// administer Paca is an SSO-bound ADMIN/SUPER_ADMIN user. JIT users
-			// never get elevated roles automatically, so a fresh deployment that
-			// starts SSO-only would have no administrator at all. Require the
-			// staged rollout instead: enable SSO alongside local login, promote
-			// an SSO user to admin, then disable local login.
-			privileged, err := identityRepo.HasSSOUserWithRole(context.Background(), cfg.OIDC.IssuerURL, []string{"ADMIN", "SUPER_ADMIN"})
-			if err != nil {
-				return nil, fmt.Errorf("bootstrap: oidc: sso-only admin check: %w", err)
-			}
-			if !privileged {
-				return nil, errors.New("bootstrap: oidc: LOCAL_LOGIN_ENABLED=false requires at least one ADMIN/SUPER_ADMIN user bound to SSO " +
-					"(staged rollout: enable SSO with local login on, promote an SSO user to admin, then disable local login)")
-			}
-		}
-		// Where the browser lands after the callback — the web app's public
-		// base URL, or the API origin's root when PUBLIC_URL is unset.
-		webBaseURL := cfg.Server.PublicURL
-		if webBaseURL == "" {
-			webBaseURL = "/"
-		}
-		oidcHandler = handler.NewOIDCHandler(oidcSvc, cookieCfg, webBaseURL)
-		log.Info("oidc sso enabled",
-			"issuer", cfg.OIDC.IssuerURL,
-			"local_login_enabled", cfg.OIDC.LocalLoginEnabled)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("bootstrap: oidc: %w", err)
 	}
+	authService.WithLocalLoginPolicy(oidcManager.LocalLoginEnabled)
+
+	webBaseURL := cfg.Server.PublicURL
+	if webBaseURL == "" {
+		webBaseURL = "/"
+	}
+	oidcHandler := handler.NewOIDCHandler(oidcManager, cookieCfg, webBaseURL)
+	activeOIDC := oidcManager.AdminConfig()
+	log.Info("oidc runtime initialized",
+		"source", activeOIDC.Source,
+		"enabled", activeOIDC.Enabled,
+		"issuer", activeOIDC.IssuerURL,
+		"local_login_enabled", activeOIDC.LocalLoginEnabled)
 
 	deps := router.Deps{
 		TokenManager: tokenManager,
@@ -447,12 +444,16 @@ func New(cfg *config.Config) (*App, error) {
 		Health:       handler.NewHealthHandler(),
 		Version:      handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth: handler.NewAuthHandler(authService, cookieCfg).
-			WithLoginOptions(handler.LoginOptions{
-				LocalEnabled:    cfg.OIDC.LocalLoginEnabled,
-				OIDCEnabled:     cfg.OIDC.Enabled,
-				OIDCDisplayName: cfg.OIDC.DisplayName,
+			WithLoginOptionsProvider(func() handler.LoginOptions {
+				options := oidcManager.LoginOptions()
+				return handler.LoginOptions{
+					LocalEnabled:    options.LocalLoginEnabled,
+					OIDCEnabled:     options.OIDCEnabled,
+					OIDCDisplayName: options.DisplayName,
+				}
 			}),
 		OIDC:                 oidcHandler,
+		SSOSettings:          handler.NewSSOSettingsHandler(oidcManager),
 		User:                 handler.NewUserHandler(userService, authService).WithAvatarService(attachmentService),
 		GlobalRole:           handler.NewGlobalRoleHandler(globalRoleService),
 		ProjectVisibilitySvc: projectService,

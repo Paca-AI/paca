@@ -51,6 +51,18 @@ const (
 	// (misconfigured or unreachable IdP). The message stays generic on
 	// purpose — provider details never reach the client.
 	CodeSSOUnavailable Code = "AUTH_SSO_UNAVAILABLE"
+	// CodeSSOConfigInvalid indicates that submitted administrator SSO
+	// settings failed local validation.
+	CodeSSOConfigInvalid Code = "AUTH_SSO_CONFIG_INVALID"
+	// CodeSSOProviderValidationFailed indicates that OIDC Discovery failed for
+	// a candidate configuration. Provider details are intentionally hidden.
+	CodeSSOProviderValidationFailed Code = "AUTH_SSO_PROVIDER_VALIDATION_FAILED"
+	// CodeSSOEncryptionUnavailable indicates that database-backed SSO
+	// settings cannot be stored because encrypted secret storage is disabled.
+	CodeSSOEncryptionUnavailable Code = "AUTH_SSO_ENCRYPTION_UNAVAILABLE"
+	// CodeSSOAdminRequired prevents disabling local login until the configured
+	// issuer has an SSO-bound administrator.
+	CodeSSOAdminRequired Code = "AUTH_SSO_ADMIN_REQUIRED"
 	// CodeLocalLoginDisabled indicates password login is turned off
 	// instance-wide (SSO-only deployment).
 	CodeLocalLoginDisabled Code = "AUTH_LOCAL_LOGIN_DISABLED"
