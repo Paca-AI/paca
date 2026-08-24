@@ -37,14 +37,11 @@ const (
 type OIDCHandler struct {
 	svc    oidc.LoginService
 	cookie CookieConfig
-	// webBaseURL is where the browser is sent after the callback — the web
-	// app's base URL (or "/" when PUBLIC_URL is unset).
-	webBaseURL string
 }
 
 // NewOIDCHandler returns an OIDCHandler for the given service.
-func NewOIDCHandler(svc oidc.LoginService, cookie CookieConfig, webBaseURL string) *OIDCHandler {
-	return &OIDCHandler{svc: svc, cookie: cookie, webBaseURL: webBaseURL}
+func NewOIDCHandler(svc oidc.LoginService, cookie CookieConfig) *OIDCHandler {
+	return &OIDCHandler{svc: svc, cookie: cookie}
 }
 
 // Login handles GET /auth/oidc/login — starts the Authorization Code + PKCE
@@ -120,7 +117,10 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setAuthCookies(w, h.cookie, pair, pair.RefreshTTL)
-	http.Redirect(w, r, h.webBaseURL, http.StatusFound)
+	// A relative redirect returns to the same public origin that received the
+	// callback. This remains correct behind reverse proxies and when the OIDC
+	// redirect URL is managed at runtime instead of matching startup PUBLIC_URL.
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // clearStateCookie expires the login-state cookie immediately.
@@ -138,5 +138,5 @@ func (h *OIDCHandler) clearStateCookie(w http.ResponseWriter) {
 
 // redirectError sends the browser home with a generic SSO failure flag.
 func (h *OIDCHandler) redirectError(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, h.webBaseURL+"?sso_error=1", http.StatusFound)
+	http.Redirect(w, r, "/?sso_error=1", http.StatusFound)
 }

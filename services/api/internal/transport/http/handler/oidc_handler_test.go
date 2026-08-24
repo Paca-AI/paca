@@ -28,6 +28,16 @@ func (unavailableOIDCService) Callback(context.Context, string, string) (*domain
 	return nil, oidcsvc.ErrDisabled
 }
 
+type successfulOIDCService struct{}
+
+func (successfulOIDCService) BeginLogin(context.Context) (string, string, error) {
+	return "https://id.example.com/authorize", "state", nil
+}
+
+func (successfulOIDCService) Callback(context.Context, string, string) (*domainauth.TokenPair, error) {
+	return &domainauth.TokenPair{AccessToken: "access", RefreshToken: "refresh", RefreshTTL: time.Hour}, nil
+}
+
 // memTxStore is a minimal in-memory oidc.LoginTxStore for handler tests.
 type memTxStore struct {
 	mu  sync.Mutex
@@ -97,7 +107,7 @@ func newOIDCTestHandler(t *testing.T) *handler.OIDCHandler {
 	if err != nil {
 		t.Fatalf("new oidc service: %v", err)
 	}
-	return handler.NewOIDCHandler(svc, testCookieConfig, "https://paca.example.com")
+	return handler.NewOIDCHandler(svc, testCookieConfig)
 }
 
 func findSetCookie(w *httptest.ResponseRecorder, name string) *http.Cookie {
@@ -158,7 +168,7 @@ func TestOIDCLogin_SetsBrowserBindingStateCookie(t *testing.T) {
 }
 
 func TestOIDCLogin_DisabledRuntimeReturnsGenericUnavailable(t *testing.T) {
-	h := handler.NewOIDCHandler(unavailableOIDCService{}, testCookieConfig, "https://paca.example.com")
+	h := handler.NewOIDCHandler(unavailableOIDCService{}, testCookieConfig)
 	r := chi.NewRouter()
 	r.Get("/auth/oidc/login", h.Login)
 
@@ -187,6 +197,24 @@ func TestOIDCCallback_WithoutStateCookieRejected(t *testing.T) {
 
 	if w.Code != http.StatusFound || !strings.Contains(w.Header().Get("Location"), "sso_error=1") {
 		t.Fatalf("expected generic error redirect, got %d %s", w.Code, w.Header().Get("Location"))
+	}
+}
+
+func TestOIDCCallback_ReturnsToCallbackOriginInsteadOfConfiguredPublicURL(t *testing.T) {
+	h := handler.NewOIDCHandler(successfulOIDCService{}, testCookieConfig)
+	r := chi.NewRouter()
+	r.Get("/auth/oidc/callback", h.Callback)
+
+	req := httptest.NewRequest(http.MethodGet, "http://114.67.255.8:3000/auth/oidc/callback?code=x&state=browser-state", nil)
+	req.AddCookie(&http.Cookie{Name: "oidc_login_state", Value: "browser-state"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected redirect, got %d", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "/" {
+		t.Fatalf("Location = %q, want same-origin root %q", got, "/")
 	}
 }
 

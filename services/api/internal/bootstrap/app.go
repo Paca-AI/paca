@@ -425,11 +425,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	authService.WithLocalLoginPolicy(oidcManager.LocalLoginEnabled)
 
-	webBaseURL := cfg.Server.PublicURL
-	if webBaseURL == "" {
-		webBaseURL = "/"
-	}
-	oidcHandler := handler.NewOIDCHandler(oidcManager, cookieCfg, webBaseURL)
+	oidcHandler := handler.NewOIDCHandler(oidcManager, cookieCfg)
 	activeOIDC := oidcManager.AdminConfig()
 	log.Info("oidc runtime initialized",
 		"source", activeOIDC.Source,

@@ -124,7 +124,7 @@ GET /api/v1/auth/config
 
 - OIDC 启用 → 显示 "Continue with {display name}" 按钮，仅做浏览器跳转 `/api/v1/auth/oidc/login`（SPA 不接触 client_secret / code / token）；
 - `LOCAL_LOGIN_ENABLED=false` → 隐藏整个密码表单；后端在 service 层同步拒绝密码登录（`AUTH_LOCAL_LOGIN_DISABLED`，403）；
-- 回调失败 → 后端 302 回首页并带 `?sso_error=1`，前端展示**通用**错误（不回显 IdP 错误详情）。
+- 回调成功或失败后，后端使用同源相对地址回到首页；浏览器会保留实际接收 callback 的域名、协议和端口，不依赖启动时的 `PUBLIC_URL`。失败时附带 `?sso_error=1`，前端展示**通用**错误（不回显 IdP 错误详情）。
 
 ## Logout
 

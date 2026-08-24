@@ -117,6 +117,9 @@ services:
       # Limit parallel package compilation to avoid OOM kills on memory-constrained
       # Docker Desktop VMs (mirrors the -p=1 flag used in the production Dockerfile).
       GOFLAGS: "-p=1"
+      # Keep fresh development containers from depending on direct access to
+      # proxy.golang.org; override when a different module proxy is required.
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
       ENV: development
       PORT: "8080"
       DATABASE_URL: postgres://paca:paca@postgres:5432/paca?sslmode=disable
@@ -132,7 +135,7 @@ services:
       STORAGE_ENDPOINT: minio:9000
       # Public URL used to rewrite presigned URLs so browsers can reach MinIO
       # through the Caddy gateway instead of the internal Docker hostname.
-      STORAGE_PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}/storage
+      STORAGE_PUBLIC_URL: ${PUBLIC_HOST:-http://localhost:3000}/storage
       STORAGE_REGION: us-east-1
       STORAGE_BUCKET: paca
       STORAGE_ACCESS_KEY_ID: minioadmin
@@ -166,7 +169,7 @@ services:
       # INTERNAL_API_KEY in the agent-runner service.
       AI_AGENT_INTERNAL_KEY: dev-internal-key-change-in-production
       # Public base URL used by plugins to generate callback/webhook URLs.
-      PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}
+      PUBLIC_URL: ${PUBLIC_HOST:-http://localhost:3000}
       # Plugin subsystem — load WASM binaries + migrations from the local plugin store.
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
@@ -229,7 +232,7 @@ services:
       # directly, bypassing Caddy, so no prefix stripping is needed.
       API_URL: http://api:8080
       REDIS_URL: redis://valkey:6379/0
-      CORS_ORIGINS: ${PUBLIC_HOST:-http://localhost}
+      CORS_ORIGINS: ${PUBLIC_HOST:-http://localhost:3000}
       LOG_LEVEL: debug
     volumes:
       - ../services/realtime:/app

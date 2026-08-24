@@ -185,6 +185,11 @@ values. It stores the nonce and verifier in Valkey under the state value for
 cookie scoped to the callback path, and redirects to the provider's
 authorization endpoint.
 
+After the callback, Paca redirects with a same-origin relative URL. The
+browser therefore returns to the public origin that actually received the
+callback, rather than a possibly stale startup `PUBLIC_URL`; no forwarded host
+header is trusted to construct an absolute post-login destination.
+
 ### 3. Callback And Token Verification
 
 The provider redirects to:
