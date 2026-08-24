@@ -246,6 +246,10 @@
 			"settingsWrite": {
 				"label": "编辑工作区设置",
 				"description": "更新工作区的徽标、favicon 和主色调"
+			},
+			"authenticationWrite": {
+				"label": "管理身份认证",
+				"description": "查看和更新工作区单点登录配置"
 			}
 		},
 		"permissionGroups": {
@@ -253,7 +257,8 @@
 			"users": "用户",
 			"projects": "项目",
 			"plugins": "插件",
-			"settings": "设置"
+			"settings": "设置",
+			"authentication": "身份认证"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		}
 	},
 	"settings": {
-		"title": "工作区品牌设置",
-		"description": "设置此工作区中所有项目通用的徽标、favicon 和主色调。",
+		"title": "工作区设置",
+		"description": "管理工作区标识与身份认证。",
+		"tabs": {
+			"branding": "品牌",
+			"sso": "单点登录"
+		},
 		"images": {
 			"title": "徽标与 Favicon",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "已保存",
 			"errors": {
 				"updateFailed": "保存失败，请重试。"
+			}
+		},
+		"sso": {
+			"title": "OIDC 单点登录",
+			"source": "当前来源：{{source}}",
+			"enabled": "启用 OIDC 单点登录",
+			"issuerURL": "Issuer URL",
+			"clientID": "Client ID",
+			"clientSecret": "Client Secret",
+			"secretConfigured": "已配置密钥，留空将保留当前密钥。",
+			"secretNotConfigured": "尚未配置 Client Secret。",
+			"scopes": "Scopes",
+			"redirectURL": "回调 URL",
+			"displayName": "登录入口名称",
+			"usernameClaim": "用户名 Claim",
+			"localLogin": "本地密码登录",
+			"localLoginDescription": "确认已有可用的 SSO 管理员之前，请保持开启。",
+			"save": "保存 SSO 设置",
+			"saved": "已保存",
+			"errors": {
+				"invalid": "SSO 配置无效。",
+				"provider": "无法验证 OIDC Provider。",
+				"encryption": "加密密钥存储不可用，请先配置 ENCRYPTION_KEY。",
+				"adminRequired": "关闭本地登录前，必须先有一个已绑定 SSO 的管理员。",
+				"updateFailed": "SSO 设置保存失败，请重试。"
 			}
 		}
 	}

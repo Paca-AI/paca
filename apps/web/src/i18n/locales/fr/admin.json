@@ -246,6 +246,10 @@
 			"settingsWrite": {
 				"label": "Modifier les paramètres de l’espace de travail",
 				"description": "Mettre à jour le logo, le favicon et la couleur principale de l’espace de travail"
+			},
+			"authenticationWrite": {
+				"label": "Gérer l’authentification",
+				"description": "Afficher et modifier la configuration de l’authentification unique de l’espace de travail"
 			}
 		},
 		"permissionGroups": {
@@ -253,7 +257,8 @@
 			"users": "Utilisateurs",
 			"projects": "Projets",
 			"plugins": "Plugins",
-			"settings": "Paramètres"
+			"settings": "Paramètres",
+			"authentication": "Authentification"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		}
 	},
 	"settings": {
-		"title": "Image de marque de l’espace de travail",
-		"description": "Définissez le logo, le favicon et la couleur principale utilisés dans tous les projets de cet espace de travail.",
+		"title": "Paramètres de l’espace de travail",
+		"description": "Gérez l’identité et l’authentification de l’espace de travail.",
+		"tabs": {
+			"branding": "Image de marque",
+			"sso": "Authentification unique"
+		},
 		"images": {
 			"title": "Logo et favicon",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "Enregistré",
 			"errors": {
 				"updateFailed": "Échec de l’enregistrement. Veuillez réessayer."
+			}
+		},
+		"sso": {
+			"title": "Authentification unique OIDC",
+			"source": "Source active : {{source}}",
+			"enabled": "Activer l’authentification unique OIDC",
+			"issuerURL": "URL de l’émetteur",
+			"clientID": "Client ID",
+			"clientSecret": "Client secret",
+			"secretConfigured": "Un secret est configuré. Laissez ce champ vide pour le conserver.",
+			"secretNotConfigured": "Aucun client secret n’est configuré.",
+			"scopes": "Scopes",
+			"redirectURL": "URL de redirection",
+			"displayName": "Nom affiché",
+			"usernameClaim": "Claim du nom d’utilisateur",
+			"localLogin": "Connexion par mot de passe local",
+			"localLoginDescription": "Conservez cette option jusqu’à ce qu’un administrateur lié au SSO soit vérifié.",
+			"save": "Enregistrer les paramètres SSO",
+			"saved": "Enregistré",
+			"errors": {
+				"invalid": "La configuration SSO n’est pas valide.",
+				"provider": "Le fournisseur OIDC n’a pas pu être validé.",
+				"encryption": "Le stockage chiffré des secrets est indisponible. Configurez ENCRYPTION_KEY avant d’enregistrer le SSO.",
+				"adminRequired": "Un administrateur lié au SSO est requis avant de désactiver la connexion locale.",
+				"updateFailed": "Impossible d’enregistrer les paramètres SSO. Veuillez réessayer."
 			}
 		}
 	}

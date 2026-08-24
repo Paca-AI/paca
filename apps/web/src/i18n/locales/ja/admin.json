@@ -246,6 +246,10 @@
 			"settingsWrite": {
 				"label": "ワークスペース設定の書き込み",
 				"description": "ワークスペースのロゴ、ファビコン、プライマリカラーを更新する"
+			},
+			"authenticationWrite": {
+				"label": "認証の管理",
+				"description": "ワークスペースのシングルサインオン設定を表示・更新する"
 			}
 		},
 		"permissionGroups": {
@@ -253,7 +257,8 @@
 			"users": "ユーザー",
 			"projects": "プロジェクト",
 			"plugins": "プラグイン",
-			"settings": "設定"
+			"settings": "設定",
+			"authentication": "認証"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		}
 	},
 	"settings": {
-		"title": "ワークスペースのブランディング",
-		"description": "このワークスペース内のすべてのプロジェクトで使用されるロゴ、ファビコン、プライマリカラーを設定します。",
+		"title": "ワークスペース設定",
+		"description": "ワークスペースの識別情報と認証を管理します。",
+		"tabs": {
+			"branding": "ブランディング",
+			"sso": "シングルサインオン"
+		},
 		"images": {
 			"title": "ロゴとファビコン",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "保存しました",
 			"errors": {
 				"updateFailed": "保存に失敗しました。もう一度お試しください。"
+			}
+		},
+		"sso": {
+			"title": "OIDC シングルサインオン",
+			"source": "現在のソース: {{source}}",
+			"enabled": "OIDC シングルサインオンを有効にする",
+			"issuerURL": "Issuer URL",
+			"clientID": "Client ID",
+			"clientSecret": "Client secret",
+			"secretConfigured": "シークレットは設定済みです。空欄のままにすると保持されます。",
+			"secretNotConfigured": "Client secret は設定されていません。",
+			"scopes": "スコープ",
+			"redirectURL": "リダイレクト URL",
+			"displayName": "表示名",
+			"usernameClaim": "ユーザー名 Claim",
+			"localLogin": "ローカルパスワードログイン",
+			"localLoginDescription": "SSO に紐付いた管理者を確認するまでは有効にしてください。",
+			"save": "SSO 設定を保存",
+			"saved": "保存しました",
+			"errors": {
+				"invalid": "SSO 設定が無効です。",
+				"provider": "OIDC プロバイダーを検証できませんでした。",
+				"encryption": "暗号化シークレットストレージを利用できません。SSO 設定を保存する前に ENCRYPTION_KEY を設定してください。",
+				"adminRequired": "ローカルログインを無効にする前に、SSO に紐付いた管理者が必要です。",
+				"updateFailed": "SSO 設定を保存できませんでした。もう一度お試しください。"
 			}
 		}
 	}

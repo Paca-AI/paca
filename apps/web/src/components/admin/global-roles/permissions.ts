@@ -1,5 +1,6 @@
 import {
 	FolderKanban,
+	KeyRound,
 	type LucideIcon,
 	Puzzle,
 	Settings,
@@ -103,6 +104,12 @@ export const KNOWN_PERMISSIONS = [
 		descriptionKey: "globalRoles.permissions.settingsWrite.description",
 		domain: "settings",
 	},
+	{
+		key: "authentication.write",
+		labelKey: "globalRoles.permissions.authenticationWrite.label",
+		descriptionKey: "globalRoles.permissions.authenticationWrite.description",
+		domain: "authentication",
+	},
 ] as const satisfies KnownPermission[];
 
 export interface PermissionGroup {
@@ -136,5 +143,10 @@ export const PERMISSION_GROUPS = [
 		domain: "settings",
 		labelKey: "globalRoles.permissionGroups.settings",
 		Icon: Settings,
+	},
+	{
+		domain: "authentication",
+		labelKey: "globalRoles.permissionGroups.authentication",
+		Icon: KeyRound,
 	},
 ] as const satisfies PermissionGroup[];

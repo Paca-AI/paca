@@ -1482,7 +1482,8 @@ export function AppSidebar() {
 
 	const canAccessPlugins = hasPermission("users.write");
 
-	const canAccessSettings = hasPermission("settings.write");
+	const canAccessSettings =
+		hasPermission("settings.write") || hasPermission("authentication.write");
 
 	const canCreateProject = hasPermission("projects.create");
 

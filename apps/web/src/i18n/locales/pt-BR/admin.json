@@ -246,6 +246,10 @@
 			"settingsWrite": {
 				"label": "Editar configurações do workspace",
 				"description": "Atualizar o logotipo, o favicon e a cor principal do workspace"
+			},
+			"authenticationWrite": {
+				"label": "Gerenciar autenticação",
+				"description": "Ver e atualizar a configuração de login único do workspace"
 			}
 		},
 		"permissionGroups": {
@@ -253,7 +257,8 @@
 			"users": "Usuários",
 			"projects": "Projetos",
 			"plugins": "Plugins",
-			"settings": "Configurações"
+			"settings": "Configurações",
+			"authentication": "Autenticação"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		}
 	},
 	"settings": {
-		"title": "Identidade visual do workspace",
-		"description": "Defina o logotipo, o favicon e a cor principal usados em todos os projetos deste workspace.",
+		"title": "Configurações do workspace",
+		"description": "Gerencie a identidade e a autenticação do workspace.",
+		"tabs": {
+			"branding": "Identidade visual",
+			"sso": "Login único"
+		},
 		"images": {
 			"title": "Logotipo e favicon",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "Salvo",
 			"errors": {
 				"updateFailed": "Falha ao salvar. Tente novamente."
+			}
+		},
+		"sso": {
+			"title": "Login único OIDC",
+			"source": "Fonte ativa: {{source}}",
+			"enabled": "Ativar login único OIDC",
+			"issuerURL": "URL do emissor",
+			"clientID": "Client ID",
+			"clientSecret": "Client secret",
+			"secretConfigured": "Há um secret configurado. Deixe em branco para mantê-lo.",
+			"secretNotConfigured": "Nenhum client secret está configurado.",
+			"scopes": "Escopos",
+			"redirectURL": "URL de redirecionamento",
+			"displayName": "Nome de exibição",
+			"usernameClaim": "Claim de nome de usuário",
+			"localLogin": "Login com senha local",
+			"localLoginDescription": "Mantenha esta opção ativa até verificar um administrador vinculado ao SSO.",
+			"save": "Salvar configurações SSO",
+			"saved": "Salvo",
+			"errors": {
+				"invalid": "A configuração SSO é inválida.",
+				"provider": "Não foi possível validar o provedor OIDC.",
+				"encryption": "O armazenamento criptografado de secrets não está disponível. Configure ENCRYPTION_KEY antes de salvar o SSO.",
+				"adminRequired": "É necessário um administrador vinculado ao SSO antes de desativar o login local.",
+				"updateFailed": "Não foi possível salvar as configurações SSO. Tente novamente."
 			}
 		}
 	}

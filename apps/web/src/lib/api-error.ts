@@ -9,6 +9,10 @@ export const ApiErrorCode = {
 	MissingToken: "AUTH_MISSING_TOKEN",
 	TokenInvalid: "AUTH_TOKEN_INVALID",
 	Unauthenticated: "AUTH_UNAUTHENTICATED",
+	SSOConfigInvalid: "AUTH_SSO_CONFIG_INVALID",
+	SSOProviderValidationFailed: "AUTH_SSO_PROVIDER_VALIDATION_FAILED",
+	SSOEncryptionUnavailable: "AUTH_SSO_ENCRYPTION_UNAVAILABLE",
+	SSOAdminRequired: "AUTH_SSO_ADMIN_REQUIRED",
 
 	// Password / session gate errors.
 	PasswordChangeRequired: "AUTH_PASSWORD_CHANGE_REQUIRED",

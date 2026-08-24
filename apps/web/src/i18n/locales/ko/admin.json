@@ -246,6 +246,10 @@
 			"settingsWrite": {
 				"label": "워크스페이스 설정 쓰기",
 				"description": "워크스페이스 로고, 파비콘, 기본 색상 업데이트"
+			},
+			"authenticationWrite": {
+				"label": "인증 관리",
+				"description": "워크스페이스의 통합 로그인 설정 보기 및 업데이트"
 			}
 		},
 		"permissionGroups": {
@@ -253,7 +257,8 @@
 			"users": "사용자",
 			"projects": "프로젝트",
 			"plugins": "플러그인",
-			"settings": "설정"
+			"settings": "설정",
+			"authentication": "인증"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		}
 	},
 	"settings": {
-		"title": "워크스페이스 브랜딩",
-		"description": "이 워크스페이스의 모든 프로젝트에서 사용되는 로고, 파비콘, 기본 색상을 설정합니다.",
+		"title": "워크스페이스 설정",
+		"description": "워크스페이스 ID와 인증을 관리합니다.",
+		"tabs": {
+			"branding": "브랜딩",
+			"sso": "통합 로그인"
+		},
 		"images": {
 			"title": "로고 및 파비콘",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "저장됨",
 			"errors": {
 				"updateFailed": "저장에 실패했습니다. 다시 시도해 주세요."
+			}
+		},
+		"sso": {
+			"title": "OIDC 통합 로그인",
+			"source": "현재 소스: {{source}}",
+			"enabled": "OIDC 통합 로그인 사용",
+			"issuerURL": "Issuer URL",
+			"clientID": "Client ID",
+			"clientSecret": "Client secret",
+			"secretConfigured": "Secret이 설정되어 있습니다. 비워 두면 현재 값을 유지합니다.",
+			"secretNotConfigured": "Client secret이 설정되지 않았습니다.",
+			"scopes": "Scopes",
+			"redirectURL": "리디렉션 URL",
+			"displayName": "표시 이름",
+			"usernameClaim": "사용자 이름 Claim",
+			"localLogin": "로컬 비밀번호 로그인",
+			"localLoginDescription": "SSO에 연결된 관리자를 확인할 때까지 이 옵션을 켜 두세요.",
+			"save": "SSO 설정 저장",
+			"saved": "저장됨",
+			"errors": {
+				"invalid": "SSO 설정이 올바르지 않습니다.",
+				"provider": "OIDC 공급자를 검증할 수 없습니다.",
+				"encryption": "암호화된 secret 저장소를 사용할 수 없습니다. SSO 설정을 저장하기 전에 ENCRYPTION_KEY를 구성하세요.",
+				"adminRequired": "로컬 로그인을 끄기 전에 SSO에 연결된 관리자가 필요합니다.",
+				"updateFailed": "SSO 설정을 저장하지 못했습니다. 다시 시도해 주세요."
 			}
 		}
 	}

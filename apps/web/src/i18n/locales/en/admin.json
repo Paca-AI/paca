@@ -258,6 +258,10 @@
 			"settingsWrite": {
 				"label": "Write Workspace Settings",
 				"description": "Update the workspace logo, favicon, and primary color"
+			},
+			"authenticationWrite": {
+				"label": "Manage Authentication",
+				"description": "View and update the workspace single sign-on configuration"
 			}
 		},
 		"permissionGroups": {
@@ -265,7 +269,8 @@
 			"users": "Users",
 			"projects": "Projects",
 			"plugins": "Plugins",
-			"settings": "Settings"
+			"settings": "Settings",
+			"authentication": "Authentication"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		"empty": "No release notes available yet."
 	},
 	"settings": {
-		"title": "Workspace Branding",
-		"description": "Set the logo, favicon, and primary color used across every project in this workspace.",
+		"title": "Workspace Settings",
+		"description": "Manage workspace identity and authentication.",
+		"tabs": {
+			"branding": "Branding",
+			"sso": "Single sign-on"
+		},
 		"images": {
 			"title": "Logo & Favicon",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "Saved",
 			"errors": {
 				"updateFailed": "Failed to save. Please try again."
+			}
+		},
+		"sso": {
+			"title": "OIDC single sign-on",
+			"source": "Active source: {{source}}",
+			"enabled": "Enable OIDC single sign-on",
+			"issuerURL": "Issuer URL",
+			"clientID": "Client ID",
+			"clientSecret": "Client secret",
+			"secretConfigured": "A secret is configured. Leave blank to keep it.",
+			"secretNotConfigured": "No client secret is configured.",
+			"scopes": "Scopes",
+			"redirectURL": "Redirect URL",
+			"displayName": "Display name",
+			"usernameClaim": "Username claim",
+			"localLogin": "Local password login",
+			"localLoginDescription": "Keep this enabled until an SSO-bound administrator has been verified.",
+			"save": "Save SSO settings",
+			"saved": "Saved",
+			"errors": {
+				"invalid": "The SSO configuration is invalid.",
+				"provider": "The OIDC provider could not be validated.",
+				"encryption": "Encrypted secret storage is unavailable. Configure ENCRYPTION_KEY before saving SSO settings.",
+				"adminRequired": "An SSO-bound administrator is required before local login can be disabled.",
+				"updateFailed": "Failed to save SSO settings. Please try again."
 			}
 		}
 	}

@@ -246,6 +246,10 @@
 			"settingsWrite": {
 				"label": "Escribir configuración del espacio de trabajo",
 				"description": "Actualizar el logotipo, el favicon y el color principal del espacio de trabajo"
+			},
+			"authenticationWrite": {
+				"label": "Administrar autenticación",
+				"description": "Ver y actualizar la configuración de inicio de sesión único del espacio de trabajo"
 			}
 		},
 		"permissionGroups": {
@@ -253,7 +257,8 @@
 			"users": "Usuarios",
 			"projects": "Proyectos",
 			"plugins": "Plugins",
-			"settings": "Configuración"
+			"settings": "Configuración",
+			"authentication": "Autenticación"
 		}
 	},
 	"plugins": {
@@ -292,8 +297,12 @@
 		}
 	},
 	"settings": {
-		"title": "Marca del espacio de trabajo",
-		"description": "Configura el logotipo, el favicon y el color principal usados en todos los proyectos de este espacio de trabajo.",
+		"title": "Configuración del espacio de trabajo",
+		"description": "Administra la identidad y la autenticación del espacio de trabajo.",
+		"tabs": {
+			"branding": "Marca",
+			"sso": "Inicio de sesión único"
+		},
 		"images": {
 			"title": "Logotipo y favicon",
 			"logo": {
@@ -335,6 +344,31 @@
 			"saved": "Guardado",
 			"errors": {
 				"updateFailed": "No se pudo guardar. Inténtalo de nuevo."
+			}
+		},
+		"sso": {
+			"title": "Inicio de sesión único OIDC",
+			"source": "Origen activo: {{source}}",
+			"enabled": "Activar inicio de sesión único OIDC",
+			"issuerURL": "URL del emisor",
+			"clientID": "Client ID",
+			"clientSecret": "Client secret",
+			"secretConfigured": "Hay un secreto configurado. Déjalo en blanco para conservarlo.",
+			"secretNotConfigured": "No hay ningún client secret configurado.",
+			"scopes": "Ámbitos",
+			"redirectURL": "URL de redirección",
+			"displayName": "Nombre para mostrar",
+			"usernameClaim": "Claim de nombre de usuario",
+			"localLogin": "Inicio de sesión con contraseña local",
+			"localLoginDescription": "Mantén esta opción activa hasta verificar un administrador vinculado a SSO.",
+			"save": "Guardar configuración SSO",
+			"saved": "Guardado",
+			"errors": {
+				"invalid": "La configuración SSO no es válida.",
+				"provider": "No se pudo validar el proveedor OIDC.",
+				"encryption": "El almacenamiento cifrado de secretos no está disponible. Configura ENCRYPTION_KEY antes de guardar SSO.",
+				"adminRequired": "Se requiere un administrador vinculado a SSO antes de desactivar el inicio de sesión local.",
+				"updateFailed": "No se pudo guardar la configuración SSO. Inténtalo de nuevo."
 			}
 		}
 	}
