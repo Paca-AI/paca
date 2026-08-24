@@ -48,24 +48,69 @@ BEGIN
 END;
 $$;
 
+-- Relevant writes must take the singleton settings-row lock before they take
+-- user, role, or identity row locks. Without this common lock order, two
+-- concurrent demotions can deadlock when the deferred check tries to lock the
+-- other transaction's remaining administrator.
+CREATE OR REPLACE FUNCTION serialize_sso_admin_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM id
+      FROM workspace_settings
+     WHERE id = TRUE
+       FOR UPDATE;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS serialize_sso_admin_on_settings ON workspace_settings;
+CREATE TRIGGER serialize_sso_admin_on_settings
+BEFORE UPDATE OF oidc_enabled, oidc_issuer_url, local_login_enabled
+ON workspace_settings
+FOR EACH STATEMENT EXECUTE FUNCTION serialize_sso_admin_mutation();
+
+DROP TRIGGER IF EXISTS serialize_sso_admin_on_users ON users;
+CREATE TRIGGER serialize_sso_admin_on_users
+BEFORE UPDATE OF role_id, deleted_at OR DELETE
+ON users
+FOR EACH STATEMENT EXECUTE FUNCTION serialize_sso_admin_mutation();
+
+DROP TRIGGER IF EXISTS serialize_sso_admin_on_roles ON global_roles;
+CREATE TRIGGER serialize_sso_admin_on_roles
+BEFORE UPDATE OF name OR DELETE
+ON global_roles
+FOR EACH STATEMENT EXECUTE FUNCTION serialize_sso_admin_mutation();
+
+DROP TRIGGER IF EXISTS serialize_sso_admin_on_identities ON user_external_identities;
+CREATE TRIGGER serialize_sso_admin_on_identities
+BEFORE UPDATE OF user_id, provider, issuer OR DELETE
+ON user_external_identities
+FOR EACH STATEMENT EXECUTE FUNCTION serialize_sso_admin_mutation();
+
+DROP TRIGGER IF EXISTS enforce_sso_admin_on_settings ON workspace_settings;
 CREATE CONSTRAINT TRIGGER enforce_sso_admin_on_settings
 AFTER UPDATE OF oidc_enabled, oidc_issuer_url, local_login_enabled
 ON workspace_settings
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION enforce_sso_admin_invariant();
 
+DROP TRIGGER IF EXISTS enforce_sso_admin_on_users ON users;
 CREATE CONSTRAINT TRIGGER enforce_sso_admin_on_users
 AFTER UPDATE OF role_id, deleted_at OR DELETE
 ON users
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION enforce_sso_admin_invariant();
 
+DROP TRIGGER IF EXISTS enforce_sso_admin_on_roles ON global_roles;
 CREATE CONSTRAINT TRIGGER enforce_sso_admin_on_roles
 AFTER UPDATE OF name OR DELETE
 ON global_roles
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION enforce_sso_admin_invariant();
 
+DROP TRIGGER IF EXISTS enforce_sso_admin_on_identities ON user_external_identities;
 CREATE CONSTRAINT TRIGGER enforce_sso_admin_on_identities
 AFTER UPDATE OF user_id, provider, issuer OR DELETE
 ON user_external_identities

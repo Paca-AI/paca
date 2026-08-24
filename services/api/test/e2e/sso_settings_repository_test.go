@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -11,8 +13,21 @@ import (
 	"github.com/google/uuid"
 
 	settingsdom "github.com/Paca-AI/api/internal/domain/settings"
+	"github.com/Paca-AI/api/internal/platform/database"
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 )
+
+func TestOIDCMigrationsAreIdempotent(t *testing.T) {
+	env := newE2EEnv(t)
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test file path")
+	}
+	migrationsDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "migrations")
+	if err := database.RunMigrations(env.db.DB, migrationsDir); err != nil {
+		t.Fatalf("rerun migrations: %v", err)
+	}
+}
 
 func TestWorkspaceSettingsOIDCRoundTrip(t *testing.T) {
 	env := newE2EEnv(t)
@@ -132,6 +147,19 @@ func TestSSOOnlyInvariantRejectsRemovingFinalAdministrator(t *testing.T) {
 func TestSSOOnlyInvariantSerializesConcurrentAdministratorDemotions(t *testing.T) {
 	env := newE2EEnv(t)
 	adminIDs, _, userRoleID := seedSSOOnlyFixture(t, env, 2)
+	if _, err := env.db.ExecContext(t.Context(), `
+		CREATE FUNCTION test_delay_sso_demotion() RETURNS TRIGGER
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_sleep(0.2);
+			RETURN NEW;
+		END;
+		$$;
+		CREATE TRIGGER test_delay_sso_demotion
+		BEFORE UPDATE OF role_id ON users
+		FOR EACH ROW EXECUTE FUNCTION test_delay_sso_demotion()`); err != nil {
+		t.Fatalf("install demotion race synchronizer: %v", err)
+	}
 
 	start := make(chan struct{})
 	errs := make(chan error, len(adminIDs))
@@ -148,14 +176,20 @@ func TestSSOOnlyInvariantSerializesConcurrentAdministratorDemotions(t *testing.T
 	wg.Wait()
 	close(errs)
 
-	failures := 0
+	successes := 0
+	guardRejections := 0
 	for err := range errs {
-		if err != nil {
-			failures++
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, settingsdom.ErrSSOAdminRequired):
+			guardRejections++
+		default:
+			t.Errorf("unexpected concurrent demotion error: %v", err)
 		}
 	}
-	if failures == 0 {
-		t.Fatal("both concurrent demotions succeeded")
+	if successes != 1 || guardRejections != 1 {
+		t.Fatalf("concurrent demotions: successes=%d guard_rejections=%d, want 1/1", successes, guardRejections)
 	}
 
 	var eligible int
