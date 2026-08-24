@@ -1,11 +1,11 @@
 # OIDC SSO for Paca: Identity, Security, and Admin Configuration
 
-**Status:** Proposal for discussion
+**Status:** Implemented on `feat/oidc-sso`
 
-**Implementation status:** The `feat/oidc-sso` branch already implements the
-core OIDC protocol, identity, session, security, Compose, and Helm work
-described below. The administrator configuration surface and runtime
-reconfiguration described in this proposal are not implemented yet.
+**Implementation status:** The branch implements the core OIDC protocol,
+identity, session, security, Compose and Helm wiring, administrator
+configuration surface, encrypted persistence, and single-process runtime
+reconfiguration described below.
 
 ## Summary
 
@@ -14,13 +14,12 @@ installation for human sign-in. OIDC proves the person's external identity;
 Paca remains responsible for users, sessions, authorization, API keys, Agent
 credentials, and audit-relevant state.
 
-The current branch configures OIDC through deployment environment variables.
-This proposal completes the product experience by adding a protected Single
-sign-on section to the admin settings page. A valid configuration is checked
-with OIDC Discovery, encrypted, persisted, and activated in the current API
-process when the administrator saves it.
+The branch retains deployment environment variables for initial bootstrap and
+adds a protected Single sign-on section to the admin settings page. A valid
+configuration is checked with OIDC Discovery, encrypted, persisted, and
+activated in the current API process when the administrator saves it.
 
-### Proposed Decisions
+### Decisions
 
 | Area | Decision |
 | --- | --- |
@@ -79,7 +78,7 @@ safe deployment bootstrap and recovery path.
 
 ## Non-Goals
 
-This proposal does not include:
+This design does not include:
 
 - SAML or LDAP;
 - SCIM user lifecycle;
@@ -141,7 +140,7 @@ Paca access/refresh JWTs in HttpOnly cookies
 
 Valkey stores only the short-lived, single-use login transaction
 `state -> {nonce, PKCE verifier}`. PostgreSQL stores the durable external
-identity binding and, after this proposal, encrypted administrative OIDC
+identity binding and encrypted administrative OIDC
 configuration.
 
 ## Login Flow
@@ -353,7 +352,7 @@ Environment configuration remains backward compatible and is the effective
 source on installations that have never saved SSO configuration through the
 admin UI.
 
-## Proposed Admin Configuration
+## Admin Configuration
 
 ### Permission Boundary
 
@@ -523,10 +522,10 @@ password login remains blocked below the HTTP presentation layer.
 
 ### Multiple API Replicas
 
-The Helm chart defaults to one API replica. This proposal guarantees immediate
-activation only in the API process that handles the update. PostgreSQL stores
-the new source of truth, but another already-running replica retains its prior
-snapshot until restarted.
+The Helm chart defaults to one API replica. This implementation guarantees
+immediate activation only in the API process that handles the update.
+PostgreSQL stores the new source of truth, but another already-running replica
+retains its prior snapshot until restarted.
 
 Deployments with multiple API replicas must perform a rolling restart after an
 SSO change. Database notifications, Valkey pub/sub, polling, and snapshot

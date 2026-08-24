@@ -183,9 +183,7 @@ export function SSOSettings() {
 						value={form.clientSecret}
 						onChange={(event) => set("clientSecret", event.target.value)}
 						placeholder={
-							settings.client_secret_configured
-								? t("settings.sso.secretConfigured")
-								: t("settings.sso.secretNotConfigured")
+							settings.client_secret_configured ? "••••••••" : undefined
 						}
 					/>
 					<p className="text-xs text-muted-foreground">
@@ -239,7 +237,10 @@ export function SSOSettings() {
 			</div>
 
 			<div className="flex items-center justify-between gap-4 border-t border-border/60 px-5 py-4">
-				<Label htmlFor="local-login-enabled" className="min-w-0">
+				<Label
+					htmlFor="local-login-enabled"
+					className="min-w-0 flex-1 flex-col items-start gap-1 leading-normal"
+				>
 					<span className="block">{t("settings.sso.localLogin")}</span>
 					<span className="block text-xs font-normal text-muted-foreground">
 						{t("settings.sso.localLoginDescription")}

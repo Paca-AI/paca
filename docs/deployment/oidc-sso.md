@@ -30,9 +30,17 @@ External IdP (Keycloak / Entra / Okta / Authentik / generic OIDC)
       既有 Paca RBAC / API Key / ACP 全部不变
 ```
 
-## 配置
+## 配置方式与优先级
 
-在 Paca API 的环境变量中启用（完整列表见 `services/api/.env.example`）：
+推荐在 Paca 的 **管理后台 → 工作区设置 → 单点登录** 中维护 OIDC。读取和保存该页面需要全局权限 `authentication.write`；内置 `ADMIN` 默认拥有该权限，`SUPER_ADMIN` 通过 `*` 拥有该权限。品牌设置的 `settings.write` 不授予认证配置权限。
+
+管理后台支持配置启用状态、Issuer URL、Client ID、Client Secret、Scopes、回调地址、登录入口名称、用户名 Claim 和本地密码登录。Client Secret 是只写字段：API 只返回“是否已配置”，留空保存会保留当前有效 Secret。保存启用配置时，API 会先完成字段校验和 OIDC Discovery；只有校验、加密和数据库写入都成功后，才在处理该请求的 API 进程内原子切换。失败不会改变数据库或当前登录行为。
+
+数据库中的 Client Secret 使用 `ENCRYPTION_KEY` 提供的 AES-256-GCM 能力加密。未配置有效 `ENCRYPTION_KEY` 时页面仍可读取，但拒绝保存 SSO 配置，不会退化成明文存储。更换或丢失该 Key 会导致已保存 Secret 无法解密，并使 API 启动失败；因此 Key 必须纳入部署密钥的备份与恢复流程。
+
+### 环境变量引导
+
+环境变量保留为首次部署和自动化安装的引导方式（完整列表见 `services/api/.env.example`）：
 
 ```bash
 OIDC_ENABLED=true
@@ -52,25 +60,34 @@ OIDC_USERNAME_CLAIM=preferred_username
 LOCAL_LOGIN_ENABLED=true
 ```
 
-约束（启动时 fail fast）：
+优先级如下：
+
+1. 尚未在管理后台成功保存过 SSO 配置时，使用环境变量；
+2. 第一次成功保存后，`workspace_settings` 成为唯一有效来源，包括显式关闭 OIDC 的状态；
+3. 此后旧环境变量不会在重启时重新启用或覆盖 SSO；
+4. 若保存时 Client Secret 留空，API 会保留并加密当前有效 Secret，包括首次从环境变量迁移到数据库的 Secret。
+
+单 API 进程在保存成功后立即生效，无需重启。当前版本不在多个已运行 API 副本之间广播变更；多副本部署修改 SSO 后需要滚动重启其他副本。PostgreSQL 中的配置是重启后的统一来源。
+
+约束（后台保存时校验，并在启动加载有效配置时 fail fast）：
 
 - `OIDC_ENABLED=true` 时 Issuer / Client ID / Client Secret / 回调地址（显式或由 `PUBLIC_URL` 推导）缺一不可；
 - issuer 与回调地址必须 HTTPS（`http://localhost` 等环回地址例外，便于本地联调）；
 - issuer 是**标识符**而非可规范化 URL：配置原样使用（只去首尾空白，保留尾斜杠），必须与 Discovery metadata 及 ID Token `iss` 完全一致；
 - `ENV=production` 时回调地址必须 HTTPS；
-- IdP Discovery 在**启动时**执行，IdP 不可达则 API 拒绝启动；对 IdP 的所有出站调用（Discovery、code exchange、JWKS、UserInfo）走独立 HTTP client，10 秒超时——半死不活的 IdP 会快速失败而不是挂住启动或请求；
+- IdP Discovery 在启用配置保存前和 API 启动时执行，IdP 不可达时保存失败或 API 拒绝启动；对 IdP 的所有出站调用（Discovery、code exchange、JWKS、UserInfo）走独立 HTTP client，10 秒超时——半死不活的 IdP 会快速失败而不是挂住启动或请求；
 - JIT 用户的 Global Role 固定为内置 `USER`（不可配置——Global Role 是可自定义权限集，任何可配置的默认角色都可能被指向高权限自定义角色；特权角色只能在 Paca 内手动授予）；
-- `LOCAL_LOGIN_ENABLED=false` 时启动即校验：必须已存在至少一个绑定**当前 issuer** SSO 的 `ADMIN`/`SUPER_ADMIN` 用户，否则拒绝启动（防止管理员锁死；换 IdP 后旧绑定不满足守卫，见下文）。
+- `LOCAL_LOGIN_ENABLED=false` 时保存和启动均校验：必须已存在至少一个绑定**当前 issuer** SSO 的 `ADMIN`/`SUPER_ADMIN` 用户，否则拒绝变更或启动（防止管理员锁死；换 IdP 后旧绑定不满足守卫，见下文）。
 
 ### SSO-only 分阶段上线（必须按序）
 
-JIT 用户永远不会自动获得 `ADMIN`/`SUPER_ADMIN`，而 Paca 的初始管理员是本地密码账号。若一开始就 `LOCAL_LOGIN_ENABLED=false`，将没有人能管理系统。因此分阶段上线由启动守卫强制：
+JIT 用户永远不会自动获得 `ADMIN`/`SUPER_ADMIN`，而 Paca 的初始管理员是本地密码账号。若一开始就 `LOCAL_LOGIN_ENABLED=false`，将没有人能管理系统。因此分阶段上线由保存与启动守卫共同强制：
 
 1. `OIDC_ENABLED=true` + `LOCAL_LOGIN_ENABLED=true`（先两者并存）；
 2. 目标管理员通过 SSO 登录，JIT 建号（Global Role 固定为 USER）；
 3. 本地 admin 在 Paca 内将该 SSO 用户提升为 `ADMIN`；
 4. 验证该 SSO 管理员可正常登录、管理；
-5. 最后才设 `LOCAL_LOGIN_ENABLED=false` —— 启动守卫检测到**当前 issuer** 下存在特权 SSO 用户才放行；若日后更换 IdP，需在新 issuer 下重新完成上述晋升步骤，旧 IdP 的绑定不会让新配置通过守卫。
+5. 最后才在后台关闭“本地密码登录”（或设置 `LOCAL_LOGIN_ENABLED=false`）——守卫检测到**当前 issuer** 下存在特权 SSO 用户才放行；若日后更换 IdP，需在新 issuer 下重新完成上述晋升步骤，旧 IdP 的绑定不会让新配置通过守卫。
 
 在 IdP 侧注册 confidential web client，回调地址填：
 
@@ -125,9 +142,9 @@ GET /api/v1/auth/config
    - Authentication flow: 勾选 **Standard flow**（Authorization Code）；
    - Valid redirect URIs: `https://paca.example.com/api/v1/auth/oidc/callback`（精确匹配）；
    - Valid post logout redirect URIs / Web origins: 按需（MVP 未用到）。
-3. Clients → paca → Credentials：复制 Client secret 填入 `OIDC_CLIENT_SECRET`。
+3. Clients → paca → Credentials：复制 Client secret，填入 Paca 管理后台的 SSO 配置（或首次引导所用的 `OIDC_CLIENT_SECRET`）。
 4. Realm Settings → Keys：确认有 RS256 活动密钥（Paca 通过 Discovery 的 jwks_uri 自动取公钥并支持轮换）。
-5. Paca 侧环境变量：
+5. 在管理后台填写 Issuer URL、Client ID、Client Secret，并保持本地密码登录开启后保存。也可以先用环境变量引导：
 
 ```bash
 OIDC_ENABLED=true
@@ -137,7 +154,16 @@ OIDC_CLIENT_SECRET=<client-secret>
 PUBLIC_URL=https://paca.example.com
 ```
 
-6. 重启 Paca API。启动日志出现 `oidc sso enabled` 即接入成功；登录页应出现 SSO 按钮。
+6. 管理后台保存成功后，当前 API 进程的登录页立即出现 SSO 按钮。环境变量引导需要重启 API；启动日志出现 `oidc runtime initialized` 且 `enabled=true` 即接入成功。
+
+## 管理 API
+
+```text
+GET   /api/v1/admin/settings/sso
+PATCH /api/v1/admin/settings/sso
+```
+
+两个接口都要求 `authentication.write`。响应不包含明文 Secret 或数据库密文，只包含 `client_secret_configured` 和 `encrypted_secret_storage_available`。公开的 `GET /api/v1/auth/config` 每次读取当前运行时快照，因此登录页会跟随同进程内的成功保存立即更新。
 
 本地联调可用 `http://localhost:8080/realms/...` 形式的 issuer（环回地址允许 http），Keycloak 可用 `deploy/docker-compose.dev.yml` 同网络起容器。
 
