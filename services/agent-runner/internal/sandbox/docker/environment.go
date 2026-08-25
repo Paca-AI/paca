@@ -165,14 +165,14 @@ func (m *Manager) createAndStartEnvironmentContainer(ctx context.Context, image,
 		if err != nil {
 			return "", "", fmt.Errorf("sandbox/docker: parse environment CPU limit %q: %w", cfg.CPULimit, err)
 		}
-		hostCfg.Resources.NanoCPUs = q.MilliValue() * 1_000_000
+		hostCfg.NanoCPUs = q.MilliValue() * 1_000_000
 	}
 	if cfg.MemoryLimit != "" {
 		q, err := resource.ParseQuantity(cfg.MemoryLimit)
 		if err != nil {
 			return "", "", fmt.Errorf("sandbox/docker: parse environment memory limit %q: %w", cfg.MemoryLimit, err)
 		}
-		hostCfg.Resources.Memory = q.Value()
+		hostCfg.Memory = q.Value()
 	}
 	// SYS_CHROOT, on top of newHardenedHostConfig's own narrow list: only an
 	// environment's container ever runs real sshd (see

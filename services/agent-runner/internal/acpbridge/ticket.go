@@ -14,30 +14,30 @@
 //
 // # Ticket format
 //
-//	base64url_nopad( purpose + "|" + environment_id + "|" + expires_unix_ts + "|" + hex(hmac_sha256(secret, purpose + "|" + environment_id + "|" + expires_unix_ts)) )
+//		base64url_nopad( purpose + "|" + environment_id + "|" + expires_unix_ts + "|" + hex(hmac_sha256(secret, purpose + "|" + environment_id + "|" + expires_unix_ts)) )
 //
-//   - purpose: which endpoint this ticket is good for — "terminal" or
-//     "stats" today. Binds a ticket to the one endpoint it was minted
-//     for: terminal tickets require agents.write (a shell is a mutating
-//     capability), stats tickets only need agents.read (viewing usage
-//     numbers isn't), so without this a lower-privilege stats ticket
-//     could never grant terminal access, but a terminal ticket could
-//     otherwise be replayed against the stats endpoint (or any future
-//     ticket-authenticated endpoint) even though it was only ever meant
-//     to unlock the one it was requested for.
-//   - environment_id: the environment's UUID, lowercase canonical string
-//     form (uuid.UUID.String()).
-//   - expires_unix_ts: decimal seconds-since-epoch (int64, base 10, no
-//     leading zeros/sign), e.g. "1755878400".
-//   - The HMAC-SHA256 is computed over the ASCII bytes of
-//     "<purpose>|<environment_id>|<expires_unix_ts>" (that exact
-//     three-field payload, pipe-separated — the signature does NOT cover
-//     a fourth field), keyed by the raw bytes of the shared secret
-//     string, and hex-lowercase encoded (64 hex characters).
-//   - The four fields above are joined with "|" into one string and the
-//     whole thing is base64url-encoded WITHOUT padding (Go:
-//     base64.RawURLEncoding; Node: Buffer.from(str).toString('base64url'),
-//     which is unpadded by default).
+//	  - purpose: which endpoint this ticket is good for — "terminal" or
+//	    "stats" today. Binds a ticket to the one endpoint it was minted
+//	    for: terminal tickets require agents.write (a shell is a mutating
+//	    capability), stats tickets only need agents.read (viewing usage
+//	    numbers isn't), so without this a lower-privilege stats ticket
+//	    could never grant terminal access, but a terminal ticket could
+//	    otherwise be replayed against the stats endpoint (or any future
+//	    ticket-authenticated endpoint) even though it was only ever meant
+//	    to unlock the one it was requested for.
+//	  - environment_id: the environment's UUID, lowercase canonical string
+//	    form (uuid.UUID.String()).
+//	  - expires_unix_ts: decimal seconds-since-epoch (int64, base 10, no
+//	    leading zeros/sign), e.g. "1755878400".
+//	  - The HMAC-SHA256 is computed over the ASCII bytes of
+//	    "<purpose>|<environment_id>|<expires_unix_ts>" (that exact
+//	    three-field payload, pipe-separated — the signature does NOT cover
+//	    a fourth field), keyed by the raw bytes of the shared secret
+//	    string, and hex-lowercase encoded (64 hex characters).
+//	  - The four fields above are joined with "|" into one string and the
+//	    whole thing is base64url-encoded WITHOUT padding (Go:
+//	    base64.RawURLEncoding; Node: Buffer.from(str).toString('base64url'),
+//	    which is unpadded by default).
 //
 // Known, accepted limitation: a ticket is neither single-use nor
 // re-checked against the connecting user's current authorization at
