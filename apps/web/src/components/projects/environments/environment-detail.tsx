@@ -7,6 +7,7 @@ import {
 	ExternalLink,
 	Folder as FolderIcon,
 	Loader2,
+	MoreHorizontal,
 	Network,
 	Play,
 	Plus,
@@ -18,8 +19,14 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	EnvironmentStatusLine,
+	EnvironmentStatusRing,
+	formatBytes,
+	UsageRingCell,
+	useEnvironmentUsage,
+} from "@/components/projects/environments/environment-status-ring";
 import { FolderCreateDialog } from "@/components/projects/environments/folder-create-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Dialog,
@@ -29,6 +36,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -39,7 +52,6 @@ import {
 	deleteEnvironment,
 	deleteFolder,
 	deletePortForward,
-	ENVIRONMENT_STATUS_COLORS,
 	type Environment,
 	type EnvironmentStatus,
 	environmentConfigQueryOptions,
@@ -51,7 +63,7 @@ import {
 	stopEnvironment,
 	updateEnvironment,
 } from "@/lib/environment-api";
-import { cn } from "@/lib/utils";
+import { timeAgo } from "@/lib/time-ago";
 
 // Shared by the environment detail route
 // (routes/.../projects/$projectId/environments/$environmentId/index.tsx).
@@ -77,6 +89,32 @@ const TRANSITIONAL_STATUSES: EnvironmentStatus[] = [
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
+// VitalCard surfaces one field of an environment's real, already-fetched
+// spec (cpu_limit/memory_limit/disk_limit_gb) or activity data
+// (last_active_at) that the API has always returned but this tab never
+// showed before — the tab read like a name field with a save button
+// attached, not the detail page for an actual running machine.
+function VitalCard({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
+			<p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+				{label}
+			</p>
+			<p className="mt-0.5 text-sm font-medium font-mono tabular-nums truncate">
+				{value}
+			</p>
+		</div>
+	);
+}
+
+// formatCores renders a core count the same way the create dialog's own
+// cpu_limit field is entered — a bare number, not "vCPU" repeated with
+// pointless decimal noise (2, not 2.0; 0.3, not 0.300000001 from the
+// usage-rate division in useEnvironmentUsage).
+function formatCores(cores: number): string {
+	return cores >= 10 || cores % 1 === 0 ? cores.toFixed(0) : cores.toFixed(1);
+}
+
 function OverviewTab({
 	environment,
 	projectId,
@@ -89,13 +127,12 @@ function OverviewTab({
 	onGoToPortForwards: () => void;
 }) {
 	const { t } = useTranslation("projects");
+	const { t: tCommon } = useTranslation("common");
 	const qc = useQueryClient();
-	const navigate = useNavigate();
 	const [name, setName] = useState(environment.name);
 	const [idleTimeout, setIdleTimeout] = useState(
 		String(environment.idle_timeout_minutes),
 	);
-	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const envKey = environmentQueryOptions(projectId, environment.id).queryKey;
 	const listKey = ["projects", projectId, "environments"];
@@ -124,26 +161,6 @@ function OverviewTab({
 		},
 	});
 
-	const stopMutation = useMutation({
-		mutationFn: () => stopEnvironment(projectId, environment.id),
-		onSuccess: (updated) => {
-			qc.setQueryData(envKey, updated);
-			qc.invalidateQueries({ queryKey: listKey });
-		},
-	});
-
-	const deleteMutation = useMutation({
-		mutationFn: () => deleteEnvironment(projectId, environment.id),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: listKey });
-			navigate({
-				to: "/projects/$projectId/environments",
-				params: { projectId },
-				search: { create: false },
-			});
-		},
-	});
-
 	const idleTimeoutNumber = Number(idleTimeout);
 	const canSave =
 		isDirty &&
@@ -158,121 +175,119 @@ function OverviewTab({
 		(environment.status === "stopped" ||
 			environment.status === "suspended" ||
 			environment.status === "error");
-	const canStop = !isTransitioning && environment.status === "running";
+	const usage = useEnvironmentUsage(projectId, environment.id, environment);
 
 	return (
-		<div className="space-y-6 max-w-2xl">
-			<div className="flex items-center justify-between gap-3 flex-wrap">
-				<div className="flex items-center gap-2">
-					<span
-						className={cn(
-							"size-2 rounded-full",
-							ENVIRONMENT_STATUS_COLORS[environment.status].replace(
-								"text-",
-								"bg-",
-							),
-						)}
-					/>
-					<span
-						className={cn(
-							"text-sm font-medium",
-							ENVIRONMENT_STATUS_COLORS[environment.status],
-						)}
-					>
-						{t(`environments.status.${environment.status}`)}
-					</span>
-					<Badge variant="secondary" className="text-xs">
-						{environment.backend}
-					</Badge>
-				</div>
-				{canWrite && (
-					<div className="flex items-center gap-2">
-						{canStart && (
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() => startMutation.mutate()}
-								disabled={startMutation.isPending}
-							>
-								{startMutation.isPending ? (
-									<Loader2 className="size-3.5 mr-1.5 animate-spin" />
-								) : (
-									<Play className="size-3.5 mr-1.5" />
-								)}
-								{t("environments.detail.overview.start")}
-							</Button>
-						)}
-						{canStop && (
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() => stopMutation.mutate()}
-								disabled={stopMutation.isPending}
-							>
-								{stopMutation.isPending ? (
-									<Loader2 className="size-3.5 mr-1.5 animate-spin" />
-								) : (
-									<Square className="size-3.5 mr-1.5" />
-								)}
-								{t("environments.detail.overview.stop")}
-							</Button>
-						)}
-						<Button
-							size="sm"
-							variant="destructive"
-							onClick={() => setConfirmDelete(true)}
-						>
-							<Trash2 className="size-3.5 mr-1.5" />
-							{t("environments.detail.overview.delete")}
-						</Button>
-					</div>
-				)}
-			</div>
-
+		<div className="space-y-6">
 			{environment.error_message && (
 				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
 					{environment.error_message}
 				</p>
 			)}
 
+			<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+				<UsageRingCell
+					label={t("environments.detail.overview.vitals.cpu")}
+					valueText={
+						usage.cpuCoresUsed !== null
+							? `${formatCores(usage.cpuCoresUsed)} / ${formatCores(usage.cpuLimitCores)} vCPU`
+							: null
+					}
+					limitText={`${formatCores(usage.cpuLimitCores)} vCPU`}
+					fraction={usage.cpuFraction}
+				/>
+				<UsageRingCell
+					label={t("environments.detail.overview.vitals.memory")}
+					valueText={
+						usage.memoryFraction !== null
+							? `${formatBytes(usage.memoryUsedBytes)} / ${formatBytes(usage.memoryLimitBytes)}`
+							: null
+					}
+					limitText={environment.memory_limit}
+					fraction={usage.memoryFraction}
+				/>
+				<UsageRingCell
+					label={t("environments.detail.overview.vitals.disk")}
+					valueText={
+						usage.diskFraction !== null
+							? `${formatBytes(usage.diskUsedBytes)} / ${formatBytes(usage.diskLimitBytes)}`
+							: null
+					}
+					limitText={t("environments.detail.overview.vitals.diskValue", {
+						value: environment.disk_limit_gb,
+					})}
+					fraction={usage.diskFraction}
+				/>
+				<VitalCard
+					label={t("environments.detail.overview.vitals.lastActive")}
+					value={timeAgo(environment.last_active_at, tCommon)}
+				/>
+			</div>
+
+			{canWrite && canStart && (
+				<div className="flex items-center justify-end gap-2">
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => startMutation.mutate()}
+						disabled={startMutation.isPending}
+					>
+						{startMutation.isPending ? (
+							<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+						) : (
+							<Play className="size-3.5 mr-1.5" />
+						)}
+						{t("environments.detail.overview.start")}
+					</Button>
+				</div>
+			)}
+
 			<Separator />
 
-			<div className="space-y-1.5">
-				<Label>{t("environments.detail.overview.nameLabel")}</Label>
-				<Input
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					disabled={!canWrite}
-				/>
-			</div>
+			<div className="space-y-4 max-w-2xl">
+				<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+					{t("environments.detail.overview.configuration")}
+				</p>
 
-			<div className="grid grid-cols-2 gap-3">
 				<div className="space-y-1.5">
-					<Label>{t("environments.detail.overview.backendLabel")}</Label>
-					<p className="text-sm text-muted-foreground">{environment.backend}</p>
+					<Label>{t("environments.detail.overview.nameLabel")}</Label>
+					<Input
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						disabled={!canWrite}
+					/>
 				</div>
+
+				<div className="grid grid-cols-2 gap-3">
+					<div className="space-y-1.5">
+						<Label>{t("environments.detail.overview.backendLabel")}</Label>
+						<p className="text-sm text-muted-foreground">
+							{environment.backend}
+						</p>
+					</div>
+					<div className="space-y-1.5">
+						<Label>{t("environments.detail.overview.imageLabel")}</Label>
+						<p className="text-sm text-muted-foreground font-mono truncate">
+							{environment.image ??
+								t("environments.detail.overview.defaultImage")}
+						</p>
+					</div>
+				</div>
+
 				<div className="space-y-1.5">
-					<Label>{t("environments.detail.overview.imageLabel")}</Label>
-					<p className="text-sm text-muted-foreground font-mono truncate">
-						{environment.image ??
-							t("environments.detail.overview.defaultImage")}
+					<Label>{t("environments.detail.overview.idleTimeoutLabel")}</Label>
+					<Input
+						type="number"
+						min={1}
+						value={idleTimeout}
+						onChange={(e) => setIdleTimeout(e.target.value)}
+						disabled={!canWrite}
+						className="max-w-32"
+					/>
+					<p className="text-xs text-muted-foreground">
+						{t("environments.detail.overview.idleTimeoutHint")}
 					</p>
 				</div>
-			</div>
-
-			<div className="space-y-1.5">
-				<Label>{t("environments.detail.overview.idleTimeoutLabel")}</Label>
-				<Input
-					type="number"
-					min={1}
-					value={idleTimeout}
-					onChange={(e) => setIdleTimeout(e.target.value)}
-					disabled={!canWrite}
-					className="max-w-32"
-				/>
-				<p className="text-xs text-muted-foreground">
-					{t("environments.detail.overview.idleTimeoutHint")}
-				</p>
 			</div>
 
 			{environment.ports_pending_restart && (
@@ -292,7 +307,7 @@ function OverviewTab({
 			)}
 
 			{canWrite && (
-				<div className="flex items-center gap-3 pt-2">
+				<div className="flex items-center gap-3">
 					<Button onClick={() => saveMutation.mutate()} disabled={!canSave}>
 						{saveMutation.isPending ? (
 							<Loader2 className="size-4 mr-2 animate-spin" />
@@ -314,46 +329,6 @@ function OverviewTab({
 					)}
 				</div>
 			)}
-
-			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-				<DialogContent className="max-w-sm">
-					<DialogHeader>
-						<DialogTitle>
-							{t("environments.detail.overview.deleteDialog.title", {
-								name: environment.name,
-							})}
-						</DialogTitle>
-						<DialogDescription>
-							{t("environments.detail.overview.deleteDialog.description")}
-						</DialogDescription>
-					</DialogHeader>
-					{deleteMutation.isError && (
-						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
-							{t("environments.detail.overview.deleteDialog.deleteFailed")}
-						</p>
-					)}
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setConfirmDelete(false)}
-							disabled={deleteMutation.isPending}
-						>
-							{t("environments.detail.overview.deleteDialog.cancel")}
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={() => deleteMutation.mutate()}
-							disabled={deleteMutation.isPending}
-						>
-							{deleteMutation.isPending ? (
-								<Loader2 className="size-4 animate-spin" />
-							) : (
-								t("environments.detail.overview.deleteDialog.delete")
-							)}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</div>
 	);
 }
@@ -727,7 +702,7 @@ function PortForwardsTab({
 	});
 
 	return (
-		<div className="max-w-xl space-y-4">
+		<div className="space-y-4">
 			<p className="text-sm text-muted-foreground">
 				{t("environments.detail.portForwards.description")}
 			</p>
@@ -892,6 +867,8 @@ export function EnvironmentDetailView({
 	// permission.
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
+	const qc = useQueryClient();
+	const navigate = useNavigate();
 
 	const { data: environment } = useQuery(
 		environmentQueryOptions(projectId, environmentId),
@@ -904,6 +881,7 @@ export function EnvironmentDetailView({
 		}
 		return "overview";
 	});
+	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	useEffect(() => {
 		const handleHashChange = () => {
@@ -923,6 +901,36 @@ export function EnvironmentDetailView({
 		window.history.pushState(null, "", url);
 	};
 
+	const envKey = environmentQueryOptions(projectId, environmentId).queryKey;
+	const listKey = ["projects", projectId, "environments"];
+
+	// Stop/Delete live in the header's actions dropdown next to Connect
+	// (see the return below) rather than inline in OverviewTab — lifted up
+	// here so they're reachable from every tab, not just Overview. Start
+	// stays a prominent button in OverviewTab itself: it's the one action
+	// that's only relevant while looking at a stopped environment's own
+	// vitals, and burying the sole way to bring an environment back to life
+	// in a menu would be the wrong tradeoff.
+	const stopMutation = useMutation({
+		mutationFn: () => stopEnvironment(projectId, environmentId),
+		onSuccess: (updated) => {
+			qc.setQueryData(envKey, updated);
+			qc.invalidateQueries({ queryKey: listKey });
+		},
+	});
+
+	const deleteMutation = useMutation({
+		mutationFn: () => deleteEnvironment(projectId, environmentId),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: listKey });
+			navigate({
+				to: "/projects/$projectId/environments",
+				params: { projectId },
+				search: { create: false },
+			});
+		},
+	});
+
 	if (!environment) {
 		return (
 			<div className="flex flex-col gap-4 p-6">
@@ -932,32 +940,70 @@ export function EnvironmentDetailView({
 		);
 	}
 
+	const isTransitioning = TRANSITIONAL_STATUSES.includes(environment.status);
+	const canStop = !isTransitioning && environment.status === "running";
+
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
 			{/* Environment header */}
 			<div className="border-b border-border/50 px-6 py-5 shrink-0">
 				<div className="flex items-center justify-between gap-4">
 					<div className="flex items-center gap-4">
-						<div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-							<Server className="size-6 text-primary" />
-						</div>
+						<EnvironmentStatusRing environment={environment} size={52} />
 						<div>
 							<h1 className="text-lg font-semibold">{environment.name}</h1>
-							<div className="flex items-center gap-2 mt-0.5">
-								<span className="text-sm text-muted-foreground font-mono">
-									{environment.slug}
-								</span>
+							<span className="text-sm text-muted-foreground font-mono">
+								{environment.slug}
+							</span>
+							<div className="mt-1">
+								<EnvironmentStatusLine environment={environment} />
 							</div>
 						</div>
 					</div>
-					<Link
-						to="/projects/$projectId/environments/$environmentId/connect"
-						params={{ projectId, environmentId }}
-						className={buttonVariants({ variant: "outline" })}
-					>
-						<ExternalLink className="size-3.5 mr-1.5" />
-						{t("environments.detail.overview.connect")}
-					</Link>
+					<div className="flex items-center gap-2 shrink-0">
+						<Link
+							to="/projects/$projectId/environments/$environmentId/connect"
+							params={{ projectId, environmentId }}
+							className={buttonVariants({ variant: "outline" })}
+						>
+							<ExternalLink className="size-3.5 mr-1.5" />
+							{t("environments.detail.overview.connect")}
+						</Link>
+						{canWrite && (
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									className={buttonVariants({
+										variant: "outline",
+										size: "icon",
+									})}
+								>
+									<MoreHorizontal className="size-4" />
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="w-40">
+									{canStop && (
+										<DropdownMenuItem
+											onClick={() => stopMutation.mutate()}
+											disabled={stopMutation.isPending}
+										>
+											{stopMutation.isPending ? (
+												<Loader2 className="size-3.5 mr-2 animate-spin" />
+											) : (
+												<Square className="size-3.5 mr-2" />
+											)}
+											{t("environments.detail.overview.stop")}
+										</DropdownMenuItem>
+									)}
+									<DropdownMenuItem
+										className="text-destructive focus:text-destructive"
+										onClick={() => setConfirmDelete(true)}
+									>
+										<Trash2 className="size-3.5 mr-2" />
+										{t("environments.detail.overview.delete")}
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						)}
+					</div>
 				</div>
 			</div>
 
@@ -1012,6 +1058,46 @@ export function EnvironmentDetailView({
 					/>
 				)}
 			</div>
+
+			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+				<DialogContent className="max-w-sm">
+					<DialogHeader>
+						<DialogTitle>
+							{t("environments.detail.overview.deleteDialog.title", {
+								name: environment.name,
+							})}
+						</DialogTitle>
+						<DialogDescription>
+							{t("environments.detail.overview.deleteDialog.description")}
+						</DialogDescription>
+					</DialogHeader>
+					{deleteMutation.isError && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{t("environments.detail.overview.deleteDialog.deleteFailed")}
+						</p>
+					)}
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setConfirmDelete(false)}
+							disabled={deleteMutation.isPending}
+						>
+							{t("environments.detail.overview.deleteDialog.cancel")}
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={() => deleteMutation.mutate()}
+							disabled={deleteMutation.isPending}
+						>
+							{deleteMutation.isPending ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								t("environments.detail.overview.deleteDialog.delete")
+							)}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

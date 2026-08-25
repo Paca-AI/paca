@@ -774,6 +774,12 @@ func New(deps Deps) http.Handler {
 							Post("/{environmentId}/restart", deps.Environment.RestartEnvironment)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
 							Post("/{environmentId}/heartbeat", deps.Environment.Heartbeat)
+						// Mints a ticket for agent-runner's live-usage
+						// WebSocket (internal/acpbridge/stats.go) — read-only
+						// in spirit (viewing usage numbers, not a mutating
+						// action), unlike terminal-ticket below.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Post("/{environmentId}/stats-ticket", deps.Environment.StatsTicket)
 
 						// Folders
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).

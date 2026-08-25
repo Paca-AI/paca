@@ -383,6 +383,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeEnvironmentNotRunning
 	case errors.Is(err, environmentdom.ErrEnvironmentBusy):
 		return http.StatusConflict, apierr.CodeEnvironmentBusy
+	case errors.Is(err, environmentdom.ErrEnvironmentCPULimitInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentCPULimitInvalid
+	case errors.Is(err, environmentdom.ErrEnvironmentMemoryLimitInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentMemoryLimitInvalid
 	case errors.Is(err, environmentdom.ErrFolderNotFound):
 		return http.StatusNotFound, apierr.CodeEnvironmentFolderNotFound
 	case errors.Is(err, environmentdom.ErrFolderPathTaken):
@@ -634,7 +638,9 @@ func httpStatusForCode(code apierr.Code) int {
 	case apierr.CodeEnvironmentNameInvalid,
 		apierr.CodeEnvironmentFolderPathInvalid,
 		apierr.CodeEnvironmentSSHKeyInvalid,
-		apierr.CodeEnvironmentPortForwardContainerPortInvalid:
+		apierr.CodeEnvironmentPortForwardContainerPortInvalid,
+		apierr.CodeEnvironmentCPULimitInvalid,
+		apierr.CodeEnvironmentMemoryLimitInvalid:
 		return http.StatusBadRequest
 	case apierr.CodeAutomationNotFound,
 		apierr.CodeAutomationNodeNotFound,

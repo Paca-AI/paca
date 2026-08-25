@@ -13,6 +13,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createEnvironment, type Environment } from "@/lib/environment-api";
 import { cn } from "@/lib/utils";
+import {
+	parseCPULimitCores,
+	parseMemoryLimitBytes,
+} from "./environment-status-ring";
+
+// Mirrors services/api's own validateCPULimit/validateMemoryLimit floors
+// (environment_service/resource_limits.go) — catching an under-the-minimum
+// value here means the create request never round-trips just to bounce off
+// that same check server-side. Not a substitute for the server-side
+// validation (a client can always skip this file entirely), just a faster
+// failure for the normal case.
+const MIN_CPU_CORES = 0.1; // 100m
+const MIN_MEMORY_BYTES = 256 * 1024 ** 2; // 256Mi
 
 // Create Environment dialog — mirrors create-agent-dialog.tsx's structure
 // (gradient header, dialog footer actions, mutation-driven submit) but is a
@@ -37,11 +50,17 @@ export function EnvironmentCreateDialog({
 	const [name, setName] = useState("");
 	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [image, setImage] = useState("");
+	const [cpu, setCpu] = useState("");
+	const [memory, setMemory] = useState("");
+	const [disk, setDisk] = useState("");
 
 	const reset = () => {
 		setName("");
 		setShowAdvanced(false);
 		setImage("");
+		setCpu("");
+		setMemory("");
+		setDisk("");
 	};
 
 	const handleClose = (v: boolean) => {
@@ -49,11 +68,25 @@ export function EnvironmentCreateDialog({
 		onOpenChange(v);
 	};
 
+	const diskNumber = Number(disk);
+	// Blank is always valid (falls through to the platform default, same as
+	// every other field here) — only a non-blank, non-positive-integer
+	// value is rejected.
+	const diskValid =
+		disk.trim() === "" || (Number.isInteger(diskNumber) && diskNumber > 0);
+	const cpuValid =
+		cpu.trim() === "" || parseCPULimitCores(cpu) >= MIN_CPU_CORES;
+	const memoryValid =
+		memory.trim() === "" || parseMemoryLimitBytes(memory) >= MIN_MEMORY_BYTES;
+
 	const createMutation = useMutation({
 		mutationFn: () =>
 			createEnvironment(projectId, {
 				name: name.trim(),
 				...(image.trim() ? { image: image.trim() } : {}),
+				...(cpu.trim() ? { cpu_limit: cpu.trim() } : {}),
+				...(memory.trim() ? { memory_limit: memory.trim() } : {}),
+				...(disk.trim() ? { disk_limit_gb: diskNumber } : {}),
 			}),
 		onSuccess: (environment) => {
 			qc.invalidateQueries({
@@ -64,7 +97,12 @@ export function EnvironmentCreateDialog({
 		},
 	});
 
-	const canSubmit = !!name.trim() && !createMutation.isPending;
+	const canSubmit =
+		!!name.trim() &&
+		diskValid &&
+		cpuValid &&
+		memoryValid &&
+		!createMutation.isPending;
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -123,20 +161,86 @@ export function EnvironmentCreateDialog({
 							{t("environments.createDialog.advanced")}
 						</button>
 						{showAdvanced && (
-							<div className="space-y-1.5 mt-3">
-								<Label htmlFor="environment-image">
-									{t("environments.createDialog.imageLabel")}
-								</Label>
-								<Input
-									id="environment-image"
-									placeholder={t("environments.createDialog.imagePlaceholder")}
-									value={image}
-									onChange={(e) => setImage(e.target.value)}
-									className="font-mono text-xs"
-								/>
-								<p className="text-xs text-muted-foreground">
-									{t("environments.createDialog.imageHint")}
-								</p>
+							<div className="space-y-4 mt-3">
+								<div className="space-y-1.5">
+									<Label htmlFor="environment-image">
+										{t("environments.createDialog.imageLabel")}
+									</Label>
+									<Input
+										id="environment-image"
+										placeholder={t(
+											"environments.createDialog.imagePlaceholder",
+										)}
+										value={image}
+										onChange={(e) => setImage(e.target.value)}
+										className="font-mono text-xs"
+									/>
+									<p className="text-xs text-muted-foreground">
+										{t("environments.createDialog.imageHint")}
+									</p>
+								</div>
+
+								<div>
+									<div className="grid grid-cols-3 gap-3">
+										<div className="space-y-1.5">
+											<Label htmlFor="environment-cpu">
+												{t("environments.detail.overview.vitals.cpu")}
+											</Label>
+											<Input
+												id="environment-cpu"
+												placeholder="2"
+												value={cpu}
+												onChange={(e) => setCpu(e.target.value)}
+												className="font-mono text-xs"
+												aria-invalid={!cpuValid}
+											/>
+										</div>
+										<div className="space-y-1.5">
+											<Label htmlFor="environment-memory">
+												{t("environments.detail.overview.vitals.memory")}
+											</Label>
+											<Input
+												id="environment-memory"
+												placeholder="4Gi"
+												value={memory}
+												onChange={(e) => setMemory(e.target.value)}
+												className="font-mono text-xs"
+												aria-invalid={!memoryValid}
+											/>
+										</div>
+										<div className="space-y-1.5">
+											<Label htmlFor="environment-disk">
+												{t("environments.detail.overview.vitals.disk")}
+											</Label>
+											<Input
+												id="environment-disk"
+												type="number"
+												min={1}
+												placeholder="20"
+												value={disk}
+												onChange={(e) => setDisk(e.target.value)}
+												className="font-mono text-xs"
+												aria-invalid={!diskValid}
+											/>
+										</div>
+									</div>
+									<p
+										className={cn(
+											"text-xs mt-1.5",
+											cpuValid && memoryValid && diskValid
+												? "text-muted-foreground"
+												: "text-destructive",
+										)}
+									>
+										{!cpuValid
+											? t("environments.createDialog.cpuLimitInvalid")
+											: !memoryValid
+												? t("environments.createDialog.memoryLimitInvalid")
+												: !diskValid
+													? t("environments.createDialog.diskLimitInvalid")
+													: t("environments.createDialog.resourcesHint")}
+									</p>
+								</div>
 							</div>
 						)}
 					</div>

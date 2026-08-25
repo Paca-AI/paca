@@ -209,6 +209,20 @@
 		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
 	}
 
+	# -- Static environment live usage stream --------------------------------------
+	#
+	# The WebSocket the environment detail page's Overview tab connects to
+	# for live CPU/memory/disk usage — see internal/acpbridge/stats.go's
+	# handleEnvironmentStatsWS, sibling to the terminal block just above and
+	# authenticated the exact same way (a short-lived HMAC-signed `ticket`
+	# query param, not X-Internal-Token — a browser tab can't hold that
+	# secret). Server push on its own ticker, not polled by the browser —
+	# see stats.go's own doc comment for why this replaced a REST endpoint
+	# entirely rather than sitting alongside one.
+	handle /environments/*/stats/ws {
+		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
+	}
+
 	# -- Web application (SPA) -----------------------------------------------------
 	#
 	# WebSocket upgrades are detected and proxied automatically, so Vite HMR

@@ -105,6 +105,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /llm/models", s.handleLLMModels)
 	s.registerEnvironmentRoutes(mux)
 	s.registerTerminalRoute(mux)
+	s.registerEnvironmentStatsRoute(mux)
 	return mux
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
@@ -149,6 +150,30 @@ func (m *Manager) createAndStartEnvironmentContainer(ctx context.Context, image,
 	// container, this one must not vanish out from under a stopped
 	// environment.
 	hostCfg.AutoRemove = false
+	// newHardenedHostConfig's Resources are the ephemeral per-conversation
+	// sandbox's own fixed defaults (2 cores / 4GiB) — every environment
+	// container was silently getting exactly that, regardless of its own
+	// configured cfg.CPULimit/MemoryLimit, until this override. Parsed with
+	// the same resource.ParseQuantity the kubernetes backend's own
+	// environmentResources (k8s/environment.go) already uses for the exact
+	// same two fields, so "2"/"4Gi" mean the same thing on both backends.
+	// Left alone (falls through to the hardcoded defaults above) only if
+	// empty, which environment_service.go's own CreateEnvironment never
+	// actually sends — defensive, not the expected path.
+	if cfg.CPULimit != "" {
+		q, err := resource.ParseQuantity(cfg.CPULimit)
+		if err != nil {
+			return "", "", fmt.Errorf("sandbox/docker: parse environment CPU limit %q: %w", cfg.CPULimit, err)
+		}
+		hostCfg.Resources.NanoCPUs = q.MilliValue() * 1_000_000
+	}
+	if cfg.MemoryLimit != "" {
+		q, err := resource.ParseQuantity(cfg.MemoryLimit)
+		if err != nil {
+			return "", "", fmt.Errorf("sandbox/docker: parse environment memory limit %q: %w", cfg.MemoryLimit, err)
+		}
+		hostCfg.Resources.Memory = q.Value()
+	}
 	// SYS_CHROOT, on top of newHardenedHostConfig's own narrow list: only an
 	// environment's container ever runs real sshd (see
 	// sandbox.BootstrapEnvironmentSSH) — an ephemeral per-conversation

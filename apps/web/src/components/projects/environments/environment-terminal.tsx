@@ -8,6 +8,7 @@ import {
 	ENVIRONMENT_HEARTBEAT_INTERVAL_MS,
 	getTerminalTicket,
 	heartbeatEnvironment,
+	resolveWsUrl,
 } from "@/lib/environment-api";
 
 // In-browser terminal for a running static environment — Phase A of
@@ -45,29 +46,22 @@ function encodeResizeFrame(rows: number, cols: number): Uint8Array {
 	]);
 }
 
-/**
- * Resolves a `ws_url` from the terminal-ticket response against the current
- * origin — the same "treat window.location as the connection's base"
- * convention socket-client.ts uses for its Socket.IO origin. Already-absolute
- * ws(s):// URLs (the expected shape) pass through untouched; a bare path is
- * resolved against the page's own host, swapping http(s) for the matching
- * ws(s) scheme.
- */
-function resolveWsUrl(wsUrl: string): string {
-	if (/^wss?:\/\//i.test(wsUrl)) return wsUrl;
-	const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const path = wsUrl.startsWith("/") ? wsUrl : `/${wsUrl}`;
-	return `${proto}//${window.location.host}${path}`;
-}
-
 type ConnectionState = "connecting" | "connected" | "error" | "closed";
 
 export function EnvironmentTerminal({
 	projectId,
 	environmentId,
+	slug,
 }: {
 	projectId: string;
 	environmentId: string;
+	// Shown in the terminal's own title bar as "paca@<slug>" — the same
+	// vernacular a real terminal window uses for its title, and the one
+	// place in this feature where the environment's identity and "this is
+	// a real shell" both need to read at a glance simultaneously. Optional
+	// only so a caller that hasn't loaded the environment yet (a brief
+	// loading flash) doesn't need a placeholder value.
+	slug?: string;
 }) {
 	const { t } = useTranslation("projects");
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -83,10 +77,18 @@ export function EnvironmentTerminal({
 		const term = new Terminal({
 			cursorBlink: true,
 			fontSize: 13,
+			// JetBrains Mono — the app's own --font-mono (see index.css), not a
+			// generic system stack, so a real shell session reads as part of
+			// this app rather than a bare browser-default terminal.
 			fontFamily:
-				"ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+				"'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
 			theme: {
 				background: "#00000000",
+				// The app's own lime accent (--palm, index.css) as the cursor —
+				// the one place inside a live shell session where that accent
+				// can mean something concrete: this cursor is live right now.
+				cursor: "#9ed957",
+				cursorAccent: "#0d1117",
 			},
 		});
 		const fitAddon = new FitAddon();
@@ -222,34 +224,51 @@ export function EnvironmentTerminal({
 	}, [projectId, environmentId]);
 
 	return (
-		<div className="flex flex-col gap-2 h-full min-h-0">
-			<div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-				{state === "connecting" && (
-					<>
-						<Loader2 className="size-3.5 animate-spin" />
-						{t("environments.detail.terminal.connecting")}
-					</>
-				)}
-				{state === "connected" && (
-					<>
-						<span className="size-1.5 rounded-full bg-emerald-500" />
-						{t("environments.detail.terminal.connected")}
-					</>
-				)}
-				{state === "error" && (
-					<>
-						<span className="size-1.5 rounded-full bg-destructive" />
-						{t("environments.detail.terminal.connectionFailed")}
-					</>
-				)}
-				{state === "closed" && (
-					<>
-						<span className="size-1.5 rounded-full bg-muted-foreground/40" />
-						{t("environments.detail.terminal.disconnected")}
-					</>
-				)}
+		<div className="flex flex-col h-full min-h-0 rounded-lg border border-border/60 bg-[#0d1117] overflow-hidden">
+			<div className="flex items-center justify-between gap-3 shrink-0 border-b border-white/10 px-3 py-2">
+				<div className="flex items-center gap-2.5 min-w-0">
+					<div
+						className="flex items-center gap-1.5 shrink-0"
+						aria-hidden="true"
+					>
+						<span className="size-2.5 rounded-full bg-[#5c4444]" />
+						<span className="size-2.5 rounded-full bg-[#5c5340]" />
+						<span className="size-2.5 rounded-full bg-[#3f5c46]" />
+					</div>
+					<span className="font-mono text-xs text-white/40 truncate">
+						{slug
+							? t("environments.detail.terminal.title", { slug })
+							: t("environments.detail.terminal.titleLoading")}
+					</span>
+				</div>
+				<div className="flex items-center gap-1.5 text-xs shrink-0">
+					{state === "connecting" && (
+						<span className="flex items-center gap-1.5 text-white/50">
+							<Loader2 className="size-3.5 animate-spin" />
+							{t("environments.detail.terminal.connecting")}
+						</span>
+					)}
+					{state === "connected" && (
+						<span className="flex items-center gap-1.5 font-medium text-[#9ed957]">
+							<span className="size-1.5 rounded-full bg-[#9ed957] animate-pulse" />
+							{t("environments.detail.terminal.connected")}
+						</span>
+					)}
+					{state === "error" && (
+						<span className="flex items-center gap-1.5 text-red-400">
+							<span className="size-1.5 rounded-full bg-red-400" />
+							{t("environments.detail.terminal.connectionFailed")}
+						</span>
+					)}
+					{state === "closed" && (
+						<span className="flex items-center gap-1.5 text-white/40">
+							<span className="size-1.5 rounded-full bg-white/30" />
+							{t("environments.detail.terminal.disconnected")}
+						</span>
+					)}
+				</div>
 			</div>
-			<div className="flex-1 min-h-0 rounded-lg border border-border/60 bg-[#0d1117] p-2 overflow-hidden">
+			<div className="flex-1 min-h-0 p-2 overflow-hidden">
 				<div ref={containerRef} className="h-full" />
 			</div>
 		</div>

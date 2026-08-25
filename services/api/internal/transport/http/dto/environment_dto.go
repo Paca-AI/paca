@@ -211,15 +211,15 @@ func EnvironmentPortForwardFromEntity(pf *environmentdom.EnvironmentPortForward)
 }
 
 // =========================================================================
-// Terminal ticket DTO
+// Environment ticket DTO
 // =========================================================================
 
-// TerminalTicketResponse is the body returned for POST
-// /projects/:projectId/environments/:environmentId/terminal-ticket. Ticket
-// is a short-lived (60s) signed token agent-runner verifies on the other
-// end of WSURL — see EnvironmentHandler.TerminalTicket's doc comment for
-// the exact format.
-type TerminalTicketResponse struct {
+// EnvironmentTicketResponse is the body returned for POST
+// .../terminal-ticket and POST .../stats-ticket alike. Ticket is a
+// short-lived (60s) signed token agent-runner verifies on the other end of
+// WSURL — see EnvironmentHandler.TerminalTicket/StatsTicket's own doc
+// comments for the exact format.
+type EnvironmentTicketResponse struct {
 	Ticket string `json:"ticket"`
 	WSURL  string `json:"ws_url"`
 }

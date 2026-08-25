@@ -395,6 +395,54 @@ func TestCreateEnvironment_AgentRunnerFailure(t *testing.T) {
 	assert.Equal(t, []string{environmentdom.StatusError}, statusUpdates)
 }
 
+// TestCreateEnvironment_CPULimitTooSmall verifies a cpu_limit override that
+// parses but falls below minCPULimitMillicores is rejected before ever
+// reaching agent-runner — no repo write, no HTTP call — rather than
+// surfacing as a raw Docker daemon error at container-create time (see
+// errors.go's ErrEnvironmentCPULimitInvalid doc comment for the incident
+// this guards against).
+func TestCreateEnvironment_CPULimitTooSmall(t *testing.T) {
+	repo := &mockRepo{
+		createEnvironment: func(_ context.Context, _ *environmentdom.Environment) error {
+			t.Fatal("CreateEnvironment repo call should not be reached for an invalid cpu_limit")
+			return nil
+		},
+	}
+	svc := New(repo, "http://unused.invalid", "test-internal-key")
+
+	tiny := "1m"
+	_, err := svc.CreateEnvironment(context.Background(), uuid.New(), environmentdom.CreateEnvironmentInput{
+		Name:     "My Env",
+		CPULimit: &tiny,
+	})
+
+	assert.ErrorIs(t, err, environmentdom.ErrEnvironmentCPULimitInvalid)
+}
+
+// TestCreateEnvironment_MemoryLimitTooSmall mirrors
+// TestCreateEnvironment_CPULimitTooSmall for memory_limit — "500m" is valid
+// Kubernetes quantity syntax (500 *milli*-bytes, not 500 megabytes), which
+// is exactly the mistake that reached Docker's ContainerCreate as a raw
+// "Minimum memory limit allowed is 6MB" daemon error before this
+// validation existed.
+func TestCreateEnvironment_MemoryLimitTooSmall(t *testing.T) {
+	repo := &mockRepo{
+		createEnvironment: func(_ context.Context, _ *environmentdom.Environment) error {
+			t.Fatal("CreateEnvironment repo call should not be reached for an invalid memory_limit")
+			return nil
+		},
+	}
+	svc := New(repo, "http://unused.invalid", "test-internal-key")
+
+	tiny := "500m"
+	_, err := svc.CreateEnvironment(context.Background(), uuid.New(), environmentdom.CreateEnvironmentInput{
+		Name:        "My Env",
+		MemoryLimit: &tiny,
+	})
+
+	assert.ErrorIs(t, err, environmentdom.ErrEnvironmentMemoryLimitInvalid)
+}
+
 // TestAddSSHKey_InvalidKey verifies an unparseable public key is rejected
 // with ErrSSHKeyInvalid rather than propagating the raw ssh parse error.
 func TestAddSSHKey_InvalidKey(t *testing.T) {

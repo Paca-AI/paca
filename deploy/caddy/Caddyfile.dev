@@ -32,6 +32,8 @@
 #                       dev-only cutover, not a signal that prod has moved)
 #   /environments/*/terminal/ws → agent-runner's static-environment browser
 #                       terminal WebSocket (forwarded as-is)
+#   /environments/*/stats/ws → agent-runner's static-environment live
+#                       usage-stats WebSocket (forwarded as-is)
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -113,6 +115,12 @@
 	# The static-environment browser terminal's WebSocket — see
 	# ../caddy/Caddyfile's matching block for the full comment.
 	handle /environments/*/terminal/ws {
+		reverse_proxy agent-runner:8080
+	}
+
+	# The static-environment live usage-stats WebSocket — see
+	# ../caddy/Caddyfile's matching block for the full comment.
+	handle /environments/*/stats/ws {
 		reverse_proxy agent-runner:8080
 	}
 

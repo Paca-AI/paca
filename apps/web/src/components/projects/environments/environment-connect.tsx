@@ -9,13 +9,15 @@ import {
 	Loader2,
 	Play,
 	Plus,
-	Server,
 	TerminalSquare,
 	Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
+import {
+	EnvironmentStatusLine,
+	EnvironmentStatusRing,
+} from "@/components/projects/environments/environment-status-ring";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Dialog,
@@ -32,14 +34,12 @@ import { Textarea } from "@/components/ui/textarea";
 import {
 	addSSHKey,
 	deleteSSHKey,
-	ENVIRONMENT_STATUS_COLORS,
 	type Environment,
 	environmentConfigQueryOptions,
 	environmentQueryOptions,
 	environmentSSHKeysQueryOptions,
 	startEnvironment,
 } from "@/lib/environment-api";
-import { cn } from "@/lib/utils";
 
 // The environment "Connect" page — a dedicated route
 // (routes/.../environments/$environmentId/connect.tsx), not a tab on
@@ -350,7 +350,7 @@ function WebAppConnectTab({
 	});
 
 	return (
-		<div className="max-w-xl space-y-4">
+		<div className="space-y-4 max-w-2xl">
 			<p className="text-sm text-muted-foreground">
 				{t("environments.connect.webApp.description")}
 			</p>
@@ -416,13 +416,13 @@ function SSHConnectTab({
 	const host = config?.ssh_bastion_host || null;
 
 	return (
-		<div className="max-w-xl space-y-6">
+		<div className="space-y-6">
 			<div className="space-y-3">
 				<StepHeading
 					index={1}
 					title={t("environments.connect.ssh.step1Title")}
 				/>
-				<p className="text-sm text-muted-foreground pl-7">
+				<p className="text-sm text-muted-foreground pl-7 max-w-2xl">
 					{t("environments.connect.ssh.step1Description")}
 				</p>
 				<div className="pl-7">
@@ -439,10 +439,10 @@ function SSHConnectTab({
 					index={2}
 					title={t("environments.connect.ssh.step2Title")}
 				/>
-				<p className="text-sm text-muted-foreground pl-7">
+				<p className="text-sm text-muted-foreground pl-7 max-w-2xl">
 					{t("environments.connect.ssh.step2Description")}
 				</p>
-				<div className="pl-7 space-y-2">
+				<div className="pl-7 space-y-2 max-w-2xl">
 					{sshPort === null ? (
 						<p className="text-sm text-muted-foreground">
 							{t("environments.detail.sshKeys.connectUnavailable")}
@@ -525,34 +525,13 @@ export function EnvironmentConnectView({
 					{environment.name}
 				</Link>
 				<div className="flex items-center gap-4">
-					<div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-						<Server className="size-6 text-primary" />
-					</div>
+					<EnvironmentStatusRing environment={environment} size={52} />
 					<div>
 						<h1 className="text-lg font-semibold">
 							{t("environments.connect.title", { name: environment.name })}
 						</h1>
-						<div className="flex items-center gap-2 mt-0.5">
-							<span
-								className={cn(
-									"size-2 rounded-full",
-									ENVIRONMENT_STATUS_COLORS[environment.status].replace(
-										"text-",
-										"bg-",
-									),
-								)}
-							/>
-							<span
-								className={cn(
-									"text-sm font-medium",
-									ENVIRONMENT_STATUS_COLORS[environment.status],
-								)}
-							>
-								{t(`environments.status.${environment.status}`)}
-							</span>
-							<Badge variant="secondary" className="text-xs">
-								{environment.backend}
-							</Badge>
+						<div className="mt-0.5">
+							<EnvironmentStatusLine environment={environment} />
 						</div>
 					</div>
 				</div>

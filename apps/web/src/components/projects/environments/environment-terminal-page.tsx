@@ -62,6 +62,7 @@ export function EnvironmentTerminalPage({
 					<EnvironmentTerminal
 						projectId={projectId}
 						environmentId={environmentId}
+						slug={environment.slug}
 					/>
 				)}
 			</div>

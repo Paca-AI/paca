@@ -159,10 +159,16 @@ func (s *Service) CreateEnvironment(ctx context.Context, projectID uuid.UUID, in
 
 	cpuLimit := defaultCPULimit
 	if in.CPULimit != nil && *in.CPULimit != "" {
+		if err := validateCPULimit(*in.CPULimit); err != nil {
+			return nil, err
+		}
 		cpuLimit = *in.CPULimit
 	}
 	memoryLimit := defaultMemoryLimit
 	if in.MemoryLimit != nil && *in.MemoryLimit != "" {
+		if err := validateMemoryLimit(*in.MemoryLimit); err != nil {
+			return nil, err
+		}
 		memoryLimit = *in.MemoryLimit
 	}
 	diskLimitGB := defaultDiskLimitGB

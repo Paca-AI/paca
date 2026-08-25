@@ -19,11 +19,24 @@ import (
 	"github.com/Paca-AI/api/internal/transport/http/presenter"
 )
 
-// terminalTicketTTL bounds how long a minted terminal ticket stays valid —
-// short enough that a leaked ticket (e.g. captured in a proxy log) is
-// useless within a minute of being issued, long enough that the browser
-// has time to open the WebSocket right after requesting one.
-const terminalTicketTTL = 60 * time.Second
+// environmentTicketTTL bounds how long a minted environment ticket
+// (terminal or stats) stays valid — short enough that a leaked ticket
+// (e.g. captured in a proxy log) is useless within a minute of being
+// issued, long enough that the browser has time to open the WebSocket
+// right after requesting one.
+const environmentTicketTTL = 60 * time.Second
+
+// Ticket purposes — must match agent-runner's own
+// ticketPurposeTerminal/ticketPurposeStats exactly
+// (internal/acpbridge/ticket.go). A ticket is only ever valid for the one
+// endpoint it was minted for: a terminal ticket (gated on agents.write,
+// since it grants a shell) must not also unlock the stats socket (gated
+// on the weaker agents.read, since viewing usage numbers isn't mutating),
+// and vice versa.
+const (
+	ticketPurposeTerminal = "terminal"
+	ticketPurposeStats    = "stats"
+)
 
 // EnvironmentHandler handles static environment management endpoints (see
 // docs/ai-agent/environment-management.md).
@@ -498,33 +511,42 @@ func (h *EnvironmentHandler) DeletePortForward(w http.ResponseWriter, r *http.Re
 	presenter.NoContent(w)
 }
 
-// --- Terminal ticket --------------------------------------------------------
-
-// TerminalTicket handles POST
-// /projects/:projectId/environments/:environmentId/terminal-ticket. It
-// mints a short-lived signed ticket agent-runner's browser-terminal
-// WebSocket endpoint verifies on its own (agent-runner has no user-session
-// concept — see docs/ai-agent/environment-management.md's Terminal / SSH
-// Access section). The router's permission middleware already establishes
-// the caller has project-level agents:read; GetEnvironment on top of that
-// verifies this specific environment belongs to projectID (the
-// resource-level check a coarse permission alone can't express), and only
-// then is the environment's own Status checked — no point minting a ticket
-// for a stopped environment, since there's nothing on the other end to
-// connect to.
+// --- Environment tickets -----------------------------------------------------
+//
+// Both endpoints below mint a short-lived signed ticket one of
+// agent-runner's browser-facing WebSocket endpoints verifies on its own
+// (agent-runner has no user-session concept — see
+// docs/ai-agent/environment-management.md's Terminal / SSH Access
+// section). Same shape, different purpose and permission: TerminalTicket
+// requires agents.write (a shell is a mutating capability) and unlocks
+// only the terminal; StatsTicket only requires agents.read (viewing usage
+// numbers isn't) and unlocks only the live-stats stream — see
+// mintEnvironmentTicket's own doc comment for why a ticket can't be used
+// for the other endpoint.
 //
 // Ticket format (must match agent-runner's verifier exactly — confirmed
 // byte-for-byte against agent-runner's own round-trip tests):
 //
-//	base64url_nopad( environment_id + "|" + expires_unix_ts + "|" +
-//	  hex(hmac_sha256(AI_AGENT_INTERNAL_KEY, environment_id + "|" + expires_unix_ts)) )
+//	base64url_nopad( purpose + "|" + environment_id + "|" + expires_unix_ts + "|" +
+//	  hex(hmac_sha256(AI_AGENT_INTERNAL_KEY, purpose + "|" + environment_id + "|" + expires_unix_ts)) )
 //
-// environment_id is the canonical lowercase UUID string (uuid.UUID.String()
-// is already lowercase); expires_unix_ts is decimal seconds-since-epoch;
-// the HMAC payload is exactly "<environment_id>|<expires_unix_ts>" (nothing
-// else); the hex digest is lowercase; the final encoding is unpadded
-// base64url (base64.RawURLEncoding) — not standard padded base64, and not
+// purpose is "terminal" or "stats"; environment_id is the canonical
+// lowercase UUID string (uuid.UUID.String() is already lowercase);
+// expires_unix_ts is decimal seconds-since-epoch; the HMAC payload is
+// exactly "<purpose>|<environment_id>|<expires_unix_ts>" (nothing else);
+// the hex digest is lowercase; the final encoding is unpadded base64url
+// (base64.RawURLEncoding) — not standard padded base64, and not
 // base64.URLEncoding (which pads with '=').
+
+// TerminalTicket handles POST
+// /projects/:projectId/environments/:environmentId/terminal-ticket. The
+// router's permission middleware already establishes the caller has
+// project-level agents:write; GetEnvironment on top of that verifies this
+// specific environment belongs to projectID (the resource-level check a
+// coarse permission alone can't express), and only then is the
+// environment's own Status checked — no point minting a ticket for a
+// stopped environment, since there's nothing on the other end to connect
+// to.
 func (h *EnvironmentHandler) TerminalTicket(w http.ResponseWriter, r *http.Request) {
 	projectID, environmentID, err := h.parseEnvironment(r)
 	if err != nil {
@@ -541,8 +563,8 @@ func (h *EnvironmentHandler) TerminalTicket(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	ticket := mintTerminalTicket(h.aiAgentInternalKey, env.ID, terminalTicketTTL)
-	presenter.OK(w, r, dto.TerminalTicketResponse{
+	ticket := mintEnvironmentTicket(h.aiAgentInternalKey, ticketPurposeTerminal, env.ID, environmentTicketTTL)
+	presenter.OK(w, r, dto.EnvironmentTicketResponse{
 		Ticket: ticket,
 		// Relative path — the frontend resolves it against its own origin,
 		// same convention as /agent-bridge/ws (see deploy/caddy/Caddyfile's
@@ -552,13 +574,45 @@ func (h *EnvironmentHandler) TerminalTicket(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-// mintTerminalTicket builds a signed, time-limited ticket for env,
-// authenticated with an HMAC over environment_id|expires_unix_ts keyed by
-// internalKey (the shared AI_AGENT_INTERNAL_KEY) — see TerminalTicket's doc
-// comment for the exact wire format.
-func mintTerminalTicket(internalKey string, environmentID uuid.UUID, ttl time.Duration) string {
+// StatsTicket handles POST
+// /projects/:projectId/environments/:environmentId/stats-ticket — same
+// shape as TerminalTicket above, gated on the weaker agents:read instead
+// (see this section's own doc comment), for agent-runner's live
+// CPU/memory/disk usage stream (internal/acpbridge/stats.go).
+func (h *EnvironmentHandler) StatsTicket(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	env, err := h.svc.GetEnvironment(r.Context(), projectID, environmentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if env.Status != environmentdom.StatusRunning {
+		presenter.Error(w, r, environmentdom.ErrEnvironmentNotRunning)
+		return
+	}
+
+	ticket := mintEnvironmentTicket(h.aiAgentInternalKey, ticketPurposeStats, env.ID, environmentTicketTTL)
+	presenter.OK(w, r, dto.EnvironmentTicketResponse{
+		Ticket: ticket,
+		WSURL:  fmt.Sprintf("/environments/%s/stats/ws?ticket=%s", env.ID, ticket),
+	})
+}
+
+// mintEnvironmentTicket builds a signed, time-limited ticket for
+// environmentID, scoped to purpose — see this file's "Environment
+// tickets" section doc comment for the exact wire format. Binding the
+// signature to purpose is what stops a ticket minted for one endpoint
+// (say, a terminal ticket, gated on agents.write) from also being replayed
+// against the other (the stats endpoint, gated on the weaker agents.read)
+// even though both are otherwise identical HMAC-signed
+// environment_id+expiry tickets.
+func mintEnvironmentTicket(internalKey, purpose string, environmentID uuid.UUID, ttl time.Duration) string {
 	expiresAt := time.Now().Add(ttl).Unix()
-	payload := fmt.Sprintf("%s|%d", environmentID.String(), expiresAt)
+	payload := fmt.Sprintf("%s|%s|%d", purpose, environmentID.String(), expiresAt)
 
 	mac := hmac.New(sha256.New, []byte(internalKey))
 	mac.Write([]byte(payload))

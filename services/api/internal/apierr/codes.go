@@ -341,6 +341,12 @@ const (
 	// CodeEnvironmentBusy indicates a start/stop/delete was requested while the
 	// environment is already mid-transition.
 	CodeEnvironmentBusy Code = "ENVIRONMENT_BUSY"
+	// CodeEnvironmentCPULimitInvalid indicates the requested cpu_limit override
+	// is unparseable or below the minimum (100m).
+	CodeEnvironmentCPULimitInvalid Code = "ENVIRONMENT_CPU_LIMIT_INVALID"
+	// CodeEnvironmentMemoryLimitInvalid indicates the requested memory_limit
+	// override is unparseable or below the minimum (256Mi).
+	CodeEnvironmentMemoryLimitInvalid Code = "ENVIRONMENT_MEMORY_LIMIT_INVALID"
 	// CodeEnvironmentFolderNotFound indicates the requested environment folder does not exist.
 	CodeEnvironmentFolderNotFound Code = "ENVIRONMENT_FOLDER_NOT_FOUND"
 	// CodeEnvironmentFolderPathTaken indicates a folder with this path already exists in this environment.

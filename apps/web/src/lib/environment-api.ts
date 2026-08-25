@@ -70,6 +70,23 @@ export interface Environment {
 	folders: EnvironmentFolder[];
 }
 
+// EnvironmentStats is one message on the live-usage WebSocket
+// (environment-status-ring.tsx's useEnvironmentUsage connects to
+// getStatsTicket's ws_url) — a point-in-time snapshot, not a persisted
+// field on Environment above. cpu_usage_usec is cumulative since the
+// container/Pod started, not an instantaneous rate — useEnvironmentUsage
+// derives a rate from two successive messages.
+// cpu_limit_millicores/memory_limit_bytes are 0 when the backend reports
+// no enforced limit — fall back to the parent Environment's own
+// cpu_limit/memory_limit in that case.
+export interface EnvironmentStats {
+	cpu_usage_usec: number;
+	cpu_limit_millicores: number;
+	memory_used_bytes: number;
+	memory_limit_bytes: number;
+	disk_used_bytes: number;
+}
+
 export interface EnvironmentSSHKey {
 	id: string;
 	label: string;
@@ -128,7 +145,13 @@ export async function getEnvironment(
 
 export async function createEnvironment(
 	projectId: string,
-	payload: { name: string; image?: string },
+	payload: {
+		name: string;
+		image?: string;
+		cpu_limit?: string;
+		memory_limit?: string;
+		disk_limit_gb?: number;
+	},
 ): Promise<Environment> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Environment>>(
 		`/projects/${projectId}/environments`,
@@ -330,9 +353,16 @@ export async function deletePortForward(
 	);
 }
 
-// ── Terminal ──────────────────────────────────────────────────────────────────
+// ── Environment tickets (terminal + stats WebSockets) ───────────────────────────
+//
+// Both endpoints below mint a short-lived signed ticket one of
+// agent-runner's browser-facing WebSocket endpoints verifies on its own —
+// see services/api's EnvironmentHandler.TerminalTicket/StatsTicket for the
+// full contract. resolveWsUrl below is shared by both the terminal
+// (environment-terminal.tsx) and the live-usage stream
+// (environment-status-ring.tsx)'s own WebSocket connection setup.
 
-export interface TerminalTicket {
+export interface EnvironmentTicket {
 	ticket: string;
 	ws_url: string;
 }
@@ -340,11 +370,36 @@ export interface TerminalTicket {
 export async function getTerminalTicket(
 	projectId: string,
 	environmentId: string,
-): Promise<TerminalTicket> {
+): Promise<EnvironmentTicket> {
 	const { data } = await apiClient.instance.post<
-		SuccessEnvelope<TerminalTicket>
+		SuccessEnvelope<EnvironmentTicket>
 	>(`/projects/${projectId}/environments/${environmentId}/terminal-ticket`);
 	return data.data;
+}
+
+export async function getStatsTicket(
+	projectId: string,
+	environmentId: string,
+): Promise<EnvironmentTicket> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<EnvironmentTicket>
+	>(`/projects/${projectId}/environments/${environmentId}/stats-ticket`);
+	return data.data;
+}
+
+/**
+ * Resolves a ticket response's `ws_url` against the current origin — the
+ * same "treat window.location as the connection's base" convention
+ * socket-client.ts uses for its Socket.IO origin. Already-absolute
+ * ws(s):// URLs (the expected shape) pass through untouched; a bare path is
+ * resolved against the page's own host, swapping http(s) for the matching
+ * ws(s) scheme.
+ */
+export function resolveWsUrl(wsUrl: string): string {
+	if (/^wss?:\/\//i.test(wsUrl)) return wsUrl;
+	const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+	const path = wsUrl.startsWith("/") ? wsUrl : `/${wsUrl}`;
+	return `${proto}//${window.location.host}${path}`;
 }
 
 // ── Deployment config ────────────────────────────────────────────────────────
