@@ -196,3 +196,18 @@ func (c *CachedViewService) ReorderProjectViews(ctx context.Context, projectID u
 	}
 	return nil
 }
+
+// SetUserViewConfig delegates directly to the underlying service. Personal
+// configs are never stored in the shared cache, so no invalidation is needed:
+// the cached ListProjectViews/GetView entries hold the shared view definition
+// and are overlaid with the caller's personal config after the cache is read.
+func (c *CachedViewService) SetUserViewConfig(ctx context.Context, projectID, viewID, userID uuid.UUID, cfg sprintdom.ViewConfig) (*sprintdom.SprintView, error) {
+	return c.svc.SetUserViewConfig(ctx, projectID, viewID, userID, cfg)
+}
+
+// OverlayUserConfigs delegates directly to the underlying service. It must run
+// after the cache is read so the shared cached entries are never polluted with
+// one user's personal config.
+func (c *CachedViewService) OverlayUserConfigs(ctx context.Context, userID uuid.UUID, views []*sprintdom.SprintView) error {
+	return c.svc.OverlayUserConfigs(ctx, userID, views)
+}

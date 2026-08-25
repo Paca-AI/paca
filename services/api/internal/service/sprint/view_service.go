@@ -303,6 +303,63 @@ func (s *ViewService) ReorderProjectViews(ctx context.Context, projectID uuid.UU
 	return nil
 }
 
+// SetUserViewConfig stores the current user's personal config for a view,
+// verifying it belongs to projectID, and returns the view carrying that config.
+// The write is private to the user: the shared sprint_views row is untouched
+// and no project-wide real-time event is published, so other members are
+// unaffected.
+func (s *ViewService) SetUserViewConfig(ctx context.Context, projectID, viewID, userID uuid.UUID, cfg sprintdom.ViewConfig) (*sprintdom.SprintView, error) {
+	v, err := s.repo.FindViewByID(ctx, viewID)
+	if err != nil {
+		return nil, err
+	}
+	if v.ProjectID != projectID {
+		return nil, sprintdom.ErrViewNotFound
+	}
+	// A plugin view still needs its plugin binding in the personal config.
+	if !hasPluginConfig(v.ViewType, &cfg) {
+		return nil, sprintdom.ErrViewPluginConfigRequired
+	}
+	if err := s.repo.UpsertUserViewConfig(ctx, viewID, userID, cfg); err != nil {
+		return nil, err
+	}
+	v.Config = cfg
+	return v, nil
+}
+
+// OverlayUserConfigs replaces each view's Config with the user's personal
+// override where one exists, leaving the shared default otherwise. A nil user
+// or empty view list is a no-op. The passed views are mutated in place; callers
+// pass per-request copies (cache hits deserialize fresh objects), so the shared
+// cache is never affected.
+func (s *ViewService) OverlayUserConfigs(ctx context.Context, userID uuid.UUID, views []*sprintdom.SprintView) error {
+	if userID == uuid.Nil || len(views) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(views))
+	for _, v := range views {
+		if v != nil {
+			ids = append(ids, v.ID)
+		}
+	}
+	overrides, err := s.repo.GetUserViewConfigs(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+	for _, v := range views {
+		if v == nil {
+			continue
+		}
+		if cfg, ok := overrides[v.ID]; ok {
+			v.Config = cfg
+		}
+	}
+	return nil
+}
+
 // validateAndReorder checks that viewIDs exactly matches the IDs of existing
 // views (same count, no unknowns) then persists the new positions.
 func (s *ViewService) validateAndReorder(ctx context.Context, existing []*sprintdom.SprintView, viewIDs []uuid.UUID) error {

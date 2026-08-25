@@ -123,6 +123,14 @@ func (f *fakeViewSvcH) ReorderProjectViews(_ context.Context, _ uuid.UUID, _ spr
 	return nil
 }
 
+func (f *fakeViewSvcH) SetUserViewConfig(_ context.Context, _, _, _ uuid.UUID, _ sprintdom.ViewConfig) (*sprintdom.SprintView, error) {
+	return nil, nil
+}
+
+func (f *fakeViewSvcH) OverlayUserConfigs(_ context.Context, _ uuid.UUID, _ []*sprintdom.SprintView) error {
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

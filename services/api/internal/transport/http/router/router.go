@@ -480,6 +480,11 @@ func New(deps Deps) http.Handler {
 					)).Get("/{viewId}", deps.View.GetView)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsWrite)).
 						Patch("/{viewId}", deps.View.UpdateView)
+					// Personal (per-user) view config: only needs read access to
+					// the project's sprints — a viewer may sort/filter their own
+					// view without permission to mutate the shared view.
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsRead)).
+						Put("/{viewId}/config", deps.View.UpdateMyViewConfig)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionSprintsWrite)).
 						Delete("/{viewId}", deps.View.DeleteView)
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,

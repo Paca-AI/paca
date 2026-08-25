@@ -426,6 +426,14 @@ func (s *stubViewSvc) ReorderProjectViews(ctx context.Context, projectID uuid.UU
 	return nil
 }
 
+func (s *stubViewSvc) SetUserViewConfig(_ context.Context, _, _, _ uuid.UUID, _ sprintdom.ViewConfig) (*sprintdom.SprintView, error) {
+	return nil, nil
+}
+
+func (s *stubViewSvc) OverlayUserConfigs(_ context.Context, _ uuid.UUID, _ []*sprintdom.SprintView) error {
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // CachedViewService – ListProjectViews
 // ---------------------------------------------------------------------------

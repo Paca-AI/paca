@@ -68,6 +68,7 @@ import {
 	type Task,
 	type TaskListResult,
 	taskQueryOptions,
+	updateMyViewConfig,
 	updateSprint,
 	updateTask,
 	updateViewById,
@@ -1569,9 +1570,12 @@ export function InteractionLayout({
 		onSuccess: () => qc.invalidateQueries({ queryKey: viewsQueryKey }),
 	});
 
+	// View settings & filters are PER-USER: persist to the current user's
+	// personal override (updateMyViewConfig) instead of the shared view row, so
+	// one member's sort/filter/field choices never change what others see.
 	const updateViewConfigMutation = useMutation({
 		mutationFn: (payload: { viewId: string; config: ViewConfig }) =>
-			updateViewById(projectId, payload.viewId, { config: payload.config }),
+			updateMyViewConfig(projectId, payload.viewId, payload.config),
 		onSuccess: () => {
 			setPreviewConfig(undefined);
 			qc.invalidateQueries({ queryKey: viewsQueryKey });

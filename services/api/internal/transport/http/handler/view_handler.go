@@ -79,6 +79,15 @@ func (h *ViewHandler) ListViews(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
+	// Overlay the current user's personal config so settings/filters stay
+	// per-user. Runs after the (shared) cache read; unauthenticated callers
+	// (public projects) fall through to the shared defaults.
+	if actorID, ok := middleware.ActorIDFromContext(r.Context()); ok {
+		if err := h.svc.OverlayUserConfigs(r.Context(), actorID, views); err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
+	}
 	resp := make([]dto.ViewResponse, 0, len(views))
 	for _, v := range views {
 		resp = append(resp, dto.ViewFromEntity(v))
@@ -102,6 +111,12 @@ func (h *ViewHandler) GetView(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
+	}
+	if actorID, ok := middleware.ActorIDFromContext(r.Context()); ok {
+		if err := h.svc.OverlayUserConfigs(r.Context(), actorID, []*sprintdom.SprintView{v}); err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
 	}
 	presenter.OK(w, r, dto.ViewFromEntity(v))
 }
@@ -168,6 +183,40 @@ func (h *ViewHandler) UpdateView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v, err := h.svc.UpdateView(r.Context(), projectID, viewID, req.ToUpdateInput())
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ViewFromEntity(v))
+}
+
+// UpdateMyViewConfig handles PUT /projects/:projectId/views/:viewId/config.
+// It stores the authenticated user's personal view config (settings and
+// filters) without mutating the shared view, so the change never leaks to
+// other project members.
+func (h *ViewHandler) UpdateMyViewConfig(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	viewID, err := parseViewID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	actorID, ok := middleware.ActorIDFromContext(r.Context())
+	if !ok || actorID == uuid.Nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "authentication required"))
+		return
+	}
+
+	var req dto.UpdateUserViewConfigRequest
+	if !middleware.BindJSON(w, r, &req) {
+		return
+	}
+
+	v, err := h.svc.SetUserViewConfig(r.Context(), projectID, viewID, actorID, req.ToViewConfig())
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

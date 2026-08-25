@@ -242,6 +242,72 @@ func (r *ViewRepository) ListTaskPositions(ctx context.Context, viewID uuid.UUID
 	return out, nil
 }
 
+// --- Per-user view config methods -------------------------------------------
+
+// userViewConfigRecord scans a row of the user_view_configs table.
+type userViewConfigRecord struct {
+	ViewID string `db:"view_id"`
+	Config []byte `db:"config"`
+}
+
+// GetUserViewConfigs returns the given user's personal config overrides for the
+// provided view IDs, keyed by view ID. Views without an override are omitted.
+func (r *ViewRepository) GetUserViewConfigs(ctx context.Context, userID uuid.UUID, viewIDs []uuid.UUID) (map[uuid.UUID]sprintdom.ViewConfig, error) {
+	out := make(map[uuid.UUID]sprintdom.ViewConfig, len(viewIDs))
+	if len(viewIDs) == 0 {
+		return out, nil
+	}
+	ids := make([]string, len(viewIDs))
+	for i, id := range viewIDs {
+		ids[i] = id.String()
+	}
+	query, args, err := sqlx.In(
+		`SELECT view_id, config FROM user_view_configs WHERE user_id = ? AND view_id IN (?)`,
+		userID.String(), ids,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("view repo: build get user view configs: %w", err)
+	}
+	query = r.db.Rebind(query)
+	var records []userViewConfigRecord
+	if err := r.db.SelectContext(ctx, &records, query, args...); err != nil {
+		return nil, fmt.Errorf("view repo: get user view configs: %w", err)
+	}
+	for i := range records {
+		vid, err := uuid.Parse(records[i].ViewID)
+		if err != nil {
+			return nil, fmt.Errorf("view repo: parse user view config id: %w", err)
+		}
+		var cfg sprintdom.ViewConfig
+		if len(records[i].Config) > 0 {
+			if err := json.Unmarshal(records[i].Config, &cfg); err != nil {
+				return nil, fmt.Errorf("view repo: unmarshal user view config: %w", err)
+			}
+		}
+		out[vid] = cfg
+	}
+	return out, nil
+}
+
+// UpsertUserViewConfig stores or replaces a user's personal config for a view.
+func (r *ViewRepository) UpsertUserViewConfig(ctx context.Context, viewID, userID uuid.UUID, cfg sprintdom.ViewConfig) error {
+	configBytes, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("view repo: marshal user view config: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO user_view_configs (view_id, user_id, config, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
+		ON CONFLICT (view_id, user_id) DO UPDATE
+		  SET config = EXCLUDED.config, updated_at = NOW()`,
+		viewID.String(), userID.String(), configBytes,
+	)
+	if err != nil {
+		return fmt.Errorf("view repo: upsert user view config: %w", err)
+	}
+	return nil
+}
+
 // --- Entity converters ------------------------------------------------------
 
 func toViewEntity(r *sprintViewRecord) (*sprintdom.SprintView, error) {
