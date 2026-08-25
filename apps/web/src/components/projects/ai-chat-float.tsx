@@ -194,12 +194,17 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	// the user's local bridge daemon keeps the underlying conversation alive
 	// independent of Paca's own status bookkeeping (see SendChatMessage's ACP
 	// resume path in services/api), so "finished"/"failed"/"stopped" doesn't
-	// mean dead-ended the way it does for an LLM chat conversation.
+	// mean dead-ended the way it does for an LLM chat conversation. A
+	// conversation attached to a static environment (environment_id set)
+	// stays replyable through a terminal status too: SendChatMessage's
+	// terminal branch carries the environment/folder over onto a fresh
+	// conversation instead of dead-ending, since the environment outlives any
+	// one conversation.
 	const canReply =
 		!conversationId ||
 		(conversation?.trigger_type === "chat_message" &&
 			!!conversation.chat_session_id &&
-			(!isTerminal || isACP));
+			(!isTerminal || isACP || !!conversation.environment_id));
 
 	const showFailedBanner =
 		!!conversationId &&
@@ -256,16 +261,26 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	// no heartbeat — this replaces the old pagehide-triggered immediate stop.
 	// ACP conversations skip this entirely: there's no cloud sandbox to keep
 	// alive (the user's local bridge daemon owns that lifecycle instead), so
-	// heartbeating one would just be a wasted round trip.
+	// heartbeating one would just be a wasted round trip. Same for a
+	// conversation attached to a static environment (environment_id set) —
+	// see conversation-view.tsx's matching heartbeat effect for why that's a
+	// guaranteed no-op server-side too.
 	useEffect(() => {
-		if (!conversationId || isTerminal || isACP) return;
+		if (!conversationId || isTerminal || isACP || conversation?.environment_id)
+			return;
 		const id = conversationId;
 		void heartbeatConversation(projectId, id).catch(() => {});
 		const interval = setInterval(() => {
 			void heartbeatConversation(projectId, id).catch(() => {});
 		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [conversationId, isTerminal, isACP, projectId]);
+	}, [
+		conversationId,
+		conversation?.environment_id,
+		isTerminal,
+		isACP,
+		projectId,
+	]);
 
 	return (
 		<>

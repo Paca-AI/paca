@@ -37,6 +37,7 @@ import (
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
+	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -149,6 +150,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
+	environmentRepo := pgRepo.NewEnvironmentRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
 	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
@@ -158,6 +160,14 @@ func New(cfg *config.Config) (*App, error) {
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
 		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
+	// environmentService calls agent-runner's /internal/environments/* routes
+	// via the same AI_AGENT_URL/AI_AGENT_INTERNAL_KEY pair AgentHandler
+	// already uses (see environmentsvc.New's doc comment) — not a new config
+	// surface. agentService.WithEnvironmentService below wires it into
+	// CreateAgent/UpdateAgent's default_environment_id validation and
+	// StartChatSession/StartGlobalChatSession's environment-attach flow.
+	environmentService := environmentsvc.New(environmentRepo, cfg.AIAgentURL, cfg.AIAgentInternalKey)
+	agentService = agentService.WithEnvironmentService(environmentService)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
@@ -167,6 +177,11 @@ func New(cfg *config.Config) (*App, error) {
 			log.Warn("agent LLM key encryption disabled: encryptor init failed", "error", encErr)
 		} else {
 			agentService = agentService.WithEncryptor(enc)
+			// Same Encryptor instance, reused verbatim — an environment's
+			// secret_key_encrypted is encrypted at rest exactly like
+			// agents.llm_api_key_secret (see migration 000042's own doc
+			// comment on that column, and environmentsvc.Service.WithEncryptor).
+			environmentService = environmentService.WithEncryptor(enc)
 			log.Info("agent LLM API key at-rest encryption enabled")
 		}
 	} else {
@@ -369,6 +384,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
 		WithAvatarService(attachmentService)
+	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
+		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)
 	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 
@@ -417,6 +434,7 @@ func New(cfg *config.Config) (*App, error) {
 		Skills:             handler.NewSkillsHandler(pluginService, cfg.Plugins.SkillsDir),
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
+		Environment:        environmentHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),

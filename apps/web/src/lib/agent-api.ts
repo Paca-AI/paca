@@ -149,6 +149,12 @@ export interface Agent {
 	git_committer_name: string;
 	git_committer_email: string;
 	docker_enabled: boolean;
+	// Static environment this agent attaches to by default when starting a
+	// new conversation, instead of the ephemeral per-conversation sandbox —
+	// see environment-api.ts / environment-detail.tsx. Null for a global
+	// agent (no project of its own to default an environment from) and for
+	// any project agent that hasn't set one.
+	default_environment_id?: string | null;
 	member_id?: string | null;
 	mcp_servers?: AgentMCPServer[];
 	skills?: AgentSkill[];
@@ -197,6 +203,12 @@ export interface AgentConversation {
 	finished_at?: string | null;
 	created_at: string;
 	updated_at: string;
+	// Set only when this conversation is attached to a static, long-lived
+	// environment instead of an ephemeral sandbox — see
+	// environmentdom.Environment's doc comment on the server. Conversation
+	// views use this to keep the composer open past a terminal status and to
+	// skip heartbeating (both only matter for an ephemeral sandbox).
+	environment_id?: string | null;
 }
 
 export interface AgentConversationEvent {
@@ -265,6 +277,7 @@ export async function createAgent(
 		git_committer_name?: string;
 		git_committer_email?: string;
 		docker_enabled?: boolean;
+		default_environment_id?: string | null;
 		project_role_id: string;
 	},
 ): Promise<Agent> {
@@ -291,6 +304,7 @@ export async function updateAgent(
 		git_committer_name?: string;
 		git_committer_email?: string;
 		docker_enabled?: boolean;
+		default_environment_id?: string | null;
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
@@ -336,6 +350,11 @@ export interface CreateGlobalAgentPayload {
 	git_committer_name?: string;
 	git_committer_email?: string;
 	docker_enabled?: boolean;
+	// Always omitted in practice — a global agent has no project to default
+	// an environment from, and the UI never shows this field at global scope
+	// (see agent-detail.tsx's OverviewTab). Kept here only for type parity
+	// with the shared CreateAgentRequest/UpdateAgentRequest DTO on the server.
+	default_environment_id?: string | null;
 	global_role_id?: string | null;
 }
 
@@ -362,6 +381,9 @@ export interface UpdateGlobalAgentPayload {
 	git_committer_name?: string;
 	git_committer_email?: string;
 	docker_enabled?: boolean;
+	// See CreateGlobalAgentPayload.default_environment_id above — unused at
+	// global scope, kept only for DTO type parity.
+	default_environment_id?: string | null;
 	global_role_id?: string | null;
 }
 
@@ -1171,7 +1193,18 @@ export interface StartChatSessionResponse {
 export async function startChatSession(
 	projectId: string,
 	agentId: string,
-	payload: { message: string; title?: string },
+	payload: {
+		message: string;
+		title?: string;
+		// Static environment (and, when it has more than one folder, which
+		// folder) to attach this conversation to instead of the default
+		// ephemeral per-conversation sandbox — see environment-api.ts and
+		// agent-picker.tsx's useEnvironmentPicker. Omitting both preserves
+		// today's behavior exactly: the server falls back to the agent's own
+		// default_environment_id if set, else spins up an ephemeral sandbox.
+		environment_id?: string;
+		folder_id?: string;
+	},
 ): Promise<StartChatSessionResponse> {
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<StartChatSessionResponse>

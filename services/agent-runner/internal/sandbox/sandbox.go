@@ -49,6 +49,16 @@ const (
 	// GooseServePort is the port `goose serve` listens on inside every
 	// sandbox, Docker or Kubernetes alike.
 	GooseServePort = 3284
+
+	// EnvironmentSSHPort is the port the real sshd
+	// internal/sandbox/environmentssh.go starts listens on inside a static
+	// environment's container/Pod — see services/agent-server/Dockerfile's
+	// baked-in sshd_config drop-in, which pins sshd to this same port. A
+	// dedicated external port is published straight to this one per
+	// environment — a native Docker -p binding or a Kubernetes NodePort
+	// Service entry (see EnvironmentConfig.PortMappings) — rather than
+	// anything inside agent-runner itself relaying to it.
+	EnvironmentSSHPort = 2222
 )
 
 // DindImage is the pinned docker:dind sidecar image both backends' own

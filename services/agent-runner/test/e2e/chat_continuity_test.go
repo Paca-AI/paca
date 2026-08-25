@@ -72,14 +72,15 @@ func TestChatContinuity(t *testing.T) {
 	sandboxMgr := newSandboxManager(t)
 	chatSandboxes := chatsandbox.New()
 	h := &handler.Handler{
-		Gate:          config.NewGate([]string{agentID.String()}),
-		AgentRepo:     postgres.NewAgentRepository(env.db),
-		ConvRepo:      postgres.NewConversationRepository(env.db),
-		Publisher:     messaging.NewPublisher(env.redisClient),
-		Executor:      executor.New(sandboxMgr, encryptor, executor.Options{Image: image}, log),
-		InFlight:      registry.New(),
-		ChatSandboxes: chatSandboxes,
-		Log:           log,
+		Gate:            config.NewGate([]string{agentID.String()}),
+		AgentRepo:       postgres.NewAgentRepository(env.db),
+		ConvRepo:        postgres.NewConversationRepository(env.db),
+		Publisher:       messaging.NewPublisher(env.redisClient),
+		Executor:        executor.New(sandboxMgr, postgres.NewEnvironmentRepository(env.db), postgres.NewConversationRepository(env.db), postgres.NewPortForwardRepository(env.db), encryptor, executor.Options{Image: image}, log),
+		InFlight:        registry.New(),
+		ChatSandboxes:   chatSandboxes,
+		EnvironmentRepo: postgres.NewEnvironmentRepository(env.db),
+		Log:             log,
 	}
 
 	// A cleanup net for anything left running if a later assertion fails

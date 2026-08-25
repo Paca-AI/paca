@@ -20,7 +20,21 @@ type Config struct {
 	// internal-only routes (see services/ai-agent's _require_internal_key) —
 	// must match ai-agent's own INTERNAL_API_KEY.
 	AIAgentInternalKey string
-	Env                string // development | production
+	// SSHBastionHost/PortForwardHost are purely descriptive, deployment-wide
+	// values this service never itself acts on — agent-runner is what
+	// actually relays SSH connections and port forwards (see
+	// docs/ai-agent/environment-management.md's "Port Forwarding" and
+	// "Terminal / SSH Access" sections). They're duplicated here, read from
+	// the exact same SSH_BASTION_HOST/PORT_FORWARD_HOST env vars already set
+	// on agent-runner, solely so GET /environments/config
+	// (handler.EnvironmentHandler.GetConfig) can hand the frontend a real
+	// `ssh` command and a real port-forward host instead of a placeholder —
+	// see that handler's own doc comment. Empty means the operator hasn't
+	// set the matching env var there either, which the frontend treats as
+	// "not configured."
+	SSHBastionHost  string
+	PortForwardHost string
+	Env             string // development | production
 }
 
 // ReleaseConfig holds settings for the "new version available" check that the

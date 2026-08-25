@@ -107,13 +107,25 @@ hand-rolling its own copy that could drift.
 {{- end -}}
 
 {{/*
-Namespace the kubernetes sandbox backend creates Jobs/Pods in — and the
-same namespace templates/agent-runner/role.yaml + rolebinding.yaml grant
-RBAC in, so the two never drift apart (see agentRunner.sandbox.namespace's
-own doc comment in values.yaml on why that matters).
+Namespace the kubernetes sandbox backend creates Jobs/Pods/environment
+Deployments in — and the same namespace templates/agent-runner/role.yaml +
+rolebinding.yaml grant RBAC in, so the two never drift apart (see
+agentRunner.sandbox.namespace's own doc comment in values.yaml on why that
+matters).
+
+Empty (the default) resolves to "<release-name>-sandbox", a namespace
+templates/agent-runner/sandbox-namespace.yaml creates — dedicated to
+sandboxes/environments only, never the release's own namespace alongside
+postgres/valkey/minio/api/web/gateway. This matters more than it would for
+a typical scoped Role: the RBAC this chart grants here includes
+patch/delete on Deployments and Services (needed for environment
+start/stop/port-forward management), which Kubernetes RBAC cannot scope to
+"only objects this ServiceAccount created" — granting it in the release's
+own namespace would let agent-runner's ServiceAccount patch or delete this
+chart's own api/gateway/web Deployments/Services, not just sandbox ones.
 */}}
 {{- define "paca.sandboxNamespace" -}}
-{{- default .Release.Namespace .Values.agentRunner.sandbox.namespace -}}
+{{- default (printf "%s-sandbox" .Release.Name) .Values.agentRunner.sandbox.namespace -}}
 {{- end -}}
 
 {{/*

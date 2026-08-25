@@ -53,6 +53,16 @@ func decodeTrigger(values map[string]interface{}) (agent.Trigger, error) {
 		t.RepoPluginIDs = strings.Split(raw, ",")
 	}
 
+	// environment_id/workdir are both resolved server-side by services/api
+	// (see agent.Trigger.EnvironmentID's doc comment) and, like every other
+	// optional field decoded above, simply absent from values entirely for
+	// a trigger with no environment attached — left nil rather than parsed
+	// as empty-but-present.
+	t.EnvironmentID = optionalUUIDPtr(values, "environment_id")
+	if workdir, ok := values["workdir"].(string); ok && workdir != "" {
+		t.Workdir = &workdir
+	}
+
 	return t, nil
 }
 

@@ -165,6 +165,9 @@
 				"committerEmailLabel": "Email committer",
 				"dockerEnabledLabel": "Quyền truy cập Docker",
 				"dockerEnabledHint": "Cấp cho agent này một daemon Docker riêng bên trong sandbox của nó. Mặc định tắt — chỉ bật cho các agent thực sự chạy lệnh Docker, vì việc này làm tăng thời gian khởi động cho mỗi cuộc hội thoại.",
+				"defaultEnvironmentLabel": "Môi trường mặc định",
+				"defaultEnvironmentHint": "Gắn các cuộc hội thoại của agent này vào một môi trường tĩnh thay vì tạo sandbox dùng một lần mỗi lần.",
+				"noDefaultEnvironment": "Không có mặc định (dùng sandbox dùng một lần)",
 				"saveChanges": "Lưu thay đổi",
 				"saved": "Đã lưu",
 				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
@@ -330,6 +333,214 @@
 			"attachmentAriaLabel": "Tệp đính kèm {{type}}",
 			"attachmentAriaLabelError": "Tệp đính kèm {{type}}, tải lên thất bại",
 			"attachmentAriaLabelUploading": "Tệp đính kèm {{type}}, đang tải lên"
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "Đang tạo",
+			"running": "Đang chạy",
+			"stopping": "Đang dừng",
+			"stopped": "Đã dừng",
+			"suspended": "Tạm ngưng",
+			"error": "Lỗi",
+			"deleting": "Đang xóa"
+		},
+		"page": {
+			"title": "Môi trường",
+			"subtitle": "Sandbox có tên, hoạt động lâu dài mà agent của bạn có thể gắn vào giữa các cuộc hội thoại",
+			"newEnvironment": "Môi trường mới",
+			"empty": {
+				"title": "Chưa có môi trường nào",
+				"description": "Tạo một môi trường tĩnh để giữ tệp và tiến trình nền hoạt động xuyên suốt các cuộc hội thoại, thay vì tạo sandbox dùng một lần mỗi lần.",
+				"createFirstEnvironment": "Tạo môi trường đầu tiên của bạn"
+			}
+		},
+		"createDialog": {
+			"title": "Tạo môi trường",
+			"description": "Một sandbox có tên, hoạt động lâu dài mà agent của bạn có thể gắn vào.",
+			"nameLabel": "Tên",
+			"namePlaceholder": "staging",
+			"advanced": "Nâng cao",
+			"imageLabel": "Image",
+			"imagePlaceholder": "Dùng mặc định (agent-server)",
+			"imageHint": "Hầu hết người dùng không cần thay đổi mục này — mặc định sẽ dùng image agent-server do nền tảng cố định.",
+			"resourcesHint": "Để trống để dùng giá trị mặc định của nền tảng (2 vCPU, 4Gi bộ nhớ, 20GB ổ đĩa).",
+			"cpuLimitInvalid": "CPU phải tối thiểu là 0.1 (100m).",
+			"memoryLimitInvalid": "Bộ nhớ phải tối thiểu là 256Mi.",
+			"diskLimitInvalid": "Ổ đĩa phải là số nguyên dương (GB).",
+			"createFailed": "Tạo môi trường thất bại. Vui lòng thử lại.",
+			"cancel": "Hủy",
+			"creating": "Đang tạo…",
+			"create": "Tạo môi trường"
+		},
+		"picker": {
+			"placeholder": "Chọn môi trường…",
+			"temporary": "Môi trường tạm thời",
+			"createNew": "Tạo môi trường mới…",
+			"folderPlaceholder": "Chọn một thư mục…",
+			"folderCreateNew": "Tạo thư mục mới…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "Tổng quan",
+				"folders": "Thư mục",
+				"portForwards": "Chuyển tiếp cổng"
+			},
+			"overview": {
+				"connect": "Kết nối",
+				"start": "Khởi động",
+				"stop": "Dừng",
+				"delete": "Xóa",
+				"sleepsIn_one": "ngủ sau {{count}} phút",
+				"sleepsIn_other": "ngủ sau {{count}} phút",
+				"keptAliveBySSH": "được giữ hoạt động nhờ phiên SSH đang mở",
+				"vitals": {
+					"cpu": "CPU",
+					"cpuValue": "{{value}} vCPU",
+					"memory": "Bộ nhớ",
+					"disk": "Ổ đĩa",
+					"diskValue": "{{value}} GB",
+					"lastActive": "Hoạt động gần nhất"
+				},
+				"configuration": "Cấu hình",
+				"nameLabel": "Tên",
+				"backendLabel": "Backend",
+				"imageLabel": "Image",
+				"defaultImage": "Mặc định (agent-server)",
+				"idleTimeoutLabel": "Thời gian chờ nhàn rỗi (phút)",
+				"idleTimeoutHint": "Môi trường sẽ tự động dừng sau số phút này nếu không có hoạt động.",
+				"portsPendingRestart": "Một cổng chuyển tiếp đã được thêm hoặc xóa. Khởi động lại môi trường để áp dụng.",
+				"portsPendingRestartLink": "Xem chuyển tiếp cổng",
+				"saveChanges": "Lưu thay đổi",
+				"saved": "Đã lưu",
+				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
+				"deleteDialog": {
+					"title": "Xóa {{name}}?",
+					"description": "Thao tác này sẽ xóa vĩnh viễn môi trường, container và volume của nó. Không thể hoàn tác.",
+					"deleteFailed": "Xóa môi trường thất bại. Vui lòng thử lại.",
+					"cancel": "Hủy",
+					"delete": "Xóa"
+				}
+			},
+			"folders": {
+				"count_one": "Đã cấu hình {{count}} thư mục",
+				"count_other": "Đã cấu hình {{count}} thư mục",
+				"addFolder": "Thêm thư mục",
+				"deleteFailed": "Không thể xóa thư mục. Vui lòng thử lại.",
+				"empty": {
+					"title": "Chưa có thư mục nào được thêm",
+					"addFirstFolder": "Thêm thư mục đầu tiên"
+				},
+				"addDialog": {
+					"title": "Thêm thư mục",
+					"description": "Thêm một thư mục làm việc mà các agent của môi trường này có thể sử dụng.",
+					"pathLabel": "Đường dẫn",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "Phải là đường dẫn tuyệt đối.",
+					"browse": "Duyệt…",
+					"browsing": {
+						"root": "gốc không gian làm việc",
+						"empty": "Thư mục này trống",
+						"notRunning": "Khởi động môi trường để duyệt các tệp của nó.",
+						"useThisFolder": "Dùng thư mục này"
+					},
+					"addFailed": "Không thể thêm thư mục. Vui lòng thử lại.",
+					"cancel": "Hủy",
+					"addFolder": "Thêm thư mục"
+				}
+			},
+			"portForwards": {
+				"description": "Mở một cổng bất kỳ bên trong môi trường này — thường là server phát triển của riêng bạn — tại một địa chỉ riêng.",
+				"count_one": "{{count}} cổng chuyển tiếp",
+				"count_other": "{{count}} cổng chuyển tiếp",
+				"add": "Thêm cổng chuyển tiếp",
+				"deleteFailed": "Không thể xóa cổng chuyển tiếp. Vui lòng thử lại.",
+				"containerPort": "Cổng container {{port}}",
+				"unassigned": "Chưa được gán",
+				"restart": "Khởi động lại",
+				"pendingRestartRunning": "Một cổng chuyển tiếp đã được thêm hoặc xóa. Khởi động lại môi trường để áp dụng.",
+				"pendingRestartStopped": "Một cổng chuyển tiếp đã được thêm hoặc xóa. Thay đổi sẽ được áp dụng vào lần khởi động tiếp theo của môi trường này.",
+				"empty": {
+					"title": "Chưa có cổng chuyển tiếp nào",
+					"addFirst": "Thêm một cổng chuyển tiếp"
+				},
+				"addDialog": {
+					"title": "Thêm cổng chuyển tiếp",
+					"description": "Mở một cổng container tại một cổng bên ngoài riêng. Việc áp dụng thay đổi này cần khởi động lại nếu môi trường đang chạy.",
+					"portLabel": "Cổng container",
+					"portHint": "Cổng mà tiến trình của bạn lắng nghe bên trong môi trường (ví dụ: 3000).",
+					"labelLabel": "Nhãn",
+					"labelPlaceholder": "Server phát triển",
+					"cancel": "Hủy",
+					"add": "Thêm",
+					"addFailed": "Không thể thêm cổng chuyển tiếp. Vui lòng thử lại."
+				},
+				"restartDialog": {
+					"title": "Khởi động lại môi trường?",
+					"description": "Thao tác này sẽ khởi động lại container của môi trường để áp dụng các cổng chuyển tiếp đã cập nhật. Mọi tiến trình đang chạy bên trong sẽ bị gián đoạn; tệp của bạn vẫn an toàn — chúng nằm trên một volume riêng.",
+					"cancel": "Hủy",
+					"confirm": "Khởi động lại"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "Thay <bastion-host> bằng địa chỉ bastion SSH đã cấu hình trên triển khai này.",
+				"connectUnavailable": "Truy cập SSH chưa được cấu hình trên triển khai này.",
+				"count_one": "Đã cấu hình {{count}} khóa",
+				"count_other": "Đã cấu hình {{count}} khóa",
+				"addKey": "Thêm khóa",
+				"deleteFailed": "Không thể xóa khóa SSH. Vui lòng thử lại.",
+				"empty": {
+					"title": "Chưa có khóa SSH nào được thêm",
+					"addFirst": "Thêm khóa đầu tiên"
+				},
+				"addDialog": {
+					"title": "Thêm khóa SSH",
+					"description": "Cấp quyền cho một khóa công khai để truy cập lập trình cặp đôi qua SSH.",
+					"generateHint": "Chưa có khóa SSH? Tạo một khóa:",
+					"generateFollowup": "Sau đó dán nội dung của ~/.ssh/id_ed25519.pub vào bên dưới.",
+					"labelLabel": "Nhãn",
+					"labelPlaceholder": "Laptop của tôi",
+					"publicKeyLabel": "Khóa công khai",
+					"cancel": "Hủy",
+					"addKey": "Thêm khóa",
+					"addFailed": "Không thể thêm khóa SSH. Vui lòng thử lại."
+				}
+			},
+			"terminal": {
+				"notRunning": "Khởi động môi trường để mở terminal.",
+				"title": "paca@{{slug}} — bash",
+				"titleLoading": "bash",
+				"connecting": "Đang kết nối…",
+				"connected": "Đã kết nối",
+				"connectionFailed": "Kết nối thất bại",
+				"disconnected": "Đã ngắt kết nối"
+			}
+		},
+		"connect": {
+			"title": "Kết nối đến {{name}}",
+			"copy": "Sao chép",
+			"copied": "Đã sao chép",
+			"tabs": {
+				"webApp": "Kết nối trong ứng dụng web",
+				"ssh": "Kết nối qua SSH"
+			},
+			"webApp": {
+				"description": "Kết nối bằng terminal ngay trên trình duyệt — không cần SSH client hay khóa cục bộ.",
+				"connect": "Kết nối",
+				"notRunning": "Khởi động môi trường trước khi kết nối.",
+				"readOnly": "Bạn cần quyền ghi trên dự án này để mở terminal.",
+				"hint": "Mở trong một tab toàn màn hình mới.",
+				"pageTitle": "{{name}} — Terminal",
+				"pageTitleLoading": "Terminal",
+				"closeTab": "Đóng"
+			},
+			"ssh": {
+				"step1Title": "Thêm khóa công khai",
+				"step1Description": "Đăng ký khóa công khai của cặp khóa SSH bạn muốn dùng để kết nối.",
+				"step2Title": "Kết nối từ terminal của bạn",
+				"step2Description": "Chạy lệnh này từ terminal của bạn:",
+				"notRunning": "Khởi động môi trường trước khi kết nối."
+			}
 		}
 	},
 	"docs": {

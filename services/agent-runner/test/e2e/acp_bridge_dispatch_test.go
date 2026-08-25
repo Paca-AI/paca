@@ -106,14 +106,15 @@ func TestACPBridgeDispatch(t *testing.T) {
 		AgentRepo:     agentRepo,
 		ConvRepo:      convRepo,
 		Publisher:     publisher,
-		Executor:      executor.New(sandboxMgr, encryptor, executor.Options{}, log),
+		Executor:      executor.New(sandboxMgr, postgres.NewEnvironmentRepository(env.db), postgres.NewConversationRepository(env.db), postgres.NewPortForwardRepository(env.db), encryptor, executor.Options{}, log),
 		InFlight:      registry.New(),
 		ChatSandboxes: chatsandbox.New(),
 		ACPDispatcher: &acpbridge.Dispatcher{
 			Registry: acpRegistry, ConvRepo: convRepo, Publisher: publisher, Log: log,
 		},
-		ACPRegistry: acpRegistry,
-		Log:         log,
+		ACPRegistry:     acpRegistry,
+		EnvironmentRepo: postgres.NewEnvironmentRepository(env.db),
+		Log:             log,
 	}
 
 	trigger := agent.Trigger{

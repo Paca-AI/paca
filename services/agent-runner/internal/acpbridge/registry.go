@@ -45,6 +45,19 @@ const (
 	// losing dispatch delivery for the rest of its lifetime.
 	reconnectBackoff = 2 * time.Second
 
+	// subscribeReadyTimeout bounds how long Register waits for
+	// forwardDispatchedMessages/watchForEviction's first subscription to
+	// actually be acknowledged by Redis (see subscribeLoop's own doc
+	// comment on why that's not the same instant Subscribe itself
+	// returns) before giving up and returning anyway. A bounded,
+	// best-effort wait, not a hard requirement: keeps Register from
+	// hanging indefinitely if Redis/Valkey is unreachable at exactly this
+	// moment, while still closing the race window in the overwhelmingly
+	// common case (a healthy, comfortably-sub-millisecond local
+	// subscribe) where a Dispatch landing immediately after Register
+	// returns would otherwise have nothing subscribed yet to receive it.
+	subscribeReadyTimeout = 3 * time.Second
+
 	// forceEvictSessionID is published on the control channel to force-close
 	// *any* currently registered session for an agent, regardless of its
 	// session_id — used when the agent's bridge token is regenerated (see
@@ -208,9 +221,32 @@ func (r *Registry) Register(ctx context.Context, agentID uuid.UUID, projectID *u
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); r.forwardDispatchedMessages(connCtx, agentID, conn) }()
-	go func() { defer wg.Done(); r.watchForEviction(connCtx, agentID, sessionID, conn) }()
+	var readyWG sync.WaitGroup
+	readyWG.Add(2)
+	go func() {
+		defer wg.Done()
+		r.forwardDispatchedMessages(connCtx, agentID, conn, readyWG.Done)
+	}()
+	go func() {
+		defer wg.Done()
+		r.watchForEviction(connCtx, agentID, sessionID, conn, readyWG.Done)
+	}()
 	go func() { wg.Wait(); close(entry.done) }()
+
+	// Best-effort, bounded — see subscribeReadyTimeout's own doc comment.
+	// A caller that dispatches immediately after Register returns (this
+	// package's own tests do exactly that, and a real caller reasonably
+	// could too) must not lose that message to a subscription that
+	// technically exists as a goroutine but hasn't actually reached Redis
+	// yet.
+	ready := make(chan struct{})
+	go func() { readyWG.Wait(); close(ready) }()
+	select {
+	case <-ready:
+	case <-time.After(subscribeReadyTimeout):
+		r.log.Warn("acpbridge: register: timed out waiting for pub/sub subscriptions to become ready",
+			"agent_id", agentID)
+	}
 
 	r.publishStatus(ctx, agentID, projectID, true)
 

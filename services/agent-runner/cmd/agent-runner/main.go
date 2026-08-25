@@ -42,6 +42,16 @@ import (
 // reap_idle_chat_sandboxes's asyncio.sleep(20).
 const idleReaperInterval = 20 * time.Second
 
+// environmentReaperInterval is how often the static-environment idle
+// reaper wakes up to check for environments past their own per-row
+// idle_timeout_minutes (see EnvironmentRepository.ListIdleRunningEnvironments).
+// A static environment's idle timeout is measured in minutes (environments.
+// idle_timeout_minutes, DB default 60) — much coarser than a chat
+// sandbox's (idleReaperInterval above polls every 20s for a timeout
+// usually measured in a few minutes), so polling once a minute is plenty
+// responsive at that grain without adding meaningful extra DB load.
+const environmentReaperInterval = 1 * time.Minute
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
@@ -84,7 +94,12 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("main: %w", err)
 	}
 
-	exec := executor.New(sandboxBackend, encryptor, executor.Options{
+	envRepo := postgres.NewEnvironmentRepository(db)
+	sshKeyRepo := postgres.NewSSHKeyRepository(db)
+	portForwardRepo := postgres.NewPortForwardRepository(db)
+	convRepo := postgres.NewConversationRepository(db)
+
+	exec := executor.New(sandboxBackend, envRepo, convRepo, portForwardRepo, encryptor, executor.Options{
 		Image:           settings.AgentServerImage,
 		PacaAPIKey:      settings.PacaAPIKey,
 		PacaAPIURL:      settings.PacaAPIURL,
@@ -96,7 +111,6 @@ func run(log *slog.Logger) error {
 	inFlight := registry.New()
 	publisher := messaging.NewPublisher(redisClient)
 	agentRepo := postgres.NewAgentRepository(db)
-	convRepo := postgres.NewConversationRepository(db)
 
 	acpRegistry := acpbridge.New(redisClient, publisher, log)
 	acpDispatcher := &acpbridge.Dispatcher{
@@ -107,29 +121,39 @@ func run(log *slog.Logger) error {
 	}
 
 	h := &handler.Handler{
-		Gate:          config.NewGate(settings.AllowedAgentIDs),
-		AgentRepo:     agentRepo,
-		ConvRepo:      convRepo,
-		BundledSkills: bundledskills.NewClient(settings.PacaAPIURL),
-		Publisher:     publisher,
-		Executor:      exec,
-		InFlight:      inFlight,
-		ChatSandboxes: chatSandboxes,
-		ACPDispatcher: acpDispatcher,
-		ACPRegistry:   acpRegistry,
-		Log:           log,
+		Gate:            config.NewGate(settings.AllowedAgentIDs),
+		AgentRepo:       agentRepo,
+		ConvRepo:        convRepo,
+		BundledSkills:   bundledskills.NewClient(settings.PacaAPIURL),
+		Publisher:       publisher,
+		Executor:        exec,
+		InFlight:        inFlight,
+		ChatSandboxes:   chatSandboxes,
+		ACPDispatcher:   acpDispatcher,
+		ACPRegistry:     acpRegistry,
+		EnvironmentRepo: envRepo,
+		Log:             log,
 	}
 
 	consumer := messaging.NewConsumer(redisClient, settings.WorkerConcurrency, h.Handle, h.HandleControl, log)
 
 	acpServer := &acpbridge.Server{
-		Registry:      acpRegistry,
-		AgentRepo:     agentRepo,
-		ConvRepo:      convRepo,
-		Publisher:     publisher,
-		InternalToken: settings.InternalAPIKey,
-		LLMModelsPath: settings.LLMModelsPath,
-		Log:           log,
+		Registry:              acpRegistry,
+		AgentRepo:             agentRepo,
+		ConvRepo:              convRepo,
+		Publisher:             publisher,
+		InternalToken:         settings.InternalAPIKey,
+		LLMModelsPath:         settings.LLMModelsPath,
+		SandboxMgr:            sandboxBackend,
+		EnvironmentRepo:       envRepo,
+		SSHKeyRepo:            sshKeyRepo,
+		SSHPortRangeStart:     settings.SSHBastionPortRangeStart,
+		SSHPortRangeEnd:       settings.SSHBastionPortRangeEnd,
+		PortForwardRepo:       portForwardRepo,
+		PortForwardRangeStart: settings.PortForwardRangeStart,
+		PortForwardRangeEnd:   settings.PortForwardRangeEnd,
+		Backend:               settings.SandboxBackend,
+		Log:                   log,
 	}
 	httpServer := &http.Server{Addr: settings.HTTPAddr, Handler: acpServer.Routes()}
 
@@ -145,12 +169,13 @@ func run(log *slog.Logger) error {
 		"mcp_dev_source_dir", settings.MCPDevSourceDir,
 	)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
+	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
 	go runHTTPServer(ctx, httpServer, log)
 	consumer.Run(ctx)
 	return nil
 }
 
-// newSandboxBackend builds the sandbox.Backend settings.SandboxBackend
+// newSandboxBackend builds the sandbox.FullBackend settings.SandboxBackend
 // selects — dockersandbox.Manager (one Docker container per conversation,
 // reached via a mounted /var/run/docker.sock) for "docker", or
 // k8ssandbox.Manager (one Kubernetes Job per conversation) for
@@ -158,7 +183,14 @@ func run(log *slog.Logger) error {
 // switch's default case here is unreachable in practice — kept as an
 // explicit error rather than a silent fallback so a future third backend
 // value can't slip through unwired.
-func newSandboxBackend(settings config.Settings) (sandbox.Backend, error) {
+//
+// Returns sandbox.FullBackend, not sandbox.Backend — widened so the same
+// value can drive both the disposable-per-conversation path (executor.
+// Executor) and the static-environment path (internal/acpbridge's
+// environment endpoints/terminal WS, and the idle reaper below).
+// Backward compatible: FullBackend embeds Backend, so every existing call
+// site that only needs Backend's four methods keeps compiling unchanged.
+func newSandboxBackend(settings config.Settings) (sandbox.FullBackend, error) {
 	switch settings.SandboxBackend {
 	case "kubernetes":
 		return k8ssandbox.NewManager(k8ssandbox.Options{
@@ -166,9 +198,29 @@ func newSandboxBackend(settings config.Settings) (sandbox.Backend, error) {
 			CPULimit:         settings.SandboxCPULimit,
 			MemoryLimit:      settings.SandboxMemoryLimit,
 			ImagePullSecrets: settings.SandboxImagePullSecrets,
+			// Read only by CreateEnvironment/StartEnvironment as the
+			// fallback when sandbox.EnvironmentConfig.Image is empty — see
+			// that field's own doc comment. Every ephemeral-sandbox call
+			// still goes through executor.Options.Image (Start's cfg.Image
+			// is always the caller-supplied one), unaffected by this.
+			AgentServerImage: settings.AgentServerImage,
+			// StorageClassName for every static environment's
+			// PersistentVolumeClaim — see EnvironmentsStorageClassName's own
+			// doc comment on why leaving this empty (the default) is
+			// meaningfully different from hardcoding one.
+			EnvironmentsStorageClassName: settings.SandboxEnvironmentsStorageClass,
 		})
 	case "docker":
-		return dockersandbox.NewManager(settings.PortPoolStart, settings.PortPoolSize)
+		mgr, err := dockersandbox.NewManager(settings.PortPoolStart, settings.PortPoolSize)
+		if err != nil {
+			return nil, err
+		}
+		// Same fallback role as k8ssandbox.Options.AgentServerImage above —
+		// dockersandbox.NewManager takes no Options struct to set this at
+		// construction time, so it's set directly on the returned *Manager
+		// instead.
+		mgr.AgentServerImage = settings.AgentServerImage
+		return mgr, nil
 	default:
 		return nil, fmt.Errorf("main: unknown SANDBOX_BACKEND %q", settings.SandboxBackend)
 	}
@@ -227,5 +279,116 @@ func reapIdleChatSandboxes(
 				h.TeardownPausedChatSandbox(ctx, convID)
 			}
 		}
+	}
+}
+
+// reapIdleEnvironments periodically stops static environments that have
+// been "running" longer than their own idle_timeout_minutes with no
+// activity — the DB-backed counterpart to reapIdleChatSandboxes above (see
+// docs/ai-agent/environment-management.md's "Idle-suspend" section).
+// DB-backed rather than in-memory specifically so this is safe if
+// agent-runner ever runs more than one replica: ClaimEnvironmentStatus's
+// atomic status-guarded UPDATE means at most one replica's reaper actually
+// stops any given environment, even if more than one observes it as idle
+// in the same tick. Runs until ctx is done.
+func reapIdleEnvironments(
+	ctx context.Context,
+	envRepo *postgres.EnvironmentRepository,
+	sandboxMgr sandbox.FullBackend,
+	log *slog.Logger,
+) {
+	ticker := time.NewTicker(environmentReaperInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			envs, err := envRepo.ListIdleRunningEnvironments(ctx)
+			if err != nil {
+				log.Warn("agent-runner: failed to list idle environments", "error", err)
+				continue
+			}
+			for _, env := range envs {
+				reapOneIdleEnvironment(ctx, envRepo, sandboxMgr, env, log)
+			}
+		}
+	}
+}
+
+// reapOneIdleEnvironment claims env for stopping (skipping it if another
+// replica already won the race), stops its backing container/Pod, and
+// records the outcome — "stopped" on success, "error" (with the failure
+// message, never left stuck in "stopping") otherwise. Nothing further to
+// clean up: stopping the container/Pod already stops whatever was
+// publishing its ports (see handleStopEnvironment's own doc comment in
+// environment_handlers.go — this reaper stops environments directly via
+// sandboxMgr, bypassing that HTTP handler entirely, but there's no
+// handler-side cleanup step left to duplicate here anymore).
+//
+// Checks for a live SSH session before actually stopping anything — see
+// sandbox.EnvironmentHasActiveSSHSession's own doc comment for why
+// last_active_at alone can't be trusted here: real SSH access never
+// touches it at all, so an environment can look idle by that column while
+// a user is, at this exact moment, typing in a real terminal over it. If
+// one is found, this un-claims back to "running" and touches
+// last_active_at (so the next tick's ListIdleRunningEnvironments query
+// won't immediately re-flag it) instead of stopping — the session itself
+// is what keeps the environment alive for as long as it stays open, the
+// same way a conversation turn or the browser terminal already do.
+func reapOneIdleEnvironment(
+	ctx context.Context,
+	envRepo *postgres.EnvironmentRepository,
+	sandboxMgr sandbox.FullBackend,
+	env *postgres.Environment,
+	log *slog.Logger,
+) {
+	won, err := envRepo.ClaimEnvironmentStatus(ctx, env.ID, "running", "stopping")
+	if err != nil {
+		log.Warn("agent-runner: failed to claim idle environment for stop", "environment_id", env.ID, "error", err)
+		return
+	}
+	if !won {
+		// Another agent-runner replica's reaper claimed it first this tick
+		// — nothing further to do here.
+		return
+	}
+	if env.BackendRef == nil || *env.BackendRef == "" {
+		log.Warn("agent-runner: idle environment claimed for stop has no backend_ref", "environment_id", env.ID)
+		errMsg := "idle reaper: environment claimed for stop but has no backend_ref"
+		if updErr := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "error", nil, &errMsg); updErr != nil {
+			log.Warn("agent-runner: failed to record environment error status", "environment_id", env.ID, "error", updErr)
+		}
+		return
+	}
+
+	if active, err := sandbox.EnvironmentHasActiveSSHSession(ctx, sandboxMgr, *env.BackendRef); err != nil {
+		// Best-effort: can't tell either way (e.g. the container briefly
+		// unreachable) — fall through and reap as already decided, rather
+		// than let a transient check failure pin an environment "running"
+		// forever.
+		log.Warn("agent-runner: failed to check for active ssh sessions before reaping", "environment_id", env.ID, "error", err)
+	} else if active {
+		log.Info("agent-runner: skipping idle reap — an ssh session is still open", "environment_id", env.ID)
+		if err := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "running", nil, nil); err != nil {
+			log.Warn("agent-runner: failed to un-claim environment kept alive by an ssh session", "environment_id", env.ID, "error", err)
+		}
+		if err := envRepo.TouchEnvironment(ctx, env.ID); err != nil {
+			log.Warn("agent-runner: failed to touch environment kept alive by an ssh session", "environment_id", env.ID, "error", err)
+		}
+		return
+	}
+
+	log.Info("agent-runner: reaping idle environment", "environment_id", env.ID)
+	if err := sandboxMgr.StopEnvironment(ctx, *env.BackendRef); err != nil {
+		log.Warn("agent-runner: failed to stop idle environment", "environment_id", env.ID, "error", err)
+		errMsg := err.Error()
+		if updErr := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "error", nil, &errMsg); updErr != nil {
+			log.Warn("agent-runner: failed to record environment stop error", "environment_id", env.ID, "error", updErr)
+		}
+		return
+	}
+	if err := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "stopped", nil, nil); err != nil {
+		log.Warn("agent-runner: failed to record stopped status for idle environment", "environment_id", env.ID, "error", err)
 	}
 }

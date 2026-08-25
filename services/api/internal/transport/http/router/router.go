@@ -40,6 +40,7 @@ type Deps struct {
 	Plugin               *handler.PluginHandler
 	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
+	Environment          *handler.EnvironmentHandler
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
@@ -77,6 +78,16 @@ func New(deps Deps) http.Handler {
 			// the Authn middleware the way /admin/settings' writes do below.
 			if deps.Settings != nil {
 				r.Get("/branding", deps.Settings.GetBranding)
+			}
+
+			// Environment deployment config (subdomain base / SSH bastion
+			// host) — public, no auth required, same "read on every
+			// relevant page load" shape as /branding above. Not
+			// project-scoped (unlike every other /environments route
+			// below): both values are a single deployment-wide setting,
+			// not something that varies per project.
+			if deps.Environment != nil {
+				r.Get("/environments/config", deps.Environment.GetConfig)
 			}
 
 			// Auth
@@ -731,6 +742,78 @@ func New(deps Deps) http.Handler {
 							Post("/{agentId}/chat-sessions", deps.Agent.StartChatSession)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
 							Post("/{agentId}/chat-sessions/{sessionId}/messages", deps.Agent.SendChatMessage)
+					})
+				}
+
+				// Environments (static, long-lived sandboxes — see
+				// docs/ai-agent/environment-management.md). Gated on the same
+				// PermissionAgentsRead/Write pair as the /agents block above:
+				// no dedicated environments.* permission exists yet, and
+				// environments are squarely an agent-adjacent capability
+				// (agent conversations are what attach to them), so reusing
+				// the existing gate avoids introducing a new permission this
+				// slice would then need to seed into every existing role.
+				if deps.Environment != nil {
+					r.Route("/environments", func(r chi.Router) {
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/", deps.Environment.ListEnvironments)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/", deps.Environment.CreateEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/{environmentId}", deps.Environment.GetEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Patch("/{environmentId}", deps.Environment.UpdateEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Delete("/{environmentId}", deps.Environment.DeleteEnvironment)
+
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/start", deps.Environment.StartEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/stop", deps.Environment.StopEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/restart", deps.Environment.RestartEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Post("/{environmentId}/heartbeat", deps.Environment.Heartbeat)
+						// Mints a ticket for agent-runner's live-usage
+						// WebSocket (internal/acpbridge/stats.go) — read-only
+						// in spirit (viewing usage numbers, not a mutating
+						// action), unlike terminal-ticket below.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Post("/{environmentId}/stats-ticket", deps.Environment.StatsTicket)
+
+						// Folders
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/{environmentId}/folders", deps.Environment.ListFolders)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/folders", deps.Environment.AddFolder)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Delete("/{environmentId}/folders/{folderId}", deps.Environment.DeleteFolder)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/{environmentId}/browse", deps.Environment.BrowseFolder)
+
+						// SSH keys
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/{environmentId}/ssh-keys", deps.Environment.ListSSHKeys)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/ssh-keys", deps.Environment.AddSSHKey)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Delete("/{environmentId}/ssh-keys/{keyId}", deps.Environment.DeleteSSHKey)
+
+						// Port forwards
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+							Get("/{environmentId}/port-forwards", deps.Environment.ListPortForwards)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/port-forwards", deps.Environment.AddPortForward)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Delete("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.DeletePortForward)
+
+						// Browser terminal — a minted ticket grants an
+						// interactive shell inside the environment's
+						// container, so this is gated on write access
+						// like every other mutating/access-granting route
+						// in this section, not read.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{environmentId}/terminal-ticket", deps.Environment.TerminalTicket)
 					})
 				}
 

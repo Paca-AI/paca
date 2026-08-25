@@ -313,6 +313,172 @@ func TestNewSession_StdioServerEnvNeverTravelsInline(t *testing.T) {
 	}
 }
 
+// initializeOKWithLoadSession is initializeOK plus
+// agentCapabilities.loadSession:true — the shape LoadSession's own guard
+// requires, captured verbatim against a real goose serve instance (goose
+// 1.46.0).
+func initializeOKWithLoadSession(req rpcRequest) (string, int) {
+	return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"agentCapabilities":{"loadSession":true}}}`, req.ID), http.StatusOK
+}
+
+// TestLoadSession_Success is a regression test for the actual fix this
+// method exists for: an environment-backed conversation's second (and
+// every later) turn must give goose back its own memory of every earlier
+// turn instead of cold-starting blank each time. Verified empirically
+// against a real goose serve instance before writing this mock (see the
+// executor package's own doc comment on LoadSession's call site for that
+// verification) that a session/load response — and every history-replay
+// session/update notification before it — arrives on the session-scoped
+// stream, never the connection-scoped one; this mock mirrors that by
+// routing everything through enqueueSession, not enqueueConn. The two
+// replayed notifications queued below must be silently discarded (not
+// forwarded anywhere — LoadSession takes no onEvent) without LoadSession
+// erroring or hanging; a working Prompt call afterward confirms the
+// session stream LoadSession established is the genuine article, not a
+// stub that happens to satisfy LoadSession's own success check.
+func TestLoadSession_Success(t *testing.T) {
+	const sessionID = "20260825_9"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOKWithLoadSession
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		switch req.Method {
+		case "session/load":
+			if hdrSessionID != sessionID {
+				t.Errorf("session/load Acp-Session-Id header = %q, want %q", hdrSessionID, sessionID)
+			}
+			var params LoadSessionParams
+			raw, _ := json.Marshal(req.Params)
+			_ = json.Unmarshal(raw, &params)
+			if params.SessionID != sessionID {
+				t.Errorf("session/load sessionId = %q, want %q", params.SessionID, sessionID)
+			}
+			if params.Cwd != "/home/paca/workspaces" {
+				t.Errorf("session/load cwd = %q, want /home/paca/workspaces", params.Cwd)
+			}
+			if len(params.MCPServers) != 0 {
+				t.Errorf("session/load mcpServers = %+v, want empty — real servers travel in _meta.enabledExtensions", params.MCPServers)
+			}
+			// History replay: must be discarded, not fatal, not forwarded.
+			s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260825_9","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Remember this secret code: WATERMELON-42."}}}}`)
+			s.enqueueSession(sessionID, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"20260825_9","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Acknowledged."}}}}`)
+			// Captured verbatim (trimmed of the unused configOptions block).
+			s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"modes":{"currentModeId":"auto"}}}`, req.ID))
+		case "session/prompt":
+			s.enqueueSession(sessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn"}}`, req.ID))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if err := c.LoadSession(context.Background(), sessionID, "/home/paca/workspaces", nil); err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	if c.sessionID != sessionID {
+		t.Errorf("c.sessionID = %q, want %q", c.sessionID, sessionID)
+	}
+
+	stopReason, _, err := c.Prompt(context.Background(), sessionID, []ContentBlock{TextBlock("what was the code?")}, 0, nil)
+	if err != nil {
+		t.Fatalf("Prompt after LoadSession: %v", err)
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stopReason = %q, want end_turn", stopReason)
+	}
+}
+
+// TestLoadSession_RequiresCapability is a regression test for LoadSession's
+// explicit agentCapabilities.loadSession check: an agent that never
+// advertised it must fail fast and clearly rather than sending a
+// session/load request some non-supporting agent might handle
+// unpredictably.
+func TestLoadSession_RequiresCapability(t *testing.T) {
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOK // no loadSession capability
+	posted := false
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		posted = true
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if err := c.LoadSession(context.Background(), "some-session", "/home/paca/workspaces", nil); err == nil {
+		t.Fatal("LoadSession: want an error when the agent never advertised loadSession, got nil")
+	}
+	if posted {
+		t.Error("LoadSession sent a session/load request despite the missing capability")
+	}
+}
+
+// TestLoadSession_FailureFallsBackToNewSessionCleanly is a regression test
+// for attachSessionStream's whole reason to exist: when the stored
+// session id no longer resolves (e.g. the environment's container was
+// recreated by docker.Manager.recreateGoneEnvironmentContainer, which
+// starts goose's own on-disk session store empty even though the
+// persisted workspace volume survives), executor.Executor.
+// attachEnvironmentSession falls back to a fresh NewSession on the same
+// Client — this confirms that fallback actually works end to end: the
+// failed session/load's abandoned stream must not leak or otherwise break
+// the NewSession call (or a Prompt call) that follows it on the same
+// Client.
+func TestLoadSession_FailureFallsBackToNewSessionCleanly(t *testing.T) {
+	const staleSessionID = "stale-session"
+	const freshSessionID = "fresh-session"
+	srv := newACPMockServer(t)
+	srv.onInitialize = initializeOKWithLoadSession
+	srv.onPost = func(s *acpMockServer, req rpcRequest, hdrSessionID string) {
+		switch req.Method {
+		case "session/load":
+			// Captured shape: goose returns a plain JSON-RPC error for an
+			// unknown/expired session id, on that session's own stream —
+			// the load request at least establishes which stream a client
+			// is waiting on, even for a session goose has never heard of.
+			s.enqueueSession(staleSessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"error":{"code":-32602,"message":"Session not found"}}`, req.ID))
+		case "session/new":
+			s.enqueueConn(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"sessionId":%q}}`, req.ID, freshSessionID))
+		case "session/prompt":
+			s.enqueueSession(freshSessionID, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"stopReason":"end_turn"}}`, req.ID))
+		}
+	}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	c := NewClient(ts.URL, testSecret, nil)
+	defer c.Close()
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	if err := c.LoadSession(context.Background(), staleSessionID, "/home/paca/workspaces", nil); err == nil {
+		t.Fatal("LoadSession: want an error for a session goose no longer has, got nil")
+	}
+
+	sessionID, err := c.NewSession(context.Background(), "/home/paca/workspaces", nil)
+	if err != nil {
+		t.Fatalf("NewSession after a failed LoadSession: %v", err)
+	}
+	if sessionID != freshSessionID {
+		t.Errorf("sessionID = %q, want %q", sessionID, freshSessionID)
+	}
+
+	stopReason, _, err := c.Prompt(context.Background(), freshSessionID, []ContentBlock{TextBlock("hi")}, 0, nil)
+	if err != nil {
+		t.Fatalf("Prompt after the LoadSession-then-NewSession fallback: %v", err)
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stopReason = %q, want end_turn", stopReason)
+	}
+}
+
 func TestPrompt_AgentMessageChunk(t *testing.T) {
 	const sessionID = "20260810_1"
 	srv := newACPMockServer(t)

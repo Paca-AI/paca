@@ -21,27 +21,41 @@ goes idle, the same lifecycle the Docker container has today.
 
 This needs a small amount of RBAC, granted automatically by this chart:
 `agentRunner`'s ServiceAccount gets a `Role` scoped to exactly the sandbox
-namespace (`agentRunner.sandbox.namespace`, defaulting to the release's own
-namespace) allowing it to create/get/list/watch/delete `batch/jobs`,
+namespace (`agentRunner.sandbox.namespace`, **defaulting to a dedicated
+`<release-name>-sandbox` namespace this chart creates for you** — see
+`templates/agent-runner/sandbox-namespace.yaml`) allowing it to
+create/get/list/watch/delete `batch/jobs`, create/get/list/watch/patch/delete
+`apps/deployments` and `services` (static environments — see below),
 get/list/watch `pods`, and use the `pods/log` and `pods/exec` subresources
 (needed to write skill files into a sandbox and compute git diffs after a
 turn — see that package's own doc comments for why). No cluster-scoped
-permissions, and no access to any *other resource type* (Secrets, other
-Deployments/StatefulSets, etc.) in that namespace.
+permissions, and no access to any *other resource type* (Secrets, PVCs not
+created by this Role, etc.) in that namespace.
 
-**This does not mean no access to other Pods in that namespace.**
-Kubernetes RBAC can't scope `pods/exec`/`pods/log` to only the Pods a Role's
-own subject created — `get`/`list`/`watch`/`exec`/`log` on `pods` grants
-those verbs against *every* Pod in the namespace, not just agent-runner's
-own sandbox Jobs. By default `agentRunner.sandbox.namespace` is the same
-namespace as every other component this chart deploys — postgres, valkey,
-minio, api, web, gateway — so a default install grants agent-runner's
-ServiceAccount `pods/exec` into (and log access on) those Pods too, not
-only sandbox Jobs. **Set `agentRunner.sandbox.namespace` to a namespace
-dedicated to sandboxes only** (nothing else deployed into it) if you want
-that RBAC grant's blast radius actually bounded to sandboxes — this chart
-doesn't create that namespace for you; create and reference it via that
-value.
+**This does not mean no access to other Pods/Deployments/Services in that
+namespace.** Kubernetes RBAC can't scope any of these verbs to only the
+objects a Role's own subject created — `get`/`list`/`watch`/`exec`/`log` on
+`pods`, and `patch`/`delete` on `deployments`/`services`, grant those verbs
+against *every* matching object in the namespace, not just agent-runner's
+own. This is exactly why the namespace is dedicated by default instead of
+falling back to the release's own: granting this Role there would let
+agent-runner's ServiceAccount patch or delete this chart's own
+api/gateway/web Deployments/Services, and exec into/read logs from
+postgres/valkey/minio, not just sandbox objects. If you set
+`agentRunner.sandbox.namespace` explicitly to a namespace you manage
+yourself, make sure nothing else you don't want agent-runner touching runs
+there — this chart won't create a namespace you've explicitly named (see
+`sandbox-namespace.yaml`'s own guard), so you're responsible for isolating
+it the same way the default does automatically.
+
+**Upgrading an existing install?** Prior to this default, an unset
+`agentRunner.sandbox.namespace` resolved to the release's own namespace.
+If your RBAC and any running sandbox Jobs/environments already live there,
+set `agentRunner.sandbox.namespace` explicitly to that namespace before
+upgrading to preserve current behavior — otherwise `helm upgrade` moves
+the `Role`/`RoleBinding` to the new dedicated namespace and anything still
+running in the old one becomes unreachable (`Forbidden`) until you migrate
+or manually clean it up (see Troubleshooting below).
 
 Every sandbox Pod's primary container runs as root — the same reason
 `services/agent-runner/Dockerfile` itself runs as root, just for the
@@ -154,6 +168,106 @@ Secret's `POSTGRES_PASSWORD` key must match whatever password your own
 `DATABASE_URL` key uses — the bundled postgres StatefulSet reads
 `POSTGRES_PASSWORD` directly, so the two have to agree.
 
+## SSH access
+
+Off by default. When enabled, a user can `ssh` directly into a running
+static environment's own real `sshd` for pair programming — see
+[`docs/ai-agent/environment-management.md`](../../docs/ai-agent/environment-management.md)'s
+"Terminal / SSH Access" section for the full design. `agent-runner`
+assigns each environment a dedicated external port, published directly on
+a **per-environment `NodePort` Service it creates itself** at runtime
+(`ensureEnvironmentService`, `internal/sandbox/k8s/environment.go`) — not
+a template in this chart, and not anything `agent-runner`'s own process
+ever relays through, so a real `ssh` client's full capabilities (agent
+forwarding, SFTP, further port forwards, a real exit status) all just
+work.
+
+```yaml
+agentRunner:
+  sshBastion:
+    enabled: true
+    portRangeStart: 30200   # must fall inside your cluster's own
+    portRangeEnd: 30299     # --service-node-port-range (30000-32767 by default)
+
+environments:
+  sshBastionHost: "node.paca.example.com"   # any node's address a client can reach
+```
+
+`environments.sshBastionHost` is passed to `services/api` as
+`SSH_BASTION_HOST` — purely descriptive (`services/api` never itself
+routes SSH traffic), used only so `GET /environments/config` can hand the
+web app's Connect page a real `ssh -p <port> root@<host>` command instead
+of a placeholder host. Point it at any node's own reachable
+address/DNS name, or a TCP load balancer in front of your node pool if you
+have one — a `NodePort` Service is reachable at `<any-node>:<nodePort>`,
+so unlike a single shared Service there's no one Service address to look
+up. Leaving it unset doesn't break SSH itself, it just means the web app
+shows a placeholder host the user has to fill in themselves.
+
+1. **Register a public key first.** A user adds their SSH public key on
+   the environment's own Connect page — it's pushed straight into that
+   environment's own `authorized_keys` the moment the environment is next
+   running.
+2. **Connect.** Once an environment is `running`, its Connect page shows
+   the exact port it was assigned:
+   ```bash
+   ssh -p <port> root@<any-node-address>
+   ```
+   The port is assigned once, the first time an environment is created,
+   and reused across every later stop/start — it never changes for that
+   environment's lifetime.
+3. **Not fronted by Ingress/Caddy.** Caddy and this chart's own `Ingress`
+   template are both HTTP-only and cannot proxy raw SSH/TCP traffic — a
+   `NodePort` needs no ingress-for-TCP solution at all, it's already
+   reachable directly on every node.
+4. **Host key persistence.** Each environment generates its own `sshd`
+   host key once, on its own persisted workspace volume (the same one
+   `agentRunner.sandbox.environments` provisions) — not a separate
+   bastion-wide PVC, so there's nothing extra to lose. A user's SSH client
+   only ever sees a "REMOTE HOST IDENTIFICATION HAS CHANGED" warning if
+   that specific environment's own volume is lost, exactly like losing any
+   other file on its disk.
+5. **Port range sizing.** `portRangeEnd - portRangeStart + 1` is the
+   maximum number of environments that can have SSH open simultaneously on
+   this deployment — widen the range if you expect more, staying inside
+   your cluster's own `--service-node-port-range`.
+6. **RBAC.** `agentRunner.sandbox.backend: kubernetes` grants agent-runner
+   `create`/`get`/`list`/`watch`/`patch`/`delete` on `Service` objects in
+   `agentRunner.sandbox.namespace` (see `templates/agent-runner/role.yaml`)
+   specifically so it can manage these per-environment Services — no
+   further RBAC changes needed to enable this feature. See "The AI agent
+   sandbox on Kubernetes" above for why this namespace is dedicated by
+   default rather than the release's own.
+
+## Port forwarding
+
+Off by default. The exact same idea as SSH access above — a
+per-environment `NodePort` Service entry, natively published, no relay —
+but for any container port a user wants to expose (their own dev server,
+most commonly), added and removed from the environment's own Connect page
+in the web app instead of being a single auto-created port. See
+[`docs/ai-agent/environment-management.md`](../../docs/ai-agent/environment-management.md)'s
+"Port Forwarding" section.
+
+```yaml
+agentRunner:
+  portForward:
+    enabled: true
+    portRangeStart: 30300   # a disjoint range from sshBastion's own, same
+    portRangeEnd: 30399     # --service-node-port-range constraint
+
+environments:
+  portForwardHost: "node.paca.example.com"   # same idea as sshBastionHost
+```
+
+Unlike the `docker` backend — where changing a container's published
+ports means stopping and recreating it — patching a `NodePort` Service's
+port list is a live operation that never touches the Pod at all. Clicking
+"Restart" on an environment's Connect page after adding/removing a
+forward still applies here (same UI, same button, for cross-backend
+consistency), but on `kubernetes` it completes instantly with zero
+downtime rather than actually restarting anything.
+
 ## Verifying before you install
 
 ```bash
@@ -182,3 +296,19 @@ after any `values.yaml` change.
   always the ReadWriteMany StorageClass issue above — check
   `kubectl get pvc -n <namespace> <release>-plugins` for a `Pending`
   status.
+- **`ssh` just says "Permission denied (publickey)." with no further
+  detail**: a real `sshd` inside the environment's own container is what's
+  answering (see the "SSH access" section above), so this is standard
+  OpenSSH behavior, not anything `agent-runner` itself produces. Most
+  likely cause: the public key wasn't registered on that specific
+  environment before it last started — register it on the environment's
+  Connect page, then start (or restart) the environment so it gets pushed
+  into `authorized_keys`.
+- **`ssh` hangs waiting to connect, or connection refused**: confirm
+  `agentRunner.sshBastion.enabled` is actually `true` and that the
+  environment is `running` — then check
+  `kubectl get svc paca-env-<environment-id> -n <sandbox namespace>`
+  exists with the expected `nodePort`, and that whatever address
+  `environments.sshBastionHost` points at is actually one of your
+  cluster's real node addresses (a `NodePort` is reachable at
+  `<any-node>:<nodePort>`, not at the Service's own `ClusterIP`).

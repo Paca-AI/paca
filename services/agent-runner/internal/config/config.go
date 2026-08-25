@@ -107,6 +107,46 @@ type Settings struct {
 	// SandboxBackend is "kubernetes".
 	SandboxImagePullSecrets []string
 
+	// SandboxEnvironmentsStorageClass sets StorageClassName on every
+	// PersistentVolumeClaim provisioned for a static environment (see
+	// internal/sandbox/k8s's CreateEnvironment) — SANDBOX_ENVIRONMENTS_STORAGE_CLASS,
+	// only read when SandboxBackend is "kubernetes". Empty (the default)
+	// leaves the PVC's StorageClassName unset, letting Kubernetes
+	// provision from the cluster's own default StorageClass rather than
+	// this process hardcoding one that may not exist on every cluster.
+	SandboxEnvironmentsStorageClass string
+
+	// SSHBastionPortRangeStart/End bound the pool of external ports
+	// assigned to a static environment's own sshd, one dedicated port per
+	// environment, published directly on the environment's own
+	// container/Pod (a native Docker -p binding, or a Kubernetes NodePort
+	// Service entry — see sandbox.EnvironmentConfig.PortMappings) rather
+	// than relayed through this process — see
+	// postgres.EnvironmentRepository.AssignSSHPort and docs/ai-agent/
+	// environment-management.md's "Terminal / SSH Access" section. Both
+	// SSH_BASTION_PORT_RANGE_START/_END, 0 by default: this whole feature
+	// is entirely opt-in — an unconfigured deployment never assigns a
+	// port at all, behaving byte-for-byte as it did before this feature
+	// existed. See Load's own validatePortRange call (both must be set
+	// and End >= Start, or both left unset).
+	SSHBastionPortRangeStart int
+	SSHBastionPortRangeEnd   int
+
+	// PortForwardRangeStart/End are the exact same pattern as
+	// SSHBastionPortRangeStart/End above, for reaching any container port
+	// a user has explicitly exposed via the user-managed
+	// environment_port_forwards table instead (docs/ai-agent/
+	// environment-management.md's "Port Forwarding" section), one
+	// dedicated host port per port-forward row a user adds, published the
+	// same native way SSH is. Replaces what used to be Caddy Admin
+	// API-driven subdomain routing (CADDY_ADMIN_URL/ENV_SUBDOMAIN_BASE,
+	// removed) — see that doc section for why: some self-hosted
+	// deployments can only forward one port through their router/
+	// firewall at all, which rules out a shared-port-plus-wildcard-DNS
+	// model.
+	PortForwardRangeStart int
+	PortForwardRangeEnd   int
+
 	LogLevel string
 }
 
@@ -114,26 +154,31 @@ type Settings struct {
 // environment doesn't set a value.
 func Load() (Settings, error) {
 	s := Settings{
-		DatabaseURL:            os.Getenv("DATABASE_URL"),
-		ValkeyURL:              os.Getenv("VALKEY_URL"),
-		EncryptionKey:          os.Getenv("ENCRYPTION_KEY"),
-		AgentServerImage:       os.Getenv("AGENT_SERVER_IMAGE"),
-		PacaAPIKey:             os.Getenv("PACA_API_KEY"),
-		PacaAPIURL:             os.Getenv("PACA_API_URL"),
-		PacaGatewayURL:         os.Getenv("PACA_GATEWAY_URL"),
-		PortPoolStart:          envInt("PORT_POOL_START", 10000),
-		PortPoolSize:           envInt("PORT_POOL_SIZE", 100),
-		WorkerConcurrency:      envInt("WORKER_CONCURRENCY", 5),
-		ChatSandboxIdleTimeout: time.Duration(envInt("CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES", 3)) * time.Minute,
-		HTTPAddr:               envOr("HTTP_ADDR", ":8080"),
-		InternalAPIKey:         os.Getenv("INTERNAL_API_KEY"),
-		LLMModelsPath:          envOr("LLM_MODELS_PATH", "./data/llm_models.json"),
-		MCPDevSourceDir:        os.Getenv("PACA_MCP_DEV_SOURCE_DIR"),
-		SandboxBackend:         envOr("SANDBOX_BACKEND", "docker"),
-		SandboxNamespace:       envOr("SANDBOX_NAMESPACE", inClusterNamespace()),
-		SandboxCPULimit:        os.Getenv("SANDBOX_CPU_LIMIT"),
-		SandboxMemoryLimit:     os.Getenv("SANDBOX_MEMORY_LIMIT"),
-		LogLevel:               envOr("LOG_LEVEL", "INFO"),
+		DatabaseURL:                     os.Getenv("DATABASE_URL"),
+		ValkeyURL:                       os.Getenv("VALKEY_URL"),
+		EncryptionKey:                   os.Getenv("ENCRYPTION_KEY"),
+		AgentServerImage:                os.Getenv("AGENT_SERVER_IMAGE"),
+		PacaAPIKey:                      os.Getenv("PACA_API_KEY"),
+		PacaAPIURL:                      os.Getenv("PACA_API_URL"),
+		PacaGatewayURL:                  os.Getenv("PACA_GATEWAY_URL"),
+		PortPoolStart:                   envInt("PORT_POOL_START", 10000),
+		PortPoolSize:                    envInt("PORT_POOL_SIZE", 100),
+		WorkerConcurrency:               envInt("WORKER_CONCURRENCY", 5),
+		ChatSandboxIdleTimeout:          time.Duration(envInt("CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES", 3)) * time.Minute,
+		HTTPAddr:                        envOr("HTTP_ADDR", ":8080"),
+		InternalAPIKey:                  os.Getenv("INTERNAL_API_KEY"),
+		LLMModelsPath:                   envOr("LLM_MODELS_PATH", "./data/llm_models.json"),
+		MCPDevSourceDir:                 os.Getenv("PACA_MCP_DEV_SOURCE_DIR"),
+		SandboxBackend:                  envOr("SANDBOX_BACKEND", "docker"),
+		SandboxNamespace:                envOr("SANDBOX_NAMESPACE", inClusterNamespace()),
+		SandboxCPULimit:                 os.Getenv("SANDBOX_CPU_LIMIT"),
+		SandboxMemoryLimit:              os.Getenv("SANDBOX_MEMORY_LIMIT"),
+		SandboxEnvironmentsStorageClass: os.Getenv("SANDBOX_ENVIRONMENTS_STORAGE_CLASS"),
+		SSHBastionPortRangeStart:        envInt("SSH_BASTION_PORT_RANGE_START", 0),
+		SSHBastionPortRangeEnd:          envInt("SSH_BASTION_PORT_RANGE_END", 0),
+		PortForwardRangeStart:           envInt("PORT_FORWARD_RANGE_START", 0),
+		PortForwardRangeEnd:             envInt("PORT_FORWARD_RANGE_END", 0),
+		LogLevel:                        envOr("LOG_LEVEL", "INFO"),
 	}
 
 	if raw := os.Getenv("AGENT_RUNNER_ALLOWED_AGENT_IDS"); raw != "" {
@@ -191,7 +236,35 @@ func Load() (Settings, error) {
 		return Settings{}, fmt.Errorf(`config: SANDBOX_BACKEND must be "docker" or "kubernetes", got %q`, s.SandboxBackend)
 	}
 
+	if err := validatePortRange("SSH_BASTION_PORT_RANGE", s.SSHBastionPortRangeStart, s.SSHBastionPortRangeEnd); err != nil {
+		return Settings{}, err
+	}
+	if err := validatePortRange("PORT_FORWARD_RANGE", s.PortForwardRangeStart, s.PortForwardRangeEnd); err != nil {
+		return Settings{}, err
+	}
+
 	return s, nil
+}
+
+// validatePortRange rejects a misconfigured start/end pair for one of the
+// SSH_BASTION_PORT_RANGE_*/PORT_FORWARD_RANGE_* env var pairs — both 0 (the
+// shared default) means the feature is off and is always valid; anything
+// else needs both set and End >= Start. Catching this at startup, not only
+// per-request (the acpbridge handlers that actually assign a port already
+// treat start==0 as "not configured" and simply never assign one), turns a
+// silent "SSH access never works on this deployment" into an immediate,
+// loud failure to boot.
+func validatePortRange(envPrefix string, start, end int) error {
+	if start == 0 && end == 0 {
+		return nil
+	}
+	if start == 0 || end == 0 {
+		return fmt.Errorf("config: %s_START and %s_END must both be set (or both left unset to disable this feature)", envPrefix, envPrefix)
+	}
+	if end < start {
+		return fmt.Errorf("config: %s_END (%d) must be >= %s_START (%d)", envPrefix, end, envPrefix, start)
+	}
+	return nil
 }
 
 // inClusterNamespace reads the namespace Kubernetes mounts into every Pod

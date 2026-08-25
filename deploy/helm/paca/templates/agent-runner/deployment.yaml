@@ -30,6 +30,12 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+          # No SSH/port-forward container ports here, deliberately — this
+          # Pod itself never listens on any of them. Each environment's own
+          # port(s) are published directly on a per-environment NodePort
+          # Service, created dynamically by ensureEnvironmentService (see
+          # internal/sandbox/k8s/environment.go), not templated here or
+          # anywhere else in this chart.
           env:
             - name: VALKEY_URL
               valueFrom:
@@ -74,6 +80,10 @@ spec:
               value: {{ .Values.agentRunner.sandbox.cpuLimit | quote }}
             - name: SANDBOX_MEMORY_LIMIT
               value: {{ .Values.agentRunner.sandbox.memoryLimit | quote }}
+            {{- if .Values.agentRunner.sandbox.environments.storageClassName }}
+            - name: SANDBOX_ENVIRONMENTS_STORAGE_CLASS
+              value: {{ .Values.agentRunner.sandbox.environments.storageClassName | quote }}
+            {{- end }}
             {{- if .Values.agentRunner.sandbox.imagePullSecrets }}
             - name: SANDBOX_IMAGE_PULL_SECRETS
               value: {{ join "," .Values.agentRunner.sandbox.imagePullSecrets | quote }}
@@ -95,6 +105,29 @@ spec:
                 secretKeyRef:
                   name: {{ include "paca.secretName" . }}
                   key: ENCRYPTION_KEY
+            {{- if .Values.agentRunner.sshBastion.enabled }}
+            # SSH access (docs/ai-agent/environment-management.md's
+            # "Terminal / SSH Access" section) — the range agent-runner
+            # assigns each running environment's own dedicated,
+            # natively-published SSH port from; off unless
+            # agentRunner.sshBastion.enabled. No host-key volume to mount
+            # here — each environment's sshd host key lives on that
+            # environment's own persisted workspace volume instead.
+            - name: SSH_BASTION_PORT_RANGE_START
+              value: {{ .Values.agentRunner.sshBastion.portRangeStart | quote }}
+            - name: SSH_BASTION_PORT_RANGE_END
+              value: {{ .Values.agentRunner.sshBastion.portRangeEnd | quote }}
+            {{- end }}
+            {{- if .Values.agentRunner.portForward.enabled }}
+            # Port forwarding (docs/ai-agent/environment-management.md's
+            # "Port Forwarding" section) — the same idea as the SSH range
+            # above, for user-added port forwards instead; off unless
+            # agentRunner.portForward.enabled.
+            - name: PORT_FORWARD_RANGE_START
+              value: {{ .Values.agentRunner.portForward.portRangeStart | quote }}
+            - name: PORT_FORWARD_RANGE_END
+              value: {{ .Values.agentRunner.portForward.portRangeEnd | quote }}
+            {{- end }}
           {{- if ne .Values.agentRunner.sandbox.backend "kubernetes" }}
           volumeMounts:
             - name: docker-socket

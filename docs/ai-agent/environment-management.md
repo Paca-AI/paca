@@ -1,0 +1,246 @@
+# Environment Management — Design
+
+**Status: Implemented** (all three phases below have shipped). A couple of details evolved during implementation from what's described here — kept as a design reference, not a byte-for-byte account of the final code. Phase 3 was revised twice: it originally shipped as the protocol-shim-over-exec bastion described below, then was replaced with a real per-environment `sshd` relayed at layer 4 by `internal/sshbastion.Manager` once real SSH demand justified the cost, then revised again — alongside Phase 2's own subdomain routing, replaced outright — once relaying byte-for-byte through agent-runner's own process turned out to be an unnecessary extra hop: both SSH and (now user-managed) port forwards are published directly on the backing container/Pod instead, a native Docker `-p` binding or a Kubernetes `NodePort` Service entry, with nothing in agent-runner's own process ever touching the bytes. See [Port Forwarding](#port-forwarding) for the design that's actually running today.
+
+Today every agent conversation gets a brand-new disposable sandbox container — see [`agent-runner-service.md`'s Docker Container Strategy](agent-runner-service.md#docker-container-strategy): "one disposable workload per active conversation." There is no way for a user to keep a working container alive across conversations, pair-program inside it, or preview a running dev server from it. This document proposes **static environments**: named, long-lived containers a user explicitly creates, that agents attach to instead of spinning up a fresh sandbox, that persist independently of any single conversation, and that are reachable via an in-browser terminal, real SSH, and user-added port forwards for testing.
+
+## Table of Contents
+
+- [Product Requirements](#product-requirements)
+- [Decisions](#decisions)
+- [Grounding: Current Architecture](#grounding-current-architecture)
+- [Data Model](#data-model)
+- [agent-runner: Static Environment Lifecycle](#agent-runner-static-environment-lifecycle)
+- [services/api Changes](#servicesapi-changes)
+- [Terminal / SSH Access](#terminal--ssh-access)
+- [Port Forwarding](#port-forwarding)
+- [Frontend](#frontend)
+- [Phased Rollout](#phased-rollout)
+- [Open Risks](#open-risks)
+- [Verification Plan](#verification-plan)
+
+---
+
+## Product Requirements
+
+1. A user can create a **static environment**: a named, long-lived container.
+2. Agents work inside a static environment instead of an ephemeral per-conversation container, when one is attached.
+3. A user can reach the environment via SSH for pair programming, or via an in-browser terminal — no local setup required for the latter. The user sets which SSH public key(s) are authorized on a given environment, from the environment's own settings.
+4. A running dev server inside the environment is reachable for testing on **both** self-hosted Docker Compose and Kubernetes/Helm deployments. (Originally specified as a shared-host subdomain, e.g. `<env-slug>.env.paca.example.com` — see [Port Forwarding](#port-forwarding) for why that was replaced with user-managed port forwards instead.)
+5. An environment persists independently of any one conversation's lifecycle: a conversation can end, and a later conversation (same or different agent) can reattach to the same environment and continue where the previous one left off — same files on disk, same background processes still running.
+6. One environment can hold multiple folders/repos; starting a new chat lets the user pick both the environment and the folder the agent should work in.
+7. An agent can have a **default environment** set on its detail page in the web app.
+
+## Decisions
+
+Three scope questions were resolved up front, before designing the mechanics:
+
+| Decision | Choice | Why |
+|---|---|---|
+| Shell/pairing access | **Both, phased** — browser terminal ships first, real SSH + bastion later | The browser terminal reuses infrastructure (Docker exec / k8s `pods/exec`) the codebase already has; real SSH is a materially bigger lift (per-environment key management, a bastion) better justified once static environments exist and are used |
+| Subdomain exposure | **Required for self-hosted Compose and Helm from day one**, not SaaS-only | Self-hosters are a primary audience for this platform; gating the feature to a hosted-only tier would leave the largest deployment target without it |
+| Sandbox backend | **Docker and Kubernetes get static-environment support simultaneously**, not sequentially | Both are real, actively maintained production targets today (see [Grounding](#grounding-current-architecture)) — shipping one first would leave the other's users without the feature indefinitely |
+
+## Grounding: Current Architecture
+
+Findings from direct code inspection that shape every section below:
+
+- `sandbox.Backend` (`services/agent-runner/internal/sandbox/sandbox.go`) has two implementations, selected by `SANDBOX_BACKEND`: `internal/sandbox/docker/manager.go` (sibling-container via a mounted `docker.sock`) and `internal/sandbox/k8s/manager.go` (one Job+Pod per conversation).
+- The agent-server image runs **as root** — `services/agent-server/Dockerfile:59-70` justifies this explicitly because sandboxes are "disposable... not a shared or long-lived host." That justification does not hold for static environments; see [Hardening](#hardening) below rather than a bare non-root flip, which would regress the useful mid-task `apt-get install` capability the current design relies on.
+- Ephemeral sandboxes already run a pinned image, resolved from `config.AgentServerImage` (`internal/config/config.go:24-27`, sourced from the `AGENT_SERVER_IMAGE` env var). Environments should default to that exact same image rather than asking the user to specify one — see [Data Model](#data-model) and [Interface](#interface) below.
+- `internal/chatsandbox/registry.go` is the closest existing analog to persistence — it pauses a conversation's container between turns — but it's an in-memory, process-local map that does not survive an agent-runner restart. Not reusable as-is for something that must survive restarts (see [the lifecycle section](#agent-runner-static-environment-lifecycle) for why we don't need an equivalent for environments anyway).
+- `agent_conversations` carries 5 legacy columns (`container_id`, `host_port`, `repo_clone_url`, `branch_name`, `persistence_dir`) fully plumbed through `internal/repository/postgres/agent_repository.go`'s SELECT/INSERT/UPDATE, but never assigned a value by any current Go call site — dead weight from the old Python `services/ai-agent`, cleaned up as part of this change.
+- The web app (Vite + React 19, TanStack Router/Query, shadcn/ui) has no repo/folder/environment picker and no terminal component anywhere today.
+- Caddy (`deploy/caddy/Caddyfile`) does path-based routing only, on a single site block, and has no involvement in reaching a running environment at all — SSH and user-added port forwards are both published directly on the environment's own container/Pod (see [Port Forwarding](#port-forwarding) below), never proxied through Caddy or agent-runner's own process.
+- Docker Compose (`deploy/docker-compose.prod.yml`) and Kubernetes via Helm (`deploy/helm/paca`, published as an OCI artifact) are both real, parallel production targets kept in sync by hand — not one primary and one secondary.
+- Latest migration on disk is `000041_add_agent_docker_enabled.sql`; new migrations here start at `000042`.
+
+---
+
+## Data Model
+
+Migration `000042_add_environments.sql` adds four tables plus a couple of columns on two existing ones (see the end of this section) — originally five separate migrations (`000042`-`000046`) written incrementally as this feature's design iterated, consolidated into this one file since none of them had ever shipped in a release; nothing here reflects five actual deploys, just one final schema.
+
+**`environments`** — id, `project_id` (FK, cascade delete), `name`, `slug` (unique per project, mirroring `agents.handle`'s `(project_id, handle)` pattern), `status` (`creating|running|stopping|stopped|suspended|error|deleting`), `backend` (`docker|kubernetes`), `backend_ref` (container ID / Deployment name), `image` (nullable — see below), `cpu_limit`, `memory_limit`, `disk_limit_gb`, `volume_ref` (Docker volume name / k8s PVC name), `secret_key_encrypted`, `idle_timeout_minutes`, `last_active_at`, `error_message`, `ssh_port` (nullable, agent-runner-owned — written directly by its own Postgres connection, never by `services/api`, the same module-boundary convention `status`/`last_active_at` already follow — `services/api` only reads it back for API-response display), `ports_pending_restart` (services/api-owned; see [Port Forwarding](#port-forwarding) for what it drives), `created_by`, timestamps, `deleted_at`. An earlier iteration of this same migration also carried a globally-unique, server-generated `subdomain_slug` (`<slug>-<random>`) for the superseded Caddy-routed subdomain design — folded out of the consolidated migration entirely once [Port Forwarding](#port-forwarding) replaced it, rather than added-then-dropped in the same file.
+
+`image` is nullable and defaults to the platform's pinned agent-server image (`config.AgentServerImage`, the same one ephemeral conversation sandboxes already use) — a static environment is meant to be a drop-in replacement for the ephemeral sandbox an agent would otherwise get, so it needs the same Goose/ACP runtime by default, not a bespoke one. Advanced users can override `image` at creation time (e.g. to pre-bake extra tooling into a custom image), but this is an opt-in escape hatch, not something the create flow requires filling in.
+
+`secret_key_encrypted` is worth calling out: an ephemeral conversation's sandbox gets a fresh random secret key on every `Start` (`sandbox.RandomHex(32)`) because it never survives a restart anyway. An environment's `goose serve` process must accept the *same* key across a stop/start cycle so a resumed session doesn't need re-provisioning — generated once at creation, encrypted with the same `secret.Encryptor` already used for `agents.llm_api_key_secret`.
+
+**`environment_folders`** — id, `environment_id` (FK, cascade), `name`, `path` (absolute path inside the container), `repo_plugin_id`, `repo_clone_url`, `default_branch`, `created_by`, timestamps; unique on `(environment_id, path)`. This is what the folder-picker at chat-start reads, and what lets one environment host multiple repos.
+
+**`environment_ssh_keys`** — id, `environment_id` (FK, cascade), `label`, `public_key`, `fingerprint` (unique per environment), `created_by`, `created_at`. Unlike the rest of the SSH story, key *management* is not deferred to Phase 3: the table, its REST endpoints, and the environment settings UI for adding/removing keys all ship in Phase 1, so a user can register the key(s) they intend to pair-program with as soon as an environment exists. What's deferred to Phase 3 is only the bastion that actually *accepts* an SSH connection and checks it against these rows — see [Terminal / SSH Access](#terminal--ssh-access).
+
+**`environment_port_forwards`** (added in Phase 4) — id, `environment_id` (FK, cascade), `label`, `container_port`, `host_port` (nullable, agent-runner-assigned — same "generated once, nil until assigned" lifecycle as `environments.ssh_port`), `created_by`, `created_at`. Unique on `(environment_id, container_port)` (no duplicate forwards to the same container port) and a partial-unique on `host_port WHERE host_port IS NOT NULL`. Hard-deleted, not soft-deleted like `environments` itself — a removed forward's `host_port` is immediately free for reuse, since there's no "undelete" concept for a port forward the way there is for an environment. See [Port Forwarding](#port-forwarding) for the full CRUD/publishing design.
+
+The same consolidated migration also: adds `agents.default_environment_id` (`UUID REFERENCES environments(id) ON DELETE SET NULL`) — lets a project-scoped agent name a static environment it should default to instead of getting a fresh ephemeral sandbox on every conversation. Global agents (`project_id IS NULL`) have no single project to default an environment from — the frontend hides the field for global-scope agents rather than designing around that case now. And: drops `agent_conversations`' 5 legacy per-conversation-container columns (`container_id`, `host_port`, `repo_clone_url`, `branch_name`, `persistence_dir` — inherited from the old Python `services/ai-agent`, never assigned by any current Go call site) and adds `environment_id` + `environment_folder_id` (nullable FKs, `ON DELETE SET NULL`) instead. Drop rather than repurpose: the old columns encode 1-conversation-owns-1-container; an environment is many-conversations-to-one-container, a different cardinality that deserves its own column name rather than silently redefining an existing one. This also touches `services/api/internal/domain/agent/entity.go`'s `AgentConversation` struct and the matching TypeScript interface in `apps/web/src/lib/agent-api.ts` (which currently surfaces `branch_name` for display in `conversation-view.tsx`).
+
+Environments are **project-shared**, not per-user-private, matching how agents and conversations already work — revisit only if users specifically ask for private scratch environments.
+
+---
+
+## agent-runner: Static Environment Lifecycle
+
+**Core choice: no new in-memory registry.** `goose serve` runs continuously for an environment's entire container lifetime instead of once-per-turn. Every conversation that attaches — first one or the tenth, same agent-runner process or one that restarted in between — does a fresh `Initialize` + `NewSession(folderPath, ...)` against the already-running process, exactly as cheap as today's cold start. The only state that must survive an agent-runner restart is "is environment X running, and where," and that already lives in Postgres plus the real Docker/Kubernetes API — not a Go map. A background process an agent starts (`npm run dev &`) is just a subprocess of the container's process tree, independent of which ACP session is currently attached, which is what makes "same running processes after the conversation ends" work without extra plumbing.
+
+### Interface
+
+Additive, not a rewrite of `sandbox.Backend` — its four existing methods are tied to the disposable-per-conversation contract and stay exactly as they are. New file `internal/sandbox/environment.go`:
+
+```go
+type EnvironmentConfig struct {
+    EnvironmentID string
+    Image         string
+    Env           map[string]string
+    CPULimit, MemoryLimit string
+    DiskLimitGB   int
+    SecretKey     string // caller-generated once, persisted, reused on every Start
+}
+type EnvironmentHandle struct {
+    BackendRef string
+    BaseURL    string // re-resolved on every Start, address can change
+}
+type EnvironmentBackend interface {
+    CreateEnvironment(ctx, cfg) (*EnvironmentHandle, error)
+    StartEnvironment(ctx, environmentID, backendRef string, cfg) (*EnvironmentHandle, error)
+    StopEnvironment(ctx, backendRef string) error   // preserves container+volume
+    DeleteEnvironment(ctx, backendRef, volumeRef string) error
+    CopyToEnvironment(ctx, backendRef, destPath string, tarContent io.Reader) error
+    ExecEnvironment(ctx, backendRef string, cmd []string) (output string, exitCode int, err error)
+    StreamExecEnvironment(ctx, backendRef string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error // terminal, below
+}
+type FullBackend interface { Backend; EnvironmentBackend }
+```
+
+Implemented on the existing `docker.Manager` / `k8s.Manager` structs, in new sibling files `internal/sandbox/docker/environment.go` / `internal/sandbox/k8s/environment.go` — both already own the client/image-pull/resource-limit logic this needs. `main.go`'s `newSandboxBackend` widens its return type to `sandbox.FullBackend`; `executor.Executor.sandboxMgr` widens the same way (backward compatible, since `FullBackend` embeds `Backend`).
+
+`CreateEnvironment` treats `cfg.Image == ""` as "use the platform default": both `docker.Manager` and `k8s.Manager` already hold `config.AgentServerImage` (it's how they resolve the image for ephemeral sandboxes today), so `CreateEnvironment` falls back to that same value rather than requiring `services/api` to resolve and pass a default down. `services/api` only sends a non-empty `image` when the user explicitly opted into a custom one.
+
+### Docker
+
+`CreateEnvironment` mirrors today's `Start`, but with `AutoRemove: false` and a named volume (`paca-env-<id>`) mounted at a new fixed root, `/home/paca/workspaces` — deliberately not `/home/goose`, so the ephemeral conversation path and the environment path never collide. `StopEnvironment` is `ContainerStop` only, no remove. `DeleteEnvironment` is `ContainerRemove(Force)` plus `VolumeRemove`.
+
+### Kubernetes
+
+A `Job` (`BackoffLimit: 0`, run-to-completion) is the wrong primitive for something meant to restart indefinitely. Use a `Deployment` (1 replica) plus a separately-created `PersistentVolumeClaim` (`ReadWriteOnce` — always exactly one Pod, unlike the plugins PVC which needs RWX). `StartEnvironment`/`StopEnvironment` patch `spec.replicas` between 1 and 0, reusing `waitForPodIP`/`WaitForReady` verbatim from `k8s/manager.go` (already label-selector-parameterized, not Job-specific). `DeleteEnvironment` deletes both objects. A new Helm value, `agentRunner.sandbox.environments.storageClassName`, controls provisioning. `disk_limit_gb` maps directly onto the PVC's storage request — a real CSI-enforced quota, which Docker has no first-class equivalent of (soft/advisory disk enforcement only, on that backend, for Phase 1).
+
+### Hardening
+
+Root stays the default — a blanket non-root flip would regress today's mid-task `apt-get install` capability, which matters even more for multi-hour/multi-day environments — but it doesn't stay unhardened: `CapDrop: ["ALL"]` with a narrow add-back (`CHOWN`, `SETUID`, `SETGID`, `DAC_OVERRIDE`, `FOWNER`) on both backends, plus a PID limit as a cheap fork-bomb bound. Seccomp/AppArmor profiles and network-egress restriction are explicitly deferred past Phase 1 — a profile that still permits `apt`/`npm`/`pip` while blocking real danger is its own project, not something to improvise here.
+
+### Folders
+
+`environment_folders` rows are read straight from Postgres by the folder-picker — no live container listing needed. Row creation triggers agent-runner running `mkdir -p` via `ExecEnvironment`, porting `apps/mcp/src/tools/repo-tools.ts`'s `FORBIDDEN_DELETE_TARGETS` guard to Go (against the resolved, not raw, target path) since this now runs server-side rather than from an LLM tool call. Folder deletion is the opposite of what that name might suggest: a folder row is only ever a pointer to a working directory, not something Paca owns the contents of, so deleting it is a `services/api`-only row delete — no agent-runner round-trip, no filesystem operation. A user who wants the directory itself gone does that from a terminal/SSH session like anything else in the environment.
+
+### Conversation attach path
+
+`agent.Trigger` gains `EnvironmentID *uuid.UUID` and a resolved `Workdir *string` (resolved server-side by `services/api`, the same pattern `RepoPluginIDs` already follows), decoded in `internal/messaging/decode.go`. A new `executor.Executor.coldStartEnvironment` (sibling to today's `coldStart`) looks up the environment via a new `internal/repository/postgres/environment_repository.go` (agent-runner already holds a direct Postgres connection, same precedent as `AgentRepository`/`ConversationRepository`), calls `StartEnvironment` unconditionally on every attach (not gated on last-known status — see that call's own doc comment in each backend for why: it's the only way to get a guaranteed-fresh `BaseURL` back, and it self-heals a stale "running" DB status if the container died externally), builds an `acp.Client` with the persisted secret key, and calls `NewSession(trigger.Workdir, ...)`. `handler.tearDownSandbox`/`TeardownPausedChatSandbox` get an `EnvironmentID != nil` branch that never stops the shared container per-turn — only closes the local client connection and bumps `last_active_at`. Stopping the container is exclusively the idle-reaper's job, or an explicit user action.
+
+**GOOSE_PROVIDER backfill:** `coldStartEnvironment` builds the same `GOOSE_PROVIDER`/`GOOSE_MODEL`/provider-API-key env (via `buildAgentContainerEnv`) the ephemeral per-conversation sandbox path already uses, from the *attaching conversation's* agent config, and passes it as `EnvironmentConfig.Env` on every `StartEnvironment` call. But an environment's container/Pod is created once by `handleCreateEnvironment`, which has no agent/LLM context at all (an environment isn't owned by one agent — many conversations, possibly from different agents, can attach to the same shared `goose serve` process over its life) — so a freshly-created environment never has an LLM provider configured, and `goose serve` fails every `session/new` with `Configuration value not found: GOOSE_PROVIDER` until something backfills it. Both backends' `StartEnvironment` now do exactly that, once: check whether the container/Pod's own env already has `GOOSE_PROVIDER` (Docker via `ContainerInspect`, Kubernetes via a `Deployment` `Get`); if missing, apply it via the minimal-disruption mechanism each backend supports (Docker recreates the container against its existing volume, same as `RestartEnvironmentPorts`; Kubernetes appends the missing keys onto the Deployment's Pod template and lets the resulting rollout replace the Pod) and never touch it again. The practical effect: whichever agent's conversation is the first to attach to a given environment fixes that environment's LLM provider/model/key for its entire life — a later conversation from a *different* agent (a different provider) attaching to the same environment reuses the first one's config rather than switching, the same "one shared process, one config" tradeoff the rest of this feature already accepts for a static environment's `goose serve`.
+
+### Idle-suspend
+
+DB-backed, not in-memory. A new goroutine in `main.go` (sibling to `reapIdleChatSandboxes`) queries `environments WHERE status='running' AND last_active_at < now() - idle_timeout_minutes`, using the same atomic-claim pattern `ConversationRepository.ClaimConversationStatus` already establishes (`EnvironmentRepository.ClaimEnvironmentStatus`), so multiple agent-runner replicas can't double-stop the same environment. `last_active_at` is bumped on conversation attach/turn-end and by a periodic heartbeat from the browser terminal.
+
+---
+
+## services/api Changes
+
+A new domain package, `services/api/internal/domain/environment/`, mirrors `internal/domain/agent/` file-for-file: `entity.go` (`Environment`, `EnvironmentFolder`, `EnvironmentSSHKey`), `repository.go`, `errors.go`, implemented in `internal/repository/postgres/environment_repository.go`. A new `internal/service/environment/environment_service.go` calls agent-runner via the existing `AI_AGENT_URL`/`AI_AGENT_INTERNAL_KEY` env vars already wired for `AgentHandler` — reused, not duplicated.
+
+New agent-runner internal endpoints, added to the existing `acpbridge.Server.Routes()` mux (same `X-Internal-Token` guard already protecting `/agent-bridge/status/*`):
+
+```
+POST   /internal/environments
+POST   /internal/environments/{id}/start
+POST   /internal/environments/{id}/stop
+DELETE /internal/environments/{id}
+POST   /internal/environments/{id}/folders
+```
+
+New public REST, `dto/environment_dto.go` + `handler/environment_handler.go`, wired in `router.go` under `/projects/{projectId}/environments` alongside the existing `/agents` block: list/create/get/update/delete, `/start`, `/stop`, `/heartbeat`, folder list/add/delete, and SSH key list/add/delete (`GET`/`POST /environments/{id}/ssh-keys`, `DELETE /environments/{id}/ssh-keys/{keyId}`) — the last group is pure CRUD against `environment_ssh_keys` with no agent-runner round-trip needed, since nothing consumes the keys until the Phase 3 bastion exists. `CreateEnvironmentRequest.image` is optional; when omitted, `services/api` passes an empty string through to agent-runner's `CreateEnvironment`, which resolves the platform default itself (see [Interface](#interface)) rather than `services/api` needing to know what that default is. Endpoints reuse whatever permission-gating middleware already wraps the `/agents` route group.
+
+`default_environment_id` is wired into `CreateAgentRequest`/`UpdateAgentRequest`, `agentdom.Agent`, the repository column list, and `AgentResponse`, with `agent_service.go` validating the referenced environment belongs to the same project.
+
+`StartChatSessionRequest` gains optional `environment_id`/`folder_id`. `StartChatSession` resolves from the request or falls back to `agent.DefaultEnvironmentID`; it auto-selects the folder if the environment has exactly one (mirroring the existing single-agent auto-select convention in `useAgentPicker`), and requires an explicit `folder_id` otherwise. `environment_id`/`workdir` thread through the roughly six `publishTrigger(...)` call sites in `agent_service.go`, decoded on the other end in agent-runner's `internal/messaging/decode.go`.
+
+---
+
+## Terminal / SSH Access
+
+### Phase A — browser terminal
+
+Lives in **agent-runner**, not `services/realtime` — realtime has no Docker/Kubernetes client access, while agent-runner already runs this exact shape of thing via `internal/acpbridge/server.go`, a plain `net/http` + `coder/websocket` handler exposed today at `/agent-bridge/ws`. A sibling `GET /environments/{id}/terminal/ws` is added, authenticated via a short-lived signed ticket minted by `services/api` (agent-runner has no user-session concept today, only machine keys). It calls `EnvironmentBackend.StreamExecEnvironment(backendRef, ["/bin/bash"], ...)` with a `Tty: true` PTY — the Docker side via `ExecAttach`/`ContainerExecResize` (extending `Manager.Exec`'s existing hijacked-stream pattern), the Kubernetes side reusing `k8s/manager.go`'s existing `remotecommand.NewSPDYExecutor`/`streamExec` machinery with a `TerminalSizeQueue`. A small new stdin/resize/stdout frame protocol carries the traffic — self-contained, nothing like it exists today.
+
+Caddy gets one more `handle_path` block, `/environments/*/terminal/ws`, in both `deploy/caddy/Caddyfile` and `deploy/helm/paca/files/Caddyfile`, identical in shape to the existing `/agent-bridge/ws` block — no new infrastructure needed for this phase. On the frontend, a new `xterm.js` + `xterm-addon-fit` component (new dependency; nothing comparable exists in the repo today) is mounted on the environment detail page.
+
+### Phase B — real SSH, layer 4
+
+**Revised twice from the original plan below — kept in the next two paragraphs as a record of what shipped first and why it changed, not the current design.** The original hard constraint still holds: Kubernetes `pods/exec` is SPDY, not a real TCP stream, so `ssh` cannot reach a Pod through the Kubernetes API. But that constraint only applies to the *k8s exec subresource* — it says nothing about a plain TCP dial against a real port a Pod is already listening on, and `internal/sandbox/k8s`'s own `CreateEnvironment`/`StartEnvironment` already dial a Pod's IP directly (for `goose serve`'s own HTTP port) with no Service object and no SPDY involved. That's the opening the design uses: a real `sshd` now runs inside every environment's own container/Pod (`services/agent-server/Dockerfile`'s baked-in `sshd_config`, started via `internal/sandbox/environmentssh.go`'s `BootstrapEnvironmentSSH`), decided purely by which port a client connects to (the truest form of "layer 4": zero SSH-protocol decoding in the router at all). A real client's full capabilities — agent forwarding, SFTP, further port-forwards, a real exit status — all just work, since the bytes are never touched by anything Paca owns. The cost, relative to the shared-single-port design further below, is one external port reserved per environment (`agentRunner.sshBastion.portRangeStart/End` in Helm, `SSH_BASTION_PORT_RANGE_START/_END` in Compose) rather than one port total — an explicit tradeoff, not an oversight: it's what lets routing be a raw port number instead of something that has to speak enough SSH to read a username first.
+
+**What's actually running today:** that dedicated port is published straight onto the environment's own container/Pod — a native Docker `-p` binding (`hostCfg.PortBindings`, bound to `0.0.0.0` so it's reachable from outside the Docker host), or a Kubernetes `NodePort` `Service` entry agent-runner creates itself at runtime (`ensureEnvironmentService`, `internal/sandbox/k8s/environment.go`) — see [Port Forwarding](#port-forwarding) below. `internal/sshbastion.Manager`/`internal/portrelay.Manager` (the in-process TCP relay this section originally shipped with, generalized once user-managed port forwards needed the same mechanism) has been removed outright: relaying bytes through agent-runner's own process turned out to be an unnecessary hop once the platform already controls how the container/Pod itself is created. A real ordering consequence: the SSH port must now be assigned *before* `CreateEnvironment` is even called, so it can be baked in as a published binding, rather than registered against an already-running container afterward. Every replica no longer needs to poll Postgres to decide whether it personally owns a given connection (`Manager.Reconcile`'s whole reason for existing) — the kernel/kube-proxy routing a client's connection to *some* replica no longer matters, since none of them relay anything; the connection goes straight to the container/Pod.
+
+Key management from Phase 1 carries over unchanged: `environment_ssh_keys`' rows are rendered into each environment's own `authorized_keys` (`internal/sandbox.SyncEnvironmentAuthorizedKeys`) on every Create/Start, and again immediately on an add/remove via a small internal endpoint (`POST /internal/environments/{id}/ssh-keys/sync`) `services/api`'s `AddSSHKey`/`DeleteSSHKey` call — so a key change on an already-running environment takes effect without waiting for its next restart. No private key material is ever generated or held by Paca — the same trust model as GitHub/GitLab deploy keys. `ssh_port` is assigned once per environment (mirroring the old `subdomain_slug`'s own "generated once, reused forever" lifecycle) and never reassigned across a stop/start cycle, so a user's `ssh -p <port>` invocation stays stable for that environment's whole life.
+
+**What shipped first, before either revision:** a bastion that **terminated SSH itself and re-dispatched to `StreamExecEnvironment`** — a protocol shim over the exec mechanism Phase A already built — authenticated by the connecting username (an environment's `subdomain_slug`) against `environment_ssh_keys`' fingerprints, all behind one shared port. It worked identically on Compose and Kubernetes with zero per-environment networking, at the cost of real-sshd behavior it simply never implemented: no agent forwarding, no SFTP, no port forwarding, and an approximated exit status (0 or 1 only, never a forwarded copy of the remote command's real `$?`). That gap — flagged from the start as "worth revisiting once actual SSH demand is observed" — is exactly what motivated the layer-4 relay design in the first paragraph above, itself later superseded by native publishing.
+
+---
+
+## Port Forwarding
+
+**What's actually running today** (this section originally described Caddy Admin API-driven subdomain routing — see the superseded design at the bottom of this section for why that was replaced outright, not just revised): a user can add any number of port forwards to a running environment — each naming which container port to expose (their dev server's own port, not necessarily any fixed convention) — mirroring the `environment_ssh_keys`/`environment_folders` CRUD shape exactly, one row per forward in a new `environment_port_forwards` table. This is the general-purpose sibling of Phase B's own auto-created SSH port: exactly one thing (`ssh_port`) is still auto-assigned without user action; every port forward is opt-in, added explicitly by the user from the environment's Connect page.
+
+Each forward is published the same way SSH is (see Phase B above) — a native Docker `-p` binding, or a Kubernetes `NodePort` `Service` entry — realized via `sandbox.EnvironmentConfig.PortMappings`, the full container-port → host-port set `EnvironmentBackend.CreateEnvironment`/`RestartEnvironmentPorts` bake in. `host_port` is assigned once agent-runner picks one from its own configured range (`agentRunner.portForward.portRangeStart/End` in Helm, `PORT_FORWARD_RANGE_START/_END` in Compose — a disjoint range from SSH's own so the two can never collide), the same race-safe single-`UPDATE ... RETURNING` pattern `AssignSSHPort` already established.
+
+**The one real constraint this design accepts, and why:** on Docker, a container's published ports are fixed at `ContainerCreate` time — there is no "add a `-p` to an already-running container" operation. So adding or removing a forward on a *running* Docker environment doesn't take effect until the user explicitly restarts it: `environments.ports_pending_restart` (set by `AddPortForward`/`DeletePortForward`, services/api's own bookkeeping, not agent-runner's) drives a "restart required" prompt on the Connect page, and confirming it stops the container, removes it, and recreates it from the *same* named volume — `RestartEnvironmentPorts` — so no data is lost, only whatever process was running gets interrupted. Kubernetes has no equivalent constraint: patching a `Service`'s `.spec.ports` is a live operation (`ensureEnvironmentService`, mirroring `scaleDeployment`'s own merge-patch pattern) that never touches the Pod at all, so the same "Restart" button on that backend completes instantly with zero downtime. A stopped environment's pending changes need no explicit action either way — `StartEnvironment` itself detects `ports_pending_restart` and calls the recreate path transparently instead of a plain start, since there's no live traffic on a stopped container to interrupt.
+
+`environments.sshBastionHost`/`environments.portForwardHost` (Helm) and `SSH_BASTION_HOST`/`PORT_FORWARD_HOST` (Compose) remain purely descriptive, unchanged in spirit from Phase B: `services/api` never itself publishes a port, it only echoes these back via `GET /environments/config` so the web app's Connect page can show a real `ssh -p <port> root@<host>` command and a real `<host>:<host_port>` address instead of a placeholder.
+
+**Superseded design (kept as a record, not current):** Caddy Admin API-driven dynamic route registration — not Docker labels (Compose-only, no Kubernetes equivalent) and not a per-environment Kubernetes Ingress (no Compose equivalent). Caddy's Admin API listened on `:2019` inside the `gateway` container on both deployment targets. Agent-runner, at the moment it transitioned an environment to `running`/`stopping`, called a small `internal/caddyadmin` client (`RegisterRoute(subdomain, upstreamAddr)` / `DeregisterRoute(subdomain)`) to inject or remove the route without a Caddy restart. It shipped simpler than originally planned — a single unconditional wildcard site block, `http://*.{$ENV_SUBDOMAIN_BASE}`, plain HTTP with no TLS/DNS-01 machinery at all, `ENV_SUBDOMAIN_BASE` as the one new env var, a wildcard Ingress rule alongside the main one on Kubernetes — but was replaced outright, not just simplified further, once the same reasoning that had already ruled out a shared-single-SSH-port design applied here too: some self-hosted deployments can only get one port forwarded through their router/firewall at all, which rules out a shared-port-plus-wildcard-DNS model entirely, and relaying every environment's HTTP traffic through Caddy (or agent-runner) added a hop the platform didn't need once it already controls container/Pod creation directly.
+
+---
+
+## Frontend
+
+- `apps/web/src/lib/environment-api.ts` — new file mirroring `agent-api.ts` exactly: types, REST functions, and `queryOptions(...)` factories (`environmentsQueryOptions`, `environmentQueryOptions`, `environmentFoldersQueryOptions`, `environmentSSHKeysQueryOptions`, `environmentPortForwardsQueryOptions`).
+- New routes mirroring the agents pattern: `src/routes/_authenticated/projects/$projectId/environments/index.tsx` (list) and `.../environments/$environmentId/index.tsx` (detail — tabs Overview / Folders only), plus a dedicated `.../environments/$environmentId/connect.tsx` route (AWS EC2-style "Connect" page, reached via a button on the detail page's header, not a tab on it) and `.../terminal.tsx` (full-page browser terminal, opens in a new tab). `src/components/projects/environments/environment-detail.tsx`, `environment-connect.tsx`, and `environment-create-dialog.tsx` mirror `agent-detail.tsx` / `create-agent-dialog.tsx`. The Connect page has three tabs: "Connect in web app" (opens the full-page terminal), "Connect via SSH" (public-key management, moved here from what was originally planned as a standalone SSH Keys tab, plus the real `ssh -p <port> root@<host>` command once Phase B's port is assigned), and "Port forwards" (add/remove forwards, restart-to-apply prompt — see [Port Forwarding](#port-forwarding)).
+- `environment-create-dialog.tsx`'s image field defaults to "Use default (agent-server)" — a plain create-environment call with no `image` set — with an optional advanced toggle to supply a custom image reference. Most users should never need to touch it.
+- **Default Environment**: a `Select` added to `OverviewTab` in `agent-detail.tsx`, next to the existing `docker_enabled` `Switch`, using the same `useState`/save-mutation wiring, sourced from `environmentsQueryOptions(projectId)`. Hidden when the agent has no `projectId` (global agent).
+- **Environment + folder picker at chat start**: a sibling `useEnvironmentPicker(projectId, agentId)` hook next to `agent-picker.tsx`'s `useAgentPicker`, defaulting to the agent's `default_environment_id`, otherwise unselected (fully additive — no selection preserves today's ephemeral-per-conversation behavior unchanged). A second `Select` for folder appears once an environment with more than one folder is chosen, auto-selecting when there's exactly one. Both wire into `NewConversationThread` → `startChatSession(projectId, agentId, { message, environment_id, folder_id })`.
+- **xterm.js terminal**: `src/components/projects/environments/environment-terminal.tsx` (dependencies: `xterm`, `xterm-addon-fit`), filling its parent's full height — mounted full-page by `environment-terminal-page.tsx` (the Connect page's "web app" tab target), opening the Phase A WebSocket.
+- **i18n**: new `environments.*` strings in `src/i18n/locales/en/projects.json`, translated into every other locale directory at the same time — never left to `fallbackLng`.
+
+---
+
+## Phased Rollout
+
+**Phase 1 — static environments, browser terminal, folders, default-environment, SSH key management, both backends together.** Ships the full data model including `environment_ssh_keys`, the full agent-runner lifecycle (environments default to the platform's pinned `AGENT_SERVER_IMAGE`, no custom image required), the full `services/api` changes including SSH key CRUD, the browser terminal, and the full frontend including the SSH Keys tab. No subdomains, and no actual SSH login yet — a user can register keys in Phase 1, but nothing accepts an SSH connection until the Phase 3 bastion ships.
+
+Known risks entering Phase 1: the Docker host-port pool (100 ports, sized for ephemeral use) is under real pressure once long-lived environments hold ports indefinitely in local-dev host-port mode — unsolved here, flagged for implementation time; root-in-container is mitigated (cap-drop, PID limit) but not eliminated (seccomp/network-egress restriction deferred); Docker has no hard disk-quota primitive, so enforcement there is soft/advisory only; and there's no locking between two conversations attached to the same folder, so concurrent writes can race (a `convlock.Locks`-style per-`(environment_id, folder_id)` lock is the natural extension if this proves to matter in practice).
+
+**Phase 2 — subdomain routing, Compose and Helm together.** Originally shipped the Caddy Admin API design and the wildcard DNS/Ingress changes on both deployment targets, over plain HTTP. Superseded outright by user-managed port forwarding (see [Port Forwarding](#port-forwarding)) — a one-to-many `environment_port_forwards` CRUD, published natively per-environment rather than routed by hostname through a shared Caddy instance.
+
+**Phase 3 — real SSH, layer 4.** Ships a real `sshd` inside every environment (`services/agent-server/Dockerfile`, `internal/sandbox/environmentssh.go`), authenticating against the `environment_ssh_keys` rows and UI that already shipped in Phase 1. Revised twice: first from an initial protocol-shim-over-exec design to an in-process TCP relay (`internal/sshbastion.Manager`, see [Terminal / SSH Access](#terminal--ssh-access)'s own Phase B section) after the demand this doc originally asked to wait for actually showed up, then again — alongside Phase 2 — to native publishing once relaying turned out to be an unnecessary extra hop.
+
+**Phase 4 — native port publishing, replacing both the Phase 2 relay-free redesign and Phase 3's own TCP relay.** Removes `internal/sshbastion.Manager`/its later generalization `internal/portrelay.Manager` entirely. SSH and every user-added port forward alike are now published directly on the environment's own container/Pod — a Docker `-p` binding, or a Kubernetes `NodePort` `Service` `ensureEnvironmentService` creates and patches at runtime — with agent-runner's own role reduced to deciding *which host port maps to which container port*, never moving a byte of the actual traffic. Adds `environment_port_forwards` (the Phase 2 replacement), `environments.ports_pending_restart`, and the Docker-only "restart to apply" flow that constraint requires (Kubernetes needs no such flow — a `Service` port-list patch is already live).
+
+## Open Risks
+
+- Docker host-port pool capacity under long-lived environments (local-dev mode only) — this is the ephemeral-conversation port pool (`PORT_POOL_START/SIZE`), unrelated to the SSH/port-forward ranges, which are sized independently and only ever hand out a port when a user actually opts in.
+- Root-in-container posture for indefinite-lifetime workloads — hardened, not eliminated.
+- No hard disk quota on the Docker backend.
+- No cross-conversation locking on a shared folder.
+- SSH and every user-added port forward each reserve one external port from their own fixed-size range (`agentRunner.sshBastion`/`agentRunner.portForward.portRangeStart/End`) — sized generously, but a real cap unlike the shared-port design either replaced. On Kubernetes, a `NodePort` must additionally fall inside the cluster's own `--service-node-port-range`, an operator-configuration constraint this code doesn't cross-validate against.
+- On the Docker backend only, applying an added/removed port forward to a *running* environment requires an explicit restart (a full container stop/remove/recreate) — Docker has no "add a `-p` binding to a running container" operation. Surfaced as a clear "restart required" prompt, not silently applied or silently dropped, but still a real UX cost this design accepts rather than solves; Kubernetes has no equivalent cost (a `Service` port-list patch is live).
+- A static environment's `GOOSE_PROVIDER`/`GOOSE_MODEL`/API key are fixed once, by whichever agent's conversation is the first to actually attach — see "Conversation attach path" above. There's no UI or API to explicitly (re)configure or view an environment's currently-baked-in LLM provider, and no warning shown to a user attaching a second agent (with a different provider) to an already-configured environment; it silently keeps running under the first agent's config instead of switching or erroring.
+
+## Verification Plan
+
+- **agent-runner unit/integration**: extend the existing `internal/sandbox/docker` and `internal/sandbox/k8s` test suites with `environment_test.go` siblings covering create → start → stop → start (state survives) → delete, on both backends.
+- **End-to-end, Docker Compose**: bring up `deploy/docker-compose.dev.yml`, create an environment via the new API, confirm the container/volume persist across an explicit stop/start, and start two conversations against the same environment+folder sequentially to confirm the second sees files/processes left by the first — this validates the "continue after it finishes" requirement directly.
+- **End-to-end, Kubernetes**: the same flow against a local cluster (kind/minikube) with `SANDBOX_BACKEND=kubernetes`, confirming the Deployment+PVC survive a replica scale-down/up cycle.
+- **Terminal**: open the xterm.js UI against a running environment, start a long-lived process (`npm run dev`), close the tab, reopen it, and confirm the process is still running — proving it's a real container subprocess, not tied to the WebSocket connection's lifetime.
+- **Frontend**: walk the golden path (create environment → set as agent default → start new chat, confirm environment+folder pre-selected → send a message → confirm it lands in the right folder) and the override path (explicitly picking a different environment/folder at chat start).
+- **Migrations**: run `000042_add_environments.sql` against both a scratch (fresh) database and one seeded with an intermediate pre-consolidation schema, to confirm every column/index converges to the same final state either way — there's no down-migration or tracking table (see `database.RunMigrationsFS`), so idempotent convergence from *any* starting point is the actual correctness property to test, not just fresh-install correctness.
+- **Port forwarding, Docker**: create a running environment, confirm `ssh -p <port> root@<host>` works immediately (no restart needed — SSH is baked in at create time); add a port forward, confirm `ports_pending_restart` flips true and the assigned `host_port` shows up; click Restart, confirm the container's `BackendRef` changes, the new port actually forwards (`curl`/`nc` against `<host>:<host_port>`), and prior workspace files survive; delete the forward, confirm `ports_pending_restart` flips true again with no immediate effect until the next Restart/Start.
+- **Port forwarding, Kubernetes**: same flow against a local cluster, confirming the per-environment `NodePort` `Service` exists after create/first forward, that adding/removing a forward patches its `.spec.ports` live with **no** Pod restart (unlike the Docker case above), and that the Service is deleted alongside the Deployment/PVC on environment delete.

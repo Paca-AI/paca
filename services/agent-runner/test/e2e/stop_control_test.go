@@ -74,14 +74,15 @@ func TestStopControl(t *testing.T) {
 
 	sandboxMgr := newSandboxManager(t)
 	h := &handler.Handler{
-		Gate:          config.NewGate([]string{agentID.String()}),
-		AgentRepo:     postgres.NewAgentRepository(env.db),
-		ConvRepo:      postgres.NewConversationRepository(env.db),
-		Publisher:     messaging.NewPublisher(env.redisClient),
-		Executor:      executor.New(sandboxMgr, encryptor, executor.Options{Image: image}, log),
-		InFlight:      registry.New(),
-		ChatSandboxes: chatsandbox.New(),
-		Log:           log,
+		Gate:            config.NewGate([]string{agentID.String()}),
+		AgentRepo:       postgres.NewAgentRepository(env.db),
+		ConvRepo:        postgres.NewConversationRepository(env.db),
+		Publisher:       messaging.NewPublisher(env.redisClient),
+		Executor:        executor.New(sandboxMgr, postgres.NewEnvironmentRepository(env.db), postgres.NewConversationRepository(env.db), postgres.NewPortForwardRepository(env.db), encryptor, executor.Options{Image: image}, log),
+		InFlight:        registry.New(),
+		ChatSandboxes:   chatsandbox.New(),
+		EnvironmentRepo: postgres.NewEnvironmentRepository(env.db),
+		Log:             log,
 	}
 
 	trigger := agent.Trigger{

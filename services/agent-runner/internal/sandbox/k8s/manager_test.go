@@ -70,7 +70,7 @@ func TestWaitForPodIP_ReturnsAssignedIP(t *testing.T) {
 	const job = "paca-sbx-conv1"
 	m := managerWithPods("paca", podFixture("paca-sbx-conv1-x1", job, corev1.PodRunning, "10.0.0.5"))
 
-	podName, podIP, err := m.waitForPodIP(context.Background(), job)
+	podName, podIP, err := m.waitForPodIP(context.Background(), "job-name="+job)
 	if err != nil {
 		t.Fatalf("waitForPodIP: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestWaitForPodIP_FailsFastOnFailedPhase(t *testing.T) {
 	const job = "paca-sbx-conv2"
 	m := managerWithPods("paca", podFixture("paca-sbx-conv2-x1", job, corev1.PodFailed, ""))
 
-	_, _, err := m.waitForPodIP(context.Background(), job)
+	_, _, err := m.waitForPodIP(context.Background(), "job-name="+job)
 	if err == nil {
 		t.Fatal("waitForPodIP: expected an error for a Failed pod, got nil")
 	}
@@ -102,7 +102,7 @@ func TestWaitForPodIP_ReturnsContextErrorWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, _, err := m.waitForPodIP(ctx, job)
+	_, _, err := m.waitForPodIP(ctx, "job-name="+job)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("waitForPodIP with an already-cancelled context = %v, want context.Canceled", err)
 	}
@@ -145,6 +145,28 @@ func TestExitCodeFromExecErr_FalseForUnrelatedError(t *testing.T) {
 	_, ok := exitCodeFromExecErr(errors.New("connection refused"))
 	if ok {
 		t.Error("exitCodeFromExecErr: expected ok=false for an error that isn't a CodeExitError")
+	}
+}
+
+func TestSandboxSecurityContext_DropsAllAndAddsOnlyNarrowSet(t *testing.T) {
+	sc := sandboxSecurityContext()
+	if sc == nil || sc.Capabilities == nil {
+		t.Fatal("sandboxSecurityContext: expected a non-nil Capabilities block")
+	}
+	if len(sc.Capabilities.Drop) != 1 || sc.Capabilities.Drop[0] != "ALL" {
+		t.Errorf("sandboxSecurityContext Drop = %v, want [\"ALL\"]", sc.Capabilities.Drop)
+	}
+	want := map[corev1.Capability]bool{"CHOWN": true, "SETUID": true, "SETGID": true, "DAC_OVERRIDE": true, "FOWNER": true}
+	if len(sc.Capabilities.Add) != len(want) {
+		t.Errorf("sandboxSecurityContext Add = %v, want exactly %v", sc.Capabilities.Add, want)
+	}
+	for _, cap := range sc.Capabilities.Add {
+		if !want[cap] {
+			t.Errorf("sandboxSecurityContext Add contains unexpected capability %q", cap)
+		}
+	}
+	if sc.RunAsNonRoot != nil && *sc.RunAsNonRoot {
+		t.Error("sandboxSecurityContext must not force RunAsNonRoot — the sandbox needs to run as root")
 	}
 }
 
