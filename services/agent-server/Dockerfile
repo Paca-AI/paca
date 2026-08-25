@@ -113,7 +113,40 @@ RUN apt-get update \
 # recommends above being the clearest example already caught here.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ripgrep tree jq unzip zip less nano sqlite3 openssh-client python3-pip \
+       ripgrep tree jq unzip zip less nano sqlite3 openssh-client openssh-server python3-pip \
        build-essential postgresql-client shellcheck \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
+
+# Real sshd for static environments' layer-4 SSH access (see
+# docs/ai-agent/environment-management.md's "Terminal / SSH Access" Phase B
+# section and internal/sandbox/environmentssh.go, which starts this
+# process via ExecEnvironment once a static environment is running — never
+# on an ephemeral per-conversation sandbox, which has no use for it).
+# Everything here is static/identical across every environment; the two
+# genuinely per-environment pieces (the host key and authorized_keys) are
+# generated/written at runtime under the persisted workspace volume
+# instead of baked in here — see environmentssh.go's own doc comment for
+# why (Kubernetes: a stop/start cycle recreates the Pod and wipes anything
+# outside that volume; Docker: ContainerStop preserves the whole
+# filesystem regardless, so this only strictly matters on the k8s
+# backend, but both backends use the same path for one code path instead
+# of two).
+#
+# PermitRootLogin prohibit-password (not "yes"): only a registered public
+# key can log in, never a password — root is the container's only user
+# either way (see this Dockerfile's own doc comment above on why this
+# image runs as root), so this isn't a new privilege, just a new transport
+# to the one the browser terminal/exec already grants. UsePAM no avoids
+# pulling in PAM's account/session machinery for a single-user container
+# with no real accounts to manage.
+RUN mkdir -p /etc/ssh/sshd_config.d
+COPY <<'EOF' /etc/ssh/sshd_config.d/paca-environment.conf
+Port 2222
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+AuthorizedKeysFile /home/paca/workspaces/.ssh_authorized_keys
+HostKey /home/paca/workspaces/.ssh_host_keys/ssh_host_ed25519_key
+EOF

@@ -165,6 +165,9 @@
 				"committerEmailLabel": "Committer email",
 				"dockerEnabledLabel": "Docker access",
 				"dockerEnabledHint": "Give this agent a private Docker daemon inside its sandbox. Off by default — only enable it for agents that actually run Docker commands, since it adds startup time to every conversation.",
+				"defaultEnvironmentLabel": "Default Environment",
+				"defaultEnvironmentHint": "Attach this agent's conversations to a static environment instead of a fresh disposable sandbox each time.",
+				"noDefaultEnvironment": "No default (use a disposable sandbox)",
 				"saveChanges": "Save changes",
 				"saved": "Saved",
 				"saveFailed": "Failed to save. Please try again.",
@@ -330,6 +333,190 @@
 			"attachmentAriaLabel": "{{type}} attachment",
 			"attachmentAriaLabelError": "{{type}} attachment, upload failed",
 			"attachmentAriaLabelUploading": "{{type}} attachment, uploading"
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "Creating",
+			"running": "Running",
+			"stopping": "Stopping",
+			"stopped": "Stopped",
+			"suspended": "Suspended",
+			"error": "Error",
+			"deleting": "Deleting"
+		},
+		"page": {
+			"title": "Environments",
+			"subtitle": "Named, long-lived sandboxes your agents can attach to across conversations",
+			"newEnvironment": "New Environment",
+			"empty": {
+				"title": "No environments yet",
+				"description": "Create a static environment to keep files and background processes running across conversations, instead of a fresh disposable sandbox each time.",
+				"createFirstEnvironment": "Create your first environment"
+			}
+		},
+		"createDialog": {
+			"title": "Create Environment",
+			"description": "A named, long-lived sandbox your agents can attach to.",
+			"nameLabel": "Name",
+			"namePlaceholder": "staging",
+			"advanced": "Advanced",
+			"imageLabel": "Image",
+			"imagePlaceholder": "Use default (agent-server)",
+			"imageHint": "Most users should never need to change this — it defaults to the platform's pinned agent-server image.",
+			"createFailed": "Failed to create environment. Please try again.",
+			"cancel": "Cancel",
+			"creating": "Creating…",
+			"create": "Create Environment"
+		},
+		"picker": {
+			"placeholder": "Select environment…",
+			"temporary": "Temporary environment",
+			"createNew": "Create new environment…",
+			"folderPlaceholder": "Select a folder…",
+			"folderCreateNew": "Create new folder…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "Overview",
+				"folders": "Folders",
+				"portForwards": "Port forwards"
+			},
+			"overview": {
+				"connect": "Connect",
+				"start": "Start",
+				"stop": "Stop",
+				"delete": "Delete",
+				"nameLabel": "Name",
+				"backendLabel": "Backend",
+				"imageLabel": "Image",
+				"defaultImage": "Default (agent-server)",
+				"idleTimeoutLabel": "Idle timeout (minutes)",
+				"idleTimeoutHint": "The environment stops automatically after this many minutes without activity.",
+				"portsPendingRestart": "A port forward was added or removed. Restart the environment to apply it.",
+				"portsPendingRestartLink": "View port forwards",
+				"saveChanges": "Save changes",
+				"saved": "Saved",
+				"saveFailed": "Failed to save. Please try again.",
+				"deleteDialog": {
+					"title": "Delete {{name}}?",
+					"description": "This permanently deletes the environment, its container, and its volume. This action cannot be undone.",
+					"deleteFailed": "Failed to delete environment. Please try again.",
+					"cancel": "Cancel",
+					"delete": "Delete"
+				}
+			},
+			"folders": {
+				"count_one": "{{count}} folder configured",
+				"count_other": "{{count}} folders configured",
+				"addFolder": "Add folder",
+				"empty": {
+					"title": "No folders added",
+					"addFirstFolder": "Add your first folder"
+				},
+				"addDialog": {
+					"title": "Add Folder",
+					"description": "Add a working directory this environment's agents can use.",
+					"pathLabel": "Path",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "Must be an absolute path.",
+					"browse": "Browse…",
+					"browsing": {
+						"root": "workspace root",
+						"empty": "This folder is empty",
+						"notRunning": "Start the environment to browse its files.",
+						"useThisFolder": "Use this folder"
+					},
+					"addFailed": "Failed to add folder. Please try again.",
+					"cancel": "Cancel",
+					"addFolder": "Add folder"
+				}
+			},
+			"portForwards": {
+				"description": "Expose any port inside this environment — your own dev server, most commonly — at a dedicated address.",
+				"count_one": "{{count}} port forward",
+				"count_other": "{{count}} port forwards",
+				"add": "Add port forward",
+				"containerPort": "Container port {{port}}",
+				"unassigned": "Not assigned yet",
+				"restart": "Restart",
+				"pendingRestartRunning": "A port forward was added or removed. Restart the environment to apply it.",
+				"pendingRestartStopped": "A port forward was added or removed. It will be applied the next time this environment starts.",
+				"empty": {
+					"title": "No port forwards yet",
+					"addFirst": "Add a port forward"
+				},
+				"addDialog": {
+					"title": "Add port forward",
+					"description": "Expose a container port on a dedicated external port. Applying this requires a restart if the environment is already running.",
+					"portLabel": "Container port",
+					"portHint": "The port your process listens on inside the environment (e.g. 3000).",
+					"labelLabel": "Label",
+					"labelPlaceholder": "Dev server",
+					"cancel": "Cancel",
+					"add": "Add"
+				},
+				"restartDialog": {
+					"title": "Restart environment?",
+					"description": "This restarts the environment's container to apply the updated port forwards. Any running process inside it will be interrupted; your files are safe — they live on a separate volume.",
+					"cancel": "Cancel",
+					"confirm": "Restart"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "Replace <bastion-host> with this deployment's configured SSH bastion address.",
+				"connectUnavailable": "SSH access isn't configured on this deployment yet.",
+				"count_one": "{{count}} key configured",
+				"count_other": "{{count}} keys configured",
+				"addKey": "Add key",
+				"empty": {
+					"title": "No SSH keys added",
+					"addFirst": "Add your first key"
+				},
+				"addDialog": {
+					"title": "Add SSH Key",
+					"description": "Authorize a public key for pair-programming access over SSH.",
+					"generateHint": "Don't have an SSH key yet? Generate one:",
+					"generateFollowup": "Then paste the contents of ~/.ssh/id_ed25519.pub below.",
+					"labelLabel": "Label",
+					"labelPlaceholder": "My laptop",
+					"publicKeyLabel": "Public key",
+					"cancel": "Cancel",
+					"addKey": "Add key"
+				}
+			},
+			"terminal": {
+				"notRunning": "Start the environment to open a terminal.",
+				"connecting": "Connecting…",
+				"connected": "Connected",
+				"connectionFailed": "Connection failed",
+				"disconnected": "Disconnected"
+			}
+		},
+		"connect": {
+			"title": "Connect to {{name}}",
+			"copy": "Copy",
+			"copied": "Copied",
+			"tabs": {
+				"webApp": "Connect in web app",
+				"ssh": "Connect via SSH"
+			},
+			"webApp": {
+				"description": "Connect using an in-browser terminal — no local SSH client or key required.",
+				"connect": "Connect",
+				"notRunning": "Start the environment before connecting.",
+				"hint": "Opens in a new full-page tab.",
+				"pageTitle": "{{name}} — Terminal",
+				"pageTitleLoading": "Terminal",
+				"closeTab": "Close"
+			},
+			"ssh": {
+				"step1Title": "Add a public key",
+				"step1Description": "Register the public key of the SSH key pair you want to connect with.",
+				"step2Title": "Connect from your terminal",
+				"step2Description": "Run this command from your terminal:",
+				"notRunning": "Start the environment before connecting."
+			}
 		}
 	},
 	"docs": {

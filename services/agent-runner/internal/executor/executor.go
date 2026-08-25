@@ -15,6 +15,7 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/acp"
 	"github.com/Paca-AI/agent-runner/internal/agent"
 	"github.com/Paca-AI/agent-runner/internal/chatsandbox"
+	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 	"github.com/Paca-AI/agent-runner/internal/secret"
 )
@@ -75,20 +76,43 @@ type Options struct {
 // concurrently for different conversations, since each gets its own
 // sandbox and acp.Client).
 type Executor struct {
-	sandboxMgr sandbox.Backend
-	encryptor  *secret.Encryptor
-	opts       Options
-	log        *slog.Logger
+	// sandboxMgr is a sandbox.FullBackend, not a concrete implementation,
+	// so the same Executor code drives either the Docker backend
+	// (internal/sandbox/docker.Manager) or the Kubernetes backend
+	// (internal/sandbox/k8s.Manager) depending on which one main.go wires
+	// up. Widened from sandbox.Backend to sandbox.FullBackend so
+	// coldStartEnvironment can call StartEnvironment directly — backward
+	// compatible, since FullBackend embeds Backend (see that interface's
+	// own doc comment).
+	sandboxMgr sandbox.FullBackend
+	// envRepo resolves a static environment's row for coldStartEnvironment
+	// — nil in tests/tooling that never attach a conversation to an
+	// environment (trigger.EnvironmentID stays nil in that case, so
+	// coldStartEnvironment, the only reader of this field, is never
+	// reached).
+	envRepo *postgres.EnvironmentRepository
+	// convRepo persists/reads a conversation's goose ACP sessionId — see
+	// attachEnvironmentSession's own doc comment. nil in the same
+	// tests/tooling envRepo's own doc comment describes; attachEnvironmentSession
+	// falls back to a fresh session/new every turn when nil, exactly the
+	// old (pre-LoadSession) behavior, rather than panicking on a nil repo.
+	convRepo *postgres.ConversationRepository
+	// portForwardRepo lets environmentPortMappings read an environment's
+	// already-assigned port forwards, alongside its own SSHPort field, so a
+	// mid-attach container recreate (recreateEnvironmentIfMissingEnv) never
+	// silently drops them — see that method's own doc comment. Same
+	// nil-safety convention as envRepo/convRepo.
+	portForwardRepo *postgres.PortForwardRepository
+	encryptor       *secret.Encryptor
+	opts            Options
+	log             *slog.Logger
 }
 
-// New builds an Executor sharing the given sandbox backend and decryptor
-// across every conversation it runs. sandboxMgr is a sandbox.Backend, not a
-// concrete implementation, so the same Executor code drives either the
-// Docker backend (internal/sandbox/docker.Manager) or the Kubernetes-Job
-// backend (internal/sandbox/k8s.Manager) depending on which one main.go
-// wires up.
-func New(sandboxMgr sandbox.Backend, encryptor *secret.Encryptor, opts Options, log *slog.Logger) *Executor {
-	return &Executor{sandboxMgr: sandboxMgr, encryptor: encryptor, opts: opts, log: log}
+// New builds an Executor sharing the given sandbox backend, environment,
+// conversation, and port-forward repositories, and decryptor across every
+// conversation it runs.
+func New(sandboxMgr sandbox.FullBackend, envRepo *postgres.EnvironmentRepository, convRepo *postgres.ConversationRepository, portForwardRepo *postgres.PortForwardRepository, encryptor *secret.Encryptor, opts Options, log *slog.Logger) *Executor {
+	return &Executor{sandboxMgr: sandboxMgr, envRepo: envRepo, convRepo: convRepo, portForwardRepo: portForwardRepo, encryptor: encryptor, opts: opts, log: log}
 }
 
 // Result is what one turn produced. Handle/Client/SessionID are always
@@ -159,6 +183,23 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 	if resume != nil {
 		handle, client, sessionID = resume.Handle, resume.Client, resume.SessionID
 		message = trigger.Message
+	} else if trigger.EnvironmentID != nil {
+		// A static environment's conversations never populate ChatSandboxes
+		// in the first place (see handler.Handler.keepSandboxAlive's own
+		// EnvironmentID guard), so resume above is always nil here — every
+		// turn re-attaches fresh via coldStartEnvironment against the
+		// already-running container instead, exactly as cheap as an
+		// ordinary cold start (see
+		// docs/ai-agent/environment-management.md's "no new in-memory
+		// registry" design choice). No sandbox.Handle exists for this
+		// path — handle stays nil, so Result.Handle stays nil too; there's
+		// nothing for the caller's teardown path to Stop.
+		var err error
+		client, sessionID, err = e.coldStartEnvironment(ctx, turnCtx, cfg, trigger)
+		if err != nil {
+			return Result{}, err
+		}
+		message = buildInitialMessage(trigger)
 	} else {
 		fileSkills := prepareFileSkills(cfg.Skills)
 
@@ -209,32 +250,9 @@ func (e *Executor) StopSandbox(ctx context.Context, h *sandbox.Handle) error {
 // ctx bounds sandboxMgr.Start (unaffected by the turn timeout); turnCtx
 // bounds Initialize/NewSession, same as it bounds Prompt in Run.
 func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger, fileSkills []agent.Skill) (*sandbox.Handle, *acp.Client, string, error) {
-	apiKey, err := e.encryptor.Decrypt(cfg.LLMAPIKeySecret)
+	containerEnv, err := e.buildAgentContainerEnv(cfg)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("executor: decrypt llm api key: %w", err)
-	}
-
-	gooseProvider, apiKeyEnvVar := resolveProviderEnv(cfg.LLMProvider)
-	containerEnv := map[string]string{
-		"GOOSE_PROVIDER": gooseProvider,
-		"GOOSE_MODEL":    cfg.LLMModel,
-		apiKeyEnvVar:     apiKey,
-	}
-	if cfg.LLMBaseURL != "" {
-		// Only meaningful for the openai-routed fallback path (see
-		// resolveProviderEnv) — OPENAI_HOST is the env var confirmed
-		// against a real goose serve in the protocol spike. A custom base
-		// URL for a *named* provider (e.g. a private Anthropic-compatible
-		// gateway) isn't wired here; extend this once that case is real.
-		containerEnv["OPENAI_HOST"] = cfg.LLMBaseURL
-	}
-
-	for _, ev := range cfg.EnvVars {
-		val, err := e.encryptor.Decrypt(ev.EncryptedValue)
-		if err != nil {
-			return nil, nil, "", fmt.Errorf("executor: decrypt env var %q: %w", ev.Key, err)
-		}
-		containerEnv[ev.Key] = val
+		return nil, nil, "", err
 	}
 
 	// Built before Start, not inline in the NewSession call below, so its
@@ -325,6 +343,302 @@ func (e *Executor) coldStart(ctx, turnCtx context.Context, cfg agent.Config, tri
 	}
 
 	return handle, client, sessionID, nil
+}
+
+// buildAgentContainerEnv resolves the container-level environment
+// variables derived from cfg's LLM/env-var configuration —
+// GOOSE_PROVIDER/GOOSE_MODEL/the provider's own API key env var,
+// OPENAI_HOST for a custom base URL, and every one of cfg.EnvVars,
+// decrypted. Shared between coldStart (a fresh disposable sandbox, applied
+// once) and coldStartEnvironment (re-applied on every StartEnvironment
+// call against a static environment's already-running container — see
+// sandbox.EnvironmentConfig's doc comment on why every field it carries,
+// Env included, must be safe to re-apply on every start, not just the
+// first).
+func (e *Executor) buildAgentContainerEnv(cfg agent.Config) (map[string]string, error) {
+	apiKey, err := e.encryptor.Decrypt(cfg.LLMAPIKeySecret)
+	if err != nil {
+		return nil, fmt.Errorf("executor: decrypt llm api key: %w", err)
+	}
+
+	gooseProvider, apiKeyEnvVar := resolveProviderEnv(cfg.LLMProvider)
+	containerEnv := map[string]string{
+		"GOOSE_PROVIDER": gooseProvider,
+		"GOOSE_MODEL":    cfg.LLMModel,
+		apiKeyEnvVar:     apiKey,
+	}
+	if cfg.LLMBaseURL != "" {
+		// Only meaningful for the openai-routed fallback path (see
+		// resolveProviderEnv) — OPENAI_HOST is the env var confirmed
+		// against a real goose serve in the protocol spike. A custom base
+		// URL for a *named* provider (e.g. a private Anthropic-compatible
+		// gateway) isn't wired here; extend this once that case is real.
+		containerEnv["OPENAI_HOST"] = cfg.LLMBaseURL
+	}
+
+	for _, ev := range cfg.EnvVars {
+		val, err := e.encryptor.Decrypt(ev.EncryptedValue)
+		if err != nil {
+			return nil, fmt.Errorf("executor: decrypt env var %q: %w", ev.Key, err)
+		}
+		containerEnv[ev.Key] = val
+	}
+	return containerEnv, nil
+}
+
+// environmentPortMappings reassembles env's currently-published port set —
+// its own SSHPort, if assigned, plus every already-assigned port forward —
+// so coldStartEnvironment's StartEnvironment call can pass it straight
+// through as sandbox.EnvironmentConfig.PortMappings.
+//
+// This exists because of a real gap: docker.Manager.StartEnvironment's
+// recreateEnvironmentIfMissingEnv can recreate the environment's container
+// mid-attach (backfilling GOOSE_PROVIDER onto one handleCreateEnvironment
+// created, which never bakes in agent-specific env — see that method's own
+// doc comment), and Docker fixes a container's port bindings at create
+// time. Before this existed, that call passed no PortMappings at all, so
+// the very first conversation to attach to a freshly-created environment
+// would silently strip its SSH (and any port-forward) binding the moment
+// this backfill fired — the container kept running and the environment
+// stayed reachable over ACP, so nothing about it looked broken, only SSH
+// silently stopped working. handleStartEnvironment's own HTTP path
+// (internal/acpbridge/environment_handlers.go) already computes this same
+// set for the identical reason on its own recreate path
+// (recreateGoneEnvironmentContainer's self-heal); this is coldStartEnvironment's
+// side of the same fix.
+//
+// Deliberately read-only: unlike acpbridge.Server.buildPortMappings (which
+// this mirrors), a port forward with no host_port yet is left alone here
+// rather than assigned one — auto-assigning a new port is an explicit
+// user-facing action (adding a port forward), not something a routine
+// conversation-attach turn should ever decide on its own.
+func (e *Executor) environmentPortMappings(ctx context.Context, env *postgres.Environment) []sandbox.PortMapping {
+	var mappings []sandbox.PortMapping
+	if env.SSHPort != nil {
+		mappings = append(mappings, sandbox.PortMapping{ContainerPort: sandbox.EnvironmentSSHPort, HostPort: *env.SSHPort})
+	}
+	if e.portForwardRepo == nil {
+		return mappings
+	}
+	forwards, err := e.portForwardRepo.ListForEnvironment(ctx, env.ID)
+	if err != nil {
+		e.log.Warn("executor: failed to list port forwards while reapplying environment port bindings",
+			"environment_id", env.ID, "error", err)
+		return mappings
+	}
+	for _, pf := range forwards {
+		if pf.HostPort == nil {
+			continue
+		}
+		mappings = append(mappings, sandbox.PortMapping{ContainerPort: pf.ContainerPort, HostPort: *pf.HostPort})
+	}
+	return mappings
+}
+
+// coldStartEnvironment attaches trigger to trigger.EnvironmentID's already-
+// created static environment instead of spinning up a fresh disposable
+// sandbox — the environment counterpart to coldStart. ctx bounds
+// StartEnvironment (unaffected by the turn timeout); turnCtx bounds
+// Initialize/NewSession, same as coldStart.
+//
+// Unlike coldStart, this never creates anything — CreateEnvironment runs
+// exactly once per environment, ever, driven explicitly by a user action
+// via services/api's internal HTTP call into
+// internal/acpbridge/environment_handlers.go, never lazily from a
+// conversation attach. This only starts (idempotently) an environment that
+// already exists, and attaches a fresh ACP session at trigger.Workdir
+// instead of the ephemeral sandboxWorkdir constant.
+//
+// No file-skills/.goosehints delivery happens here, unlike coldStart —
+// both are written relative to the ACP session's own cwd (see skills.go's
+// skillsRelDir and hints.go's own doc comment on why .goosehints must live
+// in the sandbox's cwd to be picked up), which for an environment is
+// trigger.Workdir, i.e. inside a folder's own git checkout — dropping
+// agent-runner-managed files straight into a user's repo working tree is a
+// real design question (accidental commits, collision with the repo's own
+// content) that docs/ai-agent/environment-management.md's Phase 1 scope
+// doesn't resolve, so it's deliberately left undone here rather than
+// guessed at. Flagged as an open follow-up, not an oversight.
+func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger) (*acp.Client, string, error) {
+	if e.envRepo == nil {
+		return nil, "", fmt.Errorf("executor: no environment repository configured")
+	}
+	if trigger.EnvironmentID == nil {
+		return nil, "", fmt.Errorf("executor: coldStartEnvironment called without an environment_id")
+	}
+	if trigger.Workdir == nil || *trigger.Workdir == "" {
+		return nil, "", fmt.Errorf("executor: environment %s attach requires a workdir", *trigger.EnvironmentID)
+	}
+	environmentID := *trigger.EnvironmentID
+
+	env, err := e.envRepo.FindEnvironmentByID(ctx, environmentID)
+	if err != nil {
+		return nil, "", fmt.Errorf("executor: find environment %s: %w", environmentID, err)
+	}
+	// No lazy creation here — see the doc comment above. A never-created
+	// (BackendRef nil) or explicitly broken (error/deleting) environment
+	// fails this turn clearly rather than silently doing nothing useful.
+	if env.BackendRef == nil || *env.BackendRef == "" || env.Status == "error" || env.Status == "deleting" {
+		return nil, "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
+	}
+
+	secretKey, err := e.encryptor.Decrypt(env.SecretKeyEncrypted)
+	if err != nil {
+		return nil, "", fmt.Errorf("executor: decrypt environment %s secret key: %w", environmentID, err)
+	}
+
+	containerEnv, err := e.buildAgentContainerEnv(cfg)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Git identity has no dedicated EnvironmentConfig field (unlike
+	// sandbox.Config.GitCommitterName/Email) — folded into the generic Env
+	// map instead, under the exact same GIT_AUTHOR_*/GIT_COMMITTER_* names
+	// both docker.Manager and k8s.Manager already set from those dedicated
+	// fields for an ephemeral sandbox (see internal/sandbox/docker/manager.go),
+	// so a static environment's container ends up with the same git
+	// identity an ephemeral one would have gotten.
+	gitName := cfg.GitCommitterName
+	if gitName == "" {
+		gitName = "paca-agent"
+	}
+	gitEmail := cfg.GitCommitterEmail
+	if gitEmail == "" {
+		gitEmail = "280579135+paca-agent@users.noreply.github.com"
+	}
+	containerEnv["GIT_AUTHOR_NAME"] = gitName
+	containerEnv["GIT_AUTHOR_EMAIL"] = gitEmail
+	containerEnv["GIT_COMMITTER_NAME"] = gitName
+	containerEnv["GIT_COMMITTER_EMAIL"] = gitEmail
+
+	mcpServers := e.buildMCPServers(trigger, cfg)
+	for _, s := range mcpServers {
+		if s.Type != acp.McpServerStdio || s.Env == nil {
+			continue
+		}
+		for _, ev := range *s.Env {
+			containerEnv[ev.Name] = ev.Value
+		}
+	}
+
+	image := ""
+	if env.Image != nil {
+		image = *env.Image
+	}
+
+	// Always calls StartEnvironment, even if env.Status already says
+	// "running" — deliberate, not a bug: it's the only way to get a
+	// guaranteed-fresh, reachable BaseURL back (never persisted — see
+	// sandbox.EnvironmentHandle's doc comment), and it self-heals a stale
+	// "running" DB status if the container died externally. Both backend
+	// implementations tolerate this (idempotent start) — see
+	// docs/ai-agent/environment-management.md's "Conversation attach path".
+	handle, err := e.sandboxMgr.StartEnvironment(ctx, *env.BackendRef, sandbox.EnvironmentConfig{
+		EnvironmentID: environmentID.String(),
+		Image:         image,
+		Env:           containerEnv,
+		CPULimit:      env.CPULimit,
+		MemoryLimit:   env.MemoryLimit,
+		DiskLimitGB:   env.DiskLimitGB,
+		SecretKey:     secretKey,
+		PortMappings:  e.environmentPortMappings(ctx, env),
+	})
+	if err != nil {
+		errMsg := err.Error()
+		if updErr := e.envRepo.UpdateEnvironmentStatus(context.WithoutCancel(ctx), environmentID, "error", nil, &errMsg); updErr != nil {
+			e.log.Warn("executor: failed to record environment error status",
+				"environment_id", environmentID, "error", updErr)
+		}
+		return nil, "", fmt.Errorf("executor: start environment %s: %w", environmentID, err)
+	}
+
+	// handle.BackendRef only differs from *env.BackendRef when the docker
+	// backend had to recreate a container removed outside of Paca (see
+	// docker.Manager.recreateGoneEnvironmentContainer's doc comment) — pass
+	// it through non-nil so UpdateEnvironmentStatus's COALESCE persists the
+	// new value; nil (leave backend_ref as-is) on the ordinary path where
+	// nothing changed.
+	var newBackendRef *string
+	if handle.BackendRef != "" && handle.BackendRef != *env.BackendRef {
+		newBackendRef = &handle.BackendRef
+	}
+	if err := e.envRepo.UpdateEnvironmentStatus(ctx, environmentID, "running", newBackendRef, nil); err != nil {
+		e.log.Warn("executor: failed to record environment running status",
+			"environment_id", environmentID, "error", err)
+	}
+	if err := e.envRepo.TouchEnvironment(ctx, environmentID); err != nil {
+		e.log.Warn("executor: failed to touch environment", "environment_id", environmentID, "error", err)
+	}
+
+	client := acp.NewClient(handle.BaseURL, secretKey, nil)
+	if err := client.Initialize(turnCtx); err != nil {
+		return nil, "", fmt.Errorf("executor: acp initialize (environment %s): %w", environmentID, err)
+	}
+
+	sessionID, err := e.attachEnvironmentSession(turnCtx, client, trigger.ConversationID, *trigger.Workdir, mcpServers)
+	if err != nil {
+		// Same reasoning as coldStart's matching branch: Initialize above
+		// already started client's connection-scoped SSE reader goroutine,
+		// so it must be closed here rather than dropped.
+		client.Close()
+		return nil, "", fmt.Errorf("executor: acp session attach (environment %s): %w", environmentID, err)
+	}
+
+	return client, sessionID, nil
+}
+
+// attachEnvironmentSession gives an environment-backed conversation goose's
+// own conversation memory back across turns, instead of the blank-context
+// session/new call every one of its turns used before this existed: if a
+// prior turn already recorded an acp_session_id for conversationID (see
+// convRepo.SetACPSessionID below), this resumes it via session/load — per
+// the ACP spec (and verified directly against a real goose serve instance,
+// not assumed — see acp.Client.LoadSession's own doc comment), the Agent
+// replays the session's entire prior history into its own context before
+// this returns, so goose actually remembers everything this conversation
+// has ever said, not just the single message the current turn is sending.
+//
+// Falls back to a fresh session/new (persisting the new id for next time)
+// whenever there's no stored session yet — this conversation's very first
+// environment turn, or convRepo is nil (see Executor's own doc comment on
+// that field) — or the stored one no longer resolves. That second case is
+// expected to happen sometimes, not a bug of its own: docker.Manager.
+// recreateGoneEnvironmentContainer's self-heal path shares the environment's
+// persisted workspace volume with whatever container preceded it, but
+// starts goose's own on-disk session store (outside that volume) empty, so
+// a session recorded before a container recreation is gone for good. A
+// stale session is treated the same as no session at all — logged, not
+// fatal — since a fresh session is always a safe, working fallback; the
+// only thing lost is history a container recreation had already made
+// unrecoverable, never a reason to fail the turn outright.
+func (e *Executor) attachEnvironmentSession(ctx context.Context, client *acp.Client, conversationID uuid.UUID, workdir string, mcpServers []acp.MCPServerConfig) (string, error) {
+	if e.convRepo != nil {
+		stored, err := e.convRepo.GetACPSessionID(ctx, conversationID)
+		if err != nil {
+			e.log.Warn("executor: failed to look up stored acp session id, starting a fresh session",
+				"conversation_id", conversationID, "error", err)
+		} else if stored != "" {
+			if loadErr := client.LoadSession(ctx, stored, workdir, mcpServers); loadErr == nil {
+				return stored, nil
+			} else {
+				e.log.Warn("executor: failed to resume stored acp session, starting a fresh session",
+					"conversation_id", conversationID, "session_id", stored, "error", loadErr)
+			}
+		}
+	}
+
+	sessionID, err := client.NewSession(ctx, workdir, mcpServers)
+	if err != nil {
+		return "", err
+	}
+	if e.convRepo != nil {
+		if err := e.convRepo.SetACPSessionID(ctx, conversationID, sessionID); err != nil {
+			e.log.Warn("executor: failed to persist new acp session id",
+				"conversation_id", conversationID, "session_id", sessionID, "error", err)
+		}
+	}
+	return sessionID, nil
 }
 
 // pacaMCPBinPath is the absolute path to the Paca MCP server's own

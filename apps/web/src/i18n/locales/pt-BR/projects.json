@@ -165,6 +165,9 @@
 				"committerEmailLabel": "E-mail do committer",
 				"dockerEnabledLabel": "Acesso ao Docker",
 				"dockerEnabledHint": "Concede a este agente um daemon Docker privado dentro do seu sandbox. Desativado por padrão — ative apenas para agentes que realmente executam comandos Docker, pois isso adiciona tempo de inicialização a cada conversa.",
+				"defaultEnvironmentLabel": "Ambiente padrão",
+				"defaultEnvironmentHint": "Conecta as conversas deste agente a um ambiente estático em vez de um sandbox descartável novo a cada vez.",
+				"noDefaultEnvironment": "Nenhum padrão (usar sandbox descartável)",
 				"saveChanges": "Salvar alterações",
 				"saved": "Salvo",
 				"saveFailed": "Falha ao salvar. Tente novamente.",
@@ -330,6 +333,190 @@
 			"attachmentAriaLabel": "Anexo {{type}}",
 			"attachmentAriaLabelError": "Anexo {{type}}, falha no upload",
 			"attachmentAriaLabelUploading": "Anexo {{type}}, enviando"
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "Criando",
+			"running": "Em execução",
+			"stopping": "Parando",
+			"stopped": "Parado",
+			"suspended": "Suspenso",
+			"error": "Erro",
+			"deleting": "Excluindo"
+		},
+		"page": {
+			"title": "Ambientes",
+			"subtitle": "Sandboxes nomeados e de longa duração aos quais seus agentes podem se conectar entre conversas",
+			"newEnvironment": "Novo ambiente",
+			"empty": {
+				"title": "Ainda não há ambientes",
+				"description": "Crie um ambiente estático para manter arquivos e processos em segundo plano ativos entre conversas, em vez de um sandbox descartável a cada vez.",
+				"createFirstEnvironment": "Crie seu primeiro ambiente"
+			}
+		},
+		"createDialog": {
+			"title": "Criar ambiente",
+			"description": "Um sandbox nomeado e de longa duração ao qual seus agentes podem se conectar.",
+			"nameLabel": "Nome",
+			"namePlaceholder": "staging",
+			"advanced": "Avançado",
+			"imageLabel": "Imagem",
+			"imagePlaceholder": "Usar padrão (agent-server)",
+			"imageHint": "A maioria dos usuários nunca precisa alterar isso — o padrão é a imagem agent-server fixada pela plataforma.",
+			"createFailed": "Falha ao criar o ambiente. Tente novamente.",
+			"cancel": "Cancelar",
+			"creating": "Criando…",
+			"create": "Criar ambiente"
+		},
+		"picker": {
+			"placeholder": "Selecionar ambiente…",
+			"temporary": "Ambiente temporário",
+			"createNew": "Criar novo ambiente…",
+			"folderPlaceholder": "Selecione uma pasta…",
+			"folderCreateNew": "Criar nova pasta…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "Visão geral",
+				"folders": "Pastas",
+				"portForwards": "Encaminhamentos de porta"
+			},
+			"overview": {
+				"connect": "Conectar",
+				"start": "Iniciar",
+				"stop": "Parar",
+				"delete": "Excluir",
+				"nameLabel": "Nome",
+				"backendLabel": "Backend",
+				"imageLabel": "Imagem",
+				"defaultImage": "Padrão (agent-server)",
+				"idleTimeoutLabel": "Tempo limite de inatividade (minutos)",
+				"idleTimeoutHint": "O ambiente para automaticamente após esse número de minutos sem atividade.",
+				"portsPendingRestart": "Um encaminhamento de porta foi adicionado ou removido. Reinicie o ambiente para aplicá-lo.",
+				"portsPendingRestartLink": "Ver encaminhamentos de porta",
+				"saveChanges": "Salvar alterações",
+				"saved": "Salvo",
+				"saveFailed": "Falha ao salvar. Tente novamente.",
+				"deleteDialog": {
+					"title": "Excluir {{name}}?",
+					"description": "Isso exclui permanentemente o ambiente, seu contêiner e seu volume. Esta ação não pode ser desfeita.",
+					"deleteFailed": "Falha ao excluir o ambiente. Tente novamente.",
+					"cancel": "Cancelar",
+					"delete": "Excluir"
+				}
+			},
+			"folders": {
+				"count_one": "{{count}} pasta configurada",
+				"count_other": "{{count}} pastas configuradas",
+				"addFolder": "Adicionar pasta",
+				"empty": {
+					"title": "Nenhuma pasta adicionada",
+					"addFirstFolder": "Adicione sua primeira pasta"
+				},
+				"addDialog": {
+					"title": "Adicionar pasta",
+					"description": "Adicione um diretório de trabalho que os agentes deste ambiente possam usar.",
+					"pathLabel": "Caminho",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "Deve ser um caminho absoluto.",
+					"browse": "Procurar…",
+					"browsing": {
+						"root": "raiz do workspace",
+						"empty": "Esta pasta está vazia",
+						"notRunning": "Inicie o ambiente para procurar seus arquivos.",
+						"useThisFolder": "Usar esta pasta"
+					},
+					"addFailed": "Falha ao adicionar a pasta. Tente novamente.",
+					"cancel": "Cancelar",
+					"addFolder": "Adicionar pasta"
+				}
+			},
+			"portForwards": {
+				"description": "Exponha qualquer porta dentro deste ambiente — geralmente seu próprio servidor de desenvolvimento — em um endereço dedicado.",
+				"count_one": "{{count}} encaminhamento de porta",
+				"count_other": "{{count}} encaminhamentos de porta",
+				"add": "Adicionar encaminhamento de porta",
+				"containerPort": "Porta do contêiner {{port}}",
+				"unassigned": "Ainda não atribuída",
+				"restart": "Reiniciar",
+				"pendingRestartRunning": "Um encaminhamento de porta foi adicionado ou removido. Reinicie o ambiente para aplicá-lo.",
+				"pendingRestartStopped": "Um encaminhamento de porta foi adicionado ou removido. Será aplicado na próxima vez que este ambiente for iniciado.",
+				"empty": {
+					"title": "Ainda não há encaminhamentos de porta",
+					"addFirst": "Adicione um encaminhamento de porta"
+				},
+				"addDialog": {
+					"title": "Adicionar encaminhamento de porta",
+					"description": "Exponha uma porta do contêiner em uma porta externa dedicada. Aplicar isso requer um reinício se o ambiente já estiver em execução.",
+					"portLabel": "Porta do contêiner",
+					"portHint": "A porta em que seu processo escuta dentro do ambiente (por exemplo, 3000).",
+					"labelLabel": "Rótulo",
+					"labelPlaceholder": "Servidor de desenvolvimento",
+					"cancel": "Cancelar",
+					"add": "Adicionar"
+				},
+				"restartDialog": {
+					"title": "Reiniciar o ambiente?",
+					"description": "Isso reinicia o contêiner do ambiente para aplicar os encaminhamentos de porta atualizados. Qualquer processo em execução dentro dele será interrompido; seus arquivos estão seguros — eles ficam em um volume separado.",
+					"cancel": "Cancelar",
+					"confirm": "Reiniciar"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "Substitua <bastion-host> pelo endereço do bastion SSH configurado nesta implantação.",
+				"connectUnavailable": "O acesso SSH ainda não está configurado nesta implantação.",
+				"count_one": "{{count}} chave configurada",
+				"count_other": "{{count}} chaves configuradas",
+				"addKey": "Adicionar chave",
+				"empty": {
+					"title": "Nenhuma chave SSH adicionada",
+					"addFirst": "Adicione sua primeira chave"
+				},
+				"addDialog": {
+					"title": "Adicionar chave SSH",
+					"description": "Autorize uma chave pública para acesso de pair programming via SSH.",
+					"generateHint": "Ainda não tem uma chave SSH? Gere uma:",
+					"generateFollowup": "Depois cole o conteúdo de ~/.ssh/id_ed25519.pub abaixo.",
+					"labelLabel": "Rótulo",
+					"labelPlaceholder": "Meu notebook",
+					"publicKeyLabel": "Chave pública",
+					"cancel": "Cancelar",
+					"addKey": "Adicionar chave"
+				}
+			},
+			"terminal": {
+				"notRunning": "Inicie o ambiente para abrir um terminal.",
+				"connecting": "Conectando…",
+				"connected": "Conectado",
+				"connectionFailed": "Falha na conexão",
+				"disconnected": "Desconectado"
+			}
+		},
+		"connect": {
+			"title": "Conectar a {{name}}",
+			"copy": "Copiar",
+			"copied": "Copiado",
+			"tabs": {
+				"webApp": "Conectar no app web",
+				"ssh": "Conectar via SSH"
+			},
+			"webApp": {
+				"description": "Conecte-se usando um terminal no navegador — nenhum cliente SSH ou chave local necessário.",
+				"connect": "Conectar",
+				"notRunning": "Inicie o ambiente antes de conectar.",
+				"hint": "Abre em uma nova guia em tela cheia.",
+				"pageTitle": "{{name}} — Terminal",
+				"pageTitleLoading": "Terminal",
+				"closeTab": "Fechar"
+			},
+			"ssh": {
+				"step1Title": "Adicione uma chave pública",
+				"step1Description": "Registre a chave pública do par de chaves SSH com o qual deseja se conectar.",
+				"step2Title": "Conecte-se pelo terminal",
+				"step2Description": "Execute este comando no seu terminal:",
+				"notRunning": "Inicie o ambiente antes de conectar."
+			}
 		}
 	},
 	"docs": {

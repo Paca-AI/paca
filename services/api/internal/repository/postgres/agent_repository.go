@@ -21,34 +21,38 @@ import (
 // -------------------------------------------------------------------------
 
 type agentRecord struct {
-	ID                 string     `db:"id"`
-	ProjectID          *string    `db:"project_id"` // NULL for global-scope agents
-	AgentScope         string     `db:"agent_scope"`
-	GlobalRoleID       *string    `db:"global_role_id"`
-	Name               string     `db:"name"`
-	Handle             string     `db:"handle"`
-	AvatarKey          *string    `db:"avatar_key"`
-	AvatarThumbKey     *string    `db:"avatar_thumb_key"`
-	AgentType          string     `db:"agent_type"`
-	LLMProvider        string     `db:"llm_provider"`
-	LLMModel           string     `db:"llm_model"`
-	LLMAPIKeySecret    string     `db:"llm_api_key_secret"`
-	LLMBaseURL         string     `db:"llm_base_url"`
-	ACPProvider        *string    `db:"acp_provider"`
-	ACPCommand         []byte     `db:"acp_command"`
-	ACPBridgeTokenHash *string    `db:"acp_bridge_token_hash"`
-	MCPAPIKeyHash      *string    `db:"mcp_api_key_hash"`
-	SystemPrompt       string     `db:"system_prompt"`
-	MaxIterations      int        `db:"max_iterations"`
-	TimeoutMinutes     int        `db:"timeout_minutes"`
-	GitCommitterName   string     `db:"git_committer_name"`
-	GitCommitterEmail  string     `db:"git_committer_email"`
-	DockerEnabled      bool       `db:"docker_enabled"`
-	CreatedBy          *string    `db:"created_by"`
-	CreatedAt          time.Time  `db:"created_at"`
-	UpdatedAt          time.Time  `db:"updated_at"`
-	DeletedAt          *time.Time `db:"deleted_at"`
-	MemberID           *string    `db:"member_id"` // populated when joining with project_members
+	ID                 string  `db:"id"`
+	ProjectID          *string `db:"project_id"` // NULL for global-scope agents
+	AgentScope         string  `db:"agent_scope"`
+	GlobalRoleID       *string `db:"global_role_id"`
+	Name               string  `db:"name"`
+	Handle             string  `db:"handle"`
+	AvatarKey          *string `db:"avatar_key"`
+	AvatarThumbKey     *string `db:"avatar_thumb_key"`
+	AgentType          string  `db:"agent_type"`
+	LLMProvider        string  `db:"llm_provider"`
+	LLMModel           string  `db:"llm_model"`
+	LLMAPIKeySecret    string  `db:"llm_api_key_secret"`
+	LLMBaseURL         string  `db:"llm_base_url"`
+	ACPProvider        *string `db:"acp_provider"`
+	ACPCommand         []byte  `db:"acp_command"`
+	ACPBridgeTokenHash *string `db:"acp_bridge_token_hash"`
+	MCPAPIKeyHash      *string `db:"mcp_api_key_hash"`
+	SystemPrompt       string  `db:"system_prompt"`
+	MaxIterations      int     `db:"max_iterations"`
+	TimeoutMinutes     int     `db:"timeout_minutes"`
+	GitCommitterName   string  `db:"git_committer_name"`
+	GitCommitterEmail  string  `db:"git_committer_email"`
+	DockerEnabled      bool    `db:"docker_enabled"`
+	// DefaultEnvironmentID references environments(id) — see
+	// agentdom.Agent.DefaultEnvironmentID's doc comment. NULL for global-scope
+	// agents (enforced by the service layer, not a DB constraint).
+	DefaultEnvironmentID *string    `db:"default_environment_id"`
+	CreatedBy            *string    `db:"created_by"`
+	CreatedAt            time.Time  `db:"created_at"`
+	UpdatedAt            time.Time  `db:"updated_at"`
+	DeletedAt            *time.Time `db:"deleted_at"`
+	MemberID             *string    `db:"member_id"` // populated when joining with project_members
 }
 
 type agentMCPServerRecord struct {
@@ -88,19 +92,23 @@ type agentSkillRecord struct {
 }
 
 type agentConversationRecord struct {
-	ID                  string     `db:"id"`
-	AgentID             string     `db:"agent_id"`
-	ProjectID           *string    `db:"project_id"` // NULL for a global-chat conversation
-	TriggerType         string     `db:"trigger_type"`
-	TaskID              *string    `db:"task_id"`
-	CommentID           *string    `db:"comment_id"`
-	ChatSessionID       *string    `db:"chat_session_id"`
-	TriggeredByMemberID *string    `db:"triggered_by_member_id"`
-	ActorUserID         *string    `db:"actor_user_id"`
-	Audience            string     `db:"audience"`
-	Status              string     `db:"status"`
-	ContainerID         *string    `db:"container_id"`
-	HostPort            *int       `db:"host_port"`
+	ID                  string  `db:"id"`
+	AgentID             string  `db:"agent_id"`
+	ProjectID           *string `db:"project_id"` // NULL for a global-chat conversation
+	TriggerType         string  `db:"trigger_type"`
+	TaskID              *string `db:"task_id"`
+	CommentID           *string `db:"comment_id"`
+	ChatSessionID       *string `db:"chat_session_id"`
+	TriggeredByMemberID *string `db:"triggered_by_member_id"`
+	ActorUserID         *string `db:"actor_user_id"`
+	Audience            string  `db:"audience"`
+	Status              string  `db:"status"`
+	// EnvironmentID/EnvironmentFolderID replace the old container_id/
+	// host_port/repo_clone_url/branch_name/persistence_dir columns (migration
+	// 000042_add_environments.sql) — see
+	// agentdom.AgentConversation.EnvironmentID's doc comment.
+	EnvironmentID       *string    `db:"environment_id"`
+	EnvironmentFolderID *string    `db:"environment_folder_id"`
 	IterationCount      int64      `db:"iteration_count"`
 	InputTokens         int64      `db:"input_tokens"`
 	OutputTokens        int64      `db:"output_tokens"`
@@ -108,10 +116,7 @@ type agentConversationRecord struct {
 	CostUSD             *float64   `db:"cost_usd"`
 	ErrorMessage        *string    `db:"error_message"`
 	RepoPluginID        *string    `db:"repo_plugin_id"`
-	RepoCloneURL        *string    `db:"repo_clone_url"`
-	BranchName          *string    `db:"branch_name"`
 	PRUrl               *string    `db:"pr_url"`
-	PersistenceDir      *string    `db:"persistence_dir"`
 	StartedAt           *time.Time `db:"started_at"`
 	FinishedAt          *time.Time `db:"finished_at"`
 	CreatedAt           time.Time  `db:"created_at"`
@@ -157,7 +162,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
-	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.created_by, a.created_at, a.updated_at, a.deleted_at`
+	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.created_by, a.created_at, a.updated_at, a.deleted_at`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
 // aliased pm, populating member_id from that join.
@@ -373,14 +378,14 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 		INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
-		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
-		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
 }
@@ -400,13 +405,15 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  acp_provider=$8, acp_command=$9,
 			  system_prompt=$10,
 			  max_iterations=$11, timeout_minutes=$12,
-			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16, updated_at=$17
-			WHERE id=$18`,
+			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
+			  default_environment_id=$17, updated_at=$18
+			WHERE id=$19`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
-			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID, time.Now(), a.ID.String(),
+			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
+			rec.DefaultEnvironmentID, time.Now(), a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -481,14 +488,14 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
-			  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, created_by, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
 			rec.MaxIterations, rec.TimeoutMinutes,
-			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -864,7 +871,7 @@ func (r *AgentRepository) DeleteEnvVar(ctx context.Context, id uuid.UUID) error 
 // latest row's value is used, not a sum — summing it would double-count
 // every earlier turn's already-cumulative figure.
 const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-	triggered_by_member_id, actor_user_id, audience, status, container_id, host_port,
+	triggered_by_member_id, actor_user_id, audience, status, environment_id, environment_folder_id,
 	(SELECT COUNT(*) FROM agent_conversation_events e
 	 WHERE e.conversation_id = agent_conversations.id AND e.event_type IN ('ActionEvent', 'tool_call')) AS iteration_count,
 	COALESCE((SELECT SUM((e.payload->>'input_tokens')::bigint) FROM agent_conversation_events e
@@ -877,7 +884,7 @@ const conversationCols = `id, agent_id, project_id, trigger_type, task_id, comme
 	 WHERE e.conversation_id = agent_conversations.id AND e.event_type = 'turn_usage' AND e.payload ? 'cost_usd'
 	 ORDER BY e.event_index DESC LIMIT 1) AS cost_usd,
 	error_message,
-	repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
+	repo_plugin_id, pr_url,
 	started_at, finished_at, created_at, updated_at`
 
 // ListConversations returns a keyset-paginated page of conversations matching
@@ -1021,13 +1028,13 @@ func (r *AgentRepository) CreateConversation(ctx context.Context, c *agentdom.Ag
 	rec := conversationToRecord(c)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO agent_conversations (id, agent_id, project_id, trigger_type, task_id, comment_id, chat_session_id,
-		  triggered_by_member_id, actor_user_id, status, container_id, host_port, error_message,
-		  repo_plugin_id, repo_clone_url, branch_name, pr_url, persistence_dir,
+		  triggered_by_member_id, actor_user_id, status, environment_id, environment_folder_id, error_message,
+		  repo_plugin_id, pr_url,
 		  started_at, finished_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 		rec.ID, rec.AgentID, rec.ProjectID, rec.TriggerType, rec.TaskID, rec.CommentID, rec.ChatSessionID,
-		rec.TriggeredByMemberID, rec.ActorUserID, rec.Status, rec.ContainerID, rec.HostPort, rec.ErrorMessage,
-		rec.RepoPluginID, rec.RepoCloneURL, rec.BranchName, rec.PRUrl, rec.PersistenceDir,
+		rec.TriggeredByMemberID, rec.ActorUserID, rec.Status, rec.EnvironmentID, rec.EnvironmentFolderID, rec.ErrorMessage,
+		rec.RepoPluginID, rec.PRUrl,
 		rec.StartedAt, rec.FinishedAt, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
@@ -1062,14 +1069,14 @@ func (r *AgentRepository) UpdateConversation(ctx context.Context, c *agentdom.Ag
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE agent_conversations SET
 		  agent_id=$1, project_id=$2, trigger_type=$3, task_id=$4, comment_id=$5, chat_session_id=$6,
-		  triggered_by_member_id=$7, status=$8, container_id=$9, host_port=$10,
-		  error_message=$11, repo_plugin_id=$12, repo_clone_url=$13, branch_name=$14, pr_url=$15,
-		  persistence_dir=$16, started_at=$17, finished_at=$18, updated_at=$19
-		WHERE id=$20`,
+		  triggered_by_member_id=$7, status=$8, environment_id=$9, environment_folder_id=$10,
+		  error_message=$11, repo_plugin_id=$12, pr_url=$13,
+		  started_at=$14, finished_at=$15, updated_at=$16
+		WHERE id=$17`,
 		rec.AgentID, rec.ProjectID, rec.TriggerType, rec.TaskID, rec.CommentID, rec.ChatSessionID,
-		rec.TriggeredByMemberID, rec.Status, rec.ContainerID, rec.HostPort,
-		rec.ErrorMessage, rec.RepoPluginID, rec.RepoCloneURL, rec.BranchName, rec.PRUrl,
-		rec.PersistenceDir, rec.StartedAt, rec.FinishedAt, rec.UpdatedAt, rec.ID,
+		rec.TriggeredByMemberID, rec.Status, rec.EnvironmentID, rec.EnvironmentFolderID,
+		rec.ErrorMessage, rec.RepoPluginID, rec.PRUrl,
+		rec.StartedAt, rec.FinishedAt, rec.UpdatedAt, rec.ID,
 	)
 	return err
 }
@@ -1313,6 +1320,10 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		rid := mustParseUUID(*row.GlobalRoleID)
 		a.GlobalRoleID = &rid
 	}
+	if row.DefaultEnvironmentID != nil {
+		eid := mustParseUUID(*row.DefaultEnvironmentID)
+		a.DefaultEnvironmentID = &eid
+	}
 	return a, nil
 }
 
@@ -1364,6 +1375,10 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 	if a.GlobalRoleID != nil {
 		s := a.GlobalRoleID.String()
 		rec.GlobalRoleID = &s
+	}
+	if a.DefaultEnvironmentID != nil {
+		s := a.DefaultEnvironmentID.String()
+		rec.DefaultEnvironmentID = &s
 	}
 	return rec, nil
 }
@@ -1473,18 +1488,13 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		TriggerType:    rec.TriggerType,
 		Audience:       agentdom.ConversationAudience(rec.Audience),
 		Status:         rec.Status,
-		ContainerID:    rec.ContainerID,
-		HostPort:       rec.HostPort,
 		IterationCount: int(rec.IterationCount),
 		InputTokens:    rec.InputTokens,
 		OutputTokens:   rec.OutputTokens,
 		TotalTokens:    rec.TotalTokens,
 		CostUSD:        rec.CostUSD,
 		ErrorMessage:   rec.ErrorMessage,
-		RepoCloneURL:   rec.RepoCloneURL,
-		BranchName:     rec.BranchName,
 		PRUrl:          rec.PRUrl,
-		PersistenceDir: rec.PersistenceDir,
 		StartedAt:      rec.StartedAt,
 		FinishedAt:     rec.FinishedAt,
 		CreatedAt:      rec.CreatedAt,
@@ -1514,27 +1524,30 @@ func conversationFromRecord(rec agentConversationRecord) *agentdom.AgentConversa
 		id := mustParseUUID(*rec.RepoPluginID)
 		c.RepoPluginID = &id
 	}
+	if rec.EnvironmentID != nil {
+		id := mustParseUUID(*rec.EnvironmentID)
+		c.EnvironmentID = &id
+	}
+	if rec.EnvironmentFolderID != nil {
+		id := mustParseUUID(*rec.EnvironmentFolderID)
+		c.EnvironmentFolderID = &id
+	}
 	return c
 }
 
 func conversationToRecord(c *agentdom.AgentConversation) agentConversationRecord {
 	rec := agentConversationRecord{
-		ID:             c.ID.String(),
-		AgentID:        c.AgentID.String(),
-		ProjectID:      nullableUUIDString(c.ProjectID),
-		TriggerType:    c.TriggerType,
-		Status:         c.Status,
-		ContainerID:    c.ContainerID,
-		HostPort:       c.HostPort,
-		ErrorMessage:   c.ErrorMessage,
-		RepoCloneURL:   c.RepoCloneURL,
-		BranchName:     c.BranchName,
-		PRUrl:          c.PRUrl,
-		PersistenceDir: c.PersistenceDir,
-		StartedAt:      c.StartedAt,
-		FinishedAt:     c.FinishedAt,
-		CreatedAt:      c.CreatedAt,
-		UpdatedAt:      c.UpdatedAt,
+		ID:           c.ID.String(),
+		AgentID:      c.AgentID.String(),
+		ProjectID:    nullableUUIDString(c.ProjectID),
+		TriggerType:  c.TriggerType,
+		Status:       c.Status,
+		ErrorMessage: c.ErrorMessage,
+		PRUrl:        c.PRUrl,
+		StartedAt:    c.StartedAt,
+		FinishedAt:   c.FinishedAt,
+		CreatedAt:    c.CreatedAt,
+		UpdatedAt:    c.UpdatedAt,
 	}
 	if c.TaskID != nil {
 		s := c.TaskID.String()
@@ -1559,6 +1572,14 @@ func conversationToRecord(c *agentdom.AgentConversation) agentConversationRecord
 	if c.RepoPluginID != nil {
 		s := c.RepoPluginID.String()
 		rec.RepoPluginID = &s
+	}
+	if c.EnvironmentID != nil {
+		s := c.EnvironmentID.String()
+		rec.EnvironmentID = &s
+	}
+	if c.EnvironmentFolderID != nil {
+		s := c.EnvironmentFolderID.String()
+		rec.EnvironmentFolderID = &s
 	}
 	return rec
 }

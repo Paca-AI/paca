@@ -12,6 +12,7 @@
 #   /api/*          →  REST API service       (forwarded as-is, /api kept)
 #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
 #   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded as-is)
+#   /environments/*/terminal/ws → agent-runner's static-environment browser terminal WebSocket
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -46,6 +47,14 @@
 # Kubernetes Service names (which carry a release-name prefix Compose's
 # bare names don't need), so this one file routes correctly under either
 # deployment without templating its own content.
+#
+# A running static environment's own SSH/port-forward access does not
+# route through this gateway at all — each environment container
+# publishes its own port directly (a native Docker -p binding, or a
+# Kubernetes NodePort Service entry — see
+# docs/ai-agent/environment-management.md's "Port Forwarding" section),
+# so there is no Caddy Admin API or wildcard site block here to keep in
+# sync the way an earlier version of this feature had.
 # =============================================================================
 
 (mcp_skills_routes) {
@@ -181,6 +190,22 @@
 	# services/api over the docker-internal network) and must not be
 	# reachable from here.
 	handle /agent-bridge/ws {
+		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
+	}
+
+	# -- Static environment browser terminal ---------------------------------------
+	#
+	# The WebSocket a browser's xterm.js terminal component connects to for a
+	# running static environment's shell — see
+	# internal/acpbridge/terminal.go's handleTerminalWS (agent-runner's Go
+	# replacement for the old services/ai-agent, sibling to the
+	# /agent-bridge/ws block above). Reached directly by the browser, not
+	# server-to-server, so unlike /agent-bridge/status/* and
+	# /agent-bridge/disconnect/* it's intentionally public here — auth is a
+	# short-lived HMAC-signed `ticket` query param instead of the internal
+	# X-Internal-Token header, verified by agent-runner itself. WebSocket
+	# upgrades are proxied automatically, same as /agent-bridge/ws above.
+	handle /environments/*/terminal/ws {
 		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
 	}
 

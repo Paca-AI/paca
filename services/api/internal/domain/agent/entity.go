@@ -83,10 +83,20 @@ type Agent struct {
 	// above — an ACP agent's sandboxing is owned by the user's own local ACP
 	// client, not agent-runner.
 	DockerEnabled bool
-	CreatedBy     *uuid.UUID
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     *time.Time
+	// DefaultEnvironmentID, when set, is the static environment
+	// (environmentdom.Environment) this agent's conversations attach to by
+	// default instead of getting a fresh ephemeral sandbox — see
+	// docs/ai-agent/environment-management.md. Only meaningful for
+	// project-scoped agents: a global agent has no single project's
+	// environments to default to, so this stays nil for
+	// AgentScopeGlobal agents (enforced by CreateAgent/UpdateAgent, not a
+	// DB constraint — see that validation for why). Overridable per
+	// conversation at chat-start.
+	DefaultEnvironmentID *uuid.UUID
+	CreatedBy            *uuid.UUID
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DeletedAt            *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer
@@ -244,30 +254,35 @@ type AgentConversation struct {
 	// Audience is the derived transcript audience (owner_private |
 	// project_shared) — see ConversationAudience. Read-only on this entity:
 	// it is a generated column, never set by the repository on write.
-	Audience       ConversationAudience
-	Status         string // queued | running | paused | finished | failed | stopped
-	ContainerID    *string
-	HostPort       *int
-	IterationCount int
+	Audience ConversationAudience
+	Status   string // queued | running | paused | finished | failed | stopped
+	// EnvironmentID/EnvironmentFolderID are set only when this conversation
+	// is attached to a static environment (environmentdom.Environment)
+	// instead of getting a fresh ephemeral sandbox — see
+	// docs/ai-agent/environment-management.md. Replaced the old
+	// ContainerID/HostPort/RepoCloneURL/BranchName/PersistenceDir columns
+	// (migration 000042_add_environments.sql), which encoded a
+	// different cardinality (one conversation owning one container) that a
+	// many-conversations-to-one-environment model doesn't fit.
+	EnvironmentID       *uuid.UUID
+	EnvironmentFolderID *uuid.UUID
+	IterationCount      int
 	// InputTokens/OutputTokens/TotalTokens/CostUSD are computed live from
 	// agent_conversation_events (event_type = 'turn_usage'), the same
 	// pattern IterationCount uses — see conversationCols's doc comment in
 	// the postgres repository. CostUSD is nil until at least one turn has
 	// reported a cost.
-	InputTokens    int64
-	OutputTokens   int64
-	TotalTokens    int64
-	CostUSD        *float64
-	ErrorMessage   *string
-	RepoPluginID   *uuid.UUID
-	RepoCloneURL   *string
-	BranchName     *string
-	PRUrl          *string
-	PersistenceDir *string
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	InputTokens  int64
+	OutputTokens int64
+	TotalTokens  int64
+	CostUSD      *float64
+	ErrorMessage *string
+	RepoPluginID *uuid.UUID
+	PRUrl        *string
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 	// Populated by JOIN
 	AgentName   string
 	AgentHandle string

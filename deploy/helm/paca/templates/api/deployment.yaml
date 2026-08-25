@@ -112,6 +112,16 @@ spec:
                   name: {{ include "paca.secretName" . }}
                   key: INTERNAL_API_KEY
             {{- end }}
+            # Purely descriptive (see values.yaml's environments.sshBastionHost/
+            # environments.portForwardHost doc comments) — GET
+            # /environments/config echoes these back to the frontend.
+            # Always set (empty when a feature isn't enabled) — Go's plain
+            # os.Getenv treats unset and empty-string identically, so this
+            # is safe either way.
+            - name: SSH_BASTION_HOST
+              value: {{ .Values.environments.sshBastionHost | quote }}
+            - name: PORT_FORWARD_HOST
+              value: {{ .Values.environments.portForwardHost | quote }}
           readinessProbe:
             httpGet:
               path: /api/healthz

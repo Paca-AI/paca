@@ -12,6 +12,17 @@
 # differences remain between this file and the production config. Keep the
 # routing below in sync with ../caddy/Caddyfile.
 #
+# THIS FILE PREVIOUSLY DRIFTED: the /environments/*/terminal/ws route (the
+# browser terminal's WebSocket) was added to ../caddy/Caddyfile and
+# ../helm/paca/files/Caddyfile when that feature shipped, but not here — a
+# request to it fell through every handle block to the final catch-all
+# (reverse_proxy web:3000, the Vite dev server), which answers a WebSocket
+# upgrade it doesn't recognize with a plain 200 OK instead of erroring, so
+# the failure looked like a hang rather than a 404. Confirmed against a
+# live gateway container, not assumed. If a future route is added to the
+# production Caddyfile, add it here too in the same pass — don't rely on
+# noticing the drift later.
+#
 # Single public entrypoint for the Paca stack:
 #
 #   /api/*          →  REST API service       (forwarded as-is, /api kept)
@@ -19,6 +30,8 @@
 #   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded
 #                       as-is — see the note on this route below; this is a
 #                       dev-only cutover, not a signal that prod has moved)
+#   /environments/*/terminal/ws → agent-runner's static-environment browser
+#                       terminal WebSocket (forwarded as-is)
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -26,7 +39,6 @@
 #   /*              →  Web application         (SPA with client-side routing;
 #                       Vite HMR WebSocket proxied automatically)
 # =============================================================================
-
 (mcp_skills_routes) {
 	handle_path /plugins-mcp/* {
 		root * /var/www/plugins-mcp
@@ -95,6 +107,12 @@
 	# endpoint (services/ai-agent, which used to serve it, has been fully
 	# removed — the prod Caddyfile points here too).
 	handle /agent-bridge/ws {
+		reverse_proxy agent-runner:8080
+	}
+
+	# The static-environment browser terminal's WebSocket — see
+	# ../caddy/Caddyfile's matching block for the full comment.
+	handle /environments/*/terminal/ws {
 		reverse_proxy agent-runner:8080
 	}
 

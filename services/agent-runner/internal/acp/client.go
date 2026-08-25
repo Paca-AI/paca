@@ -71,13 +71,24 @@ type Client struct {
 	// returned by session/new; see the migration doc's "two distinct
 	// session concepts" note.
 	connectionID string
-	// sessionID/sessionStream are set once, by NewSession — this Client
-	// only ever drives exactly one ACP session for its container's whole
-	// lifetime (including across resumed chat turns), never session/fork or
-	// multiple concurrent sessions, so a single field each is enough; no
-	// need for the map-of-sessions generality the reference client needs.
+	// supportsLoadSession records initialize's agentCapabilities.loadSession
+	// — see LoadSession's own doc comment for why this is checked rather
+	// than assumed to be true.
+	supportsLoadSession bool
+	// sessionID/sessionStream are set once, by NewSession or LoadSession —
+	// this Client only ever drives exactly one ACP session for its
+	// container's whole lifetime (including across resumed chat turns),
+	// never session/fork or multiple concurrent sessions, so a single field
+	// each is enough; no need for the map-of-sessions generality the
+	// reference client needs.
 	sessionID     string
 	sessionStream *frameStream
+	// cancelSession tears down just sessionStream's underlying GET request
+	// — see attachSessionStream's own doc comment for why this Client
+	// needs to be able to replace that stream (a failed LoadSession falling
+	// back to a fresh NewSession) without cancelStreams' whole-Client
+	// teardown.
+	cancelSession context.CancelFunc
 
 	// connStream is the connection-scoped SSE stream established by
 	// Initialize — carries session/new's response (and, in principle, any
@@ -180,6 +191,16 @@ func (c *Client) Initialize(ctx context.Context) error {
 		return errors.New("acp: initialize response missing Acp-Connection-Id header")
 	}
 
+	// Best-effort: this package ignored frame.Result entirely before
+	// LoadSession needed to know about this one capability, so a decode
+	// failure here (an unexpected result shape from some future goose
+	// version) falls back to false rather than failing Initialize itself —
+	// the caller still gets a working connection, just one LoadSession
+	// correctly refuses to use.
+	var result initializeResult
+	_ = json.Unmarshal(frame.Result, &result)
+	c.supportsLoadSession = result.AgentCapabilities.LoadSession
+
 	c.connectionID = connectionID
 	c.connStream = c.startStream(c.streamCtx, "")
 	return nil
@@ -224,8 +245,92 @@ func (c *Client) NewSession(ctx context.Context, cwd string, mcpServers []MCPSer
 	// connection-scoped one — must be established before the first Prompt
 	// call, so do it now rather than lazily.
 	c.sessionID = result.SessionID
-	c.sessionStream = c.startStream(c.streamCtx, result.SessionID)
+	c.attachSessionStream(result.SessionID)
 	return result.SessionID, nil
+}
+
+// LoadSession resumes sessionID (a value NewSession previously returned,
+// persisted by the caller across this Client's own lifetime — see
+// executor.Executor.attachEnvironmentSession) instead of starting a blank
+// one, giving goose its own conversation memory back across turns rather
+// than a fresh, context-less session every time.
+//
+// Requires goose to have advertised initialize's agentCapabilities.
+// loadSession as true (it does, as of goose 1.46.0 — verified directly
+// against a real goose serve instance, not assumed from the ACP spec
+// alone) — checked explicitly here rather than just letting a
+// non-supporting agent's session/load response come back some
+// unpredictable way.
+//
+// Per the ACP spec (and verified the same way, including that it works
+// from a *different* connection than the one that originally created the
+// session — the expected shape here, since every turn builds a fresh
+// Client/connection), the Agent replays the session's entire history as
+// session/update notifications on the session-scoped stream before
+// responding on that same stream — never the connection-scoped one, unlike
+// session/new's response (there is no session-scoped stream yet at that
+// point; here there already is, since the caller supplies the id instead
+// of receiving one back). Those replayed notifications are intentionally
+// discarded (this call doesn't accept an onEvent callback the way Prompt
+// does): they're goose's own internal context rebuild, not new activity,
+// and every one of those turns' events is already persisted in Paca's own
+// agent_conversation_events from when they first actually happened —
+// awaitResponse already skips anything that isn't the matching response
+// id, the same way it does for NewSession.
+func (c *Client) LoadSession(ctx context.Context, sessionID, cwd string, mcpServers []MCPServerConfig) error {
+	if c.connectionID == "" {
+		return errors.New("acp: LoadSession called before Initialize")
+	}
+	if !c.supportsLoadSession {
+		return errors.New("acp: LoadSession: agent did not advertise the loadSession capability at initialize")
+	}
+
+	stream := c.attachSessionStream(sessionID)
+
+	id := c.nextID.Add(1)
+	params := LoadSessionParams{
+		SessionID:  sessionID,
+		Cwd:        cwd,
+		MCPServers: []MCPServerConfig{},
+		Meta:       &NewSessionMeta{EnabledExtensions: buildEnabledExtensions(mcpServers)},
+	}
+	if err := c.post(ctx, id, "session/load", params, sessionID); err != nil {
+		return fmt.Errorf("acp: session/load: %w", err)
+	}
+
+	frame, err := c.awaitResponse(ctx, id, stream)
+	if err != nil {
+		return fmt.Errorf("acp: session/load: %w", err)
+	}
+	if frame.Error != nil {
+		return fmt.Errorf("acp: session/load: %w", frame.Error)
+	}
+
+	c.sessionID = sessionID
+	return nil
+}
+
+// attachSessionStream (re)establishes this Client's one session-scoped SSE
+// stream for sessionID, tearing down any previous one first via
+// cancelSession — needed because a caller can fall back from a failed
+// LoadSession to a fresh NewSession on the same Client (see
+// executor.Executor.attachEnvironmentSession): without explicitly closing
+// the abandoned stream first, its still-open GET request would leak for
+// this Client's entire remaining lifetime, since goose's ACP transport
+// allows only one active subscriber per session scope — the old stream
+// can't just be silently replaced, it has to actually be torn down.
+// Derives its own context from streamCtx (not a plain streamCtx reuse the
+// way connStream gets away with, since connStream is only ever established
+// once) so that teardown is possible without cancelling connStream or
+// requiring the whole Client to Close.
+func (c *Client) attachSessionStream(sessionID string) *frameStream {
+	if c.cancelSession != nil {
+		c.cancelSession()
+	}
+	sessionCtx, cancel := context.WithCancel(c.streamCtx)
+	c.cancelSession = cancel
+	c.sessionStream = c.startStream(sessionCtx, sessionID)
+	return c.sessionStream
 }
 
 // buildEnabledExtensions turns mcpServers into session/new's
@@ -322,7 +427,7 @@ func (c *Client) Prompt(
 		return "", nil, errors.New("acp: Prompt called before Initialize")
 	}
 	if c.sessionStream == nil {
-		return "", nil, errors.New("acp: Prompt called before NewSession")
+		return "", nil, errors.New("acp: Prompt called before NewSession/LoadSession")
 	}
 
 	id := c.nextID.Add(1)
@@ -427,9 +532,13 @@ func (c *Client) post(ctx context.Context, id int64, method string, params any, 
 	return nil
 }
 
-// awaitResponse blocks until the frame matching id arrives on stream —
-// used only by NewSession, which (unlike Prompt) neither expects nor needs
-// to forward any notifications while waiting.
+// awaitResponse blocks until the frame matching id arrives on stream,
+// silently discarding anything else along the way — used by NewSession
+// (which never expects any notifications first) and LoadSession (which
+// does, its history-replay session/update notifications, deliberately
+// discarded here rather than forwarded anywhere; see LoadSession's own doc
+// comment), unlike Prompt, which forwards every notification to its
+// caller's onEvent.
 func (c *Client) awaitResponse(ctx context.Context, id int64, stream *frameStream) (rpcFrame, error) {
 	for {
 		if ctx.Err() != nil {

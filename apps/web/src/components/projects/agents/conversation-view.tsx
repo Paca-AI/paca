@@ -102,12 +102,19 @@ function ConversationControls({
 	// ACP is the exception: its composer is now shown for every trigger type
 	// (see canReply below), so the composer's own Cancel/pause button is
 	// always reachable there — this header Stop button (a full teardown,
-	// distinct from pause) would just be redundant.
+	// distinct from pause) would just be redundant. A conversation attached
+	// to a static environment gets the same exception, for the same reason:
+	// agent-runner now ends every one of its turns in a terminal status
+	// (never "paused" — see handler.Handle's own isChat/EnvironmentID
+	// branch), the same way an ACP conversation always has, so this is
+	// effectively never reachable in a non-terminal state for one anyway;
+	// excluding it explicitly rather than relying on that is what keeps this
+	// correct even mid-turn (queued/running), when isTerminal is false.
 	const isTerminal =
 		conversation.status === "finished" ||
 		conversation.status === "failed" ||
 		conversation.status === "stopped";
-	if (isTerminal || isACP) return null;
+	if (isTerminal || isACP || conversation.environment_id) return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -213,12 +220,17 @@ export function ConversationView({
 	// bridge daemon keeps a conversation alive by conversation_id regardless
 	// of why it started, and regardless of status (see
 	// SendConversationMessage's ACP branch in services/api), so a reply can
-	// always continue it. LLM conversations are unchanged: only chat_message
-	// ones with a live session, and never once terminal (handled
-	// transparently by onNew below via the returned conversation id).
+	// always continue it. LLM conversations mostly stay gated to chat_message
+	// with a live session, never once terminal — except when environment_id
+	// is set: SendChatMessage's terminal branch in services/api carries the
+	// environment/folder over onto a fresh conversation rather than dead-
+	// ending, since the static environment itself outlives any one
+	// conversation, so the composer can stay open the same way.
 	const canReply = isACP
 		? !isChatMessage || !!conversation?.chat_session_id
-		: isChatMessage && !!conversation?.chat_session_id && !isTerminal;
+		: isChatMessage &&
+			!!conversation?.chat_session_id &&
+			(!isTerminal || !!conversation?.environment_id);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -317,9 +329,19 @@ export function ConversationView({
 	// triggered ones would just be a pointless no-op server-side. ACP
 	// conversations have no cloud sandbox to keep alive either (the user's
 	// local bridge daemon owns their lifecycle instead), so heartbeating one
-	// would just be a wasted round trip.
+	// would just be a wasted round trip. Same for a conversation attached to a
+	// static environment (environment_id set): keepSandboxAlive's
+	// EnvironmentID guard in agent-runner never registers it in the
+	// paused-sandbox registry the heartbeat control message refreshes, so a
+	// heartbeat for one is a guaranteed no-op there too — its container's
+	// idle clock is driven by TouchEnvironment after each turn instead.
 	useEffect(() => {
-		if (conversation?.trigger_type !== "chat_message" || isTerminal || isACP)
+		if (
+			conversation?.trigger_type !== "chat_message" ||
+			isTerminal ||
+			isACP ||
+			conversation?.environment_id
+		)
 			return;
 		const ping = () => {
 			void (
@@ -333,6 +355,7 @@ export function ConversationView({
 		return () => clearInterval(interval);
 	}, [
 		conversation?.trigger_type,
+		conversation?.environment_id,
 		isTerminal,
 		isACP,
 		projectId,
@@ -388,9 +411,9 @@ export function ConversationView({
 	// no visible messages. When messages exist, render the Thread normally so
 	// the user can trace what happened before the failure — the header's
 	// status badge and the bottom error footer already convey the failure.
-	// Skipped when canReply is true (an ACP conversation, which stays
-	// replyable straight through a failure regardless of trigger type) so
-	// the user can retry instead of hitting a dead end.
+	// Skipped when canReply is true (an ACP conversation, or one attached to
+	// a static environment, both of which stay replyable straight through a
+	// failure) so the user can retry instead of hitting a dead end.
 	if (
 		isError ||
 		(conversation.status === "failed" && messages.length === 0 && !canReply)

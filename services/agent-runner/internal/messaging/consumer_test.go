@@ -197,6 +197,81 @@ func TestConsumer_SerializesTriggersForTheSameConversation(t *testing.T) {
 	}
 }
 
+// TestConsumer_SelfHealsAfterConsumerGroupDisappears is a regression test
+// for a NOGROUP error mid-loop: if the stream's consumer group vanishes out
+// from under an already-running consumer (a Valkey restart without
+// persistence, a FLUSHALL, or a manual XGROUP DESTROY), Run must recreate
+// it rather than spin on the exact same failing read forever — before this
+// fix, a consumer that reached this state never processed another trigger
+// again for the rest of the process's life.
+func TestConsumer_SelfHealsAfterConsumerGroupDisappears(t *testing.T) {
+	client, cleanup := newTestRedisClient(t)
+	defer cleanup()
+
+	triggerHandled := make(chan struct{}, 1)
+	consumer := NewConsumer(client, 5,
+		func(_ context.Context, _ agent.Trigger) error {
+			triggerHandled <- struct{}{}
+			return nil
+		},
+		func(_ context.Context, _ Control) error { return nil },
+		testLogger(),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+
+	waitForGroup(t, client, StreamAgentTriggers, consumerGroup)
+
+	if err := client.XGroupDestroy(ctx, StreamAgentTriggers, consumerGroup).Err(); err != nil {
+		t.Fatalf("XGroupDestroy: %v", err)
+	}
+
+	// Longer deadline than waitForGroup's: Run's read loop may currently be
+	// blocked inside an XReadGroup call that started before the destroy
+	// above (and so won't itself return NOGROUP) for up to readBlock before
+	// its *next* call notices the group is gone and self-heals.
+	deadline := time.Now().Add(readBlock + 3*time.Second)
+	var recreated bool
+	for time.Now().Before(deadline) {
+		groups, err := client.XInfoGroups(ctx, StreamAgentTriggers).Result()
+		if err == nil {
+			for _, g := range groups {
+				if g.Name == consumerGroup {
+					recreated = true
+				}
+			}
+		}
+		if recreated {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !recreated {
+		t.Fatalf("consumer group %q was not recreated after disappearing", consumerGroup)
+	}
+
+	agentID := uuid.New()
+	convID := uuid.New()
+	projectID := uuid.New()
+	if err := client.XAdd(ctx, &redis.XAddArgs{
+		Stream: StreamAgentTriggers,
+		Values: map[string]any{
+			"type":            "agent.task_assigned",
+			"trigger_type":    "task_assigned",
+			"conversation_id": convID.String(),
+			"agent_id":        agentID.String(),
+			"project_id":      projectID.String(),
+			"message":         "",
+		},
+	}).Err(); err != nil {
+		t.Fatalf("XAdd trigger: %v", err)
+	}
+
+	waitOrFail(t, triggerHandled, "trigger handler after self-heal")
+}
+
 func waitForGroup(t *testing.T, client *redis.Client, stream, group string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

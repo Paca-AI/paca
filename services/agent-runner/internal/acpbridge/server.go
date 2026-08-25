@@ -19,6 +19,7 @@ import (
 
 	"github.com/Paca-AI/agent-runner/internal/messaging"
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
+	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
 // helloTimeout bounds how long an unauthenticated WebSocket connection can
@@ -50,7 +51,49 @@ type Server struct {
 	// LLMModelsPath is the path to the static provider/model catalog file
 	// (data/llm_models.json) served verbatim at GET /llm/models.
 	LLMModelsPath string
-	Log           Logger
+
+	// SandboxMgr/EnvironmentRepo back the static-environment endpoints in
+	// environment_handlers.go (server-to-server, internal-token-guarded)
+	// and the browser terminal WebSocket in terminal.go (public, ticket-
+	// guarded) — see docs/ai-agent/environment-management.md. Both nil in
+	// tests/tooling that never exercise either surface, which is safe:
+	// every handler that reads them checks for nil first and fails the
+	// individual request, not server startup.
+	SandboxMgr      sandbox.FullBackend
+	EnvironmentRepo *postgres.EnvironmentRepository
+	// SSHKeyRepo backs both handleCreateEnvironment's post-create sshd
+	// bootstrap and the ssh-keys/sync endpoint (rendering
+	// authorized_keys). SSHPortRangeStart/End gate the whole SSH feature —
+	// both zero (the default) means handleCreateEnvironment never assigns
+	// a port at all (docs/ai-agent/environment-management.md's "Terminal /
+	// SSH Access" section) — the environment's SSH port, once assigned, is
+	// published directly by the backend (a Docker -p binding or a
+	// Kubernetes NodePort Service entry — see
+	// sandbox.EnvironmentConfig.PortMappings), never relayed through this
+	// process.
+	//
+	// PortForwardRepo is the same idea for user-managed port forwards
+	// (docs/ai-agent/environment-management.md's "Port Forwarding"
+	// section) — reads/writes the environment_port_forwards rows
+	// handlePortForwardsAssign/handleRestartEnvironmentPorts assign host
+	// ports to and read back to build a full PortMappings set.
+	// PortForwardRangeStart/End is the same "both zero means never
+	// configured" convention as SSH's own range.
+	SSHKeyRepo            *postgres.SSHKeyRepository
+	SSHPortRangeStart     int
+	SSHPortRangeEnd       int
+	PortForwardRepo       *postgres.PortForwardRepository
+	PortForwardRangeStart int
+	PortForwardRangeEnd   int
+	// Backend is settings.SandboxBackend ("docker" or "kubernetes") —
+	// echoed verbatim in POST /internal/environments' response. Not
+	// derivable from a sandbox.EnvironmentHandle (which carries only
+	// BackendRef/BaseURL, no backend-kind field), so this is threaded
+	// through from config.Settings instead — see
+	// environment_handlers.go's handleCreateEnvironment.
+	Backend string
+
+	Log Logger
 }
 
 // Routes returns the HTTP handler for all of the bridge's endpoints.
@@ -60,6 +103,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /agent-bridge/status/{agentId}", s.requireInternalToken(s.handleStatus))
 	mux.HandleFunc("POST /agent-bridge/disconnect/{agentId}", s.requireInternalToken(s.handleDisconnect))
 	mux.HandleFunc("GET /llm/models", s.handleLLMModels)
+	s.registerEnvironmentRoutes(mux)
+	s.registerTerminalRoute(mux)
 	return mux
 }
 

@@ -165,6 +165,9 @@
 				"committerEmailLabel": "커미터 이메일",
 				"dockerEnabledLabel": "Docker 액세스",
 				"dockerEnabledHint": "이 에이전트의 샌드박스 내에 전용 Docker 데몬을 제공합니다. 기본적으로 비활성화되어 있습니다 — 모든 대화의 시작 시간이 늘어나므로 실제로 Docker 명령을 실행하는 에이전트에만 활성화하세요.",
+				"defaultEnvironmentLabel": "기본 환경",
+				"defaultEnvironmentHint": "이 에이전트의 대화를 매번 새로 만드는 일회용 샌드박스 대신 정적 환경에 연결합니다.",
+				"noDefaultEnvironment": "기본값 없음 (일회용 샌드박스 사용)",
 				"saveChanges": "변경사항 저장",
 				"saved": "저장됨",
 				"saveFailed": "저장에 실패했습니다. 다시 시도해 주세요.",
@@ -330,6 +333,190 @@
 			"attachmentAriaLabel": "{{type}} 첨부 파일",
 			"attachmentAriaLabelError": "{{type}} 첨부 파일, 업로드 실패",
 			"attachmentAriaLabelUploading": "{{type}} 첨부 파일, 업로드 중"
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "생성 중",
+			"running": "실행 중",
+			"stopping": "중지 중",
+			"stopped": "중지됨",
+			"suspended": "일시 중단됨",
+			"error": "오류",
+			"deleting": "삭제 중"
+		},
+		"page": {
+			"title": "환경",
+			"subtitle": "여러 대화에 걸쳐 에이전트가 연결할 수 있는 이름이 지정된 장기 실행 샌드박스",
+			"newEnvironment": "새 환경",
+			"empty": {
+				"title": "아직 환경이 없습니다",
+				"description": "매번 새로 만드는 일회용 샌드박스 대신, 대화 간에 파일과 백그라운드 프로세스를 유지하는 정적 환경을 만드세요.",
+				"createFirstEnvironment": "첫 환경 만들기"
+			}
+		},
+		"createDialog": {
+			"title": "환경 만들기",
+			"description": "에이전트가 연결할 수 있는 이름이 지정된 장기 실행 샌드박스입니다.",
+			"nameLabel": "이름",
+			"namePlaceholder": "staging",
+			"advanced": "고급",
+			"imageLabel": "이미지",
+			"imagePlaceholder": "기본값 사용 (agent-server)",
+			"imageHint": "대부분의 사용자는 이 값을 변경할 필요가 없습니다 — 비워두면 플랫폼에서 고정한 agent-server 이미지가 기본값으로 사용됩니다.",
+			"createFailed": "환경을 만들지 못했습니다. 다시 시도해 주세요.",
+			"cancel": "취소",
+			"creating": "만드는 중…",
+			"create": "환경 만들기"
+		},
+		"picker": {
+			"placeholder": "환경 선택…",
+			"temporary": "임시 환경",
+			"createNew": "새 환경 만들기…",
+			"folderPlaceholder": "폴더 선택…",
+			"folderCreateNew": "새 폴더 만들기…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "개요",
+				"folders": "폴더",
+				"portForwards": "포트 포워드"
+			},
+			"overview": {
+				"connect": "연결",
+				"start": "시작",
+				"stop": "중지",
+				"delete": "삭제",
+				"nameLabel": "이름",
+				"backendLabel": "백엔드",
+				"imageLabel": "이미지",
+				"defaultImage": "기본값 (agent-server)",
+				"idleTimeoutLabel": "유휴 타임아웃(분)",
+				"idleTimeoutHint": "이 분(minute) 동안 활동이 없으면 환경이 자동으로 중지됩니다.",
+				"portsPendingRestart": "포트 포워드가 추가되거나 삭제되었습니다. 적용하려면 환경을 재시작하세요.",
+				"portsPendingRestartLink": "포트 포워드 보기",
+				"saveChanges": "변경 사항 저장",
+				"saved": "저장됨",
+				"saveFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
+				"deleteDialog": {
+					"title": "{{name}}을(를) 삭제하시겠습니까?",
+					"description": "이 작업은 환경과 해당 컨테이너, 볼륨을 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+					"deleteFailed": "환경을 삭제하지 못했습니다. 다시 시도해 주세요.",
+					"cancel": "취소",
+					"delete": "삭제"
+				}
+			},
+			"folders": {
+				"count_one": "폴더 {{count}}개 구성됨",
+				"count_other": "폴더 {{count}}개 구성됨",
+				"addFolder": "폴더 추가",
+				"empty": {
+					"title": "추가된 폴더가 없습니다",
+					"addFirstFolder": "첫 폴더 추가"
+				},
+				"addDialog": {
+					"title": "폴더 추가",
+					"description": "이 환경의 에이전트가 사용할 작업 디렉터리를 추가합니다.",
+					"pathLabel": "경로",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "절대 경로여야 합니다.",
+					"browse": "찾아보기…",
+					"browsing": {
+						"root": "워크스페이스 루트",
+						"empty": "이 폴더는 비어 있습니다",
+						"notRunning": "파일을 찾아보려면 환경을 시작하세요.",
+						"useThisFolder": "이 폴더 사용"
+					},
+					"addFailed": "폴더를 추가하지 못했습니다. 다시 시도해 주세요.",
+					"cancel": "취소",
+					"addFolder": "폴더 추가"
+				}
+			},
+			"portForwards": {
+				"description": "이 환경 내부의 모든 포트(주로 자신의 개발 서버)를 전용 주소로 노출합니다.",
+				"count_one": "포트 포워드 {{count}}개",
+				"count_other": "포트 포워드 {{count}}개",
+				"add": "포트 포워드 추가",
+				"containerPort": "컨테이너 포트 {{port}}",
+				"unassigned": "아직 할당되지 않음",
+				"restart": "재시작",
+				"pendingRestartRunning": "포트 포워드가 추가되거나 삭제되었습니다. 적용하려면 환경을 재시작하세요.",
+				"pendingRestartStopped": "포트 포워드가 추가되거나 삭제되었습니다. 이 환경이 다음에 시작될 때 적용됩니다.",
+				"empty": {
+					"title": "아직 포트 포워드가 없습니다",
+					"addFirst": "포트 포워드 추가"
+				},
+				"addDialog": {
+					"title": "포트 포워드 추가",
+					"description": "컨테이너 포트를 전용 외부 포트로 노출합니다. 환경이 이미 실행 중이면 이를 적용하려면 재시작이 필요합니다.",
+					"portLabel": "컨테이너 포트",
+					"portHint": "환경 내부에서 프로세스가 수신 대기하는 포트입니다(예: 3000).",
+					"labelLabel": "라벨",
+					"labelPlaceholder": "개발 서버",
+					"cancel": "취소",
+					"add": "추가"
+				},
+				"restartDialog": {
+					"title": "환경을 재시작하시겠습니까?",
+					"description": "업데이트된 포트 포워드를 적용하기 위해 환경의 컨테이너를 재시작합니다. 내부에서 실행 중인 프로세스는 중단됩니다. 파일은 별도의 볼륨에 저장되어 있으므로 안전합니다.",
+					"cancel": "취소",
+					"confirm": "재시작"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "<bastion-host>를 이 배포에 구성된 SSH 배스천 주소로 바꾸세요.",
+				"connectUnavailable": "이 배포에는 아직 SSH 액세스가 구성되지 않았습니다.",
+				"count_one": "키 {{count}}개 구성됨",
+				"count_other": "키 {{count}}개 구성됨",
+				"addKey": "키 추가",
+				"empty": {
+					"title": "추가된 SSH 키가 없습니다",
+					"addFirst": "첫 키 추가"
+				},
+				"addDialog": {
+					"title": "SSH 키 추가",
+					"description": "SSH를 통한 페어 프로그래밍 액세스를 위해 공개 키를 승인합니다.",
+					"generateHint": "아직 SSH 키가 없으신가요? 다음 명령으로 생성하세요:",
+					"generateFollowup": "그런 다음 ~/.ssh/id_ed25519.pub 내용을 아래에 붙여넣으세요.",
+					"labelLabel": "라벨",
+					"labelPlaceholder": "내 노트북",
+					"publicKeyLabel": "공개 키",
+					"cancel": "취소",
+					"addKey": "키 추가"
+				}
+			},
+			"terminal": {
+				"notRunning": "터미널을 열려면 환경을 시작하세요.",
+				"connecting": "연결 중…",
+				"connected": "연결됨",
+				"connectionFailed": "연결 실패",
+				"disconnected": "연결 끊김"
+			}
+		},
+		"connect": {
+			"title": "{{name}}에 연결",
+			"copy": "복사",
+			"copied": "복사됨",
+			"tabs": {
+				"webApp": "웹 앱에서 연결",
+				"ssh": "SSH로 연결"
+			},
+			"webApp": {
+				"description": "브라우저 내 터미널로 연결합니다 — 로컬 SSH 클라이언트나 키가 필요하지 않습니다.",
+				"connect": "연결",
+				"notRunning": "연결하기 전에 환경을 시작하세요.",
+				"hint": "새 전체 화면 탭에서 열립니다.",
+				"pageTitle": "{{name}} — 터미널",
+				"pageTitleLoading": "터미널",
+				"closeTab": "닫기"
+			},
+			"ssh": {
+				"step1Title": "공개 키 추가",
+				"step1Description": "연결할 SSH 키 쌍의 공개 키를 등록하세요.",
+				"step2Title": "터미널에서 연결",
+				"step2Description": "터미널에서 다음 명령을 실행하세요:",
+				"notRunning": "연결하기 전에 환경을 시작하세요."
+			}
 		}
 	},
 	"docs": {

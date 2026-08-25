@@ -18,7 +18,11 @@ import {
 import {
 	AgentPickerContext,
 	AgentPickerInline,
+	EnvironmentPickerContext,
+	EnvironmentPickerInline,
+	FolderPickerInline,
 	useAgentPicker,
+	useEnvironmentPicker,
 	useGlobalAgentPicker,
 } from "./agent-picker";
 import { extractTextOnlyContent } from "./conversation-to-thread-messages";
@@ -52,6 +56,18 @@ export function NewConversationThread({
 	const globalPicker = useGlobalAgentPicker({ enabled: !projectId });
 	const { agentId, pickerState } = projectId ? projectPicker : globalPicker;
 
+	// Environments are project-scoped only — this hook internally no-ops
+	// (via `enabled`) when there's no project, and EnvironmentPickerInline
+	// stays invisible whenever its context is unset or empty, so this is
+	// fully additive for the global Conversations page.
+	const {
+		environmentId,
+		folderId,
+		pickerState: environmentPickerState,
+	} = useEnvironmentPicker(projectId ?? "", agentId, {
+		enabled: !!projectId,
+	});
+
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const onNew = async (message: AppendMessage) => {
@@ -68,6 +84,8 @@ export function NewConversationThread({
 			if (projectId) {
 				const result = await startChatSession(projectId, agentId, {
 					message: text,
+					...(environmentId ? { environment_id: environmentId } : {}),
+					...(folderId ? { folder_id: folderId } : {}),
 				});
 				qc.setQueryData(
 					conversationQueryOptions(projectId, result.conversation.id).queryKey,
@@ -113,9 +131,25 @@ export function NewConversationThread({
 
 	return (
 		<AgentPickerContext.Provider value={pickerState}>
-			<AssistantRuntimeProvider runtime={runtime}>
-				<Thread components={{ ComposerStart: AgentPickerInline }} />
-			</AssistantRuntimeProvider>
+			<EnvironmentPickerContext.Provider value={environmentPickerState}>
+				<AssistantRuntimeProvider runtime={runtime}>
+					<Thread components={{ ComposerStart: ComposerStartRow }} />
+				</AssistantRuntimeProvider>
+			</EnvironmentPickerContext.Provider>
 		</AgentPickerContext.Provider>
+	);
+}
+
+// ComposerStart takes no props (see AgentPickerInline's doc comment), so the
+// agent, environment, and folder pickers are docked side by side in one
+// small wrapper rather than passing separate component slots through
+// assistant-ui.
+function ComposerStartRow() {
+	return (
+		<div className="flex items-center gap-1.5">
+			<AgentPickerInline />
+			<EnvironmentPickerInline />
+			<FolderPickerInline />
+		</div>
 	);
 }

@@ -320,6 +320,39 @@ const (
 	CodeAgentEnvVarKeyInvalid Code = "AGENT_ENV_VAR_KEY_INVALID"
 	// CodeAgentEnvVarKeyReserved indicates the environment variable key collides with an internal sandbox variable.
 	CodeAgentEnvVarKeyReserved Code = "AGENT_ENV_VAR_KEY_RESERVED"
+	// CodeAgentDefaultEnvironmentInvalid indicates default_environment_id does not
+	// resolve to a static environment in the agent's own project, or was set on a
+	// global-scope agent (which has no single project to default from).
+	CodeAgentDefaultEnvironmentInvalid Code = "AGENT_DEFAULT_ENVIRONMENT_INVALID"
+
+	// --- Environment errors (static environments — see
+	// docs/ai-agent/environment-management.md) --------------------------------
+
+	// CodeEnvironmentNotFound indicates the requested environment does not exist.
+	CodeEnvironmentNotFound Code = "ENVIRONMENT_NOT_FOUND"
+	// CodeEnvironmentSlugTaken indicates the environment slug is already in use in this project.
+	CodeEnvironmentSlugTaken Code = "ENVIRONMENT_SLUG_TAKEN"
+	// CodeEnvironmentNameInvalid indicates the environment name is empty or invalid.
+	CodeEnvironmentNameInvalid Code = "ENVIRONMENT_NAME_INVALID"
+	// CodeEnvironmentNotRunning indicates an operation that requires a live
+	// container (exec, terminal, heartbeat) targeted an environment that isn't
+	// currently running.
+	CodeEnvironmentNotRunning Code = "ENVIRONMENT_NOT_RUNNING"
+	// CodeEnvironmentBusy indicates a start/stop/delete was requested while the
+	// environment is already mid-transition.
+	CodeEnvironmentBusy Code = "ENVIRONMENT_BUSY"
+	// CodeEnvironmentFolderNotFound indicates the requested environment folder does not exist.
+	CodeEnvironmentFolderNotFound Code = "ENVIRONMENT_FOLDER_NOT_FOUND"
+	// CodeEnvironmentFolderPathTaken indicates a folder with this path already exists in this environment.
+	CodeEnvironmentFolderPathTaken Code = "ENVIRONMENT_FOLDER_PATH_TAKEN"
+	// CodeEnvironmentFolderPathInvalid indicates the folder path is not an absolute path.
+	CodeEnvironmentFolderPathInvalid Code = "ENVIRONMENT_FOLDER_PATH_INVALID"
+	// CodeEnvironmentSSHKeyNotFound indicates the requested SSH key does not exist.
+	CodeEnvironmentSSHKeyNotFound Code = "ENVIRONMENT_SSH_KEY_NOT_FOUND"
+	// CodeEnvironmentSSHKeyInvalid indicates the supplied public key is not a valid SSH public key.
+	CodeEnvironmentSSHKeyInvalid Code = "ENVIRONMENT_SSH_KEY_INVALID"
+	// CodeEnvironmentSSHKeyFingerprintTaken indicates this public key is already registered on this environment.
+	CodeEnvironmentSSHKeyFingerprintTaken Code = "ENVIRONMENT_SSH_KEY_FINGERPRINT_TAKEN"
 
 	// --- Automation errors -----------------------------------------------------
 

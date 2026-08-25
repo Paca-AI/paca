@@ -91,6 +91,19 @@ type AuthMethod struct {
 	Description string `json:"description"`
 }
 
+// initializeResult is only decoded for agentCapabilities.loadSession —
+// every other field (promptCapabilities, mcpCapabilities,
+// sessionCapabilities, auth, authMethods, agentInfo) goes unused today, so
+// this only models the one path this package actually reads. Confirmed
+// against a real goose serve instance (goose 1.46.0): "loadSession":true —
+// see LoadSession's own doc comment for why this is checked rather than
+// assumed.
+type initializeResult struct {
+	AgentCapabilities struct {
+		LoadSession bool `json:"loadSession"`
+	} `json:"agentCapabilities"`
+}
+
 // ─── session/new ────────────────────────────────────────────────────────────
 
 // NewSessionParams are the params for "session/new". MCPServers is always
@@ -249,6 +262,20 @@ type newSessionResult struct {
 	SessionID string          `json:"sessionId"`
 	Modes     json.RawMessage `json:"modes,omitempty"`
 	Models    json.RawMessage `json:"models,omitempty"`
+}
+
+// ─── session/load ───────────────────────────────────────────────────────────
+
+// LoadSessionParams are the params for "session/load" — the ACP
+// counterpart to NewSessionParams for resuming an existing session
+// (SessionID) instead of starting a blank one. Same "MCPServers always
+// present-but-empty, real servers travel via Meta.EnabledExtensions"
+// contract as NewSessionParams — see that type's own doc comment.
+type LoadSessionParams struct {
+	SessionID  string            `json:"sessionId"`
+	Cwd        string            `json:"cwd"`
+	MCPServers []MCPServerConfig `json:"mcpServers"`
+	Meta       *NewSessionMeta   `json:"_meta,omitempty"`
 }
 
 // ─── session/prompt ─────────────────────────────────────────────────────────

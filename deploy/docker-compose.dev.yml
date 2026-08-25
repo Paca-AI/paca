@@ -157,6 +157,24 @@ services:
       AI_AGENT_INTERNAL_KEY: dev-internal-key-change-in-production
       # Public base URL used by plugins to generate callback/webhook URLs.
       PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}
+      # Purely descriptive — services/api never itself publishes any
+      # environment port, it only echoes these back via GET
+      # /environments/config so the web app's Connect page can show a real
+      # `ssh -p <port> root@<host>` command and a real
+      # `<host>:<host_port>` address for a port forward. Every environment
+      # container publishes its own SSH/forward ports directly on this
+      # Docker host (a native -p binding per environment — see
+      # services/agent-runner's own SSH_BASTION_PORT_RANGE_START/_END /
+      # PORT_FORWARD_RANGE_START/_END), so both values here are the same
+      # bare host either way. PUBLIC_HOSTNAME (deploy/.env.dev), NOT
+      # PUBLIC_HOST above — PUBLIC_HOST is a full URL (scheme + host +
+      # port, e.g. "http://pc.paca-ai.org:3000"); concatenating that whole
+      # string into an ssh/DNS-name context produces garbage like
+      # "env.http://pc.paca-ai.org:3000". PUBLIC_HOSTNAME is the bare-host
+      # counterpart kept specifically for this. Defaults to "localhost"
+      # unchanged when unset.
+      SSH_BASTION_HOST: ${PUBLIC_HOSTNAME:-localhost}
+      PORT_FORWARD_HOST: ${PUBLIC_HOSTNAME:-localhost}
       # Plugin subsystem — load WASM binaries + migrations from the local plugin store.
       PLUGINS_WASM_DIR: /plugins
       PLUGINS_FRONTEND_DIR: /plugins-frontend
@@ -295,6 +313,15 @@ services:
     working_dir: /workspace
     # air is already installed in the image; no per-start download needed.
     command: air
+    # No ports: block here, deliberately — unlike the earlier in-process
+    # relay design, agent-runner's own container never listens on the SSH/
+    # port-forward range at all. Each environment container publishes its
+    # own assigned port directly (a native Docker -p binding, applied when
+    # agent-runner calls the Engine API over the mounted docker.sock
+    # below), which the daemon binds on this same machine's real
+    # interfaces regardless of which container asked for it — see
+    # SSH_BASTION_PORT_RANGE_START/_END below for the range those bindings
+    # are picked from.
     environment:
       # Limit parallel package compilation to avoid OOM kills on memory-constrained
       # Docker Desktop VMs (mirrors the -p=1 flag used in the production Dockerfile).
@@ -367,6 +394,20 @@ services:
       # rollout would list specific agent UUIDs here instead.
       AGENT_RUNNER_ALLOWED_AGENT_IDS: "*"
       LOG_LEVEL: INFO
+      # SSH (docs/ai-agent/environment-management.md's "Terminal / SSH
+      # Access" section) — the range agent-runner assigns each running
+      # static environment's own dedicated, natively-published SSH port
+      # from. SSH_BASTION_HOST on the api service (above) tells the web
+      # app's Connect page to show `localhost` as the host half of the
+      # `ssh` command.
+      SSH_BASTION_PORT_RANGE_START: "2200"
+      SSH_BASTION_PORT_RANGE_END: "2299"
+      # Port forwarding (docs/ai-agent/environment-management.md's "Port
+      # Forwarding" section) — the exact same idea as the SSH range above,
+      # for user-added port forwards instead. A disjoint range from SSH's
+      # own (2200-2299) so the two can never collide.
+      PORT_FORWARD_RANGE_START: "2300"
+      PORT_FORWARD_RANGE_END: "2399"
     volumes:
       # Sibling-container mode (see PACA_MCP_DEV_SOURCE_DIR's comment
       # above) — this same socket is also how agent-runner spins up each

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -92,19 +93,9 @@ func NewConsumer(client *redis.Client, maxConcurrency int, handler Handler, cont
 // Acceptable for now; revisit if a slow, coordinated shutdown ever matters
 // more than a fast one.
 func (c *Consumer) Run(ctx context.Context) {
-	// "$" — only entries appended after this group is created, mirroring
-	// core/streams.py's ensure_consumer_group (xgroup_create(..., id="$",
-	// ...)) exactly. A prior version of this line used "0" (the entire
-	// stream from the beginning) — found live, the hard way: a first-ever
-	// deployment of this service against a real dev Valkey replayed every
-	// trigger the stream had ever held, since a brand-new consumer group
-	// has no delivery history of its own to resume from and "0" means
-	// "start from the very first entry still in the stream."
-	if err := c.client.XGroupCreateMkStream(ctx, StreamAgentTriggers, consumerGroup, "$").Err(); err != nil {
-		if err.Error() != "BUSYGROUP Consumer Group name already exists" {
-			c.log.Error("consumer: failed to create consumer group", "error", err)
-			return
-		}
+	if err := c.ensureGroup(ctx); err != nil {
+		c.log.Error("consumer: failed to create consumer group", "error", err)
+		return
 	}
 
 	c.log.Info("consumer: started", "stream", StreamAgentTriggers, "group", consumerGroup, "consumer", c.consumerName)
@@ -129,6 +120,20 @@ func (c *Consumer) Run(ctx context.Context) {
 				continue
 			}
 			c.log.Warn("consumer: read error", "error", err)
+			if strings.HasPrefix(err.Error(), "NOGROUP") {
+				// The stream and/or consumer group vanished out from under
+				// an already-running consumer — a Valkey restart without
+				// persistence, a FLUSHALL, or a manual XGROUP DESTROY.
+				// Without this, every subsequent XReadGroup call keeps
+				// failing the exact same way forever: nothing else ever
+				// recreates the group, so this consumer would otherwise sit
+				// here logging "read error" indefinitely and never process
+				// another trigger again until the process itself restarts.
+				// Self-heal the same way startup does.
+				if reErr := c.ensureGroup(ctx); reErr != nil {
+					c.log.Error("consumer: failed to recreate consumer group after NOGROUP", "error", reErr)
+				}
+			}
 			time.Sleep(time.Second)
 			continue
 		}
@@ -139,6 +144,31 @@ func (c *Consumer) Run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// ensureGroup creates consumerGroup on StreamAgentTriggers if it doesn't
+// already exist — called once at Run's startup, and again by its read loop
+// whenever a NOGROUP error shows the group (or the stream itself) has
+// disappeared out from under an already-running consumer.
+//
+// "$" — only entries appended after this group is (re)created, mirroring
+// core/streams.py's ensure_consumer_group (xgroup_create(..., id="$", ...))
+// exactly. A prior version of this line used "0" (the entire stream from
+// the beginning) — found live, the hard way: a first-ever deployment of
+// this service against a real dev Valkey replayed every trigger the stream
+// had ever held, since a brand-new consumer group has no delivery history
+// of its own to resume from and "0" means "start from the very first entry
+// still in the stream." The same reasoning applies to a self-heal recreate:
+// entries published while the group was missing were never going to be
+// delivered to it anyway (XReadGroup was failing outright, not silently
+// skipping them), so there's nothing of this consumer's own to resume.
+func (c *Consumer) ensureGroup(ctx context.Context) error {
+	if err := c.client.XGroupCreateMkStream(ctx, StreamAgentTriggers, consumerGroup, "$").Err(); err != nil {
+		if err.Error() != "BUSYGROUP Consumer Group name already exists" {
+			return err
+		}
+	}
+	return nil
 }
 
 // dispatch decides, cheaply and synchronously, whether msg is a control

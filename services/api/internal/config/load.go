@@ -226,6 +226,8 @@ func Load() (*Config, error) {
 		},
 		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
 		AIAgentInternalKey: aiAgentInternalKey,
+		SSHBastionHost:     env("SSH_BASTION_HOST", ""),
+		PortForwardHost:    env("PORT_FORWARD_HOST", ""),
 	}, nil
 }
 
