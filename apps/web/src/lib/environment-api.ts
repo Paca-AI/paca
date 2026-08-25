@@ -85,6 +85,12 @@ export interface EnvironmentStats {
 	memory_used_bytes: number;
 	memory_limit_bytes: number;
 	disk_used_bytes: number;
+	// has_active_ssh_session mirrors the idle reaper's own live-session
+	// check (cmd/agent-runner/main.go's reapOneIdleEnvironment) — direct
+	// SSH access never touches last_active_at, so this is the only signal
+	// the frontend has that an environment which *looks* about to idle-out
+	// by that column is, in fact, never going to be allowed to.
+	has_active_ssh_session: boolean;
 }
 
 export interface EnvironmentSSHKey {

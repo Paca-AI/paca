@@ -393,6 +393,7 @@
 				"delete": "Xóa",
 				"sleepsIn_one": "ngủ sau {{count}} phút",
 				"sleepsIn_other": "ngủ sau {{count}} phút",
+				"keptAliveBySSH": "được giữ hoạt động nhờ phiên SSH đang mở",
 				"vitals": {
 					"cpu": "CPU",
 					"cpuValue": "{{value}} vCPU",
@@ -527,6 +528,7 @@
 				"description": "Kết nối bằng terminal ngay trên trình duyệt — không cần SSH client hay khóa cục bộ.",
 				"connect": "Kết nối",
 				"notRunning": "Khởi động môi trường trước khi kết nối.",
+				"readOnly": "Bạn cần quyền ghi trên dự án này để mở terminal.",
 				"hint": "Mở trong một tab toàn màn hình mới.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",

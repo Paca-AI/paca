@@ -393,6 +393,7 @@
 				"delete": "Delete",
 				"sleepsIn_one": "sleeps in {{count}} minute",
 				"sleepsIn_other": "sleeps in {{count}} minutes",
+				"keptAliveBySSH": "kept awake by an active SSH session",
 				"vitals": {
 					"cpu": "CPU",
 					"cpuValue": "{{value}} vCPU",
@@ -527,6 +528,7 @@
 				"description": "Connect using an in-browser terminal — no local SSH client or key required.",
 				"connect": "Connect",
 				"notRunning": "Start the environment before connecting.",
+				"readOnly": "You need write access to this project to open a terminal.",
 				"hint": "Opens in a new full-page tab.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",

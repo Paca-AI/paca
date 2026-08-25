@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import {
 	EnvironmentStatusLine,
 	EnvironmentStatusRing,
+	useEnvironmentUsage,
 } from "@/components/projects/environments/environment-status-ring";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -355,16 +356,26 @@ function WebAppConnectTab({
 				{t("environments.connect.webApp.description")}
 			</p>
 			{isRunning ? (
-				<Link
-					to="/projects/$projectId/environments/$environmentId/terminal"
-					params={{ projectId, environmentId: environment.id }}
-					target="_blank"
-					rel="noopener noreferrer"
-					className={buttonVariants({ size: "lg" })}
-				>
-					<ExternalLink className="size-4 mr-2" />
-					{t("environments.connect.webApp.connect")}
-				</Link>
+				canWrite ? (
+					<Link
+						to="/projects/$projectId/environments/$environmentId/terminal"
+						params={{ projectId, environmentId: environment.id }}
+						target="_blank"
+						rel="noopener noreferrer"
+						className={buttonVariants({ size: "lg" })}
+					>
+						<ExternalLink className="size-4 mr-2" />
+						{t("environments.connect.webApp.connect")}
+					</Link>
+				) : (
+					// The terminal ticket endpoint requires agents:write (see
+					// router.go) — a read-only member who followed this link
+					// would only hit a 403 minting the ticket, so the link
+					// itself is hidden rather than shown-then-failing.
+					<p className="text-sm text-muted-foreground">
+						{t("environments.connect.webApp.readOnly")}
+					</p>
+				)
 			) : (
 				<div className="space-y-3">
 					<p className="text-sm text-amber-600">
@@ -503,6 +514,11 @@ export function EnvironmentConnectView({
 		environmentQueryOptions(projectId, environmentId),
 	);
 	const [activeTab, setActiveTab] = useState<ConnectTab>("web-app");
+	// Called unconditionally (before the `!environment` early return below)
+	// purely for its hasActiveSshSession signal — see
+	// EnvironmentStatusRing's doc comment on why the header needs this
+	// rather than depleting its idle ring while a real SSH session is open.
+	const usage = useEnvironmentUsage(projectId, environmentId, environment);
 
 	if (!environment) {
 		return (
@@ -525,13 +541,20 @@ export function EnvironmentConnectView({
 					{environment.name}
 				</Link>
 				<div className="flex items-center gap-4">
-					<EnvironmentStatusRing environment={environment} size={52} />
+					<EnvironmentStatusRing
+						environment={environment}
+						size={52}
+						hasActiveSshSession={usage.hasActiveSshSession}
+					/>
 					<div>
 						<h1 className="text-lg font-semibold">
 							{t("environments.connect.title", { name: environment.name })}
 						</h1>
 						<div className="mt-0.5">
-							<EnvironmentStatusLine environment={environment} />
+							<EnvironmentStatusLine
+								environment={environment}
+								hasActiveSshSession={usage.hasActiveSshSession}
+							/>
 						</div>
 					</div>
 				</div>

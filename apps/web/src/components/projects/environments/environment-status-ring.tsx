@@ -37,7 +37,19 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 // open, not to fetch fresher data.
 const TICK_MS = 30_000;
 
-function useIdleFraction(environment: Environment) {
+// hasActiveSshSession comes from the live stats stream (see
+// EnvironmentUsage.hasActiveSshSession) — direct SSH access never touches
+// last_active_at, so without this signal the ring/countdown below would
+// compute elapsed idle time as if nobody were there and repeatedly count
+// down to "sleeps in 0m" / red during a long open SSH session, even though
+// the idle reaper defers stopping the environment for exactly as long as
+// that session stays open (cmd/agent-runner/main.go's
+// reapOneIdleEnvironment). While true, this pins the ring full/green
+// instead of depleting it.
+function useIdleFraction(
+	environment: Environment,
+	hasActiveSshSession: boolean,
+) {
 	const isRunning = environment.status === "running";
 	const [, tick] = useState(0);
 
@@ -48,7 +60,22 @@ function useIdleFraction(environment: Environment) {
 	}, [isRunning]);
 
 	if (!isRunning) {
-		return { isRunning: false, fraction: 1, minutesLeft: 0, nearIdle: false };
+		return {
+			isRunning: false,
+			fraction: 1,
+			minutesLeft: 0,
+			nearIdle: false,
+			keptAliveBySSH: false,
+		};
+	}
+	if (hasActiveSshSession) {
+		return {
+			isRunning: true,
+			fraction: 1,
+			minutesLeft: environment.idle_timeout_minutes,
+			nearIdle: false,
+			keptAliveBySSH: true,
+		};
 	}
 	const elapsedMin =
 		(Date.now() - new Date(environment.last_active_at).getTime()) / 60_000;
@@ -60,17 +87,32 @@ function useIdleFraction(environment: Environment) {
 		0,
 		Math.ceil(environment.idle_timeout_minutes - elapsedMin),
 	);
-	return { isRunning: true, fraction, minutesLeft, nearIdle: fraction < 0.25 };
+	return {
+		isRunning: true,
+		fraction,
+		minutesLeft,
+		nearIdle: fraction < 0.25,
+		keptAliveBySSH: false,
+	};
 }
 
 export function EnvironmentStatusRing({
 	environment,
 	size = 52,
+	hasActiveSshSession = false,
 }: {
 	environment: Environment;
 	size?: number;
+	// From the caller's own useEnvironmentUsage subscription — not fetched
+	// here, so two sibling header elements (this ring + EnvironmentStatusLine)
+	// don't each open their own WebSocket for the same one signal. See
+	// useIdleFraction's doc comment for why this matters.
+	hasActiveSshSession?: boolean;
 }) {
-	const { isRunning, fraction, nearIdle } = useIdleFraction(environment);
+	const { isRunning, fraction, nearIdle } = useIdleFraction(
+		environment,
+		hasActiveSshSession,
+	);
 
 	return (
 		<div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -128,12 +170,18 @@ export function EnvironmentStatusRing({
 export function EnvironmentStatusLine({
 	environment,
 	showBackendBadge = true,
+	hasActiveSshSession = false,
 }: {
 	environment: Environment;
 	showBackendBadge?: boolean;
+	// See EnvironmentStatusRing's identically-named prop doc comment.
+	hasActiveSshSession?: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { isRunning, minutesLeft } = useIdleFraction(environment);
+	const { isRunning, minutesLeft, keptAliveBySSH } = useIdleFraction(
+		environment,
+		hasActiveSshSession,
+	);
 
 	return (
 		<div className="flex items-center gap-1.5 flex-wrap">
@@ -155,9 +203,11 @@ export function EnvironmentStatusLine({
 			{isRunning && (
 				<span className="text-sm text-muted-foreground">
 					·{" "}
-					{t("environments.detail.overview.sleepsIn", {
-						count: minutesLeft,
-					})}
+					{keptAliveBySSH
+						? t("environments.detail.overview.keptAliveBySSH")
+						: t("environments.detail.overview.sleepsIn", {
+								count: minutesLeft,
+							})}
 				</span>
 			)}
 			{showBackendBadge && (
@@ -234,6 +284,9 @@ export interface EnvironmentUsage {
 	diskUsedBytes: number;
 	diskLimitBytes: number;
 	diskFraction: number | null;
+	// hasActiveSshSession is false until the first message arrives (same
+	// as every other field here) — see EnvironmentStats.has_active_ssh_session.
+	hasActiveSshSession: boolean;
 }
 
 // useEnvironmentUsage opens a WebSocket (via getStatsTicket, connecting
@@ -258,9 +311,14 @@ const STATS_RECONNECT_DELAY_MS = 5_000;
 export function useEnvironmentUsage(
 	projectId: string,
 	environmentId: string,
-	environment: Environment,
+	// Optional so a caller that hasn't loaded the environment yet (e.g.
+	// EnvironmentDetailView, which needs this hook called unconditionally
+	// before its own `if (!environment) return <Skeleton />`) can still
+	// call this hook every render — isRunning is false and every fallback
+	// below defaults out until a real Environment arrives.
+	environment: Environment | undefined,
 ): EnvironmentUsage {
-	const isRunning = environment.status === "running";
+	const isRunning = environment?.status === "running";
 	const [stats, setStats] = useState<EnvironmentStats | null>(null);
 
 	useEffect(() => {
@@ -341,12 +399,12 @@ export function useEnvironmentUsage(
 	const cpuLimitCores =
 		stats && stats.cpu_limit_millicores > 0
 			? stats.cpu_limit_millicores / 1000
-			: parseCPULimitCores(environment.cpu_limit);
+			: parseCPULimitCores(environment?.cpu_limit ?? "");
 	const memoryLimitBytes =
 		stats && stats.memory_limit_bytes > 0
 			? stats.memory_limit_bytes
-			: parseMemoryLimitBytes(environment.memory_limit);
-	const diskLimitBytes = environment.disk_limit_gb * 1024 ** 3;
+			: parseMemoryLimitBytes(environment?.memory_limit ?? "");
+	const diskLimitBytes = (environment?.disk_limit_gb ?? 0) * 1024 ** 3;
 
 	const memoryUsedBytes = stats?.memory_used_bytes ?? 0;
 	const diskUsedBytes = stats?.disk_used_bytes ?? 0;
@@ -370,6 +428,7 @@ export function useEnvironmentUsage(
 			stats && diskLimitBytes > 0
 				? Math.min(1, diskUsedBytes / diskLimitBytes)
 				: null,
+		hasActiveSshSession: stats?.has_active_ssh_session ?? false,
 	};
 }
 

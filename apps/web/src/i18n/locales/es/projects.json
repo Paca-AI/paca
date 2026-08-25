@@ -393,6 +393,7 @@
 				"delete": "Eliminar",
 				"sleepsIn_one": "se duerme en {{count}} minuto",
 				"sleepsIn_other": "se duerme en {{count}} minutos",
+				"keptAliveBySSH": "activo gracias a una sesión SSH en curso",
 				"vitals": {
 					"cpu": "CPU",
 					"cpuValue": "{{value}} vCPU",
@@ -527,6 +528,7 @@
 				"description": "Conéctate mediante una terminal en el navegador — no se necesita un cliente SSH ni una clave local.",
 				"connect": "Conectar",
 				"notRunning": "Inicia el entorno antes de conectarte.",
+				"readOnly": "Necesitas acceso de escritura a este proyecto para abrir una terminal.",
 				"hint": "Se abre en una nueva pestaña a pantalla completa.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",

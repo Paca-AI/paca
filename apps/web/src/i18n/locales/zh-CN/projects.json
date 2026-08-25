@@ -393,6 +393,7 @@
 				"delete": "删除",
 				"sleepsIn_one": "{{count}} 分钟后休眠",
 				"sleepsIn_other": "{{count}} 分钟后休眠",
+				"keptAliveBySSH": "因存在活跃的 SSH 会话而保持唤醒",
 				"vitals": {
 					"cpu": "CPU",
 					"cpuValue": "{{value}} vCPU",
@@ -527,6 +528,7 @@
 				"description": "使用浏览器内终端连接 — 无需本地 SSH 客户端或密钥。",
 				"connect": "连接",
 				"notRunning": "请先启动环境再连接。",
+				"readOnly": "打开终端需要对此项目的写入权限。",
 				"hint": "将在新的全屏标签页中打开。",
 				"pageTitle": "{{name}} — 终端",
 				"pageTitleLoading": "终端",

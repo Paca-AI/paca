@@ -393,6 +393,7 @@
 				"delete": "削除",
 				"sleepsIn_one": "{{count}}分後にスリープ",
 				"sleepsIn_other": "{{count}}分後にスリープ",
+				"keptAliveBySSH": "SSHセッションが有効なためスリープしません",
 				"vitals": {
 					"cpu": "CPU",
 					"cpuValue": "{{value}} vCPU",
@@ -527,6 +528,7 @@
 				"description": "ブラウザ内ターミナルで接続します — ローカルのSSHクライアントや鍵は不要です。",
 				"connect": "接続",
 				"notRunning": "接続する前に環境を起動してください。",
+				"readOnly": "ターミナルを開くには、このプロジェクトへの書き込み権限が必要です。",
 				"hint": "新しい全画面タブで開きます。",
 				"pageTitle": "{{name}} — ターミナル",
 				"pageTitleLoading": "ターミナル",

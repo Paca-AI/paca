@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import {
 	EnvironmentStatusLine,
 	EnvironmentStatusRing,
+	type EnvironmentUsage,
 	formatBytes,
 	UsageRingCell,
 	useEnvironmentUsage,
@@ -120,11 +121,17 @@ function OverviewTab({
 	projectId,
 	canWrite,
 	onGoToPortForwards,
+	usage,
 }: {
 	environment: Environment;
 	projectId: string;
 	canWrite: boolean;
 	onGoToPortForwards: () => void;
+	// Lifted to EnvironmentDetailView and shared with the header's
+	// EnvironmentStatusRing/Line rather than fetched here — see that
+	// component's own doc comment on why a single subscription per page,
+	// not one per consumer, is worth the prop.
+	usage: EnvironmentUsage;
 }) {
 	const { t } = useTranslation("projects");
 	const { t: tCommon } = useTranslation("common");
@@ -175,7 +182,6 @@ function OverviewTab({
 		(environment.status === "stopped" ||
 			environment.status === "suspended" ||
 			environment.status === "error");
-	const usage = useEnvironmentUsage(projectId, environment.id, environment);
 
 	return (
 		<div className="space-y-6">
@@ -931,6 +937,12 @@ export function EnvironmentDetailView({
 		},
 	});
 
+	// Called unconditionally (before the `!environment` early return below)
+	// and shared with OverviewTab as a prop — see this hook's own doc
+	// comment on why one subscription per page, not one per consumer,
+	// matters here.
+	const usage = useEnvironmentUsage(projectId, environmentId, environment);
+
 	if (!environment) {
 		return (
 			<div className="flex flex-col gap-4 p-6">
@@ -949,14 +961,21 @@ export function EnvironmentDetailView({
 			<div className="border-b border-border/50 px-6 py-5 shrink-0">
 				<div className="flex items-center justify-between gap-4">
 					<div className="flex items-center gap-4">
-						<EnvironmentStatusRing environment={environment} size={52} />
+						<EnvironmentStatusRing
+							environment={environment}
+							size={52}
+							hasActiveSshSession={usage.hasActiveSshSession}
+						/>
 						<div>
 							<h1 className="text-lg font-semibold">{environment.name}</h1>
 							<span className="text-sm text-muted-foreground font-mono">
 								{environment.slug}
 							</span>
 							<div className="mt-1">
-								<EnvironmentStatusLine environment={environment} />
+								<EnvironmentStatusLine
+									environment={environment}
+									hasActiveSshSession={usage.hasActiveSshSession}
+								/>
 							</div>
 						</div>
 					</div>
@@ -1040,6 +1059,7 @@ export function EnvironmentDetailView({
 						projectId={projectId}
 						canWrite={canWrite}
 						onGoToPortForwards={() => handleTabChange("portForwards")}
+						usage={usage}
 					/>
 				)}
 				{activeTab === "folders" && (
