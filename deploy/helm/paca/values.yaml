@@ -263,21 +263,30 @@ agentRunner:
     image:
       repository: ghcr.io/paca-ai/paca-agent-server-goose
       tag: "latest"
-    # Namespace sandbox Jobs/Pods are created in. Empty defaults to this
-    # release's own namespace — the RBAC this chart grants (see
-    # templates/agent-runner/role.yaml) is only ever scoped to whichever
-    # namespace this resolves to, so changing it without also placing
-    # equivalent RBAC there yourself will make sandbox creation fail with
-    # a Forbidden error.
+    # Namespace sandbox Jobs/Pods/environment Deployments are created in.
+    # Empty (the default) resolves to "<release-name>-sandbox", a
+    # dedicated namespace this chart creates for you (see
+    # templates/agent-runner/sandbox-namespace.yaml) — never the release's
+    # own namespace alongside postgres/valkey/minio/api/web/gateway. The
+    # RBAC this chart grants (see templates/agent-runner/role.yaml) is
+    # only ever scoped to whichever namespace this resolves to, so setting
+    # it explicitly to a namespace you manage yourself works too, as long
+    # as that namespace already exists — Kubernetes RBAC can't scope the
+    # pods/exec/pods/log grant, or the newer Deployment/Service
+    # patch/delete grant environments need, to only objects agent-runner's
+    # own ServiceAccount created; it's every matching object in whichever
+    # namespace this resolves to. See deploy/helm/README.md's RBAC
+    # section.
     #
-    # Recommended: point this at a namespace dedicated to sandboxes only,
-    # not the default (this release's own namespace, alongside postgres/
-    # valkey/minio/api/web/gateway). Kubernetes RBAC can't scope the
-    # pods/exec and pods/log grant below to only agent-runner's own Jobs —
-    # it's every Pod in whichever namespace this resolves to. Left at the
-    # default, agent-runner's ServiceAccount can exec into and read logs
-    # from this release's own datastores too. See deploy/helm/README.md's
-    # RBAC section.
+    # UPGRADE NOTE: prior to this default changing, an unset namespace
+    # resolved to the release's own namespace. If you're upgrading an
+    # existing install that relied on that (its RBAC, and any
+    # already-running sandbox Jobs/environments, live in the release
+    # namespace today), set this explicitly to that namespace to preserve
+    # current behavior — otherwise `helm upgrade` moves the Role/
+    # RoleBinding to the new dedicated namespace and anything still
+    # running in the old one becomes unreachable until you migrate or
+    # manually clean it up.
     namespace: ""
     # Requests == limits on every sandbox Pod's primary container —
     # matches the docker backend's own hardcoded 2 CPU / 4GiB.

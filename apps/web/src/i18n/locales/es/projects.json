@@ -410,6 +410,7 @@
 				"count_one": "{{count}} carpeta configurada",
 				"count_other": "{{count}} carpetas configuradas",
 				"addFolder": "Añadir carpeta",
+				"deleteFailed": "No se pudo eliminar la carpeta. Inténtalo de nuevo.",
 				"empty": {
 					"title": "No se han añadido carpetas",
 					"addFirstFolder": "Añade tu primera carpeta"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}} reenvío de puerto",
 				"count_other": "{{count}} reenvíos de puertos",
 				"add": "Añadir reenvío de puerto",
+				"deleteFailed": "No se pudo eliminar el reenvío de puerto. Inténtalo de nuevo.",
 				"containerPort": "Puerto del contenedor {{port}}",
 				"unassigned": "Aún no asignado",
 				"restart": "Reiniciar",
@@ -454,7 +456,8 @@
 					"labelLabel": "Etiqueta",
 					"labelPlaceholder": "Servidor de desarrollo",
 					"cancel": "Cancelar",
-					"add": "Añadir"
+					"add": "Añadir",
+					"addFailed": "No se pudo añadir el reenvío de puerto. Inténtalo de nuevo."
 				},
 				"restartDialog": {
 					"title": "¿Reiniciar el entorno?",
@@ -469,6 +472,7 @@
 				"count_one": "{{count}} clave configurada",
 				"count_other": "{{count}} claves configuradas",
 				"addKey": "Añadir clave",
+				"deleteFailed": "No se pudo eliminar la clave SSH. Inténtalo de nuevo.",
 				"empty": {
 					"title": "No se han añadido claves SSH",
 					"addFirst": "Añade tu primera clave"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "Mi portátil",
 					"publicKeyLabel": "Clave pública",
 					"cancel": "Cancelar",
-					"addKey": "Añadir clave"
+					"addKey": "Añadir clave",
+					"addFailed": "No se pudo añadir la clave SSH. Inténtalo de nuevo."
 				}
 			},
 			"terminal": {

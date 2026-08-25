@@ -63,6 +63,12 @@ type FolderRepository interface {
 // SSHKeyRepository defines storage for environment SSH keys.
 type SSHKeyRepository interface {
 	ListSSHKeys(ctx context.Context, environmentID uuid.UUID) ([]*EnvironmentSSHKey, error)
+	// FindSSHKeyByID returns a single SSH key by ID — mirrors
+	// FolderRepository.FindFolderByID's own ownership-check-before-delete
+	// use (Service.DeleteSSHKey), so deleting a key doesn't need to list
+	// and scan every key on the environment just to check one exists.
+	// Returns ErrSSHKeyNotFound otherwise.
+	FindSSHKeyByID(ctx context.Context, id uuid.UUID) (*EnvironmentSSHKey, error)
 	CreateSSHKey(ctx context.Context, k *EnvironmentSSHKey) error
 	DeleteSSHKey(ctx context.Context, id uuid.UUID) error
 	// FindSSHKeyByFingerprint resolves the environment an inbound SSH

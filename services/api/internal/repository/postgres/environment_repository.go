@@ -227,10 +227,23 @@ func (r *EnvironmentRepository) TouchEnvironment(ctx context.Context, id uuid.UU
 	return err
 }
 
-// SoftDeleteEnvironment sets deleted_at on the environment row.
+// SoftDeleteEnvironment sets deleted_at on the environment row and clears
+// agents.default_environment_id for any agent pointing at it in the same
+// transaction. A real FK's ON DELETE SET NULL (which this column does
+// have — migrations/000042) never fires here since this is a soft delete,
+// not a row DELETE — without this, an agent's default_environment_id is
+// left dangling and every StartChatSession/SendChatMessage against it
+// fails with ErrEnvironmentNotFound until someone manually clears it.
 func (r *EnvironmentRepository) SoftDeleteEnvironment(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE environments SET deleted_at=$1 WHERE id=$2`, time.Now(), id.String())
-	return err
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE environments SET deleted_at=$1 WHERE id=$2`, time.Now(), id.String()); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE agents SET default_environment_id=NULL WHERE default_environment_id=$1`, id.String()); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // SlugTaken reports whether slug is already used by a non-deleted
@@ -344,6 +357,20 @@ func (r *EnvironmentRepository) ListSSHKeys(ctx context.Context, environmentID u
 		result = append(result, sshKeyFromRecord(rec))
 	}
 	return result, nil
+}
+
+// FindSSHKeyByID returns a single SSH key by ID.
+func (r *EnvironmentRepository) FindSSHKeyByID(ctx context.Context, id uuid.UUID) (*environmentdom.EnvironmentSSHKey, error) {
+	var rec environmentSSHKeyRecord
+	err := r.db.GetContext(ctx, &rec, `
+		SELECT `+environmentSSHKeyCols+` FROM environment_ssh_keys WHERE id = $1`, id.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, environmentdom.ErrSSHKeyNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sshKeyFromRecord(rec), nil
 }
 
 // CreateSSHKey inserts a new SSH key record.

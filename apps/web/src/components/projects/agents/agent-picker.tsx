@@ -274,12 +274,21 @@ export function useEnvironmentPicker(
 
 	// Nothing explicitly picked yet — default to the agent's own default
 	// environment once it's known, the same "auto-select" convention
-	// useAgentPicker uses for a project's single agent.
+	// useAgentPicker uses for a project's single agent. Guarded against a
+	// default_environment_id that no longer resolves (the environment was
+	// deleted after being set as default) — without this, a dangling id
+	// gets set into state and silently posted as environment_id on
+	// startChatSession with nothing in the picker's own list to show for
+	// it.
 	useEffect(() => {
-		if (!environmentId && agent?.default_environment_id) {
+		if (
+			!environmentId &&
+			agent?.default_environment_id &&
+			environments.some((e) => e.id === agent.default_environment_id)
+		) {
 			setEnvironmentIdState(agent.default_environment_id);
 		}
-	}, [agent?.default_environment_id, environmentId]);
+	}, [agent?.default_environment_id, environments, environmentId]);
 
 	const selectedEnvironment = environments.find((e) => e.id === environmentId);
 	const folders = selectedEnvironment?.folders ?? [];

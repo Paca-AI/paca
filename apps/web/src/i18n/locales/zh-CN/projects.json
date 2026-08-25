@@ -410,6 +410,7 @@
 				"count_one": "已配置 {{count}} 个文件夹",
 				"count_other": "已配置 {{count}} 个文件夹",
 				"addFolder": "添加文件夹",
+				"deleteFailed": "删除文件夹失败，请重试。",
 				"empty": {
 					"title": "尚未添加文件夹",
 					"addFirstFolder": "添加您的第一个文件夹"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}} 个端口转发",
 				"count_other": "{{count}} 个端口转发",
 				"add": "添加端口转发",
+				"deleteFailed": "删除端口转发失败，请重试。",
 				"containerPort": "容器端口 {{port}}",
 				"unassigned": "尚未分配",
 				"restart": "重启",
@@ -454,7 +456,8 @@
 					"labelLabel": "标签",
 					"labelPlaceholder": "开发服务器",
 					"cancel": "取消",
-					"add": "添加"
+					"add": "添加",
+					"addFailed": "添加端口转发失败，请重试。"
 				},
 				"restartDialog": {
 					"title": "重启环境？",
@@ -469,6 +472,7 @@
 				"count_one": "已配置 {{count}} 个密钥",
 				"count_other": "已配置 {{count}} 个密钥",
 				"addKey": "添加密钥",
+				"deleteFailed": "删除 SSH 密钥失败，请重试。",
 				"empty": {
 					"title": "尚未添加 SSH 密钥",
 					"addFirst": "添加您的第一个密钥"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "我的笔记本电脑",
 					"publicKeyLabel": "公钥",
 					"cancel": "取消",
-					"addKey": "添加密钥"
+					"addKey": "添加密钥",
+					"addFailed": "添加 SSH 密钥失败，请重试。"
 				}
 			},
 			"terminal": {

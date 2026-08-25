@@ -410,6 +410,7 @@
 				"count_one": "Đã cấu hình {{count}} thư mục",
 				"count_other": "Đã cấu hình {{count}} thư mục",
 				"addFolder": "Thêm thư mục",
+				"deleteFailed": "Không thể xóa thư mục. Vui lòng thử lại.",
 				"empty": {
 					"title": "Chưa có thư mục nào được thêm",
 					"addFirstFolder": "Thêm thư mục đầu tiên"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}} cổng chuyển tiếp",
 				"count_other": "{{count}} cổng chuyển tiếp",
 				"add": "Thêm cổng chuyển tiếp",
+				"deleteFailed": "Không thể xóa cổng chuyển tiếp. Vui lòng thử lại.",
 				"containerPort": "Cổng container {{port}}",
 				"unassigned": "Chưa được gán",
 				"restart": "Khởi động lại",
@@ -454,7 +456,8 @@
 					"labelLabel": "Nhãn",
 					"labelPlaceholder": "Server phát triển",
 					"cancel": "Hủy",
-					"add": "Thêm"
+					"add": "Thêm",
+					"addFailed": "Không thể thêm cổng chuyển tiếp. Vui lòng thử lại."
 				},
 				"restartDialog": {
 					"title": "Khởi động lại môi trường?",
@@ -469,6 +472,7 @@
 				"count_one": "Đã cấu hình {{count}} khóa",
 				"count_other": "Đã cấu hình {{count}} khóa",
 				"addKey": "Thêm khóa",
+				"deleteFailed": "Không thể xóa khóa SSH. Vui lòng thử lại.",
 				"empty": {
 					"title": "Chưa có khóa SSH nào được thêm",
 					"addFirst": "Thêm khóa đầu tiên"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "Laptop của tôi",
 					"publicKeyLabel": "Khóa công khai",
 					"cancel": "Hủy",
-					"addKey": "Thêm khóa"
+					"addKey": "Thêm khóa",
+					"addFailed": "Không thể thêm khóa SSH. Vui lòng thử lại."
 				}
 			},
 			"terminal": {

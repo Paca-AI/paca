@@ -342,7 +342,17 @@ func (m *Manager) recreateEnvironmentContainer(ctx context.Context, backendRef, 
 
 	containerID, baseURL, err := m.createAndStartEnvironmentContainer(ctx, image, volumeRef, cfg)
 	if err != nil {
-		return nil, err
+		// One immediate retry: the old container is already gone but
+		// volumeRef (the environment's actual data) is untouched, so a
+		// transient create failure (an image-pull hiccup, a brief port
+		// conflict) is worth retrying right away rather than leaving the
+		// environment with zero containers until its next explicit Start
+		// call happens to hit recreateGoneEnvironmentContainer's own
+		// self-heal path.
+		containerID, baseURL, err = m.createAndStartEnvironmentContainer(ctx, image, volumeRef, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("sandbox/docker: recreate environment container against volume %s (data preserved — the next Start will retry): %w", volumeRef, err)
+		}
 	}
 	return &sandbox.EnvironmentHandle{BackendRef: containerID, BaseURL: baseURL}, nil
 }

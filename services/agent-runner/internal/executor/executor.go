@@ -174,6 +174,16 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 	// actually happened.
 	turnCtx, cancelTurn := context.WithTimeout(ctx, time.Duration(timeoutMinutes)*time.Minute)
 	defer cancelTurn()
+	// timeoutFor mints a fresh timeoutMinutes-bounded context from ctx (the
+	// caller's own, not turnCtx) — used below to give
+	// coldStartEnvironment's attach phase its own deadline, separate from
+	// turnCtx's. Every acp.Client call must still be bounded by something
+	// (see defaultTimeoutMinutes's own doc comment on why — a caller-
+	// supplied deadline is the only thing that ever stops a hung one); this
+	// just avoids one phase's cost silently eating into another's.
+	timeoutFor := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(ctx, time.Duration(timeoutMinutes)*time.Minute)
+	}
 
 	var handle *sandbox.Handle
 	var client *acp.Client
@@ -195,11 +205,28 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 		// registry" design choice). No sandbox.Handle exists for this
 		// path — handle stays nil, so Result.Handle stays nil too; there's
 		// nothing for the caller's teardown path to Stop.
+		// Its own attachCtx, not turnCtx: session/load's full-history
+		// replay (see attachEnvironmentSession's own doc comment) scales
+		// with this conversation's length, unlike coldStart's cheap,
+		// roughly-constant-time NewSession below — sharing turnCtx's single
+		// deadline across both this attach phase and the client.Prompt call
+		// further down would let a long replay eat into the LLM call's own
+		// budget, making a long-lived environment conversation
+		// progressively more likely to time out as its history grows.
+		// attachCtx gets the same nominal timeoutMinutes window, just
+		// starting fresh from now instead of sharing turnCtx's clock —
+		// turnCtx itself is then reset to a fresh window of its own for
+		// Prompt below, once this phase is done.
+		attachCtx, cancelAttach := timeoutFor()
+		defer cancelAttach()
 		var err error
-		client, sessionID, err = e.coldStartEnvironment(ctx, turnCtx, cfg, trigger)
+		client, sessionID, err = e.coldStartEnvironment(ctx, attachCtx, cfg, trigger)
 		if err != nil {
 			return Result{}, err
 		}
+		var cancelPrompt context.CancelFunc
+		turnCtx, cancelPrompt = timeoutFor()
+		defer cancelPrompt()
 		message = buildInitialMessage(trigger)
 	default:
 		fileSkills := prepareFileSkills(cfg.Skills)
@@ -479,7 +506,16 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// No lazy creation here — see the doc comment above. A never-created
 	// (BackendRef nil) or explicitly broken (error/deleting) environment
 	// fails this turn clearly rather than silently doing nothing useful.
-	if env.BackendRef == nil || *env.BackendRef == "" || env.Status == "error" || env.Status == "deleting" {
+	// "stopping" is included too, distinctly from those: it means the idle
+	// reaper (cmd/agent-runner/main.go's reapOneIdleEnvironment) has
+	// already claimed this environment and is actively stopping its
+	// container/Pod right now — starting it back up concurrently would
+	// race that stop rather than cleanly losing to it. Failing this turn
+	// is safe and retryable: the reaper's own stop finishes in well under
+	// a turn's timeout, and the next attach attempt (this turn's own retry,
+	// or simply the user's next message) finds status "stopped" instead
+	// and proceeds normally.
+	if env.BackendRef == nil || *env.BackendRef == "" || env.Status == "error" || env.Status == "deleting" || env.Status == "stopping" {
 		return nil, "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
 	}
 
@@ -557,16 +593,27 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// handle.BackendRef only differs from *env.BackendRef when the docker
 	// backend had to recreate a container removed outside of Paca (see
 	// docker.Manager.recreateGoneEnvironmentContainer's doc comment) — pass
-	// it through non-nil so UpdateEnvironmentStatus's COALESCE persists the
-	// new value; nil (leave backend_ref as-is) on the ordinary path where
-	// nothing changed.
+	// it through non-nil so the COALESCE below persists the new value; nil
+	// (leave backend_ref as-is) on the ordinary path where nothing changed.
 	var newBackendRef *string
 	if handle.BackendRef != "" && handle.BackendRef != *env.BackendRef {
 		newBackendRef = &handle.BackendRef
 	}
-	if err := e.envRepo.UpdateEnvironmentStatus(ctx, environmentID, "running", newBackendRef, nil); err != nil {
+	// ClaimEnvironmentRunning, not a plain UpdateEnvironmentStatus: the
+	// initial status check above already closed the common case, but the
+	// reaper could still have claimed this environment "stopping" (or an
+	// explicit delete could have started) in the gap between that check
+	// and StartEnvironment returning just above — an unconditional write
+	// here would silently stomp that back to "running" even though the
+	// container may already be stopped. A lost race just leaves status as
+	// whatever the reaper/delete set it to; ACP itself already succeeded
+	// above regardless, so this turn still completes normally.
+	if won, err := e.envRepo.ClaimEnvironmentRunning(ctx, environmentID, newBackendRef); err != nil {
 		e.log.Warn("executor: failed to record environment running status",
 			"environment_id", environmentID, "error", err)
+	} else if !won {
+		e.log.Warn("executor: environment was claimed stopping/deleting concurrently with this attach — leaving its status as-is",
+			"environment_id", environmentID)
 	}
 	if err := e.envRepo.TouchEnvironment(ctx, environmentID); err != nil {
 		e.log.Warn("executor: failed to touch environment", "environment_id", environmentID, "error", err)
@@ -609,17 +656,29 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 // persisted workspace volume with whatever container preceded it, but
 // starts goose's own on-disk session store (outside that volume) empty, so
 // a session recorded before a container recreation is gone for good. A
-// stale session is treated the same as no session at all — logged, not
-// fatal — since a fresh session is always a safe, working fallback; the
-// only thing lost is history a container recreation had already made
-// unrecoverable, never a reason to fail the turn outright.
+// stale (failed-to-load) session is treated the same as no session at
+// all — logged, not fatal — since a fresh session is always a safe,
+// working fallback; the only thing lost is history a container recreation
+// had already made unrecoverable. A failure to even *look up* the stored
+// id is different and NOT treated this way — see the error branch below —
+// since silently minting a fresh session there would overwrite a real,
+// still-resumable one.
 func (e *Executor) attachEnvironmentSession(ctx context.Context, client *acp.Client, conversationID uuid.UUID, workdir string, mcpServers []acp.MCPServerConfig) (string, error) {
 	if e.convRepo != nil {
 		stored, err := e.convRepo.GetACPSessionID(ctx, conversationID)
 		if err != nil {
-			e.log.Warn("executor: failed to look up stored acp session id, starting a fresh session",
-				"conversation_id", conversationID, "error", err)
-		} else if stored != "" {
+			// A real error here (a DB blip, not "no session yet" — see
+			// GetACPSessionID's own doc comment on that distinction) must
+			// not fall through to NewSession: the fallback below persists
+			// whatever session id it mints over the one already stored,
+			// so treating a transient read failure as "no session" would
+			// silently and permanently destroy this conversation's real,
+			// resumable history the moment it happened to race a DB
+			// hiccup. Fail the turn instead — it's retryable, and nothing
+			// has been overwritten yet.
+			return "", fmt.Errorf("executor: look up stored acp session id: %w", err)
+		}
+		if stored != "" {
 			if loadErr := client.LoadSession(ctx, stored, workdir, mcpServers); loadErr == nil {
 				return stored, nil
 			} else {

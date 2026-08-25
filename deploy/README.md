@@ -490,6 +490,16 @@ and use Docker Compose only for PostgreSQL and Valkey.
 | Web | 3000 (internal) | Routed via gateway at `/` |
 | MinIO S3 API | 9000 | Local object store (S3-compatible) |
 | MinIO Console | 9001 | MinIO web UI (credentials: `minioadmin` / `minioadmin`) |
+| Static environment SSH | 2200-2299 | One port per running environment, on by default in dev — see the warning below |
+| Static environment port forwards | 2300-2399 | One port per user-added forward, on by default in dev — see the warning below |
+
+Unlike `docker-compose.prod.yml` (opt-in, empty by default), the two ranges
+above are **on by default** in dev for convenience. Docker publishes them
+on `0.0.0.0`, so any environment you create against this dev stack is
+reachable from your whole LAN, not just `localhost`, for as long as it's
+running — fine on a trusted network, but worth knowing. Set
+`SSH_BASTION_PORT_RANGE_START`/`_END` and `PORT_FORWARD_RANGE_START`/`_END`
+empty in a local `.env` override if that's not your situation.
 
 ### Database backups (dev)
 

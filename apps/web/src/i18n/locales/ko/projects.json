@@ -410,6 +410,7 @@
 				"count_one": "폴더 {{count}}개 구성됨",
 				"count_other": "폴더 {{count}}개 구성됨",
 				"addFolder": "폴더 추가",
+				"deleteFailed": "폴더를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"empty": {
 					"title": "추가된 폴더가 없습니다",
 					"addFirstFolder": "첫 폴더 추가"
@@ -437,6 +438,7 @@
 				"count_one": "포트 포워드 {{count}}개",
 				"count_other": "포트 포워드 {{count}}개",
 				"add": "포트 포워드 추가",
+				"deleteFailed": "포트 포워드를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"containerPort": "컨테이너 포트 {{port}}",
 				"unassigned": "아직 할당되지 않음",
 				"restart": "재시작",
@@ -454,7 +456,8 @@
 					"labelLabel": "라벨",
 					"labelPlaceholder": "개발 서버",
 					"cancel": "취소",
-					"add": "추가"
+					"add": "추가",
+					"addFailed": "포트 포워드를 추가하지 못했습니다. 다시 시도해 주세요."
 				},
 				"restartDialog": {
 					"title": "환경을 재시작하시겠습니까?",
@@ -469,6 +472,7 @@
 				"count_one": "키 {{count}}개 구성됨",
 				"count_other": "키 {{count}}개 구성됨",
 				"addKey": "키 추가",
+				"deleteFailed": "SSH 키를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"empty": {
 					"title": "추가된 SSH 키가 없습니다",
 					"addFirst": "첫 키 추가"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "내 노트북",
 					"publicKeyLabel": "공개 키",
 					"cancel": "취소",
-					"addKey": "키 추가"
+					"addKey": "키 추가",
+					"addFailed": "SSH 키를 추가하지 못했습니다. 다시 시도해 주세요."
 				}
 			},
 			"terminal": {

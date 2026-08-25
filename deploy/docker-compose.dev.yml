@@ -400,12 +400,22 @@ services:
       # from. SSH_BASTION_HOST on the api service (above) tells the web
       # app's Connect page to show `localhost` as the host half of the
       # `ssh` command.
+      #
+      # On by default here (unlike docker-compose.prod.yml, which is
+      # opt-in/empty by default) for local-dev convenience — deliberate,
+      # not an oversight. Docker publishes these on 0.0.0.0 (see
+      # publicHostAddr in internal/sandbox/docker/environment.go), so any
+      # environment created against this dev stack is reachable from your
+      # whole LAN, not just localhost, for as long as it's running. Fine
+      # for a laptop on a trusted network; set both *_START vars empty (or
+      # override in a local .env) if that's not your situation.
       SSH_BASTION_PORT_RANGE_START: "2200"
       SSH_BASTION_PORT_RANGE_END: "2299"
       # Port forwarding (docs/ai-agent/environment-management.md's "Port
       # Forwarding" section) — the exact same idea as the SSH range above,
-      # for user-added port forwards instead. A disjoint range from SSH's
-      # own (2200-2299) so the two can never collide.
+      # for user-added port forwards instead, same 0.0.0.0/LAN-reachable
+      # caveat. A disjoint range from SSH's own (2200-2299) so the two can
+      # never collide.
       PORT_FORWARD_RANGE_START: "2300"
       PORT_FORWARD_RANGE_END: "2399"
     volumes:

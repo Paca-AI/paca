@@ -39,6 +39,15 @@
 // verifyTicket below is the byte-for-byte reference implementation of both
 // directions (minting and verifying) — see mintTicket, used only by this
 // package's own tests, and verifyTicket, used on every real connection.
+//
+// Known, accepted limitation: a ticket is neither single-use nor
+// re-checked against the connecting user's current authorization at
+// connect time — only its own expiry and signature are verified. The
+// blast radius is bounded by terminalTicketTTL (60s, see
+// services/api/internal/transport/http/handler/environment_handler.go),
+// short enough that closing this fully (a shared consumed-ticket store,
+// or a live authorization re-check per connection) isn't worth the added
+// state for this phase.
 package acpbridge
 
 import (
@@ -67,6 +76,21 @@ import (
 // minute) never observes a stale timestamp while a real terminal session
 // is active.
 const terminalTouchInterval = 30 * time.Second
+
+// terminalPingInterval/terminalPingTimeout bound how long a browser
+// terminal connection is allowed to sit silently before this endpoint
+// decides it's dead and tears the session down. Without an active probe,
+// a network-level drop that never sends a close frame (a laptop sleeping,
+// a NAT timeout) leaves pumpTerminalInput's conn.Read blocked forever —
+// which, since nothing else ever cancels touchCtx in that case, would
+// keep bumping last_active_at indefinitely and permanently defeat the
+// idle reaper for that environment (unlike SSH, a terminal session has no
+// EnvironmentHasActiveSSHSession-style secondary liveness check; this ping
+// loop is the only thing standing in for one).
+const (
+	terminalPingInterval = 20 * time.Second
+	terminalPingTimeout  = 10 * time.Second
+)
 
 // Binary WebSocket frame protocol between the browser and this endpoint —
 // first byte is a type tag, exactly as
@@ -205,6 +229,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	touchCtx, cancelTouch := context.WithCancel(ctx)
 	defer cancelTouch()
 	go s.touchEnvironmentPeriodically(touchCtx, environmentID)
+	go pingTerminalUntilDead(touchCtx, conn)
 
 	s.Log.Info("acpbridge: terminal session starting", "environment_id", environmentID)
 	err = s.SandboxMgr.StreamExecEnvironment(ctx, *env.BackendRef, []string{"/bin/bash"}, stdinR, writer, writer, resize)
@@ -232,6 +257,34 @@ func (s *Server) touchEnvironmentPeriodically(ctx context.Context, environmentID
 			if err := s.EnvironmentRepo.TouchEnvironment(ctx, environmentID); err != nil {
 				s.Log.Warn("acpbridge: failed to touch environment during terminal session",
 					"environment_id", environmentID, "error", err)
+			}
+		}
+	}
+}
+
+// pingTerminalUntilDead actively probes conn every terminalPingInterval
+// and force-closes it the first time a probe doesn't get a pong back
+// within terminalPingTimeout — see terminalPingInterval's own doc comment
+// on why a passive-only connection (no probe) can hang forever. Closing
+// conn here is what actually unblocks everything else in this session:
+// pumpTerminalInput's blocked conn.Read returns an error, closing stdinW/
+// resize, which unwinds StreamExecEnvironment and returns handleTerminalWS,
+// which cancels touchCtx (and, transitively, this goroutine) via its own
+// deferred cancelTouch.
+func pingTerminalUntilDead(ctx context.Context, conn *websocket.Conn) {
+	ticker := time.NewTicker(terminalPingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(ctx, terminalPingTimeout)
+			err := conn.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				_ = conn.Close(websocket.StatusGoingAway, "ping timeout")
+				return
 			}
 		}
 	}

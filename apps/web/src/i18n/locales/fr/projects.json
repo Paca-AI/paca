@@ -410,6 +410,7 @@
 				"count_one": "{{count}} dossier configuré",
 				"count_other": "{{count}} dossiers configurés",
 				"addFolder": "Ajouter un dossier",
+				"deleteFailed": "Échec de la suppression du dossier. Veuillez réessayer.",
 				"empty": {
 					"title": "Aucun dossier ajouté",
 					"addFirstFolder": "Ajoutez votre premier dossier"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}} transfert de port",
 				"count_other": "{{count}} transferts de ports",
 				"add": "Ajouter un transfert de port",
+				"deleteFailed": "Échec de la suppression du transfert de port. Veuillez réessayer.",
 				"containerPort": "Port du conteneur {{port}}",
 				"unassigned": "Pas encore assigné",
 				"restart": "Redémarrer",
@@ -454,7 +456,8 @@
 					"labelLabel": "Libellé",
 					"labelPlaceholder": "Serveur de développement",
 					"cancel": "Annuler",
-					"add": "Ajouter"
+					"add": "Ajouter",
+					"addFailed": "Échec de l'ajout du transfert de port. Veuillez réessayer."
 				},
 				"restartDialog": {
 					"title": "Redémarrer l'environnement ?",
@@ -469,6 +472,7 @@
 				"count_one": "{{count}} clé configurée",
 				"count_other": "{{count}} clés configurées",
 				"addKey": "Ajouter une clé",
+				"deleteFailed": "Échec de la suppression de la clé SSH. Veuillez réessayer.",
 				"empty": {
 					"title": "Aucune clé SSH ajoutée",
 					"addFirst": "Ajoutez votre première clé"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "Mon ordinateur portable",
 					"publicKeyLabel": "Clé publique",
 					"cancel": "Annuler",
-					"addKey": "Ajouter une clé"
+					"addKey": "Ajouter une clé",
+					"addFailed": "Échec de l'ajout de la clé SSH. Veuillez réessayer."
 				}
 			},
 			"terminal": {

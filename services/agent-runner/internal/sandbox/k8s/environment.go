@@ -324,10 +324,11 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 						Resources:    resources,
 						Ports:        []corev1.ContainerPort{{ContainerPort: int32(sandbox.GooseServePort)}},
 						VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: environmentWorkspaceRoot}},
-						// See sandboxSecurityContext's own doc comment in
-						// manager.go — same hardening Start's Job
-						// container gets, root still the default user.
-						SecurityContext: sandboxSecurityContext(),
+						// See environmentSecurityContext's own doc comment in
+						// manager.go — Start's Job container hardening plus
+						// the two extra capabilities real sshd needs, root
+						// still the default user.
+						SecurityContext: environmentSecurityContext(),
 					}},
 					Volumes: []corev1.Volume{{
 						Name: "workspace",

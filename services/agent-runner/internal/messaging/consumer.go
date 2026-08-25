@@ -130,6 +130,15 @@ func (c *Consumer) Run(ctx context.Context) {
 				// here logging "read error" indefinitely and never process
 				// another trigger again until the process itself restarts.
 				// Self-heal the same way startup does.
+				//
+				// Logged at Warn, not just the read-error Warn above: see
+				// ensureGroup's own doc comment on why recreating from "$"
+				// can silently skip entries in one narrow case (the group
+				// alone was destroyed, not the stream) — worth a
+				// deliberately loud, greppable line so that case is at
+				// least diagnosable after the fact, even though nothing
+				// here can recover the skipped entries themselves.
+				c.log.Warn("consumer: self-healing consumer group after NOGROUP — any triggers published in this gap were skipped, not replayed", "stream", StreamAgentTriggers, "group", consumerGroup)
 				if reErr := c.ensureGroup(ctx); reErr != nil {
 					c.log.Error("consumer: failed to recreate consumer group after NOGROUP", "error", reErr)
 				}
@@ -158,10 +167,22 @@ func (c *Consumer) Run(ctx context.Context) {
 // this service against a real dev Valkey replayed every trigger the stream
 // had ever held, since a brand-new consumer group has no delivery history
 // of its own to resume from and "0" means "start from the very first entry
-// still in the stream." The same reasoning applies to a self-heal recreate:
-// entries published while the group was missing were never going to be
-// delivered to it anyway (XReadGroup was failing outright, not silently
-// skipping them), so there's nothing of this consumer's own to resume.
+// still in the stream."
+//
+// The same reasoning fully justifies "$" for ordinary startup and for a
+// self-heal recreate when the *stream itself* is gone (a Valkey restart
+// without persistence, a FLUSHALL) — there is genuinely nothing left to
+// resume from either way. It's weaker for a self-heal recreate triggered
+// by a manual `XGROUP DESTROY` that leaves the stream itself intact: any
+// entries still sitting in the stream, published before this group's
+// (re)creation notices NOGROUP and calls this, are skipped rather than
+// redelivered ("$" only ever means "start from now"), since nothing else
+// remembers this consumer's prior read position once its group is gone.
+// Accepted rather than fixed: the only alternative ("0") reintroduces the
+// full-history-replay regression above on every ordinary startup, which is
+// strictly the more common case. The read loop's own NOGROUP branch logs a
+// Warn specifically so this narrower, rarer gap is at least diagnosable in
+// production.
 func (c *Consumer) ensureGroup(ctx context.Context) error {
 	if err := c.client.XGroupCreateMkStream(ctx, StreamAgentTriggers, consumerGroup, "$").Err(); err != nil {
 		if err.Error() != "BUSYGROUP Consumer Group name already exists" {

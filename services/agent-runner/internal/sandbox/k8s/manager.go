@@ -241,6 +241,24 @@ func sandboxSecurityContext() *corev1.SecurityContext {
 	}
 }
 
+// environmentSecurityContext is sandboxSecurityContext's own capability
+// list plus SYS_CHROOT and AUDIT_WRITE, applied only to a static
+// environment's Deployment container (environment.go) — never to Start's
+// ephemeral per-conversation Job container above, which never runs real
+// sshd. Mirrors internal/sandbox/docker/environment.go's own
+// createAndStartEnvironmentContainer, which adds the exact same two
+// capabilities with the exact same "environment container only" scoping —
+// see that file's doc comment for the live-confirmed reasoning behind each
+// one (sshd's privilege-separated pre-auth chroot, and its post-auth
+// login/session accounting). Kept as a distinct function rather than a
+// parameter on sandboxSecurityContext so the ephemeral-sandbox call site
+// can't accidentally acquire these by a careless future edit.
+func environmentSecurityContext() *corev1.SecurityContext {
+	ctx := sandboxSecurityContext()
+	ctx.Capabilities.Add = append(ctx.Capabilities.Add, "SYS_CHROOT", "AUDIT_WRITE")
+	return ctx
+}
+
 // Start creates a Job for cfg.ConversationID and waits for its Pod to
 // answer goose serve's /status endpoint — the Kubernetes analog of
 // Manager.Start in ../sandbox.go; see that method's doc comment for the

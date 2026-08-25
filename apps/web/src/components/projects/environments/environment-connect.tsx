@@ -191,6 +191,11 @@ function AddSSHKeyDialog({
 							onChange={(e) => setPublicKey(e.target.value)}
 						/>
 					</div>
+					{addMutation.isError && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{t("environments.detail.sshKeys.addDialog.addFailed")}
+						</p>
+					)}
 				</div>
 				<DialogFooter>
 					<Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -303,6 +308,12 @@ function SSHKeysManager({
 				</div>
 			)}
 
+			{deleteMutation.isError && (
+				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+					{t("environments.detail.sshKeys.deleteFailed")}
+				</p>
+			)}
+
 			<AddSSHKeyDialog
 				projectId={projectId}
 				environmentId={environmentId}
@@ -348,6 +359,7 @@ function WebAppConnectTab({
 					to="/projects/$projectId/environments/$environmentId/terminal"
 					params={{ projectId, environmentId: environment.id }}
 					target="_blank"
+					rel="noopener noreferrer"
 					className={buttonVariants({ size: "lg" })}
 				>
 					<ExternalLink className="size-4 mr-2" />

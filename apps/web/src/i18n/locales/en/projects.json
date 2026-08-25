@@ -410,6 +410,7 @@
 				"count_one": "{{count}} folder configured",
 				"count_other": "{{count}} folders configured",
 				"addFolder": "Add folder",
+				"deleteFailed": "Failed to delete folder. Please try again.",
 				"empty": {
 					"title": "No folders added",
 					"addFirstFolder": "Add your first folder"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}} port forward",
 				"count_other": "{{count}} port forwards",
 				"add": "Add port forward",
+				"deleteFailed": "Failed to delete port forward. Please try again.",
 				"containerPort": "Container port {{port}}",
 				"unassigned": "Not assigned yet",
 				"restart": "Restart",
@@ -454,7 +456,8 @@
 					"labelLabel": "Label",
 					"labelPlaceholder": "Dev server",
 					"cancel": "Cancel",
-					"add": "Add"
+					"add": "Add",
+					"addFailed": "Failed to add port forward. Please try again."
 				},
 				"restartDialog": {
 					"title": "Restart environment?",
@@ -469,6 +472,7 @@
 				"count_one": "{{count}} key configured",
 				"count_other": "{{count}} keys configured",
 				"addKey": "Add key",
+				"deleteFailed": "Failed to delete SSH key. Please try again.",
 				"empty": {
 					"title": "No SSH keys added",
 					"addFirst": "Add your first key"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "My laptop",
 					"publicKeyLabel": "Public key",
 					"cancel": "Cancel",
-					"addKey": "Add key"
+					"addKey": "Add key",
+					"addFailed": "Failed to add SSH key. Please try again."
 				}
 			},
 			"terminal": {

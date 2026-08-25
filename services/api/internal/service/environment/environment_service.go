@@ -617,9 +617,13 @@ func (s *Service) Browse(ctx context.Context, projectID, environmentID uuid.UUID
 	return resp.Path, entries, nil
 }
 
-// DeleteFolder removes a folder row and asks agent-runner to remove it from
-// the environment's container, mirroring AddFolder's "only when running"
-// guard.
+// DeleteFolder unregisters a folder — a folder row is only ever a pointer
+// to a working directory inside the environment's filesystem, not
+// something Paca owns the contents of, so deleting it never touches the
+// container: no agent-runner round-trip, no filesystem operation, just the
+// row. A user who wants the directory itself gone can do that from a
+// terminal/SSH session like they would for anything else in the
+// environment.
 func (s *Service) DeleteFolder(ctx context.Context, projectID, environmentID, folderID uuid.UUID) error {
 	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
 	if err != nil {
@@ -631,13 +635,6 @@ func (s *Service) DeleteFolder(ctx context.Context, projectID, environmentID, fo
 	}
 	if folder.EnvironmentID != env.ID {
 		return environmentdom.ErrFolderNotFound
-	}
-
-	if env.BackendRef != nil && env.Status == environmentdom.StatusRunning {
-		if err := s.callInternal(ctx, http.MethodDelete, "/internal/environments/"+env.ID.String()+"/folders",
-			internalDeleteFolderRequest{BackendRef: *env.BackendRef, Path: folder.Path}, nil); err != nil {
-			return fmt.Errorf("agent-runner: delete folder: %w", err)
-		}
 	}
 	return s.repo.DeleteFolder(ctx, folder.ID)
 }
@@ -699,21 +696,14 @@ func (s *Service) DeleteSSHKey(ctx context.Context, projectID, environmentID, ke
 	if err != nil {
 		return err
 	}
-	keys, err := s.repo.ListSSHKeys(ctx, env.ID)
+	key, err := s.repo.FindSSHKeyByID(ctx, keyID)
 	if err != nil {
 		return err
 	}
-	found := false
-	for _, k := range keys {
-		if k.ID == keyID {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if key.EnvironmentID != env.ID {
 		return environmentdom.ErrSSHKeyNotFound
 	}
-	if err := s.repo.DeleteSSHKey(ctx, keyID); err != nil {
+	if err := s.repo.DeleteSSHKey(ctx, key.ID); err != nil {
 		return err
 	}
 	s.syncSSHKeys(ctx, env)
@@ -978,11 +968,6 @@ type internalDeleteEnvironmentRequest struct {
 }
 
 type internalAddFolderRequest struct {
-	BackendRef string `json:"backend_ref"`
-	Path       string `json:"path"`
-}
-
-type internalDeleteFolderRequest struct {
 	BackendRef string `json:"backend_ref"`
 	Path       string `json:"path"`
 }

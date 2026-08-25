@@ -410,6 +410,7 @@
 				"count_one": "{{count}} pasta configurada",
 				"count_other": "{{count}} pastas configuradas",
 				"addFolder": "Adicionar pasta",
+				"deleteFailed": "Falha ao excluir a pasta. Tente novamente.",
 				"empty": {
 					"title": "Nenhuma pasta adicionada",
 					"addFirstFolder": "Adicione sua primeira pasta"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}} encaminhamento de porta",
 				"count_other": "{{count}} encaminhamentos de porta",
 				"add": "Adicionar encaminhamento de porta",
+				"deleteFailed": "Falha ao excluir o encaminhamento de porta. Tente novamente.",
 				"containerPort": "Porta do contêiner {{port}}",
 				"unassigned": "Ainda não atribuída",
 				"restart": "Reiniciar",
@@ -454,7 +456,8 @@
 					"labelLabel": "Rótulo",
 					"labelPlaceholder": "Servidor de desenvolvimento",
 					"cancel": "Cancelar",
-					"add": "Adicionar"
+					"add": "Adicionar",
+					"addFailed": "Falha ao adicionar o encaminhamento de porta. Tente novamente."
 				},
 				"restartDialog": {
 					"title": "Reiniciar o ambiente?",
@@ -469,6 +472,7 @@
 				"count_one": "{{count}} chave configurada",
 				"count_other": "{{count}} chaves configuradas",
 				"addKey": "Adicionar chave",
+				"deleteFailed": "Falha ao excluir a chave SSH. Tente novamente.",
 				"empty": {
 					"title": "Nenhuma chave SSH adicionada",
 					"addFirst": "Adicione sua primeira chave"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "Meu notebook",
 					"publicKeyLabel": "Chave pública",
 					"cancel": "Cancelar",
-					"addKey": "Adicionar chave"
+					"addKey": "Adicionar chave",
+					"addFailed": "Falha ao adicionar a chave SSH. Tente novamente."
 				}
 			},
 			"terminal": {

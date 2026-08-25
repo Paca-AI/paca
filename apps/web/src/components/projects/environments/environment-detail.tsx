@@ -148,7 +148,7 @@ function OverviewTab({
 	const canSave =
 		isDirty &&
 		!!name.trim() &&
-		Number.isFinite(idleTimeoutNumber) &&
+		Number.isInteger(idleTimeoutNumber) &&
 		idleTimeoutNumber > 0 &&
 		!saveMutation.isPending;
 
@@ -452,6 +452,11 @@ function FoldersTab({
 					))}
 				</div>
 			)}
+			{deleteMutation.isError && (
+				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+					{t("environments.detail.folders.deleteFailed")}
+				</p>
+			)}
 
 			<FolderCreateDialog
 				projectId={projectId}
@@ -594,6 +599,11 @@ function AddPortForwardDialog({
 							onChange={(e) => setLabel(e.target.value)}
 						/>
 					</div>
+					{addMutation.isError && (
+						<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+							{t("environments.detail.portForwards.addDialog.addFailed")}
+						</p>
+					)}
 				</div>
 				<DialogFooter>
 					<Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -820,6 +830,11 @@ function PortForwardsTab({
 						</div>
 					))}
 				</div>
+			)}
+			{deleteMutation.isError && (
+				<p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">
+					{t("environments.detail.portForwards.deleteFailed")}
+				</p>
 			)}
 
 			<AddPortForwardDialog

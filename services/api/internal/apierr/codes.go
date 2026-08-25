@@ -353,6 +353,12 @@ const (
 	CodeEnvironmentSSHKeyInvalid Code = "ENVIRONMENT_SSH_KEY_INVALID"
 	// CodeEnvironmentSSHKeyFingerprintTaken indicates this public key is already registered on this environment.
 	CodeEnvironmentSSHKeyFingerprintTaken Code = "ENVIRONMENT_SSH_KEY_FINGERPRINT_TAKEN"
+	// CodeEnvironmentPortForwardNotFound indicates the requested port forward does not exist.
+	CodeEnvironmentPortForwardNotFound Code = "ENVIRONMENT_PORT_FORWARD_NOT_FOUND"
+	// CodeEnvironmentPortForwardContainerPortInvalid indicates the container port is not between 1 and 65535.
+	CodeEnvironmentPortForwardContainerPortInvalid Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_INVALID"
+	// CodeEnvironmentPortForwardContainerPortTaken indicates a port forward for this container port already exists on this environment.
+	CodeEnvironmentPortForwardContainerPortTaken Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_TAKEN"
 
 	// --- Automation errors -----------------------------------------------------
 

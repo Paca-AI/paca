@@ -130,7 +130,7 @@ Root stays the default — a blanket non-root flip would regress today's mid-tas
 
 ### Folders
 
-`environment_folders` rows are read straight from Postgres by the folder-picker — no live container listing needed. Row creation triggers agent-runner running `mkdir -p` (and `git clone` if `repo_clone_url` is set) via `ExecEnvironment`, porting the existing clone/token-scrubbing logic from `apps/mcp/src/tools/repo-tools.ts` to Go since this now runs server-side rather than from an LLM tool call. Folder deletion needs the same `FORBIDDEN_DELETE_TARGETS` guard `repo-tools.ts` already has — arguably more important here, since it's a direct API-triggered delete rather than an LLM's own judgment call.
+`environment_folders` rows are read straight from Postgres by the folder-picker — no live container listing needed. Row creation triggers agent-runner running `mkdir -p` via `ExecEnvironment`, porting `apps/mcp/src/tools/repo-tools.ts`'s `FORBIDDEN_DELETE_TARGETS` guard to Go (against the resolved, not raw, target path) since this now runs server-side rather than from an LLM tool call. Folder deletion is the opposite of what that name might suggest: a folder row is only ever a pointer to a working directory, not something Paca owns the contents of, so deleting it is a `services/api`-only row delete — no agent-runner round-trip, no filesystem operation. A user who wants the directory itself gone does that from a terminal/SSH session like anything else in the environment.
 
 ### Conversation attach path
 
@@ -156,7 +156,6 @@ POST   /internal/environments/{id}/start
 POST   /internal/environments/{id}/stop
 DELETE /internal/environments/{id}
 POST   /internal/environments/{id}/folders
-DELETE /internal/environments/{id}/folders/{folderId}
 ```
 
 New public REST, `dto/environment_dto.go` + `handler/environment_handler.go`, wired in `router.go` under `/projects/{projectId}/environments` alongside the existing `/agents` block: list/create/get/update/delete, `/start`, `/stop`, `/heartbeat`, folder list/add/delete, and SSH key list/add/delete (`GET`/`POST /environments/{id}/ssh-keys`, `DELETE /environments/{id}/ssh-keys/{keyId}`) — the last group is pure CRUD against `environment_ssh_keys` with no agent-runner round-trip needed, since nothing consumes the keys until the Phase 3 bastion exists. `CreateEnvironmentRequest.image` is optional; when omitted, `services/api` passes an empty string through to agent-runner's `CreateEnvironment`, which resolves the platform default itself (see [Interface](#interface)) rather than `services/api` needing to know what that default is. Endpoints reuse whatever permission-gating middleware already wraps the `/agents` route group.

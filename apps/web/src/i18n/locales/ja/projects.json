@@ -410,6 +410,7 @@
 				"count_one": "{{count}}個のフォルダーが設定されています",
 				"count_other": "{{count}}個のフォルダーが設定されています",
 				"addFolder": "フォルダーを追加",
+				"deleteFailed": "フォルダーの削除に失敗しました。もう一度お試しください。",
 				"empty": {
 					"title": "フォルダーが追加されていません",
 					"addFirstFolder": "最初のフォルダーを追加"
@@ -437,6 +438,7 @@
 				"count_one": "{{count}}件のポートフォワード",
 				"count_other": "{{count}}件のポートフォワード",
 				"add": "ポートフォワードを追加",
+				"deleteFailed": "ポートフォワードの削除に失敗しました。もう一度お試しください。",
 				"containerPort": "コンテナポート {{port}}",
 				"unassigned": "まだ割り当てられていません",
 				"restart": "再起動",
@@ -454,7 +456,8 @@
 					"labelLabel": "ラベル",
 					"labelPlaceholder": "開発サーバー",
 					"cancel": "キャンセル",
-					"add": "追加"
+					"add": "追加",
+					"addFailed": "ポートフォワードの追加に失敗しました。もう一度お試しください。"
 				},
 				"restartDialog": {
 					"title": "環境を再起動しますか?",
@@ -469,6 +472,7 @@
 				"count_one": "{{count}}個の鍵が設定されています",
 				"count_other": "{{count}}個の鍵が設定されています",
 				"addKey": "鍵を追加",
+				"deleteFailed": "SSH鍵の削除に失敗しました。もう一度お試しください。",
 				"empty": {
 					"title": "SSH鍵が追加されていません",
 					"addFirst": "最初の鍵を追加"
@@ -482,7 +486,8 @@
 					"labelPlaceholder": "自分のノートPC",
 					"publicKeyLabel": "公開鍵",
 					"cancel": "キャンセル",
-					"addKey": "鍵を追加"
+					"addKey": "鍵を追加",
+					"addFailed": "SSH鍵の追加に失敗しました。もう一度お試しください。"
 				}
 			},
 			"terminal": {

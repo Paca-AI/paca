@@ -127,8 +127,8 @@ type Settings struct {
 	// SSH_BASTION_PORT_RANGE_START/_END, 0 by default: this whole feature
 	// is entirely opt-in — an unconfigured deployment never assigns a
 	// port at all, behaving byte-for-byte as it did before this feature
-	// existed. See cmd/agent-runner/main.go's own gate on these values
-	// (both must be set and End >= Start).
+	// existed. See Load's own validatePortRange call (both must be set
+	// and End >= Start, or both left unset).
 	SSHBastionPortRangeStart int
 	SSHBastionPortRangeEnd   int
 
@@ -236,7 +236,35 @@ func Load() (Settings, error) {
 		return Settings{}, fmt.Errorf(`config: SANDBOX_BACKEND must be "docker" or "kubernetes", got %q`, s.SandboxBackend)
 	}
 
+	if err := validatePortRange("SSH_BASTION_PORT_RANGE", s.SSHBastionPortRangeStart, s.SSHBastionPortRangeEnd); err != nil {
+		return Settings{}, err
+	}
+	if err := validatePortRange("PORT_FORWARD_RANGE", s.PortForwardRangeStart, s.PortForwardRangeEnd); err != nil {
+		return Settings{}, err
+	}
+
 	return s, nil
+}
+
+// validatePortRange rejects a misconfigured start/end pair for one of the
+// SSH_BASTION_PORT_RANGE_*/PORT_FORWARD_RANGE_* env var pairs — both 0 (the
+// shared default) means the feature is off and is always valid; anything
+// else needs both set and End >= Start. Catching this at startup, not only
+// per-request (the acpbridge handlers that actually assign a port already
+// treat start==0 as "not configured" and simply never assign one), turns a
+// silent "SSH access never works on this deployment" into an immediate,
+// loud failure to boot.
+func validatePortRange(envPrefix string, start, end int) error {
+	if start == 0 && end == 0 {
+		return nil
+	}
+	if start == 0 || end == 0 {
+		return fmt.Errorf("config: %s_START and %s_END must both be set (or both left unset to disable this feature)", envPrefix, envPrefix)
+	}
+	if end < start {
+		return fmt.Errorf("config: %s_END (%d) must be >= %s_START (%d)", envPrefix, end, envPrefix, start)
+	}
+	return nil
 }
 
 // inClusterNamespace reads the namespace Kubernetes mounts into every Pod

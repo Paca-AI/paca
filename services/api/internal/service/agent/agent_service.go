@@ -1639,6 +1639,19 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 
 	conv := latest
 	if latest != nil {
+		// Validate a resumed conversation's environment/folder still
+		// resolves *before* any ClaimConversationStatus call below moves
+		// it to "running" — a claim that then failed validation would
+		// otherwise be stuck there with no rollback (see
+		// resolveWorkdirForConversation's own doc comment; the later call
+		// at the bottom of this function, which builds the actual trigger
+		// payload, is a cheap, harmless duplicate read on this now-
+		// validated path).
+		if latest.EnvironmentID != nil {
+			if _, _, err := s.resolveWorkdirForConversation(ctx, projectID, latest); err != nil {
+				return nil, err
+			}
+		}
 		switch agentdom.ConversationStatus(latest.Status) {
 		case agentdom.ConversationStatusRunning, agentdom.ConversationStatusQueued:
 			// Still mid-turn (or not yet picked up by the worker) — reject

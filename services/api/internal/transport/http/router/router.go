@@ -801,8 +801,12 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Delete("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.DeletePortForward)
 
-						// Browser terminal
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Browser terminal — a minted ticket grants an
+						// interactive shell inside the environment's
+						// container, so this is gated on write access
+						// like every other mutating/access-granting route
+						// in this section, not read.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Post("/{environmentId}/terminal-ticket", deps.Environment.TerminalTicket)
 					})
 				}

@@ -125,6 +125,35 @@ func (r *EnvironmentRepository) UpdateEnvironmentStatus(ctx context.Context, id 
 	return nil
 }
 
+// ClaimEnvironmentRunning sets id's status to "running" (COALESCE-ing in
+// backendRef exactly like UpdateEnvironmentStatus does) UNLESS the row is
+// currently "stopping" or "deleting" — the idle reaper's own claim to
+// "stopping" (see ClaimEnvironmentStatus below), or an explicit delete in
+// flight, must win over a concurrent attach reporting itself started, so a
+// turn that raced a stop can't silently revert the DB back to "running"
+// out from under it (the actual container may already be stopped by the
+// time this runs). Used by executor.Executor.coldStartEnvironment in place
+// of a plain UpdateEnvironmentStatus(..., "running", ...) for exactly this
+// reason. Reports whether the write actually applied.
+func (r *EnvironmentRepository) ClaimEnvironmentRunning(ctx context.Context, id uuid.UUID, backendRef *string) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE environments
+		SET status = 'running',
+		    backend_ref = COALESCE($2, backend_ref),
+		    error_message = NULL,
+		    updated_at = now()
+		WHERE id = $1 AND status NOT IN ('stopping', 'deleting')
+	`, id, backendRef)
+	if err != nil {
+		return false, fmt.Errorf("postgres: claim environment %s running: %w", id, err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("postgres: claim environment %s running: rows affected: %w", id, err)
+	}
+	return n == 1, nil
+}
+
 // TouchEnvironment bumps last_active_at to now — called on every
 // conversation turn that attaches to an environment, and periodically
 // (every 30s) while a browser terminal session is open, so the idle

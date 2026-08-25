@@ -16,10 +16,20 @@ per static environment that has SSH access and/or a user-added port
 forward configured (ensureEnvironmentService — publishes those ports
 directly rather than relaying them through agent-runner's own process;
 see docs/ai-agent/environment-management.md's "Terminal / SSH Access" and
-"Port Forwarding" sections). Scoped to exactly the sandbox namespace (see
-paca.sandboxNamespace) — no cluster-scoped permissions, and no access to
-any other resource type (Secrets, other Deployments/PVCs/Services not
-created by this ServiceAccount, etc.) in that namespace either.
+"Port Forwarding" sections).
+
+Scoped to exactly the sandbox namespace (see paca.sandboxNamespace) — no
+cluster-scoped permissions — but NOT scoped by object ownership within
+that namespace: Kubernetes RBAC has no such concept, so
+create/get/list/watch/patch/delete on deployments/services (and
+get/list/watch/pods/exec/pods/log on pods) grants those verbs against
+*every* matching object in the namespace, not only ones this
+ServiceAccount created. This is exactly why paca.sandboxNamespace defaults
+to a dedicated namespace rather than this release's own — granting this
+Role in the namespace api/gateway/web/postgres/valkey/minio also run in
+would let this ServiceAccount patch or delete those Deployments/Services
+too. See templates/agent-runner/sandbox-namespace.yaml and
+deploy/helm/README.md's RBAC section.
 */}}
 {{- if and .Values.agentRunner.enabled (eq .Values.agentRunner.sandbox.backend "kubernetes") }}
 apiVersion: rbac.authorization.k8s.io/v1

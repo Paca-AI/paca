@@ -21,27 +21,41 @@ goes idle, the same lifecycle the Docker container has today.
 
 This needs a small amount of RBAC, granted automatically by this chart:
 `agentRunner`'s ServiceAccount gets a `Role` scoped to exactly the sandbox
-namespace (`agentRunner.sandbox.namespace`, defaulting to the release's own
-namespace) allowing it to create/get/list/watch/delete `batch/jobs`,
+namespace (`agentRunner.sandbox.namespace`, **defaulting to a dedicated
+`<release-name>-sandbox` namespace this chart creates for you** — see
+`templates/agent-runner/sandbox-namespace.yaml`) allowing it to
+create/get/list/watch/delete `batch/jobs`, create/get/list/watch/patch/delete
+`apps/deployments` and `services` (static environments — see below),
 get/list/watch `pods`, and use the `pods/log` and `pods/exec` subresources
 (needed to write skill files into a sandbox and compute git diffs after a
 turn — see that package's own doc comments for why). No cluster-scoped
-permissions, and no access to any *other resource type* (Secrets, other
-Deployments/StatefulSets, etc.) in that namespace.
+permissions, and no access to any *other resource type* (Secrets, PVCs not
+created by this Role, etc.) in that namespace.
 
-**This does not mean no access to other Pods in that namespace.**
-Kubernetes RBAC can't scope `pods/exec`/`pods/log` to only the Pods a Role's
-own subject created — `get`/`list`/`watch`/`exec`/`log` on `pods` grants
-those verbs against *every* Pod in the namespace, not just agent-runner's
-own sandbox Jobs. By default `agentRunner.sandbox.namespace` is the same
-namespace as every other component this chart deploys — postgres, valkey,
-minio, api, web, gateway — so a default install grants agent-runner's
-ServiceAccount `pods/exec` into (and log access on) those Pods too, not
-only sandbox Jobs. **Set `agentRunner.sandbox.namespace` to a namespace
-dedicated to sandboxes only** (nothing else deployed into it) if you want
-that RBAC grant's blast radius actually bounded to sandboxes — this chart
-doesn't create that namespace for you; create and reference it via that
-value.
+**This does not mean no access to other Pods/Deployments/Services in that
+namespace.** Kubernetes RBAC can't scope any of these verbs to only the
+objects a Role's own subject created — `get`/`list`/`watch`/`exec`/`log` on
+`pods`, and `patch`/`delete` on `deployments`/`services`, grant those verbs
+against *every* matching object in the namespace, not just agent-runner's
+own. This is exactly why the namespace is dedicated by default instead of
+falling back to the release's own: granting this Role there would let
+agent-runner's ServiceAccount patch or delete this chart's own
+api/gateway/web Deployments/Services, and exec into/read logs from
+postgres/valkey/minio, not just sandbox objects. If you set
+`agentRunner.sandbox.namespace` explicitly to a namespace you manage
+yourself, make sure nothing else you don't want agent-runner touching runs
+there — this chart won't create a namespace you've explicitly named (see
+`sandbox-namespace.yaml`'s own guard), so you're responsible for isolating
+it the same way the default does automatically.
+
+**Upgrading an existing install?** Prior to this default, an unset
+`agentRunner.sandbox.namespace` resolved to the release's own namespace.
+If your RBAC and any running sandbox Jobs/environments already live there,
+set `agentRunner.sandbox.namespace` explicitly to that namespace before
+upgrading to preserve current behavior — otherwise `helm upgrade` moves
+the `Role`/`RoleBinding` to the new dedicated namespace and anything still
+running in the old one becomes unreachable (`Forbidden`) until you migrate
+or manually clean it up (see Troubleshooting below).
 
 Every sandbox Pod's primary container runs as root — the same reason
 `services/agent-runner/Dockerfile` itself runs as root, just for the
@@ -221,7 +235,9 @@ shows a placeholder host the user has to fill in themselves.
    `create`/`get`/`list`/`watch`/`patch`/`delete` on `Service` objects in
    `agentRunner.sandbox.namespace` (see `templates/agent-runner/role.yaml`)
    specifically so it can manage these per-environment Services — no
-   further RBAC changes needed to enable this feature.
+   further RBAC changes needed to enable this feature. See "The AI agent
+   sandbox on Kubernetes" above for why this namespace is dedicated by
+   default rather than the release's own.
 
 ## Port forwarding
 

@@ -256,6 +256,10 @@ ALTER TABLE agents
     REFERENCES environments(id)
     ON DELETE SET NULL;
 
+CREATE INDEX IF NOT EXISTS idx_agents_default_environment_id
+    ON agents (default_environment_id)
+    WHERE default_environment_id IS NOT NULL;
+
 -- -------------------------------------------------------------------------
 -- AGENT_CONVERSATIONS: attach to an environment + folder
 -- Replaces 5 legacy per-conversation-container columns (container_id,

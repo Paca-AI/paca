@@ -395,6 +395,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeEnvironmentSSHKeyInvalid
 	case errors.Is(err, environmentdom.ErrSSHKeyFingerprintTaken):
 		return http.StatusConflict, apierr.CodeEnvironmentSSHKeyFingerprintTaken
+	case errors.Is(err, environmentdom.ErrPortForwardNotFound):
+		return http.StatusNotFound, apierr.CodeEnvironmentPortForwardNotFound
+	case errors.Is(err, environmentdom.ErrPortForwardContainerPortInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentPortForwardContainerPortInvalid
+	case errors.Is(err, environmentdom.ErrPortForwardContainerPortTaken):
+		return http.StatusConflict, apierr.CodeEnvironmentPortForwardContainerPortTaken
 	// --- Automation errors -----------------------------------------------------
 	case errors.Is(err, automationdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeAutomationNotFound
@@ -615,17 +621,20 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusBadRequest
 	case apierr.CodeEnvironmentNotFound,
 		apierr.CodeEnvironmentFolderNotFound,
-		apierr.CodeEnvironmentSSHKeyNotFound:
+		apierr.CodeEnvironmentSSHKeyNotFound,
+		apierr.CodeEnvironmentPortForwardNotFound:
 		return http.StatusNotFound
 	case apierr.CodeEnvironmentSlugTaken,
 		apierr.CodeEnvironmentBusy,
 		apierr.CodeEnvironmentNotRunning,
 		apierr.CodeEnvironmentFolderPathTaken,
-		apierr.CodeEnvironmentSSHKeyFingerprintTaken:
+		apierr.CodeEnvironmentSSHKeyFingerprintTaken,
+		apierr.CodeEnvironmentPortForwardContainerPortTaken:
 		return http.StatusConflict
 	case apierr.CodeEnvironmentNameInvalid,
 		apierr.CodeEnvironmentFolderPathInvalid,
-		apierr.CodeEnvironmentSSHKeyInvalid:
+		apierr.CodeEnvironmentSSHKeyInvalid,
+		apierr.CodeEnvironmentPortForwardContainerPortInvalid:
 		return http.StatusBadRequest
 	case apierr.CodeAutomationNotFound,
 		apierr.CodeAutomationNodeNotFound,

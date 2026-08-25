@@ -43,7 +43,6 @@ func (s *Server) registerEnvironmentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/environments/{id}/stop", s.requireInternalToken(s.handleStopEnvironment))
 	mux.HandleFunc("DELETE /internal/environments/{id}", s.requireInternalToken(s.handleDeleteEnvironment))
 	mux.HandleFunc("POST /internal/environments/{id}/folders", s.requireInternalToken(s.handleCreateEnvironmentFolder))
-	mux.HandleFunc("DELETE /internal/environments/{id}/folders", s.requireInternalToken(s.handleDeleteEnvironmentFolder))
 	mux.HandleFunc("GET /internal/environments/{id}/browse", s.requireInternalToken(s.handleBrowseEnvironment))
 	mux.HandleFunc("POST /internal/environments/{id}/ssh-keys/sync", s.requireInternalToken(s.handleSyncEnvironmentSSHKeys))
 	mux.HandleFunc("POST /internal/environments/{id}/port-forwards/assign", s.requireInternalToken(s.handlePortForwardsAssign))
@@ -317,17 +316,25 @@ type startEnvironmentResponse struct {
 // would come back reachable over ACP but with none of the environment's
 // real SSH/port-forward bindings republished.
 //
-// The other case something IS bootstrapped here: StartEnvironment came
-// back with a BackendRef different from req.BackendRef, the same
-// self-heal signal. That fresh container has no authorized_keys pushed to
-// it yet, exactly like a brand-new one from handleCreateEnvironment, so
-// this re-bootstraps SSH the same way handleRestartEnvironmentPorts
-// already does for its own docker-only container-recreation case.
+// SSH is unconditionally re-bootstrapped here whenever sshPort != 0 — not
+// only when StartEnvironment signals a self-heal recreate. sshd itself
+// does not survive an ordinary stop: Docker's ContainerStop SIGKILLs
+// everything in the container's PID namespace, and Kubernetes' scale-0→1
+// always schedules a brand-new Pod, so a plain stop→start leaves sshd dead
+// on both backends even when nothing else about the container/Pod
+// changed. BootstrapEnvironmentSSH is idempotent/safe to call on an
+// already-running environment (see its own doc comment) — the same
+// unconditional treatment handleCreateEnvironment already gives it.
 func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSandboxMgr(w) {
 		return
 	}
 	id := r.PathValue("id")
+	environmentID, err := uuid.Parse(id)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid environment id")
+		return
+	}
 	var req startEnvironmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -339,15 +346,12 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sshPort := 0
-	var portMappings []sandbox.PortMapping
 	if s.EnvironmentRepo != nil {
-		if environmentID, err := uuid.Parse(id); err == nil {
-			if env, err := s.EnvironmentRepo.FindEnvironmentByID(r.Context(), environmentID); err == nil && env.SSHPort != nil {
-				sshPort = *env.SSHPort
-			}
-			portMappings = s.buildPortMappings(r.Context(), environmentID, sshPort)
+		if env, err := s.EnvironmentRepo.FindEnvironmentByID(r.Context(), environmentID); err == nil && env.SSHPort != nil {
+			sshPort = *env.SSHPort
 		}
 	}
+	portMappings := s.buildPortMappings(r.Context(), environmentID, sshPort)
 
 	handle, err := s.SandboxMgr.StartEnvironment(r.Context(), req.BackendRef, sandbox.EnvironmentConfig{
 		EnvironmentID: id,
@@ -367,11 +371,10 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 	recreatedBackendRef := ""
 	if handle.BackendRef != "" && handle.BackendRef != req.BackendRef {
 		recreatedBackendRef = handle.BackendRef
-		if sshPort != 0 && s.Backend != "kubernetes" {
-			if environmentID, err := uuid.Parse(id); err == nil {
-				s.bootstrapSSHKeys(r.Context(), environmentID, handle.BackendRef)
-			}
-		}
+	}
+	if sshPort != 0 {
+		bootstrapRef := firstNonEmpty(recreatedBackendRef, req.BackendRef)
+		s.bootstrapSSHKeys(r.Context(), environmentID, bootstrapRef)
 	}
 
 	writeJSON(w, http.StatusOK, startEnvironmentResponse{BaseURL: handle.BaseURL, SSHPort: sshPort, BackendRef: recreatedBackendRef})
@@ -447,12 +450,21 @@ func (s *Server) handleDeleteEnvironment(w http.ResponseWriter, r *http.Request)
 }
 
 // -----------------------------------------------------------------------
-// Folder provisioning — POST/DELETE /internal/environments/{id}/folders
+// Folder provisioning — POST /internal/environments/{id}/folders
 //
-// Ports apps/mcp/src/tools/repo-tools.ts's clone-URL token-embedding and
-// FORBIDDEN_DELETE_TARGETS guard to Go, since folder provisioning now runs
-// server-side (agent-runner, driven by services/api) instead of as an
-// on-demand LLM tool call. environmentHomeRoot below is the environment
+// A "folder" is just a pointer to a working directory inside the
+// environment's filesystem an agent should use — services/api's own
+// `environment_folders` row owns that pointer. Deleting a folder therefore
+// only ever means "stop tracking this directory" (a services/api-only DB
+// delete, no call into this package at all — see
+// environmentsvc.Service.DeleteFolder) — never "destroy its contents", so
+// there is deliberately no DELETE endpoint here.
+//
+// mkdir -p on create still needs a top-level-system-directory guard (an
+// agent-supplied path landing on /etc or /root would be surprising even
+// though mkdir itself isn't destructive) — ports
+// apps/mcp/src/tools/repo-tools.ts's FORBIDDEN_DELETE_TARGETS guard to Go
+// for that purpose. environmentHomeRoot below is the environment
 // filesystem root (see docs/ai-agent/environment-management.md's Docker
 // section — deliberately not /home/goose, so the ephemeral conversation
 // path and the environment path never collide).
@@ -465,14 +477,13 @@ func (s *Server) handleDeleteEnvironment(w http.ResponseWriter, r *http.Request)
 // honor).
 const environmentHomeRoot = "/home/paca/workspaces"
 
-// forbiddenDeleteTargets is FORBIDDEN_DELETE_TARGETS
+// forbiddenFolderTargets is FORBIDDEN_DELETE_TARGETS
 // (apps/mcp/src/tools/repo-tools.ts) ported for the environment
 // filesystem: the goose sandbox image's own top-level directories, plus
 // /home/paca and /home/paca/workspaces (this environment's actual home and
 // its folders root, the direct analogs of that file's own /home/goose
-// entry) — never a valid mkdir/git-clone/rm-rf target, however a caller's
-// path got there.
-var forbiddenDeleteTargets = map[string]bool{
+// entry) — never a valid mkdir target, however a caller's path got there.
+var forbiddenFolderTargets = map[string]bool{
 	"/":                 true,
 	"/bin":              true,
 	"/boot":             true,
@@ -495,17 +506,19 @@ var forbiddenDeleteTargets = map[string]bool{
 	"/var":              true,
 }
 
-// assertSafeFolderTarget mirrors repo-tools.ts's assertSafeDeleteTarget:
-// refuses targetDir if it resolves (after normalizing "../"/"./" segments)
-// to one of forbiddenDeleteTargets. Applied to both the create endpoint
-// (mkdir -p/git clone into a protected directory is exactly as wrong as
-// deleting one) and the delete endpoint.
-func assertSafeFolderTarget(targetDir string) error {
+// safeFolderTarget mirrors repo-tools.ts's assertSafeDeleteTarget: resolves
+// targetDir (normalizing "../"/"./" segments against root) and refuses it
+// if that resolved path is one of forbiddenFolderTargets. Returns the
+// resolved path so the caller execs *that* — not the raw, unnormalized
+// targetDir — closing the traversal a caller could otherwise use to slip
+// e.g. "../etc" past this check (which normalizes to "/etc", correctly
+// refused) while a raw exec would still act on the literal ".." segments.
+func safeFolderTarget(targetDir string) (string, error) {
 	resolved := path.Clean("/" + targetDir)
-	if forbiddenDeleteTargets[resolved] {
-		return fmt.Errorf("refusing to operate on %s — it's a protected system directory, not a valid folder path", resolved)
+	if forbiddenFolderTargets[resolved] {
+		return "", fmt.Errorf("refusing to operate on %s — it's a protected system directory, not a valid folder path", resolved)
 	}
-	return nil
+	return resolved, nil
 }
 
 func errString(err error) string {
@@ -548,58 +561,21 @@ func (s *Server) handleCreateEnvironmentFolder(w http.ResponseWriter, r *http.Re
 		writeJSONError(w, http.StatusBadRequest, "backend_ref and path are required")
 		return
 	}
-	if err := assertSafeFolderTarget(req.Path); err != nil {
+	resolved, err := safeFolderTarget(req.Path)
+	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	out, exitCode, err := s.SandboxMgr.ExecEnvironment(r.Context(), req.BackendRef, []string{"mkdir", "-p", req.Path})
+	out, exitCode, err := s.SandboxMgr.ExecEnvironment(r.Context(), req.BackendRef, []string{"mkdir", "-p", resolved})
 	if err != nil || exitCode != 0 {
 		s.Log.Error("acpbridge: failed to mkdir environment folder",
-			"environment_id", id, "path", req.Path, "output", out, "error", err)
+			"environment_id", id, "path", resolved, "output", out, "error", err)
 		writeJSONError(w, http.StatusInternalServerError,
-			fmt.Sprintf("mkdir -p %s failed: %s", req.Path, firstNonEmpty(errString(err), out)))
+			fmt.Sprintf("mkdir -p %s failed: %s", resolved, firstNonEmpty(errString(err), out)))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{})
-}
-
-type deleteEnvironmentFolderRequest struct {
-	BackendRef string `json:"backend_ref"`
-	Path       string `json:"path"`
-}
-
-// handleDeleteEnvironmentFolder runs `rm -rf <path>` inside backend_ref,
-// guarded by assertSafeFolderTarget the same way the create handler's
-// mkdir/clone target is.
-func (s *Server) handleDeleteEnvironmentFolder(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSandboxMgr(w) {
-		return
-	}
-	id := r.PathValue("id")
-	var req deleteEnvironmentFolderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if req.BackendRef == "" || req.Path == "" {
-		writeJSONError(w, http.StatusBadRequest, "backend_ref and path are required")
-		return
-	}
-	if err := assertSafeFolderTarget(req.Path); err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	out, exitCode, err := s.SandboxMgr.ExecEnvironment(r.Context(), req.BackendRef, []string{"rm", "-rf", req.Path})
-	if err != nil || exitCode != 0 {
-		s.Log.Error("acpbridge: failed to delete environment folder",
-			"environment_id", id, "path", req.Path, "output", out, "error", err)
-		writeJSONError(w, http.StatusInternalServerError,
-			fmt.Sprintf("rm -rf %s failed: %s", req.Path, firstNonEmpty(errString(err), out)))
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
@@ -616,10 +592,10 @@ type browseEnvironmentEntry struct {
 // to environmentHomeRoot) inside ?backend_ref='s running container/Pod —
 // the folder-creation UI's "browse instead of typing blind" affordance
 // (services/api's FolderService.Browse). Read-only, and deliberately
-// scoped to environmentHomeRoot or below (the same root
-// assertSafeFolderTarget protects against mkdir/rm-rf'ing) rather than the
-// whole container filesystem, since this is reachable from any project
-// member with read access, not just write.
+// scoped to environmentHomeRoot or below (the same root safeFolderTarget
+// protects against mkdir'ing outside of) rather than the whole container
+// filesystem, since this is reachable from any project member with read
+// access, not just write.
 //
 // Listing goes through `find`, not `ls`, so the type/name pairs can be
 // NUL-delimited (find's -printf supports \0 as a literal escape) — robust

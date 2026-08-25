@@ -37,6 +37,7 @@ type mockRepo struct {
 	deleteFolder   func(ctx context.Context, id uuid.UUID) error
 
 	listSSHKeys             func(ctx context.Context, environmentID uuid.UUID) ([]*environmentdom.EnvironmentSSHKey, error)
+	findSSHKeyByID          func(ctx context.Context, id uuid.UUID) (*environmentdom.EnvironmentSSHKey, error)
 	createSSHKey            func(ctx context.Context, k *environmentdom.EnvironmentSSHKey) error
 	deleteSSHKey            func(ctx context.Context, id uuid.UUID) error
 	findSSHKeyByFingerprint func(ctx context.Context, environmentID uuid.UUID, fingerprint string) (*environmentdom.EnvironmentSSHKey, error)
@@ -142,6 +143,12 @@ func (m *mockRepo) ListSSHKeys(ctx context.Context, environmentID uuid.UUID) ([]
 		return m.listSSHKeys(ctx, environmentID)
 	}
 	return nil, nil
+}
+func (m *mockRepo) FindSSHKeyByID(ctx context.Context, id uuid.UUID) (*environmentdom.EnvironmentSSHKey, error) {
+	if m.findSSHKeyByID != nil {
+		return m.findSSHKeyByID(ctx, id)
+	}
+	return nil, environmentdom.ErrSSHKeyNotFound
 }
 func (m *mockRepo) CreateSSHKey(ctx context.Context, k *environmentdom.EnvironmentSSHKey) error {
 	if m.createSSHKey != nil {
