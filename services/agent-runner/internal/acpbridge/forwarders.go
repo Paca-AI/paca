@@ -23,18 +23,22 @@ const evictionCloseCode = 4409
 // shape both acp_bridge.py's _forward_dispatched_messages and
 // _watch_for_eviction use.
 //
-// ready, if non-nil, is called exactly once — after the very first
-// subscribe attempt's Receive call returns, success or not. go-redis's
-// PubSub subscribes lazily: r.redis.Subscribe itself never touches the
-// network, it's the first Receive-family call that actually sends
-// SUBSCRIBE and waits for Redis's own confirmation. Callers that need to
-// know the subscription is genuinely live before doing anything a
-// concurrent PUBLISH could race against (Register, which passes this to
-// close exactly that window) must wait for ready, not merely for the
-// goroutine driving this loop to have been scheduled — found live via an
-// -race-only CI failure, not guessed: Register was returning, and a
-// Dispatch immediately following it publishing, before this loop's first
-// subscription had actually reached Redis, silently losing that message.
+// ready, if non-nil, is called at most once — after the very first
+// subscribe attempt's Receive call confirms the subscription actually
+// reached Redis. go-redis's PubSub subscribes lazily: r.redis.Subscribe
+// itself never touches the network, it's the first Receive-family call
+// that actually sends SUBSCRIBE and waits for Redis's own confirmation.
+// Callers that need to know the subscription is genuinely live before
+// doing anything a concurrent PUBLISH could race against (Register, which
+// passes this to close exactly that window) must wait for ready, not
+// merely for the goroutine driving this loop to have been scheduled —
+// found live via an -race-only CI failure, not guessed: Register was
+// returning, and a Dispatch immediately following it publishing, before
+// this loop's first subscription had actually reached Redis, silently
+// losing that message. If that very first attempt fails instead, ready
+// is never called at all — a caller waiting on it relies on its own
+// bounded timeout (Register's subscribeReadyTimeout) rather than this
+// loop's later, unbounded reconnect retries.
 func (r *Registry) subscribeLoop(ctx context.Context, channel string, ready func(), handle func(data []byte) (stop bool)) {
 	for first := true; ; first = false {
 		if ctx.Err() != nil {
@@ -43,10 +47,16 @@ func (r *Registry) subscribeLoop(ctx context.Context, channel string, ready func
 		pubsub := r.redis.Subscribe(ctx, channel)
 		if first {
 			_, err := pubsub.Receive(ctx)
-			if ready != nil {
-				ready()
-			}
 			if err != nil {
+				// Not actually subscribed — ready must not fire here, or
+				// Register would consider this goroutine caught up while
+				// it's really about to sleep for reconnectBackoff and try
+				// again, reopening the exact message-loss window this
+				// whole mechanism exists to close. Left uncalled for the
+				// rest of this loop's life (first only guards the very
+				// first iteration): Register's own bounded
+				// subscribeReadyTimeout is what keeps it from waiting
+				// forever if every attempt keeps failing.
 				_ = pubsub.Close()
 				if ctx.Err() != nil {
 					return
@@ -57,6 +67,9 @@ func (r *Registry) subscribeLoop(ctx context.Context, channel string, ready func
 				case <-time.After(reconnectBackoff):
 				}
 				continue
+			}
+			if ready != nil {
+				ready()
 			}
 		}
 		stopped := r.drainMessages(ctx, pubsub, handle)

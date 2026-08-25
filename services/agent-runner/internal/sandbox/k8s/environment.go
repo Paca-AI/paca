@@ -604,15 +604,47 @@ func (m *Manager) deleteDeployment(ctx context.Context, name string) error {
 // Selects on environmentLabel rather than any Kubernetes-automatic label
 // — see that constant's own doc comment for why a Deployment needs one at
 // all, unlike a Job.
+//
+// Uses selectEnvironmentPod rather than blindly taking whichever Pod the
+// List call happens to return first: a Deployment update (e.g.
+// ensureEnvironmentEnv's one-time GOOSE_PROVIDER backfill, which issues an
+// Update that rolls the Deployment) can transiently leave two Pods sharing
+// this same label — the old one terminating, the new one starting — and
+// list order isn't guaranteed, so an exec/copy/attach routed through the
+// wrong one could target the terminating Pod and fail mid-operation.
 func (m *Manager) podNameForEnvironment(ctx context.Context, backendRef string) (string, error) {
 	pods, err := m.clientset.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{LabelSelector: environmentLabel + "=" + backendRef})
 	if err != nil {
 		return "", fmt.Errorf("sandbox/k8s: list pods for environment %s: %w", backendRef, err)
 	}
-	if len(pods.Items) == 0 {
-		return "", fmt.Errorf("sandbox/k8s: no pod found for environment %s", backendRef)
+	pod, ok := selectEnvironmentPod(pods.Items)
+	if !ok {
+		return "", fmt.Errorf("sandbox/k8s: no running pod found for environment %s", backendRef)
 	}
-	return pods.Items[0].Name, nil
+	return pod.Name, nil
+}
+
+// selectEnvironmentPod picks the one Pod podNameForEnvironment's caller
+// should actually talk to, out of every Pod currently matching an
+// environment's label selector — deterministic even mid-rollout, unlike
+// blindly taking index 0 (see podNameForEnvironment's own doc comment for
+// why that's not safe). Excludes anything terminating
+// (DeletionTimestamp set) or not yet Running, then returns the most
+// recently created of what's left: during a rollout the newest Pod is the
+// one the Deployment is converging toward, not the one on its way out.
+func selectEnvironmentPod(pods []corev1.Pod) (corev1.Pod, bool) {
+	var best corev1.Pod
+	found := false
+	for _, p := range pods {
+		if p.DeletionTimestamp != nil || p.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		if !found || best.CreationTimestamp.Before(&p.CreationTimestamp) {
+			best = p
+			found = true
+		}
+	}
+	return best, found
 }
 
 // CopyToEnvironment uploads tarContent into backendRef (a Deployment

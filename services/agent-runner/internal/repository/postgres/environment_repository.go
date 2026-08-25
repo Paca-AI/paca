@@ -204,32 +204,40 @@ func (r *EnvironmentRepository) ListIdleRunningEnvironments(ctx context.Context)
 // environments, not an application-level lock this package would
 // otherwise need to invent. A genuine collision (both replicas' subqueries
 // evaluate against the same pre-collision snapshot and pick the same
-// port) surfaces as a unique_violation error from this call rather than
-// silently double-assigning — deliberately not retried here, since it
-// requires two Create/Start calls landing in the same instant on a
-// deployment with more than one agent-runner replica, rare enough that
-// surfacing the error (the caller's normal request-failed path) is a
-// reasonable trade against the complexity of a retry loop.
+// port) surfaces as a unique_violation error from this call — retried up
+// to maxPortAssignRetries times rather than given up on immediately: by
+// the time of a retry, the other side's own UPDATE has already committed,
+// so a fresh attempt's NOT EXISTS check correctly skips that port and
+// picks the next free one instead. Without this, the caller (assignSSHPort
+// in internal/acpbridge/environment_handlers.go) logged the error and
+// carried on treating this as "no port assigned" — silently shipping a
+// StatusRunning environment with no published SSH port at all, self-healed
+// only if something later happened to call AssignSSHPort again (a
+// restart-ports action), never surfaced to the user in the meantime.
 func (r *EnvironmentRepository) AssignSSHPort(ctx context.Context, id uuid.UUID, rangeStart, rangeEnd int) (int, error) {
-	var port int
-	err := r.db.GetContext(ctx, &port, `
-		UPDATE environments
-		SET ssh_port = (
-			SELECT s.port
-			FROM generate_series($2::int, $3::int) AS s(port)
-			WHERE NOT EXISTS (
-				SELECT 1 FROM environments other
-				WHERE other.ssh_port = s.port AND other.deleted_at IS NULL
-			)
-			ORDER BY s.port
-			LIMIT 1
-		),
-		updated_at = now()
-		WHERE id = $1 AND ssh_port IS NULL
-		RETURNING ssh_port
-	`, id, rangeStart, rangeEnd)
-	if err != nil {
-		return 0, fmt.Errorf("postgres: assign ssh port for environment %s: %w", id, err)
+	for attempt := 0; ; attempt++ {
+		var port int
+		err := r.db.GetContext(ctx, &port, `
+			UPDATE environments
+			SET ssh_port = (
+				SELECT s.port
+				FROM generate_series($2::int, $3::int) AS s(port)
+				WHERE NOT EXISTS (
+					SELECT 1 FROM environments other
+					WHERE other.ssh_port = s.port AND other.deleted_at IS NULL
+				)
+				ORDER BY s.port
+				LIMIT 1
+			),
+			updated_at = now()
+			WHERE id = $1 AND ssh_port IS NULL
+			RETURNING ssh_port
+		`, id, rangeStart, rangeEnd)
+		if err == nil {
+			return port, nil
+		}
+		if !isUniqueViolation(err) || attempt >= maxPortAssignRetries {
+			return 0, fmt.Errorf("postgres: assign ssh port for environment %s: %w", id, err)
+		}
 	}
-	return port, nil
 }

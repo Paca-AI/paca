@@ -79,30 +79,36 @@ func (r *PortForwardRepository) ListForEnvironment(ctx context.Context, environm
 // when host_port is still NULL, so a caller can call this unconditionally
 // and it's a no-op past the first successful call. Mirrors
 // EnvironmentRepository.AssignSSHPort's single-UPDATE race-safety
-// reasoning exactly (see that method's own doc comment) — "unused" means
-// no other row already holds it (uq_environment_port_forwards_host_port is
-// a plain unique index over the whole table, not partial like
-// uq_environments_ssh_port, since this table is hard-deleted so a removed
-// row's port is never left behind to reclaim).
+// reasoning exactly, retry included (see that method's own doc comment for
+// why a unique_violation collision is retried rather than given up on
+// immediately) — "unused" means no other row already holds it
+// (uq_environment_port_forwards_host_port is a plain unique index over the
+// whole table, not partial like uq_environments_ssh_port, since this table
+// is hard-deleted so a removed row's port is never left behind to
+// reclaim).
 func (r *PortForwardRepository) AssignHostPort(ctx context.Context, id uuid.UUID, rangeStart, rangeEnd int) (int, error) {
-	var port int
-	err := r.db.GetContext(ctx, &port, `
-		UPDATE environment_port_forwards
-		SET host_port = (
-			SELECT s.port
-			FROM generate_series($2::int, $3::int) AS s(port)
-			WHERE NOT EXISTS (
-				SELECT 1 FROM environment_port_forwards other
-				WHERE other.host_port = s.port
+	for attempt := 0; ; attempt++ {
+		var port int
+		err := r.db.GetContext(ctx, &port, `
+			UPDATE environment_port_forwards
+			SET host_port = (
+				SELECT s.port
+				FROM generate_series($2::int, $3::int) AS s(port)
+				WHERE NOT EXISTS (
+					SELECT 1 FROM environment_port_forwards other
+					WHERE other.host_port = s.port
+				)
+				ORDER BY s.port
+				LIMIT 1
 			)
-			ORDER BY s.port
-			LIMIT 1
-		)
-		WHERE id = $1 AND host_port IS NULL
-		RETURNING host_port
-	`, id, rangeStart, rangeEnd)
-	if err != nil {
-		return 0, fmt.Errorf("postgres: assign host port for port forward %s: %w", id, err)
+			WHERE id = $1 AND host_port IS NULL
+			RETURNING host_port
+		`, id, rangeStart, rangeEnd)
+		if err == nil {
+			return port, nil
+		}
+		if !isUniqueViolation(err) || attempt >= maxPortAssignRetries {
+			return 0, fmt.Errorf("postgres: assign host port for port forward %s: %w", id, err)
+		}
 	}
-	return port, nil
 }

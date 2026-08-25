@@ -146,6 +146,65 @@ func TestPodNameForEnvironment_ErrorsWhenNoPodExists(t *testing.T) {
 	}
 }
 
+// TestPodNameForEnvironment_SkipsTerminatingPodDuringRollout is a
+// regression test for the exact transient-rollout case selectEnvironmentPod
+// exists for: a Deployment update (e.g. ensureEnvironmentEnv's one-time
+// GOOSE_PROVIDER backfill) can briefly leave both the old, terminating Pod
+// and the new one sharing environmentLabel. List order isn't guaranteed,
+// so this must actively filter the terminating one out rather than rely
+// on happening to see the live one first.
+func TestPodNameForEnvironment_SkipsTerminatingPodDuringRollout(t *testing.T) {
+	const backendRef = "paca-env-envC"
+	terminating := envPodFixture("paca-env-envC-old", backendRef, corev1.PodRunning, "10.0.0.1")
+	deleting := metav1.NewTime(time.Now())
+	terminating.DeletionTimestamp = &deleting
+	live := envPodFixture("paca-env-envC-new", backendRef, corev1.PodRunning, "10.0.0.2")
+	m := managerWithPods("paca", terminating, live)
+
+	got, err := m.podNameForEnvironment(context.Background(), backendRef)
+	if err != nil {
+		t.Fatalf("podNameForEnvironment: %v", err)
+	}
+	if got != "paca-env-envC-new" {
+		t.Errorf("podNameForEnvironment = %q, want the non-terminating pod %q", got, "paca-env-envC-new")
+	}
+}
+
+// TestPodNameForEnvironment_PicksTheNewestRunningPodDuringRollout confirms
+// the tie-break among multiple live-and-Running matches (both the old and
+// new Pod briefly Running, neither terminating yet) deterministically
+// picks the one the rollout is converging toward, not whichever the
+// Kubernetes API happened to list first.
+func TestPodNameForEnvironment_PicksTheNewestRunningPodDuringRollout(t *testing.T) {
+	const backendRef = "paca-env-envD"
+	older := envPodFixture("paca-env-envD-old", backendRef, corev1.PodRunning, "10.0.0.1")
+	older.CreationTimestamp = metav1.NewTime(time.Now().Add(-time.Hour))
+	newer := envPodFixture("paca-env-envD-new", backendRef, corev1.PodRunning, "10.0.0.2")
+	newer.CreationTimestamp = metav1.NewTime(time.Now())
+	m := managerWithPods("paca", older, newer)
+
+	got, err := m.podNameForEnvironment(context.Background(), backendRef)
+	if err != nil {
+		t.Fatalf("podNameForEnvironment: %v", err)
+	}
+	if got != "paca-env-envD-new" {
+		t.Errorf("podNameForEnvironment = %q, want the newer pod %q", got, "paca-env-envD-new")
+	}
+}
+
+// TestPodNameForEnvironment_ErrorsWhenOnlyMatchIsNotRunning guards against
+// routing an exec/copy/attach at a Pod that's merely Pending (not yet
+// running the actual container) — a clear "no pod found" error is more
+// useful than one that looks resolved but fails on the very next call.
+func TestPodNameForEnvironment_ErrorsWhenOnlyMatchIsNotRunning(t *testing.T) {
+	const backendRef = "paca-env-envE"
+	m := managerWithPods("paca", envPodFixture("paca-env-envE-pending", backendRef, corev1.PodPending, ""))
+
+	if _, err := m.podNameForEnvironment(context.Background(), backendRef); err == nil {
+		t.Error("podNameForEnvironment: expected an error when the only matching pod isn't Running, got nil")
+	}
+}
+
 func TestWaitForPodIP_ResolvesEnvironmentSelector(t *testing.T) {
 	// waitForPodIP itself is generic (see its own doc comment in
 	// manager.go) — this confirms it works with environmentLabel's
