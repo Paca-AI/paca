@@ -180,10 +180,11 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 	var sessionID string
 	var message string
 
-	if resume != nil {
+	switch {
+	case resume != nil:
 		handle, client, sessionID = resume.Handle, resume.Client, resume.SessionID
 		message = trigger.Message
-	} else if trigger.EnvironmentID != nil {
+	case trigger.EnvironmentID != nil:
 		// A static environment's conversations never populate ChatSandboxes
 		// in the first place (see handler.Handler.keepSandboxAlive's own
 		// EnvironmentID guard), so resume above is always nil here — every
@@ -200,7 +201,7 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 			return Result{}, err
 		}
 		message = buildInitialMessage(trigger)
-	} else {
+	default:
 		fileSkills := prepareFileSkills(cfg.Skills)
 
 		var err error

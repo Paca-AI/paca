@@ -193,7 +193,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		// A clear error message frame first, then close — the environment
 		// exists (the ticket/lookup above succeeded) but isn't in a state
 		// this endpoint can attach a shell to right now.
-		_, _ = writer.Write([]byte(fmt.Sprintf("environment is not running (status=%s)\r\n", env.Status)))
+		_, _ = fmt.Fprintf(writer, "environment is not running (status=%s)\r\n", env.Status)
 		_ = conn.Close(4409, "environment not running")
 		return
 	}
