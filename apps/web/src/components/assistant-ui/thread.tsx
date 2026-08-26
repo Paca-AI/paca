@@ -73,6 +73,9 @@ export type ThreadComponents = {
 	/** Rendered at the start of the composer's action row (left of the mic/send
 	 * controls) — e.g. an agent picker shown inline while starting a new chat. */
 	ComposerStart?: ComponentType | undefined;
+	/** Accessible label for the composer Cancel action. Callers can distinguish
+	 * an interrupt/pause from a separate durable conversation stop control. */
+	ComposerCancelLabel?: string | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
 	ToolGroup?:
 		| ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
@@ -326,7 +329,9 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
 	const { t } = useTranslation("projects");
-	const { ComposerStart } = useContext(ThreadComponentsContext);
+	const { ComposerStart, ComposerCancelLabel } = useContext(
+		ThreadComponentsContext,
+	);
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
 			{ComposerStart ? <ComposerStart /> : <div />}
@@ -392,7 +397,10 @@ const ComposerAction: FC = () => {
 								variant="default"
 								size="icon"
 								className="aui-composer-cancel size-7 rounded-full"
-								aria-label={t("agents.thread.stopGeneratingAriaLabel")}
+								aria-label={
+									ComposerCancelLabel ??
+									t("agents.thread.stopGeneratingAriaLabel")
+								}
 							/>
 						}
 					>
@@ -410,7 +418,6 @@ const MessageError: FC = () => {
 			<ErrorPrimitive.Root className="aui-message-error-root border-destructive bg-destructive/10 text-destructive dark:bg-destructive/5 mt-2 rounded-md border p-3 text-sm dark:text-red-200">
 				<ErrorPrimitive.Message className="aui-message-error-message line-clamp-2" />
 			</ErrorPrimitive.Root>
-		</MessagePrimitive.Error>
 	);
 };
 
