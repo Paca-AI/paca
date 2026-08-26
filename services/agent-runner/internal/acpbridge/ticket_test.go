@@ -45,8 +45,9 @@ func TestVerifyTicket_EnvironmentIDMismatch(t *testing.T) {
 
 // TestVerifyTicket_PurposeMismatch is the reason ticket.go's payload
 // carries a purpose at all: a ticket minted for the terminal (which
-// requires agents.write, since it grants a shell) must not also unlock
-// the stats endpoint (which only requires agents.read), and vice versa.
+// requires environments.connect, since it grants a shell) must not also
+// unlock the stats endpoint (which only requires environments.read), and
+// vice versa.
 func TestVerifyTicket_PurposeMismatch(t *testing.T) {
 	secret := []byte("shared-internal-api-key")
 	envID := uuid.New()

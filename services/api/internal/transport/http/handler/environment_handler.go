@@ -29,10 +29,10 @@ const environmentTicketTTL = 60 * time.Second
 // Ticket purposes — must match agent-runner's own
 // ticketPurposeTerminal/ticketPurposeStats exactly
 // (internal/acpbridge/ticket.go). A ticket is only ever valid for the one
-// endpoint it was minted for: a terminal ticket (gated on agents.write,
-// since it grants a shell) must not also unlock the stats socket (gated
-// on the weaker agents.read, since viewing usage numbers isn't mutating),
-// and vice versa.
+// endpoint it was minted for: a terminal ticket (gated on
+// environments.connect, since it grants a shell) must not also unlock the
+// stats socket (gated on the weaker environments.read, since viewing usage
+// numbers isn't an interactive session), and vice versa.
 const (
 	ticketPurposeTerminal = "terminal"
 	ticketPurposeStats    = "stats"
@@ -518,11 +518,11 @@ func (h *EnvironmentHandler) DeletePortForward(w http.ResponseWriter, r *http.Re
 // (agent-runner has no user-session concept — see
 // docs/ai-agent/environment-management.md's Terminal / SSH Access
 // section). Same shape, different purpose and permission: TerminalTicket
-// requires agents.write (a shell is a mutating capability) and unlocks
-// only the terminal; StatsTicket only requires agents.read (viewing usage
-// numbers isn't) and unlocks only the live-stats stream — see
-// mintEnvironmentTicket's own doc comment for why a ticket can't be used
-// for the other endpoint.
+// requires environments.connect (a shell is a live interactive session)
+// and unlocks only the terminal; StatsTicket only requires
+// environments.read (viewing usage numbers isn't) and unlocks only the
+// live-stats stream — see mintEnvironmentTicket's own doc comment for why
+// a ticket can't be used for the other endpoint.
 //
 // Ticket format (must match agent-runner's verifier exactly — confirmed
 // byte-for-byte against agent-runner's own round-trip tests):
@@ -541,12 +541,12 @@ func (h *EnvironmentHandler) DeletePortForward(w http.ResponseWriter, r *http.Re
 // TerminalTicket handles POST
 // /projects/:projectId/environments/:environmentId/terminal-ticket. The
 // router's permission middleware already establishes the caller has
-// project-level agents:write; GetEnvironment on top of that verifies this
-// specific environment belongs to projectID (the resource-level check a
-// coarse permission alone can't express), and only then is the
-// environment's own Status checked — no point minting a ticket for a
-// stopped environment, since there's nothing on the other end to connect
-// to.
+// project-level environments:connect; GetEnvironment on top of that
+// verifies this specific environment belongs to projectID (the
+// resource-level check a coarse permission alone can't express), and only
+// then is the environment's own Status checked — no point minting a
+// ticket for a stopped environment, since there's nothing on the other
+// end to connect to.
 func (h *EnvironmentHandler) TerminalTicket(w http.ResponseWriter, r *http.Request) {
 	projectID, environmentID, err := h.parseEnvironment(r)
 	if err != nil {
@@ -576,8 +576,8 @@ func (h *EnvironmentHandler) TerminalTicket(w http.ResponseWriter, r *http.Reque
 
 // StatsTicket handles POST
 // /projects/:projectId/environments/:environmentId/stats-ticket — same
-// shape as TerminalTicket above, gated on the weaker agents:read instead
-// (see this section's own doc comment), for agent-runner's live
+// shape as TerminalTicket above, gated on the weaker environments:read
+// instead (see this section's own doc comment), for agent-runner's live
 // CPU/memory/disk usage stream (internal/acpbridge/stats.go).
 func (h *EnvironmentHandler) StatsTicket(w http.ResponseWriter, r *http.Request) {
 	projectID, environmentID, err := h.parseEnvironment(r)

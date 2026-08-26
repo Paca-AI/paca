@@ -528,7 +528,7 @@
 				"description": "Kết nối bằng terminal ngay trên trình duyệt — không cần SSH client hay khóa cục bộ.",
 				"connect": "Kết nối",
 				"notRunning": "Khởi động môi trường trước khi kết nối.",
-				"readOnly": "Bạn cần quyền ghi trên dự án này để mở terminal.",
+				"readOnly": "Bạn không có quyền mở terminal trên môi trường này.",
 				"hint": "Mở trong một tab toàn màn hình mới.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -661,6 +661,18 @@
 				"label": "Quản lý agent",
 				"description": "Tạo, cấu hình và xóa AI agent"
 			},
+			"environmentsRead": {
+				"label": "Xem môi trường",
+				"description": "Duyệt các môi trường và xem cấu hình của chúng"
+			},
+			"environmentsWrite": {
+				"label": "Quản lý môi trường",
+				"description": "Tạo, cấu hình và xóa môi trường, khóa SSH và chuyển tiếp cổng"
+			},
+			"environmentsConnect": {
+				"label": "Kết nối đến môi trường",
+				"description": "Mở phiên terminal tương tác bên trong một môi trường đang chạy"
+			},
 			"workflowsRead": {
 				"label": "Xem tự động hóa",
 				"description": "Xem các tự động hóa và cấu hình của chúng"
@@ -678,6 +690,7 @@
 			"sprints": "Sprint",
 			"documents": "Tài liệu",
 			"aiAgents": "AI Agent",
+			"environments": "Môi trường",
 			"workflows": "Tự động hóa",
 			"plugins": "Plugin"
 		}

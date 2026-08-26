@@ -29,16 +29,18 @@ export const Route = createFileRoute(
 
 function ProjectEnvironmentConnectPage() {
 	const { projectId, environmentId } = Route.useParams();
-	// Same permission gate as the environment detail page (see
-	// environment-detail.tsx's own comment on why agents.write, not a
-	// dedicated environments.* permission).
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("agents.write");
+	const canWrite = hasProjectPermission("environments.write");
+	// Gates only the terminal-open link (WebAppConnectTab) — opening a
+	// shell is a distinct capability from managing the environment's
+	// configuration, see router.go's own environments.connect comment.
+	const canConnect = hasProjectPermission("environments.connect");
 	return (
 		<EnvironmentConnectView
 			projectId={projectId}
 			environmentId={environmentId}
 			canWrite={canWrite}
+			canConnect={canConnect}
 		/>
 	);
 }

@@ -528,7 +528,7 @@
 				"description": "브라우저 내 터미널로 연결합니다 — 로컬 SSH 클라이언트나 키가 필요하지 않습니다.",
 				"connect": "연결",
 				"notRunning": "연결하기 전에 환경을 시작하세요.",
-				"readOnly": "터미널을 열려면 이 프로젝트에 대한 쓰기 권한이 필요합니다.",
+				"readOnly": "이 환경에서 터미널을 열 권한이 없습니다.",
 				"hint": "새 전체 화면 탭에서 열립니다.",
 				"pageTitle": "{{name}} — 터미널",
 				"pageTitleLoading": "터미널",
@@ -661,6 +661,18 @@
 				"label": "에이전트 관리",
 				"description": "AI 에이전트 생성, 구성, 삭제"
 			},
+			"environmentsRead": {
+				"label": "환경 보기",
+				"description": "환경 탐색 및 구성 보기"
+			},
+			"environmentsWrite": {
+				"label": "환경 관리",
+				"description": "환경, SSH 키, 포트 포워딩 생성, 구성, 삭제"
+			},
+			"environmentsConnect": {
+				"label": "환경에 연결",
+				"description": "실행 중인 환경 내에서 대화형 터미널 세션 열기"
+			},
 			"workflowsRead": {
 				"label": "자동화 보기",
 				"description": "자동화 및 해당 설정 조회"
@@ -678,6 +690,7 @@
 			"sprints": "스프린트",
 			"documents": "문서",
 			"aiAgents": "AI 에이전트",
+			"environments": "환경",
 			"workflows": "자동화",
 			"plugins": "플러그인"
 		}

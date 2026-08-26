@@ -5,6 +5,7 @@ import {
 	ListTodo,
 	type LucideIcon,
 	Puzzle,
+	Server,
 	Settings,
 	Shield,
 	Users,
@@ -114,6 +115,25 @@ export const PROJECT_KNOWN_PERMISSIONS = [
 		descriptionKey: "roles.permissions.agentsWrite.description",
 		domain: "agents",
 	},
+	// environments
+	{
+		key: "environments.read",
+		labelKey: "roles.permissions.environmentsRead.label",
+		descriptionKey: "roles.permissions.environmentsRead.description",
+		domain: "environments",
+	},
+	{
+		key: "environments.write",
+		labelKey: "roles.permissions.environmentsWrite.label",
+		descriptionKey: "roles.permissions.environmentsWrite.description",
+		domain: "environments",
+	},
+	{
+		key: "environments.connect",
+		labelKey: "roles.permissions.environmentsConnect.label",
+		descriptionKey: "roles.permissions.environmentsConnect.description",
+		domain: "environments",
+	},
 	// automation workflows
 	{
 		key: "workflows.read",
@@ -163,6 +183,11 @@ export const PROJECT_PERMISSION_GROUPS = [
 		Icon: BookOpen,
 	},
 	{ domain: "agents", labelKey: "roles.permissionGroups.aiAgents", Icon: Bot },
+	{
+		domain: "environments",
+		labelKey: "roles.permissionGroups.environments",
+		Icon: Server,
+	},
 	{
 		domain: "workflows",
 		labelKey: "roles.permissionGroups.workflows",
