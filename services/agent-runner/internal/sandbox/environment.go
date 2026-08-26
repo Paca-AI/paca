@@ -43,6 +43,22 @@ type EnvironmentConfig struct {
 	// see docs/ai-agent/environment-management.md's Open Risks.
 	DiskLimitGB int
 
+	// DockerEnabled opts this environment into a dedicated, long-lived
+	// Docker-in-Docker sidecar — the static-environment counterpart to
+	// Config.DockerEnabled (see that field's own doc comment for the shared
+	// isolation model). Off by default (environments.docker_enabled,
+	// decided once at CreateEnvironment time and never patched afterward —
+	// see services/api's UpdateEnvironmentRequest, which has no equivalent
+	// field). Unlike Config.DockerEnabled's per-conversation sidecar
+	// (created fresh on every Start, torn down on every Stop),
+	// EnvironmentBackend.CreateEnvironment creates this environment's
+	// sidecar exactly once; StartEnvironment/StopEnvironment then cycle it
+	// alongside the environment's own container/Pod for the rest of its
+	// life — see internal/sandbox/docker/environment_dind.go's own doc
+	// comment for why that lifecycle can't just mirror the ephemeral one's
+	// create-and-destroy-every-cycle shape.
+	DockerEnabled bool
+
 	// SecretKey authenticates goose serve's /status and ACP endpoints
 	// (X-Secret-Key). Generated once by the caller at environment creation
 	// and persisted (services/api's environments.secret_key_encrypted) —
@@ -65,6 +81,15 @@ type EnvironmentConfig struct {
 	// Pod involved) a plain Start has no new information to apply — always
 	// empty on an ordinary StartEnvironment call.
 	PortMappings []PortMapping
+
+	// MCPDevSourceDir mirrors Config.MCPDevSourceDir for a static
+	// environment's container/Pod — see that field's own doc comment and
+	// MCPDevMountPath's. docker only: internal/sandbox/docker/
+	// environment.go bind-mounts it read-only at MCPDevMountPath on every
+	// fresh container create (initial CreateEnvironment and any later
+	// recreate); the kubernetes backend rejects a non-empty value outright,
+	// the same as its ephemeral counterpart.
+	MCPDevSourceDir string
 }
 
 // PortMapping is one container-port -> host-port binding — see

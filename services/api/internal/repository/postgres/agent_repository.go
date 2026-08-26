@@ -47,12 +47,17 @@ type agentRecord struct {
 	// DefaultEnvironmentID references environments(id) — see
 	// agentdom.Agent.DefaultEnvironmentID's doc comment. NULL for global-scope
 	// agents (enforced by the service layer, not a DB constraint).
-	DefaultEnvironmentID *string    `db:"default_environment_id"`
-	CreatedBy            *string    `db:"created_by"`
-	CreatedAt            time.Time  `db:"created_at"`
-	UpdatedAt            time.Time  `db:"updated_at"`
-	DeletedAt            *time.Time `db:"deleted_at"`
-	MemberID             *string    `db:"member_id"` // populated when joining with project_members
+	DefaultEnvironmentID *string `db:"default_environment_id"`
+	// DefaultFolderID references environment_folders(id) — see
+	// agentdom.Agent.DefaultFolderID's doc comment. NULL unless
+	// DefaultEnvironmentID is also set (enforced by the service layer, not
+	// a DB constraint).
+	DefaultFolderID *string    `db:"default_folder_id"`
+	CreatedBy       *string    `db:"created_by"`
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at"`
+	DeletedAt       *time.Time `db:"deleted_at"`
+	MemberID        *string    `db:"member_id"` // populated when joining with project_members
 }
 
 type agentMCPServerRecord struct {
@@ -162,7 +167,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
-	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.created_by, a.created_at, a.updated_at, a.deleted_at`
+	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.created_by, a.created_at, a.updated_at, a.deleted_at`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
 // aliased pm, populating member_id from that join.
@@ -378,14 +383,14 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 		INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
-		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
-		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
 }
@@ -406,14 +411,14 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  system_prompt=$10,
 			  max_iterations=$11, timeout_minutes=$12,
 			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
-			  default_environment_id=$17, updated_at=$18
-			WHERE id=$19`,
+			  default_environment_id=$17, default_folder_id=$18, updated_at=$19
+			WHERE id=$20`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
-			rec.DefaultEnvironmentID, time.Now(), a.ID.String(),
+			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(), a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -488,14 +493,14 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
-			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
 			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
 			rec.MaxIterations, rec.TimeoutMinutes,
-			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -1324,6 +1329,10 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		eid := mustParseUUID(*row.DefaultEnvironmentID)
 		a.DefaultEnvironmentID = &eid
 	}
+	if row.DefaultFolderID != nil {
+		fid := mustParseUUID(*row.DefaultFolderID)
+		a.DefaultFolderID = &fid
+	}
 	return a, nil
 }
 
@@ -1379,6 +1388,10 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 	if a.DefaultEnvironmentID != nil {
 		s := a.DefaultEnvironmentID.String()
 		rec.DefaultEnvironmentID = &s
+	}
+	if a.DefaultFolderID != nil {
+		s := a.DefaultFolderID.String()
+		rec.DefaultFolderID = &s
 	}
 	return rec, nil
 }

@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { createEnvironment, type Environment } from "@/lib/environment-api";
 import { cn } from "@/lib/utils";
 import {
@@ -53,6 +54,7 @@ export function EnvironmentCreateDialog({
 	const [cpu, setCpu] = useState("");
 	const [memory, setMemory] = useState("");
 	const [disk, setDisk] = useState("");
+	const [dockerEnabled, setDockerEnabled] = useState(false);
 
 	const reset = () => {
 		setName("");
@@ -61,6 +63,7 @@ export function EnvironmentCreateDialog({
 		setCpu("");
 		setMemory("");
 		setDisk("");
+		setDockerEnabled(false);
 	};
 
 	const handleClose = (v: boolean) => {
@@ -87,6 +90,7 @@ export function EnvironmentCreateDialog({
 				...(cpu.trim() ? { cpu_limit: cpu.trim() } : {}),
 				...(memory.trim() ? { memory_limit: memory.trim() } : {}),
 				...(disk.trim() ? { disk_limit_gb: diskNumber } : {}),
+				...(dockerEnabled ? { docker_enabled: true } : {}),
 			}),
 		onSuccess: (environment) => {
 			qc.invalidateQueries({
@@ -143,6 +147,21 @@ export function EnvironmentCreateDialog({
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							autoFocus
+						/>
+					</div>
+
+					<div className="flex items-center justify-between gap-3">
+						<div>
+							<p className="text-sm font-medium">
+								{t("environments.createDialog.dockerEnabledLabel")}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								{t("environments.createDialog.dockerEnabledHint")}
+							</p>
+						</div>
+						<Switch
+							checked={dockerEnabled}
+							onCheckedChange={setDockerEnabled}
 						/>
 					</div>
 

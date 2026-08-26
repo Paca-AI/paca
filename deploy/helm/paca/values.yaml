@@ -311,13 +311,18 @@ agentRunner:
     # (agents.docker_enabled in the database) get a privileged
     # `docker:dind` sidecar added to their own sandbox Pod at runtime, one
     # conversation at a time, so they can run Docker commands — see
-    # internal/sandbox/k8s/dind.go. There's nothing to configure here for
-    # that either way (the sidecar only ever appears on a Pod belonging to
-    # an agent that opts in) — but if `namespace` above enforces the
-    # Restricted Pod Security Standard, that agent's conversations will
-    # fail to start with a Forbidden admission error. Label the namespace
-    # with `pod-security.kubernetes.io/enforce: baseline` (or looser) if
-    # you plan to use DockerEnabled agents.
+    # internal/sandbox/k8s/dind.go. DockerEnabled environments
+    # (environments.docker_enabled) get the same sidecar, added once to
+    # their own long-lived Deployment's Pod template at CreateEnvironment
+    # time instead — see internal/sandbox/k8s/environment.go's own
+    # CreateEnvironment. There's nothing to configure here for either case
+    # (the sidecar only ever appears on a Pod belonging to an agent/
+    # environment that opts in) — but if `namespace` above enforces the
+    # Restricted Pod Security Standard, that agent's conversations (or that
+    # environment's Pod) will fail to start with a Forbidden admission
+    # error. Label the namespace with `pod-security.kubernetes.io/enforce:
+    # baseline` (or looser) if you plan to use DockerEnabled agents or
+    # environments.
 
   # SSH bastion (optional, off by default) — lets a user
   # `ssh -p <port> root@<bastion-host>` straight into a running static

@@ -155,6 +155,9 @@ export interface Agent {
 	// agent (no project of its own to default an environment from) and for
 	// any project agent that hasn't set one.
 	default_environment_id?: string | null;
+	// Which folder inside default_environment_id this agent's conversations
+	// work in by default — null unless default_environment_id is also set.
+	default_folder_id?: string | null;
 	member_id?: string | null;
 	mcp_servers?: AgentMCPServer[];
 	skills?: AgentSkill[];
@@ -278,6 +281,7 @@ export async function createAgent(
 		git_committer_email?: string;
 		docker_enabled?: boolean;
 		default_environment_id?: string | null;
+		default_folder_id?: string | null;
 		project_role_id: string;
 	},
 ): Promise<Agent> {
@@ -305,6 +309,7 @@ export async function updateAgent(
 		git_committer_email?: string;
 		docker_enabled?: boolean;
 		default_environment_id?: string | null;
+		default_folder_id?: string | null;
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
@@ -355,6 +360,9 @@ export interface CreateGlobalAgentPayload {
 	// (see agent-detail.tsx's OverviewTab). Kept here only for type parity
 	// with the shared CreateAgentRequest/UpdateAgentRequest DTO on the server.
 	default_environment_id?: string | null;
+	// Same "always omitted, kept only for type parity" note as
+	// default_environment_id above.
+	default_folder_id?: string | null;
 	global_role_id?: string | null;
 }
 
@@ -384,6 +392,8 @@ export interface UpdateGlobalAgentPayload {
 	// See CreateGlobalAgentPayload.default_environment_id above — unused at
 	// global scope, kept only for DTO type parity.
 	default_environment_id?: string | null;
+	// See CreateGlobalAgentPayload.default_folder_id above.
+	default_folder_id?: string | null;
 	global_role_id?: string | null;
 }
 

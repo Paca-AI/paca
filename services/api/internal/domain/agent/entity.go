@@ -93,10 +93,19 @@ type Agent struct {
 	// DB constraint — see that validation for why). Overridable per
 	// conversation at chat-start.
 	DefaultEnvironmentID *uuid.UUID
-	CreatedBy            *uuid.UUID
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	DeletedAt            *time.Time
+	// DefaultFolderID, when set, is which folder
+	// (environmentdom.EnvironmentFolder) inside DefaultEnvironmentID this
+	// agent's conversations should work in by default — meaningless
+	// without DefaultEnvironmentID also being set, since a folder only
+	// ever belongs to exactly one environment (enforced by
+	// CreateAgent/UpdateAgent, not a DB constraint — see that validation
+	// for why). Overridable per conversation at chat-start, same as
+	// DefaultEnvironmentID.
+	DefaultFolderID *uuid.UUID
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DeletedAt       *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer

@@ -293,8 +293,36 @@ export function useEnvironmentPicker(
 	const selectedEnvironment = environments.find((e) => e.id === environmentId);
 	const folders = selectedEnvironment?.folders ?? [];
 
+	// The agent's own default folder — only applies once environmentId has
+	// resolved to the agent's own default_environment_id (never a
+	// manually-picked, possibly different one; see onEnvironmentChange
+	// below, which clears folderId on every environment switch so this
+	// can't leak a stale folder across environments), and only when that
+	// folder still exists in the environment's current list — same
+	// dangling-reference guard the default_environment_id effect above
+	// uses.
+	useEffect(() => {
+		if (
+			!folderId &&
+			environmentId &&
+			environmentId === agent?.default_environment_id &&
+			agent?.default_folder_id &&
+			folders.some((f) => f.id === agent.default_folder_id)
+		) {
+			setFolderId(agent.default_folder_id);
+		}
+	}, [
+		agent?.default_environment_id,
+		agent?.default_folder_id,
+		environmentId,
+		folders,
+		folderId,
+	]);
+
 	// Exactly one folder — auto-select it instead of forcing an explicit
-	// choice, mirroring useAgentPicker's single-option auto-select.
+	// choice, mirroring useAgentPicker's single-option auto-select. Runs
+	// after the default-folder effect above so an agent's own default
+	// (when still valid) always wins over this weaker heuristic.
 	useEffect(() => {
 		if (!folderId && folders.length === 1 && folders[0]) {
 			setFolderId(folders[0].id);

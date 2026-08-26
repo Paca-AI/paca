@@ -56,6 +56,11 @@ export interface Environment {
 	cpu_limit: string;
 	memory_limit: string;
 	disk_limit_gb: number;
+	// Decided once at create time and never patched afterward — there is
+	// no docker_enabled field on updateEnvironment's payload below, the
+	// same "create-only" contract cpu_limit/memory_limit/disk_limit_gb
+	// already follow.
+	docker_enabled: boolean;
 	idle_timeout_minutes: number;
 	last_active_at: string;
 	error_message?: string | null;
@@ -157,6 +162,7 @@ export async function createEnvironment(
 		cpu_limit?: string;
 		memory_limit?: string;
 		disk_limit_gb?: number;
+		docker_enabled?: boolean;
 	},
 ): Promise<Environment> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Environment>>(

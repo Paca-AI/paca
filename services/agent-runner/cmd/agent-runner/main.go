@@ -153,6 +153,7 @@ func run(log *slog.Logger) error {
 		PortForwardRangeStart: settings.PortForwardRangeStart,
 		PortForwardRangeEnd:   settings.PortForwardRangeEnd,
 		Backend:               settings.SandboxBackend,
+		MCPDevSourceDir:       settings.MCPDevSourceDir,
 		Log:                   log,
 	}
 	httpServer := &http.Server{Addr: settings.HTTPAddr, Handler: acpServer.Routes()}

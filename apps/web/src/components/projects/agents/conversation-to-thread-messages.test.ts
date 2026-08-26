@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { AgentConversationEvent } from "@/lib/agent-api";
+import type {
+	AgentConversation,
+	AgentConversationEvent,
+} from "@/lib/agent-api";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	hasEnvironmentReadyEvent,
 	isEnvironmentReady,
@@ -1155,5 +1159,87 @@ describe("isEnvironmentReady", () => {
 
 		expect(isEnvironmentReady(false, notReady)).toBe(false);
 		expect(isEnvironmentReady(false, ready)).toBe(true);
+	});
+});
+
+function conversation(
+	overrides: Partial<AgentConversation> = {},
+): AgentConversation {
+	return {
+		id: "conv-1",
+		agent_id: "agent-1",
+		trigger_type: "task_assigned",
+		status: "finished",
+		iteration_count: 0,
+		input_tokens: 0,
+		output_tokens: 0,
+		total_tokens: 0,
+		created_at: "2026-01-01T00:00:00Z",
+		updated_at: "2026-01-01T00:00:00Z",
+		...overrides,
+	};
+}
+
+describe("canReplyToConversation", () => {
+	it("is false with no conversation at all", () => {
+		expect(canReplyToConversation(undefined, false)).toBe(false);
+		expect(canReplyToConversation(null, true)).toBe(false);
+	});
+
+	it("is always true for an ACP conversation, regardless of trigger type, status, or chat session", () => {
+		const c = conversation({
+			trigger_type: "task_assigned",
+			status: "finished",
+			chat_session_id: null,
+		});
+
+		expect(canReplyToConversation(c, true)).toBe(true);
+	});
+
+	it("is always true for a conversation attached to a static environment, regardless of trigger type, status, or chat session", () => {
+		const c = conversation({
+			trigger_type: "comment_mention",
+			status: "stopped",
+			chat_session_id: null,
+			environment_id: "env-1",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(true);
+	});
+
+	it("is false for a non-ACP, non-environment conversation whose trigger isn't chat_message", () => {
+		const c = conversation({ trigger_type: "task_assigned" });
+
+		expect(canReplyToConversation(c, false)).toBe(false);
+	});
+
+	it("is false for a non-ACP, non-environment chat_message conversation with no chat session", () => {
+		const c = conversation({
+			trigger_type: "chat_message",
+			chat_session_id: null,
+			status: "running",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(false);
+	});
+
+	it("is false for a non-ACP, non-environment chat_message conversation that has gone terminal", () => {
+		const c = conversation({
+			trigger_type: "chat_message",
+			chat_session_id: "sess-1",
+			status: "failed",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(false);
+	});
+
+	it("is true for a live (non-terminal) non-ACP, non-environment chat_message conversation with a chat session", () => {
+		const c = conversation({
+			trigger_type: "chat_message",
+			chat_session_id: "sess-1",
+			status: "running",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(true);
 	});
 });

@@ -477,16 +477,24 @@ func (e *Executor) environmentPortMappings(ctx context.Context, env *postgres.En
 // already exists, and attaches a fresh ACP session at trigger.Workdir
 // instead of the ephemeral sandboxWorkdir constant.
 //
-// No file-skills/.goosehints delivery happens here, unlike coldStart —
-// both are written relative to the ACP session's own cwd (see skills.go's
-// skillsRelDir and hints.go's own doc comment on why .goosehints must live
-// in the sandbox's cwd to be picked up), which for an environment is
-// trigger.Workdir, i.e. inside a folder's own git checkout — dropping
-// agent-runner-managed files straight into a user's repo working tree is a
-// real design question (accidental commits, collision with the repo's own
-// content) that docs/ai-agent/environment-management.md's Phase 1 scope
-// doesn't resolve, so it's deliberately left undone here rather than
-// guessed at. Flagged as an open follow-up, not an oversight.
+// File-skills ARE delivered here, unlike an earlier version of this
+// function — but targeted at sandboxWorkdir (the container's actual
+// $HOME), not trigger.Workdir: Goose's skill loader has a home-rooted
+// global lookup (~/.agents/skills) alongside its cwd-relative one (see
+// skills.go's skillsRelDir doc comment), and trigger.Workdir is inside a
+// folder's own git checkout for an environment — writing agent-runner-
+// managed files there risks an accidental commit or a collision with the
+// repo's own content, which sandboxWorkdir sidesteps entirely since it's
+// never part of any checkout.
+//
+// .goosehints is NOT delivered here, and can't be via the same trick:
+// unlike skills, Goose reads .goosehints from cwd only, with no home-rooted
+// fallback (see hints.go's own doc comment) — so writing it would mean
+// writing into trigger.Workdir, the exact git-checkout collision problem
+// above. Still an open follow-up (loses the agent's system prompt and the
+// bootstrapInstruction nudge to call load_skill(paca) first for an
+// environment-backed conversation), not an oversight — see
+// docs/ai-agent/environment-management.md's Phase 1 scope.
 func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger) (*acp.Client, string, error) {
 	if e.envRepo == nil {
 		return nil, "", fmt.Errorf("executor: no environment repository configured")
@@ -572,14 +580,16 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// implementations tolerate this (idempotent start) — see
 	// docs/ai-agent/environment-management.md's "Conversation attach path".
 	handle, err := e.sandboxMgr.StartEnvironment(ctx, *env.BackendRef, sandbox.EnvironmentConfig{
-		EnvironmentID: environmentID.String(),
-		Image:         image,
-		Env:           containerEnv,
-		CPULimit:      env.CPULimit,
-		MemoryLimit:   env.MemoryLimit,
-		DiskLimitGB:   env.DiskLimitGB,
-		SecretKey:     secretKey,
-		PortMappings:  e.environmentPortMappings(ctx, env),
+		EnvironmentID:   environmentID.String(),
+		Image:           image,
+		Env:             containerEnv,
+		CPULimit:        env.CPULimit,
+		MemoryLimit:     env.MemoryLimit,
+		DiskLimitGB:     env.DiskLimitGB,
+		DockerEnabled:   env.DockerEnabled,
+		SecretKey:       secretKey,
+		PortMappings:    e.environmentPortMappings(ctx, env),
+		MCPDevSourceDir: e.opts.MCPDevSourceDir,
 	})
 	if err != nil {
 		errMsg := err.Error()
@@ -617,6 +627,23 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	}
 	if err := e.envRepo.TouchEnvironment(ctx, environmentID); err != nil {
 		e.log.Warn("executor: failed to touch environment", "environment_id", environmentID, "error", err)
+	}
+
+	// Written before Initialize/NewSession, same ordering and reasoning
+	// coldStart uses for its own skills tar (see that function's comment):
+	// Goose's skills platform extension discovers SKILL.md files from disk,
+	// so they must exist before anything that might read them. Targets
+	// sandboxWorkdir, not trigger.Workdir — see this function's own doc
+	// comment for why.
+	fileSkills := prepareFileSkills(cfg.Skills)
+	skillsTar, err := buildSkillsTar(fileSkills)
+	if err != nil {
+		return nil, "", fmt.Errorf("executor: build skills tar: %w", err)
+	}
+	if skillsTar != nil {
+		if err := e.sandboxMgr.CopyToEnvironment(ctx, handle.BackendRef, sandboxWorkdir, skillsTar); err != nil {
+			return nil, "", fmt.Errorf("executor: write skills to environment %s: %w", environmentID, err)
+		}
 	}
 
 	client := acp.NewClient(handle.BaseURL, secretKey, nil)
@@ -799,13 +826,47 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 		// PacaConfig.repoPluginIds's doc comment there.
 		env["PACA_REPO_PLUGIN_IDS"] = strings.Join(trigger.RepoPluginIDs, ",")
 	}
+	if trigger.Workdir != nil {
+		// Only set for an environment-attached conversation (trigger.Workdir
+		// is nil for an ephemeral one) — tells apps/mcp's clone_repository
+		// where THIS conversation's actual working directory is, so its
+		// default target dir (otherwise hardcoded to the ephemeral
+		// sandbox's own /home/goose/repo — see DEFAULT_REPO_DIR's doc
+		// comment there) resolves to the environment folder the agent was
+		// actually attached to instead. Without this, an agent that calls
+		// clone_repository without an explicit targetDir clones into the
+		// wrong place even though session/new's own cwd was set correctly.
+		env["PACA_WORKDIR"] = *trigger.Workdir
+	}
 	// Dev override: run the Paca MCP server from a locally-mounted apps/mcp
-	// checkout (see sandbox.Config.MCPDevSourceDir) instead of the image's
+	// checkout (see sandbox.Config.MCPDevSourceDir /
+	// sandbox.EnvironmentConfig.MCPDevSourceDir) instead of the image's
 	// globally npm-installed @paca-ai/paca-mcp, so a local source change is
 	// live on the next conversation without an npm publish + image rebuild.
 	// /usr/bin/node is the same absolute-path requirement pacaMCPBinPath's
 	// doc comment explains — ACP rejects a bare command name resolved via
 	// PATH lookup.
+	//
+	// Applies to both ephemeral and environment-attached conversations:
+	// both sandbox.Config (docker.Manager.Start) and
+	// sandbox.EnvironmentConfig (docker.Manager.createAndStartEnvironment
+	// Container, shared by CreateEnvironment/StartEnvironment's self-heal
+	// recreate) bind-mount MCPDevSourceDir at sandbox.MCPDevMountPath on
+	// the docker backend; the kubernetes backend rejects a non-empty
+	// MCPDevSourceDir outright in both Manager.Start and
+	// Manager.CreateEnvironment, so this path is never reachable there.
+	// This used to be ephemeral-only — using the dev command path for an
+	// environment-attached conversation while only the ephemeral path had
+	// the bind mount pointed /usr/bin/node at a file that was never
+	// mounted into that container, so the "paca" MCP subprocess failed to
+	// start at all, silently zeroing out its tools with no protocol-level
+	// error (same "Tool 'X' not found" symptom
+	// recreateEnvironmentIfMissingEnv's PACA_API_KEY sibling bug produces,
+	// for an unrelated reason) — fixed by adding the missing mount instead
+	// of leaving the gate in place, so local apps/mcp iteration works the
+	// same way for both conversation kinds. The npm-installed
+	// pacaMCPBinPath, by contrast, is baked into every image regardless of
+	// backend, so it always exists.
 	command, args := pacaMCPBinPath, []string{}
 	if e.opts.MCPDevSourceDir != "" {
 		command = "/usr/bin/node"
