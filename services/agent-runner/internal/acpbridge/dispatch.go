@@ -61,6 +61,13 @@ func (d *Dispatcher) DispatchTrigger(ctx context.Context, trigger agent.Trigger,
 		"trigger_type":    string(trigger.TriggerType),
 		"acp_provider":    cfg.ACPProvider,
 		"acp_command":     cfg.ACPCommand,
+		// Task/comment/chat linkage the bridge uses to group conversations
+		// into per-task (or per-chat) sessions. Empty when the trigger has no
+		// such link (e.g. project-global chat, or an automation message with
+		// no task); an older bridge simply ignores these keys.
+		"task_id":         uuidPtrOrEmpty(trigger.TaskID),
+		"comment_id":      uuidPtrOrEmpty(trigger.CommentID),
+		"chat_session_id": uuidPtrOrEmpty(trigger.ChatSessionID),
 	})
 	if err != nil {
 		return err
@@ -130,6 +137,13 @@ func (d *Dispatcher) watchdog(conversationID, projectID uuid.UUID, timeout time.
 
 func projectIDOrEmpty(id uuid.UUID) string {
 	if id == uuid.Nil {
+		return ""
+	}
+	return id.String()
+}
+
+func uuidPtrOrEmpty(id *uuid.UUID) string {
+	if id == nil || *id == uuid.Nil {
 		return ""
 	}
 	return id.String()

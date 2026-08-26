@@ -65,6 +65,22 @@ type conversationState struct {
 	// always sleeping the full interruptGracePeriod.
 	turnDone chan struct{}
 
+	// currentConversationID/currentProjectID identify the conversation whose
+	// turn is running right now. With per-task (or per-agent) session scope a
+	// single conversationState — one ACP subprocess — is reused across MORE
+	// than one Paca conversation, so the conversation an event belongs to
+	// changes turn-to-turn and can no longer be captured once in the spawn
+	// closure. runTurn stamps these under mu before doing any work; the ACP
+	// stdout goroutine's onUpdate closure reads them (via currentIDs) so each
+	// event is attributed to the turn actually in flight. Guarded by mu.
+	currentConversationID string
+	currentProjectID      string
+
+	// lastActivity is refreshed whenever a turn starts or finishes; the idle
+	// sweeper (see Runner.sweepIdle) evicts a session that has been idle
+	// longer than the configured timeout. Guarded by mu.
+	lastActivity time.Time
+
 	// client/sessionID are set once the ACP session is established and
 	// reused across every later turn of this same conversation — a chat
 	// conversation reattaches to the same subprocess rather than spawning
@@ -97,30 +113,108 @@ type conversationState struct {
 	outbound     chan map[string]any
 }
 
+// Session scope names — how a start_turn is mapped to the ACP subprocess
+// ("session") that serves it. See Runner.sessionKeyFor.
+const (
+	// ScopeConversation is the upstream behavior: one ACP session per Paca
+	// conversation. Maximum isolation, but no shared memory even between two
+	// conversations on the same task.
+	ScopeConversation = "conversation"
+	// ScopeTask keys the session by task_id when the trigger carries one
+	// (falling back to chat_session_id, then conversation_id), so every
+	// conversation on one task — its task_assigned turn, later comment
+	// @mentions, task chat — shares a single Claude Code process and its
+	// accumulated context. This is the fork's default and reason for being.
+	ScopeTask = "task"
+	// ScopeAgent keys every conversation to a single session — one persistent
+	// process for the whole agent, matching the "channel" model. Maximum
+	// memory, zero isolation between tasks.
+	ScopeAgent = "agent"
+)
+
+// Config tunes how the Runner maps conversations to ACP sessions and when it
+// reclaims idle ones. The zero value is valid: Scope defaults to ScopeTask
+// and IdleTimeout to 0 (no eviction).
+type Config struct {
+	// Scope selects the session-keying strategy (see the Scope* constants).
+	// An unknown or empty value is normalized to ScopeTask.
+	Scope string
+	// IdleTimeout, when > 0, reclaims a session that has had no turn for at
+	// least this long. Zero disables eviction (upstream's behavior).
+	IdleTimeout time.Duration
+}
+
+func (c Config) scope() string {
+	switch c.Scope {
+	case ScopeConversation, ScopeTask, ScopeAgent:
+		return c.Scope
+	default:
+		return ScopeTask
+	}
+}
+
 // Runner implements bridge.Handler.
 type Runner struct {
-	workspace string
-	send      bridge.SendFunc
-	log       *slog.Logger
+	workspace   string
+	send        bridge.SendFunc
+	log         *slog.Logger
+	scope       string
+	idleTimeout time.Duration
 
-	mu            sync.Mutex
+	mu sync.Mutex
+	// conversations is keyed by session key (see sessionKeyFor), NOT by
+	// conversation_id — under ScopeTask several conversation_ids map to one
+	// entry.
 	conversations map[string]*conversationState
+	// convIndex maps a conversation_id to its session key, so Interrupt
+	// (which the bridge calls with a conversation_id) can find the session
+	// even when the map is keyed by task. Populated on every StartTurn.
+	convIndex map[string]string
 }
 
 // New builds a Runner rooted at workspace, using send to report events and
 // turn_status back over the bridge. Suitable as the newHandler argument to
 // bridge.New.
-func New(workspace string, log *slog.Logger) func(bridge.SendFunc) bridge.Handler {
+func New(workspace string, cfg Config, log *slog.Logger) func(bridge.SendFunc) bridge.Handler {
 	if log == nil {
 		log = slog.Default()
 	}
 	return func(send bridge.SendFunc) bridge.Handler {
-		return &Runner{
+		r := &Runner{
 			workspace:     workspace,
 			send:          send,
 			log:           log,
+			scope:         cfg.scope(),
+			idleTimeout:   cfg.IdleTimeout,
 			conversations: make(map[string]*conversationState),
+			convIndex:     make(map[string]string),
 		}
+		if r.idleTimeout > 0 {
+			go r.sweepIdle()
+		}
+		return r
+	}
+}
+
+// sessionKeyFor derives the session key for a start_turn message under the
+// configured scope. The task→chat_session→conversation fallback is what makes
+// the fork safe against an unpatched Paca: a server that doesn't send task_id
+// yet leaves ScopeTask degrading to exactly ScopeConversation, with no error.
+func (r *Runner) sessionKeyFor(msg map[string]any) string {
+	conversationID, _ := msg["conversation_id"].(string)
+	switch r.scope {
+	case ScopeAgent:
+		return "agent"
+	case ScopeTask:
+		if taskID, _ := msg["task_id"].(string); taskID != "" {
+			return "task:" + taskID
+		}
+		if chatID, _ := msg["chat_session_id"].(string); chatID != "" {
+			return "chat:" + chatID
+		}
+		return conversationID
+	default: // ScopeConversation
+		return conversationID
 	}
 }
 
@@ -136,32 +230,46 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 		return
 	}
 
+	key := r.sessionKeyFor(msg)
+
 	r.mu.Lock()
-	state, exists := r.conversations[conversationID]
+	state, exists := r.conversations[key]
 	if !exists {
 		state = &conversationState{chunks: newChunkBuffer()}
-		r.conversations[conversationID] = state
+		r.conversations[key] = state
 	}
+	// Index this conversation to its session so Interrupt (called by
+	// conversation_id) can find the shared session under task keying.
+	r.convIndex[conversationID] = key
 	r.mu.Unlock()
 
 	state.mu.Lock()
 	if state.turnRunning {
 		state.mu.Unlock()
+		// Under ScopeTask two conversations on the same task share one
+		// session's single turnRunning gate, so an @mention arriving mid-turn
+		// is rejected here rather than queued — the server's watchdog would
+		// otherwise fail a queued-and-delayed conversation out from under us.
 		r.log.Warn("runner: ignoring start_turn: a previous turn is still running",
-			"conversation_id", conversationID)
+			"conversation_id", conversationID, "session_key", key)
 		r.reportStatus(state, conversationID, projectID, "failed",
-			"A previous turn for this conversation is still running; please retry.")
+			"The agent is busy with another turn on this task; please retry.")
 		return
 	}
 
-	if !exists {
+	if state.client == nil && state.command == nil {
 		acpProvider, _ := msg["acp_provider"].(string)
 		command, err := provider.ResolveCommand(acpProvider, stringSlice(msg["acp_command"]))
 		if err != nil {
 			state.mu.Unlock()
 			r.log.Error("runner: cannot start conversation", "conversation_id", conversationID, "error", err)
 			r.mu.Lock()
-			delete(r.conversations, conversationID)
+			// Only drop the session if this failed first turn left it empty;
+			// never yank a session a sibling conversation is already using.
+			if s, ok := r.conversations[key]; ok && s == state && s.client == nil {
+				delete(r.conversations, key)
+			}
+			delete(r.convIndex, conversationID)
 			r.mu.Unlock()
 			r.reportStatus(state, conversationID, projectID, "failed", err.Error())
 			return
@@ -171,6 +279,9 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	}
 
 	state.turnRunning = true
+	state.currentConversationID = conversationID
+	state.currentProjectID = projectID
+	state.lastActivity = time.Now()
 	turnCtx, cancel := context.WithCancel(context.Background())
 	state.turnCancel = cancel
 	state.turnDone = make(chan struct{})
@@ -188,9 +299,13 @@ func (r *Runner) Interrupt(conversationID string) {
 		return
 	}
 	r.mu.Lock()
-	state, ok := r.conversations[conversationID]
+	key, indexed := r.convIndex[conversationID]
+	var state *conversationState
+	if indexed {
+		state = r.conversations[key]
+	}
 	r.mu.Unlock()
-	if !ok {
+	if state == nil {
 		return
 	}
 
@@ -312,8 +427,14 @@ func (r *Runner) ensureSession(
 		return client, sessionID, nil
 	}
 
+	// The onUpdate closure must NOT capture conversationID/projectID: this
+	// subprocess outlives the turn that spawned it and, under task keying,
+	// serves later turns of other conversations. Read the conversation in
+	// flight from state at each callback instead, so every event is
+	// attributed to the right Paca conversation thread.
 	client, err := acpclient.Spawn(state.command, r.workspace, func(u acpclient.Update) {
-		r.handleUpdate(state, conversationID, projectID, u)
+		cid, pid := state.currentIDs()
+		r.handleUpdate(state, cid, pid, u)
 	}, r.log)
 	if err != nil {
 		return nil, "", fmt.Errorf("spawning %v: %w", state.command, err)
@@ -348,11 +469,79 @@ func (r *Runner) finishTurn(state *conversationState) {
 	state.mu.Lock()
 	state.turnRunning = false
 	state.turnCancel = nil
+	state.lastActivity = time.Now()
 	done := state.turnDone
 	state.turnDone = nil
 	state.mu.Unlock()
 	if done != nil {
 		close(done)
+	}
+}
+
+// currentIDs returns the conversation/project the session's turn is serving
+// right now, read under mu — see conversationState.currentConversationID.
+func (s *conversationState) currentIDs() (string, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentConversationID, s.currentProjectID
+}
+
+// sweepIdle periodically reclaims sessions with no turn for longer than
+// r.idleTimeout, closing the ACP subprocess and forgetting the session (and
+// every convIndex entry pointing at it). Upstream never evicts, which is why
+// abandoned sessions pile up as long-lived CC processes; per-task keying
+// reduces the count but doesn't bound it, so the fork closes the leak. A
+// revisited task simply spawns a fresh session — durable per-task memory
+// across an eviction is a later concern (Paca's persistence_dir + ACP
+// session/load), deliberately out of scope here.
+func (r *Runner) sweepIdle() {
+	interval := r.idleTimeout / 2
+	if interval < time.Minute {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		r.evictIdle(time.Now())
+	}
+}
+
+func (r *Runner) evictIdle(now time.Time) {
+	r.mu.Lock()
+	var victims []*conversationState
+	for key, state := range r.conversations {
+		state.mu.Lock()
+		idle := !state.turnRunning && !state.lastActivity.IsZero() &&
+			now.Sub(state.lastActivity) >= r.idleTimeout
+		client := state.client
+		state.mu.Unlock()
+		if !idle {
+			continue
+		}
+		delete(r.conversations, key)
+		for convID, k := range r.convIndex {
+			if k == key {
+				delete(r.convIndex, convID)
+			}
+		}
+		if client != nil {
+			victims = append(victims, state)
+		}
+	}
+	r.mu.Unlock()
+
+	// Close subprocesses outside r.mu — Close can block, and nothing else can
+	// reach these states now that they're unlinked from both maps.
+	for _, state := range victims {
+		state.mu.Lock()
+		client := state.client
+		state.client = nil
+		state.sessionID = ""
+		state.mu.Unlock()
+		if client != nil {
+			_ = client.Close()
+			r.log.Info("runner: evicted idle ACP session")
+		}
 	}
 }
 
