@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -241,6 +242,35 @@ func (r *ConversationRepository) InsertEvent(ctx context.Context, id, conversati
 	`, id, conversationID, eventType, eventSource, eventIndex, string(payload), createdAt)
 	if err != nil {
 		return fmt.Errorf("postgres: insert event for conversation %s: %w", conversationID, err)
+	}
+	return nil
+}
+
+// GetACPSessionID returns conversationID's stored goose ACP sessionId, if
+// any — see agent_conversations.acp_session_id's own doc comment
+// (migrations/000043_add_conversation_acp_session_id.sql). Empty string,
+// not an error, when the column is NULL: this conversation's first
+// environment-attached turn hasn't run yet, so executor.Executor.
+// attachEnvironmentSession falls back to a fresh session/new.
+func (r *ConversationRepository) GetACPSessionID(ctx context.Context, conversationID uuid.UUID) (string, error) {
+	var sessionID sql.NullString
+	if err := r.db.GetContext(ctx, &sessionID,
+		`SELECT acp_session_id FROM agent_conversations WHERE id = $1`, conversationID); err != nil {
+		return "", fmt.Errorf("postgres: get acp session id for conversation %s: %w", conversationID, err)
+	}
+	return sessionID.String, nil
+}
+
+// SetACPSessionID persists conversationID's goose ACP sessionId — called
+// once per conversation after its first environment-attached turn creates
+// one via session/new, so every later turn's GetACPSessionID can find it
+// and resume via session/load instead.
+func (r *ConversationRepository) SetACPSessionID(ctx context.Context, conversationID uuid.UUID, sessionID string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agent_conversations SET acp_session_id = $1, updated_at = now() WHERE id = $2`,
+		sessionID, conversationID)
+	if err != nil {
+		return fmt.Errorf("postgres: set acp session id for conversation %s: %w", conversationID, err)
 	}
 	return nil
 }
