@@ -617,3 +617,40 @@ func TestEnsureEnvironmentEnv_NoopWhenCfgHasNoProvider(t *testing.T) {
 		t.Errorf("deployment env after ensureEnvironmentEnv with no cfg.Env = %+v, want empty", got.Spec.Template.Spec.Containers[0].Env)
 	}
 }
+
+// TestEnsureEnvironmentInfraEnv_NoopWhenCfgHasNoEnv guards against
+// handleStartEnvironment's plain restart (whose EnvironmentConfig never
+// sets Env at all — see its own doc comment) silently wiping
+// pacaInfraEnvKeys (PACA_API_KEY, GOOSE_PATH_ROOT, etc.) off an
+// already-configured Deployment: a nil/empty cfg.Env must be treated as
+// "nothing to reconcile", not "clear every key" (the staleness diff's
+// cfg.Env[key] != existing[key] would otherwise see every key as newly
+// stale and delete it). The Deployment here already carries
+// GOOSE_PATH_ROOT and PACA_API_KEY, mirroring a container this PR already
+// backfilled once; it must come back unchanged.
+func TestEnsureEnvironmentInfraEnv_NoopWhenCfgHasNoEnv(t *testing.T) {
+	const name = "paca-env-env4"
+	existing := []corev1.EnvVar{
+		{Name: "PACA_API_KEY", Value: "secret"},
+		{Name: "GOOSE_PATH_ROOT", Value: "/home/paca/workspaces/.goose"},
+	}
+	m := managerWithDeployment("paca", deploymentFixtureWithEnv(name, existing))
+
+	if err := m.ensureEnvironmentInfraEnv(context.Background(), name, sandbox.EnvironmentConfig{}); err != nil {
+		t.Fatalf("ensureEnvironmentInfraEnv: %v", err)
+	}
+
+	got, err := m.clientset.AppsV1().Deployments("paca").Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	gotEnv := got.Spec.Template.Spec.Containers[0].Env
+	if len(gotEnv) != len(existing) {
+		t.Fatalf("deployment env after ensureEnvironmentInfraEnv with no cfg.Env = %+v, want unchanged %+v", gotEnv, existing)
+	}
+	for i, ev := range existing {
+		if gotEnv[i] != ev {
+			t.Errorf("deployment env[%d] after ensureEnvironmentInfraEnv with no cfg.Env = %+v, want unchanged %+v", i, gotEnv[i], ev)
+		}
+	}
+}

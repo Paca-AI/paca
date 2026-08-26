@@ -534,6 +534,20 @@ var pacaInfraEnvKeys = []string{
 // this can never silently reassign this environment's frozen LLM/agent
 // identity to whichever conversation happens to trigger the sync.
 func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) error {
+	if len(cfg.Env) == 0 {
+		// A caller with no infra-env context at all — e.g.
+		// handleStartEnvironment's plain restart, whose EnvironmentConfig
+		// never sets Env (see its own doc comment: "restarts ... without
+		// touching" what it doesn't own) — has nothing to reconcile
+		// pacaInfraEnvKeys against. Every real attach path (coldStartEnvironment)
+		// always populates cfg.Env with at least GOOSE_PROVIDER/GOOSE_MODEL/the
+		// API key, so this only ever fires for that kind of context-free
+		// caller; treating a nil/empty cfg.Env as "clear every key" instead
+		// would strip PACA_API_KEY, GOOSE_PATH_ROOT, etc. from an
+		// already-correctly-configured Deployment on every such call. Mirrors
+		// ensureEnvironmentEnv's own cfg.Env["GOOSE_PROVIDER"] == "" guard.
+		return nil
+	}
 	depClient := m.clientset.AppsV1().Deployments(m.namespace)
 	dep, err := depClient.Get(ctx, backendRef, metav1.GetOptions{})
 	if err != nil {
