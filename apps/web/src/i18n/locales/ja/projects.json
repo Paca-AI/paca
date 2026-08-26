@@ -528,7 +528,7 @@
 				"description": "ブラウザ内ターミナルで接続します — ローカルのSSHクライアントや鍵は不要です。",
 				"connect": "接続",
 				"notRunning": "接続する前に環境を起動してください。",
-				"readOnly": "ターミナルを開くには、このプロジェクトへの書き込み権限が必要です。",
+				"readOnly": "この環境でターミナルを開く権限がありません。",
 				"hint": "新しい全画面タブで開きます。",
 				"pageTitle": "{{name}} — ターミナル",
 				"pageTitleLoading": "ターミナル",
@@ -661,6 +661,18 @@
 				"label": "エージェントの管理",
 				"description": "AIエージェントの作成・設定・削除を行います"
 			},
+			"environmentsRead": {
+				"label": "環境の閲覧",
+				"description": "環境とその設定を閲覧します"
+			},
+			"environmentsWrite": {
+				"label": "環境の管理",
+				"description": "環境、SSHキー、ポートフォワードの作成・設定・削除を行います"
+			},
+			"environmentsConnect": {
+				"label": "環境への接続",
+				"description": "実行中の環境内でインタラクティブなターミナルセッションを開きます"
+			},
 			"workflowsRead": {
 				"label": "自動化を表示",
 				"description": "自動化とその設定を閲覧する"
@@ -678,6 +690,7 @@
 			"sprints": "スプリント",
 			"documents": "ドキュメント",
 			"aiAgents": "AIエージェント",
+			"environments": "環境",
 			"workflows": "自動化",
 			"plugins": "プラグイン"
 		}

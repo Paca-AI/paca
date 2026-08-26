@@ -528,7 +528,7 @@
 				"description": "Connectez-vous via un terminal dans le navigateur — aucun client SSH ni clé locale requis.",
 				"connect": "Se connecter",
 				"notRunning": "Démarrez l'environnement avant de vous connecter.",
-				"readOnly": "Vous devez disposer d'un accès en écriture à ce projet pour ouvrir un terminal.",
+				"readOnly": "Vous n'avez pas la permission d'ouvrir un terminal sur cet environnement.",
 				"hint": "S'ouvre dans un nouvel onglet en plein écran.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -661,6 +661,18 @@
 				"label": "Gérer les agents",
 				"description": "Créer, configurer et supprimer des agents IA"
 			},
+			"environmentsRead": {
+				"label": "Voir les environnements",
+				"description": "Parcourir les environnements et consulter leur configuration"
+			},
+			"environmentsWrite": {
+				"label": "Gérer les environnements",
+				"description": "Créer, configurer et supprimer des environnements, des clés SSH et des redirections de ports"
+			},
+			"environmentsConnect": {
+				"label": "Se connecter aux environnements",
+				"description": "Ouvrir une session de terminal interactive dans un environnement en cours d'exécution"
+			},
 			"workflowsRead": {
 				"label": "Voir l'automatisation",
 				"description": "Parcourir les automatisations et leur configuration"
@@ -678,6 +690,7 @@
 			"sprints": "Sprints",
 			"documents": "Documents",
 			"aiAgents": "Agents IA",
+			"environments": "Environnements",
 			"workflows": "Automatisation",
 			"plugins": "Plugins"
 		}

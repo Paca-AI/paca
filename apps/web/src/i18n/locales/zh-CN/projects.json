@@ -528,7 +528,7 @@
 				"description": "使用浏览器内终端连接 — 无需本地 SSH 客户端或密钥。",
 				"connect": "连接",
 				"notRunning": "请先启动环境再连接。",
-				"readOnly": "打开终端需要对此项目的写入权限。",
+				"readOnly": "您没有权限在此环境中打开终端。",
 				"hint": "将在新的全屏标签页中打开。",
 				"pageTitle": "{{name}} — 终端",
 				"pageTitleLoading": "终端",
@@ -661,6 +661,18 @@
 				"label": "管理智能体",
 				"description": "创建、配置和删除 AI 智能体"
 			},
+			"environmentsRead": {
+				"label": "查看环境",
+				"description": "浏览环境并查看其配置"
+			},
+			"environmentsWrite": {
+				"label": "管理环境",
+				"description": "创建、配置和删除环境、SSH 密钥和端口转发"
+			},
+			"environmentsConnect": {
+				"label": "连接到环境",
+				"description": "在运行中的环境内打开交互式终端会话"
+			},
 			"workflowsRead": {
 				"label": "查看自动化",
 				"description": "浏览自动化及其配置"
@@ -678,6 +690,7 @@
 			"sprints": "冲刺",
 			"documents": "文档",
 			"aiAgents": "AI 智能体",
+			"environments": "环境",
 			"workflows": "自动化",
 			"plugins": "插件"
 		}

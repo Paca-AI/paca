@@ -83,8 +83,8 @@ func TestMintEnvironmentTicket_DifferentKeysProduceDifferentTickets(t *testing.T
 }
 
 // TestMintEnvironmentTicket_DifferentPurposesProduceDifferentTickets is why
-// purpose exists at all: a terminal ticket (agents.write) must not be
-// interchangeable with a stats ticket (agents.read) for the same
+// purpose exists at all: a terminal ticket (environments.connect) must not
+// be interchangeable with a stats ticket (environments.read) for the same
 // environment and expiry.
 func TestMintEnvironmentTicket_DifferentPurposesProduceDifferentTickets(t *testing.T) {
 	key := "test-internal-key"

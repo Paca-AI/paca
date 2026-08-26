@@ -528,7 +528,7 @@
 				"description": "Connect using an in-browser terminal — no local SSH client or key required.",
 				"connect": "Connect",
 				"notRunning": "Start the environment before connecting.",
-				"readOnly": "You need write access to this project to open a terminal.",
+				"readOnly": "You don't have permission to open a terminal on this environment.",
 				"hint": "Opens in a new full-page tab.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -661,6 +661,18 @@
 				"label": "Manage Agents",
 				"description": "Create, configure, and delete AI agents"
 			},
+			"environmentsRead": {
+				"label": "View Environments",
+				"description": "Browse environments and view their configuration"
+			},
+			"environmentsWrite": {
+				"label": "Manage Environments",
+				"description": "Create, configure, and delete environments, SSH keys, and port forwards"
+			},
+			"environmentsConnect": {
+				"label": "Connect to Environments",
+				"description": "Open an interactive terminal session inside a running environment"
+			},
 			"workflowsRead": {
 				"label": "View Automation",
 				"description": "Browse automations and their configuration"
@@ -678,6 +690,7 @@
 			"sprints": "Sprints",
 			"documents": "Documents",
 			"aiAgents": "AI Agents",
+			"environments": "Environments",
 			"workflows": "Automation",
 			"plugins": "Plugins"
 		}
