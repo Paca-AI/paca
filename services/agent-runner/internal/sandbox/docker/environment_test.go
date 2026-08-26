@@ -204,3 +204,24 @@ func TestRecreateEnvironmentIfMissingEnv_NoopWhenCfgHasNoProvider(t *testing.T) 
 		t.Errorf("recreateEnvironmentIfMissingEnv with no cfg.Env = %+v, want nil handle", handle)
 	}
 }
+
+// TestEnsureEnvironmentInfraEnv_NoopWhenCfgHasNoEnv guards against
+// handleStartEnvironment's plain restart (whose EnvironmentConfig never
+// sets Env at all — see its own doc comment) silently wiping
+// pacaInfraEnvKeys (PACA_API_KEY, GOOSE_PATH_ROOT, etc.) from an
+// already-configured container: a nil/empty cfg.Env must be treated as
+// "nothing to reconcile", not "clear every key". Same zero-value-Manager
+// technique as TestRecreateEnvironmentIfMissingEnv_NoopWhenCfgHasNoProvider
+// just above — the guard must return before ever touching the Docker
+// client, which a nil client would panic on otherwise.
+func TestEnsureEnvironmentInfraEnv_NoopWhenCfgHasNoEnv(t *testing.T) {
+	m := &Manager{}
+
+	handle, err := m.ensureEnvironmentInfraEnv(context.Background(), "some-container-id", sandbox.EnvironmentConfig{})
+	if err != nil {
+		t.Fatalf("ensureEnvironmentInfraEnv: %v", err)
+	}
+	if handle != nil {
+		t.Errorf("ensureEnvironmentInfraEnv with no cfg.Env = %+v, want nil handle", handle)
+	}
+}

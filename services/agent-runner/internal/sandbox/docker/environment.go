@@ -543,6 +543,14 @@ func (m *Manager) recreateEnvironmentIfMissingEnv(ctx context.Context, backendRe
 var pacaInfraEnvKeys = []string{
 	"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL",
 	"PACA_WORKDIR", "PACA_ACTOR_USER_ID", "PACA_REPO_PLUGIN_IDS",
+	// GOOSE_PATH_ROOT is deployment-level fixed, like the PACA_API_* trio
+	// above, not conversation-scoped — included here (rather than getting
+	// its own GOOSE_PROVIDER-style one-time backfill) purely so a container
+	// created before executor.environmentGooseDataDir existed picks it up
+	// on its very next StartEnvironment call instead of staying stuck with
+	// goose's default, unpersisted session store forever. See that
+	// constant's own doc comment for the full story.
+	"GOOSE_PATH_ROOT",
 }
 
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with this
@@ -578,6 +586,21 @@ var pacaInfraEnvKeys = []string{
 // this can never silently reassign this environment's frozen LLM/agent
 // identity to whichever conversation happens to trigger the sync.
 func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
+	if len(cfg.Env) == 0 {
+		// A caller with no infra-env context at all — e.g.
+		// handleStartEnvironment's plain restart, whose EnvironmentConfig
+		// never sets Env (see its own doc comment: "restarts ... without
+		// touching" what it doesn't own) — has nothing to reconcile
+		// pacaInfraEnvKeys against. Every real attach path (coldStartEnvironment)
+		// always populates cfg.Env with at least GOOSE_PROVIDER/GOOSE_MODEL/the
+		// API key, so this only ever fires for that kind of context-free
+		// caller; treating a nil/empty cfg.Env as "clear every key" instead
+		// would strip PACA_API_KEY, GOOSE_PATH_ROOT, etc. from an
+		// already-correctly-configured container on every such call. Mirrors
+		// recreateEnvironmentIfMissingEnv's own cfg.Env["GOOSE_PROVIDER"] == ""
+		// guard just above.
+		return nil, nil
+	}
 	inspect, err := m.docker.ContainerInspect(ctx, backendRef, client.ContainerInspectOptions{})
 	if err != nil || inspect.Container.Config == nil {
 		return nil, nil
