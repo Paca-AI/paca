@@ -215,6 +215,12 @@ func (h *ViewHandler) UpdateMyViewConfig(w http.ResponseWriter, r *http.Request)
 	if !middleware.BindJSON(w, r, &req) {
 		return
 	}
+	// A PUT replaces the personal config, so require it explicitly: an omitted
+	// or null `config` would otherwise silently wipe the user's saved settings.
+	if req.Config == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "config is required"))
+		return
+	}
 
 	v, err := h.svc.SetUserViewConfig(r.Context(), projectID, viewID, actorID, req.ToViewConfig())
 	if err != nil {

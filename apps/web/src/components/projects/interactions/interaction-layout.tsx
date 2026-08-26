@@ -474,7 +474,10 @@ export function InteractionLayout({
 			uninitializedViews.map((view) => {
 				const config = buildDefaultViewConfig(view.layout, view.config);
 				if (!config) return Promise.resolve(view);
-				return updateViewById(projectId, view.id, { config });
+				// Per-user: default filters are derived from the current user's
+				// preferences, so seed them into this user's override — never the
+				// shared row (which would leak one user's defaults to everyone).
+				return updateMyViewConfig(projectId, view.id, config);
 			}),
 		)
 			.then(() => qc.invalidateQueries({ queryKey: viewsQueryKey }))
