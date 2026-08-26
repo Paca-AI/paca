@@ -503,6 +503,10 @@ func (m *Manager) ensureEnvironmentEnv(ctx context.Context, backendRef string, c
 var pacaInfraEnvKeys = []string{
 	"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL",
 	"PACA_WORKDIR", "PACA_ACTOR_USER_ID", "PACA_REPO_PLUGIN_IDS",
+	// GOOSE_PATH_ROOT — see docker/environment.go's copy of this list for
+	// why it's included here rather than getting its own GOOSE_PROVIDER-
+	// style one-time backfill.
+	"GOOSE_PATH_ROOT",
 }
 
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with cfg.Env on

@@ -543,6 +543,14 @@ func (m *Manager) recreateEnvironmentIfMissingEnv(ctx context.Context, backendRe
 var pacaInfraEnvKeys = []string{
 	"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL",
 	"PACA_WORKDIR", "PACA_ACTOR_USER_ID", "PACA_REPO_PLUGIN_IDS",
+	// GOOSE_PATH_ROOT is deployment-level fixed, like the PACA_API_* trio
+	// above, not conversation-scoped — included here (rather than getting
+	// its own GOOSE_PROVIDER-style one-time backfill) purely so a container
+	// created before executor.environmentGooseDataDir existed picks it up
+	// on its very next StartEnvironment call instead of staying stuck with
+	// goose's default, unpersisted session store forever. See that
+	// constant's own doc comment for the full story.
+	"GOOSE_PATH_ROOT",
 }
 
 // ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with this

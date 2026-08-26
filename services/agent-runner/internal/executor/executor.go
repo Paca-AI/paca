@@ -48,6 +48,32 @@ const defaultTimeoutMinutes = 30
 // the same spike. /home/goose is that user's home directory.
 const sandboxWorkdir = "/home/goose"
 
+// environmentGooseDataDir is where coldStartEnvironment points GOOSE_PATH_ROOT
+// for every static-environment container — a dot-prefixed subdirectory of
+// the same persisted workspace mount internal/sandbox/environmentssh.go's
+// environmentWorkspaceRoot names (mirrored, not imported, the same way the
+// docker/k8s sandbox packages each keep their own copy of that literal), so
+// it survives recreateGoneEnvironmentContainer/recreateEnvironmentContainer
+// exactly like environmentSSHHostKeyDir already does.
+//
+// Without this, goose serve's default session store lives under
+// /home/goose/.local/share/goose (or /root/... — see conversation
+// 8b325e33-567f-46d5-8224-8df899429036: verified directly against a live
+// environment container's filesystem, not assumed), which is NOT under the
+// persisted volume — only /home/paca/workspaces itself is. Every
+// environment container is disposable (idle-reaped, then recreated fresh
+// against the same volume on the next attach — see
+// docker.Manager.recreateGoneEnvironmentContainer's doc comment), so a
+// session store outside that volume is wiped every time that happens,
+// leaving attachEnvironmentSession's LoadSession call with nothing to
+// resume: it fails "Session not found", and the fallback it documents (a
+// brand-new, context-free session) silently takes over — exactly what
+// happened in that conversation. Relocating the store onto the volume via
+// GOOSE_PATH_ROOT (confirmed empirically: it relocates goose's config/data/
+// state dirs, sessions.db included, wholesale) makes LoadSession actually
+// have something to find after a recreate.
+const environmentGooseDataDir = "/home/paca/workspaces/.goose"
+
 // Options holds service-level settings shared across every conversation
 // this process runs — the Go analog of services/ai-agent's config.Settings,
 // scoped to just the fields the executor itself needs.
@@ -536,6 +562,14 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	if err != nil {
 		return nil, "", err
 	}
+
+	// See environmentGooseDataDir's own doc comment. Set unconditionally
+	// (not just on first create) so ensureEnvironmentInfraEnv's
+	// pacaInfraEnvKeys staleness check (docker/k8s sandbox packages) can
+	// detect a container created before this existed and recreate it once
+	// to backfill this, the same way it already does for
+	// PACA_API_KEY/PACA_WORKDIR/etc.
+	containerEnv["GOOSE_PATH_ROOT"] = environmentGooseDataDir
 
 	// Git identity has no dedicated EnvironmentConfig field (unlike
 	// sandbox.Config.GitCommitterName/Email) — folded into the generic Env
