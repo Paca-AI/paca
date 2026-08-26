@@ -714,11 +714,26 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 	if recreated, err := m.recreateEnvironmentIfMissingEnv(ctx, backendRef, cfg); err != nil {
 		return nil, err
 	} else if recreated != nil {
+		// recreateEnvironmentContainer (which produced recreated) only
+		// touches the environment's own container, not its separate,
+		// already-existing dind sidecar — StopEnvironment can have left
+		// that sidecar stopped, and a plain ContainerCreate+Start of a
+		// fresh environment container never restarts it on its own, so
+		// without this the environment comes back reporting success while
+		// DOCKER_HOST still points at a stopped daemon. See
+		// ensureEnvironmentDindStarted's own doc comment.
+		if err := m.ensureEnvironmentDindStarted(ctx, cfg); err != nil {
+			return nil, err
+		}
 		return recreated, nil
 	}
 	if recreated, err := m.ensureEnvironmentInfraEnv(ctx, backendRef, cfg); err != nil {
 		return nil, err
 	} else if recreated != nil {
+		// Same gap as recreateEnvironmentIfMissingEnv's branch just above.
+		if err := m.ensureEnvironmentDindStarted(ctx, cfg); err != nil {
+			return nil, err
+		}
 		return recreated, nil
 	}
 
@@ -784,6 +799,35 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 	return &sandbox.EnvironmentHandle{BackendRef: backendRef, BaseURL: baseURL}, nil
 }
 
+// ensureEnvironmentDindStarted starts (or confirms already-started) a
+// DockerEnabled environment's dind sidecar and waits for it to answer —
+// the same two steps StartEnvironment's own main flow does around
+// createAndStartEnvironmentContainer's ContainerStart, needed here for a
+// different reason: recreateEnvironmentIfMissingEnv/ensureEnvironmentInfraEnv
+// each recreate only the environment's own container (via
+// recreateEnvironmentContainer), never touching its separate, already-
+// existing sidecar — so a sidecar left stopped by an earlier
+// StopEnvironment (see stopEnvironmentDindSidecar) stays stopped straight
+// through a recreate, and the environment reports a successful start with
+// DOCKER_HOST still pointing at a dead daemon. A no-op when
+// cfg.DockerEnabled is false. Unlike the main flow's split "start before
+// ContainerStart, wait after waitForEnvironmentReady" ordering (deliberate
+// overlap — see that comment), there's no equivalent container-start work
+// to overlap with here, since createAndStartEnvironmentContainer has
+// already fully completed by the time either caller reaches this.
+func (m *Manager) ensureEnvironmentDindStarted(ctx context.Context, cfg sandbox.EnvironmentConfig) error {
+	if !cfg.DockerEnabled {
+		return nil
+	}
+	if err := m.startEnvironmentDindSidecar(ctx, cfg.EnvironmentID); err != nil {
+		return err
+	}
+	if err := m.waitForDindReady(ctx, environmentDindContainerName(cfg.EnvironmentID)); err != nil {
+		return fmt.Errorf("sandbox/docker: environment dind sidecar not ready: %w", err)
+	}
+	return nil
+}
+
 // StopEnvironment stops backendRef without removing it or releasing this
 // Manager's own bookkeeping for it. Deliberately no popState/releasePort
 // here, unlike Stop: in local-dev host-port mode, backendRef's published
@@ -838,15 +882,6 @@ func (m *Manager) StopEnvironment(ctx context.Context, backendRef string) error 
 // the normal "delete environment" action would itself fail with a "no
 // such container" error, forcing direct database surgery to recover.
 func (m *Manager) DeleteEnvironment(ctx context.Context, backendRef, volumeRef string) error {
-	// Recovered from volumeRef, not backendRef: environmentIDFromVolumeName
-	// works even when the container is already gone (a legitimate case
-	// this method must tolerate — see its own doc comment), unlike
-	// stopEnvironmentDindSidecar's label-inspection approach, which needs a
-	// live container to read from. A no-op when this environment was never
-	// DockerEnabled — removeEnvironmentDindSidecar's own not-found
-	// tolerance handles that.
-	m.removeEnvironmentDindSidecar(ctx, environmentIDFromVolumeName(volumeRef))
-
 	state := m.popState(backendRef)
 	if _, err := m.docker.ContainerRemove(ctx, backendRef, client.ContainerRemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("sandbox/docker: remove environment container %s: %w", backendRef, err)
@@ -854,6 +889,25 @@ func (m *Manager) DeleteEnvironment(ctx context.Context, backendRef, volumeRef s
 	if state.hostPort != 0 {
 		m.releasePort(state.hostPort)
 	}
+
+	// After, not before, the environment's own container above: that
+	// container is attached to the dind network too (createAndStart
+	// EnvironmentContainer's own NetworkConnect, mirroring the sidecar's),
+	// and Docker refuses to remove a network that still has any endpoint
+	// attached. Removing the sidecar (and its network) first — the
+	// original order here — left that NetworkRemove call failing every
+	// time with the environment container still attached, silently
+	// (removeEnvironmentDindSidecar is deliberately best-effort) leaving a
+	// paca-env-dind-net-* network behind after every DockerEnabled
+	// environment's deletion. Recovered from volumeRef, not backendRef:
+	// environmentIDFromVolumeName works even when the container is already
+	// gone (a legitimate case this method must tolerate — see its own doc
+	// comment), unlike stopEnvironmentDindSidecar's label-inspection
+	// approach, which needs a live container to read from. A no-op when
+	// this environment was never DockerEnabled — removeEnvironmentDindSidecar's
+	// own not-found tolerance handles that.
+	m.removeEnvironmentDindSidecar(ctx, environmentIDFromVolumeName(volumeRef))
+
 	if _, err := m.docker.VolumeRemove(ctx, volumeRef, client.VolumeRemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("sandbox/docker: remove environment volume %s: %w", volumeRef, err)
 	}
