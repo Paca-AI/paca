@@ -163,6 +163,11 @@
 				"gitCommitterHint": "Nom et e-mail utilisés pour les commits effectués par cet agent.",
 				"committerNameLabel": "Nom du committer",
 				"committerEmailLabel": "E-mail du committer",
+				"dockerEnabledLabel": "Accès à Docker",
+				"dockerEnabledHint": "Donne à cet agent un démon Docker privé au sein de son sandbox. Désactivé par défaut — à activer uniquement pour les agents qui exécutent réellement des commandes Docker, car cela ajoute un temps de démarrage à chaque conversation.",
+				"defaultEnvironmentLabel": "Environnement par défaut",
+				"defaultEnvironmentHint": "Rattache les conversations de cet agent à un environnement statique au lieu d'un sandbox jetable à chaque fois.",
+				"noDefaultEnvironment": "Aucun par défaut (utiliser un sandbox jetable)",
 				"saveChanges": "Enregistrer les modifications",
 				"saved": "Enregistré",
 				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
@@ -267,7 +272,6 @@
 		},
 		"conversationView": {
 			"stop": "Arrêter",
-			"stopConversation": "Arrêter la conversation",
 			"notFound": "Conversation introuvable",
 			"chatSession": "Session de discussion",
 			"taskSession": "Session de tâche",
@@ -289,9 +293,10 @@
 			"stopDictation": "Arrêter la dictée",
 			"stopVoiceInputAriaLabel": "Arrêter la saisie vocale",
 			"sendMessage": "Envoyer le message",
-			"stopCurrentResponseAriaLabel": "Arrêter la réponse en cours",
 			"stopGeneratingAriaLabel": "Arrêter la génération",
 			"assistantWorkingAriaLabel": "L'agent travaille",
+			"environmentInitializing": "Configuration de votre environnement…",
+			"thinking": "Réflexion en cours…",
 			"copy": "Copier",
 			"refresh": "Actualiser",
 			"more": "Plus",
@@ -328,6 +333,214 @@
 			"attachmentAriaLabel": "Pièce jointe {{type}}",
 			"attachmentAriaLabelError": "Pièce jointe {{type}}, échec du téléversement",
 			"attachmentAriaLabelUploading": "Pièce jointe {{type}}, téléversement en cours"
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "Création",
+			"running": "En cours d'exécution",
+			"stopping": "Arrêt en cours",
+			"stopped": "Arrêté",
+			"suspended": "Suspendu",
+			"error": "Erreur",
+			"deleting": "Suppression en cours"
+		},
+		"page": {
+			"title": "Environnements",
+			"subtitle": "Sandboxes nommés et persistants auxquels vos agents peuvent se rattacher d'une conversation à l'autre",
+			"newEnvironment": "Nouvel environnement",
+			"empty": {
+				"title": "Aucun environnement pour le moment",
+				"description": "Créez un environnement statique pour conserver fichiers et processus en arrière-plan d'une conversation à l'autre, au lieu d'un sandbox jetable à chaque fois.",
+				"createFirstEnvironment": "Créez votre premier environnement"
+			}
+		},
+		"createDialog": {
+			"title": "Créer un environnement",
+			"description": "Un sandbox nommé et persistant auquel vos agents peuvent se rattacher.",
+			"nameLabel": "Nom",
+			"namePlaceholder": "staging",
+			"advanced": "Avancé",
+			"imageLabel": "Image",
+			"imagePlaceholder": "Utiliser l'image par défaut (agent-server)",
+			"imageHint": "La plupart des utilisateurs n'ont jamais besoin de modifier ceci — la valeur par défaut est l'image agent-server figée par la plateforme.",
+			"resourcesHint": "Laissez vide pour utiliser les valeurs par défaut de la plateforme (2 vCPU, 4Gi de mémoire, 20Go de disque).",
+			"cpuLimitInvalid": "Le CPU doit être d'au moins 0,1 (100m).",
+			"memoryLimitInvalid": "La mémoire doit être d'au moins 256Mi.",
+			"diskLimitInvalid": "Le disque doit être un nombre entier positif de Go.",
+			"createFailed": "Échec de la création de l'environnement. Veuillez réessayer.",
+			"cancel": "Annuler",
+			"creating": "Création…",
+			"create": "Créer l'environnement"
+		},
+		"picker": {
+			"placeholder": "Sélectionner un environnement…",
+			"temporary": "Environnement temporaire",
+			"createNew": "Créer un nouvel environnement…",
+			"folderPlaceholder": "Sélectionnez un dossier…",
+			"folderCreateNew": "Créer un nouveau dossier…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "Aperçu",
+				"folders": "Dossiers",
+				"portForwards": "Transferts de ports"
+			},
+			"overview": {
+				"connect": "Se connecter",
+				"start": "Démarrer",
+				"stop": "Arrêter",
+				"delete": "Supprimer",
+				"sleepsIn_one": "se met en veille dans {{count}} minute",
+				"sleepsIn_other": "se met en veille dans {{count}} minutes",
+				"keptAliveBySSH": "maintenu actif par une session SSH en cours",
+				"vitals": {
+					"cpu": "CPU",
+					"cpuValue": "{{value}} vCPU",
+					"memory": "Mémoire",
+					"disk": "Disque",
+					"diskValue": "{{value}} Go",
+					"lastActive": "Dernière activité"
+				},
+				"configuration": "Configuration",
+				"nameLabel": "Nom",
+				"backendLabel": "Backend",
+				"imageLabel": "Image",
+				"defaultImage": "Par défaut (agent-server)",
+				"idleTimeoutLabel": "Délai d'inactivité (minutes)",
+				"idleTimeoutHint": "L'environnement s'arrête automatiquement après ce nombre de minutes sans activité.",
+				"portsPendingRestart": "Un transfert de port a été ajouté ou supprimé. Redémarrez l'environnement pour l'appliquer.",
+				"portsPendingRestartLink": "Voir les transferts de ports",
+				"saveChanges": "Enregistrer les modifications",
+				"saved": "Enregistré",
+				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
+				"deleteDialog": {
+					"title": "Supprimer {{name}} ?",
+					"description": "Cette action supprime définitivement l'environnement, son conteneur et son volume. Cette action est irréversible.",
+					"deleteFailed": "Échec de la suppression de l'environnement. Veuillez réessayer.",
+					"cancel": "Annuler",
+					"delete": "Supprimer"
+				}
+			},
+			"folders": {
+				"count_one": "{{count}} dossier configuré",
+				"count_other": "{{count}} dossiers configurés",
+				"addFolder": "Ajouter un dossier",
+				"deleteFailed": "Échec de la suppression du dossier. Veuillez réessayer.",
+				"empty": {
+					"title": "Aucun dossier ajouté",
+					"addFirstFolder": "Ajoutez votre premier dossier"
+				},
+				"addDialog": {
+					"title": "Ajouter un dossier",
+					"description": "Ajoutez un répertoire de travail que les agents de cet environnement peuvent utiliser.",
+					"pathLabel": "Chemin",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "Doit être un chemin absolu.",
+					"browse": "Parcourir…",
+					"browsing": {
+						"root": "racine de l'espace de travail",
+						"empty": "Ce dossier est vide",
+						"notRunning": "Démarrez l'environnement pour parcourir ses fichiers.",
+						"useThisFolder": "Utiliser ce dossier"
+					},
+					"addFailed": "Échec de l'ajout du dossier. Veuillez réessayer.",
+					"cancel": "Annuler",
+					"addFolder": "Ajouter un dossier"
+				}
+			},
+			"portForwards": {
+				"description": "Exposez n'importe quel port de cet environnement — le plus souvent votre propre serveur de développement — à une adresse dédiée.",
+				"count_one": "{{count}} transfert de port",
+				"count_other": "{{count}} transferts de ports",
+				"add": "Ajouter un transfert de port",
+				"deleteFailed": "Échec de la suppression du transfert de port. Veuillez réessayer.",
+				"containerPort": "Port du conteneur {{port}}",
+				"unassigned": "Pas encore assigné",
+				"restart": "Redémarrer",
+				"pendingRestartRunning": "Un transfert de port a été ajouté ou supprimé. Redémarrez l'environnement pour l'appliquer.",
+				"pendingRestartStopped": "Un transfert de port a été ajouté ou supprimé. Il sera appliqué au prochain démarrage de cet environnement.",
+				"empty": {
+					"title": "Aucun transfert de port pour l'instant",
+					"addFirst": "Ajoutez un transfert de port"
+				},
+				"addDialog": {
+					"title": "Ajouter un transfert de port",
+					"description": "Exposez un port du conteneur sur un port externe dédié. Appliquer ce changement nécessite un redémarrage si l'environnement est déjà en cours d'exécution.",
+					"portLabel": "Port du conteneur",
+					"portHint": "Le port sur lequel votre processus écoute à l'intérieur de l'environnement (par exemple, 3000).",
+					"labelLabel": "Libellé",
+					"labelPlaceholder": "Serveur de développement",
+					"cancel": "Annuler",
+					"add": "Ajouter",
+					"addFailed": "Échec de l'ajout du transfert de port. Veuillez réessayer."
+				},
+				"restartDialog": {
+					"title": "Redémarrer l'environnement ?",
+					"description": "Cela redémarre le conteneur de l'environnement pour appliquer les transferts de ports mis à jour. Tout processus en cours d'exécution à l'intérieur sera interrompu ; vos fichiers sont en sécurité — ils se trouvent sur un volume séparé.",
+					"cancel": "Annuler",
+					"confirm": "Redémarrer"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "Remplacez <bastion-host> par l'adresse du bastion SSH configuré sur ce déploiement.",
+				"connectUnavailable": "L'accès SSH n'est pas encore configuré sur ce déploiement.",
+				"count_one": "{{count}} clé configurée",
+				"count_other": "{{count}} clés configurées",
+				"addKey": "Ajouter une clé",
+				"deleteFailed": "Échec de la suppression de la clé SSH. Veuillez réessayer.",
+				"empty": {
+					"title": "Aucune clé SSH ajoutée",
+					"addFirst": "Ajoutez votre première clé"
+				},
+				"addDialog": {
+					"title": "Ajouter une clé SSH",
+					"description": "Autorisez une clé publique pour la programmation en binôme par SSH.",
+					"generateHint": "Vous n'avez pas encore de clé SSH ? Générez-en une :",
+					"generateFollowup": "Collez ensuite le contenu de ~/.ssh/id_ed25519.pub ci-dessous.",
+					"labelLabel": "Libellé",
+					"labelPlaceholder": "Mon ordinateur portable",
+					"publicKeyLabel": "Clé publique",
+					"cancel": "Annuler",
+					"addKey": "Ajouter une clé",
+					"addFailed": "Échec de l'ajout de la clé SSH. Veuillez réessayer."
+				}
+			},
+			"terminal": {
+				"notRunning": "Démarrez l'environnement pour ouvrir un terminal.",
+				"title": "paca@{{slug}} — bash",
+				"titleLoading": "bash",
+				"connecting": "Connexion…",
+				"connected": "Connecté",
+				"connectionFailed": "Échec de la connexion",
+				"disconnected": "Déconnecté"
+			}
+		},
+		"connect": {
+			"title": "Se connecter à {{name}}",
+			"copy": "Copier",
+			"copied": "Copié",
+			"tabs": {
+				"webApp": "Se connecter dans l'app web",
+				"ssh": "Se connecter via SSH"
+			},
+			"webApp": {
+				"description": "Connectez-vous via un terminal dans le navigateur — aucun client SSH ni clé locale requis.",
+				"connect": "Se connecter",
+				"notRunning": "Démarrez l'environnement avant de vous connecter.",
+				"readOnly": "Vous devez disposer d'un accès en écriture à ce projet pour ouvrir un terminal.",
+				"hint": "S'ouvre dans un nouvel onglet en plein écran.",
+				"pageTitle": "{{name}} — Terminal",
+				"pageTitleLoading": "Terminal",
+				"closeTab": "Fermer"
+			},
+			"ssh": {
+				"step1Title": "Ajouter une clé publique",
+				"step1Description": "Enregistrez la clé publique de la paire de clés SSH avec laquelle vous souhaitez vous connecter.",
+				"step2Title": "Connectez-vous depuis votre terminal",
+				"step2Description": "Exécutez cette commande depuis votre terminal :",
+				"notRunning": "Démarrez l'environnement avant de vous connecter."
+			}
 		}
 	},
 	"docs": {
@@ -1041,7 +1254,8 @@
 				"startDate": "Date de début",
 				"dueDate": "Date d'échéance",
 				"epic": "Epic",
-				"created": "Créée"
+				"created": "Créée",
+				"tags": "Étiquettes"
 			},
 			"unassigned": "Non attribué",
 			"noEpic": "Aucun epic"
@@ -1319,7 +1533,8 @@
 			"reporter": "Rapporteur",
 			"startDate": "Date de début",
 			"dueDate": "Date d'échéance",
-			"created": "Créée"
+			"created": "Créée",
+			"tags": "Étiquettes"
 		}
 	},
 	"automation": {

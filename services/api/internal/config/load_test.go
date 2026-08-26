@@ -184,8 +184,8 @@ func TestLoad_PluginLimits_Defaults(t *testing.T) {
 	if cfg.Plugins.Limits.MaxMemoryPages != 1024 {
 		t.Fatalf("expected default MaxMemoryPages 1024, got %d", cfg.Plugins.Limits.MaxMemoryPages)
 	}
-	if cfg.Plugins.Limits.MaxRequestBodyBytes != 10*1024*1024 {
-		t.Fatalf("expected default MaxRequestBodyBytes 10MiB, got %d", cfg.Plugins.Limits.MaxRequestBodyBytes)
+	if cfg.Plugins.Limits.MaxRequestBodyBytes != 1*1024*1024 {
+		t.Fatalf("expected default MaxRequestBodyBytes 1MiB, got %d", cfg.Plugins.Limits.MaxRequestBodyBytes)
 	}
 }
 

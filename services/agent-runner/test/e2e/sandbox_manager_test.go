@@ -10,7 +10,7 @@ import (
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
-// TestSandboxManagerLifecycle exercises sandbox.Manager against the real
+// TestSandboxManagerLifecycle exercises docker.Manager against the real
 // Docker daemon — not a mock. No LLM provider or MCP config is needed here:
 // this only checks container start/health-check/stop, so the raw upstream
 // goose image (no Node) is enough. Replaces internal/sandbox/livecheck.

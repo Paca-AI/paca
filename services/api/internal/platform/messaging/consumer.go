@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -76,6 +77,18 @@ func (c *Consumer) Run(ctx context.Context) {
 				continue
 			}
 			c.log.Warn("consumer: read error", "stream", c.stream, "err", err)
+			if strings.HasPrefix(err.Error(), "NOGROUP") {
+				// The stream and/or consumer group vanished out from under
+				// an already-running consumer (a Valkey restart without
+				// persistence, a FLUSHALL, a manual XGROUP DESTROY) —
+				// without this, every subsequent XReadGroup call keeps
+				// failing the exact same way forever, since nothing else
+				// ever recreates the group. Self-heal the same way startup
+				// does.
+				if reErr := c.ensureGroup(ctx); reErr != nil {
+					c.log.Error("consumer: failed to recreate consumer group after NOGROUP", "stream", c.stream, "err", reErr)
+				}
+			}
 			time.Sleep(time.Second) // back off on repeated errors
 			continue
 		}

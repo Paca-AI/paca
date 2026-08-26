@@ -163,6 +163,11 @@
 				"gitCommitterHint": "このエージェントによるコミットで使用される名前とメールアドレスです。",
 				"committerNameLabel": "コミッター名",
 				"committerEmailLabel": "コミッターのメールアドレス",
+				"dockerEnabledLabel": "Dockerアクセス",
+				"dockerEnabledHint": "このエージェントのサンドボックス内に専用のDockerデーモンを提供します。デフォルトでは無効です。すべての会話の起動時間が増えるため、実際にDockerコマンドを実行するエージェントにのみ有効にしてください。",
+				"defaultEnvironmentLabel": "デフォルト環境",
+				"defaultEnvironmentHint": "このエージェントの会話を、毎回使い捨てのサンドボックスを作成する代わりに静的環境に接続します。",
+				"noDefaultEnvironment": "デフォルトなし(使い捨てサンドボックスを使用)",
 				"saveChanges": "変更を保存",
 				"saved": "保存しました",
 				"saveFailed": "保存に失敗しました。もう一度お試しください。",
@@ -267,7 +272,6 @@
 		},
 		"conversationView": {
 			"stop": "停止",
-			"stopConversation": "会話を停止",
 			"notFound": "会話が見つかりません",
 			"chatSession": "チャットセッション",
 			"taskSession": "タスクセッション",
@@ -289,9 +293,10 @@
 			"stopDictation": "音声入力を停止",
 			"stopVoiceInputAriaLabel": "音声入力を停止",
 			"sendMessage": "メッセージを送信",
-			"stopCurrentResponseAriaLabel": "現在の応答を停止",
 			"stopGeneratingAriaLabel": "生成を停止",
 			"assistantWorkingAriaLabel": "エージェントが作業中です",
+			"environmentInitializing": "環境をセットアップしています…",
+			"thinking": "考えています…",
 			"copy": "コピー",
 			"refresh": "更新",
 			"more": "その他",
@@ -328,6 +333,214 @@
 			"attachmentAriaLabel": "{{type}}の添付ファイル",
 			"attachmentAriaLabelError": "{{type}}の添付ファイル、アップロード失敗",
 			"attachmentAriaLabelUploading": "{{type}}の添付ファイル、アップロード中"
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "作成中",
+			"running": "実行中",
+			"stopping": "停止中",
+			"stopped": "停止済み",
+			"suspended": "一時停止",
+			"error": "エラー",
+			"deleting": "削除中"
+		},
+		"page": {
+			"title": "環境",
+			"subtitle": "エージェントが会話をまたいで接続できる、名前付きの長期稼働サンドボックス",
+			"newEnvironment": "新しい環境",
+			"empty": {
+				"title": "まだ環境がありません",
+				"description": "毎回使い捨てのサンドボックスを作成する代わりに、静的環境を作成してファイルやバックグラウンドプロセスを会話をまたいで維持しましょう。",
+				"createFirstEnvironment": "最初の環境を作成"
+			}
+		},
+		"createDialog": {
+			"title": "環境を作成",
+			"description": "エージェントが接続できる、名前付きの長期稼働サンドボックス。",
+			"nameLabel": "名前",
+			"namePlaceholder": "staging",
+			"advanced": "詳細設定",
+			"imageLabel": "イメージ",
+			"imagePlaceholder": "デフォルトを使用 (agent-server)",
+			"imageHint": "ほとんどのユーザーはこれを変更する必要はありません — 未指定の場合はプラットフォームが固定するagent-serverイメージが既定で使用されます。",
+			"resourcesHint": "空欄のままにするとプラットフォームの既定値(2 vCPU、メモリ4Gi、ディスク20GB)が使用されます。",
+			"cpuLimitInvalid": "CPUは0.1(100m)以上にしてください。",
+			"memoryLimitInvalid": "メモリは256Mi以上にしてください。",
+			"diskLimitInvalid": "ディスクは正の整数(GB)で指定してください。",
+			"createFailed": "環境の作成に失敗しました。もう一度お試しください。",
+			"cancel": "キャンセル",
+			"creating": "作成中…",
+			"create": "環境を作成"
+		},
+		"picker": {
+			"placeholder": "環境を選択…",
+			"temporary": "一時的な環境",
+			"createNew": "新しい環境を作成…",
+			"folderPlaceholder": "フォルダーを選択…",
+			"folderCreateNew": "新しいフォルダーを作成…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "概要",
+				"folders": "フォルダー",
+				"portForwards": "ポートフォワード"
+			},
+			"overview": {
+				"connect": "接続",
+				"start": "開始",
+				"stop": "停止",
+				"delete": "削除",
+				"sleepsIn_one": "{{count}}分後にスリープ",
+				"sleepsIn_other": "{{count}}分後にスリープ",
+				"keptAliveBySSH": "SSHセッションが有効なためスリープしません",
+				"vitals": {
+					"cpu": "CPU",
+					"cpuValue": "{{value}} vCPU",
+					"memory": "メモリ",
+					"disk": "ディスク",
+					"diskValue": "{{value}} GB",
+					"lastActive": "最終アクティブ"
+				},
+				"configuration": "設定",
+				"nameLabel": "名前",
+				"backendLabel": "バックエンド",
+				"imageLabel": "イメージ",
+				"defaultImage": "デフォルト (agent-server)",
+				"idleTimeoutLabel": "アイドルタイムアウト(分)",
+				"idleTimeoutHint": "この分数のあいだ操作がないと環境は自動的に停止します。",
+				"portsPendingRestart": "ポートフォワードが追加または削除されました。適用するには環境を再起動してください。",
+				"portsPendingRestartLink": "ポートフォワードを表示",
+				"saveChanges": "変更を保存",
+				"saved": "保存しました",
+				"saveFailed": "保存に失敗しました。もう一度お試しください。",
+				"deleteDialog": {
+					"title": "{{name}}を削除しますか?",
+					"description": "これにより環境、そのコンテナ、およびボリュームが完全に削除されます。この操作は元に戻せません。",
+					"deleteFailed": "環境の削除に失敗しました。もう一度お試しください。",
+					"cancel": "キャンセル",
+					"delete": "削除"
+				}
+			},
+			"folders": {
+				"count_one": "{{count}}個のフォルダーが設定されています",
+				"count_other": "{{count}}個のフォルダーが設定されています",
+				"addFolder": "フォルダーを追加",
+				"deleteFailed": "フォルダーの削除に失敗しました。もう一度お試しください。",
+				"empty": {
+					"title": "フォルダーが追加されていません",
+					"addFirstFolder": "最初のフォルダーを追加"
+				},
+				"addDialog": {
+					"title": "フォルダーを追加",
+					"description": "この環境のエージェントが使用できる作業ディレクトリを追加します。",
+					"pathLabel": "パス",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "絶対パスを指定してください。",
+					"browse": "参照…",
+					"browsing": {
+						"root": "ワークスペースのルート",
+						"empty": "このフォルダーは空です",
+						"notRunning": "ファイルを参照するには環境を起動してください。",
+						"useThisFolder": "このフォルダーを使用"
+					},
+					"addFailed": "フォルダーの追加に失敗しました。もう一度お試しください。",
+					"cancel": "キャンセル",
+					"addFolder": "フォルダーを追加"
+				}
+			},
+			"portForwards": {
+				"description": "この環境内の任意のポート（多くの場合、自分の開発サーバー）を専用のアドレスで公開します。",
+				"count_one": "{{count}}件のポートフォワード",
+				"count_other": "{{count}}件のポートフォワード",
+				"add": "ポートフォワードを追加",
+				"deleteFailed": "ポートフォワードの削除に失敗しました。もう一度お試しください。",
+				"containerPort": "コンテナポート {{port}}",
+				"unassigned": "まだ割り当てられていません",
+				"restart": "再起動",
+				"pendingRestartRunning": "ポートフォワードが追加または削除されました。適用するには環境を再起動してください。",
+				"pendingRestartStopped": "ポートフォワードが追加または削除されました。次回この環境が起動するときに適用されます。",
+				"empty": {
+					"title": "まだポートフォワードがありません",
+					"addFirst": "ポートフォワードを追加"
+				},
+				"addDialog": {
+					"title": "ポートフォワードを追加",
+					"description": "コンテナのポートを専用の外部ポートで公開します。環境がすでに実行中の場合、これを適用するには再起動が必要です。",
+					"portLabel": "コンテナポート",
+					"portHint": "環境内でプロセスがリッスンするポート（例: 3000）。",
+					"labelLabel": "ラベル",
+					"labelPlaceholder": "開発サーバー",
+					"cancel": "キャンセル",
+					"add": "追加",
+					"addFailed": "ポートフォワードの追加に失敗しました。もう一度お試しください。"
+				},
+				"restartDialog": {
+					"title": "環境を再起動しますか?",
+					"description": "更新されたポートフォワードを適用するために環境のコンテナを再起動します。内部で実行中のプロセスは中断されます。ファイルは別のボリュームに保存されているため安全です。",
+					"cancel": "キャンセル",
+					"confirm": "再起動"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "<bastion-host> を、このデプロイで設定されたSSH踏み台のアドレスに置き換えてください。",
+				"connectUnavailable": "このデプロイではまだSSHアクセスが設定されていません。",
+				"count_one": "{{count}}個の鍵が設定されています",
+				"count_other": "{{count}}個の鍵が設定されています",
+				"addKey": "鍵を追加",
+				"deleteFailed": "SSH鍵の削除に失敗しました。もう一度お試しください。",
+				"empty": {
+					"title": "SSH鍵が追加されていません",
+					"addFirst": "最初の鍵を追加"
+				},
+				"addDialog": {
+					"title": "SSH鍵を追加",
+					"description": "SSH経由のペアプログラミング用アクセスのために公開鍵を承認します。",
+					"generateHint": "まだSSH鍵をお持ちでない場合は、こちらで生成してください：",
+					"generateFollowup": "生成後、~/.ssh/id_ed25519.pub の内容を以下に貼り付けてください。",
+					"labelLabel": "ラベル",
+					"labelPlaceholder": "自分のノートPC",
+					"publicKeyLabel": "公開鍵",
+					"cancel": "キャンセル",
+					"addKey": "鍵を追加",
+					"addFailed": "SSH鍵の追加に失敗しました。もう一度お試しください。"
+				}
+			},
+			"terminal": {
+				"notRunning": "ターミナルを開くには環境を開始してください。",
+				"title": "paca@{{slug}} — bash",
+				"titleLoading": "bash",
+				"connecting": "接続中…",
+				"connected": "接続済み",
+				"connectionFailed": "接続に失敗しました",
+				"disconnected": "切断されました"
+			}
+		},
+		"connect": {
+			"title": "{{name}} に接続",
+			"copy": "コピー",
+			"copied": "コピーしました",
+			"tabs": {
+				"webApp": "Webアプリで接続",
+				"ssh": "SSHで接続"
+			},
+			"webApp": {
+				"description": "ブラウザ内ターミナルで接続します — ローカルのSSHクライアントや鍵は不要です。",
+				"connect": "接続",
+				"notRunning": "接続する前に環境を起動してください。",
+				"readOnly": "ターミナルを開くには、このプロジェクトへの書き込み権限が必要です。",
+				"hint": "新しい全画面タブで開きます。",
+				"pageTitle": "{{name}} — ターミナル",
+				"pageTitleLoading": "ターミナル",
+				"closeTab": "閉じる"
+			},
+			"ssh": {
+				"step1Title": "公開鍵を追加",
+				"step1Description": "接続に使用するSSH鍵ペアの公開鍵を登録してください。",
+				"step2Title": "ターミナルから接続",
+				"step2Description": "ターミナルで次のコマンドを実行してください：",
+				"notRunning": "接続する前に環境を起動してください。"
+			}
 		}
 	},
 	"docs": {
@@ -1041,7 +1254,8 @@
 				"startDate": "開始日",
 				"dueDate": "期日",
 				"epic": "エピック",
-				"created": "作成日"
+				"created": "作成日",
+				"tags": "タグ"
 			},
 			"unassigned": "未割り当て",
 			"noEpic": "エピックなし"
@@ -1319,7 +1533,8 @@
 			"reporter": "報告者",
 			"startDate": "開始日",
 			"dueDate": "期日",
-			"created": "作成日"
+			"created": "作成日",
+			"tags": "タグ"
 		}
 	},
 	"automation": {

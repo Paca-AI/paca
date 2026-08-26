@@ -256,22 +256,24 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	callerID, _ := uuid.Parse(claims.Subject)
 
 	a, err := h.svc.CreateAgent(r.Context(), projectID, agentdom.CreateAgentInput{
-		Name:              req.Name,
-		Handle:            req.Handle,
-		AgentType:         agentType,
-		LLMProvider:       req.LLMProvider,
-		LLMModel:          req.LLMModel,
-		LLMAPIKey:         req.LLMAPIKey,
-		LLMBaseURL:        req.LLMBaseURL,
-		ACPProvider:       req.ACPProvider,
-		ACPCommand:        req.ACPCommand,
-		SystemPrompt:      req.SystemPrompt,
-		MaxIterations:     req.MaxIterations,
-		TimeoutMinutes:    req.TimeoutMinutes,
-		GitCommitterName:  req.GitCommitterName,
-		GitCommitterEmail: req.GitCommitterEmail,
-		ProjectRoleID:     req.ProjectRoleID,
-		CreatedBy:         &callerID,
+		Name:                 req.Name,
+		Handle:               req.Handle,
+		AgentType:            agentType,
+		LLMProvider:          req.LLMProvider,
+		LLMModel:             req.LLMModel,
+		LLMAPIKey:            req.LLMAPIKey,
+		LLMBaseURL:           req.LLMBaseURL,
+		ACPProvider:          req.ACPProvider,
+		ACPCommand:           req.ACPCommand,
+		SystemPrompt:         req.SystemPrompt,
+		MaxIterations:        req.MaxIterations,
+		TimeoutMinutes:       req.TimeoutMinutes,
+		GitCommitterName:     req.GitCommitterName,
+		GitCommitterEmail:    req.GitCommitterEmail,
+		DockerEnabled:        req.DockerEnabled,
+		DefaultEnvironmentID: req.DefaultEnvironmentID,
+		ProjectRoleID:        req.ProjectRoleID,
+		CreatedBy:            &callerID,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -298,19 +300,21 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, err := h.svc.UpdateAgent(r.Context(), projectID, agentID, agentdom.UpdateAgentInput{
-		Name:              req.Name,
-		Handle:            req.Handle,
-		LLMProvider:       req.LLMProvider,
-		LLMModel:          req.LLMModel,
-		LLMAPIKey:         req.LLMAPIKey,
-		LLMBaseURL:        req.LLMBaseURL,
-		ACPProvider:       req.ACPProvider,
-		ACPCommand:        req.ACPCommand,
-		SystemPrompt:      req.SystemPrompt,
-		MaxIterations:     req.MaxIterations,
-		TimeoutMinutes:    req.TimeoutMinutes,
-		GitCommitterName:  req.GitCommitterName,
-		GitCommitterEmail: req.GitCommitterEmail,
+		Name:                 req.Name,
+		Handle:               req.Handle,
+		LLMProvider:          req.LLMProvider,
+		LLMModel:             req.LLMModel,
+		LLMAPIKey:            req.LLMAPIKey,
+		LLMBaseURL:           req.LLMBaseURL,
+		ACPProvider:          req.ACPProvider,
+		ACPCommand:           req.ACPCommand,
+		SystemPrompt:         req.SystemPrompt,
+		MaxIterations:        req.MaxIterations,
+		TimeoutMinutes:       req.TimeoutMinutes,
+		GitCommitterName:     req.GitCommitterName,
+		GitCommitterEmail:    req.GitCommitterEmail,
+		DockerEnabled:        req.DockerEnabled,
+		DefaultEnvironmentID: req.DefaultEnvironmentID,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -428,6 +432,7 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		TimeoutMinutes:    req.TimeoutMinutes,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
+		DockerEnabled:     req.DockerEnabled,
 		GlobalRoleID:      req.GlobalRoleID,
 		CreatedBy:         &callerID,
 	})
@@ -464,6 +469,7 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		TimeoutMinutes:    req.TimeoutMinutes,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
+		DockerEnabled:     req.DockerEnabled,
 		GlobalRoleID:      req.GlobalRoleID,
 	})
 	if err != nil {
@@ -1255,7 +1261,7 @@ func (h *AgentHandler) StartChatSession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message)
+	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message, req.EnvironmentID, req.FolderID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

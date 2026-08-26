@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "gateway") | nindent 4 }}
+  ports:
+    - port: {{ .Values.gateway.service.port }}
+      targetPort: http
+      name: http
+    {{- if ne (include "paca.gatewaySiteAddress" .) ":80" }}
+    # Caddy only binds 443 when SITE_ADDRESS is a real address (automatic
+    # HTTPS) — see paca.gatewaySiteAddress. When it falls back to the bare
+    # ":80" (ingress.enabled, or no publicUrl), nothing listens on 443, so
+    # advertising this port on a LoadBalancer/NodePort Service would just
+    # be a dead port.
+    - port: 443
+      targetPort: https
+      name: https
+    {{- end }}
+    # Internal-only mcp/skills bundle port — see the Caddyfile's own doc
+    # comment on why agent-runner/the MCP server fetch plugin bundles here
+    # instead of the public port above. Not meant to be reachable outside
+    # the cluster; this Service's own type (ClusterIP by default) already
+    # keeps it that way unless gateway.service.type is set to
+    # LoadBalancer/NodePort, in which case it's exposed alongside the
+    # public port — no worse than Compose's own default network, where
+    # every container on the same network can already reach it too.
+    - port: 8080
+      targetPort: internal
+      name: internal

@@ -27,6 +27,7 @@ import {
 	Pencil,
 	Plus,
 	Puzzle,
+	Server,
 	Settings,
 	Shield,
 	Sparkles,
@@ -888,6 +889,7 @@ function NavItem({
 // ── Project Nav ───────────────────────────────────────────────────────────────
 const PROJECT_NAV_ITEMS = [
 	{ segment: "agents", icon: Bot, labelKey: "nav.agents" },
+	{ segment: "environments", icon: Server, labelKey: "nav.environments" },
 	{
 		segment: "conversations",
 		icon: MessageSquare,
@@ -922,6 +924,7 @@ function ProjectNav() {
 
 const ANON_HIDDEN_SEGMENTS = new Set([
 	"agents",
+	"environments",
 	"conversations",
 	"automation",
 	"team",

@@ -2,11 +2,17 @@
 # Gateway Caddy configuration
 # =============================================================================
 #
+# Kept in sync by hand with deploy/helm/paca/files/Caddyfile — the
+# Kubernetes gateway Deployment loads that copy into a ConfigMap instead of
+# referencing this file directly (Helm can only package files that live
+# inside the chart directory). Update both together.
+#
 # Single public entrypoint for the Paca stack:
 #
 #   /api/*          →  REST API service       (forwarded as-is, /api kept)
 #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
 #   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded as-is)
+#   /environments/*/terminal/ws → agent-runner's static-environment browser terminal WebSocket
 #   /storage/*      →  MinIO                   (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
@@ -34,6 +40,21 @@
 #     Either way, certificates persist in the caddy_data volume so they
 #     survive container restarts/recreations.
 #   install.sh enables HTTPS by default and prompts for this address.
+#
+# Upstream hostnames (*_UPSTREAM) default to Docker Compose's own service
+# names ("api", "web", "realtime", "agent-runner", "minio") but can be
+# overridden by env var — deploy/helm/paca sets these to the real
+# Kubernetes Service names (which carry a release-name prefix Compose's
+# bare names don't need), so this one file routes correctly under either
+# deployment without templating its own content.
+#
+# A running static environment's own SSH/port-forward access does not
+# route through this gateway at all — each environment container
+# publishes its own port directly (a native Docker -p binding, or a
+# Kubernetes NodePort Service entry — see
+# docs/ai-agent/environment-management.md's "Port Forwarding" section),
+# so there is no Caddy Admin API or wildcard site block here to keep in
+# sync the way an earlier version of this feature had.
 # =============================================================================
 
 (mcp_skills_routes) {
@@ -105,8 +126,8 @@
 	# STORAGE_PUBLIC_URL (e.g. "http://localhost/storage") before returning
 	# them to clients, so browsers always receive routable URLs.
 	handle_path /storage/* {
-		reverse_proxy minio:9000 {
-			header_up Host minio:9000
+		reverse_proxy {$MINIO_UPSTREAM:minio:9000} {
+			header_up Host {$MINIO_UPSTREAM:minio:9000}
 		}
 	}
 
@@ -117,7 +138,7 @@
 	# Client-side connection:
 	#   io("http://localhost", { path: "/ws/socket.io", withCredentials: true })
 	handle_path /ws/* {
-		reverse_proxy realtime:3001
+		reverse_proxy {$REALTIME_UPSTREAM:realtime:3001}
 	}
 
 	# -- Local plugin frontend assets -------------------------------------------
@@ -153,7 +174,7 @@
 	#   /api/v1/users  →  /api/v1/users
 	#   /api/healthz   →  /api/healthz
 	handle /api/* {
-		reverse_proxy api:8080
+		reverse_proxy {$API_UPSTREAM:api:8080}
 	}
 
 	# -- Agent Runner local ACP bridge ---------------------------------------------
@@ -169,7 +190,37 @@
 	# services/api over the docker-internal network) and must not be
 	# reachable from here.
 	handle /agent-bridge/ws {
-		reverse_proxy agent-runner:8080
+		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
+	}
+
+	# -- Static environment browser terminal ---------------------------------------
+	#
+	# The WebSocket a browser's xterm.js terminal component connects to for a
+	# running static environment's shell — see
+	# internal/acpbridge/terminal.go's handleTerminalWS (agent-runner's Go
+	# replacement for the old services/ai-agent, sibling to the
+	# /agent-bridge/ws block above). Reached directly by the browser, not
+	# server-to-server, so unlike /agent-bridge/status/* and
+	# /agent-bridge/disconnect/* it's intentionally public here — auth is a
+	# short-lived HMAC-signed `ticket` query param instead of the internal
+	# X-Internal-Token header, verified by agent-runner itself. WebSocket
+	# upgrades are proxied automatically, same as /agent-bridge/ws above.
+	handle /environments/*/terminal/ws {
+		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
+	}
+
+	# -- Static environment live usage stream --------------------------------------
+	#
+	# The WebSocket the environment detail page's Overview tab connects to
+	# for live CPU/memory/disk usage — see internal/acpbridge/stats.go's
+	# handleEnvironmentStatsWS, sibling to the terminal block just above and
+	# authenticated the exact same way (a short-lived HMAC-signed `ticket`
+	# query param, not X-Internal-Token — a browser tab can't hold that
+	# secret). Server push on its own ticker, not polled by the browser —
+	# see stats.go's own doc comment for why this replaced a REST endpoint
+	# entirely rather than sitting alongside one.
+	handle /environments/*/stats/ws {
+		reverse_proxy {$AGENT_RUNNER_UPSTREAM:agent-runner:8080}
 	}
 
 	# -- Web application (SPA) -----------------------------------------------------
@@ -177,7 +228,7 @@
 	# WebSocket upgrades are detected and proxied automatically, so Vite HMR
 	# and any future realtime traffic through this path work unmodified.
 	handle {
-		reverse_proxy web:3000
+		reverse_proxy {$WEB_UPSTREAM:web:3000}
 	}
 }
 

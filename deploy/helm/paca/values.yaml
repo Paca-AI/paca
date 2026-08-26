@@ -1,0 +1,417 @@
+# Default values for the paca chart.
+#
+# This mirrors deploy/docker-compose.prod.yml component-for-component —
+# same images, same defaults, same "bundled service, or scale it to zero
+# and point at an external one" pattern (there: `--scale postgres=0` +
+# DATABASE_URL; here: `postgres.enabled: false` + externalDatabaseUrl) — so
+# the two stay easy to compare when either one changes. See
+# deploy/helm/README.md for install instructions.
+
+# publicUrl is this deployment's externally reachable base URL (e.g.
+# "https://paca.example.com"), used to derive a few values below
+# (STORAGE_PUBLIC_URL, realtime's CORS_ORIGINS, the gateway's automatic
+# HTTPS). Leave empty for a ClusterIP/NodePort-only deployment with no
+# public URL yet — every derived value below falls back to something
+# sensible for that case.
+publicUrl: ""
+
+imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+# Every value below is required for a real deployment — there is no
+# generated-at-install-time default the way some charts do it, so a
+# forgotten secret fails loudly (helm install/upgrade errors) instead of
+# silently deploying with a guessable one. Generate strong values yourself,
+# e.g. `openssl rand -hex 32`.
+#
+# Set existingSecret to the name of a Secret you manage yourself (created
+# outside this chart, e.g. via a GitOps sealed-secret/external-secret
+# pipeline) instead of filling in the fields below — when set, every other
+# field in this section is ignored and templates read from that Secret's
+# keys instead (same key names: JWT_SECRET, ADMIN_PASSWORD, etc. — see
+# templates/secret.yaml for the full list).
+secrets:
+  existingSecret: ""
+  jwtSecret: ""
+  adminPassword: ""
+  # 64-char hex string — encrypts plugin secrets and (when agentRunner is
+  # enabled) LLM API keys at rest. Must be exactly 64 hex characters.
+  encryptionKey: ""
+  # Pre-shared key authenticating services/api <-> agent-runner's
+  # internal-only routes. Only required when agentRunner.enabled.
+  internalApiKey: ""
+  agentApiKey: ""
+  postgresPassword: ""
+  storageAccessKeyId: ""
+  storageSecretAccessKey: ""
+
+# ---------------------------------------------------------------------------
+# PostgreSQL (bundled)
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  database: paca
+  username: paca
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# Used instead of the bundled postgres above when postgres.enabled: false —
+# a full connection string, e.g.
+# postgres://user:pass@host:5432/paca?sslmode=require
+externalDatabaseUrl: ""
+
+# ---------------------------------------------------------------------------
+# Valkey (Redis-compatible cache / pub-sub, bundled)
+# ---------------------------------------------------------------------------
+valkey:
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: "8-alpine"
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# Used instead of the bundled valkey above when valkey.enabled: false.
+externalRedisUrl: ""
+
+# ---------------------------------------------------------------------------
+# MinIO (S3-compatible object storage, bundled)
+# ---------------------------------------------------------------------------
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    tag: "latest"
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+storage:
+  # minio | s3 — set s3 with real AWS credentials (storageAccessKeyId/
+  # storageSecretAccessKey above) and minio.enabled: false to use S3
+  # instead of the bundled MinIO, mirroring compose's `--scale minio=0`.
+  provider: minio
+  # Empty defaults to the bundled MinIO's in-cluster Service address.
+  endpoint: ""
+  # Empty defaults to "<publicUrl>/storage".
+  publicUrl: ""
+  region: us-east-1
+  bucket: paca
+  useSSL: false
+
+# ---------------------------------------------------------------------------
+# API (Go backend)
+# ---------------------------------------------------------------------------
+api:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paca-ai/paca-api
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  admin:
+    username: admin
+  jwt:
+    accessTtl: 15m
+    refreshTtl: 168h
+    refreshSessionTtl: 24h
+  # Set to false only when TLS isn't terminated anywhere in front of this
+  # deployment (plain HTTP end to end) — matches docker-compose.prod.yml's
+  # COOKIE_SECURE. This includes the no-Ingress, empty-publicUrl quick
+  # start (gateway.service.type: LoadBalancer with no domain to
+  # auto-provision HTTPS for): the gateway then serves plain HTTP, so
+  # leaving this at true makes browsers silently drop the auth cookie and
+  # login never sticks — set it to false in that case.
+  cookieSecure: true
+
+  # Installed-plugin storage (backend WASM, frontend bundles, MCP bundles,
+  # Agent Skills bundles — deploy/docker-compose.prod.yml's
+  # backend_plugins/frontend_plugins/mcp_plugins/skills_plugins volumes).
+  # The api Pod writes here when a plugin is installed; the gateway Pod
+  # reads frontend/mcp/skills back out to serve them over HTTP (see
+  # deploy/caddy/Caddyfile) — the two need genuinely concurrent access to
+  # the same files, which on Kubernetes means a ReadWriteMany-capable
+  # StorageClass (examples: aws-efs-csi-driver, filestore-csi-driver on
+  # GKE, azurefile, nfs-subdir-external-provisioner, longhorn,
+  # rook-ceph) — not the ReadWriteOnce block storage most clusters default
+  # to. If you have no RWX class available, set persistence.enabled: false
+  # to fall back to a per-Pod emptyDir instead: the app still runs, but
+  # installed plugins won't survive a Pod restart or be visible to the
+  # gateway, so plugin installation isn't usable in that mode.
+  plugins:
+    persistence:
+      enabled: true
+      accessMode: ReadWriteMany
+      storageClassName: ""
+      size: 5Gi
+
+# ---------------------------------------------------------------------------
+# Web (React SPA served via Caddy)
+# ---------------------------------------------------------------------------
+web:
+  # Disable to serve the SPA from an external CDN instead (build
+  # apps/web yourself and point it at this deployment's gateway for
+  # /api,/ws,/storage) — mirrors compose's `--scale web=0`. The gateway
+  # keeps routing every other path regardless.
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paca-ai/paca-web
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Realtime (Socket.IO event hub)
+# ---------------------------------------------------------------------------
+realtime:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paca-ai/paca-realtime
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  logLevel: info
+  # Empty defaults to publicUrl (or "http://localhost" when publicUrl is
+  # also empty — matches docker-compose.prod.yml's
+  # ${CORS_ORIGINS:-${PUBLIC_URL:-http://localhost}}; a bare "*" is never
+  # produced since a wildcard origin plus Socket.IO's credentialed CORS is
+  # rejected by browsers anyway).
+  corsOrigins: ""
+
+# ---------------------------------------------------------------------------
+# Agent Runner — the AI agent conversation executor, and its sandbox
+# ---------------------------------------------------------------------------
+agentRunner:
+  # Disable to run Paca without the AI agent feature at all — mirrors
+  # compose's `--scale agent-runner=0`.
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paca-ai/paca-agent-runner
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  # "*" = every agent. Set to a comma-separated list of agent UUIDs instead
+  # to stage a gradual rollout.
+  allowedAgentIds: "*"
+  workerConcurrency: 10
+  chatSandboxIdleTimeoutMinutes: 3
+  logLevel: info
+
+  # The AI agent sandbox — one goose-serve workload per active
+  # conversation, torn down when the conversation goes idle or a user
+  # stops it.
+  sandbox:
+    # "kubernetes" creates one Kubernetes Job per conversation (see
+    # services/agent-runner/internal/sandbox/k8s) — the right choice for
+    # this chart, since a normal cluster node has no Docker socket to
+    # mount the way the "docker" backend needs. Only switch this to
+    # "docker" if agent-runner's own nodes genuinely have one exposed
+    # (e.g. a self-managed cluster built on a Docker container runtime),
+    # which most managed Kubernetes offerings (EKS/GKE/AKS with
+    # containerd) do not.
+    backend: kubernetes
+    image:
+      repository: ghcr.io/paca-ai/paca-agent-server-goose
+      tag: "latest"
+    # Namespace sandbox Jobs/Pods/environment Deployments are created in.
+    # Empty (the default) resolves to "<release-name>-sandbox", a
+    # dedicated namespace this chart creates for you (see
+    # templates/agent-runner/sandbox-namespace.yaml) — never the release's
+    # own namespace alongside postgres/valkey/minio/api/web/gateway. The
+    # RBAC this chart grants (see templates/agent-runner/role.yaml) is
+    # only ever scoped to whichever namespace this resolves to, so setting
+    # it explicitly to a namespace you manage yourself works too, as long
+    # as that namespace already exists — Kubernetes RBAC can't scope the
+    # pods/exec/pods/log grant, or the newer Deployment/Service
+    # patch/delete grant environments need, to only objects agent-runner's
+    # own ServiceAccount created; it's every matching object in whichever
+    # namespace this resolves to. See deploy/helm/README.md's RBAC
+    # section.
+    #
+    # UPGRADE NOTE: prior to this default changing, an unset namespace
+    # resolved to the release's own namespace. If you're upgrading an
+    # existing install that relied on that (its RBAC, and any
+    # already-running sandbox Jobs/environments, live in the release
+    # namespace today), set this explicitly to that namespace to preserve
+    # current behavior — otherwise `helm upgrade` moves the Role/
+    # RoleBinding to the new dedicated namespace and anything still
+    # running in the old one becomes unreachable until you migrate or
+    # manually clean it up.
+    namespace: ""
+    # Requests == limits on every sandbox Pod's primary container —
+    # matches the docker backend's own hardcoded 2 CPU / 4GiB.
+    cpuLimit: "2"
+    memoryLimit: "4Gi"
+    # Secrets (already present in `namespace` above, type
+    # kubernetes.io/dockerconfigjson) to attach to every sandbox Pod —
+    # needed when sandbox.image is pulled from a private registry.
+    imagePullSecrets: []
+    # Static environments (named, long-lived sandboxes a user explicitly
+    # creates — see docs/ai-agent/environment-management.md) provision
+    # their own PersistentVolumeClaim per environment, on top of (not
+    # instead of) the request/limit knobs above.
+    environments:
+      # StorageClass for every environment's PVC. Empty (the default)
+      # lets Kubernetes provision from the cluster's own default
+      # StorageClass — set this only if your cluster has none marked
+      # default, or you want environments on a specific class (e.g. a
+      # faster/cheaper tier than whatever's marked default).
+      storageClassName: ""
+    # NOTE — not a toggle, just a heads-up: DockerEnabled agents
+    # (agents.docker_enabled in the database) get a privileged
+    # `docker:dind` sidecar added to their own sandbox Pod at runtime, one
+    # conversation at a time, so they can run Docker commands — see
+    # internal/sandbox/k8s/dind.go. There's nothing to configure here for
+    # that either way (the sidecar only ever appears on a Pod belonging to
+    # an agent that opts in) — but if `namespace` above enforces the
+    # Restricted Pod Security Standard, that agent's conversations will
+    # fail to start with a Forbidden admission error. Label the namespace
+    # with `pod-security.kubernetes.io/enforce: baseline` (or looser) if
+    # you plan to use DockerEnabled agents.
+
+  # SSH bastion (optional, off by default) — lets a user
+  # `ssh -p <port> root@<bastion-host>` straight into a running static
+  # environment's own real sshd, published directly as a per-environment
+  # NodePort Service — created dynamically by agent-runner itself
+  # (ensureEnvironmentService, internal/sandbox/k8s/environment.go) as
+  # part of that environment's own lifecycle, not templated by this
+  # chart, and never relayed through agent-runner's own process — see
+  # docs/ai-agent/environment-management.md's "Terminal / SSH Access"
+  # section. Not fronted by gateway/ingress the way every other component
+  # in this chart is: Caddy/Ingress are HTTP-only and can't proxy raw SSH.
+  sshBastion:
+    enabled: false
+    # The external port range agent-runner assigns each running
+    # environment's own dedicated SSH port from — a NodePort must fall
+    # inside your cluster's own --service-node-port-range (kube-apiserver
+    # flag; 30000-32767 by default on most distributions), so set this to
+    # a sub-range of whatever your cluster is actually configured with.
+    # Widening this range costs nothing until it's actually used. Narrow
+    # it, or shift it, if it collides with something else in your
+    # cluster's own port allocation.
+    portRangeStart: 30200
+    portRangeEnd: 30299
+  # Port forwarding — the exact same idea as sshBastion above, for
+  # user-added port forwards instead (docs/ai-agent/
+  # environment-management.md's "Port Forwarding" section). Added/removed
+  # from an environment's Connect page in the web app; a running
+  # environment's Service is patched live to apply a change — no Pod
+  # restart needed on this backend, unlike the docker backend's own
+  # container-recreate requirement.
+  portForward:
+    enabled: false
+    # A disjoint range from sshBastion.portRangeStart/End above so the
+    # two can never collide — same --service-node-port-range constraint
+    # as that field's own doc comment.
+    portRangeStart: 30300
+    portRangeEnd: 30399
+
+# ---------------------------------------------------------------------------
+# Gateway (Caddy reverse proxy) — same routing as deploy/caddy/Caddyfile,
+# loaded into this deployment verbatim (see templates/gateway/configmap.yaml)
+# ---------------------------------------------------------------------------
+gateway:
+  replicaCount: 1
+  image:
+    repository: caddy
+    tag: "2-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  service:
+    # ClusterIP + ingress.enabled: true is the usual production setup;
+    # LoadBalancer works standalone (no Ingress controller required) for a
+    # quick start.
+    type: ClusterIP
+    port: 80
+
+# ---------------------------------------------------------------------------
+# SSH access / Port forwarding host display — see agentRunner.sshBastion/
+# agentRunner.portForward above for actually enabling either feature.
+# Neither value here affects whether either feature works; both are purely
+# descriptive, passed to services/api so GET /environments/config can hand
+# the frontend a real `ssh -p <port> root@<host>` command / a real
+# `<host>:<host_port>` address instead of a placeholder host — see
+# docs/ai-agent/environment-management.md's "Terminal / SSH Access" and
+# "Port Forwarding" sections and deploy/helm/README.md's own sections for
+# full setup steps.
+# ---------------------------------------------------------------------------
+environments:
+  # Point at whatever node address a client actually reaches this
+  # cluster's NodePort range on — e.g. a node's own public IP/DNS name, or
+  # a TCP load balancer in front of your node pool if you have one.
+  sshBastionHost: ""
+  portForwardHost: ""
+
+# ---------------------------------------------------------------------------
+# Ingress (optional) — TLS termination via an ingress controller +
+# cert-manager, fronting the gateway Service above. Off by default: the
+# gateway Service alone (as ClusterIP behind your own LB, or switched to
+# type: LoadBalancer) is enough to run without one.
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # e.g. paca.example.com — required when ingress.enabled.
+  host: ""
+  tls:
+    enabled: false
+    # Defaults to "<release-name>-tls" when empty and tls.enabled — point
+    # cert-manager's Certificate (or your own pre-created TLS Secret) at
+    # the same name.
+    secretName: ""

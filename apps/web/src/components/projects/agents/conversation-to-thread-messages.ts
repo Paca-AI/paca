@@ -183,6 +183,52 @@ function toThreadMessage(
 }
 
 /**
+ * Whether the *current* turn's environment is ready — services/agent-runner
+ * persists an `environment_ready` marker right before every session/prompt
+ * call (see executor.Run's `onReady`), once the sandbox/ACP session is
+ * actually ready to run a turn. Callers use this to switch the Thread's
+ * empty-message indicator from "setting up your environment" to "thinking":
+ * before this event, any wait is container/handshake setup; after it, any
+ * further wait is the LLM itself.
+ *
+ * Compares the latest `environment_ready` against the latest `user_message`
+ * rather than just checking presence anywhere in the window: a chat
+ * conversation whose sandbox got idle-reaped and needs a fresh cold start
+ * still has an *older* turn's `environment_ready` sitting in the loaded
+ * window, which a bare "has one ever appeared" check would misread as
+ * ready. Every trigger with real message text gets its own `user_message`
+ * (see handler.Handle's persistAndPublish call), so its index marks where
+ * the current turn began.
+ */
+export function hasEnvironmentReadyEvent(
+	events: AgentConversationEvent[],
+): boolean {
+	const lastReadyIndex =
+		events.findLast((e) => e.event_type === "environment_ready")?.event_index ??
+		-1;
+	const lastUserMessageIndex =
+		events.findLast((e) => e.event_type === "user_message")?.event_index ?? -1;
+	return lastReadyIndex > lastUserMessageIndex;
+}
+
+/**
+ * Whether the Thread's empty-message indicator should read "thinking"
+ * instead of "setting up your environment" — the single computation all
+ * three chat surfaces (conversation-view, ai-chat-float,
+ * ai-chat-float-global) need, so it lives here once instead of being
+ * re-derived at each call site. ACP (local bridge) conversations have no
+ * sandbox to provision at all (see conversation-view.tsx's isACP doc
+ * comment), so they're always ready; everything else defers to
+ * hasEnvironmentReadyEvent's turn-boundary check.
+ */
+export function isEnvironmentReady(
+	isACP: boolean,
+	events: AgentConversationEvent[],
+): boolean {
+	return isACP || hasEnvironmentReadyEvent(events);
+}
+
+/**
  * Converts raw conversation events into assistant-ui's ThreadMessageLike[],
  * grouping each agent turn's thought/tool-calls/reply into one assistant
  * message's content parts (rather than one bubble per raw event) — the
@@ -212,10 +258,14 @@ export function eventsToThreadMessages(
 
 		// Non-user-visible bookkeeping events — already filtered server-side,
 		// skipped here too as a defensive guard against legacy/unfiltered data.
+		// environment_ready never renders as a bubble either — it's a marker
+		// consumed separately via hasEnvironmentReadyEvent below, not part of
+		// the transcript.
 		if (
 			t === "ConversationStateUpdateEvent" ||
 			t === "SystemPromptEvent" ||
-			t === "StreamingDeltaEvent"
+			t === "StreamingDeltaEvent" ||
+			t === "environment_ready"
 		) {
 			continue;
 		}

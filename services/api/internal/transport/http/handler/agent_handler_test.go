@@ -140,7 +140,7 @@ func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID
 func (m *mockAgentSvc) ListChatSessions(_ context.Context, _, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
 	return nil, nil
 }
-func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, _, _ *uuid.UUID) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	if m.startChatSession != nil {
 		return m.startChatSession(ctx, projectID, agentID, memberID, message)
 	}

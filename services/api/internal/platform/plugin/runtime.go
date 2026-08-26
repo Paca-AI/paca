@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,6 +28,11 @@ import (
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/Paca-AI/api/internal/platform/netguard"
 )
+
+// ErrPayloadTooLarge is wrapped into the error callExport returns when a
+// payload exceeds MaxRequestBodyBytes, so HTTP transport code can map it to
+// a proper "payload too large" response instead of a generic internal error.
+var ErrPayloadTooLarge = errors.New("plugin: payload exceeds limit")
 
 // ResourceLimits controls per-plugin execution constraints.
 type ResourceLimits struct {
@@ -52,8 +58,8 @@ type ResourceLimits struct {
 func DefaultResourceLimits() ResourceLimits {
 	return ResourceLimits{
 		MaxCallDuration:     5 * time.Second,
-		MaxMemoryPages:      1024,             // 64 MiB
-		MaxRequestBodyBytes: 10 * 1024 * 1024, // 10 MiB
+		MaxMemoryPages:      1024,            // 64 MiB
+		MaxRequestBodyBytes: 1 * 1024 * 1024, // 1 MiB — keep in sync with plugin-sdk-go's mallocBuffer size
 	}
 }
 
@@ -213,6 +219,33 @@ func NewRuntime(store *Store, services HostServices, limits ResourceLimits, log 
 // plugin's WASM memory.  0 means "no limit".
 func (r *Runtime) MaxRequestBodyBytes() int64 {
 	return r.limits.MaxRequestBodyBytes
+}
+
+// MaxHTTPBodyBytes returns the largest raw HTTP request body that is
+// guaranteed to still fit under MaxRequestBodyBytes once base64-encoded and
+// wrapped in the JSON envelope passed to a plugin's HandleRequest export.
+// knownOverheadBytes is the exact marshaled size of that envelope with an
+// empty body (method, path, query, headers, ids, and the JSON field syntax
+// itself) for this specific request — callers must measure it per-request
+// rather than guessing, since headers/query/path size varies a lot in
+// practice. Base64 inflates the body by ~4/3, so the result is strictly
+// smaller than MaxRequestBodyBytes-knownOverheadBytes.
+//
+// Returns 0 when the configured limit is disabled (<=0) — the only case
+// where 0 means "no limit". Returns -1 when knownOverheadBytes alone already
+// consumes the whole limit, meaning no body — not even an empty one — can
+// fit; callers must reject the request outright rather than treating -1 as
+// "no limit".
+func (r *Runtime) MaxHTTPBodyBytes(knownOverheadBytes int64) int64 {
+	max := r.limits.MaxRequestBodyBytes
+	if max <= 0 {
+		return 0
+	}
+	remaining := max - knownOverheadBytes
+	if remaining <= 0 {
+		return -1
+	}
+	return remaining * 3 / 4
 }
 
 // LoadAll instantiates wazero modules for every enabled plugin in the list.
@@ -402,7 +435,7 @@ func (r *Runtime) callExport(ctx context.Context, pluginName, exportName string,
 	}
 
 	if maxBytes := r.limits.MaxRequestBodyBytes; maxBytes > 0 && int64(len(payload)) > maxBytes {
-		return nil, fmt.Errorf("plugin %q: %s payload of %d bytes exceeds limit of %d bytes", pluginName, exportName, len(payload), maxBytes)
+		return nil, fmt.Errorf("%w: plugin %q: %s payload of %d bytes exceeds limit of %d bytes", ErrPayloadTooLarge, pluginName, exportName, len(payload), maxBytes)
 	}
 
 	fn := inst.mod.ExportedFunction(exportName)
@@ -2197,15 +2230,26 @@ func writeToMemory(m api.Module, data []byte) ([]uint64, error) {
 	if len(data) == 0 {
 		return []uint64{0, 0}, nil
 	}
-	malloc := m.ExportedFunction("malloc")
+	// Exported as paca_malloc, not malloc: TinyGo-built plugins already
+	// export "malloc"/"free" from their own bundled wasi-libc allocator, so
+	// plugin-sdk-go's exports use a name that can't collide with those.
+	malloc := m.ExportedFunction("paca_malloc")
 	if malloc == nil {
-		return nil, fmt.Errorf("plugin: malloc not exported")
+		// Fall back to the pre-rename export so plugins built against the
+		// previous SDK keep working until they're rebuilt.
+		malloc = m.ExportedFunction("malloc")
+	}
+	if malloc == nil {
+		return nil, fmt.Errorf("plugin: paca_malloc or malloc not exported")
 	}
 	results, err := malloc.Call(context.Background(), uint64(len(data)))
 	if err != nil || len(results) == 0 {
 		return nil, fmt.Errorf("plugin: malloc failed: %w", err)
 	}
 	ptr := results[0]
+	if ptr == 0 {
+		return nil, fmt.Errorf("plugin: malloc returned 0 (buffer exhausted)")
+	}
 	if !m.Memory().Write(uint32(ptr), data) {
 		return nil, fmt.Errorf("plugin: memory write out of bounds")
 	}

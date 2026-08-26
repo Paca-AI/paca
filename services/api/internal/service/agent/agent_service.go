@@ -16,6 +16,7 @@ import (
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
@@ -41,6 +42,15 @@ type Service struct {
 	pluginRepo pluginFinder
 	encryptor  *secret.Encryptor
 	avatarSvc  attachmentdom.AvatarService
+	// environmentSvc resolves/validates static environments — used by
+	// CreateAgent/UpdateAgent to validate default_environment_id (see
+	// validateDefaultEnvironment) and by StartChatSession/
+	// StartGlobalChatSession to resolve which environment+folder a new
+	// conversation attaches to (see ResolveConversationWorkdir). Nil is a
+	// valid, supported configuration (mirrors avatarSvc/encryptor above) —
+	// every call site guards against it and behaves as if environments
+	// don't exist yet, rather than panicking.
+	environmentSvc environmentdom.Service
 }
 
 // New returns a configured agent service.
@@ -58,6 +68,38 @@ func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
 func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
 	s.avatarSvc = svc
 	return s
+}
+
+// WithEnvironmentService wires in the static-environment service — see the
+// environmentSvc field's doc comment for what it's used for.
+func (s *Service) WithEnvironmentService(svc environmentdom.Service) *Service {
+	s.environmentSvc = svc
+	return s
+}
+
+// validateDefaultEnvironment resolves and validates a candidate
+// default_environment_id for an agent being created/updated in projectID:
+// uuid.Nil clears it (returns nil, nil — see UpdateAgentInput.
+// DefaultEnvironmentID's doc comment for why uuid.Nil, not a bare nil
+// pointer, means "clear"); any other value must resolve to a real
+// environment belonging to projectID, and the agent must be project-scoped
+// (a global agent has no single project's environments to default to —
+// see Agent.DefaultEnvironmentID's doc comment).
+func (s *Service) validateDefaultEnvironment(ctx context.Context, projectID uuid.UUID, candidate uuid.UUID, scope agentdom.AgentScope) (*uuid.UUID, error) {
+	if candidate == uuid.Nil {
+		return nil, nil
+	}
+	if scope == agentdom.AgentScopeGlobal {
+		return nil, agentdom.ErrDefaultEnvironmentInvalid
+	}
+	if s.environmentSvc == nil {
+		return nil, agentdom.ErrDefaultEnvironmentInvalid
+	}
+	if _, err := s.environmentSvc.GetEnvironment(ctx, projectID, candidate); err != nil {
+		return nil, agentdom.ErrDefaultEnvironmentInvalid
+	}
+	id := candidate
+	return &id, nil
 }
 
 // encryptKey encrypts plaintext if an encryptor is configured; otherwise returns plaintext unchanged.
@@ -151,6 +193,7 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.SystemPrompt = in.SystemPrompt
 		a.GitCommitterName = in.GitCommitterName
 		a.GitCommitterEmail = in.GitCommitterEmail
+		a.DockerEnabled = in.DockerEnabled
 		if a.GitCommitterName == "" {
 			a.GitCommitterName = "paca-agent"
 		}
@@ -171,6 +214,14 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.TimeoutMinutes = 30
 	} else if a.TimeoutMinutes > timeoutMinutesLimit {
 		a.TimeoutMinutes = timeoutMinutesLimit
+	}
+
+	if in.DefaultEnvironmentID != nil {
+		envID, err := s.validateDefaultEnvironment(ctx, projectID, *in.DefaultEnvironmentID, agentdom.AgentScopeProject)
+		if err != nil {
+			return nil, err
+		}
+		a.DefaultEnvironmentID = envID
 	}
 
 	// Atomically create the agent and its project membership in one transaction.
@@ -245,6 +296,9 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if in.GitCommitterEmail != nil {
 			a.GitCommitterEmail = *in.GitCommitterEmail
 		}
+		if in.DockerEnabled != nil {
+			a.DockerEnabled = *in.DockerEnabled
+		}
 	}
 	if a.AgentType == agentdom.AgentTypeACP {
 		if in.ACPProvider != nil {
@@ -281,6 +335,13 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			v = timeoutMinutesLimit
 		}
 		a.TimeoutMinutes = v
+	}
+	if in.DefaultEnvironmentID != nil {
+		envID, err := s.validateDefaultEnvironment(ctx, projectID, *in.DefaultEnvironmentID, a.AgentScope)
+		if err != nil {
+			return nil, err
+		}
+		a.DefaultEnvironmentID = envID
 	}
 	a.UpdatedAt = time.Now()
 
@@ -396,6 +457,7 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		a.SystemPrompt = in.SystemPrompt
 		a.GitCommitterName = in.GitCommitterName
 		a.GitCommitterEmail = in.GitCommitterEmail
+		a.DockerEnabled = in.DockerEnabled
 		if a.GitCommitterName == "" {
 			a.GitCommitterName = "paca-agent"
 		}
@@ -471,6 +533,9 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 		}
 		if in.GitCommitterEmail != nil {
 			a.GitCommitterEmail = *in.GitCommitterEmail
+		}
+		if in.DockerEnabled != nil {
+			a.DockerEnabled = *in.DockerEnabled
 		}
 	}
 	if a.AgentType == agentdom.AgentTypeACP {
@@ -1146,13 +1211,13 @@ func (s *Service) ListConversationEvents(ctx context.Context, conversationID uui
 	return s.repo.ListConversationEvents(ctx, conversationID, window)
 }
 
-// StopConversation durably stops a conversation that is not already finished.
+// StopConversation stops a conversation that is not already finished.
 //
 // Unlike every other terminal-status transition (finished/failed, and a
 // paused-chat "stopped"), this one is decided and written here rather than
 // by ai-agent's own turn-end logic — ai-agent's _post_turn_status
-// deliberately no-ops on a stop since this call already owns the write.
-// That means this is also the only place that can durably notify
+// deliberately no-ops on a full-teardown stop since this call already owns
+// the write. That means this is also the only place that can durably notify
 // worker.AutomationConsumer (via StreamAgentConversationStatus) that a
 // trigger_ai_agent-started conversation it might be waiting on just reached
 // a terminal status — ai-agent has no turn-end hook to do it from here,
@@ -1169,8 +1234,8 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 		return err
 	}
 	// Best-effort: a failure here shouldn't fail the stop itself (the
-	// conversation is already marked stopped and its executor is about to be
-	// told to interrupt active work) — same posture as sprintsvc.publishSprintActivity.
+	// conversation is already marked stopped and ai-agent is about to be
+	// told to tear it down) — same posture as sprintsvc.publishSprintActivity.
 	// A graph walk genuinely left waiting on this conversation stays paused
 	// until the automation is edited/deactivated; there's no separate
 	// timeout/reaper for a pending wait today.
@@ -1427,7 +1492,12 @@ func (s *Service) ListChatSessions(ctx context.Context, _, agentID, memberID uui
 }
 
 // StartChatSession creates a new chat session and publishes the initial message trigger.
-func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+// environmentID/folderID come from the request and are optional:
+// environmentID nil falls back to the agent's own DefaultEnvironmentID (see
+// resolveChatEnvironment); folderID nil auto-selects the environment's sole
+// folder, or fails with ErrFolderNotFound if that's ambiguous — the caller
+// must ask the user to pick.
+func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	now := time.Now()
 
 	session := &agentdom.AgentChatSession{
@@ -1443,19 +1513,82 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 		return nil, nil, err
 	}
 
+	envID, resolvedFolderID, workdir, err := s.resolveChatEnvironment(ctx, projectID, agentID, environmentID, folderID)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	conv, err := s.createConversation(ctx, projectID, agentID, &memberID, agentdom.AgentConversation{
-		TriggerType:   "chat_message",
-		ChatSessionID: &session.ID,
+		TriggerType:         "chat_message",
+		ChatSessionID:       &session.ID,
+		EnvironmentID:       envID,
+		EnvironmentFolderID: resolvedFolderID,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if err := s.publishChatTrigger(ctx, agentID, conv.ID, session.ID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx)); err != nil {
+	if err := s.publishChatTrigger(ctx, agentID, conv.ID, session.ID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir); err != nil {
 		return nil, nil, err
 	}
 
 	return session, conv, nil
+}
+
+// resolveChatEnvironment resolves which static environment+folder (if any)
+// a new chat conversation should attach to. environmentID, when nil, falls
+// back to the agent's own DefaultEnvironmentID (agentdom.Agent.
+// DefaultEnvironmentID) — overridable per conversation at chat-start, per
+// that field's own doc comment. Returns (nil, nil, "", nil) when neither
+// the request nor the agent names an environment, or when this service was
+// never wired with an environmentSvc (self-hosted deployments that haven't
+// enabled it) — the conversation then gets an ephemeral per-conversation
+// sandbox as it always has, unchanged.
+func (s *Service) resolveChatEnvironment(ctx context.Context, projectID, agentID uuid.UUID, environmentID, folderID *uuid.UUID) (envID, resolvedFolderID *uuid.UUID, workdir string, err error) {
+	if s.environmentSvc == nil {
+		return nil, nil, "", nil
+	}
+	if environmentID == nil {
+		agent, err := s.repo.FindAgentByID(ctx, agentID)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		environmentID = agent.DefaultEnvironmentID
+	}
+	if environmentID == nil {
+		return nil, nil, "", nil
+	}
+	env, folder, err := s.environmentSvc.ResolveConversationWorkdir(ctx, projectID, environmentID, folderID)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if env == nil || folder == nil {
+		return nil, nil, "", nil
+	}
+	return &env.ID, &folder.ID, folder.Path, nil
+}
+
+// resolveWorkdirForConversation re-resolves an already-created
+// conversation's environment_id/environment_folder_id back into a live
+// (environmentID, workdir) pair for a trigger payload. Needed on every
+// trigger a conversation publishes, not just its first — agent-runner's
+// goose serve process runs continuously per environment (see
+// docs/ai-agent/environment-management.md's "no new in-memory registry"
+// design), so a resumed conversation's later turns need to keep telling
+// agent-runner which environment+folder to run NewSession against just as
+// much as the very first turn did.
+func (s *Service) resolveWorkdirForConversation(ctx context.Context, projectID uuid.UUID, c *agentdom.AgentConversation) (envID *uuid.UUID, workdir string, err error) {
+	if s.environmentSvc == nil || c.EnvironmentID == nil {
+		return nil, "", nil
+	}
+	_, folder, err := s.environmentSvc.ResolveConversationWorkdir(ctx, projectID, c.EnvironmentID, c.EnvironmentFolderID)
+	if err != nil {
+		return nil, "", err
+	}
+	if folder == nil {
+		return nil, "", nil
+	}
+	return c.EnvironmentID, folder.Path, nil
 }
 
 // SendChatMessage sends a message to an existing chat session and publishes the trigger.
@@ -1474,6 +1607,16 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 // object alive in memory for as long as the daemon keeps running. So a reply
 // can always continue the *same* conversation_id, no matter how long ago it
 // went terminal — see runner.ConversationRunner.start_turn's resume branch.
+//
+// An LLM-type conversation attached to a static environment
+// (environmentdom.Environment) gets the same terminal-status resume too, for
+// the analogous reason: the environment's container outlives the
+// conversation's own status (it isn't torn down when a conversation ends —
+// see docker.Manager.StopEnvironment's doc comment on the server), so
+// "stopped"/"failed" here means "no turn is currently in flight," not "there
+// is nothing left to attach to." Only an ordinary (non-environment) LLM
+// conversation going terminal still falls through to a brand-new
+// conversation_id below — its ephemeral sandbox really is gone for good.
 func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
@@ -1496,6 +1639,19 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 
 	conv := latest
 	if latest != nil {
+		// Validate a resumed conversation's environment/folder still
+		// resolves *before* any ClaimConversationStatus call below moves
+		// it to "running" — a claim that then failed validation would
+		// otherwise be stuck there with no rollback (see
+		// resolveWorkdirForConversation's own doc comment; the later call
+		// at the bottom of this function, which builds the actual trigger
+		// payload, is a cheap, harmless duplicate read on this now-
+		// validated path).
+		if latest.EnvironmentID != nil {
+			if _, _, err := s.resolveWorkdirForConversation(ctx, projectID, latest); err != nil {
+				return nil, err
+			}
+		}
 		switch agentdom.ConversationStatus(latest.Status) {
 		case agentdom.ConversationStatusRunning, agentdom.ConversationStatusQueued:
 			// Still mid-turn (or not yet picked up by the worker) — reject
@@ -1520,11 +1676,17 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 			if err != nil {
 				return nil, err
 			}
-			if agent.AgentType == agentdom.AgentTypeACP {
+			if agent.AgentType == agentdom.AgentTypeACP || latest.EnvironmentID != nil {
 				// Resume — same atomic-claim treatment as the paused case
 				// above, just starting from a terminal status instead of
-				// "paused" (ACP conversations never reach "paused" — see the
-				// doc comment above).
+				// "paused". Two different reasons land on the same
+				// behavior: an ACP conversation never reaches "paused" at
+				// all (see the doc comment above), while an
+				// environment-backed LLM conversation can reach "paused"
+				// but still go terminal from there (an explicit Stop, or a
+				// genuine turn failure) — either way there's a live
+				// container to reattach to, not an ephemeral sandbox
+				// that's already gone.
 				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
 					latest.Status, string(agentdom.ConversationStatusRunning))
 				if err != nil {
@@ -1534,13 +1696,22 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 					return nil, agentdom.ErrConversationBusy
 				}
 			} else {
-				// Terminal status — fall through to create a new conversation.
+				// Terminal status, no persistent backing (an ordinary
+				// ephemeral sandbox, already torn down) — fall through to
+				// create a new conversation.
 				conv = nil
 			}
 		}
 	}
 
 	if conv == nil {
+		// A fresh conversation row: either this chat session's very first
+		// message, or a non-environment LLM conversation whose ephemeral
+		// sandbox is gone for good now that it's terminal — see the switch
+		// above. No environment/folder to carry over in either case: an
+		// environment-backed LLM conversation resumes in place instead (same
+		// switch), so whenever this runs with latest non-nil,
+		// latest.EnvironmentID is already guaranteed nil.
 		conv, err = s.createConversation(ctx, projectID, session.AgentID, &memberID, agentdom.AgentConversation{
 			TriggerType:   "chat_message",
 			ChatSessionID: &sessionID,
@@ -1552,7 +1723,14 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	// else: resume — reuse the same conversation_id so ai-agent reattaches
 	// to the sandbox it kept alive rather than cold-starting a new one.
 
-	if err := s.publishChatTrigger(ctx, session.AgentID, conv.ID, sessionID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx)); err != nil {
+	// Re-resolve conv's environment/folder into a live (environmentID,
+	// workdir) pair for the trigger payload — needed on every turn, not
+	// just the first (see resolveWorkdirForConversation's doc comment).
+	envID, workdir, err := s.resolveWorkdirForConversation(ctx, projectID, conv)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.publishChatTrigger(ctx, session.AgentID, conv.ID, sessionID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir); err != nil {
 		return nil, err
 	}
 
@@ -1727,6 +1905,15 @@ func (s *Service) createConversation(ctx context.Context, projectID, agentID uui
 		CommentID:           template.CommentID,
 		ChatSessionID:       template.ChatSessionID,
 		TriggeredByMemberID: memberID,
+		// EnvironmentID/EnvironmentFolderID: only ever set by the
+		// chat-session flow today (StartChatSession/SendChatMessage) — see
+		// resolveChatEnvironment. Every other template constructor
+		// (TriggerTaskAssigned et al.) leaves these nil, matching this
+		// feature's scope: default-environment attachment is a chat-start
+		// concept per docs/ai-agent/environment-management.md, not
+		// extended to task/comment/automation triggers in this slice.
+		EnvironmentID:       template.EnvironmentID,
+		EnvironmentFolderID: template.EnvironmentFolderID,
 		Status:              string(agentdom.ConversationStatusQueued),
 		CreatedAt:           now,
 		UpdatedAt:           now,
@@ -1955,7 +2142,14 @@ func (s *Service) publishTrigger(ctx context.Context, topic string, payload map[
 	return s.publisher.AppendFlat(ctx, events.StreamAgentTriggers, payload)
 }
 
-func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessionID, projectID, memberID uuid.UUID, message string, repoPluginIDs []string) error {
+// environmentID/workdir, when non-nil/non-empty, tell agent-runner which
+// static environment (and folder within it) this conversation is attached
+// to — see resolveChatEnvironment/resolveWorkdirForConversation's doc
+// comments for how callers resolve them, and
+// docs/ai-agent/environment-management.md's "Conversation attach path"
+// section for how agent-runner's decode.go/coldStartEnvironment consume
+// them.
+func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessionID, projectID, memberID uuid.UUID, message string, repoPluginIDs []string, environmentID *uuid.UUID, workdir string) error {
 	payload := map[string]any{
 		"conversation_id": convID.String(),
 		"project_id":      projectID.String(),
@@ -1965,6 +2159,10 @@ func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessi
 		"trigger_type":    "chat_message",
 		"message":         message,
 		"repo_plugin_ids": strings.Join(repoPluginIDs, ","),
+	}
+	if environmentID != nil {
+		payload["environment_id"] = environmentID.String()
+		payload["workdir"] = workdir
 	}
 	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }

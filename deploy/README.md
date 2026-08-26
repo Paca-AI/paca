@@ -1,9 +1,10 @@
 # Deploy
 
-This directory contains deployment assets for two distinct use cases:
+This directory contains deployment assets for three distinct use cases:
 
 - contributor-friendly local development;
-- production container deployment for self-hosters.
+- production container deployment for self-hosters (Docker Compose);
+- production deployment on Kubernetes — see [helm/README.md](helm/README.md).
 
 ## Contents
 
@@ -14,6 +15,8 @@ This directory contains deployment assets for two distinct use cases:
 | `docker-compose.e2e.yml` | End-to-end test stack mirroring production topology with fixed test credentials |
 | `.env.dev.example` | Optional environment file for `docker-compose.dev.yml` (tunnel / custom domain) |
 | `.env.production.example` | Example environment file for manual production deployments |
+| `caddy/` | Gateway container: `Caddyfile` (stock `caddy:2-alpine` image, no custom build needed) |
+| `helm/` | Kubernetes Helm chart — same stack, deployed via `helm install` instead of `docker compose up` |
 
 Service container definitions live with each service:
 - [`services/api/Dockerfile`](../services/api/Dockerfile)
@@ -195,6 +198,56 @@ Either way, certificates persist in the `caddy_data` volume across restarts.
 Without `SITE_ADDRESS` (or set to a bare port like `:80`), the gateway serves plain
 HTTP — the simplest option, and the right one when another proxy or load balancer in
 front of this server already terminates TLS.
+
+**With SSH access** (optional, off by default): lets a user `ssh` directly
+into a running static environment's own real sshd for pair programming —
+see
+[`docs/ai-agent/environment-management.md`](../docs/ai-agent/environment-management.md)'s
+"Terminal / SSH Access" section and
+[`deploy/helm/README.md`'s own "SSH access" section](helm/README.md#ssh-access)
+for the Kubernetes/Helm equivalent (same feature, same underlying Go code
+in `agent-runner`, on both deployment targets). Each environment's SSH
+port is published as a native Docker `-p` binding straight onto this
+host — `agent-runner` decides which host port to assign, but nothing
+relays traffic through its own process, so a real `ssh` client's full
+feature set (agent forwarding, SFTP, further port-forwards) all just
+work. Enabling it is setting a port range:
+
+```bash
+SSH_BASTION_PORT_RANGE_START=2200
+SSH_BASTION_PORT_RANGE_END=2299
+```
+
+A user connects with `ssh -p <port> root@<this-host>` once an environment
+is `running` — its own Connect page shows the exact port once one's
+assigned. Authentication is a public key they've already registered there,
+pushed straight into that environment's own `authorized_keys`. Each
+environment's sshd host key lives on that environment's own persisted
+workspace volume, so it survives restarts the same way its files do — no
+separate bastion-wide volume to lose. Leaving
+`SSH_BASTION_PORT_RANGE_START`/`_END` unset (the default) means no
+environment is ever assigned a port and nothing is ever published for it.
+
+**With port forwarding** (optional, off by default): lets a user expose
+any container port inside a running static environment (their own dev
+server, most commonly) at `<this-host>:<host_port>` — the exact same
+native-publish mechanism as SSH access above, just for a user-managed,
+one-to-many set of forwards a user adds from the environment's Connect
+page instead of a single auto-created port. See
+[`docs/ai-agent/environment-management.md`](../docs/ai-agent/environment-management.md)'s
+"Port Forwarding" section. Enabling it is the same shape as SSH access, a
+disjoint port range so the two can never collide:
+
+```bash
+PORT_FORWARD_RANGE_START=2300
+PORT_FORWARD_RANGE_END=2399
+```
+
+Adding or removing a forward on a running environment requires clicking
+"Restart" on its Connect page to apply — Docker has no way to add or
+remove a `-p` binding on an already-running container, so the environment
+is stopped, recreated from its same persisted volume (no data lost), and
+started again with the updated set of published ports.
 
 **With external PostgreSQL** (suppress the bundled container):
 
@@ -437,6 +490,16 @@ and use Docker Compose only for PostgreSQL and Valkey.
 | Web | 3000 (internal) | Routed via gateway at `/` |
 | MinIO S3 API | 9000 | Local object store (S3-compatible) |
 | MinIO Console | 9001 | MinIO web UI (credentials: `minioadmin` / `minioadmin`) |
+| Static environment SSH | 2200-2299 | One port per running environment, on by default in dev — see the warning below |
+| Static environment port forwards | 2300-2399 | One port per user-added forward, on by default in dev — see the warning below |
+
+Unlike `docker-compose.prod.yml` (opt-in, empty by default), the two ranges
+above are **on by default** in dev for convenience. Docker publishes them
+on `0.0.0.0`, so any environment you create against this dev stack is
+reachable from your whole LAN, not just `localhost`, for as long as it's
+running — fine on a trusted network, but worth knowing. Set
+`SSH_BASTION_PORT_RANGE_START`/`_END` and `PORT_FORWARD_RANGE_START`/`_END`
+empty in a local `.env` override if that's not your situation.
 
 ### Database backups (dev)
 

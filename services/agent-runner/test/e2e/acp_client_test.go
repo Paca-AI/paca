@@ -20,7 +20,7 @@ import (
 //
 // Unlike that program (which expected an operator to hand it an
 // already-running container's baseURL/secretKey), this test starts its own
-// container via sandbox.Manager — the same production container-lifecycle
+// container via docker.Manager — the same production container-lifecycle
 // code internal/sandbox/livecheck (see sandbox_manager_test.go) already
 // exercises directly, rather than a second, testcontainers-driven
 // reimplementation of `goose serve`'s invocation that could drift from it.

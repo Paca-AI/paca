@@ -1,0 +1,16 @@
+{{- if .Values.web.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - port: 3000
+      targetPort: http
+      name: http
+{{- end }}

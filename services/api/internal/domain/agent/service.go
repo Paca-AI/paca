@@ -115,8 +115,8 @@ type ConversationService interface {
 	// only by their chat-session owner).
 	GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
-	// StopConversation durably stops the conversation and asks its executor to
-	// interrupt any active work. memberID gates ownership (see GetConversation).
+	// StopConversation interrupts (if running) and permanently tears down the
+	// conversation's sandbox. memberID gates ownership (see GetConversation).
 	StopConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
 	// PauseConversation interrupts the in-flight turn only — the sandbox
 	// stays alive and the conversation can be replied to again once it pauses.
@@ -153,7 +153,12 @@ type ConversationService interface {
 // ChatSessionService defines chat session use cases.
 type ChatSessionService interface {
 	ListChatSessions(ctx context.Context, projectID, agentID, memberID uuid.UUID) ([]*AgentChatSession, error)
-	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*AgentChatSession, *AgentConversation, error)
+	// StartChatSession creates a new chat session and its first conversation.
+	// environmentID/folderID are optional (nil means "no override" —
+	// environmentID falls back to the agent's own DefaultEnvironmentID;
+	// folderID auto-selects if the resolved environment has exactly one
+	// folder). See environmentdom.EnvironmentService.ResolveConversationWorkdir.
+	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID) (*AgentChatSession, *AgentConversation, error)
 	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*AgentConversation, error)
 	ListChatMessages(ctx context.Context, sessionID, memberID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
 
@@ -192,8 +197,16 @@ type CreateAgentInput struct {
 	TimeoutMinutes    int
 	GitCommitterName  string
 	GitCommitterEmail string
-	ProjectRoleID     uuid.UUID
-	CreatedBy         *uuid.UUID
+	DockerEnabled     bool
+	// DefaultEnvironmentID, when set, must belong to the same project this
+	// agent is being created in — see Agent.DefaultEnvironmentID's doc
+	// comment. Rejected by CreateAgent for AgentScopeGlobal agents (there is
+	// no AgentScope field here because CreateAgentInput is only ever used
+	// for project-scoped creation — CreateGlobalAgentInput is its own type
+	// below, and deliberately has no DefaultEnvironmentID field at all).
+	DefaultEnvironmentID *uuid.UUID
+	ProjectRoleID        uuid.UUID
+	CreatedBy            *uuid.UUID
 }
 
 // CreateGlobalAgentInput carries fields required to create a global agent.
@@ -215,6 +228,7 @@ type CreateGlobalAgentInput struct {
 	TimeoutMinutes    int
 	GitCommitterName  string
 	GitCommitterEmail string
+	DockerEnabled     bool
 	GlobalRoleID      *uuid.UUID
 	CreatedBy         *uuid.UUID
 }
@@ -234,9 +248,20 @@ type UpdateAgentInput struct {
 	TimeoutMinutes    *int
 	GitCommitterName  *string
 	GitCommitterEmail *string
+	DockerEnabled     *bool
 	// GlobalRoleID is only meaningful for AgentScopeGlobal agents (see
 	// UpdateGlobalAgent); ignored by UpdateAgent for project-scoped agents.
 	GlobalRoleID *uuid.UUID
+	// DefaultEnvironmentID: nil means "the request didn't mention
+	// default_environment_id — leave it unchanged" (a JSON body with the
+	// key absent, or explicit null, decode to the same nil pointer either
+	// way); a pointer to uuid.Nil explicitly clears it — same
+	// "pass a zero UUID to clear" convention GlobalRoleID above already
+	// uses, for the identical reason (a plain pointer can't otherwise tell
+	// "omitted" from "explicit null"). Ignored by UpdateGlobalAgent — a
+	// global agent can never have a default environment (see
+	// Agent.DefaultEnvironmentID's doc comment).
+	DefaultEnvironmentID *uuid.UUID
 }
 
 // AddMCPServerInput carries fields to add an MCP server.

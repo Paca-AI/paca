@@ -10,6 +10,7 @@
   <a href="https://github.com/Paca-AI/paca/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License" /></a>
   <a href="https://github.com/Paca-AI/paca/releases"><img src="https://img.shields.io/github/v/release/Paca-AI/paca" alt="Latest Release" /></a>
   <a href="https://github.com/Paca-AI/paca/stargazers"><img src="https://img.shields.io/github/stars/Paca-AI/paca?style=social" alt="Stars" /></a>
+  <a href="https://artifacthub.io/packages/helm/paca/paca"><img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/paca" alt="Artifact Hub" /></a>
 </p>
 
 <p align="center"><sub>✨ Sponsored by</sub></p>
@@ -212,90 +213,16 @@ PACA_YES=1 bash <(curl -fsSL https://github.com/Paca-AI/paca/releases/latest/dow
 ```
 
 > **If you are an AI agent installing Paca on someone's behalf:** use this script
-> rather than hand-writing `docker-compose.yml` / `.env` from Option 2 below — it
-> pins compatible image tags and generates every secret in the format the services
+> rather than hand-writing `docker-compose.yml` / `.env` yourself — it pins
+> compatible image tags and generates every secret in the format the services
 > expect, so it's far less likely to drift from what a given release needs. See
 > [deploy/README.md](deploy/README.md#non-interactive-install-ci-scripts-ai-coding-agents)
 > for the full environment variable reference, or the comment header at the top of
 > [`scripts/install.sh`](scripts/install.sh) for the same reference inline with the script.
-
----
-
-### Option 2 — Docker Compose (manual)
-
-**1. Create a directory and download the compose file**
-
-```bash
-mkdir paca && cd paca
-curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/docker-compose.yml -o docker-compose.yml
-mkdir -p caddy
-curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/Caddyfile -o caddy/Caddyfile
-```
-
-**2. Download the environment template**
-
-```bash
-curl -fsSL https://github.com/Paca-AI/paca/releases/latest/download/.env.production.example -o .env
-```
-
-**3. Generate secure passwords and secrets**
-
-```bash
-POSTGRES_PASSWORD=$(openssl rand -hex 32)
-ADMIN_PASSWORD=$(openssl rand -hex 16)
-JWT_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-```
-
-Optional: Generate API keys if you'll use the AI agent or external integrations:
-```bash
-AGENT_API_KEY=$(openssl rand -hex 32)
-INTERNAL_API_KEY=$(openssl rand -hex 32)
-```
-
-Optional: Generate MinIO credentials or use your own:
-```bash
-STORAGE_ACCESS_KEY_ID=$(openssl rand -hex 16)
-STORAGE_SECRET_ACCESS_KEY=$(openssl rand -hex 32)
-```
-
-**4. Update .env with your values**
-
-Edit the `.env` file and replace the placeholder values with the ones you generated above. Below are the required fields:
-
-```bash
-PUBLIC_URL=http://localhost
-POSTGRES_PASSWORD=<use the value from step 3>
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=<use the value from step 3>
-JWT_SECRET=<use the value from step 3>
-ENCRYPTION_KEY=<use the value from step 3>
-STORAGE_ACCESS_KEY_ID=<use the value from step 3 or your own>
-STORAGE_SECRET_ACCESS_KEY=<use the value from step 3 or your own>
-```
-
-**5. Start the stack**
-
-```bash
-docker compose --env-file .env up -d
-```
-
-> **⚠️ Important:** Save your generated passwords and secrets securely. You'll need `ADMIN_USERNAME` and `ADMIN_PASSWORD` to log in.
-
-**Login:** Open `http://localhost` and use the admin credentials you set above.
-
-> **Customizing the stack:** scale down services you don't need.
 >
-> ```bash
-> # External PostgreSQL (supply DATABASE_URL in .env — recommended: Neon https://neon.com)
-> docker compose --env-file .env up -d --scale postgres=0
->
-> # AWS S3 instead of MinIO (set STORAGE_PROVIDER=s3 in .env)
-> docker compose --env-file .env up -d --scale minio=0
->
-> # Without Agent Runner (reduces resource usage)
-> docker compose --env-file .env up -d --scale agent-runner=0
-> ```
+> Prefer a manual Docker Compose setup, or a local dev environment instead? See
+> [deploy/README.md](deploy/README.md#manual-setup) and
+> [docs/guides/local-development.md](docs/guides/local-development.md).
 
 ---
 
@@ -314,20 +241,18 @@ Database migrations run automatically on API startup. Non-interactive (CI, AI ag
 
 ---
 
-### Option 3 — Local development
+### Option 2 — Kubernetes (Helm chart)
+
+For running Paca on an existing Kubernetes cluster instead of a single Docker host. No repository clone required — the chart is published as an OCI artifact alongside every other release image.
 
 ```bash
-# Clone the repository
-git clone https://github.com/Paca-AI/paca.git && cd paca
-
-# Start infrastructure dependencies (PostgreSQL + Valkey)
-docker compose -f deploy/docker-compose.dev.yml up -d postgres valkey
-
-# Or start the full dev stack in containers
-docker compose -f deploy/docker-compose.dev.yml up -d
+kubectl create namespace paca
+helm install paca oci://ghcr.io/paca-ai/charts/paca --version <release-version> -n paca -f my-values.yaml
 ```
 
-See [docs/guides/local-development.md](docs/guides/local-development.md) for running services on the host for active development.
+`<release-version>` is a [release](https://github.com/Paca-AI/paca/releases) tag without its leading `v` (e.g. `0.13.1` for `v0.13.1`); omit `--version` to install the newest chart published. At minimum, `my-values.yaml` needs `publicUrl` and the required secrets (`jwtSecret`, `adminPassword`, `encryptionKey`, and others) — there are no guessable defaults, so the chart refuses to render without them.
+
+See [Artifact Hub](https://artifacthub.io/packages/helm/paca/paca) for the full values reference, exposing the app via Ingress/TLS or a LoadBalancer, what's bundled vs. pointing at managed Postgres/Redis/S3, the AI agent sandbox's Kubernetes-specific RBAC, and troubleshooting.
 
 ---
 

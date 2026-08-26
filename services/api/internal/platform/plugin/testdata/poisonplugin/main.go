@@ -26,7 +26,7 @@ var offset uint32 = 4096
 // fixture intentionally does not protect itself, since the bug under test is
 // about the host's behavior when that happens.
 //
-//go:wasmexport malloc
+//go:wasmexport paca_malloc
 func malloc(size uint32) uint32 {
 	ptr := offset
 	offset += size

@@ -14,6 +14,7 @@ import (
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
+	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	globalroledom "github.com/Paca-AI/api/internal/domain/globalrole"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	pluginom "github.com/Paca-AI/api/internal/domain/plugin"
@@ -369,6 +370,41 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentEnvVarKeyInvalid
 	case errors.Is(err, agentdom.ErrEnvVarKeyReserved):
 		return http.StatusBadRequest, apierr.CodeAgentEnvVarKeyReserved
+	case errors.Is(err, agentdom.ErrDefaultEnvironmentInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentDefaultEnvironmentInvalid
+	// --- Environment errors -------------------------------------------------
+	case errors.Is(err, environmentdom.ErrEnvironmentNotFound):
+		return http.StatusNotFound, apierr.CodeEnvironmentNotFound
+	case errors.Is(err, environmentdom.ErrEnvironmentSlugTaken):
+		return http.StatusConflict, apierr.CodeEnvironmentSlugTaken
+	case errors.Is(err, environmentdom.ErrEnvironmentNameInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentNameInvalid
+	case errors.Is(err, environmentdom.ErrEnvironmentNotRunning):
+		return http.StatusConflict, apierr.CodeEnvironmentNotRunning
+	case errors.Is(err, environmentdom.ErrEnvironmentBusy):
+		return http.StatusConflict, apierr.CodeEnvironmentBusy
+	case errors.Is(err, environmentdom.ErrEnvironmentCPULimitInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentCPULimitInvalid
+	case errors.Is(err, environmentdom.ErrEnvironmentMemoryLimitInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentMemoryLimitInvalid
+	case errors.Is(err, environmentdom.ErrFolderNotFound):
+		return http.StatusNotFound, apierr.CodeEnvironmentFolderNotFound
+	case errors.Is(err, environmentdom.ErrFolderPathTaken):
+		return http.StatusConflict, apierr.CodeEnvironmentFolderPathTaken
+	case errors.Is(err, environmentdom.ErrFolderPathInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentFolderPathInvalid
+	case errors.Is(err, environmentdom.ErrSSHKeyNotFound):
+		return http.StatusNotFound, apierr.CodeEnvironmentSSHKeyNotFound
+	case errors.Is(err, environmentdom.ErrSSHKeyInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentSSHKeyInvalid
+	case errors.Is(err, environmentdom.ErrSSHKeyFingerprintTaken):
+		return http.StatusConflict, apierr.CodeEnvironmentSSHKeyFingerprintTaken
+	case errors.Is(err, environmentdom.ErrPortForwardNotFound):
+		return http.StatusNotFound, apierr.CodeEnvironmentPortForwardNotFound
+	case errors.Is(err, environmentdom.ErrPortForwardContainerPortInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentPortForwardContainerPortInvalid
+	case errors.Is(err, environmentdom.ErrPortForwardContainerPortTaken):
+		return http.StatusConflict, apierr.CodeEnvironmentPortForwardContainerPortTaken
 	// --- Automation errors -----------------------------------------------------
 	case errors.Is(err, automationdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeAutomationNotFound
@@ -584,7 +620,27 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentEnvVarKeyReserved,
 		apierr.CodeAgentSkillNameReserved,
 		apierr.CodeAgentNotSupportedForACPAgent,
-		apierr.CodeAgentConversationInvalidCursor:
+		apierr.CodeAgentConversationInvalidCursor,
+		apierr.CodeAgentDefaultEnvironmentInvalid:
+		return http.StatusBadRequest
+	case apierr.CodeEnvironmentNotFound,
+		apierr.CodeEnvironmentFolderNotFound,
+		apierr.CodeEnvironmentSSHKeyNotFound,
+		apierr.CodeEnvironmentPortForwardNotFound:
+		return http.StatusNotFound
+	case apierr.CodeEnvironmentSlugTaken,
+		apierr.CodeEnvironmentBusy,
+		apierr.CodeEnvironmentNotRunning,
+		apierr.CodeEnvironmentFolderPathTaken,
+		apierr.CodeEnvironmentSSHKeyFingerprintTaken,
+		apierr.CodeEnvironmentPortForwardContainerPortTaken:
+		return http.StatusConflict
+	case apierr.CodeEnvironmentNameInvalid,
+		apierr.CodeEnvironmentFolderPathInvalid,
+		apierr.CodeEnvironmentSSHKeyInvalid,
+		apierr.CodeEnvironmentPortForwardContainerPortInvalid,
+		apierr.CodeEnvironmentCPULimitInvalid,
+		apierr.CodeEnvironmentMemoryLimitInvalid:
 		return http.StatusBadRequest
 	case apierr.CodeAutomationNotFound,
 		apierr.CodeAutomationNodeNotFound,

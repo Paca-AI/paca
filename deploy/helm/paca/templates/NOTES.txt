@@ -1,0 +1,37 @@
+Paca has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+{{- if .Values.ingress.enabled }}
+
+Once DNS points {{ .Values.ingress.host }} at your ingress controller, the app will be reachable at:
+  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else if eq .Values.gateway.service.type "LoadBalancer" }}
+
+Find the gateway's external address with:
+  kubectl get svc {{ include "paca.fullname" . }}-gateway -n {{ .Release.Namespace }} -w
+{{- else }}
+
+The gateway is only reachable inside the cluster (gateway.service.type: {{ .Values.gateway.service.type }}). Port-forward to reach it locally:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "paca.fullname" . }}-gateway 8080:{{ .Values.gateway.service.port }}
+then open http://localhost:8080
+{{- end }}
+
+{{- if .Values.agentRunner.enabled }}
+
+{{- if eq .Values.agentRunner.sandbox.backend "kubernetes" }}
+
+AI agent sandbox: agent-runner runs each conversation as a Kubernetes Job in namespace
+"{{ include "paca.sandboxNamespace" . }}". Watch sandbox Jobs with:
+  kubectl get jobs -n {{ include "paca.sandboxNamespace" . }} -l paca.ai/managed-by=agent-runner -w
+{{- else }}
+
+AI agent sandbox: agentRunner.sandbox.backend is "docker" — agent-runner needs a Docker
+socket on whichever node it schedules onto (see values.yaml's own doc comment on that
+setting; "kubernetes" is the right choice for most clusters).
+{{- end }}
+{{- end }}
+
+Log in with the admin account you configured:
+  username: {{ .Values.api.admin.username }}
+  password: (secrets.adminPassword — check your values file)
+
+See deploy/helm/README.md for upgrade instructions and what to do if a component doesn't come up.

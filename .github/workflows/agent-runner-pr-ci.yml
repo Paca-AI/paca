@@ -165,8 +165,8 @@ jobs:
       # upstream image directly, not paca-agent-server-goose:e2e — and the
       # build step above doesn't warm the classic Docker image store with it:
       # docker/build-push-action's default buildx driver fetches FROM's base
-      # layers into BuildKit's own content store, which sandbox.Manager's
-      # ImageList-based cache check (internal/sandbox/sandbox.go's
+      # layers into BuildKit's own content store, which docker.Manager's
+      # ImageList-based cache check (internal/sandbox/docker/manager.go's
       # ensureImage) can't see. Without this, the first such test to run pays
       # a full registry pull inline against its own 60s test context — and
       # that pull, plus the same image getting pulled again if the first

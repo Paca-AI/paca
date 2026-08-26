@@ -356,6 +356,7 @@ export const BUILTIN_FIELDS = [
 	{ key: "story_points", labelKey: "viewUtils.fields.storyPoints" },
 	{ key: "type", labelKey: "viewUtils.fields.type" },
 	{ key: "epic", labelKey: "viewUtils.fields.epic" },
+	{ key: "tags", labelKey: "viewUtils.fields.tags" },
 	{ key: "reporter", labelKey: "viewUtils.fields.reporter" },
 	{ key: "start_date", labelKey: "viewUtils.fields.startDate" },
 	{ key: "due_date", labelKey: "viewUtils.fields.dueDate" },

@@ -1,0 +1,26 @@
+apiVersion: v2
+name: paca
+description: Paca — self-hosted AI-powered project management, deployed on Kubernetes.
+type: application
+version: 0.1.0
+# Tracks the latest Paca release these defaults were verified against —
+# bump alongside deploy/docker-compose.prod.yml's own image tags, not
+# independently. See .github/workflows/cd.yml for where these images are
+# published.
+appVersion: "latest"
+home: https://github.com/Paca-AI/paca
+icon: https://raw.githubusercontent.com/Paca-AI/paca/master/docs/assets/paca-logo.svg
+sources:
+  - https://github.com/Paca-AI/paca
+keywords:
+  - project-management
+  - ai-agents
+  - self-hosted
+maintainers:
+  - name: Paca AI
+    url: https://github.com/Paca-AI
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/Paca-AI/paca/blob/master/deploy/helm/README.md

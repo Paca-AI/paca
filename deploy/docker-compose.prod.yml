@@ -28,6 +28,48 @@
 #   PACA_REALTIME_IMAGE=pacaai/paca-realtime:1.2.3
 #   PACA_AGENT_RUNNER_IMAGE=pacaai/paca-agent-runner:1.2.3
 #
+# ── SSH access (optional) ──────────────────────────────────────────────────────
+# Lets a user `ssh -p <port> root@<this-host>` straight into a running
+# static environment's own real sshd — a dedicated port per environment,
+# published as a native Docker -p binding straight on this host (no relay,
+# nothing routed through agent-runner's own process) — see
+# docs/ai-agent/environment-management.md's "Terminal / SSH Access"
+# section. Off by default: agent-runner's own SSH_BASTION_PORT_RANGE_START/
+# _END are empty below, so no port is ever assigned to an environment and
+# nothing is ever published for it. To opt in:
+#   SSH_BASTION_PORT_RANGE_START=2200
+#   SSH_BASTION_PORT_RANGE_END=2299
+#   SSH_BASTION_HOST=ssh.paca.example.com
+# A user registers their public key on the environment's own SSH Keys tab
+# before connecting — it's pushed straight into that environment's own
+# authorized_keys, no server-side change needed there. Each environment's
+# own host key lives on its own persisted workspace volume (not a separate
+# bastion-wide one), so it survives restarts the same way its files do.
+# SSH_BASTION_HOST is purely descriptive (services/api never itself routes
+# SSH traffic) — it's what the web app's Connect page shows as the host
+# half of the `ssh -p <port> root@<host>` command; point it at wherever
+# this host's own public address/DNS name actually is. Leaving it unset
+# still lets SSH work, it just means the web app shows a placeholder host
+# the user has to fill in themselves.
+#
+# ── Port forwarding (optional) ─────────────────────────────────────────────────
+# Lets a user expose any container port inside a running static
+# environment (their own dev server, most commonly) at
+# "<this-host>:<host_port>" — the exact same "one dedicated port per
+# environment, natively published" mechanism as SSH access above, just for
+# a user-managed, one-to-many set of forwards instead of the single
+# auto-created SSH port. Added/removed from the environment's Connect page
+# in the web app; a running environment must be restarted from there to
+# actually apply a change (Docker can't add/remove a -p binding on an
+# already-running container). Off by default, same convention as SSH
+# access. To opt in:
+#   PORT_FORWARD_RANGE_START=2300
+#   PORT_FORWARD_RANGE_END=2399
+#   PORT_FORWARD_HOST=paca.example.com
+# A disjoint range from SSH_BASTION_PORT_RANGE_START/_END above so the two
+# can never collide. PORT_FORWARD_HOST is purely descriptive, same
+# reasoning as SSH_BASTION_HOST.
+#
 # ── External PostgreSQL ────────────────────────────────────────────────────────
 # Set DATABASE_URL to your managed connection string and add --scale postgres=0
 # to suppress the bundled container:
@@ -214,6 +256,17 @@ services:
       # Authenticates the reverse direction. Must match INTERNAL_API_KEY in
       # the agent-runner service.
       AI_AGENT_INTERNAL_KEY: ${INTERNAL_API_KEY:-}
+      # Purely descriptive — services/api never publishes either of these
+      # ports itself, it only echoes them back via GET /environments/config
+      # so the frontend can show a real `ssh` command / port-forward
+      # address instead of a placeholder host. Set to the exact same values
+      # as the agent-runner service's own SSH_BASTION_HOST/PORT_FORWARD_HOST
+      # below (see the "SSH access"/"Port forwarding" comment blocks near
+      # the top of this file) — left unset (the default) here is safe even
+      # when those features ARE enabled elsewhere, it just means the
+      # frontend falls back to a placeholder host.
+      SSH_BASTION_HOST: ${SSH_BASTION_HOST:-}
+      PORT_FORWARD_HOST: ${PORT_FORWARD_HOST:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -298,7 +351,7 @@ services:
   # Every sandbox container this spins up runs as root (see
   # services/agent-server/Dockerfile) and, via a dedicated `docker:dind`
   # sidecar this service also creates per conversation (see
-  # internal/sandbox/dind.go), can run arbitrary Docker containers of its
+  # internal/sandbox/docker/dind.go), can run arbitrary Docker containers of its
   # own — network-isolated from the host's real Docker daemon and from
   # every other conversation's sidecar, but still a meaningfully broad
   # capability handed to whatever an agent's own LLM decides to do. Run
@@ -307,6 +360,15 @@ services:
   agent-runner:
     image: ${PACA_AGENT_RUNNER_IMAGE:-pacaai/paca-agent-runner:latest}
     restart: unless-stopped
+    # No ports: block here, deliberately — unlike an earlier in-process
+    # relay design, this service's own container never listens on the SSH/
+    # port-forward range at all. Each environment container publishes its
+    # own assigned port directly (a native Docker -p binding, applied when
+    # this service calls the Engine API over the mounted docker.sock
+    # below), which the daemon binds on this same host's real interfaces
+    # regardless of which container asked for it — see the "SSH access"/
+    # "Port forwarding" comment blocks near the top of this file for the
+    # ranges those bindings are picked from.
     environment:
       VALKEY_URL: ${REDIS_URL:-redis://valkey:6379/0}
       DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-paca}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-paca}?sslmode=disable}
@@ -339,10 +401,27 @@ services:
       # Must match ENCRYPTION_KEY in the api service so that LLM API keys
       # stored encrypted in the database can be decrypted before use.
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # SSH access (optional, off by default) — see the "SSH access"
+      # comment block near the top of this file. Empty
+      # SSH_BASTION_PORT_RANGE_START/_END (the default) means
+      # handleCreateEnvironment never assigns an environment a port and
+      # nothing is ever published for it. Read by Go's plain os.Getenv,
+      # which treats unset and empty-string identically, so a normal
+      # "${VAR:-default}" default is safe here. There's no separate
+      # host-key volume to mount — each environment's own sshd host key
+      # lives on that environment's own persisted workspace volume
+      # instead.
+      SSH_BASTION_PORT_RANGE_START: ${SSH_BASTION_PORT_RANGE_START:-}
+      SSH_BASTION_PORT_RANGE_END: ${SSH_BASTION_PORT_RANGE_END:-}
+      # Port forwarding (optional, off by default) — see the "Port
+      # forwarding" comment block near the top of this file. Same "empty
+      # means off" convention as SSH access above.
+      PORT_FORWARD_RANGE_START: ${PORT_FORWARD_RANGE_START:-}
+      PORT_FORWARD_RANGE_END: ${PORT_FORWARD_RANGE_END:-}
     volumes:
       # Sibling-container mode — also how this service spins up each
       # conversation's dedicated `docker:dind` sidecar (see this service's
-      # own doc comment above and internal/sandbox/dind.go), not just the
+      # own doc comment above and internal/sandbox/docker/dind.go), not just the
       # sandbox container itself.
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

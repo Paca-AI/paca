@@ -73,9 +73,6 @@ export type ThreadComponents = {
 	/** Rendered at the start of the composer's action row (left of the mic/send
 	 * controls) — e.g. an agent picker shown inline while starting a new chat. */
 	ComposerStart?: ComponentType | undefined;
-	/** Accessible label for the composer Cancel action. Callers can distinguish
-	 * an interrupt/pause from a separate durable conversation stop control. */
-	ComposerCancelLabel?: string | undefined;
 	ToolFallback?: ToolCallMessagePartComponent | undefined;
 	ToolGroup?:
 		| ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
@@ -103,12 +100,26 @@ export type ThreadProps = {
 	 * overrides a caller that is positioning the scroll itself.
 	 */
 	scrollToBottomOnRunStart?: boolean | undefined;
+	/**
+	 * Whether the sandbox/session backing this thread is confirmed ready to
+	 * run a turn (a fresh sandbox finished starting, an ACP local-bridge
+	 * conversation — which has no sandbox to start — or a resumed session).
+	 * Governs the empty-message indicator's wording: "setting up your
+	 * environment" beforehand, "thinking" after. Callers derive this from
+	 * `hasEnvironmentReadyEvent`/`isACP`; defaults to `false` (the more
+	 * conservative "still setting up" reading) so a caller that hasn't
+	 * wired this up yet doesn't claim readiness it can't back up.
+	 */
+	environmentReady?: boolean | undefined;
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext =
 	createContext<ThreadComponents>(EMPTY_COMPONENTS);
+const ThreadStatusContext = createContext<{ environmentReady: boolean }>({
+	environmentReady: false,
+});
 
 // Startup exposes a loading placeholder thread; treat it as a new chat so
 // the composer mounts centered. Loads after startup keep the docked layout.
@@ -122,18 +133,21 @@ export const Thread: FC<ThreadProps> = ({
 	viewportOverlay,
 	turnAnchor = "top",
 	scrollToBottomOnRunStart = true,
+	environmentReady = false,
 }) => {
 	const isEmpty = useAuiState(isNewChatView);
 
 	return (
 		<ThreadComponentsContext.Provider value={components}>
-			<ThreadRoot
-				isEmpty={isEmpty}
-				viewportHeader={viewportHeader}
-				viewportOverlay={viewportOverlay}
-				turnAnchor={turnAnchor}
-				scrollToBottomOnRunStart={scrollToBottomOnRunStart}
-			/>
+			<ThreadStatusContext.Provider value={{ environmentReady }}>
+				<ThreadRoot
+					isEmpty={isEmpty}
+					viewportHeader={viewportHeader}
+					viewportOverlay={viewportOverlay}
+					turnAnchor={turnAnchor}
+					scrollToBottomOnRunStart={scrollToBottomOnRunStart}
+				/>
+			</ThreadStatusContext.Provider>
 		</ThreadComponentsContext.Provider>
 	);
 };
@@ -312,9 +326,7 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
 	const { t } = useTranslation("projects");
-	const { ComposerStart, ComposerCancelLabel } = useContext(
-		ThreadComponentsContext,
-	);
+	const { ComposerStart } = useContext(ThreadComponentsContext);
 	return (
 		<div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
 			{ComposerStart ? <ComposerStart /> : <div />}
@@ -380,10 +392,7 @@ const ComposerAction: FC = () => {
 								variant="default"
 								size="icon"
 								className="aui-composer-cancel size-7 rounded-full"
-								aria-label={
-									ComposerCancelLabel ??
-									t("agents.thread.stopGeneratingAriaLabel")
-								}
+								aria-label={t("agents.thread.stopGeneratingAriaLabel")}
 							/>
 						}
 					>
@@ -412,6 +421,17 @@ const AssistantMessage: FC = () => {
 		ToolGroup,
 		ReasoningGroup,
 	} = useContext(ThreadComponentsContext);
+	// A message with zero parts and no content yet is the optimistic
+	// placeholder assistant-ui's external-store runtime synthesizes while
+	// `isRunning` is true but nothing assistant-authored has arrived (queued
+	// conversation, or a sandbox still spinning up before its first ACP
+	// event) — see hasUpcomingMessage in
+	// @assistant-ui/core's external-store-thread-runtime-core. Distinguished
+	// from a real in-progress message that merely ended on a tool call (also
+	// "no-text" mode, but has parts already), which should keep showing the
+	// plain working dot rather than claim the environment is still starting.
+	const hasNoParts = useAuiState((s) => s.message.parts.length === 0);
+	const { environmentReady } = useContext(ThreadStatusContext);
 
 	// reserves space for action bar and compensates with `-mb` for consistent msg spacing
 	// keeps hovered action bar from shifting layout (autohide doesn't support absolute positioning well)
@@ -479,7 +499,17 @@ const AssistantMessage: FC = () => {
 							case "data":
 								return part.dataRendererUI;
 							case "indicator":
-								return (
+								return hasNoParts ? (
+									<span
+										data-slot="aui_assistant-message-indicator"
+										role="status"
+										className="animate-pulse text-muted-foreground"
+									>
+										{environmentReady
+											? t("agents.thread.thinking")
+											: t("agents.thread.environmentInitializing")}
+									</span>
+								) : (
 									<span
 										data-slot="aui_assistant-message-indicator"
 										role="status"

@@ -1,8 +1,8 @@
 // dind.go gives every conversation's sandbox container access to Docker —
 // not by mounting this process's own /var/run/docker.sock the way this
 // process reaches the Docker host that runs sandboxes in the first place
-// (see Config's doc comment on that being sibling-container/DooD, not
-// Docker-in-Docker): doing that inside the sandbox too would hand a
+// (see sandbox.Config's doc comment on that being sibling-container/DooD,
+// not Docker-in-Docker): doing that inside the sandbox too would hand a
 // conversation root-equivalent control over the very same Docker host that
 // runs every other conversation's sandbox, plus this process itself.
 // Instead, every conversation gets its own dedicated `docker:dind` sidecar
@@ -14,7 +14,7 @@
 // end to end — image pull, container run, log streaming, all the way
 // through — and a second, separately-networked sidecar had no visibility
 // into the first's containers at all.
-package sandbox
+package docker
 
 import (
 	"context"
@@ -24,17 +24,11 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+
+	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
 const (
-	// dindImage is pinned by digest for the same full-immutability reason
-	// services/agent-server/Dockerfile pins the goose base image (see that
-	// file's doc comment) — a tag can be force-moved upstream, a digest
-	// can't. Resolved directly from docker:27-dind at the time this was
-	// written (`docker pull docker:27-dind && docker inspect ... {{index
-	// .RepoDigests 0}}`); rotate the same way, not by editing this by hand.
-	dindImage = "docker:27-dind@sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce"
-
 	// dindAPIPort is where dockerd listens for the Engine API inside the
 	// sidecar once DOCKER_TLS_CERTDIR is cleared (see startDindSidecar) —
 	// 2375 is the plaintext port; 2376 (TLS) is left unused since network
@@ -94,14 +88,19 @@ type dindSidecar struct {
 // Engine API is reachable only by the one sandbox container Start's caller
 // attaches to the same network afterward.
 //
-// Blocks until dockerd inside the sidecar is actually answering `docker
-// info`, so callers never hand a conversation a DOCKER_HOST that isn't live
-// yet. On any failure partway through, tears down whatever it already
-// created before returning — callers don't need their own partial-failure
-// cleanup for this pairing the way Start's own cleanup() already doesn't
-// need to know about it on success.
+// Does NOT wait for dockerd inside the sidecar to actually answer `docker
+// info` — that used to be blocking here, but Start now runs that wait
+// (waitForDindReady) concurrently with its own sandbox container's boot
+// instead, since the two don't depend on each other (see Start's doc
+// comment on the sidecar/dindReady goroutine). Callers that need a live
+// dockerd before returning must call waitForDindReady themselves.
+//
+// On any failure partway through, tears down whatever it already created
+// before returning — callers don't need their own partial-failure cleanup
+// for this pairing the way Start's own cleanup() already doesn't need to
+// know about it on success.
 func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (sidecar *dindSidecar, err error) {
-	if err := m.ensureImage(ctx, dindImage); err != nil {
+	if err := m.ensureImage(ctx, sandbox.DindImage); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +109,7 @@ func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (
 		Labels: map[string]string{labelConvID: conversationID, labelManaged: "true"},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sandbox: create conversation network: %w", err)
+		return nil, fmt.Errorf("sandbox/docker: create conversation network: %w", err)
 	}
 	sidecar = &dindSidecar{networkID: netResult.ID}
 	defer func() {
@@ -122,7 +121,7 @@ func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (
 	created, err := m.docker.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Name: dindContainerName(conversationID),
 		Config: &container.Config{
-			Image: dindImage,
+			Image: sandbox.DindImage,
 			Env:   []string{"DOCKER_TLS_CERTDIR="},
 			Labels: map[string]string{
 				labelConvID:  conversationID,
@@ -144,30 +143,26 @@ func (m *Manager) startDindSidecar(ctx context.Context, conversationID string) (
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sandbox: create dind sidecar: %w", err)
+		return nil, fmt.Errorf("sandbox/docker: create dind sidecar: %w", err)
 	}
 	sidecar.containerID = created.ID
 
 	if _, err = m.docker.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
-		return nil, fmt.Errorf("sandbox: start dind sidecar: %w", err)
-	}
-
-	if err = m.waitForDindReady(ctx, created.ID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sandbox/docker: start dind sidecar: %w", err)
 	}
 
 	return sidecar, nil
 }
 
 // waitForDindReady polls by exec'ing `docker info` *inside* the sidecar
-// container instead of reaching it over the network the way waitForReady
-// checks the main sandbox's /status: at this point in Start, nothing else
-// exists to check it from yet — the sandbox container that will actually
-// talk to this sidecar over the network isn't created until after this
-// returns — but Docker's Exec API reaches any running container directly
-// through this process's own daemon connection regardless of container
-// networking, so it needs no network path to exist at all, only the
-// container to be running.
+// container instead of reaching it over the network the way
+// sandbox.WaitForReady checks the main sandbox's /status: at this point in
+// Start, nothing else exists to check it from yet — the sandbox container
+// that will actually talk to this sidecar over the network isn't created
+// until after this returns — but Docker's Exec API reaches any running
+// container directly through this process's own daemon connection
+// regardless of container networking, so it needs no network path to
+// exist at all, only the container to be running.
 func (m *Manager) waitForDindReady(ctx context.Context, containerID string) error {
 	deadline := time.Now().Add(dindReadyTimeout)
 	for time.Now().Before(deadline) {
@@ -180,7 +175,7 @@ func (m *Manager) waitForDindReady(ctx context.Context, containerID string) erro
 		case <-time.After(dindReadyPollEvery):
 		}
 	}
-	return fmt.Errorf("sandbox: dind sidecar %s never became ready after %s", containerID, dindReadyTimeout)
+	return fmt.Errorf("sandbox/docker: dind sidecar %s never became ready after %s", containerID, dindReadyTimeout)
 }
 
 // stopDindSidecar tears down what startDindSidecar created, best-effort

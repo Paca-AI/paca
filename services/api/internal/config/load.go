@@ -100,7 +100,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: PLUGINS_MAX_MEMORY_PAGES: %w", err)
 	}
-	pluginMaxRequestBodyBytes, err := parseInt64(env("PLUGINS_MAX_REQUEST_BODY_BYTES", "10485760"))
+	pluginMaxRequestBodyBytes, err := parseInt64(env("PLUGINS_MAX_REQUEST_BODY_BYTES", "1048576"))
 	if err != nil {
 		return nil, fmt.Errorf("config: PLUGINS_MAX_REQUEST_BODY_BYTES: %w", err)
 	}
@@ -226,6 +226,8 @@ func Load() (*Config, error) {
 		},
 		AIAgentURL:         env("AI_AGENT_URL", "http://ai-agent:8080"),
 		AIAgentInternalKey: aiAgentInternalKey,
+		SSHBastionHost:     env("SSH_BASTION_HOST", ""),
+		PortForwardHost:    env("PORT_FORWARD_HOST", ""),
 	}, nil
 }
 

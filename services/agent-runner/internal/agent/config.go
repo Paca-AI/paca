@@ -24,6 +24,12 @@ type Config struct {
 	TimeoutMinutes    int
 	GitCommitterName  string
 	GitCommitterEmail string
+	// DockerEnabled opts this agent into the per-conversation Docker-in-
+	// Docker sandbox sidecar (see internal/sandbox/docker/dind.go and
+	// internal/sandbox/k8s/dind.go) — off by default, since most agents
+	// never run a Docker command and the sidecar is real per-session
+	// latency and resource cost to pay unconditionally.
+	DockerEnabled bool
 
 	MCPServers []MCPServer
 	Skills     []Skill

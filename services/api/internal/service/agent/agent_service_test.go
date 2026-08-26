@@ -2008,7 +2008,7 @@ func TestStartChatSession_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultSession, resultConv, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello")
+	resultSession, resultConv, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resultSession)
@@ -2280,6 +2280,78 @@ func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
 	assert.True(t, createCalled, "a terminal LLM conversation must create a new conversation")
 	assert.False(t, claimCalled, "must not attempt to claim/resume a terminal LLM conversation")
 	assert.NotEqual(t, oldConvID, resultConv.ID)
+}
+
+// TestSendChatMessage_EnvironmentBackedLLMResumesTerminalConversation mirrors
+// TestSendChatMessage_ACPResumesTerminalConversation for the other case that
+// gets the same terminal-status resume treatment: an LLM conversation
+// attached to a static environment. Unlike
+// TestSendChatMessage_LLMTerminalCreatesNewConversation's plain (no
+// environment) LLM conversation, this must resume in place rather than
+// spin up a new conversation_id — the environment's container outlives the
+// conversation's own terminal status.
+func TestSendChatMessage_EnvironmentBackedLLMResumesTerminalConversation(t *testing.T) {
+	for _, status := range []string{"finished", "failed", "stopped"} {
+		t.Run(status, func(t *testing.T) {
+			projectID := uuid.New()
+			agentID := uuid.New()
+			memberID := uuid.New()
+			sessionID := uuid.New()
+			terminalConvID := uuid.New()
+			environmentID := uuid.New()
+			session := &agentdom.AgentChatSession{
+				ID:        sessionID,
+				AgentID:   agentID,
+				ProjectID: projectID,
+				MemberID:  memberID,
+			}
+			terminal := &agentdom.AgentConversation{
+				ID:            terminalConvID,
+				AgentID:       agentID,
+				ProjectID:     projectID,
+				ChatSessionID: &sessionID,
+				EnvironmentID: &environmentID,
+				Status:        status,
+			}
+
+			createCalled := false
+			var claimedFrom, claimedTo string
+			repo := &mockAgentRepo{
+				findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
+				findChatSessionByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentChatSession, error) {
+					return session, nil
+				},
+				findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+					return terminal, nil
+				},
+				claimConversationStatus: func(_ context.Context, id uuid.UUID, from, to string) (bool, error) {
+					if id != terminalConvID {
+						t.Fatalf("unexpected conversation id claimed: %s", id)
+					}
+					claimedFrom, claimedTo = from, to
+					return true, nil
+				},
+				createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+					createCalled = true
+					return nil
+				},
+				updateChatSession: func(_ context.Context, _ *agentdom.AgentChatSession) error {
+					return nil
+				},
+			}
+			projRepo := &mockProjectRepo{}
+			pluginRepo := &mockPluginRepo{}
+			svc := New(repo, projRepo, nil, pluginRepo)
+
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+
+			assert.NoError(t, err)
+			assert.False(t, createCalled, "resuming a terminal environment-backed conversation must not create a new one")
+			assert.Equal(t, terminalConvID, resultConv.ID)
+			assert.Equal(t, status, claimedFrom)
+			assert.Equal(t, "running", claimedTo)
+		})
+	}
 }
 
 func TestSendChatMessage_ResumeRaceLoses(t *testing.T) {

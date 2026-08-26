@@ -48,7 +48,11 @@ func TestExecutorRun(t *testing.T) {
 	llm := fakellm.New(t, fakellm.TextReply("hello from the fake LLM"))
 
 	sandboxMgr := newSandboxManager(t)
-	exec := executor.New(sandboxMgr, encryptor, executor.Options{Image: image}, log)
+	// No EnvironmentRepository — this test never attaches a conversation
+	// to a static environment (trigger.EnvironmentID stays nil), so
+	// coldStartEnvironment, the only reader of that field, is never
+	// reached.
+	exec := executor.New(sandboxMgr, nil, nil, nil, encryptor, executor.Options{Image: image}, log)
 
 	projectID := uuid.New()
 	cfg := agent.Config{
@@ -75,7 +79,7 @@ func TestExecutorRun(t *testing.T) {
 	var events []acp.Event
 	result, err := exec.Run(ctx, cfg, trigger, nil, func(e acp.Event) {
 		events = append(events, e)
-	})
+	}, nil)
 	if result.Handle != nil {
 		t.Cleanup(func() {
 			if err := exec.StopSandbox(context.Background(), result.Handle); err != nil {
@@ -170,7 +174,7 @@ func TestExecutorRunWithMCP(t *testing.T) {
 	pacaAPIURL := fmt.Sprintf("http://%s:%d", gatewayIP, permissionsLn.Addr().(*net.TCPAddr).Port)
 
 	sandboxMgr := newSandboxManager(t)
-	exec := executor.New(sandboxMgr, encryptor, executor.Options{
+	exec := executor.New(sandboxMgr, nil, nil, nil, encryptor, executor.Options{
 		Image:      image,
 		PacaAPIKey: "e2e-fake-paca-api-key",
 		PacaAPIURL: pacaAPIURL,
@@ -200,7 +204,7 @@ func TestExecutorRunWithMCP(t *testing.T) {
 	var events []acp.Event
 	result, err := exec.Run(ctx, cfg, trigger, nil, func(e acp.Event) {
 		events = append(events, e)
-	})
+	}, nil)
 	if result.Handle != nil {
 		t.Cleanup(func() {
 			if err := exec.StopSandbox(context.Background(), result.Handle); err != nil {

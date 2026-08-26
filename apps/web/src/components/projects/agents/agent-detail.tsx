@@ -74,6 +74,7 @@ import {
 	updateMCPServer,
 	updateSkill,
 } from "@/lib/agent-api";
+import { environmentsQueryOptions } from "@/lib/environment-api";
 import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
 import { AcpBridgeSetup } from "./acp-bridge-setup";
@@ -94,6 +95,7 @@ import { AgentActivityTab } from "./agent-activity-tab";
 type Tab = "overview" | "mcp-servers" | "skills" | "env-vars" | "activity";
 
 const CUSTOM = "__custom__";
+const NO_ENVIRONMENT = "__none__";
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
@@ -110,6 +112,13 @@ function OverviewTab({
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { data: llmModels = {} } = useQuery(llmModelsQueryOptions);
+	// Only fetched at project scope — a global agent has no project to
+	// default an environment from, and the Select below is hidden entirely
+	// in that case (see the !isAcp block below).
+	const { data: environments = [] } = useQuery({
+		...environmentsQueryOptions(projectId ?? ""),
+		enabled: !!projectId,
+	});
 
 	const providers = Object.keys(llmModels);
 
@@ -144,6 +153,10 @@ function OverviewTab({
 	const [committerName, setCommitterName] = useState(agent.git_committer_name);
 	const [committerEmail, setCommitterEmail] = useState(
 		agent.git_committer_email,
+	);
+	const [dockerEnabled, setDockerEnabled] = useState(agent.docker_enabled);
+	const [defaultEnvironmentId, setDefaultEnvironmentId] = useState(
+		agent.default_environment_id ?? "",
 	);
 	const [acpProviderSelect, setAcpProviderSelect] = useState<ACPProvider>(
 		agent.acp_provider ?? "claude-code",
@@ -188,7 +201,9 @@ function OverviewTab({
 				llmBaseUrl !== (agent.llm_base_url ?? "") ||
 				systemPrompt !== agent.system_prompt ||
 				committerName !== agent.git_committer_name ||
-				committerEmail !== agent.git_committer_email);
+				committerEmail !== agent.git_committer_email ||
+				dockerEnabled !== agent.docker_enabled ||
+				defaultEnvironmentId !== (agent.default_environment_id ?? ""));
 
 	const saveMutation = useMutation({
 		mutationFn: () => {
@@ -209,6 +224,16 @@ function OverviewTab({
 							system_prompt: systemPrompt,
 							git_committer_name: committerName.trim(),
 							git_committer_email: committerEmail.trim(),
+							docker_enabled: dockerEnabled,
+							...(projectId
+								? {
+										default_environment_id:
+											defaultEnvironmentId === NO_ENVIRONMENT ||
+											!defaultEnvironmentId
+												? null
+												: defaultEnvironmentId,
+									}
+								: {}),
 						}),
 			};
 			return projectId
@@ -485,6 +510,62 @@ function OverviewTab({
 							</div>
 						</div>
 					</div>
+
+					<Separator />
+
+					<div className="flex items-center justify-between gap-3">
+						<div>
+							<p className="text-sm font-medium">
+								{t("agents.detail.overview.dockerEnabledLabel")}
+							</p>
+							<p className="text-xs text-muted-foreground">
+								{t("agents.detail.overview.dockerEnabledHint")}
+							</p>
+						</div>
+						<Switch
+							checked={dockerEnabled}
+							onCheckedChange={setDockerEnabled}
+							disabled={!canWrite}
+						/>
+					</div>
+
+					{projectId && (
+						<>
+							<Separator />
+							<div className="flex items-center justify-between gap-3">
+								<div>
+									<p className="text-sm font-medium">
+										{t("agents.detail.overview.defaultEnvironmentLabel")}
+									</p>
+									<p className="text-xs text-muted-foreground">
+										{t("agents.detail.overview.defaultEnvironmentHint")}
+									</p>
+								</div>
+								<Select
+									value={defaultEnvironmentId || NO_ENVIRONMENT}
+									onValueChange={(v) =>
+										v && setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v)
+									}
+									disabled={!canWrite}
+								>
+									<SelectTrigger className="w-56">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value={NO_ENVIRONMENT}>
+											{t("agents.detail.overview.noDefaultEnvironment")}
+										</SelectItem>
+										{environments.length > 0 && <SelectSeparator />}
+										{environments.map((env) => (
+											<SelectItem key={env.id} value={env.id}>
+												{env.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						</>
+					)}
 				</>
 			)}
 

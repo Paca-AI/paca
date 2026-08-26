@@ -75,7 +75,7 @@ _Goal: deliver the features that make Paca meaningfully different from standard 
 
 ### Infrastructure & Deployment
 - ✅ ARM64 Docker image support
-- 📋 Helm chart for Kubernetes
+- ✅ Helm chart for Kubernetes — see [deploy/helm](deploy/helm/README.md), including a Kubernetes-Job-per-conversation AI agent sandbox backend
 
 ### Core Platform
 - ✅ Keyboard shortcuts and command palette

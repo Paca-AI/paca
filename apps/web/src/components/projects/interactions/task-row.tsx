@@ -116,6 +116,12 @@ export function getRowColConfig(
 				headerLabel: t("board.taskRow.columnHeaders.epic"),
 				responsive: true,
 			};
+		case "tags":
+			return {
+				className: "w-40 shrink-0",
+				headerLabel: t("board.taskRow.columnHeaders.tags"),
+				responsive: true,
+			};
 		case "created":
 			return {
 				className: "w-24 shrink-0",
@@ -567,10 +573,11 @@ export function TaskRow({
 					>
 						<span className="text-xs text-muted-foreground/70 truncate">
 							{task.start_date
-								? formatDate(task.start_date, {
-										month: "short",
-										day: "numeric",
-									})
+								? formatDate(
+										task.start_date,
+										{ month: "short", day: "numeric" },
+										{ dateOnly: true },
+									)
 								: "—"}
 						</span>
 					</div>
@@ -584,7 +591,11 @@ export function TaskRow({
 					>
 						<span className="text-xs text-muted-foreground/70 truncate">
 							{task.due_date
-								? formatDate(task.due_date, { month: "short", day: "numeric" })
+								? formatDate(
+										task.due_date,
+										{ month: "short", day: "numeric" },
+										{ dateOnly: true },
+									)
 								: "—"}
 						</span>
 					</div>
@@ -619,6 +630,29 @@ export function TaskRow({
 						<span className="text-xs text-muted-foreground/50 truncate">
 							{formatDate(task.created_at, { month: "short", day: "numeric" })}
 						</span>
+					</div>
+				);
+
+			case "tags":
+				return (
+					<div
+						key="tags"
+						className={cn(col.className, responsiveClass, "items-center")}
+					>
+						{task.tags && task.tags.length > 0 ? (
+							<span className="inline-flex gap-1 flex-wrap">
+								{task.tags.map((tag) => (
+									<span
+										key={tag}
+										className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary/80"
+									>
+										{tag}
+									</span>
+								))}
+							</span>
+						) : (
+							<span className="text-xs text-muted-foreground/40">—</span>
+						)}
 					</div>
 				);
 
@@ -771,7 +805,11 @@ export function TaskRow({
 						case "date":
 							return (
 								<span className="text-xs text-muted-foreground/70">
-									{formatDate(String(val), { month: "short", day: "numeric" })}
+									{formatDate(
+										String(val),
+										{ month: "short", day: "numeric" },
+										{ dateOnly: true },
+									)}
 								</span>
 							);
 						case "select":

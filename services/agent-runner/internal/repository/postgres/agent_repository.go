@@ -34,6 +34,7 @@ type agentRecord struct {
 	TimeoutMinutes    int       `db:"timeout_minutes"`
 	GitCommitterName  string    `db:"git_committer_name"`
 	GitCommitterEmail string    `db:"git_committer_email"`
+	DockerEnabled     bool      `db:"docker_enabled"`
 }
 
 type mcpServerRecord struct {
@@ -81,7 +82,7 @@ func (r *AgentRepository) FindByID(ctx context.Context, id uuid.UUID) (*agent.Co
 		SELECT id, name, handle, agent_type, llm_provider, llm_model,
 		       llm_api_key_secret, llm_base_url, system_prompt,
 		       max_iterations, timeout_minutes,
-		       git_committer_name, git_committer_email
+		       git_committer_name, git_committer_email, docker_enabled
 		FROM agents
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id)
@@ -118,6 +119,7 @@ func (r *AgentRepository) FindByID(ctx context.Context, id uuid.UUID) (*agent.Co
 		TimeoutMinutes:    rec.TimeoutMinutes,
 		GitCommitterName:  rec.GitCommitterName,
 		GitCommitterEmail: rec.GitCommitterEmail,
+		DockerEnabled:     rec.DockerEnabled,
 		MCPServers:        mcpServers,
 		Skills:            skills,
 		EnvVars:           envVars,
