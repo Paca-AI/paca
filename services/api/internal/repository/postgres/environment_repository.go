@@ -30,6 +30,7 @@ type environmentRecord struct {
 	CPULimit            string     `db:"cpu_limit"`
 	MemoryLimit         string     `db:"memory_limit"`
 	DiskLimitGB         int        `db:"disk_limit_gb"`
+	DockerEnabled       bool       `db:"docker_enabled"`
 	VolumeRef           *string    `db:"volume_ref"`
 	SecretKeyEncrypted  string     `db:"secret_key_encrypted"`
 	IdleTimeoutMinutes  int        `db:"idle_timeout_minutes"`
@@ -92,7 +93,7 @@ func NewEnvironmentRepository(db *sqlx.DB) *EnvironmentRepository {
 // (see Environment.PortsPendingRestart's doc comment), written only by
 // SetPortsPendingRestart below.
 const environmentCols = `id, project_id, name, slug, ssh_port, ports_pending_restart, status, backend, backend_ref, image,
-	cpu_limit, memory_limit, disk_limit_gb, volume_ref, secret_key_encrypted, idle_timeout_minutes,
+	cpu_limit, memory_limit, disk_limit_gb, docker_enabled, volume_ref, secret_key_encrypted, idle_timeout_minutes,
 	last_active_at, error_message, created_by, created_at, updated_at, deleted_at`
 
 // -------------------------------------------------------------------------
@@ -167,11 +168,11 @@ func (r *EnvironmentRepository) CreateEnvironment(ctx context.Context, e *enviro
 	rec := environmentToRecord(e)
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO environments (id, project_id, name, slug, status, backend, backend_ref, image,
-		  cpu_limit, memory_limit, disk_limit_gb, volume_ref, secret_key_encrypted, idle_timeout_minutes,
+		  cpu_limit, memory_limit, disk_limit_gb, docker_enabled, volume_ref, secret_key_encrypted, idle_timeout_minutes,
 		  last_active_at, error_message, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Slug, rec.Status, rec.Backend, rec.BackendRef, rec.Image,
-		rec.CPULimit, rec.MemoryLimit, rec.DiskLimitGB, rec.VolumeRef, rec.SecretKeyEncrypted, rec.IdleTimeoutMinutes,
+		rec.CPULimit, rec.MemoryLimit, rec.DiskLimitGB, rec.DockerEnabled, rec.VolumeRef, rec.SecretKeyEncrypted, rec.IdleTimeoutMinutes,
 		rec.LastActiveAt, rec.ErrorMessage, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
@@ -506,6 +507,7 @@ func environmentFromRecord(rec environmentRecord) *environmentdom.Environment {
 		CPULimit:            rec.CPULimit,
 		MemoryLimit:         rec.MemoryLimit,
 		DiskLimitGB:         rec.DiskLimitGB,
+		DockerEnabled:       rec.DockerEnabled,
 		VolumeRef:           rec.VolumeRef,
 		SecretKeyEncrypted:  rec.SecretKeyEncrypted,
 		IdleTimeoutMinutes:  rec.IdleTimeoutMinutes,
@@ -535,6 +537,7 @@ func environmentToRecord(e *environmentdom.Environment) environmentRecord {
 		CPULimit:           e.CPULimit,
 		MemoryLimit:        e.MemoryLimit,
 		DiskLimitGB:        e.DiskLimitGB,
+		DockerEnabled:      e.DockerEnabled,
 		VolumeRef:          e.VolumeRef,
 		SecretKeyEncrypted: e.SecretKeyEncrypted,
 		IdleTimeoutMinutes: e.IdleTimeoutMinutes,

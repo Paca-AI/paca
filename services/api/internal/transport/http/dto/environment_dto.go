@@ -25,13 +25,17 @@ type EnvironmentResponse struct {
 	// (see environmentdom.Environment.SSHPort's doc comment) — either the
 	// SSH-routing feature isn't configured on this deployment, or
 	// CreateEnvironment hasn't completed yet.
-	SSHPort            *int      `json:"ssh_port"`
-	Status             string    `json:"status"`
-	Backend            string    `json:"backend"`
-	Image              *string   `json:"image"`
-	CPULimit           string    `json:"cpu_limit"`
-	MemoryLimit        string    `json:"memory_limit"`
-	DiskLimitGB        int       `json:"disk_limit_gb"`
+	SSHPort     *int    `json:"ssh_port"`
+	Status      string  `json:"status"`
+	Backend     string  `json:"backend"`
+	Image       *string `json:"image"`
+	CPULimit    string  `json:"cpu_limit"`
+	MemoryLimit string  `json:"memory_limit"`
+	DiskLimitGB int     `json:"disk_limit_gb"`
+	// DockerEnabled — see environmentdom.Environment.DockerEnabled's doc
+	// comment. Decided once at creation; there is no corresponding field on
+	// UpdateEnvironmentRequest below.
+	DockerEnabled      bool      `json:"docker_enabled"`
 	IdleTimeoutMinutes int       `json:"idle_timeout_minutes"`
 	LastActiveAt       time.Time `json:"last_active_at"`
 	ErrorMessage       *string   `json:"error_message"`
@@ -57,6 +61,10 @@ type CreateEnvironmentRequest struct {
 	CPULimit    *string `json:"cpu_limit"`
 	MemoryLimit *string `json:"memory_limit"`
 	DiskLimitGB *int    `json:"disk_limit_gb"`
+	// DockerEnabled — see environmentdom.CreateEnvironmentInput.DockerEnabled's
+	// doc comment. Omitted means false, the same "opt in explicitly" default
+	// agents.docker_enabled already uses.
+	DockerEnabled bool `json:"docker_enabled"`
 }
 
 // UpdateEnvironmentRequest is the body for PATCH
@@ -80,6 +88,7 @@ func EnvironmentFromEntity(e *environmentdom.Environment) EnvironmentResponse {
 		CPULimit:            e.CPULimit,
 		MemoryLimit:         e.MemoryLimit,
 		DiskLimitGB:         e.DiskLimitGB,
+		DockerEnabled:       e.DockerEnabled,
 		IdleTimeoutMinutes:  e.IdleTimeoutMinutes,
 		LastActiveAt:        e.LastActiveAt,
 		ErrorMessage:        e.ErrorMessage,

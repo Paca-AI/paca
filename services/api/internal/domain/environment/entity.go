@@ -73,10 +73,19 @@ type Environment struct {
 	// Image is nil unless the user explicitly opted into a custom image —
 	// see sandbox.EnvironmentConfig.Image's doc comment for how a nil
 	// value resolves to the platform default inside agent-runner.
-	Image              *string
-	CPULimit           string
-	MemoryLimit        string
-	DiskLimitGB        int
+	Image       *string
+	CPULimit    string
+	MemoryLimit string
+	DiskLimitGB int
+	// DockerEnabled opts this environment into a dedicated, long-lived
+	// docker:dind sidecar (see services/agent-runner/internal/sandbox/
+	// docker/environment_dind.go and .../k8s/dind.go) — the static-
+	// environment counterpart to agent.Agent.DockerEnabled. Decided once at
+	// CreateEnvironment time and never patched afterward (see
+	// UpdateEnvironmentInput, which has no equivalent field): the sidecar's
+	// network/container pairing is baked into the environment's container
+	// at create time, the same way CPULimit/MemoryLimit are.
+	DockerEnabled      bool
 	VolumeRef          *string
 	SecretKeyEncrypted string
 	IdleTimeoutMinutes int

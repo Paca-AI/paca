@@ -245,6 +245,16 @@ function OverviewTab({
 								t("environments.detail.overview.defaultImage")}
 						</p>
 					</div>
+					<div className="space-y-1.5">
+						<Label>
+							{t("environments.detail.overview.dockerEnabledLabel")}
+						</Label>
+						<p className="text-sm text-muted-foreground">
+							{environment.docker_enabled
+								? t("environments.detail.overview.dockerEnabledOn")
+								: t("environments.detail.overview.dockerEnabledOff")}
+						</p>
+					</div>
 				</div>
 
 				<div className="space-y-1.5">

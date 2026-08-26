@@ -272,6 +272,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		GitCommitterEmail:    req.GitCommitterEmail,
 		DockerEnabled:        req.DockerEnabled,
 		DefaultEnvironmentID: req.DefaultEnvironmentID,
+		DefaultFolderID:      req.DefaultFolderID,
 		ProjectRoleID:        req.ProjectRoleID,
 		CreatedBy:            &callerID,
 	})
@@ -315,6 +316,7 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		GitCommitterEmail:    req.GitCommitterEmail,
 		DockerEnabled:        req.DockerEnabled,
 		DefaultEnvironmentID: req.DefaultEnvironmentID,
+		DefaultFolderID:      req.DefaultFolderID,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)

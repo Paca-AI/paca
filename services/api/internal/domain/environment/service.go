@@ -120,7 +120,14 @@ type CreateEnvironmentInput struct {
 	CPULimit    *string
 	MemoryLimit *string
 	DiskLimitGB *int
-	CreatedBy   *uuid.UUID
+	// DockerEnabled — see Environment.DockerEnabled's doc comment. A plain
+	// bool, not a pointer like the other overrides here: unlike
+	// CPULimit/MemoryLimit/DiskLimitGB (where nil means "use the platform
+	// default"), there's no separate "unset" state to distinguish from
+	// false — an environment either opts into the sidecar at creation or
+	// it doesn't.
+	DockerEnabled bool
+	CreatedBy     *uuid.UUID
 }
 
 // UpdateEnvironmentInput carries mutable environment fields.

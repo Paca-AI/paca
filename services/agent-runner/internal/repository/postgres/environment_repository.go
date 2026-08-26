@@ -45,7 +45,11 @@ type Environment struct {
 	CPULimit    string  `db:"cpu_limit"`
 	MemoryLimit string  `db:"memory_limit"`
 	DiskLimitGB int     `db:"disk_limit_gb"`
-	VolumeRef   *string `db:"volume_ref"`
+	// DockerEnabled — see sandbox.EnvironmentConfig.DockerEnabled's doc
+	// comment. Read-only from agent-runner's side, same as every other
+	// field here except status/backend_ref/ssh_port.
+	DockerEnabled bool    `db:"docker_enabled"`
+	VolumeRef     *string `db:"volume_ref"`
 	// SecretKeyEncrypted must be decrypted with the same secret.Encryptor
 	// this process already uses for agents.llm_api_key_secret — see
 	// executor.Executor.coldStartEnvironment. Never logged or returned
@@ -59,7 +63,7 @@ type Environment struct {
 // sync with each other's column list.
 const environmentColumns = `
 	id, status, ssh_port, backend_ref, image, cpu_limit, memory_limit,
-	disk_limit_gb, volume_ref, secret_key_encrypted, idle_timeout_minutes
+	disk_limit_gb, docker_enabled, volume_ref, secret_key_encrypted, idle_timeout_minutes
 `
 
 // EnvironmentRepository reads and writes agent-runner's own minimal slice

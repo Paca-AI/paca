@@ -196,6 +196,7 @@ func (s *Service) CreateEnvironment(ctx context.Context, projectID uuid.UUID, in
 		CPULimit:           cpuLimit,
 		MemoryLimit:        memoryLimit,
 		DiskLimitGB:        diskLimitGB,
+		DockerEnabled:      in.DockerEnabled,
 		SecretKeyEncrypted: secretKeyEncrypted,
 		IdleTimeoutMinutes: defaultIdleTimeoutMinutes,
 		LastActiveAt:       now,
@@ -213,6 +214,7 @@ func (s *Service) CreateEnvironment(ctx context.Context, projectID uuid.UUID, in
 		CPULimit:      cpuLimit,
 		MemoryLimit:   memoryLimit,
 		DiskLimitGB:   diskLimitGB,
+		DockerEnabled: in.DockerEnabled,
 		SecretKey:     secretKeyPlain,
 	}
 	if in.Image != nil {
@@ -308,11 +310,12 @@ func (s *Service) StartEnvironment(ctx context.Context, projectID, environmentID
 		return nil, fmt.Errorf("decrypt environment secret key: %w", err)
 	}
 	reqBody := internalStartEnvironmentRequest{
-		BackendRef:  *env.BackendRef,
-		CPULimit:    env.CPULimit,
-		MemoryLimit: env.MemoryLimit,
-		DiskLimitGB: env.DiskLimitGB,
-		SecretKey:   secretKeyPlain,
+		BackendRef:    *env.BackendRef,
+		CPULimit:      env.CPULimit,
+		MemoryLimit:   env.MemoryLimit,
+		DiskLimitGB:   env.DiskLimitGB,
+		DockerEnabled: env.DockerEnabled,
+		SecretKey:     secretKeyPlain,
 	}
 	if env.Image != nil {
 		reqBody.Image = *env.Image
@@ -381,12 +384,13 @@ func (s *Service) restartEnvironmentPorts(ctx context.Context, env *environmentd
 		return nil, fmt.Errorf("decrypt environment secret key: %w", err)
 	}
 	reqBody := internalRestartPortsRequest{
-		BackendRef:  *env.BackendRef,
-		VolumeRef:   *env.VolumeRef,
-		CPULimit:    env.CPULimit,
-		MemoryLimit: env.MemoryLimit,
-		DiskLimitGB: env.DiskLimitGB,
-		SecretKey:   secretKeyPlain,
+		BackendRef:    *env.BackendRef,
+		VolumeRef:     *env.VolumeRef,
+		CPULimit:      env.CPULimit,
+		MemoryLimit:   env.MemoryLimit,
+		DiskLimitGB:   env.DiskLimitGB,
+		DockerEnabled: env.DockerEnabled,
+		SecretKey:     secretKeyPlain,
 	}
 	if env.Image != nil {
 		reqBody.Image = *env.Image
@@ -896,6 +900,7 @@ type internalCreateEnvironmentRequest struct {
 	CPULimit      string `json:"cpu_limit"`
 	MemoryLimit   string `json:"memory_limit"`
 	DiskLimitGB   int    `json:"disk_limit_gb"`
+	DockerEnabled bool   `json:"docker_enabled"`
 	SecretKey     string `json:"secret_key"`
 }
 
@@ -914,12 +919,13 @@ type internalCreateEnvironmentResponse struct {
 }
 
 type internalStartEnvironmentRequest struct {
-	BackendRef  string `json:"backend_ref"`
-	Image       string `json:"image,omitempty"`
-	CPULimit    string `json:"cpu_limit"`
-	MemoryLimit string `json:"memory_limit"`
-	DiskLimitGB int    `json:"disk_limit_gb"`
-	SecretKey   string `json:"secret_key"`
+	BackendRef    string `json:"backend_ref"`
+	Image         string `json:"image,omitempty"`
+	CPULimit      string `json:"cpu_limit"`
+	MemoryLimit   string `json:"memory_limit"`
+	DiskLimitGB   int    `json:"disk_limit_gb"`
+	DockerEnabled bool   `json:"docker_enabled"`
+	SecretKey     string `json:"secret_key"`
 }
 
 type internalStartEnvironmentResponse struct {
@@ -943,13 +949,14 @@ type internalStartEnvironmentResponse struct {
 // (see restartEnvironmentPorts's own doc comment for when this is called
 // instead of a plain /start).
 type internalRestartPortsRequest struct {
-	BackendRef  string `json:"backend_ref"`
-	VolumeRef   string `json:"volume_ref"`
-	Image       string `json:"image,omitempty"`
-	CPULimit    string `json:"cpu_limit"`
-	MemoryLimit string `json:"memory_limit"`
-	DiskLimitGB int    `json:"disk_limit_gb"`
-	SecretKey   string `json:"secret_key"`
+	BackendRef    string `json:"backend_ref"`
+	VolumeRef     string `json:"volume_ref"`
+	Image         string `json:"image,omitempty"`
+	CPULimit      string `json:"cpu_limit"`
+	MemoryLimit   string `json:"memory_limit"`
+	DiskLimitGB   int    `json:"disk_limit_gb"`
+	DockerEnabled bool   `json:"docker_enabled"`
+	SecretKey     string `json:"secret_key"`
 }
 
 type internalRestartPortsResponse struct {

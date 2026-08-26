@@ -134,12 +134,13 @@ func (h *EnvironmentHandler) CreateEnvironment(w http.ResponseWriter, r *http.Re
 	callerID, _ := uuid.Parse(claims.Subject)
 
 	env, err := h.svc.CreateEnvironment(r.Context(), projectID, environmentdom.CreateEnvironmentInput{
-		Name:        req.Name,
-		Image:       req.Image,
-		CPULimit:    req.CPULimit,
-		MemoryLimit: req.MemoryLimit,
-		DiskLimitGB: req.DiskLimitGB,
-		CreatedBy:   &callerID,
+		Name:          req.Name,
+		Image:         req.Image,
+		CPULimit:      req.CPULimit,
+		MemoryLimit:   req.MemoryLimit,
+		DiskLimitGB:   req.DiskLimitGB,
+		DockerEnabled: req.DockerEnabled,
+		CreatedBy:     &callerID,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)

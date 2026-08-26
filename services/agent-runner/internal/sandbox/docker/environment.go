@@ -133,6 +133,9 @@ func (m *Manager) createAndStartEnvironmentContainer(ctx context.Context, image,
 		env = append(env, k+"="+v)
 	}
 	env = append(env, "GOOSE_SERVER__SECRET_KEY="+cfg.SecretKey)
+	if cfg.DockerEnabled {
+		env = append(env, "DOCKER_HOST="+environmentDindDockerHost(cfg.EnvironmentID))
+	}
 
 	containerCfg := &container.Config{
 		Image: image,
@@ -210,6 +213,23 @@ func (m *Manager) createAndStartEnvironmentContainer(ctx context.Context, image,
 			Target: environmentVolumeMountPath,
 		},
 	}
+	// Dev-only, mirrors Start's own cfg.MCPDevSourceDir handling
+	// (manager.go) — see sandbox.EnvironmentConfig.MCPDevSourceDir's doc
+	// comment for why this needs its own copy here rather than just
+	// reusing that one: an environment container's HostConfig is built
+	// with the typed Mounts API (above), not Start's legacy Binds string,
+	// and this function is the single shared creation path for every fresh
+	// environment container (CreateEnvironment, recreateEnvironmentContainer,
+	// recreateGoneEnvironmentContainer), so adding it here covers all three
+	// without duplicating this block.
+	if cfg.MCPDevSourceDir != "" {
+		hostCfg.Mounts = append(hostCfg.Mounts, mount.Mount{
+			Type:     mount.TypeBind,
+			Source:   cfg.MCPDevSourceDir,
+			Target:   sandbox.MCPDevMountPath,
+			ReadOnly: true,
+		})
+	}
 	// User-facing bindings (SSH + port forwards) — independent of, and
 	// merged with rather than replaced by, the insideDocker-gated
 	// internal-control-port binding below.
@@ -270,6 +290,20 @@ func (m *Manager) createAndStartEnvironmentContainer(ctx context.Context, image,
 		}
 	}
 
+	// Second network, alongside whatever netCfg above already attached at
+	// create time — the one this environment's own dind sidecar is on and
+	// nothing else is (see environment_dind.go's package doc comment).
+	// Only attached when DockerEnabled. Mirrors Start's own NetworkConnect
+	// in manager.go — see that call site's doc comment for why a separate
+	// connect call, not a second NetworkingConfig.EndpointsConfig entry, is
+	// what actually attaches more than one network at create time.
+	if cfg.DockerEnabled {
+		if _, err := m.docker.NetworkConnect(ctx, environmentDindNetworkName(cfg.EnvironmentID), client.NetworkConnectOptions{Container: created.ID}); err != nil {
+			removeContainer()
+			return "", "", fmt.Errorf("sandbox/docker: attach environment container to dind network: %w", err)
+		}
+	}
+
 	if _, err := m.docker.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
 		removeContainer()
 		return "", "", fmt.Errorf("sandbox/docker: start environment container: %w", err)
@@ -298,10 +332,17 @@ func (m *Manager) createAndStartEnvironmentContainer(ctx context.Context, image,
 // an ephemeral conversation's), a named Docker volume is created and
 // mounted at environmentVolumeMountPath, and cfg.SecretKey is used directly
 // instead of a freshly generated one (see EnvironmentConfig.SecretKey's doc
-// comment on why environments reuse the same key across restarts). No dind
-// sidecar support here — EnvironmentConfig has no DockerEnabled-equivalent
-// field, so this never spins one up.
-func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
+// comment on why environments reuse the same key across restarts).
+//
+// When cfg.DockerEnabled, this also provisions this environment's own
+// long-lived dind sidecar (environment_dind.go) before the environment's
+// container itself — the sidecar's name must already exist for
+// createAndStartEnvironmentContainer's DOCKER_HOST env var and
+// NetworkConnect call to succeed, the same create-sidecar-before-sandbox
+// ordering Start (manager.go) uses for the ephemeral per-conversation case.
+// Named returns (err) so the deferred cleanups below can see whichever
+// error path this function actually took.
+func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.EnvironmentConfig) (handle *sandbox.EnvironmentHandle, err error) {
 	image, err := resolveEnvironmentImage(cfg.Image, m.AgentServerImage)
 	if err != nil {
 		return nil, err
@@ -320,18 +361,38 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 	}); err != nil {
 		return nil, fmt.Errorf("sandbox/docker: create environment volume %s: %w", volumeName, err)
 	}
+	// Unlike RestartEnvironmentPorts, a failed CreateEnvironment must not
+	// leave an orphaned volume behind for a future create attempt (with the
+	// same cfg.EnvironmentID, hence the same deterministic volume name) to
+	// collide with.
+	defer func() {
+		if err != nil {
+			removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, _ = m.docker.VolumeRemove(removeCtx, volumeName, client.VolumeRemoveOptions{Force: true})
+		}
+	}()
 
-	containerID, baseURL, err := m.createAndStartEnvironmentContainer(ctx, image, volumeName, cfg)
-	if err != nil {
-		// Unlike RestartEnvironmentPorts, a failed CreateEnvironment must
-		// not leave an orphaned volume behind for a future create attempt
-		// (with the same cfg.EnvironmentID, hence the same deterministic
-		// volume name) to collide with — createAndStartEnvironmentContainer
-		// only ever cleans up the container it created, never a volume it
-		// didn't.
-		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_, _ = m.docker.VolumeRemove(removeCtx, volumeName, client.VolumeRemoveOptions{Force: true})
-		cancel()
+	if cfg.DockerEnabled {
+		if err = m.createEnvironmentDindSidecar(ctx, cfg.EnvironmentID); err != nil {
+			return nil, fmt.Errorf("sandbox/docker: create environment dind sidecar: %w", err)
+		}
+		defer func() {
+			if err != nil {
+				removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				m.removeEnvironmentDindSidecar(removeCtx, cfg.EnvironmentID)
+			}
+		}()
+		if waitErr := m.waitForDindReady(ctx, environmentDindContainerName(cfg.EnvironmentID)); waitErr != nil {
+			err = fmt.Errorf("sandbox/docker: environment dind sidecar not ready: %w", waitErr)
+			return nil, err
+		}
+	}
+
+	containerID, baseURL, createErr := m.createAndStartEnvironmentContainer(ctx, image, volumeName, cfg)
+	if createErr != nil {
+		err = createErr
 		return nil, err
 	}
 
@@ -441,6 +502,140 @@ func (m *Manager) recreateEnvironmentIfMissingEnv(ctx context.Context, backendRe
 	return m.recreateEnvironmentContainer(ctx, backendRef, volumeName, cfg)
 }
 
+// pacaInfraEnvKeys are env vars the built-in "paca" MCP server subprocess
+// needs (see internal/executor/executor.go's buildMCPServers) that can
+// legitimately differ between one StartEnvironment call and the next.
+// PACA_API_KEY/PACA_API_URL/PACA_GATEWAY_URL are deployment-level — the
+// same for every agent on this deployment, changing only on a key
+// rotation or redeploy. PACA_WORKDIR/PACA_ACTOR_USER_ID/
+// PACA_REPO_PLUGIN_IDS are conversation-scoped instead — trigger.Workdir,
+// trigger.ActorUserID, and trigger.RepoPluginIDs, none of which describe
+// this environment's own identity, unlike PACA_AGENT_ID/PACA_PROJECT_ID
+// (deliberately excluded from this list — see below) — but they need the
+// exact same treatment: Goose's EnvKeys lookup resolves each against the
+// container's own OS env, which is fixed at ContainerCreate time, so a
+// container created (or last recreated) while one conversation's trigger
+// fields were in scope has no way to pick up a later conversation whose
+// trigger fields differ. Unlike GOOSE_PROVIDER/GOOSE_MODEL/the LLM API key
+// (frozen forever to whichever agent's conversation first attached — see
+// recreateEnvironmentIfMissingEnv's doc comment), ensureEnvironmentInfraEnv
+// keeps all of these in sync on every StartEnvironment call instead of
+// baking them in once and never again — for any of these four that means a
+// recreate each time a conversation's trigger fields differ from what the
+// container currently has baked in, which beats the alternative: Goose
+// refusing to load the whole "paca" extension with "Configuration value
+// not found: <key>" (a real regression PACA_WORKDIR caused once it became
+// a required EnvKeys entry, and PACA_REPO_PLUGIN_IDS repeated independently
+// once a conversation with repo plugins configured attached to a container
+// last recreated by one without any — same "Tool 'X' not found" symptom as
+// a stale infra key, just triggered by a required key being newly added or
+// newly populated rather than an existing one being rotated).
+//
+// PACA_AGENT_ID/PACA_PROJECT_ID are deliberately NOT in this list, even
+// though buildMCPServers sets them per-trigger too: unlike workdir/actor/
+// repo-plugins, they describe which agent and project this environment
+// itself belongs to, and recreateEnvironmentIfMissingEnv's own doc comment
+// already establishes that identity as frozen forever to whichever
+// conversation first attached — silently resyncing it here on every
+// StartEnvironment call would let a wrong environment_id/agent_id pairing
+// on some later trigger quietly reassign a live environment's identity
+// instead of surfacing as the caller bug it actually is.
+var pacaInfraEnvKeys = []string{
+	"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL",
+	"PACA_WORKDIR", "PACA_ACTOR_USER_ID", "PACA_REPO_PLUGIN_IDS",
+}
+
+// ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with this
+// agent-runner process's own current config on every StartEnvironment call
+// — a container/Pod baked before the platform's PACA_API_KEY was
+// configured (or before it was rotated to its current value), or before a
+// conversation targeting a different environment_folder set a new
+// PACA_WORKDIR, would otherwise carry a stale or missing key forever,
+// since Docker's env is only ever backfilled once by
+// recreateEnvironmentIfMissingEnv's own GOOSE_PROVIDER-gated check
+// (StartEnvironment's first check, above). Two distinct failure modes
+// converge on the same user-visible symptom here: a stale/empty
+// PACA_API_KEY doesn't fail session/new or session/load — Goose resolves
+// an unmatched EnvKeys name to empty, not an error (see
+// acp.GooseExtension's own doc comment) — it just leaves the "paca" MCP
+// subprocess silently registering zero tools, since it hard-exits on
+// startup when it sees an invalid/missing key (apps/mcp/src/index.ts). A
+// PACA_WORKDIR entirely absent from the container's env is worse: Goose's
+// own EnvKeys resolution fails hard ("Configuration value not found:
+// PACA_WORKDIR") and refuses to load the "paca" extension at all, observed
+// directly in a live environment's goose serve logs. Either way it's the
+// same "Tool 'X' not found. Available tools: [...]" symptom this exists to
+// prevent from recurring on a live environment.
+//
+// Only called after recreateEnvironmentIfMissingEnv has already run and
+// found nothing to do — if that one recreated, the container already has
+// the full, current cfg.Env baked in, infra keys included, so there's
+// nothing left to reconcile on the same call.
+//
+// Recreating here preserves every other env var the container already
+// has — GOOSE_PROVIDER, the agent's own PACA_AGENT_ID/PACA_PROJECT_ID,
+// any user-configured env vars — only pacaInfraEnvKeys are overwritten, so
+// this can never silently reassign this environment's frozen LLM/agent
+// identity to whichever conversation happens to trigger the sync.
+func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
+	inspect, err := m.docker.ContainerInspect(ctx, backendRef, client.ContainerInspectOptions{})
+	if err != nil || inspect.Container.Config == nil {
+		return nil, nil
+	}
+
+	existing := make(map[string]string, len(inspect.Container.Config.Env))
+	for _, kv := range inspect.Container.Config.Env {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			existing[k] = v
+		}
+	}
+
+	stale := false
+	for _, key := range pacaInfraEnvKeys {
+		if cfg.Env[key] != existing[key] {
+			stale = true
+			break
+		}
+	}
+	if !stale {
+		return nil, nil
+	}
+
+	var volumeName string
+	for _, mnt := range inspect.Container.Mounts {
+		if mnt.Destination == environmentVolumeMountPath {
+			volumeName = mnt.Name
+			break
+		}
+	}
+	if volumeName == "" {
+		return nil, fmt.Errorf("sandbox/docker: environment container %s has no %s volume mount to reattach while refreshing infra env", backendRef, environmentVolumeMountPath)
+	}
+
+	mergedEnv := make(map[string]string, len(existing)+len(pacaInfraEnvKeys))
+	for k, v := range existing {
+		mergedEnv[k] = v
+	}
+	// Both are recomputed fresh by createAndStartEnvironmentContainer
+	// itself (GOOSE_SERVER__SECRET_KEY from cfg.SecretKey, DOCKER_HOST from
+	// cfg.EnvironmentID when cfg.DockerEnabled) — dropped here so the
+	// values read back from the container's own env, potentially stale,
+	// never linger duplicated alongside the fresh ones it appends.
+	delete(mergedEnv, "GOOSE_SERVER__SECRET_KEY")
+	delete(mergedEnv, "DOCKER_HOST")
+	for _, key := range pacaInfraEnvKeys {
+		if v := cfg.Env[key]; v != "" {
+			mergedEnv[key] = v
+		} else {
+			delete(mergedEnv, key)
+		}
+	}
+
+	mergedCfg := cfg
+	mergedCfg.Env = mergedEnv
+	return m.recreateEnvironmentContainer(ctx, backendRef, volumeName, mergedCfg)
+}
+
 // recreateGoneEnvironmentContainer rebuilds environmentID's container from
 // scratch after StartEnvironment discovers it's been removed outside of
 // Paca — self-healing rather than forcing the "delete and recreate this
@@ -521,6 +716,23 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 	} else if recreated != nil {
 		return recreated, nil
 	}
+	if recreated, err := m.ensureEnvironmentInfraEnv(ctx, backendRef, cfg); err != nil {
+		return nil, err
+	} else if recreated != nil {
+		return recreated, nil
+	}
+
+	// Started before the environment's own container below, mirroring
+	// CreateEnvironment's create-sidecar-first ordering — the container's
+	// DOCKER_HOST env var already points at this sidecar's deterministic
+	// name/network (baked in at ContainerCreate time), so nothing here
+	// needs to wait on the other beyond the explicit waitForDindReady call
+	// once both are up.
+	if cfg.DockerEnabled {
+		if err := m.startEnvironmentDindSidecar(ctx, cfg.EnvironmentID); err != nil {
+			return nil, err
+		}
+	}
 
 	if _, err := m.docker.ContainerStart(ctx, backendRef, client.ContainerStartOptions{}); err != nil {
 		if cerrdefs.IsNotFound(err) {
@@ -559,6 +771,12 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 		return nil, fmt.Errorf("%w (%s)", err, diag)
 	}
 
+	if cfg.DockerEnabled {
+		if err := m.waitForDindReady(ctx, environmentDindContainerName(cfg.EnvironmentID)); err != nil {
+			return nil, fmt.Errorf("sandbox/docker: environment dind sidecar not ready: %w", err)
+		}
+	}
+
 	if hostPort != 0 {
 		m.markPortInUse(hostPort)
 	}
@@ -577,6 +795,12 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 // docs/ai-agent/environment-management.md's Open Risks on why this
 // pool-held-indefinitely tradeoff is accepted, not solved, for Phase 1.
 func (m *Manager) StopEnvironment(ctx context.Context, backendRef string) error {
+	// Best-effort, and stopped before the environment's own container: see
+	// stopEnvironmentDindSidecar's own doc comment for how it recovers
+	// which sidecar (if any) belongs to backendRef with no EnvironmentID
+	// passed here.
+	m.stopEnvironmentDindSidecar(ctx, backendRef)
+
 	timeoutSecs := int(sandbox.StopTimeout.Seconds())
 	if _, err := m.docker.ContainerStop(ctx, backendRef, client.ContainerStopOptions{Timeout: &timeoutSecs}); err != nil {
 		// A container that's already gone (removed outside of Paca) is, in
@@ -614,6 +838,15 @@ func (m *Manager) StopEnvironment(ctx context.Context, backendRef string) error 
 // the normal "delete environment" action would itself fail with a "no
 // such container" error, forcing direct database surgery to recover.
 func (m *Manager) DeleteEnvironment(ctx context.Context, backendRef, volumeRef string) error {
+	// Recovered from volumeRef, not backendRef: environmentIDFromVolumeName
+	// works even when the container is already gone (a legitimate case
+	// this method must tolerate — see its own doc comment), unlike
+	// stopEnvironmentDindSidecar's label-inspection approach, which needs a
+	// live container to read from. A no-op when this environment was never
+	// DockerEnabled — removeEnvironmentDindSidecar's own not-found
+	// tolerance handles that.
+	m.removeEnvironmentDindSidecar(ctx, environmentIDFromVolumeName(volumeRef))
+
 	state := m.popState(backendRef)
 	if _, err := m.docker.ContainerRemove(ctx, backendRef, client.ContainerRemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
 		return fmt.Errorf("sandbox/docker: remove environment container %s: %w", backendRef, err)
