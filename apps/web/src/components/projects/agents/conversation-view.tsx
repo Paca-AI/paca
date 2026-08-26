@@ -43,6 +43,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -214,30 +215,7 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	const isChatMessage = conversation?.trigger_type === "chat_message";
-	// ACP conversations stay replyable for every trigger type (task_assigned,
-	// comment_mention, etc.), not just chat_message ones — the user's local
-	// bridge daemon keeps a conversation alive by conversation_id regardless
-	// of why it started, and regardless of status (see
-	// SendConversationMessage's ACP branch in services/api), so a reply can
-	// always continue it. LLM chat_message conversations stay gated to a live
-	// session, never once terminal — except when environment_id is set:
-	// SendChatMessage's terminal branch in services/api carries the
-	// environment/folder over onto a fresh conversation rather than dead-
-	// ending, since the static environment itself outlives any one
-	// conversation, so the composer can stay open the same way. LLM
-	// non-chat_message conversations (task_assigned, comment_mention,
-	// description_write, automation_message) get the identical environment
-	// carve-out, in every status — resumeConversationMessage in services/api
-	// (reached the same way ACP conversations are, via SendConversationMessage)
-	// attaches back to the same environment/folder regardless of how long ago
-	// the conversation's own status went terminal.
-	const canReply = isACP
-		? !isChatMessage || !!conversation?.chat_session_id
-		: isChatMessage
-			? !!conversation?.chat_session_id &&
-				(!isTerminal || !!conversation?.environment_id)
-			: !!conversation?.environment_id;
+	const canReply = canReplyToConversation(conversation, isACP);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
