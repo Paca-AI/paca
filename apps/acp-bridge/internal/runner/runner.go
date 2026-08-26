@@ -241,9 +241,15 @@ func (r *Runner) StartTurn(ctx context.Context, msg map[string]any) {
 	// Index this conversation to its session so Interrupt (called by
 	// conversation_id) can find the shared session under task keying.
 	r.convIndex[conversationID] = key
+	// Acquire state.mu while still holding r.mu (lock order: r.mu -> state.mu),
+	// then release r.mu. This closes the eviction race: the idle sweeper needs
+	// r.mu to reach this state and state.mu (TryLock) to act on it, so holding
+	// state.mu continuously from lookup through the turnRunning claim below
+	// makes it impossible for the sweeper to unlink and close a session between
+	// the moment StartTurn selects it and the moment it marks it busy.
+	state.mu.Lock()
 	r.mu.Unlock()
 
-	state.mu.Lock()
 	if state.turnRunning {
 		state.mu.Unlock()
 		// Under ScopeTask two conversations on the same task share one
@@ -508,40 +514,45 @@ func (r *Runner) sweepIdle() {
 
 func (r *Runner) evictIdle(now time.Time) {
 	r.mu.Lock()
-	var victims []*conversationState
+	var victims []*acpclient.Client
 	for key, state := range r.conversations {
-		state.mu.Lock()
-		idle := !state.turnRunning && !state.lastActivity.IsZero() &&
-			now.Sub(state.lastActivity) >= r.idleTimeout
-		client := state.client
-		state.mu.Unlock()
-		if !idle {
+		// TryLock, not Lock: a state whose mu is held is being claimed or used
+		// by StartTurn/runTurn right now (StartTurn holds it across its
+		// turnRunning claim). Skipping it — rather than blocking r.mu on it —
+		// both avoids the eviction-vs-startup race and keeps the sweep from
+		// stalling every other StartTurn behind r.mu.
+		if !state.mu.TryLock() {
 			continue
 		}
-		delete(r.conversations, key)
-		for convID, k := range r.convIndex {
-			if k == key {
-				delete(r.convIndex, convID)
+		idle := !state.turnRunning && !state.lastActivity.IsZero() &&
+			now.Sub(state.lastActivity) >= r.idleTimeout
+		if idle {
+			// Unlink and take ownership of the client atomically under both
+			// r.mu and state.mu. turnRunning is false and we hold state.mu, so
+			// no turn is using this client and none can start one on it — the
+			// captured client is ours alone to close.
+			client := state.client
+			state.client = nil
+			state.sessionID = ""
+			delete(r.conversations, key)
+			for convID, k := range r.convIndex {
+				if k == key {
+					delete(r.convIndex, convID)
+				}
+			}
+			if client != nil {
+				victims = append(victims, client)
 			}
 		}
-		if client != nil {
-			victims = append(victims, state)
-		}
+		state.mu.Unlock()
 	}
 	r.mu.Unlock()
 
-	// Close subprocesses outside r.mu — Close can block, and nothing else can
-	// reach these states now that they're unlinked from both maps.
-	for _, state := range victims {
-		state.mu.Lock()
-		client := state.client
-		state.client = nil
-		state.sessionID = ""
-		state.mu.Unlock()
-		if client != nil {
-			_ = client.Close()
-			r.log.Info("runner: evicted idle ACP session")
-		}
+	// Close subprocesses outside the locks — Close can block, and each victim
+	// client is already unlinked and owned solely by this goroutine.
+	for _, client := range victims {
+		_ = client.Close()
+		r.log.Info("runner: evicted idle ACP session")
 	}
 }
 

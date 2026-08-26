@@ -245,3 +245,38 @@ func TestEvictIdleReclaimsAndCleansIndex(t *testing.T) {
 		t.Fatal("running session was wrongly evicted")
 	}
 }
+
+// TestEvictIdleSkipsClaimedSession covers the race greptile flagged: while a
+// StartTurn holds a session's mu to claim it (before it has set turnRunning),
+// the sweeper must NOT unlink and close that session. evictIdle TryLocks and
+// skips a held state, so an idle-looking session that is mid-claim survives the
+// sweep and is only reclaimed once genuinely free.
+func TestEvictIdleSkipsClaimedSession(t *testing.T) {
+	r := &Runner{
+		conversations: make(map[string]*conversationState),
+		convIndex:     make(map[string]string),
+		idleTimeout:   30 * time.Minute,
+	}
+	now := time.Now()
+	st := &conversationState{chunks: newChunkBuffer(), lastActivity: now.Add(-time.Hour)}
+	r.conversations["task:X"] = st
+	r.convIndex["conv-x"] = "task:X"
+
+	// Simulate a StartTurn that has selected this session and holds its mu
+	// while it decides to claim it (turnRunning not yet set).
+	st.mu.Lock()
+	r.evictIdle(now)
+	if _, ok := r.conversations["task:X"]; !ok {
+		t.Fatal("sweeper evicted a session that was mid-claim (race not fixed)")
+	}
+	st.mu.Unlock()
+
+	// Once the claim is released and the session is genuinely idle, it goes.
+	r.evictIdle(now)
+	if _, ok := r.conversations["task:X"]; ok {
+		t.Fatal("idle session not evicted after claim released")
+	}
+	if _, ok := r.convIndex["conv-x"]; ok {
+		t.Fatal("convIndex not cleaned after eviction")
+	}
+}
