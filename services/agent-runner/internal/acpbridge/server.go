@@ -33,6 +33,8 @@ const helloTimeout = 10 * time.Second
 // read buffer unbounded.
 const bridgeMessageReadLimit = 10 * 1024 * 1024 // 10 MiB
 
+const staleACPExecutorMessage = "ACP executor was lost while the bridge was restarting; retry the conversation."
+
 // Server exposes the same HTTP surface routes/bridge.py does:
 //   - GET  /agent-bridge/ws                    — the bridge daemon's WebSocket
 //   - GET  /agent-bridge/status/{agentId}      — internal, proxied by services/api
@@ -125,9 +127,10 @@ func (s *Server) requireInternalToken(next http.HandlerFunc) http.HandlerFunc {
 }
 
 type helloFrame struct {
-	Type    string `json:"type"`
-	AgentID string `json:"agent_id"`
-	Token   string `json:"token"`
+	Type                string   `json:"type"`
+	AgentID             string   `json:"agent_id"`
+	Token               string   `json:"token"`
+	ActiveConversations []string `json:"active_conversations"`
 }
 
 // handleWS is the bridge daemon's WebSocket endpoint — mirrors
@@ -179,6 +182,21 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture the reconciliation cutoff from PostgreSQL before the bridge is
+	// registered as online. agent_conversations.updated_at is also generated
+	// by PostgreSQL, so using the database clock avoids cross-host clock skew;
+	// taking the cutoff before Register ensures any newly dispatched turn that
+	// starts after this bridge becomes authoritative sorts after the cutoff.
+	var reconcileCutoff time.Time
+	if hello.ActiveConversations != nil {
+		reconcileCutoff, err = s.ConvRepo.CurrentDatabaseTime(r.Context())
+		if err != nil {
+			s.Log.Error("acpbridge: failed to capture reconciliation cutoff", "agent_id", agentID, "error", err)
+			_ = conn.Close(websocket.StatusInternalError, "reconciliation setup failed")
+			return
+		}
+	}
+
 	sessionID, err := s.Registry.Register(r.Context(), agentID, cfg.ProjectID, wsConn{conn})
 	if err != nil {
 		s.Log.Error("acpbridge: failed to register bridge connection", "agent_id", agentID, "error", err)
@@ -190,6 +208,18 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err := wsjson.Write(r.Context(), conn, map[string]string{"type": "hello_ack"}); err != nil {
 		s.Registry.Unregister(context.WithoutCancel(r.Context()), agentID, cfg.ProjectID, sessionID)
 		return
+	}
+	// Reconciliation relies on Registry's one-bridge-session-per-agent
+	// contract: once Register succeeds, this connection is authoritative for
+	// the agent's process-owned ACP sessions. Supporting concurrent bridge
+	// daemons would require per-run executor ownership rather than this
+	// agent-wide snapshot.
+	//
+	// A nil slice means an older bridge that does not know the reconciliation
+	// field; an explicit [] means a current bridge with no surviving ACP
+	// sessions, which is exactly the restart/orphan signal we need.
+	if hello.ActiveConversations != nil {
+		s.reconcileStaleConversations(context.WithoutCancel(r.Context()), agentID, hello.ActiveConversations, reconcileCutoff)
 	}
 
 	s.relayMessages(r.Context(), conn, agentID)
@@ -342,8 +372,13 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 	if m, ok := msg["error_message"].(string); ok && m != "" {
 		errMsg = &m
 	}
-	if err := s.ConvRepo.UpdateStatus(ctx, convID, statusStr, errMsg); err != nil {
+	updated, err := s.ConvRepo.UpdateStatusIfNotTerminal(ctx, convID, statusStr, errMsg)
+	if err != nil {
 		s.Log.Warn("acpbridge: failed to record turn_status", "conversation_id", convID, "error", err)
+		return
+	}
+	if !updated {
+		s.Log.Info("acpbridge: ignoring late turn_status for terminal conversation", "conversation_id", convID, "status", statusStr)
 		return
 	}
 
@@ -355,6 +390,37 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 	if err := s.Publisher.PublishRealtime(ctx, projectID, convID,
 		fmt.Sprintf("agent.conversation.%s", statusStr), nil, ownerUserID); err != nil {
 		s.Log.Warn("acpbridge: failed to publish turn_status realtime event", "conversation_id", convID, "error", err)
+	}
+}
+
+func (s *Server) reconcileStaleConversations(ctx context.Context, agentID uuid.UUID, activeStrings []string, connectedAt time.Time) {
+	active := make([]uuid.UUID, 0, len(activeStrings))
+	for _, raw := range activeStrings {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			s.Log.Warn("acpbridge: ignoring invalid active conversation id", "agent_id", agentID, "conversation_id", raw, "error", err)
+			continue
+		}
+		active = append(active, id)
+	}
+
+	stale, err := s.ConvRepo.ReconcileStaleACPConversations(ctx, agentID, active, connectedAt, staleACPExecutorMessage)
+	if err != nil {
+		s.Log.Warn("acpbridge: failed to reconcile stale ACP conversations", "agent_id", agentID, "error", err)
+		return
+	}
+	for _, conversation := range stale {
+		s.Log.Warn("acpbridge: marked orphaned ACP conversation failed", "agent_id", agentID, "conversation_id", conversation.ID)
+		projectID, ownerUserID, contextErr := s.ConvRepo.GetConversationRealtimeContext(ctx, conversation.ID)
+		if contextErr != nil {
+			s.Log.Warn("acpbridge: failed to resolve stale conversation realtime context", "conversation_id", conversation.ID, "error", contextErr)
+		} else if err := s.Publisher.PublishRealtime(ctx, projectID, conversation.ID,
+			"agent.conversation.failed", nil, ownerUserID); err != nil {
+			s.Log.Warn("acpbridge: failed to publish stale conversation realtime status", "conversation_id", conversation.ID, "error", err)
+		}
+		if err := s.Publisher.PublishConversationStatus(ctx, conversation.ID, "failed"); err != nil {
+			s.Log.Warn("acpbridge: failed to publish stale conversation durable status", "conversation_id", conversation.ID, "error", err)
+		}
 	}
 }
 
