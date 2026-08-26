@@ -46,6 +46,7 @@ import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	eventsToThreadMessages,
 	extractTextOnlyContent,
+	isEnvironmentReady,
 } from "./conversation-to-thread-messages";
 import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
 import { useConversationEventWindow } from "./use-conversation-event-window";
@@ -90,7 +91,14 @@ function ConversationControls({
 		onSuccess: invalidate,
 	});
 
-	if (!shouldShowConversationStop(conversation.status)) return null;
+	// Static environments have their own lifecycle controls. ACP conversations,
+	// however, still need the durable conversation-level stop in addition to the
+	// composer's per-response cancel action.
+	if (
+		conversation.environment_id ||
+		!shouldShowConversationStop(conversation.status)
+	)
+		return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -180,6 +188,11 @@ export function ConversationView({
 		? projectAgent
 		: chattableAgents.find((a) => a.id === conversation?.agent_id);
 	const isACP = agent?.agent_type === "acp";
+	// ACP conversations never spin up a sandbox (the local bridge daemon runs
+	// entirely on the user's own machine — see internal/acpbridge/dispatch.go's
+	// doc comment), so there's no "setting up your environment" phase for
+	// them at all; they're ready as soon as they're dispatched.
+	const environmentReady = isEnvironmentReady(isACP, events);
 
 	const isRunning =
 		conversation?.status === "queued" || conversation?.status === "running";
@@ -193,12 +206,17 @@ export function ConversationView({
 	// bridge daemon keeps a conversation alive by conversation_id regardless
 	// of why it started, and regardless of status (see
 	// SendConversationMessage's ACP branch in services/api), so a reply can
-	// always continue it. LLM conversations are unchanged: only chat_message
-	// ones with a live session, and never once terminal (handled
-	// transparently by onNew below via the returned conversation id).
+	// always continue it. LLM conversations mostly stay gated to chat_message
+	// with a live session, never once terminal — except when environment_id
+	// is set: SendChatMessage's terminal branch in services/api carries the
+	// environment/folder over onto a fresh conversation rather than dead-
+	// ending, since the static environment itself outlives any one
+	// conversation, so the composer can stay open the same way.
 	const canReply = isACP
 		? !isChatMessage || !!conversation?.chat_session_id
-		: isChatMessage && !!conversation?.chat_session_id && !isTerminal;
+		: isChatMessage &&
+			!!conversation?.chat_session_id &&
+			(!isTerminal || !!conversation?.environment_id);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -297,9 +315,19 @@ export function ConversationView({
 	// triggered ones would just be a pointless no-op server-side. ACP
 	// conversations have no cloud sandbox to keep alive either (the user's
 	// local bridge daemon owns their lifecycle instead), so heartbeating one
-	// would just be a wasted round trip.
+	// would just be a wasted round trip. Same for a conversation attached to a
+	// static environment (environment_id set): keepSandboxAlive's
+	// EnvironmentID guard in agent-runner never registers it in the
+	// paused-sandbox registry the heartbeat control message refreshes, so a
+	// heartbeat for one is a guaranteed no-op there too — its container's
+	// idle clock is driven by TouchEnvironment after each turn instead.
 	useEffect(() => {
-		if (conversation?.trigger_type !== "chat_message" || isTerminal || isACP)
+		if (
+			conversation?.trigger_type !== "chat_message" ||
+			isTerminal ||
+			isACP ||
+			conversation?.environment_id
+		)
 			return;
 		const ping = () => {
 			void (
@@ -313,6 +341,7 @@ export function ConversationView({
 		return () => clearInterval(interval);
 	}, [
 		conversation?.trigger_type,
+		conversation?.environment_id,
 		isTerminal,
 		isACP,
 		projectId,
@@ -368,9 +397,9 @@ export function ConversationView({
 	// no visible messages. When messages exist, render the Thread normally so
 	// the user can trace what happened before the failure — the header's
 	// status badge and the bottom error footer already convey the failure.
-	// Skipped when canReply is true (an ACP conversation, which stays
-	// replyable straight through a failure regardless of trigger type) so
-	// the user can retry instead of hitting a dead end.
+	// Skipped when canReply is true (an ACP conversation, or one attached to
+	// a static environment, both of which stay replyable straight through a
+	// failure) so the user can retry instead of hitting a dead end.
 	if (
 		isError ||
 		(conversation.status === "failed" && messages.length === 0 && !canReply)
@@ -455,6 +484,7 @@ export function ConversationView({
 						// A run starting must not pull a reader who is paging back
 						// through history.
 						scrollToBottomOnRunStart={false}
+						environmentReady={environmentReady}
 						viewportHeader={
 							<LoadOlderEvents
 								hasOlder={hasOlder}
