@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,13 +67,20 @@ func NewPluginEventConsumer(client *redis.Client, emitter PluginEventEmitter, lo
 // Start creates the consumer group if needed, then begins reading from the
 // stream in a background goroutine. Call Stop to drain and exit cleanly.
 func (c *PluginEventConsumer) Start(ctx context.Context) {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamPluginEvents, pluginEventConsumerGroup, "0").Err()
-	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-		c.log.Warn("plugin event consumer: could not create consumer group", "err", err)
-		// Non-fatal — we still attempt to read below.
+	if err := c.ensureGroup(ctx); err != nil {
+		c.log.Warn("plugin event consumer: could not create consumer group, will retry on first read", "err", err)
 	}
 
 	go c.run()
+}
+
+// ensureGroup creates the consumer group if it doesn't already exist.
+func (c *PluginEventConsumer) ensureGroup(ctx context.Context) error {
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamPluginEvents, pluginEventConsumerGroup, "0").Err()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		return err
+	}
+	return nil
 }
 
 // Stop signals the consumer to stop and waits for the goroutine to exit.
@@ -114,6 +122,11 @@ func (c *PluginEventConsumer) run() {
 				continue
 			}
 			c.log.Error("plugin event consumer: xreadgroup error", "err", err)
+			if strings.Contains(err.Error(), "NOGROUP") {
+				if geErr := c.ensureGroup(context.Background()); geErr != nil {
+					c.log.Warn("plugin event consumer: failed to recreate consumer group", "err", geErr)
+				}
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}

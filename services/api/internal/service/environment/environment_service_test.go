@@ -643,6 +643,7 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 
 	var statusUpdates []string
 	var pendingSet *bool
+	var touched []uuid.UUID
 	repo := &mockRepo{
 		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
 			return &environmentdom.Environment{
@@ -655,6 +656,10 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 			statusUpdates = append(statusUpdates, status)
 			require.NotNil(t, backendRef)
 			assert.Equal(t, "container-new", *backendRef)
+			return nil
+		},
+		touchEnvironment: func(_ context.Context, id uuid.UUID) error {
+			touched = append(touched, id)
 			return nil
 		},
 		setPortsPendingRestart: func(_ context.Context, id uuid.UUID, pending bool) error {
@@ -670,6 +675,7 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/internal/environments/"+envID.String()+"/restart-ports", calledPath)
 	assert.Equal(t, []string{environmentdom.StatusRunning}, statusUpdates)
+	assert.Equal(t, []uuid.UUID{envID}, touched)
 	require.NotNil(t, pendingSet)
 	assert.False(t, *pendingSet)
 	assert.Equal(t, environmentdom.StatusRunning, env.Status)
@@ -677,6 +683,44 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 	assert.Equal(t, "container-new", *env.BackendRef)
 	require.NotNil(t, env.SSHPort)
 	assert.Equal(t, 22001, *env.SSHPort)
+}
+
+// TestStartEnvironment_TouchesLastActiveAt verifies the plain (no pending
+// port changes) start path bumps last_active_at, not just status — without
+// this, a freshly-started environment keeps whatever last_active_at it had
+// from before it was stopped, and the idle reaper (agent-runner's
+// reapIdleEnvironments, which only reads the DB column) stops it again
+// within its next tick, seconds after the user started it.
+func TestStartEnvironment_TouchesLastActiveAt(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{
+			BaseURL: "http://sandbox:8080",
+		})
+	}))
+	defer srv.Close()
+
+	var touched []uuid.UUID
+	repo := &mockRepo{
+		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStopped,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		touchEnvironment: func(_ context.Context, id uuid.UUID) error {
+			touched = append(touched, id)
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	_, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
+
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{envID}, touched)
 }
 
 // TestRestartEnvironment_RequiresRunning verifies the explicit restart

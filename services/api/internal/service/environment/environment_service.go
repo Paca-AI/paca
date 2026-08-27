@@ -340,6 +340,15 @@ func (s *Service) StartEnvironment(ctx context.Context, projectID, environmentID
 	if err := s.repo.UpdateEnvironmentStatus(ctx, env.ID, environmentdom.StatusRunning, newBackendRef, nil); err != nil {
 		return nil, err
 	}
+	// Without this, a freshly-started environment can still have a stale
+	// last_active_at from long before it was stopped — the idle reaper's
+	// next tick (cmd/agent-runner/main.go's reapIdleEnvironments, up to a
+	// minute later) would then see status=running with an old
+	// last_active_at and immediately stop it again, seconds after the user
+	// started it.
+	if err := s.repo.TouchEnvironment(ctx, env.ID); err != nil {
+		return nil, err
+	}
 	env.Status = environmentdom.StatusRunning
 	env.ErrorMessage = nil
 	if newBackendRef != nil {
@@ -408,6 +417,12 @@ func (s *Service) restartEnvironmentPorts(ctx context.Context, env *environmentd
 		newBackendRef = &respBody.BackendRef
 	}
 	if err := s.repo.UpdateEnvironmentStatus(ctx, env.ID, environmentdom.StatusRunning, newBackendRef, nil); err != nil {
+		return nil, err
+	}
+	// Same reasoning as StartEnvironment's own call to this: a stale
+	// last_active_at would otherwise let the idle reaper stop the
+	// environment again within its next tick.
+	if err := s.repo.TouchEnvironment(ctx, env.ID); err != nil {
 		return nil, err
 	}
 	if err := s.repo.SetPortsPendingRestart(ctx, env.ID, false); err != nil {

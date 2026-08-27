@@ -97,12 +97,20 @@ func (c *NotificationConsumer) WithActivityRecorder(r agentActivityRecorder) *No
 // Start creates the consumer group if needed and begins processing in a
 // background goroutine. Call Stop to drain and exit cleanly.
 func (c *NotificationConsumer) Start(ctx context.Context) {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskAssignments, notificationConsumerGroup, "0").Err()
-	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-		c.log.Warn("notification consumer: could not create consumer group", "err", err)
+	if err := c.ensureGroup(ctx); err != nil {
+		c.log.Warn("notification consumer: could not create consumer group, will retry on first read", "err", err)
 	}
 
 	go c.run()
+}
+
+// ensureGroup creates the consumer group if it doesn't already exist.
+func (c *NotificationConsumer) ensureGroup(ctx context.Context) error {
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskAssignments, notificationConsumerGroup, "0").Err()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		return err
+	}
+	return nil
 }
 
 // Stop signals the consumer to stop and waits for the goroutine to exit.
@@ -140,6 +148,11 @@ func (c *NotificationConsumer) run() {
 				continue
 			}
 			c.log.Error("notification consumer: xreadgroup error", "err", err)
+			if strings.Contains(err.Error(), "NOGROUP") {
+				if geErr := c.ensureGroup(context.Background()); geErr != nil {
+					c.log.Warn("notification consumer: failed to recreate consumer group", "err", geErr)
+				}
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}
