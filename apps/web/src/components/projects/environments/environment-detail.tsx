@@ -764,7 +764,7 @@ function PortForwardsTab({
 							</div>
 							<div className="flex items-center gap-2 shrink-0">
 								{pf.host_port !== null ? (
-									<div className="w-56">
+									<div className="w-80">
 										<CommandBox
 											command={`${host ?? "<host>"}:${pf.host_port}`}
 										/>
