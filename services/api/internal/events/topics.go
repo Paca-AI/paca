@@ -210,10 +210,19 @@ const (
 	TopicAutomationAPITriggerFired = "automation.api_trigger.fired"
 
 	// --- Environment lifecycle events ---------------------------------------
+	// TopicEnvironmentCreate is StreamEnvironmentCommands' event type for a
+	// queued environmentsvc.Service.CreateEnvironment execution, consumed
+	// by worker.EnvironmentCommandConsumer.
+	TopicEnvironmentCreate = "environment.create"
 	// TopicEnvironmentStart is StreamEnvironmentCommands' event type for a
 	// queued environmentsvc.Service.StartEnvironment execution, consumed by
 	// worker.EnvironmentCommandConsumer.
 	TopicEnvironmentStart = "environment.start"
+	// TopicEnvironmentStop is StreamEnvironmentCommands' event type for a
+	// queued environmentsvc.Service.StopEnvironment execution — same
+	// deferred-execution shape as TopicEnvironmentStart, for the same
+	// reason (see StopEnvironment's own doc comment).
+	TopicEnvironmentStop = "environment.stop"
 )
 
 // Streams for AI Agent pipeline.

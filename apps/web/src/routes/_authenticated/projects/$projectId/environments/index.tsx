@@ -148,15 +148,17 @@ function EnvironmentsPage() {
 									</Badge>
 								</div>
 								<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-									<span
-										className={cn(
-											"size-1.5 rounded-full",
-											ENVIRONMENT_STATUS_COLORS[env.status].replace(
-												"text-",
-												"bg-",
-											),
-										)}
-									/>
+									{env.status === "running" && (
+										<span
+											className={cn(
+												"size-1.5 rounded-full",
+												ENVIRONMENT_STATUS_COLORS[env.status].replace(
+													"text-",
+													"bg-",
+												),
+											)}
+										/>
+									)}
 									<span className={ENVIRONMENT_STATUS_COLORS[env.status]}>
 										{t(`environments.status.${env.status}`)}
 									</span>

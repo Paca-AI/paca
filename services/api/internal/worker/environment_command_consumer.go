@@ -21,29 +21,33 @@ const (
 	environmentCommandReadCount     = 10
 )
 
-// environmentStarter is the minimal environmentsvc.Service surface this
-// consumer needs to actually execute a previously-queued start command —
-// see environmentsvc.Service.ExecuteStart's own doc comment for why that
-// method isn't part of environmentdom.Service (and so isn't reachable
-// through the notificationdom.Service-style full-domain-interface pattern
-// other consumers in this package use).
-type environmentStarter interface {
+// environmentLifecycleExecutor is the minimal environmentsvc.Service
+// surface this consumer needs to actually execute a previously-queued
+// create/start/stop command — see environmentsvc.Service.ExecuteStart's
+// own doc comment for why these methods aren't part of
+// environmentdom.Service (and so aren't reachable through the
+// notificationdom.Service-style full-domain-interface pattern other
+// consumers in this package use).
+type environmentLifecycleExecutor interface {
+	ExecuteCreate(ctx context.Context, environmentID uuid.UUID) error
 	ExecuteStart(ctx context.Context, environmentID uuid.UUID) error
+	ExecuteStop(ctx context.Context, environmentID uuid.UUID) error
 }
 
 // EnvironmentCommandConsumer reads queued environment lifecycle commands —
-// currently just "start" — from StreamEnvironmentCommands and executes
-// them. This is the asynchronous counterpart to
-// environmentsvc.Service.StartEnvironment, which only validates and
-// queues: moving the actual (potentially slow) agent-runner call here
-// means the HTTP request that triggered it returns immediately regardless
-// of how long starting the backing container/Pod takes, instead of
-// holding the connection open for it — which, past the server's own
-// WriteTimeout, showed up to callers as a 502 for a start that was
-// actually still succeeding server-side a few seconds later.
+// "create", "start", and "stop" — from StreamEnvironmentCommands and
+// executes them. This is the asynchronous counterpart to
+// environmentsvc.Service.CreateEnvironment/StartEnvironment/
+// StopEnvironment, which only validate and queue: moving the actual
+// (potentially slow) agent-runner call here means the HTTP request that
+// triggered it returns immediately regardless of how long provisioning/
+// starting/stopping the backing container/Pod takes, instead of holding
+// the connection open for it — which, past the server's own WriteTimeout,
+// showed up to callers as a 502 for a start that was actually still
+// succeeding server-side a few seconds later.
 type EnvironmentCommandConsumer struct {
 	client       *redis.Client
-	svc          environmentStarter
+	svc          environmentLifecycleExecutor
 	log          *slog.Logger
 	consumerName string // unique per instance, derived from hostname
 	stopCh       chan struct{}
@@ -53,7 +57,7 @@ type EnvironmentCommandConsumer struct {
 // NewEnvironmentCommandConsumer creates a consumer that is ready to be
 // started. The consumer name is derived from the hostname so it is unique
 // per pod/instance.
-func NewEnvironmentCommandConsumer(client *redis.Client, svc environmentStarter, log *slog.Logger) *EnvironmentCommandConsumer {
+func NewEnvironmentCommandConsumer(client *redis.Client, svc environmentLifecycleExecutor, log *slog.Logger) *EnvironmentCommandConsumer {
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
 		hostname = uuid.New().String()
@@ -88,8 +92,10 @@ func (c *EnvironmentCommandConsumer) Start(ctx context.Context) {
 // "0" there would redeliver every command still retained on the stream
 // (including ones already executed before the group vanished) with no
 // idempotency guard: re-executing an old "start" is at worst a harmless
-// no-op against an already-running environment, but there's no reason to
-// pay for the replay when "$" (from now) is available.
+// no-op against an already-running environment, but re-executing an old
+// "stop" is not — the environment could have been legitimately restarted
+// in the meantime, and a stale replay would stop it again out from under
+// whoever just started it. "$" (from now) avoids both concerns.
 func (c *EnvironmentCommandConsumer) ensureGroup(ctx context.Context, startID string) error {
 	err := c.client.XGroupCreateMkStream(ctx, events.StreamEnvironmentCommands, environmentCommandConsumerGroup, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
@@ -178,10 +184,11 @@ func (c *EnvironmentCommandConsumer) processPending(ctx context.Context) {
 }
 
 // handle deserialises one stream message and executes the command it
-// carries. Always acks, regardless of outcome: ExecuteStart already
-// persists StatusError with the failure reason directly onto the
-// environment row on failure, so there is nothing left in the PEL worth
-// retrying automatically — a user sees the error status and retries
+// carries. Always acks, regardless of outcome: ExecuteCreate/ExecuteStart/
+// ExecuteStop already persist StatusError with the failure reason
+// directly onto the environment row on failure, so there is nothing left
+// in the PEL worth retrying automatically — a user sees the error status
+// and retries
 // explicitly, which queues a fresh command.
 func (c *EnvironmentCommandConsumer) handle(msg redis.XMessage) {
 	ctx := context.Background()
@@ -194,20 +201,31 @@ func (c *EnvironmentCommandConsumer) handle(msg redis.XMessage) {
 		return
 	}
 
+	var p environmentCommandPayload
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		c.log.Warn("environment command consumer: failed to decode payload", "id", msg.ID, "err", err)
+		c.ack(ctx, msg.ID)
+		return
+	}
+	environmentID, err := uuid.Parse(p.EnvironmentID)
+	if err != nil {
+		c.log.Warn("environment command consumer: invalid environment_id", "id", msg.ID, "environment_id", p.EnvironmentID)
+		c.ack(ctx, msg.ID)
+		return
+	}
+
 	switch eventType {
+	case events.TopicEnvironmentCreate:
+		if err := c.svc.ExecuteCreate(ctx, environmentID); err != nil {
+			c.log.Error("environment command consumer: create failed", "environment_id", environmentID, "err", err)
+		}
 	case events.TopicEnvironmentStart:
-		var p environmentStartCommandPayload
-		if err := json.Unmarshal([]byte(raw), &p); err != nil {
-			c.log.Warn("environment command consumer: failed to decode payload", "id", msg.ID, "err", err)
-			break
-		}
-		environmentID, err := uuid.Parse(p.EnvironmentID)
-		if err != nil {
-			c.log.Warn("environment command consumer: invalid environment_id", "id", msg.ID, "environment_id", p.EnvironmentID)
-			break
-		}
 		if err := c.svc.ExecuteStart(ctx, environmentID); err != nil {
 			c.log.Error("environment command consumer: start failed", "environment_id", environmentID, "err", err)
+		}
+	case events.TopicEnvironmentStop:
+		if err := c.svc.ExecuteStop(ctx, environmentID); err != nil {
+			c.log.Error("environment command consumer: stop failed", "environment_id", environmentID, "err", err)
 		}
 	default:
 		c.log.Warn("environment command consumer: unknown event type", "id", msg.ID, "type", eventType)
@@ -222,9 +240,10 @@ func (c *EnvironmentCommandConsumer) ack(ctx context.Context, id string) {
 	}
 }
 
-// environmentStartCommandPayload mirrors the JSON shape
-// environmentsvc.Service.StartEnvironment publishes to
-// StreamEnvironmentCommands.
-type environmentStartCommandPayload struct {
+// environmentCommandPayload mirrors the JSON shape both
+// environmentsvc.Service.StartEnvironment and StopEnvironment publish to
+// StreamEnvironmentCommands — every command here concerns exactly one
+// environment, so environment_id is all either one carries.
+type environmentCommandPayload struct {
 	EnvironmentID string `json:"environment_id"`
 }
