@@ -3,10 +3,11 @@
 // Instead of checking permissions on every received message, sockets are placed
 // into namespace-scoped rooms at join time:
 //
-//   project:<projectId>:tasks      — receives all task.* events
-//   project:<projectId>:docs       — receives all doc.* events
-//   project:<projectId>:workflows  — receives all workflow.* graph events
-//   project:<projectId>:sprints    — receives all sprint.* and view.* events
+//   project:<projectId>:tasks        — receives all task.* events
+//   project:<projectId>:docs         — receives all doc.* events
+//   project:<projectId>:workflows    — receives all workflow.* graph events
+//   project:<projectId>:sprints      — receives all sprint.* and view.* events
+//   project:<projectId>:environments — receives all environment.* events
 //
 // Room membership is determined once when the client emits "join": the server
 // fetches the user's project permissions, then joins only the rooms the user is
@@ -14,7 +15,12 @@
 // room with a plain io.to(room).emit() — no per-socket checks needed.
 
 // EventNamespace identifies the permission-gated sub-domains.
-export type EventNamespace = "tasks" | "docs" | "workflows" | "sprints";
+export type EventNamespace =
+	| "tasks"
+	| "docs"
+	| "workflows"
+	| "sprints"
+	| "environments";
 
 // NAMESPACE_PERMISSIONS maps each namespace to the project permission required
 // to receive events in that namespace.
@@ -23,6 +29,7 @@ export const NAMESPACE_PERMISSIONS: Record<EventNamespace, string> = {
 	docs: "docs.read",
 	workflows: "workflows.read",
 	sprints: "sprints.read",
+	environments: "environments.read",
 };
 
 // projectRoomName returns the Socket.IO room name for a project + namespace pair.
@@ -70,6 +77,10 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// require the same sprints.read permission as sprint.* (see
 	// view_handler.go's route registration), so they share the room.
 	if (type.startsWith("view.")) return "sprints";
+	// environment.* events (currently just environment.status_changed)
+	// require environments.read, the same permission GET
+	// .../environments/:id is gated on.
+	if (type.startsWith("environment.")) return "environments";
 	return undefined;
 }
 

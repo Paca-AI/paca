@@ -352,6 +352,7 @@
 	"environments": {
 		"status": {
 			"creating": "Создание",
+			"starting": "Запуск",
 			"running": "Работает",
 			"stopping": "Остановка",
 			"stopped": "Остановлено",

@@ -34,3 +34,4 @@ bun --bun run check
 - Routing uses TanStack file-based routes in `src/routes`.
 - Shared app shell is defined in `src/routes/__root.tsx`.
 - ShadCN primitives are in `src/components/ui`.
+- Keeping a page's data fresh: use `services/realtime` (Socket.IO), not `refetchInterval`/`setInterval` polling. See [`src/hooks/use-project-realtime.ts`](src/hooks/use-project-realtime.ts) for the pattern and [`docs/architecture/service-boundaries.md`](../../docs/architecture/service-boundaries.md#convention-real-time-events-over-polling) for the convention and its narrow exceptions (heartbeats, dropped-message safety nets).

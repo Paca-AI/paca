@@ -82,3 +82,20 @@ Concerns:
 ## Boundary Rule
 
 Keep ownership clear. `services/api` owns business rules and most durable state transitions. `services/realtime` only delivers live updates derived from API-owned events. `agent_conversations`/`agent_conversation_events` are a deliberate exception to "only `services/api` writes to the database": `services/api` creates the initial conversation row and publishes the trigger, then `services/agent-runner` writes status transitions and every event directly for the rest of that conversation's lifetime, rather than proxying each one through `services/api` — a round-trip per event would add latency with no ownership benefit, since `agent-runner` is the only thing that knows a given event happened as it happens. Shared code stays inside the owning runtime until duplication is real and proven.
+
+## Convention: real-time events over polling
+
+If a page needs to reflect state that can change from outside the current tab — another user's edit, an async worker finishing, a background job — wire a `services/realtime` event for it. Do not fall back to `refetchInterval` or a `setInterval` re-fetch loop as the way a page learns data changed; a fixed-interval poll wastes requests on every tick where nothing changed and still lags reality by up to the interval on the one tick where something did.
+
+The established pattern, followed throughout `apps/web`:
+
+1. `services/api` publishes a domain event to the `paca.events` Valkey Pub/Sub channel (`internal/platform/messaging.Publisher.Publish`) at the point a state transition is persisted — see `internal/events/topics.go` for the topic namespace convention (`<domain>.<verb>`, e.g. `sprint.updated`, `environment.status_changed`).
+2. `services/realtime` routes the event to a permission-gated, namespace-scoped Socket.IO room (`internal/permissions.ts`'s `NAMESPACE_PERMISSIONS`/`eventNamespace`, `internal/subscriber.ts`).
+3. `apps/web`'s `useProjectRealtime` hook (`src/hooks/use-project-realtime.ts`) listens on the shared project socket and invalidates the affected React Query cache keys — no bespoke socket listener per component.
+
+Adding a new event type touches all three layers; `environment.status_changed` (added alongside this convention note, replacing a 2-second `refetchInterval` that used to poll `GET .../environments/:id` while an environment was creating/starting/stopping) is a template to copy.
+
+Narrow exceptions that are *not* polling-for-data and should stay as-is:
+
+- **Heartbeats** — a client telling the server "I'm still here" to keep an idle timer from expiring (`heartbeatConversation`, `environment-terminal.tsx`'s `heartbeatTimer`). This is the client pushing liveness, not the client pulling for fresh data.
+- **Dropped-message safety nets** — a long-running, high-stakes view (an in-flight agent conversation) may keep a low-frequency reconciliation tick *in addition to* its real-time listener, purely to self-heal from an occasional missed socket message, not as the primary way it learns about changes (see `conversation-view.tsx`'s `CONVERSATION_RECONCILE_INTERVAL_MS`). If you add one of these, comment it as a safety net explicitly, and make sure a real-time listener already covers the common case first.

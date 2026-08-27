@@ -67,6 +67,15 @@ const StreamPluginTriggerEvents = "paca.plugin_trigger_events"
 // worker.AutomationConsumer.handleSprintActivity.
 const StreamSprintActivities = "paca.sprint_activities"
 
+// StreamEnvironmentCommands is the Valkey Stream key environmentsvc.Service
+// appends to when queuing a static environment's own slow lifecycle
+// operations to run asynchronously instead of on the request path —
+// worker.EnvironmentCommandConsumer reads it and does the actual
+// agent-runner call. Added for StartEnvironment specifically: starting a
+// real container/Pod can take longer than an HTTP request from a browser
+// should have to stay open for.
+const StreamEnvironmentCommands = "paca.environment_commands"
+
 // Event type constants used in both Pub/Sub messages and Stream entries.
 const (
 	// --- Auth events --------------------------------------------------------
@@ -199,6 +208,30 @@ const (
 	// StreamAutomationExternalTriggers by the webhook receiver handler once
 	// a POST's token has been verified.
 	TopicAutomationAPITriggerFired = "automation.api_trigger.fired"
+
+	// --- Environment lifecycle events ---------------------------------------
+	// TopicEnvironmentCreate is StreamEnvironmentCommands' event type for a
+	// queued environmentsvc.Service.CreateEnvironment execution, consumed
+	// by worker.EnvironmentCommandConsumer.
+	TopicEnvironmentCreate = "environment.create"
+	// TopicEnvironmentStart is StreamEnvironmentCommands' event type for a
+	// queued environmentsvc.Service.StartEnvironment execution, consumed by
+	// worker.EnvironmentCommandConsumer.
+	TopicEnvironmentStart = "environment.start"
+	// TopicEnvironmentStop is StreamEnvironmentCommands' event type for a
+	// queued environmentsvc.Service.StopEnvironment execution — same
+	// deferred-execution shape as TopicEnvironmentStart, for the same
+	// reason (see StopEnvironment's own doc comment).
+	TopicEnvironmentStop = "environment.stop"
+	// TopicEnvironmentStatusChanged is published directly to ChannelRealtime
+	// by environmentsvc.Service whenever an environment's status changes
+	// (e.g. creating -> running, running -> stopping -> stopped, or ->
+	// error) — consumed by services/realtime and fanned out to clients
+	// viewing that project's environments. Replaces the frontend's old
+	// fixed-interval polling of GET .../environments/:id while a
+	// transition was in flight (see environment-api.ts's
+	// TRANSITIONAL_ENVIRONMENT_STATUSES, now removed).
+	TopicEnvironmentStatusChanged = "environment.status_changed"
 )
 
 // Streams for AI Agent pipeline.

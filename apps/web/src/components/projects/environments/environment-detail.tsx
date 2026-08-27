@@ -84,6 +84,7 @@ type Tab = "overview" | "folders" | "portForwards";
 
 const TRANSITIONAL_STATUSES: EnvironmentStatus[] = [
 	"creating",
+	"starting",
 	"stopping",
 	"deleting",
 ];
@@ -956,6 +957,7 @@ export function EnvironmentDetailView({
 								<EnvironmentStatusLine
 									environment={environment}
 									hasActiveSshSession={usage.hasActiveSshSession}
+									showDot={environment.status === "running"}
 								/>
 							</div>
 						</div>
