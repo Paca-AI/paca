@@ -329,24 +329,26 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 						</div>
 						{conversationId && (
 							<div className="flex items-center gap-2">
-								{conversation && !isTerminal && !conversation.environment_id && (
-									<Button
-										size="sm"
-										variant="outline"
-										className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
-										onClick={() => void stopCurrentConversation()}
-										disabled={isStopping}
-									>
-										{isStopping ? (
-											<Loader2 className="size-3 animate-spin" />
-										) : (
-											<Square className="size-3" />
-										)}
-										{t("agents.conversationView.stopConversation", {
-											defaultValue: "Stop conversation",
-										})}
-									</Button>
-								)}
+								{conversation &&
+									!isTerminal &&
+									!conversation.environment_id && (
+										<Button
+											size="sm"
+											variant="outline"
+											className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+											onClick={() => void stopCurrentConversation()}
+											disabled={isStopping}
+										>
+											{isStopping ? (
+												<Loader2 className="size-3 animate-spin" />
+											) : (
+												<Square className="size-3" />
+											)}
+											{t("agents.conversationView.stopConversation", {
+												defaultValue: "Stop conversation",
+											})}
+										</Button>
+									)}
 								<Button
 									size="sm"
 									variant="outline"
