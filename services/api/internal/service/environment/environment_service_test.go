@@ -198,12 +198,20 @@ func (m *mockRepo) FindPortForwardByID(ctx context.Context, id uuid.UUID) (*envi
 // mockPublisher is a function-field-based mock of environmentPublisher,
 // mirroring mockRepo's own style.
 type mockPublisher struct {
-	appendFn func(ctx context.Context, stream, eventType string, payload any) error
+	appendFn  func(ctx context.Context, stream, eventType string, payload any) error
+	publishFn func(ctx context.Context, channel string, payload any) error
 }
 
 func (m *mockPublisher) Append(ctx context.Context, stream, eventType string, payload any) error {
 	if m.appendFn != nil {
 		return m.appendFn(ctx, stream, eventType, payload)
+	}
+	return nil
+}
+
+func (m *mockPublisher) Publish(ctx context.Context, channel string, payload any) error {
+	if m.publishFn != nil {
+		return m.publishFn(ctx, channel, payload)
 	}
 	return nil
 }

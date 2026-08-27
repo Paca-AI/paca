@@ -1,4 +1,4 @@
-import { type Query, queryOptions } from "@tanstack/react-query";
+import { queryOptions } from "@tanstack/react-query";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
 
@@ -125,19 +125,6 @@ export interface EnvironmentPortForward {
 	host_port: number | null;
 	created_at: string;
 }
-
-// Statuses an environment only passes through transiently on its way to a
-// stable state — while in one of these, environmentQueryOptions polls (see
-// below) instead of waiting for a manual refresh or a socket event (no
-// realtime wiring exists for environments in Phase 1).
-const TRANSITIONAL_ENVIRONMENT_STATUSES = new Set<EnvironmentStatus>([
-	"creating",
-	"starting",
-	"stopping",
-	"deleting",
-]);
-
-const ENVIRONMENT_POLL_INTERVAL_MS = 2_000;
 
 // ── Environments ──────────────────────────────────────────────────────────────
 
@@ -460,11 +447,9 @@ export const environmentsQueryOptions = (projectId: string) =>
 		queryFn: () => listEnvironments(projectId),
 	});
 
-// Polls every ENVIRONMENT_POLL_INTERVAL_MS while the environment is in a
-// transitional status (creating/stopping/deleting) — no realtime socket
-// wiring exists for environment status changes in Phase 1, so this is the
-// only way the UI learns a transition finished. Stops polling once the
-// status settles into a stable one (running/stopped/suspended/error).
+// No refetchInterval: kept live via useProjectRealtime's socket-driven
+// invalidation on "environment.status_changed" instead of polling while the
+// environment is in a transitional status (creating/starting/stopping).
 export const environmentQueryOptions = (
 	projectId: string,
 	environmentId: string,
@@ -472,12 +457,6 @@ export const environmentQueryOptions = (
 	queryOptions({
 		queryKey: ["projects", projectId, "environments", environmentId],
 		queryFn: () => getEnvironment(projectId, environmentId),
-		refetchInterval: (query: Query<Environment>) => {
-			const status = query.state.data?.status;
-			return status && TRANSITIONAL_ENVIRONMENT_STATUSES.has(status)
-				? ENVIRONMENT_POLL_INTERVAL_MS
-				: false;
-		},
 	});
 
 // environmentBrowseQueryOptions is keyed by path (undefined path collapses

@@ -29,12 +29,13 @@ const RADIUS = 21;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 // How often the ring/expiry text recomputes from the already-fetched
-// last_active_at — a local tick, not a refetch. environmentQueryOptions
-// only polls while a status is transitional (see that file's own doc
-// comment), so a long-sitting "running" environment's last_active_at is
-// otherwise never re-read; this just needs *something* to force a
-// re-render periodically so the ring/text visibly move over a session left
-// open, not to fetch fresher data.
+// last_active_at — a local tick, not a refetch. Nothing pushes a fresh
+// last_active_at for a long-sitting "running" environment on its own (no
+// realtime event fires just from time passing — only an actual heartbeat or
+// status change does, see environment-api.ts and use-project-realtime.ts),
+// so this just needs *something* to force a re-render periodically so the
+// ring/text visibly move over a session left open, not to fetch fresher
+// data.
 const TICK_MS = 30_000;
 
 // hasActiveSshSession comes from the live stats stream (see

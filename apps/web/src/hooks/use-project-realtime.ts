@@ -48,6 +48,12 @@
 //                  off "tasks" rather than "workflows", plus the
 //                  workflow.assigned bonus case — the automation engine
 //                  reassigning a task should refresh that task's data too).
+// environment.status_changed → invalidate ["projects", projectId,
+//                  "environments"] (covers both environmentsQueryOptions,
+//                  the list, and environmentQueryOptions, the per-id detail
+//                  query, since both hang off this shared prefix). Replaces
+//                  environment-api.ts's old fixed-interval polling while an
+//                  environment was creating/starting/stopping.
 //
 // More granular invalidations (e.g. specific taskId) are avoided intentionally:
 // the event payload fields are not yet stabilised and broad invalidation is
@@ -134,6 +140,13 @@ export function useProjectRealtime(projectId: string | undefined): void {
 				});
 				void queryClient.invalidateQueries({
 					queryKey: ["projects", currentProjectId, "tasks"],
+				});
+				return;
+			}
+
+			if (type.startsWith("environment.")) {
+				void queryClient.invalidateQueries({
+					queryKey: ["projects", currentProjectId, "environments"],
 				});
 				return;
 			}
