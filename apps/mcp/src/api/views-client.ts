@@ -343,4 +343,108 @@ export class PacaAPIViewsClient {
 			contentType: response.headers.get("content-type") ?? undefined,
 		};
 	}
+
+	/**
+	 * Uploads a file as a task attachment via Paca's three-step flow:
+	 * initiate-upload (reserve a File row + presigned PUT URL[s]) → PUT the
+	 * bytes straight to object storage → complete-upload (mark uploaded +
+	 * create the task-attachment link). Handles both the single-part path
+	 * (< 5 MiB) and the multipart path the backend switches to for larger
+	 * files.
+	 *
+	 * The PUT goes to a presigned URL, which the backend rewrites to its
+	 * browser-facing public host (STORAGE_PUBLIC_URL) — the same host the web
+	 * client uploads through. An MCP server that can reach the Paca API's
+	 * public base URL (the usual setup for an external agent) can reach it
+	 * too; one confined to an internal Docker network that only resolves
+	 * `api`/`gateway` may not, and should surface the PUT error rather than
+	 * silently failing. (This mirrors downloadAttachmentContent's note, which
+	 * is why *reads* go through the API proxy instead — there is no equivalent
+	 * upload proxy endpoint to use here.)
+	 */
+	async uploadTaskAttachment(
+		projectId: string,
+		taskId: string,
+		input: { fileName: string; contentType: string; data: Uint8Array },
+	): Promise<Attachment> {
+		const { fileName, contentType, data } = input;
+		const session = await this.post(
+			`/api/v1/projects/${projectId}/tasks/${taskId}/attachments/initiate-upload`,
+			{
+				file_name: fileName,
+				content_type: contentType,
+				file_size: data.byteLength,
+			},
+		);
+
+		if (session.is_multipart && session.multipart) {
+			const parts = await this.putMultipart(
+				session.multipart.parts,
+				contentType,
+				data,
+			);
+			return this.post(
+				`/api/v1/projects/${projectId}/tasks/${taskId}/attachments/complete-upload`,
+				{
+					file_id: session.file_id,
+					upload_id: session.multipart.upload_id,
+					parts,
+				},
+			);
+		}
+
+		await this.putBytes(session.upload_url, contentType, data);
+		return this.post(
+			`/api/v1/projects/${projectId}/tasks/${taskId}/attachments/complete-upload`,
+			{ file_id: session.file_id },
+		);
+	}
+
+	/** PUTs raw bytes to a presigned object-store URL, returning its ETag. */
+	private async putBytes(
+		url: string,
+		contentType: string,
+		body: Uint8Array,
+	): Promise<string> {
+		const response = await fetch(url, {
+			method: "PUT",
+			headers: { "Content-Type": contentType },
+			// A Uint8Array is a valid fetch body at runtime (undici honors the
+			// view's byteOffset/byteLength, so a multipart subarray sends only its
+			// own bytes) but isn't in the DOM lib's BodyInit type — hence the cast.
+			body: body as unknown as BodyInit,
+		});
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			throw new Error(
+				`Uploading file bytes to object storage failed: ${formatApiRequestError(
+					response.status,
+					response.statusText,
+					errorText,
+				)}`,
+			);
+		}
+		return response.headers.get("etag") ?? "";
+	}
+
+	/**
+	 * Uploads each 5 MiB part to its presigned URL and returns the
+	 * {part_number, etag} list complete-upload needs to reassemble the object.
+	 */
+	private async putMultipart(
+		partURLs: Array<{ part_number: number; upload_url: string }>,
+		contentType: string,
+		data: Uint8Array,
+	): Promise<Array<{ part_number: number; etag: string }>> {
+		const PART_SIZE = 5 * 1024 * 1024; // matches the backend's DefaultPartSize
+		const ordered = [...partURLs].sort((a, b) => a.part_number - b.part_number);
+		const parts: Array<{ part_number: number; etag: string }> = [];
+		for (let i = 0; i < ordered.length; i++) {
+			const part = ordered[i];
+			const chunk = data.subarray(i * PART_SIZE, (i + 1) * PART_SIZE);
+			const etag = await this.putBytes(part.upload_url, contentType, chunk);
+			parts.push({ part_number: part.part_number, etag });
+		}
+		return parts;
+	}
 }

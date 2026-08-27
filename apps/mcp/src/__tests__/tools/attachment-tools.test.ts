@@ -5,6 +5,11 @@ vi.mock("../../utils/index.js", () => ({
 	formatFileSize: vi.fn((bytes: number) => `${bytes} bytes`),
 }));
 
+vi.mock("node:fs/promises", () => ({
+	readFile: vi.fn(),
+}));
+
+import { readFile } from "node:fs/promises";
 import {
 	getAttachmentTools,
 	handleAttachmentTool,
@@ -32,6 +37,7 @@ function makeClient(overrides: Record<string, any> = {}) {
 			contentType: "image/png",
 		}),
 		deleteTaskAttachment: vi.fn().mockResolvedValue(undefined),
+		uploadTaskAttachment: vi.fn().mockResolvedValue(attachment),
 		...overrides,
 	} as any;
 }
@@ -41,16 +47,97 @@ function makeClient(overrides: Record<string, any> = {}) {
 // ---------------------------------------------------------------------------
 
 describe("getAttachmentTools", () => {
-	it("returns 4 tools", () => {
-		expect(getAttachmentTools()).toHaveLength(4);
+	it("returns 5 tools", () => {
+		expect(getAttachmentTools()).toHaveLength(5);
 	});
 
-	it("includes list_task_attachments, get_attachment_download_url, read_task_attachment, delete_task_attachment", () => {
+	it("includes upload, list, download-url, read, and delete tools", () => {
 		const names = getAttachmentTools().map((t) => t.name);
+		expect(names).toContain("upload_task_attachment");
 		expect(names).toContain("list_task_attachments");
 		expect(names).toContain("get_attachment_download_url");
 		expect(names).toContain("read_task_attachment");
 		expect(names).toContain("delete_task_attachment");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// upload_task_attachment
+// ---------------------------------------------------------------------------
+
+describe("upload_task_attachment", () => {
+	it("reads the file and uploads it, inferring name and content type", async () => {
+		vi.mocked(readFile).mockResolvedValue(Buffer.from("PNGDATA") as any);
+		const client = makeClient();
+
+		const result = await handleAttachmentTool(
+			"upload_task_attachment",
+			{ projectId: "p1", taskId: "t1", filePath: "/tmp/photo.png" },
+			client,
+		);
+
+		expect(readFile).toHaveBeenCalledWith("/tmp/photo.png");
+		expect(client.uploadTaskAttachment).toHaveBeenCalledWith("p1", "t1", {
+			fileName: "photo.png",
+			contentType: "image/png",
+			data: expect.any(Buffer),
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.content[0].text).toContain("Uploaded");
+	});
+
+	it("honors explicit fileName and contentType overrides", async () => {
+		vi.mocked(readFile).mockResolvedValue(Buffer.from("data") as any);
+		const client = makeClient();
+
+		await handleAttachmentTool(
+			"upload_task_attachment",
+			{
+				projectId: "p1",
+				taskId: "t1",
+				filePath: "/tmp/x.bin",
+				fileName: "report.pdf",
+				contentType: "application/pdf",
+			},
+			client,
+		);
+
+		expect(client.uploadTaskAttachment).toHaveBeenCalledWith(
+			"p1",
+			"t1",
+			expect.objectContaining({
+				fileName: "report.pdf",
+				contentType: "application/pdf",
+			}),
+		);
+	});
+
+	it("returns an error when the file cannot be read", async () => {
+		vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+		const client = makeClient();
+
+		const result = await handleAttachmentTool(
+			"upload_task_attachment",
+			{ projectId: "p1", taskId: "t1", filePath: "/tmp/missing" },
+			client,
+		);
+
+		expect(result.isError).toBe(true);
+		expect(client.uploadTaskAttachment).not.toHaveBeenCalled();
+	});
+
+	it("rejects an empty file", async () => {
+		vi.mocked(readFile).mockResolvedValue(Buffer.alloc(0) as any);
+		const client = makeClient();
+
+		const result = await handleAttachmentTool(
+			"upload_task_attachment",
+			{ projectId: "p1", taskId: "t1", filePath: "/tmp/empty.txt" },
+			client,
+		);
+
+		expect(result.isError).toBe(true);
+		expect(client.uploadTaskAttachment).not.toHaveBeenCalled();
 	});
 });
 
