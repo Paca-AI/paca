@@ -4,7 +4,7 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, Loader2, Plus, Square, X } from "lucide-react";
+import { AlertTriangle, Bot, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -85,7 +85,6 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	const [open, setOpen] = useState(false);
 	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [isStopping, setIsStopping] = useState(false);
 	const qc = useQueryClient();
 
 	// Locked once a conversation exists — the agent is fixed for its
@@ -200,17 +199,6 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		if (!conversationId) return;
 		await pauseConversation(projectId, conversationId);
 		invalidate();
-	};
-
-	const stopCurrentConversation = async () => {
-		if (!conversationId) return;
-		setIsStopping(true);
-		try {
-			await stopConversation(projectId, conversationId);
-			invalidate();
-		} finally {
-			setIsStopping(false);
-		}
 	};
 
 	// !conversationId: no conversation yet, so there's nothing to be blocked
@@ -330,26 +318,6 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 						</div>
 						{conversationId && (
 							<div className="flex items-center gap-2">
-								{conversation &&
-									!isTerminal &&
-									!conversation.environment_id && (
-										<Button
-											size="sm"
-											variant="outline"
-											className="h-7 gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
-											onClick={() => void stopCurrentConversation()}
-											disabled={isStopping}
-										>
-											{isStopping ? (
-												<Loader2 className="size-3 animate-spin" />
-											) : (
-												<Square className="size-3" />
-											)}
-											{t("agents.conversationView.stopConversation", {
-												defaultValue: "Stop conversation",
-											})}
-										</Button>
-									)}
 								<Button
 									size="sm"
 									variant="outline"

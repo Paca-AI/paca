@@ -3,23 +3,14 @@ import {
 	AssistantRuntimeProvider,
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	AlertTriangle,
-	Bot,
-	GitBranch,
-	GitPullRequest,
-	Loader2,
-	Square,
-} from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Bot, GitBranch, GitPullRequest } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-	type AgentConversation,
 	agentQueryOptions,
 	CONVERSATION_HEARTBEAT_INTERVAL_MS,
 	CONVERSATION_RECONCILE_INTERVAL_MS,
@@ -37,11 +28,8 @@ import {
 	sendConversationMessage,
 	sendGlobalChatMessage,
 	sendGlobalConversationMessage,
-	stopConversation,
-	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
-import { shouldShowConversationStop } from "./conversation-control-state";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	canReplyToConversation,
@@ -51,77 +39,6 @@ import {
 } from "./conversation-to-thread-messages";
 import { LoadOlderEvents, TailFollowIndicator } from "./event-window-controls";
 import { useConversationEventWindow } from "./use-conversation-event-window";
-
-// ── Controls ──────────────────────────────────────────────────────────────────
-
-function ConversationControls({
-	projectId,
-	conversation,
-}: {
-	/** Absent for a global-chat conversation (home/admin pages, no project). */
-	projectId?: string;
-	conversation: AgentConversation;
-}) {
-	const { t } = useTranslation("projects");
-	const qc = useQueryClient();
-
-	const invalidate = () => {
-		if (projectId) {
-			qc.invalidateQueries({
-				queryKey: ["projects", projectId, "conversations", conversation.id],
-			});
-			qc.invalidateQueries({
-				queryKey: ["projects", projectId, "conversations"],
-			});
-		} else {
-			qc.invalidateQueries({
-				queryKey: ["global-chat", "conversations", conversation.id],
-			});
-			qc.invalidateQueries({ queryKey: ["global-chat", "conversations"] });
-		}
-	};
-
-	const stopMut = useMutation({
-		mutationFn: async () => {
-			if (projectId) {
-				await stopConversation(projectId, conversation.id);
-			} else {
-				await stopGlobalConversation(conversation.id);
-			}
-		},
-		onSuccess: invalidate,
-	});
-
-	// Static environments have their own lifecycle controls. ACP conversations,
-	// however, still need the durable conversation-level stop in addition to the
-	// composer's per-response cancel action.
-	if (
-		conversation.environment_id ||
-		!shouldShowConversationStop(conversation.status)
-	)
-		return null;
-
-	return (
-		<div className="flex items-center gap-2">
-			<Button
-				size="sm"
-				variant="outline"
-				className="h-7 text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
-				onClick={() => stopMut.mutate()}
-				disabled={stopMut.isPending}
-			>
-				{stopMut.isPending ? (
-					<Loader2 className="size-3 animate-spin" />
-				) : (
-					<Square className="size-3" />
-				)}
-				{t("agents.conversationView.stopConversation", {
-					defaultValue: "Stop conversation",
-				})}
-			</Button>
-		</div>
-	);
-}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -449,10 +366,6 @@ export function ConversationView({
 							{t("agents.conversationView.pr")}
 						</a>
 					)}
-					<ConversationControls
-						projectId={projectId}
-						conversation={conversation}
-					/>
 				</div>
 			</div>
 
