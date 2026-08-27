@@ -331,10 +331,12 @@ function WebAppConnectTab({
 	projectId,
 	environment,
 	canWrite,
+	canConnect,
 }: {
 	projectId: string;
 	environment: Environment;
 	canWrite: boolean;
+	canConnect: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -356,7 +358,7 @@ function WebAppConnectTab({
 				{t("environments.connect.webApp.description")}
 			</p>
 			{isRunning ? (
-				canWrite ? (
+				canConnect ? (
 					<Link
 						to="/projects/$projectId/environments/$environmentId/terminal"
 						params={{ projectId, environmentId: environment.id }}
@@ -368,10 +370,11 @@ function WebAppConnectTab({
 						{t("environments.connect.webApp.connect")}
 					</Link>
 				) : (
-					// The terminal ticket endpoint requires agents:write (see
-					// router.go) — a read-only member who followed this link
-					// would only hit a 403 minting the ticket, so the link
-					// itself is hidden rather than shown-then-failing.
+					// The terminal ticket endpoint requires
+					// environments:connect (see router.go) — a member without
+					// it who followed this link would only hit a 403 minting
+					// the ticket, so the link itself is hidden rather than
+					// shown-then-failing.
 					<p className="text-sm text-muted-foreground">
 						{t("environments.connect.webApp.readOnly")}
 					</p>
@@ -504,10 +507,12 @@ export function EnvironmentConnectView({
 	projectId,
 	environmentId,
 	canWrite,
+	canConnect,
 }: {
 	projectId: string;
 	environmentId: string;
 	canWrite: boolean;
+	canConnect: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const { data: environment } = useQuery(
@@ -590,6 +595,7 @@ export function EnvironmentConnectView({
 						projectId={projectId}
 						environment={environment}
 						canWrite={canWrite}
+						canConnect={canConnect}
 					/>
 				)}
 				{activeTab === "ssh" && (

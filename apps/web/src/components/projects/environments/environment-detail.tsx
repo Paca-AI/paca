@@ -160,14 +160,6 @@ function OverviewTab({
 		},
 	});
 
-	const startMutation = useMutation({
-		mutationFn: () => startEnvironment(projectId, environment.id),
-		onSuccess: (updated) => {
-			qc.setQueryData(envKey, updated);
-			qc.invalidateQueries({ queryKey: listKey });
-		},
-	});
-
 	const idleTimeoutNumber = Number(idleTimeout);
 	const canSave =
 		isDirty &&
@@ -175,13 +167,6 @@ function OverviewTab({
 		Number.isInteger(idleTimeoutNumber) &&
 		idleTimeoutNumber > 0 &&
 		!saveMutation.isPending;
-
-	const isTransitioning = TRANSITIONAL_STATUSES.includes(environment.status);
-	const canStart =
-		!isTransitioning &&
-		(environment.status === "stopped" ||
-			environment.status === "suspended" ||
-			environment.status === "error");
 
 	return (
 		<div className="space-y-6">
@@ -230,24 +215,6 @@ function OverviewTab({
 				/>
 			</div>
 
-			{canWrite && canStart && (
-				<div className="flex items-center justify-end gap-2">
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={() => startMutation.mutate()}
-						disabled={startMutation.isPending}
-					>
-						{startMutation.isPending ? (
-							<Loader2 className="size-3.5 mr-1.5 animate-spin" />
-						) : (
-							<Play className="size-3.5 mr-1.5" />
-						)}
-						{t("environments.detail.overview.start")}
-					</Button>
-				</div>
-			)}
-
 			<Separator />
 
 			<div className="space-y-4 max-w-2xl">
@@ -276,6 +243,16 @@ function OverviewTab({
 						<p className="text-sm text-muted-foreground font-mono truncate">
 							{environment.image ??
 								t("environments.detail.overview.defaultImage")}
+						</p>
+					</div>
+					<div className="space-y-1.5">
+						<Label>
+							{t("environments.detail.overview.dockerEnabledLabel")}
+						</Label>
+						<p className="text-sm text-muted-foreground">
+							{environment.docker_enabled
+								? t("environments.detail.overview.dockerEnabledOn")
+								: t("environments.detail.overview.dockerEnabledOff")}
 						</p>
 					</div>
 				</div>
@@ -866,13 +843,8 @@ export function EnvironmentDetailView({
 	environmentId: string;
 }) {
 	const { t } = useTranslation("projects");
-	// Environment endpoints reuse whatever permission-gating already wraps
-	// the /agents route group (see
-	// docs/ai-agent/environment-management.md's services/api Changes
-	// section) rather than introducing a separate environments.read/write
-	// permission.
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	const canWrite = hasProjectPermission("agents.write");
+	const canWrite = hasProjectPermission("environments.write");
 	const qc = useQueryClient();
 	const navigate = useNavigate();
 
@@ -910,13 +882,17 @@ export function EnvironmentDetailView({
 	const envKey = environmentQueryOptions(projectId, environmentId).queryKey;
 	const listKey = ["projects", projectId, "environments"];
 
-	// Stop/Delete live in the header's actions dropdown next to Connect
-	// (see the return below) rather than inline in OverviewTab — lifted up
-	// here so they're reachable from every tab, not just Overview. Start
-	// stays a prominent button in OverviewTab itself: it's the one action
-	// that's only relevant while looking at a stopped environment's own
-	// vitals, and burying the sole way to bring an environment back to life
-	// in a menu would be the wrong tradeoff.
+	// Start/Stop/Delete all live in the header next to Connect (see the
+	// return below) rather than inline in OverviewTab — lifted up here so
+	// they're reachable from every tab, not just Overview.
+	const startMutation = useMutation({
+		mutationFn: () => startEnvironment(projectId, environmentId),
+		onSuccess: (updated) => {
+			qc.setQueryData(envKey, updated);
+			qc.invalidateQueries({ queryKey: listKey });
+		},
+	});
+
 	const stopMutation = useMutation({
 		mutationFn: () => stopEnvironment(projectId, environmentId),
 		onSuccess: (updated) => {
@@ -954,6 +930,11 @@ export function EnvironmentDetailView({
 
 	const isTransitioning = TRANSITIONAL_STATUSES.includes(environment.status);
 	const canStop = !isTransitioning && environment.status === "running";
+	const canStart =
+		!isTransitioning &&
+		(environment.status === "stopped" ||
+			environment.status === "suspended" ||
+			environment.status === "error");
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
@@ -980,6 +961,20 @@ export function EnvironmentDetailView({
 						</div>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
+						{canWrite && canStart && (
+							<Button
+								variant="outline"
+								onClick={() => startMutation.mutate()}
+								disabled={startMutation.isPending}
+							>
+								{startMutation.isPending ? (
+									<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+								) : (
+									<Play className="size-3.5 mr-1.5" />
+								)}
+								{t("environments.detail.overview.start")}
+							</Button>
+						)}
 						<Link
 							to="/projects/$projectId/environments/$environmentId/connect"
 							params={{ projectId, environmentId }}

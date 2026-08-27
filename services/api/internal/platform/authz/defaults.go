@@ -47,6 +47,7 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionDocsAll,
 				PermissionAgentsAll,
 				PermissionWorkflowsAll,
+				PermissionEnvironmentsAll,
 			},
 		},
 		{
@@ -61,6 +62,7 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionDocsAll,
 				PermissionAgentsAll,
 				PermissionWorkflowsAll,
+				PermissionEnvironmentsAll,
 			},
 		},
 		{
@@ -78,6 +80,9 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionAgentsWrite,
 				PermissionWorkflowsRead,
 				PermissionWorkflowsWrite,
+				PermissionEnvironmentsRead,
+				PermissionEnvironmentsWrite,
+				PermissionEnvironmentsConnect,
 			},
 		},
 		{
@@ -91,6 +96,7 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionDocsRead,
 				PermissionAgentsRead,
 				PermissionWorkflowsRead,
+				PermissionEnvironmentsRead,
 			},
 		},
 	}

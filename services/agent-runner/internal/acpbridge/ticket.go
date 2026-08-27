@@ -18,13 +18,14 @@
 //
 //	  - purpose: which endpoint this ticket is good for — "terminal" or
 //	    "stats" today. Binds a ticket to the one endpoint it was minted
-//	    for: terminal tickets require agents.write (a shell is a mutating
-//	    capability), stats tickets only need agents.read (viewing usage
-//	    numbers isn't), so without this a lower-privilege stats ticket
-//	    could never grant terminal access, but a terminal ticket could
-//	    otherwise be replayed against the stats endpoint (or any future
-//	    ticket-authenticated endpoint) even though it was only ever meant
-//	    to unlock the one it was requested for.
+//	    for: terminal tickets require environments.connect (a shell is a
+//	    live interactive session), stats tickets only need
+//	    environments.read (viewing usage numbers isn't), so without this a
+//	    lower-privilege stats ticket could never grant terminal access,
+//	    but a terminal ticket could otherwise be replayed against the
+//	    stats endpoint (or any future ticket-authenticated endpoint) even
+//	    though it was only ever meant to unlock the one it was requested
+//	    for.
 //	  - environment_id: the environment's UUID, lowercase canonical string
 //	    form (uuid.UUID.String()).
 //	  - expires_unix_ts: decimal seconds-since-epoch (int64, base 10, no

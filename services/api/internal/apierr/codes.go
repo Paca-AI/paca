@@ -324,6 +324,11 @@ const (
 	// resolve to a static environment in the agent's own project, or was set on a
 	// global-scope agent (which has no single project to default from).
 	CodeAgentDefaultEnvironmentInvalid Code = "AGENT_DEFAULT_ENVIRONMENT_INVALID"
+	// CodeAgentDefaultFolderInvalid indicates default_folder_id does not
+	// resolve to a folder belonging to the agent's own
+	// default_environment_id, was set without a default_environment_id
+	// also set, or was set on a global-scope agent.
+	CodeAgentDefaultFolderInvalid Code = "AGENT_DEFAULT_FOLDER_INVALID"
 
 	// --- Environment errors (static environments — see
 	// docs/ai-agent/environment-management.md) --------------------------------

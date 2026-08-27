@@ -372,6 +372,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentEnvVarKeyReserved
 	case errors.Is(err, agentdom.ErrDefaultEnvironmentInvalid):
 		return http.StatusBadRequest, apierr.CodeAgentDefaultEnvironmentInvalid
+	case errors.Is(err, agentdom.ErrDefaultFolderInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentDefaultFolderInvalid
 	// --- Environment errors -------------------------------------------------
 	case errors.Is(err, environmentdom.ErrEnvironmentNotFound):
 		return http.StatusNotFound, apierr.CodeEnvironmentNotFound
@@ -621,7 +623,8 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentSkillNameReserved,
 		apierr.CodeAgentNotSupportedForACPAgent,
 		apierr.CodeAgentConversationInvalidCursor,
-		apierr.CodeAgentDefaultEnvironmentInvalid:
+		apierr.CodeAgentDefaultEnvironmentInvalid,
+		apierr.CodeAgentDefaultFolderInvalid:
 		return http.StatusBadRequest
 	case apierr.CodeEnvironmentNotFound,
 		apierr.CodeEnvironmentFolderNotFound,

@@ -42,6 +42,7 @@
 			"showApiKey": "Mostrar clave de API",
 			"apiKeyHint": "Se almacena cifrada — nunca se expone en las respuestas de la API.",
 			"baseUrlLabel": "URL base",
+			"environmentSection": "Entorno y Docker",
 			"acpSection": "Servidor ACP",
 			"acpProviderLabel": "Proveedor",
 			"acpProviderClaudeCode": "Claude Code",
@@ -167,7 +168,10 @@
 				"dockerEnabledHint": "Otorga a este agente un daemon de Docker privado dentro de su sandbox. Desactivado de forma predeterminada: actívalo solo para agentes que realmente ejecutan comandos de Docker, ya que añade tiempo de inicio a cada conversación.",
 				"defaultEnvironmentLabel": "Entorno predeterminado",
 				"defaultEnvironmentHint": "Vincula las conversaciones de este agente a un entorno estático en lugar de un sandbox desechable nuevo cada vez.",
-				"noDefaultEnvironment": "Sin valor predeterminado (usar sandbox desechable)",
+				"noDefaultEnvironment": "Entorno temporal",
+				"defaultFolderLabel": "Carpeta predeterminada",
+				"defaultFolderHint": "La carpeta dentro del entorno predeterminado en la que trabajarán las conversaciones de este agente.",
+				"noDefaultFolder": "Sin carpeta predeterminada",
 				"saveChanges": "Guardar cambios",
 				"saved": "Guardado",
 				"saveFailed": "Error al guardar. Inténtalo de nuevo.",
@@ -360,6 +364,8 @@
 			"description": "Un sandbox persistente y con nombre al que tus agentes pueden conectarse.",
 			"nameLabel": "Nombre",
 			"namePlaceholder": "staging",
+			"dockerEnabledLabel": "Acceso a Docker",
+			"dockerEnabledHint": "Otorga a este entorno su propio daemon de Docker privado para que los agentes puedan compilar y ejecutar contenedores dentro de él. Desactivado de forma predeterminada — no se puede cambiar después de crear el entorno.",
 			"advanced": "Avanzado",
 			"imageLabel": "Imagen",
 			"imagePlaceholder": "Usar predeterminada (agent-server)",
@@ -407,6 +413,9 @@
 				"backendLabel": "Backend",
 				"imageLabel": "Imagen",
 				"defaultImage": "Predeterminada (agent-server)",
+				"dockerEnabledLabel": "Acceso a Docker",
+				"dockerEnabledOn": "Habilitado",
+				"dockerEnabledOff": "Deshabilitado",
 				"idleTimeoutLabel": "Tiempo de inactividad (minutos)",
 				"idleTimeoutHint": "El entorno se detiene automáticamente tras este número de minutos sin actividad.",
 				"portsPendingRestart": "Se añadió o eliminó un reenvío de puerto. Reinicia el entorno para aplicarlo.",
@@ -528,7 +537,7 @@
 				"description": "Conéctate mediante una terminal en el navegador — no se necesita un cliente SSH ni una clave local.",
 				"connect": "Conectar",
 				"notRunning": "Inicia el entorno antes de conectarte.",
-				"readOnly": "Necesitas acceso de escritura a este proyecto para abrir una terminal.",
+				"readOnly": "No tienes permiso para abrir una terminal en este entorno.",
 				"hint": "Se abre en una nueva pestaña a pantalla completa.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -661,6 +670,18 @@
 				"label": "Gestionar agentes",
 				"description": "Crear, configurar y eliminar agentes de IA"
 			},
+			"environmentsRead": {
+				"label": "Ver entornos",
+				"description": "Explorar entornos y ver su configuración"
+			},
+			"environmentsWrite": {
+				"label": "Gestionar entornos",
+				"description": "Crear, configurar y eliminar entornos, claves SSH y reenvíos de puertos"
+			},
+			"environmentsConnect": {
+				"label": "Conectar a entornos",
+				"description": "Abrir una sesión de terminal interactiva dentro de un entorno en ejecución"
+			},
 			"workflowsRead": {
 				"label": "Ver automatización",
 				"description": "Explorar las automatizaciones y su configuración"
@@ -678,6 +699,7 @@
 			"sprints": "Sprints",
 			"documents": "Documentos",
 			"aiAgents": "Agentes de IA",
+			"environments": "Entornos",
 			"workflows": "Automatización",
 			"plugins": "Plugins"
 		}

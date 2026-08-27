@@ -42,6 +42,7 @@
 			"showApiKey": "Mostrar chave de API",
 			"apiKeyHint": "Armazenada de forma criptografada — nunca exposta nas respostas da API.",
 			"baseUrlLabel": "URL base",
+			"environmentSection": "Ambiente e Docker",
 			"acpSection": "Servidor ACP",
 			"acpProviderLabel": "Provedor",
 			"acpProviderClaudeCode": "Claude Code",
@@ -167,7 +168,10 @@
 				"dockerEnabledHint": "Concede a este agente um daemon Docker privado dentro do seu sandbox. Desativado por padrão — ative apenas para agentes que realmente executam comandos Docker, pois isso adiciona tempo de inicialização a cada conversa.",
 				"defaultEnvironmentLabel": "Ambiente padrão",
 				"defaultEnvironmentHint": "Conecta as conversas deste agente a um ambiente estático em vez de um sandbox descartável novo a cada vez.",
-				"noDefaultEnvironment": "Nenhum padrão (usar sandbox descartável)",
+				"noDefaultEnvironment": "Ambiente temporário",
+				"defaultFolderLabel": "Pasta padrão",
+				"defaultFolderHint": "A pasta dentro do ambiente padrão em que as conversas deste agente vão trabalhar.",
+				"noDefaultFolder": "Sem pasta padrão",
 				"saveChanges": "Salvar alterações",
 				"saved": "Salvo",
 				"saveFailed": "Falha ao salvar. Tente novamente.",
@@ -360,6 +364,8 @@
 			"description": "Um sandbox nomeado e de longa duração ao qual seus agentes podem se conectar.",
 			"nameLabel": "Nome",
 			"namePlaceholder": "staging",
+			"dockerEnabledLabel": "Acesso ao Docker",
+			"dockerEnabledHint": "Concede a este ambiente seu próprio daemon Docker privado para que os agentes possam compilar e executar contêineres dentro dele. Desativado por padrão — não pode ser alterado após a criação do ambiente.",
 			"advanced": "Avançado",
 			"imageLabel": "Imagem",
 			"imagePlaceholder": "Usar padrão (agent-server)",
@@ -407,6 +413,9 @@
 				"backendLabel": "Backend",
 				"imageLabel": "Imagem",
 				"defaultImage": "Padrão (agent-server)",
+				"dockerEnabledLabel": "Acesso ao Docker",
+				"dockerEnabledOn": "Ativado",
+				"dockerEnabledOff": "Desativado",
 				"idleTimeoutLabel": "Tempo limite de inatividade (minutos)",
 				"idleTimeoutHint": "O ambiente para automaticamente após esse número de minutos sem atividade.",
 				"portsPendingRestart": "Um encaminhamento de porta foi adicionado ou removido. Reinicie o ambiente para aplicá-lo.",
@@ -528,7 +537,7 @@
 				"description": "Conecte-se usando um terminal no navegador — nenhum cliente SSH ou chave local necessário.",
 				"connect": "Conectar",
 				"notRunning": "Inicie o ambiente antes de conectar.",
-				"readOnly": "Você precisa de acesso de escrita a este projeto para abrir um terminal.",
+				"readOnly": "Você não tem permissão para abrir um terminal neste ambiente.",
 				"hint": "Abre em uma nova guia em tela cheia.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -661,6 +670,18 @@
 				"label": "Gerenciar agentes",
 				"description": "Criar, configurar e excluir agentes de IA"
 			},
+			"environmentsRead": {
+				"label": "Ver ambientes",
+				"description": "Navegar pelos ambientes e ver suas configurações"
+			},
+			"environmentsWrite": {
+				"label": "Gerenciar ambientes",
+				"description": "Criar, configurar e excluir ambientes, chaves SSH e encaminhamentos de porta"
+			},
+			"environmentsConnect": {
+				"label": "Conectar aos ambientes",
+				"description": "Abrir uma sessão de terminal interativa dentro de um ambiente em execução"
+			},
 			"workflowsRead": {
 				"label": "Ver automação",
 				"description": "Navegar pelas automações e suas configurações"
@@ -678,6 +699,7 @@
 			"sprints": "Sprints",
 			"documents": "Documentos",
 			"aiAgents": "Agentes de IA",
+			"environments": "Ambientes",
 			"workflows": "Automação",
 			"plugins": "Plugins"
 		}

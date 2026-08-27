@@ -46,6 +46,7 @@
 			"showApiKey": "Show API key",
 			"apiKeyHint": "Stored encrypted — never exposed in API responses.",
 			"baseUrlLabel": "Base URL",
+			"environmentSection": "Environment & Docker",
 			"acpSection": "ACP Server",
 			"acpProviderLabel": "Provider",
 			"acpProviderClaudeCode": "Claude Code",
@@ -167,7 +168,10 @@
 				"dockerEnabledHint": "Give this agent a private Docker daemon inside its sandbox. Off by default — only enable it for agents that actually run Docker commands, since it adds startup time to every conversation.",
 				"defaultEnvironmentLabel": "Default Environment",
 				"defaultEnvironmentHint": "Attach this agent's conversations to a static environment instead of a fresh disposable sandbox each time.",
-				"noDefaultEnvironment": "No default (use a disposable sandbox)",
+				"noDefaultEnvironment": "Temporary environment",
+				"defaultFolderLabel": "Default Folder",
+				"defaultFolderHint": "Which folder inside the default environment this agent's conversations work in.",
+				"noDefaultFolder": "No default folder",
 				"saveChanges": "Save changes",
 				"saved": "Saved",
 				"saveFailed": "Failed to save. Please try again.",
@@ -360,6 +364,8 @@
 			"description": "A named, long-lived sandbox your agents can attach to.",
 			"nameLabel": "Name",
 			"namePlaceholder": "staging",
+			"dockerEnabledLabel": "Docker access",
+			"dockerEnabledHint": "Give this environment its own private Docker daemon so agents can build and run containers inside it. Off by default — this can't be changed after the environment is created.",
 			"advanced": "Advanced",
 			"imageLabel": "Image",
 			"imagePlaceholder": "Use default (agent-server)",
@@ -407,6 +413,9 @@
 				"backendLabel": "Backend",
 				"imageLabel": "Image",
 				"defaultImage": "Default (agent-server)",
+				"dockerEnabledLabel": "Docker access",
+				"dockerEnabledOn": "Enabled",
+				"dockerEnabledOff": "Disabled",
 				"idleTimeoutLabel": "Idle timeout (minutes)",
 				"idleTimeoutHint": "The environment stops automatically after this many minutes without activity.",
 				"portsPendingRestart": "A port forward was added or removed. Restart the environment to apply it.",
@@ -528,7 +537,7 @@
 				"description": "Connect using an in-browser terminal — no local SSH client or key required.",
 				"connect": "Connect",
 				"notRunning": "Start the environment before connecting.",
-				"readOnly": "You need write access to this project to open a terminal.",
+				"readOnly": "You don't have permission to open a terminal on this environment.",
 				"hint": "Opens in a new full-page tab.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -661,6 +670,18 @@
 				"label": "Manage Agents",
 				"description": "Create, configure, and delete AI agents"
 			},
+			"environmentsRead": {
+				"label": "View Environments",
+				"description": "Browse environments and view their configuration"
+			},
+			"environmentsWrite": {
+				"label": "Manage Environments",
+				"description": "Create, configure, and delete environments, SSH keys, and port forwards"
+			},
+			"environmentsConnect": {
+				"label": "Connect to Environments",
+				"description": "Open an interactive terminal session inside a running environment"
+			},
 			"workflowsRead": {
 				"label": "View Automation",
 				"description": "Browse automations and their configuration"
@@ -678,6 +699,7 @@
 			"sprints": "Sprints",
 			"documents": "Documents",
 			"aiAgents": "AI Agents",
+			"environments": "Environments",
 			"workflows": "Automation",
 			"plugins": "Plugins"
 		}

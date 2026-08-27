@@ -189,6 +189,7 @@ type createEnvironmentRequest struct {
 	CPULimit      string `json:"cpu_limit"`
 	MemoryLimit   string `json:"memory_limit"`
 	DiskLimitGB   int    `json:"disk_limit_gb"`
+	DockerEnabled bool   `json:"docker_enabled"`
 	SecretKey     string `json:"secret_key"`
 }
 
@@ -246,13 +247,15 @@ func (s *Server) handleCreateEnvironment(w http.ResponseWriter, r *http.Request)
 	sshPort := s.assignSSHPort(r.Context(), environmentID)
 
 	handle, err := s.SandboxMgr.CreateEnvironment(r.Context(), sandbox.EnvironmentConfig{
-		EnvironmentID: req.EnvironmentID,
-		Image:         req.Image,
-		CPULimit:      req.CPULimit,
-		MemoryLimit:   req.MemoryLimit,
-		DiskLimitGB:   req.DiskLimitGB,
-		SecretKey:     req.SecretKey,
-		PortMappings:  s.buildPortMappings(r.Context(), environmentID, sshPort),
+		EnvironmentID:   req.EnvironmentID,
+		Image:           req.Image,
+		CPULimit:        req.CPULimit,
+		MemoryLimit:     req.MemoryLimit,
+		DiskLimitGB:     req.DiskLimitGB,
+		DockerEnabled:   req.DockerEnabled,
+		SecretKey:       req.SecretKey,
+		PortMappings:    s.buildPortMappings(r.Context(), environmentID, sshPort),
+		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
 		s.Log.Error("acpbridge: failed to create environment", "environment_id", req.EnvironmentID, "error", err)
@@ -278,12 +281,13 @@ func (s *Server) handleCreateEnvironment(w http.ResponseWriter, r *http.Request)
 // -----------------------------------------------------------------------
 
 type startEnvironmentRequest struct {
-	BackendRef  string `json:"backend_ref"`
-	Image       string `json:"image"`
-	CPULimit    string `json:"cpu_limit"`
-	MemoryLimit string `json:"memory_limit"`
-	DiskLimitGB int    `json:"disk_limit_gb"`
-	SecretKey   string `json:"secret_key"`
+	BackendRef    string `json:"backend_ref"`
+	Image         string `json:"image"`
+	CPULimit      string `json:"cpu_limit"`
+	MemoryLimit   string `json:"memory_limit"`
+	DiskLimitGB   int    `json:"disk_limit_gb"`
+	DockerEnabled bool   `json:"docker_enabled"`
+	SecretKey     string `json:"secret_key"`
 }
 
 type startEnvironmentResponse struct {
@@ -354,13 +358,15 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 	portMappings := s.buildPortMappings(r.Context(), environmentID, sshPort)
 
 	handle, err := s.SandboxMgr.StartEnvironment(r.Context(), req.BackendRef, sandbox.EnvironmentConfig{
-		EnvironmentID: id,
-		Image:         req.Image,
-		CPULimit:      req.CPULimit,
-		MemoryLimit:   req.MemoryLimit,
-		DiskLimitGB:   req.DiskLimitGB,
-		SecretKey:     req.SecretKey,
-		PortMappings:  portMappings,
+		EnvironmentID:   id,
+		Image:           req.Image,
+		CPULimit:        req.CPULimit,
+		MemoryLimit:     req.MemoryLimit,
+		DiskLimitGB:     req.DiskLimitGB,
+		DockerEnabled:   req.DockerEnabled,
+		SecretKey:       req.SecretKey,
+		PortMappings:    portMappings,
+		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
 		s.Log.Error("acpbridge: failed to start environment", "environment_id", id, "error", err)
@@ -766,13 +772,14 @@ func (s *Server) handlePortForwardsAssign(w http.ResponseWriter, r *http.Request
 // -----------------------------------------------------------------------
 
 type restartEnvironmentPortsRequest struct {
-	BackendRef  string `json:"backend_ref"`
-	VolumeRef   string `json:"volume_ref"`
-	Image       string `json:"image"`
-	CPULimit    string `json:"cpu_limit"`
-	MemoryLimit string `json:"memory_limit"`
-	DiskLimitGB int    `json:"disk_limit_gb"`
-	SecretKey   string `json:"secret_key"`
+	BackendRef    string `json:"backend_ref"`
+	VolumeRef     string `json:"volume_ref"`
+	Image         string `json:"image"`
+	CPULimit      string `json:"cpu_limit"`
+	MemoryLimit   string `json:"memory_limit"`
+	DiskLimitGB   int    `json:"disk_limit_gb"`
+	DockerEnabled bool   `json:"docker_enabled"`
+	SecretKey     string `json:"secret_key"`
 }
 
 type restartEnvironmentPortsResponse struct {
@@ -816,13 +823,15 @@ func (s *Server) handleRestartEnvironmentPorts(w http.ResponseWriter, r *http.Re
 	sshPort := s.assignSSHPort(r.Context(), environmentID)
 
 	handle, err := s.SandboxMgr.RestartEnvironmentPorts(r.Context(), req.BackendRef, req.VolumeRef, sandbox.EnvironmentConfig{
-		EnvironmentID: id,
-		Image:         req.Image,
-		CPULimit:      req.CPULimit,
-		MemoryLimit:   req.MemoryLimit,
-		DiskLimitGB:   req.DiskLimitGB,
-		SecretKey:     req.SecretKey,
-		PortMappings:  s.buildPortMappings(r.Context(), environmentID, sshPort),
+		EnvironmentID:   id,
+		Image:           req.Image,
+		CPULimit:        req.CPULimit,
+		MemoryLimit:     req.MemoryLimit,
+		DiskLimitGB:     req.DiskLimitGB,
+		DockerEnabled:   req.DockerEnabled,
+		SecretKey:       req.SecretKey,
+		PortMappings:    s.buildPortMappings(r.Context(), environmentID, sshPort),
+		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
 		s.Log.Error("acpbridge: failed to restart environment ports", "environment_id", id, "error", err)

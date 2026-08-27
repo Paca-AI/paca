@@ -102,6 +102,54 @@ func (s *Service) validateDefaultEnvironment(ctx context.Context, projectID uuid
 	return &id, nil
 }
 
+// validateDefaultFolder resolves and validates a candidate
+// default_folder_id for an agent being created/updated in projectID:
+// uuid.Nil clears it (same convention validateDefaultEnvironment uses);
+// any other value must belong to resolvedEnvID — the agent's own
+// (already-resolved, by validateDefaultEnvironment, earlier in the same
+// call) default environment, since a default folder is meaningless without
+// one to scope it to (see Agent.DefaultFolderID's doc comment) — and the
+// agent must be project-scoped. GetEnvironment already returns Folders
+// populated (see environmentdom.EnvironmentService.GetEnvironment's doc
+// comment), so this needs no separate folder lookup.
+func (s *Service) validateDefaultFolder(ctx context.Context, projectID uuid.UUID, candidate uuid.UUID, resolvedEnvID *uuid.UUID, scope agentdom.AgentScope) (*uuid.UUID, error) {
+	if candidate == uuid.Nil {
+		return nil, nil
+	}
+	if scope == agentdom.AgentScopeGlobal {
+		return nil, agentdom.ErrDefaultFolderInvalid
+	}
+	if resolvedEnvID == nil {
+		return nil, agentdom.ErrDefaultFolderInvalid
+	}
+	if s.environmentSvc == nil {
+		return nil, agentdom.ErrDefaultFolderInvalid
+	}
+	env, err := s.environmentSvc.GetEnvironment(ctx, projectID, *resolvedEnvID)
+	if err != nil {
+		return nil, agentdom.ErrDefaultFolderInvalid
+	}
+	for _, f := range env.Folders {
+		if f.ID == candidate {
+			id := candidate
+			return &id, nil
+		}
+	}
+	return nil, agentdom.ErrDefaultFolderInvalid
+}
+
+// uuidPtrEqual reports whether a and b are both nil, or both non-nil and
+// equal — UpdateAgent's own way of detecting whether
+// validateDefaultEnvironment actually changed a.DefaultEnvironmentID
+// (rather than re-resolving to the same value it already had) without
+// duplicating a nil-then-dereference check inline at each call site.
+func uuidPtrEqual(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 // encryptKey encrypts plaintext if an encryptor is configured; otherwise returns plaintext unchanged.
 func (s *Service) encryptKey(plaintext string) (string, error) {
 	if s.encryptor == nil || plaintext == "" {
@@ -223,6 +271,13 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		}
 		a.DefaultEnvironmentID = envID
 	}
+	if in.DefaultFolderID != nil {
+		folderID, err := s.validateDefaultFolder(ctx, projectID, *in.DefaultFolderID, a.DefaultEnvironmentID, agentdom.AgentScopeProject)
+		if err != nil {
+			return nil, err
+		}
+		a.DefaultFolderID = folderID
+	}
 
 	// Atomically create the agent and its project membership in one transaction.
 	memberID := uuid.New()
@@ -341,7 +396,25 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if err != nil {
 			return nil, err
 		}
+		envChanged := !uuidPtrEqual(a.DefaultEnvironmentID, envID)
 		a.DefaultEnvironmentID = envID
+		// The agent's existing default folder belongs to the OLD
+		// environment — if the environment just changed and this same
+		// request didn't also specify a new default_folder_id (handled
+		// below, which would overwrite this), the stale folder reference
+		// can never be valid again, so it's cleared here rather than left
+		// dangling for validateDefaultFolder to reject on every future
+		// update until someone notices.
+		if envChanged && in.DefaultFolderID == nil {
+			a.DefaultFolderID = nil
+		}
+	}
+	if in.DefaultFolderID != nil {
+		folderID, err := s.validateDefaultFolder(ctx, projectID, *in.DefaultFolderID, a.DefaultEnvironmentID, a.AgentScope)
+		if err != nil {
+			return nil, err
+		}
+		a.DefaultFolderID = folderID
 	}
 	a.UpdatedAt = time.Now()
 
@@ -1286,13 +1359,19 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID, memb
 
 // SendConversationMessage publishes a chat message to an active conversation.
 //
-// ACP-type agents route through sendACPConversationMessage instead: unlike an
-// LLM agent (where a follow-up message only ever makes sense while a turn is
-// actually running), an ACP agent's local bridge daemon keeps a conversation
-// alive by conversation_id regardless of which trigger type started it
-// (task_assigned, comment_mention, description_write, automation_message —
-// not just chat_message), so it can always be resumed here too — mirroring
-// SendChatMessage's terminal-status resume for chat sessions.
+// ACP-type agents, and any conversation attached to a static environment,
+// route through resumeConversationMessage instead: unlike an ordinary LLM
+// agent's ephemeral sandbox (where a follow-up message only ever makes
+// sense while a turn is actually running — its sandbox is gone for good
+// once the turn ends), an ACP agent's local bridge daemon keeps a
+// conversation alive by conversation_id regardless of which trigger type
+// started it (task_assigned, comment_mention, description_write,
+// automation_message — not just chat_message), and a static environment's
+// container/Pod likewise outlives any one conversation's status (see
+// docker.Manager.StopEnvironment's doc comment) — so either can always be
+// resumed here too, from any status, not just chat_message ones —
+// mirroring SendChatMessage's own terminal-status resume carve-out for
+// chat sessions.
 func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
 	if err != nil {
@@ -1303,8 +1382,8 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 	if err != nil {
 		return err
 	}
-	if agent.AgentType == agentdom.AgentTypeACP {
-		return s.sendACPConversationMessage(ctx, c, message, memberID)
+	if agent.AgentType == agentdom.AgentTypeACP || c.EnvironmentID != nil {
+		return s.resumeConversationMessage(ctx, projectID, c, message, memberID)
 	}
 
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
@@ -1318,18 +1397,37 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 	})
 }
 
-// sendACPConversationMessage resumes an ACP conversation of any trigger type
-// so it can be continued from the chat box, not just chat_message ones.
-func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, memberID uuid.UUID) error {
+// resumeConversationMessage resumes a conversation of any trigger type from
+// any status other than running/queued (busy), so it can be continued from
+// the chat box instead of being stuck once its first turn ends — used for
+// ACP-type agents (see SendConversationMessage's own doc comment) and for
+// any conversation attached to a static environment.
+func (s *Service) resumeConversationMessage(ctx context.Context, projectID uuid.UUID, c *agentdom.AgentConversation, message string, memberID uuid.UUID) error {
 	status := agentdom.ConversationStatus(c.Status)
 	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
 		// Still mid-turn (or not yet picked up by the worker) — reject
-		// instead of dispatching a second start_turn on top of one the
-		// bridge hasn't finished: ConversationRunner.start_turn's own
-		// "still running" guard would report the *in-flight* turn as
-		// failed, not queue this message behind it.
+		// instead of dispatching a second start_turn/attach on top of one
+		// that hasn't finished: for ACP, ConversationRunner.start_turn's
+		// own "still running" guard would report the *in-flight* turn as
+		// failed, not queue this message behind it; for an
+		// environment-backed conversation, a concurrent turn is already
+		// attached to the same goose serve session.
 		return agentdom.ErrConversationBusy
 	}
+
+	// Validate the environment/folder still resolves *before* the
+	// ClaimConversationStatus call below moves status to "running" — a
+	// claim that then failed validation would otherwise be stuck there
+	// with no rollback (mirrors SendChatMessage's own early-validate-
+	// before-claim comment; the later resolveWorkdirForConversation call
+	// below, which builds the actual trigger payload, is a cheap, harmless
+	// duplicate read on this now-validated path).
+	if c.EnvironmentID != nil {
+		if _, _, err := s.resolveWorkdirForConversation(ctx, projectID, c); err != nil {
+			return err
+		}
+	}
+
 	// Claim atomically so two concurrent replies can't both win and
 	// double-publish a resume trigger for the same conversation_id — same
 	// race guard as SendChatMessage's resume paths.
@@ -1340,7 +1438,18 @@ func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.Ag
 	if !claimed {
 		return agentdom.ErrConversationBusy
 	}
-	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+
+	// Re-resolve into a live (environmentID, workdir) pair for the trigger
+	// payload — needed on every resume, not just the first (see
+	// resolveWorkdirForConversation's doc comment). nil for an ACP
+	// conversation (c.EnvironmentID is always nil there — ACP sandboxing is
+	// owned by the user's own local client, not agent-runner).
+	envID, workdir, err := s.resolveWorkdirForConversation(ctx, projectID, c)
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
 		"conversation_id": c.ID.String(),
 		"project_id":      c.ProjectID.String(),
 		"agent_id":        c.AgentID.String(),
@@ -1348,7 +1457,12 @@ func (s *Service) sendACPConversationMessage(ctx context.Context, c *agentdom.Ag
 		"actor_member_id": memberID.String(),
 		"message":         message,
 		"repo_plugin_ids": strings.Join(s.gatherRepoPluginIDs(ctx), ","),
-	})
+	}
+	if envID != nil {
+		payload["environment_id"] = envID.String()
+		payload["workdir"] = workdir
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
 
 // -------------------------------------------------------------------------
@@ -1458,9 +1572,13 @@ func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversatio
 	})
 }
 
-// sendACPGlobalConversationMessage is sendACPConversationMessage's
-// global-chat sibling — see its doc comment for why ACP conversations can
-// always be resumed regardless of trigger type or terminal status.
+// sendACPGlobalConversationMessage is resumeConversationMessage's
+// global-chat, ACP-only sibling — see that function's doc comment for why
+// ACP conversations can always be resumed regardless of trigger type or
+// terminal status. No environment carve-out here, unlike
+// resumeConversationMessage: a global-scope agent can never have a default
+// environment (see agentdom.Agent.DefaultEnvironmentID's doc comment), so
+// a global conversation's EnvironmentID is always nil.
 func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, actorUserID uuid.UUID) error {
 	status := agentdom.ConversationStatus(c.Status)
 	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
@@ -1513,7 +1631,7 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 		return nil, nil, err
 	}
 
-	envID, resolvedFolderID, workdir, err := s.resolveChatEnvironment(ctx, projectID, agentID, environmentID, folderID)
+	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, environmentID, folderID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1535,16 +1653,21 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 	return session, conv, nil
 }
 
-// resolveChatEnvironment resolves which static environment+folder (if any)
-// a new chat conversation should attach to. environmentID, when nil, falls
-// back to the agent's own DefaultEnvironmentID (agentdom.Agent.
-// DefaultEnvironmentID) — overridable per conversation at chat-start, per
-// that field's own doc comment. Returns (nil, nil, "", nil) when neither
-// the request nor the agent names an environment, or when this service was
-// never wired with an environmentSvc (self-hosted deployments that haven't
-// enabled it) — the conversation then gets an ephemeral per-conversation
-// sandbox as it always has, unchanged.
-func (s *Service) resolveChatEnvironment(ctx context.Context, projectID, agentID uuid.UUID, environmentID, folderID *uuid.UUID) (envID, resolvedFolderID *uuid.UUID, workdir string, err error) {
+// resolveConversationEnvironment resolves which static environment+folder
+// (if any) a new conversation should attach to, regardless of what
+// triggered it — chat message, task assignment, comment mention,
+// description write, or automation message all share this one resolution
+// path. environmentID, when nil, falls back to the agent's own
+// DefaultEnvironmentID (agentdom.Agent.DefaultEnvironmentID) — the only
+// trigger that ever passes a non-nil environmentID/folderID of its own
+// (an explicit per-conversation override) is StartChatSession; every other
+// caller (TriggerTaskAssigned et al.) passes nil for both, deferring
+// entirely to the agent's default. Returns (nil, nil, "", nil) when
+// neither the caller nor the agent names an environment, or when this
+// service was never wired with an environmentSvc (self-hosted deployments
+// that haven't enabled it) — the conversation then gets an ephemeral
+// per-conversation sandbox as it always has, unchanged.
+func (s *Service) resolveConversationEnvironment(ctx context.Context, projectID, agentID uuid.UUID, environmentID, folderID *uuid.UUID) (envID, resolvedFolderID *uuid.UUID, workdir string, err error) {
 	if s.environmentSvc == nil {
 		return nil, nil, "", nil
 	}
@@ -1554,6 +1677,16 @@ func (s *Service) resolveChatEnvironment(ctx context.Context, projectID, agentID
 			return nil, nil, "", err
 		}
 		environmentID = agent.DefaultEnvironmentID
+		// agent.DefaultFolderID only ever belongs to agent.DefaultEnvironmentID
+		// — only consulted here, in the branch that just defaulted
+		// environmentID itself from that same environment, and only when
+		// the caller didn't already pick a folder of its own. A caller
+		// that passed an explicit environmentID (possibly a different one)
+		// must never inherit this agent's default folder, since it could
+		// belong to the wrong environment entirely.
+		if environmentID != nil && folderID == nil {
+			folderID = agent.DefaultFolderID
+		}
 	}
 	if environmentID == nil {
 		return nil, nil, "", nil
@@ -1905,13 +2038,14 @@ func (s *Service) createConversation(ctx context.Context, projectID, agentID uui
 		CommentID:           template.CommentID,
 		ChatSessionID:       template.ChatSessionID,
 		TriggeredByMemberID: memberID,
-		// EnvironmentID/EnvironmentFolderID: only ever set by the
-		// chat-session flow today (StartChatSession/SendChatMessage) — see
-		// resolveChatEnvironment. Every other template constructor
-		// (TriggerTaskAssigned et al.) leaves these nil, matching this
-		// feature's scope: default-environment attachment is a chat-start
-		// concept per docs/ai-agent/environment-management.md, not
-		// extended to task/comment/automation triggers in this slice.
+		// EnvironmentID/EnvironmentFolderID: resolved by every trigger
+		// constructor via resolveConversationEnvironment before calling
+		// this — see that method's own doc comment for how each one
+		// resolves to the agent's DefaultEnvironmentID/DefaultFolderID
+		// when it has no per-conversation override of its own. nil on the
+		// template here just means resolution turned up nothing (no
+		// default set, or no environmentSvc wired up), not that this
+		// trigger type opted out.
 		EnvironmentID:       template.EnvironmentID,
 		EnvironmentFolderID: template.EnvironmentFolderID,
 		Status:              string(agentdom.ConversationStatusQueued),
@@ -1988,10 +2122,17 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 		repoPluginID = &id
 	}
 
+	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	conv, err := s.createConversation(ctx, projectID, agentID, triggeredByMemberID, agentdom.AgentConversation{
-		TriggerType:  "task_assigned",
-		TaskID:       &taskID,
-		RepoPluginID: repoPluginID,
+		TriggerType:         "task_assigned",
+		TaskID:              &taskID,
+		RepoPluginID:        repoPluginID,
+		EnvironmentID:       envID,
+		EnvironmentFolderID: resolvedFolderID,
 	})
 	if err != nil {
 		return nil, err
@@ -2007,6 +2148,10 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 	}
 	if triggeredByMemberID != nil {
 		payload["actor_member_id"] = triggeredByMemberID.String()
+	}
+	if envID != nil {
+		payload["environment_id"] = envID.String()
+		payload["workdir"] = workdir
 	}
 	_ = s.publishTrigger(ctx, events.TopicAgentTaskAssigned, payload)
 	return conv, nil
@@ -2032,9 +2177,16 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 		repoPluginID = &id
 	}
 
+	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	conv, err := s.createConversation(ctx, projectID, agentID, triggeredByMemberID, agentdom.AgentConversation{
-		TriggerType:  "automation_message",
-		RepoPluginID: repoPluginID,
+		TriggerType:         "automation_message",
+		RepoPluginID:        repoPluginID,
+		EnvironmentID:       envID,
+		EnvironmentFolderID: resolvedFolderID,
 	})
 	if err != nil {
 		return nil, err
@@ -2049,6 +2201,10 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 	}
 	if triggeredByMemberID != nil {
 		payload["actor_member_id"] = triggeredByMemberID.String()
+	}
+	if envID != nil {
+		payload["environment_id"] = envID.String()
+		payload["workdir"] = workdir
 	}
 	_ = s.publishTrigger(ctx, events.TopicAgentAutomationMessage, payload)
 	return conv, nil
@@ -2070,11 +2226,18 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 		repoPluginID = &id
 	}
 
+	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	conv, err := s.createConversation(ctx, projectID, agentID, &triggeredByMemberID, agentdom.AgentConversation{
-		TriggerType:  "comment_mention",
-		TaskID:       &taskID,
-		CommentID:    &commentID,
-		RepoPluginID: repoPluginID,
+		TriggerType:         "comment_mention",
+		TaskID:              &taskID,
+		CommentID:           &commentID,
+		RepoPluginID:        repoPluginID,
+		EnvironmentID:       envID,
+		EnvironmentFolderID: resolvedFolderID,
 	})
 	if err != nil {
 		return nil, err
@@ -2089,6 +2252,10 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 		"trigger_type":    "comment_mention",
 		"message":         message,
 		"repo_plugin_ids": strings.Join(repoPluginIDs, ","),
+	}
+	if envID != nil {
+		payload["environment_id"] = envID.String()
+		payload["workdir"] = workdir
 	}
 	_ = s.publishTrigger(ctx, events.TopicAgentCommentMention, payload)
 	return conv, nil
@@ -2109,10 +2276,17 @@ func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentI
 		repoPluginID = &id
 	}
 
+	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	conv, err := s.createConversation(ctx, projectID, agentID, &triggeredByMemberID, agentdom.AgentConversation{
-		TriggerType:  "description_write",
-		TaskID:       &taskID,
-		RepoPluginID: repoPluginID,
+		TriggerType:         "description_write",
+		TaskID:              &taskID,
+		RepoPluginID:        repoPluginID,
+		EnvironmentID:       envID,
+		EnvironmentFolderID: resolvedFolderID,
 	})
 	if err != nil {
 		return nil, err
@@ -2126,6 +2300,10 @@ func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentI
 		"trigger_type":    "description_write",
 		"message":         "Please write a clear and detailed description for this task.",
 		"repo_plugin_ids": strings.Join(repoPluginIDs, ","),
+	}
+	if envID != nil {
+		payload["environment_id"] = envID.String()
+		payload["workdir"] = workdir
 	}
 	_ = s.publishTrigger(ctx, events.TopicAgentDescriptionWrite, payload)
 	return conv, nil

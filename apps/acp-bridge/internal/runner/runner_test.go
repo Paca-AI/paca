@@ -62,7 +62,7 @@ func (c *capturedSends) all() []map[string]any {
 func newTestRunner(t *testing.T) (*Runner, *capturedSends) {
 	t.Helper()
 	sent := newCapturedSends()
-	handler := New(t.TempDir(), nil)(sent.send)
+	handler := New(t.TempDir(), Config{}, nil)(sent.send)
 	r, ok := handler.(*Runner)
 	if !ok {
 		t.Fatalf("New's handler is not *Runner (got %T)", handler)

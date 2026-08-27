@@ -24,12 +24,14 @@ import {
 	heartbeatGlobalConversation,
 	pauseGlobalConversation,
 	sendGlobalChatMessage,
+	sendGlobalConversationMessage,
 	startGlobalChatSession,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -153,8 +155,16 @@ export function GlobalAIChatFloat() {
 				return;
 			}
 
-			if (!conversation?.chat_session_id) {
+			if (!conversation) {
 				throw new Error(t("agents.conversationView.conversationEnded"));
+			}
+			if (!conversation.chat_session_id) {
+				// ACP (see canReplyToConversation's own doc comment) — reply in
+				// place on the same conversation_id rather than through a chat
+				// session.
+				await sendGlobalConversationMessage(conversation.id, text);
+				invalidate();
+				return;
 			}
 			const result = await sendGlobalChatMessage(conversation.chat_session_id, {
 				message: text,
@@ -189,11 +199,11 @@ export function GlobalAIChatFloat() {
 		}
 	};
 
+	// !conversationId: no conversation yet, so there's nothing to be blocked
+	// on — the composer is for starting a brand new one. See
+	// canReplyToConversation's own doc comment for every other case.
 	const canReply =
-		!conversationId ||
-		(conversation?.trigger_type === "chat_message" &&
-			!!conversation.chat_session_id &&
-			(!isTerminal || isACP));
+		!conversationId || canReplyToConversation(conversation, isACP);
 
 	const showFailedBanner =
 		!!conversationId &&

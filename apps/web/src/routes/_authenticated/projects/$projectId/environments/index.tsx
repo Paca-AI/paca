@@ -34,8 +34,7 @@ function EnvironmentsPage() {
 	const { create } = Route.useSearch();
 	const navigate = Route.useNavigate();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
-	// Reuses the agents.write gate — see environment-detail.tsx's doc comment.
-	const canWrite = hasProjectPermission("agents.write");
+	const canWrite = hasProjectPermission("environments.write");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const { data: environments = [], isLoading } = useQuery(

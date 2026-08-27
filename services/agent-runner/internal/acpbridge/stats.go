@@ -71,8 +71,8 @@ type environmentStatsMessage struct {
 // that function's own doc comment for why the WebSocket is accepted
 // before the ticket is checked. Purpose ticketPurposeStats: a ticket
 // minted for the terminal must not also work here, and this one — unlike
-// the terminal's, which requires agents.write — only ever needs
-// agents.read (see services/api's StatsTicket handler).
+// the terminal's, which requires environments.connect — only ever needs
+// environments.read (see services/api's StatsTicket handler).
 func (s *Server) handleEnvironmentStatsWS(w http.ResponseWriter, r *http.Request) {
 	environmentID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

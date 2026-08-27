@@ -48,13 +48,18 @@ type AgentResponse struct {
 	// this agent's conversations attach to by default — nil for a global-scope
 	// agent, or a project-scoped agent with no default set. See
 	// agentdom.Agent.DefaultEnvironmentID's doc comment.
-	DefaultEnvironmentID *uuid.UUID               `json:"default_environment_id,omitempty"`
-	CreatedBy            *uuid.UUID               `json:"created_by,omitempty"`
-	CreatedAt            time.Time                `json:"created_at"`
-	UpdatedAt            time.Time                `json:"updated_at"`
-	MCPServers           []AgentMCPServerResponse `json:"mcp_servers,omitempty"`
-	Skills               []AgentSkillResponse     `json:"skills,omitempty"`
-	EnvVars              []AgentEnvVarResponse    `json:"env_vars,omitempty"`
+	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id,omitempty"`
+	// DefaultFolderID is which folder inside DefaultEnvironmentID this
+	// agent's conversations work in by default — nil unless
+	// DefaultEnvironmentID is also set. See
+	// agentdom.Agent.DefaultFolderID's doc comment.
+	DefaultFolderID *uuid.UUID               `json:"default_folder_id,omitempty"`
+	CreatedBy       *uuid.UUID               `json:"created_by,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+	MCPServers      []AgentMCPServerResponse `json:"mcp_servers,omitempty"`
+	Skills          []AgentSkillResponse     `json:"skills,omitempty"`
+	EnvVars         []AgentEnvVarResponse    `json:"env_vars,omitempty"`
 }
 
 // CreateAgentRequest is the body for POST /projects/:projectId/agents.
@@ -83,7 +88,12 @@ type CreateAgentRequest struct {
 	// agent's conversations attach to by default — must belong to this same
 	// project (validated in agent.CreateAgent).
 	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id"`
-	ProjectRoleID        uuid.UUID  `json:"project_role_id" binding:"required"`
+	// DefaultFolderID optionally sets which folder inside
+	// DefaultEnvironmentID this agent's conversations work in by default —
+	// must belong to DefaultEnvironmentID, also set in this same request
+	// (validated in agent.CreateAgent).
+	DefaultFolderID *uuid.UUID `json:"default_folder_id"`
+	ProjectRoleID   uuid.UUID  `json:"project_role_id" binding:"required"`
 }
 
 // UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId
@@ -110,6 +120,10 @@ type UpdateAgentRequest struct {
 	// environment ID to set it — see agentdom.UpdateAgentInput.
 	// DefaultEnvironmentID's doc comment. Ignored for global-scope agents.
 	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id"`
+	// DefaultFolderID: same omit/zero-UUID/real-ID contract as
+	// DefaultEnvironmentID above — see agentdom.UpdateAgentInput.
+	// DefaultFolderID's doc comment. Ignored for global-scope agents.
+	DefaultFolderID *uuid.UUID `json:"default_folder_id"`
 }
 
 // CreateGlobalAgentRequest is the body for POST /admin/agents. Mirrors
@@ -184,6 +198,7 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		GitCommitterEmail:    a.GitCommitterEmail,
 		DockerEnabled:        a.DockerEnabled,
 		DefaultEnvironmentID: a.DefaultEnvironmentID,
+		DefaultFolderID:      a.DefaultFolderID,
 		CreatedBy:            a.CreatedBy,
 		CreatedAt:            a.CreatedAt,
 		UpdatedAt:            a.UpdatedAt,

@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { shouldShowConversationStop } from "./conversation-control-state";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -200,23 +201,7 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	const isChatMessage = conversation?.trigger_type === "chat_message";
-	// ACP conversations stay replyable for every trigger type (task_assigned,
-	// comment_mention, etc.), not just chat_message ones — the user's local
-	// bridge daemon keeps a conversation alive by conversation_id regardless
-	// of why it started, and regardless of status (see
-	// SendConversationMessage's ACP branch in services/api), so a reply can
-	// always continue it. LLM conversations mostly stay gated to chat_message
-	// with a live session, never once terminal — except when environment_id
-	// is set: SendChatMessage's terminal branch in services/api carries the
-	// environment/folder over onto a fresh conversation rather than dead-
-	// ending, since the static environment itself outlives any one
-	// conversation, so the composer can stay open the same way.
-	const canReply = isACP
-		? !isChatMessage || !!conversation?.chat_session_id
-		: isChatMessage &&
-			!!conversation?.chat_session_id &&
-			(!isTerminal || !!conversation?.environment_id);
+	const canReply = canReplyToConversation(conversation, isACP);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -249,9 +234,11 @@ export function ConversationView({
 		}
 
 		if (!conversation.chat_session_id) {
-			// ACP conversation of a non-chat trigger type (task_assigned,
-			// comment_mention, etc.) — reply in place on the same
-			// conversation_id rather than through a chat session.
+			// A conversation of a non-chat trigger type (task_assigned,
+			// comment_mention, etc.) — either ACP, or an LLM conversation
+			// attached to a static environment (see canReply's own doc
+			// comment) — reply in place on the same conversation_id rather
+			// than through a chat session.
 			if (projectId) {
 				await sendConversationMessage(projectId, conversation.id, text);
 			} else {

@@ -9,16 +9,36 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Paca-AI/paca/apps/acp-bridge/internal/bridge"
 	"github.com/Paca-AI/paca/apps/acp-bridge/internal/runner"
 )
 
 const usage = "usage: paca-acp-bridge run --agent-id <id> --token <token> --server <url> " +
-	"[--workspace <path>] [--log-level <level>]\n" +
+	"[--workspace <path>] [--log-level <level>] [--session-scope <scope>] [--session-idle-minutes <n>]\n" +
 	"       paca-acp-bridge version"
+
+// envOr returns os.Getenv(key) if set and non-empty, else fallback.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// envIntOr returns the integer in env var key, or fallback if unset/invalid.
+func envIntOr(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
 
 // Main is the CLI's entrypoint, returning the process exit code. version is
 // this build's version string (see cmd/paca-acp-bridge/main.go), reported
@@ -44,6 +64,12 @@ func Main(argv []string, version string) int {
 	workspace := fs.String("workspace", cwd,
 		"Directory the ACP server operates on (default: current directory)")
 	logLevel := fs.String("log-level", "INFO", "Log level: DEBUG, INFO, WARN, or ERROR")
+	sessionScope := fs.String("session-scope", envOr("PACA_SESSION_SCOPE", runner.ScopeTask),
+		"How conversations map to Claude Code sessions: task (default; one session per task, "+
+			"context shared across a task's conversations), conversation (upstream; one per conversation), "+
+			"or agent (one per agent). Or PACA_SESSION_SCOPE.")
+	idleMinutes := fs.Int("session-idle-minutes", envIntOr("PACA_SESSION_IDLE_MINUTES", 30),
+		"Reclaim a session after this many idle minutes (0 disables). Or PACA_SESSION_IDLE_MINUTES.")
 
 	if err := fs.Parse(argv[1:]); err != nil {
 		return 2
@@ -70,9 +96,11 @@ func Main(argv []string, version string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	log.Info("paca-acp-bridge starting", "version", version, "workspace", *workspace)
+	cfg := runner.Config{Scope: *sessionScope, IdleTimeout: time.Duration(*idleMinutes) * time.Minute}
+	log.Info("paca-acp-bridge starting", "version", version, "workspace", *workspace,
+		"session_scope", cfg.Scope, "session_idle_minutes", *idleMinutes)
 
-	client := bridge.New(*server, *agentID, *token, *workspace, log, runner.New(*workspace, log))
+	client := bridge.New(*server, *agentID, *token, *workspace, log, runner.New(*workspace, cfg, log))
 	if err := client.RunForever(ctx); err != nil && ctx.Err() == nil {
 		log.Error("bridge exited with error", "error", err)
 		return 1

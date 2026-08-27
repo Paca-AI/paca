@@ -253,6 +253,11 @@ func (m *Manager) environmentResources(cfg sandbox.EnvironmentConfig) (corev1.Re
 // the only irreversible teardown in this file — see that method's own doc
 // comment.
 func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
+	if cfg.MCPDevSourceDir != "" {
+		return nil, errors.New("sandbox/k8s: MCPDevSourceDir is not supported by the kubernetes backend — " +
+			"see Manager.Start's identical guard in manager.go; use the docker backend for local apps/mcp development instead")
+	}
+
 	name := environmentName(cfg.EnvironmentID)
 	image := resolveEnvironmentImage(cfg.Image, m.agentServerImage)
 	diskLimitGB := resolveEnvironmentDiskLimitGB(cfg.DiskLimitGB)
@@ -298,11 +303,35 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 	// pair here: EnvironmentConfig carries no per-conversation git
 	// identity — that's resolved per-conversation at ExecEnvironment/
 	// ACP-session time instead, not baked into the long-lived container.
-	env := make([]corev1.EnvVar, 0, len(cfg.Env)+1)
+	env := make([]corev1.EnvVar, 0, len(cfg.Env)+2)
 	for k, v := range cfg.Env {
 		env = append(env, corev1.EnvVar{Name: k, Value: v})
 	}
 	env = append(env, corev1.EnvVar{Name: "GOOSE_SERVER__SECRET_KEY", Value: cfg.SecretKey})
+	if cfg.DockerEnabled {
+		// Sidecar and primary container share one Pod's network namespace
+		// — see dind.go's package doc comment — so "localhost" already
+		// reaches it directly, same as manager.go's own ephemeral Start.
+		env = append(env, corev1.EnvVar{Name: "DOCKER_HOST", Value: "tcp://localhost:2375"})
+	}
+
+	containers := []corev1.Container{{
+		Name:         containerName,
+		Image:        image,
+		Args:         []string{"serve", "--host", "0.0.0.0", "--port", strconv.Itoa(sandbox.GooseServePort)},
+		Env:          env,
+		Resources:    resources,
+		Ports:        []corev1.ContainerPort{{ContainerPort: int32(sandbox.GooseServePort)}},
+		VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: environmentWorkspaceRoot}},
+		// See environmentSecurityContext's own doc comment in
+		// manager.go — Start's Job container hardening plus
+		// the two extra capabilities real sshd needs, root
+		// still the default user.
+		SecurityContext: environmentSecurityContext(),
+	}}
+	if cfg.DockerEnabled {
+		containers = append(containers, dindContainer(resources))
+	}
 
 	terminationGrace := int64(sandbox.StopTimeout.Seconds())
 	deployment := &appsv1.Deployment{
@@ -316,20 +345,7 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 					AutomountServiceAccountToken:  ptr.To(false),
 					TerminationGracePeriodSeconds: &terminationGrace,
 					ImagePullSecrets:              m.imagePullSecrets,
-					Containers: []corev1.Container{{
-						Name:         containerName,
-						Image:        image,
-						Args:         []string{"serve", "--host", "0.0.0.0", "--port", strconv.Itoa(sandbox.GooseServePort)},
-						Env:          env,
-						Resources:    resources,
-						Ports:        []corev1.ContainerPort{{ContainerPort: int32(sandbox.GooseServePort)}},
-						VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: environmentWorkspaceRoot}},
-						// See environmentSecurityContext's own doc comment in
-						// manager.go — Start's Job container hardening plus
-						// the two extra capabilities real sshd needs, root
-						// still the default user.
-						SecurityContext: environmentSecurityContext(),
-					}},
+					Containers:                    containers,
 					Volumes: []corev1.Volume{{
 						Name: "workspace",
 						VolumeSource: corev1.VolumeSource{
@@ -363,7 +379,7 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 	}
 
 	selector := environmentLabel + "=" + name
-	_, podIP, err := m.waitForPodIP(ctx, selector)
+	podName, podIP, err := m.waitForPodIP(ctx, selector)
 	if err != nil {
 		diag := m.diagnoseUnreadyEnvironment(context.Background(), name)
 		cleanup()
@@ -375,6 +391,14 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 		diag := m.diagnoseUnreadyEnvironment(context.Background(), name)
 		cleanup()
 		return nil, fmt.Errorf("%w (%s)", err, diag)
+	}
+
+	if cfg.DockerEnabled {
+		if err := m.waitForDindReady(ctx, podName); err != nil {
+			diag := m.diagnoseUnreadyEnvironment(context.Background(), name)
+			cleanup()
+			return nil, fmt.Errorf("sandbox/k8s: environment dind sidecar not ready: %w (%s)", err, diag)
+		}
 	}
 
 	return &sandbox.EnvironmentHandle{BackendRef: name, BaseURL: baseURL, Backend: "kubernetes", VolumeRef: name}, nil
@@ -463,6 +487,119 @@ func (m *Manager) ensureEnvironmentEnv(ctx context.Context, backendRef string, c
 	return nil
 }
 
+// pacaInfraEnvKeys — see docker/environment.go's own copy of this exact
+// list and its doc comment for why these specifically need to stay in sync
+// with this process's own current config on every StartEnvironment call,
+// unlike GOOSE_PROVIDER/GOOSE_MODEL/the LLM API key (frozen forever to
+// whichever agent's conversation first attached this environment).
+// PACA_API_KEY/PACA_API_URL/PACA_GATEWAY_URL are deployment-level;
+// PACA_WORKDIR/PACA_ACTOR_USER_ID/PACA_REPO_PLUGIN_IDS are conversation-
+// scoped (track trigger.Workdir/ActorUserID/RepoPluginIDs) but need the
+// same treatment for the same reason: Goose's EnvKeys lookup reads each
+// from the Pod's own env, which is fixed at Pod-creation time.
+// PACA_AGENT_ID/PACA_PROJECT_ID are deliberately excluded — see docker/
+// environment.go's copy of this list for why resyncing those specifically
+// would risk silently reassigning a live environment's frozen identity.
+var pacaInfraEnvKeys = []string{
+	"PACA_API_KEY", "PACA_API_URL", "PACA_GATEWAY_URL",
+	"PACA_WORKDIR", "PACA_ACTOR_USER_ID", "PACA_REPO_PLUGIN_IDS",
+	// GOOSE_PATH_ROOT — see docker/environment.go's copy of this list for
+	// why it's included here rather than getting its own GOOSE_PROVIDER-
+	// style one-time backfill.
+	"GOOSE_PATH_ROOT",
+}
+
+// ensureEnvironmentInfraEnv keeps pacaInfraEnvKeys in sync with cfg.Env on
+// every StartEnvironment call — the Kubernetes counterpart to
+// docker/environment.go's identically-named function; see that function's
+// doc comment for the full "why" (a Deployment baked before the platform's
+// PACA_API_KEY was configured, before a rotation, or before a conversation
+// targeting a different environment_folder set a new PACA_WORKDIR,
+// otherwise carries a stale/missing key forever — a missing PACA_WORKDIR
+// in particular makes Goose refuse to load the "paca" extension at all
+// with "Configuration value not found: PACA_WORKDIR", not just silently
+// zero out its tools the way a stale PACA_API_KEY does).
+//
+// Only meaningfully differs from ensureEnvironmentEnv's own no-op case
+// right after that function has just backfilled: at that point cfg.Env's
+// infra keys are already freshly applied, so this simply finds nothing
+// stale and returns — no extra guard needed to skip calling it.
+//
+// Unlike ensureEnvironmentEnv's append-only "never touch an existing key"
+// rule (a genuinely one-time patch), this REPLACES an existing
+// pacaInfraEnvKeys entry when its value has changed, and removes one whose
+// current cfg.Env value is now empty — every other env var on the
+// container (GOOSE_PROVIDER, the agent's own PACA_AGENT_ID/
+// PACA_PROJECT_ID, any user-configured env vars) is left untouched, so
+// this can never silently reassign this environment's frozen LLM/agent
+// identity to whichever conversation happens to trigger the sync.
+func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) error {
+	if len(cfg.Env) == 0 {
+		// A caller with no infra-env context at all — e.g.
+		// handleStartEnvironment's plain restart, whose EnvironmentConfig
+		// never sets Env (see its own doc comment: "restarts ... without
+		// touching" what it doesn't own) — has nothing to reconcile
+		// pacaInfraEnvKeys against. Every real attach path (coldStartEnvironment)
+		// always populates cfg.Env with at least GOOSE_PROVIDER/GOOSE_MODEL/the
+		// API key, so this only ever fires for that kind of context-free
+		// caller; treating a nil/empty cfg.Env as "clear every key" instead
+		// would strip PACA_API_KEY, GOOSE_PATH_ROOT, etc. from an
+		// already-correctly-configured Deployment on every such call. Mirrors
+		// ensureEnvironmentEnv's own cfg.Env["GOOSE_PROVIDER"] == "" guard.
+		return nil
+	}
+	depClient := m.clientset.AppsV1().Deployments(m.namespace)
+	dep, err := depClient.Get(ctx, backendRef, metav1.GetOptions{})
+	if err != nil {
+		// Let the caller's own scaleDeployment (which already handles
+		// apierrors.IsNotFound specially) surface this.
+		return nil
+	}
+	if len(dep.Spec.Template.Spec.Containers) == 0 {
+		return nil
+	}
+	container := &dep.Spec.Template.Spec.Containers[0]
+
+	existing := make(map[string]string, len(container.Env))
+	for _, ev := range container.Env {
+		existing[ev.Name] = ev.Value
+	}
+
+	stale := false
+	for _, key := range pacaInfraEnvKeys {
+		if cfg.Env[key] != existing[key] {
+			stale = true
+			break
+		}
+	}
+	if !stale {
+		return nil
+	}
+
+	skip := make(map[string]bool, len(pacaInfraEnvKeys))
+	for _, key := range pacaInfraEnvKeys {
+		skip[key] = true
+	}
+	desired := make([]corev1.EnvVar, 0, len(container.Env)+len(pacaInfraEnvKeys))
+	for _, ev := range container.Env {
+		if skip[ev.Name] {
+			continue
+		}
+		desired = append(desired, ev)
+	}
+	for _, key := range pacaInfraEnvKeys {
+		if v := cfg.Env[key]; v != "" {
+			desired = append(desired, corev1.EnvVar{Name: key, Value: v})
+		}
+	}
+	container.Env = desired
+
+	if _, err := depClient.Update(ctx, dep, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("sandbox/k8s: update environment deployment %s to refresh infra env: %w", backendRef, err)
+	}
+	return nil
+}
+
 // StartEnvironment scales backendRef's existing Deployment back to 1
 // replica and waits for its Pod — possibly a brand new one, since a
 // stop/start cycle can land on a different Pod/IP than before, see
@@ -477,13 +614,19 @@ func (m *Manager) ensureEnvironmentEnv(ctx context.Context, backendRef string, c
 // already-running environment's current, already-healthy Pod is what
 // gets returned, quickly.
 //
-// ensureEnvironmentEnv runs first — see its own doc comment for the one
-// real exception to "never touches spec.template": backfilling
-// GOOSE_PROVIDER onto a Deployment that predates coldStartEnvironment ever
-// computing it, a one-time patch guarded by GOOSE_PROVIDER's own presence
-// so it can never fire twice for the same Deployment.
+// ensureEnvironmentEnv and ensureEnvironmentInfraEnv both run first — see
+// their own doc comments for the two exceptions to "never touches
+// spec.template": backfilling GOOSE_PROVIDER onto a Deployment that
+// predates coldStartEnvironment ever computing it (a one-time patch,
+// guarded by GOOSE_PROVIDER's own presence so it can never fire twice for
+// the same Deployment), and keeping pacaInfraEnvKeys in sync with this
+// process's own current config (not one-time — re-checked, and re-applied
+// when stale, on every call).
 func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
 	if err := m.ensureEnvironmentEnv(ctx, backendRef, cfg); err != nil {
+		return nil, err
+	}
+	if err := m.ensureEnvironmentInfraEnv(ctx, backendRef, cfg); err != nil {
 		return nil, err
 	}
 	if err := m.scaleDeployment(ctx, backendRef, 1); err != nil {
@@ -501,7 +644,7 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 	}
 
 	selector := environmentLabel + "=" + backendRef
-	_, podIP, err := m.waitForPodIP(ctx, selector)
+	podName, podIP, err := m.waitForPodIP(ctx, selector)
 	if err != nil {
 		diag := m.diagnoseUnreadyEnvironment(context.Background(), backendRef)
 		return nil, fmt.Errorf("%w (%s)", err, diag)
@@ -511,6 +654,17 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 	if err != nil {
 		diag := m.diagnoseUnreadyEnvironment(context.Background(), backendRef)
 		return nil, fmt.Errorf("%w (%s)", err, diag)
+	}
+
+	// A scale-0→1 always schedules a brand-new Pod (see this method's own
+	// doc comment), so a fresh dind sidecar needs its own readiness check
+	// here too, same as CreateEnvironment — nothing about an already-Ready
+	// Pod from a prior Start is reused across a stop/start cycle.
+	if cfg.DockerEnabled {
+		if err := m.waitForDindReady(ctx, podName); err != nil {
+			diag := m.diagnoseUnreadyEnvironment(context.Background(), backendRef)
+			return nil, fmt.Errorf("sandbox/k8s: environment dind sidecar not ready: %w (%s)", err, diag)
+		}
 	}
 
 	return &sandbox.EnvironmentHandle{BackendRef: backendRef, BaseURL: baseURL}, nil

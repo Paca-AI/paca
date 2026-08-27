@@ -94,6 +94,13 @@ type Server struct {
 	// through from config.Settings instead — see
 	// environment_handlers.go's handleCreateEnvironment.
 	Backend string
+	// MCPDevSourceDir mirrors config.Settings.MCPDevSourceDir — forwarded
+	// into every sandbox.EnvironmentConfig this creates so a brand-new
+	// environment gets the dev-mode bind mount from its very first
+	// container, the same as executor.Executor's own copy does for every
+	// later StartEnvironment call. See sandbox.EnvironmentConfig.
+	// MCPDevSourceDir's doc comment.
+	MCPDevSourceDir string
 
 	Log Logger
 }

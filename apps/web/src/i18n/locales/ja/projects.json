@@ -42,6 +42,7 @@
 			"showApiKey": "APIキーを表示",
 			"apiKeyHint": "暗号化して保存されます — APIレスポンスに表示されることはありません。",
 			"baseUrlLabel": "ベースURL",
+			"environmentSection": "環境とDocker",
 			"acpSection": "ACPサーバー",
 			"acpProviderLabel": "プロバイダー",
 			"acpProviderClaudeCode": "Claude Code",
@@ -167,7 +168,10 @@
 				"dockerEnabledHint": "このエージェントのサンドボックス内に専用のDockerデーモンを提供します。デフォルトでは無効です。すべての会話の起動時間が増えるため、実際にDockerコマンドを実行するエージェントにのみ有効にしてください。",
 				"defaultEnvironmentLabel": "デフォルト環境",
 				"defaultEnvironmentHint": "このエージェントの会話を、毎回使い捨てのサンドボックスを作成する代わりに静的環境に接続します。",
-				"noDefaultEnvironment": "デフォルトなし(使い捨てサンドボックスを使用)",
+				"noDefaultEnvironment": "一時的な環境",
+				"defaultFolderLabel": "デフォルトフォルダー",
+				"defaultFolderHint": "デフォルト環境内で、このエージェントの会話が作業するフォルダーです。",
+				"noDefaultFolder": "デフォルトフォルダーなし",
 				"saveChanges": "変更を保存",
 				"saved": "保存しました",
 				"saveFailed": "保存に失敗しました。もう一度お試しください。",
@@ -360,6 +364,8 @@
 			"description": "エージェントが接続できる、名前付きの長期稼働サンドボックス。",
 			"nameLabel": "名前",
 			"namePlaceholder": "staging",
+			"dockerEnabledLabel": "Dockerアクセス",
+			"dockerEnabledHint": "この環境専用のプライベートDockerデーモンを提供し、エージェントが内部でコンテナをビルド・実行できるようにします。デフォルトでは無効です。環境の作成後に変更することはできません。",
 			"advanced": "詳細設定",
 			"imageLabel": "イメージ",
 			"imagePlaceholder": "デフォルトを使用 (agent-server)",
@@ -407,6 +413,9 @@
 				"backendLabel": "バックエンド",
 				"imageLabel": "イメージ",
 				"defaultImage": "デフォルト (agent-server)",
+				"dockerEnabledLabel": "Dockerアクセス",
+				"dockerEnabledOn": "有効",
+				"dockerEnabledOff": "無効",
 				"idleTimeoutLabel": "アイドルタイムアウト(分)",
 				"idleTimeoutHint": "この分数のあいだ操作がないと環境は自動的に停止します。",
 				"portsPendingRestart": "ポートフォワードが追加または削除されました。適用するには環境を再起動してください。",
@@ -528,7 +537,7 @@
 				"description": "ブラウザ内ターミナルで接続します — ローカルのSSHクライアントや鍵は不要です。",
 				"connect": "接続",
 				"notRunning": "接続する前に環境を起動してください。",
-				"readOnly": "ターミナルを開くには、このプロジェクトへの書き込み権限が必要です。",
+				"readOnly": "この環境でターミナルを開く権限がありません。",
 				"hint": "新しい全画面タブで開きます。",
 				"pageTitle": "{{name}} — ターミナル",
 				"pageTitleLoading": "ターミナル",
@@ -661,6 +670,18 @@
 				"label": "エージェントの管理",
 				"description": "AIエージェントの作成・設定・削除を行います"
 			},
+			"environmentsRead": {
+				"label": "環境の閲覧",
+				"description": "環境とその設定を閲覧します"
+			},
+			"environmentsWrite": {
+				"label": "環境の管理",
+				"description": "環境、SSHキー、ポートフォワードの作成・設定・削除を行います"
+			},
+			"environmentsConnect": {
+				"label": "環境への接続",
+				"description": "実行中の環境内でインタラクティブなターミナルセッションを開きます"
+			},
 			"workflowsRead": {
 				"label": "自動化を表示",
 				"description": "自動化とその設定を閲覧する"
@@ -678,6 +699,7 @@
 			"sprints": "スプリント",
 			"documents": "ドキュメント",
 			"aiAgents": "AIエージェント",
+			"environments": "環境",
 			"workflows": "自動化",
 			"plugins": "プラグイン"
 		}

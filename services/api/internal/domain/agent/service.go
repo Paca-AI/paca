@@ -205,8 +205,13 @@ type CreateAgentInput struct {
 	// for project-scoped creation — CreateGlobalAgentInput is its own type
 	// below, and deliberately has no DefaultEnvironmentID field at all).
 	DefaultEnvironmentID *uuid.UUID
-	ProjectRoleID        uuid.UUID
-	CreatedBy            *uuid.UUID
+	// DefaultFolderID, when set, must belong to DefaultEnvironmentID (also
+	// set in the same request) — see Agent.DefaultFolderID's doc comment.
+	// Like DefaultEnvironmentID, CreateGlobalAgentInput has no equivalent
+	// field.
+	DefaultFolderID *uuid.UUID
+	ProjectRoleID   uuid.UUID
+	CreatedBy       *uuid.UUID
 }
 
 // CreateGlobalAgentInput carries fields required to create a global agent.
@@ -262,6 +267,15 @@ type UpdateAgentInput struct {
 	// global agent can never have a default environment (see
 	// Agent.DefaultEnvironmentID's doc comment).
 	DefaultEnvironmentID *uuid.UUID
+	// DefaultFolderID: same "nil means unchanged, uuid.Nil clears" contract
+	// as DefaultEnvironmentID above. When both fields are set in the same
+	// request, DefaultFolderID is validated against the *newly* resolved
+	// DefaultEnvironmentID; when DefaultEnvironmentID changes without a
+	// DefaultFolderID alongside it, the agent's existing default folder
+	// (which belongs to the old environment) is cleared automatically —
+	// see agentsvc.Service.UpdateAgent. Ignored by UpdateGlobalAgent, same
+	// as DefaultEnvironmentID.
+	DefaultFolderID *uuid.UUID
 }
 
 // AddMCPServerInput carries fields to add an MCP server.

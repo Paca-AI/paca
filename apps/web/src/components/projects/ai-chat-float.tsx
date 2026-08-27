@@ -23,12 +23,14 @@ import {
 	heartbeatConversation,
 	pauseConversation,
 	sendChatMessage,
+	sendConversationMessage,
 	startChatSession,
 	stopConversation,
 } from "@/lib/agent-api";
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -158,8 +160,17 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 				return;
 			}
 
-			if (!conversation?.chat_session_id) {
+			if (!conversation) {
 				throw new Error(t("agents.conversationView.conversationEnded"));
+			}
+			if (!conversation.chat_session_id) {
+				// ACP, or an LLM conversation attached to a static environment
+				// (see canReplyToConversation's own doc comment) — reply in
+				// place on the same conversation_id rather than through a chat
+				// session.
+				await sendConversationMessage(projectId, conversation.id, text);
+				invalidate();
+				return;
 			}
 			const result = await sendChatMessage(
 				projectId,
@@ -202,21 +213,11 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		}
 	};
 
-	// ACP conversations stay replyable straight through a terminal status —
-	// the user's local bridge daemon keeps the underlying conversation alive
-	// independent of Paca's own status bookkeeping (see SendChatMessage's ACP
-	// resume path in services/api), so "finished"/"failed"/"stopped" doesn't
-	// mean dead-ended the way it does for an LLM chat conversation. A
-	// conversation attached to a static environment (environment_id set)
-	// stays replyable through a terminal status too: SendChatMessage's
-	// terminal branch carries the environment/folder over onto a fresh
-	// conversation instead of dead-ending, since the environment outlives any
-	// one conversation.
+	// !conversationId: no conversation yet, so there's nothing to be blocked
+	// on — the composer is for starting a brand new one. See
+	// canReplyToConversation's own doc comment for every other case.
 	const canReply =
-		!conversationId ||
-		(conversation?.trigger_type === "chat_message" &&
-			!!conversation.chat_session_id &&
-			(!isTerminal || isACP || !!conversation.environment_id));
+		!conversationId || canReplyToConversation(conversation, isACP);
 
 	const showFailedBanner =
 		!!conversationId &&
