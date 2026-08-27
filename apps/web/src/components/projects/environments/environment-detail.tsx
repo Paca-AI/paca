@@ -957,6 +957,7 @@ export function EnvironmentDetailView({
 								<EnvironmentStatusLine
 									environment={environment}
 									hasActiveSshSession={usage.hasActiveSshSession}
+									showDot={environment.status === "running"}
 								/>
 							</div>
 						</div>

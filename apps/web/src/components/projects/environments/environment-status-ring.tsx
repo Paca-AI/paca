@@ -170,10 +170,15 @@ export function EnvironmentStatusRing({
 export function EnvironmentStatusLine({
 	environment,
 	showBackendBadge = true,
+	showDot = true,
 	hasActiveSshSession = false,
 }: {
 	environment: Environment;
 	showBackendBadge?: boolean;
+	// When false, the dot is omitted entirely (not just hidden) so it
+	// leaves no gap behind — the row's own gap-1.5 only applies between
+	// rendered children, not around a hidden-but-present one.
+	showDot?: boolean;
 	// See EnvironmentStatusRing's identically-named prop doc comment.
 	hasActiveSshSession?: boolean;
 }) {
@@ -185,13 +190,18 @@ export function EnvironmentStatusLine({
 
 	return (
 		<div className="flex items-center gap-1.5 flex-wrap">
-			<span
-				className={cn(
-					"size-2 rounded-full",
-					isRunning && "animate-pulse",
-					ENVIRONMENT_STATUS_COLORS[environment.status].replace("text-", "bg-"),
-				)}
-			/>
+			{showDot && (
+				<span
+					className={cn(
+						"size-2 rounded-full",
+						isRunning && "animate-pulse",
+						ENVIRONMENT_STATUS_COLORS[environment.status].replace(
+							"text-",
+							"bg-",
+						),
+					)}
+				/>
+			)}
 			<span
 				className={cn(
 					"text-sm font-medium",
