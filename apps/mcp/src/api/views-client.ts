@@ -443,6 +443,14 @@ export class PacaAPIViewsClient {
 			const part = ordered[i];
 			const chunk = data.subarray(i * PART_SIZE, (i + 1) * PART_SIZE);
 			const etag = await this.putBytes(part.upload_url, contentType, chunk);
+			if (!etag) {
+				// complete-upload requires an ETag per part; failing here names the
+				// offending part instead of surfacing a generic "etag is required"
+				// 400 from the backend a step later.
+				throw new Error(
+					`Part ${part.part_number} uploaded but the object store returned no ETag header; cannot complete the multipart upload.`,
+				);
+			}
 			parts.push({ part_number: part.part_number, etag });
 		}
 		return parts;

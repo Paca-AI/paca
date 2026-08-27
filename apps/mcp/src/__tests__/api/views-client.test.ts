@@ -397,4 +397,145 @@ describe("PacaAPIViewsClient", () => {
 			).rejects.toThrow("413");
 		});
 	});
+
+	describe("uploadTaskAttachment", () => {
+		// A presigned-PUT response carrying (or omitting) an ETag header.
+		function putOk(etag: string | null) {
+			return {
+				ok: true,
+				status: 200,
+				headers: { get: (k: string) => (k.toLowerCase() === "etag" ? etag : null) },
+				text: async () => "",
+				json: async () => ({}),
+			};
+		}
+
+		it("single-part: PUTs the bytes, then completes with only the file_id", async () => {
+			const attachment = { id: "att1", file: { file_name: "a.txt" } };
+			const puts: string[] = [];
+			let completeBody: any;
+			fetchMock.mockImplementation((url: string, init: any) => {
+				if (url.endsWith("/initiate-upload")) {
+					return Promise.resolve(
+						okEnvelope({
+							file_id: "f1",
+							is_multipart: false,
+							upload_url: "https://store/put1",
+						}),
+					);
+				}
+				if (init?.method === "PUT") {
+					puts.push(url);
+					return Promise.resolve(putOk('"etag1"'));
+				}
+				if (url.endsWith("/complete-upload")) {
+					completeBody = JSON.parse(init.body);
+					return Promise.resolve(okEnvelope(attachment));
+				}
+				throw new Error(`unexpected fetch: ${url}`);
+			});
+
+			const client = new PacaAPIViewsClient(CONFIG);
+			const result = await client.uploadTaskAttachment("p1", "t1", {
+				fileName: "a.txt",
+				contentType: "text/plain",
+				data: new Uint8Array([1, 2, 3]),
+			});
+
+			expect(puts).toEqual(["https://store/put1"]);
+			expect(completeBody).toEqual({ file_id: "f1" });
+			expect(result).toEqual(attachment);
+		});
+
+		it("multipart: splits into 5 MiB parts, collects ETags, completes with upload_id + parts", async () => {
+			const attachment = { id: "att2" };
+			const puts: Array<{ url: string; size: number }> = [];
+			let completeBody: any;
+			fetchMock.mockImplementation((url: string, init: any) => {
+				if (url.endsWith("/initiate-upload")) {
+					return Promise.resolve(
+						okEnvelope({
+							file_id: "f2",
+							is_multipart: true,
+							multipart: {
+								upload_id: "u9",
+								parts: [
+									{ part_number: 1, upload_url: "https://store/p1" },
+									{ part_number: 2, upload_url: "https://store/p2" },
+								],
+							},
+						}),
+					);
+				}
+				if (init?.method === "PUT") {
+					puts.push({ url, size: (init.body as Uint8Array).byteLength });
+					return Promise.resolve(putOk(url.endsWith("/p1") ? '"e1"' : '"e2"'));
+				}
+				if (url.endsWith("/complete-upload")) {
+					completeBody = JSON.parse(init.body);
+					return Promise.resolve(okEnvelope(attachment));
+				}
+				throw new Error(`unexpected fetch: ${url}`);
+			});
+
+			const client = new PacaAPIViewsClient(CONFIG);
+			const FIVE_MB = 5 * 1024 * 1024;
+			const data = new Uint8Array(FIVE_MB + 100); // → 5 MiB + a 100-byte tail
+			const result = await client.uploadTaskAttachment("p1", "t1", {
+				fileName: "big.bin",
+				contentType: "application/octet-stream",
+				data,
+			});
+
+			expect(puts.map((p) => p.url)).toEqual([
+				"https://store/p1",
+				"https://store/p2",
+			]);
+			// Byte slicing: first part is exactly one PART_SIZE, second is the tail.
+			expect(puts.map((p) => p.size)).toEqual([FIVE_MB, 100]);
+			expect(completeBody).toEqual({
+				file_id: "f2",
+				upload_id: "u9",
+				parts: [
+					{ part_number: 1, etag: '"e1"' },
+					{ part_number: 2, etag: '"e2"' },
+				],
+			});
+			expect(result).toEqual(attachment);
+		});
+
+		it("fails fast (and never completes) when a part upload returns no ETag", async () => {
+			let completed = false;
+			fetchMock.mockImplementation((url: string, init: any) => {
+				if (url.endsWith("/initiate-upload")) {
+					return Promise.resolve(
+						okEnvelope({
+							file_id: "f3",
+							is_multipart: true,
+							multipart: {
+								upload_id: "u",
+								parts: [{ part_number: 1, upload_url: "https://store/x" }],
+							},
+						}),
+					);
+				}
+				if (init?.method === "PUT") return Promise.resolve(putOk(null));
+				if (url.endsWith("/complete-upload")) {
+					completed = true;
+					return Promise.resolve(okEnvelope({}));
+				}
+				throw new Error(`unexpected fetch: ${url}`);
+			});
+
+			const client = new PacaAPIViewsClient(CONFIG);
+			await expect(
+				client.uploadTaskAttachment("p1", "t1", {
+					fileName: "x.bin",
+					contentType: "application/octet-stream",
+					data: new Uint8Array(6 * 1024 * 1024),
+				}),
+			).rejects.toThrow(/no ETag/);
+			expect(completed).toBe(false);
+		});
+	});
 });
