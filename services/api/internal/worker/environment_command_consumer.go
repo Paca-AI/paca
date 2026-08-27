@@ -164,21 +164,35 @@ func (c *EnvironmentCommandConsumer) run() {
 }
 
 // processPending re-delivers and acknowledges any messages in the PEL that
-// were not acked during a previous run.
+// were not acked during a previous run. Loops in batches of
+// environmentCommandReadCount rather than reading once: each XReadGroup
+// call from ID "0" starts at the head of the PEL, so once a batch is
+// handled (and acked — see handle's own doc comment) the next call
+// naturally advances to whatever's left. Without the loop, a backlog of
+// more than one batch would leave the excess pending indefinitely — run()
+// switches to reading only new messages (">") right after this returns, so
+// nothing else would ever revisit them until the next process restart.
 func (c *EnvironmentCommandConsumer) processPending(ctx context.Context) {
-	msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-		Group:    environmentCommandConsumerGroup,
-		Consumer: c.consumerName,
-		Streams:  []string{events.StreamEnvironmentCommands, "0"},
-		Count:    environmentCommandReadCount,
-	}).Result()
-	if err != nil && err != redis.Nil {
-		c.log.Warn("environment command consumer: could not read pending messages", "err", err)
-		return
-	}
-	for _, stream := range msgs {
-		for _, msg := range stream.Messages {
-			c.handle(msg)
+	for {
+		msgs, err := c.client.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    environmentCommandConsumerGroup,
+			Consumer: c.consumerName,
+			Streams:  []string{events.StreamEnvironmentCommands, "0"},
+			Count:    environmentCommandReadCount,
+		}).Result()
+		if err != nil && err != redis.Nil {
+			c.log.Warn("environment command consumer: could not read pending messages", "err", err)
+			return
+		}
+		delivered := 0
+		for _, stream := range msgs {
+			for _, msg := range stream.Messages {
+				c.handle(msg)
+				delivered++
+			}
+		}
+		if delivered < environmentCommandReadCount {
+			return
 		}
 	}
 }

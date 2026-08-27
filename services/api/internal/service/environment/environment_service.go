@@ -319,6 +319,16 @@ func (s *Service) ExecuteCreate(ctx context.Context, environmentID uuid.UUID) er
 	if err != nil {
 		return err
 	}
+	if env.Status != environmentdom.StatusCreating {
+		// A stale replay of an already-superseded command — e.g. this
+		// message's ack failed and worker.EnvironmentCommandConsumer's
+		// processPending redelivered it from the PEL after a later action
+		// already moved the row past StatusCreating. Nothing to do: acting
+		// on it now would call agent-runner's create endpoint a second time
+		// against a row it (or a retry of CreateEnvironment) has already
+		// resolved one way or the other.
+		return nil
+	}
 
 	secretKeyPlain, err := s.decryptSecret(env.SecretKeyEncrypted)
 	if err != nil {
@@ -349,6 +359,19 @@ func (s *Service) ExecuteCreate(ctx context.Context, environmentID uuid.UUID) er
 
 	if err := s.repo.UpdateEnvironmentProvisioning(ctx, env.ID,
 		environmentdom.StatusRunning, respBody.Backend, respBody.BackendRef, respBody.VolumeRef); err != nil {
+		// agent-runner has already provisioned the container/Pod and volume
+		// by this point — leaving the row at StatusCreating here would
+		// strand it forever: StartEnvironment/StopEnvironment both reject
+		// anything that isn't Stopped/Suspended/Error/Running, and the idle
+		// reaper only ever looks at StatusRunning rows, so nothing would
+		// notice or recover it. Mark StatusError instead so it's at least
+		// visible: BackendRef/VolumeRef are still lost (this same write is
+		// what would have persisted them), so the freshly-provisioned
+		// container/Pod and volume are orphaned on agent-runner's side —
+		// a known gap, not solved here — but the row itself no longer sits
+		// invisibly stuck.
+		errMsg := fmt.Sprintf("persist environment provisioning: %s", err)
+		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return fmt.Errorf("persist environment provisioning: %w", err)
 	}
 	s.publishStatusChanged(ctx, env.ProjectID, env.ID, environmentdom.StatusRunning, nil)
@@ -416,13 +439,28 @@ func (s *Service) StartEnvironment(ctx context.Context, projectID, environmentID
 		return nil, fmt.Errorf("environment %s has never been provisioned (no volume_ref)", env.ID)
 	}
 
+	// Status set BEFORE queuing, not after: worker.EnvironmentCommandConsumer
+	// can pick up and finish the command as soon as it's queued — if the
+	// order were reversed, a fast enough worker could persist StatusRunning
+	// before this request's own StatusStarting write ran, and that write
+	// would then silently overwrite it back to StatusStarting, permanently
+	// (nothing else would ever move it off StatusStarting again). Queuing
+	// second means a failure there is reported as StatusError instead —
+	// see the fallback below — rather than corrupting a state a concurrent
+	// worker has already legitimately advanced past.
+	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusStarting, nil, nil); err != nil {
+		return nil, err
+	}
 	if err := s.publisher.Append(ctx, events.StreamEnvironmentCommands, events.TopicEnvironmentStart, map[string]any{
 		"environment_id": env.ID.String(),
 	}); err != nil {
+		// Nothing will ever execute this start now — leaving the row at
+		// StatusStarting (just persisted above) would strand it there
+		// forever the same way an unhandled queue failure would elsewhere
+		// in this file (see CreateEnvironment's identical fallback).
+		errMsg := fmt.Sprintf("queue environment start: %s", err)
+		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return nil, fmt.Errorf("queue environment start: %w", err)
-	}
-	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusStarting, nil, nil); err != nil {
-		return nil, err
 	}
 	env.Status = environmentdom.StatusStarting
 	env.ErrorMessage = nil
@@ -451,6 +489,17 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 	env, err := s.repo.FindEnvironmentByID(ctx, environmentID)
 	if err != nil {
 		return err
+	}
+	if env.Status != environmentdom.StatusStarting {
+		// A stale replay of an already-superseded command (its ack failed
+		// and processPending redelivered it from the PEL after a later
+		// action already moved the row past StatusStarting) — most
+		// importantly, the user may have since stopped this environment on
+		// purpose; blindly calling agent-runner's /start here would start
+		// it back up out from under them. Whatever the current status is,
+		// it reflects a command that ran after this one queued, so this one
+		// has nothing left to do.
+		return nil
 	}
 	if env.BackendRef == nil {
 		errMsg := fmt.Sprintf("environment %s has never been provisioned (no backend_ref)", env.ID)
@@ -507,6 +556,16 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 		newBackendRef = &respBody.BackendRef
 	}
 	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusRunning, newBackendRef, nil); err != nil {
+		// agent-runner has already started the backend by this point —
+		// leaving the row at StatusStarting here would strand it forever
+		// (see StartEnvironment's identical reasoning for setting status
+		// before queuing). Mark StatusError instead: Error is one of
+		// StartEnvironment's accepted states, so the user can retry, and
+		// retrying is safe here specifically because agent-runner's /start
+		// against an already-running backend is a no-op, not a second
+		// start.
+		errMsg := fmt.Sprintf("persist running status: %s", err)
+		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, newBackendRef, &errMsg)
 		return err
 	}
 	// Best-effort like the repo's other bookkeeping-only calls (e.g.
@@ -576,6 +635,14 @@ func (s *Service) restartEnvironmentPorts(ctx context.Context, env *environmentd
 		newBackendRef = &respBody.BackendRef
 	}
 	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusRunning, newBackendRef, nil); err != nil {
+		// agent-runner has already recreated the container/Pod with the new
+		// port bindings by this point — see ExecuteStart's identical
+		// reasoning for why a failure to persist that must not leave the
+		// row stuck on whatever transitional status it entered this
+		// function with (StatusStarting, when called from ExecuteStart's
+		// pending-restart branch).
+		errMsg := fmt.Sprintf("persist running status: %s", err)
+		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, newBackendRef, &errMsg)
 		return nil, err
 	}
 	// Same reasoning as StartEnvironment's own call to this: best-effort,
@@ -624,13 +691,23 @@ func (s *Service) StopEnvironment(ctx context.Context, projectID, environmentID 
 		return nil, fmt.Errorf("environment %s has never been provisioned (no backend_ref)", env.ID)
 	}
 
+	// Status set BEFORE queuing — see StartEnvironment's identical reasoning
+	// for why: it closes the race where a fast worker finishes the command
+	// and persists StatusStopped before this request's own status write
+	// runs, which would otherwise silently regress it back to
+	// StatusStopping forever.
+	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusStopping, nil, nil); err != nil {
+		return nil, err
+	}
 	if err := s.publisher.Append(ctx, events.StreamEnvironmentCommands, events.TopicEnvironmentStop, map[string]any{
 		"environment_id": env.ID.String(),
 	}); err != nil {
+		// Nothing will ever execute this stop now — see StartEnvironment's
+		// identical fallback for why this must not leave the row stranded
+		// at StatusStopping.
+		errMsg := fmt.Sprintf("queue environment stop: %s", err)
+		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return nil, fmt.Errorf("queue environment stop: %w", err)
-	}
-	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusStopping, nil, nil); err != nil {
-		return nil, err
 	}
 	env.Status = environmentdom.StatusStopping
 	env.ErrorMessage = nil
@@ -649,6 +726,14 @@ func (s *Service) ExecuteStop(ctx context.Context, environmentID uuid.UUID) erro
 	if err != nil {
 		return err
 	}
+	if env.Status != environmentdom.StatusStopping {
+		// A stale replay of an already-superseded command — see
+		// ExecuteStart's identical guard. Just as important here: the user
+		// may have since started this environment back up on purpose, and
+		// blindly calling agent-runner's /stop would kill it out from under
+		// them.
+		return nil
+	}
 	if env.BackendRef == nil {
 		errMsg := fmt.Sprintf("environment %s has never been provisioned (no backend_ref)", env.ID)
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
@@ -661,7 +746,21 @@ func (s *Service) ExecuteStop(ctx context.Context, environmentID uuid.UUID) erro
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return fmt.Errorf("agent-runner: stop environment: %w", err)
 	}
-	return s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusStopped, nil, nil)
+	if err := s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusStopped, nil, nil); err != nil {
+		// agent-runner has already stopped the backend by this point — see
+		// ExecuteStart's identical reasoning for why a failure to persist
+		// that must not leave the row stuck at StatusStopping forever.
+		// StopEnvironment itself only accepts a StatusRunning row, so a
+		// stranded StatusStopping row couldn't be retried via Stop anyway
+		// (the backend isn't running to stop) — but StartEnvironment does
+		// accept StatusError, and starting an already-stopped backend is
+		// exactly what that action does, so marking Error still leaves the
+		// user a working recovery path.
+		errMsg := fmt.Sprintf("persist stopped status: %s", err)
+		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
+		return err
+	}
+	return nil
 }
 
 // DeleteEnvironment asks agent-runner to permanently remove the

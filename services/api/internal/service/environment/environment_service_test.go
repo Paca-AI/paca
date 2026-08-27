@@ -504,6 +504,82 @@ func TestExecuteCreate_AgentRunnerFailure(t *testing.T) {
 	assert.Equal(t, []string{environmentdom.StatusError}, statusUpdates)
 }
 
+// TestExecuteCreate_SkipsStaleReplay verifies ExecuteCreate does nothing —
+// no agent-runner call, no status write — when the row has already moved
+// past StatusCreating by the time it runs, e.g. a redelivered PEL entry
+// whose original ack failed after a prior run already resolved it.
+func TestExecuteCreate_SkipsStaleReplay(t *testing.T) {
+	envID := uuid.New()
+	var calledAgentRunner bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calledAgentRunner = true
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalCreateEnvironmentResponse{})
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{ID: envID, Status: environmentdom.StatusRunning}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteCreate(context.Background(), envID)
+
+	require.NoError(t, err)
+	assert.False(t, calledAgentRunner)
+	assert.Empty(t, statusUpdates)
+}
+
+// TestExecuteCreate_ProvisioningPersistFailureMarksError verifies that when
+// agent-runner successfully provisions the environment but persisting the
+// result fails, the row is marked StatusError rather than stranded at
+// StatusCreating — which StartEnvironment/StopEnvironment would both reject
+// and the idle reaper would never select.
+func TestExecuteCreate_ProvisioningPersistFailureMarksError(t *testing.T) {
+	envID := uuid.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalCreateEnvironmentResponse{
+			Backend: "docker", BackendRef: "container-123", VolumeRef: "paca-env-abc",
+		})
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	var errMsgs []*string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusCreating,
+				CPULimit: "2", MemoryLimit: "4Gi", DiskLimitGB: 20,
+			}, nil
+		},
+		updateEnvironmentProvisioning: func(_ context.Context, _ uuid.UUID, _, _, _, _ string) error {
+			return errors.New("db unavailable")
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, errMsg *string) error {
+			statusUpdates = append(statusUpdates, status)
+			errMsgs = append(errMsgs, errMsg)
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteCreate(context.Background(), envID)
+
+	require.Error(t, err)
+	assert.Equal(t, []string{environmentdom.StatusError}, statusUpdates)
+	require.Len(t, errMsgs, 1)
+	require.NotNil(t, errMsgs[0])
+}
+
 // TestCreateEnvironment_CPULimitTooSmall verifies a cpu_limit override that
 // parses but falls below minCPULimitMillicores is rejected before ever
 // reaching agent-runner — no repo write, no HTTP call — rather than
@@ -780,9 +856,12 @@ func TestStartEnvironment_QueuesCommandAndSetsStarting(t *testing.T) {
 }
 
 // TestStartEnvironment_ReturnsErrorWhenPublishFails verifies a failure to
-// queue the command is reported to the caller, and never marks the
-// environment "starting" — if nothing is going to execute the start,
-// telling the user it's starting would be a lie.
+// queue the command is reported to the caller and, since status is now set
+// BEFORE queuing (closing the race where a fast worker's own StatusRunning
+// write could otherwise be regressed back to StatusStarting by this
+// request — see StartEnvironment's doc comment), marks the row StatusError
+// rather than stranding it at StatusStarting with nothing left to move it
+// forward.
 func TestStartEnvironment_ReturnsErrorWhenPublishFails(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-1"
@@ -810,7 +889,7 @@ func TestStartEnvironment_ReturnsErrorWhenPublishFails(t *testing.T) {
 	_, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
 
 	require.Error(t, err)
-	assert.Empty(t, statusUpdates)
+	assert.Equal(t, []string{environmentdom.StatusStarting, environmentdom.StatusError}, statusUpdates)
 }
 
 // TestStartEnvironment_RejectsPendingRestartWithNoVolumeRef verifies the
@@ -1025,6 +1104,89 @@ func TestExecuteStart_RestartsPortsWhenPending_ClearsPendingWhenTouchFails(t *te
 	assert.False(t, *pendingSet)
 }
 
+// TestExecuteStart_SkipsStaleReplay verifies ExecuteStart does nothing —
+// no agent-runner call, no status write — when the row is no longer
+// StatusStarting by the time it runs. This is the case that matters most:
+// a redelivered "start" command must not restart an environment the user
+// has since deliberately stopped (status would be StatusStopped/
+// StatusStopping by then, not StatusStarting).
+func TestExecuteStart_SkipsStaleReplay(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	var calledAgentRunner bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calledAgentRunner = true
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{})
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStopped,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteStart(context.Background(), envID)
+
+	require.NoError(t, err)
+	assert.False(t, calledAgentRunner)
+	assert.Empty(t, statusUpdates)
+}
+
+// TestExecuteStart_RunningPersistFailureMarksError verifies that when
+// agent-runner successfully starts the backend but persisting StatusRunning
+// fails, the row is marked StatusError rather than stranded at
+// StatusStarting — Error is one of StartEnvironment's accepted states, and
+// retrying is safe since agent-runner's /start against an already-running
+// backend is a no-op.
+func TestExecuteStart_RunningPersistFailureMarksError(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{BaseURL: "http://sandbox:8080"})
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	var errMsgs []*string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStarting,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, errMsg *string) error {
+			statusUpdates = append(statusUpdates, status)
+			errMsgs = append(errMsgs, errMsg)
+			if status == environmentdom.StatusRunning {
+				return errors.New("db unavailable")
+			}
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteStart(context.Background(), envID)
+
+	require.Error(t, err)
+	assert.Equal(t, []string{environmentdom.StatusRunning, environmentdom.StatusError}, statusUpdates)
+	require.Len(t, errMsgs, 2)
+	assert.Nil(t, errMsgs[0])
+	require.NotNil(t, errMsgs[1])
+}
+
 // TestStopEnvironment_QueuesCommandAndSetsStopping mirrors
 // TestStartEnvironment_QueuesCommandAndSetsStarting: StopEnvironment makes
 // no agent-runner call at all, just queues a command onto
@@ -1097,7 +1259,7 @@ func TestStopEnvironment_ReturnsErrorWhenPublishFails(t *testing.T) {
 	_, err := svc.StopEnvironment(context.Background(), uuid.New(), envID)
 
 	require.Error(t, err)
-	assert.Empty(t, statusUpdates)
+	assert.Equal(t, []string{environmentdom.StatusStopping, environmentdom.StatusError}, statusUpdates)
 }
 
 // TestExecuteStop_Success verifies ExecuteStop —
@@ -1173,6 +1335,86 @@ func TestExecuteStop_AgentRunnerFailure(t *testing.T) {
 	require.Len(t, errMsgs, 1)
 	require.NotNil(t, errMsgs[0])
 	assert.Contains(t, *errMsgs[0], "boom")
+}
+
+// TestExecuteStop_SkipsStaleReplay verifies ExecuteStop does nothing — no
+// agent-runner call, no status write — when the row is no longer
+// StatusStopping by the time it runs, e.g. the user has since started the
+// environment back up and a redelivered "stop" command must not kill it
+// out from under them.
+func TestExecuteStop_SkipsStaleReplay(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	var calledAgentRunner bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calledAgentRunner = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusRunning,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteStop(context.Background(), envID)
+
+	require.NoError(t, err)
+	assert.False(t, calledAgentRunner)
+	assert.Empty(t, statusUpdates)
+}
+
+// TestExecuteStop_StoppedPersistFailureMarksError verifies that when
+// agent-runner successfully stops the backend but persisting StatusStopped
+// fails, the row is marked StatusError rather than stranded at
+// StatusStopping.
+func TestExecuteStop_StoppedPersistFailureMarksError(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	var errMsgs []*string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStopping,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, errMsg *string) error {
+			statusUpdates = append(statusUpdates, status)
+			errMsgs = append(errMsgs, errMsg)
+			if status == environmentdom.StatusStopped {
+				return errors.New("db unavailable")
+			}
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteStop(context.Background(), envID)
+
+	require.Error(t, err)
+	assert.Equal(t, []string{environmentdom.StatusStopped, environmentdom.StatusError}, statusUpdates)
+	require.Len(t, errMsgs, 2)
+	assert.Nil(t, errMsgs[0])
+	require.NotNil(t, errMsgs[1])
 }
 
 // TestRestartEnvironment_RequiresRunning verifies the explicit restart

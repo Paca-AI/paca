@@ -449,7 +449,9 @@ export const environmentsQueryOptions = (projectId: string) =>
 
 // No refetchInterval: kept live via useProjectRealtime's socket-driven
 // invalidation on "environment.status_changed" instead of polling while the
-// environment is in a transitional status (creating/starting/stopping).
+// environment is in a transitional status (creating/starting/stopping) —
+// same posture as every other socket-covered query in this app (tasks,
+// docs, sprints, ...), none of which keep a fallback poll either.
 export const environmentQueryOptions = (
 	projectId: string,
 	environmentId: string,
