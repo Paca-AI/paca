@@ -436,11 +436,17 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 				reason = registry.ReasonStop
 			}
 
-			if isChat && reason == registry.ReasonPause {
+			if isChat && trigger.EnvironmentID == nil && reason == registry.ReasonPause {
 				// Interrupt-only pause — mirrors _keep_sandbox_alive's
 				// is_chat && !errored && !shutdown case (a pause is never
 				// "errored" or "shutdown"): keep the sandbox alive for the
 				// conversation's next reply instead of tearing it down.
+				//
+				// Scoped to EnvironmentID == nil like the natural-finish
+				// branch below: a chat conversation attached to a static
+				// environment must still end this turn in a terminal status
+				// (see that branch's own doc comment), so an interrupt for
+				// one of these falls through to the full stop below instead.
 				h.keepSandboxAlive(trigger, result)
 				if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", nil); err != nil {
 					h.Log.Warn("agent-runner: failed to record paused status",
@@ -489,7 +495,14 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		// canReply are chat-specific concepts (see the natural-finish
 		// branch below) — a task-triggered conversation has no retry path
 		// through the UI regardless of status.
-		if classified && isChat {
+		//
+		// Also scoped to EnvironmentID == nil, same as the natural-finish
+		// branch below: canReplyToConversation already treats every
+		// environment-attached conversation as always replyable regardless
+		// of status (see its own doc comment), so "paused" buys nothing
+		// there and would only break the "ends every turn in a terminal
+		// status" invariant those conversations otherwise hold.
+		if classified && isChat && trigger.EnvironmentID == nil {
 			if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", &errMsg); err != nil {
 				h.Log.Warn("agent-runner: failed to record paused-after-provider-error status",
 					"conversation_id", trigger.ConversationID, "error", err)
