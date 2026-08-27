@@ -342,6 +342,7 @@
 	"environments": {
 		"status": {
 			"creating": "Création",
+			"starting": "Démarrage en cours",
 			"running": "En cours d'exécution",
 			"stopping": "Arrêt en cours",
 			"stopped": "Arrêté",

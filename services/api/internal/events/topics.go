@@ -67,6 +67,15 @@ const StreamPluginTriggerEvents = "paca.plugin_trigger_events"
 // worker.AutomationConsumer.handleSprintActivity.
 const StreamSprintActivities = "paca.sprint_activities"
 
+// StreamEnvironmentCommands is the Valkey Stream key environmentsvc.Service
+// appends to when queuing a static environment's own slow lifecycle
+// operations to run asynchronously instead of on the request path —
+// worker.EnvironmentCommandConsumer reads it and does the actual
+// agent-runner call. Added for StartEnvironment specifically: starting a
+// real container/Pod can take longer than an HTTP request from a browser
+// should have to stay open for.
+const StreamEnvironmentCommands = "paca.environment_commands"
+
 // Event type constants used in both Pub/Sub messages and Stream entries.
 const (
 	// --- Auth events --------------------------------------------------------
@@ -199,6 +208,12 @@ const (
 	// StreamAutomationExternalTriggers by the webhook receiver handler once
 	// a POST's token has been verified.
 	TopicAutomationAPITriggerFired = "automation.api_trigger.fired"
+
+	// --- Environment lifecycle events ---------------------------------------
+	// TopicEnvironmentStart is StreamEnvironmentCommands' event type for a
+	// queued environmentsvc.Service.StartEnvironment execution, consumed by
+	// worker.EnvironmentCommandConsumer.
+	TopicEnvironmentStart = "environment.start"
 )
 
 // Streams for AI Agent pipeline.

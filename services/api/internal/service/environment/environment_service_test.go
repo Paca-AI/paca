@@ -3,6 +3,7 @@ package environmentsvc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
+	"github.com/Paca-AI/api/internal/events"
 )
 
 // mockRepo is a function-field-based mock of environmentdom.Repository —
@@ -191,6 +193,19 @@ func (m *mockRepo) FindPortForwardByID(ctx context.Context, id uuid.UUID) (*envi
 		return m.findPortForwardByID(ctx, id)
 	}
 	return nil, environmentdom.ErrPortForwardNotFound
+}
+
+// mockPublisher is a function-field-based mock of environmentPublisher,
+// mirroring mockRepo's own style.
+type mockPublisher struct {
+	appendFn func(ctx context.Context, stream, eventType string, payload any) error
+}
+
+func (m *mockPublisher) Append(ctx context.Context, stream, eventType string, payload any) error {
+	if m.appendFn != nil {
+		return m.appendFn(ctx, stream, eventType, payload)
+	}
+	return nil
 }
 
 var _ environmentdom.Repository = (*mockRepo)(nil)
@@ -625,7 +640,114 @@ func TestDeletePortForward_MarksPortsPendingRestart(t *testing.T) {
 // environment with PortsPendingRestart set calls /restart-ports (not
 // /start) and clears the flag on success — the "apply pending port
 // changes transparently on the next Start" path.
-func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
+// TestStartEnvironment_QueuesCommandAndSetsStarting verifies the request
+// path StartEnvironment now takes: it makes no agent-runner call at all
+// (no HTTP test server is even set up for this test), just queues a
+// command onto StreamEnvironmentCommands and marks the row "starting".
+// The actual agent-runner call moved to ExecuteStart — see
+// TestExecuteStart_PlainStart and friends below — which
+// worker.EnvironmentCommandConsumer invokes once it reads the queued
+// command.
+func TestStartEnvironment_QueuesCommandAndSetsStarting(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+
+	var statusUpdates []string
+	var publishedStream, publishedType string
+	var publishedPayload any
+	repo := &mockRepo{
+		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStopped,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
+		},
+	}
+	pub := &mockPublisher{
+		appendFn: func(_ context.Context, stream, eventType string, payload any) error {
+			publishedStream, publishedType, publishedPayload = stream, eventType, payload
+			return nil
+		},
+	}
+	svc := New(repo, "", "").WithPublisher(pub)
+
+	env, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
+
+	require.NoError(t, err)
+	assert.Equal(t, events.StreamEnvironmentCommands, publishedStream)
+	assert.Equal(t, events.TopicEnvironmentStart, publishedType)
+	assert.Equal(t, map[string]any{"environment_id": envID.String()}, publishedPayload)
+	assert.Equal(t, []string{environmentdom.StatusStarting}, statusUpdates)
+	assert.Equal(t, environmentdom.StatusStarting, env.Status)
+}
+
+// TestStartEnvironment_ReturnsErrorWhenPublishFails verifies a failure to
+// queue the command is reported to the caller, and never marks the
+// environment "starting" — if nothing is going to execute the start,
+// telling the user it's starting would be a lie.
+func TestStartEnvironment_ReturnsErrorWhenPublishFails(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+
+	var statusUpdates []string
+	repo := &mockRepo{
+		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStopped,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
+		},
+	}
+	pub := &mockPublisher{
+		appendFn: func(context.Context, string, string, any) error {
+			return errors.New("valkey unavailable")
+		},
+	}
+	svc := New(repo, "", "").WithPublisher(pub)
+
+	_, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
+
+	require.Error(t, err)
+	assert.Empty(t, statusUpdates)
+}
+
+// TestStartEnvironment_RejectsPendingRestartWithNoVolumeRef verifies the
+// one precondition check StartEnvironment still does synchronously — it
+// costs no extra I/O (env is already loaded) unlike the agent-runner call
+// this same check used to gate, which moved to ExecuteStart.
+func TestStartEnvironment_RejectsPendingRestartWithNoVolumeRef(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	repo := &mockRepo{
+		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStopped,
+				BackendRef: &backendRef, VolumeRef: nil,
+				PortsPendingRestart: true,
+			}, nil
+		},
+	}
+	svc := New(repo, "", "").WithPublisher(&mockPublisher{})
+
+	_, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
+
+	assert.Error(t, err)
+}
+
+// TestExecuteStart_RestartsPortsWhenPending verifies ExecuteStart —
+// worker.EnvironmentCommandConsumer's entry point once it reads a queued
+// start command — takes the restart-ports branch when the environment has
+// a pending port change, the same branch StartEnvironment used to take
+// synchronously before this became asynchronous.
+func TestExecuteStart_RestartsPortsWhenPending(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-old"
 	volumeRef := "paca-env-abc"
@@ -645,9 +767,9 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 	var pendingSet *bool
 	var touched []uuid.UUID
 	repo := &mockRepo{
-		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
 			return &environmentdom.Environment{
-				ID: envID, Status: environmentdom.StatusStopped,
+				ID: envID, Status: environmentdom.StatusStarting,
 				BackendRef: &backendRef, VolumeRef: &volumeRef,
 				PortsPendingRestart: true,
 			}, nil
@@ -670,7 +792,7 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 	}
 	svc := New(repo, srv.URL, "test-internal-key")
 
-	env, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
+	err := svc.ExecuteStart(context.Background(), envID)
 
 	require.NoError(t, err)
 	assert.Equal(t, "/internal/environments/"+envID.String()+"/restart-ports", calledPath)
@@ -678,20 +800,15 @@ func TestStartEnvironment_RestartsPortsWhenPending(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{envID}, touched)
 	require.NotNil(t, pendingSet)
 	assert.False(t, *pendingSet)
-	assert.Equal(t, environmentdom.StatusRunning, env.Status)
-	require.NotNil(t, env.BackendRef)
-	assert.Equal(t, "container-new", *env.BackendRef)
-	require.NotNil(t, env.SSHPort)
-	assert.Equal(t, 22001, *env.SSHPort)
 }
 
-// TestStartEnvironment_TouchesLastActiveAt verifies the plain (no pending
-// port changes) start path bumps last_active_at, not just status — without
-// this, a freshly-started environment keeps whatever last_active_at it had
-// from before it was stopped, and the idle reaper (agent-runner's
-// reapIdleEnvironments, which only reads the DB column) stops it again
-// within its next tick, seconds after the user started it.
-func TestStartEnvironment_TouchesLastActiveAt(t *testing.T) {
+// TestExecuteStart_PlainStart verifies the plain (no pending port changes)
+// path bumps last_active_at, not just status — without this, a freshly
+// started environment keeps whatever last_active_at it had from before it
+// was stopped, and the idle reaper (agent-runner's reapIdleEnvironments,
+// which only reads the DB column) stops it again within its next tick,
+// seconds after the user started it.
+func TestExecuteStart_PlainStart(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-1"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -702,13 +819,18 @@ func TestStartEnvironment_TouchesLastActiveAt(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	var statusUpdates []string
 	var touched []uuid.UUID
 	repo := &mockRepo{
-		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
 			return &environmentdom.Environment{
-				ID: envID, Status: environmentdom.StatusStopped,
+				ID: envID, Status: environmentdom.StatusStarting,
 				BackendRef: &backendRef,
 			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
 		},
 		touchEnvironment: func(_ context.Context, id uuid.UUID) error {
 			touched = append(touched, id)
@@ -717,10 +839,96 @@ func TestStartEnvironment_TouchesLastActiveAt(t *testing.T) {
 	}
 	svc := New(repo, srv.URL, "test-internal-key")
 
-	_, err := svc.StartEnvironment(context.Background(), uuid.New(), envID)
+	err := svc.ExecuteStart(context.Background(), envID)
 
 	require.NoError(t, err)
+	assert.Equal(t, []string{environmentdom.StatusRunning}, statusUpdates)
 	assert.Equal(t, []uuid.UUID{envID}, touched)
+}
+
+// TestExecuteStart_SucceedsWhenTouchFails verifies a TouchEnvironment
+// failure doesn't turn an otherwise-successful start into a reported
+// error: by the time it's called, the backend is already started and
+// status is already persisted as running, so failing the whole call here
+// would report a start that, in fact, succeeded (and leave the row with a
+// stale last_active_at on top).
+func TestExecuteStart_SucceedsWhenTouchFails(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-1"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{
+			BaseURL: "http://sandbox:8080",
+		})
+	}))
+	defer srv.Close()
+
+	var statusUpdates []string
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStarting,
+				BackendRef: &backendRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(_ context.Context, _ uuid.UUID, status string, _, _ *string) error {
+			statusUpdates = append(statusUpdates, status)
+			return nil
+		},
+		touchEnvironment: func(_ context.Context, _ uuid.UUID) error {
+			return errors.New("valkey unavailable")
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteStart(context.Background(), envID)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{environmentdom.StatusRunning}, statusUpdates)
+}
+
+// TestExecuteStart_RestartsPortsWhenPending_ClearsPendingWhenTouchFails is
+// the restart-ports-path counterpart to
+// TestExecuteStart_SucceedsWhenTouchFails: a TouchEnvironment failure must
+// not skip clearing ports_pending_restart, since the new port bindings are
+// already live on the backend by the time TouchEnvironment is called.
+func TestExecuteStart_RestartsPortsWhenPending_ClearsPendingWhenTouchFails(t *testing.T) {
+	envID := uuid.New()
+	backendRef := "container-old"
+	volumeRef := "paca-env-abc"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(internalRestartPortsResponse{
+			BackendRef: "container-new",
+			BaseURL:    "http://sandbox:8080",
+		})
+	}))
+	defer srv.Close()
+
+	var pendingSet *bool
+	repo := &mockRepo{
+		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, Status: environmentdom.StatusStarting,
+				BackendRef: &backendRef, VolumeRef: &volumeRef,
+				PortsPendingRestart: true,
+			}, nil
+		},
+		touchEnvironment: func(_ context.Context, _ uuid.UUID) error {
+			return errors.New("valkey unavailable")
+		},
+		setPortsPendingRestart: func(_ context.Context, _ uuid.UUID, pending bool) error {
+			pendingSet = &pending
+			return nil
+		},
+	}
+	svc := New(repo, srv.URL, "test-internal-key")
+
+	err := svc.ExecuteStart(context.Background(), envID)
+
+	require.NoError(t, err)
+	require.NotNil(t, pendingSet)
+	assert.False(t, *pendingSet)
 }
 
 // TestRestartEnvironment_RequiresRunning verifies the explicit restart

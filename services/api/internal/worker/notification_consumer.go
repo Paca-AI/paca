@@ -97,16 +97,20 @@ func (c *NotificationConsumer) WithActivityRecorder(r agentActivityRecorder) *No
 // Start creates the consumer group if needed and begins processing in a
 // background goroutine. Call Stop to drain and exit cleanly.
 func (c *NotificationConsumer) Start(ctx context.Context) {
-	if err := c.ensureGroup(ctx); err != nil {
+	// "0": see ActivityConsumer.Start's identical comment.
+	if err := c.ensureGroup(ctx, "0"); err != nil {
 		c.log.Warn("notification consumer: could not create consumer group, will retry on first read", "err", err)
 	}
 
 	go c.run()
 }
 
-// ensureGroup creates the consumer group if it doesn't already exist.
-func (c *NotificationConsumer) ensureGroup(ctx context.Context) error {
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskAssignments, notificationConsumerGroup, "0").Err()
+// ensureGroup creates the consumer group at startID if it doesn't already
+// exist — see ActivityConsumer.ensureGroup's doc comment for why startID
+// differs between Start's first-ever creation ("0") and the NOGROUP
+// recovery path in run() below ("$").
+func (c *NotificationConsumer) ensureGroup(ctx context.Context, startID string) error {
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskAssignments, notificationConsumerGroup, startID).Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return err
 	}
@@ -149,7 +153,15 @@ func (c *NotificationConsumer) run() {
 			}
 			c.log.Error("notification consumer: xreadgroup error", "err", err)
 			if strings.Contains(err.Error(), "NOGROUP") {
-				if geErr := c.ensureGroup(context.Background()); geErr != nil {
+				// "$", not "0": recreating from the beginning here would
+				// redeliver the stream's retained history, and this
+				// handler generates fresh notification IDs with no
+				// event-level dedup — a replay would send duplicate
+				// notifications for assignments already handled.
+				recoverCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				geErr := c.ensureGroup(recoverCtx, "$")
+				cancel()
+				if geErr != nil {
 					c.log.Warn("notification consumer: failed to recreate consumer group", "err", geErr)
 				}
 			}

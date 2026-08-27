@@ -11,6 +11,11 @@ import type { SuccessEnvelope } from "./api-error";
 
 export type EnvironmentStatus =
 	| "creating"
+	// Set immediately after StartEnvironment queues a start command,
+	// before the async consumer has actually asked agent-runner to start
+	// the backing container/Pod — see environmentdom.StatusStarting's own
+	// doc comment on the Go side.
+	| "starting"
 	| "running"
 	| "stopping"
 	| "stopped"
@@ -127,6 +132,7 @@ export interface EnvironmentPortForward {
 // realtime wiring exists for environments in Phase 1).
 const TRANSITIONAL_ENVIRONMENT_STATUSES = new Set<EnvironmentStatus>([
 	"creating",
+	"starting",
 	"stopping",
 	"deleting",
 ]);
@@ -543,6 +549,7 @@ export const environmentPortForwardsQueryOptions = (
 // shown to a user goes through translation instead of staying English-only.
 export const ENVIRONMENT_STATUS_COLORS: Record<EnvironmentStatus, string> = {
 	creating: "text-amber-500",
+	starting: "text-amber-500",
 	running: "text-emerald-500",
 	stopping: "text-amber-500",
 	stopped: "text-muted-foreground",

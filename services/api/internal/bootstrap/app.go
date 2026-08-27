@@ -67,6 +67,7 @@ type App struct {
 	docActivityConsumer  *worker.DocActivityConsumer
 	notificationConsumer *worker.NotificationConsumer
 	pluginEventConsumer  *worker.PluginEventConsumer
+	environmentConsumer  *worker.EnvironmentCommandConsumer
 	automationConsumer   *worker.AutomationConsumer
 	dueDateScheduler     *worker.DueDateScheduler
 	cronScheduler        *worker.CronScheduler
@@ -166,7 +167,8 @@ func New(cfg *config.Config) (*App, error) {
 	// surface. agentService.WithEnvironmentService below wires it into
 	// CreateAgent/UpdateAgent's default_environment_id validation and
 	// StartChatSession/StartGlobalChatSession's environment-attach flow.
-	environmentService := environmentsvc.New(environmentRepo, cfg.AIAgentURL, cfg.AIAgentInternalKey)
+	environmentService := environmentsvc.New(environmentRepo, cfg.AIAgentURL, cfg.AIAgentInternalKey).
+		WithPublisher(publisher)
 	agentService = agentService.WithEnvironmentService(environmentService)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
@@ -199,6 +201,7 @@ func New(cfg *config.Config) (*App, error) {
 	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, agentService).
 		WithActivityRecorder(activityService)
 	activityConsumer := worker.NewActivityConsumer(redisClient, activityRepo, projectRepo, log)
+	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
 	docService := docsvc.New(docRepo, projectRepo)
 	docActivityService := docsvc.NewActivityService(docRepo, projectRepo, publisher).
 		WithNotificationService(notificationService)
@@ -452,7 +455,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -463,6 +466,7 @@ func (a *App) Run() error {
 	a.docActivityConsumer.Start(context.Background())
 	a.notificationConsumer.Start(context.Background())
 	a.pluginEventConsumer.Start(context.Background())
+	a.environmentConsumer.Start(context.Background())
 	a.automationConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
@@ -477,6 +481,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.docActivityConsumer.Stop()
 	a.notificationConsumer.Stop()
 	a.pluginEventConsumer.Stop()
+	a.environmentConsumer.Stop()
 	a.automationConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()

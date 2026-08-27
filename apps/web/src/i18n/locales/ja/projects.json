@@ -342,6 +342,7 @@
 	"environments": {
 		"status": {
 			"creating": "作成中",
+			"starting": "起動中",
 			"running": "実行中",
 			"stopping": "停止中",
 			"stopped": "停止済み",

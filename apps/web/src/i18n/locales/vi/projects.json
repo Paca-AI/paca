@@ -342,6 +342,7 @@
 	"environments": {
 		"status": {
 			"creating": "Đang tạo",
+			"starting": "Đang khởi động",
 			"running": "Đang chạy",
 			"stopping": "Đang dừng",
 			"stopped": "Đã dừng",

@@ -84,6 +84,7 @@ type Tab = "overview" | "folders" | "portForwards";
 
 const TRANSITIONAL_STATUSES: EnvironmentStatus[] = [
 	"creating",
+	"starting",
 	"stopping",
 	"deleting",
 ];

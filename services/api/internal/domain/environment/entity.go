@@ -13,7 +13,13 @@ import (
 // Status values an Environment can be in. Mirrors the environments.status
 // CHECK constraint (migration 000042_add_environments.sql) exactly.
 const (
-	StatusCreating  = "creating"
+	StatusCreating = "creating"
+	// StatusStarting is set immediately after StartEnvironment queues a
+	// start command onto StreamEnvironmentCommands, before
+	// worker.EnvironmentCommandConsumer has actually asked agent-runner to
+	// start the backing container/Pod — see StartEnvironment's own doc
+	// comment for why that call happens off the request path.
+	StatusStarting  = "starting"
 	StatusRunning   = "running"
 	StatusStopping  = "stopping"
 	StatusStopped   = "stopped"
