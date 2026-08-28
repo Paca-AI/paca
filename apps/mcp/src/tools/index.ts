@@ -202,6 +202,7 @@ export async function handleToolCall(
 
 		// Attachment tools
 		if (
+			name === "upload_task_attachment" ||
 			name === "list_task_attachments" ||
 			name === "get_attachment_download_url" ||
 			name === "read_task_attachment" ||

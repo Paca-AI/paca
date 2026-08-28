@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { basename, extname } from "node:path";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { PacaAPIViewsClient } from "../api/index.js";
@@ -7,6 +9,53 @@ const ListTaskAttachmentsSchema = z.object({
 	projectId: z.string(),
 	taskId: z.string(),
 });
+
+const UploadTaskAttachmentSchema = z.object({
+	projectId: z.string(),
+	taskId: z.string(),
+	filePath: z.string(),
+	fileName: z.string().optional(),
+	contentType: z.string().optional(),
+});
+
+// Minimal extension → MIME map for inferring content_type when the caller
+// doesn't pass one. Kept small and dependency-free; anything unknown falls back
+// to application/octet-stream (a valid, if generic, content type).
+const EXT_CONTENT_TYPES: Record<string, string> = {
+	txt: "text/plain",
+	md: "text/markdown",
+	csv: "text/csv",
+	log: "text/plain",
+	json: "application/json",
+	xml: "application/xml",
+	yml: "application/yaml",
+	yaml: "application/yaml",
+	html: "text/html",
+	htm: "text/html",
+	css: "text/css",
+	js: "text/javascript",
+	pdf: "application/pdf",
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+	svg: "image/svg+xml",
+	zip: "application/zip",
+	gz: "application/gzip",
+	tar: "application/x-tar",
+	doc: "application/msword",
+	docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	xls: "application/vnd.ms-excel",
+	xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	ppt: "application/vnd.ms-powerpoint",
+	pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+function guessContentType(fileName: string): string {
+	const ext = extname(fileName).slice(1).toLowerCase();
+	return EXT_CONTENT_TYPES[ext] ?? "application/octet-stream";
+}
 
 const GetAttachmentDownloadURLSchema = z.object({
 	projectId: z.string(),
@@ -154,6 +203,46 @@ function classifyAttachment(
 export function getAttachmentTools(): Tool[] {
 	return [
 		{
+			name: "upload_task_attachment",
+			description:
+				"Upload a local file as an attachment on a task. Reads the file at " +
+				"filePath from the machine this MCP server runs on (e.g. a file the " +
+				"agent just created in its workspace) and attaches it to the task. " +
+				"The file name and content type are inferred from filePath unless " +
+				"given explicitly.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					projectId: {
+						type: "string",
+						description:
+							"The technical UUID of the project (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_projects to get the project ID. Do NOT use the project name.",
+					},
+					taskId: {
+						type: "string",
+						description:
+							"The technical UUID of the task (e.g., '550e8400-e29b-41d4-a716-446655440000'). Use list_tasks to get the task ID.",
+					},
+					filePath: {
+						type: "string",
+						description:
+							"Absolute or working-directory-relative path to the local file to upload.",
+					},
+					fileName: {
+						type: "string",
+						description:
+							"Optional name to store the attachment under. Defaults to the base name of filePath.",
+					},
+					contentType: {
+						type: "string",
+						description:
+							"Optional MIME type (e.g. 'application/pdf'). Defaults to a guess from the file extension.",
+					},
+				},
+				required: ["projectId", "taskId", "filePath"],
+			},
+		},
+		{
 			name: "list_task_attachments",
 			description: "List all attachments for a task",
 			inputSchema: {
@@ -274,6 +363,50 @@ export async function handleAttachmentTool(
 	viewsClient: PacaAPIViewsClient,
 ): Promise<any> {
 	switch (toolName) {
+		case "upload_task_attachment": {
+			const { projectId, taskId, filePath, fileName, contentType } =
+				UploadTaskAttachmentSchema.parse(args);
+
+			let data: Buffer;
+			try {
+				data = await readFile(filePath);
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Could not read file at "${filePath}": ${(err as Error).message}`,
+						},
+					],
+					isError: true,
+				};
+			}
+			if (data.byteLength === 0) {
+				return {
+					content: [
+						{ type: "text", text: `File "${filePath}" is empty; nothing to upload.` },
+					],
+					isError: true,
+				};
+			}
+
+			const name = fileName || basename(filePath);
+			const type = contentType || guessContentType(name);
+			const attachment = await viewsClient.uploadTaskAttachment(
+				projectId,
+				taskId,
+				{ fileName: name, contentType: type, data },
+			);
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Uploaded "${name}" (${formatFileSize(data.byteLength)}) to task ${taskId}.\n\n${formatAttachment(attachment)}`,
+					},
+				],
+			};
+		}
+
 		case "list_task_attachments": {
 			const { projectId, taskId } = ListTaskAttachmentsSchema.parse(args);
 			const attachments = await viewsClient.listTaskAttachments(

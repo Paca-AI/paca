@@ -278,6 +278,11 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 
 	// Attachment tools
 	{
+		toolName: "upload_task_attachment",
+		permissionKey: "tasks.write",
+		requiresProject: true,
+	},
+	{
 		toolName: "list_task_attachments",
 		permissionKey: "tasks.read",
 		requiresProject: true,
