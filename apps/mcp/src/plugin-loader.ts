@@ -441,7 +441,13 @@ export async function resolveImportUrl(
  * and removed in Node 22 — so both schemes route through here.
  */
 async function fetchAsDataUrl(url: string): Promise<string> {
-	const response = await fetch(url);
+	// redirect: "error" is load-bearing for SSRF safety: assertNotPrivateHost
+	// only validated the *initial* URL's host, so following a redirect could
+	// land on an internal address (cloud metadata 169.254.169.254, RFC-1918,
+	// …) that the guard never re-checked. Plugin modules are served directly
+	// from the operator's gateway and shouldn't redirect, so reject any
+	// redirect outright rather than re-validating each hop.
+	const response = await fetch(url, { redirect: "error" });
 	if (!response.ok) {
 		throw new Error(
 			`Failed to fetch plugin module from ${url}: ${response.status} ${response.statusText}`,

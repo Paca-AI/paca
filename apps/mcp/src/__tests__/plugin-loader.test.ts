@@ -42,7 +42,9 @@ describe("PluginRegistry.getToolContext", () => {
 
 	it("only calls plugins that declared a hook for the requested toolId", async () => {
 		const taskHook = vi.fn().mockResolvedValue("## GitHub\nBranch: feat/t1");
-		const sprintOnlyHook = vi.fn().mockResolvedValue("should not run for get_task");
+		const sprintOnlyHook = vi
+			.fn()
+			.mockResolvedValue("should not run for get_task");
 		const registry = new PluginRegistry([
 			{
 				pluginId: "com.paca.github",
@@ -79,7 +81,9 @@ describe("PluginRegistry.getToolContext", () => {
 				entry: {
 					tools: [],
 					handleToolCall: vi.fn(),
-					getToolContext: vi.fn().mockResolvedValue("## GitHub\nBranch: feat/t1"),
+					getToolContext: vi
+						.fn()
+						.mockResolvedValue("## GitHub\nBranch: feat/t1"),
 				},
 				toolContextHooks: ["get_task"],
 			},
@@ -225,7 +229,14 @@ describe("resolveImportUrl", () => {
 			"https://paca.example.com",
 		);
 
-		expect(fetchMock).toHaveBeenCalledWith("https://8.8.8.8/plugins-mcp/x/mcp.js");
+		// redirect: "error" is required — following a redirect would skip the
+		// private-IP guard and reopen the SSRF hole.
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://8.8.8.8/plugins-mcp/x/mcp.js",
+			{
+				redirect: "error",
+			},
+		);
 		expect(decodeDataUrl(out)).toBe("export default { hello: 1 }");
 	});
 
@@ -241,7 +252,12 @@ describe("resolveImportUrl", () => {
 			"https://8.8.8.8",
 		);
 
-		expect(fetchMock).toHaveBeenCalledWith("https://8.8.8.8/plugins-mcp/x/mcp.js");
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://8.8.8.8/plugins-mcp/x/mcp.js",
+			{
+				redirect: "error",
+			},
+		);
 		expect(out.startsWith("data:text/javascript;base64,")).toBe(true);
 	});
 
@@ -266,7 +282,9 @@ describe("resolveImportUrl", () => {
 	it("throws when the fetch fails", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" }),
+			vi
+				.fn()
+				.mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" }),
 		);
 		await expect(
 			resolveImportUrl("https://8.8.8.8/mcp.js", "https://paca.example.com"),
