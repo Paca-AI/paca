@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { PluginRegistry } from "../plugin-loader.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PluginRegistry, resolveImportUrl } from "../plugin-loader.js";
 import type { PacaConfig } from "../types/index.js";
 
 const config: PacaConfig = {
@@ -194,5 +194,82 @@ describe("PluginRegistry.getToolContext", () => {
 				apiKey: config.apiKey,
 			},
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// resolveImportUrl — importable-form resolution + SSRF guard
+// ---------------------------------------------------------------------------
+
+describe("resolveImportUrl", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	function decodeDataUrl(dataUrl: string): string {
+		const m = /^data:text\/javascript;base64,(.*)$/.exec(dataUrl);
+		if (!m) throw new Error(`not a js data: URL: ${dataUrl.slice(0, 40)}`);
+		return Buffer.from(m[1], "base64").toString("utf8");
+	}
+
+	it("fetches an https:// entry and returns it as a data: URL (Node can't import() https)", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			text: async () => "export default { hello: 1 }",
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		// Bare *public* IP host: passes the SSRF guard without any DNS lookup.
+		const out = await resolveImportUrl(
+			"https://8.8.8.8/plugins-mcp/x/mcp.js",
+			"https://paca.example.com",
+		);
+
+		expect(fetchMock).toHaveBeenCalledWith("https://8.8.8.8/plugins-mcp/x/mcp.js");
+		expect(decodeDataUrl(out)).toBe("export default { hello: 1 }");
+	});
+
+	it("resolves a path-only entry against baseURL, then fetches it", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			text: async () => "export default {}",
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const out = await resolveImportUrl(
+			"/plugins-mcp/x/mcp.js",
+			"https://8.8.8.8",
+		);
+
+		expect(fetchMock).toHaveBeenCalledWith("https://8.8.8.8/plugins-mcp/x/mcp.js");
+		expect(out.startsWith("data:text/javascript;base64,")).toBe(true);
+	});
+
+	it("rejects an https:// host that is a private IP (SSRF) without fetching", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			resolveImportUrl("https://10.0.0.5/mcp.js", "https://paca.example.com"),
+		).rejects.toThrow(/private\/internal IP/);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("passes a file:// entry through unchanged (import()-able as-is)", async () => {
+		const out = await resolveImportUrl(
+			"file:///tmp/mcp.js",
+			"https://paca.example.com",
+		);
+		expect(out).toBe("file:///tmp/mcp.js");
+	});
+
+	it("throws when the fetch fails", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" }),
+		);
+		await expect(
+			resolveImportUrl("https://8.8.8.8/mcp.js", "https://paca.example.com"),
+		).rejects.toThrow(/Failed to fetch plugin module.*404/);
 	});
 });
