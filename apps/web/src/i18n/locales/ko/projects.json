@@ -449,10 +449,8 @@
 					"pathHint": "절대 경로여야 합니다.",
 					"browse": "찾아보기…",
 					"browsing": {
-						"root": "워크스페이스 루트",
 						"empty": "이 폴더는 비어 있습니다",
-						"notRunning": "파일을 찾아보려면 환경을 시작하세요.",
-						"useThisFolder": "이 폴더 사용"
+						"notRunning": "파일을 찾아보려면 환경을 시작하세요."
 					},
 					"addFailed": "폴더를 추가하지 못했습니다. 다시 시도해 주세요.",
 					"cancel": "취소",

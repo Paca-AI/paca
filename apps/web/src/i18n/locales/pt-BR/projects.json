@@ -449,10 +449,8 @@
 					"pathHint": "Deve ser um caminho absoluto.",
 					"browse": "Procurar…",
 					"browsing": {
-						"root": "raiz do workspace",
 						"empty": "Esta pasta está vazia",
-						"notRunning": "Inicie o ambiente para procurar seus arquivos.",
-						"useThisFolder": "Usar esta pasta"
+						"notRunning": "Inicie o ambiente para procurar seus arquivos."
 					},
 					"addFailed": "Falha ao adicionar a pasta. Tente novamente.",
 					"cancel": "Cancelar",

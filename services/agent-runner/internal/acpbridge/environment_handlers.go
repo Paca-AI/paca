@@ -633,7 +633,7 @@ func (s *Server) handleBrowseEnvironment(w http.ResponseWriter, r *http.Request)
 	}
 
 	out, exitCode, err := s.SandboxMgr.ExecEnvironment(r.Context(), backendRef,
-		[]string{"find", resolved, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\x00%f\x00"})
+		[]string{"find", resolved, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\0%f\\0"})
 	entries := []browseEnvironmentEntry{}
 	if err == nil && exitCode == 0 {
 		parts := strings.Split(out, "\x00")

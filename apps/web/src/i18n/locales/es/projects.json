@@ -449,10 +449,8 @@
 					"pathHint": "Debe ser una ruta absoluta.",
 					"browse": "Explorar…",
 					"browsing": {
-						"root": "raíz del espacio de trabajo",
 						"empty": "Esta carpeta está vacía",
-						"notRunning": "Inicia el entorno para explorar sus archivos.",
-						"useThisFolder": "Usar esta carpeta"
+						"notRunning": "Inicia el entorno para explorar sus archivos."
 					},
 					"addFailed": "No se pudo añadir la carpeta. Inténtalo de nuevo.",
 					"cancel": "Cancelar",

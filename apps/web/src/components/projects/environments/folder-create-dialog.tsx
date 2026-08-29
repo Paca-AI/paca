@@ -1,10 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	ChevronRight,
-	FolderCheck,
-	Folder as FolderIcon,
-	Loader2,
-} from "lucide-react";
+import { ChevronRight, Folder as FolderIcon, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -60,7 +55,7 @@ export function FolderCreateDialog({
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
-	const [path, setPath] = useState("");
+	const [path, setPath] = useState(ENVIRONMENT_HOME_ROOT);
 	const [browseOpen, setBrowseOpen] = useState(false);
 	const [browsePath, setBrowsePath] = useState(ENVIRONMENT_HOME_ROOT);
 
@@ -71,8 +66,16 @@ export function FolderCreateDialog({
 		enabled: open && browseOpen && isRunning,
 	});
 
+	// Browsing navigates and fills in the Path field in one motion — the
+	// dialog has no separate "confirm this folder" step, so wherever the
+	// browser's current location changes, path follows it immediately.
+	const navigateTo = (nextPath: string) => {
+		setBrowsePath(nextPath);
+		setPath(nextPath);
+	};
+
 	const reset = () => {
-		setPath("");
+		setPath(ENVIRONMENT_HOME_ROOT);
 		setBrowseOpen(false);
 		setBrowsePath(ENVIRONMENT_HOME_ROOT);
 	};
@@ -107,6 +110,13 @@ export function FolderCreateDialog({
 	const relSegments = browsePath.startsWith(ENVIRONMENT_HOME_ROOT)
 		? browsePath.slice(ENVIRONMENT_HOME_ROOT.length).split("/").filter(Boolean)
 		: [];
+	// null at the workspace root — browsing never goes above it (agent-runner
+	// itself refuses paths outside ENVIRONMENT_HOME_ROOT, see
+	// handleBrowseEnvironment's doc comment), so there's nowhere for ".." to go.
+	const parentPath =
+		relSegments.length === 0
+			? null
+			: [ENVIRONMENT_HOME_ROOT, ...relSegments.slice(0, -1)].join("/");
 	const directoryEntries = (browseQuery.data?.entries ?? []).filter(
 		(e) => e.is_dir,
 	);
@@ -166,74 +176,48 @@ export function FolderCreateDialog({
 									)}
 								</p>
 							) : (
-								<div className="mt-3 space-y-2">
-									<div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-										<button
-											type="button"
-											className="hover:text-foreground underline-offset-2 hover:underline"
-											onClick={() => setBrowsePath(ENVIRONMENT_HOME_ROOT)}
-										>
-											{t("environments.detail.folders.addDialog.browsing.root")}
-										</button>
-										{relSegments.map((seg, i) => {
-											const segmentPath = `${ENVIRONMENT_HOME_ROOT}/${relSegments.slice(0, i + 1).join("/")}`;
-											return (
-												<span
-													key={segmentPath}
-													className="flex items-center gap-1"
-												>
-													<span>/</span>
-													<button
-														type="button"
-														className="hover:text-foreground underline-offset-2 hover:underline"
-														onClick={() => setBrowsePath(segmentPath)}
-													>
-														{seg}
-													</button>
-												</span>
-											);
-										})}
-									</div>
-
+								<div className="mt-3">
 									<div className="max-h-48 overflow-y-auto rounded-md border border-border/60">
 										{browseQuery.isLoading ? (
 											<div className="flex items-center justify-center p-4">
 												<Loader2 className="size-4 animate-spin text-muted-foreground" />
 											</div>
-										) : directoryEntries.length === 0 ? (
-											<p className="p-3 text-xs text-muted-foreground">
-												{t(
-													"environments.detail.folders.addDialog.browsing.empty",
-												)}
-											</p>
 										) : (
-											directoryEntries.map((entry) => (
-												<button
-													key={entry.name}
-													type="button"
-													onClick={() =>
-														setBrowsePath(`${browsePath}/${entry.name}`)
-													}
-													className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
-												>
-													<FolderIcon className="size-3.5 text-muted-foreground shrink-0" />
-													<span className="truncate">{entry.name}</span>
-												</button>
-											))
+											<>
+												{parentPath !== null && (
+													<button
+														type="button"
+														onClick={() => navigateTo(parentPath)}
+														className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+													>
+														<FolderIcon className="size-3.5 text-muted-foreground shrink-0" />
+														<span className="truncate">..</span>
+													</button>
+												)}
+												{directoryEntries.length === 0 ? (
+													<p className="p-3 text-xs text-muted-foreground">
+														{t(
+															"environments.detail.folders.addDialog.browsing.empty",
+														)}
+													</p>
+												) : (
+													directoryEntries.map((entry) => (
+														<button
+															key={entry.name}
+															type="button"
+															onClick={() =>
+																navigateTo(`${browsePath}/${entry.name}`)
+															}
+															className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent"
+														>
+															<FolderIcon className="size-3.5 text-muted-foreground shrink-0" />
+															<span className="truncate">{entry.name}</span>
+														</button>
+													))
+												)}
+											</>
 										)}
 									</div>
-
-									<Button
-										type="button"
-										size="sm"
-										variant="outline"
-										onClick={() => setPath(browsePath)}
-									>
-										<FolderCheck className="size-3.5 mr-1.5" />
-										{t(
-											"environments.detail.folders.addDialog.browsing.useThisFolder",
-										)}
-									</Button>
 								</div>
 							))}
 					</div>

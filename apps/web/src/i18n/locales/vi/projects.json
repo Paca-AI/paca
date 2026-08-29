@@ -449,10 +449,8 @@
 					"pathHint": "Phải là đường dẫn tuyệt đối.",
 					"browse": "Duyệt…",
 					"browsing": {
-						"root": "gốc không gian làm việc",
 						"empty": "Thư mục này trống",
-						"notRunning": "Khởi động môi trường để duyệt các tệp của nó.",
-						"useThisFolder": "Dùng thư mục này"
+						"notRunning": "Khởi động môi trường để duyệt các tệp của nó."
 					},
 					"addFailed": "Không thể thêm thư mục. Vui lòng thử lại.",
 					"cancel": "Hủy",
