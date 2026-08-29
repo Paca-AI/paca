@@ -280,6 +280,7 @@
 			"chatSession": "채팅 세션",
 			"taskSession": "작업 세션",
 			"pr": "PR",
+			"connect": "연결",
 			"conversationEnded": "이 대화가 종료되었습니다.",
 			"textOnlyMessage": "텍스트 메시지만 지원됩니다.",
 			"failed": "대화가 실패했습니다",

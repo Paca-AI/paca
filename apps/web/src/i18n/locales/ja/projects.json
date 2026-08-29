@@ -280,6 +280,7 @@
 			"chatSession": "チャットセッション",
 			"taskSession": "タスクセッション",
 			"pr": "PR",
+			"connect": "接続",
 			"conversationEnded": "この会話は終了しました。",
 			"textOnlyMessage": "テキストメッセージのみサポートされています。",
 			"failed": "会話が失敗しました",

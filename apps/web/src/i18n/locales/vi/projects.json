@@ -280,6 +280,7 @@
 			"chatSession": "Phiên trò chuyện",
 			"taskSession": "Phiên nhiệm vụ",
 			"pr": "PR",
+			"connect": "Kết nối",
 			"conversationEnded": "Cuộc trò chuyện này đã kết thúc.",
 			"textOnlyMessage": "Chỉ hỗ trợ tin nhắn văn bản.",
 			"failed": "Cuộc trò chuyện thất bại",

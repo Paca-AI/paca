@@ -280,6 +280,7 @@
 			"chatSession": "Chat session",
 			"taskSession": "Task session",
 			"pr": "PR",
+			"connect": "Connect",
 			"conversationEnded": "This conversation has ended.",
 			"textOnlyMessage": "Only text messages are supported.",
 			"failed": "Conversation failed",

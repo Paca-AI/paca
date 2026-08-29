@@ -280,6 +280,7 @@
 			"chatSession": "聊天会话",
 			"taskSession": "任务会话",
 			"pr": "PR",
+			"connect": "连接",
 			"conversationEnded": "此对话已结束。",
 			"textOnlyMessage": "仅支持文本消息。",
 			"failed": "对话失败",
