@@ -236,6 +236,30 @@ func (r *EnvironmentRepository) ListIdleRunningEnvironments(ctx context.Context)
 	return envs, nil
 }
 
+// ListRunningEnvironments returns every non-deleted environment whose
+// status is "running" — every one, regardless of last_active_at, unlike
+// ListIdleRunningEnvironments above (which deliberately excludes recently-
+// active rows for the idle reaper's own purpose). Read once at startup by
+// cmd/agent-runner/main.go's reconcileEnvironmentsOnStartup to verify each
+// one's backing container/Pod still actually exists — status="running" can
+// only go stale relative to reality while agent-runner itself isn't
+// running to keep it in sync (a manual `docker rm`/`kubectl delete`, a host
+// reboot, `docker system prune`), so this has nothing to do with how
+// recently the environment was used.
+func (r *EnvironmentRepository) ListRunningEnvironments(ctx context.Context) ([]*Environment, error) {
+	var envs []*Environment
+	err := r.db.SelectContext(ctx, &envs, `
+		SELECT `+environmentColumns+`
+		FROM environments
+		WHERE status = 'running'
+		  AND deleted_at IS NULL
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list running environments: %w", err)
+	}
+	return envs, nil
+}
+
 // AssignSSHPort picks the lowest currently-unused port in [rangeStart,
 // rangeEnd] and persists it as id's ssh_port, in one statement — only when
 // ssh_port is still NULL, so a caller can call this unconditionally and

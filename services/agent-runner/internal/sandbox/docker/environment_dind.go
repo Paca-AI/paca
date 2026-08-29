@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -70,13 +71,25 @@ func environmentIDFromVolumeName(volumeName string) string {
 }
 
 // createEnvironmentDindSidecar creates and starts environmentID's dedicated
-// dind network+container — called exactly once, by CreateEnvironment, the
-// same "created once, cycled by Stop/Start for the rest of its life"
-// contract the environment's own container follows (see this file's own
-// doc comment). Unlike startDindSidecar (dind.go), AutoRemove is false:
-// this container must survive a StopEnvironment the same way the
-// environment's own container does. Resources are the same hardcoded 2
-// CPU/4GiB startDindSidecar already uses for the ephemeral sidecar, not
+// dind network+container. Originally called exactly once, by
+// CreateEnvironment, the same "created once, cycled by Stop/Start for the
+// rest of its life" contract the environment's own container follows (see
+// this file's own doc comment) — now also called by startEnvironmentDindSidecar
+// below to self-heal a sidecar removed outside of Paca, so this may run a
+// second (or later) time against an environment whose dind network still
+// exists from before. Idempotent with respect to that network because of
+// it: NetworkInspect first, only NetworkCreate when it's actually missing,
+// so a self-heal recreate never fails on a spurious "network already
+// exists" the way blindly recreating it every time would. networkCreatedHere
+// gates the failure-cleanup below to the network this call actually
+// created — a self-heal that fails after finding (not creating) the
+// network must never remove one that survived from before and might still
+// be wanted.
+//
+// Unlike startDindSidecar (dind.go), AutoRemove is false: this container
+// must survive a StopEnvironment the same way the environment's own
+// container does. Resources are the same hardcoded 2 CPU/4GiB
+// startDindSidecar already uses for the ephemeral sidecar, not
 // cfg.CPULimit/MemoryLimit — a deliberate, documented deviation from how
 // createAndStartEnvironmentContainer sizes the environment's own container:
 // the sidecar's footprint is a fixed cost of opting into Docker access at
@@ -89,14 +102,21 @@ func (m *Manager) createEnvironmentDindSidecar(ctx context.Context, environmentI
 	}
 
 	netName := environmentDindNetworkName(environmentID)
-	if _, err := m.docker.NetworkCreate(ctx, netName, client.NetworkCreateOptions{
-		Driver: "bridge",
-		Labels: map[string]string{labelEnvID: environmentID, labelManaged: "true"},
-	}); err != nil {
-		return fmt.Errorf("sandbox/docker: create environment dind network: %w", err)
+	networkCreatedHere := false
+	if _, inspectErr := m.docker.NetworkInspect(ctx, netName, client.NetworkInspectOptions{}); inspectErr != nil {
+		if !cerrdefs.IsNotFound(inspectErr) {
+			return fmt.Errorf("sandbox/docker: inspect environment dind network %s: %w", netName, inspectErr)
+		}
+		if _, err := m.docker.NetworkCreate(ctx, netName, client.NetworkCreateOptions{
+			Driver: "bridge",
+			Labels: map[string]string{labelEnvID: environmentID, labelManaged: "true"},
+		}); err != nil {
+			return fmt.Errorf("sandbox/docker: create environment dind network: %w", err)
+		}
+		networkCreatedHere = true
 	}
 	defer func() {
-		if err != nil {
+		if err != nil && networkCreatedHere {
 			removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			_, _ = m.docker.NetworkRemove(removeCtx, netName, client.NetworkRemoveOptions{})
@@ -159,14 +179,21 @@ func (m *Manager) removeEnvironmentDindSidecar(ctx context.Context, environmentI
 // sidecar container — StartEnvironment's counterpart to
 // createEnvironmentDindSidecar, mirroring how StartEnvironment itself
 // restarts the environment's own already-created container rather than
-// making a new one. Self-healing a sidecar manually removed outside of
-// Paca (unlike recreateGoneEnvironmentContainer's handling of the
-// environment's own container) is deliberately out of scope here — a
-// not-found error surfaces as-is, telling the caller plainly that
-// something is wrong rather than silently reprovisioning a sidecar whose
-// disappearance was never expected.
+// making a new one, unless that container has been removed outside of
+// Paca, in which case it self-heals via createEnvironmentDindSidecar
+// instead of failing outright — the same treatment
+// recreateGoneEnvironmentContainer gives the environment's own container
+// (see that function's doc comment for the shared rationale). Safe to
+// self-heal unconditionally here, with no equivalent volume-survives
+// check: unlike the environment's own container, the sidecar carries no
+// persistent state of its own at all (createEnvironmentDindSidecar mounts
+// no volume into it — it's just an isolated Docker daemon), so there is
+// nothing about a gone sidecar that could ever be data loss.
 func (m *Manager) startEnvironmentDindSidecar(ctx context.Context, environmentID string) error {
 	if _, err := m.docker.ContainerStart(ctx, environmentDindContainerName(environmentID), client.ContainerStartOptions{}); err != nil {
+		if cerrdefs.IsNotFound(err) {
+			return m.createEnvironmentDindSidecar(ctx, environmentID)
+		}
 		return fmt.Errorf("sandbox/docker: start environment dind sidecar: %w", err)
 	}
 	return nil

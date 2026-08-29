@@ -24,6 +24,7 @@ package acpbridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -304,31 +305,11 @@ type startEnvironmentResponse struct {
 	BackendRef string `json:"backend_ref,omitempty"`
 }
 
-// handleStartEnvironment restarts an existing container/Pod without
-// touching its published port bindings at all — they're already fixed on
-// the container (docker) or already live on its Service (kubernetes) from
-// whichever CreateEnvironment/handleRestartEnvironmentPorts call last
-// applied them. SSHPort is only read back from Postgres to echo in the
-// response, matching createEnvironmentResponse's own shape.
-//
-// PortMappings is computed up front and passed through regardless: an
-// ordinary restart of a still-existing container ignores it completely
-// (see EnvironmentConfig.PortMappings's own doc comment), but the docker
-// backend's self-heal path — recreating a container removed outside of
-// Paca (see recreateGoneEnvironmentContainer's doc comment) — builds a
-// brand-new container with no bindings of its own, so without this it
-// would come back reachable over ACP but with none of the environment's
-// real SSH/port-forward bindings republished.
-//
-// SSH is unconditionally re-bootstrapped here whenever sshPort != 0 — not
-// only when StartEnvironment signals a self-heal recreate. sshd itself
-// does not survive an ordinary stop: Docker's ContainerStop SIGKILLs
-// everything in the container's PID namespace, and Kubernetes' scale-0→1
-// always schedules a brand-new Pod, so a plain stop→start leaves sshd dead
-// on both backends even when nothing else about the container/Pod
-// changed. BootstrapEnvironmentSSH is idempotent/safe to call on an
-// already-running environment (see its own doc comment) — the same
-// unconditional treatment handleCreateEnvironment already gives it.
+// handleStartEnvironment decodes and validates the HTTP request, then hands
+// off to StartEnvironmentByID for the actual work — see that method's own
+// doc comment for what happens (port-mapping republishing, self-heal, SSH
+// re-bootstrap). This handler owns only the HTTP-specific parts: request
+// decoding and mapping the result back onto startEnvironmentResponse.
 func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSandboxMgr(w) {
 		return
@@ -349,15 +330,7 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sshPort := 0
-	if s.EnvironmentRepo != nil {
-		if env, err := s.EnvironmentRepo.FindEnvironmentByID(r.Context(), environmentID); err == nil && env.SSHPort != nil {
-			sshPort = *env.SSHPort
-		}
-	}
-	portMappings := s.buildPortMappings(r.Context(), environmentID, sshPort)
-
-	handle, err := s.SandboxMgr.StartEnvironment(r.Context(), req.BackendRef, sandbox.EnvironmentConfig{
+	handle, sshPort, recreatedBackendRef, err := s.StartEnvironmentByID(r.Context(), environmentID, req.BackendRef, sandbox.EnvironmentConfig{
 		EnvironmentID:   id,
 		Image:           req.Image,
 		CPULimit:        req.CPULimit,
@@ -365,7 +338,6 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 		DiskLimitGB:     req.DiskLimitGB,
 		DockerEnabled:   req.DockerEnabled,
 		SecretKey:       req.SecretKey,
-		PortMappings:    portMappings,
 		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
@@ -374,16 +346,69 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	recreatedBackendRef := ""
-	if handle.BackendRef != "" && handle.BackendRef != req.BackendRef {
+	writeJSON(w, http.StatusOK, startEnvironmentResponse{BaseURL: handle.BaseURL, SSHPort: sshPort, BackendRef: recreatedBackendRef})
+}
+
+// StartEnvironmentByID starts (or self-heals) environmentID's backing
+// container/Pod — factored out of handleStartEnvironment so
+// cmd/agent-runner/main.go's startup reconciliation
+// (reconcileEnvironmentsOnStartup) can drive the exact same sequence
+// in-process, without a loopback HTTP call: look up ssh_port, build the
+// environment's full port-mapping set, call SandboxMgr.StartEnvironment,
+// detect a self-heal-changed backend_ref, and re-bootstrap SSH keys.
+// Requires s.SandboxMgr to be set — handleStartEnvironment already checked
+// via requireSandboxMgr before calling this, but main.go's caller has no
+// equivalent wrapper, so this checks for itself rather than assuming every
+// caller already has.
+//
+// cfg.PortMappings is overwritten with the freshly-built set regardless of
+// what the caller passed in: an ordinary restart of a still-existing
+// container/Pod ignores it completely (see
+// sandbox.EnvironmentConfig.PortMappings's own doc comment), but a
+// self-heal path on either backend — recreating a container/Deployment
+// removed outside of Paca (see docker.Manager.recreateGoneEnvironmentContainer
+// and k8s.Manager.recreateGoneEnvironmentDeployment) — builds a brand-new
+// one with no bindings of its own, so without this it would come back
+// reachable over ACP but with none of the environment's real SSH/
+// port-forward bindings republished.
+//
+// SSH is unconditionally re-bootstrapped whenever sshPort != 0 — not only
+// when StartEnvironment signals a self-heal recreate. sshd itself does not
+// survive an ordinary stop: Docker's ContainerStop SIGKILLs everything in
+// the container's PID namespace, and Kubernetes' scale-0→1 always
+// schedules a brand-new Pod, so a plain stop→start leaves sshd dead on
+// both backends even when nothing else about the container/Pod changed.
+// BootstrapEnvironmentSSH is idempotent/safe to call on an already-running
+// environment (see its own doc comment) — the same unconditional treatment
+// handleCreateEnvironment already gives it.
+//
+// Returns the handle StartEnvironment produced, the environment's
+// currently-assigned ssh_port (0 if unconfigured/unassigned), and
+// recreatedBackendRef — only non-empty when the backend actually had to
+// self-heal (see startEnvironmentResponse.BackendRef's own doc comment).
+func (s *Server) StartEnvironmentByID(ctx context.Context, environmentID uuid.UUID, backendRef string, cfg sandbox.EnvironmentConfig) (handle *sandbox.EnvironmentHandle, sshPort int, recreatedBackendRef string, err error) {
+	if s.SandboxMgr == nil {
+		return nil, 0, "", errors.New("sandbox backend not configured")
+	}
+	if s.EnvironmentRepo != nil {
+		if env, err := s.EnvironmentRepo.FindEnvironmentByID(ctx, environmentID); err == nil && env.SSHPort != nil {
+			sshPort = *env.SSHPort
+		}
+	}
+	cfg.PortMappings = s.buildPortMappings(ctx, environmentID, sshPort)
+
+	handle, err = s.SandboxMgr.StartEnvironment(ctx, backendRef, cfg)
+	if err != nil {
+		return nil, sshPort, "", err
+	}
+
+	if handle.BackendRef != "" && handle.BackendRef != backendRef {
 		recreatedBackendRef = handle.BackendRef
 	}
 	if sshPort != 0 {
-		bootstrapRef := firstNonEmpty(recreatedBackendRef, req.BackendRef)
-		s.bootstrapSSHKeys(r.Context(), environmentID, bootstrapRef)
+		s.bootstrapSSHKeys(ctx, environmentID, firstNonEmpty(recreatedBackendRef, backendRef))
 	}
-
-	writeJSON(w, http.StatusOK, startEnvironmentResponse{BaseURL: handle.BaseURL, SSHPort: sshPort, BackendRef: recreatedBackendRef})
+	return handle, sshPort, recreatedBackendRef, nil
 }
 
 // -----------------------------------------------------------------------

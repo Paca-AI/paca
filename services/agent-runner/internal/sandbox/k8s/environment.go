@@ -231,71 +231,22 @@ func (m *Manager) environmentResources(cfg sandbox.EnvironmentConfig) (corev1.Re
 	}, nil
 }
 
-// CreateEnvironment provisions a new static environment's backing
-// PersistentVolumeClaim and Deployment (1 replica) and waits for it to
-// become reachable — see the package doc comment on why a Deployment, not
-// the batch/v1.Job Start uses, is the right primitive here.
-//
-// Unlike Start, which lets its caller (executor.go) resolve cfg.Image
-// down to config.AgentServerImage before this package ever sees it,
-// CreateEnvironment resolves that default itself when cfg.Image is empty
-// — see sandbox.EnvironmentConfig.Image's own doc comment for why: an
-// environment's image must stay resolvable to the same default on every
-// subsequent StartEnvironment too, not just at creation, so the fallback
-// lives here rather than in a caller that only ever runs once.
-//
-// On a failure after the Deployment is created, the Deployment (but not
-// the PVC) is cleaned up — mirroring Start's own cleanup-on-failure
-// stance, but deliberately not extended to the PVC: unlike a Job's Pod,
-// which never held anything worth keeping, a PVC that made it far enough
-// to be provisioned may already hold real disk state (or at least be
-// mid-provisioning by a CSI driver), and DeleteEnvironment is meant to be
-// the only irreversible teardown in this file — see that method's own doc
-// comment.
-func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
-	if cfg.MCPDevSourceDir != "" {
-		return nil, errors.New("sandbox/k8s: MCPDevSourceDir is not supported by the kubernetes backend — " +
-			"see Manager.Start's identical guard in manager.go; use the docker backend for local apps/mcp development instead")
-	}
-
-	name := environmentName(cfg.EnvironmentID)
-	image := resolveEnvironmentImage(cfg.Image, m.agentServerImage)
-	diskLimitGB := resolveEnvironmentDiskLimitGB(cfg.DiskLimitGB)
-	storageQty, err := resource.ParseQuantity(fmt.Sprintf("%dGi", diskLimitGB))
-	if err != nil {
-		return nil, fmt.Errorf("sandbox/k8s: parse environment disk limit %dGi: %w", diskLimitGB, err)
-	}
-
+// buildEnvironmentDeployment assembles the Deployment object for name (an
+// environment's Deployment and its PersistentVolumeClaim always share one
+// name — see environmentName's own doc comment) — shared by
+// CreateEnvironment and recreateGoneEnvironmentDeployment below, since the
+// two differ only in whether the PVC itself still needs creating (handled
+// by each caller on its own before calling this), never in what the
+// Deployment/Pod template should actually look like. resources is passed
+// in rather than recomputed here so a caller that already needs it for
+// something else (recreateGoneEnvironmentDeployment's own PVC-exists
+// check happens first) doesn't compute it twice.
+func (m *Manager) buildEnvironmentDeployment(name string, cfg sandbox.EnvironmentConfig, resources corev1.ResourceRequirements) *appsv1.Deployment {
 	labels := map[string]string{
 		environmentLabel: name,
 		labelManaged:     managedValue,
 	}
-
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: m.namespace, Labels: labels},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			// ReadWriteOnce, not ReadWriteMany: an environment is always
-			// exactly one Pod (unlike the plugins PVC elsewhere in this
-			// codebase, which needs RWX for concurrent access from
-			// multiple sandboxes at once), so there's never a second Pod
-			// needing concurrent access to this same volume.
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{corev1.ResourceStorage: storageQty},
-			},
-		},
-	}
-	if m.environmentsStorageClassName != "" {
-		pvc.Spec.StorageClassName = ptr.To(m.environmentsStorageClassName)
-	}
-	if _, err := m.clientset.CoreV1().PersistentVolumeClaims(m.namespace).Create(ctx, pvc, metav1.CreateOptions{}); err != nil {
-		return nil, fmt.Errorf("sandbox/k8s: create environment pvc %s: %w", name, err)
-	}
-
-	resources, err := m.environmentResources(cfg)
-	if err != nil {
-		return nil, err
-	}
+	image := resolveEnvironmentImage(cfg.Image, m.agentServerImage)
 
 	// cfg.Env first, so the hardcoded secret-key var below always wins on
 	// a name collision — same ordering rationale as Start's own env
@@ -334,7 +285,7 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 	}
 
 	terminationGrace := int64(sandbox.StopTimeout.Seconds())
-	deployment := &appsv1.Deployment{
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: m.namespace, Labels: labels},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(int32(1)),
@@ -356,6 +307,74 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 			},
 		},
 	}
+}
+
+// CreateEnvironment provisions a new static environment's backing
+// PersistentVolumeClaim and Deployment (1 replica) and waits for it to
+// become reachable — see the package doc comment on why a Deployment, not
+// the batch/v1.Job Start uses, is the right primitive here.
+//
+// Unlike Start, which lets its caller (executor.go) resolve cfg.Image
+// down to config.AgentServerImage before this package ever sees it,
+// CreateEnvironment resolves that default itself when cfg.Image is empty
+// — see sandbox.EnvironmentConfig.Image's own doc comment for why: an
+// environment's image must stay resolvable to the same default on every
+// subsequent StartEnvironment too, not just at creation, so the fallback
+// lives here rather than in a caller that only ever runs once.
+//
+// On a failure after the Deployment is created, the Deployment (but not
+// the PVC) is cleaned up — mirroring Start's own cleanup-on-failure
+// stance, but deliberately not extended to the PVC: unlike a Job's Pod,
+// which never held anything worth keeping, a PVC that made it far enough
+// to be provisioned may already hold real disk state (or at least be
+// mid-provisioning by a CSI driver), and DeleteEnvironment is meant to be
+// the only irreversible teardown in this file — see that method's own doc
+// comment.
+func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
+	if cfg.MCPDevSourceDir != "" {
+		return nil, errors.New("sandbox/k8s: MCPDevSourceDir is not supported by the kubernetes backend — " +
+			"see Manager.Start's identical guard in manager.go; use the docker backend for local apps/mcp development instead")
+	}
+
+	name := environmentName(cfg.EnvironmentID)
+	diskLimitGB := resolveEnvironmentDiskLimitGB(cfg.DiskLimitGB)
+	storageQty, err := resource.ParseQuantity(fmt.Sprintf("%dGi", diskLimitGB))
+	if err != nil {
+		return nil, fmt.Errorf("sandbox/k8s: parse environment disk limit %dGi: %w", diskLimitGB, err)
+	}
+
+	labels := map[string]string{
+		environmentLabel: name,
+		labelManaged:     managedValue,
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: m.namespace, Labels: labels},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			// ReadWriteOnce, not ReadWriteMany: an environment is always
+			// exactly one Pod (unlike the plugins PVC elsewhere in this
+			// codebase, which needs RWX for concurrent access from
+			// multiple sandboxes at once), so there's never a second Pod
+			// needing concurrent access to this same volume.
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: storageQty},
+			},
+		},
+	}
+	if m.environmentsStorageClassName != "" {
+		pvc.Spec.StorageClassName = ptr.To(m.environmentsStorageClassName)
+	}
+	if _, err := m.clientset.CoreV1().PersistentVolumeClaims(m.namespace).Create(ctx, pvc, metav1.CreateOptions{}); err != nil {
+		return nil, fmt.Errorf("sandbox/k8s: create environment pvc %s: %w", name, err)
+	}
+
+	resources, err := m.environmentResources(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	deployment := m.buildEnvironmentDeployment(name, cfg, resources)
 	if _, err := m.clientset.AppsV1().Deployments(m.namespace).Create(ctx, deployment, metav1.CreateOptions{}); err != nil {
 		return nil, fmt.Errorf("sandbox/k8s: create environment deployment %s: %w", name, err)
 	}
@@ -600,10 +619,105 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 	return nil
 }
 
+// recreateGoneEnvironmentDeployment rebuilds backendRef's Deployment from
+// scratch after StartEnvironment discovers it's been removed outside of
+// Paca (a manual `kubectl delete deployment`, or any other cluster
+// operation this Manager wasn't the one to perform) — the kubernetes
+// counterpart to docker.Manager.recreateGoneEnvironmentContainer; see that
+// method's own doc comment for the shared rationale: self-heal from the
+// environment's still-there volume rather than force a "delete and
+// recreate this environment" dead end that would also throw away data the
+// PVC alone still holds.
+//
+// Recovery only proceeds when cfg.EnvironmentID's PersistentVolumeClaim
+// (environmentName — same name as the Deployment, see that function's own
+// doc comment) still exists: if it's gone too, the environment's data
+// really is unrecoverable, so this returns sandbox.ErrEnvironmentGone, the
+// same error StartEnvironment's caller used to return unconditionally for
+// every gone-Deployment case.
+//
+// Unlike docker.Manager.recreateGoneEnvironmentContainer, backendRef never
+// changes here: environmentName derives a deterministic name from
+// cfg.EnvironmentID, and the recreated Deployment reuses that exact same
+// name — no "caller must persist a new backend_ref" step the way Docker's
+// own recreate needs.
+//
+// ensureEnvironmentService is called unconditionally after the Deployment
+// is (re)created, same as CreateEnvironment does: a Deployment being gone
+// says nothing about whether its Service survived alongside it, so this
+// re-publishes cfg.PortMappings (the caller's freshly-built current set —
+// see StartEnvironmentByID's own doc comment in
+// internal/acpbridge/environment_handlers.go) regardless. Any failure from
+// here on cleans up the just-created Deployment, mirroring
+// CreateEnvironment's own cleanup-on-failure stance, so a retried Start
+// finds a clean "not found" (triggering another recreate attempt) instead
+// of a stuck, half-provisioned Deployment.
+func (m *Manager) recreateGoneEnvironmentDeployment(ctx context.Context, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
+	name := environmentName(cfg.EnvironmentID)
+	if _, err := m.clientset.CoreV1().PersistentVolumeClaims(m.namespace).Get(ctx, name, metav1.GetOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("sandbox/k8s: environment deployment %s no longer exists, and its volume %s is gone too — it was likely removed outside of Paca; delete and recreate this environment: %w",
+				name, name, sandbox.ErrEnvironmentGone)
+		}
+		return nil, fmt.Errorf("sandbox/k8s: get environment pvc %s: %w", name, err)
+	}
+
+	resources, err := m.environmentResources(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	deployment := m.buildEnvironmentDeployment(name, cfg, resources)
+	if _, err := m.clientset.AppsV1().Deployments(m.namespace).Create(ctx, deployment, metav1.CreateOptions{}); err != nil {
+		return nil, fmt.Errorf("sandbox/k8s: recreate environment deployment removed outside of Paca: create deployment %s: %w", name, err)
+	}
+
+	labels := map[string]string{environmentLabel: name, labelManaged: managedValue}
+	cleanup := func() {
+		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = m.deleteDeployment(removeCtx, name)
+	}
+
+	if err := m.ensureEnvironmentService(ctx, name, labels, cfg.PortMappings); err != nil {
+		cleanup()
+		return nil, err
+	}
+
+	selector := environmentLabel + "=" + name
+	podName, podIP, err := m.waitForPodIP(ctx, selector)
+	if err != nil {
+		diag := m.diagnoseUnreadyEnvironment(context.Background(), name)
+		cleanup()
+		return nil, fmt.Errorf("%w (%s)", err, diag)
+	}
+
+	baseURL, err := sandbox.WaitForReady(ctx, []string{fmt.Sprintf("http://%s:%d", podIP, sandbox.GooseServePort)}, cfg.SecretKey)
+	if err != nil {
+		diag := m.diagnoseUnreadyEnvironment(context.Background(), name)
+		cleanup()
+		return nil, fmt.Errorf("%w (%s)", err, diag)
+	}
+
+	if cfg.DockerEnabled {
+		if err := m.waitForDindReady(ctx, podName); err != nil {
+			diag := m.diagnoseUnreadyEnvironment(context.Background(), name)
+			cleanup()
+			return nil, fmt.Errorf("sandbox/k8s: environment dind sidecar not ready: %w (%s)", err, diag)
+		}
+	}
+
+	return &sandbox.EnvironmentHandle{BackendRef: name, BaseURL: baseURL, Backend: "kubernetes", VolumeRef: name}, nil
+}
+
 // StartEnvironment scales backendRef's existing Deployment back to 1
 // replica and waits for its Pod — possibly a brand new one, since a
 // stop/start cycle can land on a different Pod/IP than before, see
-// StopEnvironment — to become ready. Does not create a new Deployment.
+// StopEnvironment — to become ready. Does not create a new Deployment,
+// unless that Deployment has been removed outside of Paca (see
+// recreateGoneEnvironmentDeployment above), in which case it self-heals
+// from there rather than failing outright — mirroring the docker backend's
+// own StartEnvironment exactly (see its doc comment).
 //
 // Safe to call even when the Deployment is already at 1 replica:
 // scaleDeployment's merge patch sets spec.replicas to the same value
@@ -621,7 +735,11 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 // guarded by GOOSE_PROVIDER's own presence so it can never fire twice for
 // the same Deployment), and keeping pacaInfraEnvKeys in sync with this
 // process's own current config (not one-time — re-checked, and re-applied
-// when stale, on every call).
+// when stale, on every call). Both already no-op and defer to this
+// method's own scaleDeployment not-found branch below when the Deployment
+// doesn't exist at all (see each one's own "let the caller's own
+// scaleDeployment ... surface this" comment), so this self-heal branch is
+// reachable exactly when they expect it to be.
 func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
 	if err := m.ensureEnvironmentEnv(ctx, backendRef, cfg); err != nil {
 		return nil, err
@@ -633,12 +751,10 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 		if apierrors.IsNotFound(err) {
 			// The Deployment was removed outside of Paca (a manual
 			// `kubectl delete`, or any cluster operation this Manager
-			// wasn't the one to perform) — there is nothing to scale up.
-			// Wrapped with sandbox.ErrEnvironmentGone for the same reason
-			// the docker backend's StartEnvironment does — see that
-			// method's matching branch and ErrEnvironmentGone's own doc
-			// comment (internal/sandbox/environment.go).
-			return nil, fmt.Errorf("sandbox/k8s: environment deployment %s no longer exists — it was likely removed outside of Paca; delete and recreate this environment: %w", backendRef, sandbox.ErrEnvironmentGone)
+			// wasn't the one to perform) — self-heal from its PVC if that
+			// survived, rather than dead-ending here the way this used to
+			// unconditionally.
+			return m.recreateGoneEnvironmentDeployment(ctx, cfg)
 		}
 		return nil, fmt.Errorf("sandbox/k8s: start environment: %w", err)
 	}

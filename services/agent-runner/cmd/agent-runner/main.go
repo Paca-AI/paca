@@ -170,6 +170,7 @@ func run(log *slog.Logger) error {
 		"http_addr", settings.HTTPAddr,
 		"mcp_dev_source_dir", settings.MCPDevSourceDir,
 	)
+	reconcileEnvironmentsOnStartup(ctx, envRepo, encryptor, acpServer, settings.MCPDevSourceDir, log)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
 	go runHTTPServer(ctx, httpServer, log)
@@ -392,5 +393,128 @@ func reapOneIdleEnvironment(
 	}
 	if err := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "stopped", nil, nil); err != nil {
 		log.Warn("agent-runner: failed to record stopped status for idle environment", "environment_id", env.ID, "error", err)
+	}
+}
+
+// reconcileEnvironmentsOnStartup verifies every environment the database
+// believes is "running" still actually has a live backing container/Pod —
+// the fix for a gap only agent-runner's own downtime can create. While
+// it's up, Start/Stop/Delete are the only ways an environment's
+// container/Pod goes away, and each already keeps status in sync (see
+// docker.Manager.StopEnvironment/DeleteEnvironment's own not-found
+// tolerance). But a user running `docker rm`/`kubectl delete` directly, a
+// host reboot that clears containers, or `docker system prune` while
+// agent-runner itself was stopped, leaves a "running" row with no way to
+// notice until this runs — and until it does, the row's lie means
+// services/api's own StartEnvironment short-circuits on "already running"
+// without ever asking agent-runner, so the self-heal below never gets a
+// chance to fire on its own.
+//
+// Run once, synchronously, from run() before the HTTP server/consumer
+// start accepting anything — see that call site's own comment for why
+// synchronous, not a background goroutine. Reuses
+// acpbridge.Server.StartEnvironmentByID (the same method
+// handleStartEnvironment's HTTP path calls), so a self-heal here gets the
+// exact same port-mapping/SSH-key re-bootstrap treatment a normal
+// user-triggered Start does, and it's safe to call unconditionally for the
+// same reason a plain StartEnvironment call always is (see that method's
+// own doc comment on both backends): an environment that's still
+// genuinely fine comes back with no meaningful change, just a slightly
+// slower boot.
+func reconcileEnvironmentsOnStartup(
+	ctx context.Context,
+	envRepo *postgres.EnvironmentRepository,
+	encryptor *secret.Encryptor,
+	acpServer *acpbridge.Server,
+	mcpDevSourceDir string,
+	log *slog.Logger,
+) {
+	envs, err := envRepo.ListRunningEnvironments(ctx)
+	if err != nil {
+		log.Warn("agent-runner: failed to list running environments for startup reconciliation", "error", err)
+		return
+	}
+	if len(envs) == 0 {
+		return
+	}
+	log.Info("agent-runner: reconciling running environments against their backing containers/Pods", "count", len(envs))
+	for _, env := range envs {
+		reconcileOneEnvironment(ctx, envRepo, encryptor, acpServer, mcpDevSourceDir, env, log)
+	}
+}
+
+// reconcileOneEnvironment is reconcileEnvironmentsOnStartup's per-row
+// worker — see that function's own doc comment for why this runs at all.
+// Builds the same "context-free caller" EnvironmentConfig
+// handleStartEnvironment's plain restart already uses (no cfg.Env): this
+// reconciler has no attaching conversation/agent to source one from, and
+// both backends' ensureEnvironmentInfraEnv already no-op on an empty
+// cfg.Env rather than treat it as "clear every key" (see that method's own
+// doc comment on each backend) — exactly the behavior wanted here.
+func reconcileOneEnvironment(
+	ctx context.Context,
+	envRepo *postgres.EnvironmentRepository,
+	encryptor *secret.Encryptor,
+	acpServer *acpbridge.Server,
+	mcpDevSourceDir string,
+	env *postgres.Environment,
+	log *slog.Logger,
+) {
+	if env.BackendRef == nil || *env.BackendRef == "" {
+		log.Warn("agent-runner: running environment has no backend_ref, skipping startup reconciliation", "environment_id", env.ID)
+		return
+	}
+
+	secretKey, err := encryptor.Decrypt(env.SecretKeyEncrypted)
+	if err != nil {
+		log.Warn("agent-runner: failed to decrypt secret key during startup reconciliation", "environment_id", env.ID, "error", err)
+		return
+	}
+
+	var image string
+	if env.Image != nil {
+		image = *env.Image
+	}
+
+	// self-heals via StartEnvironmentByID -> SandboxMgr.StartEnvironment on
+	// both backends when the container/Pod is gone but its volume/PVC
+	// survives (docker.Manager.recreateGoneEnvironmentContainer,
+	// k8s.Manager.recreateGoneEnvironmentDeployment) — only a genuinely
+	// unrecoverable environment (volume/PVC gone too) or an unrelated
+	// backend failure reaches the error branch below.
+	_, _, recreatedBackendRef, err := acpServer.StartEnvironmentByID(ctx, env.ID, *env.BackendRef, sandbox.EnvironmentConfig{
+		EnvironmentID:   env.ID.String(),
+		Image:           image,
+		CPULimit:        env.CPULimit,
+		MemoryLimit:     env.MemoryLimit,
+		DiskLimitGB:     env.DiskLimitGB,
+		DockerEnabled:   env.DockerEnabled,
+		SecretKey:       secretKey,
+		MCPDevSourceDir: mcpDevSourceDir,
+	})
+	if err != nil {
+		// Uniform treatment for ErrEnvironmentGone and any other failure
+		// alike (a transient backend hiccup included) — mirrors
+		// reapOneIdleEnvironment's own "any sandbox-operation failure ->
+		// error status" convention just above, rather than inventing a
+		// different policy for this reaper.
+		log.Warn("agent-runner: environment failed startup reconciliation", "environment_id", env.ID, "error", err)
+		errMsg := err.Error()
+		if updErr := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "error", nil, &errMsg); updErr != nil {
+			log.Warn("agent-runner: failed to record environment error status", "environment_id", env.ID, "error", updErr)
+		}
+		return
+	}
+
+	var backendRefPtr *string
+	if recreatedBackendRef != "" {
+		backendRefPtr = &recreatedBackendRef
+		log.Info("agent-runner: environment container/Pod was recreated from its existing volume during startup reconciliation",
+			"environment_id", env.ID, "backend_ref", recreatedBackendRef)
+	}
+	if won, err := envRepo.ClaimEnvironmentRunning(ctx, env.ID, backendRefPtr); err != nil {
+		log.Warn("agent-runner: failed to persist environment status after startup reconciliation", "environment_id", env.ID, "error", err)
+	} else if !won {
+		log.Info("agent-runner: environment status changed concurrently during startup reconciliation, leaving it as-is", "environment_id", env.ID)
 	}
 }
