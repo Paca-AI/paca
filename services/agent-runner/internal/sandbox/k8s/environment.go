@@ -648,10 +648,12 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 // re-publishes cfg.PortMappings (the caller's freshly-built current set —
 // see StartEnvironmentByID's own doc comment in
 // internal/acpbridge/environment_handlers.go) regardless. Any failure from
-// here on cleans up the just-created Deployment, mirroring
-// CreateEnvironment's own cleanup-on-failure stance, so a retried Start
-// finds a clean "not found" (triggering another recreate attempt) instead
-// of a stuck, half-provisioned Deployment.
+// here on cleans up both the just-created Deployment and Service (the
+// latter via ensureEnvironmentService(..., nil), mirroring
+// CreateEnvironment's own cleanup exactly — see its own cleanup closure),
+// so a retried Start finds a clean "not found" (triggering another
+// recreate attempt) instead of a stuck, half-provisioned Deployment or an
+// orphaned Service still holding a NodePort.
 func (m *Manager) recreateGoneEnvironmentDeployment(ctx context.Context, cfg sandbox.EnvironmentConfig) (*sandbox.EnvironmentHandle, error) {
 	name := environmentName(cfg.EnvironmentID)
 	if _, err := m.clientset.CoreV1().PersistentVolumeClaims(m.namespace).Get(ctx, name, metav1.GetOptions{}); err != nil {
@@ -677,6 +679,7 @@ func (m *Manager) recreateGoneEnvironmentDeployment(ctx context.Context, cfg san
 		removeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = m.deleteDeployment(removeCtx, name)
+		_ = m.ensureEnvironmentService(removeCtx, name, labels, nil)
 	}
 
 	if err := m.ensureEnvironmentService(ctx, name, labels, cfg.PortMappings); err != nil {

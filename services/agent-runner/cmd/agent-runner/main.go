@@ -493,16 +493,35 @@ func reconcileOneEnvironment(
 		MCPDevSourceDir: mcpDevSourceDir,
 	})
 	if err != nil {
-		// Uniform treatment for ErrEnvironmentGone and any other failure
-		// alike (a transient backend hiccup included) — mirrors
-		// reapOneIdleEnvironment's own "any sandbox-operation failure ->
-		// error status" convention just above, rather than inventing a
-		// different policy for this reaper.
-		log.Warn("agent-runner: environment failed startup reconciliation", "environment_id", env.ID, "error", err)
-		errMsg := err.Error()
-		if updErr := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "error", nil, &errMsg); updErr != nil {
-			log.Warn("agent-runner: failed to record environment error status", "environment_id", env.ID, "error", updErr)
+		if errors.Is(err, sandbox.ErrEnvironmentGone) {
+			// Genuinely unrecoverable — the container/Pod and its
+			// volume/PVC are both gone, so there is nothing left for a
+			// future reconcile pass or conversation attach to self-heal
+			// from. Unlike the branch below, surfacing this as an
+			// actionable "error" (delete and recreate this environment)
+			// is the correct outcome here, not an overreaction.
+			log.Warn("agent-runner: environment is unrecoverable, marking it as errored", "environment_id", env.ID, "error", err)
+			errMsg := err.Error()
+			if updErr := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "error", nil, &errMsg); updErr != nil {
+				log.Warn("agent-runner: failed to record environment error status", "environment_id", env.ID, "error", updErr)
+			}
+			return
 		}
+		// Any other failure (a transient Docker/Kubernetes API hiccup at
+		// boot, a slow image pull, ...) deliberately leaves the row's
+		// status untouched — still "running", not force-flipped to a
+		// stuck "error" a human would have to manually clear. This
+		// diverges from reapOneIdleEnvironment's own "any failure ->
+		// error status" convention above on purpose: that write only
+		// ever follows a stop the reaper itself already decided to make,
+		// while this one can fire against an environment that was
+		// perfectly healthy moments before agent-runner happened to
+		// restart. Leaving it "running" keeps it inside
+		// ListRunningEnvironments' scope for the very next boot's
+		// reconcile pass, and coldStartEnvironment's own unconditional
+		// StartEnvironment call on the next real conversation attach gets
+		// a chance to self-heal it long before a human would ever notice.
+		log.Warn("agent-runner: environment failed startup reconciliation, leaving its status unchanged for a future retry", "environment_id", env.ID, "error", err)
 		return
 	}
 

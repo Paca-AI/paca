@@ -50,12 +50,30 @@ import (
 // environment's Connect page does (Docker can't add a -p binding to an
 // already-running container) — so this is the only available signal that
 // a listed address might not be live yet.
-func buildEnvironmentContext(forwards []*postgres.PortForward, portForwardHost string, portsPendingRestart bool) string {
+//
+// forwardsUnknown is true when the caller's own portForwardRepo.
+// ListForEnvironment call failed (coldStartEnvironment logs and degrades
+// rather than failing the turn over it — see that call site's own
+// comment). Deliberately a separate parameter rather than overloading
+// forwards == nil to mean it: a query failure and "this environment
+// genuinely has zero forwards configured" need different agent-facing
+// text — the latter is fine to state as fact ("No port forwards are
+// configured yet"), the former would be confidently telling the agent
+// (and, via it, the user) something false about a state we simply
+// couldn't observe this turn.
+func buildEnvironmentContext(forwards []*postgres.PortForward, portForwardHost string, portsPendingRestart bool, forwardsUnknown bool) string {
 	var b strings.Builder
 	b.WriteString("## Static Environment\n")
 	b.WriteString("You are attached to a persistent, long-lived static environment, not a disposable " +
 		"per-conversation sandbox: files on disk and any background process you start (e.g. a dev server) " +
 		"are still here the next time any conversation attaches to this same environment.\n")
+
+	if forwardsUnknown {
+		b.WriteString("This environment's port-forward list couldn't be loaded just now, so this note can't " +
+			"say what's reachable from outside this container — don't tell the user nothing is forwarded. " +
+			"If they ask, tell them to check the environment's Connect page directly.\n\n")
+		return b.String()
+	}
 
 	var reachable []*postgres.PortForward
 	for _, pf := range forwards {
@@ -86,7 +104,7 @@ func buildEnvironmentContext(forwards []*postgres.PortForward, portForwardHost s
 	}
 	if portsPendingRestart {
 		b.WriteString("Note: this environment has a port-forward change pending. The addresses above " +
-			"reflect what's actually running right now, which may not match what's currently configured — " +
+			"reflect what's currently configured, which may not all be live yet — " +
 			"if one doesn't answer, or the user just added a forward that isn't listed here, tell them to " +
 			"click Restart on the environment's Connect page to apply it.\n")
 	}

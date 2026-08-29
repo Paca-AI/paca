@@ -588,16 +588,21 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// and logged-not-fatal on error, same as environmentPortMappings
 	// handled this same query itself before this existed: a port-forward
 	// listing failure shouldn't fail the whole turn, only degrade
-	// PortMappings to SSH-only and the note to "no forwards configured".
+	// PortMappings to SSH-only and the note to its own honest
+	// forwardsUnknown case rather than the "no forwards configured" one
+	// (see buildEnvironmentContext's own doc comment for why those two
+	// must stay distinguishable).
 	var forwards []*postgres.PortForward
+	forwardsUnknown := false
 	if e.portForwardRepo != nil {
 		forwards, err = e.portForwardRepo.ListForEnvironment(ctx, environmentID)
 		if err != nil {
 			e.log.Warn("executor: failed to list port forwards for environment attach",
 				"environment_id", environmentID, "error", err)
+			forwardsUnknown = true
 		}
 	}
-	envNote := buildEnvironmentContext(forwards, e.opts.PortForwardHost, env.PortsPendingRestart)
+	envNote := buildEnvironmentContext(forwards, e.opts.PortForwardHost, env.PortsPendingRestart, forwardsUnknown)
 
 	secretKey, err := e.encryptor.Decrypt(env.SecretKeyEncrypted)
 	if err != nil {
