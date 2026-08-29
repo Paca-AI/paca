@@ -50,6 +50,21 @@ type Environment struct {
 	// field here except status/backend_ref/ssh_port.
 	DockerEnabled bool    `db:"docker_enabled"`
 	VolumeRef     *string `db:"volume_ref"`
+	// PortsPendingRestart mirrors services/api's own ports_pending_restart
+	// bookkeeping (set by its AddPortForward/DeletePortForward, cleared by
+	// RestartEnvironmentPorts) — true when a port forward was added or
+	// removed on a running Docker environment since its last (re)start,
+	// so the container's actual published ports may not match
+	// environment_port_forwards' current rows yet: Docker can't add a -p
+	// binding to an already-running container, only an explicit
+	// "Restart" click on the Connect page applies the change (see
+	// docs/ai-agent/environment-management.md's "Port Forwarding"
+	// section); coldStartEnvironment's own attach path never applies it
+	// either. Read-only from agent-runner's side, same as DockerEnabled —
+	// used by executor.buildEnvironmentContext to caveat the agent-facing
+	// port list rather than assert every listed address is live right
+	// now.
+	PortsPendingRestart bool `db:"ports_pending_restart"`
 	// SecretKeyEncrypted must be decrypted with the same secret.Encryptor
 	// this process already uses for agents.llm_api_key_secret — see
 	// executor.Executor.coldStartEnvironment. Never logged or returned
@@ -63,7 +78,8 @@ type Environment struct {
 // sync with each other's column list.
 const environmentColumns = `
 	id, status, ssh_port, backend_ref, image, cpu_limit, memory_limit,
-	disk_limit_gb, docker_enabled, volume_ref, secret_key_encrypted, idle_timeout_minutes
+	disk_limit_gb, docker_enabled, volume_ref, secret_key_encrypted, idle_timeout_minutes,
+	ports_pending_restart
 `
 
 // EnvironmentRepository reads and writes agent-runner's own minimal slice

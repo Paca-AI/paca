@@ -15,13 +15,19 @@ import (
 // environmentdom.EnvironmentPortForward services/api's own domain package
 // owns (a different Go module, unreachable from here — see
 // EnvironmentRepository's own doc comment on the same module-boundary
-// convention). label/created_by/created_at are never read here since
-// nothing in agent-runner needs them; only the fields
-// handlePortForwardsAssign/buildPortMappings actually touch are included.
+// convention). created_by/created_at are never read here since nothing in
+// agent-runner needs them. label IS read (unlike an earlier version of
+// this struct): executor.buildEnvironmentContext includes it in the
+// agent-facing note listing an environment's port forwards, so an agent
+// can tell a listed port apart from another by more than a bare number.
 type PortForward struct {
 	ID            uuid.UUID `db:"id"`
 	EnvironmentID uuid.UUID `db:"environment_id"`
-	ContainerPort int       `db:"container_port"`
+	// Label is the user-supplied name for this forward (e.g. "frontend
+	// dev server") — always non-empty (label TEXT NOT NULL in the
+	// migration).
+	Label         string `db:"label"`
+	ContainerPort int    `db:"container_port"`
 	// HostPort is the dedicated external port published straight to
 	// ContainerPort inside this row's environment — a native Docker -p
 	// binding or a Kubernetes NodePort Service entry (see
@@ -35,7 +41,7 @@ type PortForward struct {
 // portForwardColumns is shared by every SELECT in this file so the
 // various list/find methods can't drift out of sync with each other's
 // column list.
-const portForwardColumns = `id, environment_id, container_port, host_port`
+const portForwardColumns = `id, environment_id, label, container_port, host_port`
 
 // PortForwardRepository reads and writes agent-runner's own minimal slice
 // of the environment_port_forwards table services/api owns the canonical

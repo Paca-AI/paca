@@ -249,6 +249,14 @@ remove a `-p` binding on an already-running container, so the environment
 is stopped, recreated from its same persisted volume (no data lost), and
 started again with the updated set of published ports.
 
+`PORT_FORWARD_HOST` (the api service's own `${PUBLIC_HOSTNAME:-localhost}`
+in `docker-compose.dev.yml`, or an explicit host you set yourself in
+`docker-compose.prod.yml` — see that file's own comments) is passed to the
+`agent-runner` service too, not just `api`: the agent itself is told each
+forward's real `<host>:<host_port>` address in-conversation, so if it
+starts a dev server on a forwarded port it can hand the user a working URL
+directly instead of the user having to look it up on the Connect page.
+
 **With external PostgreSQL** (suppress the bundled container):
 
 ```bash

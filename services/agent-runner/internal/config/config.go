@@ -147,6 +147,20 @@ type Settings struct {
 	PortForwardRangeStart int
 	PortForwardRangeEnd   int
 
+	// PortForwardHost is the descriptive external hostname a user-added
+	// port forward is reachable at (PORT_FORWARD_HOST) — the exact same
+	// env var services/api's own config.Settings.PortForwardHost reads,
+	// sourced independently here because agent-runner, unlike
+	// services/api, needs it for more than an API response: it's how
+	// executor.buildEnvironmentContext tells an environment-attached
+	// conversation's agent a real `host:port` address instead of just a
+	// bare container port. Purely descriptive — agent-runner never
+	// publishes a port itself (see PortForwardRangeStart/End above).
+	// Empty by default; a forward is still listed without an address in
+	// that case rather than omitted, since a self-hosted deployment may
+	// not have a reachable hostname configured at all.
+	PortForwardHost string
+
 	LogLevel string
 }
 
@@ -178,6 +192,7 @@ func Load() (Settings, error) {
 		SSHBastionPortRangeEnd:          envInt("SSH_BASTION_PORT_RANGE_END", 0),
 		PortForwardRangeStart:           envInt("PORT_FORWARD_RANGE_START", 0),
 		PortForwardRangeEnd:             envInt("PORT_FORWARD_RANGE_END", 0),
+		PortForwardHost:                 os.Getenv("PORT_FORWARD_HOST"),
 		LogLevel:                        envOr("LOG_LEVEL", "INFO"),
 	}
 

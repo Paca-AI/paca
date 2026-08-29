@@ -260,6 +260,16 @@ environments:
   portForwardHost: "node.paca.example.com"   # same idea as sshBastionHost
 ```
 
+Unlike `sshBastionHost`, `environments.portForwardHost` isn't purely
+descriptive for `services/api` alone any more: it's still passed there as
+`PORT_FORWARD_HOST` so `GET /environments/config` can hand the web app's
+Connect page a real `<host>:<host_port>` address, but it's now *also*
+passed to `agent-runner` itself (same env var, same value), which uses it
+to tell an environment-attached conversation's agent that same address
+in-context — so if the agent starts a dev server on a forwarded port, it
+can give the user a real URL without the user having to go find it on the
+Connect page first.
+
 Unlike the `docker` backend — where changing a container's published
 ports means stopping and recreating it — patching a `NodePort` Service's
 port list is a live operation that never touches the Pod at all. Clicking

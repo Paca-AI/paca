@@ -105,6 +105,7 @@ func run(log *slog.Logger) error {
 		PacaAPIURL:      settings.PacaAPIURL,
 		PacaGatewayURL:  settings.PacaGatewayURL,
 		MCPDevSourceDir: settings.MCPDevSourceDir,
+		PortForwardHost: settings.PortForwardHost,
 	}, log)
 
 	chatSandboxes := chatsandbox.New()

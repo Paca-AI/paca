@@ -418,6 +418,12 @@ services:
       # means off" convention as SSH access above.
       PORT_FORWARD_RANGE_START: ${PORT_FORWARD_RANGE_START:-}
       PORT_FORWARD_RANGE_END: ${PORT_FORWARD_RANGE_END:-}
+      # Same PORT_FORWARD_HOST the api service sets above, for a different
+      # consumer: this service uses it to tell an environment-attached
+      # conversation's agent the real `host:port` address each of its
+      # port forwards is reachable at (executor.buildEnvironmentContext),
+      # not just to echo it back to the web app's Connect page.
+      PORT_FORWARD_HOST: ${PORT_FORWARD_HOST:-}
     volumes:
       # Sibling-container mode — also how this service spins up each
       # conversation's dedicated `docker:dind` sidecar (see this service's
