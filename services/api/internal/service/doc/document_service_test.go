@@ -128,7 +128,7 @@ func (r *fakeDocRepo) ListDocuments(_ context.Context, projectID uuid.UUID, fold
 	if cursor != nil {
 		if cur, ok := docdom.DecodeDocumentCursor(*cursor); ok {
 			i := 0
-			for i < len(out) && !(out[i].Title > cur.Title || (out[i].Title == cur.Title && out[i].ID.String() > cur.ID)) {
+			for i < len(out) && (out[i].Title < cur.Title || (out[i].Title == cur.Title && out[i].ID.String() <= cur.ID)) {
 				i++
 			}
 			out = out[i:]
