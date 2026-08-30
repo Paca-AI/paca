@@ -1258,16 +1258,78 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 }
 
 // GetConversationForAgent implements agentdom.Service.GetConversationForAgent
-// — see its doc comment for the authorization rule.
-func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
-	c, err := s.repo.FindConversationByID(ctx, conversationID)
+// — see its doc comment for the full authorization rule and why bare agent-
+// identity matching isn't sufficient on its own.
+func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+	target, err := s.repo.FindConversationByID(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	if c.AgentID != callerAgentID {
+	if target.AgentID != callerAgentID {
 		return nil, agentdom.ErrConversationNotFound
 	}
-	return c, nil
+	// Always allowed: an agent may read the conversation it's currently
+	// running as part of. Also short-circuits the common case (no other
+	// conversation was attached) without a second lookup.
+	if target.ID == currentConversationID {
+		return target, nil
+	}
+
+	// Anything else must be authorized against whichever human is driving
+	// currentConversationID, not against callerAgentID alone — see
+	// authorizeAgentConversationRead.
+	current, err := s.repo.FindConversationByID(ctx, currentConversationID)
+	if err != nil || current.AgentID != callerAgentID {
+		// currentConversationID is missing, unverifiable, or (if ever
+		// spoofed) doesn't even belong to this agent — there is no trusted
+		// context to check the target against, so fail closed rather than
+		// falling back to bare agent-identity matching.
+		return nil, agentdom.ErrConversationNotFound
+	}
+	if err := s.authorizeAgentConversationRead(ctx, current, target); err != nil {
+		return nil, err
+	}
+	return target, nil
+}
+
+// authorizeAgentConversationRead lets an agent read `target` on behalf of
+// `current` — the conversation actually driving this MCP call — only when
+// the human associated with `current` could already reach `target` by
+// asking for it directly, mirroring authorizeConversationAccess (project-
+// scoped) and GetGlobalConversation (global) exactly rather than
+// re-deriving a separate, easier-to-get-wrong rule:
+//   - global (current.ProjectID is nil): target must also be global and
+//     share the same actor_user_id — GetGlobalConversation's own rule.
+//   - project-scoped: target must be in the same project, and either
+//     project_shared (visible to any project member already) or
+//     owner-private to the same chat-session member current belongs to —
+//     authorizeConversationAccess's rule, reused via current's own chat
+//     session so a human never needs to be threaded through explicitly.
+func (s *Service) authorizeAgentConversationRead(ctx context.Context, current, target *agentdom.AgentConversation) error {
+	if current.ProjectID == uuid.Nil {
+		if target.ProjectID != uuid.Nil ||
+			current.ActorUserID == nil || target.ActorUserID == nil ||
+			*target.ActorUserID != *current.ActorUserID {
+			return agentdom.ErrConversationNotFound
+		}
+		return nil
+	}
+
+	if target.ProjectID != current.ProjectID {
+		return agentdom.ErrConversationNotFound
+	}
+	if current.ChatSessionID == nil {
+		// current isn't chat-session-backed (e.g. a task-assigned or
+		// automation-triggered run) — there is no "human currently
+		// chatting" to authorize target's owner-private audience against,
+		// so only its already-project-wide-visible audience is reachable.
+		return s.authorizeConversationAccess(ctx, target, uuid.Nil)
+	}
+	session, err := s.repo.FindChatSessionByID(ctx, *current.ChatSessionID)
+	if err != nil {
+		return agentdom.ErrConversationNotFound
+	}
+	return s.authorizeConversationAccess(ctx, target, session.MemberID)
 }
 
 // authorizeConversationAccess fails closed (ErrConversationNotFound) when a

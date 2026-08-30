@@ -85,6 +85,40 @@ describe("PacaAPIConversationClient", () => {
 		).toBeUndefined();
 	});
 
+	it("sends X-Conversation-ID header only alongside agentId", async () => {
+		const client = new PacaAPIConversationClient({
+			...CONFIG,
+			agentId: "agent-1",
+			conversationId: "conv-current",
+		});
+		await client.getConversation("c1");
+		expect(fetchMock.mock.calls[0][1].headers["X-Conversation-ID"]).toBe(
+			"conv-current",
+		);
+	});
+
+	it("omits X-Conversation-ID when conversationId is configured without agentId", async () => {
+		const client = new PacaAPIConversationClient({
+			...CONFIG,
+			conversationId: "conv-current",
+		});
+		await client.getConversation("c1");
+		expect(
+			fetchMock.mock.calls[0][1].headers["X-Conversation-ID"],
+		).toBeUndefined();
+	});
+
+	it("omits X-Conversation-ID when conversationId is not configured", async () => {
+		const client = new PacaAPIConversationClient({
+			...CONFIG,
+			agentId: "agent-1",
+		});
+		await client.getConversation("c1");
+		expect(
+			fetchMock.mock.calls[0][1].headers["X-Conversation-ID"],
+		).toBeUndefined();
+	});
+
 	it("throws on non-OK response", async () => {
 		fetchMock.mockResolvedValue(errorResponse(503, "Service Unavailable"));
 		const client = new PacaAPIConversationClient(CONFIG);

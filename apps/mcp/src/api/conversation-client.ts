@@ -57,11 +57,19 @@ export class PacaAPIConversationClient {
 		// too — not just trusting actorUserId's own truthiness — means a stray
 		// or misconfigured PACA_ACTOR_USER_ID can never reach the server
 		// without an agent identity attached to it. Mirrors client.ts's
-		// PacaAPIClient exactly. Unused by the /agents/me path itself (it
-		// authorizes on X-Agent-ID alone), kept for parity with the other
-		// clients and in case a future agents/me route needs it.
+		// PacaAPIClient exactly.
 		if (this.config.agentId && this.config.actorUserId) {
 			headers["X-Actor-User-ID"] = this.config.actorUserId;
+		}
+		// The conversation this MCP server instance is running as part of —
+		// load-bearing for the /agents/me path specifically: GetConversationForAgent
+		// authorizes a cross-conversation read (getConversation/
+		// listConversationEvents for a *different* conversationId than this
+		// one) against this header's conversation's own project/actor/owning
+		// member, not against X-Agent-ID alone. See PacaConfig.conversationId's
+		// doc comment.
+		if (this.config.agentId && this.config.conversationId) {
+			headers["X-Conversation-ID"] = this.config.conversationId;
 		}
 
 		const response = await fetch(url, { method, headers });

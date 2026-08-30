@@ -115,39 +115,49 @@ type ConversationService interface {
 	// only by their chat-session owner).
 	GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*AgentConversation, error)
 	// GetConversationForAgent returns a conversation for an agent-
-	// authenticated caller (X-Agent-ID, no human member/actor identity to
-	// check against) — used by the read_conversation MCP tool when a user
-	// attaches a Conversation as chat context. GetConversation and
-	// GetGlobalConversation both require a human member/actor identity a
-	// bare agent doesn't have (agents aren't project members, and a
-	// project-scoped agent's trigger never carries an actor_user_id), so
-	// this is a separate, narrower authorization rule: the requesting agent
-	// may read a conversation only if it is that conversation's own agent
-	// — it already saw everything in a conversation it participated in, so
-	// this exposes nothing new *for that agent's own conversations*,
-	// regardless of project or audience (an owner_private chat with a
-	// human included). Any other conversation — a different agent's, or
-	// the same agent's shared-with-the-project conversation triggered for
-	// a different reason — is not reachable via this path
-	// (ErrConversationNotFound).
+	// authenticated caller (X-Agent-ID, no human member/actor identity of
+	// its own to check against) — used by the read_conversation MCP tool
+	// when a user attaches a Conversation as chat context.
+	// GetConversation/GetGlobalConversation both require a human
+	// member/actor identity a bare agent doesn't have (agents aren't
+	// project members, and a project-scoped agent's trigger never carries
+	// an actor_user_id), so this can't just delegate to either of those.
 	//
-	// Deliberate trust-boundary note: callerAgentID here is whatever
-	// X-Agent-ID the auth middleware accepted (middleware.AgentIDFromContext,
-	// see verifyAgentIdentity), which under a shared static agent API key
-	// (apikeysvc.WithAgentKey — the dev default, see AGENT_API_KEY) is
-	// verified only as "a real, non-deleted agent UUID," not "this specific
-	// process is actually that agent." Any agent process holding that
-	// shared key can therefore claim a different agent's ID and read that
-	// agent's full transcripts — including its owner_private human chats —
-	// through this endpoint. That capability didn't exist before this
-	// endpoint (transcripts were previously unreachable for any bare agent
-	// identity at all). A deployment issuing per-agent MCP keys instead
-	// (key.AgentID, see agentClaimsForKey) is not exposed this way, since
-	// the key itself — not a self-reported header — is the identity
-	// evidence there. If a deployment relies on the shared key, treat this
-	// as an accepted, deliberate extension of that key's existing trust
-	// model rather than a new one scoped down for this endpoint.
-	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*AgentConversation, error)
+	// It is NOT enough to check "is this the requested conversation's own
+	// agent" and stop there: the same agent can be talking to many
+	// different humans (a global agent chats with any authenticated user;
+	// a project-scoped agent can hold a separate owner-private conversation
+	// with each project member, and can be invited into more than one
+	// project). Authorizing on agent identity alone would let any one of
+	// those humans point the agent at another human's conversation ID —
+	// one it has no relationship to at all — and have the agent read it
+	// back, bypassing owner_private/project/actor isolation entirely via
+	// the agent as a confused deputy. (An earlier version of this method
+	// did exactly that; see the currentConversationID parameter below for
+	// the fix.)
+	//
+	// currentConversationID is the conversation the calling agent process
+	// is actually running as part of right now (agent-runner's own
+	// trigger.ConversationID, forwarded as X-Conversation-ID — see
+	// ConversationHandler.GetConversationForAgent). The rule:
+	//   - conversationID == currentConversationID is always allowed (an
+	//     agent may always read the conversation it's currently in).
+	//   - Otherwise, currentConversationID must itself resolve to a
+	//     conversation belonging to callerAgentID (an unverifiable or
+	//     mismatched currentConversationID means there is no trusted
+	//     context to check against, so nothing else is reachable), and the
+	//     requested conversation must be visible to *whichever human is
+	//     driving that current conversation* — the same rule
+	//     authorizeConversationAccess/GetGlobalConversation already apply
+	//     when that human asks directly: same actor for two global
+	//     conversations, or same project plus (project_shared, or
+	//     owner-private to that same chat-session member) for two
+	//     project-scoped ones. See the implementation's doc comment for
+	//     the exact rule.
+	// Any conversation outside that boundary is not reachable via this
+	// path (ErrConversationNotFound), including a different agent's, or
+	// the same agent's conversation with an unrelated human.
+	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
 	// conversation's sandbox. memberID gates ownership (see GetConversation).

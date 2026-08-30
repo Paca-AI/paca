@@ -32,6 +32,30 @@ func envValue(env *[]acp.EnvVariable, name string) (string, bool) {
 	return "", false
 }
 
+// TestBuildMCPServers_AlwaysSetsConversationID pins that PACA_CONVERSATION_ID
+// is forwarded unconditionally (trigger.ConversationID is always set,
+// unlike ProjectID/ActorUserID) — services/api's GetConversationForAgent
+// relies on it being present to authorize a read_conversation call against
+// the calling conversation's own project/actor/owning member; see that
+// method's doc comment.
+func TestBuildMCPServers_AlwaysSetsConversationID(t *testing.T) {
+	e := &Executor{opts: Options{PacaAPIKey: "key", PacaAPIURL: "http://api", PacaGatewayURL: "http://gw"}}
+	conversationID := uuid.New()
+	trigger := agent.Trigger{ConversationID: conversationID, AgentID: uuid.New()}
+	cfg := agent.Config{ID: uuid.New()}
+
+	servers := e.buildMCPServers(trigger, cfg)
+	paca := findPacaServer(t, servers)
+
+	val, ok := envValue(paca.Env, "PACA_CONVERSATION_ID")
+	if !ok {
+		t.Fatalf("PACA_CONVERSATION_ID not set in paca MCP server env: %+v", paca.Env)
+	}
+	if val != conversationID.String() {
+		t.Errorf("PACA_CONVERSATION_ID = %q, want %q", val, conversationID.String())
+	}
+}
+
 func TestBuildMCPServers_SetsRepoPluginIDsWhenPresent(t *testing.T) {
 	e := &Executor{opts: Options{PacaAPIKey: "key", PacaAPIURL: "http://api", PacaGatewayURL: "http://gw"}}
 	trigger := agent.Trigger{

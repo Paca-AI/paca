@@ -960,6 +960,14 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 		"PACA_API_URL":     e.opts.PacaAPIURL,
 		"PACA_GATEWAY_URL": e.opts.PacaGatewayURL,
 		"PACA_AGENT_ID":    cfg.ID.String(),
+		// The conversation this MCP server instance is running as part of —
+		// always set (trigger.ConversationID is required, never uuid.Nil).
+		// Forwarded as X-Conversation-ID on the read_conversation tool's API
+		// calls so services/api's GetConversationForAgent can authorize a
+		// cross-conversation read against *this* conversation's own
+		// project/actor/owning member, instead of bare agent identity alone
+		// — see that method's doc comment.
+		"PACA_CONVERSATION_ID": trigger.ConversationID.String(),
 	}
 	if trigger.ProjectID != uuid.Nil {
 		env["PACA_PROJECT_ID"] = trigger.ProjectID.String()

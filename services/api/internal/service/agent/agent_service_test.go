@@ -1371,13 +1371,11 @@ func TestGetConversation_OwnerPrivate_WrongMember(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
-// TestGetConversationForAgent_OwnConversation_Allowed reproduces the
-// read_conversation MCP tool's real use case: an agent (no project_members
-// row, no actor_user_id) reading its own owner-private conversation with a
-// human — the case GetConversation/GetGlobalConversation cannot serve at
-// all, since both require a human member/actor identity a bare agent
-// doesn't have.
-func TestGetConversationForAgent_OwnConversation_Allowed(t *testing.T) {
+// TestGetConversationForAgent_SameConversation_Allowed reproduces the
+// read_conversation MCP tool's simplest case: an agent reading the very
+// conversation it's currently running as part of. Always allowed regardless
+// of audience, and doesn't require a second FindConversationByID lookup.
+func TestGetConversationForAgent_SameConversation_Allowed(t *testing.T) {
 	agentID := uuid.New()
 	conversationID := uuid.New()
 	conversation := &agentdom.AgentConversation{
@@ -1386,17 +1384,20 @@ func TestGetConversationForAgent_OwnConversation_Allowed(t *testing.T) {
 		Audience: agentdom.AudienceOwnerPrivate,
 		Status:   "stopped",
 	}
+	lookups := 0
 	repo := &mockAgentRepo{
 		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			lookups++
 			return conversation, nil
 		},
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID)
+	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
 
 	assert.NoError(t, err)
 	assert.Equal(t, conversationID, result.ID)
+	assert.Equal(t, 1, lookups, "reading the current conversation itself should not need a second lookup")
 }
 
 // TestGetConversationForAgent_DifferentAgent_Rejected asserts the
@@ -1420,7 +1421,241 @@ func TestGetConversationForAgent_DifferentAgent_Rejected(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, err := svc.GetConversationForAgent(context.Background(), conversationID, callerAgentID)
+	_, err := svc.GetConversationForAgent(context.Background(), conversationID, callerAgentID, uuid.Nil)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetConversationForAgent_NoCurrentConversation_Rejected pins the
+// fail-closed default: without a verifiable currentConversationID (e.g. an
+// older agent-runner build that never sends X-Conversation-ID), a *different*
+// conversation of the agent's own is not reachable — there is no trusted
+// context to check its audience against. This is deliberately not the old
+// "any conversation this agent ever had" behavior; see
+// GetConversationForAgent's doc comment.
+func TestGetConversationForAgent_NoCurrentConversation_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:       conversationID,
+		AgentID:  agentID,
+		Audience: agentdom.AudienceProjectShared,
+		Status:   "stopped",
+	}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == conversationID {
+				return conversation, nil
+			}
+			return nil, agentdom.ErrConversationNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, uuid.Nil)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetConversationForAgent_SpoofedCurrentConversation_Rejected pins that
+// a currentConversationID belonging to a *different* agent (whether spoofed
+// or just stale) is never trusted as context — it's treated the same as no
+// current conversation at all.
+func TestGetConversationForAgent_SpoofedCurrentConversation_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	otherAgentID := uuid.New()
+	conversationID := uuid.New()
+	currentConversationID := uuid.New()
+	target := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceProjectShared, ProjectID: uuid.New()}
+	current := &agentdom.AgentConversation{ID: currentConversationID, AgentID: otherAgentID, ProjectID: target.ProjectID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == conversationID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, currentConversationID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetConversationForAgent_Global_SameActor_Allowed and
+// TestGetConversationForAgent_Global_DifferentActor_Rejected are the
+// regression cases for the vulnerability this method used to have: a global
+// agent talks to many different humans, and reading a *different* human's
+// conversation with the same agent must stay denied even though the agent
+// identity matches on both — the whole point of GetGlobalConversation's own
+// actor check ("without it, any authenticated user could read... another
+// user's conversation simply by knowing its ID").
+func TestGetConversationForAgent_Global_SameActor_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	actorUserID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ActorUserID: &actorUserID}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ActorUserID: &actorUserID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+func TestGetConversationForAgent_Global_DifferentActor_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	victimActorUserID := uuid.New()
+	attackerActorUserID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	// target: the victim's own private global conversation with the shared agent.
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ActorUserID: &victimActorUserID}
+	// current: the attacker's own, unrelated conversation with that same agent.
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ActorUserID: &attackerActorUserID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.Error(t, err, "the attacker must not be able to read the victim's private conversation with the same shared agent")
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetConversationForAgent_Project_SharedAudience_Allowed: a
+// project_shared target in the same project is readable regardless of which
+// member current belongs to — it's already visible to any project member.
+func TestGetConversationForAgent_Project_SharedAudience_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+// TestGetConversationForAgent_Project_OwnerPrivate_SameMember_Allowed and
+// TestGetConversationForAgent_Project_OwnerPrivate_DifferentMember_Rejected
+// are the project-scoped regression cases: a project-scoped agent can hold
+// a separate owner-private conversation with each project member, and
+// reading a *different* member's private conversation must stay denied —
+// mirroring authorizeConversationAccess's own rule for a human caller.
+func TestGetConversationForAgent_Project_OwnerPrivate_SameMember_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	memberID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	targetSessionID, currentSessionID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &targetSessionID}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: &currentSessionID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
+			// Both sessions belong to the same human — e.g. the member
+			// attached an earlier private conversation of their own as
+			// context in a new private chat with the same agent.
+			return &agentdom.AgentChatSession{ID: id, MemberID: memberID}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+func TestGetConversationForAgent_Project_OwnerPrivate_DifferentMember_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	victimMemberID := uuid.New()
+	attackerMemberID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	targetSessionID, currentSessionID := uuid.New(), uuid.New()
+	// target: the victim's owner-private conversation with the shared project agent.
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceOwnerPrivate, ChatSessionID: &targetSessionID}
+	// current: the attacker's own, unrelated conversation with that same agent, same project.
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: &currentSessionID}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
+			if id == targetSessionID {
+				return &agentdom.AgentChatSession{ID: id, MemberID: victimMemberID}, nil
+			}
+			return &agentdom.AgentChatSession{ID: id, MemberID: attackerMemberID}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.Error(t, err, "a fellow project member must not be able to read another member's owner-private conversation with the same agent")
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// TestGetConversationForAgent_Project_DifferentProject_Rejected covers an
+// agent invited into more than one project: a project_shared conversation
+// from a *different* project than current's must still be denied, even
+// though every project member there could already see it in their own
+// project — current's own project is the only one this call may reach into.
+func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: uuid.New(), Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: uuid.New()}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)

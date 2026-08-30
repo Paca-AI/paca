@@ -967,14 +967,45 @@ func TestSendGlobalConversationMessage_ForwardsCallerIDNotBodySuppliedActor(t *t
 	}
 }
 
+// TestSendGlobalConversationMessage_RejectsInvalidContextItems pins that a
+// malformed context_items payload (here: an unrecognized type) is rejected
+// with 400 before the service is ever called — see
+// agentdom.ValidateContextItems.
+func TestSendGlobalConversationMessage_RejectsInvalidContextItems(t *testing.T) {
+	convID := uuid.New()
+	callerID := uuid.New()
+	svcCalled := false
+	svc := &mockAgentSvc{
+		sendGlobalConversationMessage: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) error {
+			svcCalled = true
+			return nil
+		},
+	}
+	r := newGlobalConversationRouter(svc, callerID.String())
+	body := `{"message":"hi","context_items":[{"type":"not-a-real-type","id":"x1","title":"x"}]}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
+		"/agents/conversations/"+convID.String()+"/messages", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an invalid context_items type, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if svcCalled {
+		t.Error("the service must not be called when context_items fails validation")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Agent self-service conversation reads — GET /agents/me/conversations/:id
 // (and its /events sibling). Distinct from both GetConversation (human
 // member identity, project-scoped) and GetGlobalConversation (human actor
-// identity, global-chat-only): these two authorize purely on the caller's
-// verified X-Agent-ID matching the conversation's own agent_id — see
-// agentdom.Service.GetConversationForAgent's doc comment — with no project
-// or actor concept involved at all.
+// identity, global-chat-only): these two authorize on the caller's verified
+// X-Agent-ID plus the X-Conversation-ID header naming the conversation
+// currently driving the call — see agentdom.Service.GetConversationForAgent's
+// doc comment for the full rule. These handler-level tests only pin the
+// plumbing (header parsing, 401/404 mapping); the rule itself is covered by
+// agent_service_test.go's TestGetConversationForAgent_* cases.
 // ---------------------------------------------------------------------------
 
 // newAgentSelfServiceConversationRouter wires GetConversationForAgent/
@@ -1016,10 +1047,12 @@ func TestGetConversationForAgent_NoAgentIdentity401s(t *testing.T) {
 func TestGetConversationForAgent_ReturnsOwnConversation(t *testing.T) {
 	agentID := uuid.New()
 	convID := uuid.New()
-	var gotAgentID uuid.UUID
+	currentConvID := uuid.New()
+	var gotAgentID, gotCurrentConvID uuid.UUID
 	svc := &mockAgentSvc{
-		getConversationForAgent: func(_ context.Context, id, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
+		getConversationForAgent: func(_ context.Context, id, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
 			gotAgentID = callerAgentID
+			gotCurrentConvID = currentConversationID
 			if id != convID {
 				t.Fatalf("unexpected conversation id %s", id)
 			}
@@ -1028,6 +1061,7 @@ func TestGetConversationForAgent_ReturnsOwnConversation(t *testing.T) {
 	}
 	r := newAgentSelfServiceConversationRouter(svc, &agentID)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+convID.String(), nil)
+	req.Header.Set("X-Conversation-ID", currentConvID.String())
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 
@@ -1036,6 +1070,9 @@ func TestGetConversationForAgent_ReturnsOwnConversation(t *testing.T) {
 	}
 	if gotAgentID != agentID {
 		t.Fatalf("handler must forward the authenticated agent's own id, got %s want %s", gotAgentID, agentID)
+	}
+	if gotCurrentConvID != currentConvID {
+		t.Fatalf("handler must forward X-Conversation-ID, got %s want %s", gotCurrentConvID, currentConvID)
 	}
 	var resp struct {
 		Data struct {
@@ -1050,10 +1087,44 @@ func TestGetConversationForAgent_ReturnsOwnConversation(t *testing.T) {
 	}
 }
 
+// TestGetConversationForAgent_MissingConversationIDHeaderStillForwards
+// pins that an absent X-Conversation-ID (e.g. an older agent-runner build)
+// is forwarded to the service as uuid.Nil rather than dropped/omitted —
+// GetConversationForAgent's own fail-closed handling of uuid.Nil is what
+// actually denies cross-conversation reads in that case; see
+// agent_service_test.go.
+func TestGetConversationForAgent_MissingConversationIDHeaderStillForwards(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	var gotCurrentConvIDSet bool
+	var gotCurrentConvID uuid.UUID
+	svc := &mockAgentSvc{
+		getConversationForAgent: func(_ context.Context, _, _, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+			gotCurrentConvIDSet = true
+			gotCurrentConvID = currentConversationID
+			return &agentdom.AgentConversation{ID: convID, AgentID: agentID}, nil
+		},
+	}
+	r := newAgentSelfServiceConversationRouter(svc, &agentID)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+convID.String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !gotCurrentConvIDSet {
+		t.Fatal("expected getConversationForAgent to be called")
+	}
+	if gotCurrentConvID != uuid.Nil {
+		t.Errorf("expected uuid.Nil for a missing X-Conversation-ID header, got %s", gotCurrentConvID)
+	}
+}
+
 func TestGetConversationForAgent_DifferentAgentNotFound(t *testing.T) {
 	agentID := uuid.New()
 	svc := &mockAgentSvc{
-		getConversationForAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+		getConversationForAgent: func(_ context.Context, _, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return nil, agentdom.ErrConversationNotFound
 		},
 	}
@@ -1083,7 +1154,7 @@ func TestGetConversationEventsForAgent_ReturnsEvents(t *testing.T) {
 	agentID := uuid.New()
 	convID := uuid.New()
 	svc := &mockAgentSvc{
-		getConversationForAgent: func(_ context.Context, id, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
+		getConversationForAgent: func(_ context.Context, id, callerAgentID, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return &agentdom.AgentConversation{ID: id, AgentID: callerAgentID}, nil
 		},
 		listConversationEvents: func(_ context.Context, id uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
@@ -1118,7 +1189,7 @@ func TestGetConversationEventsForAgent_UnknownConversationNotFound(t *testing.T)
 	agentID := uuid.New()
 	eventsCalled := false
 	svc := &mockAgentSvc{
-		getConversationForAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+		getConversationForAgent: func(_ context.Context, _, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 			return nil, agentdom.ErrConversationNotFound
 		},
 		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {

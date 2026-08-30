@@ -33,7 +33,7 @@ type mockAgentSvc struct {
 	listConversations             func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
 	getConversation               func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error)
-	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error)
+	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error)
 	listAgentActivities           func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 	getGlobalConversation         func(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error)
 	listGlobalConversations       func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
@@ -126,9 +126,9 @@ func (m *mockAgentSvc) GetConversation(ctx context.Context, projectID, conversat
 	// gate passes by default; tests asserting rejection configure getConversation.
 	return &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID}, nil
 }
-func (m *mockAgentSvc) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
 	if m.getConversationForAgent != nil {
-		return m.getConversationForAgent(ctx, conversationID, callerAgentID)
+		return m.getConversationForAgent(ctx, conversationID, callerAgentID, currentConversationID)
 	}
 	return &agentdom.AgentConversation{ID: conversationID, AgentID: callerAgentID}, nil
 }
@@ -646,6 +646,36 @@ func TestSendChatMessage_EmptyMessage_Returns400(t *testing.T) {
 		map[string]any{"message": ""})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty message, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestStartChatSession_TooManyContextItems_Returns400 pins that
+// context_items is validated (see agentdom.ValidateContextItems) before
+// StartChatSession is ever called — a malformed/abusive payload never
+// reaches the service, let alone gets persisted or forwarded into a prompt.
+func TestStartChatSession_TooManyContextItems_Returns400(t *testing.T) {
+	svcCalled := false
+	r := newAgentRouter(&mockAgentSvc{
+		startChatSession: func(_ context.Context, _, _, _ uuid.UUID, _ string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+			svcCalled = true
+			return &agentdom.AgentChatSession{}, &agentdom.AgentConversation{}, nil
+		},
+	})
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	items := make([]map[string]any, agentdom.MaxContextItems+1)
+	for i := range items {
+		items[i] = map[string]any{"type": "task", "id": "t", "title": "x"}
+	}
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/chat-sessions",
+		map[string]any{"message": "hi", "context_items": items})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for too many context_items, got %d: %s", w.Code, w.Body.String())
+	}
+	if svcCalled {
+		t.Error("the service must not be called when context_items fails validation")
 	}
 }
 

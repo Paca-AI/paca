@@ -2,6 +2,7 @@
 package agentdom
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -273,6 +274,43 @@ type ContextItemRef struct {
 	ID        string          `json:"id"`
 	ProjectID *string         `json:"project_id,omitempty"`
 	Title     string          `json:"title"`
+}
+
+// MaxContextItems bounds how many ContextItemRefs a single send-message
+// request may carry — see ValidateContextItems. The UI's composer never
+// stages more than a handful; this just keeps a malformed or abusive client
+// payload from ballooning the persisted event row and every prompt built
+// from it.
+const MaxContextItems = 20
+
+// MaxContextItemTitleLength bounds ContextItemRef.Title — see
+// ValidateContextItems.
+const MaxContextItemTitleLength = 500
+
+// ValidateContextItems rejects a client-supplied context_items payload that
+// is too large or malformed: too many items, an unrecognized Type, a blank
+// ID, or an oversized Title. Called at the HTTP boundary (see the
+// send-message/chat-session handlers) before the items are persisted
+// verbatim and rendered into every subsequent prompt — see ContextItemRef's
+// own doc comment for that data flow.
+func ValidateContextItems(items []ContextItemRef) error {
+	if len(items) > MaxContextItems {
+		return fmt.Errorf("context_items: at most %d items allowed, got %d", MaxContextItems, len(items))
+	}
+	for i, item := range items {
+		switch item.Type {
+		case ContextItemTask, ContextItemDoc, ContextItemConversation, ContextItemAutomation:
+		default:
+			return fmt.Errorf("context_items[%d]: unknown type %q", i, item.Type)
+		}
+		if item.ID == "" {
+			return fmt.Errorf("context_items[%d]: id is required", i)
+		}
+		if len(item.Title) > MaxContextItemTitleLength {
+			return fmt.Errorf("context_items[%d]: title exceeds %d characters", i, MaxContextItemTitleLength)
+		}
+	}
+	return nil
 }
 
 // AgentConversation tracks each OpenHands conversation session.

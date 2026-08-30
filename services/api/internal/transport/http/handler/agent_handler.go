@@ -1257,6 +1257,10 @@ func (h *AgentHandler) StartChatSession(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	memberID, err := h.resolveMemberID(r, projectID)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -1293,6 +1297,10 @@ func (h *AgentHandler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Message == "" {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
+		return
+	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
 		return
 	}
 	memberID, err := h.resolveMemberID(r, projectID)
@@ -1356,6 +1364,10 @@ func (h *AgentHandler) StartGlobalChatSession(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	userID, err := callerUserID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -1386,6 +1398,10 @@ func (h *AgentHandler) SendGlobalChatMessage(w http.ResponseWriter, r *http.Requ
 	}
 	if req.Message == "" {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
+		return
+	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
 		return
 	}
 	userID, err := callerUserID(r)
