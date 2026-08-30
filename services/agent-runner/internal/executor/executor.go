@@ -507,6 +507,20 @@ func environmentPortMappings(env *postgres.Environment, forwards []*postgres.Por
 	return mappings
 }
 
+// environmentReadyToStart reports whether env's current row state allows
+// starting/attaching to it — see coldStartEnvironment's own comment below
+// (its first check of this) for why each excluded status is excluded.
+// Factored out so coldStartEnvironment can run the exact same check twice
+// without the two copies drifting apart: once immediately (a clearly-
+// broken environment fails fast, before decrypting secrets or listing port
+// forwards for nothing), and again right after LockEnvironmentForStart is
+// acquired, against a freshly-re-read env — see that second call site's
+// own comment for why the first check alone isn't enough.
+func environmentReadyToStart(env *postgres.Environment) bool {
+	return env.BackendRef != nil && *env.BackendRef != "" &&
+		env.Status != "error" && env.Status != "deleting" && env.Status != "stopping"
+}
+
 // coldStartEnvironment attaches trigger to trigger.EnvironmentID's already-
 // created static environment instead of spinning up a fresh disposable
 // sandbox — the environment counterpart to coldStart. ctx bounds
@@ -574,7 +588,7 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// a turn's timeout, and the next attach attempt (this turn's own retry,
 	// or simply the user's next message) finds status "stopped" instead
 	// and proceeds normally.
-	if env.BackendRef == nil || *env.BackendRef == "" || env.Status == "error" || env.Status == "deleting" || env.Status == "stopping" {
+	if !environmentReadyToStart(env) {
 		return nil, "", "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
 	}
 
@@ -676,6 +690,34 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 		return nil, "", "", fmt.Errorf("executor: acquire start lock for environment %s: %w", environmentID, err)
 	}
 	defer release()
+
+	// Re-read env now that the lock is actually held: the snapshot taken
+	// above, before the lock, can be stale by the time we get here — a
+	// concurrent self-heal (the boot reconciler, or a sibling attach/
+	// HTTP-start that won this same lock first) can have already persisted
+	// a new BackendRef via ClaimEnvironmentRunning while this call was
+	// waiting to acquire it. On docker specifically, BackendRef is a
+	// container ID that changes on every self-heal recreate (unlike k8s,
+	// where it's the deterministic Deployment name and so never goes
+	// stale this way) — using the stale ID below would make
+	// StartEnvironment's own ContainerStart fail not-found, walk into the
+	// gone-container self-heal branch a second time, and collide on the
+	// exact deterministic container name the winner already claimed (see
+	// docker.Manager.recreateGoneEnvironmentContainer's own doc comment),
+	// failing this turn and writing the environment to a stuck "error"
+	// status — precisely the outcome this lock exists to prevent. Also
+	// re-runs the not-ready gate: env.Status can equally have moved to
+	// "error"/"deleting"/"stopping" in that same window (an idle-reaper
+	// stop racing this attach, say), and proceeding on a stale "it looked
+	// fine a moment ago" would be just as wrong for status as for
+	// BackendRef.
+	env, err = e.envRepo.FindEnvironmentByID(ctx, environmentID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("executor: re-check environment %s after acquiring start lock: %w", environmentID, err)
+	}
+	if !environmentReadyToStart(env) {
+		return nil, "", "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
+	}
 
 	// Always calls StartEnvironment, even if env.Status already says
 	// "running" — deliberate, not a bug: it's the only way to get a

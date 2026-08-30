@@ -413,13 +413,38 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 // currently-assigned ssh_port (0 if unconfigured/unassigned), and
 // recreatedBackendRef — only non-empty when the backend actually had to
 // self-heal (see startEnvironmentResponse.BackendRef's own doc comment).
+//
+// backendRef, the parameter, is only actually used when this process's own
+// environments row doesn't have one to offer (EnvironmentRepo nil, or its
+// FindEnvironmentByID call fails) — otherwise the freshly-read row's own
+// BackendRef wins. That matters for handleStartEnvironment specifically:
+// it acquires EnvironmentRepo.LockEnvironmentForStart before calling this,
+// but req.BackendRef itself was decoded from the request body before that
+// lock was acquired, so it can already be stale by the time this runs — a
+// concurrent self-heal elsewhere (the boot reconciler, or
+// coldStartEnvironment's own attach path, both contending for the same
+// lock — see LockEnvironmentForStart's own doc comment) can have persisted
+// a new BackendRef via ClaimEnvironmentRunning while the request was in
+// flight. On docker, where BackendRef is a container ID that changes on
+// every self-heal recreate (unlike k8s, where it's the stable, deterministic
+// Deployment name), starting the stale ID would fail not-found, re-enter
+// the gone-container self-heal branch, and collide with the exact
+// deterministic name the winner already claimed. This process's own row is
+// the one thing every StartEnvironment-family caller's self-heal writes
+// back to, so it's the freshest source available here regardless of how
+// old the caller's own copy is.
 func (s *Server) StartEnvironmentByID(ctx context.Context, environmentID uuid.UUID, backendRef string, cfg sandbox.EnvironmentConfig) (handle *sandbox.EnvironmentHandle, sshPort int, recreatedBackendRef string, err error) {
 	if s.SandboxMgr == nil {
 		return nil, 0, "", errors.New("sandbox backend not configured")
 	}
 	if s.EnvironmentRepo != nil {
-		if env, err := s.EnvironmentRepo.FindEnvironmentByID(ctx, environmentID); err == nil && env.SSHPort != nil {
-			sshPort = *env.SSHPort
+		if env, err := s.EnvironmentRepo.FindEnvironmentByID(ctx, environmentID); err == nil {
+			if env.SSHPort != nil {
+				sshPort = *env.SSHPort
+			}
+			if env.BackendRef != nil && *env.BackendRef != "" {
+				backendRef = *env.BackendRef
+			}
 		}
 	}
 	cfg.PortMappings = s.buildPortMappings(ctx, environmentID, sshPort)
