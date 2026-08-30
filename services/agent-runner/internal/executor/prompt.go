@@ -117,6 +117,8 @@ func buildInitialMessage(trigger agent.Trigger) string {
 		fmt.Fprintf(&b, "Chat Session ID: %s\n", trigger.ChatSessionID)
 	}
 
+	b.WriteString(agent.FormatAttachedContext(trigger.ContextItems))
+
 	b.WriteString("\n\n## User Message\n")
 	message := strings.TrimSpace(trigger.Message)
 	if message == "" && trigger.TriggerType == agent.TriggerTaskAssigned {

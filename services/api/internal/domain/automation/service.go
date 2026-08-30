@@ -11,7 +11,9 @@ import (
 // projectID verify the automation (or its node/edge ancestor) actually
 // belongs to that project before mutating anything.
 type Service interface {
-	ListAutomations(ctx context.Context, projectID uuid.UUID, status *Status) ([]*Automation, error)
+	// ListAutomations — see Repository.ListAutomations's doc comment for the
+	// limit/cursor/hasMore pagination contract.
+	ListAutomations(ctx context.Context, projectID uuid.UUID, status *Status, search *string, cursor *string, limit *int) (automations []*Automation, hasMore bool, err error)
 	GetAutomation(ctx context.Context, projectID, automationID uuid.UUID) (*Graph, error)
 	CreateAutomation(ctx context.Context, in CreateAutomationInput) (*Automation, error)
 	UpdateAutomation(ctx context.Context, projectID, automationID uuid.UUID, in UpdateAutomationInput) (*Automation, error)

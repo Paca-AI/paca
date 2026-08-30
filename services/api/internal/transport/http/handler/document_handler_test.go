@@ -33,8 +33,8 @@ func (f *fakeDocSvc) UpdateFolder(_ context.Context, _ uuid.UUID, _ docdom.Updat
 }
 func (f *fakeDocSvc) DeleteFolder(_ context.Context, _ uuid.UUID, _ uuid.UUID) error { return nil }
 
-func (f *fakeDocSvc) ListDocuments(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]*docdom.Document, error) {
-	return nil, nil
+func (f *fakeDocSvc) ListDocuments(_ context.Context, _ uuid.UUID, _ *uuid.UUID, _ *string, _ *string, _ *int) ([]*docdom.Document, bool, error) {
+	return nil, false, nil
 }
 func (f *fakeDocSvc) GetDocument(_ context.Context, _ uuid.UUID) (*docdom.Document, error) {
 	return nil, docdom.ErrDocNotFound

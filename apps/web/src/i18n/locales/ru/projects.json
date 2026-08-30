@@ -347,7 +347,19 @@
 			"imageAttachmentPreviewTitle": "Предпросмотр вложенного изображения",
 			"attachmentAriaLabel": "Вложение: {{type}}",
 			"attachmentAriaLabelError": "Вложение: {{type}}, ошибка загрузки",
-			"attachmentAriaLabelUploading": "Вложение: {{type}}, загружается"
+			"attachmentAriaLabelUploading": "Вложение: {{type}}, загружается",
+			"contextInjection": {
+				"attachContext": "Прикрепить контекст",
+				"contextSearchPlaceholder": "Поиск задач, документов, бесед, автоматизаций…",
+				"removeContextItem": "Удалить {{title}}",
+				"addCurrent": "Прикрепить {{title}}",
+				"contextTypeTask": "Задача",
+				"contextTypeDoc": "Документ",
+				"contextTypeConversation": "Беседа",
+				"contextTypeAutomation": "Автоматизация",
+				"noContextResults": "Результаты не найдены",
+				"contextSearchMinChars": "Введите минимум 2 символа для поиска"
+			}
 		}
 	},
 	"environments": {

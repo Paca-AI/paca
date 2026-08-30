@@ -6,6 +6,7 @@ import {
 import {
 	PacaAPIAutomationClient,
 	PacaAPIClient,
+	PacaAPIConversationClient,
 	PacaAPIDocClient,
 	PacaAPIExtendedClient,
 	PacaAPITaskExtendedClient,
@@ -42,6 +43,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	const taskExtendedClient = new PacaAPITaskExtendedClient(config);
 	const docClient = new PacaAPIDocClient(config);
 	const automationClient = new PacaAPIAutomationClient(config);
+	const conversationClient = new PacaAPIConversationClient(config);
 
 	// Load plugin MCP modules from the Paca API.
 	// Failures for individual plugins are logged and skipped.
@@ -54,6 +56,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		taskExtendedClient,
 		docClient,
 		automationClient,
+		conversationClient,
 	};
 
 	// Fetch agent permissions at startup

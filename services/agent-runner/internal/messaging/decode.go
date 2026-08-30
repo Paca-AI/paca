@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -61,6 +62,19 @@ func decodeTrigger(values map[string]interface{}) (agent.Trigger, error) {
 	t.EnvironmentID = optionalUUIDPtr(values, "environment_id")
 	if workdir, ok := values["workdir"].(string); ok && workdir != "" {
 		t.Workdir = &workdir
+	}
+
+	// context_items is a JSON-encoded string (AppendFlat needs plain scalar
+	// field values — see Service.publishChatTrigger in services/api), not a
+	// native array, so it needs an extra decode step the other optional
+	// fields above don't. Malformed JSON is swallowed the same permissive
+	// way every other optional field here is: left at its zero value
+	// (nil) rather than failing the whole trigger decode.
+	if raw, ok := values["context_items"].(string); ok && raw != "" {
+		var items []agent.ContextItemRef
+		if err := json.Unmarshal([]byte(raw), &items); err == nil {
+			t.ContextItems = items
+		}
 	}
 
 	return t, nil

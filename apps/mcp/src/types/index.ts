@@ -853,6 +853,85 @@ export interface AddAutomationEdgeInput {
 	target_node_id: string;
 }
 
+// ==================== Agent Conversations (conversation-tools) ====================
+// Read-only view used by the read_conversation tool to let one agent read
+// another conversation's transcript (e.g. one attached as chat context).
+// Field-for-field mirror of services/api's dto.AgentConversationResponse /
+// dto.AgentConversationEventResponse. ProjectID/TriggeredByMemberID are unset
+// for a global-chat conversation, which carries ActorUserID instead — see
+// that DTO's doc comment.
+
+export type ConversationStatus =
+	| "queued"
+	| "running"
+	| "paused"
+	| "finished"
+	| "failed"
+	| "stopped";
+
+export type ConversationTriggerType =
+	| "task_assigned"
+	| "comment_mention"
+	| "chat_message"
+	| "description_write"
+	| "automation_message";
+
+export interface AgentConversation {
+	id: string;
+	agent_id: string;
+	project_id?: string | null;
+	trigger_type: ConversationTriggerType;
+	task_id?: string | null;
+	chat_session_id?: string | null;
+	triggered_by_member_id?: string | null;
+	actor_user_id?: string | null;
+	status: ConversationStatus;
+	iteration_count: number;
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+	cost_usd?: number | null;
+	error_message?: string | null;
+	pr_url?: string | null;
+	started_at?: string | null;
+	finished_at?: string | null;
+	created_at: string;
+	agent_name?: string;
+	agent_handle?: string;
+	environment_id?: string | null;
+}
+
+export interface AgentConversationEvent {
+	id: string;
+	conversation_id: string;
+	event_index: number;
+	event_type: string;
+	event_source: "agent" | "user" | "system";
+	payload: Record<string, unknown>;
+	created_at: string;
+}
+
+/**
+ * Query params for one page of a conversation's events — see
+ * conversation_handler.go's parseConversationEventWindowQuery. `after` and
+ * `before` are mutually exclusive; leaving both unset opens on the newest
+ * `limit` events.
+ */
+export interface ConversationEventWindow {
+	after?: string;
+	before?: string;
+	limit?: number;
+}
+
+export interface ConversationEventPage {
+	items: AgentConversationEvent[];
+	total: number;
+	/** Opaque cursor to resume forward toward newer events (pass as `after`), or null. */
+	next_cursor: string | null;
+	/** Opaque cursor to resume backward toward older events (pass as `before`), or null when this page already starts at event_index 0. */
+	prev_cursor: string | null;
+}
+
 // ==================== Repository (repo-tools) ====================
 
 /**

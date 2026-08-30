@@ -114,6 +114,22 @@ type ConversationService interface {
 	// conversations are readable by any project member; owner-private ones
 	// only by their chat-session owner).
 	GetConversation(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*AgentConversation, error)
+	// GetConversationForAgent returns a conversation for an agent-
+	// authenticated caller (X-Agent-ID, no human member/actor identity to
+	// check against) — used by the read_conversation MCP tool when a user
+	// attaches a Conversation as chat context. GetConversation and
+	// GetGlobalConversation both require a human member/actor identity a
+	// bare agent doesn't have (agents aren't project members, and a
+	// project-scoped agent's trigger never carries an actor_user_id), so
+	// this is a separate, narrower authorization rule: the requesting agent
+	// may read a conversation only if it is that conversation's own agent
+	// — it already saw everything in a conversation it participated in, so
+	// this exposes nothing new, regardless of project or audience (an
+	// owner_private chat with a human included). Any other conversation —
+	// a different agent's, or the same agent's shared-with-the-project
+	// conversation triggered for a different reason — is not reachable via
+	// this path (ErrConversationNotFound).
+	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the
 	// conversation's sandbox. memberID gates ownership (see GetConversation).
@@ -124,7 +140,7 @@ type ConversationService interface {
 	// Heartbeat refreshes a chat conversation's idle timer; called
 	// periodically by the frontend while a conversation is loaded in a tab.
 	Heartbeat(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
-	SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error
+	SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID, contextItems []ContextItemRef) error
 
 	// -- Global chat conversations (ProjectID == uuid.Nil). Thin siblings of
 	// the methods above with the ownership check inverted (ProjectID must be
@@ -147,7 +163,7 @@ type ConversationService interface {
 	StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error
-	SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error
+	SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, contextItems []ContextItemRef) error
 }
 
 // ChatSessionService defines chat session use cases.
@@ -158,8 +174,8 @@ type ChatSessionService interface {
 	// environmentID falls back to the agent's own DefaultEnvironmentID;
 	// folderID auto-selects if the resolved environment has exactly one
 	// folder). See environmentdom.EnvironmentService.ResolveConversationWorkdir.
-	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID) (*AgentChatSession, *AgentConversation, error)
-	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*AgentConversation, error)
+	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []ContextItemRef) (*AgentChatSession, *AgentConversation, error)
+	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []ContextItemRef) (*AgentConversation, error)
 	ListChatMessages(ctx context.Context, sessionID, memberID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
 
 	// -- Global chat sessions (chatting with a global agent from the home
@@ -167,8 +183,8 @@ type ChatSessionService interface {
 	// comment.
 
 	ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*AgentChatSession, error)
-	StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string) (*AgentChatSession, *AgentConversation, error)
-	SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string) (*AgentConversation, error)
+	StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef) (*AgentChatSession, *AgentConversation, error)
+	SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef) (*AgentConversation, error)
 }
 
 // ActivityFeedService defines the agent activity feed use case.

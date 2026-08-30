@@ -348,6 +348,22 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		permissionKey: "workflows.write",
 		requiresProject: true,
 	},
+
+	// Conversation tools — read_conversation takes no projectId; it always
+	// calls the agent-self-service GET /agents/me/conversations/:id path,
+	// which authorizes by the conversation's own agent_id matching the
+	// caller (see agentdom.Service.GetConversationForAgent's doc comment),
+	// not by project or human membership. requiresProject here just means
+	// "check agents.read against any project this agent belongs to" (true
+	// for both a project-scoped agent's one project and a global agent's
+	// invited projects) — real enforcement of which conversation the caller
+	// may actually read still happens server-side regardless; this table
+	// only gates whether the tool is *listed* at all (see server.ts).
+	{
+		toolName: "read_conversation",
+		permissionKey: "agents.read",
+		requiresProject: true,
+	},
 ];
 
 /** Parses a permissions object/array response body into a flat boolean map. */
@@ -478,7 +494,12 @@ export async function fetchAgentPermissions(
 		}
 
 		if (config.projectId) {
-			await fetchProjectPermissions(config, headers, config.projectId, projects);
+			await fetchProjectPermissions(
+				config,
+				headers,
+				config.projectId,
+				projects,
+			);
 			const entityType = config.agentId ? "agent" : "user";
 			console.error(
 				`[permissions] Loaded permissions for ${entityType} in project ${config.projectId}`,
@@ -497,7 +518,9 @@ export async function fetchAgentPermissions(
 				if (projectsResponse.ok) {
 					const projectsJson = await projectsResponse.json();
 					const body =
-						projectsJson && typeof projectsJson === "object" && "data" in projectsJson
+						projectsJson &&
+						typeof projectsJson === "object" &&
+						"data" in projectsJson
 							? projectsJson.data
 							: projectsJson;
 					const projectIds: string[] = Array.isArray(body?.project_ids)

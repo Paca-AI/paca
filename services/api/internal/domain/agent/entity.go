@@ -242,6 +242,39 @@ const (
 	AudienceProjectShared ConversationAudience = "project_shared"
 )
 
+// ContextItemType discriminates which kind of resource a ContextItemRef
+// points at.
+type ContextItemType string
+
+// ContextItemType values.
+const (
+	ContextItemTask         ContextItemType = "task"
+	ContextItemDoc          ContextItemType = "doc"
+	ContextItemConversation ContextItemType = "conversation"
+	ContextItemAutomation   ContextItemType = "automation"
+)
+
+// ContextItemRef is a reference to a Task, Doc, Conversation, or Automation
+// the user attached to a chat message from the frontend composer's
+// context-item picker (shown as removable badges above the composer). It
+// rides the send-message DTOs → the Redis/Valkey trigger stream (JSON-
+// encoded into a single flat string field, since AppendFlat needs scalar
+// values — see agentsvc.Service.publishTrigger) → agent-runner, which
+// renders it into a "## Attached Context" prompt hint telling the agent
+// which MCP tool to call for full details. It is also persisted verbatim
+// (as a nested JSON array, not re-stringified) on the conversation's
+// user_message event payload so the frontend can redisplay the badges when
+// a conversation is reloaded. services/agent-runner keeps its own
+// byte-identical copy of this type (internal/agent/context_item.go) since
+// it is a separate Go module and cannot import this package — see that
+// copy's doc comment.
+type ContextItemRef struct {
+	Type      ContextItemType `json:"type"`
+	ID        string          `json:"id"`
+	ProjectID *string         `json:"project_id,omitempty"`
+	Title     string          `json:"title"`
+}
+
 // AgentConversation tracks each OpenHands conversation session.
 type AgentConversation struct {
 	ID            uuid.UUID

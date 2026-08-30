@@ -24,6 +24,7 @@ type agentRecord struct {
 	ID                uuid.UUID `db:"id"`
 	Name              string    `db:"name"`
 	Handle            string    `db:"handle"`
+	AgentScope        string    `db:"agent_scope"`
 	AgentType         string    `db:"agent_type"`
 	LLMProvider       string    `db:"llm_provider"`
 	LLMModel          string    `db:"llm_model"`
@@ -79,7 +80,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 func (r *AgentRepository) FindByID(ctx context.Context, id uuid.UUID) (*agent.Config, error) {
 	var rec agentRecord
 	err := r.db.GetContext(ctx, &rec, `
-		SELECT id, name, handle, agent_type, llm_provider, llm_model,
+		SELECT id, name, handle, agent_scope, agent_type, llm_provider, llm_model,
 		       llm_api_key_secret, llm_base_url, system_prompt,
 		       max_iterations, timeout_minutes,
 		       git_committer_name, git_committer_email, docker_enabled
@@ -110,6 +111,7 @@ func (r *AgentRepository) FindByID(ctx context.Context, id uuid.UUID) (*agent.Co
 		ID:                rec.ID,
 		Name:              rec.Name,
 		Handle:            rec.Handle,
+		AgentScope:        rec.AgentScope,
 		LLMProvider:       rec.LLMProvider,
 		LLMModel:          rec.LLMModel,
 		LLMAPIKeySecret:   rec.LLMAPIKeySecret,

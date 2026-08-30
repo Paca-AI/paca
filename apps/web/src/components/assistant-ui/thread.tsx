@@ -36,9 +36,14 @@ import {
 	type PropsWithChildren,
 	type ReactNode,
 	useContext,
+	useMemo,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { UserMessageAttachments } from "@/components/assistant-ui/attachment";
+import {
+	ContextInjectionRow,
+	ContextItemReadOnlyRow,
+} from "@/components/assistant-ui/context-injection";
 import { ThreadFollowupSuggestions } from "@/components/assistant-ui/follow-up-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import {
@@ -56,6 +61,7 @@ import {
 } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
+import { parseContextItems } from "@/lib/context-items";
 import { cn } from "@/lib/utils";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
@@ -310,6 +316,7 @@ const Composer: FC = () => {
 				data-slot="aui_composer-shell"
 				className="border-border/60 focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-none"
 			>
+				<ContextInjectionRow />
 				<ComposerPrimitive.Input
 					placeholder={t("agents.thread.composerPlaceholder")}
 					className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-sm outline-none"
@@ -576,7 +583,7 @@ const AssistantActionBar: FC = () => {
 					side="bottom"
 					align="start"
 					sideOffset={6}
-					className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-32 overflow-hidden rounded-xl border p-1.5 shadow-lg backdrop-blur-sm"
+					className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-80 min-w-32 overflow-hidden rounded-xl border p-1.5 shadow-lg backdrop-blur-sm"
 				>
 					<ActionBarPrimitive.ExportMarkdown
 						render={
@@ -593,6 +600,26 @@ const AssistantActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
+	// ThreadMessageLike.metadata.custom is a real, otherwise-unused
+	// assistant-ui escape hatch for arbitrary app data — set by
+	// conversation-to-thread-messages.ts's user_message branch when a
+	// historical message carried attached context.
+	//
+	// useAuiState compares its selector's return value with Object.is —
+	// parseContextItems builds a brand-new array on every call, so calling
+	// it *inside* the selector returned a fresh reference on every store
+	// snapshot check, which useSyncExternalStore always read as "changed,"
+	// forcing a re-render, which called the selector again, forever
+	// ("Maximum update depth exceeded"). Selecting the raw, referentially
+	// stable field and doing the array-producing work in a separate
+	// useMemo (keyed on that same stable reference) breaks the loop.
+	const rawContextItems = useAuiState(
+		(s) => s.message.metadata.custom.contextItems,
+	);
+	const contextItems = useMemo(
+		() => parseContextItems(rawContextItems),
+		[rawContextItems],
+	);
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
@@ -600,6 +627,7 @@ const UserMessage: FC = () => {
 			data-role="user"
 		>
 			<UserMessageAttachments />
+			<ContextItemReadOnlyRow items={contextItems} />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
 				<div className="aui-user-message-content peer bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">

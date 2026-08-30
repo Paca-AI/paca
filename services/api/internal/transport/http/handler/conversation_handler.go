@@ -271,6 +271,65 @@ func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Req
 	presenter.OK(w, r, dto.ConversationFromEntity(conv))
 }
 
+// GetConversationForAgent handles GET /agents/me/conversations/:conversationId
+// — an agent (X-Agent-ID authenticated, no human member/actor identity)
+// reading a conversation by ID, e.g. the read_conversation MCP tool. See
+// agentdom.Service.GetConversationForAgent's doc comment for the
+// authorization rule; it's deliberately not projectId-scoped in the URL
+// (unlike GetConversation) since the calling agent doesn't need to already
+// know which project a referenced conversation lives in.
+func (h *ConversationHandler) GetConversationForAgent(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := middleware.AgentIDFromRequest(r)
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "agent identity required"))
+		return
+	}
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	conv, err := h.svc.GetConversationForAgent(r.Context(), convID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ConversationFromEntity(conv))
+}
+
+// GetConversationEventsForAgent handles GET
+// /agents/me/conversations/:conversationId/events — the agent-authenticated
+// sibling of ListConversationEvents/GetGlobalConversationEvents. See
+// GetConversationForAgent's doc comment for why this needs its own path.
+func (h *ConversationHandler) GetConversationEventsForAgent(w http.ResponseWriter, r *http.Request) {
+	agentID, ok := middleware.AgentIDFromRequest(r)
+	if !ok {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "agent identity required"))
+		return
+	}
+	convID, err := parseParamUUID(r, "conversationId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if _, err := h.svc.GetConversationForAgent(r.Context(), convID, agentID); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	window, err := parseConversationEventWindowQuery(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	events, total, err := h.svc.ListConversationEvents(r.Context(), convID, window)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	writeConversationEventWindowResponse(w, r, events, total)
+}
+
 // parseConversationEventWindowQuery parses the query params shared by
 // ListConversationEvents and GetGlobalConversationEvents:
 //   - after=<opaque cursor>   events after this point, ascending — pages
@@ -479,7 +538,7 @@ func (h *ConversationHandler) SendConversationMessage(w http.ResponseWriter, r *
 		return
 	}
 
-	if err := h.svc.SendConversationMessage(r.Context(), projectID, convID, req.Message, memberID); err != nil {
+	if err := h.svc.SendConversationMessage(r.Context(), projectID, convID, req.Message, memberID, req.ContextItems); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -622,7 +681,7 @@ func (h *ConversationHandler) SendGlobalConversationMessage(w http.ResponseWrite
 		return
 	}
 
-	if err := h.svc.SendGlobalConversationMessage(r.Context(), convID, req.Message, userID); err != nil {
+	if err := h.svc.SendGlobalConversationMessage(r.Context(), convID, req.Message, userID, req.ContextItems); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}

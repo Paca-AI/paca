@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "이미지 첨부 파일 미리보기",
 			"attachmentAriaLabel": "{{type}} 첨부 파일",
 			"attachmentAriaLabelError": "{{type}} 첨부 파일, 업로드 실패",
-			"attachmentAriaLabelUploading": "{{type}} 첨부 파일, 업로드 중"
+			"attachmentAriaLabelUploading": "{{type}} 첨부 파일, 업로드 중",
+			"contextInjection": {
+				"attachContext": "컨텍스트 첨부",
+				"contextSearchPlaceholder": "작업, 문서, 대화, 자동화 검색…",
+				"removeContextItem": "{{title}} 제거",
+				"addCurrent": "{{title}} 첨부",
+				"contextTypeTask": "작업",
+				"contextTypeDoc": "문서",
+				"contextTypeConversation": "대화",
+				"contextTypeAutomation": "자동화",
+				"noContextResults": "결과를 찾을 수 없습니다",
+				"contextSearchMinChars": "검색하려면 2자 이상 입력하세요"
+			}
 		}
 	},
 	"environments": {

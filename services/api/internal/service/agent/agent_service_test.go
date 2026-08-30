@@ -1095,7 +1095,7 @@ func TestStartGlobalChatSession_Success(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	session, conv, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello")
+	session, conv, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello", nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, session)
@@ -1371,6 +1371,61 @@ func TestGetConversation_OwnerPrivate_WrongMember(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+// TestGetConversationForAgent_OwnConversation_Allowed reproduces the
+// read_conversation MCP tool's real use case: an agent (no project_members
+// row, no actor_user_id) reading its own owner-private conversation with a
+// human — the case GetConversation/GetGlobalConversation cannot serve at
+// all, since both require a human member/actor identity a bare agent
+// doesn't have.
+func TestGetConversationForAgent_OwnConversation_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:       conversationID,
+		AgentID:  agentID,
+		Audience: agentdom.AudienceOwnerPrivate,
+		Status:   "stopped",
+	}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+// TestGetConversationForAgent_DifferentAgent_Rejected asserts the
+// authorization boundary: an agent may not read a conversation it wasn't
+// itself the agent of, even when it's project_shared — reading another
+// agent's conversation isn't the case this path exists for.
+func TestGetConversationForAgent_DifferentAgent_Rejected(t *testing.T) {
+	callerAgentID := uuid.New()
+	ownerAgentID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:       conversationID,
+		AgentID:  ownerAgentID,
+		Audience: agentdom.AudienceProjectShared,
+		Status:   "stopped",
+	}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversationForAgent(context.Background(), conversationID, callerAgentID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
 func TestSendChatMessage_WrongMember(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
@@ -1391,7 +1446,7 @@ func TestSendChatMessage_WrongMember(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, otherMemberID, "Hello")
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, otherMemberID, "Hello", nil)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)
@@ -1513,7 +1568,7 @@ func TestGlobalConversationMutators_RejectWrongActor(t *testing.T) {
 		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 	})
 	t.Run("send message", func(t *testing.T) {
-		err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "hi", attacker)
+		err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "hi", attacker, nil)
 		assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 	})
 }
@@ -1625,7 +1680,7 @@ func TestSendConversationMessage_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New())
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New(), nil)
 
 	assert.NoError(t, err)
 }
@@ -1649,7 +1704,7 @@ func TestSendConversationMessage_NotRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New())
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "test message", uuid.New(), nil)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotRunning)
@@ -1690,7 +1745,7 @@ func TestSendConversationMessage_ACPResumesAnyTriggerType(t *testing.T) {
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New())
+			err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil)
 
 			assert.NoError(t, err)
 			assert.Equal(t, status, claimedFrom)
@@ -1724,7 +1779,7 @@ func TestSendConversationMessage_ACPBusyWhenRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New())
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New(), nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 	assert.False(t, claimCalled, "must not attempt to claim/dispatch on top of an in-flight turn")
@@ -1750,7 +1805,7 @@ func TestSendConversationMessage_ACPBusyWhenQueued(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New())
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "are you there?", uuid.New(), nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -1779,7 +1834,7 @@ func TestSendConversationMessage_ACPResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New())
+	err := svc.SendConversationMessage(context.Background(), projectID, conversationID, "keep going", uuid.New(), nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2008,7 +2063,7 @@ func TestStartChatSession_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultSession, resultConv, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil)
+	resultSession, resultConv, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resultSession)
@@ -2047,7 +2102,7 @@ func TestSendChatMessage_Success(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello")
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resultConv)
@@ -2102,7 +2157,7 @@ func TestSendChatMessage_ResumesPausedConversation(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
 
 	assert.NoError(t, err)
 	assert.False(t, createCalled, "resuming a paused conversation must not create a new one")
@@ -2166,7 +2221,7 @@ func TestSendChatMessage_ACPResumesTerminalConversation(t *testing.T) {
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
 
 			assert.NoError(t, err)
 			assert.False(t, createCalled, "resuming a terminal ACP conversation must not create a new one")
@@ -2217,7 +2272,7 @@ func TestSendChatMessage_ACPResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2274,7 +2329,7 @@ func TestSendChatMessage_LLMTerminalCreatesNewConversation(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello again")
+	resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello again", nil)
 
 	assert.NoError(t, err)
 	assert.True(t, createCalled, "a terminal LLM conversation must create a new conversation")
@@ -2343,7 +2398,7 @@ func TestSendChatMessage_EnvironmentBackedLLMResumesTerminalConversation(t *test
 			pluginRepo := &mockPluginRepo{}
 			svc := New(repo, projRepo, nil, pluginRepo)
 
-			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+			resultConv, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
 
 			assert.NoError(t, err)
 			assert.False(t, createCalled, "resuming a terminal environment-backed conversation must not create a new one")
@@ -2390,7 +2445,7 @@ func TestSendChatMessage_ResumeRaceLoses(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…")
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Continuing…", nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2427,7 +2482,7 @@ func TestSendChatMessage_BusyWhenQueued(t *testing.T) {
 
 	// A conversation that hasn't been dequeued yet must not let a second
 	// message create a duplicate conversation/sandbox for the same session.
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?")
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2462,7 +2517,7 @@ func TestSendChatMessage_BusyWhenRunning(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?")
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Are you there?", nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrConversationBusy)
 }
@@ -2488,7 +2543,7 @@ func TestSendChatMessage_WrongProject(t *testing.T) {
 	pluginRepo := &mockPluginRepo{}
 	svc := New(repo, projRepo, nil, pluginRepo)
 
-	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello")
+	_, err := svc.SendChatMessage(context.Background(), projectID, sessionID, memberID, "Hello", nil)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrChatSessionNotFound)

@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useParams } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { Clock, Coins, MessageSquare, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +33,36 @@ import { ConversationFilters } from "./conversation-filters";
 // from. See conversation-view.tsx for the equivalent generalization of the
 // detail pane rendered in the Outlet.
 
+/**
+ * Human-readable label for a conversation's trigger — shared with
+ * hooks/use-context-item-search.ts's conversation search results, so the
+ * "why did this conversation start" synthesis lives in exactly one place
+ * rather than two independently-maintained copies.
+ *
+ * A conversation with no human actor was fired by the automation-workflow
+ * engine (see agent_service.go's TriggerTaskAssigned/TriggerDirectMessage:
+ * triggeredByMemberID is nil for automation-triggered runs), not by someone
+ * assigning a task or messaging the agent by hand. Global conversations are
+ * never automation-triggered — they always carry actor_user_id instead.
+ */
+export function conversationTriggerLabel(
+	conv: AgentConversation,
+	t: TFunction<"projects">,
+): string {
+	const isAutomationTriggered =
+		!conv.triggered_by_member_id &&
+		!conv.actor_user_id &&
+		(conv.trigger_type === "task_assigned" ||
+			conv.trigger_type === "automation_message");
+	return isAutomationTriggered
+		? t("conversationsPage.triggerAutomation")
+		: conv.trigger_type === "chat_message"
+			? t("conversationsPage.triggerChat")
+			: conv.trigger_type === "description_write"
+				? t("conversationsPage.triggerWriteDescription")
+				: t("conversationsPage.triggerTask");
+}
+
 // ── List item ─────────────────────────────────────────────────────────────────
 
 function ConversationListItem({
@@ -49,24 +80,7 @@ function ConversationListItem({
 	const { t } = useTranslation("projects");
 	const statusColor = CONVERSATION_STATUS_COLORS[conv.status];
 	const statusLabel = CONVERSATION_STATUS_LABELS[conv.status];
-	// A conversation with no human actor was fired by the automation-workflow
-	// engine (see agent_service.go's TriggerTaskAssigned/TriggerDirectMessage:
-	// triggeredByMemberID is nil for automation-triggered runs), not by
-	// someone assigning a task or messaging the agent by hand. Global
-	// conversations are never automation-triggered — they always carry
-	// actor_user_id instead.
-	const isAutomationTriggered =
-		!conv.triggered_by_member_id &&
-		!conv.actor_user_id &&
-		(conv.trigger_type === "task_assigned" ||
-			conv.trigger_type === "automation_message");
-	const triggerLabel = isAutomationTriggered
-		? t("conversationsPage.triggerAutomation")
-		: conv.trigger_type === "chat_message"
-			? t("conversationsPage.triggerChat")
-			: conv.trigger_type === "description_write"
-				? t("conversationsPage.triggerWriteDescription")
-				: t("conversationsPage.triggerTask");
+	const triggerLabel = conversationTriggerLabel(conv, t);
 	const initials = (agent?.name ?? "?")
 		.split(" ")
 		.map((w) => w[0])

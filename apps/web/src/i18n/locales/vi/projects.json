@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "Xem trước hình ảnh đính kèm",
 			"attachmentAriaLabel": "Tệp đính kèm {{type}}",
 			"attachmentAriaLabelError": "Tệp đính kèm {{type}}, tải lên thất bại",
-			"attachmentAriaLabelUploading": "Tệp đính kèm {{type}}, đang tải lên"
+			"attachmentAriaLabelUploading": "Tệp đính kèm {{type}}, đang tải lên",
+			"contextInjection": {
+				"attachContext": "Đính kèm ngữ cảnh",
+				"contextSearchPlaceholder": "Tìm kiếm công việc, tài liệu, cuộc trò chuyện, tự động hóa…",
+				"removeContextItem": "Xóa {{title}}",
+				"addCurrent": "Đính kèm {{title}}",
+				"contextTypeTask": "Công việc",
+				"contextTypeDoc": "Tài liệu",
+				"contextTypeConversation": "Cuộc trò chuyện",
+				"contextTypeAutomation": "Tự động hóa",
+				"noContextResults": "Không tìm thấy kết quả",
+				"contextSearchMinChars": "Nhập ít nhất 2 ký tự để tìm kiếm"
+			}
 		}
 	},
 	"environments": {

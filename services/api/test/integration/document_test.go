@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -99,7 +100,11 @@ func (r *fakeDocRepoIT) DeleteFolder(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *fakeDocRepoIT) ListDocuments(_ context.Context, projectID uuid.UUID, folderID *uuid.UUID) ([]*docdom.Document, error) {
+// ListDocuments ignores cursor/limit — no test in this file exercises
+// pagination, so it always returns the full matching set (equivalent to
+// always passing limit=nil), matching the real repository's own
+// no-pagination-requested behavior.
+func (r *fakeDocRepoIT) ListDocuments(_ context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, _ *string, _ *int) ([]*docdom.Document, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []*docdom.Document
@@ -112,10 +117,15 @@ func (r *fakeDocRepoIT) ListDocuments(_ context.Context, projectID uuid.UUID, fo
 				continue
 			}
 		}
+		if search != nil && *search != "" {
+			if !strings.Contains(strings.ToLower(d.Title), strings.ToLower(*search)) {
+				continue
+			}
+		}
 		cp := *d
 		out = append(out, &cp)
 	}
-	return out, nil
+	return out, false, nil
 }
 
 func (r *fakeDocRepoIT) FindDocumentByID(_ context.Context, id uuid.UUID) (*docdom.Document, error) {

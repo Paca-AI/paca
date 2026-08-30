@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -1256,6 +1257,19 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 	return c, nil
 }
 
+// GetConversationForAgent implements agentdom.Service.GetConversationForAgent
+// — see its doc comment for the authorization rule.
+func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
+	c, err := s.repo.FindConversationByID(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if c.AgentID != callerAgentID {
+		return nil, agentdom.ErrConversationNotFound
+	}
+	return c, nil
+}
+
 // authorizeConversationAccess fails closed (ErrConversationNotFound) when a
 // project-scoped owner-private conversation is not owned by memberID.
 // project-shared conversations are readable by any project member, whose
@@ -1372,7 +1386,7 @@ func (s *Service) Heartbeat(ctx context.Context, projectID, conversationID, memb
 // resumed here too, from any status, not just chat_message ones —
 // mirroring SendChatMessage's own terminal-status resume carve-out for
 // chat sessions.
-func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID) error {
+func (s *Service) SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID, contextItems []agentdom.ContextItemRef) error {
 	c, err := s.GetConversation(ctx, projectID, conversationID, memberID)
 	if err != nil {
 		return err
@@ -1383,18 +1397,23 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 		return err
 	}
 	if agent.AgentType == agentdom.AgentTypeACP || c.EnvironmentID != nil {
-		return s.resumeConversationMessage(ctx, projectID, c, message, memberID)
+		return s.resumeConversationMessage(ctx, projectID, c, message, memberID, contextItems)
 	}
 
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
 		return agentdom.ErrConversationNotRunning
 	}
-	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+	payload := map[string]any{
 		"conversation_id": conversationID.String(),
 		"project_id":      projectID.String(),
 		"message":         message,
 		"member_id":       memberID.String(),
-	})
+	}
+	if len(contextItems) > 0 {
+		b, _ := json.Marshal(contextItems)
+		payload["context_items"] = string(b)
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
 
 // resumeConversationMessage resumes a conversation of any trigger type from
@@ -1402,7 +1421,7 @@ func (s *Service) SendConversationMessage(ctx context.Context, projectID, conver
 // the chat box instead of being stuck once its first turn ends — used for
 // ACP-type agents (see SendConversationMessage's own doc comment) and for
 // any conversation attached to a static environment.
-func (s *Service) resumeConversationMessage(ctx context.Context, projectID uuid.UUID, c *agentdom.AgentConversation, message string, memberID uuid.UUID) error {
+func (s *Service) resumeConversationMessage(ctx context.Context, projectID uuid.UUID, c *agentdom.AgentConversation, message string, memberID uuid.UUID, contextItems []agentdom.ContextItemRef) error {
 	status := agentdom.ConversationStatus(c.Status)
 	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
 		// Still mid-turn (or not yet picked up by the worker) — reject
@@ -1461,6 +1480,10 @@ func (s *Service) resumeConversationMessage(ctx context.Context, projectID uuid.
 	if envID != nil {
 		payload["environment_id"] = envID.String()
 		payload["workdir"] = workdir
+	}
+	if len(contextItems) > 0 {
+		b, _ := json.Marshal(contextItems)
+		payload["context_items"] = string(b)
 	}
 	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
@@ -1547,7 +1570,7 @@ func (s *Service) GlobalHeartbeat(ctx context.Context, conversationID, actorUser
 }
 
 // SendGlobalConversationMessage publishes a chat message to an active global conversation.
-func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error {
+func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, contextItems []agentdom.ContextItemRef) error {
 	c, err := s.GetGlobalConversation(ctx, conversationID, actorUserID)
 	if err != nil {
 		return err
@@ -1558,18 +1581,23 @@ func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversatio
 		return err
 	}
 	if agent.AgentType == agentdom.AgentTypeACP {
-		return s.sendACPGlobalConversationMessage(ctx, c, message, actorUserID)
+		return s.sendACPGlobalConversationMessage(ctx, c, message, actorUserID, contextItems)
 	}
 
 	if agentdom.ConversationStatus(c.Status) != agentdom.ConversationStatusRunning {
 		return agentdom.ErrConversationNotRunning
 	}
-	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+	payload := map[string]any{
 		"conversation_id": conversationID.String(),
 		"agent_id":        c.AgentID.String(),
 		"message":         message,
 		"actor_user_id":   actorUserID.String(),
-	})
+	}
+	if len(contextItems) > 0 {
+		b, _ := json.Marshal(contextItems)
+		payload["context_items"] = string(b)
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
 
 // sendACPGlobalConversationMessage is resumeConversationMessage's
@@ -1579,7 +1607,7 @@ func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversatio
 // resumeConversationMessage: a global-scope agent can never have a default
 // environment (see agentdom.Agent.DefaultEnvironmentID's doc comment), so
 // a global conversation's EnvironmentID is always nil.
-func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, actorUserID uuid.UUID) error {
+func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agentdom.AgentConversation, message string, actorUserID uuid.UUID, contextItems []agentdom.ContextItemRef) error {
 	status := agentdom.ConversationStatus(c.Status)
 	if status == agentdom.ConversationStatusRunning || status == agentdom.ConversationStatusQueued {
 		return agentdom.ErrConversationBusy
@@ -1591,13 +1619,18 @@ func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agent
 	if !claimed {
 		return agentdom.ErrConversationBusy
 	}
-	return s.publishTrigger(ctx, events.TopicAgentChatMessage, map[string]any{
+	payload := map[string]any{
 		"conversation_id": c.ID.String(),
 		"agent_id":        c.AgentID.String(),
 		"trigger_type":    c.TriggerType,
 		"actor_user_id":   actorUserID.String(),
 		"message":         message,
-	})
+	}
+	if len(contextItems) > 0 {
+		b, _ := json.Marshal(contextItems)
+		payload["context_items"] = string(b)
+	}
+	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
 
 // -------------------------------------------------------------------------
@@ -1615,7 +1648,7 @@ func (s *Service) ListChatSessions(ctx context.Context, _, agentID, memberID uui
 // resolveChatEnvironment); folderID nil auto-selects the environment's sole
 // folder, or fails with ErrFolderNotFound if that's ambiguous — the caller
 // must ask the user to pick.
-func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	now := time.Now()
 
 	session := &agentdom.AgentChatSession{
@@ -1646,7 +1679,7 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 		return nil, nil, err
 	}
 
-	if err := s.publishChatTrigger(ctx, agentID, conv.ID, session.ID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir); err != nil {
+	if err := s.publishChatTrigger(ctx, agentID, conv.ID, session.ID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir, contextItems); err != nil {
 		return nil, nil, err
 	}
 
@@ -1750,7 +1783,7 @@ func (s *Service) resolveWorkdirForConversation(ctx context.Context, projectID u
 // is nothing left to attach to." Only an ordinary (non-environment) LLM
 // conversation going terminal still falls through to a brand-new
 // conversation_id below — its ephemeral sandbox really is gone for good.
-func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -1863,7 +1896,7 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	if err != nil {
 		return nil, err
 	}
-	if err := s.publishChatTrigger(ctx, session.AgentID, conv.ID, sessionID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir); err != nil {
+	if err := s.publishChatTrigger(ctx, session.AgentID, conv.ID, sessionID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir, contextItems); err != nil {
 		return nil, err
 	}
 
@@ -1888,7 +1921,7 @@ func (s *Service) ListGlobalChatSessions(ctx context.Context, agentID, actorUser
 
 // StartGlobalChatSession creates a new global chat session and publishes
 // the initial message trigger.
-func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	now := time.Now()
 
 	session := &agentdom.AgentChatSession{
@@ -1911,7 +1944,7 @@ func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUser
 		return nil, nil, err
 	}
 
-	if err := s.publishGlobalChatTrigger(ctx, agentID, conv.ID, session.ID, actorUserID, message); err != nil {
+	if err := s.publishGlobalChatTrigger(ctx, agentID, conv.ID, session.ID, actorUserID, message, contextItems); err != nil {
 		return nil, nil, err
 	}
 
@@ -1921,7 +1954,7 @@ func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUser
 // SendGlobalChatMessage sends a message to an existing global chat session
 // and publishes the trigger. Mirrors SendChatMessage's resume/terminal
 // handling — see its doc comment for the pause/resume rationale.
-func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -1981,7 +2014,7 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 	// else: resume — reuse the same conversation_id so ai-agent reattaches
 	// to the sandbox it kept alive rather than cold-starting a new one.
 
-	if err := s.publishGlobalChatTrigger(ctx, session.AgentID, conv.ID, sessionID, actorUserID, message); err != nil {
+	if err := s.publishGlobalChatTrigger(ctx, session.AgentID, conv.ID, sessionID, actorUserID, message, contextItems); err != nil {
 		return nil, err
 	}
 
@@ -2327,7 +2360,7 @@ func (s *Service) publishTrigger(ctx context.Context, topic string, payload map[
 // docs/ai-agent/environment-management.md's "Conversation attach path"
 // section for how agent-runner's decode.go/coldStartEnvironment consume
 // them.
-func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessionID, projectID, memberID uuid.UUID, message string, repoPluginIDs []string, environmentID *uuid.UUID, workdir string) error {
+func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessionID, projectID, memberID uuid.UUID, message string, repoPluginIDs []string, environmentID *uuid.UUID, workdir string, contextItems []agentdom.ContextItemRef) error {
 	payload := map[string]any{
 		"conversation_id": convID.String(),
 		"project_id":      projectID.String(),
@@ -2342,6 +2375,10 @@ func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessi
 		payload["environment_id"] = environmentID.String()
 		payload["workdir"] = workdir
 	}
+	if len(contextItems) > 0 {
+		b, _ := json.Marshal(contextItems)
+		payload["context_items"] = string(b)
+	}
 	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }
 
@@ -2349,7 +2386,7 @@ func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessi
 // project_id, actor identified by actor_user_id, and repo_plugin_ids
 // omitted entirely (repo/PR tools are excluded from global-chat
 // conversations; see the Global Conversations section's doc comment).
-func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID, sessionID, actorUserID uuid.UUID, message string) error {
+func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID, sessionID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) error {
 	payload := map[string]any{
 		"conversation_id": convID.String(),
 		"agent_id":        agentID.String(),
@@ -2357,6 +2394,10 @@ func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID,
 		"actor_user_id":   actorUserID.String(),
 		"trigger_type":    "chat_message",
 		"message":         message,
+	}
+	if len(contextItems) > 0 {
+		b, _ := json.Marshal(contextItems)
+		payload["context_items"] = string(b)
 	}
 	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
 }

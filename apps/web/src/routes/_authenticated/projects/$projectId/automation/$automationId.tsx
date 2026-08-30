@@ -9,7 +9,7 @@ import {
 	Workflow,
 	X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AutomationCanvas } from "@/components/projects/automation/automation-canvas";
 import { AutomationNodeConfigPanel } from "@/components/projects/automation/automation-node-config-panel";
@@ -50,6 +50,7 @@ import {
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
 } from "@/lib/project-api";
+import { useCurrentContextStore } from "@/lib/shortcuts/current-context-store";
 import { cn } from "@/lib/utils";
 
 function extractErrorMessage(err: unknown, fallback: string): string {
@@ -87,6 +88,22 @@ function AutomationBuilderPage() {
 	const { data: graph } = useQuery(
 		automationQueryOptions(projectId, automationId),
 	);
+
+	// Register this automation as "currently on screen" for the chat
+	// composer's quick-add affordance — see
+	// lib/shortcuts/current-context-store.ts.
+	useEffect(() => {
+		if (!graph) return;
+		useCurrentContextStore.getState().setActive({
+			type: "automation",
+			id: automationId,
+			projectId,
+			title: graph.automation.name,
+		});
+		return () => {
+			useCurrentContextStore.getState().clearActive("automation", automationId);
+		};
+	}, [graph, automationId, projectId]);
 	const { data: statuses = [] } = useQuery(taskStatusesQueryOptions(projectId));
 	const { data: members = [] } = useQuery(
 		projectMembersQueryOptions(projectId),

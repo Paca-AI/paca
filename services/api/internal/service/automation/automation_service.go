@@ -77,9 +77,10 @@ func (s *Service) publish(ctx context.Context, topic string, payload map[string]
 
 // --- Automation lifecycle ------------------------------------------------------
 
-// ListAutomations returns a project's automations, optionally filtered by status.
-func (s *Service) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status) ([]*automationdom.Automation, error) {
-	return s.repo.ListAutomations(ctx, projectID, status)
+// ListAutomations returns a project's automations, optionally filtered by
+// status and/or a case-insensitive name search.
+func (s *Service) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status, search *string, cursor *string, limit *int) ([]*automationdom.Automation, bool, error) {
+	return s.repo.ListAutomations(ctx, projectID, status, search, cursor, limit)
 }
 
 // GetAutomation returns one automation together with its full node/edge graph.
@@ -487,7 +488,7 @@ func (s *Service) ListRunSteps(ctx context.Context, projectID, automationID, run
 // configs in projectID, for the read-only, auto-generated dependency view.
 func (s *Service) DependencyMap(ctx context.Context, projectID uuid.UUID) ([]automationdom.DependencyMapEntry, error) {
 	active := automationdom.StatusActive
-	automations, err := s.repo.ListAutomations(ctx, projectID, &active)
+	automations, _, err := s.repo.ListAutomations(ctx, projectID, &active, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

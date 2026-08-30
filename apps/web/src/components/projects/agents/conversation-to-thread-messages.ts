@@ -3,6 +3,7 @@ import type {
 	AgentConversation,
 	AgentConversationEvent,
 } from "@/lib/agent-api";
+import { parseContextItems } from "@/lib/context-items";
 
 // Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
 // Conversations page's new-conversation composer) only ever send a single
@@ -333,11 +334,19 @@ export function eventsToThreadMessages(
 			const text = extractAcpBlockText(p.content);
 			if (!text) continue;
 			flushCurrent();
+			// context_items (snake_case, as persisted by
+			// services/agent-runner's handler.go) round-trips back into the
+			// camelCase ContextItem[] shape here so thread.tsx's UserMessage
+			// can render a read-only badge row via metadata.custom.contextItems.
+			const contextItems = parseContextItems(p.context_items);
 			messages.push({
 				id: ev.id,
 				role: "user",
 				createdAt: new Date(ev.created_at),
 				content: [{ type: "text", text }],
+				...(contextItems.length > 0
+					? { metadata: { custom: { contextItems } } }
+					: {}),
 			});
 			continue;
 		}

@@ -1096,6 +1096,55 @@ describe("eventsToThreadMessages", () => {
 			});
 		});
 	});
+
+	describe("context_items on a user_message event", () => {
+		it("maps payload.context_items (snake_case) into metadata.custom.contextItems (camelCase)", () => {
+			const events: AgentConversationEvent[] = [
+				{
+					id: "evt-ctx-1",
+					conversation_id: "conv-1",
+					event_index: 0,
+					event_type: "user_message",
+					event_source: "user",
+					payload: {
+						content: { type: "text", text: "look at this" },
+						context_items: [
+							{
+								type: "task",
+								id: "task-1",
+								project_id: "proj-1",
+								title: "Fix login bug",
+							},
+							{ type: "doc", id: "doc-1", title: "Runbook" },
+						],
+					},
+					created_at: "2026-01-01T00:00:00.000Z",
+				},
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(1);
+			expect(messages[0]?.metadata?.custom?.contextItems).toEqual([
+				{
+					type: "task",
+					id: "task-1",
+					projectId: "proj-1",
+					title: "Fix login bug",
+				},
+				{ type: "doc", id: "doc-1", title: "Runbook" },
+			]);
+		});
+
+		it("adds no metadata.custom when a user_message event carries no context_items", () => {
+			const events = [acpUserMessage("hi")];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(1);
+			expect(messages[0]?.metadata).toBeUndefined();
+		});
+	});
 });
 
 describe("hasEnvironmentReadyEvent", () => {

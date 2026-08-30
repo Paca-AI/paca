@@ -74,4 +74,11 @@ type Trigger struct {
 	// meaningful alongside EnvironmentID; nil whenever EnvironmentID is
 	// nil.
 	Workdir *string
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this chat message via the frontend composer's
+	// context-item picker (see ContextItemRef) — decoded from the flat
+	// context_items JSON-string stream field by messaging.decodeTrigger.
+	// Rendered into the prompt as a "## Attached Context" hint block by
+	// FormatAttachedContext. nil/empty when no items were attached.
+	ContextItems []ContextItemRef
 }

@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "Vista previa de la imagen adjunta",
 			"attachmentAriaLabel": "Adjunto de {{type}}",
 			"attachmentAriaLabelError": "Adjunto de {{type}}, error al subir",
-			"attachmentAriaLabelUploading": "Adjunto de {{type}}, subiendo"
+			"attachmentAriaLabelUploading": "Adjunto de {{type}}, subiendo",
+			"contextInjection": {
+				"attachContext": "Adjuntar contexto",
+				"contextSearchPlaceholder": "Buscar tareas, documentos, conversaciones, automatizaciones…",
+				"removeContextItem": "Quitar {{title}}",
+				"addCurrent": "Adjuntar {{title}}",
+				"contextTypeTask": "Tarea",
+				"contextTypeDoc": "Documento",
+				"contextTypeConversation": "Conversación",
+				"contextTypeAutomation": "Automatización",
+				"noContextResults": "No se encontraron resultados",
+				"contextSearchMinChars": "Escribe al menos 2 caracteres para buscar"
+			}
 		}
 	},
 	"environments": {

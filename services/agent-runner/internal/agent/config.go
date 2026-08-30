@@ -2,6 +2,11 @@ package agent
 
 import "github.com/google/uuid"
 
+// AgentScopeGlobal is the Config.AgentScope value for a global agent (mirrors
+// services/api's agentdom.AgentScopeGlobal — see Config.AgentScope's doc
+// comment).
+const AgentScopeGlobal = "global"
+
 // Config is the subset of agentdom.Agent this service needs to run an
 // llm-type conversation — agent-runner never handles acp-type agents (those
 // stay on apps/acp-bridge), so ACPProvider/ACPCommand and friends are
@@ -10,6 +15,13 @@ type Config struct {
 	ID     uuid.UUID
 	Name   string
 	Handle string
+	// AgentScope is "project" or "global" (agents.agent_scope). Only a
+	// global agent may legitimately be attributed to a human actor — see
+	// buildMCPServers's use of this field and services/api's
+	// verifyAgentIdentity, which enforces the same rule server-side
+	// ("a project-scoped agent's actions are attributed via its
+	// project_members.id, never a raw actor_user_id").
+	AgentScope string
 
 	LLMProvider string
 	LLMModel    string

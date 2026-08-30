@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "Image Attachment Preview",
 			"attachmentAriaLabel": "{{type}} attachment",
 			"attachmentAriaLabelError": "{{type}} attachment, upload failed",
-			"attachmentAriaLabelUploading": "{{type}} attachment, uploading"
+			"attachmentAriaLabelUploading": "{{type}} attachment, uploading",
+			"contextInjection": {
+				"attachContext": "Attach context",
+				"contextSearchPlaceholder": "Search tasks, docs, conversations, automations…",
+				"removeContextItem": "Remove {{title}}",
+				"addCurrent": "Attach {{title}}",
+				"contextTypeTask": "Task",
+				"contextTypeDoc": "Doc",
+				"contextTypeConversation": "Conversation",
+				"contextTypeAutomation": "Automation",
+				"noContextResults": "No results found",
+				"contextSearchMinChars": "Type at least 2 characters to search"
+			}
 		}
 	},
 	"environments": {

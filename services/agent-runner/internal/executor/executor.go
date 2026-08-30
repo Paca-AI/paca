@@ -964,7 +964,17 @@ func (e *Executor) buildMCPServers(trigger agent.Trigger, cfg agent.Config) []ac
 	if trigger.ProjectID != uuid.Nil {
 		env["PACA_PROJECT_ID"] = trigger.ProjectID.String()
 	}
-	if trigger.ActorUserID != nil {
+	// services/api's verifyAgentIdentity rejects an X-Actor-User-ID claim
+	// outright for any non-global agent ("a project-scoped agent's actions
+	// are attributed via its project_members.id, never a raw actor_user_id")
+	// — so forwarding it here for a project-scoped agent doesn't just fail
+	// to help, it 401s *every* MCP call this agent makes, including ones
+	// that never touch actor identity at all (e.g. read_conversation),
+	// because the check runs in required auth middleware before any
+	// handler-specific logic. cfg.AgentScope is the same source of truth
+	// that check uses, so gate on it here too rather than trusting
+	// trigger.ActorUserID's presence alone.
+	if trigger.ActorUserID != nil && cfg.AgentScope == agent.AgentScopeGlobal {
 		env["PACA_ACTOR_USER_ID"] = trigger.ActorUserID.String()
 	}
 	if len(trigger.RepoPluginIDs) > 0 {

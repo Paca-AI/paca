@@ -299,6 +299,20 @@ func New(deps Deps) http.Handler {
 					r.Get("/me/global-permissions", deps.Agent.GetMyGlobalPermissions)
 					r.Get("/me/projects", deps.Agent.GetMyInvitedProjects)
 
+					// Agent self-service reads of a conversation by ID (any
+					// project, or global) — the read_conversation MCP tool's
+					// path when a user attaches a Conversation as chat context.
+					// Deliberately separate from the human-facing
+					// /projects/{projectId}/conversations and
+					// /agents/conversations routes below: both of those
+					// authorize against a human member/actor identity a bare
+					// agent doesn't have (see
+					// agentdom.Service.GetConversationForAgent's doc comment).
+					if deps.Conversation != nil {
+						r.Get("/me/conversations/{conversationId}", deps.Conversation.GetConversationForAgent)
+						r.Get("/me/conversations/{conversationId}/events", deps.Conversation.GetConversationEventsForAgent)
+					}
+
 					// Global chat — chatting with a global agent from the home
 					// page / admin pages, no project context. Any authenticated
 					// human may chat with any global agent, same as any project

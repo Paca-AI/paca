@@ -164,6 +164,12 @@ describe("getToolPermission", () => {
 		expect(perm?.permissionKey).toBe("tasks.read");
 		expect(perm?.requiresProject).toBe(true);
 	});
+
+	it("returns the correct permission for read_conversation", () => {
+		const perm = getToolPermission("read_conversation");
+		expect(perm?.permissionKey).toBe("agents.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -188,6 +194,7 @@ describe("TOOL_PERMISSIONS", () => {
 			"create_custom_field",
 			"list_task_attachments",
 			"add_task_comment",
+			"read_conversation",
 		];
 		for (const name of expected) {
 			expect(names, `missing tool: ${name}`).toContain(name);
