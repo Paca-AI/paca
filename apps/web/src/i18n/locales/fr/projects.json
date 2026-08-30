@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "Aperçu de l'image jointe",
 			"attachmentAriaLabel": "Pièce jointe {{type}}",
 			"attachmentAriaLabelError": "Pièce jointe {{type}}, échec du téléversement",
-			"attachmentAriaLabelUploading": "Pièce jointe {{type}}, téléversement en cours"
+			"attachmentAriaLabelUploading": "Pièce jointe {{type}}, téléversement en cours",
+			"contextInjection": {
+				"attachContext": "Joindre du contexte",
+				"contextSearchPlaceholder": "Rechercher des tâches, documents, conversations, automatisations…",
+				"removeContextItem": "Retirer {{title}}",
+				"addCurrent": "Joindre {{title}}",
+				"contextTypeTask": "Tâche",
+				"contextTypeDoc": "Document",
+				"contextTypeConversation": "Conversation",
+				"contextTypeAutomation": "Automatisation",
+				"noContextResults": "Aucun résultat trouvé",
+				"contextSearchMinChars": "Saisissez au moins 2 caractères pour rechercher"
+			}
 		}
 	},
 	"environments": {

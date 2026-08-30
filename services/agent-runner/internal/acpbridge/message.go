@@ -104,5 +104,7 @@ func BuildACPMessage(trigger agent.Trigger, acpProvider string) string {
 		fmt.Fprintf(&b, "Chat Session ID: %s\n", trigger.ChatSessionID)
 	}
 
+	b.WriteString(agent.FormatAttachedContext(trigger.ContextItems))
+
 	return b.String()
 }

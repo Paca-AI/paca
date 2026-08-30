@@ -3,8 +3,27 @@ import {
 	type QueryClient,
 	queryOptions,
 } from "@tanstack/react-query";
+import {
+	type ContextItem,
+	toWireContextItems,
+	type WireContextItem,
+} from "@/lib/context-items";
 import { apiClient } from "./api-client";
 import type { SuccessEnvelope } from "./api-error";
+
+// Appends `context_items` (wire shape, snake_case) onto a request body when
+// contextItems is non-empty — shared by every send/start function below so
+// the "map ContextItem[] to the wire shape, omit the key when there's
+// nothing staged" logic lives in exactly one place. See lib/context-items.ts
+// for the ContextItem <-> WireContextItem mapping itself.
+function withContextItems<T extends Record<string, unknown>>(
+	body: T,
+	contextItems: ContextItem[] | undefined,
+): T & { context_items?: WireContextItem[] } {
+	return contextItems && contextItems.length > 0
+		? { ...body, context_items: toWireContextItems(contextItems) }
+		: body;
+}
 
 // ── Shapes ────────────────────────────────────────────────────────────────────
 
@@ -440,21 +459,26 @@ export async function listGlobalChatSessions(
 
 export async function startGlobalChatSession(
 	agentId: string,
-	payload: { message: string; title?: string },
+	payload: { message: string; title?: string; contextItems?: ContextItem[] },
 ): Promise<StartChatSessionResponse> {
+	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<StartChatSessionResponse>
-	>(`/agents/${agentId}/chat-sessions`, payload);
+	>(`/agents/${agentId}/chat-sessions`, withContextItems(rest, contextItems));
 	return data.data;
 }
 
 export async function sendGlobalChatMessage(
 	sessionId: string,
-	payload: { message: string },
+	payload: { message: string; contextItems?: ContextItem[] },
 ): Promise<AgentConversation> {
+	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<{ conversation: AgentConversation }>
-	>(`/agents/chat-sessions/${sessionId}/messages`, payload);
+	>(
+		`/agents/chat-sessions/${sessionId}/messages`,
+		withContextItems(rest, contextItems),
+	);
 	return data.data.conversation;
 }
 
@@ -580,10 +604,11 @@ export async function heartbeatGlobalConversation(
 export async function sendGlobalConversationMessage(
 	conversationId: string,
 	message: string,
+	contextItems?: ContextItem[],
 ): Promise<void> {
 	await apiClient.instance.post(
 		`/agents/conversations/${conversationId}/messages`,
-		{ message },
+		withContextItems({ message }, contextItems),
 	);
 }
 
@@ -1150,10 +1175,11 @@ export async function sendConversationMessage(
 	projectId: string,
 	conversationId: string,
 	message: string,
+	contextItems?: ContextItem[],
 ): Promise<void> {
 	await apiClient.instance.post(
 		`/projects/${projectId}/conversations/${conversationId}/messages`,
-		{ message },
+		withContextItems({ message }, contextItems),
 	);
 }
 
@@ -1214,11 +1240,16 @@ export async function startChatSession(
 		// default_environment_id if set, else spins up an ephemeral sandbox.
 		environment_id?: string;
 		folder_id?: string;
+		contextItems?: ContextItem[];
 	},
 ): Promise<StartChatSessionResponse> {
+	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<StartChatSessionResponse>
-	>(`/projects/${projectId}/agents/${agentId}/chat-sessions`, payload);
+	>(
+		`/projects/${projectId}/agents/${agentId}/chat-sessions`,
+		withContextItems(rest, contextItems),
+	);
 	return data.data;
 }
 
@@ -1226,13 +1257,14 @@ export async function sendChatMessage(
 	projectId: string,
 	agentId: string,
 	sessionId: string,
-	payload: { message: string },
+	payload: { message: string; contextItems?: ContextItem[] },
 ): Promise<AgentConversation> {
+	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
 		SuccessEnvelope<{ conversation: AgentConversation }>
 	>(
 		`/projects/${projectId}/agents/${agentId}/chat-sessions/${sessionId}/messages`,
-		payload,
+		withContextItems(rest, contextItems),
 	);
 	return data.data.conversation;
 }

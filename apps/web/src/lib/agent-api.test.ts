@@ -43,8 +43,11 @@ import {
 	listGlobalMCPServers,
 	listGlobalSkills,
 	pauseGlobalConversation,
+	sendChatMessage,
+	sendConversationMessage,
 	sendGlobalChatMessage,
 	sendGlobalConversationMessage,
+	startChatSession,
 	startGlobalChatSession,
 	stopGlobalConversation,
 	updateGlobalAgent,
@@ -262,6 +265,161 @@ describe("agent-api", () => {
 			);
 			expect(result).toBe(conversation);
 		});
+
+		it("startGlobalChatSession includes context_items (snake_case, project_id omitted when absent) when contextItems is staged", async () => {
+			mockPost.mockResolvedValue(
+				ok({ session: { id: SESSION_ID }, conversation: { id: "conv-1" } }),
+			);
+			await startGlobalChatSession(AGENT_ID, {
+				message: "hi",
+				contextItems: [
+					{ type: "task", id: "task-1", title: "Fix login bug" },
+					{ type: "doc", id: "doc-1", projectId: "proj-1", title: "Runbook" },
+				],
+			});
+			expect(mockPost).toHaveBeenCalledWith(
+				`/agents/${AGENT_ID}/chat-sessions`,
+				{
+					message: "hi",
+					context_items: [
+						{ type: "task", id: "task-1", title: "Fix login bug" },
+						{
+							type: "doc",
+							id: "doc-1",
+							project_id: "proj-1",
+							title: "Runbook",
+						},
+					],
+				},
+			);
+		});
+
+		it("startGlobalChatSession omits context_items entirely when nothing is staged", async () => {
+			mockPost.mockResolvedValue(
+				ok({ session: { id: SESSION_ID }, conversation: { id: "conv-1" } }),
+			);
+			await startGlobalChatSession(AGENT_ID, { message: "hi" });
+			expect(mockPost).toHaveBeenCalledWith(
+				`/agents/${AGENT_ID}/chat-sessions`,
+				{
+					message: "hi",
+				},
+			);
+		});
+
+		it("sendGlobalChatMessage includes context_items when contextItems is staged", async () => {
+			mockPost.mockResolvedValue(ok({ conversation: { id: "conv-1" } }));
+			await sendGlobalChatMessage(SESSION_ID, {
+				message: "hi",
+				contextItems: [
+					{ type: "automation", id: "auto-1", title: "Nightly sync" },
+				],
+			});
+			expect(mockPost).toHaveBeenCalledWith(
+				`/agents/chat-sessions/${SESSION_ID}/messages`,
+				{
+					message: "hi",
+					context_items: [
+						{ type: "automation", id: "auto-1", title: "Nightly sync" },
+					],
+				},
+			);
+		});
+	});
+
+	// ── Project-scoped chat sessions / conversation messages ────────────────────
+	//
+	// context_items coverage for the project-scoped siblings of the global
+	// functions tested above — the send-time context-injection mapping
+	// (ContextItem[] -> snake_case context_items, project_id omitted when
+	// absent) is shared code (withContextItems/toWireContextItems), but each
+	// call site's own payload construction is still worth pinning.
+
+	describe("project-scoped chat sessions and conversation messages", () => {
+		const AGENT_ID = "agent-1";
+		const SESSION_ID = "sess-1";
+		const CONV_ID = "conv-1";
+
+		it("startChatSession includes context_items alongside other payload fields when staged", async () => {
+			mockPost.mockResolvedValue(
+				ok({ session: { id: SESSION_ID }, conversation: { id: CONV_ID } }),
+			);
+			await startChatSession(PROJECT_ID, AGENT_ID, {
+				message: "hi",
+				environment_id: "env-1",
+				contextItems: [{ type: "task", id: "task-1", title: "Fix login bug" }],
+			});
+			expect(mockPost).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/agents/${AGENT_ID}/chat-sessions`,
+				{
+					message: "hi",
+					environment_id: "env-1",
+					context_items: [
+						{ type: "task", id: "task-1", title: "Fix login bug" },
+					],
+				},
+			);
+		});
+
+		it("startChatSession omits context_items when nothing is staged", async () => {
+			mockPost.mockResolvedValue(
+				ok({ session: { id: SESSION_ID }, conversation: { id: CONV_ID } }),
+			);
+			await startChatSession(PROJECT_ID, AGENT_ID, { message: "hi" });
+			expect(mockPost).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/agents/${AGENT_ID}/chat-sessions`,
+				{ message: "hi" },
+			);
+		});
+
+		it("sendChatMessage includes context_items when staged", async () => {
+			mockPost.mockResolvedValue(ok({ conversation: { id: CONV_ID } }));
+			await sendChatMessage(PROJECT_ID, AGENT_ID, SESSION_ID, {
+				message: "hi",
+				contextItems: [
+					{ type: "doc", id: "doc-1", projectId: PROJECT_ID, title: "Runbook" },
+				],
+			});
+			expect(mockPost).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/agents/${AGENT_ID}/chat-sessions/${SESSION_ID}/messages`,
+				{
+					message: "hi",
+					context_items: [
+						{
+							type: "doc",
+							id: "doc-1",
+							project_id: PROJECT_ID,
+							title: "Runbook",
+						},
+					],
+				},
+			);
+		});
+
+		it("sendConversationMessage includes context_items only when staged", async () => {
+			mockPost.mockResolvedValue({});
+			await sendConversationMessage(PROJECT_ID, CONV_ID, "hello", [
+				{ type: "automation", id: "auto-1", title: "Nightly sync" },
+			]);
+			expect(mockPost).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/${CONV_ID}/messages`,
+				{
+					message: "hello",
+					context_items: [
+						{ type: "automation", id: "auto-1", title: "Nightly sync" },
+					],
+				},
+			);
+		});
+
+		it("sendConversationMessage posts only {message} when contextItems is omitted", async () => {
+			mockPost.mockResolvedValue({});
+			await sendConversationMessage(PROJECT_ID, CONV_ID, "hello");
+			expect(mockPost).toHaveBeenCalledWith(
+				`/projects/${PROJECT_ID}/conversations/${CONV_ID}/messages`,
+				{ message: "hello" },
+			);
+		});
 	});
 
 	// ── Global conversations (/agents/conversations) ────────────────────────────
@@ -322,6 +480,22 @@ describe("agent-api", () => {
 			expect(mockPost).toHaveBeenCalledWith(
 				`/agents/conversations/${CONV_ID}/messages`,
 				{ message: "hello" },
+			);
+		});
+
+		it("sendGlobalConversationMessage adds context_items only when contextItems is staged", async () => {
+			mockPost.mockResolvedValue({});
+			await sendGlobalConversationMessage(CONV_ID, "hello", [
+				{ type: "conversation", id: "conv-2", title: "Earlier thread" },
+			]);
+			expect(mockPost).toHaveBeenCalledWith(
+				`/agents/conversations/${CONV_ID}/messages`,
+				{
+					message: "hello",
+					context_items: [
+						{ type: "conversation", id: "conv-2", title: "Earlier thread" },
+					],
+				},
 			);
 		});
 

@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "画像添付ファイルのプレビュー",
 			"attachmentAriaLabel": "{{type}}の添付ファイル",
 			"attachmentAriaLabelError": "{{type}}の添付ファイル、アップロード失敗",
-			"attachmentAriaLabelUploading": "{{type}}の添付ファイル、アップロード中"
+			"attachmentAriaLabelUploading": "{{type}}の添付ファイル、アップロード中",
+			"contextInjection": {
+				"attachContext": "コンテキストを添付",
+				"contextSearchPlaceholder": "タスク、ドキュメント、会話、自動化を検索…",
+				"removeContextItem": "{{title}}を削除",
+				"addCurrent": "{{title}}を添付",
+				"contextTypeTask": "タスク",
+				"contextTypeDoc": "ドキュメント",
+				"contextTypeConversation": "会話",
+				"contextTypeAutomation": "自動化",
+				"noContextResults": "結果が見つかりません",
+				"contextSearchMinChars": "検索するには2文字以上入力してください"
+			}
 		}
 	},
 	"environments": {

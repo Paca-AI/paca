@@ -337,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "图片附件预览",
 			"attachmentAriaLabel": "{{type}}附件",
 			"attachmentAriaLabelError": "{{type}}附件，上传失败",
-			"attachmentAriaLabelUploading": "{{type}}附件，正在上传"
+			"attachmentAriaLabelUploading": "{{type}}附件，正在上传",
+			"contextInjection": {
+				"attachContext": "附加上下文",
+				"contextSearchPlaceholder": "搜索任务、文档、对话、自动化…",
+				"removeContextItem": "移除{{title}}",
+				"addCurrent": "附加{{title}}",
+				"contextTypeTask": "任务",
+				"contextTypeDoc": "文档",
+				"contextTypeConversation": "对话",
+				"contextTypeAutomation": "自动化",
+				"noContextResults": "未找到结果",
+				"contextSearchMinChars": "请输入至少2个字符进行搜索"
+			}
 		}
 	},
 	"environments": {

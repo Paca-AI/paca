@@ -164,6 +164,11 @@ describe("getToolPermission", () => {
 		expect(perm?.permissionKey).toBe("tasks.read");
 		expect(perm?.requiresProject).toBe(true);
 	});
+
+	it("has no permission mapping for read_conversation — it's always listed, since its real authorization is unconditional and self-scoped (see TOOL_PERMISSIONS' comment)", () => {
+		const perm = getToolPermission("read_conversation");
+		expect(perm).toBeNull();
+	});
 });
 
 // ---------------------------------------------------------------------------

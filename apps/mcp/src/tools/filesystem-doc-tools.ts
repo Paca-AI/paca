@@ -11,10 +11,20 @@ const ListDocsSchema = z.object({
 	path: z.string().optional(),
 });
 
-const ReadDocSchema = z.object({
-	projectId: z.string(),
-	path: z.string(),
-});
+const ReadDocSchema = z
+	.object({
+		projectId: z.string(),
+		path: z.string().optional(),
+		// Lets a caller that already has a raw document ID (e.g. one attached
+		// as chat context, which only carries an ID, never a virtual folder
+		// path) skip path resolution entirely and go straight to
+		// apiClient.getDocument. See the read_doc handler below.
+		docId: z.string().optional(),
+	})
+	.refine((data) => !!data.path || !!data.docId, {
+		message: "Either path or docId must be provided",
+		path: ["path"],
+	});
 
 const WriteDocSchema = z.object({
 	projectId: z.string(),
@@ -221,8 +231,9 @@ export function getFilesystemDocTools(): Tool[] {
 		{
 			name: "read_doc",
 			description:
-				"Read the Markdown content of a document by its path (e.g. 'Architecture/API Design'). " +
-				"Use list_docs first to discover available paths.",
+				"Read the Markdown content of a document, either by its path (e.g. 'Architecture/API Design') or directly by its technical UUID via docId. " +
+				"Use list_docs first to discover available paths, or pass docId directly when you already have a document's ID (e.g. one attached as chat context) rather than its folder path — docId skips path resolution entirely. " +
+				"Provide exactly one of path or docId.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -235,10 +246,15 @@ export function getFilesystemDocTools(): Tool[] {
 						type: "string",
 						description:
 							"Path to the document (e.g. 'Architecture/API Design' or just 'README'). " +
-							"Folder and document names are separated by '/'.",
+							"Folder and document names are separated by '/'. Omit if docId is provided.",
+					},
+					docId: {
+						type: "string",
+						description:
+							"The technical UUID of the document to read directly, bypassing path resolution. Use this when you already have a document's ID (e.g. from context attached to this conversation) rather than its folder path. Omit if path is provided.",
 					},
 				},
-				required: ["projectId", "path"],
+				required: ["projectId"],
 			},
 		},
 		{
@@ -367,7 +383,34 @@ export async function handleFilesystemDocTool(
 		}
 
 		case "read_doc": {
-			const { projectId, path } = ReadDocSchema.parse(args);
+			const { projectId, path, docId } = ReadDocSchema.parse(args);
+
+			// docId short-circuits straight to the API, skipping the
+			// buildDocTree/resolvePath walk below entirely — needed for a
+			// caller that only has a raw document ID (e.g. a doc injected as
+			// chat context), which has no virtual folder path to resolve.
+			if (docId) {
+				const doc = await apiClient.getDocument(projectId, docId);
+				const content = doc.content ? blocknoteToMarkdown(doc.content) : "";
+				return {
+					content: [
+						{
+							type: "text",
+							text: `📄 ${doc.title}\nID: ${doc.id}\nUpdated: ${doc.updated_at}\n\n---\n\n${content}`,
+						},
+					],
+				};
+			}
+
+			if (!path) {
+				return {
+					content: [
+						{ type: "text", text: "Either path or docId must be provided." },
+					],
+					isError: true,
+				};
+			}
+
 			const tree = await buildDocTree(projectId, apiClient, docClient);
 			const resolved = resolvePath(path, tree);
 

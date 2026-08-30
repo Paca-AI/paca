@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -299,23 +301,55 @@ func (r *DocumentRepository) DeleteFolder(ctx context.Context, id uuid.UUID) err
 
 const documentCols = `id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, deleted_at`
 
-// ListDocuments returns non-deleted documents for a project.
-func (r *DocumentRepository) ListDocuments(_ context.Context, projectID uuid.UUID, folderID *uuid.UUID) ([]*docdom.Document, error) {
-	var records []documentRecord
-	var err error
+// ListDocuments returns non-deleted documents for a project, optionally
+// filtered to a folder and/or a case-insensitive title search, and
+// optionally keyset-paginated — see docdom.Repository.ListDocuments's doc
+// comment for the limit/cursor/hasMore contract and why pagination mode
+// sorts title ASC, id ASC instead of the tree's position ASC, title ASC.
+func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) ([]*docdom.Document, bool, error) {
+	query := `SELECT ` + documentCols + ` FROM documents WHERE project_id = $1 AND deleted_at IS NULL`
+	args := []any{projectID.String()}
 	if folderID != nil {
-		err = r.db.Select(&records, `SELECT `+documentCols+` FROM documents WHERE project_id = $1 AND folder_id = $2 AND deleted_at IS NULL ORDER BY position ASC, title ASC`, projectID.String(), folderID.String())
-	} else {
-		err = r.db.Select(&records, `SELECT `+documentCols+` FROM documents WHERE project_id = $1 AND deleted_at IS NULL ORDER BY position ASC, title ASC`, projectID.String())
+		args = append(args, folderID.String())
+		query += fmt.Sprintf(" AND folder_id = $%d", len(args))
 	}
-	if err != nil {
-		return nil, err
+	if search != nil {
+		if q := strings.TrimSpace(*search); q != "" {
+			args = append(args, "%"+escapeLikePattern(q)+"%")
+			query += fmt.Sprintf(" AND title ILIKE $%d", len(args))
+		}
+	}
+
+	paginating := limit != nil
+	if paginating {
+		if cursor != nil {
+			if cur, ok := docdom.DecodeDocumentCursor(*cursor); ok {
+				args = append(args, cur.Title, cur.ID)
+				query += fmt.Sprintf(" AND (title, id) > ($%d, $%d)", len(args)-1, len(args))
+			}
+		}
+		query += " ORDER BY title ASC, id ASC"
+		args = append(args, *limit+1)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	} else {
+		query += " ORDER BY position ASC, title ASC"
+	}
+
+	var records []documentRecord
+	if err := r.db.SelectContext(ctx, &records, query, args...); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := false
+	if paginating && len(records) > *limit {
+		hasMore = true
+		records = records[:*limit]
 	}
 	out := make([]*docdom.Document, 0, len(records))
 	for _, rec := range records {
 		out = append(out, documentFromRecord(rec))
 	}
-	return out, nil
+	return out, hasMore, nil
 }
 
 // FindDocumentByID returns a single non-deleted document.

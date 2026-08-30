@@ -1257,13 +1257,17 @@ func (h *AgentHandler) StartChatSession(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	memberID, err := h.resolveMemberID(r, projectID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
-	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message, req.EnvironmentID, req.FolderID)
+	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message, req.EnvironmentID, req.FolderID, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1295,13 +1299,17 @@ func (h *AgentHandler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	memberID, err := h.resolveMemberID(r, projectID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
-	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message)
+	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1356,12 +1364,16 @@ func (h *AgentHandler) StartGlobalChatSession(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	userID, err := callerUserID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message)
+	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1388,12 +1400,16 @@ func (h *AgentHandler) SendGlobalChatMessage(w http.ResponseWriter, r *http.Requ
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	userID, err := callerUserID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message)
+	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

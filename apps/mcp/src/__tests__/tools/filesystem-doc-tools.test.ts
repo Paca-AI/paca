@@ -220,6 +220,64 @@ describe("handleFilesystemDocTool – read_doc", () => {
 	});
 });
 
+// ── read_doc – docId ───────────────────────────────────────────────────────────
+// A doc "injected" as chat context only carries a raw ID, never a virtual
+// folder path — docId must skip buildDocTree/resolvePath entirely and call
+// apiClient.getDocument directly (see filesystem-doc-tools.ts's read_doc case).
+
+describe("handleFilesystemDocTool – read_doc with docId", () => {
+	it("calls apiClient.getDocument directly, bypassing path resolution", async () => {
+		const apiClient = makeApiClient();
+		const docClient = makeDocClient();
+		const result = await handleFilesystemDocTool(
+			"read_doc",
+			{ projectId: "p1", docId: "d1" },
+			apiClient,
+			docClient,
+		);
+		expect(apiClient.getDocument).toHaveBeenCalledWith("p1", "d1");
+		// The tree-walk helpers are never consulted for a docId lookup.
+		expect(apiClient.listDocuments).not.toHaveBeenCalled();
+		expect(docClient.listFolders).not.toHaveBeenCalled();
+		expect(result.content[0].text).toContain("mocked markdown");
+		expect(result.content[0].text).toContain("README");
+	});
+
+	it("works for a docId that has no corresponding path (e.g. a doc from another folder tree)", async () => {
+		const apiClient = makeApiClient({ documents: [] });
+		const result = await handleFilesystemDocTool(
+			"read_doc",
+			{ projectId: "p1", docId: "not-in-tree" },
+			apiClient,
+			makeDocClient({ folders: [] }),
+		);
+		expect(apiClient.getDocument).toHaveBeenCalledWith("p1", "not-in-tree");
+		expect(result.isError).toBeUndefined();
+	});
+
+	it("prefers docId over path when both are provided", async () => {
+		const apiClient = makeApiClient();
+		const _result = await handleFilesystemDocTool(
+			"read_doc",
+			{ projectId: "p1", path: "Architecture/Overview", docId: "d1" },
+			apiClient,
+			makeDocClient(),
+		);
+		expect(apiClient.getDocument).toHaveBeenCalledWith("p1", "d1");
+	});
+
+	it("returns isError when neither path nor docId is provided", async () => {
+		await expect(
+			handleFilesystemDocTool(
+				"read_doc",
+				{ projectId: "p1" },
+				makeApiClient(),
+				makeDocClient(),
+			),
+		).rejects.toThrow();
+	});
+});
+
 // ── write_doc ──────────────────────────────────────────────────────────────────
 
 describe("handleFilesystemDocTool – write_doc", () => {

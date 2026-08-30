@@ -124,8 +124,8 @@ func (s *Service) DeleteFolder(ctx context.Context, id uuid.UUID, projectID uuid
 // --- Document Service -------------------------------------------------------
 
 // ListDocuments returns non-deleted documents for a project.
-func (s *Service) ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID) ([]*docdom.Document, error) {
-	return s.repo.ListDocuments(ctx, projectID, folderID)
+func (s *Service) ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) ([]*docdom.Document, bool, error) {
+	return s.repo.ListDocuments(ctx, projectID, folderID, search, cursor, limit)
 }
 
 // GetDocument returns a single document.
