@@ -3,11 +3,75 @@ package executor
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Paca-AI/agent-runner/internal/repository/postgres"
 )
 
 func hostPort(p int) *int { return &p }
+
+// TestSanitizeForwardLabel_ShortLabelUnchanged confirms the common case —
+// a normal, short label like "frontend dev server" — passes through
+// byte-for-byte, with no truncation marker appended.
+func TestSanitizeForwardLabel_ShortLabelUnchanged(t *testing.T) {
+	const label = "frontend dev server"
+	if got := sanitizeForwardLabel(label); got != label {
+		t.Errorf("sanitizeForwardLabel(%q) = %q, want it unchanged", label, got)
+	}
+}
+
+// TestSanitizeForwardLabel_LongLabelTruncated guards the actual defense:
+// services/api enforces no length limit on a port forward's Label (only
+// non-empty), and it flows straight into an LLM-facing context message on
+// every turn — a pathologically long label must not be allowed to crowd
+// out the rest of that message.
+func TestSanitizeForwardLabel_LongLabelTruncated(t *testing.T) {
+	long := strings.Repeat("a", maxForwardLabelLen*10)
+	got := sanitizeForwardLabel(long)
+	if utf8.RuneCountInString(got) > maxForwardLabelLen+1 { // +1 for the appended "…"
+		t.Errorf("sanitizeForwardLabel truncated to %d runes, want at most %d", utf8.RuneCountInString(got), maxForwardLabelLen+1)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("expected truncated label to end with an ellipsis marker, got %q", got)
+	}
+}
+
+// TestSanitizeForwardLabel_TruncatesOnRunesNotBytes guards against
+// splitting a multi-byte UTF-8 label mid-character: a label made entirely
+// of 3-byte runes has more bytes than maxForwardLabelLen well before it
+// has more runes than maxForwardLabelLen, so a byte-length truncation
+// would cut it far too short (and could produce invalid UTF-8) compared to
+// a rune-aware one.
+func TestSanitizeForwardLabel_TruncatesOnRunesNotBytes(t *testing.T) {
+	long := strings.Repeat("環", maxForwardLabelLen*2) // each rune is 3 bytes
+	got := sanitizeForwardLabel(long)
+	if !utf8.ValidString(got) {
+		t.Fatalf("sanitizeForwardLabel produced invalid UTF-8: %q", got)
+	}
+	wantRunes := maxForwardLabelLen + utf8.RuneCountInString("…")
+	if gotRunes := utf8.RuneCountInString(got); gotRunes != wantRunes {
+		t.Errorf("sanitizeForwardLabel(long multi-byte label) has %d runes, want %d", gotRunes, wantRunes)
+	}
+}
+
+// TestBuildEnvironmentContext_TruncatesLongLabel confirms the truncation
+// is actually wired into the message buildEnvironmentContext produces, not
+// just present as an unused helper.
+func TestBuildEnvironmentContext_TruncatesLongLabel(t *testing.T) {
+	long := strings.Repeat("x", maxForwardLabelLen*5)
+	forwards := []*postgres.PortForward{
+		{Label: long, ContainerPort: 3000, HostPort: hostPort(31007)},
+	}
+
+	got := buildEnvironmentContext(forwards, "example.com", false, false)
+
+	if strings.Contains(got, long) {
+		t.Errorf("expected the long label to be truncated before reaching the agent-facing message, got:\n%s", got)
+	}
+	if !strings.Contains(got, "…") {
+		t.Errorf("expected a truncation marker in the output, got:\n%s", got)
+	}
+}
 
 func TestBuildEnvironmentContext_AlwaysStatesPersistence(t *testing.T) {
 	got := buildEnvironmentContext(nil, "", false, false)

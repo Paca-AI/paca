@@ -61,6 +61,41 @@ import (
 // configured yet"), the former would be confidently telling the agent
 // (and, via it, the user) something false about a state we simply
 // couldn't observe this turn.
+// maxForwardLabelLen bounds how much of a port forward's user-supplied
+// Label this function will ever put in front of the agent. label is
+// free-text with no length limit enforced anywhere in services/api (it's
+// only required to be non-empty, then trimmed — see
+// EnvironmentService.AddPortForward), and — unlike most user input this
+// process handles — it lands directly in an LLM-facing context message
+// rather than staying inert data, on every turn of every conversation
+// attached to this environment, possibly from a different project member
+// than whoever set the label. %q's own escaping already keeps a label from
+// breaking out of its quoted position (embedded quotes/newlines/control
+// characters come out as visible escape sequences, not live markdown/
+// section breaks), but it does nothing about sheer length — this caps that
+// second, independent risk: a pathologically long label crowding out the
+// rest of this turn's context.
+const maxForwardLabelLen = 100
+
+// sanitizeForwardLabel truncates label to maxForwardLabelLen runes (not
+// bytes, so a truncation can't land inside a multi-byte UTF-8 sequence),
+// appending "…" when it does. Rune-counting label twice (once implicitly
+// via range, once via len([]rune(...))) would be wasteful for the common
+// short-label case, so the len(label) byte-length guard below short-
+// circuits before ever converting to a rune slice: a label whose byte
+// length is already under the limit can't possibly have more runes than
+// bytes.
+func sanitizeForwardLabel(label string) string {
+	if len(label) <= maxForwardLabelLen {
+		return label
+	}
+	runes := []rune(label)
+	if len(runes) <= maxForwardLabelLen {
+		return label
+	}
+	return string(runes[:maxForwardLabelLen]) + "…"
+}
+
 func buildEnvironmentContext(forwards []*postgres.PortForward, portForwardHost string, portsPendingRestart bool, forwardsUnknown bool) string {
 	var b strings.Builder
 	b.WriteString("## Static Environment\n")
@@ -95,11 +130,12 @@ func buildEnvironmentContext(forwards []*postgres.PortForward, portForwardHost s
 		"`http://` if what's listening there is a plain web server) — tell the user this address if they " +
 		"need to reach something you start on one of these ports:\n")
 	for _, pf := range reachable {
+		label := sanitizeForwardLabel(pf.Label)
 		if portForwardHost != "" {
-			fmt.Fprintf(&b, "- Port %d (%q) → %s:%d\n", pf.ContainerPort, pf.Label, portForwardHost, *pf.HostPort)
+			fmt.Fprintf(&b, "- Port %d (%q) → %s:%d\n", pf.ContainerPort, label, portForwardHost, *pf.HostPort)
 		} else {
 			fmt.Fprintf(&b, "- Port %d (%q) → forwarded, but this deployment hasn't configured an external "+
-				"hostname; ask the user how they reach it\n", pf.ContainerPort, pf.Label)
+				"hostname; ask the user how they reach it\n", pf.ContainerPort, label)
 		}
 	}
 	if portsPendingRestart {

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -258,6 +259,71 @@ func (r *EnvironmentRepository) ListRunningEnvironments(ctx context.Context) ([]
 		return nil, fmt.Errorf("postgres: list running environments: %w", err)
 	}
 	return envs, nil
+}
+
+// TryLockEnvironmentForReconcile attempts to acquire a non-blocking,
+// connection-scoped Postgres advisory lock scoped to id — cmd/agent-runner/
+// main.go's startup reconciliation calls this before ever touching the
+// backend, so two agent-runner replicas that both restart around the same
+// time (a rolling deploy, or any deployment running agentRunner.replicaCount
+// > 1) don't independently call SandboxMgr.StartEnvironment against the
+// same container/Pod concurrently — the same "multiple agent-runner
+// replicas can't double-act on the same environment" guarantee
+// ClaimEnvironmentStatus already gives the idle reaper (see
+// docs/ai-agent/environment-management.md's Idle-suspend section), applied
+// here before the side-effecting call instead of after it.
+//
+// Deliberately session-scoped (pg_try_advisory_lock on a connection
+// reserved via Connx) rather than this package's other advisory-lock idiom
+// — a transaction-scoped pg_advisory_xact_lock via WithTx, see
+// services/api's AutomationRepository.DeletePendingAgentWaitAndCountRemaining
+// — because the critical section this guards spans a real Docker/
+// Kubernetes API call that can legitimately run for sandbox's own
+// readyTimeout (120s), far longer than this codebase's other advisory-lock
+// use ever expects to hold a single pooled connection inside an open
+// transaction for.
+//
+// Never blocks: pg_try_advisory_lock returns immediately with acquired =
+// false when another connection (this same process's own concurrent
+// reconcile of a different environment can't collide — the key is
+// per-environment — but another replica's reconcile pass can) already
+// holds id's lock, so the caller can just skip that environment for this
+// pass rather than queue up behind it.
+//
+// The returned release func closes the dedicated connection this reserved
+// from the pool — safe to call even when acquired is false (release is
+// then just returning an untouched connection), and the caller must call
+// it exactly once, typically via defer, whether or not acquired is true.
+func (r *EnvironmentRepository) TryLockEnvironmentForReconcile(ctx context.Context, id uuid.UUID) (acquired bool, release func(), err error) {
+	conn, err := r.db.Connx(ctx)
+	if err != nil {
+		return false, func() {}, fmt.Errorf("postgres: reserve connection for environment reconcile lock %s: %w", id, err)
+	}
+
+	lockKey := "environment-reconcile:" + id.String()
+	if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1, 0))`, lockKey).Scan(&acquired); err != nil {
+		_ = conn.Close()
+		return false, func() {}, fmt.Errorf("postgres: try advisory lock for environment %s: %w", id, err)
+	}
+	if !acquired {
+		_ = conn.Close()
+		return false, func() {}, nil
+	}
+
+	return true, func() {
+		// Best-effort: an explicit unlock on a connection about to be
+		// closed is a courtesy, not a correctness requirement (Postgres
+		// releases every session-level advisory lock automatically when
+		// the backend's connection ends, which Close's eventual
+		// termination will do regardless) — so a failure here is logged
+		// nowhere and never propagated, same as this file's other
+		// best-effort cleanup (e.g. removeEnvironmentDindSidecar's
+		// counterpart in the docker backend).
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, lockKey)
+		_ = conn.Close()
+	}, nil
 }
 
 // AssignSSHPort picks the lowest currently-unused port in [rangeStart,
