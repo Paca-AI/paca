@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -105,6 +106,7 @@ func run(log *slog.Logger) error {
 		PacaAPIURL:      settings.PacaAPIURL,
 		PacaGatewayURL:  settings.PacaGatewayURL,
 		MCPDevSourceDir: settings.MCPDevSourceDir,
+		PortForwardHost: settings.PortForwardHost,
 	}, log)
 
 	chatSandboxes := chatsandbox.New()
@@ -169,6 +171,9 @@ func run(log *slog.Logger) error {
 		"http_addr", settings.HTTPAddr,
 		"mcp_dev_source_dir", settings.MCPDevSourceDir,
 	)
+	// Backgrounded, not awaited — see reconcileEnvironmentsOnStartup's own
+	// doc comment for why blocking here used to be a crash-loop risk.
+	go reconcileEnvironmentsOnStartup(ctx, envRepo, encryptor, acpServer, settings.MCPDevSourceDir, log)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
 	go runHTTPServer(ctx, httpServer, log)
@@ -391,5 +396,272 @@ func reapOneIdleEnvironment(
 	}
 	if err := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "stopped", nil, nil); err != nil {
 		log.Warn("agent-runner: failed to record stopped status for idle environment", "environment_id", env.ID, "error", err)
+	}
+}
+
+// reconcileConcurrency bounds how many environments
+// reconcileEnvironmentsOnStartup verifies at once — high enough that a
+// large fleet of running environments finishes in a handful of rounds
+// instead of one-at-a-time, low enough that a boot-time reconcile pass
+// doesn't itself hammer the Docker/Kubernetes API or the Postgres pool.
+const reconcileConcurrency = 5
+
+// reconcileItemTimeout bounds how long reconcileOneEnvironment is allowed
+// to spend on a single environment. Set comfortably above readyTimeout
+// (sandbox.go, 120s) — the longest a legitimate self-heal's own
+// WaitForReady poll can take — so a real recreate-and-wait is never cut
+// short, while still guaranteeing that one hung Docker/Kubernetes API call
+// can only ever stall its own reconcileConcurrency slot, never the whole
+// startup reconciliation pass or (since this now runs in the background —
+// see this file's own call site) the rest of the process.
+const reconcileItemTimeout = 150 * time.Second
+
+// reconcileEnvironmentsOnStartup verifies every environment the database
+// believes is "running" still actually has a live backing container/Pod —
+// the fix for a gap only agent-runner's own downtime can create. While
+// it's up, Start/Stop/Delete are the only ways an environment's
+// container/Pod goes away, and each already keeps status in sync (see
+// docker.Manager.StopEnvironment/DeleteEnvironment's own not-found
+// tolerance). But a user running `docker rm`/`kubectl delete` directly, a
+// host reboot that clears containers, or `docker system prune` while
+// agent-runner itself was stopped, leaves a "running" row with no way to
+// notice until this runs — and until it does, the row's lie means
+// services/api's own StartEnvironment short-circuits on "already running"
+// without ever asking agent-runner, so the self-heal below never gets a
+// chance to fire on its own.
+//
+// Launched via `go` from run(), deliberately NOT awaited before the HTTP
+// server/consumer start accepting traffic: an earlier version of this ran
+// synchronously and serially here, which meant the readinessProbe/
+// livenessProbe endpoint (both hit /llm/models, served by the same HTTP
+// server) and the Redis conversation-trigger consumer stayed down for the
+// entire pass — a single slow or hung environment (a real possibility;
+// see reconcileItemTimeout above) could run past the Helm chart's
+// livenessProbe failure threshold and get this process killed and
+// restarted mid-reconcile, indefinitely. Running it in the background
+// instead means a slow reconcile only delays that one environment's own
+// self-heal, never the rest of the fleet's conversation traffic — an
+// acceptable trade because coldStartEnvironment's own attach path already
+// calls StartEnvironment unconditionally on every turn regardless of
+// whether this startup pass ever got to that environment; this function is
+// a proactive optimization on top of that existing guarantee, not the only
+// thing standing between a stale row and a working attach.
+//
+// Reuses acpbridge.Server.StartEnvironmentByID (the same method
+// handleStartEnvironment's HTTP path calls), so a self-heal here gets the
+// exact same port-mapping/SSH-key re-bootstrap treatment a normal
+// user-triggered Start does, and it's safe to call unconditionally for the
+// same reason a plain StartEnvironment call always is (see that method's
+// own doc comment on both backends): an environment that's still
+// genuinely fine comes back with no meaningful change, just a slightly
+// slower boot.
+func reconcileEnvironmentsOnStartup(
+	ctx context.Context,
+	envRepo *postgres.EnvironmentRepository,
+	encryptor *secret.Encryptor,
+	acpServer *acpbridge.Server,
+	mcpDevSourceDir string,
+	log *slog.Logger,
+) {
+	envs, err := envRepo.ListRunningEnvironments(ctx)
+	if err != nil {
+		log.Warn("agent-runner: failed to list running environments for startup reconciliation", "error", err)
+		return
+	}
+	if len(envs) == 0 {
+		return
+	}
+	log.Info("agent-runner: reconciling running environments against their backing containers/Pods",
+		"count", len(envs), "concurrency", reconcileConcurrency)
+
+	sem := make(chan struct{}, reconcileConcurrency)
+	var wg sync.WaitGroup
+	// Labeled so the <-ctx.Done() case below can actually stop the
+	// dispatch loop: a bare `break` inside a select only exits that
+	// select, falling straight through to launching the goroutine anyway
+	// — this label is what makes shutdown during dispatch actually skip
+	// every environment that hadn't started reconciling yet, rather than
+	// racing to hand all of them a semaphore slot first.
+dispatch:
+	for _, env := range envs {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break dispatch
+		}
+		wg.Add(1)
+		go func(env *postgres.Environment) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			itemCtx, cancel := context.WithTimeout(ctx, reconcileItemTimeout)
+			defer cancel()
+			reconcileOneEnvironment(itemCtx, envRepo, encryptor, acpServer, mcpDevSourceDir, env, log)
+		}(env)
+	}
+	wg.Wait()
+	log.Info("agent-runner: finished startup reconciliation of running environments")
+}
+
+// reconcileOutcome is reconcileOneEnvironment's decision, as a pure
+// function of the error StartEnvironmentByID returned — split out from
+// reconcileOneEnvironment itself purely so that decision has direct unit
+// test coverage (main_test.go) without needing a real database or a fake
+// sandbox backend to exercise the surrounding DB/HTTP plumbing.
+type reconcileOutcome int
+
+const (
+	// reconcileOutcomeClaimRunning: StartEnvironmentByID succeeded — the
+	// environment is confirmed live (or was just self-healed); persist
+	// that via ClaimEnvironmentRunning.
+	reconcileOutcomeClaimRunning reconcileOutcome = iota
+	// reconcileOutcomeMarkError: genuinely unrecoverable (container/Pod
+	// AND its volume/PVC are both gone) — nothing left for a future
+	// reconcile pass or conversation attach to self-heal from, so surface
+	// it as an actionable "error" status.
+	reconcileOutcomeMarkError
+	// reconcileOutcomeLeaveUnchanged: some other failure (a transient
+	// Docker/Kubernetes API hiccup, a slow image pull, a timeout) —
+	// leave the row's status untouched for a future retry rather than
+	// force it to a stuck "error" a human would have to manually clear.
+	reconcileOutcomeLeaveUnchanged
+)
+
+// classifyReconcileResult decides reconcileOneEnvironment's outcome from
+// err (nil on success) — see reconcileOutcome's own doc comments for what
+// each case means and why they're treated differently. Kept to exactly
+// this one decision (not, e.g., also deciding what to log or write) so it
+// stays trivially testable with table-driven cases across a bare
+// sandbox.ErrEnvironmentGone, a %w-wrapped one (every real call site wraps
+// it — see e.g. k8s.Manager.recreateGoneEnvironmentDeployment), and an
+// unrelated error.
+func classifyReconcileResult(err error) reconcileOutcome {
+	if err == nil {
+		return reconcileOutcomeClaimRunning
+	}
+	if errors.Is(err, sandbox.ErrEnvironmentGone) {
+		return reconcileOutcomeMarkError
+	}
+	return reconcileOutcomeLeaveUnchanged
+}
+
+// reconcileOneEnvironment is reconcileEnvironmentsOnStartup's per-row
+// worker — see that function's own doc comment for why this runs at all.
+// Builds the same "context-free caller" EnvironmentConfig
+// handleStartEnvironment's plain restart already uses (no cfg.Env): this
+// reconciler has no attaching conversation/agent to source one from, and
+// both backends' ensureEnvironmentInfraEnv already no-op on an empty
+// cfg.Env rather than treat it as "clear every key" (see that method's own
+// doc comment on each backend) — exactly the behavior wanted here.
+//
+// Acquires envRepo.TryLockEnvironmentForStart before calling
+// StartEnvironmentByID (not after) — see that method's own doc comment:
+// this is what actually prevents two concurrently-restarting agent-runner
+// replicas from both calling SandboxMgr.StartEnvironment against the same
+// container/Pod at once, AND (since coldStartEnvironment and
+// handleStartEnvironment now contend for this exact same lock via
+// LockEnvironmentForStart — see each of their own doc comments) what
+// prevents this boot-time pass from racing a live conversation attach or
+// an HTTP-triggered Start for the same environment. Skips outright, doing
+// nothing at all, when the lock is already held elsewhere: something else
+// reconciling, attaching to, or starting the same environment right now
+// means there is nothing for this pass to do — a skip here just leaves the
+// row for the next boot's pass, or lets whichever live path already holds
+// the lock finish on its own.
+func reconcileOneEnvironment(
+	ctx context.Context,
+	envRepo *postgres.EnvironmentRepository,
+	encryptor *secret.Encryptor,
+	acpServer *acpbridge.Server,
+	mcpDevSourceDir string,
+	env *postgres.Environment,
+	log *slog.Logger,
+) {
+	if env.BackendRef == nil || *env.BackendRef == "" {
+		log.Warn("agent-runner: running environment has no backend_ref, skipping startup reconciliation", "environment_id", env.ID)
+		return
+	}
+
+	acquired, release, err := envRepo.TryLockEnvironmentForStart(ctx, env.ID)
+	if err != nil {
+		log.Warn("agent-runner: failed to acquire start lock, skipping this environment for this pass", "environment_id", env.ID, "error", err)
+		return
+	}
+	if !acquired {
+		log.Info("agent-runner: environment is already being started, attached to, or reconciled elsewhere, skipping", "environment_id", env.ID)
+		return
+	}
+	defer release()
+
+	secretKey, err := encryptor.Decrypt(env.SecretKeyEncrypted)
+	if err != nil {
+		log.Warn("agent-runner: failed to decrypt secret key during startup reconciliation", "environment_id", env.ID, "error", err)
+		return
+	}
+
+	var image string
+	if env.Image != nil {
+		image = *env.Image
+	}
+
+	// self-heals via StartEnvironmentByID -> SandboxMgr.StartEnvironment on
+	// both backends when the container/Pod is gone but its volume/PVC
+	// survives (docker.Manager.recreateGoneEnvironmentContainer,
+	// k8s.Manager.recreateGoneEnvironmentDeployment) — only a genuinely
+	// unrecoverable environment (volume/PVC gone too) or an unrelated
+	// backend failure reaches the error branch below.
+	_, _, recreatedBackendRef, err := acpServer.StartEnvironmentByID(ctx, env.ID, *env.BackendRef, sandbox.EnvironmentConfig{
+		EnvironmentID:   env.ID.String(),
+		Image:           image,
+		CPULimit:        env.CPULimit,
+		MemoryLimit:     env.MemoryLimit,
+		DiskLimitGB:     env.DiskLimitGB,
+		DockerEnabled:   env.DockerEnabled,
+		SecretKey:       secretKey,
+		MCPDevSourceDir: mcpDevSourceDir,
+	})
+	switch classifyReconcileResult(err) {
+	case reconcileOutcomeClaimRunning:
+		// Handled below, after the switch — kept out of this case body so
+		// the success path (which needs recreatedBackendRef, only in
+		// scope out here) doesn't have to live nested inside a case.
+	case reconcileOutcomeMarkError:
+		// Unlike the case below, surfacing this as an actionable "error"
+		// (delete and recreate this environment) is the correct outcome
+		// here, not an overreaction — see reconcileOutcomeMarkError's own
+		// doc comment.
+		log.Warn("agent-runner: environment is unrecoverable, marking it as errored", "environment_id", env.ID, "error", err)
+		errMsg := err.Error()
+		if updErr := envRepo.UpdateEnvironmentStatus(ctx, env.ID, "error", nil, &errMsg); updErr != nil {
+			log.Warn("agent-runner: failed to record environment error status", "environment_id", env.ID, "error", updErr)
+		}
+		return
+	case reconcileOutcomeLeaveUnchanged:
+		// Deliberately leaves the row's status untouched — still
+		// "running", not force-flipped to a stuck "error" a human would
+		// have to manually clear. This diverges from
+		// reapOneIdleEnvironment's own "any failure -> error status"
+		// convention above on purpose: that write only ever follows a
+		// stop the reaper itself already decided to make, while this one
+		// can fire against an environment that was perfectly healthy
+		// moments before agent-runner happened to restart. Leaving it
+		// "running" keeps it inside ListRunningEnvironments' scope for
+		// the very next boot's reconcile pass, and coldStartEnvironment's
+		// own unconditional StartEnvironment call on the next real
+		// conversation attach gets a chance to self-heal it long before a
+		// human would ever notice.
+		log.Warn("agent-runner: environment failed startup reconciliation, leaving its status unchanged for a future retry", "environment_id", env.ID, "error", err)
+		return
+	}
+
+	var backendRefPtr *string
+	if recreatedBackendRef != "" {
+		backendRefPtr = &recreatedBackendRef
+		log.Info("agent-runner: environment container/Pod was recreated from its existing volume during startup reconciliation",
+			"environment_id", env.ID, "backend_ref", recreatedBackendRef)
+	}
+	if won, err := envRepo.ClaimEnvironmentRunning(ctx, env.ID, backendRefPtr); err != nil {
+		log.Warn("agent-runner: failed to persist environment status after startup reconciliation", "environment_id", env.ID, "error", err)
+	} else if !won {
+		log.Info("agent-runner: environment status changed concurrently during startup reconciliation, leaving it as-is", "environment_id", env.ID)
 	}
 }

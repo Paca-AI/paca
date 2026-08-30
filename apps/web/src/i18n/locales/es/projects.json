@@ -280,6 +280,7 @@
 			"chatSession": "Sesión de chat",
 			"taskSession": "Sesión de tarea",
 			"pr": "PR",
+			"connect": "Conectar",
 			"conversationEnded": "Esta conversación ha finalizado.",
 			"textOnlyMessage": "Solo se admiten mensajes de texto.",
 			"failed": "La conversación falló",
@@ -449,10 +450,8 @@
 					"pathHint": "Debe ser una ruta absoluta.",
 					"browse": "Explorar…",
 					"browsing": {
-						"root": "raíz del espacio de trabajo",
 						"empty": "Esta carpeta está vacía",
-						"notRunning": "Inicia el entorno para explorar sus archivos.",
-						"useThisFolder": "Usar esta carpeta"
+						"notRunning": "Inicia el entorno para explorar sus archivos."
 					},
 					"addFailed": "No se pudo añadir la carpeta. Inténtalo de nuevo.",
 					"cancel": "Cancelar",

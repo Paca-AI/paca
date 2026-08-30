@@ -280,6 +280,7 @@
 			"chatSession": "Session de discussion",
 			"taskSession": "Session de tâche",
 			"pr": "PR",
+			"connect": "Se connecter",
 			"conversationEnded": "Cette conversation est terminée.",
 			"textOnlyMessage": "Seuls les messages texte sont pris en charge.",
 			"failed": "La conversation a échoué",
@@ -449,10 +450,8 @@
 					"pathHint": "Doit être un chemin absolu.",
 					"browse": "Parcourir…",
 					"browsing": {
-						"root": "racine de l'espace de travail",
 						"empty": "Ce dossier est vide",
-						"notRunning": "Démarrez l'environnement pour parcourir ses fichiers.",
-						"useThisFolder": "Utiliser ce dossier"
+						"notRunning": "Démarrez l'environnement pour parcourir ses fichiers."
 					},
 					"addFailed": "Échec de l'ajout du dossier. Veuillez réessayer.",
 					"cancel": "Annuler",

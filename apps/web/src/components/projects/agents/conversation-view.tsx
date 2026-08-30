@@ -4,9 +4,11 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	Bot,
+	ExternalLink,
 	GitBranch,
 	GitPullRequest,
 	Loader2,
@@ -16,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	type AgentConversation,
@@ -462,6 +464,19 @@ export function ConversationView({
 							<GitPullRequest className="size-3" />
 							{t("agents.conversationView.pr")}
 						</a>
+					)}
+					{projectId && conversation.environment_id && (
+						<Link
+							to="/projects/$projectId/environments/$environmentId/connect"
+							params={{
+								projectId,
+								environmentId: conversation.environment_id,
+							}}
+							className={buttonVariants({ variant: "outline", size: "sm" })}
+						>
+							<ExternalLink className="size-3" />
+							{t("agents.conversationView.connect")}
+						</Link>
 					)}
 					<ConversationControls
 						projectId={projectId}

@@ -280,6 +280,7 @@
 			"chatSession": "聊天会话",
 			"taskSession": "任务会话",
 			"pr": "PR",
+			"connect": "连接",
 			"conversationEnded": "此对话已结束。",
 			"textOnlyMessage": "仅支持文本消息。",
 			"failed": "对话失败",
@@ -449,10 +450,8 @@
 					"pathHint": "必须是绝对路径。",
 					"browse": "浏览…",
 					"browsing": {
-						"root": "工作区根目录",
 						"empty": "此文件夹为空",
-						"notRunning": "启动环境后即可浏览其文件。",
-						"useThisFolder": "使用此文件夹"
+						"notRunning": "启动环境后即可浏览其文件。"
 					},
 					"addFailed": "添加文件夹失败,请重试。",
 					"cancel": "取消",

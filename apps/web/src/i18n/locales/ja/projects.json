@@ -280,6 +280,7 @@
 			"chatSession": "チャットセッション",
 			"taskSession": "タスクセッション",
 			"pr": "PR",
+			"connect": "接続",
 			"conversationEnded": "この会話は終了しました。",
 			"textOnlyMessage": "テキストメッセージのみサポートされています。",
 			"failed": "会話が失敗しました",
@@ -449,10 +450,8 @@
 					"pathHint": "絶対パスを指定してください。",
 					"browse": "参照…",
 					"browsing": {
-						"root": "ワークスペースのルート",
 						"empty": "このフォルダーは空です",
-						"notRunning": "ファイルを参照するには環境を起動してください。",
-						"useThisFolder": "このフォルダーを使用"
+						"notRunning": "ファイルを参照するには環境を起動してください。"
 					},
 					"addFailed": "フォルダーの追加に失敗しました。もう一度お試しください。",
 					"cancel": "キャンセル",

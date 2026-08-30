@@ -280,6 +280,7 @@
 			"chatSession": "Phiên trò chuyện",
 			"taskSession": "Phiên nhiệm vụ",
 			"pr": "PR",
+			"connect": "Kết nối",
 			"conversationEnded": "Cuộc trò chuyện này đã kết thúc.",
 			"textOnlyMessage": "Chỉ hỗ trợ tin nhắn văn bản.",
 			"failed": "Cuộc trò chuyện thất bại",
@@ -449,10 +450,8 @@
 					"pathHint": "Phải là đường dẫn tuyệt đối.",
 					"browse": "Duyệt…",
 					"browsing": {
-						"root": "gốc không gian làm việc",
 						"empty": "Thư mục này trống",
-						"notRunning": "Khởi động môi trường để duyệt các tệp của nó.",
-						"useThisFolder": "Dùng thư mục này"
+						"notRunning": "Khởi động môi trường để duyệt các tệp của nó."
 					},
 					"addFailed": "Không thể thêm thư mục. Vui lòng thử lại.",
 					"cancel": "Hủy",

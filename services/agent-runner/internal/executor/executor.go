@@ -94,6 +94,14 @@ type Options struct {
 	// image's globally npm-installed @paca-ai/paca-mcp — see
 	// config.Settings.MCPDevSourceDir and buildMCPServers.
 	MCPDevSourceDir string
+	// PortForwardHost is config.Settings.PortForwardHost (PORT_FORWARD_HOST)
+	// — the descriptive external hostname a static environment's port
+	// forwards are reachable at. Used by coldStartEnvironment to build the
+	// agent-facing address list buildEnvironmentContext returns; empty on a
+	// deployment that hasn't configured one, in which case a forward is
+	// still described, just without an address (see that function's own
+	// doc comment).
+	PortForwardHost string
 }
 
 // Executor runs conversations for one process — holds the shared sandbox
@@ -123,11 +131,13 @@ type Executor struct {
 	// falls back to a fresh session/new every turn when nil, exactly the
 	// old (pre-LoadSession) behavior, rather than panicking on a nil repo.
 	convRepo *postgres.ConversationRepository
-	// portForwardRepo lets environmentPortMappings read an environment's
-	// already-assigned port forwards, alongside its own SSHPort field, so a
-	// mid-attach container recreate (recreateEnvironmentIfMissingEnv) never
-	// silently drops them — see that method's own doc comment. Same
-	// nil-safety convention as envRepo/convRepo.
+	// portForwardRepo lets coldStartEnvironment read an environment's
+	// already-assigned port forwards, fed into environmentPortMappings
+	// (alongside env's own SSHPort field, so a mid-attach container
+	// recreate — recreateEnvironmentIfMissingEnv — never silently drops
+	// them, see that method's own doc comment) and into
+	// buildEnvironmentContext (the agent-facing "## Static Environment"
+	// note). Same nil-safety convention as envRepo/convRepo.
 	portForwardRepo *postgres.PortForwardRepository
 	encryptor       *secret.Encryptor
 	opts            Options
@@ -246,14 +256,22 @@ func (e *Executor) Run(ctx context.Context, cfg agent.Config, trigger agent.Trig
 		attachCtx, cancelAttach := timeoutFor()
 		defer cancelAttach()
 		var err error
-		client, sessionID, err = e.coldStartEnvironment(ctx, attachCtx, cfg, trigger)
+		var envNote string
+		client, sessionID, envNote, err = e.coldStartEnvironment(ctx, attachCtx, cfg, trigger)
 		if err != nil {
 			return Result{}, err
 		}
 		var cancelPrompt context.CancelFunc
 		turnCtx, cancelPrompt = timeoutFor()
 		defer cancelPrompt()
-		message = buildInitialMessage(trigger)
+		// envNote (buildEnvironmentContext's output — see
+		// coldStartEnvironment) comes first: it's environment/infra state
+		// from outside trigger, not something buildInitialMessage's own
+		// plain agent.Trigger input can build on its own, and it already
+		// ends with its own "\n\n" separator (see that function's doc
+		// comment) so it flows straight into buildInitialMessage's own
+		// leading "## ..." section.
+		message = envNote + buildInitialMessage(trigger)
 	default:
 		fileSkills := prepareFileSkills(cfg.Skills)
 
@@ -466,19 +484,19 @@ func (e *Executor) buildAgentContainerEnv(cfg agent.Config) (map[string]string, 
 // rather than assigned one — auto-assigning a new port is an explicit
 // user-facing action (adding a port forward), not something a routine
 // conversation-attach turn should ever decide on its own.
-func (e *Executor) environmentPortMappings(ctx context.Context, env *postgres.Environment) []sandbox.PortMapping {
+//
+// Takes forwards pre-fetched by the caller (coldStartEnvironment), rather
+// than querying portForwardRepo itself as an earlier version of this
+// function did: coldStartEnvironment needs that same forward list a second
+// time, to build the agent-facing note buildEnvironmentContext returns, so
+// fetching it once and passing it to both avoids a redundant query every
+// turn. Pure and receiver-free as a result — confirmed via a repo-wide
+// grep that coldStartEnvironment's own StartEnvironment call is this
+// function's only caller.
+func environmentPortMappings(env *postgres.Environment, forwards []*postgres.PortForward) []sandbox.PortMapping {
 	var mappings []sandbox.PortMapping
 	if env.SSHPort != nil {
 		mappings = append(mappings, sandbox.PortMapping{ContainerPort: sandbox.EnvironmentSSHPort, HostPort: *env.SSHPort})
-	}
-	if e.portForwardRepo == nil {
-		return mappings
-	}
-	forwards, err := e.portForwardRepo.ListForEnvironment(ctx, env.ID)
-	if err != nil {
-		e.log.Warn("executor: failed to list port forwards while reapplying environment port bindings",
-			"environment_id", env.ID, "error", err)
-		return mappings
 	}
 	for _, pf := range forwards {
 		if pf.HostPort == nil {
@@ -487,6 +505,20 @@ func (e *Executor) environmentPortMappings(ctx context.Context, env *postgres.En
 		mappings = append(mappings, sandbox.PortMapping{ContainerPort: pf.ContainerPort, HostPort: *pf.HostPort})
 	}
 	return mappings
+}
+
+// environmentReadyToStart reports whether env's current row state allows
+// starting/attaching to it — see coldStartEnvironment's own comment below
+// (its first check of this) for why each excluded status is excluded.
+// Factored out so coldStartEnvironment can run the exact same check twice
+// without the two copies drifting apart: once immediately (a clearly-
+// broken environment fails fast, before decrypting secrets or listing port
+// forwards for nothing), and again right after LockEnvironmentForStart is
+// acquired, against a freshly-re-read env — see that second call site's
+// own comment for why the first check alone isn't enough.
+func environmentReadyToStart(env *postgres.Environment) bool {
+	return env.BackendRef != nil && *env.BackendRef != "" &&
+		env.Status != "error" && env.Status != "deleting" && env.Status != "stopping"
 }
 
 // coldStartEnvironment attaches trigger to trigger.EnvironmentID's already-
@@ -517,25 +549,32 @@ func (e *Executor) environmentPortMappings(ctx context.Context, env *postgres.En
 // unlike skills, Goose reads .goosehints from cwd only, with no home-rooted
 // fallback (see hints.go's own doc comment) — so writing it would mean
 // writing into trigger.Workdir, the exact git-checkout collision problem
-// above. Still an open follow-up (loses the agent's system prompt and the
-// bootstrapInstruction nudge to call load_skill(paca) first for an
-// environment-backed conversation), not an oversight — see
-// docs/ai-agent/environment-management.md's Phase 1 scope.
-func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger) (*acp.Client, string, error) {
+// above. That still means an environment-backed conversation's agent never
+// gets its own system prompt or the bootstrapInstruction nudge to call
+// load_skill(paca) first — a real, still-open gap, not an oversight (see
+// docs/ai-agent/environment-management.md's Phase 1 scope). What it DOES
+// get now, via a completely different channel: buildEnvironmentContext's
+// "## Static Environment" note (persistent-environment framing plus the
+// current port-forward list), prepended onto buildInitialMessage's own
+// per-turn message in Run (see that function's trigger.EnvironmentID != nil
+// case) rather than written to any file — that content is never part of
+// the sandbox's filesystem at all, so it never runs into the
+// cwd/git-checkout problem above.
+func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.Config, trigger agent.Trigger) (*acp.Client, string, string, error) {
 	if e.envRepo == nil {
-		return nil, "", fmt.Errorf("executor: no environment repository configured")
+		return nil, "", "", fmt.Errorf("executor: no environment repository configured")
 	}
 	if trigger.EnvironmentID == nil {
-		return nil, "", fmt.Errorf("executor: coldStartEnvironment called without an environment_id")
+		return nil, "", "", fmt.Errorf("executor: coldStartEnvironment called without an environment_id")
 	}
 	if trigger.Workdir == nil || *trigger.Workdir == "" {
-		return nil, "", fmt.Errorf("executor: environment %s attach requires a workdir", *trigger.EnvironmentID)
+		return nil, "", "", fmt.Errorf("executor: environment %s attach requires a workdir", *trigger.EnvironmentID)
 	}
 	environmentID := *trigger.EnvironmentID
 
 	env, err := e.envRepo.FindEnvironmentByID(ctx, environmentID)
 	if err != nil {
-		return nil, "", fmt.Errorf("executor: find environment %s: %w", environmentID, err)
+		return nil, "", "", fmt.Errorf("executor: find environment %s: %w", environmentID, err)
 	}
 	// No lazy creation here — see the doc comment above. A never-created
 	// (BackendRef nil) or explicitly broken (error/deleting) environment
@@ -549,18 +588,44 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	// a turn's timeout, and the next attach attempt (this turn's own retry,
 	// or simply the user's next message) finds status "stopped" instead
 	// and proceeds normally.
-	if env.BackendRef == nil || *env.BackendRef == "" || env.Status == "error" || env.Status == "deleting" || env.Status == "stopping" {
-		return nil, "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
+	if !environmentReadyToStart(env) {
+		return nil, "", "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
 	}
+
+	// Fetched once, here, and reused below for both StartEnvironment's own
+	// PortMappings and the agent-facing "## Static Environment" note
+	// buildEnvironmentContext builds from this same snapshot — nothing
+	// between here and this turn's Prompt call mutates port forward rows
+	// or ports_pending_restart (only an explicit user action via
+	// services/api does), so one fetch safely serves both instead of the
+	// two separate queries an earlier version of this code ran. Nil-safe
+	// and logged-not-fatal on error, same as environmentPortMappings
+	// handled this same query itself before this existed: a port-forward
+	// listing failure shouldn't fail the whole turn, only degrade
+	// PortMappings to SSH-only and the note to its own honest
+	// forwardsUnknown case rather than the "no forwards configured" one
+	// (see buildEnvironmentContext's own doc comment for why those two
+	// must stay distinguishable).
+	var forwards []*postgres.PortForward
+	forwardsUnknown := false
+	if e.portForwardRepo != nil {
+		forwards, err = e.portForwardRepo.ListForEnvironment(ctx, environmentID)
+		if err != nil {
+			e.log.Warn("executor: failed to list port forwards for environment attach",
+				"environment_id", environmentID, "error", err)
+			forwardsUnknown = true
+		}
+	}
+	envNote := buildEnvironmentContext(forwards, e.opts.PortForwardHost, env.PortsPendingRestart, forwardsUnknown)
 
 	secretKey, err := e.encryptor.Decrypt(env.SecretKeyEncrypted)
 	if err != nil {
-		return nil, "", fmt.Errorf("executor: decrypt environment %s secret key: %w", environmentID, err)
+		return nil, "", "", fmt.Errorf("executor: decrypt environment %s secret key: %w", environmentID, err)
 	}
 
 	containerEnv, err := e.buildAgentContainerEnv(cfg)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// See environmentGooseDataDir's own doc comment. Set unconditionally
@@ -606,6 +671,54 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 		image = *env.Image
 	}
 
+	// Held across the StartEnvironment call below — blocking, not
+	// TryLockEnvironmentForStart's non-blocking sibling, since a
+	// conversation attach has no "skip it, a later pass will retry" option
+	// the way cmd/agent-runner/main.go's boot reconciler does: this turn
+	// needs an actual client/session back. This is what keeps a concurrent
+	// boot-time reconcile pass (or a concurrent HTTP-triggered Start, which
+	// acquires this exact same lock — see handleStartEnvironment's own doc
+	// comment) from racing this attach's own self-heal attempt: both
+	// backends give a self-heal's ContainerCreate/Deployment-Create a
+	// deterministic, environment-derived name, so two callers racing to
+	// recreate the same gone container/Deployment would otherwise have the
+	// loser fail on a name conflict — which, unhandled below, would
+	// needlessly fail this turn and flip an environment the winner was
+	// simultaneously fixing to a stuck "error" status.
+	release, err := e.envRepo.LockEnvironmentForStart(ctx, environmentID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("executor: acquire start lock for environment %s: %w", environmentID, err)
+	}
+	defer release()
+
+	// Re-read env now that the lock is actually held: the snapshot taken
+	// above, before the lock, can be stale by the time we get here — a
+	// concurrent self-heal (the boot reconciler, or a sibling attach/
+	// HTTP-start that won this same lock first) can have already persisted
+	// a new BackendRef via ClaimEnvironmentRunning while this call was
+	// waiting to acquire it. On docker specifically, BackendRef is a
+	// container ID that changes on every self-heal recreate (unlike k8s,
+	// where it's the deterministic Deployment name and so never goes
+	// stale this way) — using the stale ID below would make
+	// StartEnvironment's own ContainerStart fail not-found, walk into the
+	// gone-container self-heal branch a second time, and collide on the
+	// exact deterministic container name the winner already claimed (see
+	// docker.Manager.recreateGoneEnvironmentContainer's own doc comment),
+	// failing this turn and writing the environment to a stuck "error"
+	// status — precisely the outcome this lock exists to prevent. Also
+	// re-runs the not-ready gate: env.Status can equally have moved to
+	// "error"/"deleting"/"stopping" in that same window (an idle-reaper
+	// stop racing this attach, say), and proceeding on a stale "it looked
+	// fine a moment ago" would be just as wrong for status as for
+	// BackendRef.
+	env, err = e.envRepo.FindEnvironmentByID(ctx, environmentID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("executor: re-check environment %s after acquiring start lock: %w", environmentID, err)
+	}
+	if !environmentReadyToStart(env) {
+		return nil, "", "", fmt.Errorf("executor: environment is not ready (environment_id=%s, status=%s)", environmentID, env.Status)
+	}
+
 	// Always calls StartEnvironment, even if env.Status already says
 	// "running" — deliberate, not a bug: it's the only way to get a
 	// guaranteed-fresh, reachable BaseURL back (never persisted — see
@@ -622,7 +735,7 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 		DiskLimitGB:     env.DiskLimitGB,
 		DockerEnabled:   env.DockerEnabled,
 		SecretKey:       secretKey,
-		PortMappings:    e.environmentPortMappings(ctx, env),
+		PortMappings:    environmentPortMappings(env, forwards),
 		MCPDevSourceDir: e.opts.MCPDevSourceDir,
 	})
 	if err != nil {
@@ -631,7 +744,7 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 			e.log.Warn("executor: failed to record environment error status",
 				"environment_id", environmentID, "error", updErr)
 		}
-		return nil, "", fmt.Errorf("executor: start environment %s: %w", environmentID, err)
+		return nil, "", "", fmt.Errorf("executor: start environment %s: %w", environmentID, err)
 	}
 
 	// handle.BackendRef only differs from *env.BackendRef when the docker
@@ -672,17 +785,17 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 	fileSkills := prepareFileSkills(cfg.Skills)
 	skillsTar, err := buildSkillsTar(fileSkills)
 	if err != nil {
-		return nil, "", fmt.Errorf("executor: build skills tar: %w", err)
+		return nil, "", "", fmt.Errorf("executor: build skills tar: %w", err)
 	}
 	if skillsTar != nil {
 		if err := e.sandboxMgr.CopyToEnvironment(ctx, handle.BackendRef, sandboxWorkdir, skillsTar); err != nil {
-			return nil, "", fmt.Errorf("executor: write skills to environment %s: %w", environmentID, err)
+			return nil, "", "", fmt.Errorf("executor: write skills to environment %s: %w", environmentID, err)
 		}
 	}
 
 	client := acp.NewClient(handle.BaseURL, secretKey, nil)
 	if err := client.Initialize(turnCtx); err != nil {
-		return nil, "", fmt.Errorf("executor: acp initialize (environment %s): %w", environmentID, err)
+		return nil, "", "", fmt.Errorf("executor: acp initialize (environment %s): %w", environmentID, err)
 	}
 
 	sessionID, err := e.attachEnvironmentSession(turnCtx, client, trigger.ConversationID, *trigger.Workdir, mcpServers)
@@ -691,10 +804,10 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 		// already started client's connection-scoped SSE reader goroutine,
 		// so it must be closed here rather than dropped.
 		client.Close()
-		return nil, "", fmt.Errorf("executor: acp session attach (environment %s): %w", environmentID, err)
+		return nil, "", "", fmt.Errorf("executor: acp session attach (environment %s): %w", environmentID, err)
 	}
 
-	return client, sessionID, nil
+	return client, sessionID, envNote, nil
 }
 
 // attachEnvironmentSession gives an environment-backed conversation goose's

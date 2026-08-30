@@ -127,6 +127,14 @@ spec:
               value: {{ .Values.agentRunner.portForward.portRangeStart | quote }}
             - name: PORT_FORWARD_RANGE_END
               value: {{ .Values.agentRunner.portForward.portRangeEnd | quote }}
+            # Same environments.portForwardHost the api Deployment already
+            # gets (see templates/api/deployment.yaml), for a different
+            # consumer: this service uses it to tell an environment-attached
+            # conversation's agent the real `host:port` address each of its
+            # port forwards is reachable at, not just to echo it back to the
+            # web app's Connect page.
+            - name: PORT_FORWARD_HOST
+              value: {{ .Values.environments.portForwardHost | quote }}
             {{- end }}
           {{- if ne .Values.agentRunner.sandbox.backend "kubernetes" }}
           volumeMounts:

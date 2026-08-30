@@ -280,6 +280,7 @@
 			"chatSession": "Chat session",
 			"taskSession": "Task session",
 			"pr": "PR",
+			"connect": "Connect",
 			"conversationEnded": "This conversation has ended.",
 			"textOnlyMessage": "Only text messages are supported.",
 			"failed": "Conversation failed",
@@ -449,10 +450,8 @@
 					"pathHint": "Must be an absolute path.",
 					"browse": "Browse…",
 					"browsing": {
-						"root": "workspace root",
 						"empty": "This folder is empty",
-						"notRunning": "Start the environment to browse its files.",
-						"useThisFolder": "Use this folder"
+						"notRunning": "Start the environment to browse its files."
 					},
 					"addFailed": "Failed to add folder. Please try again.",
 					"cancel": "Cancel",

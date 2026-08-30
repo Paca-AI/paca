@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -652,5 +653,120 @@ func TestEnsureEnvironmentInfraEnv_NoopWhenCfgHasNoEnv(t *testing.T) {
 		if gotEnv[i] != ev {
 			t.Errorf("deployment env[%d] after ensureEnvironmentInfraEnv with no cfg.Env = %+v, want unchanged %+v", i, gotEnv[i], ev)
 		}
+	}
+}
+
+// TestBuildEnvironmentDeployment_CarriesCoreFieldsForwardFromCfg confirms
+// the CreateEnvironment/recreateGoneEnvironmentDeployment extraction
+// (buildEnvironmentDeployment) preserves the object shape CreateEnvironment
+// built inline before that extraction: the resolved image, cfg.Env plus
+// the injected secret-key env var, and the workspace volume mount pointing
+// at name's own PVC. Calls buildEnvironmentDeployment directly — it never
+// touches m.clientset, so no fake clientset is needed at all.
+func TestBuildEnvironmentDeployment_CarriesCoreFieldsForwardFromCfg(t *testing.T) {
+	const name = "paca-env-build1"
+	m := &Manager{namespace: "paca", agentServerImage: "paca/agent-server:pinned"}
+	cfg := sandbox.EnvironmentConfig{SecretKey: "sk-test", Env: map[string]string{"FOO": "bar"}}
+
+	dep := m.buildEnvironmentDeployment(name, cfg, corev1.ResourceRequirements{})
+
+	if dep.Name != name || dep.Namespace != "paca" {
+		t.Errorf("deployment ObjectMeta = {Name:%q Namespace:%q}, want {Name:%q Namespace:%q}", dep.Name, dep.Namespace, name, "paca")
+	}
+	if len(dep.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("deployment containers = %d, want 1 (no dind sidecar without DockerEnabled)", len(dep.Spec.Template.Spec.Containers))
+	}
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.Image != "paca/agent-server:pinned" {
+		t.Errorf("container image = %q, want the resolved default %q", container.Image, "paca/agent-server:pinned")
+	}
+	gotEnv := map[string]string{}
+	for _, ev := range container.Env {
+		gotEnv[ev.Name] = ev.Value
+	}
+	if gotEnv["FOO"] != "bar" {
+		t.Errorf("container env[FOO] = %q, want %q (cfg.Env must carry through)", gotEnv["FOO"], "bar")
+	}
+	if gotEnv["GOOSE_SERVER__SECRET_KEY"] != "sk-test" {
+		t.Errorf("container env[GOOSE_SERVER__SECRET_KEY] = %q, want cfg.SecretKey %q", gotEnv["GOOSE_SERVER__SECRET_KEY"], "sk-test")
+	}
+	if len(dep.Spec.Template.Spec.Volumes) != 1 || dep.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim == nil ||
+		dep.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName != name {
+		t.Errorf("deployment volume = %+v, want a single volume claiming PVC %q", dep.Spec.Template.Spec.Volumes, name)
+	}
+}
+
+// TestBuildEnvironmentDeployment_AddsDindSidecarWhenDockerEnabled confirms
+// the dind sidecar (and DOCKER_HOST pointing at it) is only added when
+// cfg.DockerEnabled is set — the same conditional CreateEnvironment
+// applied inline before the extraction.
+func TestBuildEnvironmentDeployment_AddsDindSidecarWhenDockerEnabled(t *testing.T) {
+	const name = "paca-env-build2"
+	m := &Manager{namespace: "paca", agentServerImage: "paca/agent-server:pinned"}
+	cfg := sandbox.EnvironmentConfig{SecretKey: "sk-test", DockerEnabled: true}
+
+	dep := m.buildEnvironmentDeployment(name, cfg, corev1.ResourceRequirements{})
+
+	if len(dep.Spec.Template.Spec.Containers) != 2 {
+		t.Fatalf("deployment containers = %d, want 2 (primary + dind sidecar) when DockerEnabled", len(dep.Spec.Template.Spec.Containers))
+	}
+	gotEnv := map[string]string{}
+	for _, ev := range dep.Spec.Template.Spec.Containers[0].Env {
+		gotEnv[ev.Name] = ev.Value
+	}
+	if gotEnv["DOCKER_HOST"] != "tcp://localhost:2375" {
+		t.Errorf("container env[DOCKER_HOST] = %q, want tcp://localhost:2375 when DockerEnabled", gotEnv["DOCKER_HOST"])
+	}
+}
+
+// TestRecreateGoneEnvironmentDeployment_ErrorsWhenPVCAlsoGone covers the
+// terminal case: a Deployment removed outside of Paca whose PVC is also
+// gone has no data left to recover. This must return an error wrapping
+// sandbox.ErrEnvironmentGone — the same error StartEnvironment's caller
+// used to return unconditionally for every gone-Deployment case — rather
+// than silently letting Kubernetes auto-provision a fresh empty PVC under
+// the same name, which would misrepresent real data loss as a successful
+// resume.
+func TestRecreateGoneEnvironmentDeployment_ErrorsWhenPVCAlsoGone(t *testing.T) {
+	m := managerWithPods("paca") // fake clientset, no deployments or PVCs seeded
+
+	_, err := m.recreateGoneEnvironmentDeployment(context.Background(), sandbox.EnvironmentConfig{EnvironmentID: "gone-envid"})
+	if !errors.Is(err, sandbox.ErrEnvironmentGone) {
+		t.Errorf("recreateGoneEnvironmentDeployment with no PVC = %v, want an error wrapping sandbox.ErrEnvironmentGone", err)
+	}
+}
+
+// TestRecreateGoneEnvironmentDeployment_ProceedsPastGoneCheckWhenPVCSurvives
+// covers the actual self-heal path: a Deployment removed outside of Paca
+// whose PVC survives must not take the ErrEnvironmentGone shortcut above.
+// Full CreateEnvironment/StartEnvironment-style coverage needs a real Pod
+// to actually get an IP (see this file's own package-level doc comment),
+// which a fake clientset can't serve, so the context is cancelled up front
+// — the same technique TestWaitForPodIP_ReturnsContextErrorWhenCancelled
+// already establishes — so the later waitForPodIP call fails fast via
+// ctx.Done() instead of waiting out its full poll timeout. A bare
+// context.Canceled can only surface through this call chain once the PVC
+// check has already passed and the Deployment has already been
+// (re)created: that's what this test actually verifies, not the
+// cancellation itself.
+func TestRecreateGoneEnvironmentDeployment_ProceedsPastGoneCheckWhenPVCSurvives(t *testing.T) {
+	const envID = "recreate1"
+	name := environmentName(envID)
+	clientset := fake.NewClientset()
+	m := &Manager{clientset: clientset, namespace: "paca", agentServerImage: "paca/agent-server:pinned"}
+	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if _, err := clientset.CoreV1().PersistentVolumeClaims("paca").Create(context.Background(), pvc, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("seed pvc: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := m.recreateGoneEnvironmentDeployment(ctx, sandbox.EnvironmentConfig{EnvironmentID: envID, SecretKey: "sk-test"})
+	if errors.Is(err, sandbox.ErrEnvironmentGone) {
+		t.Fatalf("recreateGoneEnvironmentDeployment with a surviving PVC returned ErrEnvironmentGone: %v", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("recreateGoneEnvironmentDeployment with a cancelled context = %v, want it to reach the pod-wait step and fail via context.Canceled", err)
 	}
 }
