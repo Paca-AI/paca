@@ -124,11 +124,29 @@ type ConversationService interface {
 	// this is a separate, narrower authorization rule: the requesting agent
 	// may read a conversation only if it is that conversation's own agent
 	// — it already saw everything in a conversation it participated in, so
-	// this exposes nothing new, regardless of project or audience (an
-	// owner_private chat with a human included). Any other conversation —
-	// a different agent's, or the same agent's shared-with-the-project
-	// conversation triggered for a different reason — is not reachable via
-	// this path (ErrConversationNotFound).
+	// this exposes nothing new *for that agent's own conversations*,
+	// regardless of project or audience (an owner_private chat with a
+	// human included). Any other conversation — a different agent's, or
+	// the same agent's shared-with-the-project conversation triggered for
+	// a different reason — is not reachable via this path
+	// (ErrConversationNotFound).
+	//
+	// Deliberate trust-boundary note: callerAgentID here is whatever
+	// X-Agent-ID the auth middleware accepted (middleware.AgentIDFromContext,
+	// see verifyAgentIdentity), which under a shared static agent API key
+	// (apikeysvc.WithAgentKey — the dev default, see AGENT_API_KEY) is
+	// verified only as "a real, non-deleted agent UUID," not "this specific
+	// process is actually that agent." Any agent process holding that
+	// shared key can therefore claim a different agent's ID and read that
+	// agent's full transcripts — including its owner_private human chats —
+	// through this endpoint. That capability didn't exist before this
+	// endpoint (transcripts were previously unreachable for any bare agent
+	// identity at all). A deployment issuing per-agent MCP keys instead
+	// (key.AgentID, see agentClaimsForKey) is not exposed this way, since
+	// the key itself — not a self-reported header — is the identity
+	// evidence there. If a deployment relies on the shared key, treat this
+	// as an accepted, deliberate extension of that key's existing trust
+	// model rather than a new one scoped down for this endpoint.
 	GetConversationForAgent(ctx context.Context, conversationID, callerAgentID uuid.UUID) (*AgentConversation, error)
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	// StopConversation interrupts (if running) and permanently tears down the

@@ -10,7 +10,7 @@ import {
 	Search,
 	Workflow,
 } from "lucide-react";
-import { type ComponentType, useState } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChipField } from "@/components/projects/interactions/task-detail/property-field/chip-field";
 import { useContextItemSearch } from "@/hooks/use-context-item-search";
@@ -254,6 +254,24 @@ export function ContextInjectionRow() {
 	const remove = useContextInjectionStore((s) => s.remove);
 	const add = useContextInjectionStore((s) => s.add);
 	const active = useCurrentContextStore((s) => s.active);
+
+	// useContextInjectionStore is a single global store (see its own doc
+	// comment for why that's safe — only one Composer is ever mounted at a
+	// time), but that means it never unmounts along with any one composer
+	// on its own. Without this, staging a badge in one project's chat, then
+	// closing the panel without sending and opening a different project's
+	// (or the global) chat instead, would carry that stale badge along into
+	// an unrelated conversation. Clearing on unmount handles the floating
+	// widgets' open/close toggle (their panel contents genuinely unmount);
+	// clearing on a projectId change additionally handles a route
+	// transition that preserves this component's instance instead of
+	// remounting it.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: projectId is a deliberate trigger-only dep, unread in the body — clear on unmount *and* on change.
+	useEffect(() => {
+		return () => {
+			useContextInjectionStore.getState().clear();
+		};
+	}, [projectId]);
 
 	// Task/Doc/Automation search is project-scoped only — hide those tabs
 	// entirely on the global (no-project) chat surfaces, where only

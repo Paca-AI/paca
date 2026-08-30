@@ -17,6 +17,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
+	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
 )
 
 // fixedTime returns a stable timestamp for building test conversations —
@@ -963,5 +964,177 @@ func TestSendGlobalConversationMessage_ForwardsCallerIDNotBodySuppliedActor(t *t
 	}
 	if gotActorUserID != callerID {
 		t.Fatalf("actorUserID must always be the authenticated caller (%s), never a client-suppliable body field (%s)", callerID, gotActorUserID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Agent self-service conversation reads — GET /agents/me/conversations/:id
+// (and its /events sibling). Distinct from both GetConversation (human
+// member identity, project-scoped) and GetGlobalConversation (human actor
+// identity, global-chat-only): these two authorize purely on the caller's
+// verified X-Agent-ID matching the conversation's own agent_id — see
+// agentdom.Service.GetConversationForAgent's doc comment — with no project
+// or actor concept involved at all.
+// ---------------------------------------------------------------------------
+
+// newAgentSelfServiceConversationRouter wires GetConversationForAgent/
+// GetConversationEventsForAgent behind a middleware that injects agentID
+// via httpmw.WithAgentID — mirroring how the real Authn middleware attaches
+// a verified X-Agent-ID to the request context (see setAPIKeyAuthContext) —
+// or injects no agent identity at all when agentID is nil, to exercise the
+// "agent identity required" 401 path a request with no X-Agent-ID takes.
+func newAgentSelfServiceConversationRouter(svc agentdom.Service, agentID *uuid.UUID) chi.Router {
+	h := handler.NewConversationHandler(svc)
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if agentID != nil {
+				r = r.WithContext(httpmw.WithAgentID(r.Context(), *agentID))
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	r.Route("/agents/me/conversations/{conversationId}", func(r chi.Router) {
+		r.Get("/", h.GetConversationForAgent)
+		r.Get("/events", h.GetConversationEventsForAgent)
+	})
+	return r
+}
+
+func TestGetConversationForAgent_NoAgentIdentity401s(t *testing.T) {
+	svc := &mockAgentSvc{}
+	r := newAgentSelfServiceConversationRouter(svc, nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+uuid.New().String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with no agent identity, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetConversationForAgent_ReturnsOwnConversation(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	var gotAgentID uuid.UUID
+	svc := &mockAgentSvc{
+		getConversationForAgent: func(_ context.Context, id, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
+			gotAgentID = callerAgentID
+			if id != convID {
+				t.Fatalf("unexpected conversation id %s", id)
+			}
+			return &agentdom.AgentConversation{ID: convID, AgentID: callerAgentID}, nil
+		},
+	}
+	r := newAgentSelfServiceConversationRouter(svc, &agentID)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+convID.String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotAgentID != agentID {
+		t.Fatalf("handler must forward the authenticated agent's own id, got %s want %s", gotAgentID, agentID)
+	}
+	var resp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Data.ID != convID.String() {
+		t.Errorf("expected conversation id %s in response, got %s", convID, resp.Data.ID)
+	}
+}
+
+func TestGetConversationForAgent_DifferentAgentNotFound(t *testing.T) {
+	agentID := uuid.New()
+	svc := &mockAgentSvc{
+		getConversationForAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return nil, agentdom.ErrConversationNotFound
+		},
+	}
+	r := newAgentSelfServiceConversationRouter(svc, &agentID)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+uuid.New().String(), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a conversation the agent doesn't own, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetConversationEventsForAgent_NoAgentIdentity401s(t *testing.T) {
+	svc := &mockAgentSvc{}
+	r := newAgentSelfServiceConversationRouter(svc, nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+uuid.New().String()+"/events", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with no agent identity, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetConversationEventsForAgent_ReturnsEvents(t *testing.T) {
+	agentID := uuid.New()
+	convID := uuid.New()
+	svc := &mockAgentSvc{
+		getConversationForAgent: func(_ context.Context, id, callerAgentID uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{ID: id, AgentID: callerAgentID}, nil
+		},
+		listConversationEvents: func(_ context.Context, id uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			if id != convID {
+				t.Fatalf("unexpected conversation id %s", id)
+			}
+			return []*agentdom.AgentConversationEvent{{ID: uuid.New(), ConversationID: convID}}, 1, nil
+		},
+	}
+	r := newAgentSelfServiceConversationRouter(svc, &agentID)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+convID.String()+"/events", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Data.Items) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(resp.Data.Items))
+	}
+}
+
+func TestGetConversationEventsForAgent_UnknownConversationNotFound(t *testing.T) {
+	agentID := uuid.New()
+	eventsCalled := false
+	svc := &mockAgentSvc{
+		getConversationForAgent: func(_ context.Context, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return nil, agentdom.ErrConversationNotFound
+		},
+		listConversationEvents: func(_ context.Context, _ uuid.UUID, _ agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
+			eventsCalled = true
+			return nil, 0, nil
+		},
+	}
+	r := newAgentSelfServiceConversationRouter(svc, &agentID)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/agents/me/conversations/"+uuid.New().String()+"/events", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if eventsCalled {
+		t.Error("ListConversationEvents must not be called when the agent doesn't own the conversation")
 	}
 }

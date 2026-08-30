@@ -165,10 +165,9 @@ describe("getToolPermission", () => {
 		expect(perm?.requiresProject).toBe(true);
 	});
 
-	it("returns the correct permission for read_conversation", () => {
+	it("has no permission mapping for read_conversation — it's always listed, since its real authorization is unconditional and self-scoped (see TOOL_PERMISSIONS' comment)", () => {
 		const perm = getToolPermission("read_conversation");
-		expect(perm?.permissionKey).toBe("agents.read");
-		expect(perm?.requiresProject).toBe(true);
+		expect(perm).toBeNull();
 	});
 });
 
@@ -194,7 +193,6 @@ describe("TOOL_PERMISSIONS", () => {
 			"create_custom_field",
 			"list_task_attachments",
 			"add_task_comment",
-			"read_conversation",
 		];
 		for (const name of expected) {
 			expect(names, `missing tool: ${name}`).toContain(name);
