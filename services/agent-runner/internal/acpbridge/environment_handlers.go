@@ -310,6 +310,23 @@ type startEnvironmentResponse struct {
 // doc comment for what happens (port-mapping republishing, self-heal, SSH
 // re-bootstrap). This handler owns only the HTTP-specific parts: request
 // decoding and mapping the result back onto startEnvironmentResponse.
+//
+// Holds EnvironmentRepo.LockEnvironmentForStart across the
+// StartEnvironmentByID call below — blocking, not
+// TryLockEnvironmentForStart's non-blocking sibling, since an explicit
+// user-triggered Start has no "skip it, a later pass will retry" option
+// the way cmd/agent-runner/main.go's boot reconciler does; a caller that
+// asked for a Start needs an actual result back. This is what keeps a
+// concurrent boot-time reconcile pass (or a concurrent conversation attach
+// via coldStartEnvironment, which acquires this exact same lock — see its
+// own doc comment) from racing this handler's own self-heal attempt: both
+// backends give a self-heal's ContainerCreate/Deployment-Create a
+// deterministic, environment-derived name, so two callers racing to
+// recreate the same gone container/Deployment would otherwise have one of
+// them fail on a name conflict instead of both converging on the same,
+// already-fixed environment. Skipped (falls back to the pre-lock behavior)
+// when EnvironmentRepo is nil — the same tests/tooling contexts every
+// other EnvironmentRepo-reading handler in this file already tolerates.
 func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSandboxMgr(w) {
 		return
@@ -328,6 +345,16 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 	if req.BackendRef == "" {
 		writeJSONError(w, http.StatusBadRequest, "backend_ref is required")
 		return
+	}
+
+	if s.EnvironmentRepo != nil {
+		release, err := s.EnvironmentRepo.LockEnvironmentForStart(r.Context(), environmentID)
+		if err != nil {
+			s.Log.Error("acpbridge: failed to acquire start lock", "environment_id", id, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		defer release()
 	}
 
 	handle, sshPort, recreatedBackendRef, err := s.StartEnvironmentByID(r.Context(), environmentID, req.BackendRef, sandbox.EnvironmentConfig{

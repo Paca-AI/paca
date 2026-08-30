@@ -553,13 +553,20 @@ func classifyReconcileResult(err error) reconcileOutcome {
 // cfg.Env rather than treat it as "clear every key" (see that method's own
 // doc comment on each backend) — exactly the behavior wanted here.
 //
-// Acquires envRepo.TryLockEnvironmentForReconcile before calling
+// Acquires envRepo.TryLockEnvironmentForStart before calling
 // StartEnvironmentByID (not after) — see that method's own doc comment:
 // this is what actually prevents two concurrently-restarting agent-runner
 // replicas from both calling SandboxMgr.StartEnvironment against the same
-// container/Pod at once. Skips outright, doing nothing at all, when the
-// lock is already held elsewhere: another replica reconciling the same
-// environment right now means there is nothing for this one to do.
+// container/Pod at once, AND (since coldStartEnvironment and
+// handleStartEnvironment now contend for this exact same lock via
+// LockEnvironmentForStart — see each of their own doc comments) what
+// prevents this boot-time pass from racing a live conversation attach or
+// an HTTP-triggered Start for the same environment. Skips outright, doing
+// nothing at all, when the lock is already held elsewhere: something else
+// reconciling, attaching to, or starting the same environment right now
+// means there is nothing for this pass to do — a skip here just leaves the
+// row for the next boot's pass, or lets whichever live path already holds
+// the lock finish on its own.
 func reconcileOneEnvironment(
 	ctx context.Context,
 	envRepo *postgres.EnvironmentRepository,
@@ -574,13 +581,13 @@ func reconcileOneEnvironment(
 		return
 	}
 
-	acquired, release, err := envRepo.TryLockEnvironmentForReconcile(ctx, env.ID)
+	acquired, release, err := envRepo.TryLockEnvironmentForStart(ctx, env.ID)
 	if err != nil {
-		log.Warn("agent-runner: failed to acquire reconcile lock, skipping this environment for this pass", "environment_id", env.ID, "error", err)
+		log.Warn("agent-runner: failed to acquire start lock, skipping this environment for this pass", "environment_id", env.ID, "error", err)
 		return
 	}
 	if !acquired {
-		log.Info("agent-runner: environment is already being reconciled (likely by another agent-runner replica), skipping", "environment_id", env.ID)
+		log.Info("agent-runner: environment is already being started, attached to, or reconciled elsewhere, skipping", "environment_id", env.ID)
 		return
 	}
 	defer release()

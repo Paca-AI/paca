@@ -657,6 +657,26 @@ func (e *Executor) coldStartEnvironment(ctx, turnCtx context.Context, cfg agent.
 		image = *env.Image
 	}
 
+	// Held across the StartEnvironment call below — blocking, not
+	// TryLockEnvironmentForStart's non-blocking sibling, since a
+	// conversation attach has no "skip it, a later pass will retry" option
+	// the way cmd/agent-runner/main.go's boot reconciler does: this turn
+	// needs an actual client/session back. This is what keeps a concurrent
+	// boot-time reconcile pass (or a concurrent HTTP-triggered Start, which
+	// acquires this exact same lock — see handleStartEnvironment's own doc
+	// comment) from racing this attach's own self-heal attempt: both
+	// backends give a self-heal's ContainerCreate/Deployment-Create a
+	// deterministic, environment-derived name, so two callers racing to
+	// recreate the same gone container/Deployment would otherwise have the
+	// loser fail on a name conflict — which, unhandled below, would
+	// needlessly fail this turn and flip an environment the winner was
+	// simultaneously fixing to a stuck "error" status.
+	release, err := e.envRepo.LockEnvironmentForStart(ctx, environmentID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("executor: acquire start lock for environment %s: %w", environmentID, err)
+	}
+	defer release()
+
 	// Always calls StartEnvironment, even if env.Status already says
 	// "running" — deliberate, not a bug: it's the only way to get a
 	// guaranteed-fresh, reachable BaseURL back (never persisted — see

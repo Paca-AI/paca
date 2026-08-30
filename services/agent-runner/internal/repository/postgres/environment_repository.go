@@ -261,8 +261,73 @@ func (r *EnvironmentRepository) ListRunningEnvironments(ctx context.Context) ([]
 	return envs, nil
 }
 
-// TryLockEnvironmentForReconcile attempts to acquire a non-blocking,
-// connection-scoped Postgres advisory lock scoped to id — cmd/agent-runner/
+// environmentStartLockKey is the hashtextextended input both
+// LockEnvironmentForStart and TryLockEnvironmentForStart hash into the same
+// advisory lock ID for a given environment — shared deliberately: the two
+// functions exist to contend for the exact same lock (see
+// LockEnvironmentForStart's own doc comment for why more than one caller
+// needs it), not to have separate, differently-scoped locks that happen to
+// share a name prefix.
+func environmentStartLockKey(id uuid.UUID) string {
+	return "environment-start:" + id.String()
+}
+
+// LockEnvironmentForStart acquires a blocking, connection-scoped Postgres
+// advisory lock scoped to id, waiting as long as ctx allows rather than
+// giving up immediately — see TryLockEnvironmentForStart's own doc comment
+// for the non-blocking sibling this shares a lock key with, and for why a
+// session-scoped pg_advisory_lock rather than this package's other
+// (transaction-scoped) advisory-lock idiom.
+//
+// Callers: coldStartEnvironment (executor package, the per-turn
+// conversation-attach path) and handleStartEnvironment (the HTTP path) —
+// both need a real result back for something a person is actively waiting
+// on, so "skip and let a later pass handle it" (TryLockEnvironmentForStart's
+// own behavior, right for the opportunistic boot reconciler) isn't an
+// option here: a skipped attach has no later pass to fall back on, it just
+// fails the user's turn outright. Blocking briefly behind a concurrent
+// self-heal — from either the boot reconciler or the other one of these
+// two paths — and then proceeding is strictly better than that. Bounded in
+// practice by the caller's own ctx (this attach/HTTP call's usual timeout
+// budget) racing the lock holder's own reconcileItemTimeout-or-similar
+// bound, not by anything in this function itself.
+//
+// The returned release func closes the dedicated connection this reserved
+// from the pool. The caller must call it exactly once, typically via
+// defer, once acquisition succeeds (unlike TryLockEnvironmentForStart,
+// there is no "acquired = false" case here to make release a conditional
+// no-op for — a non-nil error already means no connection was reserved at
+// all).
+func (r *EnvironmentRepository) LockEnvironmentForStart(ctx context.Context, id uuid.UUID) (release func(), err error) {
+	conn, err := r.db.Connx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: reserve connection for environment start lock %s: %w", id, err)
+	}
+
+	lockKey := environmentStartLockKey(id)
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("postgres: acquire advisory lock for environment %s: %w", id, err)
+	}
+
+	return func() {
+		// Best-effort: an explicit unlock on a connection about to be
+		// closed is a courtesy, not a correctness requirement (Postgres
+		// releases every session-level advisory lock automatically when
+		// the backend's connection ends, which Close's eventual
+		// termination will do regardless) — so a failure here is logged
+		// nowhere and never propagated, same as this file's other
+		// best-effort cleanup (e.g. removeEnvironmentDindSidecar's
+		// counterpart in the docker backend).
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, lockKey)
+		_ = conn.Close()
+	}, nil
+}
+
+// TryLockEnvironmentForStart attempts to acquire the same lock
+// LockEnvironmentForStart does, without blocking — cmd/agent-runner/
 // main.go's startup reconciliation calls this before ever touching the
 // backend, so two agent-runner replicas that both restart around the same
 // time (a rolling deploy, or any deployment running agentRunner.replicaCount
@@ -271,7 +336,14 @@ func (r *EnvironmentRepository) ListRunningEnvironments(ctx context.Context) ([]
 // replicas can't double-act on the same environment" guarantee
 // ClaimEnvironmentStatus already gives the idle reaper (see
 // docs/ai-agent/environment-management.md's Idle-suspend section), applied
-// here before the side-effecting call instead of after it.
+// here before the side-effecting call instead of after it. Sharing
+// environmentStartLockKey with LockEnvironmentForStart is what also makes
+// this safe against a concurrent conversation attach or HTTP-triggered
+// Start for the same environment, not just a sibling reconcile pass — the
+// boot reconciler simply skips (rather than waits for) an environment
+// something else is already handling, since a skipped environment just
+// gets picked up by the next boot's pass, or by whichever live attach path
+// is already in flight for it right now.
 //
 // Deliberately session-scoped (pg_try_advisory_lock on a connection
 // reserved via Connx) rather than this package's other advisory-lock idiom
@@ -286,21 +358,22 @@ func (r *EnvironmentRepository) ListRunningEnvironments(ctx context.Context) ([]
 // Never blocks: pg_try_advisory_lock returns immediately with acquired =
 // false when another connection (this same process's own concurrent
 // reconcile of a different environment can't collide — the key is
-// per-environment — but another replica's reconcile pass can) already
-// holds id's lock, so the caller can just skip that environment for this
-// pass rather than queue up behind it.
+// per-environment — but another replica's reconcile pass, or this same
+// process's own concurrent attach/HTTP-start path, can) already holds id's
+// lock, so the caller can just skip that environment for this pass rather
+// than queue up behind it.
 //
 // The returned release func closes the dedicated connection this reserved
 // from the pool — safe to call even when acquired is false (release is
 // then just returning an untouched connection), and the caller must call
 // it exactly once, typically via defer, whether or not acquired is true.
-func (r *EnvironmentRepository) TryLockEnvironmentForReconcile(ctx context.Context, id uuid.UUID) (acquired bool, release func(), err error) {
+func (r *EnvironmentRepository) TryLockEnvironmentForStart(ctx context.Context, id uuid.UUID) (acquired bool, release func(), err error) {
 	conn, err := r.db.Connx(ctx)
 	if err != nil {
-		return false, func() {}, fmt.Errorf("postgres: reserve connection for environment reconcile lock %s: %w", id, err)
+		return false, func() {}, fmt.Errorf("postgres: reserve connection for environment start lock %s: %w", id, err)
 	}
 
-	lockKey := "environment-reconcile:" + id.String()
+	lockKey := environmentStartLockKey(id)
 	if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1, 0))`, lockKey).Scan(&acquired); err != nil {
 		_ = conn.Close()
 		return false, func() {}, fmt.Errorf("postgres: try advisory lock for environment %s: %w", id, err)
@@ -311,14 +384,7 @@ func (r *EnvironmentRepository) TryLockEnvironmentForReconcile(ctx context.Conte
 	}
 
 	return true, func() {
-		// Best-effort: an explicit unlock on a connection about to be
-		// closed is a courtesy, not a correctness requirement (Postgres
-		// releases every session-level advisory lock automatically when
-		// the backend's connection ends, which Close's eventual
-		// termination will do regardless) — so a failure here is logged
-		// nowhere and never propagated, same as this file's other
-		// best-effort cleanup (e.g. removeEnvironmentDindSidecar's
-		// counterpart in the docker backend).
+		// Best-effort — see LockEnvironmentForStart's identical comment.
 		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_, _ = conn.ExecContext(unlockCtx, `SELECT pg_advisory_unlock(hashtextextended($1, 0))`, lockKey)
