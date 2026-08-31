@@ -17,6 +17,19 @@ function getMermaid(dark: boolean) {
 				startOnLoad: false,
 				securityLevel: "strict",
 				theme: dark ? "dark" : "default",
+				// Render each diagram at its natural pixel size rather than
+				// mermaid's default "shrink to fit an inline max-width" behavior,
+				// which collapses a diagram to a few pixels inside a flex/narrow
+				// container. The wrapper scrolls horizontally when a diagram is
+				// genuinely wider than the editor.
+				er: { useMaxWidth: false },
+				flowchart: { useMaxWidth: false },
+				sequence: { useMaxWidth: false },
+				class: { useMaxWidth: false },
+				state: { useMaxWidth: false },
+				gantt: { useMaxWidth: false },
+				journey: { useMaxWidth: false },
+				pie: { useMaxWidth: false },
 			});
 			return m.default;
 		});
@@ -81,9 +94,12 @@ function MermaidDiagram({ code, blockId }: { code: string; blockId: string }) {
 			</div>
 		);
 	}
+	// Plain block (not flex — a flex item with mermaid's width can collapse to
+	// min-content) that scrolls horizontally; the SVG keeps its natural size,
+	// with a min-width so a tiny diagram still reads and h-auto to keep aspect.
 	return (
 		<div
-			className="flex justify-center overflow-x-auto [&_svg]:max-w-full"
+			className="overflow-x-auto py-1 [&_svg]:h-auto [&_svg]:!max-w-none"
 			// svg is produced by mermaid under securityLevel "strict" (labels
 			// sanitized, no script/click handlers), so injecting it is safe.
 			// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized mermaid SVG
