@@ -77,6 +77,7 @@ export const CommentEditor = forwardRef<
 			theme={resolvedMode}
 			className="bn-shadcn"
 			sideMenu={false}
+			slashMenu={false}
 		>
 			<SideMenuController sideMenu={CustomSideMenu} />
 			<MentionSuggestionMenus
