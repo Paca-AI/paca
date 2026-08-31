@@ -158,6 +158,13 @@ func run(log *slog.Logger) error {
 		MCPDevSourceDir:       settings.MCPDevSourceDir,
 		Log:                   log,
 	}
+	envCommandConsumer := messaging.NewEnvironmentCommandConsumer(
+		redisClient,
+		settings.EnvironmentProvisionConcurrency,
+		acpServer.ExecuteEnvironmentCommand,
+		log,
+	)
+
 	httpServer := &http.Server{Addr: settings.HTTPAddr, Handler: acpServer.Routes()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -177,6 +184,7 @@ func run(log *slog.Logger) error {
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
 	go runHTTPServer(ctx, httpServer, log)
+	go envCommandConsumer.Run(ctx)
 	consumer.Run(ctx)
 	return nil
 }
@@ -448,7 +456,7 @@ const reconcileItemTimeout = 150 * time.Second
 // thing standing between a stale row and a working attach.
 //
 // Reuses acpbridge.Server.StartEnvironmentByID (the same method
-// handleStartEnvironment's HTTP path calls), so a self-heal here gets the
+// ExecuteStartEnvironment calls), so a self-heal here gets the
 // exact same port-mapping/SSH-key re-bootstrap treatment a normal
 // user-triggered Start does, and it's safe to call unconditionally for the
 // same reason a plain StartEnvironment call always is (see that method's
@@ -547,7 +555,7 @@ func classifyReconcileResult(err error) reconcileOutcome {
 // reconcileOneEnvironment is reconcileEnvironmentsOnStartup's per-row
 // worker — see that function's own doc comment for why this runs at all.
 // Builds the same "context-free caller" EnvironmentConfig
-// handleStartEnvironment's plain restart already uses (no cfg.Env): this
+// ExecuteStartEnvironment's plain restart already uses (no cfg.Env): this
 // reconciler has no attaching conversation/agent to source one from, and
 // both backends' ensureEnvironmentInfraEnv already no-op on an empty
 // cfg.Env rather than treat it as "clear every key" (see that method's own
@@ -558,7 +566,7 @@ func classifyReconcileResult(err error) reconcileOutcome {
 // this is what actually prevents two concurrently-restarting agent-runner
 // replicas from both calling SandboxMgr.StartEnvironment against the same
 // container/Pod at once, AND (since coldStartEnvironment and
-// handleStartEnvironment now contend for this exact same lock via
+// ExecuteStartEnvironment now contend for this exact same lock via
 // LockEnvironmentForStart — see each of their own doc comments) what
 // prevents this boot-time pass from racing a live conversation attach or
 // an HTTP-triggered Start for the same environment. Skips outright, doing

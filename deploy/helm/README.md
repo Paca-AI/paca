@@ -241,11 +241,15 @@ shows a placeholder host the user has to fill in themselves.
 
 ## Port forwarding
 
-Off by default. The exact same idea as SSH access above — a
-per-environment `NodePort` Service entry, natively published, no relay —
-but for any container port a user wants to expose (their own dev server,
-most commonly), added and removed from the environment's own Connect page
-in the web app instead of being a single auto-created port. See
+On by default — unlike SSH access above, a user-added port forward only
+ever exposes a port the environment's own workload is already meant to
+serve, each one explicit and visible on that environment's Connect page,
+so it doesn't warrant the same opt-in-by-operator default. Otherwise the
+exact same idea as SSH access above — a per-environment `NodePort` Service
+entry, natively published, no relay — but for any container port a user
+wants to expose (their own dev server, most commonly), added and removed
+from the environment's own Connect page in the web app instead of being a
+single auto-created port. See
 [`docs/ai-agent/environment-management.md`](../../docs/ai-agent/environment-management.md)'s
 "Port Forwarding" section.
 

@@ -1,7 +1,12 @@
 // Package environmentsvc implements the Environment application service —
 // the use-case layer for static environments (see
-// docs/ai-agent/environment-management.md), including the HTTP client that
-// calls agent-runner's internal lifecycle endpoints.
+// docs/ai-agent/environment-management.md). Talks to agent-runner over two
+// transports: an HTTP client for its fast, bounded calls (stop/delete/
+// folders/browse/ssh-keys-sync/port-forwards-assign), and
+// StreamAgentEnvironmentCommands (see callEnvironmentCommand) for the 3
+// that wait on a Pod/container becoming ready (create/start/restart-ports)
+// — see aiAgentProvisionHTTPTimeout's doc comment for why those don't fit
+// a synchronous HTTP call well.
 package environmentsvc
 
 import (
@@ -20,6 +25,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	"github.com/Paca-AI/api/internal/events"
@@ -38,11 +44,38 @@ const (
 	defaultIdleTimeoutMinutes = 60
 )
 
-// aiAgentHTTPTimeout bounds every call this service makes into agent-runner
-// so a slow or wedged agent-runner instance can't hang the calling request
-// indefinitely — mirrors handler.aiAgentHTTPTimeout's rationale for the
-// existing agent-runner calls in agent_handler.go.
+// aiAgentHTTPTimeout bounds every fast call this service makes into
+// agent-runner so a slow or wedged agent-runner instance can't hang the
+// calling request indefinitely — mirrors handler.aiAgentHTTPTimeout's
+// rationale for the existing agent-runner calls in agent_handler.go.
 const aiAgentHTTPTimeout = 30 * time.Second
+
+// aiAgentProvisionHTTPTimeout bounds the three agent-runner calls that can
+// bring up a Pod/container from a cold (0-replica/never-started) state:
+// create (ExecuteCreate), plain start (ExecuteStart), and restart-ports
+// (restartEnvironmentPorts, reached both from ExecuteStart's
+// PortsPendingRestart branch and from RestartEnvironment). The kubernetes
+// backend's own documented worst case for that work is podReadyTimeout
+// (60s) + readyTimeout (120s) + dindReadyTimeout (90s, DockerEnabled
+// only) — see internal/sandbox/k8s/manager.go, sandbox/sandbox.go, and
+// internal/sandbox/k8s/dind.go — well past aiAgentHTTPTimeout's budget,
+// which is sized for this service's other, fast calls (stop/delete/
+// folders/browse/ssh-keys/port-forwards) instead. That budget mismatch is
+// exactly why these three don't go through callInternal/s.httpClient at
+// all — see callEnvironmentCommand — this constant now bounds a BRPop
+// wait on agent-runner's own reply, not an http.Client.Timeout. Also
+// used, slightly enlarged, as agent-runner's own per-command context
+// timeout (see messaging.EnvironmentCommandConsumer), so agent-runner
+// never self-cancels an in-flight SandboxMgr call at the exact moment
+// this side's own wait would already have given up.
+//
+// ExecuteCreate and ExecuteStart run only from
+// worker.EnvironmentCommandConsumer, never on a live request path;
+// RestartEnvironment does sit on one, but in the common case (kubernetes,
+// environment already running) agent-runner's own
+// RestartEnvironmentPorts never touches the Pod and returns almost
+// immediately — this ceiling only matters as a worst-case bound.
+const aiAgentProvisionHTTPTimeout = 5 * time.Minute
 
 // maxSlugAttempts bounds the collision-retry loop below so a pathological
 // run of collisions can't spin forever.
@@ -66,11 +99,19 @@ type Service struct {
 	aiAgentURL         string
 	aiAgentInternalKey string
 	httpClient         *http.Client
+	// redisClient backs callEnvironmentCommand's BRPop wait on
+	// agent-runner's reply — see that method's own doc comment. Required
+	// only for the 3 calls that use it (create/start/restart-ports); every
+	// other method works fine with this left nil (tests that never reach
+	// those 3 have no need to set it, mirroring encryptor's identical
+	// "nil is fine unless you need it" contract).
+	redisClient *redis.Client
 	// publisher queues StartEnvironment's own actual agent-runner call onto
 	// StreamEnvironmentCommands instead of making it on the request path —
-	// see WithPublisher and StartEnvironment's own doc comment. Also used
-	// to publish environment.status_changed for services/realtime — see
-	// publishStatusChanged.
+	// see WithPublisher and StartEnvironment's own doc comment. Also
+	// enqueues onto StreamAgentEnvironmentCommands (see
+	// callEnvironmentCommand) and publishes environment.status_changed for
+	// services/realtime — see publishStatusChanged.
 	publisher environmentPublisher
 }
 
@@ -78,11 +119,13 @@ type Service struct {
 // service needs, narrowed to keep it mockable in tests without a real
 // Valkey connection — *messaging.Publisher satisfies this directly, no
 // adapter needed. Append queues a slow agent-runner call onto
-// StreamEnvironmentCommands (see WithPublisher); Publish sends the
-// lightweight environment.status_changed notification to ChannelRealtime
-// (see publishStatusChanged).
+// StreamEnvironmentCommands (see WithPublisher); AppendFlat enqueues a
+// command onto StreamAgentEnvironmentCommands (see callEnvironmentCommand);
+// Publish sends the lightweight environment.status_changed notification to
+// ChannelRealtime (see publishStatusChanged).
 type environmentPublisher interface {
 	Append(ctx context.Context, stream, eventType string, payload any) error
+	AppendFlat(ctx context.Context, stream string, fields map[string]any) error
 	Publish(ctx context.Context, channel string, payload any) error
 }
 
@@ -100,6 +143,16 @@ func New(repo environmentdom.Repository, aiAgentURL, aiAgentInternalKey string) 
 // persisted secret key, mirroring agentsvc.Service.WithEncryptor.
 func (s *Service) WithEncryptor(enc *secret.Encryptor) *Service {
 	s.encryptor = enc
+	return s
+}
+
+// WithRedisClient wires the raw Valkey client callEnvironmentCommand
+// BRPops agent-runner's reply from — see that method's own doc comment.
+// Distinct from WithPublisher's Publisher (which only ever appends/
+// publishes, never blocks waiting on a reply) because BRPop has no
+// equivalent on that narrower interface.
+func (s *Service) WithRedisClient(c *redis.Client) *Service {
+	s.redisClient = c
 	return s
 }
 
@@ -264,10 +317,11 @@ func (s *Service) CreateEnvironment(ctx context.Context, projectID uuid.UUID, in
 		// column is NOT NULL/CHECK(backend IN ('docker','kubernetes')), but
 		// the real value is chosen by agent-runner (whichever backend it's
 		// configured for — see Environment.Backend's doc comment) and only
-		// known once its response to POST /internal/environments comes
-		// back. Corrected below via UpdateEnvironmentProvisioning the
-		// moment that response arrives; a failure before then leaves this
-		// placeholder on an already-StatusError row, which is harmless.
+		// known once its create-command reply comes back (see
+		// callEnvironmentCommand). Corrected below via
+		// UpdateEnvironmentProvisioning the moment that reply arrives; a
+		// failure before then leaves this placeholder on an
+		// already-StatusError row, which is harmless.
 		Backend:            environmentdom.BackendDocker,
 		Image:              in.Image,
 		CPULimit:           cpuLimit,
@@ -324,7 +378,7 @@ func (s *Service) ExecuteCreate(ctx context.Context, environmentID uuid.UUID) er
 		// message's ack failed and worker.EnvironmentCommandConsumer's
 		// processPending redelivered it from the PEL after a later action
 		// already moved the row past StatusCreating. Nothing to do: acting
-		// on it now would call agent-runner's create endpoint a second time
+		// on it now would send agent-runner a create command a second time
 		// against a row it (or a retry of CreateEnvironment) has already
 		// resolved one way or the other.
 		return nil
@@ -351,7 +405,7 @@ func (s *Service) ExecuteCreate(ctx context.Context, environmentID uuid.UUID) er
 	}
 
 	var respBody internalCreateEnvironmentResponse
-	if err := s.callInternal(ctx, http.MethodPost, "/internal/environments", reqBody, &respBody); err != nil {
+	if err := s.callEnvironmentCommand(ctx, events.EnvironmentCommandCreate, reqBody, &respBody); err != nil {
 		errMsg := err.Error()
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return fmt.Errorf("agent-runner: create environment: %w", err)
@@ -495,8 +549,8 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 		// and processPending redelivered it from the PEL after a later
 		// action already moved the row past StatusStarting) — most
 		// importantly, the user may have since stopped this environment on
-		// purpose; blindly calling agent-runner's /start here would start
-		// it back up out from under them. Whatever the current status is,
+		// purpose; blindly sending agent-runner a start command here would
+		// start it back up out from under them. Whatever the current status is,
 		// it reflects a command that ran after this one queued, so this one
 		// has nothing left to do.
 		return nil
@@ -528,6 +582,7 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 		return fmt.Errorf("decrypt environment secret key: %w", err)
 	}
 	reqBody := internalStartEnvironmentRequest{
+		EnvironmentID: env.ID.String(),
 		BackendRef:    *env.BackendRef,
 		CPULimit:      env.CPULimit,
 		MemoryLimit:   env.MemoryLimit,
@@ -540,7 +595,7 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 	}
 
 	var respBody internalStartEnvironmentResponse
-	if err := s.callInternal(ctx, http.MethodPost, "/internal/environments/"+env.ID.String()+"/start", reqBody, &respBody); err != nil {
+	if err := s.callEnvironmentCommand(ctx, events.EnvironmentCommandStart, reqBody, &respBody); err != nil {
 		errMsg := err.Error()
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return fmt.Errorf("agent-runner: start environment: %w", err)
@@ -561,9 +616,9 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 		// (see StartEnvironment's identical reasoning for setting status
 		// before queuing). Mark StatusError instead: Error is one of
 		// StartEnvironment's accepted states, so the user can retry, and
-		// retrying is safe here specifically because agent-runner's /start
-		// against an already-running backend is a no-op, not a second
-		// start.
+		// retrying is safe here specifically because agent-runner's start
+		// command against an already-running backend is a no-op, not a
+		// second start.
 		errMsg := fmt.Sprintf("persist running status: %s", err)
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, newBackendRef, &errMsg)
 		return err
@@ -582,6 +637,29 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 // currently-running environment's backing container/Pod — see
 // environmentdom.EnvironmentService's own doc comment for why this is a
 // separate action from StartEnvironment.
+//
+// The lookup above uses the live request's own ctx (a fast, read-only
+// Postgres query — fine to abort if the caller gives up before it even
+// starts). restartEnvironmentPorts below deliberately does not:
+// context.Background(), not ctx, because everything from there on is the
+// same "started a mutation, must see it through" work ExecuteStart's own
+// call to this exact method already does on context.Background() (it never
+// runs on a live request path to begin with) — restartEnvironmentPorts
+// blocks on callEnvironmentCommand's multi-minute BRPop and then persists
+// whatever agent-runner reports back, and a client disconnecting from THIS
+// HTTP request (or the server's own WriteTimeout closing the connection
+// out from under a slow response) must not cut either step short. Before
+// this, ctx cancelling mid-wait made callEnvironmentCommand return early,
+// and the resulting StatusError path leaves backend_ref untouched — on the
+// docker backend, which does recreate the container on a restart,
+// agent-runner had by then already committed to finishing that mutation
+// regardless (its own handler context is independent of the caller giving
+// up — see messaging.EnvironmentCommandConsumer's identical reasoning), so
+// the row was left pointing at a container that no longer existed, with
+// nothing else on the row remembering the fresh ref agent-runner actually
+// produced. (The kubernetes backend was never affected: RestartEnvironmentPorts
+// never changes backend_ref there — see restartEnvironmentPorts's own doc
+// comment.)
 func (s *Service) RestartEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error) {
 	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
 	if err != nil {
@@ -593,10 +671,10 @@ func (s *Service) RestartEnvironment(ctx context.Context, projectID, environment
 	if env.BackendRef == nil || env.VolumeRef == nil {
 		return nil, fmt.Errorf("environment %s has never been provisioned (no backend_ref/volume_ref)", env.ID)
 	}
-	return s.restartEnvironmentPorts(ctx, env)
+	return s.restartEnvironmentPorts(context.Background(), env)
 }
 
-// restartEnvironmentPorts calls agent-runner's /restart-ports endpoint to
+// restartEnvironmentPorts sends agent-runner a restart-ports command to
 // apply env's current full port-mapping set (SSH port plus every
 // environment_port_forwards row) to its backing container/Pod, persists
 // the resulting backend_ref (docker recreates the container, so it may
@@ -611,6 +689,7 @@ func (s *Service) restartEnvironmentPorts(ctx context.Context, env *environmentd
 		return nil, fmt.Errorf("decrypt environment secret key: %w", err)
 	}
 	reqBody := internalRestartPortsRequest{
+		EnvironmentID: env.ID.String(),
 		BackendRef:    *env.BackendRef,
 		VolumeRef:     *env.VolumeRef,
 		CPULimit:      env.CPULimit,
@@ -624,7 +703,7 @@ func (s *Service) restartEnvironmentPorts(ctx context.Context, env *environmentd
 	}
 
 	var respBody internalRestartPortsResponse
-	if err := s.callInternal(ctx, http.MethodPost, "/internal/environments/"+env.ID.String()+"/restart-ports", reqBody, &respBody); err != nil {
+	if err := s.callEnvironmentCommand(ctx, events.EnvironmentCommandRestartPorts, reqBody, &respBody); err != nil {
 		errMsg := err.Error()
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
 		return nil, fmt.Errorf("agent-runner: restart environment ports: %w", err)
@@ -740,7 +819,7 @@ func (s *Service) ExecuteStop(ctx context.Context, environmentID uuid.UUID) erro
 		return errors.New(errMsg)
 	}
 
-	if err := s.callInternal(ctx, http.MethodPost, "/internal/environments/"+env.ID.String()+"/stop",
+	if err := s.callInternal(ctx, s.httpClient, http.MethodPost, "/internal/environments/"+env.ID.String()+"/stop",
 		internalBackendRefRequest{BackendRef: *env.BackendRef}, nil); err != nil {
 		errMsg := err.Error()
 		_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
@@ -779,7 +858,7 @@ func (s *Service) DeleteEnvironment(ctx context.Context, projectID, environmentI
 		if env.VolumeRef != nil {
 			volumeRef = *env.VolumeRef
 		}
-		if err := s.callInternal(ctx, http.MethodDelete, "/internal/environments/"+env.ID.String(),
+		if err := s.callInternal(ctx, s.httpClient, http.MethodDelete, "/internal/environments/"+env.ID.String(),
 			internalDeleteEnvironmentRequest{BackendRef: *env.BackendRef, VolumeRef: volumeRef}, nil); err != nil {
 			errMsg := err.Error()
 			_ = s.setStatus(ctx, env.ProjectID, env.ID, environmentdom.StatusError, nil, &errMsg)
@@ -895,7 +974,7 @@ func (s *Service) AddFolder(ctx context.Context, projectID, environmentID uuid.U
 			BackendRef: *env.BackendRef,
 			Path:       path,
 		}
-		if err := s.callInternal(ctx, http.MethodPost, "/internal/environments/"+env.ID.String()+"/folders", reqBody, nil); err != nil {
+		if err := s.callInternal(ctx, s.httpClient, http.MethodPost, "/internal/environments/"+env.ID.String()+"/folders", reqBody, nil); err != nil {
 			return folder, fmt.Errorf("agent-runner: add folder: %w", err)
 		}
 	}
@@ -923,7 +1002,7 @@ func (s *Service) Browse(ctx context.Context, projectID, environmentID uuid.UUID
 		q.Set("path", path)
 	}
 	var resp internalBrowseResponse
-	if err := s.callInternal(ctx, http.MethodGet, "/internal/environments/"+env.ID.String()+"/browse?"+q.Encode(), nil, &resp); err != nil {
+	if err := s.callInternal(ctx, s.httpClient, http.MethodGet, "/internal/environments/"+env.ID.String()+"/browse?"+q.Encode(), nil, &resp); err != nil {
 		return "", nil, fmt.Errorf("agent-runner: browse folder: %w", err)
 	}
 	entries := make([]environmentdom.BrowseEntry, 0, len(resp.Entries))
@@ -1041,7 +1120,7 @@ func (s *Service) syncSSHKeys(ctx context.Context, env *environmentdom.Environme
 	if env.BackendRef == nil || *env.BackendRef == "" {
 		return
 	}
-	_ = s.callInternal(ctx, http.MethodPost, "/internal/environments/"+env.ID.String()+"/ssh-keys/sync",
+	_ = s.callInternal(ctx, s.httpClient, http.MethodPost, "/internal/environments/"+env.ID.String()+"/ssh-keys/sync",
 		internalBackendRefRequest{BackendRef: *env.BackendRef}, nil)
 }
 
@@ -1096,7 +1175,7 @@ func (s *Service) AddPortForward(ctx context.Context, projectID, environmentID u
 	}
 
 	if env.BackendRef != nil && env.Status == environmentdom.StatusRunning {
-		if err := s.callInternal(ctx, http.MethodPost, "/internal/environments/"+env.ID.String()+"/port-forwards/assign",
+		if err := s.callInternal(ctx, s.httpClient, http.MethodPost, "/internal/environments/"+env.ID.String()+"/port-forwards/assign",
 			internalBackendRefRequest{BackendRef: *env.BackendRef}, nil); err == nil {
 			// Re-read so the caller sees the host_port agent-runner just
 			// assigned, rather than the nil value pf still holds locally.
@@ -1196,7 +1275,9 @@ func randomHex(n int) (string, error) {
 }
 
 // -------------------------------------------------------------------------
-// agent-runner internal HTTP client
+// agent-runner internal call payloads — create/start/restart-ports travel
+// over StreamAgentEnvironmentCommands (callEnvironmentCommand), the rest
+// over plain HTTP (callInternal)
 // -------------------------------------------------------------------------
 
 type internalCreateEnvironmentRequest struct {
@@ -1225,6 +1306,10 @@ type internalCreateEnvironmentResponse struct {
 }
 
 type internalStartEnvironmentRequest struct {
+	// EnvironmentID identifies the target now that this travels over
+	// StreamAgentEnvironmentCommands instead of a URL path segment — see
+	// callEnvironmentCommand.
+	EnvironmentID string `json:"environment_id"`
 	BackendRef    string `json:"backend_ref"`
 	Image         string `json:"image,omitempty"`
 	CPULimit      string `json:"cpu_limit"`
@@ -1248,13 +1333,17 @@ type internalStartEnvironmentResponse struct {
 	BackendRef string `json:"backend_ref,omitempty"`
 }
 
-// internalRestartPortsRequest is the request body for POST
-// /internal/environments/{id}/restart-ports — mirrors
-// internalStartEnvironmentRequest plus VolumeRef, needed to reattach the
-// same volume/PVC if the docker backend has to recreate the container
-// (see restartEnvironmentPorts's own doc comment for when this is called
-// instead of a plain /start).
+// internalRestartPortsRequest is the restart-ports command payload sent
+// over StreamAgentEnvironmentCommands (see callEnvironmentCommand) —
+// mirrors internalStartEnvironmentRequest plus VolumeRef, needed to
+// reattach the same volume/PVC if the docker backend has to recreate the
+// container (see restartEnvironmentPorts's own doc comment for when this
+// is called instead of a plain start).
 type internalRestartPortsRequest struct {
+	// EnvironmentID identifies the target now that this travels over
+	// StreamAgentEnvironmentCommands instead of a URL path segment — see
+	// callEnvironmentCommand.
+	EnvironmentID string `json:"environment_id"`
 	BackendRef    string `json:"backend_ref"`
 	VolumeRef     string `json:"volume_ref"`
 	Image         string `json:"image,omitempty"`
@@ -1274,9 +1363,10 @@ type internalRestartPortsResponse struct {
 	SSHPort    int    `json:"ssh_port"`
 }
 
-// internalBackendRefRequest is the request body for POST
-// /internal/environments/{id}/stop — the only lifecycle call needing
-// nothing but backend_ref.
+// internalBackendRefRequest is the request body shared by every agent-runner
+// HTTP endpoint that needs nothing but backend_ref: stop, ssh-keys/sync, and
+// port-forwards/assign (create/start/restart-ports instead travel over
+// StreamAgentEnvironmentCommands — see callEnvironmentCommand).
 type internalBackendRefRequest struct {
 	BackendRef string `json:"backend_ref"`
 }
@@ -1301,11 +1391,80 @@ type internalBrowseResponse struct {
 	} `json:"entries"`
 }
 
+// environmentCommandReply is the JSON envelope agent-runner's own
+// messaging.EnvironmentCommandConsumer RPushes onto a command's reply_key
+// — must stay byte-identical to that consumer's
+// messaging.EnvironmentCommandReply.
+type environmentCommandReply struct {
+	OK      bool            `json:"ok"`
+	Error   string          `json:"error,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// callEnvironmentCommand is callInternal's counterpart for the 3 calls
+// that wait on a Pod/container becoming ready (create/start/
+// restart-ports — see aiAgentProvisionHTTPTimeout's doc comment for why).
+// Same blocking-call shape as callInternal (blocks until it has a
+// response or times out, decodes respBody, returns an error otherwise),
+// transport swapped from HTTP to a Valkey stream + list round trip:
+// publish {type, request_id, reply_key, payload} onto
+// StreamAgentEnvironmentCommands, then BRPop reply_key with
+// aiAgentProvisionHTTPTimeout as the wait budget — this *is* the timeout
+// enforcement point now, not an http.Client.Timeout.
+//
+// List+BRPop, not Pub/Sub: a list value persists until popped, so there's
+// no "subscriber must already be listening" race — whether agent-runner's
+// RPush lands before or after this call's BRPop starts, it's seen either
+// way. Requires both s.publisher and s.redisClient to be set (see
+// WithPublisher/WithRedisClient) — every production caller (bootstrap/app.go)
+// sets both; a test that never reaches create/start/restart-ports has no
+// need to.
+func (s *Service) callEnvironmentCommand(ctx context.Context, cmdType string, reqBody, respBody any) error {
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshal environment command payload: %w", err)
+	}
+	requestID := uuid.New().String()
+	replyKey := events.EnvironmentReplyKey(requestID)
+
+	if err := s.publisher.AppendFlat(ctx, events.StreamAgentEnvironmentCommands, map[string]any{
+		"type":       cmdType,
+		"request_id": requestID,
+		"reply_key":  replyKey,
+		"payload":    string(payload),
+	}); err != nil {
+		return fmt.Errorf("queue agent-runner command: %w", err)
+	}
+
+	result, err := s.redisClient.BRPop(ctx, aiAgentProvisionHTTPTimeout, replyKey).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return fmt.Errorf("agent-runner did not reply to %s within %s", cmdType, aiAgentProvisionHTTPTimeout)
+		}
+		return fmt.Errorf("wait for agent-runner reply: %w", err)
+	}
+	// BRPop's result is [key, value] — result[0] is always replyKey here
+	// since only one key was passed in.
+	var reply environmentCommandReply
+	if err := json.Unmarshal([]byte(result[1]), &reply); err != nil {
+		return fmt.Errorf("decode agent-runner reply: %w", err)
+	}
+	if !reply.OK {
+		return fmt.Errorf("agent-runner: %s", reply.Error)
+	}
+	if respBody != nil && len(reply.Payload) > 0 {
+		if err := json.Unmarshal(reply.Payload, respBody); err != nil {
+			return fmt.Errorf("decode agent-runner reply payload: %w", err)
+		}
+	}
+	return nil
+}
+
 // callInternal calls one of agent-runner's internal/environments endpoints,
 // authenticated the same way agent_handler.go's existing agent-runner calls
 // are (X-Internal-Token: AI_AGENT_INTERNAL_KEY). respBody may be nil for
 // endpoints whose 200 response body is just "{}".
-func (s *Service) callInternal(ctx context.Context, method, path string, reqBody, respBody any) error {
+func (s *Service) callInternal(ctx context.Context, client *http.Client, method, path string, reqBody, respBody any) error {
 	if s.aiAgentURL == "" {
 		return fmt.Errorf("agent-runner service URL not configured")
 	}
@@ -1328,7 +1487,7 @@ func (s *Service) callInternal(ctx context.Context, method, path string, reqBody
 	}
 	req.Header.Set("X-Internal-Token", s.aiAgentInternalKey)
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("call agent-runner: %w", err)
 	}

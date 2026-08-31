@@ -161,14 +161,17 @@ func New(cfg *config.Config) (*App, error) {
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
 		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
-	// environmentService calls agent-runner's /internal/environments/* routes
-	// via the same AI_AGENT_URL/AI_AGENT_INTERNAL_KEY pair AgentHandler
-	// already uses (see environmentsvc.New's doc comment) — not a new config
-	// surface. agentService.WithEnvironmentService below wires it into
+	// environmentService calls agent-runner via the same AI_AGENT_URL/
+	// AI_AGENT_INTERNAL_KEY pair AgentHandler already uses for its fast
+	// calls (see environmentsvc.New's doc comment) — not a new config
+	// surface — plus StreamAgentEnvironmentCommands (WithRedisClient) for
+	// its 3 calls that wait on a Pod/container becoming ready.
+	// agentService.WithEnvironmentService below wires it into
 	// CreateAgent/UpdateAgent's default_environment_id validation and
 	// StartChatSession/StartGlobalChatSession's environment-attach flow.
 	environmentService := environmentsvc.New(environmentRepo, cfg.AIAgentURL, cfg.AIAgentInternalKey).
-		WithPublisher(publisher)
+		WithPublisher(publisher).
+		WithRedisClient(redisClient)
 	agentService = agentService.WithEnvironmentService(environmentService)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {

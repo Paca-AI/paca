@@ -30,4 +30,44 @@ const (
 	// pub/sub, this survives the automation engine not being connected at
 	// the exact moment it's published (including across its own restart).
 	StreamAgentConversationStatus = "paca:agent:conversation_status"
+
+	// StreamAgentEnvironmentCommands is written by services/api's
+	// environmentsvc.Service for its 3 environment-lifecycle calls that
+	// actually wait on a Pod/container becoming ready — create, start, and
+	// restart-ports (see EnvironmentCommand* below) — and consumed here by
+	// EnvironmentCommandConsumer. Its other 6 calls (stop, delete,
+	// folders, browse, ssh-keys/sync, port-forwards/assign) stay on direct
+	// HTTP against this service's existing /internal/environments/*
+	// endpoints — each is a single fast, bounded operation with no
+	// readiness-wait loop, so HTTP already fits fine.
+	//
+	// Must stay byte-identical with services/api's own copy in
+	// internal/events/topics.go — see that file's doc comment.
+	StreamAgentEnvironmentCommands = "paca:agent:environment_commands"
+)
+
+// EnvironmentReplyKey returns the Valkey list key this service RPushes its
+// reply to a StreamAgentEnvironmentCommands entry onto, and the key the
+// original api-side caller BRPops from — one key per request, expired
+// shortly after this service pushes to it so an orphan (caller already
+// gave up, or crashed before popping) doesn't linger. A list, not a
+// Pub/Sub channel: list values persist until popped, so there's no
+// "subscriber must already be listening" race — whether this service's
+// RPush lands before or after the caller's BRPop call starts, the caller
+// sees it either way.
+//
+// Must stay byte-identical with services/api's own copy in
+// internal/events/topics.go.
+func EnvironmentReplyKey(requestID string) string {
+	return "paca:agent:environment_reply:" + requestID
+}
+
+// Environment command types — must stay byte-identical with services/api's
+// own copy in internal/events/topics.go. See that file's doc comment for
+// why these are deliberately distinct from TopicEnvironmentCreate/Start/
+// Stop (an unrelated stream/consumer pair).
+const (
+	EnvironmentCommandCreate       = "create"
+	EnvironmentCommandStart        = "start"
+	EnvironmentCommandRestartPorts = "restart_ports"
 )

@@ -1,24 +1,31 @@
 // environment_handlers.go adds agent-runner's internal, server-to-server
-// static-environment provisioning endpoints — split out of server.go so
-// that file (already covering the ACP bridge WebSocket, its status/
-// disconnect endpoints, and the LLM model catalog) doesn't grow
-// unbounded. Registration still lands on the one shared mux Server.Routes
-// builds (see registerEnvironmentRoutes below, called from there).
+// static-environment provisioning logic — split out of server.go so that
+// file (already covering the ACP bridge WebSocket, its status/disconnect
+// endpoints, and the LLM model catalog) doesn't grow unbounded.
 //
-// Every endpoint here is called only by services/api, over the
-// docker-internal/cluster-internal network, guarded by the same
-// requireInternalToken check (X-Internal-Token) as
-// /agent-bridge/status/* and /agent-bridge/disconnect/*. Contrast with
-// terminal.go's browser terminal WebSocket, which is reached directly by a
-// browser and therefore can't use that header — it's authenticated by a
-// short-lived signed ticket instead.
+// Two transports coexist here, split by whether an operation waits on a
+// Pod/container becoming ready: stop/delete/folders/browse/ssh-keys-sync/
+// port-forwards-assign are each a single fast, bounded call, registered as
+// ordinary HTTP handlers on the shared mux Server.Routes builds (see
+// registerEnvironmentRoutes below, called from there) — called only by
+// services/api, over the docker-internal/cluster-internal network, guarded
+// by the same requireInternalToken check (X-Internal-Token) as
+// /agent-bridge/status/* and /agent-bridge/disconnect/*. create, start,
+// and restart-ports, in contrast, each wait on
+// waitForPodIP/sandbox.WaitForReady (up to several minutes) — those are
+// dispatched via ExecuteEnvironmentCommand, called from
+// messaging.EnvironmentCommandConsumer over StreamAgentEnvironmentCommands
+// instead of HTTP (see that consumer's own doc comment for why). Contrast
+// both with terminal.go's browser terminal WebSocket, which is reached
+// directly by a browser and therefore can't use requireInternalToken —
+// it's authenticated by a short-lived signed ticket instead.
 //
-// agent-runner's job here is intentionally thin: services/api's own
-// Postgres layer owns the canonical `environments` row lifecycle,
-// including the INSERT — these handlers only provision or change the
-// backend resource (a Docker container + volume, or a Kubernetes
-// Deployment + PersistentVolumeClaim) and report back what was
-// created/changed. Nothing in this file touches Postgres.
+// agent-runner's job here is intentionally thin either way: services/api's
+// own Postgres layer owns the canonical `environments` row lifecycle,
+// including the INSERT — this file only provisions or changes the backend
+// resource (a Docker container + volume, or a Kubernetes Deployment +
+// PersistentVolumeClaim) and reports back what was created/changed.
+// Nothing in this file touches Postgres.
 package acpbridge
 
 import (
@@ -33,21 +40,26 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/agent-runner/internal/messaging"
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
 
 // registerEnvironmentRoutes adds the internal environment-provisioning
-// endpoints to mux.
+// endpoints to mux. create/start/restart-ports are deliberately absent —
+// each waits on a Pod/container becoming ready (waitForPodIP/
+// sandbox.WaitForReady, up to several minutes), which doesn't fit a
+// synchronous HTTP call from services/api well; those 3 are instead
+// dispatched via ExecuteEnvironmentCommand, called from
+// messaging.EnvironmentCommandConsumer (see cmd/agent-runner/main.go's
+// wiring). The 6 endpoints here are each a single fast, bounded
+// operation, so a direct HTTP call still fits them fine.
 func (s *Server) registerEnvironmentRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /internal/environments", s.requireInternalToken(s.handleCreateEnvironment))
-	mux.HandleFunc("POST /internal/environments/{id}/start", s.requireInternalToken(s.handleStartEnvironment))
 	mux.HandleFunc("POST /internal/environments/{id}/stop", s.requireInternalToken(s.handleStopEnvironment))
 	mux.HandleFunc("DELETE /internal/environments/{id}", s.requireInternalToken(s.handleDeleteEnvironment))
 	mux.HandleFunc("POST /internal/environments/{id}/folders", s.requireInternalToken(s.handleCreateEnvironmentFolder))
 	mux.HandleFunc("GET /internal/environments/{id}/browse", s.requireInternalToken(s.handleBrowseEnvironment))
 	mux.HandleFunc("POST /internal/environments/{id}/ssh-keys/sync", s.requireInternalToken(s.handleSyncEnvironmentSSHKeys))
 	mux.HandleFunc("POST /internal/environments/{id}/port-forwards/assign", s.requireInternalToken(s.handlePortForwardsAssign))
-	mux.HandleFunc("POST /internal/environments/{id}/restart-ports", s.requireInternalToken(s.handleRestartEnvironmentPorts))
 }
 
 // writeJSON encodes v as the response body with the given status code.
@@ -87,7 +99,7 @@ func (s *Server) requireSandboxMgr(w http.ResponseWriter) bool {
 // yet and the feature is configured on this deployment (both
 // SSHPortRangeStart/End nonzero — see config.Settings.SSHBastionPortRangeStart's
 // own doc comment), returning 0 otherwise. Only ever called once per
-// environment in practice (from handleCreateEnvironment, before the
+// environment in practice (from ExecuteCreateEnvironment, before the
 // backing container/Pod exists at all — the port must be known before
 // CreateEnvironment can bake it in as a published binding), but written to
 // be a safe no-op if called again against an environment that already has
@@ -115,8 +127,8 @@ func (s *Server) assignSSHPort(ctx context.Context, id uuid.UUID) int {
 // bootstrapSSHKeys renders backendRef's authorized_keys from every SSH key
 // registered on environmentID and starts its sshd — called once, right
 // after a fresh container/Pod exists with nothing pushed to it yet: from
-// handleCreateEnvironment (a brand-new container) and, on the docker
-// backend only, from handleRestartEnvironmentPorts (a recreated
+// ExecuteCreateEnvironment (a brand-new container) and, on the docker
+// backend only, from ExecuteRestartEnvironmentPorts (a recreated
 // container — the kubernetes backend never touches the Pod on a restart,
 // so its own authorized_keys are already intact and this is skipped
 // there). Best-effort: a failure here is logged, never returned as the
@@ -143,9 +155,9 @@ func (s *Server) bootstrapSSHKeys(ctx context.Context, environmentID uuid.UUID, 
 // assigned) plus one entry per environment_port_forwards row, self-
 // assigning a host port for any row that doesn't have one yet (mirrors
 // assignSSHPort's own "safe to call repeatedly" idiom) when
-// PortForwardRangeStart/End are configured. Used by handleCreateEnvironment
+// PortForwardRangeStart/End are configured. Used by ExecuteCreateEnvironment
 // (sshPort only — a brand-new environment has no forwards yet) and
-// handleRestartEnvironmentPorts (the full set).
+// ExecuteRestartEnvironmentPorts (the full set).
 func (s *Server) buildPortMappings(ctx context.Context, environmentID uuid.UUID, sshPort int) []sandbox.PortMapping {
 	var mappings []sandbox.PortMapping
 	if sshPort != 0 {
@@ -180,7 +192,8 @@ func (s *Server) buildPortMappings(ctx context.Context, environmentID uuid.UUID,
 }
 
 // -----------------------------------------------------------------------
-// POST /internal/environments
+// create — dispatched from StreamAgentEnvironmentCommands, see
+// ExecuteEnvironmentCommand
 // -----------------------------------------------------------------------
 
 type createEnvironmentRequest struct {
@@ -208,14 +221,19 @@ type createEnvironmentResponse struct {
 	SSHPort int `json:"ssh_port"`
 }
 
-// handleCreateEnvironment provisions environment_id's backing
+// ExecuteCreateEnvironment provisions environment_id's backing
 // container/Pod and volume via sandbox.EnvironmentBackend.CreateEnvironment
 // and reports back what was created — backend, backend_ref, and volume_ref
 // all come straight from the returned EnvironmentHandle, which the docker
 // and kubernetes implementations populate with the real, authoritative
 // values (not reconstructed here by naming-convention guesswork — see
 // EnvironmentHandle's own doc comment for why that matters for a later
-// DeleteEnvironment call).
+// DeleteEnvironment call). Called only from ExecuteEnvironmentCommand,
+// dispatched from messaging.EnvironmentCommandConsumer — see that
+// consumer's own doc comment for why this runs over a Valkey stream
+// rather than as an HTTP handler like this file's other endpoints
+// (CreateEnvironment's waitForPodIP/sandbox.WaitForReady wait can take
+// several minutes).
 //
 // The SSH port, if configured, is assigned *before* CreateEnvironment is
 // even called — a real ordering requirement, not a stylistic choice:
@@ -226,28 +244,21 @@ type createEnvironmentResponse struct {
 // sandbox.EnvironmentConfig.PortMappings). A brand-new environment has no
 // port-forward rows yet (nothing to add one against before it exists), so
 // buildPortMappings only ever contributes the SSH entry here.
-func (s *Server) handleCreateEnvironment(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSandboxMgr(w) {
-		return
-	}
-	var req createEnvironmentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
+func (s *Server) ExecuteCreateEnvironment(ctx context.Context, req createEnvironmentRequest) (*createEnvironmentResponse, error) {
+	if s.SandboxMgr == nil {
+		return nil, errors.New("sandbox backend not configured")
 	}
 	if req.EnvironmentID == "" {
-		writeJSONError(w, http.StatusBadRequest, "environment_id is required")
-		return
+		return nil, errors.New("environment_id is required")
 	}
 	environmentID, err := uuid.Parse(req.EnvironmentID)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid environment_id")
-		return
+		return nil, errors.New("invalid environment_id")
 	}
 
-	sshPort := s.assignSSHPort(r.Context(), environmentID)
+	sshPort := s.assignSSHPort(ctx, environmentID)
 
-	handle, err := s.SandboxMgr.CreateEnvironment(r.Context(), sandbox.EnvironmentConfig{
+	handle, err := s.SandboxMgr.CreateEnvironment(ctx, sandbox.EnvironmentConfig{
 		EnvironmentID:   req.EnvironmentID,
 		Image:           req.Image,
 		CPULimit:        req.CPULimit,
@@ -255,33 +266,34 @@ func (s *Server) handleCreateEnvironment(w http.ResponseWriter, r *http.Request)
 		DiskLimitGB:     req.DiskLimitGB,
 		DockerEnabled:   req.DockerEnabled,
 		SecretKey:       req.SecretKey,
-		PortMappings:    s.buildPortMappings(r.Context(), environmentID, sshPort),
+		PortMappings:    s.buildPortMappings(ctx, environmentID, sshPort),
 		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
 		s.Log.Error("acpbridge: failed to create environment", "environment_id", req.EnvironmentID, "error", err)
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
-		return
+		return nil, err
 	}
 
 	if sshPort != 0 {
-		s.bootstrapSSHKeys(r.Context(), environmentID, handle.BackendRef)
+		s.bootstrapSSHKeys(ctx, environmentID, handle.BackendRef)
 	}
 
-	writeJSON(w, http.StatusOK, createEnvironmentResponse{
+	return &createEnvironmentResponse{
 		Backend:    handle.Backend,
 		BackendRef: handle.BackendRef,
 		VolumeRef:  handle.VolumeRef,
 		BaseURL:    handle.BaseURL,
 		SSHPort:    sshPort,
-	})
+	}, nil
 }
 
 // -----------------------------------------------------------------------
-// POST /internal/environments/{id}/start
+// start — dispatched from StreamAgentEnvironmentCommands, see
+// ExecuteEnvironmentCommand
 // -----------------------------------------------------------------------
 
 type startEnvironmentRequest struct {
+	EnvironmentID string `json:"environment_id"`
 	BackendRef    string `json:"backend_ref"`
 	Image         string `json:"image"`
 	CPULimit      string `json:"cpu_limit"`
@@ -300,16 +312,19 @@ type startEnvironmentResponse struct {
 	// (see docker.Manager.recreateGoneEnvironmentContainer) — a plain
 	// restart of a still-existing container always echoes req.BackendRef
 	// back unchanged. Empty in that ordinary case so services/api's own
-	// "did this change" check (mirroring handleRestartEnvironmentPorts's
+	// "did this change" check (mirroring ExecuteRestartEnvironmentPorts's
 	// response) has nothing to act on.
 	BackendRef string `json:"backend_ref,omitempty"`
 }
 
-// handleStartEnvironment decodes and validates the HTTP request, then hands
-// off to StartEnvironmentByID for the actual work — see that method's own
-// doc comment for what happens (port-mapping republishing, self-heal, SSH
-// re-bootstrap). This handler owns only the HTTP-specific parts: request
-// decoding and mapping the result back onto startEnvironmentResponse.
+// ExecuteStartEnvironment validates req, then hands off to
+// StartEnvironmentByID for the actual work — see that method's own doc
+// comment for what happens (port-mapping republishing, self-heal, SSH
+// re-bootstrap). Called only from ExecuteEnvironmentCommand, dispatched
+// from messaging.EnvironmentCommandConsumer — see that consumer's own doc
+// comment for why this runs over a Valkey stream rather than as an HTTP
+// handler like this file's other endpoints (StartEnvironmentByID's
+// waitForPodIP/sandbox.WaitForReady wait can take several minutes).
 //
 // Holds EnvironmentRepo.LockEnvironmentForStart across the
 // StartEnvironmentByID call below — blocking, not
@@ -327,38 +342,32 @@ type startEnvironmentResponse struct {
 // already-fixed environment. Skipped (falls back to the pre-lock behavior)
 // when EnvironmentRepo is nil — the same tests/tooling contexts every
 // other EnvironmentRepo-reading handler in this file already tolerates.
-func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSandboxMgr(w) {
-		return
+func (s *Server) ExecuteStartEnvironment(ctx context.Context, req startEnvironmentRequest) (*startEnvironmentResponse, error) {
+	if s.SandboxMgr == nil {
+		return nil, errors.New("sandbox backend not configured")
 	}
-	id := r.PathValue("id")
-	environmentID, err := uuid.Parse(id)
+	if req.EnvironmentID == "" {
+		return nil, errors.New("environment_id is required")
+	}
+	environmentID, err := uuid.Parse(req.EnvironmentID)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid environment id")
-		return
-	}
-	var req startEnvironmentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
+		return nil, errors.New("invalid environment id")
 	}
 	if req.BackendRef == "" {
-		writeJSONError(w, http.StatusBadRequest, "backend_ref is required")
-		return
+		return nil, errors.New("backend_ref is required")
 	}
 
 	if s.EnvironmentRepo != nil {
-		release, err := s.EnvironmentRepo.LockEnvironmentForStart(r.Context(), environmentID)
+		release, err := s.EnvironmentRepo.LockEnvironmentForStart(ctx, environmentID)
 		if err != nil {
-			s.Log.Error("acpbridge: failed to acquire start lock", "environment_id", id, "error", err)
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
-			return
+			s.Log.Error("acpbridge: failed to acquire start lock", "environment_id", req.EnvironmentID, "error", err)
+			return nil, err
 		}
 		defer release()
 	}
 
-	handle, sshPort, recreatedBackendRef, err := s.StartEnvironmentByID(r.Context(), environmentID, req.BackendRef, sandbox.EnvironmentConfig{
-		EnvironmentID:   id,
+	handle, sshPort, recreatedBackendRef, err := s.StartEnvironmentByID(ctx, environmentID, req.BackendRef, sandbox.EnvironmentConfig{
+		EnvironmentID:   req.EnvironmentID,
 		Image:           req.Image,
 		CPULimit:        req.CPULimit,
 		MemoryLimit:     req.MemoryLimit,
@@ -368,25 +377,24 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
-		s.Log.Error("acpbridge: failed to start environment", "environment_id", id, "error", err)
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
-		return
+		s.Log.Error("acpbridge: failed to start environment", "environment_id", req.EnvironmentID, "error", err)
+		return nil, err
 	}
 
-	writeJSON(w, http.StatusOK, startEnvironmentResponse{BaseURL: handle.BaseURL, SSHPort: sshPort, BackendRef: recreatedBackendRef})
+	return &startEnvironmentResponse{BaseURL: handle.BaseURL, SSHPort: sshPort, BackendRef: recreatedBackendRef}, nil
 }
 
 // StartEnvironmentByID starts (or self-heals) environmentID's backing
-// container/Pod — factored out of handleStartEnvironment so
+// container/Pod — factored out of ExecuteStartEnvironment so
 // cmd/agent-runner/main.go's startup reconciliation
 // (reconcileEnvironmentsOnStartup) can drive the exact same sequence
 // in-process, without a loopback HTTP call: look up ssh_port, build the
 // environment's full port-mapping set, call SandboxMgr.StartEnvironment,
 // detect a self-heal-changed backend_ref, and re-bootstrap SSH keys.
-// Requires s.SandboxMgr to be set — handleStartEnvironment already checked
-// via requireSandboxMgr before calling this, but main.go's caller has no
-// equivalent wrapper, so this checks for itself rather than assuming every
-// caller already has.
+// Requires s.SandboxMgr to be set — ExecuteStartEnvironment already
+// checked before calling this, but main.go's caller has no equivalent
+// check, so this checks for itself rather than assuming every caller
+// already has.
 //
 // cfg.PortMappings is overwritten with the freshly-built set regardless of
 // what the caller passed in: an ordinary restart of a still-existing
@@ -407,7 +415,7 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 // both backends even when nothing else about the container/Pod changed.
 // BootstrapEnvironmentSSH is idempotent/safe to call on an already-running
 // environment (see its own doc comment) — the same unconditional treatment
-// handleCreateEnvironment already gives it.
+// ExecuteCreateEnvironment already gives it.
 //
 // Returns the handle StartEnvironment produced, the environment's
 // currently-assigned ssh_port (0 if unconfigured/unassigned), and
@@ -417,7 +425,7 @@ func (s *Server) handleStartEnvironment(w http.ResponseWriter, r *http.Request) 
 // backendRef, the parameter, is only actually used when this process's own
 // environments row doesn't have one to offer (EnvironmentRepo nil, or its
 // FindEnvironmentByID call fails) — otherwise the freshly-read row's own
-// BackendRef wins. That matters for handleStartEnvironment specifically:
+// BackendRef wins. That matters for ExecuteStartEnvironment specifically:
 // it acquires EnvironmentRepo.LockEnvironmentForStart before calling this,
 // but req.BackendRef itself was decoded from the request body before that
 // lock was acquired, so it can already be stale by the time this runs — a
@@ -806,7 +814,7 @@ func (s *Server) handleSyncEnvironmentSSHKeys(w http.ResponseWriter, r *http.Req
 // show the assigned port immediately. This decides *which number* a
 // forward will eventually publish on; it does not touch the backing
 // container/Pod/Service at all — that only happens the next time the
-// environment is (re)started, via handleRestartEnvironmentPorts below (see
+// environment is (re)started, via ExecuteRestartEnvironmentPorts below (see
 // this feature's "restart required" UX — docs/ai-agent/
 // environment-management.md's "Port Forwarding" section).
 func (s *Server) handlePortForwardsAssign(w http.ResponseWriter, r *http.Request) {
@@ -845,10 +853,12 @@ func (s *Server) handlePortForwardsAssign(w http.ResponseWriter, r *http.Request
 }
 
 // -----------------------------------------------------------------------
-// POST /internal/environments/{id}/restart-ports
+// restart-ports — dispatched from StreamAgentEnvironmentCommands, see
+// ExecuteEnvironmentCommand
 // -----------------------------------------------------------------------
 
 type restartEnvironmentPortsRequest struct {
+	EnvironmentID string `json:"environment_id"`
 	BackendRef    string `json:"backend_ref"`
 	VolumeRef     string `json:"volume_ref"`
 	Image         string `json:"image"`
@@ -865,7 +875,7 @@ type restartEnvironmentPortsResponse struct {
 	SSHPort    int    `json:"ssh_port"`
 }
 
-// handleRestartEnvironmentPorts applies the environment's full current
+// ExecuteRestartEnvironmentPorts applies the environment's full current
 // port-mapping set (its SSH port plus every environment_port_forwards
 // row) to its backing container/Pod — called by services/api's
 // StartEnvironment (when the environment's ports_pending_restart flag is
@@ -877,43 +887,46 @@ type restartEnvironmentPortsResponse struct {
 // create time, so applying a new set means recreating it); on kubernetes,
 // BackendRef is unchanged (only a Service gets patched, the Pod is never
 // touched).
-func (s *Server) handleRestartEnvironmentPorts(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSandboxMgr(w) {
-		return
+//
+// Called only from ExecuteEnvironmentCommand, dispatched from
+// messaging.EnvironmentCommandConsumer — see that consumer's own doc
+// comment for why this runs over a Valkey stream rather than as an HTTP
+// handler like this file's other endpoints (this method's own
+// waitForPodIP/sandbox.WaitForReady wait can take several minutes,
+// notably including the ExecuteStartEnvironment-triggered case above,
+// where a stopped environment's Pod/container is coming back up from
+// scratch).
+func (s *Server) ExecuteRestartEnvironmentPorts(ctx context.Context, req restartEnvironmentPortsRequest) (*restartEnvironmentPortsResponse, error) {
+	if s.SandboxMgr == nil {
+		return nil, errors.New("sandbox backend not configured")
 	}
-	id := r.PathValue("id")
-	environmentID, err := uuid.Parse(id)
+	if req.EnvironmentID == "" {
+		return nil, errors.New("environment_id is required")
+	}
+	environmentID, err := uuid.Parse(req.EnvironmentID)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid environment id")
-		return
-	}
-	var req restartEnvironmentPortsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
+		return nil, errors.New("invalid environment id")
 	}
 	if req.BackendRef == "" || req.VolumeRef == "" {
-		writeJSONError(w, http.StatusBadRequest, "backend_ref and volume_ref are required")
-		return
+		return nil, errors.New("backend_ref and volume_ref are required")
 	}
 
-	sshPort := s.assignSSHPort(r.Context(), environmentID)
+	sshPort := s.assignSSHPort(ctx, environmentID)
 
-	handle, err := s.SandboxMgr.RestartEnvironmentPorts(r.Context(), req.BackendRef, req.VolumeRef, sandbox.EnvironmentConfig{
-		EnvironmentID:   id,
+	handle, err := s.SandboxMgr.RestartEnvironmentPorts(ctx, req.BackendRef, req.VolumeRef, sandbox.EnvironmentConfig{
+		EnvironmentID:   req.EnvironmentID,
 		Image:           req.Image,
 		CPULimit:        req.CPULimit,
 		MemoryLimit:     req.MemoryLimit,
 		DiskLimitGB:     req.DiskLimitGB,
 		DockerEnabled:   req.DockerEnabled,
 		SecretKey:       req.SecretKey,
-		PortMappings:    s.buildPortMappings(r.Context(), environmentID, sshPort),
+		PortMappings:    s.buildPortMappings(ctx, environmentID, sshPort),
 		MCPDevSourceDir: s.MCPDevSourceDir,
 	})
 	if err != nil {
-		s.Log.Error("acpbridge: failed to restart environment ports", "environment_id", id, "error", err)
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
-		return
+		s.Log.Error("acpbridge: failed to restart environment ports", "environment_id", req.EnvironmentID, "error", err)
+		return nil, err
 	}
 
 	// Only the docker backend's container actually changed identity and
@@ -922,12 +935,58 @@ func (s *Server) handleRestartEnvironmentPorts(w http.ResponseWriter, r *http.Re
 	// backends), so re-bootstrapping there would be redundant work against
 	// a Pod that already has everything it needs.
 	if sshPort != 0 && s.Backend != "kubernetes" {
-		s.bootstrapSSHKeys(r.Context(), environmentID, handle.BackendRef)
+		s.bootstrapSSHKeys(ctx, environmentID, handle.BackendRef)
 	}
 
-	writeJSON(w, http.StatusOK, restartEnvironmentPortsResponse{
+	return &restartEnvironmentPortsResponse{
 		BackendRef: handle.BackendRef,
 		BaseURL:    handle.BaseURL,
 		SSHPort:    sshPort,
-	})
+	}, nil
+}
+
+// ExecuteEnvironmentCommand dispatches one decoded
+// messaging.StreamAgentEnvironmentCommands entry to the matching ExecuteX
+// method above and marshals its response back into the raw JSON payload
+// messaging.EnvironmentCommandConsumer RPushes as the reply. Called only
+// from that consumer — see cmd/agent-runner/main.go's wiring. create,
+// start, and restart_ports are the only 3 command types this consumer's
+// stream ever carries (see messaging.EnvironmentCommand* and
+// registerEnvironmentRoutes's own doc comment on why exactly these 3, and
+// only these 3, are here instead of as HTTP handlers).
+func (s *Server) ExecuteEnvironmentCommand(ctx context.Context, cmdType string, payload json.RawMessage) (json.RawMessage, error) {
+	switch cmdType {
+	case messaging.EnvironmentCommandCreate:
+		var req createEnvironmentRequest
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, fmt.Errorf("invalid create payload: %w", err)
+		}
+		resp, err := s.ExecuteCreateEnvironment(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(resp)
+	case messaging.EnvironmentCommandStart:
+		var req startEnvironmentRequest
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, fmt.Errorf("invalid start payload: %w", err)
+		}
+		resp, err := s.ExecuteStartEnvironment(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(resp)
+	case messaging.EnvironmentCommandRestartPorts:
+		var req restartEnvironmentPortsRequest
+		if err := json.Unmarshal(payload, &req); err != nil {
+			return nil, fmt.Errorf("invalid restart_ports payload: %w", err)
+		}
+		resp, err := s.ExecuteRestartEnvironmentPorts(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(resp)
+	default:
+		return nil, fmt.Errorf("unknown environment command type %q", cmdType)
+	}
 }

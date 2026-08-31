@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -105,6 +106,57 @@ func TestWaitForPodIP_ReturnsContextErrorWhenCancelled(t *testing.T) {
 	_, _, err := m.waitForPodIP(ctx, "job-name="+job)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("waitForPodIP with an already-cancelled context = %v, want context.Canceled", err)
+	}
+}
+
+// TestWaitForPodIP_SkipsTerminatingPodAndFindsReplacement is the regression
+// test for a live bug: StopEnvironment's scale-to-0 patch returns success
+// as soon as it's accepted, without waiting for the old Pod to actually
+// finish terminating (terminationGracePeriodSeconds means that can take
+// real time) — a Start called immediately after can have waitForPodIP's
+// List() see both the still-terminating old Pod (which still carries a
+// non-empty PodIP right up until it's actually gone) and the fresh
+// replacement. Before this fix, whichever sorted first in the list
+// response (unspecified order) won, sometimes handing back an address
+// that was already on its way out.
+func TestWaitForPodIP_SkipsTerminatingPodAndFindsReplacement(t *testing.T) {
+	const job = "paca-sbx-conv5"
+	terminating := podFixture("paca-sbx-conv5-old", job, corev1.PodRunning, "10.0.0.9")
+	now := metav1.Now()
+	terminating.DeletionTimestamp = &now
+	fresh := podFixture("paca-sbx-conv5-new", job, corev1.PodRunning, "10.0.0.10")
+
+	m := managerWithPods("paca", terminating, fresh)
+
+	podName, podIP, err := m.waitForPodIP(context.Background(), "job-name="+job)
+	if err != nil {
+		t.Fatalf("waitForPodIP: %v", err)
+	}
+	if podName != "paca-sbx-conv5-new" {
+		t.Errorf("podName = %q, want the fresh replacement %q, not the terminating Pod", podName, "paca-sbx-conv5-new")
+	}
+	if podIP != "10.0.0.10" {
+		t.Errorf("podIP = %q, want %q", podIP, "10.0.0.10")
+	}
+}
+
+// TestWaitForPodIP_ErrorsWhenOnlyMatchIsTerminating confirms a terminating
+// Pod is never an acceptable answer even when it's the only match — the
+// caller should keep polling (and eventually time out) rather than hand
+// back an address on its way out.
+func TestWaitForPodIP_ErrorsWhenOnlyMatchIsTerminating(t *testing.T) {
+	const job = "paca-sbx-conv6"
+	terminating := podFixture("paca-sbx-conv6-old", job, corev1.PodRunning, "10.0.0.9")
+	now := metav1.Now()
+	terminating.DeletionTimestamp = &now
+
+	m := managerWithPods("paca", terminating)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err := m.waitForPodIP(ctx, "job-name="+job)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("waitForPodIP with only a terminating Pod matching = %v, want context.DeadlineExceeded (never returns the terminating Pod's address)", err)
 	}
 }
 

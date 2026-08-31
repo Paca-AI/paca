@@ -289,6 +289,24 @@ func (m *Manager) buildEnvironmentDeployment(name string, cfg sandbox.Environmen
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: m.namespace, Labels: labels},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(int32(1)),
+			// Recreate, not the default RollingUpdate: this Deployment's
+			// Pod mounts an exclusive ReadWriteOnce PVC (below), and every
+			// later spec.template mutation this package makes —
+			// ensureEnvironmentEnv's one-time GOOSE_PROVIDER backfill,
+			// ensureEnvironmentInfraEnv's ongoing resync — patches that
+			// template. RollingUpdate's default surge (maxSurge: 25%,
+			// which rounds up to 1 extra pod at replicas=1) tries to
+			// schedule the new Pod *before* tearing down the old one: with
+			// only one replica ever wanted and an RWO volume only one Pod
+			// can mount at a time, that surge Pod can never actually run —
+			// it sits Pending forever (compounded on a resource-constrained
+			// node, which can't even schedule the momentary extra
+			// CPU/memory request), so the old Pod is never replaced and a
+			// patched-in env var never reaches a live container. Recreate
+			// tears the old Pod down first, releasing the volume, before
+			// creating the new one — the correct, standard strategy for a
+			// singleton workload backed by exclusive storage.
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
@@ -389,7 +407,7 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 	// A brand-new environment has no port-forward rows yet — cfg.PortMappings
 	// carries at most the environment's own SSH entry, assigned by the
 	// caller (internal/acpbridge/environment_handlers.go's
-	// handleCreateEnvironment) before this method was ever called. See
+	// ExecuteCreateEnvironment) before this method was ever called. See
 	// ensureEnvironmentService's own doc comment for why nothing is created
 	// at all when this is empty (SSH not configured on this deployment).
 	if err := m.ensureEnvironmentService(ctx, name, labels, cfg.PortMappings); err != nil {
@@ -454,7 +472,7 @@ func (m *Manager) RestartEnvironmentPorts(ctx context.Context, backendRef, volum
 
 // ensureEnvironmentEnv backfills cfg.Env onto backendRef's Deployment the
 // one time it's actually needed: a Deployment created by
-// handleCreateEnvironment (which has no agent/LLM context at all — an
+// ExecuteCreateEnvironment (which has no agent/LLM context at all — an
 // environment isn't owned by one agent) never got
 // GOOSE_PROVIDER/GOOSE_MODEL/the provider's API key baked in, so goose
 // serve fails every session/new with "Configuration value not found:
@@ -500,10 +518,38 @@ func (m *Manager) ensureEnvironmentEnv(ctx context.Context, backendRef string, c
 		}
 		container.Env = append(container.Env, corev1.EnvVar{Name: k, Value: v})
 	}
-	if _, err := depClient.Update(ctx, dep, metav1.UpdateOptions{}); err != nil {
+	if err := m.patchDeploymentContainers(ctx, backendRef, dep.Spec.Template.Spec.Containers); err != nil {
 		return fmt.Errorf("sandbox/k8s: update environment deployment %s to backfill env: %w", backendRef, err)
 	}
 	return nil
+}
+
+// patchDeploymentContainers issues a JSON merge patch replacing name's
+// Deployment's entire spec.template.spec.containers with containers.
+// Deliberately a Patch (types.MergePatchType), never Update: this
+// ServiceAccount's RBAC grants "patch" on deployments.apps, not "update"
+// (deploy/helm/paca/templates/agent-runner/role.yaml) — a merge patch and
+// a full-object update are different verbs to the API server regardless
+// of how much of the object either one actually changes, so a get-mutate-
+// Update() round trip here 403s no matter how narrow the mutation is.
+// scaleDeployment above takes the identical approach for spec.replicas;
+// this is its counterpart for the two ensureEnvironment*Env callers that
+// mutate a container's env instead.
+func (m *Manager) patchDeploymentContainers(ctx context.Context, name string, containers []corev1.Container) error {
+	patch, err := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"template": map[string]any{
+				"spec": map[string]any{
+					"containers": containers,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("sandbox/k8s: marshal containers patch for deployment %s: %w", name, err)
+	}
+	_, err = m.clientset.AppsV1().Deployments(m.namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	return err
 }
 
 // pacaInfraEnvKeys — see docker/environment.go's own copy of this exact
@@ -555,7 +601,7 @@ var pacaInfraEnvKeys = []string{
 func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) error {
 	if len(cfg.Env) == 0 {
 		// A caller with no infra-env context at all — e.g.
-		// handleStartEnvironment's plain restart, whose EnvironmentConfig
+		// ExecuteStartEnvironment's plain restart, whose EnvironmentConfig
 		// never sets Env (see its own doc comment: "restarts ... without
 		// touching" what it doesn't own) — has nothing to reconcile
 		// pacaInfraEnvKeys against. Every real attach path (coldStartEnvironment)
@@ -613,7 +659,7 @@ func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef stri
 	}
 	container.Env = desired
 
-	if _, err := depClient.Update(ctx, dep, metav1.UpdateOptions{}); err != nil {
+	if err := m.patchDeploymentContainers(ctx, backendRef, dep.Spec.Template.Spec.Containers); err != nil {
 		return fmt.Errorf("sandbox/k8s: update environment deployment %s to refresh infra env: %w", backendRef, err)
 	}
 	return nil
