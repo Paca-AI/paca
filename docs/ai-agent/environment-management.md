@@ -153,12 +153,12 @@ A new domain package, `services/api/internal/domain/environment/`, mirrors `inte
 New agent-runner internal endpoints, added to the existing `acpbridge.Server.Routes()` mux (same `X-Internal-Token` guard already protecting `/agent-bridge/status/*`):
 
 ```
-POST   /internal/environments
-POST   /internal/environments/{id}/start
 POST   /internal/environments/{id}/stop
 DELETE /internal/environments/{id}
 POST   /internal/environments/{id}/folders
 ```
+
+Create, start, and restart-ports are handled differently: each waits on a Pod/container becoming ready (`waitForPodIP`/`sandbox.WaitForReady`, up to several minutes on the kubernetes backend), which doesn't fit a synchronous HTTP call from `services/api` well — an early HTTP-based version of this hit exactly that problem, timing out a fast client-side `http.Client` against a slow-but-legitimate provisioning wait. Those 3 instead go over the Valkey stream `StreamAgentEnvironmentCommands` (mirroring how conversation triggers already never go through HTTP, only ever through `StreamAgentTriggers`): `services/api`'s `callEnvironmentCommand` publishes `{type, request_id, reply_key, payload}` and blocks on `BRPop(reply_key)`; agent-runner's `messaging.EnvironmentCommandConsumer` reads the stream, dispatches to `acpbridge.Server.ExecuteEnvironmentCommand`, and `RPush`es the result back onto `reply_key`. See `environment_service.go`'s `aiAgentProvisionHTTPTimeout` and `messaging.EnvironmentCommandConsumer`'s own doc comments for the full design.
 
 New public REST, `dto/environment_dto.go` + `handler/environment_handler.go`, wired in `router.go` under `/projects/{projectId}/environments` alongside the existing `/agents` block: list/create/get/update/delete, `/start`, `/stop`, `/heartbeat`, folder list/add/delete, and SSH key list/add/delete (`GET`/`POST /environments/{id}/ssh-keys`, `DELETE /environments/{id}/ssh-keys/{keyId}`) — the last group is pure CRUD against `environment_ssh_keys` with no agent-runner round-trip needed, since nothing consumes the keys until the Phase 3 bastion exists. `CreateEnvironmentRequest.image` is optional; when omitted, `services/api` passes an empty string through to agent-runner's `CreateEnvironment`, which resolves the platform default itself (see [Interface](#interface)) rather than `services/api` needing to know what that default is. Endpoints are gated by their own dedicated `environments.read`/`environments.write`/`environments.connect` permissions (see `platform/authz/permissions.go`) rather than reusing `/agents`' gate — `environments.connect` covers only the terminal-ticket endpoint (an interactive shell), kept separate from `environments.write` (everything else that mutates an environment's configuration or lifecycle) so the two are grantable independently.
 

@@ -158,6 +158,13 @@ func run(log *slog.Logger) error {
 		MCPDevSourceDir:       settings.MCPDevSourceDir,
 		Log:                   log,
 	}
+	envCommandConsumer := messaging.NewEnvironmentCommandConsumer(
+		redisClient,
+		settings.EnvironmentProvisionConcurrency,
+		acpServer.ExecuteEnvironmentCommand,
+		log,
+	)
+
 	httpServer := &http.Server{Addr: settings.HTTPAddr, Handler: acpServer.Routes()}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -177,6 +184,7 @@ func run(log *slog.Logger) error {
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
 	go runHTTPServer(ctx, httpServer, log)
+	go envCommandConsumer.Run(ctx)
 	consumer.Run(ctx)
 	return nil
 }

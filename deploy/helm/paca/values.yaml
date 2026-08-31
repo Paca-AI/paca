@@ -353,8 +353,15 @@ agentRunner:
   # environment's Service is patched live to apply a change — no Pod
   # restart needed on this backend, unlike the docker backend's own
   # container-recreate requirement.
+  #
+  # On by default, unlike sshBastion above: a user-added port forward only
+  # ever exposes a port the environment's own workload is already meant to
+  # serve (e.g. a dev server), each one explicit and visible on that
+  # environment's Connect page — a materially smaller blast radius than
+  # sshBastion's always-on root shell access, so this doesn't warrant the
+  # same opt-in-by-operator default.
   portForward:
-    enabled: false
+    enabled: true
     # A disjoint range from sshBastion.portRangeStart/End above so the
     # two can never collide — same --service-node-port-range constraint
     # as that field's own doc comment.

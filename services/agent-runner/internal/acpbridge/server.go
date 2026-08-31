@@ -86,11 +86,11 @@ type Server struct {
 	PortForwardRangeStart int
 	PortForwardRangeEnd   int
 	// Backend is settings.SandboxBackend ("docker" or "kubernetes") —
-	// echoed verbatim in POST /internal/environments' response. Not
-	// derivable from a sandbox.EnvironmentHandle (which carries only
-	// BackendRef/BaseURL, no backend-kind field), so this is threaded
-	// through from config.Settings instead — see
-	// environment_handlers.go's handleCreateEnvironment.
+	// echoed verbatim in ExecuteCreateEnvironment's response (its
+	// createEnvironmentResponse.Backend field). Not derivable from a
+	// sandbox.EnvironmentHandle (which carries only BackendRef/BaseURL, no
+	// backend-kind field), so this is threaded through from config.Settings
+	// instead — see environment_handlers.go's ExecuteCreateEnvironment.
 	Backend string
 	// MCPDevSourceDir mirrors config.Settings.MCPDevSourceDir — forwarded
 	// into every sandbox.EnvironmentConfig this creates so a brand-new

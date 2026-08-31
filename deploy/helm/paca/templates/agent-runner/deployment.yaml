@@ -72,10 +72,19 @@ spec:
             - name: SANDBOX_BACKEND
               value: {{ .Values.agentRunner.sandbox.backend | quote }}
             {{- if eq .Values.agentRunner.sandbox.backend "kubernetes" }}
-            {{- if .Values.agentRunner.sandbox.namespace }}
+            # Always set explicitly (never left to inClusterNamespace()'s
+            # own-pod-namespace fallback in internal/config): this must
+            # match paca.sandboxNamespace exactly, since that's the
+            # namespace role.yaml/rolebinding.yaml/sandbox-namespace.yaml
+            # grant RBAC in and create. Leaving this conditional on
+            # .Values.agentRunner.sandbox.namespace being explicitly set
+            # let the two defaults diverge whenever an operator left it
+            # unset — RBAC lives in "<release>-sandbox" while the pod's own
+            # namespace fallback pointed at .Release.Namespace instead,
+            # producing exactly the "persistentvolumeclaims is forbidden"
+            # error this comment is here to prevent.
             - name: SANDBOX_NAMESPACE
-              value: {{ .Values.agentRunner.sandbox.namespace | quote }}
-            {{- end }}
+              value: {{ include "paca.sandboxNamespace" . | quote }}
             - name: SANDBOX_CPU_LIMIT
               value: {{ .Values.agentRunner.sandbox.cpuLimit | quote }}
             - name: SANDBOX_MEMORY_LIMIT

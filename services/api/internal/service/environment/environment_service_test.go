@@ -4,17 +4,89 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	"github.com/Paca-AI/api/internal/events"
+	"github.com/Paca-AI/api/internal/platform/messaging"
 )
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// newEnvironmentCommandTestClient returns a miniredis-backed *redis.Client
+// for testing the 3 environment commands that go through
+// StreamAgentEnvironmentCommands instead of HTTP (create/start/
+// restart-ports — see callEnvironmentCommand's own doc comment). miniredis
+// implements real blocking BRPOP (satisfied by a later RPUSH from another
+// goroutine via its own sync.Cond), so this doesn't need a real Valkey/
+// Redis binary.
+func newEnvironmentCommandTestClient(t *testing.T) *redis.Client {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	return redis.NewClient(&redis.Options{Addr: mr.Addr()})
+}
+
+// awaitEnvironmentCommand blocks until a command appears on
+// StreamAgentEnvironmentCommands, asserts its type is wantType, and
+// returns its decoded payload plus a respond func the test calls to push
+// the reply agent-runner would have sent — simulating
+// messaging.EnvironmentCommandConsumer without actually running one. The
+// call under test (svc.ExecuteCreate/ExecuteStart/etc.) must already be
+// running in its own goroutine before this is called, since it blocks on
+// the very BRPop this unblocks.
+func awaitEnvironmentCommand(t *testing.T, client *redis.Client, wantType string) (payload json.RawMessage, respond func(ok bool, resp any, errMsg string)) {
+	t.Helper()
+	ctx := context.Background()
+	// MKSTREAM so this succeeds even if AppendFlat hasn't run yet; "0" so
+	// this ad hoc group sees the entry regardless of exactly when it
+	// arrives relative to XGroupCreateMkStream — this group plays no role
+	// beyond letting the test read the one entry it's waiting for.
+	require.NoError(t, client.XGroupCreateMkStream(ctx, events.StreamAgentEnvironmentCommands, "test", "0").Err())
+
+	var msg redis.XMessage
+	require.Eventually(t, func() bool {
+		res, err := client.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group: "test", Consumer: "test",
+			Streams: []string{events.StreamAgentEnvironmentCommands, ">"},
+			Count:   1, Block: 50 * time.Millisecond,
+		}).Result()
+		if err != nil || len(res) == 0 || len(res[0].Messages) == 0 {
+			return false
+		}
+		msg = res[0].Messages[0]
+		return true
+	}, 2*time.Second, 10*time.Millisecond, "no command appeared on StreamAgentEnvironmentCommands")
+
+	assert.Equal(t, wantType, msg.Values["type"])
+	replyKey, _ := msg.Values["reply_key"].(string)
+	require.NotEmpty(t, replyKey)
+	payloadStr, _ := msg.Values["payload"].(string)
+
+	return json.RawMessage(payloadStr), func(ok bool, resp any, errMsg string) {
+		reply := environmentCommandReply{OK: ok, Error: errMsg}
+		if resp != nil {
+			b, err := json.Marshal(resp)
+			require.NoError(t, err)
+			reply.Payload = b
+		}
+		b, err := json.Marshal(reply)
+		require.NoError(t, err)
+		require.NoError(t, client.RPush(ctx, replyKey, b).Err())
+	}
+}
 
 // mockRepo is a function-field-based mock of environmentdom.Repository —
 // mirrors the mockAgentRepo pattern in service/agent/agent_service_test.go:
@@ -198,13 +270,21 @@ func (m *mockRepo) FindPortForwardByID(ctx context.Context, id uuid.UUID) (*envi
 // mockPublisher is a function-field-based mock of environmentPublisher,
 // mirroring mockRepo's own style.
 type mockPublisher struct {
-	appendFn  func(ctx context.Context, stream, eventType string, payload any) error
-	publishFn func(ctx context.Context, channel string, payload any) error
+	appendFn     func(ctx context.Context, stream, eventType string, payload any) error
+	appendFlatFn func(ctx context.Context, stream string, fields map[string]any) error
+	publishFn    func(ctx context.Context, channel string, payload any) error
 }
 
 func (m *mockPublisher) Append(ctx context.Context, stream, eventType string, payload any) error {
 	if m.appendFn != nil {
 		return m.appendFn(ctx, stream, eventType, payload)
+	}
+	return nil
+}
+
+func (m *mockPublisher) AppendFlat(ctx context.Context, stream string, fields map[string]any) error {
+	if m.appendFlatFn != nil {
+		return m.appendFlatFn(ctx, stream, fields)
 	}
 	return nil
 }
@@ -425,20 +505,7 @@ func TestCreateEnvironment_ReturnsErrorWhenPublishFails(t *testing.T) {
 func TestExecuteCreate_Success(t *testing.T) {
 	envID := uuid.New()
 	projectID := uuid.New()
-	var gotReq internalCreateEnvironmentRequest
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/internal/environments", r.URL.Path)
-		assert.Equal(t, "test-internal-key", r.Header.Get("X-Internal-Token"))
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotReq))
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalCreateEnvironmentResponse{
-			Backend:    "docker",
-			BackendRef: "container-123",
-			VolumeRef:  "paca-env-abc",
-			BaseURL:    "http://sandbox:8080",
-		})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var provisioned struct {
 		status, backend, backendRef, volumeRef string
@@ -458,14 +525,25 @@ func TestExecuteCreate_Success(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteCreate(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteCreate(context.Background(), envID) }()
 
-	require.NoError(t, err)
+	payload, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandCreate)
+	var gotReq internalCreateEnvironmentRequest
+	require.NoError(t, json.Unmarshal(payload, &gotReq))
 	assert.Equal(t, envID.String(), gotReq.EnvironmentID)
 	assert.Equal(t, projectID.String(), gotReq.ProjectID)
 	assert.Equal(t, "plaintext-secret", gotReq.SecretKey)
+	respond(true, internalCreateEnvironmentResponse{
+		Backend:    "docker",
+		BackendRef: "container-123",
+		VolumeRef:  "paca-env-abc",
+		BaseURL:    "http://sandbox:8080",
+	}, "")
+
+	require.NoError(t, <-done)
 	assert.Equal(t, environmentdom.StatusRunning, provisioned.status)
 	assert.Equal(t, "docker", provisioned.backend)
 	assert.Equal(t, "container-123", provisioned.backendRef)
@@ -476,11 +554,7 @@ func TestExecuteCreate_Success(t *testing.T) {
 // surfaces as an error (not swallowed) and marks the row StatusError.
 func TestExecuteCreate_AgentRunnerFailure(t *testing.T) {
 	envID := uuid.New()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("boom"))
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var statusUpdates []string
 	repo := &mockRepo{
@@ -496,11 +570,15 @@ func TestExecuteCreate_AgentRunnerFailure(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteCreate(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteCreate(context.Background(), envID) }()
 
-	assert.Error(t, err)
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandCreate)
+	respond(false, nil, "boom")
+
+	assert.Error(t, <-done)
 	assert.Equal(t, []string{environmentdom.StatusError}, statusUpdates)
 }
 
@@ -510,14 +588,6 @@ func TestExecuteCreate_AgentRunnerFailure(t *testing.T) {
 // whose original ack failed after a prior run already resolved it.
 func TestExecuteCreate_SkipsStaleReplay(t *testing.T) {
 	envID := uuid.New()
-	var calledAgentRunner bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calledAgentRunner = true
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalCreateEnvironmentResponse{})
-	}))
-	defer srv.Close()
-
 	var statusUpdates []string
 	repo := &mockRepo{
 		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
@@ -528,12 +598,16 @@ func TestExecuteCreate_SkipsStaleReplay(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	// No redis client/publisher wired at all: if the stale-replay guard
+	// failed to short-circuit, the fall-through into
+	// callEnvironmentCommand would nil-pointer panic — a loud failure,
+	// which is a stronger signal than a separate "did it call
+	// agent-runner" bool would have been.
+	svc := New(repo, "", "")
 
 	err := svc.ExecuteCreate(context.Background(), envID)
 
 	require.NoError(t, err)
-	assert.False(t, calledAgentRunner)
 	assert.Empty(t, statusUpdates)
 }
 
@@ -544,13 +618,7 @@ func TestExecuteCreate_SkipsStaleReplay(t *testing.T) {
 // and the idle reaper would never select.
 func TestExecuteCreate_ProvisioningPersistFailureMarksError(t *testing.T) {
 	envID := uuid.New()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalCreateEnvironmentResponse{
-			Backend: "docker", BackendRef: "container-123", VolumeRef: "paca-env-abc",
-		})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var statusUpdates []string
 	var errMsgs []*string
@@ -570,11 +638,17 @@ func TestExecuteCreate_ProvisioningPersistFailureMarksError(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteCreate(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteCreate(context.Background(), envID) }()
 
-	require.Error(t, err)
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandCreate)
+	respond(true, internalCreateEnvironmentResponse{
+		Backend: "docker", BackendRef: "container-123", VolumeRef: "paca-env-abc",
+	}, "")
+
+	require.Error(t, <-done)
 	assert.Equal(t, []string{environmentdom.StatusError}, statusUpdates)
 	require.Len(t, errMsgs, 1)
 	require.NotNil(t, errMsgs[0])
@@ -924,17 +998,7 @@ func TestExecuteStart_RestartsPortsWhenPending(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-old"
 	volumeRef := "paca-env-abc"
-	var calledPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calledPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalRestartPortsResponse{
-			BackendRef: "container-new",
-			BaseURL:    "http://sandbox:8080",
-			SSHPort:    22001,
-		})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var statusUpdates []string
 	var pendingSet *bool
@@ -963,12 +1027,19 @@ func TestExecuteStart_RestartsPortsWhenPending(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteStart(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteStart(context.Background(), envID) }()
 
-	require.NoError(t, err)
-	assert.Equal(t, "/internal/environments/"+envID.String()+"/restart-ports", calledPath)
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandRestartPorts)
+	respond(true, internalRestartPortsResponse{
+		BackendRef: "container-new",
+		BaseURL:    "http://sandbox:8080",
+		SSHPort:    22001,
+	}, "")
+
+	require.NoError(t, <-done)
 	assert.Equal(t, []string{environmentdom.StatusRunning}, statusUpdates)
 	assert.Equal(t, []uuid.UUID{envID}, touched)
 	require.NotNil(t, pendingSet)
@@ -984,13 +1055,7 @@ func TestExecuteStart_RestartsPortsWhenPending(t *testing.T) {
 func TestExecuteStart_PlainStart(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-1"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{
-			BaseURL: "http://sandbox:8080",
-		})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var statusUpdates []string
 	var touched []uuid.UUID
@@ -1010,11 +1075,15 @@ func TestExecuteStart_PlainStart(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteStart(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteStart(context.Background(), envID) }()
 
-	require.NoError(t, err)
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandStart)
+	respond(true, internalStartEnvironmentResponse{BaseURL: "http://sandbox:8080"}, "")
+
+	require.NoError(t, <-done)
 	assert.Equal(t, []string{environmentdom.StatusRunning}, statusUpdates)
 	assert.Equal(t, []uuid.UUID{envID}, touched)
 }
@@ -1028,13 +1097,7 @@ func TestExecuteStart_PlainStart(t *testing.T) {
 func TestExecuteStart_SucceedsWhenTouchFails(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-1"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{
-			BaseURL: "http://sandbox:8080",
-		})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var statusUpdates []string
 	repo := &mockRepo{
@@ -1052,11 +1115,15 @@ func TestExecuteStart_SucceedsWhenTouchFails(t *testing.T) {
 			return errors.New("valkey unavailable")
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteStart(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteStart(context.Background(), envID) }()
 
-	require.NoError(t, err)
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandStart)
+	respond(true, internalStartEnvironmentResponse{BaseURL: "http://sandbox:8080"}, "")
+
+	require.NoError(t, <-done)
 	assert.Equal(t, []string{environmentdom.StatusRunning}, statusUpdates)
 }
 
@@ -1069,14 +1136,7 @@ func TestExecuteStart_RestartsPortsWhenPending_ClearsPendingWhenTouchFails(t *te
 	envID := uuid.New()
 	backendRef := "container-old"
 	volumeRef := "paca-env-abc"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalRestartPortsResponse{
-			BackendRef: "container-new",
-			BaseURL:    "http://sandbox:8080",
-		})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var pendingSet *bool
 	repo := &mockRepo{
@@ -1095,11 +1155,18 @@ func TestExecuteStart_RestartsPortsWhenPending_ClearsPendingWhenTouchFails(t *te
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteStart(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteStart(context.Background(), envID) }()
 
-	require.NoError(t, err)
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandRestartPorts)
+	respond(true, internalRestartPortsResponse{
+		BackendRef: "container-new",
+		BaseURL:    "http://sandbox:8080",
+	}, "")
+
+	require.NoError(t, <-done)
 	require.NotNil(t, pendingSet)
 	assert.False(t, *pendingSet)
 }
@@ -1113,14 +1180,6 @@ func TestExecuteStart_RestartsPortsWhenPending_ClearsPendingWhenTouchFails(t *te
 func TestExecuteStart_SkipsStaleReplay(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-1"
-	var calledAgentRunner bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calledAgentRunner = true
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{})
-	}))
-	defer srv.Close()
-
 	var statusUpdates []string
 	repo := &mockRepo{
 		findEnvironmentByID: func(_ context.Context, _ uuid.UUID) (*environmentdom.Environment, error) {
@@ -1134,12 +1193,14 @@ func TestExecuteStart_SkipsStaleReplay(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	// No redis client/publisher wired at all — see
+	// TestExecuteCreate_SkipsStaleReplay's identical reasoning: a
+	// fall-through to callEnvironmentCommand here would nil-pointer panic.
+	svc := New(repo, "", "")
 
 	err := svc.ExecuteStart(context.Background(), envID)
 
 	require.NoError(t, err)
-	assert.False(t, calledAgentRunner)
 	assert.Empty(t, statusUpdates)
 }
 
@@ -1152,11 +1213,7 @@ func TestExecuteStart_SkipsStaleReplay(t *testing.T) {
 func TestExecuteStart_RunningPersistFailureMarksError(t *testing.T) {
 	envID := uuid.New()
 	backendRef := "container-1"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(internalStartEnvironmentResponse{BaseURL: "http://sandbox:8080"})
-	}))
-	defer srv.Close()
+	client := newEnvironmentCommandTestClient(t)
 
 	var statusUpdates []string
 	var errMsgs []*string
@@ -1176,10 +1233,15 @@ func TestExecuteStart_RunningPersistFailureMarksError(t *testing.T) {
 			return nil
 		},
 	}
-	svc := New(repo, srv.URL, "test-internal-key")
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
 
-	err := svc.ExecuteStart(context.Background(), envID)
+	done := make(chan error, 1)
+	go func() { done <- svc.ExecuteStart(context.Background(), envID) }()
 
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandStart)
+	respond(true, internalStartEnvironmentResponse{BaseURL: "http://sandbox:8080"}, "")
+
+	err := <-done
 	require.Error(t, err)
 	assert.Equal(t, []string{environmentdom.StatusRunning, environmentdom.StatusError}, statusUpdates)
 	require.Len(t, errMsgs, 2)
