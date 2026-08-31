@@ -478,6 +478,9 @@ func (s *Service) ListRunSteps(ctx context.Context, projectID, automationID, run
 	if _, err := s.findOwnedAutomation(ctx, projectID, automationID); err != nil {
 		return nil, err
 	}
+	if _, err := s.findOwnedRun(ctx, automationID, runID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListRunStepsByRun(ctx, runID)
 }
 
@@ -637,6 +640,17 @@ func (s *Service) findOwnedNode(ctx context.Context, automationID, nodeID uuid.U
 		return nil, automationdom.ErrNodeNotFound
 	}
 	return n, nil
+}
+
+func (s *Service) findOwnedRun(ctx context.Context, automationID, runID uuid.UUID) (*automationdom.Run, error) {
+	run, err := s.repo.FindRunByID(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.AutomationID != automationID {
+		return nil, automationdom.ErrRunNotFound
+	}
+	return run, nil
 }
 
 // resolveMember resolves an authenticated actor to their project_members.id

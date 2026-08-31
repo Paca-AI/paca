@@ -660,6 +660,57 @@ func TestWriteTaskDescriptionWithAI_MissingAgentID_Returns400(t *testing.T) {
 	}
 }
 
+// fakeAgentTaskChecker is a minimal attachmentdom.TaskOwnerChecker stand-in
+// for WriteTaskDescriptionWithAI's cross-project regression tests below.
+type fakeAgentTaskChecker struct {
+	err error
+}
+
+func (f fakeAgentTaskChecker) TaskBelongsToProject(context.Context, uuid.UUID, uuid.UUID) error {
+	return f.err
+}
+
+// TestWriteTaskDescriptionWithAI_NoTaskCheckerConfigured_Returns500 guards
+// the fail-closed design of the taskChecker fix (GHSA-xwmv-9c7h-g947
+// follow-up audit): if a deployment forgets to wire WithTaskChecker, the
+// handler must refuse the request rather than silently skip the
+// cross-project task-ownership check.
+func TestWriteTaskDescriptionWithAI_NoTaskCheckerConfigured_Returns500(t *testing.T) {
+	r := newAgentRouter(&mockAgentSvc{})
+	projectID := uuid.New()
+	taskID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/tasks/"+taskID.String()+"/write-with-ai",
+		map[string]any{"agent_id": uuid.New().String()})
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when no task checker is configured, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestWriteTaskDescriptionWithAI_WrongProject_Returns404 is the regression
+// test for the taskID half of the WriteTaskDescriptionWithAI cross-project
+// hijack: a taskID belonging to a different project must be rejected before
+// any agent is triggered against it.
+func TestWriteTaskDescriptionWithAI_WrongProject_Returns404(t *testing.T) {
+	svc := &mockAgentSvc{}
+	h := handler.NewAgentHandler(svc, "", "", "").
+		WithTaskChecker(fakeAgentTaskChecker{err: attachmentdom.ErrTaskNotInProject})
+	r := chi.NewRouter()
+	r.Route("/projects/{projectId}/tasks/{taskId}", func(r chi.Router) {
+		r.Post("/write-with-ai", h.WriteTaskDescriptionWithAI)
+	})
+	projectID := uuid.New()
+	taskID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/tasks/"+taskID.String()+"/write-with-ai",
+		map[string]any{"agent_id": uuid.New().String()})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-project taskID, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // resolveMemberID tests — exercised through StartChatSession, one of its
 // four callers, since resolveMemberID itself is unexported.

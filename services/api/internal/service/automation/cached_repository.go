@@ -212,6 +212,11 @@ func (c *CachedRepository) UpdateRun(ctx context.Context, r *automationdom.Run) 
 	return c.repo.UpdateRun(ctx, r)
 }
 
+// FindRunByID delegates to the underlying repository.
+func (c *CachedRepository) FindRunByID(ctx context.Context, id uuid.UUID) (*automationdom.Run, error) {
+	return c.repo.FindRunByID(ctx, id)
+}
+
 // ListRunsByAutomation delegates to the underlying repository.
 func (c *CachedRepository) ListRunsByAutomation(ctx context.Context, automationID uuid.UUID, limit int) ([]*automationdom.Run, error) {
 	return c.repo.ListRunsByAutomation(ctx, automationID, limit)

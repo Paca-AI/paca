@@ -1500,12 +1500,17 @@ func parseCommentID(r *http.Request) (uuid.UUID, error) {
 
 // ListTaskActivities handles GET /projects/:projectId/tasks/:taskId/activities.
 func (h *TaskHandler) ListTaskActivities(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	taskID, err := parseTaskID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	activities, err := h.activitySvc.ListActivities(r.Context(), taskID)
+	activities, err := h.activitySvc.ListActivities(r.Context(), projectID, taskID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

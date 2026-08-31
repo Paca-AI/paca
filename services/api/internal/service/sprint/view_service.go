@@ -9,20 +9,39 @@ import (
 	"github.com/google/uuid"
 
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 )
 
 // ViewService is the concrete implementation of sprintdom.ViewService.
 type ViewService struct {
-	repo      sprintdom.ViewRepository
-	publisher *messaging.Publisher
+	repo       sprintdom.ViewRepository
+	sprintRepo sprintdom.SprintRepository
+	taskRepo   taskdom.TaskRepository
+	publisher  *messaging.Publisher
 }
 
-// NewViewService returns a configured ViewService. publisher may be nil;
-// real-time events are then skipped silently.
-func NewViewService(repo sprintdom.ViewRepository, publisher *messaging.Publisher) *ViewService {
-	return &ViewService{repo: repo, publisher: publisher}
+// NewViewService returns a configured ViewService. sprintRepo and taskRepo
+// are used to verify that a sprint-context view's sprint, and a task
+// position's task, belong to the project the caller was authorized against.
+// publisher may be nil; real-time events are then skipped silently.
+func NewViewService(repo sprintdom.ViewRepository, sprintRepo sprintdom.SprintRepository, taskRepo taskdom.TaskRepository, publisher *messaging.Publisher) *ViewService {
+	return &ViewService{repo: repo, sprintRepo: sprintRepo, taskRepo: taskRepo, publisher: publisher}
+}
+
+// sprintInProject returns nil when sprintID resolves to a sprint that
+// belongs to projectID, and sprintdom.ErrSprintNotFound otherwise (including
+// when the sprint does not exist at all).
+func (s *ViewService) sprintInProject(ctx context.Context, projectID, sprintID uuid.UUID) error {
+	sp, err := s.sprintRepo.FindSprintByID(ctx, sprintID)
+	if err != nil {
+		return err
+	}
+	if sp.ProjectID != projectID {
+		return sprintdom.ErrSprintNotFound
+	}
+	return nil
 }
 
 // publish sends a real-time pub/sub notification for a view change. Errors
@@ -73,8 +92,11 @@ func hasPluginConfig(vt sprintdom.ViewType, cfg *sprintdom.ViewConfig) bool {
 	return strings.TrimSpace(cfg.PluginID) != "" && strings.TrimSpace(cfg.PluginComponent) != ""
 }
 
-// ListViews returns all views for a sprint.
-func (s *ViewService) ListViews(ctx context.Context, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
+// ListViews returns all views for a sprint, verifying the sprint belongs to projectID.
+func (s *ViewService) ListViews(ctx context.Context, projectID, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
+	if err := s.sprintInProject(ctx, projectID, sprintID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListViews(ctx, sprintID)
 }
 
@@ -95,8 +117,15 @@ func (s *ViewService) GetView(ctx context.Context, projectID, id uuid.UUID) (*sp
 	return v, nil
 }
 
-// CreateView creates a new view for the given sprint.
+// CreateView creates a new view for the given sprint. When in.SprintID is
+// set (sprint-context view), verifies the sprint belongs to in.ProjectID.
 func (s *ViewService) CreateView(ctx context.Context, in sprintdom.CreateViewInput) (*sprintdom.SprintView, error) {
+	if in.SprintID != nil {
+		if err := s.sprintInProject(ctx, in.ProjectID, *in.SprintID); err != nil {
+			return nil, err
+		}
+	}
+
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return nil, sprintdom.ErrViewNameInvalid
@@ -208,7 +237,7 @@ func (s *ViewService) DeleteView(ctx context.Context, projectID, id uuid.UUID) e
 }
 
 // MoveTask updates the manual position of a task within a view,
-// verifying the view belongs to projectID.
+// verifying the view and the task both belong to projectID.
 func (s *ViewService) MoveTask(ctx context.Context, projectID, viewID uuid.UUID, in sprintdom.MoveTaskInput) error {
 	v, err := s.repo.FindViewByID(ctx, viewID)
 	if err != nil {
@@ -216,6 +245,13 @@ func (s *ViewService) MoveTask(ctx context.Context, projectID, viewID uuid.UUID,
 	}
 	if v.ProjectID != projectID {
 		return sprintdom.ErrViewNotFound
+	}
+	t, err := s.taskRepo.FindTaskByID(ctx, in.TaskID)
+	if err != nil {
+		return err
+	}
+	if t.ProjectID != projectID {
+		return taskdom.ErrTaskNotFound
 	}
 	pos := &sprintdom.ViewTaskPosition{
 		ID:       uuid.New(),
@@ -228,7 +264,8 @@ func (s *ViewService) MoveTask(ctx context.Context, projectID, viewID uuid.UUID,
 }
 
 // BulkMoveTasks updates the manual positions of multiple tasks within a view
-// in a single database round-trip.  Verifies the view belongs to projectID.
+// in a single database round-trip.  Verifies the view and every task belong
+// to projectID.
 func (s *ViewService) BulkMoveTasks(ctx context.Context, projectID, viewID uuid.UUID, items []sprintdom.MoveTaskInput) error {
 	v, err := s.repo.FindViewByID(ctx, viewID)
 	if err != nil {
@@ -236,6 +273,15 @@ func (s *ViewService) BulkMoveTasks(ctx context.Context, projectID, viewID uuid.
 	}
 	if v.ProjectID != projectID {
 		return sprintdom.ErrViewNotFound
+	}
+	for _, in := range items {
+		t, err := s.taskRepo.FindTaskByID(ctx, in.TaskID)
+		if err != nil {
+			return err
+		}
+		if t.ProjectID != projectID {
+			return taskdom.ErrTaskNotFound
+		}
 	}
 	positions := make([]*sprintdom.ViewTaskPosition, 0, len(items))
 	for _, in := range items {
@@ -263,9 +309,13 @@ func (s *ViewService) ListTaskPositions(ctx context.Context, projectID, viewID u
 	return s.repo.ListTaskPositions(ctx, viewID)
 }
 
-// ReorderViews reorders all views belonging to a sprint.  viewIDs must contain
-// exactly the IDs of all views for that sprint in the desired display order.
-func (s *ViewService) ReorderViews(ctx context.Context, sprintID uuid.UUID, viewIDs []uuid.UUID) error {
+// ReorderViews reorders all views belonging to a sprint, verifying the
+// sprint belongs to projectID.  viewIDs must contain exactly the IDs of all
+// views for that sprint in the desired display order.
+func (s *ViewService) ReorderViews(ctx context.Context, projectID, sprintID uuid.UUID, viewIDs []uuid.UUID) error {
+	if err := s.sprintInProject(ctx, projectID, sprintID); err != nil {
+		return err
+	}
 	existing, err := s.repo.ListViews(ctx, sprintID)
 	if err != nil {
 		return err

@@ -426,6 +426,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAutomationNodeCrossProject
 	case errors.Is(err, automationdom.ErrEdgeNotFound):
 		return http.StatusNotFound, apierr.CodeAutomationEdgeNotFound
+	case errors.Is(err, automationdom.ErrRunNotFound):
+		return http.StatusNotFound, apierr.CodeAutomationRunNotFound
 	case errors.Is(err, automationdom.ErrEdgeSelfLoop):
 		return http.StatusBadRequest, apierr.CodeAutomationEdgeSelfLoop
 	case errors.Is(err, automationdom.ErrEdgeCrossAutomation):

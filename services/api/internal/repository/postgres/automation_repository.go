@@ -706,6 +706,21 @@ func (r *AutomationRepository) UpdateRun(ctx context.Context, run *automationdom
 	return err
 }
 
+// FindRunByID implements automationdom.Repository.FindRunByID.
+func (r *AutomationRepository) FindRunByID(ctx context.Context, id uuid.UUID) (*automationdom.Run, error) {
+	const q = `
+		SELECT id, automation_id, trigger_node_id, task_id, status, started_at, finished_at
+		FROM automation_runs WHERE id = $1`
+	var rec runRecord
+	if err := r.db.GetContext(ctx, &rec, q, id.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, automationdom.ErrRunNotFound
+		}
+		return nil, err
+	}
+	return rec.toDomain()
+}
+
 // ListRunsByAutomation implements automationdom.Repository.ListRunsByAutomation.
 func (r *AutomationRepository) ListRunsByAutomation(ctx context.Context, automationID uuid.UUID, limit int) ([]*automationdom.Run, error) {
 	if limit <= 0 {
