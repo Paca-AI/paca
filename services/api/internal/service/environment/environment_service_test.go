@@ -598,17 +598,26 @@ func TestExecuteCreate_SkipsStaleReplay(t *testing.T) {
 			return nil
 		},
 	}
-	// No redis client/publisher wired at all: if the stale-replay guard
-	// failed to short-circuit, the fall-through into
-	// callEnvironmentCommand would nil-pointer panic — a loud failure,
-	// which is a stronger signal than a separate "did it call
-	// agent-runner" bool would have been.
-	svc := New(repo, "", "")
+	// A recording publisher, not a nil one: if the stale-replay guard
+	// failed to short-circuit, callEnvironmentCommand's first call is
+	// publisher.AppendFlat (see that method's own doc comment), so
+	// asserting appendCalls stays 0 catches a broken guard directly —
+	// unlike relying on a nil-pointer panic, this keeps working even if
+	// callEnvironmentCommand ever grows a defensive nil-publisher check.
+	var appendCalls int
+	pub := &mockPublisher{
+		appendFlatFn: func(context.Context, string, map[string]any) error {
+			appendCalls++
+			return nil
+		},
+	}
+	svc := New(repo, "", "").WithPublisher(pub)
 
 	err := svc.ExecuteCreate(context.Background(), envID)
 
 	require.NoError(t, err)
 	assert.Empty(t, statusUpdates)
+	assert.Zero(t, appendCalls, "ExecuteCreate must not contact agent-runner for a stale replay")
 }
 
 // TestExecuteCreate_ProvisioningPersistFailureMarksError verifies that when
@@ -1193,15 +1202,23 @@ func TestExecuteStart_SkipsStaleReplay(t *testing.T) {
 			return nil
 		},
 	}
-	// No redis client/publisher wired at all — see
-	// TestExecuteCreate_SkipsStaleReplay's identical reasoning: a
-	// fall-through to callEnvironmentCommand here would nil-pointer panic.
-	svc := New(repo, "", "")
+	// A recording publisher — see TestExecuteCreate_SkipsStaleReplay's
+	// identical reasoning for why this is stronger than relying on a
+	// nil-pointer panic from an unwired publisher/redis client.
+	var appendCalls int
+	pub := &mockPublisher{
+		appendFlatFn: func(context.Context, string, map[string]any) error {
+			appendCalls++
+			return nil
+		},
+	}
+	svc := New(repo, "", "").WithPublisher(pub)
 
 	err := svc.ExecuteStart(context.Background(), envID)
 
 	require.NoError(t, err)
 	assert.Empty(t, statusUpdates)
+	assert.Zero(t, appendCalls, "ExecuteStart must not contact agent-runner for a stale replay")
 }
 
 // TestExecuteStart_RunningPersistFailureMarksError verifies that when

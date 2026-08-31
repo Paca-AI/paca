@@ -407,7 +407,7 @@ func (m *Manager) CreateEnvironment(ctx context.Context, cfg sandbox.Environment
 	// A brand-new environment has no port-forward rows yet — cfg.PortMappings
 	// carries at most the environment's own SSH entry, assigned by the
 	// caller (internal/acpbridge/environment_handlers.go's
-	// handleCreateEnvironment) before this method was ever called. See
+	// ExecuteCreateEnvironment) before this method was ever called. See
 	// ensureEnvironmentService's own doc comment for why nothing is created
 	// at all when this is empty (SSH not configured on this deployment).
 	if err := m.ensureEnvironmentService(ctx, name, labels, cfg.PortMappings); err != nil {
@@ -472,7 +472,7 @@ func (m *Manager) RestartEnvironmentPorts(ctx context.Context, backendRef, volum
 
 // ensureEnvironmentEnv backfills cfg.Env onto backendRef's Deployment the
 // one time it's actually needed: a Deployment created by
-// handleCreateEnvironment (which has no agent/LLM context at all — an
+// ExecuteCreateEnvironment (which has no agent/LLM context at all — an
 // environment isn't owned by one agent) never got
 // GOOSE_PROVIDER/GOOSE_MODEL/the provider's API key baked in, so goose
 // serve fails every session/new with "Configuration value not found:
@@ -601,7 +601,7 @@ var pacaInfraEnvKeys = []string{
 func (m *Manager) ensureEnvironmentInfraEnv(ctx context.Context, backendRef string, cfg sandbox.EnvironmentConfig) error {
 	if len(cfg.Env) == 0 {
 		// A caller with no infra-env context at all — e.g.
-		// handleStartEnvironment's plain restart, whose EnvironmentConfig
+		// ExecuteStartEnvironment's plain restart, whose EnvironmentConfig
 		// never sets Env (see its own doc comment: "restarts ... without
 		// touching" what it doesn't own) — has nothing to reconcile
 		// pacaInfraEnvKeys against. Every real attach path (coldStartEnvironment)

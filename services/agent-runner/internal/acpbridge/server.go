@@ -61,10 +61,10 @@ type Server struct {
 	// individual request, not server startup.
 	SandboxMgr      sandbox.FullBackend
 	EnvironmentRepo *postgres.EnvironmentRepository
-	// SSHKeyRepo backs both handleCreateEnvironment's post-create sshd
+	// SSHKeyRepo backs both ExecuteCreateEnvironment's post-create sshd
 	// bootstrap and the ssh-keys/sync endpoint (rendering
 	// authorized_keys). SSHPortRangeStart/End gate the whole SSH feature —
-	// both zero (the default) means handleCreateEnvironment never assigns
+	// both zero (the default) means ExecuteCreateEnvironment never assigns
 	// a port at all (docs/ai-agent/environment-management.md's "Terminal /
 	// SSH Access" section) — the environment's SSH port, once assigned, is
 	// published directly by the backend (a Docker -p binding or a
@@ -75,7 +75,7 @@ type Server struct {
 	// PortForwardRepo is the same idea for user-managed port forwards
 	// (docs/ai-agent/environment-management.md's "Port Forwarding"
 	// section) — reads/writes the environment_port_forwards rows
-	// handlePortForwardsAssign/handleRestartEnvironmentPorts assign host
+	// handlePortForwardsAssign/ExecuteRestartEnvironmentPorts assign host
 	// ports to and read back to build a full PortMappings set.
 	// PortForwardRangeStart/End is the same "both zero means never
 	// configured" convention as SSH's own range.

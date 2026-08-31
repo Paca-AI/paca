@@ -317,10 +317,11 @@ func (s *Service) CreateEnvironment(ctx context.Context, projectID uuid.UUID, in
 		// column is NOT NULL/CHECK(backend IN ('docker','kubernetes')), but
 		// the real value is chosen by agent-runner (whichever backend it's
 		// configured for — see Environment.Backend's doc comment) and only
-		// known once its response to POST /internal/environments comes
-		// back. Corrected below via UpdateEnvironmentProvisioning the
-		// moment that response arrives; a failure before then leaves this
-		// placeholder on an already-StatusError row, which is harmless.
+		// known once its create-command reply comes back (see
+		// callEnvironmentCommand). Corrected below via
+		// UpdateEnvironmentProvisioning the moment that reply arrives; a
+		// failure before then leaves this placeholder on an
+		// already-StatusError row, which is harmless.
 		Backend:            environmentdom.BackendDocker,
 		Image:              in.Image,
 		CPULimit:           cpuLimit,
@@ -1251,7 +1252,9 @@ func randomHex(n int) (string, error) {
 }
 
 // -------------------------------------------------------------------------
-// agent-runner internal HTTP client
+// agent-runner internal call payloads — create/start/restart-ports travel
+// over StreamAgentEnvironmentCommands (callEnvironmentCommand), the rest
+// over plain HTTP (callInternal)
 // -------------------------------------------------------------------------
 
 type internalCreateEnvironmentRequest struct {
@@ -1307,12 +1310,12 @@ type internalStartEnvironmentResponse struct {
 	BackendRef string `json:"backend_ref,omitempty"`
 }
 
-// internalRestartPortsRequest is the request body for POST
-// /internal/environments/{id}/restart-ports — mirrors
-// internalStartEnvironmentRequest plus VolumeRef, needed to reattach the
-// same volume/PVC if the docker backend has to recreate the container
-// (see restartEnvironmentPorts's own doc comment for when this is called
-// instead of a plain /start).
+// internalRestartPortsRequest is the restart-ports command payload sent
+// over StreamAgentEnvironmentCommands (see callEnvironmentCommand) —
+// mirrors internalStartEnvironmentRequest plus VolumeRef, needed to
+// reattach the same volume/PVC if the docker backend has to recreate the
+// container (see restartEnvironmentPorts's own doc comment for when this
+// is called instead of a plain start).
 type internalRestartPortsRequest struct {
 	// EnvironmentID identifies the target now that this travels over
 	// StreamAgentEnvironmentCommands instead of a URL path segment — see
@@ -1337,9 +1340,10 @@ type internalRestartPortsResponse struct {
 	SSHPort    int    `json:"ssh_port"`
 }
 
-// internalBackendRefRequest is the request body for POST
-// /internal/environments/{id}/stop — the only lifecycle call needing
-// nothing but backend_ref.
+// internalBackendRefRequest is the request body shared by every agent-runner
+// HTTP endpoint that needs nothing but backend_ref: stop, ssh-keys/sync, and
+// port-forwards/assign (create/start/restart-ports instead travel over
+// StreamAgentEnvironmentCommands — see callEnvironmentCommand).
 type internalBackendRefRequest struct {
 	BackendRef string `json:"backend_ref"`
 }

@@ -99,7 +99,7 @@ func (s *Server) requireSandboxMgr(w http.ResponseWriter) bool {
 // yet and the feature is configured on this deployment (both
 // SSHPortRangeStart/End nonzero — see config.Settings.SSHBastionPortRangeStart's
 // own doc comment), returning 0 otherwise. Only ever called once per
-// environment in practice (from handleCreateEnvironment, before the
+// environment in practice (from ExecuteCreateEnvironment, before the
 // backing container/Pod exists at all — the port must be known before
 // CreateEnvironment can bake it in as a published binding), but written to
 // be a safe no-op if called again against an environment that already has
@@ -127,8 +127,8 @@ func (s *Server) assignSSHPort(ctx context.Context, id uuid.UUID) int {
 // bootstrapSSHKeys renders backendRef's authorized_keys from every SSH key
 // registered on environmentID and starts its sshd — called once, right
 // after a fresh container/Pod exists with nothing pushed to it yet: from
-// handleCreateEnvironment (a brand-new container) and, on the docker
-// backend only, from handleRestartEnvironmentPorts (a recreated
+// ExecuteCreateEnvironment (a brand-new container) and, on the docker
+// backend only, from ExecuteRestartEnvironmentPorts (a recreated
 // container — the kubernetes backend never touches the Pod on a restart,
 // so its own authorized_keys are already intact and this is skipped
 // there). Best-effort: a failure here is logged, never returned as the
@@ -155,9 +155,9 @@ func (s *Server) bootstrapSSHKeys(ctx context.Context, environmentID uuid.UUID, 
 // assigned) plus one entry per environment_port_forwards row, self-
 // assigning a host port for any row that doesn't have one yet (mirrors
 // assignSSHPort's own "safe to call repeatedly" idiom) when
-// PortForwardRangeStart/End are configured. Used by handleCreateEnvironment
+// PortForwardRangeStart/End are configured. Used by ExecuteCreateEnvironment
 // (sshPort only — a brand-new environment has no forwards yet) and
-// handleRestartEnvironmentPorts (the full set).
+// ExecuteRestartEnvironmentPorts (the full set).
 func (s *Server) buildPortMappings(ctx context.Context, environmentID uuid.UUID, sshPort int) []sandbox.PortMapping {
 	var mappings []sandbox.PortMapping
 	if sshPort != 0 {
@@ -192,7 +192,8 @@ func (s *Server) buildPortMappings(ctx context.Context, environmentID uuid.UUID,
 }
 
 // -----------------------------------------------------------------------
-// POST /internal/environments
+// create — dispatched from StreamAgentEnvironmentCommands, see
+// ExecuteEnvironmentCommand
 // -----------------------------------------------------------------------
 
 type createEnvironmentRequest struct {
@@ -287,7 +288,8 @@ func (s *Server) ExecuteCreateEnvironment(ctx context.Context, req createEnviron
 }
 
 // -----------------------------------------------------------------------
-// POST /internal/environments/{id}/start
+// start — dispatched from StreamAgentEnvironmentCommands, see
+// ExecuteEnvironmentCommand
 // -----------------------------------------------------------------------
 
 type startEnvironmentRequest struct {
@@ -310,7 +312,7 @@ type startEnvironmentResponse struct {
 	// (see docker.Manager.recreateGoneEnvironmentContainer) — a plain
 	// restart of a still-existing container always echoes req.BackendRef
 	// back unchanged. Empty in that ordinary case so services/api's own
-	// "did this change" check (mirroring handleRestartEnvironmentPorts's
+	// "did this change" check (mirroring ExecuteRestartEnvironmentPorts's
 	// response) has nothing to act on.
 	BackendRef string `json:"backend_ref,omitempty"`
 }
@@ -383,7 +385,7 @@ func (s *Server) ExecuteStartEnvironment(ctx context.Context, req startEnvironme
 }
 
 // StartEnvironmentByID starts (or self-heals) environmentID's backing
-// container/Pod — factored out of handleStartEnvironment so
+// container/Pod — factored out of ExecuteStartEnvironment so
 // cmd/agent-runner/main.go's startup reconciliation
 // (reconcileEnvironmentsOnStartup) can drive the exact same sequence
 // in-process, without a loopback HTTP call: look up ssh_port, build the
@@ -413,7 +415,7 @@ func (s *Server) ExecuteStartEnvironment(ctx context.Context, req startEnvironme
 // both backends even when nothing else about the container/Pod changed.
 // BootstrapEnvironmentSSH is idempotent/safe to call on an already-running
 // environment (see its own doc comment) — the same unconditional treatment
-// handleCreateEnvironment already gives it.
+// ExecuteCreateEnvironment already gives it.
 //
 // Returns the handle StartEnvironment produced, the environment's
 // currently-assigned ssh_port (0 if unconfigured/unassigned), and
@@ -423,7 +425,7 @@ func (s *Server) ExecuteStartEnvironment(ctx context.Context, req startEnvironme
 // backendRef, the parameter, is only actually used when this process's own
 // environments row doesn't have one to offer (EnvironmentRepo nil, or its
 // FindEnvironmentByID call fails) — otherwise the freshly-read row's own
-// BackendRef wins. That matters for handleStartEnvironment specifically:
+// BackendRef wins. That matters for ExecuteStartEnvironment specifically:
 // it acquires EnvironmentRepo.LockEnvironmentForStart before calling this,
 // but req.BackendRef itself was decoded from the request body before that
 // lock was acquired, so it can already be stale by the time this runs — a
@@ -812,7 +814,7 @@ func (s *Server) handleSyncEnvironmentSSHKeys(w http.ResponseWriter, r *http.Req
 // show the assigned port immediately. This decides *which number* a
 // forward will eventually publish on; it does not touch the backing
 // container/Pod/Service at all — that only happens the next time the
-// environment is (re)started, via handleRestartEnvironmentPorts below (see
+// environment is (re)started, via ExecuteRestartEnvironmentPorts below (see
 // this feature's "restart required" UX — docs/ai-agent/
 // environment-management.md's "Port Forwarding" section).
 func (s *Server) handlePortForwardsAssign(w http.ResponseWriter, r *http.Request) {
@@ -851,7 +853,8 @@ func (s *Server) handlePortForwardsAssign(w http.ResponseWriter, r *http.Request
 }
 
 // -----------------------------------------------------------------------
-// POST /internal/environments/{id}/restart-ports
+// restart-ports — dispatched from StreamAgentEnvironmentCommands, see
+// ExecuteEnvironmentCommand
 // -----------------------------------------------------------------------
 
 type restartEnvironmentPortsRequest struct {

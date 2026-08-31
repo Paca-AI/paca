@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,13 @@ const (
 	environmentCommandConsumerGroup = "api.environment_commands"
 	environmentCommandReadBlock     = 5 * time.Second
 	environmentCommandReadCount     = 10
+	// environmentCommandConcurrency bounds how many queued commands run()
+	// (the live read loop, not processPending's own one-time startup drain)
+	// dispatches at once — see run()'s own doc comment for why this became
+	// necessary once create/start/restart-ports started blocking on a
+	// multi-minute wait for agent-runner's reply (aiAgentProvisionHTTPTimeout,
+	// environmentsvc's own doc comment) instead of a fast HTTP round trip.
+	environmentCommandConcurrency = 10
 )
 
 // environmentLifecycleExecutor is the minimal environmentsvc.Service
@@ -52,6 +60,13 @@ type EnvironmentCommandConsumer struct {
 	consumerName string // unique per instance, derived from hostname
 	stopCh       chan struct{}
 	doneCh       chan struct{}
+	// sem bounds concurrent handle calls dispatched from run()'s live read
+	// loop — see environmentCommandConcurrency's own doc comment.
+	sem chan struct{}
+	// envLocks serializes handle calls for the same environment_id (across
+	// concurrent goroutines now that run() dispatches them instead of
+	// calling handle inline) — see handle's own doc comment for why.
+	envLocks *environmentLocks
 }
 
 // NewEnvironmentCommandConsumer creates a consumer that is ready to be
@@ -69,6 +84,8 @@ func NewEnvironmentCommandConsumer(client *redis.Client, svc environmentLifecycl
 		consumerName: fmt.Sprintf("%s.%s", environmentCommandConsumerGroup, hostname),
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
+		sem:          make(chan struct{}, environmentCommandConcurrency),
+		envLocks:     newEnvironmentLocks(),
 	}
 }
 
@@ -111,6 +128,19 @@ func (c *EnvironmentCommandConsumer) Stop() {
 }
 
 // run is the main loop executed in a goroutine by Start.
+//
+// Dispatches each message into its own goroutine (bounded by sem) rather
+// than calling handle inline: create/start/restart-ports now block on a
+// multi-minute BRPop waiting for agent-runner's reply (see
+// environmentsvc.Service.callEnvironmentCommand's own doc comment), where
+// the old direct-HTTP path returned in well under a second in the common
+// case. Handling messages one at a time here — fine when every call was a
+// fast round trip — would otherwise let one legitimate-but-slow
+// provisioning stall every later command on this stream for minutes,
+// including a fast stop for a completely different environment. Not
+// applied to processPending below: that only ever runs once, synchronously,
+// at startup, draining an already-known-finite backlog — the "one at a
+// time" behavior there was never the bottleneck this fixes.
 func (c *EnvironmentCommandConsumer) run() {
 	defer close(c.doneCh)
 	c.log.Info("environment command consumer: started", "stream", events.StreamEnvironmentCommands)
@@ -157,7 +187,7 @@ func (c *EnvironmentCommandConsumer) run() {
 
 		for _, stream := range msgs {
 			for _, msg := range stream.Messages {
-				c.handle(msg)
+				go c.handle(msg)
 			}
 		}
 	}
@@ -204,6 +234,21 @@ func (c *EnvironmentCommandConsumer) processPending(ctx context.Context) {
 // in the PEL worth retrying automatically — a user sees the error status
 // and retries
 // explicitly, which queues a fresh command.
+//
+// Called from both run() (concurrently, one goroutine per message) and
+// processPending (synchronously, in a loop) — acquires sem and envLocks
+// unconditionally either way, since doing so under processPending's
+// already-sequential calls is harmless (no contention, negligible
+// overhead), and keeping the acquisition inside handle itself means
+// neither caller has to know which concurrency model it's running under.
+// The environment_id lock specifically guards against two commands for
+// the very same environment now running on different goroutines at once
+// (only possible via run(), never processPending) — ExecuteCreate/
+// ExecuteStart/ExecuteStop each re-check the row's current status before
+// acting, but that check-then-act is only race-free if two such checks
+// for the same row can never interleave; mirrors agent-runner's
+// messaging.Consumer serializing trigger handling per conversation_id for
+// the identical reason.
 func (c *EnvironmentCommandConsumer) handle(msg redis.XMessage) {
 	ctx := context.Background()
 
@@ -227,6 +272,11 @@ func (c *EnvironmentCommandConsumer) handle(msg redis.XMessage) {
 		c.ack(ctx, msg.ID)
 		return
 	}
+
+	c.sem <- struct{}{}
+	defer func() { <-c.sem }()
+	unlock := c.envLocks.Lock(environmentID)
+	defer unlock()
 
 	switch eventType {
 	case events.TopicEnvironmentCreate:
@@ -260,4 +310,51 @@ func (c *EnvironmentCommandConsumer) ack(ctx context.Context, id string) {
 // environment, so environment_id is all either one carries.
 type environmentCommandPayload struct {
 	EnvironmentID string `json:"environment_id"`
+}
+
+// environmentLocks is a per-environment-ID mutex: independent environments
+// never contend with each other, but two commands for the same one are
+// serialized — see handle's own doc comment for why run()'s new
+// goroutine-per-message dispatch needs this. Functionally identical to
+// agent-runner's internal/convlock.Locks (a separate Go module, so
+// duplicated here rather than shared) for the same reason that package
+// exists: ref-counted so it never grows unbounded with environment-ID
+// history — only IDs with a lock actually held (or queued) have an entry.
+type environmentLocks struct {
+	mu    sync.Mutex
+	locks map[uuid.UUID]*refCountedMutex
+}
+
+type refCountedMutex struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func newEnvironmentLocks() *environmentLocks {
+	return &environmentLocks{locks: make(map[uuid.UUID]*refCountedMutex)}
+}
+
+// Lock blocks until key's lock is free, then returns an unlock function the
+// caller must call exactly once (typically via defer) to release it.
+func (l *environmentLocks) Lock(key uuid.UUID) (unlock func()) {
+	l.mu.Lock()
+	e, ok := l.locks[key]
+	if !ok {
+		e = &refCountedMutex{}
+		l.locks[key] = e
+	}
+	e.refs++
+	l.mu.Unlock()
+
+	e.mu.Lock()
+
+	return func() {
+		e.mu.Unlock()
+		l.mu.Lock()
+		e.refs--
+		if e.refs == 0 {
+			delete(l.locks, key)
+		}
+		l.mu.Unlock()
+	}
 }
