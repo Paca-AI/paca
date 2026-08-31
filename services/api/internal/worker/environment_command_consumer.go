@@ -26,6 +26,15 @@ const (
 	// necessary once create/start/restart-ports started blocking on a
 	// multi-minute wait for agent-runner's reply (aiAgentProvisionHTTPTimeout,
 	// environmentsvc's own doc comment) instead of a fast HTTP round trip.
+	// Deliberately not tied to agent-runner's own
+	// config.Settings.EnvironmentProvisionConcurrency (env-configurable,
+	// default 5): that one bounds concurrent SandboxMgr work (the actual
+	// Pod/container operations), this one bounds concurrent BRPop waiters
+	// on this side. Sizing this above agent-runner's own budget is fine and
+	// intentional — the excess just queues waiting on agent-runner's
+	// semaphore instead of this one, which costs nothing but a few idle
+	// goroutines — so the two are allowed to drift independently rather
+	// than needing to match.
 	environmentCommandConcurrency = 10
 )
 
@@ -67,6 +76,11 @@ type EnvironmentCommandConsumer struct {
 	// concurrent goroutines now that run() dispatches them instead of
 	// calling handle inline) — see handle's own doc comment for why.
 	envLocks *environmentLocks
+	// wg tracks handle goroutines dispatched by run() (never processPending's
+	// own synchronous calls, which are always finished long before Stop
+	// could run) so Stop can give them a real chance to finish instead of
+	// the process exiting out from under them — see Stop's own doc comment.
+	wg sync.WaitGroup
 }
 
 // NewEnvironmentCommandConsumer creates a consumer that is ready to be
@@ -121,10 +135,61 @@ func (c *EnvironmentCommandConsumer) ensureGroup(ctx context.Context, startID st
 	return nil
 }
 
-// Stop signals the consumer to stop and waits for the goroutine to exit.
+// environmentCommandDrainTimeout bounds how long Stop will wait for
+// in-flight handle goroutines before giving up on them — see Stop's own
+// doc comment for why it waits at all. Deliberately NOT the full remaining
+// shutdown budget bootstrap.App.Shutdown's caller passes down to
+// a.server.Shutdown(ctx) (10s as of main.go) — Stop takes no ctx and isn't
+// given a share of that deadline, so a slow drain here can never crowd out
+// the HTTP server's own graceful drain, which runs right after every
+// consumer's Stop returns. Kept short enough to leave that server drain a
+// real remainder of a typical shutdown budget, long enough that a
+// same-environment BRPop wait that's already close to done (agent-runner's
+// own operations are usually fast — see aiAgentProvisionHTTPTimeout's own
+// doc comment) gets to actually finish rather than being cut off on
+// principle. If bootstrap.App.Shutdown's own budget is ever changed, revisit
+// this alongside it.
+const environmentCommandDrainTimeout = 5 * time.Second
+
+// Stop signals the consumer to stop reading new messages, then waits — up
+// to environmentCommandDrainTimeout — for handle goroutines run() already
+// dispatched to finish, so a routine graceful shutdown (a rolling deploy,
+// most commonly) gives an already-accepted create/start/restart-ports
+// command a real chance to receive agent-runner's reply and persist its
+// outcome, instead of the process exiting out from under it the instant
+// stopCh closes. That exit-out-from-under-it failure mode is exactly what
+// an earlier version of this method allowed: closing stopCh and waiting
+// only on doneCh (closed by run() as soon as its own read loop returns)
+// said nothing about the goroutines that loop had already fired off via "go
+// c.handle(msg)" — with create/start/restart-ports now blocking on a
+// multi-minute BRPop (see callEnvironmentCommand's own doc comment) rather
+// than a sub-second HTTP call, that gap was big enough to hit on an
+// ordinary deploy, not just a hard kill.
+//
+// If the deadline arrives first, still-running handlers are abandoned
+// mid-flight (not cancelled — handle's own ctx is context.Background(), by
+// design, so a caller giving up can't abort an in-flight backend mutation
+// any more than agent-runner's own consumer lets that happen — see that
+// consumer's identical reasoning). Their stream messages stay unacked in
+// this consumer's own PEL; because consumerName is hostname-derived, a
+// replacement pod started under a new hostname will NOT automatically pick
+// those up (this package has no XAUTOCLAIM-style reclaim of another
+// consumer's PEL) — logged here so that's visible rather than silent.
 func (c *EnvironmentCommandConsumer) Stop() {
 	close(c.stopCh)
 	<-c.doneCh
+
+	drained := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(drained)
+	}()
+
+	select {
+	case <-drained:
+	case <-time.After(environmentCommandDrainTimeout):
+		c.log.Warn("environment command consumer: drain timeout reached before all in-flight commands finished — remaining commands were abandoned mid-flight, their stream messages left unacked in this consumer's own PEL")
+	}
 }
 
 // run is the main loop executed in a goroutine by Start.
@@ -187,7 +252,15 @@ func (c *EnvironmentCommandConsumer) run() {
 
 		for _, stream := range msgs {
 			for _, msg := range stream.Messages {
-				go c.handle(msg)
+				// Add before the goroutine starts, not inside handle itself:
+				// Stop's wg.Wait() must never observe a count of 0 while a
+				// just-dispatched handle is still merely queued to run, which
+				// an Add from inside the new goroutine couldn't guarantee.
+				c.wg.Add(1)
+				go func(msg redis.XMessage) {
+					defer c.wg.Done()
+					c.handle(msg)
+				}(msg)
 			}
 		}
 	}

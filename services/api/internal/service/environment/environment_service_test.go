@@ -1513,3 +1513,81 @@ func TestRestartEnvironment_RequiresRunning(t *testing.T) {
 
 	assert.ErrorIs(t, err, environmentdom.ErrEnvironmentBusy)
 }
+
+// TestRestartEnvironment_SurvivesCallerContextCancellation is the
+// regression test for the bug RestartEnvironment's own doc comment
+// describes: restartEnvironmentPorts now runs on context.Background(), not
+// the live HTTP request's own ctx.
+//
+// Note on the actual mechanism (this differs from what the original review
+// finding assumed, worth recording so a future reader doesn't reintroduce
+// the same wrong assumption): go-redis's BRPop does NOT abort on context
+// cancellation once the blocking call is already in flight — verified
+// directly against this repo's go-redis version, a cancelled ctx left a
+// BRPop call blocked for the full command timeout regardless. So a client
+// disconnecting mid-wait was never able to make callEnvironmentCommand
+// itself return early. The real exposure is one step later: once
+// agent-runner's reply does arrive, restartEnvironmentPorts persists it via
+// s.setStatus(ctx, ...) — a real Postgres UPDATE, which (unlike BRPop) does
+// respect ctx — so an already-cancelled ctx there fails the persist, and
+// the fallback error-path persist right below it reuses that same cancelled
+// ctx and fails identically, leaving backend_ref exactly as stale as the
+// original finding described, just via the write failing rather than the
+// wait aborting. mockRepo's updateEnvironmentStatus below is deliberately
+// made ctx-aware (real repositories are; the package's other mocks
+// generally aren't, since most callers here never cared before this test)
+// so this test actually exercises that mechanism instead of silently
+// passing regardless of the fix, the way an earlier draft of this test did
+// against a ctx-blind mock.
+func TestRestartEnvironment_SurvivesCallerContextCancellation(t *testing.T) {
+	envID := uuid.New()
+	projectID := uuid.New()
+	backendRef := "container-old"
+	volumeRef := "paca-env-abc"
+	client := newEnvironmentCommandTestClient(t)
+
+	var gotBackendRef *string
+	repo := &mockRepo{
+		findVisibleEnvironmentInProject: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{
+				ID: envID, ProjectID: projectID, Status: environmentdom.StatusRunning,
+				BackendRef: &backendRef, VolumeRef: &volumeRef,
+			}, nil
+		},
+		updateEnvironmentStatus: func(ctx context.Context, _ uuid.UUID, _ string, backendRef, _ *string) error {
+			// Mirrors a real Postgres client: fails once ctx is already
+			// cancelled, rather than ignoring it like a naive mock would.
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			gotBackendRef = backendRef
+			return nil
+		},
+	}
+	svc := New(repo, "", "").WithPublisher(messaging.NewPublisher(client, discardLogger())).WithRedisClient(client)
+
+	callerCtx, cancelCaller := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.RestartEnvironment(callerCtx, projectID, envID)
+		done <- err
+	}()
+
+	_, respond := awaitEnvironmentCommand(t, client, events.EnvironmentCommandRestartPorts)
+
+	// Simulate the client giving up (or the server's WriteTimeout closing
+	// the connection) while agent-runner is still working — before
+	// agent-runner's reply arrives, not after, so the persist step below
+	// runs with callerCtx already cancelled in the unfixed version of this
+	// code.
+	cancelCaller()
+
+	respond(true, internalRestartPortsResponse{
+		BackendRef: "container-new",
+		BaseURL:    "http://sandbox:8080",
+	}, "")
+
+	require.NoError(t, <-done, "RestartEnvironment must not fail just because the caller's own ctx was cancelled while agent-runner was still working")
+	require.NotNil(t, gotBackendRef, "the fresh backend_ref must still be persisted despite the caller's ctx cancellation")
+	assert.Equal(t, "container-new", *gotBackendRef)
+}

@@ -637,6 +637,29 @@ func (s *Service) ExecuteStart(ctx context.Context, environmentID uuid.UUID) err
 // currently-running environment's backing container/Pod — see
 // environmentdom.EnvironmentService's own doc comment for why this is a
 // separate action from StartEnvironment.
+//
+// The lookup above uses the live request's own ctx (a fast, read-only
+// Postgres query — fine to abort if the caller gives up before it even
+// starts). restartEnvironmentPorts below deliberately does not:
+// context.Background(), not ctx, because everything from there on is the
+// same "started a mutation, must see it through" work ExecuteStart's own
+// call to this exact method already does on context.Background() (it never
+// runs on a live request path to begin with) — restartEnvironmentPorts
+// blocks on callEnvironmentCommand's multi-minute BRPop and then persists
+// whatever agent-runner reports back, and a client disconnecting from THIS
+// HTTP request (or the server's own WriteTimeout closing the connection
+// out from under a slow response) must not cut either step short. Before
+// this, ctx cancelling mid-wait made callEnvironmentCommand return early,
+// and the resulting StatusError path leaves backend_ref untouched — on the
+// docker backend, which does recreate the container on a restart,
+// agent-runner had by then already committed to finishing that mutation
+// regardless (its own handler context is independent of the caller giving
+// up — see messaging.EnvironmentCommandConsumer's identical reasoning), so
+// the row was left pointing at a container that no longer existed, with
+// nothing else on the row remembering the fresh ref agent-runner actually
+// produced. (The kubernetes backend was never affected: RestartEnvironmentPorts
+// never changes backend_ref there — see restartEnvironmentPorts's own doc
+// comment.)
 func (s *Service) RestartEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error) {
 	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
 	if err != nil {
@@ -648,7 +671,7 @@ func (s *Service) RestartEnvironment(ctx context.Context, projectID, environment
 	if env.BackendRef == nil || env.VolumeRef == nil {
 		return nil, fmt.Errorf("environment %s has never been provisioned (no backend_ref/volume_ref)", env.ID)
 	}
-	return s.restartEnvironmentPorts(ctx, env)
+	return s.restartEnvironmentPorts(context.Background(), env)
 }
 
 // restartEnvironmentPorts sends agent-runner a restart-ports command to

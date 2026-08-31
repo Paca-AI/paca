@@ -151,6 +151,96 @@ func TestHandle_SameEnvironmentSerializes(t *testing.T) {
 	}
 }
 
+// TestStop_WaitsForInFlightCommand is the regression test for the bug this
+// fix addresses: Stop used to return the instant run()'s own read loop
+// exited, saying nothing about handle goroutines that loop had already
+// dispatched via "go c.handle(msg)" — a real gap once create/start/
+// restart-ports started blocking on a multi-minute BRPop instead of a
+// sub-second HTTP call (see callEnvironmentCommand's own doc comment).
+//
+// Simulates run() having already dispatched one such goroutine (via wg,
+// exactly as run()'s own dispatch loop does) and then exited (closing
+// doneCh, exactly as run()'s own deferred close does) rather than driving
+// this through a real Start/XReadGroup round trip: run()'s read loop can
+// itself take up to environmentCommandReadBlock to notice stopCh closing
+// while it's mid-poll for the *next* message, which is pre-existing,
+// unrelated latency this test would otherwise have to tolerate — it isn't
+// part of what changed here, so isolating Stop's own wg-drain logic from it
+// keeps this deterministic and fast.
+func TestStop_WaitsForInFlightCommand(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	c := NewEnvironmentCommandConsumer(client, &fakeLifecycleExecutor{}, discardLogger())
+
+	release := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		<-release
+	}()
+	close(c.doneCh) // simulate run()'s read loop having already exited
+
+	stopped := make(chan struct{})
+	go func() {
+		c.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned while a dispatched command was still in flight")
+	case <-time.After(300 * time.Millisecond):
+		// expected: Stop is still waiting on the in-flight command.
+	}
+
+	close(release)
+
+	select {
+	case <-stopped:
+		// good: Stop returned only after the in-flight command finished.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop never returned after the in-flight command finished")
+	}
+}
+
+// TestStop_AbandonsAfterDrainTimeout confirms Stop doesn't hang forever on a
+// command that never finishes — it must give up after
+// environmentCommandDrainTimeout rather than blocking indefinitely, since a
+// process that can never exit defeats the point of a graceful shutdown.
+// Runs for the real environmentCommandDrainTimeout, so it's slower than the
+// tests around it by design — there's no injectable override for a
+// deliberately fixed, documented constant (see its own doc comment), and a
+// shorter test-only duration would stop testing the real one.
+func TestStop_AbandonsAfterDrainTimeout(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = client.Close() }()
+
+	c := NewEnvironmentCommandConsumer(client, &fakeLifecycleExecutor{}, discardLogger())
+
+	c.wg.Add(1) // deliberately never Done — simulates a command that never returns
+	close(c.doneCh)
+
+	start := time.Now()
+	stopped := make(chan struct{})
+	go func() {
+		c.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		elapsed := time.Since(start)
+		if elapsed < environmentCommandDrainTimeout {
+			t.Errorf("Stop returned after %s, before environmentCommandDrainTimeout (%s) elapsed", elapsed, environmentCommandDrainTimeout)
+		}
+	case <-time.After(environmentCommandDrainTimeout + 2*time.Second):
+		t.Fatal("Stop never returned even after environmentCommandDrainTimeout — it must give up, not hang forever")
+	}
+}
+
 // TestProcessPending_DrainsMoreThanOneBatch verifies processPending loops
 // until the PEL is empty rather than reading a single
 // environmentCommandReadCount-sized batch — a backlog larger than one batch
