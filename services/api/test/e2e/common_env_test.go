@@ -248,7 +248,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 		if err := storageClient.EnsureBucket(ctx, attachBucket); err != nil {
 			t.Fatalf("ensure bucket: %v", err)
 		}
-		attachmentService = attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), storageClient, attachBucket)
+		docRepoForAttachments := pgRepo.NewDocumentRepository(db)
+		attachmentService = attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepoForAttachments), storageClient, attachBucket)
 	}
 
 	cookieCfg := handler.CookieConfig{

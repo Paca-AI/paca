@@ -61,9 +61,11 @@ type DocumentService interface {
 	CreateDocument(ctx context.Context, in CreateDocumentInput) (*Document, error)
 	// UpdateDocument updates a document's mutable fields and optionally
 	// creates a snapshot when the content changes.
-	UpdateDocument(ctx context.Context, id uuid.UUID, in UpdateDocumentInput) (*Document, error)
+	// projectID is used to verify the document belongs to the expected project.
+	UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in UpdateDocumentInput) (*Document, error)
 	// DeleteDocument soft-deletes a document.
-	DeleteDocument(ctx context.Context, id uuid.UUID) error
+	// projectID is used to verify the document belongs to the expected project.
+	DeleteDocument(ctx context.Context, projectID, id uuid.UUID) error
 }
 
 // CreateDocumentInput carries fields required to create a document.
@@ -91,7 +93,10 @@ type UpdateDocumentInput struct {
 // DocSnapshotService defines snapshot use-cases.
 type DocSnapshotService interface {
 	// ListSnapshots returns all snapshots for a document, newest first.
-	ListSnapshots(ctx context.Context, documentID uuid.UUID) ([]*DocSnapshot, error)
+	// projectID is used to verify the document belongs to the expected project.
+	ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID) ([]*DocSnapshot, error)
 	// GetSnapshot returns a single snapshot by ID.
-	GetSnapshot(ctx context.Context, id uuid.UUID) (*DocSnapshot, error)
+	// projectID is used to verify the snapshot's document belongs to the
+	// expected project.
+	GetSnapshot(ctx context.Context, projectID, id uuid.UUID) (*DocSnapshot, error)
 }

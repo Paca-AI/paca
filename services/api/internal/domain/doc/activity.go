@@ -78,14 +78,21 @@ type ActivityRepository interface {
 type ActivityService interface {
 	ActivityRecorder
 	// ListActivities returns all activities (system + comments) for a document.
-	ListActivities(ctx context.Context, documentID uuid.UUID) ([]*Activity, error)
+	// projectID is used to verify the document belongs to the expected project.
+	ListActivities(ctx context.Context, projectID, documentID uuid.UUID) ([]*Activity, error)
 	// AddComment creates a new user comment on the document.
+	// in.ProjectID is used to verify the document belongs to the expected
+	// project, in addition to resolving the actor to a project member.
 	AddComment(ctx context.Context, in AddCommentInput) (*Activity, error)
 	// UpdateComment edits the content of an existing comment.
-	// Returns ErrActivityForbidden when actorID != comment's author.
+	// projectID is used to verify the comment's document belongs to the
+	// expected project, in addition to resolving the actor to a project
+	// member. Returns ErrActivityForbidden when actorID != comment's author.
 	UpdateComment(ctx context.Context, id uuid.UUID, projectID uuid.UUID, actorID uuid.UUID, agentID *uuid.UUID, content json.RawMessage) (*Activity, error)
 	// DeleteComment soft-deletes a comment.
-	// Returns ErrActivityForbidden when actorID != comment's author.
+	// projectID is used to verify the comment's document belongs to the
+	// expected project, in addition to resolving the actor to a project
+	// member. Returns ErrActivityForbidden when actorID != comment's author.
 	DeleteComment(ctx context.Context, id uuid.UUID, projectID uuid.UUID, actorID uuid.UUID, agentID *uuid.UUID) error
 }
 

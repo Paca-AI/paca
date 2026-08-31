@@ -322,7 +322,7 @@ func buildDocTestRouter(docRepo *fakeDocRepoIT, store *projectPermStore) http.Ha
 	activityRepo := newFakeTaskActivityRepo()
 	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
 	docService := docsvc.New(docRepo, &fakeDocMemberLookup{})
-	docActivityService := docsvc.NewActivityService(docRepo, &fakeDocMemberLookup{}, nil)
+	docActivityService := docsvc.NewActivityService(docRepo, docRepo, &fakeDocMemberLookup{}, nil)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
@@ -943,5 +943,120 @@ func TestIntegrationDocuments_ForbiddenReturns403(t *testing.T) {
 		fmt.Sprintf("/api/v1/projects/%s/docs", projectID), tok, map[string]any{"title": "X"}))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// TestIntegrationDocuments_CrossProjectAccessReturns404 is the end-to-end
+// regression test for GHSA-xwmv-9c7h-g947: document routes authorize the
+// caller against the :projectId in the URL, but a docs.write/docs.read
+// member of ANY project could previously mutate, read, or comment on a
+// document that actually belongs to a different project, just by knowing
+// its UUID. Every operation below targets victimDocID through attackerProj's
+// URL — none of them may succeed, and the victim document/its data must be
+// left completely untouched.
+func TestIntegrationDocuments_CrossProjectAccessReturns404(t *testing.T) {
+	docRepo := newFakeDocRepoIT()
+	victimProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	store := &projectPermStore{
+		projectPerms: map[uuid.UUID][]authz.Permission{
+			// The attacker legitimately holds docs.read/docs.write in their
+			// own project — that alone must not grant access to another
+			// project's documents by UUID.
+			victimProjectID:   {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+			attackerProjectID: {authz.PermissionDocsRead, authz.PermissionDocsWrite},
+		},
+	}
+	r := buildDocTestRouter(docRepo, store)
+	tok := issueDocToken(t, uuid.NewString())
+	victimBase := fmt.Sprintf("/api/v1/projects/%s/docs", victimProjectID)
+	attackerBase := fmt.Sprintf("/api/v1/projects/%s/docs", attackerProjectID)
+
+	// Set up the victim's document, with a snapshot (via a legitimate
+	// same-project update) and a comment.
+	createW := serve(r, authedJSONReq(t.Context(), http.MethodPost, victimBase, tok, map[string]any{
+		"title":   "Victim Doc",
+		"content": []map[string]any{{"type": "paragraph"}},
+	}))
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create victim doc: expected 201, got %d (%s)", createW.Code, createW.Body.String())
+	}
+	victimDocID := docIDFrom(t, "document", createW.Body.Bytes())
+	victimDocPath := victimBase + "/" + victimDocID
+
+	updW := serve(r, authedJSONReq(t.Context(), http.MethodPatch, victimDocPath, tok, map[string]any{
+		"content": []map[string]any{{"type": "paragraph"}, {"type": "heading"}},
+	}))
+	if updW.Code != http.StatusOK {
+		t.Fatalf("seed snapshot via same-project update: expected 200, got %d (%s)", updW.Code, updW.Body.String())
+	}
+	snapsW := serve(r, authedJSONReq(t.Context(), http.MethodGet, victimDocPath+"/snapshots", tok, nil))
+	if snapsW.Code != http.StatusOK || docListCount(t, snapsW.Body.Bytes()) != 1 {
+		t.Fatalf("expected 1 snapshot on victim doc, got code=%d body=%s", snapsW.Code, snapsW.Body.String())
+	}
+	var snapEnv struct {
+		Data struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(snapsW.Body.Bytes(), &snapEnv); err != nil || len(snapEnv.Data.Items) != 1 {
+		t.Fatalf("decode snapshot list: err=%v body=%s", err, snapsW.Body.String())
+	}
+	victimSnapshotID := snapEnv.Data.Items[0].ID
+
+	commentW := serve(r, authedJSONReq(t.Context(), http.MethodPost, victimDocPath+"/comments", tok, map[string]any{
+		"content": []map[string]any{{"type": "paragraph", "content": []map[string]any{{"type": "text", "text": "legit comment"}}}},
+	}))
+	if commentW.Code != http.StatusCreated {
+		t.Fatalf("seed comment via same-project request: expected 201, got %d (%s)", commentW.Code, commentW.Body.String())
+	}
+
+	attackerDocPath := attackerBase + "/" + victimDocID
+
+	// PACA-001: cross-project mutation.
+	if w := serve(r, authedJSONReq(t.Context(), http.MethodPatch, attackerDocPath, tok, map[string]any{"title": "Pwned"})); w.Code != http.StatusNotFound {
+		t.Errorf("cross-project PATCH: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+	// PACA-001: cross-project comment injection.
+	if w := serve(r, authedJSONReq(t.Context(), http.MethodPost, attackerDocPath+"/comments", tok, map[string]any{
+		"content": []map[string]any{{"type": "paragraph", "content": []map[string]any{{"type": "text", "text": "injected"}}}},
+	})); w.Code != http.StatusNotFound {
+		t.Errorf("cross-project comment: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+	// PACA-002: cross-project snapshot list/read disclosure.
+	if w := serve(r, authedJSONReq(t.Context(), http.MethodGet, attackerDocPath+"/snapshots", tok, nil)); w.Code != http.StatusNotFound {
+		t.Errorf("cross-project ListSnapshots: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+	if w := serve(r, authedJSONReq(t.Context(), http.MethodGet, attackerDocPath+"/snapshots/"+victimSnapshotID, tok, nil)); w.Code != http.StatusNotFound {
+		t.Errorf("cross-project GetSnapshot: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+	// PACA-002: cross-project activity/history disclosure.
+	if w := serve(r, authedJSONReq(t.Context(), http.MethodGet, attackerDocPath+"/activities", tok, nil)); w.Code != http.StatusNotFound {
+		t.Errorf("cross-project ListActivities: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+	// PACA-001: cross-project deletion — checked last since a broken fix
+	// would remove the document the assertions above depend on.
+	if w := serve(r, authedJSONReq(t.Context(), http.MethodDelete, attackerDocPath, tok, nil)); w.Code != http.StatusNotFound {
+		t.Errorf("cross-project DELETE: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	// The victim document must be completely untouched by every rejected
+	// cross-project request above.
+	getW := serve(r, authedJSONReq(t.Context(), http.MethodGet, victimDocPath, tok, nil))
+	if getW.Code != http.StatusOK {
+		t.Fatalf("victim doc should still exist: expected 200, got %d (%s)", getW.Code, getW.Body.String())
+	}
+	var docEnv struct {
+		Data struct {
+			Title string `json:"title"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(getW.Body.Bytes(), &docEnv); err != nil {
+		t.Fatalf("decode victim doc: %v", err)
+	}
+	if docEnv.Data.Title != "Victim Doc" {
+		t.Errorf("victim doc title must be unchanged, got %q", docEnv.Data.Title)
 	}
 }

@@ -282,6 +282,11 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 
 // UpdateDocument handles PATCH /projects/:projectId/docs/:docId.
 func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	docID, err := parseDocID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -311,7 +316,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	// Capture old state for activity recording.
 	oldDoc, _ := h.svc.GetDocument(r.Context(), docID)
 
-	d, err := h.svc.UpdateDocument(r.Context(), docID, docdom.UpdateDocumentInput{
+	d, err := h.svc.UpdateDocument(r.Context(), projectID, docID, docdom.UpdateDocumentInput{
 		Title:     req.Title,
 		Content:   req.Content.Ptr(),
 		FolderID:  req.FolderID.Ptr(),
@@ -364,7 +369,7 @@ func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.svc.DeleteDocument(r.Context(), docID); err != nil {
+	if err := h.svc.DeleteDocument(r.Context(), projectID, docID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -394,12 +399,17 @@ func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request)
 
 // ListSnapshots handles GET /projects/:projectId/docs/:docId/snapshots.
 func (h *DocumentHandler) ListSnapshots(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	docID, err := parseDocID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	snaps, err := h.svc.ListSnapshots(r.Context(), docID)
+	snaps, err := h.svc.ListSnapshots(r.Context(), projectID, docID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -413,12 +423,17 @@ func (h *DocumentHandler) ListSnapshots(w http.ResponseWriter, r *http.Request) 
 
 // GetSnapshot handles GET /projects/:projectId/docs/:docId/snapshots/:snapshotId.
 func (h *DocumentHandler) GetSnapshot(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	snapshotID, err := parseDocSnapshotID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	snap, err := h.svc.GetSnapshot(r.Context(), snapshotID)
+	snap, err := h.svc.GetSnapshot(r.Context(), projectID, snapshotID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -432,12 +447,17 @@ func (h *DocumentHandler) GetSnapshot(w http.ResponseWriter, r *http.Request) {
 
 // ListActivities handles GET /projects/:projectId/docs/:docId/activities.
 func (h *DocumentHandler) ListActivities(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	docID, err := parseDocID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	activities, err := h.activitySvc.ListActivities(r.Context(), docID)
+	activities, err := h.activitySvc.ListActivities(r.Context(), projectID, docID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
