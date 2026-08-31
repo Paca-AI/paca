@@ -172,12 +172,14 @@ export function normalizeBlockContent(content: unknown): unknown[] {
 /**
  * Rewrites any `codeBlock` whose language is "mermaid" into the custom
  * `mermaid` block so it renders as a diagram instead of showing raw source.
- * This is what makes a ```mermaid fence — whether typed, pasted as markdown,
- * or already stored in an existing doc — actually render. Pure and shallow
- * (top-level blocks only; BlockNote code blocks can't nest), so it's cheap to
- * run on every load and trivially testable. The custom block's
- * `toExternalHTML` degrades back to a ```mermaid fence, so nothing is trapped
- * for a client that lacks the block type.
+ * This runs on the load path (via normalizeBlockContent), so a ```mermaid
+ * fence — already stored in a doc, or typed/pasted and then saved+reopened —
+ * renders as a diagram; a fence typed into an already-open editor stays a code
+ * block until the content is reloaded (live in-editor conversion is out of
+ * scope here). Pure and shallow (top-level blocks only; BlockNote code blocks
+ * can't nest), so it's cheap to run on every load and trivially testable. The
+ * custom block's `toExternalHTML` degrades back to a ```mermaid fence, so
+ * nothing is trapped for a client that lacks the block type.
  */
 export function convertMermaidCodeBlocks(blocks: unknown[]): unknown[] {
 	let changed = false;

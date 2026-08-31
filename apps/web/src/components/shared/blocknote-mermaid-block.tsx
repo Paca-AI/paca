@@ -3,38 +3,39 @@ import { Code2, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 
-// mermaid is initialized lazily, exactly once, on first render of a diagram.
-// securityLevel "strict" is the load-bearing XSS control: diagram source is
-// user-authored and shared across a project, so mermaid must sanitize labels
-// and refuse to run embedded scripts/click-handlers. startOnLoad is off
-// because we drive rendering ourselves per block.
-let mermaidInit: Promise<typeof import("mermaid").default> | null = null;
-function getMermaid(dark: boolean) {
-	if (!mermaidInit) {
-		// Dynamic import keeps mermaid (>1MB) out of the main bundle.
-		mermaidInit = import("mermaid").then((m) => {
-			m.default.initialize({
-				startOnLoad: false,
-				securityLevel: "strict",
-				theme: dark ? "dark" : "default",
-				// Render each diagram at its natural pixel size rather than
-				// mermaid's default "shrink to fit an inline max-width" behavior,
-				// which collapses a diagram to a few pixels inside a flex/narrow
-				// container. The wrapper scrolls horizontally when a diagram is
-				// genuinely wider than the editor.
-				er: { useMaxWidth: false },
-				flowchart: { useMaxWidth: false },
-				sequence: { useMaxWidth: false },
-				class: { useMaxWidth: false },
-				state: { useMaxWidth: false },
-				gantt: { useMaxWidth: false },
-				journey: { useMaxWidth: false },
-				pie: { useMaxWidth: false },
-			});
-			return m.default;
-		});
+// Dynamic import keeps mermaid (>1MB) out of the main bundle; the module load
+// happens once, but initialize() is (re)applied per render so the theme tracks
+// the app's light/dark toggle — mermaid v11's render() has no per-render theme
+// override, so re-initializing before each render is the only way to follow it.
+let mermaidMod: Promise<typeof import("mermaid").default> | null = null;
+function loadMermaid() {
+	if (!mermaidMod) {
+		mermaidMod = import("mermaid").then((m) => m.default);
 	}
-	return mermaidInit;
+	return mermaidMod;
+}
+
+// securityLevel "strict" is a defense-in-depth XSS control (it sanitizes labels
+// and refuses embedded scripts/click-handlers); the mermaid range floor in
+// package.json (>= 11.15.0) is what actually excludes the classDef injection
+// CVEs, since strict alone did not cover them. startOnLoad is off because we
+// drive rendering ourselves per block; useMaxWidth is off per diagram type so
+// each renders at its natural pixel size (the default shrinks a diagram to a
+// few pixels inside a narrow container — the wrapper scrolls instead).
+function initMermaid(mermaid: typeof import("mermaid").default, dark: boolean) {
+	mermaid.initialize({
+		startOnLoad: false,
+		securityLevel: "strict",
+		theme: dark ? "dark" : "default",
+		er: { useMaxWidth: false },
+		flowchart: { useMaxWidth: false },
+		sequence: { useMaxWidth: false },
+		class: { useMaxWidth: false },
+		state: { useMaxWidth: false },
+		gantt: { useMaxWidth: false },
+		journey: { useMaxWidth: false },
+		pie: { useMaxWidth: false },
+	});
 }
 
 // mermaid.render() needs a DOM-id-safe, unique id per diagram (it mounts a
@@ -59,7 +60,10 @@ function MermaidDiagram({ code, blockId }: { code: string; blockId: string }) {
 		}
 		(async () => {
 			try {
-				const mermaid = await getMermaid(resolvedMode === "dark");
+				const mermaid = await loadMermaid();
+				// Re-apply config every render so the theme follows the app's
+				// current light/dark mode (this effect re-runs on resolvedMode).
+				initMermaid(mermaid, resolvedMode === "dark");
 				// parse first so an invalid diagram surfaces a clean error
 				// instead of mermaid injecting its own error graphic.
 				await mermaid.parse(source);
@@ -99,7 +103,7 @@ function MermaidDiagram({ code, blockId }: { code: string; blockId: string }) {
 	// with a min-width so a tiny diagram still reads and h-auto to keep aspect.
 	return (
 		<div
-			className="overflow-x-auto py-1 [&_svg]:h-auto [&_svg]:!max-w-none"
+			className="overflow-x-auto py-1 [&_svg]:h-auto [&_svg]:max-w-none!"
 			// svg is produced by mermaid under securityLevel "strict" (labels
 			// sanitized, no script/click handlers), so injecting it is safe.
 			// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized mermaid SVG
