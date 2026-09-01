@@ -431,13 +431,30 @@ func (m *Manager) waitForPodIP(ctx context.Context, selector string) (podName, p
 	deadline := time.Now().Add(podReadyTimeout)
 	for time.Now().Before(deadline) {
 		pods, listErr := m.clientset.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-		if listErr == nil && len(pods.Items) > 0 {
-			pod := pods.Items[0]
-			if pod.Status.Phase == corev1.PodFailed {
-				return "", "", fmt.Errorf("sandbox/k8s: pod %s (selector %q) failed before becoming ready", pod.Name, selector)
-			}
-			if pod.Status.PodIP != "" {
-				return pod.Name, pod.Status.PodIP, nil
+		if listErr == nil {
+			for _, pod := range pods.Items {
+				if pod.DeletionTimestamp != nil {
+					// Terminating — e.g. StopEnvironment's scale-to-0 patch
+					// was accepted and returned success (it doesn't wait
+					// for the Pod to actually finish tearing down —
+					// terminationGracePeriodSeconds means that can take
+					// real time), immediately followed by a Start. A
+					// terminating Pod still carries a non-empty PodIP right
+					// up until it's actually gone, so without this check
+					// this could return an address that's about to stop
+					// answering — observed live exactly this way: a dind-
+					// readiness wait timed out chasing a Pod that had
+					// already been superseded by its own replacement,
+					// immediately after a plain Stop-then-Start with no
+					// other concurrent operation involved at all.
+					continue
+				}
+				if pod.Status.Phase == corev1.PodFailed {
+					return "", "", fmt.Errorf("sandbox/k8s: pod %s (selector %q) failed before becoming ready", pod.Name, selector)
+				}
+				if pod.Status.PodIP != "" {
+					return pod.Name, pod.Status.PodIP, nil
+				}
 			}
 		}
 		select {

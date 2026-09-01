@@ -4,9 +4,11 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	Bot,
+	ExternalLink,
 	GitBranch,
 	GitPullRequest,
 	Loader2,
@@ -16,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	type AgentConversation,
@@ -40,6 +42,7 @@ import {
 	stopConversation,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
+import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
@@ -246,6 +249,9 @@ export function ConversationView({
 		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+		// Snapshot now (not read again after any await) so a badge staged
+		// mid-send can't sneak into this message or get cleared under it.
+		const contextItems = useContextInjectionStore.getState().items;
 
 		if (!conversation.chat_session_id) {
 			// A conversation of a non-chat trigger type (task_assigned,
@@ -254,10 +260,20 @@ export function ConversationView({
 			// comment) — reply in place on the same conversation_id rather
 			// than through a chat session.
 			if (projectId) {
-				await sendConversationMessage(projectId, conversation.id, text);
+				await sendConversationMessage(
+					projectId,
+					conversation.id,
+					text,
+					contextItems,
+				);
 			} else {
-				await sendGlobalConversationMessage(conversation.id, text);
+				await sendGlobalConversationMessage(
+					conversation.id,
+					text,
+					contextItems,
+				);
 			}
+			useContextInjectionStore.getState().clear();
 			invalidate();
 			return;
 		}
@@ -267,11 +283,13 @@ export function ConversationView({
 					projectId,
 					conversation.agent_id,
 					conversation.chat_session_id,
-					{ message: text },
+					{ message: text, contextItems },
 				)
 			: await sendGlobalChatMessage(conversation.chat_session_id, {
 					message: text,
+					contextItems,
 				});
+		useContextInjectionStore.getState().clear();
 		// The previous conversation may have already ended (explicitly
 		// stopped, or reaped after 3 minutes with no heartbeat) — replying
 		// then silently starts a fresh conversation server-side. Follow it,
@@ -462,6 +480,19 @@ export function ConversationView({
 							<GitPullRequest className="size-3" />
 							{t("agents.conversationView.pr")}
 						</a>
+					)}
+					{projectId && conversation.environment_id && (
+						<Link
+							to="/projects/$projectId/environments/$environmentId/connect"
+							params={{
+								projectId,
+								environmentId: conversation.environment_id,
+							}}
+							className={buttonVariants({ variant: "outline", size: "sm" })}
+						>
+							<ExternalLink className="size-3" />
+							{t("agents.conversationView.connect")}
+						</Link>
 					)}
 					<ConversationControls
 						projectId={projectId}

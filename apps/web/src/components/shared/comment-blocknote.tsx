@@ -77,6 +77,7 @@ export const CommentEditor = forwardRef<
 			theme={resolvedMode}
 			className="bn-shadcn"
 			sideMenu={false}
+			slashMenu={false}
 		>
 			<SideMenuController sideMenu={CustomSideMenu} />
 			<MentionSuggestionMenus
@@ -162,11 +163,49 @@ export function isBlocksContent(content: unknown): content is unknown[] {
  * paragraph block so it stays visible instead of silently disappearing.
  */
 export function normalizeBlockContent(content: unknown): unknown[] {
-	if (Array.isArray(content)) return content;
+	if (Array.isArray(content)) return convertMermaidCodeBlocks(content);
 	if (typeof content === "string" && content.trim().length > 0) {
 		return textToBlocks(content);
 	}
 	return [];
+}
+
+/**
+ * Rewrites any `codeBlock` whose language is "mermaid" into the custom
+ * `mermaid` block so it renders as a diagram instead of showing raw source.
+ * This runs on the load path (via normalizeBlockContent), so a ```mermaid
+ * fence — already stored in a doc, or typed/pasted and then saved+reopened —
+ * renders as a diagram; a fence typed into an already-open editor stays a code
+ * block until the content is reloaded (live in-editor conversion is out of
+ * scope here). Pure and shallow (top-level blocks only; BlockNote code blocks
+ * can't nest), so it's cheap to run on every load and trivially testable. The
+ * custom block's `toExternalHTML` degrades back to a ```mermaid fence, so
+ * nothing is trapped for a client that lacks the block type.
+ */
+export function convertMermaidCodeBlocks(blocks: unknown[]): unknown[] {
+	let changed = false;
+	const out = blocks.map((b) => {
+		if (!b || typeof b !== "object") return b;
+		const block = b as {
+			type?: string;
+			props?: { language?: string };
+			content?: Array<{ type?: string; text?: string }>;
+		};
+		if (
+			block.type !== "codeBlock" ||
+			block.props?.language?.toLowerCase() !== "mermaid"
+		) {
+			return b;
+		}
+		const code = Array.isArray(block.content)
+			? block.content
+					.map((c) => (c?.type === "text" ? (c.text ?? "") : ""))
+					.join("")
+			: "";
+		changed = true;
+		return { type: "mermaid", props: { code }, content: [] };
+	});
+	return changed ? out : blocks;
 }
 
 function stripTrailingEmptyBlocks(blocks: unknown[]): unknown[] {

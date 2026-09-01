@@ -286,6 +286,7 @@
 			"chatSession": "Чат-сессия",
 			"taskSession": "Сессия задачи",
 			"pr": "PR",
+			"connect": "Подключиться",
 			"conversationEnded": "Этот диалог завершён.",
 			"textOnlyMessage": "Поддерживаются только текстовые сообщения.",
 			"failed": "Диалог завершился с ошибкой",
@@ -346,7 +347,19 @@
 			"imageAttachmentPreviewTitle": "Предпросмотр вложенного изображения",
 			"attachmentAriaLabel": "Вложение: {{type}}",
 			"attachmentAriaLabelError": "Вложение: {{type}}, ошибка загрузки",
-			"attachmentAriaLabelUploading": "Вложение: {{type}}, загружается"
+			"attachmentAriaLabelUploading": "Вложение: {{type}}, загружается",
+			"contextInjection": {
+				"attachContext": "Прикрепить контекст",
+				"contextSearchPlaceholder": "Поиск задач, документов, бесед, автоматизаций…",
+				"removeContextItem": "Удалить {{title}}",
+				"addCurrent": "Прикрепить {{title}}",
+				"contextTypeTask": "Задача",
+				"contextTypeDoc": "Документ",
+				"contextTypeConversation": "Беседа",
+				"contextTypeAutomation": "Автоматизация",
+				"noContextResults": "Результаты не найдены",
+				"contextSearchMinChars": "Введите минимум 2 символа для поиска"
+			}
 		}
 	},
 	"environments": {
@@ -459,10 +472,8 @@
 					"pathHint": "Путь должен быть абсолютным.",
 					"browse": "Обзор…",
 					"browsing": {
-						"root": "корень рабочего пространства",
 						"empty": "Эта папка пуста",
-						"notRunning": "Запустите окружение, чтобы просмотреть его файлы.",
-						"useThisFolder": "Использовать эту папку"
+						"notRunning": "Запустите окружение, чтобы просмотреть его файлы."
 					},
 					"addFailed": "Не удалось добавить папку. Попробуйте снова.",
 					"cancel": "Отмена",

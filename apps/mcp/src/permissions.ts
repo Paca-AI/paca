@@ -478,7 +478,12 @@ export async function fetchAgentPermissions(
 		}
 
 		if (config.projectId) {
-			await fetchProjectPermissions(config, headers, config.projectId, projects);
+			await fetchProjectPermissions(
+				config,
+				headers,
+				config.projectId,
+				projects,
+			);
 			const entityType = config.agentId ? "agent" : "user";
 			console.error(
 				`[permissions] Loaded permissions for ${entityType} in project ${config.projectId}`,
@@ -497,7 +502,9 @@ export async function fetchAgentPermissions(
 				if (projectsResponse.ok) {
 					const projectsJson = await projectsResponse.json();
 					const body =
-						projectsJson && typeof projectsJson === "object" && "data" in projectsJson
+						projectsJson &&
+						typeof projectsJson === "object" &&
+						"data" in projectsJson
 							? projectsJson.data
 							: projectsJson;
 					const projectIds: string[] = Array.isArray(body?.project_ids)

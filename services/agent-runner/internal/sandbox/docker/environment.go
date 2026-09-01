@@ -774,7 +774,27 @@ func (m *Manager) StartEnvironment(ctx context.Context, backendRef string, cfg s
 
 	if _, err := m.docker.ContainerStart(ctx, backendRef, client.ContainerStartOptions{}); err != nil {
 		if cerrdefs.IsNotFound(err) {
-			return m.recreateGoneEnvironmentContainer(ctx, cfg)
+			recreated, err := m.recreateGoneEnvironmentContainer(ctx, cfg)
+			if err != nil {
+				return nil, err
+			}
+			// recreateGoneEnvironmentContainer only rebuilds the
+			// environment's own container, never touching its separate
+			// dind sidecar — the same gap recreateEnvironmentIfMissingEnv/
+			// ensureEnvironmentInfraEnv's own recreate branches above
+			// already guard against, and for the same reason: this
+			// function's earlier startEnvironmentDindSidecar call (above,
+			// before this ContainerStart attempt) only started the
+			// sidecar, it never confirmed it actually answers. Skipping
+			// this would report success while DOCKER_HOST points at a
+			// sidecar that may not have finished starting its own
+			// dockerd yet — most likely exactly when this self-heal path
+			// fires at all, since a container/Pod that vanished outside
+			// of Paca often took its sidecar down with it.
+			if err := m.ensureEnvironmentDindStarted(ctx, cfg); err != nil {
+				return nil, err
+			}
+			return recreated, nil
 		}
 		return nil, fmt.Errorf("sandbox/docker: start environment container %s: %w", backendRef, err)
 	}

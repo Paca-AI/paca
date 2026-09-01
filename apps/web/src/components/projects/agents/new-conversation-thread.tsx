@@ -15,6 +15,7 @@ import {
 	startChatSession,
 	startGlobalChatSession,
 } from "@/lib/agent-api";
+import { useContextInjectionStore } from "@/lib/context-injection-store";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
@@ -76,6 +77,9 @@ export function NewConversationThread({
 		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+		// Snapshot now (not read again after any await) so a badge staged
+		// mid-send can't sneak into this message or get cleared under it.
+		const contextItems = useContextInjectionStore.getState().items;
 
 		// Guards against a fast double-Enter firing two chat sessions before
 		// the first request resolves and this component navigates away.
@@ -86,7 +90,9 @@ export function NewConversationThread({
 					message: text,
 					...(environmentId ? { environment_id: environmentId } : {}),
 					...(folderId ? { folder_id: folderId } : {}),
+					contextItems,
 				});
+				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					conversationQueryOptions(projectId, result.conversation.id).queryKey,
 					result.conversation,
@@ -101,7 +107,9 @@ export function NewConversationThread({
 			} else {
 				const result = await startGlobalChatSession(agentId, {
 					message: text,
+					contextItems,
 				});
+				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					globalConversationQueryOptions(result.conversation.id).queryKey,
 					result.conversation,

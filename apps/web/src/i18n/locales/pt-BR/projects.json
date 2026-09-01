@@ -280,6 +280,7 @@
 			"chatSession": "Sessão de chat",
 			"taskSession": "Sessão de tarefa",
 			"pr": "PR",
+			"connect": "Conectar",
 			"conversationEnded": "Esta conversa foi encerrada.",
 			"textOnlyMessage": "Apenas mensagens de texto são suportadas.",
 			"failed": "A conversa falhou",
@@ -336,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "Visualização do anexo de imagem",
 			"attachmentAriaLabel": "Anexo {{type}}",
 			"attachmentAriaLabelError": "Anexo {{type}}, falha no upload",
-			"attachmentAriaLabelUploading": "Anexo {{type}}, enviando"
+			"attachmentAriaLabelUploading": "Anexo {{type}}, enviando",
+			"contextInjection": {
+				"attachContext": "Anexar contexto",
+				"contextSearchPlaceholder": "Buscar tarefas, documentos, conversas, automações…",
+				"removeContextItem": "Remover {{title}}",
+				"addCurrent": "Anexar {{title}}",
+				"contextTypeTask": "Tarefa",
+				"contextTypeDoc": "Documento",
+				"contextTypeConversation": "Conversa",
+				"contextTypeAutomation": "Automação",
+				"noContextResults": "Nenhum resultado encontrado",
+				"contextSearchMinChars": "Digite pelo menos 2 caracteres para buscar"
+			}
 		}
 	},
 	"environments": {
@@ -449,10 +462,8 @@
 					"pathHint": "Deve ser um caminho absoluto.",
 					"browse": "Procurar…",
 					"browsing": {
-						"root": "raiz do workspace",
 						"empty": "Esta pasta está vazia",
-						"notRunning": "Inicie o ambiente para procurar seus arquivos.",
-						"useThisFolder": "Usar esta pasta"
+						"notRunning": "Inicie o ambiente para procurar seus arquivos."
 					},
 					"addFailed": "Falha ao adicionar a pasta. Tente novamente.",
 					"cancel": "Cancelar",

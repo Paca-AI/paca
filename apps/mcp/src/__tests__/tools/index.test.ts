@@ -83,6 +83,12 @@ vi.mock("../../tools/automation-tools.js", () => ({
 		.fn()
 		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
 }));
+vi.mock("../../tools/conversation-tools.js", () => ({
+	getConversationTools: vi.fn(() => [{ name: "read_conversation" }]),
+	handleConversationTool: vi
+		.fn()
+		.mockResolvedValue({ content: [{ type: "text", text: "ok" }] }),
+}));
 vi.mock("../../tools/doc-activity-tools.js", () => ({
 	getDocActivityTools: vi.fn(() => [
 		{ name: "list_doc_activities" },
@@ -105,6 +111,7 @@ vi.mock("../../tools/repo-tools.js", () => ({
 
 import { handleAttachmentTool } from "../../tools/attachment-tools.js";
 import { handleAutomationTool } from "../../tools/automation-tools.js";
+import { handleConversationTool } from "../../tools/conversation-tools.js";
 import { handleDocActivityTool } from "../../tools/doc-activity-tools.js";
 import { handleFilesystemDocTool } from "../../tools/filesystem-doc-tools.js";
 import { getAllTools, handleToolCall } from "../../tools/index.js";
@@ -125,6 +132,7 @@ const stubClients = {
 	taskExtendedClient: {} as any,
 	docClient: {} as any,
 	automationClient: {} as any,
+	conversationClient: {} as any,
 };
 
 function makeRequest(name: string, args: Record<string, unknown> = {}) {
@@ -156,6 +164,7 @@ describe("getAllTools", () => {
 		expect(names).toContain("get_automation");
 		expect(names).toContain("list_doc_activities");
 		expect(names).toContain("list_repositories");
+		expect(names).toContain("read_conversation");
 	});
 });
 
@@ -390,6 +399,20 @@ describe("handleToolCall – doc activity routing", () => {
 			"add_doc_comment",
 			{},
 			stubClients.docClient,
+		);
+	});
+});
+
+describe("handleToolCall – conversation tool routing", () => {
+	it("routes read_conversation to handleConversationTool", async () => {
+		await handleToolCall(
+			makeRequest("read_conversation", { conversationId: "c1" }),
+			stubClients,
+		);
+		expect(handleConversationTool).toHaveBeenCalledWith(
+			"read_conversation",
+			{ conversationId: "c1" },
+			stubClients.conversationClient,
 		);
 	});
 });

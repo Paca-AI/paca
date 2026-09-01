@@ -241,11 +241,15 @@ shows a placeholder host the user has to fill in themselves.
 
 ## Port forwarding
 
-Off by default. The exact same idea as SSH access above — a
-per-environment `NodePort` Service entry, natively published, no relay —
-but for any container port a user wants to expose (their own dev server,
-most commonly), added and removed from the environment's own Connect page
-in the web app instead of being a single auto-created port. See
+On by default — unlike SSH access above, a user-added port forward only
+ever exposes a port the environment's own workload is already meant to
+serve, each one explicit and visible on that environment's Connect page,
+so it doesn't warrant the same opt-in-by-operator default. Otherwise the
+exact same idea as SSH access above — a per-environment `NodePort` Service
+entry, natively published, no relay — but for any container port a user
+wants to expose (their own dev server, most commonly), added and removed
+from the environment's own Connect page in the web app instead of being a
+single auto-created port. See
 [`docs/ai-agent/environment-management.md`](../../docs/ai-agent/environment-management.md)'s
 "Port Forwarding" section.
 
@@ -259,6 +263,16 @@ agentRunner:
 environments:
   portForwardHost: "node.paca.example.com"   # same idea as sshBastionHost
 ```
+
+Unlike `sshBastionHost`, `environments.portForwardHost` isn't purely
+descriptive for `services/api` alone any more: it's still passed there as
+`PORT_FORWARD_HOST` so `GET /environments/config` can hand the web app's
+Connect page a real `<host>:<host_port>` address, but it's now *also*
+passed to `agent-runner` itself (same env var, same value), which uses it
+to tell an environment-attached conversation's agent that same address
+in-context — so if the agent starts a dev server on a forwarded port, it
+can give the user a real URL without the user having to go find it on the
+Connect page first.
 
 Unlike the `docker` backend — where changing a container's published
 ports means stopping and recreating it — patching a `NodePort` Service's

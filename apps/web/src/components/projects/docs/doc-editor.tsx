@@ -182,6 +182,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(
 					theme={resolvedMode}
 					onChange={handleChange}
 					sideMenu={false}
+					slashMenu={false}
 				>
 					<SideMenuController sideMenu={CustomSideMenu} />
 					{editable && (

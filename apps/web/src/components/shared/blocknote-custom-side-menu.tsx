@@ -16,12 +16,17 @@ export const CustomSideMenu = () => {
 		return null;
 	}
 
-	const hasContent = Array.isArray(block.content) && block.content.length > 0;
+	// Only "inline" content blocks (paragraph, heading, ...) can be empty in a
+	// meaningful sense — show "+" for those so the user can pick a block type.
+	// Every other content model ("none" or "table": image, video, file, table,
+	// divider, mermaid, ...) has no such empty state and always gets the drag
+	// handle, since block.content is never an array for them.
+	const isEmptyTextBlock =
+		Array.isArray(block.content) && block.content.length === 0;
 
 	return (
 		<SideMenu>
-			{!hasContent && <AddBlockButton />}
-			{hasContent && <DragHandleButton />}
+			{isEmptyTextBlock ? <AddBlockButton /> : <DragHandleButton />}
 		</SideMenu>
 	);
 };

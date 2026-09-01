@@ -254,4 +254,60 @@ const (
 	// worker.AutomationConsumer to resume a graph walk paused at a
 	// trigger_ai_agent node once its conversation finishes.
 	StreamAgentConversationStatus = "paca:agent:conversation_status"
+
+	// StreamAgentEnvironmentCommands is the Valkey Stream key
+	// environmentsvc.Service appends to for its 3 environment-lifecycle
+	// calls into agent-runner that actually wait on a Pod/container
+	// becoming ready — create, start, and restart-ports (see
+	// EnvironmentCommand* below) — consumed by agent-runner's own
+	// messaging.EnvironmentCommandConsumer. The service's other 6 calls
+	// (stop, delete, folders, browse, ssh-keys/sync, port-forwards/assign)
+	// stay on direct HTTP: each is a single fast, bounded operation
+	// (a scale-to-0/delete API call, or one ExecEnvironment exec, or pure
+	// Postgres bookkeeping) with no readiness-wait loop, so a synchronous
+	// HTTP call already fits it fine — moving those to a stream would add
+	// dispatch/envelope complexity for no benefit. Deliberately NOT the
+	// same stream as the api-internal StreamEnvironmentCommands above
+	// (dot-namespaced, browser-request -> this service's own worker, a
+	// completely different hop): this one is colon-namespaced like
+	// StreamAgentTriggers/StreamAgentEvents because it's the api ->
+	// agent-runner cross-service leg, mirroring how conversation triggers
+	// already never go through HTTP, only ever through StreamAgentTriggers.
+	//
+	// Must stay byte-identical with agent-runner's own copy in
+	// internal/messaging/topics.go — see that file's doc comment.
+	StreamAgentEnvironmentCommands = "paca:agent:environment_commands"
+)
+
+// EnvironmentReplyKey returns the Valkey list key agent-runner RPushes its
+// reply to a StreamAgentEnvironmentCommands entry onto, and the key the
+// original caller BRPops from — one key per request, expired by the
+// replier shortly after pushing so an orphan (caller already gave up, or
+// crashed before popping) doesn't linger. A list, not a Pub/Sub channel:
+// list values persist until popped, so there is no "subscriber must
+// already be listening" race the way Pub/Sub would have — whether
+// agent-runner's RPush lands before or after the caller's BRPop call
+// starts, the caller sees it either way.
+//
+// Must stay byte-identical with agent-runner's own copy in
+// internal/messaging/topics.go.
+func EnvironmentReplyKey(requestID string) string {
+	return "paca:agent:environment_reply:" + requestID
+}
+
+// Environment command types — the StreamAgentEnvironmentCommands entry's
+// own "type" field, read by agent-runner's EnvironmentCommandConsumer to
+// dispatch to the right handler. Deliberately distinct constants/values
+// from TopicEnvironmentCreate/Start above, even though two of them name
+// the same underlying operations: those serve only the unrelated
+// StreamEnvironmentCommands/worker.EnvironmentCommandConsumer hop and
+// must not be cross-wired with this one just because a string literal
+// happened to match.
+//
+// Must stay byte-identical with agent-runner's own copy in
+// internal/messaging/topics.go.
+const (
+	EnvironmentCommandCreate       = "create"
+	EnvironmentCommandStart        = "start"
+	EnvironmentCommandRestartPorts = "restart_ports"
 )

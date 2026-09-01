@@ -280,6 +280,7 @@
 			"chatSession": "チャットセッション",
 			"taskSession": "タスクセッション",
 			"pr": "PR",
+			"connect": "接続",
 			"conversationEnded": "この会話は終了しました。",
 			"textOnlyMessage": "テキストメッセージのみサポートされています。",
 			"failed": "会話が失敗しました",
@@ -336,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "画像添付ファイルのプレビュー",
 			"attachmentAriaLabel": "{{type}}の添付ファイル",
 			"attachmentAriaLabelError": "{{type}}の添付ファイル、アップロード失敗",
-			"attachmentAriaLabelUploading": "{{type}}の添付ファイル、アップロード中"
+			"attachmentAriaLabelUploading": "{{type}}の添付ファイル、アップロード中",
+			"contextInjection": {
+				"attachContext": "コンテキストを添付",
+				"contextSearchPlaceholder": "タスク、ドキュメント、会話、自動化を検索…",
+				"removeContextItem": "{{title}}を削除",
+				"addCurrent": "{{title}}を添付",
+				"contextTypeTask": "タスク",
+				"contextTypeDoc": "ドキュメント",
+				"contextTypeConversation": "会話",
+				"contextTypeAutomation": "自動化",
+				"noContextResults": "結果が見つかりません",
+				"contextSearchMinChars": "検索するには2文字以上入力してください"
+			}
 		}
 	},
 	"environments": {
@@ -449,10 +462,8 @@
 					"pathHint": "絶対パスを指定してください。",
 					"browse": "参照…",
 					"browsing": {
-						"root": "ワークスペースのルート",
 						"empty": "このフォルダーは空です",
-						"notRunning": "ファイルを参照するには環境を起動してください。",
-						"useThisFolder": "このフォルダーを使用"
+						"notRunning": "ファイルを参照するには環境を起動してください。"
 					},
 					"addFailed": "フォルダーの追加に失敗しました。もう一度お試しください。",
 					"cancel": "キャンセル",

@@ -418,6 +418,12 @@ services:
       # never collide.
       PORT_FORWARD_RANGE_START: "2300"
       PORT_FORWARD_RANGE_END: "2399"
+      # Same PORT_FORWARD_HOST the api service sets above, for a different
+      # consumer: this service uses it to tell an environment-attached
+      # conversation's agent the real `host:port` address each of its
+      # port forwards is reachable at (executor.buildEnvironmentContext),
+      # not just to echo it back to the web app's Connect page.
+      PORT_FORWARD_HOST: ${PUBLIC_HOSTNAME:-localhost}
     volumes:
       # Sibling-container mode (see PACA_MCP_DEV_SOURCE_DIR's comment
       # above) — this same socket is also how agent-runner spins up each

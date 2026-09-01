@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -172,7 +174,10 @@ func (h *DocumentHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 // =============================================================================
 
 // ListDocuments handles GET /projects/:projectId/docs.
-// Optional query param: folder_id — filter by folder.
+// Optional query params: folder_id — filter by folder; search — case-
+// insensitive title match; page_size (1-200), cursor — opt into keyset
+// pagination (see docdom.Repository.ListDocuments's doc comment). Omitting
+// page_size returns every matching document in one response, as before.
 func (h *DocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -190,7 +195,26 @@ func (h *DocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Request) 
 		folderID = &id
 	}
 
-	docs, err := h.svc.ListDocuments(r.Context(), projectID, folderID)
+	var search *string
+	if raw := strings.TrimSpace(r.URL.Query().Get("search")); raw != "" {
+		search = &raw
+	}
+
+	var limit *int
+	if raw := r.URL.Query().Get("page_size"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 200 {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "page_size must be an integer between 1 and 200"))
+			return
+		}
+		limit = &n
+	}
+	var cursor *string
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		cursor = &raw
+	}
+
+	docs, hasMore, err := h.svc.ListDocuments(r.Context(), projectID, folderID, search, cursor, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -199,7 +223,12 @@ func (h *DocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Request) 
 	for _, d := range docs {
 		resp = append(resp, dto.DocumentListItemFromEntity(d))
 	}
-	presenter.OK(w, r, map[string]any{"items": resp})
+	var nextCursor *string
+	if hasMore && len(docs) > 0 {
+		s := docdom.EncodeDocumentCursor(docs[len(docs)-1])
+		nextCursor = &s
+	}
+	presenter.OK(w, r, map[string]any{"items": resp, "next_cursor": nextCursor})
 }
 
 // GetDocument handles GET /projects/:projectId/docs/:docId.

@@ -52,9 +52,9 @@ type UpdateFolderInput struct {
 
 // DocumentService defines document use-cases.
 type DocumentService interface {
-	// ListDocuments returns all non-deleted documents in the project.
-	// folderID non-nil filters to that folder; nil returns all.
-	ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID) ([]*Document, error)
+	// ListDocuments — see Repository.ListDocuments's doc comment for the
+	// limit/cursor/hasMore pagination contract.
+	ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) (docs []*Document, hasMore bool, err error)
 	// GetDocument returns a single document by ID.
 	GetDocument(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument creates a new document in the project.

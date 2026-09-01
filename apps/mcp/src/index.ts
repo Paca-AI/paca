@@ -26,6 +26,7 @@ async function main() {
 	const agentId = process.env.PACA_AGENT_ID || undefined;
 	const projectId = process.env.PACA_PROJECT_ID || undefined;
 	const actorUserId = process.env.PACA_ACTOR_USER_ID || undefined;
+	const conversationId = process.env.PACA_CONVERSATION_ID || undefined;
 	// Comma-separated plugin names — see agent-runner's executor.go
 	// buildMCPServers, which sets this from trigger.RepoPluginIDs (itself
 	// decoded from the paca:agent:triggers stream's repo_plugin_ids field).
@@ -62,6 +63,7 @@ async function main() {
 		agentId,
 		projectId,
 		actorUserId,
+		conversationId,
 		repoPluginIds,
 	};
 

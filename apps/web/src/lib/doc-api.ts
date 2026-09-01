@@ -35,6 +35,7 @@ export interface Document {
 
 export interface DocumentListResult {
 	items: Document[];
+	next_cursor?: string | null;
 }
 
 export interface DocSnapshot {
@@ -231,13 +232,41 @@ export async function deleteFolder(
 export async function listDocuments(
 	projectId: string,
 	folderId?: string,
+	/** Case-insensitive title match, server-side (mirrors task search) — used
+	 *  by hooks/use-context-item-search.ts's Doc tab. Omitted/blank means
+	 *  "don't filter", same as omitting folderId. */
+	search?: string,
 ): Promise<Document[]> {
+	const params: Record<string, string> = {};
+	if (folderId) params.folder_id = folderId;
+	if (search?.trim()) params.search = search.trim();
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<DocumentListResult>
 	>(`/projects/${projectId}/docs`, {
-		params: folderId ? { folder_id: folderId } : undefined,
+		params: Object.keys(params).length > 0 ? params : undefined,
 	});
 	return data.data.items;
+}
+
+/** Paginated sibling of listDocuments for the context-injection search
+ *  picker (hooks/use-context-item-search.ts): same endpoint, but requests a
+ *  bounded, cursor-paginated page instead of every matching document at
+ *  once. Returns the page envelope (not just the array) so the caller can
+ *  keep paging via next_cursor. */
+export async function listDocumentsPage(
+	projectId: string,
+	opts: { search?: string; cursor?: string; pageSize?: number } = {},
+): Promise<DocumentListResult> {
+	const params: Record<string, string | number> = {};
+	if (opts.search?.trim()) params.search = opts.search.trim();
+	if (opts.cursor) params.cursor = opts.cursor;
+	if (opts.pageSize) params.page_size = opts.pageSize;
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<DocumentListResult>
+	>(`/projects/${projectId}/docs`, {
+		params: Object.keys(params).length > 0 ? params : undefined,
+	});
+	return data.data;
 }
 
 export async function getDocument(

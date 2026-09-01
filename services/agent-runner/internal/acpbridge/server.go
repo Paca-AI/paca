@@ -61,10 +61,10 @@ type Server struct {
 	// individual request, not server startup.
 	SandboxMgr      sandbox.FullBackend
 	EnvironmentRepo *postgres.EnvironmentRepository
-	// SSHKeyRepo backs both handleCreateEnvironment's post-create sshd
+	// SSHKeyRepo backs both ExecuteCreateEnvironment's post-create sshd
 	// bootstrap and the ssh-keys/sync endpoint (rendering
 	// authorized_keys). SSHPortRangeStart/End gate the whole SSH feature —
-	// both zero (the default) means handleCreateEnvironment never assigns
+	// both zero (the default) means ExecuteCreateEnvironment never assigns
 	// a port at all (docs/ai-agent/environment-management.md's "Terminal /
 	// SSH Access" section) — the environment's SSH port, once assigned, is
 	// published directly by the backend (a Docker -p binding or a
@@ -75,7 +75,7 @@ type Server struct {
 	// PortForwardRepo is the same idea for user-managed port forwards
 	// (docs/ai-agent/environment-management.md's "Port Forwarding"
 	// section) — reads/writes the environment_port_forwards rows
-	// handlePortForwardsAssign/handleRestartEnvironmentPorts assign host
+	// handlePortForwardsAssign/ExecuteRestartEnvironmentPorts assign host
 	// ports to and read back to build a full PortMappings set.
 	// PortForwardRangeStart/End is the same "both zero means never
 	// configured" convention as SSH's own range.
@@ -86,11 +86,11 @@ type Server struct {
 	PortForwardRangeStart int
 	PortForwardRangeEnd   int
 	// Backend is settings.SandboxBackend ("docker" or "kubernetes") —
-	// echoed verbatim in POST /internal/environments' response. Not
-	// derivable from a sandbox.EnvironmentHandle (which carries only
-	// BackendRef/BaseURL, no backend-kind field), so this is threaded
-	// through from config.Settings instead — see
-	// environment_handlers.go's handleCreateEnvironment.
+	// echoed verbatim in ExecuteCreateEnvironment's response (its
+	// createEnvironmentResponse.Backend field). Not derivable from a
+	// sandbox.EnvironmentHandle (which carries only BackendRef/BaseURL, no
+	// backend-kind field), so this is threaded through from config.Settings
+	// instead — see environment_handlers.go's ExecuteCreateEnvironment.
 	Backend string
 	// MCPDevSourceDir mirrors config.Settings.MCPDevSourceDir — forwarded
 	// into every sandbox.EnvironmentConfig this creates so a brand-new

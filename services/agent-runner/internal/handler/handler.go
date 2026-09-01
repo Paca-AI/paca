@@ -305,9 +305,11 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	// NOT recorded here, since no human actually said anything in that
 	// case.
 	if msg := strings.TrimSpace(trigger.Message); msg != "" {
-		userPayload, _ := json.Marshal(map[string]any{
-			"content": map[string]any{"type": "text", "text": msg},
-		})
+		fields := map[string]any{"content": map[string]any{"type": "text", "text": msg}}
+		if len(trigger.ContextItems) > 0 {
+			fields["context_items"] = trigger.ContextItems
+		}
+		userPayload, _ := json.Marshal(fields)
 		persistAndPublish("user_message", "user", userPayload)
 	}
 

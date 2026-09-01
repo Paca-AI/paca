@@ -46,6 +46,16 @@ type Settings struct {
 	// deliberately NOT subject to this same bound.
 	WorkerConcurrency int
 
+	// EnvironmentProvisionConcurrency bounds how many
+	// create/start/restart-ports commands (each polling a Pod/container
+	// through waitForPodIP/sandbox.WaitForReady, up to several minutes)
+	// may be in flight at once — see
+	// messaging.EnvironmentCommandConsumer's doc comment. Sized separately
+	// from WorkerConcurrency: this consumer's work is a small number of
+	// long-running Pod-wait loops, not many short conversation turns, so
+	// the right concurrency budget for one says nothing about the other.
+	EnvironmentProvisionConcurrency int
+
 	// ChatSandboxIdleTimeout bounds how long a paused chat conversation's
 	// sandbox stays alive with no activity before the idle reaper tears it
 	// down — see chatsandbox.Registry.FindIdle and the reaper goroutine in
@@ -147,6 +157,20 @@ type Settings struct {
 	PortForwardRangeStart int
 	PortForwardRangeEnd   int
 
+	// PortForwardHost is the descriptive external hostname a user-added
+	// port forward is reachable at (PORT_FORWARD_HOST) — the exact same
+	// env var services/api's own config.Settings.PortForwardHost reads,
+	// sourced independently here because agent-runner, unlike
+	// services/api, needs it for more than an API response: it's how
+	// executor.buildEnvironmentContext tells an environment-attached
+	// conversation's agent a real `host:port` address instead of just a
+	// bare container port. Purely descriptive — agent-runner never
+	// publishes a port itself (see PortForwardRangeStart/End above).
+	// Empty by default; a forward is still listed without an address in
+	// that case rather than omitted, since a self-hosted deployment may
+	// not have a reachable hostname configured at all.
+	PortForwardHost string
+
 	LogLevel string
 }
 
@@ -164,6 +188,7 @@ func Load() (Settings, error) {
 		PortPoolStart:                   envInt("PORT_POOL_START", 10000),
 		PortPoolSize:                    envInt("PORT_POOL_SIZE", 100),
 		WorkerConcurrency:               envInt("WORKER_CONCURRENCY", 5),
+		EnvironmentProvisionConcurrency: envInt("ENVIRONMENT_PROVISION_CONCURRENCY", 5),
 		ChatSandboxIdleTimeout:          time.Duration(envInt("CHAT_SANDBOX_IDLE_TIMEOUT_MINUTES", 3)) * time.Minute,
 		HTTPAddr:                        envOr("HTTP_ADDR", ":8080"),
 		InternalAPIKey:                  os.Getenv("INTERNAL_API_KEY"),
@@ -178,6 +203,7 @@ func Load() (Settings, error) {
 		SSHBastionPortRangeEnd:          envInt("SSH_BASTION_PORT_RANGE_END", 0),
 		PortForwardRangeStart:           envInt("PORT_FORWARD_RANGE_START", 0),
 		PortForwardRangeEnd:             envInt("PORT_FORWARD_RANGE_END", 0),
+		PortForwardHost:                 os.Getenv("PORT_FORWARD_HOST"),
 		LogLevel:                        envOr("LOG_LEVEL", "INFO"),
 	}
 

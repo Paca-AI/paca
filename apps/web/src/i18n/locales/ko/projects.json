@@ -280,6 +280,7 @@
 			"chatSession": "채팅 세션",
 			"taskSession": "작업 세션",
 			"pr": "PR",
+			"connect": "연결",
 			"conversationEnded": "이 대화가 종료되었습니다.",
 			"textOnlyMessage": "텍스트 메시지만 지원됩니다.",
 			"failed": "대화가 실패했습니다",
@@ -336,7 +337,19 @@
 			"imageAttachmentPreviewTitle": "이미지 첨부 파일 미리보기",
 			"attachmentAriaLabel": "{{type}} 첨부 파일",
 			"attachmentAriaLabelError": "{{type}} 첨부 파일, 업로드 실패",
-			"attachmentAriaLabelUploading": "{{type}} 첨부 파일, 업로드 중"
+			"attachmentAriaLabelUploading": "{{type}} 첨부 파일, 업로드 중",
+			"contextInjection": {
+				"attachContext": "컨텍스트 첨부",
+				"contextSearchPlaceholder": "작업, 문서, 대화, 자동화 검색…",
+				"removeContextItem": "{{title}} 제거",
+				"addCurrent": "{{title}} 첨부",
+				"contextTypeTask": "작업",
+				"contextTypeDoc": "문서",
+				"contextTypeConversation": "대화",
+				"contextTypeAutomation": "자동화",
+				"noContextResults": "결과를 찾을 수 없습니다",
+				"contextSearchMinChars": "검색하려면 2자 이상 입력하세요"
+			}
 		}
 	},
 	"environments": {
@@ -449,10 +462,8 @@
 					"pathHint": "절대 경로여야 합니다.",
 					"browse": "찾아보기…",
 					"browsing": {
-						"root": "워크스페이스 루트",
 						"empty": "이 폴더는 비어 있습니다",
-						"notRunning": "파일을 찾아보려면 환경을 시작하세요.",
-						"useThisFolder": "이 폴더 사용"
+						"notRunning": "파일을 찾아보려면 환경을 시작하세요."
 					},
 					"addFailed": "폴더를 추가하지 못했습니다. 다시 시도해 주세요.",
 					"cancel": "취소",

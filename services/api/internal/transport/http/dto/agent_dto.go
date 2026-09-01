@@ -465,6 +465,10 @@ type AgentConversationEventResponse struct {
 // SendMessageRequest is the body for POST /conversations/:id/messages.
 type SendMessageRequest struct {
 	Message string `json:"message" binding:"required"`
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this message via the frontend composer's context-item
+	// picker — see agentdom.ContextItemRef.
+	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
 }
 
 // ConversationFromEntity maps an AgentConversation entity to its DTO.
@@ -576,11 +580,19 @@ type StartChatSessionRequest struct {
 	Message       string     `json:"message" binding:"required"`
 	EnvironmentID *uuid.UUID `json:"environment_id"`
 	FolderID      *uuid.UUID `json:"folder_id"`
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this message via the frontend composer's context-item
+	// picker — see agentdom.ContextItemRef.
+	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
 }
 
 // SendChatMessageRequest is the body for POST /chat-sessions/:sessionId/messages.
 type SendChatMessageRequest struct {
 	Message string `json:"message" binding:"required"`
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this message via the frontend composer's context-item
+	// picker — see agentdom.ContextItemRef.
+	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
 }
 
 // ChatSessionFromEntity maps an AgentChatSession entity to its DTO.
