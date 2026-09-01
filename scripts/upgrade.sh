@@ -61,6 +61,13 @@
 #                                upstream default when found (yes/no).
 #                                Only asked for installs that predate
 #                                Paca's own agent-server image.
+#   PACA_SSH_BASTION            Enable SSH access to environments       (default: no)
+#                                (yes/no). Only asked once, for installs
+#                                that predate this option.
+#   PACA_SSH_BASTION_PORT_RANGE_START / _END   Only used when enabling  (default: 2200 / 2299)
+#                                SSH access as above.
+#   PACA_SSH_BASTION_HOST       Only used when enabling SSH access      (default: derived from
+#                                as above.                                the existing PUBLIC_URL)
 #
 # Extra arguments are passed through to the final `docker compose up -d`,
 # for any --scale (or other compose flag) beyond what's already inferred
@@ -185,6 +192,23 @@ service_has_container() {
 # get_env_var FILE VAR
 get_env_var() {
     grep "^${2}=" "$1" 2>/dev/null | head -1 | cut -d= -f2-
+}
+
+# derive_bare_host URL
+# Strips scheme, path, and port from a URL, leaving just the bare
+# hostname/IP. Used wherever a plain host is needed as a default to show the
+# user (SITE_ADDRESS's own backfill below, the SSH bastion host prompt) —
+# PUBLIC_URL is the one place the real reachable address survives even on a
+# plain-HTTP install, since SITE_ADDRESS itself is just the literal string
+# ":80" in that case (see install.sh's USE_HTTPS=no branch), with no host
+# information left in it at all.
+derive_bare_host() {
+    local host="$1"
+    host="${host#http://}"
+    host="${host#https://}"
+    host="${host%%/*}"
+    host="${host%%:*}"
+    echo "$host"
 }
 
 # ── Version / URL resolution ──────────────────────────────────────────────────
@@ -389,11 +413,7 @@ fi
 GATEWAY_VARS_ADDED=0
 if ! has_env_var .env SITE_ADDRESS; then
     backup_env_once
-    _PUBLIC_URL="$(get_env_var .env PUBLIC_URL)"
-    _SITE_ADDRESS="${_PUBLIC_URL#http://}"
-    _SITE_ADDRESS="${_SITE_ADDRESS#https://}"
-    _SITE_ADDRESS="${_SITE_ADDRESS%%/*}"
-    _SITE_ADDRESS="${_SITE_ADDRESS%%:*}"
+    _SITE_ADDRESS="$(derive_bare_host "$(get_env_var .env PUBLIC_URL)")"
     _SITE_ADDRESS="${_SITE_ADDRESS:-localhost}"
     set_env_var .env SITE_ADDRESS "$_SITE_ADDRESS"
     info "Added SITE_ADDRESS=${_SITE_ADDRESS} to .env (derived from your existing PUBLIC_URL)."
@@ -523,6 +543,51 @@ elif [[ "$PROJECT_EVER_STARTED" == "1" ]]; then
         set_env_var .env PACA_AGENT_RUNNER "no"
         SCALE_OPTS+=(--scale agent-runner=0)
         warn "No existing 'agent-runner' (or 'ai-agent') container found, and this install predates PACA_AGENT_RUNNER being tracked in .env — assuming Agent Runner is disabled and recording PACA_AGENT_RUNNER=no. Wrong? Pass --scale agent-runner=1 on this run, then set PACA_AGENT_RUNNER=yes in .env so future upgrades stop guessing."
+    fi
+fi
+
+# Backfill SSH access. Only ever asked once per install: after this block
+# runs, SSH_BASTION_PORT_RANGE_START always exists in .env (empty if
+# declined), so has_env_var short-circuits every later upgrade — same
+# "record the explicit choice" convention as BACKUP_ENABLED/PACA_AGENT_RUNNER
+# above, needed here because these two vars have no separate boolean of their
+# own (docker-compose.yml's own convention is "empty means off"). Skipped
+# entirely when Agent Runner itself is disabled — there's no bastion to
+# enable without it — so an agent-runner-less install is never asked and
+# never gets these keys written at all.
+if [[ "$(get_env_var .env PACA_AGENT_RUNNER)" != "no" ]] && ! has_env_var .env SSH_BASTION_PORT_RANGE_START; then
+    backup_env_once
+    heading "SSH access"
+    echo "  Lets a user ssh straight into a running static environment's own sshd"
+    echo "  for pair programming — a dedicated port per environment, published"
+    echo "  directly on this host (no relay). Off by default."
+    echo ""
+
+    ENABLE_SSH_BASTION="no"
+    yes_no ENABLE_SSH_BASTION "Enable SSH access to environments?" "${PACA_SSH_BASTION:-n}"
+
+    if [[ "$ENABLE_SSH_BASTION" == "yes" ]]; then
+        SSH_PORT_START="" SSH_PORT_END="" SSH_HOST=""
+        ask SSH_PORT_START "SSH bastion port range start" "${PACA_SSH_BASTION_PORT_RANGE_START:-2200}"
+        ask SSH_PORT_END "SSH bastion port range end" "${PACA_SSH_BASTION_PORT_RANGE_END:-2299}"
+        # agent-runner's own validatePortRange refuses to boot on a bad
+        # range — catch it here instead of at a confusing startup failure.
+        if ! [[ "$SSH_PORT_START" =~ ^[0-9]+$ && "$SSH_PORT_END" =~ ^[0-9]+$ ]]; then
+            die "SSH bastion port range must be numeric (got '${SSH_PORT_START}'-'${SSH_PORT_END}')."
+        elif (( 10#$SSH_PORT_END < 10#$SSH_PORT_START )); then
+            die "SSH bastion port range end (${SSH_PORT_END}) must be >= start (${SSH_PORT_START})."
+        fi
+        _SSH_HOST_DEFAULT="$(derive_bare_host "$(get_env_var .env PUBLIC_URL)")"
+        ask SSH_HOST "Public host/IP to show in the ssh connect command" "${PACA_SSH_BASTION_HOST:-${_SSH_HOST_DEFAULT:-localhost}}"
+        set_env_var .env SSH_BASTION_PORT_RANGE_START "$SSH_PORT_START"
+        set_env_var .env SSH_BASTION_PORT_RANGE_END "$SSH_PORT_END"
+        set_env_var .env SSH_BASTION_HOST "$SSH_HOST"
+        info "SSH access enabled — ports ${SSH_PORT_START}-${SSH_PORT_END} on ${SSH_HOST:-<unset>}."
+        warn "Make sure ports ${SSH_PORT_START}-${SSH_PORT_END} are reachable from wherever your users will ssh from (firewall/router forwarding, security group, etc.)."
+    else
+        set_env_var .env SSH_BASTION_PORT_RANGE_START ""
+        set_env_var .env SSH_BASTION_PORT_RANGE_END ""
+        info "SSH access left disabled. Enable later by setting SSH_BASTION_PORT_RANGE_START/_END (and optionally SSH_BASTION_HOST) in .env, then re-running docker compose up -d."
     fi
 fi
 
