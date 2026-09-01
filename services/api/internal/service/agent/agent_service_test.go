@@ -2363,7 +2363,7 @@ func TestStartChatSession_WrongProject_ReturnsNotFound(t *testing.T) {
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
-	_, _, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil)
+	_, _, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil)
 
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
 }
