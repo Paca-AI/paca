@@ -734,14 +734,24 @@ type dbQueryResult struct {
 	Rows    [][]any  `json:"rows"`
 }
 
-// registerDBFunctions adds paca.db_query, paca.db_exec, paca.db_tx_begin,
-// paca.db_tx_commit, paca.db_tx_rollback, paca.storage_get, paca.storage_set,
-// paca.storage_delete to the host module builder.
+// registerDBFunctions adds paca.db_query, paca.db_query2, paca.db_exec,
+// paca.storage_get, paca.storage_set, paca.storage_delete to the host
+// module builder.
 //
-// Project-scope isolation is enforced on all queries by prefixing the table
-// search path with the plugin's schema.  Plugins must declare a `project_id`
-// parameter in their queries; the host validates it matches the authorised
-// project before execution.
+// SET LOCAL search_path only changes how *unqualified* identifiers resolve.
+// PostgreSQL always honors an explicit schema-qualified reference (e.g.
+// "public.users") regardless of search_path, and an unqualified reference
+// falls through to public too once the plugin's own schema doesn't have a
+// matching table — so search_path enforces no isolation by itself. The
+// actual boundary is column redaction on read (sensitiveColumnsForQuery)
+// and whole-statement rejection on write (checkWriteAllowed), both keyed
+// off coreSensitiveFields / a plugin's own declared SensitiveFields, plus
+// an unconditional deny for identity/authorization tables
+// (alwaysBlockedWriteTables). There is no project_id or tenant validation
+// of plugin-authored SQL — a previous version of this comment claimed one
+// existed; it never did (GHSA-g6mx-8g92-w9v5). Callers that need real
+// project scoping should use the fixed, host-written queries in
+// registerCoreFunctions instead of raw SQL.
 func (r *Runtime) registerDBFunctions(b wazero.HostModuleBuilder, p plugindom.Plugin) {
 	schema := schemaName(p.Name)
 
@@ -1130,6 +1140,45 @@ var coreSensitiveFields = map[string][]string{
 	"agent_environment_variables": {"encrypted_value"},
 }
 
+// alwaysBlockedWriteTables lists core tables that define identity and
+// authorization — who a user is, what a role or project membership grants,
+// how a password gets reset — which no plugin may ever write to, no matter
+// what it declares in RequestedSensitiveFields. coreSensitiveFields above
+// governs secret *values* and can be unlocked column by column; these
+// tables are different in kind, because the write itself is the attack:
+// "UPDATE users SET role_id = <super-admin role>" or
+// "INSERT INTO project_members ..." hands the writer a different
+// principal's privileges rather than exposing a value, and for a
+// single-sensitive-column table (users, api_keys) requesting that one
+// column would otherwise unlock unrestricted writes to the whole table
+// under the coreSensitiveFields model. checkWriteAllowed rejects any DML
+// statement referencing one of these outright, before it ever consults
+// RequestedSensitiveFields. Reads are unaffected: SELECTing role/membership
+// metadata (e.g. for paca.members_list-style dashboards) is still governed
+// by coreSensitiveFields as before — these tables have no sensitive value
+// column to redact, so an ordinary SELECT already returns everything.
+var alwaysBlockedWriteTables = map[string]struct{}{
+	"global_roles":        {},
+	"project_roles":       {},
+	"project_members":     {},
+	"users":               {},
+	"api_keys":            {},
+	"password_set_tokens": {},
+}
+
+// isAlwaysBlockedWriteTable reports whether ref resolves to a core table in
+// alwaysBlockedWriteTables: unqualified, or explicitly "public"-qualified —
+// the same resolution sensitiveTableColumns applies for reads. A reference
+// explicitly qualified with any other schema name (including a plugin's own)
+// never matches, the same fail-safe-toward-core-only rule used there.
+func isAlwaysBlockedWriteTable(ref tableRef) bool {
+	if ref.schema != "" && !strings.EqualFold(ref.schema, "public") {
+		return false
+	}
+	_, blocked := alwaysBlockedWriteTables[ref.table]
+	return blocked
+}
+
 // sqlCommentRe matches SQL line comments (-- ...) and block comments
 // (/* ... */, including ones spanning multiple lines). PostgreSQL treats a
 // comment as equivalent to whitespace during tokenization — e.g.
@@ -1364,6 +1413,8 @@ func (r *Runtime) sensitiveColumnsForQuery(caller plugindom.Plugin, sqlStr strin
 // sensitive columns must *all* be individually requested for that table to
 // be exempted: requesting access to one sensitive column of a table does
 // not grant access to that table's other, unrequested sensitive columns.
+// A table listed in alwaysBlockedWriteTables is rejected unconditionally,
+// before any of that — see that var's doc for why it can't be requested.
 //
 // Unlike reads, sensitivity can't be masked away column-by-column for a
 // write — the value could already have been copied into another column, or
@@ -1375,6 +1426,9 @@ func (r *Runtime) sensitiveColumnsForQuery(caller plugindom.Plugin, sqlStr strin
 func (r *Runtime) checkWriteAllowed(caller plugindom.Plugin, sqlStr, funcName string) error {
 	callerSchema := schemaName(caller.Name)
 	for _, ref := range referencedTables(sqlStr) {
+		if isAlwaysBlockedWriteTable(ref) {
+			return fmt.Errorf("%s: table %q may not be written to by plugins", funcName, ref.table)
+		}
 		owner, cols := r.sensitiveTableColumns(callerSchema, ref)
 		for _, col := range cols {
 			if isRequestedSensitiveField(caller, owner, ref.table, col) {
