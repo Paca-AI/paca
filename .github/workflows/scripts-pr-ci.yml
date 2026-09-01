@@ -1,0 +1,243 @@
+name: scripts-pr-ci
+
+on:
+  pull_request:
+    paths:
+      - "scripts/install.sh"
+      - "scripts/upgrade.sh"
+      - "deploy/docker-compose.prod.yml"
+      - "deploy/caddy/Caddyfile"
+      - ".github/workflows/scripts-pr-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scripts-pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Lint — shellcheck (preinstalled on the runner image), fast feedback
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Run shellcheck
+        run: shellcheck --shell=bash scripts/install.sh scripts/upgrade.sh
+
+  # ---------------------------------------------------------------------------
+  # 2. install.sh smoke test — runs the real script fully non-interactively
+  #    (PACA_YES=1 PACA_START=no, so it stops after writing .env and never
+  #    pulls images). Seeding docker-compose.yml/caddy/Caddyfile ahead of time
+  #    trips install.sh's own "already exists — skipping download" branch, so
+  #    this validates against *this branch's* deploy assets rather than the
+  #    latest published release. `docker compose config` then confirms the
+  #    generated .env actually satisfies every variable docker-compose.prod.yml
+  #    requires — catching drift between the two that shellcheck can't see.
+  # ---------------------------------------------------------------------------
+  install-smoke:
+    name: install.sh smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Run install.sh against bundled defaults
+        env:
+          PACA_YES: "1"
+          PACA_START: "no"
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/install-seed-bundled"
+          mkdir -p "$WORK/caddy"
+          cp deploy/docker-compose.prod.yml "$WORK/docker-compose.yml"
+          cp deploy/caddy/Caddyfile "$WORK/caddy/Caddyfile"
+          PACA_DIR="$WORK" bash scripts/install.sh
+          cd "$WORK"
+          docker compose --env-file .env config >/dev/null
+
+      - name: Run install.sh against external DB, S3, no agent runner, external web
+        env:
+          PACA_YES: "1"
+          PACA_START: "no"
+          DATABASE_URL: postgres://user:pass@externalhost:5432/dbname
+          STORAGE_PROVIDER: s3
+          STORAGE_BUCKET: my-bucket
+          STORAGE_ACCESS_KEY_ID: AKIAEXAMPLE
+          STORAGE_SECRET_ACCESS_KEY: secretexample
+          PACA_AGENT_RUNNER: "no"
+          PACA_WEB: external
+          PACA_ADDRESS: paca.example.com
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/install-seed-external"
+          mkdir -p "$WORK/caddy"
+          cp deploy/docker-compose.prod.yml "$WORK/docker-compose.yml"
+          cp deploy/caddy/Caddyfile "$WORK/caddy/Caddyfile"
+          PACA_DIR="$WORK" bash scripts/install.sh
+          cd "$WORK"
+          docker compose --env-file .env config >/dev/null
+
+  # ---------------------------------------------------------------------------
+  # 3. upgrade.sh smoke test — seeds a synthetic old-style installation (an
+  #    .env predating several migrations this script performs: the legacy
+  #    PACA_AI_AGENT name, an OpenHands-based AGENT_SERVER_IMAGE, and the
+  #    pre-Caddy gateway/backup/PACA_WEB variables) and runs the real script
+  #    non-interactively against it.
+  #
+  #    Unlike install.sh, upgrade.sh always downloads a fresh
+  #    docker-compose.yml/Caddyfile from GitHub and always ends with a real
+  #    `docker compose pull && up -d` — there's no local-file escape hatch and
+  #    no dry-run flag. Rather than pulling real pacaai/* images from Docker
+  #    Hub (rate-limited for anonymous/fork-PR pulls, and this repo's
+  #    DOCKERHUB_TOKEN secret isn't available on fork PRs anyway), `docker`
+  #    is stood in with a stub that fakes just enough output for upgrade.sh's
+  #    control flow to run to completion for real. Only the GitHub release
+  #    download (small static files, no auth needed) touches the network.
+  #
+  #    Asserts on the resulting .env (did every migration actually apply?)
+  #    and on the exact `docker compose up` invocation upgrade.sh would have
+  #    run (did the scaling inference converge correctly?).
+  # ---------------------------------------------------------------------------
+  upgrade-smoke:
+    name: upgrade.sh smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Install fake docker on PATH
+        run: |
+          set -euo pipefail
+          echo "WORK=$RUNNER_TEMP/upgrade-seed" >> "$GITHUB_ENV"
+          echo "FAKE_DOCKER_LOG=$RUNNER_TEMP/docker-calls.log" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/fake-bin"
+          cat <<'SCRIPT' > "$RUNNER_TEMP/fake-bin/docker"
+          #!/usr/bin/env bash
+          # Fakes just enough of `docker`/`docker compose` for upgrade.sh's
+          # non-interactive control flow to complete without a real daemon or
+          # image pulls. See the upgrade-smoke job in scripts-pr-ci.yml.
+          set -euo pipefail
+          echo "$*" >> "$FAKE_DOCKER_LOG"
+          case "$1" in
+          info)
+          exit 0
+          ;;
+          pull)
+          exit 0
+          ;;
+          compose)
+          shift
+          if [[ "${1:-}" == "--env-file" ]]; then
+          shift 2
+          fi
+          case "$1" in
+          version|pull|up)
+          exit 0
+          ;;
+          ps)
+          printf '%s\n' "${FAKE_DOCKER_PS_SERVICES:-}"
+          exit 0
+          ;;
+          *)
+          echo "fake docker compose: unhandled subcommand '$1'" >&2
+          exit 1
+          ;;
+          esac
+          ;;
+          *)
+          echo "fake docker: unhandled command '$1'" >&2
+          exit 1
+          ;;
+          esac
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/fake-bin/docker"
+          echo "$RUNNER_TEMP/fake-bin" >> "$GITHUB_PATH"
+
+      - name: Seed a synthetic old-style installation
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          echo '# placeholder — unconditionally overwritten by upgrade.sh before use' > "$WORK/docker-compose.yml"
+          cat <<'ENV' > "$WORK/.env"
+          PACA_API_IMAGE=pacaai/paca-api:0.9.0
+          PACA_WEB_IMAGE=pacaai/paca-web:0.9.0
+          PACA_REALTIME_IMAGE=pacaai/paca-realtime:0.9.0
+          PACA_AI_AGENT_IMAGE=ghcr.io/openhands/agent-server:0.9.0
+          PACA_AI_AGENT=yes
+          PUBLIC_URL=https://old.example.com
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=oldpassword123
+          JWT_SECRET=deadbeef
+          POSTGRES_DB=paca
+          POSTGRES_USER=paca
+          POSTGRES_PASSWORD=oldpgpass
+          DATABASE_URL=
+          STORAGE_PROVIDER=minio
+          STORAGE_ENDPOINT=minio:9000
+          STORAGE_REGION=us-east-1
+          STORAGE_BUCKET=paca
+          STORAGE_ACCESS_KEY_ID=oldaccesskey
+          STORAGE_SECRET_ACCESS_KEY=oldsecretkey
+          STORAGE_USE_SSL=false
+          ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000
+          AGENT_API_KEY=oldagentkey
+          INTERNAL_API_KEY=oldinternalkey
+          AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:latest
+          ENV
+
+      - name: Run upgrade.sh non-interactively
+        env:
+          PACA_YES: "1"
+          # Reported by the fake `docker compose ps -a --services` so the
+          # PACA_WEB backfill guesses "bundled" (a real container named "web"
+          # was found); agent-runner is migrated via the legacy PACA_AI_AGENT
+          # name above instead, so its own guess-from-container branch never
+          # runs.
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+        run: |
+          set -euo pipefail
+          : > "$FAKE_DOCKER_LOG"
+          PACA_DIR="$WORK" bash scripts/upgrade.sh
+
+      - name: Verify migrated .env and the resulting compose invocation
+        run: |
+          set -euo pipefail
+          cd "$WORK"
+          ls .env.bak.* >/dev/null
+          ls docker-compose.yml.bak.* >/dev/null
+          grep -qx 'PACA_AGENT_RUNNER=yes' .env
+          grep -qx 'PACA_AGENT_RUNNER_IMAGE=pacaai/paca-agent-runner:0.9.0' .env
+          grep -qx 'AGENT_SERVER_IMAGE=ghcr.io/paca-ai/paca-agent-server-goose:latest' .env
+          grep -qx 'SITE_ADDRESS=old.example.com' .env
+          grep -qx 'GATEWAY_HTTPS_PORT=443' .env
+          grep -qx 'BACKUP_ENABLED=true' .env
+          grep -qx 'PACA_WEB=bundled' .env
+          grep -qx 'SSH_BASTION_PORT_RANGE_START=' .env
+          test -d backups
+          up_line="$(grep '^compose .* up ' "$FAKE_DOCKER_LOG")"
+          if [[ "$up_line" == *"--scale"* ]]; then
+            echo "expected no --scale flags (every service should have resolved to 'keep running'), got: $up_line" >&2
+            exit 1
+          fi
+          echo "All upgrade.sh migration assertions passed."
