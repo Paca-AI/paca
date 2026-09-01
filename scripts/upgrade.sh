@@ -574,7 +574,7 @@ if [[ "$(get_env_var .env PACA_AGENT_RUNNER)" != "no" ]] && ! has_env_var .env S
         # range — catch it here instead of at a confusing startup failure.
         if ! [[ "$SSH_PORT_START" =~ ^[0-9]+$ && "$SSH_PORT_END" =~ ^[0-9]+$ ]]; then
             die "SSH bastion port range must be numeric (got '${SSH_PORT_START}'-'${SSH_PORT_END}')."
-        elif (( SSH_PORT_END < SSH_PORT_START )); then
+        elif (( 10#$SSH_PORT_END < 10#$SSH_PORT_START )); then
             die "SSH bastion port range end (${SSH_PORT_END}) must be >= start (${SSH_PORT_START})."
         fi
         _SSH_HOST_DEFAULT="$(derive_bare_host "$(get_env_var .env PUBLIC_URL)")"

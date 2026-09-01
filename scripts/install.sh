@@ -92,10 +92,10 @@
 #     INTERNAL_API_KEY              (default: auto-generated)
 #
 #   SSH access to environments (optional; requires Agent Runner)
-#     PACA_SSH_BASTION               yes/no                               (default: no)
-#     SSH_BASTION_PORT_RANGE_START   Only asked when PACA_SSH_BASTION=yes  (default: 2200)
-#     SSH_BASTION_PORT_RANGE_END     Only asked when PACA_SSH_BASTION=yes  (default: 2299)
-#     SSH_BASTION_HOST               Only asked when PACA_SSH_BASTION=yes  (default: PACA_ADDRESS)
+#     PACA_SSH_BASTION                    yes/no                                 (default: no)
+#     PACA_SSH_BASTION_PORT_RANGE_START   Only asked when PACA_SSH_BASTION=yes    (default: 2200)
+#     PACA_SSH_BASTION_PORT_RANGE_END     Only asked when PACA_SSH_BASTION=yes    (default: 2299)
+#     PACA_SSH_BASTION_HOST               Only asked when PACA_SSH_BASTION=yes    (default: PACA_ADDRESS)
 #
 #   PACA_WEB and PACA_AGENT_RUNNER are also written to .env, so upgrade.sh
 #   can read the choice back and keep these services scaled to 0 automatically
@@ -747,7 +747,7 @@ if [[ "$INCLUDE_AGENT_RUNNER" == "yes" ]]; then
         # range — catch it here instead of at a confusing startup failure.
         if ! [[ "$SSH_BASTION_PORT_RANGE_START" =~ ^[0-9]+$ && "$SSH_BASTION_PORT_RANGE_END" =~ ^[0-9]+$ ]]; then
             die "SSH bastion port range must be numeric (got '${SSH_BASTION_PORT_RANGE_START}'-'${SSH_BASTION_PORT_RANGE_END}')."
-        elif (( SSH_BASTION_PORT_RANGE_END < SSH_BASTION_PORT_RANGE_START )); then
+        elif (( 10#$SSH_BASTION_PORT_RANGE_END < 10#$SSH_BASTION_PORT_RANGE_START )); then
             die "SSH bastion port range end (${SSH_BASTION_PORT_RANGE_END}) must be >= start (${SSH_BASTION_PORT_RANGE_START})."
         fi
         ask SSH_BASTION_HOST "Public host/IP to show in the ssh connect command" "${PACA_SSH_BASTION_HOST:-$ADDRESS}"
