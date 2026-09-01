@@ -958,10 +958,18 @@ if [[ "$INCLUDE_AGENT_RUNNER" != "no" ]]; then
 fi
 
 SCALE_OPTS=()
+# Each SCALE_* var is either empty or a literal two-word flag (e.g. "--scale
+# postgres=0") that's meant to split into two array elements here — same
+# intentional word-splitting as the compose invocation below.
+# shellcheck disable=SC2206
 [[ -n "$SCALE_POSTGRES"  ]] && SCALE_OPTS+=($SCALE_POSTGRES)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_DB_BACKUP" ]] && SCALE_OPTS+=($SCALE_DB_BACKUP)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_MINIO"     ]] && SCALE_OPTS+=($SCALE_MINIO)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_WEB"       ]] && SCALE_OPTS+=($SCALE_WEB)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_AGENT_RUNNER" ]] && SCALE_OPTS+=($SCALE_AGENT_RUNNER)
 
 # shellcheck disable=SC2086
