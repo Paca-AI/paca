@@ -857,20 +857,26 @@ export function CreateAgentDialog({
 											</p>
 										</div>
 									)}
-									<div className="flex items-center justify-between gap-3">
-										<div>
-											<p className="text-sm font-medium">
-												{t("agents.detail.overview.dockerEnabledLabel")}
-											</p>
-											<p className="text-xs text-muted-foreground">
-												{t("agents.detail.overview.dockerEnabledHint")}
-											</p>
+									{/* Docker access only applies to the disposable per-conversation
+									    sandbox — once a static default environment is picked, that
+									    environment's own Docker setting (set at creation) governs
+									    instead, so this toggle no longer means anything. */}
+									{!defaultEnvironmentId && (
+										<div className="flex items-center justify-between gap-3">
+											<div>
+												<p className="text-sm font-medium">
+													{t("agents.detail.overview.dockerEnabledLabel")}
+												</p>
+												<p className="text-xs text-muted-foreground">
+													{t("agents.detail.overview.dockerEnabledHint")}
+												</p>
+											</div>
+											<Switch
+												checked={dockerEnabled}
+												onCheckedChange={setDockerEnabled}
+											/>
 										</div>
-										<Switch
-											checked={dockerEnabled}
-											onCheckedChange={setDockerEnabled}
-										/>
-									</div>
+									)}
 								</div>
 							</>
 						)}

@@ -543,89 +543,71 @@ function OverviewTab({
 
 					<Separator />
 
-					<div className="flex items-center justify-between gap-3">
-						<div>
-							<p className="text-sm font-medium">
-								{t("agents.detail.overview.dockerEnabledLabel")}
-							</p>
-							<p className="text-xs text-muted-foreground">
-								{t("agents.detail.overview.dockerEnabledHint")}
-							</p>
-						</div>
-						<Switch
-							checked={dockerEnabled}
-							onCheckedChange={setDockerEnabled}
-							disabled={!canWrite}
-						/>
-					</div>
-
-					{projectId && (
-						<>
-							<Separator />
-							<div className="flex items-center justify-between gap-3">
-								<div>
-									<p className="text-sm font-medium">
-										{t("agents.detail.overview.defaultEnvironmentLabel")}
-									</p>
-									<p className="text-xs text-muted-foreground">
-										{t("agents.detail.overview.defaultEnvironmentHint")}
-									</p>
-								</div>
-								<Select
-									value={defaultEnvironmentId || NO_ENVIRONMENT}
-									onValueChange={(v) => {
-										if (!v) return;
-										if (v === CREATE_NEW_ENVIRONMENT) {
-											setCreateEnvironmentOpen(true);
-											return;
-										}
-										setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v);
-									}}
-									items={[
-										{
-											value: NO_ENVIRONMENT,
-											label: t("agents.detail.overview.noDefaultEnvironment"),
-										},
-										...environments.map((env) => ({
-											value: env.id,
-											label: env.name,
-										})),
-										{
-											value: CREATE_NEW_ENVIRONMENT,
-											label: t("environments.picker.createNew"),
-										},
-									]}
-									disabled={!canWrite}
-								>
-									<SelectTrigger className="w-56">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value={NO_ENVIRONMENT}>
-											{t("agents.detail.overview.noDefaultEnvironment")}
-										</SelectItem>
-										{environments.length > 0 && <SelectSeparator />}
-										{environments.map((env) => (
-											<SelectItem key={env.id} value={env.id}>
-												{env.name}
+					<div>
+						<p className="text-sm font-medium mb-3">
+							{t("agents.detail.overview.environmentSection")}
+						</p>
+						<div className="space-y-4">
+							{projectId && (
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-medium">
+											{t("agents.detail.overview.defaultEnvironmentLabel")}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.detail.overview.defaultEnvironmentHint")}
+										</p>
+									</div>
+									<Select
+										value={defaultEnvironmentId || NO_ENVIRONMENT}
+										onValueChange={(v) => {
+											if (!v) return;
+											if (v === CREATE_NEW_ENVIRONMENT) {
+												setCreateEnvironmentOpen(true);
+												return;
+											}
+											setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v);
+										}}
+										items={[
+											{
+												value: NO_ENVIRONMENT,
+												label: t("agents.detail.overview.noDefaultEnvironment"),
+											},
+											...environments.map((env) => ({
+												value: env.id,
+												label: env.name,
+											})),
+											{
+												value: CREATE_NEW_ENVIRONMENT,
+												label: t("environments.picker.createNew"),
+											},
+										]}
+										disabled={!canWrite}
+									>
+										<SelectTrigger className="w-56">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value={NO_ENVIRONMENT}>
+												{t("agents.detail.overview.noDefaultEnvironment")}
 											</SelectItem>
-										))}
-										<SelectSeparator />
-										<SelectItem value={CREATE_NEW_ENVIRONMENT}>
-											<Plus className="size-3.5" />
-											{t("environments.picker.createNew")}
-										</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-							<EnvironmentCreateDialog
-								projectId={projectId}
-								open={createEnvironmentOpen}
-								onOpenChange={setCreateEnvironmentOpen}
-								onCreated={(env) => setDefaultEnvironmentId(env.id)}
-							/>
+											{environments.length > 0 && <SelectSeparator />}
+											{environments.map((env) => (
+												<SelectItem key={env.id} value={env.id}>
+													{env.name}
+												</SelectItem>
+											))}
+											<SelectSeparator />
+											<SelectItem value={CREATE_NEW_ENVIRONMENT}>
+												<Plus className="size-3.5" />
+												{t("environments.picker.createNew")}
+											</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+							)}
 
-							{selectedEnvironment && (
+							{projectId && selectedEnvironment && (
 								<div className="flex items-center justify-between gap-3">
 									<div>
 										<p className="text-sm font-medium">
@@ -685,18 +667,49 @@ function OverviewTab({
 									</Select>
 								</div>
 							)}
-							{selectedEnvironment && (
-								<FolderCreateDialog
-									projectId={projectId}
-									environmentId={selectedEnvironment.id}
-									environmentStatus={selectedEnvironment.status}
-									open={createFolderOpen}
-									onOpenChange={setCreateFolderOpen}
-									onCreated={(folder) => setDefaultFolderId(folder.id)}
-								/>
+
+							{/* Docker access only applies to the disposable per-conversation
+							    sandbox — once a static default environment is picked, that
+							    environment's own Docker setting (set at creation) governs
+							    instead, so this toggle no longer means anything. */}
+							{!defaultEnvironmentId && (
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-medium">
+											{t("agents.detail.overview.dockerEnabledLabel")}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.detail.overview.dockerEnabledHint")}
+										</p>
+									</div>
+									<Switch
+										checked={dockerEnabled}
+										onCheckedChange={setDockerEnabled}
+										disabled={!canWrite}
+									/>
+								</div>
 							)}
-						</>
-					)}
+						</div>
+
+						{projectId && (
+							<EnvironmentCreateDialog
+								projectId={projectId}
+								open={createEnvironmentOpen}
+								onOpenChange={setCreateEnvironmentOpen}
+								onCreated={(env) => setDefaultEnvironmentId(env.id)}
+							/>
+						)}
+						{projectId && selectedEnvironment && (
+							<FolderCreateDialog
+								projectId={projectId}
+								environmentId={selectedEnvironment.id}
+								environmentStatus={selectedEnvironment.status}
+								open={createFolderOpen}
+								onOpenChange={setCreateFolderOpen}
+								onCreated={(folder) => setDefaultFolderId(folder.id)}
+							/>
+						)}
+					</div>
 				</>
 			)}
 
