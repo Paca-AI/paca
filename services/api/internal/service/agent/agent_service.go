@@ -1700,7 +1700,10 @@ func (s *Service) sendACPGlobalConversationMessage(ctx context.Context, c *agent
 // -------------------------------------------------------------------------
 
 // ListChatSessions returns all chat sessions for the given agent and member.
-func (s *Service) ListChatSessions(ctx context.Context, _, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+func (s *Service) ListChatSessions(ctx context.Context, projectID, agentID, memberID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListChatSessions(ctx, agentID, memberID)
 }
 
@@ -1711,6 +1714,10 @@ func (s *Service) ListChatSessions(ctx context.Context, _, agentID, memberID uui
 // folder, or fails with ErrFolderNotFound if that's ambiguous — the caller
 // must ask the user to pick.
 func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+		return nil, nil, err
+	}
+
 	now := time.Now()
 
 	session := &agentdom.AgentChatSession{
@@ -2357,8 +2364,14 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 }
 
 // TriggerDescriptionWrite creates a conversation and publishes a trigger for
-// the agent to write a description for the given task.
+// the agent to write a description for the given task. Verifies agentID
+// belongs to projectID; the caller is responsible for verifying taskID
+// belongs to projectID (this service has no task-repository dependency).
 func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentID, taskID, triggeredByMemberID uuid.UUID) (*agentdom.AgentConversation, error) {
+	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+		return nil, err
+	}
+
 	repoPlugins := s.gatherRepoPlugins(ctx)
 	repoPluginIDs := make([]string, 0, len(repoPlugins))
 	for _, p := range repoPlugins {

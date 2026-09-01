@@ -67,6 +67,7 @@ type Repository interface {
 
 	CreateRun(ctx context.Context, r *Run) error
 	UpdateRun(ctx context.Context, r *Run) error
+	FindRunByID(ctx context.Context, id uuid.UUID) (*Run, error)
 	ListRunsByAutomation(ctx context.Context, automationID uuid.UUID, limit int) ([]*Run, error)
 	CreateRunStep(ctx context.Context, s *RunStep) error
 	ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*RunStep, error)

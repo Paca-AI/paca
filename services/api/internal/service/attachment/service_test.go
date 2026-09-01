@@ -21,6 +21,15 @@ func (fakeTaskChecker) TaskBelongsToProject(_ context.Context, _, _ uuid.UUID) e
 
 var _ attachmentdom.TaskOwnerChecker = fakeTaskChecker{}
 
+// fakeDocChecker always reports that the document belongs to the project.
+type fakeDocChecker struct{}
+
+func (fakeDocChecker) DocBelongsToProject(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
+var _ attachmentdom.DocOwnerChecker = fakeDocChecker{}
+
 // fakeRepo is a minimal in-memory attachmentdom.Repository for exercising
 // service methods without a real database.
 type fakeRepo struct {
@@ -137,7 +146,7 @@ func newTestService(actualObjectBytes []byte, declaredFileSize int64) (svc *Serv
 		},
 	}
 	store := &fakeStore{objectBytes: actualObjectBytes}
-	svc = New(repo, fakeTaskChecker{}, store, "test-bucket")
+	svc = New(repo, fakeTaskChecker{}, fakeDocChecker{}, store, "test-bucket")
 	return svc, taskID, attachmentID
 }
 

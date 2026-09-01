@@ -26,6 +26,13 @@ type memberLookup interface {
 	FindMemberByAgent(ctx context.Context, projectID, agentID uuid.UUID) (*projectdom.ProjectMember, error)
 }
 
+// taskLookup is the minimal interface ActivitySvc needs to verify that a
+// task belongs to the project the caller was authorized against, before
+// returning or mutating its activity/comment data.
+type taskLookup interface {
+	FindTaskByID(ctx context.Context, id uuid.UUID) (*taskdom.Task, error)
+}
+
 // agentCommentTrigger creates an agent conversation when an agent is @-mentioned
 // in a task comment.
 type agentCommentTrigger interface {
@@ -36,6 +43,7 @@ type agentCommentTrigger interface {
 // taskdom.ActivityRecorder via embedding).
 type ActivitySvc struct {
 	repo            taskdom.ActivityRepository
+	taskRepo        taskLookup
 	memberRepo      memberLookup
 	publisher       *messaging.Publisher
 	notificationSvc notificationdom.Service
@@ -43,11 +51,29 @@ type ActivitySvc struct {
 }
 
 // NewActivityService creates a new ActivitySvc backed by repo.
+// taskRepo is used to verify that a task belongs to the caller's authorized
+// project before its activities/comments are read or mutated.
 // memberRepo is used to resolve user UUIDs to project-member UUIDs for comment
 // operations; it may be nil (lookups will return ErrMemberNotFound).
 // publisher may be nil; events are then skipped silently.
-func NewActivityService(repo taskdom.ActivityRepository, memberRepo memberLookup, publisher *messaging.Publisher) *ActivitySvc {
-	return &ActivitySvc{repo: repo, memberRepo: memberRepo, publisher: publisher}
+func NewActivityService(repo taskdom.ActivityRepository, taskRepo taskLookup, memberRepo memberLookup, publisher *messaging.Publisher) *ActivitySvc {
+	return &ActivitySvc{repo: repo, taskRepo: taskRepo, memberRepo: memberRepo, publisher: publisher}
+}
+
+// taskInProject returns nil when taskID resolves to a task that belongs to
+// projectID, and notFoundErr otherwise (including when the task does not
+// exist at all). Callers use this to scope every activity/comment operation
+// to the project the caller was authorized against, rather than trusting
+// the task/activity ID alone.
+func (s *ActivitySvc) taskInProject(ctx context.Context, projectID, taskID uuid.UUID, notFoundErr error) error {
+	t, err := s.taskRepo.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if t.ProjectID != projectID {
+		return notFoundErr
+	}
+	return nil
 }
 
 // WithNotificationService attaches a notification service used to dispatch
@@ -92,7 +118,10 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in taskdom.RecordActiv
 // --- ActivityService --------------------------------------------------------
 
 // ListActivities returns all non-deleted activities for a task, oldest first.
-func (s *ActivitySvc) ListActivities(ctx context.Context, taskID uuid.UUID) ([]*taskdom.Activity, error) {
+func (s *ActivitySvc) ListActivities(ctx context.Context, projectID, taskID uuid.UUID) ([]*taskdom.Activity, error) {
+	if err := s.taskInProject(ctx, projectID, taskID, taskdom.ErrTaskNotFound); err != nil {
+		return nil, err
+	}
 	return s.repo.ListActivities(ctx, taskID)
 }
 
@@ -100,6 +129,9 @@ func (s *ActivitySvc) ListActivities(ctx context.Context, taskID uuid.UUID) ([]*
 func (s *ActivitySvc) AddComment(ctx context.Context, in taskdom.AddCommentInput) (*taskdom.Activity, error) {
 	if isContentEmpty(in.Content) || !isContentTypeValid(in.Content) {
 		return nil, taskdom.ErrCommentContentInvalid
+	}
+	if err := s.taskInProject(ctx, in.ProjectID, in.TaskID, taskdom.ErrTaskNotFound); err != nil {
+		return nil, err
 	}
 	member, err := s.memberRepo.FindMemberByActor(ctx, in.ProjectID, in.ActorID, in.AgentID)
 	if err != nil {
@@ -205,6 +237,9 @@ func (s *ActivitySvc) UpdateComment(ctx context.Context, id uuid.UUID, projectID
 	if a.ActivityType != taskdom.ActivityTypeComment {
 		return nil, taskdom.ErrActivityNotAComment
 	}
+	if err := s.taskInProject(ctx, projectID, a.TaskID, taskdom.ErrActivityNotFound); err != nil {
+		return nil, err
+	}
 	member, err := s.memberRepo.FindMemberByActor(ctx, projectID, actorID, agentID)
 	if err != nil {
 		return nil, wrapMemberLookupErr(err, actorID, agentID)
@@ -229,6 +264,9 @@ func (s *ActivitySvc) DeleteComment(ctx context.Context, id uuid.UUID, projectID
 	}
 	if a.ActivityType != taskdom.ActivityTypeComment {
 		return taskdom.ErrActivityNotAComment
+	}
+	if err := s.taskInProject(ctx, projectID, a.TaskID, taskdom.ErrActivityNotFound); err != nil {
+		return err
 	}
 	// Resolve caller's actor UUID to their member UUID for ownership comparison.
 	member, err := s.memberRepo.FindMemberByActor(ctx, projectID, actorID, agentID)

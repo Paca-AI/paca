@@ -96,6 +96,11 @@ func (h *DocFileHandler) CompleteDocUpload(w http.ResponseWriter, r *http.Reques
 // GetDocFileDownloadURL handles GET /projects/:projectId/docs/:docId/files/:fileId/download-url.
 // Returns a short-lived presigned URL valid for 15 minutes.
 func (h *DocFileHandler) GetDocFileDownloadURL(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	docID, err := parseDocID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -107,7 +112,7 @@ func (h *DocFileHandler) GetDocFileDownloadURL(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	url, err := h.svc.GetDocFileDownloadURL(r.Context(), docID, fileID, 15*time.Minute)
+	url, err := h.svc.GetDocFileDownloadURL(r.Context(), projectID, docID, fileID, 15*time.Minute)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -118,6 +123,11 @@ func (h *DocFileHandler) GetDocFileDownloadURL(w http.ResponseWriter, r *http.Re
 
 // DeleteDocFile handles DELETE /projects/:projectId/docs/:docId/files/:fileId.
 func (h *DocFileHandler) DeleteDocFile(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
 	docID, err := parseDocID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -129,7 +139,7 @@ func (h *DocFileHandler) DeleteDocFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.DeleteDocFile(r.Context(), docID, fileID); err != nil {
+	if err := h.svc.DeleteDocFile(r.Context(), projectID, docID, fileID); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}

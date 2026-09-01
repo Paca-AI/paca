@@ -36,6 +36,22 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Fake doc ownership checker
+// ---------------------------------------------------------------------------
+
+// fakeDocChecker is a permissive attachmentdom.DocOwnerChecker stand-in.
+// This test file's router does not wire up the Document/DocFile handlers, so
+// no test here exercises doc-file endpoints; it exists only to satisfy
+// attachmentsvc.New's constructor.
+type fakeDocChecker struct{}
+
+func (fakeDocChecker) DocBelongsToProject(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
+var _ attachmentdom.DocOwnerChecker = fakeDocChecker{}
+
+// ---------------------------------------------------------------------------
 // Fake attachment repository
 // ---------------------------------------------------------------------------
 
@@ -263,9 +279,9 @@ func buildAttachmentTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorag
 	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
-	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)
-	active := tasksvc.NewActivityService(newFakeTaskActivityRepo(), &fakeActivityMemberRepo{}, nil)
-	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), store, "test-bucket")
+	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), newFakeSprintRepoIT(), taskRepo, nil)
+	active := tasksvc.NewActivityService(newFakeTaskActivityRepo(), taskRepo, &fakeActivityMemberRepo{}, nil)
+	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), fakeDocChecker{}, store, "test-bucket")
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
@@ -295,7 +311,7 @@ func buildAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeStorageCli
 	userRepo := newFakeUserRepo()
 	authService := authsvc.New(userRepo, tm, refreshStore, 168*time.Hour, 24*time.Hour)
 	taskRepo := newFakeTaskRepoIT()
-	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), store, "test-bucket")
+	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), fakeDocChecker{}, store, "test-bucket")
 	userService := usersvc.New(userRepo).WithAvatarService(attachmentService)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -323,7 +339,7 @@ func buildProjectAvatarTestRouter(attachRepo *fakeAttachmentRepo, store *fakeSto
 	projectRepo := newFakeProjectRepo()
 	taskRepo := newFakeTaskRepoIT()
 	projectService := projectsvc.New(projectRepo, taskRepo, nil)
-	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), store, "test-bucket")
+	attachmentService := attachmentsvc.New(attachRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), fakeDocChecker{}, store, "test-bucket")
 	projectService.WithAvatarService(attachmentService)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

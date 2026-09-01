@@ -24,22 +24,48 @@ type memberLookup interface {
 	FindMemberByActor(ctx context.Context, projectID, actorID uuid.UUID, agentID *uuid.UUID) (*projectdom.ProjectMember, error)
 }
 
+// documentLookup is the minimal interface ActivitySvc needs to verify that a
+// document belongs to the project the caller was authorized against, before
+// returning or mutating its activity/comment data.
+type documentLookup interface {
+	FindDocumentByID(ctx context.Context, id uuid.UUID) (*docdom.Document, error)
+}
+
 // ActivitySvc implements docdom.ActivityService (which includes
 // docdom.ActivityRecorder via embedding).
 type ActivitySvc struct {
 	repo            docdom.ActivityRepository
+	docRepo         documentLookup
 	memberRepo      memberLookup
 	publisher       *messaging.Publisher
 	notificationSvc notificationdom.Service
 }
 
 // NewActivityService creates a new ActivitySvc backed by repo.
+// docRepo is used to verify that a document belongs to the caller's
+// authorized project before its activities/comments are read or mutated.
 // memberRepo is used to resolve user UUIDs to project-member UUIDs for comment
 // operations; if nil, comment operations (AddComment, UpdateComment,
 // DeleteComment) will return ErrMemberNotFound.
 // publisher may be nil; stream events are then skipped silently.
-func NewActivityService(repo docdom.ActivityRepository, memberRepo memberLookup, publisher *messaging.Publisher) *ActivitySvc {
-	return &ActivitySvc{repo: repo, memberRepo: memberRepo, publisher: publisher}
+func NewActivityService(repo docdom.ActivityRepository, docRepo documentLookup, memberRepo memberLookup, publisher *messaging.Publisher) *ActivitySvc {
+	return &ActivitySvc{repo: repo, docRepo: docRepo, memberRepo: memberRepo, publisher: publisher}
+}
+
+// documentInProject returns nil when documentID resolves to a document that
+// belongs to projectID, and notFoundErr otherwise (including when the
+// document does not exist at all). Callers use this to scope every
+// activity/comment operation to the project the caller was authorized
+// against, rather than trusting the document/activity ID alone.
+func (s *ActivitySvc) documentInProject(ctx context.Context, projectID, documentID uuid.UUID, notFoundErr error) error {
+	d, err := s.docRepo.FindDocumentByID(ctx, documentID)
+	if err != nil {
+		return err
+	}
+	if d.ProjectID != projectID {
+		return notFoundErr
+	}
+	return nil
 }
 
 // WithNotificationService attaches a notification service used to dispatch
@@ -77,7 +103,10 @@ func (s *ActivitySvc) RecordActivity(ctx context.Context, in docdom.RecordActivi
 // --- ActivityService --------------------------------------------------------
 
 // ListActivities returns all non-deleted activities for a document, oldest first.
-func (s *ActivitySvc) ListActivities(ctx context.Context, documentID uuid.UUID) ([]*docdom.Activity, error) {
+func (s *ActivitySvc) ListActivities(ctx context.Context, projectID, documentID uuid.UUID) ([]*docdom.Activity, error) {
+	if err := s.documentInProject(ctx, projectID, documentID, docdom.ErrDocNotFound); err != nil {
+		return nil, err
+	}
 	return s.repo.ListActivities(ctx, documentID)
 }
 
@@ -85,6 +114,9 @@ func (s *ActivitySvc) ListActivities(ctx context.Context, documentID uuid.UUID) 
 func (s *ActivitySvc) AddComment(ctx context.Context, in docdom.AddCommentInput) (*docdom.Activity, error) {
 	if isContentEmpty(in.Content) || !isContentTypeValid(in.Content) {
 		return nil, docdom.ErrCommentContentInvalid
+	}
+	if err := s.documentInProject(ctx, in.ProjectID, in.DocumentID, docdom.ErrDocNotFound); err != nil {
+		return nil, err
 	}
 	if s.memberRepo == nil {
 		return nil, projectdom.ErrMemberNotFound
@@ -128,6 +160,9 @@ func (s *ActivitySvc) UpdateComment(ctx context.Context, id uuid.UUID, projectID
 	if a.ActivityType != docdom.ActivityTypeComment {
 		return nil, docdom.ErrActivityNotAComment
 	}
+	if err := s.documentInProject(ctx, projectID, a.DocumentID, docdom.ErrActivityNotFound); err != nil {
+		return nil, err
+	}
 
 	if s.memberRepo == nil {
 		return nil, projectdom.ErrMemberNotFound
@@ -160,6 +195,9 @@ func (s *ActivitySvc) DeleteComment(ctx context.Context, id uuid.UUID, projectID
 	}
 	if a.ActivityType != docdom.ActivityTypeComment {
 		return docdom.ErrActivityNotAComment
+	}
+	if err := s.documentInProject(ctx, projectID, a.DocumentID, docdom.ErrActivityNotFound); err != nil {
+		return err
 	}
 
 	if s.memberRepo == nil {

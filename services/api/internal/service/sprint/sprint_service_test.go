@@ -675,3 +675,38 @@ func TestCompleteSprint_NotFound(t *testing.T) {
 		t.Errorf("expected ErrSprintNotFound, got %v", err)
 	}
 }
+
+// TestCompleteSprint_MoveToSprintWrongProject_ReturnsNotFound guards against
+// a caller-supplied move_to_sprint_id belonging to a different project than
+// the sprint being completed (same bug class as GHSA-xwmv-9c7h-g947): the
+// source sprint's own project ownership is verified, but the destination
+// sprint id must be independently verified too, or a project A member could
+// point their own sprint completion at project B's sprint id.
+func TestCompleteSprint_MoveToSprintWrongProject_ReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeSprintRepo()
+	svc := sprintsvc.New(repo, newFakeTaskRepo(), nil)
+
+	source, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
+		ProjectID: uuid.New(),
+		Name:      "Source",
+		Status:    sprintdom.SprintStatusActive,
+	})
+	foreignDest, _ := svc.CreateSprint(ctx, sprintdom.CreateSprintInput{
+		ProjectID: uuid.New(), // different project than source
+		Name:      "Foreign Dest",
+		Status:    sprintdom.SprintStatusPlanned,
+	})
+
+	_, err := svc.CompleteSprint(ctx, source.ProjectID, source.ID, sprintdom.CompleteSprintInput{
+		MoveToSprintID: &foreignDest.ID,
+	})
+	if err != sprintdom.ErrSprintNotFound {
+		t.Fatalf("expected ErrSprintNotFound for cross-project move_to_sprint_id, got %v", err)
+	}
+
+	updated, _ := svc.GetSprint(ctx, source.ProjectID, source.ID)
+	if updated.Status == sprintdom.SprintStatusCompleted {
+		t.Error("source sprint must not be completed when the destination sprint check fails")
+	}
+}

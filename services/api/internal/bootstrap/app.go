@@ -157,7 +157,7 @@ func New(cfg *config.Config) (*App, error) {
 	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
 	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
-	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
+	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
 		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
@@ -198,7 +198,7 @@ func New(cfg *config.Config) (*App, error) {
 		// with no error or signal anywhere. Surface it once at startup.
 		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys and plugin secrets will be stored in plaintext, not encrypted")
 	}
-	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher).
+	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, projectRepo, publisher).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(agentService)
 	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, agentService).
@@ -206,7 +206,7 @@ func New(cfg *config.Config) (*App, error) {
 	activityConsumer := worker.NewActivityConsumer(redisClient, activityRepo, projectRepo, log)
 	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
 	docService := docsvc.New(docRepo, projectRepo)
-	docActivityService := docsvc.NewActivityService(docRepo, projectRepo, publisher).
+	docActivityService := docsvc.NewActivityService(docRepo, docRepo, projectRepo, publisher).
 		WithNotificationService(notificationService)
 	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
@@ -235,7 +235,7 @@ func New(cfg *config.Config) (*App, error) {
 		}
 	}
 
-	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), storageClient, cfg.Storage.Bucket)
+	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, cfg.Storage.Bucket)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
 	// Unlike userService/agentService above, this return value isn't
@@ -389,7 +389,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithActivityRecorder(activityService).
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
-		WithAvatarService(attachmentService)
+		WithAvatarService(attachmentService).
+		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)

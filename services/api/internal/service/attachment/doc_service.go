@@ -115,8 +115,13 @@ func (s *Service) CompleteDocUpload(ctx context.Context, in attachmentdom.DocCom
 
 // GetDocFileDownloadURL returns a presigned GET URL for the given doc file.
 // docID is used to verify the file belongs to the document by checking the
-// storage key prefix (docs/{docId}/).
-func (s *Service) GetDocFileDownloadURL(ctx context.Context, docID uuid.UUID, fileID uuid.UUID, ttl time.Duration) (string, error) {
+// storage key prefix (docs/{docId}/), and projectID is used to verify docID
+// itself belongs to the caller's authorized project.
+func (s *Service) GetDocFileDownloadURL(ctx context.Context, projectID, docID, fileID uuid.UUID, ttl time.Duration) (string, error) {
+	if err := s.docChecker.DocBelongsToProject(ctx, projectID, docID); err != nil {
+		return "", err
+	}
+
 	f, err := s.repo.FindFileByID(ctx, fileID)
 	if err != nil {
 		return "", err
@@ -140,8 +145,14 @@ func (s *Service) GetDocFileDownloadURL(ctx context.Context, docID uuid.UUID, fi
 
 // DeleteDocFile removes the file record from the database and deletes the
 // object from the object store. docID is used to verify the file belongs to
-// the document by checking the storage key prefix (docs/{docId}/).
-func (s *Service) DeleteDocFile(ctx context.Context, docID uuid.UUID, fileID uuid.UUID) error {
+// the document by checking the storage key prefix (docs/{docId}/), and
+// projectID is used to verify docID itself belongs to the caller's
+// authorized project.
+func (s *Service) DeleteDocFile(ctx context.Context, projectID, docID, fileID uuid.UUID) error {
+	if err := s.docChecker.DocBelongsToProject(ctx, projectID, docID); err != nil {
+		return err
+	}
+
 	f, err := s.repo.FindFileByID(ctx, fileID)
 	if err != nil {
 		return err

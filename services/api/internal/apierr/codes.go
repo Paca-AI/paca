@@ -389,6 +389,8 @@ const (
 	CodeAutomationNodeCrossProject Code = "AUTOMATION_NODE_CROSS_PROJECT"
 	// CodeAutomationEdgeNotFound indicates the requested edge does not exist.
 	CodeAutomationEdgeNotFound Code = "AUTOMATION_EDGE_NOT_FOUND"
+	// CodeAutomationRunNotFound indicates the requested run does not exist.
+	CodeAutomationRunNotFound Code = "AUTOMATION_RUN_NOT_FOUND"
 	// CodeAutomationEdgeSelfLoop indicates an attempt to link a node to itself.
 	CodeAutomationEdgeSelfLoop Code = "AUTOMATION_EDGE_SELF_LOOP"
 	// CodeAutomationEdgeCrossAutomation indicates source and target nodes belong to different automations.

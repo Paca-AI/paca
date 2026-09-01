@@ -2258,6 +2258,9 @@ func TestListChatSessions_Success(t *testing.T) {
 	}
 
 	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id}, nil
+		},
 		listChatSessions: func(_ context.Context, aid, mid uuid.UUID) ([]*agentdom.AgentChatSession, error) {
 			if aid != agentID || mid != memberID {
 				t.Fatalf("unexpected agentID or memberID")
@@ -2275,12 +2278,40 @@ func TestListChatSessions_Success(t *testing.T) {
 	assert.Len(t, result, 2)
 }
 
+// TestListChatSessions_WrongProject_ReturnsNotFound guards the defensive
+// ownership check added alongside the StartChatSession fix (GHSA-xwmv-9c7h-g947
+// follow-up audit): even though the underlying query is scoped by the
+// caller's own memberID, ListChatSessions should still reject an agentID
+// that isn't visible in projectID rather than silently delegating.
+func TestListChatSessions_WrongProject_ReturnsNotFound(t *testing.T) {
+	agentID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		listChatSessions: func(context.Context, uuid.UUID, uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+			t.Fatal("listChatSessions must not be called when the agent is not visible in projectID")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.ListChatSessions(context.Background(), uuid.New(), agentID, memberID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
 func TestStartChatSession_Success(t *testing.T) {
 	projectID := uuid.New()
 	agentID := uuid.New()
 	memberID := uuid.New()
 
 	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id}, nil
+		},
 		createChatSession: func(_ context.Context, session *agentdom.AgentChatSession) error {
 			if session.AgentID != agentID || session.ProjectID != projectID || session.MemberID != memberID {
 				t.Fatalf("unexpected session fields")
@@ -2305,6 +2336,65 @@ func TestStartChatSession_Success(t *testing.T) {
 	assert.NotNil(t, resultConv)
 	assert.Equal(t, agentID, resultSession.AgentID)
 	assert.Equal(t, projectID, resultSession.ProjectID)
+}
+
+// TestStartChatSession_WrongProject_ReturnsNotFound is the regression test
+// for the agent-execution-hijack half of GHSA-xwmv-9c7h-g947's follow-up
+// audit: a caller with agents.read on their own project must not be able to
+// start (and thereby trigger a live run of) another project's agent by
+// supplying its agentID. No session/conversation may be created.
+func TestStartChatSession_WrongProject_ReturnsNotFound(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createChatSession: func(context.Context, *agentdom.AgentChatSession) error {
+			t.Fatal("createChatSession must not be called when the agent is not visible in projectID")
+			return nil
+		},
+		createConversation: func(context.Context, *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called when the agent is not visible in projectID")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, _, err := svc.StartChatSession(context.Background(), projectID, agentID, memberID, "Hello", nil, nil, nil)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// TestTriggerDescriptionWrite_WrongProject_ReturnsNotFound is the regression
+// test for the other agent-execution-hijack vector from the same audit
+// (WriteTaskDescriptionWithAI): a caller with tasks.write on their own
+// project must not be able to trigger another project's agent by supplying
+// its agentID in the request body. The taskID half of this same endpoint's
+// fix lives in the handler layer (AgentHandler.taskChecker), since this
+// service has no task-repository dependency to verify that half itself.
+func TestTriggerDescriptionWrite_WrongProject_ReturnsNotFound(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(context.Context, uuid.UUID, uuid.UUID) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createConversation: func(context.Context, *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called when the agent is not visible in projectID")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
 }
 
 func TestSendChatMessage_Success(t *testing.T) {

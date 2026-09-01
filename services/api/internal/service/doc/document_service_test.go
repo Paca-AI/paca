@@ -658,7 +658,7 @@ func TestUpdateDocument_TitleChange_CreatesSnapshot(t *testing.T) {
 	})
 
 	newTitle := "New Title"
-	updated, err := svc.UpdateDocument(ctx, d.ID, docdom.UpdateDocumentInput{
+	updated, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{
 		Title:     &newTitle,
 		UpdatedBy: &actor,
 	})
@@ -698,7 +698,7 @@ func TestUpdateDocument_ContentChange_CreatesSnapshot(t *testing.T) {
 
 	// First update — changes content.
 	newContent := json.RawMessage(`{"type":"doc","content":[{"type":"heading"}]}`)
-	_, err := svc.UpdateDocument(ctx, d.ID, docdom.UpdateDocumentInput{
+	_, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{
 		Content:   &newContent,
 		UpdatedBy: &actor,
 	})
@@ -716,7 +716,7 @@ func TestUpdateDocument_ContentChange_CreatesSnapshot(t *testing.T) {
 	}
 
 	// Second update with identical content — no new snapshot.
-	_, err = svc.UpdateDocument(ctx, d.ID, docdom.UpdateDocumentInput{
+	_, err = svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{
 		Content:   &newContent,
 		UpdatedBy: &actor,
 	})
@@ -738,7 +738,7 @@ func TestUpdateDocument_EmptyTitle_Error(t *testing.T) {
 	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: projectID, Title: "Doc"})
 
 	empty := "  "
-	_, err := svc.UpdateDocument(ctx, d.ID, docdom.UpdateDocumentInput{Title: &empty})
+	_, err := svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Title: &empty})
 	if err != docdom.ErrDocTitleInvalid {
 		t.Errorf("expected ErrDocTitleInvalid, got %v", err)
 	}
@@ -750,7 +750,7 @@ func TestUpdateDocument_NotFound(t *testing.T) {
 	svc := docsvc.New(repo, nil)
 
 	newTitle := "X"
-	_, err := svc.UpdateDocument(ctx, uuid.New(), docdom.UpdateDocumentInput{Title: &newTitle})
+	_, err := svc.UpdateDocument(ctx, uuid.New(), uuid.New(), docdom.UpdateDocumentInput{Title: &newTitle})
 	if err != docdom.ErrDocNotFound {
 		t.Errorf("expected ErrDocNotFound, got %v", err)
 	}
@@ -764,7 +764,7 @@ func TestDeleteDocument_OK(t *testing.T) {
 
 	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: projectID, Title: "To Delete"})
 
-	if err := svc.DeleteDocument(ctx, d.ID); err != nil {
+	if err := svc.DeleteDocument(ctx, projectID, d.ID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -779,7 +779,7 @@ func TestDeleteDocument_NotFound(t *testing.T) {
 	repo := newFakeDocRepo()
 	svc := docsvc.New(repo, nil)
 
-	err := svc.DeleteDocument(ctx, uuid.New())
+	err := svc.DeleteDocument(ctx, uuid.New(), uuid.New())
 	if err != docdom.ErrDocNotFound {
 		t.Errorf("expected ErrDocNotFound, got %v", err)
 	}
@@ -876,7 +876,7 @@ func TestListSnapshots_DocNotFound(t *testing.T) {
 	repo := newFakeDocRepo()
 	svc := docsvc.New(repo, nil)
 
-	_, err := svc.ListSnapshots(ctx, uuid.New())
+	_, err := svc.ListSnapshots(ctx, uuid.New(), uuid.New())
 	if err != docdom.ErrDocNotFound {
 		t.Errorf("expected ErrDocNotFound, got %v", err)
 	}
@@ -897,9 +897,9 @@ func TestListSnapshots_OK(t *testing.T) {
 
 	// Update to trigger snapshot.
 	v2 := json.RawMessage(`{"v":2}`)
-	_, _ = svc.UpdateDocument(ctx, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
+	_, _ = svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
 
-	snaps, err := svc.ListSnapshots(ctx, d.ID)
+	snaps, err := svc.ListSnapshots(ctx, projectID, d.ID)
 	if err != nil {
 		t.Fatalf("ListSnapshots error: %v", err)
 	}
@@ -913,7 +913,7 @@ func TestGetSnapshot_NotFound(t *testing.T) {
 	repo := newFakeDocRepo()
 	svc := docsvc.New(repo, nil)
 
-	_, err := svc.GetSnapshot(ctx, uuid.New())
+	_, err := svc.GetSnapshot(ctx, uuid.New(), uuid.New())
 	if err != docdom.ErrSnapshotNotFound {
 		t.Errorf("expected ErrSnapshotNotFound, got %v", err)
 	}
@@ -933,18 +933,114 @@ func TestGetSnapshot_OK(t *testing.T) {
 	})
 
 	v2 := json.RawMessage(`{"v":2}`)
-	_, _ = svc.UpdateDocument(ctx, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
+	_, _ = svc.UpdateDocument(ctx, projectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
 
-	snaps, _ := svc.ListSnapshots(ctx, d.ID)
+	snaps, _ := svc.ListSnapshots(ctx, projectID, d.ID)
 	if len(snaps) == 0 {
 		t.Fatal("no snapshots created")
 	}
 
-	snap, err := svc.GetSnapshot(ctx, snaps[0].ID)
+	snap, err := svc.GetSnapshot(ctx, projectID, snaps[0].ID)
 	if err != nil {
 		t.Fatalf("GetSnapshot error: %v", err)
 	}
 	if snap.ID != snaps[0].ID {
 		t.Errorf("snapshot ID mismatch")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-project isolation tests (GHSA-xwmv-9c7h-g947 / PACA-001, PACA-002)
+//
+// A document's routes authorize against the URL project, but callers can
+// still supply an arbitrary document/snapshot UUID from a different
+// project. Every method below must reject that combination as if the
+// document/snapshot did not exist, rather than acting on the foreign
+// project's data.
+// ---------------------------------------------------------------------------
+
+func TestUpdateDocument_WrongProject_ReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+
+	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: ownerProjectID, Title: "Victim Doc"})
+
+	newTitle := "Pwned"
+	_, err := svc.UpdateDocument(ctx, attackerProjectID, d.ID, docdom.UpdateDocumentInput{Title: &newTitle})
+	if err != docdom.ErrDocNotFound {
+		t.Fatalf("expected ErrDocNotFound for cross-project update, got %v", err)
+	}
+
+	got, _ := svc.GetDocument(ctx, d.ID)
+	if got.Title != "Victim Doc" {
+		t.Errorf("document must be unchanged after rejected cross-project update, got title %q", got.Title)
+	}
+}
+
+func TestDeleteDocument_WrongProject_ReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+
+	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{ProjectID: ownerProjectID, Title: "Victim Doc"})
+
+	err := svc.DeleteDocument(ctx, attackerProjectID, d.ID)
+	if err != docdom.ErrDocNotFound {
+		t.Fatalf("expected ErrDocNotFound for cross-project delete, got %v", err)
+	}
+
+	if _, err := svc.GetDocument(ctx, d.ID); err != nil {
+		t.Errorf("document must still exist after rejected cross-project delete, got %v", err)
+	}
+}
+
+func TestListSnapshots_WrongProject_ReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	actor := uuid.New()
+
+	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{
+		ProjectID: ownerProjectID,
+		Title:     "Doc",
+		Content:   json.RawMessage(`{"v":1}`),
+	})
+	v2 := json.RawMessage(`{"v":2}`)
+	_, _ = svc.UpdateDocument(ctx, ownerProjectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
+
+	if _, err := svc.ListSnapshots(ctx, attackerProjectID, d.ID); err != docdom.ErrDocNotFound {
+		t.Fatalf("expected ErrDocNotFound for cross-project ListSnapshots, got %v", err)
+	}
+}
+
+func TestGetSnapshot_WrongProject_ReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeDocRepo()
+	svc := docsvc.New(repo, nil)
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	actor := uuid.New()
+
+	d, _ := svc.CreateDocument(ctx, docdom.CreateDocumentInput{
+		ProjectID: ownerProjectID,
+		Title:     "Doc",
+		Content:   json.RawMessage(`{"v":1}`),
+	})
+	v2 := json.RawMessage(`{"v":2}`)
+	_, _ = svc.UpdateDocument(ctx, ownerProjectID, d.ID, docdom.UpdateDocumentInput{Content: &v2, UpdatedBy: &actor})
+	snaps, _ := svc.ListSnapshots(ctx, ownerProjectID, d.ID)
+	if len(snaps) == 0 {
+		t.Fatal("no snapshots created")
+	}
+
+	if _, err := svc.GetSnapshot(ctx, attackerProjectID, snaps[0].ID); err != docdom.ErrSnapshotNotFound {
+		t.Fatalf("expected ErrSnapshotNotFound for cross-project GetSnapshot, got %v", err)
 	}
 }

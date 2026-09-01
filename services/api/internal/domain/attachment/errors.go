@@ -29,6 +29,9 @@ var (
 	// ErrTaskNotInProject is returned when the referenced task does not belong
 	// to the project specified in the request URL.
 	ErrTaskNotInProject = errors.New("task does not belong to the specified project")
+	// ErrDocNotInProject is returned when the referenced document does not
+	// belong to the project specified in the request URL.
+	ErrDocNotInProject = errors.New("document does not belong to the specified project")
 
 	// ErrAttachmentContentTooLarge is returned when GetAttachmentContent is
 	// asked to read a file larger than MaxAttachmentContentSize into memory.

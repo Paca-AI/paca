@@ -236,6 +236,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeAttachmentNotFound
 	case errors.Is(err, attachmentdom.ErrTaskNotInProject):
 		return http.StatusNotFound, apierr.CodeTaskNotFound
+	case errors.Is(err, attachmentdom.ErrDocNotInProject):
+		return http.StatusNotFound, apierr.CodeDocNotFound
 	case errors.Is(err, attachmentdom.ErrUploadNotPending):
 		return http.StatusConflict, apierr.CodeUploadNotPending
 	case errors.Is(err, attachmentdom.ErrFileSizeZero),
@@ -424,6 +426,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAutomationNodeCrossProject
 	case errors.Is(err, automationdom.ErrEdgeNotFound):
 		return http.StatusNotFound, apierr.CodeAutomationEdgeNotFound
+	case errors.Is(err, automationdom.ErrRunNotFound):
+		return http.StatusNotFound, apierr.CodeAutomationRunNotFound
 	case errors.Is(err, automationdom.ErrEdgeSelfLoop):
 		return http.StatusBadRequest, apierr.CodeAutomationEdgeSelfLoop
 	case errors.Is(err, automationdom.ErrEdgeCrossAutomation):

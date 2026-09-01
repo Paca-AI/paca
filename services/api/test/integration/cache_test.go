@@ -57,8 +57,8 @@ func buildCachedTaskRouter(t *testing.T, taskRepo *fakeTaskRepo, store *projectP
 		5*time.Minute,
 		slog.New(slog.NewTextHandler(os.Stdout, nil)),
 	)
-	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)
-	activityService := tasksvc.NewActivityService(newFakeTaskActivityRepo(), &fakeActivityMemberRepo{}, nil)
+	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), newFakeSprintRepoIT(), taskRepo, nil)
+	activityService := tasksvc.NewActivityService(newFakeTaskActivityRepo(), taskRepo, &fakeActivityMemberRepo{}, nil)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	r := router.New(router.Deps{

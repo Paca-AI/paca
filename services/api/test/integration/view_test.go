@@ -193,8 +193,8 @@ func buildViewTestRouter(viewRepo *fakeViewRepoIT, sprintRepo *fakeSprintRepoIT,
 	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
-	viewService := sprintsvc.NewViewService(viewRepo, nil)
-	activityService := tasksvc.NewActivityService(newFakeTaskActivityRepo(), &fakeActivityMemberRepo{}, nil)
+	viewService := sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, nil)
+	activityService := tasksvc.NewActivityService(newFakeTaskActivityRepo(), taskRepo, &fakeActivityMemberRepo{}, nil)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
@@ -270,6 +270,18 @@ func seedSprintIT(t *testing.T, repo *fakeSprintRepoIT, projectID uuid.UUID) uui
 		t.Fatalf("seed sprint: %v", err)
 	}
 	return id
+}
+
+// createTaskIT creates a real task via HTTP and returns its ID — task
+// positions must reference a task that actually belongs to the project (see
+// GHSA-xwmv-9c7h-g947), so tests can no longer use a bare uuid.NewString().
+func createTaskIT(t *testing.T, r http.Handler, tok, taskBase, title string) string {
+	t.Helper()
+	w := serve(r, authedJSONReq(t.Context(), http.MethodPost, taskBase, tok, map[string]any{"title": title}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create task %q: expected 201, got %d: %s", title, w.Code, w.Body.String())
+	}
+	return taskIDFrom(t, "task", w.Body.Bytes())
 }
 
 // ---------------------------------------------------------------------------
@@ -445,7 +457,7 @@ func TestIntegrationViews_TaskPositions(t *testing.T) {
 	}
 	viewID := viewIDFrom(t, createW.Body.Bytes())
 
-	taskID := uuid.NewString()
+	taskID := createTaskIT(t, r, tok, fmt.Sprintf("/api/v1/projects/%s/tasks", projectID), "Positioned Task")
 	posURL := fmt.Sprintf("%s/%s/task-positions/%s", itemBase, viewID, taskID)
 
 	// Move task
@@ -513,9 +525,10 @@ func TestIntegrationViews_BulkMoveTasks(t *testing.T) {
 	bulkURL := fmt.Sprintf("%s/%s/task-positions", itemBase, viewID)
 	listURL := bulkURL
 
-	task1 := uuid.NewString()
-	task2 := uuid.NewString()
-	task3 := uuid.NewString()
+	taskBase := fmt.Sprintf("/api/v1/projects/%s/tasks", projectID)
+	task1 := createTaskIT(t, r, tok, taskBase, "Task 1")
+	task2 := createTaskIT(t, r, tok, taskBase, "Task 2")
+	task3 := createTaskIT(t, r, tok, taskBase, "Task 3")
 
 	// --- happy path: bulk upsert three tasks ---
 	w := serve(r, authedJSONReq(t.Context(), http.MethodPut, bulkURL, tok, map[string]any{
@@ -664,8 +677,9 @@ func TestIntegrationBacklogViews_BulkMoveTasks(t *testing.T) {
 	viewID := viewIDFrom(t, createW.Body.Bytes())
 	bulkURL := fmt.Sprintf("%s/%s/task-positions", itemBase, viewID)
 
-	task1 := uuid.NewString()
-	task2 := uuid.NewString()
+	taskBase := fmt.Sprintf("/api/v1/projects/%s/tasks", projectID)
+	task1 := createTaskIT(t, r, tok, taskBase, "Backlog Task 1")
+	task2 := createTaskIT(t, r, tok, taskBase, "Backlog Task 2")
 
 	w := serve(r, authedJSONReq(t.Context(), http.MethodPut, bulkURL, tok, map[string]any{
 		"items": []map[string]any{
@@ -915,7 +929,7 @@ func TestIntegrationBacklogViews_TaskPositions(t *testing.T) {
 		t.Fatalf("create backlog view: expected 201, got %d", createW.Code)
 	}
 	viewID := viewIDFrom(t, createW.Body.Bytes())
-	taskID := uuid.NewString()
+	taskID := createTaskIT(t, r, tok, fmt.Sprintf("/api/v1/projects/%s/tasks", projectID), "Backlog Positioned Task")
 
 	// Move task
 	moveW := serve(r, authedJSONReq(t.Context(), http.MethodPut,
@@ -1402,7 +1416,7 @@ func TestIntegrationTimelineViews_TaskPositions(t *testing.T) {
 		t.Fatalf("create timeline view: expected 201, got %d", createW.Code)
 	}
 	viewID := viewIDFrom(t, createW.Body.Bytes())
-	taskID := uuid.NewString()
+	taskID := createTaskIT(t, r, tok, fmt.Sprintf("/api/v1/projects/%s/tasks", projectID), "Timeline Positioned Task")
 
 	// Move task
 	moveW := serve(r, authedJSONReq(t.Context(), http.MethodPut,

@@ -21,13 +21,27 @@ import (
 // Fakes
 // ---------------------------------------------------------------------------
 
-// fakeCommentActivityRepo is a minimal in-memory taskdom.ActivityRepository.
+// fakeCommentActivityRepo is a minimal in-memory taskdom.ActivityRepository
+// that also serves as the taskLookup ActivitySvc uses to verify a task
+// belongs to the caller's authorized project.
 type fakeCommentActivityRepo struct {
 	activities map[uuid.UUID]*taskdom.Activity
+	tasks      map[uuid.UUID]*taskdom.Task
 }
 
 func newFakeCommentActivityRepo() *fakeCommentActivityRepo {
-	return &fakeCommentActivityRepo{activities: make(map[uuid.UUID]*taskdom.Activity)}
+	return &fakeCommentActivityRepo{
+		activities: make(map[uuid.UUID]*taskdom.Activity),
+		tasks:      make(map[uuid.UUID]*taskdom.Task),
+	}
+}
+
+func (r *fakeCommentActivityRepo) FindTaskByID(_ context.Context, id uuid.UUID) (*taskdom.Task, error) {
+	t, ok := r.tasks[id]
+	if !ok {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	return t, nil
 }
 
 func (r *fakeCommentActivityRepo) ListActivities(_ context.Context, taskID uuid.UUID) ([]*taskdom.Activity, error) {
@@ -134,12 +148,15 @@ func validCommentContent() json.RawMessage {
 
 func TestActivitySvc_AddComment_UnidentifiedSystemActor_ReturnsClearError(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
 
 	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
-		TaskID:    uuid.New(),
-		ProjectID: uuid.New(),
+		TaskID:    taskID,
+		ProjectID: projectID,
 		ActorID:   userdom.SystemActorUserID, // shared agent key, no X-Agent-ID
 		AgentID:   nil,
 		Content:   validCommentContent(),
@@ -155,14 +172,17 @@ func TestActivitySvc_AddComment_UnidentifiedSystemActor_ReturnsClearError(t *tes
 
 func TestActivitySvc_AddComment_GenuineNonMember_ReturnsMemberNotFound(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
 
 	realUserID := uuid.New() // a real human, just not a member of this project
 
 	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
-		TaskID:    uuid.New(),
-		ProjectID: uuid.New(),
+		TaskID:    taskID,
+		ProjectID: projectID,
 		ActorID:   realUserID,
 		AgentID:   nil,
 		Content:   validCommentContent(),
@@ -178,16 +198,19 @@ func TestActivitySvc_AddComment_GenuineNonMember_ReturnsMemberNotFound(t *testin
 
 func TestActivitySvc_AddComment_ResolvedMember_Succeeds(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	memberID := uuid.New()
 	actorID := uuid.New()
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
 		actorID: {ID: memberID, MemberType: "human"},
 	}}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
 
 	a, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
-		TaskID:    uuid.New(),
-		ProjectID: uuid.New(),
+		TaskID:    taskID,
+		ProjectID: projectID,
 		ActorID:   actorID,
 		Content:   validCommentContent(),
 	})
@@ -210,14 +233,17 @@ func TestActivitySvc_AddComment_ResolvedMember_Succeeds(t *testing.T) {
 // anywhere in the trigger path to break the resulting loop.
 func TestActivitySvc_AddComment_AgentSelfMention_DoesNotRetrigger(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	agentMemberID := uuid.New() // same agent posts the comment and is mentioned in it
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
 	trigger := &fakeAgentTrigger{}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil).WithAgentTrigger(trigger)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil).WithAgentTrigger(trigger)
 
 	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
-		TaskID:    uuid.New(),
-		ProjectID: uuid.New(),
+		TaskID:    taskID,
+		ProjectID: projectID,
 		ActorID:   uuid.New(),
 		AgentID:   &agentMemberID,
 		Content:   teamMentionContent(agentMemberID),
@@ -235,15 +261,18 @@ func TestActivitySvc_AddComment_AgentSelfMention_DoesNotRetrigger(t *testing.T) 
 // different agent must still start a conversation as before.
 func TestActivitySvc_AddComment_MentioningDifferentAgent_Triggers(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	projectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	posterAgentID := uuid.New()
 	mentionedAgentID := uuid.New()
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
 	trigger := &fakeAgentTrigger{}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil).WithAgentTrigger(trigger)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil).WithAgentTrigger(trigger)
 
 	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
-		TaskID:    uuid.New(),
-		ProjectID: uuid.New(),
+		TaskID:    taskID,
+		ProjectID: projectID,
 		ActorID:   uuid.New(),
 		AgentID:   &posterAgentID,
 		Content:   teamMentionContent(mentionedAgentID),
@@ -263,17 +292,21 @@ func TestActivitySvc_AddComment_MentioningDifferentAgent_Triggers(t *testing.T) 
 func TestActivitySvc_UpdateComment_UnidentifiedSystemActor_ReturnsClearError(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
 	commentID := uuid.New()
+	taskID := uuid.New()
+	projectID := uuid.New()
 	existingAuthor := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	repo.activities[commentID] = &taskdom.Activity{
 		ID:           commentID,
+		TaskID:       taskID,
 		ActivityType: taskdom.ActivityTypeComment,
 		ActorID:      &existingAuthor,
 		Content:      validCommentContent(),
 	}
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
 
-	_, err := svc.UpdateComment(context.Background(), commentID, uuid.New(), userdom.SystemActorUserID, nil, validCommentContent())
+	_, err := svc.UpdateComment(context.Background(), commentID, projectID, userdom.SystemActorUserID, nil, validCommentContent())
 
 	if !errors.Is(err, taskdom.ErrCommentActorUnidentified) {
 		t.Fatalf("expected ErrCommentActorUnidentified, got %v", err)
@@ -283,19 +316,131 @@ func TestActivitySvc_UpdateComment_UnidentifiedSystemActor_ReturnsClearError(t *
 func TestActivitySvc_DeleteComment_UnidentifiedSystemActor_ReturnsClearError(t *testing.T) {
 	repo := newFakeCommentActivityRepo()
 	commentID := uuid.New()
+	taskID := uuid.New()
+	projectID := uuid.New()
 	existingAuthor := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: projectID}
 	repo.activities[commentID] = &taskdom.Activity{
 		ID:           commentID,
+		TaskID:       taskID,
 		ActivityType: taskdom.ActivityTypeComment,
 		ActorID:      &existingAuthor,
 		Content:      validCommentContent(),
 	}
 	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{}}
-	svc := tasksvc.NewActivityService(repo, memberRepo, nil)
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
 
-	err := svc.DeleteComment(context.Background(), commentID, uuid.New(), userdom.SystemActorUserID, nil)
+	err := svc.DeleteComment(context.Background(), commentID, projectID, userdom.SystemActorUserID, nil)
 
 	if !errors.Is(err, taskdom.ErrCommentActorUnidentified) {
 		t.Fatalf("expected ErrCommentActorUnidentified, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-project isolation tests (same bug class as GHSA-xwmv-9c7h-g947)
+//
+// Every activity/comment operation is authorized against the URL project,
+// but the task/comment ID itself is caller-supplied. A member of project A
+// must not be able to read or mutate project B's task activity by
+// guessing/knowing its UUID.
+// ---------------------------------------------------------------------------
+
+func TestActivitySvc_ListActivities_WrongProject_ReturnsNotFound(t *testing.T) {
+	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: ownerProjectID}
+	repo.activities[uuid.New()] = &taskdom.Activity{ID: uuid.New(), TaskID: taskID, ActivityType: taskdom.ActivityTypeTaskCreated}
+	svc := tasksvc.NewActivityService(repo, repo, &fakeCommentMemberRepo{}, nil)
+
+	_, err := svc.ListActivities(context.Background(), attackerProjectID, taskID)
+	if !errors.Is(err, taskdom.ErrTaskNotFound) {
+		t.Fatalf("expected ErrTaskNotFound for cross-project ListActivities, got %v", err)
+	}
+}
+
+func TestActivitySvc_AddComment_WrongProject_ReturnsNotFound(t *testing.T) {
+	repo := newFakeCommentActivityRepo()
+	taskID := uuid.New()
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: ownerProjectID}
+	actorID := uuid.New()
+	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
+		actorID: {ID: uuid.New(), MemberType: "human"},
+	}}
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
+
+	// actorID is a legitimate member of attackerProjectID, but taskID
+	// belongs to a different project — the comment must be rejected even
+	// though the actor would resolve to a valid member.
+	_, err := svc.AddComment(context.Background(), taskdom.AddCommentInput{
+		TaskID:    taskID,
+		ProjectID: attackerProjectID,
+		ActorID:   actorID,
+		Content:   validCommentContent(),
+	})
+	if !errors.Is(err, taskdom.ErrTaskNotFound) {
+		t.Fatalf("expected ErrTaskNotFound for cross-project AddComment, got %v", err)
+	}
+	if len(repo.activities) != 0 {
+		t.Errorf("no comment should have been persisted, found %d activities", len(repo.activities))
+	}
+}
+
+func TestActivitySvc_UpdateComment_WrongProject_ReturnsNotFound(t *testing.T) {
+	repo := newFakeCommentActivityRepo()
+	commentID := uuid.New()
+	taskID := uuid.New()
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	author := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: ownerProjectID}
+	repo.activities[commentID] = &taskdom.Activity{
+		ID:           commentID,
+		TaskID:       taskID,
+		ActivityType: taskdom.ActivityTypeComment,
+		ActorID:      &author,
+		Content:      validCommentContent(),
+	}
+	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
+		author: {ID: author, MemberType: "human"},
+	}}
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
+
+	_, err := svc.UpdateComment(context.Background(), commentID, attackerProjectID, author, nil, validCommentContent())
+	if !errors.Is(err, taskdom.ErrActivityNotFound) {
+		t.Fatalf("expected ErrActivityNotFound for cross-project UpdateComment, got %v", err)
+	}
+}
+
+func TestActivitySvc_DeleteComment_WrongProject_ReturnsNotFound(t *testing.T) {
+	repo := newFakeCommentActivityRepo()
+	commentID := uuid.New()
+	taskID := uuid.New()
+	ownerProjectID := uuid.New()
+	attackerProjectID := uuid.New()
+	author := uuid.New()
+	repo.tasks[taskID] = &taskdom.Task{ID: taskID, ProjectID: ownerProjectID}
+	repo.activities[commentID] = &taskdom.Activity{
+		ID:           commentID,
+		TaskID:       taskID,
+		ActivityType: taskdom.ActivityTypeComment,
+		ActorID:      &author,
+		Content:      validCommentContent(),
+	}
+	memberRepo := &fakeCommentMemberRepo{membersByUser: map[uuid.UUID]*projectdom.ProjectMember{
+		author: {ID: author, MemberType: "human"},
+	}}
+	svc := tasksvc.NewActivityService(repo, repo, memberRepo, nil)
+
+	err := svc.DeleteComment(context.Background(), commentID, attackerProjectID, author, nil)
+	if !errors.Is(err, taskdom.ErrActivityNotFound) {
+		t.Fatalf("expected ErrActivityNotFound for cross-project DeleteComment, got %v", err)
+	}
+	if repo.activities[commentID].DeletedAt != nil {
+		t.Error("comment must not be deleted by a cross-project request")
 	}
 }

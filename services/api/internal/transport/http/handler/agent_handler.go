@@ -54,6 +54,7 @@ type AgentHandler struct {
 	memberRepo         projectdom.MemberRepository
 	globalPermReader   agentGlobalPermissionReader
 	avatarSvc          attachmentdom.AvatarService
+	taskChecker        attachmentdom.TaskOwnerChecker
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -96,6 +97,14 @@ func (h *AgentHandler) WithGlobalPermissionReader(reader agentGlobalPermissionRe
 // WithAvatarService configures avatar URL resolution for AgentResponse.
 func (h *AgentHandler) WithAvatarService(svc attachmentdom.AvatarService) *AgentHandler {
 	h.avatarSvc = svc
+	return h
+}
+
+// WithTaskChecker attaches the checker used by WriteTaskDescriptionWithAI to
+// verify the target task belongs to the caller's authorized project (the
+// agent service itself has no task-repository dependency to do this).
+func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *AgentHandler {
+	h.taskChecker = checker
 	return h
 }
 
@@ -1440,6 +1449,15 @@ func (h *AgentHandler) WriteTaskDescriptionWithAI(w http.ResponseWriter, r *http
 	}
 	if req.AgentID == uuid.Nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_id is required"))
+		return
+	}
+
+	if h.taskChecker == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "task checker not configured"))
+		return
+	}
+	if err := h.taskChecker.TaskBelongsToProject(r.Context(), projectID, taskID); err != nil {
+		presenter.Error(w, r, err)
 		return
 	}
 
