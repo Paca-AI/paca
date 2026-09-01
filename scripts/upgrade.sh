@@ -67,7 +67,7 @@
 #   PACA_SSH_BASTION_PORT_RANGE_START / _END   Only used when enabling  (default: 2200 / 2299)
 #                                SSH access as above.
 #   PACA_SSH_BASTION_HOST       Only used when enabling SSH access      (default: derived from
-#                                as above.                                the existing SITE_ADDRESS)
+#                                as above.                                the existing PUBLIC_URL)
 #
 # Extra arguments are passed through to the final `docker compose up -d`,
 # for any --scale (or other compose flag) beyond what's already inferred
