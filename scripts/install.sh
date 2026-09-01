@@ -743,6 +743,13 @@ if [[ "$INCLUDE_AGENT_RUNNER" == "yes" ]]; then
     if [[ "$ENABLE_SSH_BASTION" == "yes" ]]; then
         ask SSH_BASTION_PORT_RANGE_START "SSH bastion port range start" "${PACA_SSH_BASTION_PORT_RANGE_START:-2200}"
         ask SSH_BASTION_PORT_RANGE_END "SSH bastion port range end" "${PACA_SSH_BASTION_PORT_RANGE_END:-2299}"
+        # agent-runner's own validatePortRange refuses to boot on a bad
+        # range — catch it here instead of at a confusing startup failure.
+        if ! [[ "$SSH_BASTION_PORT_RANGE_START" =~ ^[0-9]+$ && "$SSH_BASTION_PORT_RANGE_END" =~ ^[0-9]+$ ]]; then
+            die "SSH bastion port range must be numeric (got '${SSH_BASTION_PORT_RANGE_START}'-'${SSH_BASTION_PORT_RANGE_END}')."
+        elif (( SSH_BASTION_PORT_RANGE_END < SSH_BASTION_PORT_RANGE_START )); then
+            die "SSH bastion port range end (${SSH_BASTION_PORT_RANGE_END}) must be >= start (${SSH_BASTION_PORT_RANGE_START})."
+        fi
         ask SSH_BASTION_HOST "Public host/IP to show in the ssh connect command" "${PACA_SSH_BASTION_HOST:-$ADDRESS}"
         warn "Make sure ports ${SSH_BASTION_PORT_RANGE_START}-${SSH_BASTION_PORT_RANGE_END} are reachable from wherever your users will ssh from (firewall/router forwarding, security group, etc.)."
     else

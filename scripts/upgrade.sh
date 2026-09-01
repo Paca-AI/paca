@@ -194,6 +194,23 @@ get_env_var() {
     grep "^${2}=" "$1" 2>/dev/null | head -1 | cut -d= -f2-
 }
 
+# derive_bare_host URL
+# Strips scheme, path, and port from a URL, leaving just the bare
+# hostname/IP. Used wherever a plain host is needed as a default to show the
+# user (SITE_ADDRESS's own backfill below, the SSH bastion host prompt) —
+# PUBLIC_URL is the one place the real reachable address survives even on a
+# plain-HTTP install, since SITE_ADDRESS itself is just the literal string
+# ":80" in that case (see install.sh's USE_HTTPS=no branch), with no host
+# information left in it at all.
+derive_bare_host() {
+    local host="$1"
+    host="${host#http://}"
+    host="${host#https://}"
+    host="${host%%/*}"
+    host="${host%%:*}"
+    echo "$host"
+}
+
 # ── Version / URL resolution ──────────────────────────────────────────────────
 
 # CD stamps this to the exact tag of the release upgrade.sh ships with (see
@@ -396,11 +413,7 @@ fi
 GATEWAY_VARS_ADDED=0
 if ! has_env_var .env SITE_ADDRESS; then
     backup_env_once
-    _PUBLIC_URL="$(get_env_var .env PUBLIC_URL)"
-    _SITE_ADDRESS="${_PUBLIC_URL#http://}"
-    _SITE_ADDRESS="${_SITE_ADDRESS#https://}"
-    _SITE_ADDRESS="${_SITE_ADDRESS%%/*}"
-    _SITE_ADDRESS="${_SITE_ADDRESS%%:*}"
+    _SITE_ADDRESS="$(derive_bare_host "$(get_env_var .env PUBLIC_URL)")"
     _SITE_ADDRESS="${_SITE_ADDRESS:-localhost}"
     set_env_var .env SITE_ADDRESS "$_SITE_ADDRESS"
     info "Added SITE_ADDRESS=${_SITE_ADDRESS} to .env (derived from your existing PUBLIC_URL)."
@@ -557,7 +570,15 @@ if [[ "$(get_env_var .env PACA_AGENT_RUNNER)" != "no" ]] && ! has_env_var .env S
         SSH_PORT_START="" SSH_PORT_END="" SSH_HOST=""
         ask SSH_PORT_START "SSH bastion port range start" "${PACA_SSH_BASTION_PORT_RANGE_START:-2200}"
         ask SSH_PORT_END "SSH bastion port range end" "${PACA_SSH_BASTION_PORT_RANGE_END:-2299}"
-        ask SSH_HOST "Public host/IP to show in the ssh connect command" "${PACA_SSH_BASTION_HOST:-$(get_env_var .env SITE_ADDRESS)}"
+        # agent-runner's own validatePortRange refuses to boot on a bad
+        # range — catch it here instead of at a confusing startup failure.
+        if ! [[ "$SSH_PORT_START" =~ ^[0-9]+$ && "$SSH_PORT_END" =~ ^[0-9]+$ ]]; then
+            die "SSH bastion port range must be numeric (got '${SSH_PORT_START}'-'${SSH_PORT_END}')."
+        elif (( SSH_PORT_END < SSH_PORT_START )); then
+            die "SSH bastion port range end (${SSH_PORT_END}) must be >= start (${SSH_PORT_START})."
+        fi
+        _SSH_HOST_DEFAULT="$(derive_bare_host "$(get_env_var .env PUBLIC_URL)")"
+        ask SSH_HOST "Public host/IP to show in the ssh connect command" "${PACA_SSH_BASTION_HOST:-${_SSH_HOST_DEFAULT:-localhost}}"
         set_env_var .env SSH_BASTION_PORT_RANGE_START "$SSH_PORT_START"
         set_env_var .env SSH_BASTION_PORT_RANGE_END "$SSH_PORT_END"
         set_env_var .env SSH_BASTION_HOST "$SSH_HOST"
