@@ -21,7 +21,7 @@ The installer copies every bundled skill to every supported platform found on th
 |---|---|---|
 | Claude Code | `~/.claude/skills/<name>/SKILL.md` | Global — every session |
 | Gemini CLI / Google Antigravity | `~/.gemini/config/plugins/paca/skills/<name>/SKILL.md` (Antigravity's real plugin-based skill mechanism — verified working against a live Antigravity install), plus `~/.gemini/skills/<name>/SKILL.md` (per Gemini CLI's own docs, unverified against the classic terminal tool) and `~/.gemini/commands/<name>.toml` (pre-existing legacy fallback) | Global — every session |
-| Cursor | `<project>/.cursor/skills/<name>/SKILL.md` | Per-project (Cursor has no global commands directory) |
+| Cursor | `<project>/.cursor/skills/<name>/SKILL.md` | Per-project by choice (Cursor also supports a global `~/.cursor/skills/`; the installer stays project-scoped) |
 | Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, …) | `<project>/AGENTS.md` | Per-project, merged into a marker-delimited section — re-running the installer refreshes only that section and leaves the rest of the file alone. This is the one target that still strips frontmatter: AGENTS.md is a single shared file, not a per-skill directory. |
 
 The per-project targets (Cursor, AGENTS.md) are only written when the installer is run from inside a git working tree — run it from your project root to get those too.

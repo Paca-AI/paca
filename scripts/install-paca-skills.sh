@@ -8,9 +8,10 @@
 # intact) wherever that's verified to work — non-lossy:
 #
 #   - Claude Code   → ~/.claude/skills/<name>/SKILL.md         (global)
-#   - Cursor        → <project>/.cursor/skills/<name>/SKILL.md  (project-scoped; Cursor
-#                                                                 has no global commands
-#                                                                 directory)
+#   - Cursor        → <project>/.cursor/skills/<name>/SKILL.md  (project-scoped by choice —
+#                                                                 Cursor also supports a global
+#                                                                 ~/.cursor/skills/, this
+#                                                                 installer just doesn't use it)
 #   - Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, ...)
 #                   → <project>/AGENTS.md                     (project-scoped, merged into
 #                                                              a marker-delimited section so
@@ -28,9 +29,13 @@
 #       (name/version/description/author — no skill list; skills are
 #       discovered by scanning that plugin's own skills/ subfolder) — the
 #       same shape as e.g. Google's own bundled ~/.gemini/config/plugins/science/
-#       plugin. This script writes (once) a minimal plugin.json +
-#       installed_version.json for a synthetic "paca" plugin, then each
-#       skill verbatim under its skills/ folder.
+#       plugin. This script writes (once) a minimal plugin.json — the only
+#       file that matters for discovery, confirmed above — for a synthetic
+#       "paca" plugin, then each skill verbatim under its skills/ folder.
+#       It also writes installed_version.json alongside plugin.json:
+#       unverified against any doc or the science plugin (which ships
+#       without one) — presumably app-written bookkeeping — but harmless to
+#       include and gives the CI smoke test a real file to assert on.
 #   - ~/.gemini/skills/<name>/SKILL.md
 #       What Gemini CLI's own current official docs (geminicli.com) describe
 #       as the native per-skill folder. Confirmed NOT read by the Antigravity
@@ -44,15 +49,6 @@
 #       rewrite (frontmatter stripped, re-shaped into a TOML custom command).
 #       Kept unconditionally alongside the two paths above so nothing that
 #       already worked for a Gemini-lineage user stops working.
-#
-#   - Claude Code   → ~/.claude/skills/<name>/SKILL.md         (global)
-#   - Cursor        → <project>/.cursor/skills/<name>/SKILL.md  (project-scoped; Cursor
-#                                                                 has no global commands
-#                                                                 directory)
-#   - Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, ...)
-#                   → <project>/AGENTS.md                     (project-scoped, merged into
-#                                                              a marker-delimited section so
-#                                                              any other content is preserved)
 #
 # The project-scoped targets (Cursor, AGENTS.md) are only written when this
 # script is run from inside a git working tree.
@@ -571,10 +567,10 @@ while IFS= read -r skill_obj; do
   raw="$(mktemp)"
   # -j (join-output), not -r: -r appends its own trailing newline after the
   # value regardless of whether the string already ends in one, which used
-  # to be invisible (every non-lossy... no, every target used to re-shape or
-  # strip the body anyway) but would silently add a spurious blank line to
-  # the byte-for-byte-verbatim SKILL.md files install_one_skill now writes
-  # for Claude Code / Gemini CLI / Cursor.
+  # to be invisible (every previous target re-shaped or stripped the body
+  # anyway) but would silently add a spurious blank line to the
+  # byte-for-byte-verbatim SKILL.md files install_one_skill now writes for
+  # Claude Code, Cursor, and both Gemini/Antigravity paths.
   jq -j '.content' <<<"${skill_obj}" > "${raw}"
   install_one_skill "${name}" "${raw}" "bundled"
   rm -f "${raw}"
