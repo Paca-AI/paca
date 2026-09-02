@@ -20,7 +20,7 @@ The installer copies every bundled skill to every supported platform found on th
 | Platform | Location | Scope |
 |---|---|---|
 | Claude Code | `~/.claude/skills/<name>/SKILL.md` | Global — every session |
-| Gemini CLI | `~/.gemini/skills/<name>/SKILL.md` | Global — every session |
+| Gemini CLI | `~/.gemini/skills/<name>/SKILL.md` (native) **and** `~/.gemini/commands/<name>.toml` (legacy fallback — kept because a real Antigravity IDE install, documented as Gemini CLI's successor, didn't pick up a skill written only to the native folder) | Global — every session |
 | Cursor | `<project>/.cursor/skills/<name>/SKILL.md` | Per-project (Cursor has no global commands directory) |
 | Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, …) | `<project>/AGENTS.md` | Per-project, merged into a marker-delimited section — re-running the installer refreshes only that section and leaves the rest of the file alone. This is the one target that still strips frontmatter: AGENTS.md is a single shared file, not a per-skill directory. |
 
@@ -245,8 +245,9 @@ If Paca MCP tools are not available, say so and ask the user to run `/paca-setup
 ```bash
 # Claude Code
 rm -rf ~/.claude/skills/paca-*
-# Gemini CLI
+# Gemini CLI (native + legacy fallback)
 rm -rf ~/.gemini/skills/paca-*
+rm -f ~/.gemini/commands/paca-*.toml
 # Cursor (run from the project root)
 rm -rf .cursor/skills/paca-*
 ```

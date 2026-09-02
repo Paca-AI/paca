@@ -343,6 +343,19 @@ jobs:
             echo "AGENTS.md should never contain a raw frontmatter fence line" >&2
             exit 1
           fi
+
+          # Gemini CLI legacy fallback: kept alongside the native folder
+          # above (not a replacement) after live testing on a real machine
+          # showed a real Gemini-successor app (Antigravity IDE) not
+          # discovering skills from the native folder alone — see the
+          # header comment in install-paca-skills.sh.
+          for name in paca-fixture-one paca-fixture-two; do
+            f="$HOME/.gemini/commands/$name.toml"
+            test -f "$f" || { echo "missing legacy fallback $f" >&2; exit 1; }
+            grep -q '^description = ' "$f" || { echo "$f missing description field" >&2; exit 1; }
+            grep -qF "prompt = '''" "$f" || { echo "$f missing prompt field" >&2; exit 1; }
+          done
+
           echo "All install-paca-skills.sh non-lossy assertions passed."
 
       - name: Stop fake API server
