@@ -16,36 +16,54 @@
 #                                                              a marker-delimited section so
 #                                                              any other content is preserved)
 #
-# Gemini CLI gets BOTH the native folder AND the legacy TOML command, not
-# just the former:
+# Gemini CLI / Google Antigravity get THREE writes, not one — see below for
+# why this isn't as redundant as it looks:
 #
-#   - Gemini CLI    → ~/.gemini/skills/<name>/SKILL.md          (global, native — per
-#                                                                 Gemini CLI's own current
-#                                                                 docs)
-#                     ~/.gemini/commands/<name>.toml             (global, legacy — kept as
-#                                                                 a safety net: verified on
-#                                                                 a real machine running
-#                                                                 Google's Antigravity IDE,
-#                                                                 documented as Gemini CLI's
-#                                                                 successor, that a skill
-#                                                                 written only to the native
-#                                                                 folder above did NOT show
-#                                                                 up as an available skill,
-#                                                                 even after restarting the
-#                                                                 app — so "the docs say it
-#                                                                 works" isn't enough here to
-#                                                                 drop the previously-working
-#                                                                 path)
+#   - ~/.gemini/config/plugins/paca/skills/<name>/SKILL.md
+#       Verified on a real Google Antigravity IDE install (documented as
+#       Gemini CLI's successor) to be the format that ACTUALLY makes a skill
+#       show up in its skills list and slash-command search. Antigravity's
+#       real skills come from installed "plugins" — a directory under
+#       ~/.gemini/config/plugins/<plugin-name>/ containing a plugin.json
+#       (name/version/description/author — no skill list; skills are
+#       discovered by scanning that plugin's own skills/ subfolder) — the
+#       same shape as e.g. Google's own bundled ~/.gemini/config/plugins/science/
+#       plugin. This script writes (once) a minimal plugin.json +
+#       installed_version.json for a synthetic "paca" plugin, then each
+#       skill verbatim under its skills/ folder.
+#   - ~/.gemini/skills/<name>/SKILL.md
+#       What Gemini CLI's own current official docs (geminicli.com) describe
+#       as the native per-skill folder. Confirmed NOT read by the Antigravity
+#       install tested above, across a restart — but that docs page describes
+#       the classic terminal `gemini` tool specifically, not Antigravity, and
+#       the terminal tool wasn't available to test. Written anyway: harmless
+#       if unread, and this is the one path directly backed by that product's
+#       own documentation.
+#   - ~/.gemini/commands/<name>.toml
+#       The pre-existing behavior from before this script's non-lossy
+#       rewrite (frontmatter stripped, re-shaped into a TOML custom command).
+#       Kept unconditionally alongside the two paths above so nothing that
+#       already worked for a Gemini-lineage user stops working.
+#
+#   - Claude Code   → ~/.claude/skills/<name>/SKILL.md         (global)
+#   - Cursor        → <project>/.cursor/skills/<name>/SKILL.md  (project-scoped; Cursor
+#                                                                 has no global commands
+#                                                                 directory)
+#   - Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, ...)
+#                   → <project>/AGENTS.md                     (project-scoped, merged into
+#                                                              a marker-delimited section so
+#                                                              any other content is preserved)
 #
 # The project-scoped targets (Cursor, AGENTS.md) are only written when this
 # script is run from inside a git working tree.
 #
 # Skills are Agent Skills format (YAML frontmatter + markdown body). Claude
-# Code, Cursor, and Gemini CLI's native folder all get that content verbatim,
-# frontmatter included. AGENTS.md and Gemini CLI's legacy TOML command are
-# the two targets that still strip frontmatter and re-shape the content —
-# AGENTS.md because it's a single shared file, not a per-skill directory;
-# the TOML command because that format has no frontmatter concept at all.
+# Code, Cursor, and both Gemini/Antigravity SKILL.md paths above get that
+# content verbatim, frontmatter included. AGENTS.md and the Gemini CLI legacy
+# TOML command are the two targets that still strip frontmatter and re-shape
+# the content — AGENTS.md because it's a single shared file, not a per-skill
+# directory; the TOML command because that format has no frontmatter concept
+# at all.
 #
 # All skill content — both Paca's bundled defaults and anything contributed
 # by an installed plugin — is fetched from a running Paca instance's API
@@ -85,6 +103,11 @@ CLAUDE_DIR="${HOME}/.claude/skills"
 GEMINI_DIR="${HOME}/.gemini/skills"
 # Legacy fallback — see the Gemini CLI note in the header comment above for why.
 GEMINI_LEGACY_DIR="${HOME}/.gemini/commands"
+# Google Antigravity's actual plugin-based skill mechanism — see the header
+# comment above for how this was found and verified.
+GEMINI_PLUGIN_DIR="${HOME}/.gemini/config/plugins/paca"
+GEMINI_PLUGIN_SKILLS_DIR="${GEMINI_PLUGIN_DIR}/skills"
+GEMINI_PLUGIN_VERSION="1.0.0"
 
 PACA_API_URL="${PACA_API_URL:-}"
 PACA_API_KEY="${PACA_API_KEY:-}"
@@ -295,7 +318,7 @@ elif { : < /dev/tty; } 2>/dev/null; then
   echo ""
   info "Which platforms should skills be installed to?"
   info "  1) claude  — Claude Code   (~/.claude/skills/)"
-  info "  2) gemini  — Gemini CLI    (~/.gemini/skills/ + ~/.gemini/commands/ fallback)"
+  info "  2) gemini  — Gemini CLI / Antigravity (~/.gemini/config/plugins/paca/skills/)"
   info "  3) cursor  — Cursor        (project-scoped, needs a git working tree)"
   info "  4) agents  — AGENTS.md     (project-scoped, needs a git working tree)"
   read -r -p "  Enter numbers or names, space/comma-separated (Enter for all): " platform_choice < /dev/tty
@@ -325,7 +348,24 @@ done
 info "Installing to: ${PACA_SKILL_PLATFORMS// /, }"
 
 if $INSTALL_CLAUDE; then mkdir -p "${CLAUDE_DIR}"; fi
-if $INSTALL_GEMINI; then mkdir -p "${GEMINI_DIR}" "${GEMINI_LEGACY_DIR}"; fi
+if $INSTALL_GEMINI; then
+  mkdir -p "${GEMINI_DIR}" "${GEMINI_LEGACY_DIR}" "${GEMINI_PLUGIN_SKILLS_DIR}"
+  # Written once per run, not per skill — this is the plugin package's own
+  # metadata, not a skill. See the header comment for why this file (plus
+  # the skills/ subfolder populated below) is what actually makes Antigravity
+  # recognize "paca" as an installed plugin and list its skills.
+  cat > "${GEMINI_PLUGIN_DIR}/plugin.json" <<PLUGIN_JSON
+{
+  "name": "paca",
+  "version": "${GEMINI_PLUGIN_VERSION}",
+  "description": "Paca project management skills, installed by scripts/install-paca-skills.sh.",
+  "author": { "name": "Paca-AI" },
+  "repository": "https://github.com/${REPO}",
+  "license": "MIT"
+}
+PLUGIN_JSON
+  printf '{"version": "%s"}' "${GEMINI_PLUGIN_VERSION}" > "${GEMINI_PLUGIN_DIR}/installed_version.json"
+fi
 
 # Project-scope detection — Cursor has no global commands directory, and
 # AGENTS.md is a project-root convention, so both only make sense relative
@@ -443,6 +483,12 @@ install_one_skill() {
   fi
 
   if $INSTALL_GEMINI; then
+    # The verified-working path — see the header comment. plugin.json and
+    # installed_version.json for the enclosing "paca" plugin are already
+    # written once, above, before this loop starts.
+    mkdir -p "${GEMINI_PLUGIN_SKILLS_DIR}/${name}"
+    cp "${raw}" "${GEMINI_PLUGIN_SKILLS_DIR}/${name}/SKILL.md"
+
     mkdir -p "${GEMINI_DIR}/${name}"
     cp "${raw}" "${GEMINI_DIR}/${name}/SKILL.md"
 
@@ -673,7 +719,7 @@ tac "${SUMMARY_TMP}" | awk '!seen[$1]++' | tac
 echo ""
 echo "  Where they went:"
 $INSTALL_CLAUDE && echo "    Claude Code   → ${CLAUDE_DIR}/"
-$INSTALL_GEMINI && echo "    Gemini CLI    → ${GEMINI_DIR}/ (native) + ${GEMINI_LEGACY_DIR}/ (legacy fallback)"
+$INSTALL_GEMINI && echo "    Gemini CLI    → ${GEMINI_PLUGIN_SKILLS_DIR}/ (Antigravity plugin, verified) + ${GEMINI_DIR}/ + ${GEMINI_LEGACY_DIR}/ (unverified fallbacks)"
 if [[ -n "${PROJECT_ROOT}" ]]; then
   $INSTALL_CURSOR && echo "    Cursor        → ${PROJECT_ROOT}/.cursor/skills/"
   $INSTALL_AGENTS && echo "    AGENTS.md     → ${PROJECT_ROOT}/AGENTS.md"

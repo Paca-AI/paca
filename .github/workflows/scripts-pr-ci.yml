@@ -344,17 +344,37 @@ jobs:
             exit 1
           fi
 
-          # Gemini CLI legacy fallback: kept alongside the native folder
-          # above (not a replacement) after live testing on a real machine
-          # showed a real Gemini-successor app (Antigravity IDE) not
-          # discovering skills from the native folder alone — see the
-          # header comment in install-paca-skills.sh.
+          # Gemini CLI legacy TOML fallback (pre-existing behavior, kept
+          # unconditionally — see header comment in install-paca-skills.sh).
           for name in paca-fixture-one paca-fixture-two; do
             f="$HOME/.gemini/commands/$name.toml"
             test -f "$f" || { echo "missing legacy fallback $f" >&2; exit 1; }
             grep -q '^description = ' "$f" || { echo "$f missing description field" >&2; exit 1; }
             grep -qF "prompt = '''" "$f" || { echo "$f missing prompt field" >&2; exit 1; }
           done
+
+          # Google Antigravity's real plugin-based skill mechanism — verified
+          # against a live Antigravity install (see header comment). A
+          # plugin.json + installed_version.json must exist for the
+          # synthetic "paca" plugin, plus each skill verbatim under its
+          # skills/ subfolder.
+          PLUGIN_DIR="$HOME/.gemini/config/plugins/paca"
+          test -f "$PLUGIN_DIR/plugin.json" || { echo "missing $PLUGIN_DIR/plugin.json" >&2; exit 1; }
+          grep -q '"name": "paca"' "$PLUGIN_DIR/plugin.json" || { echo "plugin.json missing name field" >&2; exit 1; }
+          test -f "$PLUGIN_DIR/installed_version.json" || { echo "missing $PLUGIN_DIR/installed_version.json" >&2; exit 1; }
+          for name in paca-fixture-one paca-fixture-two; do
+            f="$PLUGIN_DIR/skills/$name/SKILL.md"
+            test -f "$f" || { echo "missing $f" >&2; exit 1; }
+            grep -qx "name: $name" "$f" || { echo "$f missing/invalid frontmatter name" >&2; exit 1; }
+          done
+          python3 -c "
+          import json
+          with open('$RUNNER_TEMP/fixture/skills.json') as fh:
+              want = json.load(fh)['data']['skills'][0]['content']
+          with open('$PLUGIN_DIR/skills/paca-fixture-one/SKILL.md') as fh:
+              got = fh.read()
+          assert got == want, f'Antigravity plugin skill content mismatch:\n--- want ---\n{want!r}\n--- got ---\n{got!r}'
+          "
 
           echo "All install-paca-skills.sh non-lossy assertions passed."
 
