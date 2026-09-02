@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "Visão geral",
 				"folders": "Pastas",
-				"portForwards": "Encaminhamentos de porta"
+				"portForwards": "Encaminhamentos de porta",
+				"comments": "Comentários"
 			},
 			"overview": {
 				"connect": "Conectar",
@@ -479,6 +480,7 @@
 				"deleteFailed": "Falha ao excluir o encaminhamento de porta. Tente novamente.",
 				"containerPort": "Porta do contêiner {{port}}",
 				"unassigned": "Ainda não atribuída",
+				"open": "Abrir",
 				"restart": "Reiniciar",
 				"pendingRestartRunning": "Um encaminhamento de porta foi adicionado ou removido. Reinicie o ambiente para aplicá-lo.",
 				"pendingRestartStopped": "Um encaminhamento de porta foi adicionado ou removido. Será aplicado na próxima vez que este ambiente for iniciado.",
@@ -503,6 +505,19 @@
 					"cancel": "Cancelar",
 					"confirm": "Reiniciar"
 				}
+			},
+			"comments": {
+				"empty": "Ainda não há comentários. Instale a extensão do navegador Paca para comentar diretamente nos elementos da pré-visualização deste ambiente.",
+				"status": {
+					"open": "Aberto",
+					"resolved": "Resolvido"
+				},
+				"replyCount_one": "{{count}} resposta",
+				"replyCount_other": "{{count}} respostas",
+				"resolve": "Resolver",
+				"reopen": "Reabrir",
+				"createTask": "Criar tarefa",
+				"taskCreated": "Tarefa criada"
 			},
 			"sshKeys": {
 				"connectHint": "Substitua <bastion-host> pelo endereço do bastion SSH configurado nesta implantação.",

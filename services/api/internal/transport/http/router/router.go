@@ -3,7 +3,9 @@ package router
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -41,6 +43,7 @@ type Deps struct {
 	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
 	Environment          *handler.EnvironmentHandler
+	Annotation           *handler.AnnotationHandler
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
@@ -269,6 +272,20 @@ func New(deps Deps) http.Handler {
 				r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.GlobalScope(), authz.PermissionProjectsCreate)).
 					Post("/projects", deps.Project.CreateProject)
 			})
+
+			// Port forward resolution — how the Paca browser extension
+			// turns "I'm on host:<port>" into "this is environment X in
+			// project Y" before it knows which project-scoped endpoint to
+			// call next. Not project-scoped in the URL (the caller doesn't
+			// know the project yet); scoped instead to the caller's own
+			// accessible projects inside the handler itself (see
+			// AnnotationRepository.ResolvePortForward).
+			if deps.Annotation != nil {
+				r.Group(func(r chi.Router) {
+					r.Use(httpmw.Authn(deps.TokenManager, deps.APIKeyAuth))
+					r.Get("/port-forwards/resolve", deps.Annotation.ResolvePortForward)
+				})
+			}
 
 			// LLM models, global agents, and global chat — accessible to any
 			// authenticated user (human or agent-API-key). Static children
@@ -830,6 +847,39 @@ func New(deps Deps) http.Handler {
 						// being able to open a shell inside it.
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect)).
 							Post("/{environmentId}/terminal-ticket", deps.Environment.TerminalTicket)
+
+						// Page annotations — on-page comments pinned via the
+						// Paca browser extension (apps/extension), created
+						// directly against this API from a content script
+						// running on the environment's own forwarded preview
+						// page (see corsMiddleware's same-hostname branch
+						// below for how that's authenticated). Resolve is a
+						// separate tier from Write, same reasoning as
+						// Connect above: triaging/dismissing a comment
+						// shouldn't require the ability to author or delete
+						// one.
+						if deps.Annotation != nil {
+							r.Route("/{environmentId}/annotations", func(r chi.Router) {
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+									Get("/", deps.Annotation.List)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
+									Post("/", deps.Annotation.Create)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
+									Post("/upload-url", deps.Annotation.InitiateScreenshotUpload)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
+									Post("/{annotationId}/complete-upload", deps.Annotation.CompleteScreenshotUpload)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+									Get("/{annotationId}/screenshot-url", deps.Annotation.GetScreenshotURL)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsResolve)).
+									Patch("/{annotationId}/resolve", deps.Annotation.Resolve)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsResolve)).
+									Patch("/{annotationId}/reopen", deps.Annotation.Reopen)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
+									Post("/{annotationId}/comments", deps.Annotation.AddComment)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite, authz.PermissionTasksWrite)).
+									Post("/{annotationId}/create-task", deps.Annotation.CreateTask)
+							})
+						}
 					})
 				}
 
@@ -964,6 +1014,22 @@ func loggerMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 // by setting CORS_ORIGINS). Otherwise only an exact-match Origin gets
 // Access-Control-Allow-Origin echoed back; everything else gets no CORS
 // headers at all, so the browser blocks the response.
+//
+// One narrow exception, checked before either of those: a request whose
+// Origin has the same hostname as this server's own Host header (port
+// ignored) always gets its exact Origin echoed back with
+// Access-Control-Allow-Credentials: true, regardless of CORS_ORIGINS. This
+// is what lets the Paca browser extension's content script — running
+// directly on a forwarded environment port, e.g.
+// paca.example.com:31842 — call this API with `credentials: "include"`
+// and actually have access_token/refresh_token attached: cookies are
+// scoped by hostname, not by port, and SameSite is evaluated at the same
+// hostname-ignoring-port granularity, so the browser already sends those
+// cookies on such a request; without this branch, the *response* would
+// still be blocked from the extension's own JS by CORS. It's deliberately
+// narrow — it only ever fires for another port on the *same* host, never
+// a different domain — so it can't be used to grant a third-party origin
+// credentialed access no matter how CORS_ORIGINS is configured.
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowAll := len(allowedOrigins) == 0
 	allowed := make(map[string]bool, len(allowedOrigins))
@@ -979,6 +1045,10 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			switch {
+			case origin != "" && sameHostnameOrigin(origin, r.Host):
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				w.Header().Set("Vary", "Origin")
 			case allowAll:
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 			case origin != "" && allowed[origin]:
@@ -995,4 +1065,23 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// sameHostnameOrigin reports whether origin (a request's Origin header,
+// e.g. "https://paca.example.com:31842") has the same hostname as host (a
+// request's Host header, e.g. "paca.example.com" or "paca.example.com:443")
+// — ignoring port on both sides, and ignoring scheme entirely (a cookie's
+// Secure flag, not this check, is what actually gates whether it's ever
+// sent over plain HTTP in the first place). An unparseable origin never
+// matches.
+func sameHostnameOrigin(origin, host string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	reqHost := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		reqHost = h
+	}
+	return u.Hostname() == reqHost
 }

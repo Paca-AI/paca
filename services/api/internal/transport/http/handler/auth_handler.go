@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -17,6 +18,19 @@ const (
 	// refreshCookiePath restricts the refresh cookie to the rotation endpoint
 	// so browsers never send it on regular API requests.
 	refreshCookiePath = "/api/v1/auth/refresh"
+	// portCookieName carries no token material — just the port this
+	// request reached the API on (see requestPort) — so unlike the two
+	// above it's deliberately NOT HttpOnly: the Paca browser extension
+	// (apps/extension) reads it via plain document.cookie, from a
+	// completely different page (an environment's forwarded preview,
+	// reachable on the same hostname but an arbitrary different port —
+	// see corsMiddleware's own doc comment for the same-hostname fact that
+	// makes a cookie set here visible there at all), to know which port to
+	// call this API on even when Paca isn't running on 443/80. Set
+	// alongside the real auth cookies purely so it rides the same
+	// login/refresh cadence already happening for other reasons, not
+	// because it's itself auth state.
+	portCookieName = "paca_port"
 )
 
 // CookieConfig carries compile-time-safe settings for auth cookies.
@@ -39,8 +53,9 @@ func NewAuthHandler(svc domainauth.Service, cookie CookieConfig) *AuthHandler {
 }
 
 // Login handles POST /auth/login.
-// On success, access and refresh tokens are set as HttpOnly cookies; no token
-// values appear in the response body.
+// On success, access and refresh tokens are set as HttpOnly cookies (no
+// token values appear in the response body), alongside the client-readable
+// paca_port cookie (see portCookieName).
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req dto.LoginRequest
 	if !middleware.BindJSON(w, r, &req) {
@@ -62,7 +77,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.setTokenCookies(w, pair, pair.RefreshTTL)
+	h.setTokenCookies(w, r, pair, pair.RefreshTTL)
 	presenter.OK(w, r, map[string]any{"message": "logged in"})
 }
 
@@ -82,7 +97,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.setTokenCookies(w, pair, pair.RefreshTTL)
+	h.setTokenCookies(w, r, pair, pair.RefreshTTL)
 	presenter.OK(w, r, map[string]any{"message": "token refreshed"})
 }
 
@@ -104,10 +119,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	presenter.OK(w, r, map[string]any{"message": "logged out"})
 }
 
-// setTokenCookies writes both tokens into HttpOnly Set-Cookie headers.
-// refreshTTL controls the MaxAge of the refresh cookie and should match the
-// TTL embedded in the refresh JWT (see TokenPair.RefreshTTL).
-func (h *AuthHandler) setTokenCookies(w http.ResponseWriter, pair *domainauth.TokenPair, refreshTTL time.Duration) {
+// setTokenCookies writes both tokens into HttpOnly Set-Cookie headers, plus
+// the client-readable paca_port cookie alongside them (see portCookieName's
+// own doc comment for why it travels with these two rather than being set
+// some other way). refreshTTL controls the MaxAge of the refresh cookie
+// and should match the TTL embedded in the refresh JWT (see
+// TokenPair.RefreshTTL).
+func (h *AuthHandler) setTokenCookies(w http.ResponseWriter, r *http.Request, pair *domainauth.TokenPair, refreshTTL time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     accessCookieName,
 		Value:    pair.AccessToken,
@@ -126,9 +144,38 @@ func (h *AuthHandler) setTokenCookies(w http.ResponseWriter, pair *domainauth.To
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(refreshTTL.Seconds()),
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     portCookieName,
+		Value:    requestPort(r),
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   h.cookie.Secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(refreshTTL.Seconds()),
+	})
 }
 
-// clearCookies expires both auth cookies immediately.
+// requestPort returns the port the client used to reach this request: the
+// X-Forwarded-Port a reverse proxy set (preferred, since some proxies
+// terminate TLS on one port and forward to the app on another), else
+// whatever port is in the Host header the client actually sent, else the
+// conventional default for the connection's scheme when neither carries
+// one (a bare "example.com" always means 443 over TLS or 80 over plain
+// HTTP).
+func requestPort(r *http.Request) string {
+	if p := r.Header.Get("X-Forwarded-Port"); p != "" {
+		return p
+	}
+	if _, port, err := net.SplitHostPort(r.Host); err == nil {
+		return port
+	}
+	if r.TLS != nil {
+		return "443"
+	}
+	return "80"
+}
+
+// clearCookies expires all three cookies immediately.
 func (h *AuthHandler) clearCookies(w http.ResponseWriter, _ *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     accessCookieName,
@@ -146,6 +193,15 @@ func (h *AuthHandler) clearCookies(w http.ResponseWriter, _ *http.Request) {
 		HttpOnly: true,
 		Secure:   h.cookie.Secure,
 		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     portCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   h.cookie.Secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 }

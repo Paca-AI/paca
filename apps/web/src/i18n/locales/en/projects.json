@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "Overview",
 				"folders": "Folders",
-				"portForwards": "Port forwards"
+				"portForwards": "Port forwards",
+				"comments": "Comments"
 			},
 			"overview": {
 				"connect": "Connect",
@@ -479,6 +480,7 @@
 				"deleteFailed": "Failed to delete port forward. Please try again.",
 				"containerPort": "Container port {{port}}",
 				"unassigned": "Not assigned yet",
+				"open": "Open",
 				"restart": "Restart",
 				"pendingRestartRunning": "A port forward was added or removed. Restart the environment to apply it.",
 				"pendingRestartStopped": "A port forward was added or removed. It will be applied the next time this environment starts.",
@@ -503,6 +505,19 @@
 					"cancel": "Cancel",
 					"confirm": "Restart"
 				}
+			},
+			"comments": {
+				"empty": "No comments yet. Install the Paca browser extension to comment directly on elements of this environment's preview.",
+				"status": {
+					"open": "Open",
+					"resolved": "Resolved"
+				},
+				"replyCount_one": "{{count}} reply",
+				"replyCount_other": "{{count}} replies",
+				"resolve": "Resolve",
+				"reopen": "Reopen",
+				"createTask": "Create task",
+				"taskCreated": "Task created"
 			},
 			"sshKeys": {
 				"connectHint": "Replace <bastion-host> with this deployment's configured SSH bastion address.",

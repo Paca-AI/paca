@@ -7,6 +7,7 @@ import {
 	ExternalLink,
 	Folder as FolderIcon,
 	Loader2,
+	MessageSquare,
 	MoreHorizontal,
 	Network,
 	Play,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EnvironmentCommentsTab } from "@/components/projects/environments/environment-comments-tab";
 import {
 	EnvironmentStatusLine,
 	EnvironmentStatusRing,
@@ -80,7 +82,7 @@ import { timeAgo } from "@/lib/time-ago";
 // its own tab — it's config about *this* environment's own row set
 // (mirrors Folders), not a "how do I reach it" walkthrough like Connect.
 
-type Tab = "overview" | "folders" | "portForwards";
+type Tab = "overview" | "folders" | "portForwards" | "comments";
 
 const TRANSITIONAL_STATUSES: EnvironmentStatus[] = [
 	"creating",
@@ -764,11 +766,30 @@ function PortForwardsTab({
 							</div>
 							<div className="flex items-center gap-2 shrink-0">
 								{pf.host_port !== null ? (
-									<div className="w-80">
-										<CommandBox
-											command={`${host ?? "<host>"}:${pf.host_port}`}
-										/>
-									</div>
+									<>
+										<div className="w-80">
+											<CommandBox
+												command={`${host ?? "<host>"}:${pf.host_port}`}
+											/>
+										</div>
+										{host && (
+											<Button
+												variant="ghost"
+												size="icon"
+												className="size-7 text-muted-foreground shrink-0"
+												title={t("environments.detail.portForwards.open")}
+												onClick={() =>
+													window.open(
+														`http://${host}:${pf.host_port}`,
+														"_blank",
+														"noopener,noreferrer",
+													)
+												}
+											>
+												<ExternalLink className="size-3.5" />
+											</Button>
+										)}
+									</>
 								) : (
 									<span className="text-xs text-muted-foreground">
 										{t("environments.detail.portForwards.unassigned")}
@@ -829,6 +850,11 @@ const TABS = [
 		id: "portForwards",
 		labelKey: "environments.detail.tabs.portForwards",
 		icon: Network,
+	},
+	{
+		id: "comments",
+		labelKey: "environments.detail.tabs.comments",
+		icon: MessageSquare,
 	},
 ] as const satisfies {
 	id: Tab;
@@ -1072,6 +1098,12 @@ export function EnvironmentDetailView({
 						projectId={projectId}
 						environment={environment}
 						canWrite={canWrite}
+					/>
+				)}
+				{activeTab === "comments" && (
+					<EnvironmentCommentsTab
+						projectId={projectId}
+						environmentId={environmentId}
 					/>
 				)}
 			</div>

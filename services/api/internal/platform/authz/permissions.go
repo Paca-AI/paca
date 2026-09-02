@@ -63,6 +63,17 @@ const (
 	PermissionWorkflowsWrite Permission = "workflows.write"
 	PermissionWorkflowsAll   Permission = "workflows.*"
 
+	// PermissionAnnotationsResolve gates resolving/reopening a page
+	// annotation (a comment pinned via the Paca browser extension) without
+	// granting the ability to create or delete one — split from Write the
+	// same way PermissionEnvironmentsConnect is split from
+	// PermissionEnvironmentsWrite, so a role can triage/dismiss comments
+	// without being able to author or remove them.
+	PermissionAnnotationsRead    Permission = "annotations.read"
+	PermissionAnnotationsWrite   Permission = "annotations.write"
+	PermissionAnnotationsResolve Permission = "annotations.resolve"
+	PermissionAnnotationsAll     Permission = "annotations.*"
+
 	// PermissionSettingsWrite gates changes to instance-wide workspace
 	// branding (logo/favicon/primary color). There is no paired
 	// settings.read: the branding itself is served by an unauthenticated

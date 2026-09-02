@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "概览",
 				"folders": "文件夹",
-				"portForwards": "端口转发"
+				"portForwards": "端口转发",
+				"comments": "评论"
 			},
 			"overview": {
 				"connect": "连接",
@@ -479,6 +480,7 @@
 				"deleteFailed": "删除端口转发失败，请重试。",
 				"containerPort": "容器端口 {{port}}",
 				"unassigned": "尚未分配",
+				"open": "打开",
 				"restart": "重启",
 				"pendingRestartRunning": "已添加或删除了端口转发。请重启环境以应用更改。",
 				"pendingRestartStopped": "已添加或删除了端口转发。更改将在该环境下次启动时应用。",
@@ -503,6 +505,19 @@
 					"cancel": "取消",
 					"confirm": "重启"
 				}
+			},
+			"comments": {
+				"empty": "还没有评论。安装 Paca 浏览器扩展程序即可直接在此环境预览的元素上添加评论。",
+				"status": {
+					"open": "待处理",
+					"resolved": "已解决"
+				},
+				"replyCount_one": "{{count}} 条回复",
+				"replyCount_other": "{{count}} 条回复",
+				"resolve": "标记为已解决",
+				"reopen": "重新打开",
+				"createTask": "创建任务",
+				"taskCreated": "任务已创建"
 			},
 			"sshKeys": {
 				"connectHint": "将 <bastion-host> 替换为此部署配置的 SSH 堡垒机地址。",

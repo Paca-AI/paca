@@ -1,0 +1,25 @@
+{
+  "name": "@paca-ai/paca-extension",
+  "version": "0.1.0",
+  "description": "Paca browser extension — comment directly on elements of an environment preview and turn them into tasks, the same way Vercel's preview toolbar works.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite build --watch -c vite.config.content.ts",
+    "build": "tsc -b && vite build -c vite.config.content.ts && vite build -c vite.config.console-hook.ts && vite build -c vite.config.background.ts && vite build -c vite.config.options.ts && node scripts/copy-manifest.mjs",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/chrome": "^0.1.31",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.9"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Paca-AI/paca.git",
+    "directory": "apps/extension"
+  },
+  "license": "Apache-2.0"
+}

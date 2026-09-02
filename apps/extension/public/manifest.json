@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Paca — On-Page Comments",
+  "version": "0.1.0",
+  "description": "Comment directly on elements of a Paca environment preview, the same way Vercel's preview toolbar works, and turn comments into Paca tasks.",
+  "action": {
+    "default_popup": "options/index.html",
+    "default_title": "Paca"
+  },
+  "background": {
+    "service_worker": "background/index.js",
+    "type": "module"
+  },
+  "permissions": ["webRequest"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/index.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/console-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "minimum_chrome_version": "116"
+}

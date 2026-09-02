@@ -465,3 +465,104 @@ func TestRefresh_CookieMaxAge_ReflectsServiceTTL(t *testing.T) {
 	}
 	t.Fatal("refresh_token cookie not found in refresh response")
 }
+
+// ---------------------------------------------------------------------------
+// paca_port cookie — read by the Paca browser extension (apps/extension)
+// from a completely different page (an environment's forwarded preview),
+// so it must never be HttpOnly, and must reflect the port the client
+// actually used even when Paca isn't on 443/80.
+// ---------------------------------------------------------------------------
+
+func findCookie(t *testing.T, w *httptest.ResponseRecorder, name string) *http.Cookie {
+	t.Helper()
+	for _, c := range w.Result().Cookies() {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("%s cookie not found; got %v", name, w.Result().Cookies())
+	return nil
+}
+
+func TestLogin_SetsPacaPortCookie_NotHttpOnly(t *testing.T) {
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: 7 * 24 * time.Hour}, nil
+		},
+	}
+	r := chi.NewRouter()
+	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
+
+	c := findCookie(t, w, "paca_port")
+	if c.HttpOnly {
+		t.Error("paca_port must not be HttpOnly — the extension reads it via document.cookie")
+	}
+}
+
+func TestLogin_PacaPortCookie_FromHostHeader(t *testing.T) {
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: time.Hour}, nil
+		},
+	}
+	r := chi.NewRouter()
+	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "pc.paca-ai.org:3000"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	c := findCookie(t, w, "paca_port")
+	if c.Value != "3000" {
+		t.Errorf("paca_port = %q, want %q (from Host header)", c.Value, "3000")
+	}
+}
+
+func TestLogin_PacaPortCookie_PrefersXForwardedPort(t *testing.T) {
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: time.Hour}, nil
+		},
+	}
+	r := chi.NewRouter()
+	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "paca.example.com" // no port -- a reverse proxy fronting on 443 forwarding to an internal port
+	req.Header.Set("X-Forwarded-Port", "443")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	c := findCookie(t, w, "paca_port")
+	if c.Value != "443" {
+		t.Errorf("paca_port = %q, want %q (X-Forwarded-Port should take precedence)", c.Value, "443")
+	}
+}
+
+func TestLogin_PacaPortCookie_DefaultsWhenHostHasNoPort(t *testing.T) {
+	svc := &mockAuthSvc{
+		login: func(_ context.Context, _, _ string, _ bool) (*domainauth.TokenPair, error) {
+			return &domainauth.TokenPair{AccessToken: "at", RefreshToken: "rt", RefreshTTL: time.Hour}, nil
+		},
+	}
+	r := chi.NewRouter()
+	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
+
+	// httptest.NewRequest defaults req.Host to "example.com" (no port) and
+	// leaves req.TLS nil for a plain, non-HTTPS request.
+	w := do(t, r, http.MethodPost, "/auth/login",
+		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
+
+	c := findCookie(t, w, "paca_port")
+	if c.Value != "80" {
+		t.Errorf("paca_port = %q, want %q (default for a plain-HTTP request with no explicit port)", c.Value, "80")
+	}
+}

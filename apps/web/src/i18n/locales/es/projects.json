@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "Resumen",
 				"folders": "Carpetas",
-				"portForwards": "Reenvíos de puertos"
+				"portForwards": "Reenvíos de puertos",
+				"comments": "Comentarios"
 			},
 			"overview": {
 				"connect": "Conectar",
@@ -479,6 +480,7 @@
 				"deleteFailed": "No se pudo eliminar el reenvío de puerto. Inténtalo de nuevo.",
 				"containerPort": "Puerto del contenedor {{port}}",
 				"unassigned": "Aún no asignado",
+				"open": "Abrir",
 				"restart": "Reiniciar",
 				"pendingRestartRunning": "Se añadió o eliminó un reenvío de puerto. Reinicia el entorno para aplicarlo.",
 				"pendingRestartStopped": "Se añadió o eliminó un reenvío de puerto. Se aplicará la próxima vez que se inicie este entorno.",
@@ -503,6 +505,19 @@
 					"cancel": "Cancelar",
 					"confirm": "Reiniciar"
 				}
+			},
+			"comments": {
+				"empty": "Aún no hay comentarios. Instala la extensión de navegador de Paca para comentar directamente sobre elementos de la vista previa de este entorno.",
+				"status": {
+					"open": "Abierto",
+					"resolved": "Resuelto"
+				},
+				"replyCount_one": "{{count}} respuesta",
+				"replyCount_other": "{{count}} respuestas",
+				"resolve": "Resolver",
+				"reopen": "Reabrir",
+				"createTask": "Crear tarea",
+				"taskCreated": "Tarea creada"
 			},
 			"sshKeys": {
 				"connectHint": "Sustituye <bastion-host> por la dirección del bastión SSH configurado en este despliegue.",

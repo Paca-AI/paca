@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "概要",
 				"folders": "フォルダー",
-				"portForwards": "ポートフォワード"
+				"portForwards": "ポートフォワード",
+				"comments": "コメント"
 			},
 			"overview": {
 				"connect": "接続",
@@ -479,6 +480,7 @@
 				"deleteFailed": "ポートフォワードの削除に失敗しました。もう一度お試しください。",
 				"containerPort": "コンテナポート {{port}}",
 				"unassigned": "まだ割り当てられていません",
+				"open": "開く",
 				"restart": "再起動",
 				"pendingRestartRunning": "ポートフォワードが追加または削除されました。適用するには環境を再起動してください。",
 				"pendingRestartStopped": "ポートフォワードが追加または削除されました。次回この環境が起動するときに適用されます。",
@@ -503,6 +505,19 @@
 					"cancel": "キャンセル",
 					"confirm": "再起動"
 				}
+			},
+			"comments": {
+				"empty": "コメントはまだありません。Paca ブラウザ拡張機能をインストールすると、この環境のプレビューの要素に直接コメントできます。",
+				"status": {
+					"open": "未解決",
+					"resolved": "解決済み"
+				},
+				"replyCount_one": "{{count}} 件の返信",
+				"replyCount_other": "{{count}} 件の返信",
+				"resolve": "解決",
+				"reopen": "再オープン",
+				"createTask": "タスクを作成",
+				"taskCreated": "タスクを作成しました"
 			},
 			"sshKeys": {
 				"connectHint": "<bastion-host> を、このデプロイで設定されたSSH踏み台のアドレスに置き換えてください。",

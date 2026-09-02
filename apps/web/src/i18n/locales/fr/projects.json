@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "Aperçu",
 				"folders": "Dossiers",
-				"portForwards": "Transferts de ports"
+				"portForwards": "Transferts de ports",
+				"comments": "Commentaires"
 			},
 			"overview": {
 				"connect": "Se connecter",
@@ -479,6 +480,7 @@
 				"deleteFailed": "Échec de la suppression du transfert de port. Veuillez réessayer.",
 				"containerPort": "Port du conteneur {{port}}",
 				"unassigned": "Pas encore assigné",
+				"open": "Ouvrir",
 				"restart": "Redémarrer",
 				"pendingRestartRunning": "Un transfert de port a été ajouté ou supprimé. Redémarrez l'environnement pour l'appliquer.",
 				"pendingRestartStopped": "Un transfert de port a été ajouté ou supprimé. Il sera appliqué au prochain démarrage de cet environnement.",
@@ -503,6 +505,19 @@
 					"cancel": "Annuler",
 					"confirm": "Redémarrer"
 				}
+			},
+			"comments": {
+				"empty": "Pas encore de commentaires. Installez l'extension de navigateur Paca pour commenter directement les éléments de l'aperçu de cet environnement.",
+				"status": {
+					"open": "Ouvert",
+					"resolved": "Résolu"
+				},
+				"replyCount_one": "{{count}} réponse",
+				"replyCount_other": "{{count}} réponses",
+				"resolve": "Résoudre",
+				"reopen": "Rouvrir",
+				"createTask": "Créer une tâche",
+				"taskCreated": "Tâche créée"
 			},
 			"sshKeys": {
 				"connectHint": "Remplacez <bastion-host> par l'adresse du bastion SSH configuré sur ce déploiement.",

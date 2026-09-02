@@ -405,7 +405,8 @@
 			"tabs": {
 				"overview": "개요",
 				"folders": "폴더",
-				"portForwards": "포트 포워드"
+				"portForwards": "포트 포워드",
+				"comments": "댓글"
 			},
 			"overview": {
 				"connect": "연결",
@@ -479,6 +480,7 @@
 				"deleteFailed": "포트 포워드를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"containerPort": "컨테이너 포트 {{port}}",
 				"unassigned": "아직 할당되지 않음",
+				"open": "열기",
 				"restart": "재시작",
 				"pendingRestartRunning": "포트 포워드가 추가되거나 삭제되었습니다. 적용하려면 환경을 재시작하세요.",
 				"pendingRestartStopped": "포트 포워드가 추가되거나 삭제되었습니다. 이 환경이 다음에 시작될 때 적용됩니다.",
@@ -503,6 +505,19 @@
 					"cancel": "취소",
 					"confirm": "재시작"
 				}
+			},
+			"comments": {
+				"empty": "아직 댓글이 없습니다. Paca 브라우저 확장 프로그램을 설치하면 이 환경 미리보기의 요소에 직접 댓글을 남길 수 있습니다.",
+				"status": {
+					"open": "열림",
+					"resolved": "해결됨"
+				},
+				"replyCount_one": "답글 {{count}}개",
+				"replyCount_other": "답글 {{count}}개",
+				"resolve": "해결",
+				"reopen": "다시 열기",
+				"createTask": "작업 생성",
+				"taskCreated": "작업이 생성됨"
 			},
 			"sshKeys": {
 				"connectHint": "<bastion-host>를 이 배포에 구성된 SSH 배스천 주소로 바꾸세요.",
