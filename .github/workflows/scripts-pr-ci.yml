@@ -5,6 +5,8 @@ on:
     paths:
       - "scripts/install.sh"
       - "scripts/upgrade.sh"
+      - "scripts/install-paca-skills.sh"
+      - "docs/guides/install-skills.md"
       - "deploy/docker-compose.prod.yml"
       - "deploy/caddy/Caddyfile"
       - ".github/workflows/scripts-pr-ci.yml"
@@ -33,7 +35,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run shellcheck
-        run: shellcheck --shell=bash scripts/install.sh scripts/upgrade.sh
+        run: shellcheck --shell=bash scripts/install.sh scripts/upgrade.sh scripts/install-paca-skills.sh
 
   # ---------------------------------------------------------------------------
   # 2. install.sh smoke test — runs the real script fully non-interactively
@@ -241,3 +243,108 @@ jobs:
             exit 1
           fi
           echo "All upgrade.sh migration assertions passed."
+
+  # ---------------------------------------------------------------------------
+  # 4. install-paca-skills.sh smoke test — runs the real script fully
+  #    non-interactively against a tiny local HTTP server that serves fixed
+  #    fixture JSON for GET /api/v1/skills and GET /api/v1/plugins (rather
+  #    than stubbing curl/wget like upgrade-smoke's fake docker — the script's
+  #    own real curl/wget calls hit this fixture server for real). Asserts
+  #    that every native-folder target (Claude Code, Gemini CLI, Cursor) gets
+  #    a byte-for-byte-verbatim SKILL.md — the whole point of the non-lossy
+  #    change this job exists to guard — and that AGENTS.md still gets its
+  #    frontmatter-stripped section.
+  # ---------------------------------------------------------------------------
+  install-paca-skills-smoke:
+    name: install-paca-skills.sh smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Start a fake Paca API serving fixture skills
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fixture"
+          cat <<'JSON' > "$RUNNER_TEMP/fixture/skills.json"
+          {"success":true,"data":{"skills":[
+            {"name":"paca-fixture-one","path":"paca-fixture-one/SKILL.md","content":"---\nname: paca-fixture-one\ndescription: A fixture skill used only by CI to verify non-lossy install.\ntriggers:\n  - /paca-fixture-one\n---\n\nFixture body one.\n"},
+            {"name":"paca-fixture-two","path":"paca-fixture-two/SKILL.md","content":"---\nname: paca-fixture-two\ndescription: A second fixture skill with no triggers (always-active).\n---\n\nFixture body two.\n"}
+          ]}}
+          JSON
+          echo '{"success":true,"data":{"plugins":[]}}' > "$RUNNER_TEMP/fixture/plugins.json"
+          cat <<'PY' > "$RUNNER_TEMP/fixture/server.py"
+          import http.server, sys, pathlib
+          port = int(sys.argv[1])
+          fixture_dir = pathlib.Path(sys.argv[2])
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == "/api/v1/skills":
+                      body = (fixture_dir / "skills.json").read_bytes()
+                  elif self.path == "/api/v1/plugins":
+                      body = (fixture_dir / "plugins.json").read_bytes()
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, *args):
+                  pass
+          http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+          PY
+          python3 "$RUNNER_TEMP/fixture/server.py" 8933 "$RUNNER_TEMP/fixture" &
+          echo $! > "$RUNNER_TEMP/fixture/server.pid"
+          for _ in $(seq 1 20); do
+            curl -fsS "http://127.0.0.1:8933/api/v1/skills" >/dev/null 2>&1 && break
+            sleep 0.2
+          done
+
+      - name: Run install-paca-skills.sh against the fixture server
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/fakehome"
+          mkdir -p "$HOME"
+          WORK="$RUNNER_TEMP/fixture-project"
+          mkdir -p "$WORK"
+          cd "$WORK"
+          git init -q
+          PACA_API_URL="http://127.0.0.1:8933" bash "$GITHUB_WORKSPACE/scripts/install-paca-skills.sh" --platforms=claude,gemini,cursor,agents
+
+      - name: Verify non-lossy SKILL.md folders were written for every native target
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/fakehome"
+          WORK="$RUNNER_TEMP/fixture-project"
+          for target_dir in "$HOME/.claude/skills" "$HOME/.gemini/skills" "$WORK/.cursor/skills"; do
+            for name in paca-fixture-one paca-fixture-two; do
+              f="$target_dir/$name/SKILL.md"
+              test -f "$f" || { echo "missing $f" >&2; exit 1; }
+              grep -qx "name: $name" "$f" || { echo "$f missing/invalid frontmatter name" >&2; exit 1; }
+            done
+          done
+          python3 -c "
+          import json
+          with open('$RUNNER_TEMP/fixture/skills.json') as fh:
+              want = json.load(fh)['data']['skills'][0]['content']
+          with open('$HOME/.claude/skills/paca-fixture-one/SKILL.md') as fh:
+              got = fh.read()
+          assert got == want, f'content mismatch:\n--- want ---\n{want!r}\n--- got ---\n{got!r}'
+          "
+          grep -q "BEGIN PACA SKILLS" "$WORK/AGENTS.md"
+          grep -q "paca-fixture-one" "$WORK/AGENTS.md"
+          if grep -qx -- "---" "$WORK/AGENTS.md"; then
+            echo "AGENTS.md should never contain a raw frontmatter fence line" >&2
+            exit 1
+          fi
+          echo "All install-paca-skills.sh non-lossy assertions passed."
+
+      - name: Stop fake API server
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/fixture/server.pid")" 2>/dev/null || true
