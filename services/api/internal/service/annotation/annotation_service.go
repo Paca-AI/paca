@@ -115,6 +115,7 @@ func (s *Service) checkPortForward(ctx context.Context, projectID, environmentID
 	return err
 }
 
+// ListForPage returns every annotation on pagePath within portForwardID.
 func (s *Service) ListForPage(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
 	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
@@ -122,6 +123,8 @@ func (s *Service) ListForPage(ctx context.Context, projectID, environmentID, por
 	return s.repo.ListForPage(ctx, portForwardID, pagePath)
 }
 
+// ListForPortForward returns every annotation across every page portForwardID
+// serves.
 func (s *Service) ListForPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
 	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
@@ -129,14 +132,19 @@ func (s *Service) ListForPortForward(ctx context.Context, projectID, environment
 	return s.repo.ListForPortForward(ctx, portForwardID)
 }
 
+// Get returns annotationID if it belongs to projectID.
 func (s *Service) Get(ctx context.Context, projectID, annotationID uuid.UUID) (*annotationdom.PageAnnotation, error) {
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 }
 
+// SearchInProject returns annotations across the whole project matching
+// filter, project-wide (not scoped to one port forward) — see
+// annotationdom.SearchFilter.
 func (s *Service) SearchInProject(ctx context.Context, projectID uuid.UUID, filter annotationdom.SearchFilter) ([]*annotationdom.PageAnnotation, bool, error) {
 	return s.repo.SearchInProject(ctx, projectID, filter)
 }
 
+// Create adds a new page annotation.
 func (s *Service) Create(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in annotationdom.CreateAnnotationInput) (*annotationdom.PageAnnotation, error) {
 	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
@@ -189,6 +197,7 @@ func (s *Service) Create(ctx context.Context, projectID, environmentID, portForw
 	return a, nil
 }
 
+// Resolve marks an annotation resolved.
 func (s *Service) Resolve(ctx context.Context, projectID, annotationID, resolvedBy uuid.UUID) (*annotationdom.PageAnnotation, error) {
 	if _, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID); err != nil {
 		return nil, err
@@ -200,6 +209,7 @@ func (s *Service) Resolve(ctx context.Context, projectID, annotationID, resolved
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 }
 
+// Reopen moves a resolved annotation back to open.
 func (s *Service) Reopen(ctx context.Context, projectID, annotationID uuid.UUID) (*annotationdom.PageAnnotation, error) {
 	if _, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID); err != nil {
 		return nil, err
@@ -210,6 +220,7 @@ func (s *Service) Reopen(ctx context.Context, projectID, annotationID uuid.UUID)
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 }
 
+// AddComment appends a reply to an annotation's thread.
 func (s *Service) AddComment(ctx context.Context, projectID, annotationID, createdBy uuid.UUID, body string) (*annotationdom.AnnotationComment, error) {
 	if strings.TrimSpace(body) == "" {
 		return nil, annotationdom.ErrCommentBodyEmpty
@@ -232,6 +243,9 @@ func (s *Service) AddComment(ctx context.Context, projectID, annotationID, creat
 	return c, nil
 }
 
+// CreateTaskFromAnnotation creates a task pre-filled from an annotation's
+// canonical link (see buildTaskDescription) and links the two together —
+// errors if the annotation already has one.
 func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annotationID uuid.UUID, in annotationdom.CreateTaskFromAnnotationInput) (*annotationdom.PageAnnotation, error) {
 	a, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 	if err != nil {
@@ -279,6 +293,8 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 }
 
+// InitiateScreenshotUpload creates a pending file record and returns a
+// presigned URL the client can PUT the screenshot bytes to directly.
 func (s *Service) InitiateScreenshotUpload(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in annotationdom.InitiateScreenshotUploadInput) (*annotationdom.ScreenshotUploadSession, error) {
 	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
@@ -314,10 +330,14 @@ func (s *Service) CompleteScreenshotUpload(ctx context.Context, projectID, annot
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 }
 
+// ResolvePortForward looks up which project/environment/port-forward
+// currently owns hostPort, scoped to projects userID is a member of.
 func (s *Service) ResolvePortForward(ctx context.Context, userID uuid.UUID, hostPort int) (*annotationdom.PortForwardMatch, error) {
 	return s.repo.ResolvePortForward(ctx, userID, hostPort)
 }
 
+// GetScreenshotURL returns a presigned GET URL for an annotation's uploaded
+// screenshot.
 func (s *Service) GetScreenshotURL(ctx context.Context, projectID, annotationID uuid.UUID) (string, error) {
 	a, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 	if err != nil {

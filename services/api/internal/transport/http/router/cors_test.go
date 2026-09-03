@@ -42,7 +42,7 @@ func TestCORSMiddleware_SameHostnameGetsCredentialedAccess(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
 	req.Host = "paca.example.com"
 	req.Header.Set("Origin", "http://paca.example.com:31842")
 	rec := httptest.NewRecorder()
@@ -66,7 +66,7 @@ func TestCORSMiddleware_UnrelatedOriginUnaffected(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
 	req.Host = "paca.example.com"
 	req.Header.Set("Origin", "https://evil.example.com")
 	rec := httptest.NewRecorder()
@@ -89,7 +89,7 @@ func TestCORSMiddleware_AllowListedOriginUnaffected(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
 	req.Host = "paca.example.com"
 	req.Header.Set("Origin", "https://app.other.com")
 	rec := httptest.NewRecorder()

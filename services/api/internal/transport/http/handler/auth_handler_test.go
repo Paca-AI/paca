@@ -511,7 +511,7 @@ func TestLogin_PacaPortCookie_FromHostHeader(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/login",
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/login",
 		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
 	req.Header.Set("Content-Type", "application/json")
 	req.Host = "pc.paca-ai.org:3000"
@@ -533,7 +533,7 @@ func TestLogin_PacaPortCookie_PrefersXForwardedPort(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/auth/login", handler.NewAuthHandler(svc, testCookieConfig).Login)
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/login",
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/login",
 		jsonBody(t, map[string]string{"username": "alice", "password": "secret12"}))
 	req.Header.Set("Content-Type", "application/json")
 	req.Host = "paca.example.com" // no port -- a reverse proxy fronting on 443 forwarding to an internal port

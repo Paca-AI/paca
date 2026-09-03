@@ -87,6 +87,8 @@ func NewAnnotationRepository(db *sqlx.DB) *AnnotationRepository {
 	return &AnnotationRepository{db: db}
 }
 
+// ListForPage returns every annotation on pagePath within portForwardID,
+// oldest first.
 func (r *AnnotationRepository) ListForPage(ctx context.Context, portForwardID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
 	var recs []pageAnnotationRecord
 	err := r.db.SelectContext(ctx, &recs, `
@@ -100,6 +102,8 @@ func (r *AnnotationRepository) ListForPage(ctx context.Context, portForwardID uu
 	return r.hydrateAll(ctx, recs)
 }
 
+// ListForPortForward returns every annotation across every page portForwardID
+// serves, newest first.
 func (r *AnnotationRepository) ListForPortForward(ctx context.Context, portForwardID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
 	var recs []pageAnnotationRecord
 	err := r.db.SelectContext(ctx, &recs, `
@@ -113,6 +117,8 @@ func (r *AnnotationRepository) ListForPortForward(ctx context.Context, portForwa
 	return r.hydrateAll(ctx, recs)
 }
 
+// FindVisibleInProject returns annotationID if it belongs to projectID,
+// or ErrAnnotationNotFound otherwise.
 func (r *AnnotationRepository) FindVisibleInProject(ctx context.Context, projectID, annotationID uuid.UUID) (*annotationdom.PageAnnotation, error) {
 	var rec pageAnnotationRecord
 	err := r.db.GetContext(ctx, &rec, `
@@ -197,6 +203,7 @@ func (r *AnnotationRepository) SearchInProject(ctx context.Context, projectID uu
 	return result, hasMore, err
 }
 
+// Create inserts a new page annotation.
 func (r *AnnotationRepository) Create(ctx context.Context, a *annotationdom.PageAnnotation) error {
 	fallbacks, err := json.Marshal(a.SelectorFallbacks)
 	if err != nil {
@@ -235,6 +242,8 @@ func (r *AnnotationRepository) Create(ctx context.Context, a *annotationdom.Page
 	return nil
 }
 
+// SetScreenshotFileID attaches an already-uploaded screenshot file to
+// annotation id.
 func (r *AnnotationRepository) SetScreenshotFileID(ctx context.Context, id, fileID uuid.UUID) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE page_annotations SET screenshot_file_id = $1, updated_at = $2
@@ -251,6 +260,7 @@ func (r *AnnotationRepository) SetScreenshotFileID(ctx context.Context, id, file
 	return nil
 }
 
+// SetStatus updates annotation id's resolved status.
 func (r *AnnotationRepository) SetStatus(ctx context.Context, id uuid.UUID, status string, resolvedBy *uuid.UUID, resolvedAt *time.Time) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE page_annotations SET status = $1, resolved_by = $2, resolved_at = $3, updated_at = $4
@@ -267,6 +277,7 @@ func (r *AnnotationRepository) SetStatus(ctx context.Context, id uuid.UUID, stat
 	return nil
 }
 
+// SetTaskID records the task created from annotation id.
 func (r *AnnotationRepository) SetTaskID(ctx context.Context, id, taskID uuid.UUID) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE page_annotations SET task_id = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`,
@@ -282,6 +293,7 @@ func (r *AnnotationRepository) SetTaskID(ctx context.Context, id, taskID uuid.UU
 	return nil
 }
 
+// AddComment appends a reply to an annotation's thread.
 func (r *AnnotationRepository) AddComment(ctx context.Context, c *annotationdom.AnnotationComment) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO page_annotation_comments (id, annotation_id, body, created_by, created_at, updated_at)
@@ -294,6 +306,9 @@ func (r *AnnotationRepository) AddComment(ctx context.Context, c *annotationdom.
 	return nil
 }
 
+// CreatePendingScreenshotFile records a files row for a screenshot upload
+// that's about to happen, in "pending" status until MarkScreenshotFileUploaded
+// confirms it landed.
 func (r *AnnotationRepository) CreatePendingScreenshotFile(ctx context.Context, fileID, uploadedBy uuid.UUID, storageKey, bucket, fileName, contentType string, fileSize int64) error {
 	now := time.Now()
 	_, err := r.db.ExecContext(ctx, `
@@ -307,6 +322,8 @@ func (r *AnnotationRepository) CreatePendingScreenshotFile(ctx context.Context, 
 	return nil
 }
 
+// MarkScreenshotFileUploaded flips a pending screenshot file to "uploaded"
+// once the client's direct-to-object-store PUT has completed.
 func (r *AnnotationRepository) MarkScreenshotFileUploaded(ctx context.Context, fileID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE files SET upload_status = 'uploaded', updated_at = $1 WHERE id = $2 AND upload_status = 'pending'`,
