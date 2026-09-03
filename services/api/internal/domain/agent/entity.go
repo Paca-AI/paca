@@ -253,6 +253,7 @@ const (
 	ContextItemDoc          ContextItemType = "doc"
 	ContextItemConversation ContextItemType = "conversation"
 	ContextItemAutomation   ContextItemType = "automation"
+	ContextItemAnnotation   ContextItemType = "annotation"
 )
 
 // ContextItemRef is a reference to a Task, Doc, Conversation, or Automation
@@ -299,7 +300,7 @@ func ValidateContextItems(items []ContextItemRef) error {
 	}
 	for i, item := range items {
 		switch item.Type {
-		case ContextItemTask, ContextItemDoc, ContextItemConversation, ContextItemAutomation:
+		case ContextItemTask, ContextItemDoc, ContextItemConversation, ContextItemAutomation, ContextItemAnnotation:
 		default:
 			return fmt.Errorf("context_items[%d]: unknown type %q", i, item.Type)
 		}

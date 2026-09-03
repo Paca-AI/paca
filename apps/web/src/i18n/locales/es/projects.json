@@ -348,6 +348,7 @@
 				"contextTypeDoc": "Documento",
 				"contextTypeConversation": "Conversación",
 				"contextTypeAutomation": "Automatización",
+				"contextTypeAnnotation": "Comentario",
 				"noContextResults": "No se encontraron resultados",
 				"contextSearchMinChars": "Escribe al menos 2 caracteres para buscar"
 			}
@@ -479,6 +480,7 @@
 				"deleteFailed": "No se pudo eliminar el reenvío de puerto. Inténtalo de nuevo.",
 				"containerPort": "Puerto del contenedor {{port}}",
 				"unassigned": "Aún no asignado",
+				"open": "Abrir",
 				"restart": "Reiniciar",
 				"pendingRestartRunning": "Se añadió o eliminó un reenvío de puerto. Reinicia el entorno para aplicarlo.",
 				"pendingRestartStopped": "Se añadió o eliminó un reenvío de puerto. Se aplicará la próxima vez que se inicie este entorno.",
@@ -1226,6 +1228,77 @@
 			"watchSession": "Ver sesión",
 			"madeChange": "hizo un cambio",
 			"descriptionChangeDiff": "Diferencias del cambio de descripción"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Reenvío de puerto no encontrado",
+			"description": "Este reenvío de puerto pudo haber sido eliminado o el enlace no es válido.",
+			"ariaLabel": "Detalle del reenvío de puerto",
+			"backToEnvironment": "Volver al entorno"
+		},
+		"tabs": {
+			"overview": "Resumen",
+			"comments": "Comentarios"
+		},
+		"overview": {
+			"containerPort": "Puerto del contenedor {{port}}",
+			"hostPort": "Puerto de host",
+			"unassigned": "Aún no asignado",
+			"createdAt": "Creado el {{date}}",
+			"open": "Abrir",
+			"delete": "Eliminar",
+			"deleteDialog": {
+				"title": "¿Eliminar el reenvío de puerto?",
+				"description_one": "Esto también elimina {{count}} comentario realizado a través de este reenvío de puerto. Esta acción no se puede deshacer.",
+				"description_other": "Esto también elimina {{count}} comentarios realizados a través de este reenvío de puerto. Esta acción no se puede deshacer.",
+				"cancel": "Cancelar",
+				"confirm": "Eliminar"
+			}
+		},
+		"comments": {
+			"empty": "Aún no hay comentarios. Instala la extensión de navegador de Paca para comentar directamente sobre elementos de la vista previa de este reenvío de puerto.",
+			"status": {
+				"open": "Abierto",
+				"resolved": "Resuelto"
+			},
+			"replyCount_one": "{{count}} respuesta",
+			"replyCount_other": "{{count}} respuestas",
+			"resolve": "Resolver",
+			"reopen": "Reabrir",
+			"createTask": "Crear tarea",
+			"taskCreated": "Tarea creada"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Comentario no encontrado",
+			"description": "Este comentario pudo haber sido eliminado o el enlace no es válido.",
+			"ariaLabel": "Detalle del comentario",
+			"backToPortForward": "Volver al reenvío de puerto"
+		},
+		"header": {
+			"createdAt": "Comentado el {{date}}"
+		},
+		"context": {
+			"title": "Contexto",
+			"pagePath": "Página",
+			"elementSelector": "Selector de elemento",
+			"accessibleName": "Nombre accesible",
+			"consoleErrors": "Errores de consola",
+			"noConsoleErrors": "No se capturaron errores de consola",
+			"failedRequests": "Solicitudes fallidas",
+			"noFailedRequests": "No se capturaron solicitudes fallidas"
+		},
+		"thread": {
+			"replyPlaceholder": "Escribe una respuesta…",
+			"reply": "Responder"
+		},
+		"actions": {
+			"create": "Crear",
+			"createConversation": "Crear conversación",
+			"copyLink": "Copiar enlace",
+			"linkCopied": "¡Copiado!"
 		}
 	},
 	"epicPicker": {

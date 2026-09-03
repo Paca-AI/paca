@@ -348,6 +348,7 @@
 				"contextTypeDoc": "문서",
 				"contextTypeConversation": "대화",
 				"contextTypeAutomation": "자동화",
+				"contextTypeAnnotation": "댓글",
 				"noContextResults": "결과를 찾을 수 없습니다",
 				"contextSearchMinChars": "검색하려면 2자 이상 입력하세요"
 			}
@@ -479,6 +480,7 @@
 				"deleteFailed": "포트 포워드를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"containerPort": "컨테이너 포트 {{port}}",
 				"unassigned": "아직 할당되지 않음",
+				"open": "열기",
 				"restart": "재시작",
 				"pendingRestartRunning": "포트 포워드가 추가되거나 삭제되었습니다. 적용하려면 환경을 재시작하세요.",
 				"pendingRestartStopped": "포트 포워드가 추가되거나 삭제되었습니다. 이 환경이 다음에 시작될 때 적용됩니다.",
@@ -1226,6 +1228,77 @@
 			"watchSession": "세션 지켜보기",
 			"madeChange": "변경했습니다",
 			"descriptionChangeDiff": "설명 변경 차이"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "포트 포워드를 찾을 수 없습니다",
+			"description": "이 포트 포워드가 삭제되었거나 링크가 유효하지 않습니다.",
+			"ariaLabel": "포트 포워드 세부 정보",
+			"backToEnvironment": "환경으로 돌아가기"
+		},
+		"tabs": {
+			"overview": "개요",
+			"comments": "댓글"
+		},
+		"overview": {
+			"containerPort": "컨테이너 포트 {{port}}",
+			"hostPort": "호스트 포트",
+			"unassigned": "아직 할당되지 않음",
+			"createdAt": "{{date}}에 생성됨",
+			"open": "열기",
+			"delete": "삭제",
+			"deleteDialog": {
+				"title": "포트 포워드를 삭제하시겠습니까?",
+				"description_one": "이 작업은 이 포트 포워드를 통해 작성된 댓글 {{count}}개도 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+				"description_other": "이 작업은 이 포트 포워드를 통해 작성된 댓글 {{count}}개도 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+				"cancel": "취소",
+				"confirm": "삭제"
+			}
+		},
+		"comments": {
+			"empty": "아직 댓글이 없습니다. Paca 브라우저 확장 프로그램을 설치하면 이 포트 포워드 미리보기의 요소에 직접 댓글을 남길 수 있습니다.",
+			"status": {
+				"open": "열림",
+				"resolved": "해결됨"
+			},
+			"replyCount_one": "답글 {{count}}개",
+			"replyCount_other": "답글 {{count}}개",
+			"resolve": "해결",
+			"reopen": "다시 열기",
+			"createTask": "작업 생성",
+			"taskCreated": "작업이 생성됨"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "댓글을 찾을 수 없습니다",
+			"description": "이 댓글이 삭제되었거나 링크가 유효하지 않습니다.",
+			"ariaLabel": "댓글 세부 정보",
+			"backToPortForward": "포트 포워드로 돌아가기"
+		},
+		"header": {
+			"createdAt": "{{date}}에 댓글 작성됨"
+		},
+		"context": {
+			"title": "컨텍스트",
+			"pagePath": "페이지",
+			"elementSelector": "요소 선택자",
+			"accessibleName": "접근성 이름",
+			"consoleErrors": "콘솔 오류",
+			"noConsoleErrors": "캡처된 콘솔 오류가 없습니다",
+			"failedRequests": "실패한 요청",
+			"noFailedRequests": "캡처된 실패 요청이 없습니다"
+		},
+		"thread": {
+			"replyPlaceholder": "답글 작성…",
+			"reply": "답글"
+		},
+		"actions": {
+			"create": "생성",
+			"createConversation": "대화 생성",
+			"copyLink": "링크 복사",
+			"linkCopied": "복사됨!"
 		}
 	},
 	"epicPicker": {

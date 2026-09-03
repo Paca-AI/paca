@@ -460,6 +460,28 @@ func (h *EnvironmentHandler) ListPortForwards(w http.ResponseWriter, r *http.Req
 	presenter.OK(w, r, map[string]any{"port_forwards": resp})
 }
 
+// GetPortForward handles GET
+// /projects/:projectId/environments/:environmentId/port-forwards/:portForwardId
+// — backs the web app's port-forward detail page.
+func (h *EnvironmentHandler) GetPortForward(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	portForwardID, err := parseParamUUID(r, "portForwardId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	pf, err := h.svc.GetPortForward(r.Context(), projectID, environmentID, portForwardID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.EnvironmentPortForwardFromEntity(pf))
+}
+
 // AddPortForward handles POST
 // /projects/:projectId/environments/:environmentId/port-forwards.
 func (h *EnvironmentHandler) AddPortForward(w http.ResponseWriter, r *http.Request) {

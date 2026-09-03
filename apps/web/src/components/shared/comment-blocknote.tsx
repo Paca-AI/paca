@@ -6,7 +6,9 @@ import { SideMenuController, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useThemeMode } from "@/hooks/use-theme-mode";
+import { matchAnnotationLinkOnly } from "@/lib/annotation-link";
 import { useMentionData } from "@/lib/mention-api";
+import { createAnnotationPasteHandler } from "./blocknote-annotation-paste-handler";
 import { CustomSideMenu } from "./blocknote-custom-side-menu";
 import { customSchema } from "./blocknote-schema";
 import { MentionSuggestionMenus } from "./mention-suggestion-menus";
@@ -33,6 +35,7 @@ export const CommentEditor = forwardRef<
 
 	const editor = useCreateBlockNote({
 		schema: customSchema,
+		pasteHandler: createAnnotationPasteHandler(),
 		initialContent:
 			initialBlocks && initialBlocks.length > 0
 				? (initialBlocks as PartialBlock[])
@@ -163,7 +166,9 @@ export function isBlocksContent(content: unknown): content is unknown[] {
  * paragraph block so it stays visible instead of silently disappearing.
  */
 export function normalizeBlockContent(content: unknown): unknown[] {
-	if (Array.isArray(content)) return convertMermaidCodeBlocks(content);
+	if (Array.isArray(content)) {
+		return convertAnnotationLinks(convertMermaidCodeBlocks(content));
+	}
 	if (typeof content === "string" && content.trim().length > 0) {
 		return textToBlocks(content);
 	}
@@ -204,6 +209,57 @@ export function convertMermaidCodeBlocks(blocks: unknown[]): unknown[] {
 			: "";
 		changed = true;
 		return { type: "mermaid", props: { code }, content: [] };
+	});
+	return changed ? out : blocks;
+}
+
+/**
+ * Rewrites any `paragraph` whose text is (or contains) a comment-detail-page
+ * URL into the custom `annotationCard` block, so a task/doc description
+ * generated with just that link (see services/api's
+ * annotation_service.go/task_description.go — CreateTaskFromAnnotation
+ * deliberately writes only the URL, not the comment body/page/console/
+ * network context as text) renders the rich, live-fetching preview instead
+ * of a bare link. Same load-path trick as convertMermaidCodeBlocks — this
+ * runs via normalizeBlockContent, so an unconverted link already stored in a
+ * doc (or one the paste handler somehow missed) still upgrades once the
+ * content reloads. Pure and shallow (top-level blocks only), matching
+ * convertMermaidCodeBlocks's own scope.
+ *
+ * Uses matchAnnotationLinkOnly, not matchAnnotationLink's plain substring
+ * search: this replaces the *entire* paragraph block, so it must only fire
+ * when the paragraph is nothing but the link itself (the actual shape
+ * CreateTaskFromAnnotation's description generates) — matching on a link
+ * merely present somewhere inside a longer sentence would silently drop
+ * the rest of that sentence every time the content reloads.
+ */
+export function convertAnnotationLinks(blocks: unknown[]): unknown[] {
+	let changed = false;
+	const out = blocks.map((b) => {
+		if (!b || typeof b !== "object") return b;
+		const block = b as {
+			type?: string;
+			content?: Array<{ type?: string; text?: string }>;
+		};
+		if (block.type !== "paragraph" || !Array.isArray(block.content)) {
+			return b;
+		}
+		const text = block.content
+			.map((c) => (c?.type === "text" ? (c.text ?? "") : ""))
+			.join("");
+		const match = matchAnnotationLinkOnly(text);
+		if (!match) return b;
+		changed = true;
+		return {
+			type: "annotationCard",
+			props: {
+				id: match.annotationId,
+				projectId: match.projectId,
+				environmentId: match.environmentId,
+				portForwardId: match.portForwardId,
+			},
+			content: [],
+		};
 	});
 	return changed ? out : blocks;
 }

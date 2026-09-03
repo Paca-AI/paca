@@ -59,6 +59,7 @@ import {
 	environmentFoldersQueryOptions,
 	environmentPortForwardsQueryOptions,
 	environmentQueryOptions,
+	portForwardUrl,
 	restartEnvironment,
 	startEnvironment,
 	stopEnvironment,
@@ -754,7 +755,17 @@ function PortForwardsTab({
 							<div className="flex items-center gap-3 min-w-0 flex-1">
 								<Network className="size-4 text-muted-foreground shrink-0" />
 								<div className="min-w-0 flex-1">
-									<p className="text-sm font-medium truncate">{pf.label}</p>
+									<Link
+										to="/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId"
+										params={{
+											projectId,
+											environmentId: environment.id,
+											portForwardId: pf.id,
+										}}
+										className="text-sm font-medium truncate hover:underline block"
+									>
+										{pf.label}
+									</Link>
 									<p className="text-xs text-muted-foreground font-mono">
 										{t("environments.detail.portForwards.containerPort", {
 											port: pf.container_port,
@@ -764,11 +775,31 @@ function PortForwardsTab({
 							</div>
 							<div className="flex items-center gap-2 shrink-0">
 								{pf.host_port !== null ? (
-									<div className="w-80">
-										<CommandBox
-											command={`${host ?? "<host>"}:${pf.host_port}`}
-										/>
-									</div>
+									<>
+										<div className="w-80">
+											<CommandBox
+												command={`${host ?? "<host>"}:${pf.host_port}`}
+											/>
+										</div>
+										{host && (
+											<Button
+												variant="ghost"
+												size="icon"
+												className="size-7 text-muted-foreground shrink-0"
+												title={t("environments.detail.portForwards.open")}
+												onClick={() => {
+													if (pf.host_port === null) return;
+													window.open(
+														portForwardUrl(host, pf.host_port),
+														"_blank",
+														"noopener,noreferrer",
+													);
+												}}
+											>
+												<ExternalLink className="size-3.5" />
+											</Button>
+										)}
+									</>
 								) : (
 									<span className="text-xs text-muted-foreground">
 										{t("environments.detail.portForwards.unassigned")}

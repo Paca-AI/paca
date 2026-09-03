@@ -162,13 +162,56 @@ interface InProgressMessage {
 	id: string;
 	createdAt: Date;
 	parts: MutablePart[];
-	// Keyed by tool_call_id so a later ObservationEvent can attach its result
-	// to the ActionEvent's tool-call part within the same turn.
-	openToolCalls: Map<string, MutableToolCallPart>;
+	// Keyed by tool_call_id so a later ObservationEvent/tool_call_update can
+	// attach its result to the matching tool-call part within the same
+	// turn. A plain array, not a single part, per id: the ActionEvent/
+	// ObservationEvent and ACPToolCallEvent vocabularies below only ever
+	// keep exactly one entry per id (by their own protocol's guarantee —
+	// ids aren't reused for genuinely different calls there), but the
+	// tool_call/tool_call_update vocabulary's own agents CAN reuse a raw id
+	// across unrelated, potentially still-overlapping calls — see
+	// nextToolCallId's doc comment — so its handler below treats this as a
+	// FIFO queue instead of a single slot, or a second still-open call
+	// under a reused id would silently steal/overwrite the first one's
+	// update.
+	openToolCalls: Map<string, MutableToolCallPart[]>;
+	// How many tool-call parts have already been started under each raw
+	// tool_call_id in this message — see nextToolCallId's own doc comment.
+	toolCallStarts: Map<string, number>;
 }
 
 function startAssistantMessage(id: string, createdAt: Date): InProgressMessage {
-	return { id, createdAt, parts: [], openToolCalls: new Map() };
+	return {
+		id,
+		createdAt,
+		parts: [],
+		openToolCalls: new Map(),
+		toolCallStarts: new Map(),
+	};
+}
+
+/**
+ * Returns the toolCallId to store on a NEW tool-call part starting under
+ * rawId — rawId itself the first time, a disambiguated `${rawId}#${n}` on
+ * every reuse after that. Some ACP agents (Goose, observed in the wild) hand
+ * out short, only-locally-unique ids like "call_1" per LLM completion step
+ * rather than per tool call, and reuse them across otherwise-unrelated tool
+ * calls within what we render as a single assistant message (one message
+ * spans a whole turn — every step between a user message and the model's
+ * final reply — not just one completion step). assistant-ui's `useResources`
+ * requires every part's key to be unique within one message's content array
+ * and throws ("Duplicate key ... in useResources") the moment it isn't, so a
+ * raw id already used earlier in this same message must never be reused
+ * verbatim. openToolCalls (which tool_call_update/observation events look
+ * calls up by) is deliberately keyed by the untouched rawId, not this
+ * disambiguated one — the most recently opened call for a given rawId is
+ * always the correct match for its next update, exactly the FIFO order
+ * these agents emit start/update pairs in.
+ */
+function nextToolCallId(current: InProgressMessage, rawId: string): string {
+	const startsBefore = current.toolCallStarts.get(rawId) ?? 0;
+	current.toolCallStarts.set(rawId, startsBefore + 1);
+	return startsBefore === 0 ? rawId : `${rawId}#${startsBefore}`;
 }
 
 function toThreadMessage(
@@ -395,12 +438,14 @@ export function eventsToThreadMessages(
 			const toolName = typeof p.title === "string" ? p.title : "tool";
 			const part: MutableToolCallPart = {
 				type: "tool-call",
-				toolCallId,
+				toolCallId: nextToolCallId(current, toolCallId),
 				toolName,
 				argsText: "",
 			};
 			current.parts.push(part);
-			current.openToolCalls.set(toolCallId, part);
+			const queue = current.openToolCalls.get(toolCallId);
+			if (queue) queue.push(part);
+			else current.openToolCalls.set(toolCallId, [part]);
 			continue;
 		}
 
@@ -415,22 +460,38 @@ export function eventsToThreadMessages(
 			// ACP-over-HTTP mode has no fs-delegation callback to report them
 			// through natively the way Claude Code/Codex ACP sessions do.
 			const diffs = extractDiffBlocks(p.content);
-			const openPart =
+			const openQueue =
 				toolCallId && current
 					? current.openToolCalls.get(toolCallId)
 					: undefined;
+			// FIFO: the oldest still-open call under this raw id is always the
+			// correct match for the next update to arrive for it — the same
+			// order these agents emit their own start/update pairs in (see
+			// nextToolCallId's doc comment). Dequeued as soon as it looks
+			// terminal (a result or a failure arrived) so a later update
+			// reusing the same raw id — a different, still-open call under
+			// this agent's own id-reuse behavior — targets its own entry
+			// instead of repeatedly hitting this already-finished one. A
+			// non-terminal update (e.g. a diff with no result/failure yet)
+			// leaves it in place, so a call that gets more than one update
+			// before finishing still accumulates them all onto the same part.
+			const openPart = openQueue?.[0];
 			if (openPart) {
 				if (resultText) openPart.result = resultText;
 				if (status === "failed") openPart.isError = true;
 				if (diffs) openPart.artifact = { diffs };
+				if (openQueue && (status === "failed" || resultText)) {
+					openQueue.shift();
+				}
 			} else if (resultText) {
 				// No matching open tool-call in this turn (history gap) —
 				// append a standalone, already-complete tool-call part.
 				if (!current)
 					current = startAssistantMessage(ev.id, new Date(ev.created_at));
+				const rawId = toolCallId ?? ev.id;
 				current.parts.push({
 					type: "tool-call",
-					toolCallId: toolCallId ?? ev.id,
+					toolCallId: nextToolCallId(current, rawId),
 					toolName: "tool",
 					argsText: "",
 					result: resultText,
@@ -517,12 +578,12 @@ export function eventsToThreadMessages(
 
 			const part: MutableToolCallPart = {
 				type: "tool-call",
-				toolCallId,
+				toolCallId: nextToolCallId(current, toolCallId),
 				toolName,
 				argsText,
 			};
 			current.parts.push(part);
-			current.openToolCalls.set(toolCallId, part);
+			current.openToolCalls.set(toolCallId, [part]);
 			continue;
 		}
 
@@ -559,7 +620,7 @@ export function eventsToThreadMessages(
 				typeof p.tool_call_id === "string" ? p.tool_call_id : undefined;
 			const openPart =
 				toolCallId && current
-					? current.openToolCalls.get(toolCallId)
+					? current.openToolCalls.get(toolCallId)?.[0]
 					: undefined;
 
 			const fileEditorDiff =
@@ -575,9 +636,10 @@ export function eventsToThreadMessages(
 				if (!current)
 					current = startAssistantMessage(ev.id, new Date(ev.created_at));
 				const toolName = typeof p.tool_name === "string" ? p.tool_name : "tool";
+				const rawId = toolCallId ?? ev.id;
 				current.parts.push({
 					type: "tool-call",
-					toolCallId: toolCallId ?? ev.id,
+					toolCallId: nextToolCallId(current, rawId),
 					toolName,
 					argsText: "",
 					result: resultText,
@@ -619,12 +681,17 @@ export function eventsToThreadMessages(
 			// never clear a diff already captured from an earlier update.
 			const diffs = extractDiffBlocks(p.content);
 
-			let part = current.openToolCalls.get(toolCallId);
+			let part = current.openToolCalls.get(toolCallId)?.[0];
 			if (!part) {
-				part = { type: "tool-call", toolCallId, toolName, argsText };
+				part = {
+					type: "tool-call",
+					toolCallId: nextToolCallId(current, toolCallId),
+					toolName,
+					argsText,
+				};
 				if (diffs) part.artifact = { diffs };
 				current.parts.push(part);
-				current.openToolCalls.set(toolCallId, part);
+				current.openToolCalls.set(toolCallId, [part]);
 			} else {
 				part.toolName = toolName;
 				if (argsText) part.argsText = argsText;

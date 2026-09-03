@@ -18,6 +18,7 @@ const (
 	ContextItemDoc          ContextItemType = "doc"
 	ContextItemConversation ContextItemType = "conversation"
 	ContextItemAutomation   ContextItemType = "automation"
+	ContextItemAnnotation   ContextItemType = "annotation"
 )
 
 // ContextItemRef is a reference to a Task, Doc, Conversation, or Automation
@@ -64,6 +65,8 @@ func FormatAttachedContext(items []ContextItemRef) string {
 			fmt.Fprintf(&b, "- Automation (ID: %s) %q — call `get_automation`.\n", item.ID, item.Title)
 		case ContextItemConversation:
 			fmt.Fprintf(&b, "- Conversation (ID: %s) %q — call `read_conversation`.\n", item.ID, item.Title)
+		case ContextItemAnnotation:
+			fmt.Fprintf(&b, "- Page annotation (ID: %s) %q — call `get_annotation`.\n", item.ID, item.Title)
 		default:
 			fmt.Fprintf(&b, "- %s (ID: %s) %q\n", item.Type, item.ID, item.Title)
 		}

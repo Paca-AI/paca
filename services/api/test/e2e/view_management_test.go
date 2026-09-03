@@ -199,8 +199,10 @@ func TestE2ETaskPositionManagement(t *testing.T) {
 	sprintID := createSprintViaAPI(t, env, client, token, projID, "Sprint for Positions")
 	viewID := createViewViaAPI(t, env, client, token, projID, sprintID, "Position View", "table")
 
-	// Use a fixed task UUID (doesn't need to exist in DB for position tracking)
-	taskID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	// MoveTask/BulkMoveTasks verify the task belongs to projID (see
+	// view_service.go), so a fixed/non-existent UUID 404s — a real task is
+	// required.
+	taskID := createTaskViaAPI(t, env, client, token, projID, "Position Task")
 
 	t.Run("move_task", func(t *testing.T) {
 		url := fmt.Sprintf("%s/api/v1/projects/%s/views/%s/task-positions/%s",
@@ -439,7 +441,9 @@ func TestE2EBacklogTaskPositionManagement(t *testing.T) {
 	projID := createProjectForTasksViaAPI(t, env, client, token)
 	viewID := createBacklogViewViaAPI(t, env, client, token, projID, "Backlog Position View", "table")
 
-	taskID := "cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"
+	// MoveTask verifies the task belongs to projID (see view_service.go), so
+	// a fixed/non-existent UUID 404s — a real task is required.
+	taskID := createTaskViaAPI(t, env, client, token, projID, "Backlog Position Task")
 
 	t.Run("move_task", func(t *testing.T) {
 		url := fmt.Sprintf("%s/api/v1/projects/%s/views/%s/task-positions/%s",
@@ -521,10 +525,12 @@ func TestE2EBulkTaskPositionManagement(t *testing.T) {
 	sprintID := createSprintViaAPI(t, env, client, token, projID, "Sprint for Bulk Positions")
 	viewID := createViewViaAPI(t, env, client, token, projID, sprintID, "Bulk Position View", "table")
 
-	// Fixed UUIDs — do not need to exist as actual tasks for position tracking
-	task1 := "11111111-1111-1111-1111-111111111111"
-	task2 := "22222222-2222-2222-2222-222222222222"
-	task3 := "33333333-3333-3333-3333-333333333333"
+	// BulkMoveTasks verifies every task belongs to projID (see
+	// view_service.go), so fixed/non-existent UUIDs 404 — real tasks are
+	// required.
+	task1 := createTaskViaAPI(t, env, client, token, projID, "Bulk Position Task 1")
+	task2 := createTaskViaAPI(t, env, client, token, projID, "Bulk Position Task 2")
+	task3 := createTaskViaAPI(t, env, client, token, projID, "Bulk Position Task 3")
 
 	bulkURL := fmt.Sprintf("%s/api/v1/projects/%s/views/%s/task-positions",
 		env.base, projID, viewID)
@@ -615,8 +621,11 @@ func TestE2EBulkBacklogTaskPositionManagement(t *testing.T) {
 	projID := createProjectForTasksViaAPI(t, env, client, token)
 	viewID := createBacklogViewViaAPI(t, env, client, token, projID, "Bulk Backlog View", "table")
 
-	task1 := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-	task2 := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	// BulkMoveTasks verifies every task belongs to projID (see
+	// view_service.go), so fixed/non-existent UUIDs 404 — real tasks are
+	// required.
+	task1 := createTaskViaAPI(t, env, client, token, projID, "Bulk Backlog Task 1")
+	task2 := createTaskViaAPI(t, env, client, token, projID, "Bulk Backlog Task 2")
 
 	bulkURL := fmt.Sprintf("%s/api/v1/projects/%s/views/%s/task-positions",
 		env.base, projID, viewID)

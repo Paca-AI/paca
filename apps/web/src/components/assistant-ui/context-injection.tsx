@@ -6,6 +6,7 @@ import {
 	Hash,
 	Loader2,
 	MessageSquare,
+	Pin,
 	Plus,
 	Search,
 	Workflow,
@@ -24,9 +25,12 @@ import { cn } from "@/lib/utils";
 // palette blocknote-inline-contents.tsx already uses for its rich-text
 // mention chips (emerald/Hash, purple/FileText) for visual continuity;
 // conversation (amber/MessageSquare) and automation (sky/Workflow) are new.
-// Intentionally not shared with/imported from blocknote-inline-contents.tsx —
-// that file is a separate system (rich-text body mentions), out of scope
-// here.
+// annotation is rose/Pin here specifically — NOT the amber/MessageSquare its
+// own BlockNote mention chip uses, since that pair is already taken by
+// conversation in this file and would make the two tabs/chips
+// indistinguishable. Intentionally not shared with/imported from
+// blocknote-inline-contents.tsx — that file is a separate system (rich-text
+// body mentions), out of scope here.
 const CONTEXT_TYPE_ICON: Record<
 	ContextItemType,
 	ComponentType<{ className?: string }>
@@ -35,6 +39,7 @@ const CONTEXT_TYPE_ICON: Record<
 	doc: FileText,
 	conversation: MessageSquare,
 	automation: Workflow,
+	annotation: Pin,
 };
 
 const CONTEXT_TYPE_TEXT_CLASS: Record<ContextItemType, string> = {
@@ -42,6 +47,7 @@ const CONTEXT_TYPE_TEXT_CLASS: Record<ContextItemType, string> = {
 	doc: "text-purple-700 dark:text-purple-400",
 	conversation: "text-amber-700 dark:text-amber-400",
 	automation: "text-sky-700 dark:text-sky-400",
+	annotation: "text-rose-700 dark:text-rose-400",
 };
 
 // No `Record<ContextItemType, string>` annotation here on purpose — it would
@@ -53,6 +59,7 @@ const CONTEXT_TYPE_LABEL_KEY = {
 	doc: "agents.thread.contextInjection.contextTypeDoc",
 	conversation: "agents.thread.contextInjection.contextTypeConversation",
 	automation: "agents.thread.contextInjection.contextTypeAutomation",
+	annotation: "agents.thread.contextInjection.contextTypeAnnotation",
 } as const satisfies Record<ContextItemType, string>;
 
 function contextItemKey(type: ContextItemType, id: string): string {
@@ -275,7 +282,12 @@ export function ContextInjectionRow() {
 
 	// Task/Doc/Automation search is project-scoped only — hide those tabs
 	// entirely on the global (no-project) chat surfaces, where only
-	// Conversation search applies.
+	// Conversation search applies. "annotation" is deliberately never in
+	// this list — there's no searchable picker tab for comments, only
+	// paste-to-attach (see thread.tsx's onPaste) — but it stays a valid
+	// ContextItemType (CONTEXT_TYPE_ICON/TEXT_CLASS/LABEL_KEY above still
+	// need an "annotation" entry each) since a pasted-and-attached comment
+	// still renders as a chip here like any other type.
 	const availableTypes: readonly ContextItemType[] = projectId
 		? ["task", "doc", "conversation", "automation"]
 		: ["conversation"];

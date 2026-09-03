@@ -348,6 +348,7 @@
 				"contextTypeDoc": "Doc",
 				"contextTypeConversation": "Conversation",
 				"contextTypeAutomation": "Automation",
+				"contextTypeAnnotation": "Comment",
 				"noContextResults": "No results found",
 				"contextSearchMinChars": "Type at least 2 characters to search"
 			}
@@ -479,6 +480,7 @@
 				"deleteFailed": "Failed to delete port forward. Please try again.",
 				"containerPort": "Container port {{port}}",
 				"unassigned": "Not assigned yet",
+				"open": "Open",
 				"restart": "Restart",
 				"pendingRestartRunning": "A port forward was added or removed. Restart the environment to apply it.",
 				"pendingRestartStopped": "A port forward was added or removed. It will be applied the next time this environment starts.",
@@ -1226,6 +1228,77 @@
 			"watchSession": "Watch session",
 			"madeChange": "made a change",
 			"descriptionChangeDiff": "Description change diff"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Port forward not found",
+			"description": "This port forward may have been deleted or the link is invalid.",
+			"ariaLabel": "Port forward detail",
+			"backToEnvironment": "Back to environment"
+		},
+		"tabs": {
+			"overview": "Overview",
+			"comments": "Comments"
+		},
+		"overview": {
+			"containerPort": "Container port {{port}}",
+			"hostPort": "Host port",
+			"unassigned": "Not assigned yet",
+			"createdAt": "Created {{date}}",
+			"open": "Open",
+			"delete": "Delete",
+			"deleteDialog": {
+				"title": "Delete port forward?",
+				"description_one": "This also deletes {{count}} comment made through this port forward. This action cannot be undone.",
+				"description_other": "This also deletes {{count}} comments made through this port forward. This action cannot be undone.",
+				"cancel": "Cancel",
+				"confirm": "Delete"
+			}
+		},
+		"comments": {
+			"empty": "No comments yet. Install the Paca browser extension to comment directly on elements of this port forward's preview.",
+			"status": {
+				"open": "Open",
+				"resolved": "Resolved"
+			},
+			"replyCount_one": "{{count}} reply",
+			"replyCount_other": "{{count}} replies",
+			"resolve": "Resolve",
+			"reopen": "Reopen",
+			"createTask": "Create task",
+			"taskCreated": "Task created"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Comment not found",
+			"description": "This comment may have been deleted or the link is invalid.",
+			"ariaLabel": "Comment detail",
+			"backToPortForward": "Back to port forward"
+		},
+		"header": {
+			"createdAt": "Commented {{date}}"
+		},
+		"context": {
+			"title": "Context",
+			"pagePath": "Page",
+			"elementSelector": "Element selector",
+			"accessibleName": "Accessible name",
+			"consoleErrors": "Console errors",
+			"noConsoleErrors": "No console errors captured",
+			"failedRequests": "Failed requests",
+			"noFailedRequests": "No failed requests captured"
+		},
+		"thread": {
+			"replyPlaceholder": "Write a reply…",
+			"reply": "Reply"
+		},
+		"actions": {
+			"create": "Create",
+			"createConversation": "Create conversation",
+			"copyLink": "Copy link",
+			"linkCopied": "Copied!"
 		}
 	},
 	"epicPicker": {

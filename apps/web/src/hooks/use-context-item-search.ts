@@ -192,6 +192,10 @@ export function useContextItemSearch(
 							nextCursor: page.next_cursor ?? undefined,
 						};
 					}
+					// "annotation" has no case here deliberately -- there's no
+					// searchable picker tab for comments (see
+					// context-injection.tsx's availableTypes), only
+					// paste-to-attach. Falls through to the default below.
 					case "conversation": {
 						const page = projectId
 							? await listConversations(projectId, {

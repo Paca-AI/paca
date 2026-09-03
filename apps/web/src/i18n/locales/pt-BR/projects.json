@@ -348,6 +348,7 @@
 				"contextTypeDoc": "Documento",
 				"contextTypeConversation": "Conversa",
 				"contextTypeAutomation": "Automação",
+				"contextTypeAnnotation": "Comentário",
 				"noContextResults": "Nenhum resultado encontrado",
 				"contextSearchMinChars": "Digite pelo menos 2 caracteres para buscar"
 			}
@@ -479,6 +480,7 @@
 				"deleteFailed": "Falha ao excluir o encaminhamento de porta. Tente novamente.",
 				"containerPort": "Porta do contêiner {{port}}",
 				"unassigned": "Ainda não atribuída",
+				"open": "Abrir",
 				"restart": "Reiniciar",
 				"pendingRestartRunning": "Um encaminhamento de porta foi adicionado ou removido. Reinicie o ambiente para aplicá-lo.",
 				"pendingRestartStopped": "Um encaminhamento de porta foi adicionado ou removido. Será aplicado na próxima vez que este ambiente for iniciado.",
@@ -1226,6 +1228,77 @@
 			"watchSession": "Assistir sessão",
 			"madeChange": "fez uma alteração",
 			"descriptionChangeDiff": "Diferença de alteração da descrição"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Encaminhamento de porta não encontrado",
+			"description": "Este encaminhamento de porta pode ter sido excluído ou o link é inválido.",
+			"ariaLabel": "Detalhes do encaminhamento de porta",
+			"backToEnvironment": "Voltar ao ambiente"
+		},
+		"tabs": {
+			"overview": "Visão geral",
+			"comments": "Comentários"
+		},
+		"overview": {
+			"containerPort": "Porta do contêiner {{port}}",
+			"hostPort": "Porta do host",
+			"unassigned": "Ainda não atribuída",
+			"createdAt": "Criado em {{date}}",
+			"open": "Abrir",
+			"delete": "Excluir",
+			"deleteDialog": {
+				"title": "Excluir encaminhamento de porta?",
+				"description_one": "Isso também exclui {{count}} comentário feito por meio deste encaminhamento de porta. Esta ação não pode ser desfeita.",
+				"description_other": "Isso também exclui {{count}} comentários feitos por meio deste encaminhamento de porta. Esta ação não pode ser desfeita.",
+				"cancel": "Cancelar",
+				"confirm": "Excluir"
+			}
+		},
+		"comments": {
+			"empty": "Ainda não há comentários. Instale a extensão do navegador Paca para comentar diretamente nos elementos da pré-visualização deste encaminhamento de porta.",
+			"status": {
+				"open": "Aberto",
+				"resolved": "Resolvido"
+			},
+			"replyCount_one": "{{count}} resposta",
+			"replyCount_other": "{{count}} respostas",
+			"resolve": "Resolver",
+			"reopen": "Reabrir",
+			"createTask": "Criar tarefa",
+			"taskCreated": "Tarefa criada"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Comentário não encontrado",
+			"description": "Este comentário pode ter sido excluído ou o link é inválido.",
+			"ariaLabel": "Detalhes do comentário",
+			"backToPortForward": "Voltar ao encaminhamento de porta"
+		},
+		"header": {
+			"createdAt": "Comentado em {{date}}"
+		},
+		"context": {
+			"title": "Contexto",
+			"pagePath": "Página",
+			"elementSelector": "Seletor de elemento",
+			"accessibleName": "Nome acessível",
+			"consoleErrors": "Erros de console",
+			"noConsoleErrors": "Nenhum erro de console capturado",
+			"failedRequests": "Solicitações com falha",
+			"noFailedRequests": "Nenhuma solicitação com falha capturada"
+		},
+		"thread": {
+			"replyPlaceholder": "Escreva uma resposta…",
+			"reply": "Responder"
+		},
+		"actions": {
+			"create": "Criar",
+			"createConversation": "Criar conversa",
+			"copyLink": "Copiar link",
+			"linkCopied": "Copiado!"
 		}
 	},
 	"epicPicker": {

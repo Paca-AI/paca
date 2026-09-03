@@ -334,6 +334,19 @@ export async function listPortForwards(
 	return data.data.port_forwards;
 }
 
+export async function getPortForward(
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+): Promise<EnvironmentPortForward> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<EnvironmentPortForward>
+	>(
+		`/projects/${projectId}/environments/${environmentId}/port-forwards/${portForwardId}`,
+	);
+	return data.data;
+}
+
 export async function addPortForward(
 	projectId: string,
 	environmentId: string,
@@ -425,6 +438,19 @@ export async function getEnvironmentConfig(): Promise<EnvironmentDeploymentConfi
 		SuccessEnvelope<EnvironmentDeploymentConfig>
 	>("/environments/config");
 	return data.data;
+}
+
+/**
+ * Builds the URL to open a forwarded port at, using the current page's own
+ * protocol rather than hardcoding http: — a forwarded preview shares the
+ * Paca app's own hostname, differing only by port (see services/api's
+ * corsMiddleware doc comment and the extension's content script, which
+ * builds its own baseUrl the same way), so a deployment fronting previews
+ * over TLS via a proxy on PORT_FORWARD_HOST would otherwise get a URL that
+ * opens a failing plain-HTTP origin instead of the real one.
+ */
+export function portForwardUrl(host: string, port: number, path = ""): string {
+	return `${window.location.protocol}//${host}:${port}${path}`;
 }
 
 // Not project- or environment-scoped (the same deployment-wide values for
@@ -520,6 +546,23 @@ export const environmentPortForwardsQueryOptions = (
 			"port-forwards",
 		],
 		queryFn: () => listPortForwards(projectId, environmentId),
+	});
+
+export const portForwardQueryOptions = (
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+) =>
+	queryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"environments",
+			environmentId,
+			"port-forwards",
+			portForwardId,
+		],
+		queryFn: () => getPortForward(projectId, environmentId, portForwardId),
 	});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

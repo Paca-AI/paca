@@ -94,6 +94,12 @@ type SSHKeyService interface {
 // reachable from outside.
 type PortForwardService interface {
 	ListPortForwards(ctx context.Context, projectID, environmentID uuid.UUID) ([]*EnvironmentPortForward, error)
+	// GetPortForward returns a single port forward, verifying it belongs to
+	// environmentID which belongs to projectID — mirrors GetEnvironment's
+	// own ownership-check convention. Backs the web app's port-forward
+	// detail page, and the annotation service's own port-forward ownership
+	// check.
+	GetPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) (*EnvironmentPortForward, error)
 	// AddPortForward creates the port-forward row and, if the environment
 	// is currently running, asks agent-runner to assign it a host port and
 	// start relaying immediately rather than waiting for the environment's

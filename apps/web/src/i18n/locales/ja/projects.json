@@ -348,6 +348,7 @@
 				"contextTypeDoc": "ドキュメント",
 				"contextTypeConversation": "会話",
 				"contextTypeAutomation": "自動化",
+				"contextTypeAnnotation": "コメント",
 				"noContextResults": "結果が見つかりません",
 				"contextSearchMinChars": "検索するには2文字以上入力してください"
 			}
@@ -479,6 +480,7 @@
 				"deleteFailed": "ポートフォワードの削除に失敗しました。もう一度お試しください。",
 				"containerPort": "コンテナポート {{port}}",
 				"unassigned": "まだ割り当てられていません",
+				"open": "開く",
 				"restart": "再起動",
 				"pendingRestartRunning": "ポートフォワードが追加または削除されました。適用するには環境を再起動してください。",
 				"pendingRestartStopped": "ポートフォワードが追加または削除されました。次回この環境が起動するときに適用されます。",
@@ -1226,6 +1228,77 @@
 			"watchSession": "セッションを見る",
 			"madeChange": "変更を加えました",
 			"descriptionChangeDiff": "説明の変更差分"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "ポートフォワードが見つかりません",
+			"description": "このポートフォワードは削除されたか、リンクが無効です。",
+			"ariaLabel": "ポートフォワードの詳細",
+			"backToEnvironment": "環境に戻る"
+		},
+		"tabs": {
+			"overview": "概要",
+			"comments": "コメント"
+		},
+		"overview": {
+			"containerPort": "コンテナポート {{port}}",
+			"hostPort": "ホストポート",
+			"unassigned": "まだ割り当てられていません",
+			"createdAt": "{{date}} に作成",
+			"open": "開く",
+			"delete": "削除",
+			"deleteDialog": {
+				"title": "ポートフォワードを削除しますか？",
+				"description_one": "これにより、このポートフォワード経由で行われた{{count}}件のコメントも削除されます。この操作は元に戻せません。",
+				"description_other": "これにより、このポートフォワード経由で行われた{{count}}件のコメントも削除されます。この操作は元に戻せません。",
+				"cancel": "キャンセル",
+				"confirm": "削除"
+			}
+		},
+		"comments": {
+			"empty": "コメントはまだありません。Paca ブラウザ拡張機能をインストールすると、このポートフォワードのプレビューの要素に直接コメントできます。",
+			"status": {
+				"open": "未解決",
+				"resolved": "解決済み"
+			},
+			"replyCount_one": "{{count}} 件の返信",
+			"replyCount_other": "{{count}} 件の返信",
+			"resolve": "解決",
+			"reopen": "再オープン",
+			"createTask": "タスクを作成",
+			"taskCreated": "タスクを作成しました"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "コメントが見つかりません",
+			"description": "このコメントは削除されたか、リンクが無効です。",
+			"ariaLabel": "コメントの詳細",
+			"backToPortForward": "ポートフォワードに戻る"
+		},
+		"header": {
+			"createdAt": "{{date}} にコメント"
+		},
+		"context": {
+			"title": "コンテキスト",
+			"pagePath": "ページ",
+			"elementSelector": "要素セレクター",
+			"accessibleName": "アクセシブルネーム",
+			"consoleErrors": "コンソールエラー",
+			"noConsoleErrors": "コンソールエラーはキャプチャされていません",
+			"failedRequests": "失敗したリクエスト",
+			"noFailedRequests": "失敗したリクエストはキャプチャされていません"
+		},
+		"thread": {
+			"replyPlaceholder": "返信を入力…",
+			"reply": "返信"
+		},
+		"actions": {
+			"create": "作成",
+			"createConversation": "会話を作成",
+			"copyLink": "リンクをコピー",
+			"linkCopied": "コピーしました！"
 		}
 	},
 	"epicPicker": {

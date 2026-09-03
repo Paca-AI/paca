@@ -32,6 +32,7 @@ import (
 	pgRepo "github.com/Paca-AI/api/internal/repository/postgres"
 	redisRepo "github.com/Paca-AI/api/internal/repository/redis"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
+	annotationsvc "github.com/Paca-AI/api/internal/service/annotation"
 	apikeysvc "github.com/Paca-AI/api/internal/service/apikey"
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
@@ -152,6 +153,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithEventPublishing(publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
 	environmentRepo := pgRepo.NewEnvironmentRepository(db)
+	annotationRepo := pgRepo.NewAnnotationRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
 	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
@@ -236,6 +238,13 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, cfg.Storage.Bucket)
+	// annotationService backs the Paca browser extension's on-page comments
+	// (apps/extension) — attachmentRepo satisfies TaskAttachmentLinker
+	// directly (its own CreateTaskAttachment), and taskService/
+	// environmentService/storageClient are the same instances already
+	// wired above, not new ones.
+	annotationService := annotationsvc.New(annotationRepo, environmentService, taskService, attachmentRepo, attachmentRepo, storageClient, cfg.Storage.Bucket).
+		WithPublicURL(cfg.Server.PublicURL)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
 	// Unlike userService/agentService above, this return value isn't
@@ -393,6 +402,9 @@ func New(cfg *config.Config) (*App, error) {
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
+	annotationHandler := handler.NewAnnotationHandler(annotationService).
+		WithAvatarService(attachmentService).
+		WithMemberRepo(projectRepo)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)
 	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 
@@ -442,6 +454,7 @@ func New(cfg *config.Config) (*App, error) {
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
 		Environment:        environmentHandler,
+		Annotation:         annotationHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),

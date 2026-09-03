@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Paca — Settings</title>
+		<style>
+			/* Mirrors apps/web/src/index.css's own token names/values so this
+			   page reads as part of the same product rather than a generic
+			   settings form — see that file for the canonical source. */
+			:root {
+				--background: #ffffff;
+				--foreground: #111111;
+				--card: #ffffff;
+				--card-foreground: #111111;
+				--primary: #5a9e1c;
+				--primary-foreground: #ffffff;
+				--secondary: #f0f0f0;
+				--secondary-foreground: #111111;
+				--muted: #f5f5f5;
+				--muted-foreground: #737373;
+				--border: #d4d4d4;
+				--destructive: #c0341f;
+				--radius: 0.5rem;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--background: #0a0a0a;
+					--foreground: #f0f0f0;
+					--card: #111111;
+					--card-foreground: #f0f0f0;
+					--primary: #9ed957;
+					--primary-foreground: #0a0a0a;
+					--secondary: #1e1e1e;
+					--secondary-foreground: #f0f0f0;
+					--muted: #1a1a1a;
+					--muted-foreground: #888888;
+					--border: #2a2a2a;
+					--destructive: #e35d4a;
+				}
+			}
+
+			/* A FIXED width (never max-width, never margin:auto) is what
+			   keeps this stable as a toolbar popup: Chrome auto-sizes a
+			   popup around its content across several layout passes, and a
+			   body whose effective box can still change size or position
+			   between passes — whether from max-width/margin:auto (shrinks
+			   to content, no fixed point to converge on) or from a
+			   viewport-width media query flipping margin on and off (the
+			   query's own result depends on the box size the popup is still
+			   trying to settle on) — never lets that loop terminate, which
+			   is exactly what "the size keeps changing" was. This box's
+			   width and margin are therefore unconditional: identical
+			   whether rendered as the toolbar popup or the full "Options"
+			   tab, at the cost of sitting top-left rather than centered in
+			   the (rarely used) full-tab case — a fixed point every render
+			   pass agrees on beats a nicer-looking one that doesn't. */
+			html, body {
+				margin: 0;
+				padding: 0;
+				width: 360px;
+			}
+
+			body {
+				font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+				background: var(--background);
+				color: var(--foreground);
+				font-size: 13px;
+			}
+			.card {
+				box-sizing: border-box;
+				padding: 16px;
+			}
+			@media (min-width: 600px) {
+				.card {
+					border: 1px solid var(--border);
+					border-radius: var(--radius);
+					background: var(--card);
+					color: var(--card-foreground);
+				}
+			}
+			.header {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				margin-bottom: 4px;
+			}
+			.logo { height: 22px; width: auto; flex-shrink: 0; }
+			.logo-dark { display: none; }
+			@media (prefers-color-scheme: dark) {
+				.logo-light { display: none; }
+				.logo-dark { display: block; }
+			}
+			.wordmark {
+				font-size: 15px;
+				font-weight: 700;
+				letter-spacing: -0.01em;
+			}
+			.tagline {
+				font-size: 12px;
+				font-weight: 500;
+				color: var(--muted-foreground);
+			}
+			p.hint {
+				color: var(--muted-foreground);
+				font-size: 12px;
+				line-height: 1.5;
+				margin: 10px 0 0;
+			}
+			.pill {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				margin-top: 12px;
+				padding: 4px 10px;
+				border-radius: 999px;
+				background: var(--secondary);
+				color: var(--secondary-foreground);
+				font-size: 12px;
+				font-weight: 600;
+			}
+			.pill::before {
+				content: "";
+				width: 6px;
+				height: 6px;
+				border-radius: 999px;
+				background: var(--primary);
+			}
+			.pill.inactive::before {
+				background: var(--muted-foreground);
+			}
+		</style>
+	</head>
+	<body>
+		<div class="card">
+			<div class="header">
+				<!-- apps/web/public/paca-logo.svg / paca-logo-dark.svg, inlined
+				     and swapped by prefers-color-scheme above so no extra
+				     network request or web_accessible_resources entry is
+				     needed for something this small. -->
+				<svg class="logo logo-light" width="16" height="22" viewBox="0 0 127 175" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Paca">
+					<g clip-path="url(#clip0_ext_light)">
+						<mask id="mask0_ext_light" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="-36" y="-28" width="199" height="199">
+							<circle cx="63.5" cy="71.5" r="99.5" fill="#D9D9D9"/>
+						</mask>
+						<g mask="url(#mask0_ext_light)">
+							<path d="M29.5 6.58481L37 31.5848C39.4 29.5848 45.6667 30.7515 48.5 31.5848C61.3 16.3848 73.8333 25.2515 78.5 31.5848C80.9 28.7848 87.5 31.0848 90.5 32.5848C90.5 14.5848 96.8333 7.75147 100 6.58481C118 15.7848 114.167 40.4181 110 51.5848C116.4 57.9848 116 70.9181 115 76.5848L111.5 93.0848C116.7 107.485 108 126.085 103 133.585C103.879 137.182 105.224 151.196 106 162.5C68.6726 178.168 30.2272 169.028 16.5 162.5L21 130.085C9 118.485 13 101.585 16.5 94.5848C15 92.2515 11.8 85.3848 11 76.5848C10.2 67.7848 14.3333 56.2515 16.5 51.5848C6.1 19.5848 20.8333 8.25147 29.5 6.58481Z" fill="#9ED957"/>
+							<path d="M39 113.585C39 107.995 40.5 102.585 42.5 101.085C46.5 98.0848 53.5 100.585 57.5 90.0848C59.4901 84.8609 70 84.0848 74 90.0848C78 96.0848 82 96.5848 87.5 99.5848C93.8306 103.038 93 111.085 93 113.585C93 119.085 89.5 136.585 66 136.585C45.5 136.585 39 121.585 39 113.585Z" fill="#FDFCF7"/>
+							<path d="M58.5 104.085L66.5 110.085M66.5 110.085L74.5 104.085M66.5 110.085V117.585M66.5 117.585C66.5 121.585 57.5 126.085 52 118.585M66.5 117.585C66.5 121.585 74.1 126.585 80.5 118.585" stroke="#0A0A0A" stroke-width="6" stroke-linecap="round"/>
+							<path d="M16.5 50.0848C12.6667 42.2514 8.59994 22.9847 23 8.58476C27 4.58482 31 5.08481 32 11.0848C33.3334 16.9181 36 27.3848 36 30.5848" stroke="#0A0A0A" stroke-width="9" stroke-linecap="round"/>
+							<path d="M14 83C14 71 24 64 30 64H96.5C102.9 64 113 69.5 113 83C113 93.8 104.5 101 100.5 101H85.5C83.5 101 79 99.5 76 93.5C73.6 88.7 68.6667 87.5 66.5 87.5C63.6667 87.3333 57.6 88.3 56 93.5C54.4 98.7 48.6667 100.5 46 101H30C24.5 101 14 95 14 83Z" fill="#9ED957" stroke="#0A0A0A" stroke-width="7" stroke-linecap="round"/>
+							<path d="M41 72.0848L36 89.0848" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round"/>
+							<path d="M12 70.0848C9.49999 62.5848 13.4 49.8848 27 47.0848C26.5 40.5848 32.5 27.5848 48.5 31.5848C56.5 20.5848 72 21.0848 78 31.5848C87 27.5848 101 37.0848 100.5 47.0848C111 48.0848 118.5 62.5848 115 72.0848M15.5 160.5L23 132.585C17.5 126.751 6.5 109.4 16.5 95M110.5 95.5C114.833 101 118.6 114.585 103 132.585C104.833 146.251 106 148.5 107.5 160.5" stroke="#0A0A0A" stroke-width="9" stroke-linecap="round"/>
+							<rect x="1" y="67.0848" width="15" height="28" rx="6" fill="#0A0A0A"/>
+							<rect x="111" y="67.0848" width="15" height="28" rx="6" fill="#0A0A0A"/>
+							<path d="M110 51.0848C114.167 43.2515 118.7 23.7848 103.5 8.58483C100 5.08483 96.8333 6.41815 95 11.0848C93.1667 15.7515 91.4 27.5848 91 31.5848" stroke="#0A0A0A" stroke-width="9"/>
+							<circle cx="93.5" cy="81.5848" r="6.5" fill="#0A0A0A"/>
+							<path d="M30.5 76.0848L25 81.0848L30.5 86.0848" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round"/>
+							<path d="M45 76.0848L50 81.0848L45 86.0848" stroke="#0A0A0A" stroke-width="3" stroke-linecap="round"/>
+						</g>
+					</g>
+					<defs>
+						<clipPath id="clip0_ext_light"><rect width="127" height="175" fill="white"/></clipPath>
+					</defs>
+				</svg>
+				<svg class="logo logo-dark" width="16" height="22" viewBox="0 0 127 175" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+					<g clip-path="url(#clip0_ext_dark)">
+						<mask id="mask0_ext_dark" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="-36" y="-28" width="199" height="199">
+							<circle cx="63.5" cy="71.5" r="99.5" fill="#D9D9D9"/>
+						</mask>
+						<g mask="url(#mask0_ext_dark)">
+							<path d="M39 113.585C39 107.995 40.5 102.585 42.5 101.085C46.5 98.0848 53.5 100.585 57.5 90.0848C59.4901 84.8609 70 84.0848 74 90.0848C78 96.0848 82 96.5848 87.5 99.5848C93.8306 103.038 93 111.085 93 113.585C93 119.085 89.5 136.585 66 136.585C45.5 136.585 39 121.585 39 113.585Z" fill="white" fill-opacity="0.2"/>
+							<path d="M58.5 104.085L66.5 110.085M66.5 110.085L74.5 104.085M66.5 110.085V117.585M66.5 117.585C66.5 121.585 57.5 126.085 52 118.585M66.5 117.585C66.5 121.585 74.1 126.585 80.5 118.585" stroke="#FDFCF7" stroke-width="6" stroke-linecap="round"/>
+							<path d="M16.5 50.0848C12.6667 42.2514 8.59994 22.9847 23 8.58476C27 4.58482 31 5.08481 32 11.0848C33.3334 16.9181 36 27.3848 36 30.5848" stroke="#FDFCF7" stroke-width="9" stroke-linecap="round"/>
+							<path d="M14 83C14 71 24 64 30 64H96.5C102.9 64 113 69.5 113 83C113 93.8 104.5 101 100.5 101H85.5C83.5 101 79 99.5 76 93.5C73.6 88.7 68.6667 87.5 66.5 87.5C63.6667 87.3333 57.6 88.3 56 93.5C54.4 98.7 48.6667 100.5 46 101H30C24.5 101 14 95 14 83Z" fill="#9ED957" fill-opacity="0.4" stroke="#FDFCF7" stroke-width="7" stroke-linecap="round"/>
+							<path d="M41 72.0848L36 89.0848" stroke="#FDFCF7" stroke-width="3" stroke-linecap="round"/>
+							<path d="M12 70.0848C9.5 62.5848 13.4 49.8848 27 47.0848C26.5 40.5848 32.5 27.5848 48.5 31.5848C56.5 20.5848 72 21.0848 78 31.5848C87 27.5848 101 37.0848 100.5 47.0848C111 48.0848 118.5 62.5848 115 72.0848M15.5 160.5L23 132.585C17.5 126.751 6.50002 109.9 16.5 95.5M111 95.5C115.333 101 118.6 114.585 103 132.585C104.833 146.251 106 148.5 107.5 160.5" stroke="#FDFCF7" stroke-width="9" stroke-linecap="round"/>
+							<rect x="1" y="67.0848" width="15" height="28" rx="6" fill="#FDFCF7"/>
+							<rect x="111" y="67.0848" width="15" height="28" rx="6" fill="#FDFCF7"/>
+							<path d="M110 51.0848C114.167 43.2515 118.7 23.7848 103.5 8.58483C100 5.08483 96.8333 6.41815 95 11.0848C93.1667 15.7515 91.4 27.5848 91 31.5848" stroke="#FDFCF7" stroke-width="9"/>
+							<circle cx="93.5" cy="81.5848" r="6.5" fill="#FDFCF7"/>
+							<path d="M30.5 76.0848L25 81.0848L30.5 86.0848" stroke="#FDFCF7" stroke-width="3" stroke-linecap="round"/>
+							<path d="M45 76.0848L50 81.0848L45 86.0848" stroke="#FDFCF7" stroke-width="3" stroke-linecap="round"/>
+						</g>
+					</g>
+					<defs>
+						<clipPath id="clip0_ext_dark"><rect width="127" height="175" fill="white"/></clipPath>
+					</defs>
+				</svg>
+				<span class="wordmark">Paca</span>
+				<span class="tagline">On-page comments</span>
+			</div>
+			<p class="hint">
+				Log into your Paca instance once in this browser and Paca activates
+				automatically wherever it's relevant — including an environment's
+				forwarded preview — with nothing to enable here.
+			</p>
+			<p class="hint">
+				Look for a small toolbar at the bottom of the page on an active
+				preview to comment on an element.
+			</p>
+			<span class="pill inactive" id="status-pill">Checking this page…</span>
+		</div>
+		<script type="module" src="./main.ts"></script>
+	</body>
+</html>

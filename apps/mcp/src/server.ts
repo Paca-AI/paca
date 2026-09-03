@@ -4,6 +4,7 @@ import {
 	ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
+	PacaAPIAnnotationClient,
 	PacaAPIAutomationClient,
 	PacaAPIClient,
 	PacaAPIConversationClient,
@@ -44,6 +45,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	const docClient = new PacaAPIDocClient(config);
 	const automationClient = new PacaAPIAutomationClient(config);
 	const conversationClient = new PacaAPIConversationClient(config);
+	const annotationClient = new PacaAPIAnnotationClient(config);
 
 	// Load plugin MCP modules from the Paca API.
 	// Failures for individual plugins are logged and skipped.
@@ -57,6 +59,7 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		docClient,
 		automationClient,
 		conversationClient,
+		annotationClient,
 	};
 
 	// Fetch agent permissions at startup
