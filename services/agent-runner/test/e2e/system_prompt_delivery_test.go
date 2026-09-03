@@ -57,7 +57,9 @@ func TestExecutorRun_SystemPromptDeliveredViaGooseHints(t *testing.T) {
 	llm := fakellm.New(t, fakellm.TextReply("hello from the fake LLM"))
 
 	sandboxMgr := newSandboxManager(t)
-	exec := executor.New(sandboxMgr, encryptor, executor.Options{Image: image}, log)
+	// No EnvironmentRepository — this test never attaches a conversation to
+	// a static environment.
+	exec := executor.New(sandboxMgr, nil, nil, nil, encryptor, executor.Options{Image: image}, log)
 
 	const systemPromptMarker = "MARKER-SYSTEM-PROMPT-9f3a1c"
 	const pacaSkillBodyMarker = "MARKER-PACA-SKILL-BODY-7e21bd-should-never-appear-in-a-message"

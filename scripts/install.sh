@@ -91,6 +91,12 @@
 #     AGENT_API_KEY                 (default: auto-generated)
 #     INTERNAL_API_KEY              (default: auto-generated)
 #
+#   SSH access to environments (optional; requires Agent Runner)
+#     PACA_SSH_BASTION                    yes/no                                 (default: no)
+#     PACA_SSH_BASTION_PORT_RANGE_START   Only asked when PACA_SSH_BASTION=yes    (default: 2200)
+#     PACA_SSH_BASTION_PORT_RANGE_END     Only asked when PACA_SSH_BASTION=yes    (default: 2299)
+#     PACA_SSH_BASTION_HOST               Only asked when PACA_SSH_BASTION=yes    (default: PACA_ADDRESS)
+#
 #   PACA_WEB and PACA_AGENT_RUNNER are also written to .env, so upgrade.sh
 #   can read the choice back and keep these services scaled to 0 automatically
 #   on future upgrades — you won't need to re-pass --scale web=0 / --scale
@@ -721,6 +727,36 @@ else
     info "Agent Runner will be included."
 fi
 
+SSH_BASTION_PORT_RANGE_START=""
+SSH_BASTION_PORT_RANGE_END=""
+SSH_BASTION_HOST=""
+if [[ "$INCLUDE_AGENT_RUNNER" == "yes" ]]; then
+    echo ""
+    echo "  SSH access lets a user ssh straight into a running static environment's"
+    echo "  own sshd for pair programming — a dedicated port per environment,"
+    echo "  published directly on this host (no relay). Off by default."
+    echo ""
+
+    ENABLE_SSH_BASTION="no"
+    yes_no ENABLE_SSH_BASTION "Enable SSH access to environments?" "${PACA_SSH_BASTION:-n}"
+
+    if [[ "$ENABLE_SSH_BASTION" == "yes" ]]; then
+        ask SSH_BASTION_PORT_RANGE_START "SSH bastion port range start" "${PACA_SSH_BASTION_PORT_RANGE_START:-2200}"
+        ask SSH_BASTION_PORT_RANGE_END "SSH bastion port range end" "${PACA_SSH_BASTION_PORT_RANGE_END:-2299}"
+        # agent-runner's own validatePortRange refuses to boot on a bad
+        # range — catch it here instead of at a confusing startup failure.
+        if ! [[ "$SSH_BASTION_PORT_RANGE_START" =~ ^[0-9]+$ && "$SSH_BASTION_PORT_RANGE_END" =~ ^[0-9]+$ ]]; then
+            die "SSH bastion port range must be numeric (got '${SSH_BASTION_PORT_RANGE_START}'-'${SSH_BASTION_PORT_RANGE_END}')."
+        elif (( 10#$SSH_BASTION_PORT_RANGE_END < 10#$SSH_BASTION_PORT_RANGE_START )); then
+            die "SSH bastion port range end (${SSH_BASTION_PORT_RANGE_END}) must be >= start (${SSH_BASTION_PORT_RANGE_START})."
+        fi
+        ask SSH_BASTION_HOST "Public host/IP to show in the ssh connect command" "${PACA_SSH_BASTION_HOST:-$ADDRESS}"
+        warn "Make sure ports ${SSH_BASTION_PORT_RANGE_START}-${SSH_BASTION_PORT_RANGE_END} are reachable from wherever your users will ssh from (firewall/router forwarding, security group, etc.)."
+    else
+        info "SSH access will be left disabled. Enable later by setting SSH_BASTION_PORT_RANGE_START/_END in .env and restarting."
+    fi
+fi
+
 # ── Download release assets ───────────────────────────────────────────────────
 
 heading "Downloading release assets"
@@ -842,6 +878,14 @@ PORT_POOL_START=10000
 PORT_POOL_SIZE=100
 WORKER_CONCURRENCY=10
 
+# ── SSH access (optional) ────────────────────────────────────────────────────
+# Off by default (both empty — see docker-compose.yml's own comment on these).
+# Lets a user ssh straight into a running static environment's own sshd — see
+# docs/ai-agent/environment-management.md's "Terminal / SSH Access" section.
+SSH_BASTION_PORT_RANGE_START=${SSH_BASTION_PORT_RANGE_START}
+SSH_BASTION_PORT_RANGE_END=${SSH_BASTION_PORT_RANGE_END}
+SSH_BASTION_HOST=${SSH_BASTION_HOST}
+
 # ── Service topology ─────────────────────────────────────────────────────────
 # Recorded so upgrade.sh can keep these services scaled to 0 automatically on
 # future upgrades, instead of you having to re-pass --scale flags every time.
@@ -914,10 +958,18 @@ if [[ "$INCLUDE_AGENT_RUNNER" != "no" ]]; then
 fi
 
 SCALE_OPTS=()
+# Each SCALE_* var is either empty or a literal two-word flag (e.g. "--scale
+# postgres=0") that's meant to split into two array elements here — same
+# intentional word-splitting as the compose invocation below.
+# shellcheck disable=SC2206
 [[ -n "$SCALE_POSTGRES"  ]] && SCALE_OPTS+=($SCALE_POSTGRES)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_DB_BACKUP" ]] && SCALE_OPTS+=($SCALE_DB_BACKUP)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_MINIO"     ]] && SCALE_OPTS+=($SCALE_MINIO)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_WEB"       ]] && SCALE_OPTS+=($SCALE_WEB)
+# shellcheck disable=SC2206
 [[ -n "$SCALE_AGENT_RUNNER" ]] && SCALE_OPTS+=($SCALE_AGENT_RUNNER)
 
 # shellcheck disable=SC2086

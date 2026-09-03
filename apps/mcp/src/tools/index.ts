@@ -2,6 +2,7 @@ import type { CallToolRequest, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type {
 	PacaAPIAutomationClient,
 	PacaAPIClient,
+	PacaAPIConversationClient,
 	PacaAPIDocClient,
 	PacaAPIExtendedClient,
 	PacaAPITaskExtendedClient,
@@ -16,6 +17,10 @@ import {
 	getAutomationTools,
 	handleAutomationTool,
 } from "./automation-tools.js";
+import {
+	getConversationTools,
+	handleConversationTool,
+} from "./conversation-tools.js";
 import {
 	getDocActivityTools,
 	handleDocActivityTool,
@@ -70,6 +75,7 @@ export function getAllTools(): Tool[] {
 		...getAutomationTools(),
 		...getDocActivityTools(),
 		...getRepoTools(),
+		...getConversationTools(),
 	];
 }
 
@@ -86,6 +92,7 @@ export async function handleToolCall(
 		taskExtendedClient: PacaAPITaskExtendedClient;
 		docClient: PacaAPIDocClient;
 		automationClient: PacaAPIAutomationClient;
+		conversationClient: PacaAPIConversationClient;
 	},
 	repoPluginIds: string[] = [],
 ): Promise<any> {
@@ -202,6 +209,7 @@ export async function handleToolCall(
 
 		// Attachment tools
 		if (
+			name === "upload_task_attachment" ||
 			name === "list_task_attachments" ||
 			name === "get_attachment_download_url" ||
 			name === "read_task_attachment" ||
@@ -256,6 +264,11 @@ export async function handleToolCall(
 			name === "push_branch"
 		) {
 			return handleRepoTool(name, args, clients.apiClient, repoPluginIds);
+		}
+
+		// Conversation tools
+		if (name === "read_conversation") {
+			return handleConversationTool(name, args, clients.conversationClient);
 		}
 
 		throw new Error(`Unknown tool: ${name}`);

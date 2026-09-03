@@ -124,8 +124,8 @@ func (s *Service) DeleteFolder(ctx context.Context, id uuid.UUID, projectID uuid
 // --- Document Service -------------------------------------------------------
 
 // ListDocuments returns non-deleted documents for a project.
-func (s *Service) ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID) ([]*docdom.Document, error) {
-	return s.repo.ListDocuments(ctx, projectID, folderID)
+func (s *Service) ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) ([]*docdom.Document, bool, error) {
+	return s.repo.ListDocuments(ctx, projectID, folderID, search, cursor, limit)
 }
 
 // GetDocument returns a single document.
@@ -173,10 +173,13 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 
 // UpdateDocument updates a document's mutable fields and creates a snapshot
 // when the content changes.
-func (s *Service) UpdateDocument(ctx context.Context, id uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, error) {
+func (s *Service) UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, error) {
 	d, err := s.repo.FindDocumentByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if d.ProjectID != projectID {
+		return nil, docdom.ErrDocNotFound
 	}
 
 	contentChanged := false
@@ -243,9 +246,13 @@ func (s *Service) UpdateDocument(ctx context.Context, id uuid.UUID, in docdom.Up
 }
 
 // DeleteDocument soft-deletes a document.
-func (s *Service) DeleteDocument(ctx context.Context, id uuid.UUID) error {
-	if _, err := s.repo.FindDocumentByID(ctx, id); err != nil {
+func (s *Service) DeleteDocument(ctx context.Context, projectID, id uuid.UUID) error {
+	d, err := s.repo.FindDocumentByID(ctx, id)
+	if err != nil {
 		return err
+	}
+	if d.ProjectID != projectID {
+		return docdom.ErrDocNotFound
 	}
 	return s.repo.DeleteDocument(ctx, id)
 }
@@ -253,18 +260,29 @@ func (s *Service) DeleteDocument(ctx context.Context, id uuid.UUID) error {
 // --- Snapshot Service -------------------------------------------------------
 
 // ListSnapshots returns snapshots for a document, newest first.
-func (s *Service) ListSnapshots(ctx context.Context, documentID uuid.UUID) ([]*docdom.DocSnapshot, error) {
-	if _, err := s.repo.FindDocumentByID(ctx, documentID); err != nil {
+func (s *Service) ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID) ([]*docdom.DocSnapshot, error) {
+	d, err := s.repo.FindDocumentByID(ctx, documentID)
+	if err != nil {
 		return nil, err
+	}
+	if d.ProjectID != projectID {
+		return nil, docdom.ErrDocNotFound
 	}
 	return s.repo.ListSnapshots(ctx, documentID)
 }
 
 // GetSnapshot returns a single snapshot.
-func (s *Service) GetSnapshot(ctx context.Context, id uuid.UUID) (*docdom.DocSnapshot, error) {
+func (s *Service) GetSnapshot(ctx context.Context, projectID, id uuid.UUID) (*docdom.DocSnapshot, error) {
 	snap, err := s.repo.FindSnapshotByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	d, err := s.repo.FindDocumentByID(ctx, snap.DocumentID)
+	if err != nil {
+		return nil, err
+	}
+	if d.ProjectID != projectID {
+		return nil, docdom.ErrSnapshotNotFound
 	}
 	return snap, nil
 }

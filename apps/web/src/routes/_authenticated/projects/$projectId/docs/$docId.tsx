@@ -18,6 +18,7 @@ import {
 	docQueryOptions,
 	updateDocument,
 } from "@/lib/doc-api";
+import { useCurrentContextStore } from "@/lib/shortcuts/current-context-store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute(
@@ -37,6 +38,21 @@ function DocEditorPage() {
 
 	const { data: doc, isError } = useQuery(docQueryOptions(projectId, docId));
 	const { data: allFolders = [] } = useQuery(docFoldersQueryOptions(projectId));
+
+	// Register this doc as "currently on screen" for the chat composer's
+	// quick-add affordance — see lib/shortcuts/current-context-store.ts.
+	useEffect(() => {
+		if (!doc) return;
+		useCurrentContextStore.getState().setActive({
+			type: "doc",
+			id: docId,
+			projectId,
+			title: doc.title,
+		});
+		return () => {
+			useCurrentContextStore.getState().clearActive("doc", docId);
+		};
+	}, [doc, docId, projectId]);
 
 	const [rightPanel, setRightPanel] = useState<RightPanel>(null);
 	const [dirty, setDirty] = useState(false);

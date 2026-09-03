@@ -263,21 +263,30 @@ agentRunner:
     image:
       repository: ghcr.io/paca-ai/paca-agent-server-goose
       tag: "latest"
-    # Namespace sandbox Jobs/Pods are created in. Empty defaults to this
-    # release's own namespace — the RBAC this chart grants (see
-    # templates/agent-runner/role.yaml) is only ever scoped to whichever
-    # namespace this resolves to, so changing it without also placing
-    # equivalent RBAC there yourself will make sandbox creation fail with
-    # a Forbidden error.
+    # Namespace sandbox Jobs/Pods/environment Deployments are created in.
+    # Empty (the default) resolves to "<release-name>-sandbox", a
+    # dedicated namespace this chart creates for you (see
+    # templates/agent-runner/sandbox-namespace.yaml) — never the release's
+    # own namespace alongside postgres/valkey/minio/api/web/gateway. The
+    # RBAC this chart grants (see templates/agent-runner/role.yaml) is
+    # only ever scoped to whichever namespace this resolves to, so setting
+    # it explicitly to a namespace you manage yourself works too, as long
+    # as that namespace already exists — Kubernetes RBAC can't scope the
+    # pods/exec/pods/log grant, or the newer Deployment/Service
+    # patch/delete grant environments need, to only objects agent-runner's
+    # own ServiceAccount created; it's every matching object in whichever
+    # namespace this resolves to. See deploy/helm/README.md's RBAC
+    # section.
     #
-    # Recommended: point this at a namespace dedicated to sandboxes only,
-    # not the default (this release's own namespace, alongside postgres/
-    # valkey/minio/api/web/gateway). Kubernetes RBAC can't scope the
-    # pods/exec and pods/log grant below to only agent-runner's own Jobs —
-    # it's every Pod in whichever namespace this resolves to. Left at the
-    # default, agent-runner's ServiceAccount can exec into and read logs
-    # from this release's own datastores too. See deploy/helm/README.md's
-    # RBAC section.
+    # UPGRADE NOTE: prior to this default changing, an unset namespace
+    # resolved to the release's own namespace. If you're upgrading an
+    # existing install that relied on that (its RBAC, and any
+    # already-running sandbox Jobs/environments, live in the release
+    # namespace today), set this explicitly to that namespace to preserve
+    # current behavior — otherwise `helm upgrade` moves the Role/
+    # RoleBinding to the new dedicated namespace and anything still
+    # running in the old one becomes unreachable until you migrate or
+    # manually clean it up.
     namespace: ""
     # Requests == limits on every sandbox Pod's primary container —
     # matches the docker backend's own hardcoded 2 CPU / 4GiB.
@@ -287,17 +296,77 @@ agentRunner:
     # kubernetes.io/dockerconfigjson) to attach to every sandbox Pod —
     # needed when sandbox.image is pulled from a private registry.
     imagePullSecrets: []
+    # Static environments (named, long-lived sandboxes a user explicitly
+    # creates — see docs/ai-agent/environment-management.md) provision
+    # their own PersistentVolumeClaim per environment, on top of (not
+    # instead of) the request/limit knobs above.
+    environments:
+      # StorageClass for every environment's PVC. Empty (the default)
+      # lets Kubernetes provision from the cluster's own default
+      # StorageClass — set this only if your cluster has none marked
+      # default, or you want environments on a specific class (e.g. a
+      # faster/cheaper tier than whatever's marked default).
+      storageClassName: ""
     # NOTE — not a toggle, just a heads-up: DockerEnabled agents
     # (agents.docker_enabled in the database) get a privileged
     # `docker:dind` sidecar added to their own sandbox Pod at runtime, one
     # conversation at a time, so they can run Docker commands — see
-    # internal/sandbox/k8s/dind.go. There's nothing to configure here for
-    # that either way (the sidecar only ever appears on a Pod belonging to
-    # an agent that opts in) — but if `namespace` above enforces the
-    # Restricted Pod Security Standard, that agent's conversations will
-    # fail to start with a Forbidden admission error. Label the namespace
-    # with `pod-security.kubernetes.io/enforce: baseline` (or looser) if
-    # you plan to use DockerEnabled agents.
+    # internal/sandbox/k8s/dind.go. DockerEnabled environments
+    # (environments.docker_enabled) get the same sidecar, added once to
+    # their own long-lived Deployment's Pod template at CreateEnvironment
+    # time instead — see internal/sandbox/k8s/environment.go's own
+    # CreateEnvironment. There's nothing to configure here for either case
+    # (the sidecar only ever appears on a Pod belonging to an agent/
+    # environment that opts in) — but if `namespace` above enforces the
+    # Restricted Pod Security Standard, that agent's conversations (or that
+    # environment's Pod) will fail to start with a Forbidden admission
+    # error. Label the namespace with `pod-security.kubernetes.io/enforce:
+    # baseline` (or looser) if you plan to use DockerEnabled agents or
+    # environments.
+
+  # SSH bastion (optional, off by default) — lets a user
+  # `ssh -p <port> root@<bastion-host>` straight into a running static
+  # environment's own real sshd, published directly as a per-environment
+  # NodePort Service — created dynamically by agent-runner itself
+  # (ensureEnvironmentService, internal/sandbox/k8s/environment.go) as
+  # part of that environment's own lifecycle, not templated by this
+  # chart, and never relayed through agent-runner's own process — see
+  # docs/ai-agent/environment-management.md's "Terminal / SSH Access"
+  # section. Not fronted by gateway/ingress the way every other component
+  # in this chart is: Caddy/Ingress are HTTP-only and can't proxy raw SSH.
+  sshBastion:
+    enabled: false
+    # The external port range agent-runner assigns each running
+    # environment's own dedicated SSH port from — a NodePort must fall
+    # inside your cluster's own --service-node-port-range (kube-apiserver
+    # flag; 30000-32767 by default on most distributions), so set this to
+    # a sub-range of whatever your cluster is actually configured with.
+    # Widening this range costs nothing until it's actually used. Narrow
+    # it, or shift it, if it collides with something else in your
+    # cluster's own port allocation.
+    portRangeStart: 30200
+    portRangeEnd: 30299
+  # Port forwarding — the exact same idea as sshBastion above, for
+  # user-added port forwards instead (docs/ai-agent/
+  # environment-management.md's "Port Forwarding" section). Added/removed
+  # from an environment's Connect page in the web app; a running
+  # environment's Service is patched live to apply a change — no Pod
+  # restart needed on this backend, unlike the docker backend's own
+  # container-recreate requirement.
+  #
+  # On by default, unlike sshBastion above: a user-added port forward only
+  # ever exposes a port the environment's own workload is already meant to
+  # serve (e.g. a dev server), each one explicit and visible on that
+  # environment's Connect page — a materially smaller blast radius than
+  # sshBastion's always-on root shell access, so this doesn't warrant the
+  # same opt-in-by-operator default.
+  portForward:
+    enabled: true
+    # A disjoint range from sshBastion.portRangeStart/End above so the
+    # two can never collide — same --service-node-port-range constraint
+    # as that field's own doc comment.
+    portRangeStart: 30300
+    portRangeEnd: 30399
 
 # ---------------------------------------------------------------------------
 # Gateway (Caddy reverse proxy) — same routing as deploy/caddy/Caddyfile,
@@ -321,6 +390,24 @@ gateway:
     # quick start.
     type: ClusterIP
     port: 80
+
+# ---------------------------------------------------------------------------
+# SSH access / Port forwarding host display — see agentRunner.sshBastion/
+# agentRunner.portForward above for actually enabling either feature.
+# Neither value here affects whether either feature works; both are purely
+# descriptive, passed to services/api so GET /environments/config can hand
+# the frontend a real `ssh -p <port> root@<host>` command / a real
+# `<host>:<host_port>` address instead of a placeholder host — see
+# docs/ai-agent/environment-management.md's "Terminal / SSH Access" and
+# "Port Forwarding" sections and deploy/helm/README.md's own sections for
+# full setup steps.
+# ---------------------------------------------------------------------------
+environments:
+  # Point at whatever node address a client actually reaches this
+  # cluster's NodePort range on — e.g. a node's own public IP/DNS name, or
+  # a TCP load balancer in front of your node pool if you have one.
+  sshBastionHost: ""
+  portForwardHost: ""
 
 # ---------------------------------------------------------------------------
 # Ingress (optional) — TLS termination via an ingress controller +

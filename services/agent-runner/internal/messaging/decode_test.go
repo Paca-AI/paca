@@ -80,6 +80,60 @@ func TestDecodeTrigger_GlobalChatHasNoProjectID(t *testing.T) {
 	}
 }
 
+// TestDecodeTrigger_EnvironmentAttach mirrors resolveWorkdirForConversation's
+// payload for an environment-backed conversation: environment_id and
+// workdir both present.
+func TestDecodeTrigger_EnvironmentAttach(t *testing.T) {
+	convID, agentID, projectID, envID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	values := map[string]interface{}{
+		"conversation_id": convID.String(),
+		"project_id":      projectID.String(),
+		"agent_id":        agentID.String(),
+		"trigger_type":    "chat_message",
+		"message":         "hi",
+		"environment_id":  envID.String(),
+		"workdir":         "/home/paca/workspaces/my-project",
+	}
+
+	trigger, err := decodeTrigger(values)
+	if err != nil {
+		t.Fatalf("decodeTrigger: %v", err)
+	}
+
+	if trigger.EnvironmentID == nil || *trigger.EnvironmentID != envID {
+		t.Errorf("EnvironmentID = %v, want %s", trigger.EnvironmentID, envID)
+	}
+	if trigger.Workdir == nil || *trigger.Workdir != "/home/paca/workspaces/my-project" {
+		t.Errorf("Workdir = %v, want /home/paca/workspaces/my-project", trigger.Workdir)
+	}
+}
+
+// TestDecodeTrigger_NoEnvironmentLeavesFieldsNil mirrors an ordinary,
+// non-environment-backed trigger: environment_id/workdir both entirely
+// absent from the map, not present-but-empty.
+func TestDecodeTrigger_NoEnvironmentLeavesFieldsNil(t *testing.T) {
+	convID, agentID, projectID := uuid.New(), uuid.New(), uuid.New()
+	values := map[string]interface{}{
+		"conversation_id": convID.String(),
+		"project_id":      projectID.String(),
+		"agent_id":        agentID.String(),
+		"trigger_type":    "chat_message",
+		"message":         "hi",
+	}
+
+	trigger, err := decodeTrigger(values)
+	if err != nil {
+		t.Fatalf("decodeTrigger: %v", err)
+	}
+
+	if trigger.EnvironmentID != nil {
+		t.Errorf("EnvironmentID = %v, want nil", trigger.EnvironmentID)
+	}
+	if trigger.Workdir != nil {
+		t.Errorf("Workdir = %v, want nil", trigger.Workdir)
+	}
+}
+
 func TestDecodeTrigger_MissingConversationIDErrors(t *testing.T) {
 	_, err := decodeTrigger(map[string]interface{}{"agent_id": uuid.New().String()})
 	if err == nil {

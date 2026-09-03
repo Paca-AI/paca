@@ -340,7 +340,7 @@ func (f *fakeActivitySvc) RecordActivity(_ context.Context, in taskdom.RecordAct
 	return nil
 }
 
-func (f *fakeActivitySvc) ListActivities(_ context.Context, taskID uuid.UUID) ([]*taskdom.Activity, error) {
+func (f *fakeActivitySvc) ListActivities(_ context.Context, _, taskID uuid.UUID) ([]*taskdom.Activity, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	var out []*taskdom.Activity
@@ -415,7 +415,7 @@ func (f *fakeActivitySvc) DeleteComment(_ context.Context, id uuid.UUID, _ uuid.
 
 type fakeViewSvcTask struct{}
 
-func (f *fakeViewSvcTask) ListViews(_ context.Context, _ uuid.UUID) ([]*sprintdom.SprintView, error) {
+func (f *fakeViewSvcTask) ListViews(_ context.Context, _, _ uuid.UUID) ([]*sprintdom.SprintView, error) {
 	return nil, nil
 }
 
@@ -449,7 +449,7 @@ func (f *fakeViewSvcTask) ListTaskPositions(_ context.Context, _, _ uuid.UUID) (
 	return nil, nil
 }
 
-func (f *fakeViewSvcTask) ReorderViews(_ context.Context, _ uuid.UUID, _ []uuid.UUID) error {
+func (f *fakeViewSvcTask) ReorderViews(_ context.Context, _, _ uuid.UUID, _ []uuid.UUID) error {
 	return nil
 }
 

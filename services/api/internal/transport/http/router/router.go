@@ -40,6 +40,7 @@ type Deps struct {
 	Plugin               *handler.PluginHandler
 	Skills               *handler.SkillsHandler
 	Agent                *handler.AgentHandler
+	Environment          *handler.EnvironmentHandler
 	Conversation         *handler.ConversationHandler
 	Automation           *handler.AutomationHandler
 	Settings             *handler.SettingsHandler
@@ -77,6 +78,16 @@ func New(deps Deps) http.Handler {
 			// the Authn middleware the way /admin/settings' writes do below.
 			if deps.Settings != nil {
 				r.Get("/branding", deps.Settings.GetBranding)
+			}
+
+			// Environment deployment config (subdomain base / SSH bastion
+			// host) — public, no auth required, same "read on every
+			// relevant page load" shape as /branding above. Not
+			// project-scoped (unlike every other /environments route
+			// below): both values are a single deployment-wide setting,
+			// not something that varies per project.
+			if deps.Environment != nil {
+				r.Get("/environments/config", deps.Environment.GetConfig)
 			}
 
 			// Auth
@@ -287,6 +298,20 @@ func New(deps Deps) http.Handler {
 					// global agent to populate its own permission map.
 					r.Get("/me/global-permissions", deps.Agent.GetMyGlobalPermissions)
 					r.Get("/me/projects", deps.Agent.GetMyInvitedProjects)
+
+					// Agent self-service reads of a conversation by ID (any
+					// project, or global) — the read_conversation MCP tool's
+					// path when a user attaches a Conversation as chat context.
+					// Deliberately separate from the human-facing
+					// /projects/{projectId}/conversations and
+					// /agents/conversations routes below: both of those
+					// authorize against a human member/actor identity a bare
+					// agent doesn't have (see
+					// agentdom.Service.GetConversationForAgent's doc comment).
+					if deps.Conversation != nil {
+						r.Get("/me/conversations/{conversationId}", deps.Conversation.GetConversationForAgent)
+						r.Get("/me/conversations/{conversationId}/events", deps.Conversation.GetConversationEventsForAgent)
+					}
 
 					// Global chat — chatting with a global agent from the home
 					// page / admin pages, no project context. Any authenticated
@@ -736,6 +761,80 @@ func New(deps Deps) http.Handler {
 							Post("/{agentId}/chat-sessions", deps.Agent.StartChatSession)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
 							Post("/{agentId}/chat-sessions/{sessionId}/messages", deps.Agent.SendChatMessage)
+					})
+				}
+
+				// Environments (static, long-lived sandboxes — see
+				// docs/ai-agent/environment-management.md). Gated on their
+				// own dedicated environments.read/write/connect permissions
+				// rather than reusing agents.read/write: managing an
+				// environment's configuration (Write) is a distinct
+				// capability from gaining a live interactive session inside
+				// it (Connect — terminal-ticket only), so the two need to be
+				// grantable independently.
+				if deps.Environment != nil {
+					r.Route("/environments", func(r chi.Router) {
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/", deps.Environment.ListEnvironments)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/", deps.Environment.CreateEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}", deps.Environment.GetEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Patch("/{environmentId}", deps.Environment.UpdateEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Delete("/{environmentId}", deps.Environment.DeleteEnvironment)
+
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/start", deps.Environment.StartEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/stop", deps.Environment.StopEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/restart", deps.Environment.RestartEnvironment)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Post("/{environmentId}/heartbeat", deps.Environment.Heartbeat)
+						// Mints a ticket for agent-runner's live-usage
+						// WebSocket (internal/acpbridge/stats.go) — read-only
+						// in spirit (viewing usage numbers, not a mutating
+						// action or an interactive session), unlike
+						// terminal-ticket below.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Post("/{environmentId}/stats-ticket", deps.Environment.StatsTicket)
+
+						// Folders
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}/folders", deps.Environment.ListFolders)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/folders", deps.Environment.AddFolder)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Delete("/{environmentId}/folders/{folderId}", deps.Environment.DeleteFolder)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}/browse", deps.Environment.BrowseFolder)
+
+						// SSH keys
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}/ssh-keys", deps.Environment.ListSSHKeys)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/ssh-keys", deps.Environment.AddSSHKey)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Delete("/{environmentId}/ssh-keys/{keyId}", deps.Environment.DeleteSSHKey)
+
+						// Port forwards
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}/port-forwards", deps.Environment.ListPortForwards)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Post("/{environmentId}/port-forwards", deps.Environment.AddPortForward)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
+							Delete("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.DeletePortForward)
+
+						// Browser terminal — a minted ticket grants an
+						// interactive shell inside the environment's
+						// container, so this is gated on the dedicated
+						// Connect permission, not Write: being able to
+						// configure an environment doesn't by itself imply
+						// being able to open a shell inside it.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect)).
+							Post("/{environmentId}/terminal-ticket", deps.Environment.TerminalTicket)
 					})
 				}
 

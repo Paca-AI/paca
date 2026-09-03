@@ -63,14 +63,14 @@ func buildAgentKeyRouterWithBotID(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKey
 	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
-	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)
+	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), newFakeSprintRepoIT(), taskRepo, nil)
 	var activityRepo *fakeTaskActivityRepo
 	if len(activityRepos) > 0 && activityRepos[0] != nil {
 		activityRepo = activityRepos[0]
 	} else {
 		activityRepo = newFakeTaskActivityRepo()
 	}
-	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
 
 	apiKeyService := apikeysvc.New(apiKeyRepo).WithAgentKey(testAgentAPIKey, botUserID)
 	// None of these task/comment-focused tests exercise the X-Actor-User-ID
@@ -1283,9 +1283,9 @@ func buildAgentMCPKeyRouter(taskRepo *fakeTaskRepo, apiKeyRepo *fakeAPIKeyRepo, 
 	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(newFakeSprintRepoIT(), taskRepo, nil)
-	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), nil)
+	viewService := sprintsvc.NewViewService(newFakeViewRepoIT(), newFakeSprintRepoIT(), taskRepo, nil)
 	activityRepo := newFakeTaskActivityRepo()
-	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
 
 	apiKeyService := apikeysvc.New(apiKeyRepo).
 		WithAgentKey(testAgentAPIKey, uuid.MustParse(testAgentBotUserID)).

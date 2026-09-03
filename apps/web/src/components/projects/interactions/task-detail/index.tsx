@@ -24,6 +24,7 @@ import {
 	isEpicType,
 	projectQueryOptions,
 } from "@/lib/project-api";
+import { useCurrentContextStore } from "@/lib/shortcuts/current-context-store";
 import { cleanBlocks, cn } from "@/lib/utils";
 import { getTaskTypeIconComponent } from "../../task-types/task-type-icons";
 import { getPriority } from "../priority";
@@ -243,6 +244,25 @@ export function TaskDetailModal({
 	});
 
 	const handleUpdate = canEdit ? updateMutation.mutate : undefined;
+
+	// Register this task as "currently on screen" for the chat composer's
+	// quick-add affordance — same shown/loaded guard every other query above
+	// uses (open in modal mode, or always in page mode), so a closed modal
+	// (still mounted with open=false, per the mode==="modal" && !open early
+	// return below) doesn't stay registered.
+	useEffect(() => {
+		const shown = open || mode === "page";
+		if (!shown || !task) return;
+		useCurrentContextStore.getState().setActive({
+			type: "task",
+			id: task.id,
+			projectId,
+			title: task.title,
+		});
+		return () => {
+			useCurrentContextStore.getState().clearActive("task", task.id);
+		};
+	}, [open, mode, task, projectId]);
 
 	// Close on Escape (modal mode only)
 	useEffect(() => {

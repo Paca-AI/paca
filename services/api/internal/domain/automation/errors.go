@@ -12,6 +12,7 @@ var (
 	ErrNodeConfigInvalid      = errors.New("automation: node config is invalid")
 	ErrNodeCrossProject       = errors.New("automation: node config references an entity outside this automation's project")
 	ErrEdgeNotFound           = errors.New("automation: edge not found")
+	ErrRunNotFound            = errors.New("automation: run not found")
 	ErrEdgeSelfLoop           = errors.New("automation: a node cannot link to itself")
 	ErrEdgeCrossAutomation    = errors.New("automation: source and target nodes must belong to the same automation")
 	ErrEdgeCycle              = errors.New("automation: this edge would create a cycle")

@@ -94,6 +94,24 @@ type Options struct {
 	// already present in Namespace, attached to every sandbox Pod — needed
 	// when the sandbox image is pulled from a private registry.
 	ImagePullSecrets []string
+
+	// AgentServerImage is config.Settings.AgentServerImage — the same
+	// pinned image ephemeral conversation sandboxes run. Unlike Start,
+	// which always receives an already-resolved cfg.Image from its caller
+	// (executor.go) and never reads this field, environment.go's
+	// CreateEnvironment/StartEnvironment fall back to it themselves
+	// whenever EnvironmentConfig.Image is empty — see that type's own doc
+	// comment in ../environment.go for why the fallback has to live in
+	// this package rather than a caller that only resolves it once.
+	AgentServerImage string
+	// EnvironmentsStorageClassName sets StorageClassName on every
+	// PersistentVolumeClaim environment.go's CreateEnvironment provisions
+	// (SANDBOX_ENVIRONMENTS_STORAGE_CLASS). Empty leaves it unset, which
+	// is not the same as "" — a nil StorageClassName is what actually
+	// tells Kubernetes to provision from the cluster's own default
+	// StorageClass, rather than this package hardcoding one that may not
+	// exist on every cluster.
+	EnvironmentsStorageClassName string
 }
 
 // Manager implements sandbox.Backend by creating one Kubernetes Job per
@@ -109,9 +127,23 @@ type Manager struct {
 	memoryLimit resource.Quantity
 
 	imagePullSecrets []corev1.LocalObjectReference
+
+	// agentServerImage/environmentsStorageClassName back environment.go's
+	// CreateEnvironment/StartEnvironment defaulting only — Start itself
+	// never reads either: cfg.Image is always caller-resolved for an
+	// ephemeral sandbox (see sandbox.Config's own doc comment), and disk
+	// sizing is per-environment (EnvironmentConfig.DiskLimitGB), not a
+	// process-wide setting the way cpuLimit/memoryLimit above are.
+	agentServerImage             string
+	environmentsStorageClassName string
 }
 
 var _ sandbox.Backend = (*Manager)(nil)
+
+// Manager also implements sandbox.EnvironmentBackend (see environment.go),
+// satisfying FullBackend on the same struct — main.go widens its
+// newSandboxBackend return type to FullBackend to expose both.
+var _ sandbox.FullBackend = (*Manager)(nil)
 
 // NewManager builds a Manager from Options and the standard in-cluster
 // Kubernetes config (the ServiceAccount token/CA cert Kubernetes mounts
@@ -156,12 +188,14 @@ func NewManager(opts Options) (*Manager, error) {
 	}
 
 	return &Manager{
-		clientset:        clientset,
-		restConfig:       restConfig,
-		namespace:        opts.Namespace,
-		cpuLimit:         cpuQty,
-		memoryLimit:      memQty,
-		imagePullSecrets: pullSecrets,
+		clientset:                    clientset,
+		restConfig:                   restConfig,
+		namespace:                    opts.Namespace,
+		cpuLimit:                     cpuQty,
+		memoryLimit:                  memQty,
+		imagePullSecrets:             pullSecrets,
+		agentServerImage:             opts.AgentServerImage,
+		environmentsStorageClassName: opts.EnvironmentsStorageClassName,
 	}, nil
 }
 
@@ -174,6 +208,55 @@ func NewManager(opts Options) (*Manager, error) {
 // package having to track any state of its own between calls.
 func jobName(conversationID string) string {
 	return "paca-sbx-" + conversationID
+}
+
+// sandboxSecurityContext is the Linux-capabilities hardening applied to
+// every non-privileged sandbox container — Start's Job container below and
+// environment.go's Deployment container alike (the dind sidecar is
+// deliberately excluded from both: it needs Privileged: true, which
+// overrides/ignores any capability list anyway — see dind.go's own
+// comment). Root stays the default user either way — see the callers'
+// own comments on why a blanket non-root flip isn't the answer here — but
+// every capability not explicitly needed by that root user is dropped,
+// with a narrow allow-list added back for the filesystem-ownership
+// operations (package installs writing outside a plain user's own files,
+// git/chown edge cases across an arbitrary checked-out repo, etc.) that
+// running as root inside the sandbox is actually relied on for.
+//
+// A per-Pod PID limit (a cheap fork-bomb bound, the other half of the
+// hardening pass described in docs/ai-agent/environment-management.md)
+// has no equivalent field here: unlike Docker's per-container PidsLimit,
+// Kubernetes only exposes this as a kubelet/node-level setting
+// (--pod-max-pids, or podPidsLimit in the KubeletConfiguration) that
+// applies uniformly to every Pod on a node — there is no per-Pod-spec API
+// to set it from this package, so nothing is invented here to fake one.
+func sandboxSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+			Add: []corev1.Capability{
+				"CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER",
+			},
+		},
+	}
+}
+
+// environmentSecurityContext is sandboxSecurityContext's own capability
+// list plus SYS_CHROOT and AUDIT_WRITE, applied only to a static
+// environment's Deployment container (environment.go) — never to Start's
+// ephemeral per-conversation Job container above, which never runs real
+// sshd. Mirrors internal/sandbox/docker/environment.go's own
+// createAndStartEnvironmentContainer, which adds the exact same two
+// capabilities with the exact same "environment container only" scoping —
+// see that file's doc comment for the live-confirmed reasoning behind each
+// one (sshd's privilege-separated pre-auth chroot, and its post-auth
+// login/session accounting). Kept as a distinct function rather than a
+// parameter on sandboxSecurityContext so the ephemeral-sandbox call site
+// can't accidentally acquire these by a careless future edit.
+func environmentSecurityContext() *corev1.SecurityContext {
+	ctx := sandboxSecurityContext()
+	ctx.Capabilities.Add = append(ctx.Capabilities.Add, "SYS_CHROOT", "AUDIT_WRITE")
+	return ctx
 }
 
 // Start creates a Job for cfg.ConversationID and waits for its Pod to
@@ -233,12 +316,18 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 		Env:       env,
 		Resources: resources,
 		Ports:     []corev1.ContainerPort{{ContainerPort: int32(sandbox.GooseServePort)}},
-		// No SecurityContext/RunAsNonRoot here: the sandbox needs to run as
-		// root (package installs, chown/chmod across arbitrary repo files,
-		// etc. — the same reason services/agent-runner/Dockerfile itself
-		// runs as root), so a namespace enforcing the Restricted Pod
-		// Security Standard rejects every sandbox Pod outright, not only
-		// DockerEnabled ones — see deploy/helm/paca's own README.
+		// SecurityContext below only narrows Linux capabilities (see
+		// sandboxSecurityContext's own doc comment) — RunAsNonRoot is
+		// deliberately still NOT set: the sandbox needs to run as root
+		// (package installs, chown/chmod across arbitrary repo files, etc.
+		// — the same reason services/agent-runner/Dockerfile itself runs
+		// as root), so a namespace enforcing the Restricted Pod Security
+		// Standard still rejects every sandbox Pod outright, not only
+		// DockerEnabled ones — see deploy/helm/paca's own README. A
+		// per-Pod PID limit (a cheap fork-bomb bound, the other half of
+		// this hardening pass) has no Pod-spec-level field to set here —
+		// see sandboxSecurityContext's doc comment for why.
+		SecurityContext: sandboxSecurityContext(),
 	}}
 	if cfg.DockerEnabled {
 		containers = append(containers, dindContainer(resources))
@@ -273,7 +362,7 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 		_ = m.deleteJob(removeCtx, name)
 	}
 
-	podName, podIP, err := m.waitForPodIP(ctx, name)
+	podName, podIP, err := m.waitForPodIP(ctx, "job-name="+name)
 	if err != nil {
 		diag := m.diagnoseUnready(context.Background(), name)
 		cleanup()
@@ -325,24 +414,47 @@ func (m *Manager) deleteJob(ctx context.Context, name string) error {
 	return nil
 }
 
-// waitForPodIP polls for the Job's single Pod (Kubernetes labels every Pod
-// a Job creates with job-name=<jobName> automatically) until it has been
+// waitForPodIP polls for a Pod matching selector (a full label-selector
+// string, e.g. "job-name=paca-sbx-xyz" — Kubernetes labels every Pod a Job
+// creates with job-name=<job name> automatically) until it has been
 // assigned an IP — the earliest point sandbox.WaitForReady's own HTTP
 // polling can even begin. Fails fast (rather than waiting out the full
-// timeout) when the Pod reaches a terminal Failed phase, since that state
-// can never self-resolve into a PodIP appearing.
-func (m *Manager) waitForPodIP(ctx context.Context, jobName string) (podName, podIP string, err error) {
-	selector := "job-name=" + jobName
+// timeout) when the matching Pod reaches a terminal Failed phase, since
+// that state can never self-resolve into a PodIP appearing.
+//
+// Shared between Start above (selector built from the Job's own
+// automatic job-name label) and environment.go's CreateEnvironment/
+// StartEnvironment (selector built from environmentLabel, which
+// Kubernetes has no built-in equivalent of for a Deployment's Pods) —
+// this function itself has no opinion on which label a caller selects by.
+func (m *Manager) waitForPodIP(ctx context.Context, selector string) (podName, podIP string, err error) {
 	deadline := time.Now().Add(podReadyTimeout)
 	for time.Now().Before(deadline) {
 		pods, listErr := m.clientset.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-		if listErr == nil && len(pods.Items) > 0 {
-			pod := pods.Items[0]
-			if pod.Status.Phase == corev1.PodFailed {
-				return "", "", fmt.Errorf("sandbox/k8s: pod %s for job %s failed before becoming ready", pod.Name, jobName)
-			}
-			if pod.Status.PodIP != "" {
-				return pod.Name, pod.Status.PodIP, nil
+		if listErr == nil {
+			for _, pod := range pods.Items {
+				if pod.DeletionTimestamp != nil {
+					// Terminating — e.g. StopEnvironment's scale-to-0 patch
+					// was accepted and returned success (it doesn't wait
+					// for the Pod to actually finish tearing down —
+					// terminationGracePeriodSeconds means that can take
+					// real time), immediately followed by a Start. A
+					// terminating Pod still carries a non-empty PodIP right
+					// up until it's actually gone, so without this check
+					// this could return an address that's about to stop
+					// answering — observed live exactly this way: a dind-
+					// readiness wait timed out chasing a Pod that had
+					// already been superseded by its own replacement,
+					// immediately after a plain Stop-then-Start with no
+					// other concurrent operation involved at all.
+					continue
+				}
+				if pod.Status.Phase == corev1.PodFailed {
+					return "", "", fmt.Errorf("sandbox/k8s: pod %s (selector %q) failed before becoming ready", pod.Name, selector)
+				}
+				if pod.Status.PodIP != "" {
+					return pod.Name, pod.Status.PodIP, nil
+				}
 			}
 		}
 		select {
@@ -351,7 +463,7 @@ func (m *Manager) waitForPodIP(ctx context.Context, jobName string) (podName, po
 		case <-time.After(podReadyPollEvery):
 		}
 	}
-	return "", "", fmt.Errorf("sandbox/k8s: job %s's pod never got an IP after %s", jobName, podReadyTimeout)
+	return "", "", fmt.Errorf("sandbox/k8s: no pod matching selector %q got an IP after %s", selector, podReadyTimeout)
 }
 
 // podNameForJob resolves a Job name (Handle.ContainerID) to its current

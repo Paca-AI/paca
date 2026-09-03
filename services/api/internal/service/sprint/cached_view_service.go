@@ -62,8 +62,8 @@ func viewItemKey(id uuid.UUID) string {
 
 // ListViews returns all views for a sprint (sprint context). Not cached; see
 // type-level documentation for rationale.
-func (c *CachedViewService) ListViews(ctx context.Context, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
-	return c.svc.ListViews(ctx, sprintID)
+func (c *CachedViewService) ListViews(ctx context.Context, projectID, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
+	return c.svc.ListViews(ctx, projectID, sprintID)
 }
 
 // ListProjectViews returns all views for a project filtered by viewCtx,
@@ -181,8 +181,8 @@ func (c *CachedViewService) ListTaskPositions(ctx context.Context, projectID, vi
 }
 
 // ReorderViews delegates directly to the underlying service (not cached).
-func (c *CachedViewService) ReorderViews(ctx context.Context, sprintID uuid.UUID, viewIDs []uuid.UUID) error {
-	return c.svc.ReorderViews(ctx, sprintID, viewIDs)
+func (c *CachedViewService) ReorderViews(ctx context.Context, projectID, sprintID uuid.UUID, viewIDs []uuid.UUID) error {
+	return c.svc.ReorderViews(ctx, projectID, sprintID, viewIDs)
 }
 
 // ReorderProjectViews reorders project-level views (backlog or timeline) and

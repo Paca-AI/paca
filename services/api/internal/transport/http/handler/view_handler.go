@@ -71,7 +71,7 @@ func (h *ViewHandler) ListViews(w http.ResponseWriter, r *http.Request) {
 			presenter.Error(w, r, err)
 			return
 		}
-		views, err = h.svc.ListViews(r.Context(), sprintID)
+		views, err = h.svc.ListViews(r.Context(), projectID, sprintID)
 	} else {
 		views, err = h.svc.ListProjectViews(r.Context(), projectID, viewCtx)
 	}
@@ -395,7 +395,7 @@ func (h *ViewHandler) ReorderViews(w http.ResponseWriter, r *http.Request) {
 			presenter.Error(w, r, err)
 			return
 		}
-		err = h.svc.ReorderViews(r.Context(), sprintID, req.ViewIDs)
+		err = h.svc.ReorderViews(r.Context(), projectID, sprintID, req.ViewIDs)
 	} else {
 		err = h.svc.ReorderProjectViews(r.Context(), projectID, viewCtx, req.ViewIDs)
 	}

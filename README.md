@@ -16,11 +16,13 @@
 <p align="center"><sub>✨ Sponsored by</sub></p>
 
 <p align="center">
-  <a href="https://neon.com" title="Sponsored by Neon"><img src="docs/assets/neon-logo.svg" alt="Sponsored by Neon" width="120" /></a>
+  <a href="https://aws.amazon.com" title="Sponsored by AWS"><img src="docs/assets/aws-logo.svg" alt="Sponsored by AWS" height="40" /></a>
   &nbsp;&nbsp;
-  <a href="https://m.do.co/c/cce1c135acd1"><img src="https://opensource.nyc3.cdn.digitaloceanspaces.com/attribution/assets/PoweredByDO/DO_Powered_by_Badge_blue.svg" alt="Powered by DigitalOcean" width="201" /></a>
+  <a href="https://neon.com" title="Sponsored by Neon"><img src="docs/assets/neon-logo.svg" alt="Sponsored by Neon" height="40" /></a>
   &nbsp;&nbsp;
-  <a href="https://app.virtuals.io/referral?code=rXZ9nf"><img src="https://os.virtuals.io/favicon.png" alt="Sponsored by Virtuals Protocol" width="40" /></a>
+  <a href="https://m.do.co/c/cce1c135acd1"><img src="https://opensource.nyc3.cdn.digitaloceanspaces.com/attribution/assets/PoweredByDO/DO_Powered_by_Badge_blue.svg" alt="Powered by DigitalOcean" height="40" /></a>
+  &nbsp;&nbsp;
+  <a href="https://app.virtuals.io/referral?code=rXZ9nf"><img src="https://os.virtuals.io/favicon.png" alt="Sponsored by Virtuals Protocol" height="40" /></a>
 </p>
 
 <p align="center">

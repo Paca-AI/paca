@@ -1,9 +1,14 @@
 import type { BlockNoteEditor } from "@blocknote/core";
-import { filterSuggestionItems } from "@blocknote/core/extensions";
+import {
+	filterSuggestionItems,
+	insertOrUpdateBlockForSlashMenu,
+} from "@blocknote/core/extensions";
 import {
 	type DefaultReactSuggestionItem,
+	getDefaultReactSlashMenuItems,
 	SuggestionMenuController,
 } from "@blocknote/react";
+import { Workflow } from "lucide-react";
 import { EntityAvatarContent } from "@/components/shared/entity-avatar";
 import { useDebouncedAsyncCallback } from "@/hooks/use-debounced-callback";
 import { searchMentionableTasks } from "@/lib/mention-api";
@@ -134,8 +139,28 @@ export function MentionSuggestionMenus({
 		}));
 	};
 
+	const getSlashMenuItems = (): DefaultReactSuggestionItem[] => [
+		...getDefaultReactSlashMenuItems(editor),
+		{
+			title: "Mermaid Diagram",
+			subtext: "Insert a Mermaid diagram",
+			aliases: ["mermaid", "diagram", "flowchart", "graph", "sequence"],
+			group: "Advanced",
+			icon: <Workflow size={18} />,
+			onItemClick: () => {
+				insertOrUpdateBlockForSlashMenu(editor, { type: "mermaid" });
+			},
+		},
+	];
+
 	return (
 		<>
+			<SuggestionMenuController
+				triggerCharacter="/"
+				getItems={async (query) =>
+					filterSuggestionItems(getSlashMenuItems(), query)
+				}
+			/>
 			<SuggestionMenuController
 				triggerCharacter="@"
 				getItems={async (query) =>

@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EnvironmentCreateDialog } from "@/components/projects/environments/environment-create-dialog";
+import { FolderCreateDialog } from "@/components/projects/environments/folder-create-dialog";
 import { AvatarUpload } from "@/components/shared/avatar-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,6 +76,7 @@ import {
 	updateMCPServer,
 	updateSkill,
 } from "@/lib/agent-api";
+import { environmentsQueryOptions } from "@/lib/environment-api";
 import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
 import { AcpBridgeSetup } from "./acp-bridge-setup";
@@ -94,6 +97,10 @@ import { AgentActivityTab } from "./agent-activity-tab";
 type Tab = "overview" | "mcp-servers" | "skills" | "env-vars" | "activity";
 
 const CUSTOM = "__custom__";
+const NO_ENVIRONMENT = "__none__";
+const CREATE_NEW_ENVIRONMENT = "__create_environment__";
+const NO_FOLDER = "__none__";
+const CREATE_NEW_FOLDER = "__create_folder__";
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
@@ -110,6 +117,13 @@ function OverviewTab({
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { data: llmModels = {} } = useQuery(llmModelsQueryOptions);
+	// Only fetched at project scope — a global agent has no project to
+	// default an environment from, and the Select below is hidden entirely
+	// in that case (see the !isAcp block below).
+	const { data: environments = [] } = useQuery({
+		...environmentsQueryOptions(projectId ?? ""),
+		enabled: !!projectId,
+	});
 
 	const providers = Object.keys(llmModels);
 
@@ -146,6 +160,29 @@ function OverviewTab({
 		agent.git_committer_email,
 	);
 	const [dockerEnabled, setDockerEnabled] = useState(agent.docker_enabled);
+	const [defaultEnvironmentId, setDefaultEnvironmentIdState] = useState(
+		agent.default_environment_id ?? "",
+	);
+	const [createEnvironmentOpen, setCreateEnvironmentOpen] = useState(false);
+	const [defaultFolderId, setDefaultFolderId] = useState(
+		agent.default_folder_id ?? "",
+	);
+	const [createFolderOpen, setCreateFolderOpen] = useState(false);
+	// Changing the default environment clears any previously-picked default
+	// folder — a folder only ever belongs to one environment, so a folder
+	// picked under the old one is never valid under the new one (mirrors
+	// agent-picker.tsx's useEnvironmentPicker.onEnvironmentChange, which
+	// clears folderId the same way for the composer's own pickers).
+	const setDefaultEnvironmentId = (id: string) => {
+		if (id !== defaultEnvironmentId) {
+			setDefaultFolderId("");
+		}
+		setDefaultEnvironmentIdState(id);
+	};
+	const selectedEnvironment = environments.find(
+		(env) => env.id === defaultEnvironmentId,
+	);
+	const selectedEnvironmentFolders = selectedEnvironment?.folders ?? [];
 	const [acpProviderSelect, setAcpProviderSelect] = useState<ACPProvider>(
 		agent.acp_provider ?? "claude-code",
 	);
@@ -190,7 +227,9 @@ function OverviewTab({
 				systemPrompt !== agent.system_prompt ||
 				committerName !== agent.git_committer_name ||
 				committerEmail !== agent.git_committer_email ||
-				dockerEnabled !== agent.docker_enabled);
+				dockerEnabled !== agent.docker_enabled ||
+				defaultEnvironmentId !== (agent.default_environment_id ?? "") ||
+				defaultFolderId !== (agent.default_folder_id ?? ""));
 
 	const saveMutation = useMutation({
 		mutationFn: () => {
@@ -212,6 +251,19 @@ function OverviewTab({
 							git_committer_name: committerName.trim(),
 							git_committer_email: committerEmail.trim(),
 							docker_enabled: dockerEnabled,
+							...(projectId
+								? {
+										default_environment_id:
+											defaultEnvironmentId === NO_ENVIRONMENT ||
+											!defaultEnvironmentId
+												? null
+												: defaultEnvironmentId,
+										default_folder_id:
+											defaultFolderId === NO_FOLDER || !defaultFolderId
+												? null
+												: defaultFolderId,
+									}
+								: {}),
 						}),
 			};
 			return projectId
@@ -491,20 +543,172 @@ function OverviewTab({
 
 					<Separator />
 
-					<div className="flex items-center justify-between gap-3">
-						<div>
-							<p className="text-sm font-medium">
-								{t("agents.detail.overview.dockerEnabledLabel")}
-							</p>
-							<p className="text-xs text-muted-foreground">
-								{t("agents.detail.overview.dockerEnabledHint")}
-							</p>
+					<div>
+						<p className="text-sm font-medium mb-3">
+							{t("agents.detail.overview.environmentSection")}
+						</p>
+						<div className="space-y-4">
+							{projectId && (
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-medium">
+											{t("agents.detail.overview.defaultEnvironmentLabel")}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.detail.overview.defaultEnvironmentHint")}
+										</p>
+									</div>
+									<Select
+										value={defaultEnvironmentId || NO_ENVIRONMENT}
+										onValueChange={(v) => {
+											if (!v) return;
+											if (v === CREATE_NEW_ENVIRONMENT) {
+												setCreateEnvironmentOpen(true);
+												return;
+											}
+											setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v);
+										}}
+										items={[
+											{
+												value: NO_ENVIRONMENT,
+												label: t("agents.detail.overview.noDefaultEnvironment"),
+											},
+											...environments.map((env) => ({
+												value: env.id,
+												label: env.name,
+											})),
+											{
+												value: CREATE_NEW_ENVIRONMENT,
+												label: t("environments.picker.createNew"),
+											},
+										]}
+										disabled={!canWrite}
+									>
+										<SelectTrigger className="w-56">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value={NO_ENVIRONMENT}>
+												{t("agents.detail.overview.noDefaultEnvironment")}
+											</SelectItem>
+											{environments.length > 0 && <SelectSeparator />}
+											{environments.map((env) => (
+												<SelectItem key={env.id} value={env.id}>
+													{env.name}
+												</SelectItem>
+											))}
+											<SelectSeparator />
+											<SelectItem value={CREATE_NEW_ENVIRONMENT}>
+												<Plus className="size-3.5" />
+												{t("environments.picker.createNew")}
+											</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+							)}
+
+							{projectId && selectedEnvironment && (
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-medium">
+											{t("agents.detail.overview.defaultFolderLabel")}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.detail.overview.defaultFolderHint")}
+										</p>
+									</div>
+									<Select
+										value={defaultFolderId || NO_FOLDER}
+										onValueChange={(v) => {
+											if (!v) return;
+											if (v === CREATE_NEW_FOLDER) {
+												setCreateFolderOpen(true);
+												return;
+											}
+											setDefaultFolderId(v === NO_FOLDER ? "" : v);
+										}}
+										items={[
+											{
+												value: NO_FOLDER,
+												label: t("agents.detail.overview.noDefaultFolder"),
+											},
+											...selectedEnvironmentFolders.map((folder) => ({
+												value: folder.id,
+												label: folder.path,
+											})),
+											{
+												value: CREATE_NEW_FOLDER,
+												label: t("environments.picker.folderCreateNew"),
+											},
+										]}
+										disabled={!canWrite}
+									>
+										<SelectTrigger className="w-56">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value={NO_FOLDER}>
+												{t("agents.detail.overview.noDefaultFolder")}
+											</SelectItem>
+											{selectedEnvironmentFolders.length > 0 && (
+												<SelectSeparator />
+											)}
+											{selectedEnvironmentFolders.map((folder) => (
+												<SelectItem key={folder.id} value={folder.id}>
+													{folder.path}
+												</SelectItem>
+											))}
+											<SelectSeparator />
+											<SelectItem value={CREATE_NEW_FOLDER}>
+												<Plus className="size-3.5" />
+												{t("environments.picker.folderCreateNew")}
+											</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+							)}
+
+							{/* Docker access only applies to the disposable per-conversation
+							    sandbox — once a static default environment is picked, that
+							    environment's own Docker setting (set at creation) governs
+							    instead, so this toggle no longer means anything. */}
+							{!defaultEnvironmentId && (
+								<div className="flex items-center justify-between gap-3">
+									<div>
+										<p className="text-sm font-medium">
+											{t("agents.detail.overview.dockerEnabledLabel")}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.detail.overview.dockerEnabledHint")}
+										</p>
+									</div>
+									<Switch
+										checked={dockerEnabled}
+										onCheckedChange={setDockerEnabled}
+										disabled={!canWrite}
+									/>
+								</div>
+							)}
 						</div>
-						<Switch
-							checked={dockerEnabled}
-							onCheckedChange={setDockerEnabled}
-							disabled={!canWrite}
-						/>
+
+						{projectId && (
+							<EnvironmentCreateDialog
+								projectId={projectId}
+								open={createEnvironmentOpen}
+								onOpenChange={setCreateEnvironmentOpen}
+								onCreated={(env) => setDefaultEnvironmentId(env.id)}
+							/>
+						)}
+						{projectId && selectedEnvironment && (
+							<FolderCreateDialog
+								projectId={projectId}
+								environmentId={selectedEnvironment.id}
+								environmentStatus={selectedEnvironment.status}
+								open={createFolderOpen}
+								onOpenChange={setCreateFolderOpen}
+								onCreated={(folder) => setDefaultFolderId(folder.id)}
+							/>
+						)}
 					</div>
 				</>
 			)}

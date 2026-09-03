@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -56,6 +57,11 @@ func (h *AutomationHandler) ListPluginNodeTypes(w http.ResponseWriter, r *http.R
 // --- Automations ----------------------------------------------------------
 
 // ListAutomations handles GET /projects/:projectId/automations.
+// Optional query params: status — filter by lifecycle status; search — case-
+// insensitive name match; page_size (1-200), cursor — opt into keyset
+// pagination (see automationdom.Repository.ListAutomations's doc comment).
+// Omitting page_size returns every matching automation in one response, as
+// before.
 func (h *AutomationHandler) ListAutomations(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)
 	if err != nil {
@@ -73,7 +79,26 @@ func (h *AutomationHandler) ListAutomations(w http.ResponseWriter, r *http.Reque
 		status = &s
 	}
 
-	automations, err := h.svc.ListAutomations(r.Context(), projectID, status)
+	var search *string
+	if raw := strings.TrimSpace(r.URL.Query().Get("search")); raw != "" {
+		search = &raw
+	}
+
+	var limit *int
+	if raw := r.URL.Query().Get("page_size"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 200 {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "page_size must be an integer between 1 and 200"))
+			return
+		}
+		limit = &n
+	}
+	var cursor *string
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		cursor = &raw
+	}
+
+	automations, hasMore, err := h.svc.ListAutomations(r.Context(), projectID, status, search, cursor, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -82,7 +107,12 @@ func (h *AutomationHandler) ListAutomations(w http.ResponseWriter, r *http.Reque
 	for _, a := range automations {
 		resp = append(resp, dto.NewAutomationResponse(a))
 	}
-	presenter.OK(w, r, map[string]any{"items": resp})
+	var nextCursor *string
+	if hasMore && len(automations) > 0 {
+		s := automationdom.EncodeAutomationCursor(automations[len(automations)-1])
+		nextCursor = &s
+	}
+	presenter.OK(w, r, map[string]any{"items": resp, "next_cursor": nextCursor})
 }
 
 // CreateAutomation handles POST /projects/:projectId/automations.

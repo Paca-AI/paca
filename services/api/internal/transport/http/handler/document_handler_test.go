@@ -33,8 +33,8 @@ func (f *fakeDocSvc) UpdateFolder(_ context.Context, _ uuid.UUID, _ docdom.Updat
 }
 func (f *fakeDocSvc) DeleteFolder(_ context.Context, _ uuid.UUID, _ uuid.UUID) error { return nil }
 
-func (f *fakeDocSvc) ListDocuments(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]*docdom.Document, error) {
-	return nil, nil
+func (f *fakeDocSvc) ListDocuments(_ context.Context, _ uuid.UUID, _ *uuid.UUID, _ *string, _ *string, _ *int) ([]*docdom.Document, bool, error) {
+	return nil, false, nil
 }
 func (f *fakeDocSvc) GetDocument(_ context.Context, _ uuid.UUID) (*docdom.Document, error) {
 	return nil, docdom.ErrDocNotFound
@@ -42,15 +42,15 @@ func (f *fakeDocSvc) GetDocument(_ context.Context, _ uuid.UUID) (*docdom.Docume
 func (f *fakeDocSvc) CreateDocument(_ context.Context, _ docdom.CreateDocumentInput) (*docdom.Document, error) {
 	return &docdom.Document{ID: uuid.New()}, nil
 }
-func (f *fakeDocSvc) UpdateDocument(_ context.Context, _ uuid.UUID, _ docdom.UpdateDocumentInput) (*docdom.Document, error) {
+func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, _ docdom.UpdateDocumentInput) (*docdom.Document, error) {
 	return nil, docdom.ErrDocNotFound
 }
-func (f *fakeDocSvc) DeleteDocument(_ context.Context, _ uuid.UUID) error { return nil }
+func (f *fakeDocSvc) DeleteDocument(_ context.Context, _, _ uuid.UUID) error { return nil }
 
-func (f *fakeDocSvc) ListSnapshots(_ context.Context, _ uuid.UUID) ([]*docdom.DocSnapshot, error) {
+func (f *fakeDocSvc) ListSnapshots(_ context.Context, _, _ uuid.UUID) ([]*docdom.DocSnapshot, error) {
 	return nil, nil
 }
-func (f *fakeDocSvc) GetSnapshot(_ context.Context, _ uuid.UUID) (*docdom.DocSnapshot, error) {
+func (f *fakeDocSvc) GetSnapshot(_ context.Context, _, _ uuid.UUID) (*docdom.DocSnapshot, error) {
 	return nil, docdom.ErrSnapshotNotFound
 }
 
@@ -59,7 +59,7 @@ type fakeDocActivitySvc struct{}
 func (f *fakeDocActivitySvc) RecordActivity(_ context.Context, _ docdom.RecordActivityInput) error {
 	return nil
 }
-func (f *fakeDocActivitySvc) ListActivities(_ context.Context, _ uuid.UUID) ([]*docdom.Activity, error) {
+func (f *fakeDocActivitySvc) ListActivities(_ context.Context, _, _ uuid.UUID) ([]*docdom.Activity, error) {
 	return nil, nil
 }
 func (f *fakeDocActivitySvc) AddComment(_ context.Context, in docdom.AddCommentInput) (*docdom.Activity, error) {

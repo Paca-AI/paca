@@ -23,12 +23,15 @@ import {
 	heartbeatConversation,
 	pauseConversation,
 	sendChatMessage,
+	sendConversationMessage,
 	startChatSession,
 	stopConversation,
 } from "@/lib/agent-api";
+import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -134,6 +137,9 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+		// Snapshot now (not read again after any await) so a badge staged
+		// mid-send can't sneak into this message or get cleared under it.
+		const contextItems = useContextInjectionStore.getState().items;
 
 		// Guards against a fast double-Enter firing two requests (e.g. two
 		// chat sessions) before the first one resolves and flips isRunning.
@@ -143,7 +149,9 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
 				const result = await startChatSession(projectId, agentId, {
 					message: text,
+					contextItems,
 				});
+				useContextInjectionStore.getState().clear();
 				// Seed the cache before flipping conversationId so the Thread
 				// doesn't flash a "can't reply" state while the query resolves.
 				qc.setQueryData(
@@ -157,15 +165,31 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 				return;
 			}
 
-			if (!conversation?.chat_session_id) {
+			if (!conversation) {
 				throw new Error(t("agents.conversationView.conversationEnded"));
+			}
+			if (!conversation.chat_session_id) {
+				// ACP, or an LLM conversation attached to a static environment
+				// (see canReplyToConversation's own doc comment) — reply in
+				// place on the same conversation_id rather than through a chat
+				// session.
+				await sendConversationMessage(
+					projectId,
+					conversation.id,
+					text,
+					contextItems,
+				);
+				useContextInjectionStore.getState().clear();
+				invalidate();
+				return;
 			}
 			const result = await sendChatMessage(
 				projectId,
 				conversation.agent_id,
 				conversation.chat_session_id,
-				{ message: text },
+				{ message: text, contextItems },
 			);
+			useContextInjectionStore.getState().clear();
 			// The previous conversation may have already ended (explicitly
 			// stopped, or reaped after 3 minutes with no heartbeat) — replying
 			// then silently starts a fresh conversation server-side. Follow it,
@@ -190,16 +214,11 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 		invalidate();
 	};
 
-	// ACP conversations stay replyable straight through a terminal status —
-	// the user's local bridge daemon keeps the underlying conversation alive
-	// independent of Paca's own status bookkeeping (see SendChatMessage's ACP
-	// resume path in services/api), so "finished"/"failed"/"stopped" doesn't
-	// mean dead-ended the way it does for an LLM chat conversation.
+	// !conversationId: no conversation yet, so there's nothing to be blocked
+	// on — the composer is for starting a brand new one. See
+	// canReplyToConversation's own doc comment for every other case.
 	const canReply =
-		!conversationId ||
-		(conversation?.trigger_type === "chat_message" &&
-			!!conversation.chat_session_id &&
-			(!isTerminal || isACP));
+		!conversationId || canReplyToConversation(conversation, isACP);
 
 	const showFailedBanner =
 		!!conversationId &&
@@ -256,16 +275,26 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 	// no heartbeat — this replaces the old pagehide-triggered immediate stop.
 	// ACP conversations skip this entirely: there's no cloud sandbox to keep
 	// alive (the user's local bridge daemon owns that lifecycle instead), so
-	// heartbeating one would just be a wasted round trip.
+	// heartbeating one would just be a wasted round trip. Same for a
+	// conversation attached to a static environment (environment_id set) —
+	// see conversation-view.tsx's matching heartbeat effect for why that's a
+	// guaranteed no-op server-side too.
 	useEffect(() => {
-		if (!conversationId || isTerminal || isACP) return;
+		if (!conversationId || isTerminal || isACP || conversation?.environment_id)
+			return;
 		const id = conversationId;
 		void heartbeatConversation(projectId, id).catch(() => {});
 		const interval = setInterval(() => {
 			void heartbeatConversation(projectId, id).catch(() => {});
 		}, CONVERSATION_HEARTBEAT_INTERVAL_MS);
 		return () => clearInterval(interval);
-	}, [conversationId, isTerminal, isACP, projectId]);
+	}, [
+		conversationId,
+		conversation?.environment_id,
+		isTerminal,
+		isACP,
+		projectId,
+	]);
 
 	return (
 		<>
@@ -275,7 +304,11 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 				aria-label={t("aiChat.chatWithAgent")}
 				onClick={handleToggleOpen}
 				className={cn(
-					"fixed bottom-6 right-6 z-40 flex size-12 items-center justify-center rounded-full shadow-lg transition-all hover:scale-105",
+					// z-70: must stay above the task-detail dialog (z-50, with its
+					// own backdrop-blur) so the float stays clickable and unblurred
+					// while that dialog is open, and above its nested field dialog
+					// (z-60) too.
+					"fixed bottom-6 right-6 z-70 flex size-12 items-center justify-center rounded-full shadow-lg transition-all hover:scale-105",
 					open
 						? "bg-muted text-foreground border border-border"
 						: "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -288,7 +321,7 @@ export function AIChatFloat({ projectId }: AIChatFloatProps) {
 			{open && (
 				<div
 					className={cn(
-						"fixed bottom-20 right-6 z-40 flex w-95 flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl",
+						"fixed bottom-20 right-6 z-70 flex w-95 flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl",
 						conversationId ? "h-150" : "max-h-150",
 					)}
 				>

@@ -221,7 +221,32 @@
                   "name": { "type": "string" }
                 }
               }
+            },
+            "environments": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "storageClassName": { "type": "string" }
+              }
             }
+          }
+        },
+        "sshBastion": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "portRangeStart": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "portRangeEnd": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "portForward": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "portRangeStart": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "portRangeEnd": { "type": "integer", "minimum": 1, "maximum": 65535 }
           }
         }
       }
@@ -241,6 +266,14 @@
             "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
           }
         }
+      }
+    },
+    "environments": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "sshBastionHost": { "type": "string" },
+        "portForwardHost": { "type": "string" }
       }
     },
     "ingress": {

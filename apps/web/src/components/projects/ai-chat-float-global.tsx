@@ -24,12 +24,15 @@ import {
 	heartbeatGlobalConversation,
 	pauseGlobalConversation,
 	sendGlobalChatMessage,
+	sendGlobalConversationMessage,
 	startGlobalChatSession,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
+import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./agents/conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -133,6 +136,9 @@ export function GlobalAIChatFloat() {
 		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+		// Snapshot now (not read again after any await) so a badge staged
+		// mid-send can't sneak into this message or get cleared under it.
+		const contextItems = useContextInjectionStore.getState().items;
 
 		setIsSubmitting(true);
 		try {
@@ -140,7 +146,9 @@ export function GlobalAIChatFloat() {
 				if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
 				const result = await startGlobalChatSession(agentId, {
 					message: text,
+					contextItems,
 				});
+				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					globalConversationQueryOptions(result.conversation.id).queryKey,
 					result.conversation,
@@ -152,12 +160,27 @@ export function GlobalAIChatFloat() {
 				return;
 			}
 
-			if (!conversation?.chat_session_id) {
+			if (!conversation) {
 				throw new Error(t("agents.conversationView.conversationEnded"));
+			}
+			if (!conversation.chat_session_id) {
+				// ACP (see canReplyToConversation's own doc comment) — reply in
+				// place on the same conversation_id rather than through a chat
+				// session.
+				await sendGlobalConversationMessage(
+					conversation.id,
+					text,
+					contextItems,
+				);
+				useContextInjectionStore.getState().clear();
+				invalidate();
+				return;
 			}
 			const result = await sendGlobalChatMessage(conversation.chat_session_id, {
 				message: text,
+				contextItems,
 			});
+			useContextInjectionStore.getState().clear();
 			if (result.id !== conversationId) {
 				qc.setQueryData(
 					globalConversationQueryOptions(result.id).queryKey,
@@ -177,11 +200,11 @@ export function GlobalAIChatFloat() {
 		invalidate();
 	};
 
+	// !conversationId: no conversation yet, so there's nothing to be blocked
+	// on — the composer is for starting a brand new one. See
+	// canReplyToConversation's own doc comment for every other case.
 	const canReply =
-		!conversationId ||
-		(conversation?.trigger_type === "chat_message" &&
-			!!conversation.chat_session_id &&
-			(!isTerminal || isACP));
+		!conversationId || canReplyToConversation(conversation, isACP);
 
 	const showFailedBanner =
 		!!conversationId &&
@@ -238,7 +261,11 @@ export function GlobalAIChatFloat() {
 				aria-label={t("aiChat.chatWithAgent")}
 				onClick={handleToggleOpen}
 				className={cn(
-					"fixed bottom-6 right-6 z-40 flex size-12 items-center justify-center rounded-full shadow-lg transition-all hover:scale-105",
+					// z-70: must stay above the task-detail dialog (z-50, with its
+					// own backdrop-blur) so the float stays clickable and unblurred
+					// while that dialog is open, and above its nested field dialog
+					// (z-60) too.
+					"fixed bottom-6 right-6 z-70 flex size-12 items-center justify-center rounded-full shadow-lg transition-all hover:scale-105",
 					open
 						? "bg-muted text-foreground border border-border"
 						: "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -251,7 +278,7 @@ export function GlobalAIChatFloat() {
 			{open && (
 				<div
 					className={cn(
-						"fixed bottom-20 right-6 z-40 flex w-95 flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl",
+						"fixed bottom-20 right-6 z-70 flex w-95 flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl",
 						conversationId ? "h-150" : "max-h-150",
 					)}
 				>

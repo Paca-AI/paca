@@ -55,8 +55,9 @@ type UpdateSprintInput struct {
 
 // ViewService defines use cases for sprint views and manual task ordering.
 type ViewService interface {
-	// ListViews returns all views belonging to a sprint.
-	ListViews(ctx context.Context, sprintID uuid.UUID) ([]*SprintView, error)
+	// ListViews returns all views belonging to a sprint, verifying the
+	// sprint belongs to projectID.
+	ListViews(ctx context.Context, projectID, sprintID uuid.UUID) ([]*SprintView, error)
 
 	// ListProjectViews returns all views for a project filtered by viewCtx
 	// (ViewContextBacklog or ViewContextTimeline).
@@ -64,6 +65,8 @@ type ViewService interface {
 
 	// GetView returns the view identified by id, verifying it belongs to projectID.
 	GetView(ctx context.Context, projectID, id uuid.UUID) (*SprintView, error)
+	// CreateView creates a new view. When in.SprintID is set, verifies the
+	// sprint belongs to in.ProjectID before creating the view.
 	CreateView(ctx context.Context, in CreateViewInput) (*SprintView, error)
 	// UpdateView updates the view identified by id, verifying it belongs to projectID.
 	UpdateView(ctx context.Context, projectID, id uuid.UUID, in UpdateViewInput) (*SprintView, error)
@@ -71,20 +74,22 @@ type ViewService interface {
 	DeleteView(ctx context.Context, projectID, id uuid.UUID) error
 
 	// MoveTask updates the manual position of a task within a view,
-	// verifying the view belongs to projectID.
+	// verifying the view and the task both belong to projectID.
 	MoveTask(ctx context.Context, projectID, viewID uuid.UUID, in MoveTaskInput) error
 
 	// BulkMoveTasks updates the manual positions of multiple tasks in a view
-	// within a single transaction, verifying the view belongs to projectID.
+	// within a single transaction, verifying the view and every task belong
+	// to projectID.
 	BulkMoveTasks(ctx context.Context, projectID, viewID uuid.UUID, items []MoveTaskInput) error
 
 	// ListTaskPositions returns the manual ordering for all tasks in a view,
 	// verifying the view belongs to projectID.
 	ListTaskPositions(ctx context.Context, projectID, viewID uuid.UUID) ([]*ViewTaskPosition, error)
 
-	// ReorderViews reorders all views belonging to a sprint.  viewIDs must
-	// contain every view ID for that sprint in the desired order.
-	ReorderViews(ctx context.Context, sprintID uuid.UUID, viewIDs []uuid.UUID) error
+	// ReorderViews reorders all views belonging to a sprint, verifying the
+	// sprint belongs to projectID.  viewIDs must contain every view ID for
+	// that sprint in the desired order.
+	ReorderViews(ctx context.Context, projectID, sprintID uuid.UUID, viewIDs []uuid.UUID) error
 
 	// ReorderProjectViews reorders all views for a project with the given
 	// context.  viewIDs must contain every view ID for that project+context

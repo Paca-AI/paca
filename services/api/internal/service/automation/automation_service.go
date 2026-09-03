@@ -77,9 +77,10 @@ func (s *Service) publish(ctx context.Context, topic string, payload map[string]
 
 // --- Automation lifecycle ------------------------------------------------------
 
-// ListAutomations returns a project's automations, optionally filtered by status.
-func (s *Service) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status) ([]*automationdom.Automation, error) {
-	return s.repo.ListAutomations(ctx, projectID, status)
+// ListAutomations returns a project's automations, optionally filtered by
+// status and/or a case-insensitive name search.
+func (s *Service) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status, search *string, cursor *string, limit *int) ([]*automationdom.Automation, bool, error) {
+	return s.repo.ListAutomations(ctx, projectID, status, search, cursor, limit)
 }
 
 // GetAutomation returns one automation together with its full node/edge graph.
@@ -478,6 +479,9 @@ func (s *Service) ListRunSteps(ctx context.Context, projectID, automationID, run
 	if _, err := s.findOwnedAutomation(ctx, projectID, automationID); err != nil {
 		return nil, err
 	}
+	if _, err := s.findOwnedRun(ctx, automationID, runID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListRunStepsByRun(ctx, runID)
 }
 
@@ -487,7 +491,7 @@ func (s *Service) ListRunSteps(ctx context.Context, projectID, automationID, run
 // configs in projectID, for the read-only, auto-generated dependency view.
 func (s *Service) DependencyMap(ctx context.Context, projectID uuid.UUID) ([]automationdom.DependencyMapEntry, error) {
 	active := automationdom.StatusActive
-	automations, err := s.repo.ListAutomations(ctx, projectID, &active)
+	automations, _, err := s.repo.ListAutomations(ctx, projectID, &active, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -637,6 +641,17 @@ func (s *Service) findOwnedNode(ctx context.Context, automationID, nodeID uuid.U
 		return nil, automationdom.ErrNodeNotFound
 	}
 	return n, nil
+}
+
+func (s *Service) findOwnedRun(ctx context.Context, automationID, runID uuid.UUID) (*automationdom.Run, error) {
+	run, err := s.repo.FindRunByID(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.AutomationID != automationID {
+		return nil, automationdom.ErrRunNotFound
+	}
+	return run, nil
 }
 
 // resolveMember resolves an authenticated actor to their project_members.id

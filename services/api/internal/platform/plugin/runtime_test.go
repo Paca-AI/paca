@@ -605,6 +605,55 @@ func TestCheckWriteAllowed(t *testing.T) {
 	}
 }
 
+// TestCheckWriteAllowed_AlwaysBlockedTables pins the GHSA-g6mx-8g92-w9v5 fix:
+// identity/authorization tables are rejected for every plugin write
+// unconditionally, unlike coreSensitiveFields tables which a plugin can
+// unlock by declaring RequestedSensitiveFields. Before this test's cases
+// were enforced, a plugin with zero manifest declarations could run
+// "UPDATE project_members SET project_role_id = <owner-role> WHERE
+// user_id = <attacker>" (or the equivalent against global_roles,
+// project_roles, or password_set_tokens) and grant itself admin on every
+// project or every tenant on the instance — the escalation step of the
+// advisory's PoC — and a plugin could unlock unrestricted writes to the
+// entire users or api_keys table merely by declaring that table's one
+// coreSensitiveFields column as requested.
+func TestCheckWriteAllowed_AlwaysBlockedTables(t *testing.T) {
+	rt := &Runtime{plugins: map[string]*pluginInstance{}}
+
+	cases := []struct {
+		name   string
+		caller plugindom.Plugin
+		sql    string
+	}{
+		{"project_members: grant self a project role, no manifest declarations", callerPlugin("com.paca.evil"), "UPDATE project_members SET project_role_id = $1 WHERE user_id = $2"},
+		{"project_members: insert self as a member", callerPlugin("com.paca.evil"), "INSERT INTO project_members (project_id, user_id, project_role_id) VALUES ($1, $2, $3)"},
+		{"project_roles: rewrite a role's permissions to superadmin", callerPlugin("com.paca.evil"), `UPDATE project_roles SET permissions = '{"*": true}' WHERE id = $1`},
+		{"global_roles: rewrite the baseline USER role to superadmin", callerPlugin("com.paca.evil"), `UPDATE global_roles SET permissions = '{"*": true}' WHERE name = 'USER'`},
+		{"users: escalate own global role_id, no manifest declarations", callerPlugin("com.paca.evil"), "UPDATE users SET role_id = $1 WHERE id = $2"},
+		{"users: escalate own global role_id even with password_hash requested", callerPlugin("com.paca.evil", "users.password_hash"), "UPDATE users SET role_id = $1 WHERE id = $2"},
+		{"api_keys: forge a key even with key_hash requested", callerPlugin("com.paca.evil", "api_keys.key_hash"), "INSERT INTO api_keys (user_id, key_hash) VALUES ($1, $2)"},
+		{"password_set_tokens: plant a token to take over an account", callerPlugin("com.paca.evil"), "INSERT INTO password_set_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)"},
+		{"explicit public schema qualification is blocked the same way", callerPlugin("com.paca.evil"), "UPDATE public.project_members SET project_role_id = $1 WHERE user_id = $2"},
+		{"delete wiping every project membership is blocked", callerPlugin("com.paca.evil"), "DELETE FROM project_members WHERE true"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := rt.checkWriteAllowed(tc.caller, tc.sql, "paca.db_exec"); err == nil {
+				t.Fatalf("expected write to be unconditionally blocked, got no error")
+			}
+		})
+	}
+
+	t.Run("a plugin's own identically-named table is unaffected", func(t *testing.T) {
+		caller := callerPlugin("com.paca.evil")
+		sql := "UPDATE " + schemaName(caller.Name) + ".users SET role_id = $1 WHERE id = $2"
+		if err := rt.checkWriteAllowed(caller, sql, "paca.db_exec"); err != nil {
+			t.Fatalf("expected write to the plugin's own schema-qualified table to be unaffected, got error: %v", err)
+		}
+	})
+}
+
 // TestRedactColumns replaces the declared sensitive columns' values with
 // "***" across every row, matching column names case-insensitively, and
 // leaves everything else untouched.

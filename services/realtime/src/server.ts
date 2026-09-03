@@ -20,10 +20,11 @@
 // ---------------
 // Events are routed through namespace-scoped rooms per project:
 //
-//   project:<projectId>:tasks      — all task.* events
-//   project:<projectId>:docs       — all doc.* events
-//   project:<projectId>:workflows  — all workflow.* graph events
-//   project:<projectId>:sprints    — all sprint.* events
+//   project:<projectId>:tasks        — all task.* events
+//   project:<projectId>:docs         — all doc.* events
+//   project:<projectId>:workflows    — all workflow.* graph events
+//   project:<projectId>:sprints      — all sprint.* events
+//   project:<projectId>:environments — all environment.* events
 //
 // When a client emits "join" with { projectId }, the server fetches the user's
 // project permissions via the API, then joins only the namespace rooms the user

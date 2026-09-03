@@ -30,6 +30,7 @@ import { Route as AuthenticatedAdminAgentsIndexRouteImport } from './routes/_aut
 import { Route as AuthenticatedProjectsProjectIdConversationsRouteImport } from './routes/_authenticated/projects/$projectId/conversations'
 import { Route as AuthenticatedProjectsProjectIdTeamIndexRouteImport } from './routes/_authenticated/projects/$projectId/team/index'
 import { Route as AuthenticatedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authenticated/projects/$projectId/settings/index'
+import { Route as AuthenticatedProjectsProjectIdEnvironmentsIndexRouteImport } from './routes/_authenticated/projects/$projectId/environments/index'
 import { Route as AuthenticatedProjectsProjectIdDocsIndexRouteImport } from './routes/_authenticated/projects/$projectId/docs/index'
 import { Route as AuthenticatedProjectsProjectIdConversationsIndexRouteImport } from './routes/_authenticated/projects/$projectId/conversations/index'
 import { Route as AuthenticatedProjectsProjectIdAutomationIndexRouteImport } from './routes/_authenticated/projects/$projectId/automation/index'
@@ -42,9 +43,12 @@ import { Route as AuthenticatedProjectsProjectIdDocsDocIdRouteImport } from './r
 import { Route as AuthenticatedProjectsProjectIdConversationsConversationIdRouteImport } from './routes/_authenticated/projects/$projectId/conversations/$conversationId'
 import { Route as AuthenticatedProjectsProjectIdAutomationAutomationIdRouteImport } from './routes/_authenticated/projects/$projectId/automation/$automationId'
 import { Route as AuthenticatedAdminPluginsPluginIdSlugRouteImport } from './routes/_authenticated/admin/plugins/$pluginId/$slug'
+import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/index'
 import { Route as AuthenticatedProjectsProjectIdAgentsAgentIdIndexRouteImport } from './routes/_authenticated/projects/$projectId/agents/$agentId/index'
 import { Route as AuthenticatedProjectsProjectIdPluginsPluginIdSlugRouteImport } from './routes/_authenticated/projects/$projectId/plugins/$pluginId/$slug'
 import { Route as AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRouteImport } from './routes/_authenticated/projects/$projectId/interactions/sprints/$sprintId'
+import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/terminal'
+import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/connect'
 
 const SetPasswordRoute = SetPasswordRouteImport.update({
   id: '/set-password',
@@ -166,6 +170,12 @@ const AuthenticatedProjectsProjectIdSettingsIndexRoute =
     path: '/settings/',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
+const AuthenticatedProjectsProjectIdEnvironmentsIndexRoute =
+  AuthenticatedProjectsProjectIdEnvironmentsIndexRouteImport.update({
+    id: '/environments/',
+    path: '/environments/',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
 const AuthenticatedProjectsProjectIdDocsIndexRoute =
   AuthenticatedProjectsProjectIdDocsIndexRouteImport.update({
     id: '/docs/',
@@ -238,6 +248,14 @@ const AuthenticatedAdminPluginsPluginIdSlugRoute =
     path: '/admin/plugins/$pluginId/$slug',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute =
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRouteImport.update(
+    {
+      id: '/environments/$environmentId/',
+      path: '/environments/$environmentId/',
+      getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+    } as any,
+  )
 const AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute =
   AuthenticatedProjectsProjectIdAgentsAgentIdIndexRouteImport.update({
     id: '/agents/$agentId/',
@@ -256,6 +274,22 @@ const AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute =
     path: '/interactions/sprints/$sprintId',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
+const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute =
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRouteImport.update(
+    {
+      id: '/environments/$environmentId/terminal',
+      path: '/environments/$environmentId/terminal',
+      getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+    } as any,
+  )
+const AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute =
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRouteImport.update(
+    {
+      id: '/environments/$environmentId/connect',
+      path: '/environments/$environmentId/connect',
+      getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+    } as any,
+  )
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -288,11 +322,15 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/automation/': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   '/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/projects/$projectId/docs/': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
+  '/projects/$projectId/environments/': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
   '/projects/$projectId/settings/': typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   '/projects/$projectId/team/': typeof AuthenticatedProjectsProjectIdTeamIndexRoute
+  '/projects/$projectId/environments/$environmentId/connect': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
+  '/projects/$projectId/environments/$environmentId/terminal': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute
   '/projects/$projectId/interactions/sprints/$sprintId': typeof AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute
   '/projects/$projectId/plugins/$pluginId/$slug': typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   '/projects/$projectId/agents/$agentId/': typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
+  '/projects/$projectId/environments/$environmentId/': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -322,11 +360,15 @@ export interface FileRoutesByTo {
   '/projects/$projectId/automation': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/projects/$projectId/docs': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
+  '/projects/$projectId/environments': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
   '/projects/$projectId/settings': typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   '/projects/$projectId/team': typeof AuthenticatedProjectsProjectIdTeamIndexRoute
+  '/projects/$projectId/environments/$environmentId/connect': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
+  '/projects/$projectId/environments/$environmentId/terminal': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute
   '/projects/$projectId/interactions/sprints/$sprintId': typeof AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute
   '/projects/$projectId/plugins/$pluginId/$slug': typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   '/projects/$projectId/agents/$agentId': typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
+  '/projects/$projectId/environments/$environmentId': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -361,11 +403,15 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/automation/': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   '/_authenticated/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/_authenticated/projects/$projectId/docs/': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
+  '/_authenticated/projects/$projectId/environments/': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
   '/_authenticated/projects/$projectId/settings/': typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   '/_authenticated/projects/$projectId/team/': typeof AuthenticatedProjectsProjectIdTeamIndexRoute
+  '/_authenticated/projects/$projectId/environments/$environmentId/connect': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
+  '/_authenticated/projects/$projectId/environments/$environmentId/terminal': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute
   '/_authenticated/projects/$projectId/interactions/sprints/$sprintId': typeof AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute
   '/_authenticated/projects/$projectId/plugins/$pluginId/$slug': typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   '/_authenticated/projects/$projectId/agents/$agentId/': typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
+  '/_authenticated/projects/$projectId/environments/$environmentId/': typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -400,11 +446,15 @@ export interface FileRouteTypes {
     | '/projects/$projectId/automation/'
     | '/projects/$projectId/conversations/'
     | '/projects/$projectId/docs/'
+    | '/projects/$projectId/environments/'
     | '/projects/$projectId/settings/'
     | '/projects/$projectId/team/'
+    | '/projects/$projectId/environments/$environmentId/connect'
+    | '/projects/$projectId/environments/$environmentId/terminal'
     | '/projects/$projectId/interactions/sprints/$sprintId'
     | '/projects/$projectId/plugins/$pluginId/$slug'
     | '/projects/$projectId/agents/$agentId/'
+    | '/projects/$projectId/environments/$environmentId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -434,11 +484,15 @@ export interface FileRouteTypes {
     | '/projects/$projectId/automation'
     | '/projects/$projectId/conversations'
     | '/projects/$projectId/docs'
+    | '/projects/$projectId/environments'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/team'
+    | '/projects/$projectId/environments/$environmentId/connect'
+    | '/projects/$projectId/environments/$environmentId/terminal'
     | '/projects/$projectId/interactions/sprints/$sprintId'
     | '/projects/$projectId/plugins/$pluginId/$slug'
     | '/projects/$projectId/agents/$agentId'
+    | '/projects/$projectId/environments/$environmentId'
   id:
     | '__root__'
     | '/'
@@ -472,11 +526,15 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/automation/'
     | '/_authenticated/projects/$projectId/conversations/'
     | '/_authenticated/projects/$projectId/docs/'
+    | '/_authenticated/projects/$projectId/environments/'
     | '/_authenticated/projects/$projectId/settings/'
     | '/_authenticated/projects/$projectId/team/'
+    | '/_authenticated/projects/$projectId/environments/$environmentId/connect'
+    | '/_authenticated/projects/$projectId/environments/$environmentId/terminal'
     | '/_authenticated/projects/$projectId/interactions/sprints/$sprintId'
     | '/_authenticated/projects/$projectId/plugins/$pluginId/$slug'
     | '/_authenticated/projects/$projectId/agents/$agentId/'
+    | '/_authenticated/projects/$projectId/environments/$environmentId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -635,6 +693,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
+    '/_authenticated/projects/$projectId/environments/': {
+      id: '/_authenticated/projects/$projectId/environments/'
+      path: '/environments'
+      fullPath: '/projects/$projectId/environments/'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
     '/_authenticated/projects/$projectId/docs/': {
       id: '/_authenticated/projects/$projectId/docs/'
       path: '/docs'
@@ -719,6 +784,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminPluginsPluginIdSlugRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/projects/$projectId/environments/$environmentId/': {
+      id: '/_authenticated/projects/$projectId/environments/$environmentId/'
+      path: '/environments/$environmentId'
+      fullPath: '/projects/$projectId/environments/$environmentId/'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
     '/_authenticated/projects/$projectId/agents/$agentId/': {
       id: '/_authenticated/projects/$projectId/agents/$agentId/'
       path: '/agents/$agentId'
@@ -738,6 +810,20 @@ declare module '@tanstack/react-router' {
       path: '/interactions/sprints/$sprintId'
       fullPath: '/projects/$projectId/interactions/sprints/$sprintId'
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
+    '/_authenticated/projects/$projectId/environments/$environmentId/terminal': {
+      id: '/_authenticated/projects/$projectId/environments/$environmentId/terminal'
+      path: '/environments/$environmentId/terminal'
+      fullPath: '/projects/$projectId/environments/$environmentId/terminal'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
+    '/_authenticated/projects/$projectId/environments/$environmentId/connect': {
+      id: '/_authenticated/projects/$projectId/environments/$environmentId/connect'
+      path: '/environments/$environmentId/connect'
+      fullPath: '/projects/$projectId/environments/$environmentId/connect'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
   }
@@ -789,11 +875,15 @@ interface AuthenticatedProjectsProjectIdRouteChildren {
   AuthenticatedProjectsProjectIdAgentsIndexRoute: typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   AuthenticatedProjectsProjectIdAutomationIndexRoute: typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
   AuthenticatedProjectsProjectIdDocsIndexRoute: typeof AuthenticatedProjectsProjectIdDocsIndexRoute
+  AuthenticatedProjectsProjectIdEnvironmentsIndexRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
   AuthenticatedProjectsProjectIdSettingsIndexRoute: typeof AuthenticatedProjectsProjectIdSettingsIndexRoute
   AuthenticatedProjectsProjectIdTeamIndexRoute: typeof AuthenticatedProjectsProjectIdTeamIndexRoute
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute
   AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute: typeof AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute
   AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute: typeof AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute
   AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute: typeof AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute
+  AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute: typeof AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute
 }
 
 const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectIdRouteChildren =
@@ -818,16 +908,24 @@ const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectI
       AuthenticatedProjectsProjectIdAutomationIndexRoute,
     AuthenticatedProjectsProjectIdDocsIndexRoute:
       AuthenticatedProjectsProjectIdDocsIndexRoute,
+    AuthenticatedProjectsProjectIdEnvironmentsIndexRoute:
+      AuthenticatedProjectsProjectIdEnvironmentsIndexRoute,
     AuthenticatedProjectsProjectIdSettingsIndexRoute:
       AuthenticatedProjectsProjectIdSettingsIndexRoute,
     AuthenticatedProjectsProjectIdTeamIndexRoute:
       AuthenticatedProjectsProjectIdTeamIndexRoute,
+    AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute:
+      AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdConnectRoute,
+    AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute:
+      AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdTerminalRoute,
     AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute:
       AuthenticatedProjectsProjectIdInteractionsSprintsSprintIdRoute,
     AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute:
       AuthenticatedProjectsProjectIdPluginsPluginIdSlugRoute,
     AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute:
       AuthenticatedProjectsProjectIdAgentsAgentIdIndexRoute,
+    AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute:
+      AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRoute,
   }
 
 const AuthenticatedProjectsProjectIdRouteWithChildren =

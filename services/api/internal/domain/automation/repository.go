@@ -11,7 +11,18 @@ import (
 type Repository interface {
 	CreateAutomation(ctx context.Context, a *Automation) error
 	FindAutomationByID(ctx context.Context, id uuid.UUID) (*Automation, error)
-	ListAutomations(ctx context.Context, projectID uuid.UUID, status *Status) ([]*Automation, error)
+	// ListAutomations returns projectID's automations, optionally filtered
+	// by status and/or a case-insensitive name search, always ordered
+	// created_at DESC, id DESC.
+	//
+	// limit nil means "no pagination" — every matching automation is
+	// returned and hasMore is always false (cursor ignored), matching the
+	// existing behavior every current caller relies on. limit non-nil
+	// switches to keyset pagination: fetches one extra row to compute
+	// hasMore, returns at most *limit. cursor, if non-nil, resumes after the
+	// automation EncodeAutomationCursor produced for the last row of the
+	// previous page.
+	ListAutomations(ctx context.Context, projectID uuid.UUID, status *Status, search *string, cursor *string, limit *int) (automations []*Automation, hasMore bool, err error)
 	// UpdateAutomation persists changes to name, description, and/or status.
 	UpdateAutomation(ctx context.Context, a *Automation) error
 	// DeleteAutomation soft-deletes an automation (cascades nodes/edges via FK).
@@ -56,6 +67,7 @@ type Repository interface {
 
 	CreateRun(ctx context.Context, r *Run) error
 	UpdateRun(ctx context.Context, r *Run) error
+	FindRunByID(ctx context.Context, id uuid.UUID) (*Run, error)
 	ListRunsByAutomation(ctx context.Context, automationID uuid.UUID, limit int) ([]*Run, error)
 	CreateRunStep(ctx context.Context, s *RunStep) error
 	ListRunStepsByRun(ctx context.Context, runID uuid.UUID) ([]*RunStep, error)

@@ -4,9 +4,11 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	Bot,
+	ExternalLink,
 	GitBranch,
 	GitPullRequest,
 	Loader2,
@@ -16,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	type AgentConversation,
@@ -40,9 +42,11 @@ import {
 	stopConversation,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
+import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	extractTextOnlyContent,
 	isEnvironmentReady,
@@ -102,12 +106,19 @@ function ConversationControls({
 	// ACP is the exception: its composer is now shown for every trigger type
 	// (see canReply below), so the composer's own Cancel/pause button is
 	// always reachable there — this header Stop button (a full teardown,
-	// distinct from pause) would just be redundant.
+	// distinct from pause) would just be redundant. A conversation attached
+	// to a static environment gets the same exception, for the same reason:
+	// agent-runner now ends every one of its turns in a terminal status
+	// (never "paused" — see handler.Handle's own isChat/EnvironmentID
+	// branch), the same way an ACP conversation always has, so this is
+	// effectively never reachable in a non-terminal state for one anyway;
+	// excluding it explicitly rather than relying on that is what keeps this
+	// correct even mid-turn (queued/running), when isTerminal is false.
 	const isTerminal =
 		conversation.status === "finished" ||
 		conversation.status === "failed" ||
 		conversation.status === "stopped";
-	if (isTerminal || isACP) return null;
+	if (isTerminal || isACP || conversation.environment_id) return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -207,18 +218,7 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	const isChatMessage = conversation?.trigger_type === "chat_message";
-	// ACP conversations stay replyable for every trigger type (task_assigned,
-	// comment_mention, etc.), not just chat_message ones — the user's local
-	// bridge daemon keeps a conversation alive by conversation_id regardless
-	// of why it started, and regardless of status (see
-	// SendConversationMessage's ACP branch in services/api), so a reply can
-	// always continue it. LLM conversations are unchanged: only chat_message
-	// ones with a live session, and never once terminal (handled
-	// transparently by onNew below via the returned conversation id).
-	const canReply = isACP
-		? !isChatMessage || !!conversation?.chat_session_id
-		: isChatMessage && !!conversation?.chat_session_id && !isTerminal;
+	const canReply = canReplyToConversation(conversation, isACP);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -249,16 +249,31 @@ export function ConversationView({
 		if (text === null) {
 			throw new Error(t("agents.conversationView.textOnlyMessage"));
 		}
+		// Snapshot now (not read again after any await) so a badge staged
+		// mid-send can't sneak into this message or get cleared under it.
+		const contextItems = useContextInjectionStore.getState().items;
 
 		if (!conversation.chat_session_id) {
-			// ACP conversation of a non-chat trigger type (task_assigned,
-			// comment_mention, etc.) — reply in place on the same
-			// conversation_id rather than through a chat session.
+			// A conversation of a non-chat trigger type (task_assigned,
+			// comment_mention, etc.) — either ACP, or an LLM conversation
+			// attached to a static environment (see canReply's own doc
+			// comment) — reply in place on the same conversation_id rather
+			// than through a chat session.
 			if (projectId) {
-				await sendConversationMessage(projectId, conversation.id, text);
+				await sendConversationMessage(
+					projectId,
+					conversation.id,
+					text,
+					contextItems,
+				);
 			} else {
-				await sendGlobalConversationMessage(conversation.id, text);
+				await sendGlobalConversationMessage(
+					conversation.id,
+					text,
+					contextItems,
+				);
 			}
+			useContextInjectionStore.getState().clear();
 			invalidate();
 			return;
 		}
@@ -268,11 +283,13 @@ export function ConversationView({
 					projectId,
 					conversation.agent_id,
 					conversation.chat_session_id,
-					{ message: text },
+					{ message: text, contextItems },
 				)
 			: await sendGlobalChatMessage(conversation.chat_session_id, {
 					message: text,
+					contextItems,
 				});
+		useContextInjectionStore.getState().clear();
 		// The previous conversation may have already ended (explicitly
 		// stopped, or reaped after 3 minutes with no heartbeat) — replying
 		// then silently starts a fresh conversation server-side. Follow it,
@@ -317,9 +334,19 @@ export function ConversationView({
 	// triggered ones would just be a pointless no-op server-side. ACP
 	// conversations have no cloud sandbox to keep alive either (the user's
 	// local bridge daemon owns their lifecycle instead), so heartbeating one
-	// would just be a wasted round trip.
+	// would just be a wasted round trip. Same for a conversation attached to a
+	// static environment (environment_id set): keepSandboxAlive's
+	// EnvironmentID guard in agent-runner never registers it in the
+	// paused-sandbox registry the heartbeat control message refreshes, so a
+	// heartbeat for one is a guaranteed no-op there too — its container's
+	// idle clock is driven by TouchEnvironment after each turn instead.
 	useEffect(() => {
-		if (conversation?.trigger_type !== "chat_message" || isTerminal || isACP)
+		if (
+			conversation?.trigger_type !== "chat_message" ||
+			isTerminal ||
+			isACP ||
+			conversation?.environment_id
+		)
 			return;
 		const ping = () => {
 			void (
@@ -333,6 +360,7 @@ export function ConversationView({
 		return () => clearInterval(interval);
 	}, [
 		conversation?.trigger_type,
+		conversation?.environment_id,
 		isTerminal,
 		isACP,
 		projectId,
@@ -388,9 +416,9 @@ export function ConversationView({
 	// no visible messages. When messages exist, render the Thread normally so
 	// the user can trace what happened before the failure — the header's
 	// status badge and the bottom error footer already convey the failure.
-	// Skipped when canReply is true (an ACP conversation, which stays
-	// replyable straight through a failure regardless of trigger type) so
-	// the user can retry instead of hitting a dead end.
+	// Skipped when canReply is true (an ACP conversation, or one attached to
+	// a static environment, both of which stay replyable straight through a
+	// failure) so the user can retry instead of hitting a dead end.
 	if (
 		isError ||
 		(conversation.status === "failed" && messages.length === 0 && !canReply)
@@ -452,6 +480,19 @@ export function ConversationView({
 							<GitPullRequest className="size-3" />
 							{t("agents.conversationView.pr")}
 						</a>
+					)}
+					{projectId && conversation.environment_id && (
+						<Link
+							to="/projects/$projectId/environments/$environmentId/connect"
+							params={{
+								projectId,
+								environmentId: conversation.environment_id,
+							}}
+							className={buttonVariants({ variant: "outline", size: "sm" })}
+						>
+							<ExternalLink className="size-3" />
+							{t("agents.conversationView.connect")}
+						</Link>
 					)}
 					<ConversationControls
 						projectId={projectId}

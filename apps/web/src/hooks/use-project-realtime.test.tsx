@@ -122,6 +122,21 @@ describe("useProjectRealtime", () => {
 		});
 	});
 
+	it("invalidates environments query key on environment.status_changed events", () => {
+		renderHook(() => useProjectRealtime("proj-abc"));
+
+		const [, listener] = mocks.socket.on.mock.calls[0] as [
+			string,
+			(event: { type: string; payload: Record<string, unknown> }) => void,
+		];
+
+		listener({ type: "environment.status_changed", payload: {} });
+
+		expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+			queryKey: ["projects", "proj-abc", "environments"],
+		});
+	});
+
 	it("invalidates workflows and tasks query keys on workflow.* events", () => {
 		renderHook(() => useProjectRealtime("proj-abc"));
 

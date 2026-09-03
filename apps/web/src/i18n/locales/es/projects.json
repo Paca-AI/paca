@@ -42,6 +42,7 @@
 			"showApiKey": "Mostrar clave de API",
 			"apiKeyHint": "Se almacena cifrada — nunca se expone en las respuestas de la API.",
 			"baseUrlLabel": "URL base",
+			"environmentSection": "Entorno",
 			"acpSection": "Servidor ACP",
 			"acpProviderLabel": "Proveedor",
 			"acpProviderClaudeCode": "Claude Code",
@@ -165,6 +166,13 @@
 				"committerEmailLabel": "Correo del autor",
 				"dockerEnabledLabel": "Acceso a Docker",
 				"dockerEnabledHint": "Otorga a este agente un daemon de Docker privado dentro de su sandbox. Desactivado de forma predeterminada: actívalo solo para agentes que realmente ejecutan comandos de Docker, ya que añade tiempo de inicio a cada conversación.",
+				"environmentSection": "Entorno",
+				"defaultEnvironmentLabel": "Entorno predeterminado",
+				"defaultEnvironmentHint": "Vincula las conversaciones de este agente a un entorno estático en lugar de un sandbox desechable nuevo cada vez.",
+				"noDefaultEnvironment": "Entorno temporal",
+				"defaultFolderLabel": "Carpeta predeterminada",
+				"defaultFolderHint": "La carpeta dentro del entorno predeterminado en la que trabajarán las conversaciones de este agente.",
+				"noDefaultFolder": "Sin carpeta predeterminada",
 				"saveChanges": "Guardar cambios",
 				"saved": "Guardado",
 				"saveFailed": "Error al guardar. Inténtalo de nuevo.",
@@ -273,6 +281,7 @@
 			"chatSession": "Sesión de chat",
 			"taskSession": "Sesión de tarea",
 			"pr": "PR",
+			"connect": "Conectar",
 			"conversationEnded": "Esta conversación ha finalizado.",
 			"textOnlyMessage": "Solo se admiten mensajes de texto.",
 			"failed": "La conversación falló",
@@ -329,7 +338,231 @@
 			"imageAttachmentPreviewTitle": "Vista previa de la imagen adjunta",
 			"attachmentAriaLabel": "Adjunto de {{type}}",
 			"attachmentAriaLabelError": "Adjunto de {{type}}, error al subir",
-			"attachmentAriaLabelUploading": "Adjunto de {{type}}, subiendo"
+			"attachmentAriaLabelUploading": "Adjunto de {{type}}, subiendo",
+			"contextInjection": {
+				"attachContext": "Adjuntar contexto",
+				"contextSearchPlaceholder": "Buscar tareas, documentos, conversaciones, automatizaciones…",
+				"removeContextItem": "Quitar {{title}}",
+				"addCurrent": "Adjuntar {{title}}",
+				"contextTypeTask": "Tarea",
+				"contextTypeDoc": "Documento",
+				"contextTypeConversation": "Conversación",
+				"contextTypeAutomation": "Automatización",
+				"noContextResults": "No se encontraron resultados",
+				"contextSearchMinChars": "Escribe al menos 2 caracteres para buscar"
+			}
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "Creando",
+			"starting": "Iniciando",
+			"running": "En ejecución",
+			"stopping": "Deteniendo",
+			"stopped": "Detenido",
+			"suspended": "Suspendido",
+			"error": "Error",
+			"deleting": "Eliminando"
+		},
+		"page": {
+			"title": "Entornos",
+			"subtitle": "Sandboxes persistentes y con nombre a los que tus agentes pueden conectarse entre conversaciones",
+			"newEnvironment": "Nuevo entorno",
+			"empty": {
+				"title": "Aún no hay entornos",
+				"description": "Crea un entorno estático para mantener archivos y procesos en segundo plano activos entre conversaciones, en lugar de un sandbox desechable nuevo cada vez.",
+				"createFirstEnvironment": "Crea tu primer entorno"
+			}
+		},
+		"createDialog": {
+			"title": "Crear entorno",
+			"description": "Un sandbox persistente y con nombre al que tus agentes pueden conectarse.",
+			"nameLabel": "Nombre",
+			"namePlaceholder": "staging",
+			"dockerEnabledLabel": "Acceso a Docker",
+			"dockerEnabledHint": "Otorga a este entorno su propio daemon de Docker privado para que los agentes puedan compilar y ejecutar contenedores dentro de él. Desactivado de forma predeterminada — no se puede cambiar después de crear el entorno.",
+			"advanced": "Avanzado",
+			"imageLabel": "Imagen",
+			"imagePlaceholder": "Usar predeterminada (agent-server)",
+			"imageHint": "La mayoría de usuarios nunca necesita cambiar esto — usa por defecto la imagen agent-server fijada por la plataforma.",
+			"resourcesHint": "Déjalo en blanco para usar los valores predeterminados de la plataforma (2 vCPU, 4Gi de memoria, 20GB de disco).",
+			"cpuLimitInvalid": "La CPU debe ser al menos 0.1 (100m).",
+			"memoryLimitInvalid": "La memoria debe ser al menos 256Mi.",
+			"diskLimitInvalid": "El disco debe ser un número entero positivo de GB.",
+			"createFailed": "No se pudo crear el entorno. Inténtalo de nuevo.",
+			"cancel": "Cancelar",
+			"creating": "Creando…",
+			"create": "Crear entorno"
+		},
+		"picker": {
+			"placeholder": "Seleccionar entorno…",
+			"temporary": "Entorno temporal",
+			"createNew": "Crear nuevo entorno…",
+			"folderPlaceholder": "Selecciona una carpeta…",
+			"folderCreateNew": "Crear nueva carpeta…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "Resumen",
+				"folders": "Carpetas",
+				"portForwards": "Reenvíos de puertos"
+			},
+			"overview": {
+				"connect": "Conectar",
+				"start": "Iniciar",
+				"stop": "Detener",
+				"delete": "Eliminar",
+				"sleepsIn_one": "se duerme en {{count}} minuto",
+				"sleepsIn_other": "se duerme en {{count}} minutos",
+				"keptAliveBySSH": "activo gracias a una sesión SSH en curso",
+				"vitals": {
+					"cpu": "CPU",
+					"cpuValue": "{{value}} vCPU",
+					"memory": "Memoria",
+					"disk": "Disco",
+					"diskValue": "{{value}} GB",
+					"lastActive": "Última actividad"
+				},
+				"configuration": "Configuración",
+				"nameLabel": "Nombre",
+				"backendLabel": "Backend",
+				"imageLabel": "Imagen",
+				"defaultImage": "Predeterminada (agent-server)",
+				"dockerEnabledLabel": "Acceso a Docker",
+				"dockerEnabledOn": "Habilitado",
+				"dockerEnabledOff": "Deshabilitado",
+				"idleTimeoutLabel": "Tiempo de inactividad (minutos)",
+				"idleTimeoutHint": "El entorno se detiene automáticamente tras este número de minutos sin actividad.",
+				"portsPendingRestart": "Se añadió o eliminó un reenvío de puerto. Reinicia el entorno para aplicarlo.",
+				"portsPendingRestartLink": "Ver reenvíos de puertos",
+				"saveChanges": "Guardar cambios",
+				"saved": "Guardado",
+				"saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
+				"deleteDialog": {
+					"title": "¿Eliminar {{name}}?",
+					"description": "Esto elimina permanentemente el entorno, su contenedor y su volumen. Esta acción no se puede deshacer.",
+					"deleteFailed": "No se pudo eliminar el entorno. Inténtalo de nuevo.",
+					"cancel": "Cancelar",
+					"delete": "Eliminar"
+				}
+			},
+			"folders": {
+				"count_one": "{{count}} carpeta configurada",
+				"count_other": "{{count}} carpetas configuradas",
+				"addFolder": "Añadir carpeta",
+				"deleteFailed": "No se pudo eliminar la carpeta. Inténtalo de nuevo.",
+				"empty": {
+					"title": "No se han añadido carpetas",
+					"addFirstFolder": "Añade tu primera carpeta"
+				},
+				"addDialog": {
+					"title": "Añadir carpeta",
+					"description": "Añade un directorio de trabajo que los agentes de este entorno puedan usar.",
+					"pathLabel": "Ruta",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "Debe ser una ruta absoluta.",
+					"browse": "Explorar…",
+					"browsing": {
+						"empty": "Esta carpeta está vacía",
+						"notRunning": "Inicia el entorno para explorar sus archivos."
+					},
+					"addFailed": "No se pudo añadir la carpeta. Inténtalo de nuevo.",
+					"cancel": "Cancelar",
+					"addFolder": "Añadir carpeta"
+				}
+			},
+			"portForwards": {
+				"description": "Expón cualquier puerto dentro de este entorno — normalmente tu propio servidor de desarrollo — en una dirección dedicada.",
+				"count_one": "{{count}} reenvío de puerto",
+				"count_other": "{{count}} reenvíos de puertos",
+				"add": "Añadir reenvío de puerto",
+				"deleteFailed": "No se pudo eliminar el reenvío de puerto. Inténtalo de nuevo.",
+				"containerPort": "Puerto del contenedor {{port}}",
+				"unassigned": "Aún no asignado",
+				"restart": "Reiniciar",
+				"pendingRestartRunning": "Se añadió o eliminó un reenvío de puerto. Reinicia el entorno para aplicarlo.",
+				"pendingRestartStopped": "Se añadió o eliminó un reenvío de puerto. Se aplicará la próxima vez que se inicie este entorno.",
+				"empty": {
+					"title": "Aún no hay reenvíos de puertos",
+					"addFirst": "Añade un reenvío de puerto"
+				},
+				"addDialog": {
+					"title": "Añadir reenvío de puerto",
+					"description": "Expón un puerto del contenedor en un puerto externo dedicado. Aplicar esto requiere un reinicio si el entorno ya está en ejecución.",
+					"portLabel": "Puerto del contenedor",
+					"portHint": "El puerto en el que escucha tu proceso dentro del entorno (por ejemplo, 3000).",
+					"labelLabel": "Etiqueta",
+					"labelPlaceholder": "Servidor de desarrollo",
+					"cancel": "Cancelar",
+					"add": "Añadir",
+					"addFailed": "No se pudo añadir el reenvío de puerto. Inténtalo de nuevo."
+				},
+				"restartDialog": {
+					"title": "¿Reiniciar el entorno?",
+					"description": "Esto reinicia el contenedor del entorno para aplicar los reenvíos de puertos actualizados. Cualquier proceso en ejecución dentro de él se interrumpirá; tus archivos están a salvo — viven en un volumen separado.",
+					"cancel": "Cancelar",
+					"confirm": "Reiniciar"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "Sustituye <bastion-host> por la dirección del bastión SSH configurado en este despliegue.",
+				"connectUnavailable": "El acceso SSH aún no está configurado en este despliegue.",
+				"count_one": "{{count}} clave configurada",
+				"count_other": "{{count}} claves configuradas",
+				"addKey": "Añadir clave",
+				"deleteFailed": "No se pudo eliminar la clave SSH. Inténtalo de nuevo.",
+				"empty": {
+					"title": "No se han añadido claves SSH",
+					"addFirst": "Añade tu primera clave"
+				},
+				"addDialog": {
+					"title": "Añadir clave SSH",
+					"description": "Autoriza una clave pública para el acceso de pair-programming por SSH.",
+					"generateHint": "¿Aún no tienes una clave SSH? Genera una:",
+					"generateFollowup": "Luego pega el contenido de ~/.ssh/id_ed25519.pub abajo.",
+					"labelLabel": "Etiqueta",
+					"labelPlaceholder": "Mi portátil",
+					"publicKeyLabel": "Clave pública",
+					"cancel": "Cancelar",
+					"addKey": "Añadir clave",
+					"addFailed": "No se pudo añadir la clave SSH. Inténtalo de nuevo."
+				}
+			},
+			"terminal": {
+				"notRunning": "Inicia el entorno para abrir una terminal.",
+				"title": "paca@{{slug}} — bash",
+				"titleLoading": "bash",
+				"connecting": "Conectando…",
+				"connected": "Conectado",
+				"connectionFailed": "Error de conexión",
+				"disconnected": "Desconectado"
+			}
+		},
+		"connect": {
+			"title": "Conectar a {{name}}",
+			"copy": "Copiar",
+			"copied": "Copiado",
+			"tabs": {
+				"webApp": "Conectar en la app web",
+				"ssh": "Conectar por SSH"
+			},
+			"webApp": {
+				"description": "Conéctate mediante una terminal en el navegador — no se necesita un cliente SSH ni una clave local.",
+				"connect": "Conectar",
+				"notRunning": "Inicia el entorno antes de conectarte.",
+				"readOnly": "No tienes permiso para abrir una terminal en este entorno.",
+				"hint": "Se abre en una nueva pestaña a pantalla completa.",
+				"pageTitle": "{{name}} — Terminal",
+				"pageTitleLoading": "Terminal",
+				"closeTab": "Cerrar"
+			},
+			"ssh": {
+				"step1Title": "Añade una clave pública",
+				"step1Description": "Registra la clave pública del par de claves SSH con el que quieras conectarte.",
+				"step2Title": "Conéctate desde tu terminal",
+				"step2Description": "Ejecuta este comando desde tu terminal:",
+				"notRunning": "Inicia el entorno antes de conectarte."
+			}
 		}
 	},
 	"docs": {
@@ -450,6 +683,18 @@
 				"label": "Gestionar agentes",
 				"description": "Crear, configurar y eliminar agentes de IA"
 			},
+			"environmentsRead": {
+				"label": "Ver entornos",
+				"description": "Explorar entornos y ver su configuración"
+			},
+			"environmentsWrite": {
+				"label": "Gestionar entornos",
+				"description": "Crear, configurar y eliminar entornos, claves SSH y reenvíos de puertos"
+			},
+			"environmentsConnect": {
+				"label": "Conectar a entornos",
+				"description": "Abrir una sesión de terminal interactiva dentro de un entorno en ejecución"
+			},
 			"workflowsRead": {
 				"label": "Ver automatización",
 				"description": "Explorar las automatizaciones y su configuración"
@@ -467,6 +712,7 @@
 			"sprints": "Sprints",
 			"documents": "Documentos",
 			"aiAgents": "Agentes de IA",
+			"environments": "Entornos",
 			"workflows": "Automatización",
 			"plugins": "Plugins"
 		}

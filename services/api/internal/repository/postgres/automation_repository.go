@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -417,31 +418,57 @@ func (r *AutomationRepository) FindAutomationByID(ctx context.Context, id uuid.U
 	return rec.toDomain()
 }
 
-// ListAutomations implements automationdom.Repository.ListAutomations.
-func (r *AutomationRepository) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status) ([]*automationdom.Automation, error) {
+// ListAutomations implements automationdom.Repository.ListAutomations. See
+// its doc comment for the limit/cursor/hasMore pagination contract.
+func (r *AutomationRepository) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status, search *string, cursor *string, limit *int) ([]*automationdom.Automation, bool, error) {
 	q := `
 		SELECT id, project_id, name, description, status, created_by, created_at, updated_at, deleted_at
 		FROM automations WHERE project_id = $1 AND deleted_at IS NULL`
 	args := []interface{}{projectID.String()}
 	if status != nil {
-		q += ` AND status = $2`
 		args = append(args, string(*status))
+		q += fmt.Sprintf(` AND status = $%d`, len(args))
 	}
-	q += ` ORDER BY created_at DESC`
+	if search != nil {
+		if s := strings.TrimSpace(*search); s != "" {
+			args = append(args, "%"+escapeLikePattern(s)+"%")
+			q += fmt.Sprintf(` AND name ILIKE $%d`, len(args))
+		}
+	}
+
+	paginating := limit != nil
+	if paginating && cursor != nil {
+		if cur, ok := automationdom.DecodeAutomationCursor(*cursor); ok {
+			args = append(args, cur.CreatedAt, cur.ID)
+			q += fmt.Sprintf(` AND (created_at, id) < ($%d, $%d)`, len(args)-1, len(args))
+		}
+	}
+	q += ` ORDER BY created_at DESC, id DESC`
+	if paginating {
+		args = append(args, *limit+1)
+		q += fmt.Sprintf(` LIMIT $%d`, len(args))
+	}
 
 	var recs []automationRecord
 	if err := r.db.SelectContext(ctx, &recs, q, args...); err != nil {
-		return nil, err
+		return nil, false, err
 	}
+
+	hasMore := false
+	if paginating && len(recs) > *limit {
+		hasMore = true
+		recs = recs[:*limit]
+	}
+
 	out := make([]*automationdom.Automation, 0, len(recs))
 	for i := range recs {
 		a, err := recs[i].toDomain()
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		out = append(out, a)
 	}
-	return out, nil
+	return out, hasMore, nil
 }
 
 // UpdateAutomation implements automationdom.Repository.UpdateAutomation.
@@ -704,6 +731,21 @@ func (r *AutomationRepository) UpdateRun(ctx context.Context, run *automationdom
 		string(run.Status), run.FinishedAt, run.ID.String(),
 	)
 	return err
+}
+
+// FindRunByID implements automationdom.Repository.FindRunByID.
+func (r *AutomationRepository) FindRunByID(ctx context.Context, id uuid.UUID) (*automationdom.Run, error) {
+	const q = `
+		SELECT id, automation_id, trigger_node_id, task_id, status, started_at, finished_at
+		FROM automation_runs WHERE id = $1`
+	var rec runRecord
+	if err := r.db.GetContext(ctx, &rec, q, id.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, automationdom.ErrRunNotFound
+		}
+		return nil, err
+	}
+	return rec.toDomain()
 }
 
 // ListRunsByAutomation implements automationdom.Repository.ListRunsByAutomation.

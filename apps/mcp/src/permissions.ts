@@ -278,6 +278,11 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 
 	// Attachment tools
 	{
+		toolName: "upload_task_attachment",
+		permissionKey: "tasks.write",
+		requiresProject: true,
+	},
+	{
 		toolName: "list_task_attachments",
 		permissionKey: "tasks.read",
 		requiresProject: true,
@@ -473,7 +478,12 @@ export async function fetchAgentPermissions(
 		}
 
 		if (config.projectId) {
-			await fetchProjectPermissions(config, headers, config.projectId, projects);
+			await fetchProjectPermissions(
+				config,
+				headers,
+				config.projectId,
+				projects,
+			);
 			const entityType = config.agentId ? "agent" : "user";
 			console.error(
 				`[permissions] Loaded permissions for ${entityType} in project ${config.projectId}`,
@@ -492,7 +502,9 @@ export async function fetchAgentPermissions(
 				if (projectsResponse.ok) {
 					const projectsJson = await projectsResponse.json();
 					const body =
-						projectsJson && typeof projectsJson === "object" && "data" in projectsJson
+						projectsJson &&
+						typeof projectsJson === "object" &&
+						"data" in projectsJson
 							? projectsJson.data
 							: projectsJson;
 					const projectIds: string[] = Array.isArray(body?.project_ids)

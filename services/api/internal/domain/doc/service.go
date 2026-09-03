@@ -52,18 +52,20 @@ type UpdateFolderInput struct {
 
 // DocumentService defines document use-cases.
 type DocumentService interface {
-	// ListDocuments returns all non-deleted documents in the project.
-	// folderID non-nil filters to that folder; nil returns all.
-	ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID) ([]*Document, error)
+	// ListDocuments — see Repository.ListDocuments's doc comment for the
+	// limit/cursor/hasMore pagination contract.
+	ListDocuments(ctx context.Context, projectID uuid.UUID, folderID *uuid.UUID, search *string, cursor *string, limit *int) (docs []*Document, hasMore bool, err error)
 	// GetDocument returns a single document by ID.
 	GetDocument(ctx context.Context, id uuid.UUID) (*Document, error)
 	// CreateDocument creates a new document in the project.
 	CreateDocument(ctx context.Context, in CreateDocumentInput) (*Document, error)
 	// UpdateDocument updates a document's mutable fields and optionally
 	// creates a snapshot when the content changes.
-	UpdateDocument(ctx context.Context, id uuid.UUID, in UpdateDocumentInput) (*Document, error)
+	// projectID is used to verify the document belongs to the expected project.
+	UpdateDocument(ctx context.Context, projectID, id uuid.UUID, in UpdateDocumentInput) (*Document, error)
 	// DeleteDocument soft-deletes a document.
-	DeleteDocument(ctx context.Context, id uuid.UUID) error
+	// projectID is used to verify the document belongs to the expected project.
+	DeleteDocument(ctx context.Context, projectID, id uuid.UUID) error
 }
 
 // CreateDocumentInput carries fields required to create a document.
@@ -91,7 +93,10 @@ type UpdateDocumentInput struct {
 // DocSnapshotService defines snapshot use-cases.
 type DocSnapshotService interface {
 	// ListSnapshots returns all snapshots for a document, newest first.
-	ListSnapshots(ctx context.Context, documentID uuid.UUID) ([]*DocSnapshot, error)
+	// projectID is used to verify the document belongs to the expected project.
+	ListSnapshots(ctx context.Context, projectID, documentID uuid.UUID) ([]*DocSnapshot, error)
 	// GetSnapshot returns a single snapshot by ID.
-	GetSnapshot(ctx context.Context, id uuid.UUID) (*DocSnapshot, error)
+	// projectID is used to verify the snapshot's document belongs to the
+	// expected project.
+	GetSnapshot(ctx context.Context, projectID, id uuid.UUID) (*DocSnapshot, error)
 }

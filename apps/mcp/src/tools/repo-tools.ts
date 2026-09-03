@@ -1,6 +1,4 @@
 import { execFile as execFileCb } from "node:child_process";
-import { rm } from "node:fs/promises";
-import { resolve as resolvePath } from "node:path";
 import { promisify } from "node:util";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -8,13 +6,21 @@ import type { PacaAPIClient } from "../api/index.js";
 
 const execFileAsync = promisify(execFileCb);
 
-// sandboxWorkdir mirrors services/agent-runner/internal/executor/executor.go's
-// own sandboxWorkdir constant — the Goose sandbox's ACP session cwd, and the
-// only directory guaranteed writable by the container's unprivileged "goose"
-// user. Used only as this tool set's *default* target/repo dir; nothing here
-// requires it, so a Goose sandbox image change wouldn't need matching code
-// here, just a different default path.
-const DEFAULT_REPO_DIR = "/home/goose/repo";
+// PACA_WORKDIR, when set, is this conversation's actual working directory —
+// set by services/agent-runner's executor.go buildMCPServers only for a
+// conversation attached to a static environment (trigger.Workdir), where
+// it's the environment folder the agent was attached to, e.g.
+// "/home/paca/workspaces/test". Falls back to sandboxWorkdir + "/repo" (that
+// Go constant's own value, "/home/goose") for an ephemeral conversation,
+// which never sets PACA_WORKDIR — the Goose sandbox's ACP session cwd, and
+// the only directory guaranteed writable by the container's unprivileged
+// "goose" user. Used only as this tool set's *default* target/repo dir;
+// nothing here requires it, so a Goose sandbox image change wouldn't need
+// matching code here, just a different default path. Read once at module
+// load, matching every other PACA_* config value in this codebase (see
+// index.ts) — this process is re-spawned fresh for every conversation
+// attach, so there's no per-call staleness to worry about.
+const DEFAULT_REPO_DIR = process.env.PACA_WORKDIR || "/home/goose/repo";
 
 /**
  * Runs one git subcommand. A thin injection seam over child_process.execFile
@@ -61,61 +67,6 @@ function authenticatedCloneURL(cloneURL: string, token: string): string {
 		? `${parsed.hostname}:${parsed.port}`
 		: parsed.hostname;
 	return `https://x-access-token:${encodeURIComponent(token)}@${host}${parsed.pathname}`;
-}
-
-/**
- * The small set of top-level directories a container image actually needs
- * intact to keep running — `clone_repository` must never recursively
- * delete any of these, however it got there (an agent-chosen targetDir, a
- * confused task instruction, or plain prompt injection from cloned repo
- * content). Deliberately not a fixed-prefix jail: targetDir is documented
- * as any absolute path (see CloneRepositorySchema), so a specific
- * subdirectory of any of these — e.g. /home/goose/repo, the actual
- * default — is still allowed; only the bare top-level directory itself is
- * refused. Ported forward as a new safety check, not a regression fix:
- * the Python this replaces (repo_tools.py) ran the equivalent `rm -rf`
- * with no such guard either.
- *
- * /home/goose is listed explicitly alongside /home itself: it's the
- * container user's actual home directory (DEFAULT_REPO_DIR's own parent),
- * so it's at least as likely a target for an accidental or confused
- * targetDir as any of the OS-level directories below it, even though the
- * OS itself would keep running without it.
- */
-const FORBIDDEN_DELETE_TARGETS = new Set([
-	"/",
-	"/bin",
-	"/boot",
-	"/dev",
-	"/etc",
-	"/home",
-	"/home/goose",
-	"/lib",
-	"/lib64",
-	"/opt",
-	"/proc",
-	"/root",
-	"/run",
-	"/sbin",
-	"/srv",
-	"/sys",
-	"/tmp",
-	"/usr",
-	"/var",
-]);
-
-/**
- * Throws if targetDir resolves (after normalizing `..`/`.` segments) to one
- * of FORBIDDEN_DELETE_TARGETS — called before every recursive delete this
- * file performs on an agent-supplied path.
- */
-function assertSafeDeleteTarget(targetDir: string): void {
-	const resolved = resolvePath("/", targetDir);
-	if (FORBIDDEN_DELETE_TARGETS.has(resolved)) {
-		throw new Error(
-			`refusing to delete ${resolved} — it's a protected system directory, not a valid clone target`,
-		);
-	}
 }
 
 function errorMessage(error: unknown): string {
@@ -183,7 +134,15 @@ export function getRepoTools(): Tool[] {
 			description:
 				"Clone a repository into your workspace so you can read and " +
 				"modify the code. You MUST call list_repositories first to get " +
-				"the pluginId and repoId.",
+				"the pluginId and repoId. Before calling this, check whether the " +
+				"source code might already be present in or under the target " +
+				"directory — e.g. with the tree or shell tool — since your " +
+				"working directory can persist across conversations and may " +
+				"already hold a checkout (possibly in a subdirectory, and " +
+				"possibly without git initialized yet, so don't rely on a .git " +
+				"folder alone). This tool never deletes anything: it fails " +
+				"without touching the target directory if it's non-empty, rather " +
+				"than guessing whether it's safe to overwrite.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -368,8 +327,6 @@ export async function handleRepoTool(
 			const targetDir: string = args.targetDir || DEFAULT_REPO_DIR;
 
 			try {
-				assertSafeDeleteTarget(targetDir);
-
 				const info = await client.getRepositoryCloneInfo(
 					pluginId,
 					projectId,
@@ -389,7 +346,17 @@ export async function handleRepoTool(
 				const token = info.token ?? "";
 				const cloneURL = authenticatedCloneURL(info.clone_url, token);
 
-				await rm(targetDir, { recursive: true, force: true });
+				// No pre-emptive delete: git itself refuses to clone into a
+				// non-empty directory ("destination path ... already exists
+				// and is not an empty directory"), which is both simpler and
+				// more reliable than this tool trying to guess whether
+				// existing content is safe to discard — see the
+				// clone_repository tool description's own guidance for why
+				// (a prior version of this code auto-detected "already a git
+				// repo" via a bare .git check and skipped cloning, which
+				// missed a repo cloned into a *subdirectory* of targetDir,
+				// and treated existing-but-not-yet-git-initialized source as
+				// safe to delete).
 				try {
 					await gitExec(["clone", cloneURL, targetDir]);
 				} catch (error) {

@@ -1,5 +1,9 @@
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
-import type { AgentConversationEvent } from "@/lib/agent-api";
+import type {
+	AgentConversation,
+	AgentConversationEvent,
+} from "@/lib/agent-api";
+import { parseContextItems } from "@/lib/context-items";
 
 // Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
 // Conversations page's new-conversation composer) only ever send a single
@@ -229,6 +233,44 @@ export function isEnvironmentReady(
 }
 
 /**
+ * Whether the composer should accept a new message right now — the single
+ * computation all three chat surfaces (conversation-view, ai-chat-float,
+ * ai-chat-float-global) need, so it lives here once instead of being
+ * re-derived (each slightly differently, and easy to drift out of sync) at
+ * each call site.
+ *
+ * ACP conversations and conversations attached to a static environment are
+ * always replyable, full stop — regardless of status or trigger type. An
+ * ACP conversation's local bridge daemon keeps it alive by conversation_id
+ * independent of Paca's own status bookkeeping (see
+ * SendConversationMessage's ACP branch in services/api), and an
+ * environment-attached conversation's reply carries the environment/folder
+ * over onto a fresh conversation instead of dead-ending, since the
+ * environment outlives any one conversation (see SendChatMessage's and
+ * resumeConversationMessage's terminal branches in services/api) — both
+ * reached the same way whether or not this conversation has a
+ * chat_session_id, via onNew's own fallback to sendConversationMessage
+ * where there's no chat session to reply through.
+ *
+ * Everything else is a plain LLM chat_message conversation with no
+ * environment attached: only replyable through a live chat session that
+ * hasn't yet reached a terminal status.
+ */
+export function canReplyToConversation(
+	conversation: AgentConversation | null | undefined,
+	isACP: boolean,
+): boolean {
+	if (!conversation) return false;
+	if (isACP || !!conversation.environment_id) return true;
+	if (conversation.trigger_type !== "chat_message") return false;
+	const isTerminal =
+		conversation.status === "finished" ||
+		conversation.status === "failed" ||
+		conversation.status === "stopped";
+	return !!conversation.chat_session_id && !isTerminal;
+}
+
+/**
  * Converts raw conversation events into assistant-ui's ThreadMessageLike[],
  * grouping each agent turn's thought/tool-calls/reply into one assistant
  * message's content parts (rather than one bubble per raw event) — the
@@ -292,11 +334,19 @@ export function eventsToThreadMessages(
 			const text = extractAcpBlockText(p.content);
 			if (!text) continue;
 			flushCurrent();
+			// context_items (snake_case, as persisted by
+			// services/agent-runner's handler.go) round-trips back into the
+			// camelCase ContextItem[] shape here so thread.tsx's UserMessage
+			// can render a read-only badge row via metadata.custom.contextItems.
+			const contextItems = parseContextItems(p.context_items);
 			messages.push({
 				id: ev.id,
 				role: "user",
 				createdAt: new Date(ev.created_at),
 				content: [{ type: "text", text }],
+				...(contextItems.length > 0
+					? { metadata: { custom: { contextItems } } }
+					: {}),
 			});
 			continue;
 		}

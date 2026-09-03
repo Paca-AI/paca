@@ -37,6 +37,7 @@ import (
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
+	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
 	globalrolesvc "github.com/Paca-AI/api/internal/service/globalrole"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -66,6 +67,7 @@ type App struct {
 	docActivityConsumer  *worker.DocActivityConsumer
 	notificationConsumer *worker.NotificationConsumer
 	pluginEventConsumer  *worker.PluginEventConsumer
+	environmentConsumer  *worker.EnvironmentCommandConsumer
 	automationConsumer   *worker.AutomationConsumer
 	dueDateScheduler     *worker.DueDateScheduler
 	cronScheduler        *worker.CronScheduler
@@ -149,15 +151,28 @@ func New(cfg *config.Config) (*App, error) {
 		WithPasswordSetTokenRepo(passwordSetTokenRepo).
 		WithEventPublishing(publisher)
 	agentRepo := pgRepo.NewAgentRepository(db)
+	environmentRepo := pgRepo.NewEnvironmentRepository(db)
 	globalRoleService := globalrolesvc.NewCachedService(globalrolesvc.New(globalRoleRepo, agentRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	projectServiceBase := projectsvc.New(projectRepo, taskRepo, agentRepo)
 	projectService := projectsvc.NewCachedService(projectServiceBase, cacheStore, cfg.Cache.ProjectTTL, cfg.Cache.ConfigTTL, log)
 	taskService := tasksvc.NewCachedService(tasksvc.New(taskRepo).WithAutomationStatusChecker(rawAutomationRepo), cacheStore, cfg.Cache.ConfigTTL, log)
 	sprintService := sprintsvc.NewCachedSprintService(sprintsvc.New(sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
-	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
+	viewService := sprintsvc.NewCachedViewService(sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, publisher), cacheStore, cfg.Cache.SprintTTL, log)
 	notificationService := notificationsvc.New(notificationRepo, projectRepo, publisher).
 		WithEventPublishing(userRepo, cfg.Server.PublicURL)
 	agentService := agentsvc.New(agentRepo, projectService, publisher, pluginRepo)
+	// environmentService calls agent-runner via the same AI_AGENT_URL/
+	// AI_AGENT_INTERNAL_KEY pair AgentHandler already uses for its fast
+	// calls (see environmentsvc.New's doc comment) — not a new config
+	// surface — plus StreamAgentEnvironmentCommands (WithRedisClient) for
+	// its 3 calls that wait on a Pod/container becoming ready.
+	// agentService.WithEnvironmentService below wires it into
+	// CreateAgent/UpdateAgent's default_environment_id validation and
+	// StartChatSession/StartGlobalChatSession's environment-attach flow.
+	environmentService := environmentsvc.New(environmentRepo, cfg.AIAgentURL, cfg.AIAgentInternalKey).
+		WithPublisher(publisher).
+		WithRedisClient(redisClient)
+	agentService = agentService.WithEnvironmentService(environmentService)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)
@@ -167,6 +182,11 @@ func New(cfg *config.Config) (*App, error) {
 			log.Warn("agent LLM key encryption disabled: encryptor init failed", "error", encErr)
 		} else {
 			agentService = agentService.WithEncryptor(enc)
+			// Same Encryptor instance, reused verbatim — an environment's
+			// secret_key_encrypted is encrypted at rest exactly like
+			// agents.llm_api_key_secret (see migration 000042's own doc
+			// comment on that column, and environmentsvc.Service.WithEncryptor).
+			environmentService = environmentService.WithEncryptor(enc)
 			log.Info("agent LLM API key at-rest encryption enabled")
 		}
 	} else {
@@ -178,14 +198,15 @@ func New(cfg *config.Config) (*App, error) {
 		// with no error or signal anywhere. Surface it once at startup.
 		log.Warn("ENCRYPTION_KEY not set: agent LLM API keys and plugin secrets will be stored in plaintext, not encrypted")
 	}
-	activityService := tasksvc.NewActivityService(activityRepo, projectRepo, publisher).
+	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, projectRepo, publisher).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(agentService)
 	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, agentService).
 		WithActivityRecorder(activityService)
 	activityConsumer := worker.NewActivityConsumer(redisClient, activityRepo, projectRepo, log)
+	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
 	docService := docsvc.New(docRepo, projectRepo)
-	docActivityService := docsvc.NewActivityService(docRepo, projectRepo, publisher).
+	docActivityService := docsvc.NewActivityService(docRepo, docRepo, projectRepo, publisher).
 		WithNotificationService(notificationService)
 	docActivityConsumer := worker.NewDocActivityConsumer(redisClient, docRepo, projectRepo, log)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
@@ -214,7 +235,7 @@ func New(cfg *config.Config) (*App, error) {
 		}
 	}
 
-	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), storageClient, cfg.Storage.Bucket)
+	attachmentService := attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, cfg.Storage.Bucket)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
 	// Unlike userService/agentService above, this return value isn't
@@ -368,7 +389,10 @@ func New(cfg *config.Config) (*App, error) {
 		WithActivityRecorder(activityService).
 		WithMemberRepo(projectRepo).
 		WithGlobalPermissionReader(permissionStore).
-		WithAvatarService(attachmentService)
+		WithAvatarService(attachmentService).
+		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
+	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
+		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)
 	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 
@@ -417,6 +441,7 @@ func New(cfg *config.Config) (*App, error) {
 		Skills:             handler.NewSkillsHandler(pluginService, cfg.Plugins.SkillsDir),
 		Plugin:             pluginHandler,
 		Agent:              agentHandler,
+		Environment:        environmentHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
@@ -434,7 +459,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -445,6 +470,7 @@ func (a *App) Run() error {
 	a.docActivityConsumer.Start(context.Background())
 	a.notificationConsumer.Start(context.Background())
 	a.pluginEventConsumer.Start(context.Background())
+	a.environmentConsumer.Start(context.Background())
 	a.automationConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
@@ -459,6 +485,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.docActivityConsumer.Stop()
 	a.notificationConsumer.Stop()
 	a.pluginEventConsumer.Stop()
+	a.environmentConsumer.Stop()
 	a.automationConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()

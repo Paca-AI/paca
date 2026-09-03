@@ -54,6 +54,7 @@ type AgentHandler struct {
 	memberRepo         projectdom.MemberRepository
 	globalPermReader   agentGlobalPermissionReader
 	avatarSvc          attachmentdom.AvatarService
+	taskChecker        attachmentdom.TaskOwnerChecker
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -96,6 +97,14 @@ func (h *AgentHandler) WithGlobalPermissionReader(reader agentGlobalPermissionRe
 // WithAvatarService configures avatar URL resolution for AgentResponse.
 func (h *AgentHandler) WithAvatarService(svc attachmentdom.AvatarService) *AgentHandler {
 	h.avatarSvc = svc
+	return h
+}
+
+// WithTaskChecker attaches the checker used by WriteTaskDescriptionWithAI to
+// verify the target task belongs to the caller's authorized project (the
+// agent service itself has no task-repository dependency to do this).
+func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *AgentHandler {
+	h.taskChecker = checker
 	return h
 }
 
@@ -256,23 +265,25 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	callerID, _ := uuid.Parse(claims.Subject)
 
 	a, err := h.svc.CreateAgent(r.Context(), projectID, agentdom.CreateAgentInput{
-		Name:              req.Name,
-		Handle:            req.Handle,
-		AgentType:         agentType,
-		LLMProvider:       req.LLMProvider,
-		LLMModel:          req.LLMModel,
-		LLMAPIKey:         req.LLMAPIKey,
-		LLMBaseURL:        req.LLMBaseURL,
-		ACPProvider:       req.ACPProvider,
-		ACPCommand:        req.ACPCommand,
-		SystemPrompt:      req.SystemPrompt,
-		MaxIterations:     req.MaxIterations,
-		TimeoutMinutes:    req.TimeoutMinutes,
-		GitCommitterName:  req.GitCommitterName,
-		GitCommitterEmail: req.GitCommitterEmail,
-		DockerEnabled:     req.DockerEnabled,
-		ProjectRoleID:     req.ProjectRoleID,
-		CreatedBy:         &callerID,
+		Name:                 req.Name,
+		Handle:               req.Handle,
+		AgentType:            agentType,
+		LLMProvider:          req.LLMProvider,
+		LLMModel:             req.LLMModel,
+		LLMAPIKey:            req.LLMAPIKey,
+		LLMBaseURL:           req.LLMBaseURL,
+		ACPProvider:          req.ACPProvider,
+		ACPCommand:           req.ACPCommand,
+		SystemPrompt:         req.SystemPrompt,
+		MaxIterations:        req.MaxIterations,
+		TimeoutMinutes:       req.TimeoutMinutes,
+		GitCommitterName:     req.GitCommitterName,
+		GitCommitterEmail:    req.GitCommitterEmail,
+		DockerEnabled:        req.DockerEnabled,
+		DefaultEnvironmentID: req.DefaultEnvironmentID,
+		DefaultFolderID:      req.DefaultFolderID,
+		ProjectRoleID:        req.ProjectRoleID,
+		CreatedBy:            &callerID,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -299,20 +310,22 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, err := h.svc.UpdateAgent(r.Context(), projectID, agentID, agentdom.UpdateAgentInput{
-		Name:              req.Name,
-		Handle:            req.Handle,
-		LLMProvider:       req.LLMProvider,
-		LLMModel:          req.LLMModel,
-		LLMAPIKey:         req.LLMAPIKey,
-		LLMBaseURL:        req.LLMBaseURL,
-		ACPProvider:       req.ACPProvider,
-		ACPCommand:        req.ACPCommand,
-		SystemPrompt:      req.SystemPrompt,
-		MaxIterations:     req.MaxIterations,
-		TimeoutMinutes:    req.TimeoutMinutes,
-		GitCommitterName:  req.GitCommitterName,
-		GitCommitterEmail: req.GitCommitterEmail,
-		DockerEnabled:     req.DockerEnabled,
+		Name:                 req.Name,
+		Handle:               req.Handle,
+		LLMProvider:          req.LLMProvider,
+		LLMModel:             req.LLMModel,
+		LLMAPIKey:            req.LLMAPIKey,
+		LLMBaseURL:           req.LLMBaseURL,
+		ACPProvider:          req.ACPProvider,
+		ACPCommand:           req.ACPCommand,
+		SystemPrompt:         req.SystemPrompt,
+		MaxIterations:        req.MaxIterations,
+		TimeoutMinutes:       req.TimeoutMinutes,
+		GitCommitterName:     req.GitCommitterName,
+		GitCommitterEmail:    req.GitCommitterEmail,
+		DockerEnabled:        req.DockerEnabled,
+		DefaultEnvironmentID: req.DefaultEnvironmentID,
+		DefaultFolderID:      req.DefaultFolderID,
 	})
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -1253,13 +1266,17 @@ func (h *AgentHandler) StartChatSession(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	memberID, err := h.resolveMemberID(r, projectID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
-	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message)
+	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message, req.EnvironmentID, req.FolderID, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1291,13 +1308,17 @@ func (h *AgentHandler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	memberID, err := h.resolveMemberID(r, projectID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
-	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message)
+	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1352,12 +1373,16 @@ func (h *AgentHandler) StartGlobalChatSession(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	userID, err := callerUserID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message)
+	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1384,12 +1409,16 @@ func (h *AgentHandler) SendGlobalChatMessage(w http.ResponseWriter, r *http.Requ
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "message is required"))
 		return
 	}
+	if err := agentdom.ValidateContextItems(req.ContextItems); err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, err.Error()))
+		return
+	}
 	userID, err := callerUserID(r)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
-	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message)
+	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message, req.ContextItems)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1420,6 +1449,15 @@ func (h *AgentHandler) WriteTaskDescriptionWithAI(w http.ResponseWriter, r *http
 	}
 	if req.AgentID == uuid.Nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_id is required"))
+		return
+	}
+
+	if h.taskChecker == nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeInternalError, "task checker not configured"))
+		return
+	}
+	if err := h.taskChecker.TaskBelongsToProject(r.Context(), projectID, taskID); err != nil {
+		presenter.Error(w, r, err)
 		return
 	}
 

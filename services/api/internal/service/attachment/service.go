@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/platform/storage"
 )
@@ -29,13 +30,14 @@ const (
 type Service struct {
 	repo        attachmentdom.Repository
 	taskChecker attachmentdom.TaskOwnerChecker
+	docChecker  attachmentdom.DocOwnerChecker
 	store       storage.Client
 	bucket      string
 }
 
 // New returns a configured attachment service.
-func New(repo attachmentdom.Repository, taskChecker attachmentdom.TaskOwnerChecker, store storage.Client, bucket string) *Service {
-	return &Service{repo: repo, taskChecker: taskChecker, store: store, bucket: bucket}
+func New(repo attachmentdom.Repository, taskChecker attachmentdom.TaskOwnerChecker, docChecker attachmentdom.DocOwnerChecker, store storage.Client, bucket string) *Service {
+	return &Service{repo: repo, taskChecker: taskChecker, docChecker: docChecker, store: store, bucket: bucket}
 }
 
 // InitiateUpload creates a pending File record and returns a presigned upload
@@ -340,6 +342,32 @@ func (c *taskOwnerChecker) TaskBelongsToProject(ctx context.Context, projectID, 
 	}
 	if t.ProjectID != projectID {
 		return attachmentdom.ErrTaskNotInProject
+	}
+	return nil
+}
+
+// --- Doc ownership checker --------------------------------------------------
+
+type docOwnerChecker struct {
+	repo docdom.DocumentRepository
+}
+
+// NewDocOwnerChecker returns a attachmentdom.DocOwnerChecker that validates
+// document→project ownership via the document repository.
+func NewDocOwnerChecker(repo docdom.DocumentRepository) attachmentdom.DocOwnerChecker {
+	return &docOwnerChecker{repo: repo}
+}
+
+func (c *docOwnerChecker) DocBelongsToProject(ctx context.Context, projectID, docID uuid.UUID) error {
+	d, err := c.repo.FindDocumentByID(ctx, docID)
+	if err != nil {
+		if errors.Is(err, docdom.ErrDocNotFound) {
+			return attachmentdom.ErrDocNotInProject
+		}
+		return err
+	}
+	if d.ProjectID != projectID {
+		return attachmentdom.ErrDocNotInProject
 	}
 	return nil
 }

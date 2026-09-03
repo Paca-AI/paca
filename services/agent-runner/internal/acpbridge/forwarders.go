@@ -22,12 +22,56 @@ const evictionCloseCode = 4409
 // mirrors the identical `while True: ... except Exception: ... sleep(...)`
 // shape both acp_bridge.py's _forward_dispatched_messages and
 // _watch_for_eviction use.
-func (r *Registry) subscribeLoop(ctx context.Context, channel string, handle func(data []byte) (stop bool)) {
-	for {
+//
+// ready, if non-nil, is called at most once — after the very first
+// subscribe attempt's Receive call confirms the subscription actually
+// reached Redis. go-redis's PubSub subscribes lazily: r.redis.Subscribe
+// itself never touches the network, it's the first Receive-family call
+// that actually sends SUBSCRIBE and waits for Redis's own confirmation.
+// Callers that need to know the subscription is genuinely live before
+// doing anything a concurrent PUBLISH could race against (Register, which
+// passes this to close exactly that window) must wait for ready, not
+// merely for the goroutine driving this loop to have been scheduled —
+// found live via an -race-only CI failure, not guessed: Register was
+// returning, and a Dispatch immediately following it publishing, before
+// this loop's first subscription had actually reached Redis, silently
+// losing that message. If that very first attempt fails instead, ready
+// is never called at all — a caller waiting on it relies on its own
+// bounded timeout (Register's subscribeReadyTimeout) rather than this
+// loop's later, unbounded reconnect retries.
+func (r *Registry) subscribeLoop(ctx context.Context, channel string, ready func(), handle func(data []byte) (stop bool)) {
+	for first := true; ; first = false {
 		if ctx.Err() != nil {
 			return
 		}
 		pubsub := r.redis.Subscribe(ctx, channel)
+		if first {
+			_, err := pubsub.Receive(ctx)
+			if err != nil {
+				// Not actually subscribed — ready must not fire here, or
+				// Register would consider this goroutine caught up while
+				// it's really about to sleep for reconnectBackoff and try
+				// again, reopening the exact message-loss window this
+				// whole mechanism exists to close. Left uncalled for the
+				// rest of this loop's life (first only guards the very
+				// first iteration): Register's own bounded
+				// subscribeReadyTimeout is what keeps it from waiting
+				// forever if every attempt keeps failing.
+				_ = pubsub.Close()
+				if ctx.Err() != nil {
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(reconnectBackoff):
+				}
+				continue
+			}
+			if ready != nil {
+				ready()
+			}
+		}
 		stopped := r.drainMessages(ctx, pubsub, handle)
 		_ = pubsub.Close()
 		if stopped || ctx.Err() != nil {
@@ -82,9 +126,10 @@ func (r *Registry) drainMessages(ctx context.Context, pubsub *redis.PubSub, hand
 
 // forwardDispatchedMessages subscribes to agentID's dispatch channel and
 // forwards each message to conn until ctx is cancelled — mirrors
-// acp_bridge.py's _forward_dispatched_messages.
-func (r *Registry) forwardDispatchedMessages(ctx context.Context, agentID uuid.UUID, conn Conn) {
-	r.subscribeLoop(ctx, dispatchChannel(agentID), func(data []byte) bool {
+// acp_bridge.py's _forward_dispatched_messages. ready is subscribeLoop's
+// own parameter, passed straight through — see that doc comment.
+func (r *Registry) forwardDispatchedMessages(ctx context.Context, agentID uuid.UUID, conn Conn, ready func()) {
+	r.subscribeLoop(ctx, dispatchChannel(agentID), ready, func(data []byte) bool {
 		var payload map[string]any
 		if err := json.Unmarshal(data, &payload); err != nil {
 			r.log.Warn("acpbridge: dropping malformed dispatch message", "agent_id", agentID, "error", err)
@@ -106,8 +151,10 @@ func (r *Registry) forwardDispatchedMessages(ctx context.Context, agentID uuid.U
 // Stops watching (rather than continuing to reconnect and watch a
 // connection it just closed) once it evicts itself — mirrors
 // acp_bridge.py's _watch_for_eviction returning immediately after closing.
-func (r *Registry) watchForEviction(ctx context.Context, agentID uuid.UUID, sessionID string, conn Conn) {
-	r.subscribeLoop(ctx, controlChannel(agentID), func(data []byte) bool {
+// ready is subscribeLoop's own parameter, passed straight through — see
+// that doc comment.
+func (r *Registry) watchForEviction(ctx context.Context, agentID uuid.UUID, sessionID string, conn Conn, ready func()) {
+	r.subscribeLoop(ctx, controlChannel(agentID), ready, func(data []byte) bool {
 		var payload struct {
 			SessionID string `json:"session_id"`
 		}

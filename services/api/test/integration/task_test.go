@@ -734,9 +734,9 @@ func buildTaskTestRouterWithSprints(taskRepo *fakeTaskRepo, sprintRepo *fakeSpri
 	projectService := projectsvc.New(projectRepo, taskRepo, nil)
 	taskService := tasksvc.New(taskRepo)
 	sprintService := sprintsvc.New(sprintRepo, taskRepo, nil)
-	viewService := sprintsvc.NewViewService(viewRepo, nil)
+	viewService := sprintsvc.NewViewService(viewRepo, sprintRepo, taskRepo, nil)
 	activityRepo := newFakeTaskActivityRepo()
-	activityService := tasksvc.NewActivityService(activityRepo, &fakeActivityMemberRepo{}, nil)
+	activityService := tasksvc.NewActivityService(activityRepo, taskRepo, &fakeActivityMemberRepo{}, nil)
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	return router.New(router.Deps{
@@ -3104,13 +3104,23 @@ func TestActivities_ListEmpty(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead},
+			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
 	tok := issueTaskToken(t, uuid.NewString())
 
-	taskID := uuid.New()
+	// A task must actually exist (and belong to projectID) for ListActivities
+	// to return an empty list rather than 404 — see GHSA-xwmv-9c7h-g947.
+	createW := serve(r, authedJSONReq(t.Context(), http.MethodPost,
+		fmt.Sprintf("/api/v1/projects/%s/tasks", projectID), tok,
+		map[string]any{"title": "No Activities Yet"},
+	))
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create task: expected 201, got %d: %s", createW.Code, createW.Body.String())
+	}
+	taskID := taskIDFrom(t, "task", createW.Body.Bytes())
+
 	w := serve(r, authedJSONReq(t.Context(), http.MethodGet,
 		fmt.Sprintf("/api/v1/projects/%s/tasks/%s/activities", projectID, taskID), tok, nil,
 	))

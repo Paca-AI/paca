@@ -1,14 +1,35 @@
 {{/*
 Grants agent-runner exactly what internal/sandbox/k8s needs to run the AI
-agent sandbox as one Kubernetes Job per conversation — create/get/list/
-watch/delete on batch/jobs (the sandbox's own lifecycle), get/list/watch on
-pods (finding the Job's Pod and its IP/status), and the pods/log and
-pods/exec subresources (diagnostics on a failed start, and the CopyToContainer/
-Exec operations executor.go relies on for skill files and git-diff
-computation — see that package's own doc comment). Scoped to exactly the
-sandbox namespace (see paca.sandboxNamespace) — no cluster-scoped
-permissions, and no access to any other resource type (Secrets, other
-Deployments, etc.) in that namespace either.
+agent sandbox: one Kubernetes Job per ephemeral conversation
+(create/get/list/watch/delete on batch/jobs), plus one apps/Deployment and
+one PersistentVolumeClaim per static environment (see
+internal/sandbox/k8s/environment.go and
+docs/ai-agent/environment-management.md) — a Deployment's declarative
+replicas is what StartEnvironment/StopEnvironment patch between 1 and 0,
+and "patch" is granted alongside create/get/list/watch/delete for exactly
+that. Also get/list/watch on pods (finding a Job's or a Deployment's
+current Pod and its IP/status), the pods/log and pods/exec subresources
+(diagnostics on a failed start, and the CopyToContainer/Exec/
+CopyToEnvironment/ExecEnvironment/StreamExecEnvironment operations
+executor.go and the browser terminal rely on), and one NodePort Service
+per static environment that has SSH access and/or a user-added port
+forward configured (ensureEnvironmentService — publishes those ports
+directly rather than relaying them through agent-runner's own process;
+see docs/ai-agent/environment-management.md's "Terminal / SSH Access" and
+"Port Forwarding" sections).
+
+Scoped to exactly the sandbox namespace (see paca.sandboxNamespace) — no
+cluster-scoped permissions — but NOT scoped by object ownership within
+that namespace: Kubernetes RBAC has no such concept, so
+create/get/list/watch/patch/delete on deployments/services (and
+get/list/watch/pods/exec/pods/log on pods) grants those verbs against
+*every* matching object in the namespace, not only ones this
+ServiceAccount created. This is exactly why paca.sandboxNamespace defaults
+to a dedicated namespace rather than this release's own — granting this
+Role in the namespace api/gateway/web/postgres/valkey/minio also run in
+would let this ServiceAccount patch or delete those Deployments/Services
+too. See templates/agent-runner/sandbox-namespace.yaml and
+deploy/helm/README.md's RBAC section.
 */}}
 {{- if and .Values.agentRunner.enabled (eq .Values.agentRunner.sandbox.backend "kubernetes") }}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -22,6 +43,15 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "watch", "patch", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]

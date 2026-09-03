@@ -1,0 +1,21 @@
+{{/*
+Creates the dedicated namespace paca.sandboxNamespace resolves to when
+agentRunner.sandbox.namespace is left unset (see that helper's own doc
+comment in _helpers.tpl) — role.yaml/rolebinding.yaml grant RBAC there, so
+something has to actually create it first. Skipped whenever the resolved
+namespace equals this release's own namespace: an operator who explicitly
+set agentRunner.sandbox.namespace to the release namespace, or to some
+other namespace they already manage themselves, doesn't want this chart
+creating (and, on `helm uninstall`, deleting) it out from under them.
+*/}}
+{{- if and .Values.agentRunner.enabled (eq .Values.agentRunner.sandbox.backend "kubernetes") }}
+{{- $ns := include "paca.sandboxNamespace" . }}
+{{- if ne $ns .Release.Namespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "agent-runner") | nindent 4 }}
+{{- end }}
+{{- end }}

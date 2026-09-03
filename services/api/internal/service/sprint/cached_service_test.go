@@ -347,7 +347,7 @@ type stubViewSvc struct {
 	getViewCalls          int
 }
 
-func (s *stubViewSvc) ListViews(ctx context.Context, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
+func (s *stubViewSvc) ListViews(ctx context.Context, _, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
 	if s.listViews != nil {
 		return s.listViews(ctx, sprintID)
 	}
@@ -412,7 +412,7 @@ func (s *stubViewSvc) ListTaskPositions(ctx context.Context, projectID, viewID u
 	return nil, nil
 }
 
-func (s *stubViewSvc) ReorderViews(ctx context.Context, sprintID uuid.UUID, viewIDs []uuid.UUID) error {
+func (s *stubViewSvc) ReorderViews(ctx context.Context, _, sprintID uuid.UUID, viewIDs []uuid.UUID) error {
 	if s.reorderViews != nil {
 		return s.reorderViews(ctx, sprintID, viewIDs)
 	}

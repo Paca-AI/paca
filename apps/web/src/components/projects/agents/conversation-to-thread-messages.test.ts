@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { AgentConversationEvent } from "@/lib/agent-api";
+import type {
+	AgentConversation,
+	AgentConversationEvent,
+} from "@/lib/agent-api";
 import {
+	canReplyToConversation,
 	eventsToThreadMessages,
 	hasEnvironmentReadyEvent,
 	isEnvironmentReady,
@@ -1092,6 +1096,55 @@ describe("eventsToThreadMessages", () => {
 			});
 		});
 	});
+
+	describe("context_items on a user_message event", () => {
+		it("maps payload.context_items (snake_case) into metadata.custom.contextItems (camelCase)", () => {
+			const events: AgentConversationEvent[] = [
+				{
+					id: "evt-ctx-1",
+					conversation_id: "conv-1",
+					event_index: 0,
+					event_type: "user_message",
+					event_source: "user",
+					payload: {
+						content: { type: "text", text: "look at this" },
+						context_items: [
+							{
+								type: "task",
+								id: "task-1",
+								project_id: "proj-1",
+								title: "Fix login bug",
+							},
+							{ type: "doc", id: "doc-1", title: "Runbook" },
+						],
+					},
+					created_at: "2026-01-01T00:00:00.000Z",
+				},
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(1);
+			expect(messages[0]?.metadata?.custom?.contextItems).toEqual([
+				{
+					type: "task",
+					id: "task-1",
+					projectId: "proj-1",
+					title: "Fix login bug",
+				},
+				{ type: "doc", id: "doc-1", title: "Runbook" },
+			]);
+		});
+
+		it("adds no metadata.custom when a user_message event carries no context_items", () => {
+			const events = [acpUserMessage("hi")];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(1);
+			expect(messages[0]?.metadata).toBeUndefined();
+		});
+	});
 });
 
 describe("hasEnvironmentReadyEvent", () => {
@@ -1155,5 +1208,87 @@ describe("isEnvironmentReady", () => {
 
 		expect(isEnvironmentReady(false, notReady)).toBe(false);
 		expect(isEnvironmentReady(false, ready)).toBe(true);
+	});
+});
+
+function conversation(
+	overrides: Partial<AgentConversation> = {},
+): AgentConversation {
+	return {
+		id: "conv-1",
+		agent_id: "agent-1",
+		trigger_type: "task_assigned",
+		status: "finished",
+		iteration_count: 0,
+		input_tokens: 0,
+		output_tokens: 0,
+		total_tokens: 0,
+		created_at: "2026-01-01T00:00:00Z",
+		updated_at: "2026-01-01T00:00:00Z",
+		...overrides,
+	};
+}
+
+describe("canReplyToConversation", () => {
+	it("is false with no conversation at all", () => {
+		expect(canReplyToConversation(undefined, false)).toBe(false);
+		expect(canReplyToConversation(null, true)).toBe(false);
+	});
+
+	it("is always true for an ACP conversation, regardless of trigger type, status, or chat session", () => {
+		const c = conversation({
+			trigger_type: "task_assigned",
+			status: "finished",
+			chat_session_id: null,
+		});
+
+		expect(canReplyToConversation(c, true)).toBe(true);
+	});
+
+	it("is always true for a conversation attached to a static environment, regardless of trigger type, status, or chat session", () => {
+		const c = conversation({
+			trigger_type: "comment_mention",
+			status: "stopped",
+			chat_session_id: null,
+			environment_id: "env-1",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(true);
+	});
+
+	it("is false for a non-ACP, non-environment conversation whose trigger isn't chat_message", () => {
+		const c = conversation({ trigger_type: "task_assigned" });
+
+		expect(canReplyToConversation(c, false)).toBe(false);
+	});
+
+	it("is false for a non-ACP, non-environment chat_message conversation with no chat session", () => {
+		const c = conversation({
+			trigger_type: "chat_message",
+			chat_session_id: null,
+			status: "running",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(false);
+	});
+
+	it("is false for a non-ACP, non-environment chat_message conversation that has gone terminal", () => {
+		const c = conversation({
+			trigger_type: "chat_message",
+			chat_session_id: "sess-1",
+			status: "failed",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(false);
+	});
+
+	it("is true for a live (non-terminal) non-ACP, non-environment chat_message conversation with a chat session", () => {
+		const c = conversation({
+			trigger_type: "chat_message",
+			chat_session_id: "sess-1",
+			status: "running",
+		});
+
+		expect(canReplyToConversation(c, false)).toBe(true);
 	});
 });

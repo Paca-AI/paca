@@ -58,4 +58,27 @@ type Trigger struct {
 	// already split — a project can have more than one repository plugin
 	// installed.
 	RepoPluginIDs []string
+	// EnvironmentID names the static environment (see
+	// docs/ai-agent/environment-management.md) this conversation is
+	// attached to, when one is — resolved server-side by services/api at
+	// chat-start time (agent.DefaultEnvironmentID or an explicit
+	// StartChatSessionRequest.environment_id) and published as-is, the
+	// same "already-resolved, not re-looked-up" principle RepoPluginIDs
+	// above follows: agent-runner never decides which environment a
+	// conversation should use, only attaches to the one it's told. nil for
+	// the (still-default) ephemeral-sandbox path.
+	EnvironmentID *uuid.UUID
+	// Workdir is the absolute path inside EnvironmentID's container the
+	// ACP session's cwd should be set to — an environment_folders.path
+	// row, resolved server-side the same way EnvironmentID is. Only
+	// meaningful alongside EnvironmentID; nil whenever EnvironmentID is
+	// nil.
+	Workdir *string
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this chat message via the frontend composer's
+	// context-item picker (see ContextItemRef) — decoded from the flat
+	// context_items JSON-string stream field by messaging.decodeTrigger.
+	// Rendered into the prompt as a "## Attached Context" hint block by
+	// FormatAttachedContext. nil/empty when no items were attached.
+	ContextItems []ContextItemRef
 }

@@ -168,8 +168,8 @@ func (c *CachedRepository) FindAutomationByID(ctx context.Context, id uuid.UUID)
 }
 
 // ListAutomations delegates to the underlying repository.
-func (c *CachedRepository) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status) ([]*automationdom.Automation, error) {
-	return c.repo.ListAutomations(ctx, projectID, status)
+func (c *CachedRepository) ListAutomations(ctx context.Context, projectID uuid.UUID, status *automationdom.Status, search *string, cursor *string, limit *int) ([]*automationdom.Automation, bool, error) {
+	return c.repo.ListAutomations(ctx, projectID, status, search, cursor, limit)
 }
 
 // UpdateAutomation delegates to the underlying repository.
@@ -210,6 +210,11 @@ func (c *CachedRepository) CreateRun(ctx context.Context, r *automationdom.Run) 
 // UpdateRun delegates to the underlying repository.
 func (c *CachedRepository) UpdateRun(ctx context.Context, r *automationdom.Run) error {
 	return c.repo.UpdateRun(ctx, r)
+}
+
+// FindRunByID delegates to the underlying repository.
+func (c *CachedRepository) FindRunByID(ctx context.Context, id uuid.UUID) (*automationdom.Run, error) {
+	return c.repo.FindRunByID(ctx, id)
 }
 
 // ListRunsByAutomation delegates to the underlying repository.

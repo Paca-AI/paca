@@ -13,6 +13,7 @@ import {
 	Loader2,
 	Lock,
 	Search,
+	Server,
 	Settings,
 	Sparkles,
 } from "lucide-react";
@@ -37,6 +38,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { globalRolesQueryOptions } from "@/lib/admin-api";
 import {
@@ -54,6 +56,7 @@ import {
 	globalAgentsQueryOptions,
 	llmModelsQueryOptions,
 } from "@/lib/agent-api";
+import { environmentsQueryOptions } from "@/lib/environment-api";
 import { projectRolesQueryOptions } from "@/lib/project-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
@@ -70,6 +73,8 @@ import { AcpBridgeSetup } from "./acp-bridge-setup";
 
 const CUSTOM = "__custom__";
 const NO_GLOBAL_ROLE = "__none__";
+const NO_ENVIRONMENT = "__none__";
+const NO_FOLDER = "__none__";
 
 const PRESET_ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
 	"software-engineer": Code2,
@@ -107,6 +112,13 @@ export function CreateAgentDialog({
 		enabled: !projectId,
 	});
 	const { data: llmModels = {} } = useQuery(llmModelsQueryOptions);
+	// Environments are project-scoped only — a global agent has no project to
+	// default one from, so this query no-ops (via `enabled`) at global scope,
+	// same convention as agent-picker.tsx's useEnvironmentPicker.
+	const { data: environments = [] } = useQuery({
+		...environmentsQueryOptions(projectId ?? ""),
+		enabled: !!projectId,
+	});
 
 	// Uniform {id, label} shape either way, so the role Select below is one
 	// JSX block regardless of scope. A global role is optional — NO_GLOBAL_ROLE
@@ -140,6 +152,24 @@ export function CreateAgentDialog({
 	const [acpCommand, setAcpCommand] = useState("");
 	const [systemPrompt, setSystemPrompt] = useState("");
 	const [showApiKey, setShowApiKey] = useState(false);
+	const [dockerEnabled, setDockerEnabled] = useState(false);
+	const [defaultEnvironmentId, setDefaultEnvironmentIdState] = useState("");
+	const [defaultFolderId, setDefaultFolderId] = useState("");
+	// Changing the default environment clears any previously-picked default
+	// folder — a folder only ever belongs to one environment, so a folder
+	// picked under the old one is never valid under the new one (mirrors
+	// agent-detail.tsx's own OverviewTab and agent-picker.tsx's
+	// useEnvironmentPicker.onEnvironmentChange).
+	const setDefaultEnvironmentId = (id: string) => {
+		if (id !== defaultEnvironmentId) {
+			setDefaultFolderId("");
+		}
+		setDefaultEnvironmentIdState(id);
+	};
+	const selectedEnvironment = environments.find(
+		(env) => env.id === defaultEnvironmentId,
+	);
+	const selectedEnvironmentFolders = selectedEnvironment?.folders ?? [];
 
 	// Derived final values sent to the API
 	const llmProvider =
@@ -163,6 +193,9 @@ export function CreateAgentDialog({
 		setAcpCommand("");
 		setSystemPrompt("");
 		setShowApiKey(false);
+		setDockerEnabled(false);
+		setDefaultEnvironmentIdState("");
+		setDefaultFolderId("");
 	};
 
 	const handleClose = (v: boolean) => {
@@ -215,6 +248,13 @@ export function CreateAgentDialog({
 							llm_api_key: llmApiKey,
 							llm_base_url: llmBaseUrl,
 							system_prompt: systemPrompt,
+							docker_enabled: dockerEnabled,
+							...(projectId && defaultEnvironmentId
+								? { default_environment_id: defaultEnvironmentId }
+								: {}),
+							...(projectId && defaultEnvironmentId && defaultFolderId
+								? { default_folder_id: defaultFolderId }
+								: {}),
 						}
 					: {
 							acp_provider: acpProvider,
@@ -720,6 +760,123 @@ export function CreateAgentDialog({
 										value={llmBaseUrl}
 										onChange={(e) => setLlmBaseUrl(e.target.value)}
 									/>
+								</div>
+
+								{/* Environment + Docker card */}
+								<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+									<div className="flex items-center gap-1.5">
+										<Server className="size-3.5 text-muted-foreground" />
+										<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+											{t("agents.createDialog.environmentSection")}
+										</span>
+									</div>
+									{projectId && (
+										<div className="space-y-1.5">
+											<Label>
+												{t("agents.detail.overview.defaultEnvironmentLabel")}
+											</Label>
+											<Select
+												value={defaultEnvironmentId || NO_ENVIRONMENT}
+												onValueChange={(v) =>
+													v &&
+													setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v)
+												}
+												items={[
+													{
+														value: NO_ENVIRONMENT,
+														label: t(
+															"agents.detail.overview.noDefaultEnvironment",
+														),
+													},
+													...environments.map((env) => ({
+														value: env.id,
+														label: env.name,
+													})),
+												]}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value={NO_ENVIRONMENT}>
+														{t("agents.detail.overview.noDefaultEnvironment")}
+													</SelectItem>
+													{environments.length > 0 && <SelectSeparator />}
+													{environments.map((env) => (
+														<SelectItem key={env.id} value={env.id}>
+															{env.name}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											<p className="text-xs text-muted-foreground">
+												{t("agents.detail.overview.defaultEnvironmentHint")}
+											</p>
+										</div>
+									)}
+									{selectedEnvironment && (
+										<div className="space-y-1.5">
+											<Label>
+												{t("agents.detail.overview.defaultFolderLabel")}
+											</Label>
+											<Select
+												value={defaultFolderId || NO_FOLDER}
+												onValueChange={(v) =>
+													v && setDefaultFolderId(v === NO_FOLDER ? "" : v)
+												}
+												items={[
+													{
+														value: NO_FOLDER,
+														label: t("agents.detail.overview.noDefaultFolder"),
+													},
+													...selectedEnvironmentFolders.map((folder) => ({
+														value: folder.id,
+														label: folder.path,
+													})),
+												]}
+											>
+												<SelectTrigger className="w-full">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value={NO_FOLDER}>
+														{t("agents.detail.overview.noDefaultFolder")}
+													</SelectItem>
+													{selectedEnvironmentFolders.length > 0 && (
+														<SelectSeparator />
+													)}
+													{selectedEnvironmentFolders.map((folder) => (
+														<SelectItem key={folder.id} value={folder.id}>
+															{folder.path}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											<p className="text-xs text-muted-foreground">
+												{t("agents.detail.overview.defaultFolderHint")}
+											</p>
+										</div>
+									)}
+									{/* Docker access only applies to the disposable per-conversation
+									    sandbox — once a static default environment is picked, that
+									    environment's own Docker setting (set at creation) governs
+									    instead, so this toggle no longer means anything. */}
+									{!defaultEnvironmentId && (
+										<div className="flex items-center justify-between gap-3">
+											<div>
+												<p className="text-sm font-medium">
+													{t("agents.detail.overview.dockerEnabledLabel")}
+												</p>
+												<p className="text-xs text-muted-foreground">
+													{t("agents.detail.overview.dockerEnabledHint")}
+												</p>
+											</div>
+											<Switch
+												checked={dockerEnabled}
+												onCheckedChange={setDockerEnabled}
+											/>
+										</div>
+									)}
 								</div>
 							</>
 						)}

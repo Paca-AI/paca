@@ -2,6 +2,7 @@
 package agentdom
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,10 +84,29 @@ type Agent struct {
 	// above — an ACP agent's sandboxing is owned by the user's own local ACP
 	// client, not agent-runner.
 	DockerEnabled bool
-	CreatedBy     *uuid.UUID
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     *time.Time
+	// DefaultEnvironmentID, when set, is the static environment
+	// (environmentdom.Environment) this agent's conversations attach to by
+	// default instead of getting a fresh ephemeral sandbox — see
+	// docs/ai-agent/environment-management.md. Only meaningful for
+	// project-scoped agents: a global agent has no single project's
+	// environments to default to, so this stays nil for
+	// AgentScopeGlobal agents (enforced by CreateAgent/UpdateAgent, not a
+	// DB constraint — see that validation for why). Overridable per
+	// conversation at chat-start.
+	DefaultEnvironmentID *uuid.UUID
+	// DefaultFolderID, when set, is which folder
+	// (environmentdom.EnvironmentFolder) inside DefaultEnvironmentID this
+	// agent's conversations should work in by default — meaningless
+	// without DefaultEnvironmentID also being set, since a folder only
+	// ever belongs to exactly one environment (enforced by
+	// CreateAgent/UpdateAgent, not a DB constraint — see that validation
+	// for why). Overridable per conversation at chat-start, same as
+	// DefaultEnvironmentID.
+	DefaultFolderID *uuid.UUID
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DeletedAt       *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer
@@ -223,6 +243,76 @@ const (
 	AudienceProjectShared ConversationAudience = "project_shared"
 )
 
+// ContextItemType discriminates which kind of resource a ContextItemRef
+// points at.
+type ContextItemType string
+
+// ContextItemType values.
+const (
+	ContextItemTask         ContextItemType = "task"
+	ContextItemDoc          ContextItemType = "doc"
+	ContextItemConversation ContextItemType = "conversation"
+	ContextItemAutomation   ContextItemType = "automation"
+)
+
+// ContextItemRef is a reference to a Task, Doc, Conversation, or Automation
+// the user attached to a chat message from the frontend composer's
+// context-item picker (shown as removable badges above the composer). It
+// rides the send-message DTOs → the Redis/Valkey trigger stream (JSON-
+// encoded into a single flat string field, since AppendFlat needs scalar
+// values — see agentsvc.Service.publishTrigger) → agent-runner, which
+// renders it into a "## Attached Context" prompt hint telling the agent
+// which MCP tool to call for full details. It is also persisted verbatim
+// (as a nested JSON array, not re-stringified) on the conversation's
+// user_message event payload so the frontend can redisplay the badges when
+// a conversation is reloaded. services/agent-runner keeps its own
+// byte-identical copy of this type (internal/agent/context_item.go) since
+// it is a separate Go module and cannot import this package — see that
+// copy's doc comment.
+type ContextItemRef struct {
+	Type      ContextItemType `json:"type"`
+	ID        string          `json:"id"`
+	ProjectID *string         `json:"project_id,omitempty"`
+	Title     string          `json:"title"`
+}
+
+// MaxContextItems bounds how many ContextItemRefs a single send-message
+// request may carry — see ValidateContextItems. The UI's composer never
+// stages more than a handful; this just keeps a malformed or abusive client
+// payload from ballooning the persisted event row and every prompt built
+// from it.
+const MaxContextItems = 20
+
+// MaxContextItemTitleLength bounds ContextItemRef.Title — see
+// ValidateContextItems.
+const MaxContextItemTitleLength = 500
+
+// ValidateContextItems rejects a client-supplied context_items payload that
+// is too large or malformed: too many items, an unrecognized Type, a blank
+// ID, or an oversized Title. Called at the HTTP boundary (see the
+// send-message/chat-session handlers) before the items are persisted
+// verbatim and rendered into every subsequent prompt — see ContextItemRef's
+// own doc comment for that data flow.
+func ValidateContextItems(items []ContextItemRef) error {
+	if len(items) > MaxContextItems {
+		return fmt.Errorf("context_items: at most %d items allowed, got %d", MaxContextItems, len(items))
+	}
+	for i, item := range items {
+		switch item.Type {
+		case ContextItemTask, ContextItemDoc, ContextItemConversation, ContextItemAutomation:
+		default:
+			return fmt.Errorf("context_items[%d]: unknown type %q", i, item.Type)
+		}
+		if item.ID == "" {
+			return fmt.Errorf("context_items[%d]: id is required", i)
+		}
+		if len(item.Title) > MaxContextItemTitleLength {
+			return fmt.Errorf("context_items[%d]: title exceeds %d characters", i, MaxContextItemTitleLength)
+		}
+	}
+	return nil
+}
+
 // AgentConversation tracks each OpenHands conversation session.
 type AgentConversation struct {
 	ID            uuid.UUID
@@ -244,30 +334,35 @@ type AgentConversation struct {
 	// Audience is the derived transcript audience (owner_private |
 	// project_shared) — see ConversationAudience. Read-only on this entity:
 	// it is a generated column, never set by the repository on write.
-	Audience       ConversationAudience
-	Status         string // queued | running | paused | finished | failed | stopped
-	ContainerID    *string
-	HostPort       *int
-	IterationCount int
+	Audience ConversationAudience
+	Status   string // queued | running | paused | finished | failed | stopped
+	// EnvironmentID/EnvironmentFolderID are set only when this conversation
+	// is attached to a static environment (environmentdom.Environment)
+	// instead of getting a fresh ephemeral sandbox — see
+	// docs/ai-agent/environment-management.md. Replaced the old
+	// ContainerID/HostPort/RepoCloneURL/BranchName/PersistenceDir columns
+	// (migration 000042_add_environments.sql), which encoded a
+	// different cardinality (one conversation owning one container) that a
+	// many-conversations-to-one-environment model doesn't fit.
+	EnvironmentID       *uuid.UUID
+	EnvironmentFolderID *uuid.UUID
+	IterationCount      int
 	// InputTokens/OutputTokens/TotalTokens/CostUSD are computed live from
 	// agent_conversation_events (event_type = 'turn_usage'), the same
 	// pattern IterationCount uses — see conversationCols's doc comment in
 	// the postgres repository. CostUSD is nil until at least one turn has
 	// reported a cost.
-	InputTokens    int64
-	OutputTokens   int64
-	TotalTokens    int64
-	CostUSD        *float64
-	ErrorMessage   *string
-	RepoPluginID   *uuid.UUID
-	RepoCloneURL   *string
-	BranchName     *string
-	PRUrl          *string
-	PersistenceDir *string
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	InputTokens  int64
+	OutputTokens int64
+	TotalTokens  int64
+	CostUSD      *float64
+	ErrorMessage *string
+	RepoPluginID *uuid.UUID
+	PRUrl        *string
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 	// Populated by JOIN
 	AgentName   string
 	AgentHandle string

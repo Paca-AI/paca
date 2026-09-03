@@ -217,6 +217,15 @@ func (s *Service) CompleteSprint(ctx context.Context, projectID, id uuid.UUID, i
 	if sp.Status == sprintdom.SprintStatusCompleted {
 		return nil, sprintdom.ErrSprintAlreadyComplete
 	}
+	if in.MoveToSprintID != nil {
+		target, err := s.repo.FindSprintByID(ctx, *in.MoveToSprintID)
+		if err != nil {
+			return nil, err
+		}
+		if target.ProjectID != projectID {
+			return nil, sprintdom.ErrSprintNotFound
+		}
+	}
 
 	// Move non-done tasks first so a subsequent failure leaves the sprint
 	// in its original state (retrying the complete is then still possible).

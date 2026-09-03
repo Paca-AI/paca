@@ -75,7 +75,7 @@ func (f *fakeTaskTypeSvcH) ListTaskTypes(_ context.Context, _ uuid.UUID) ([]*tas
 	return f.taskTypes, nil
 }
 
-func (f *fakeViewSvcH) ListViews(_ context.Context, _ uuid.UUID) ([]*sprintdom.SprintView, error) {
+func (f *fakeViewSvcH) ListViews(_ context.Context, _, _ uuid.UUID) ([]*sprintdom.SprintView, error) {
 	return nil, nil
 }
 func (f *fakeViewSvcH) ListProjectViews(_ context.Context, _ uuid.UUID, _ sprintdom.ViewContext) ([]*sprintdom.SprintView, error) {
@@ -116,7 +116,7 @@ func (f *fakeViewSvcH) BulkMoveTasks(_ context.Context, _, _ uuid.UUID, _ []spri
 func (f *fakeViewSvcH) ListTaskPositions(_ context.Context, _, _ uuid.UUID) ([]*sprintdom.ViewTaskPosition, error) {
 	return nil, nil
 }
-func (f *fakeViewSvcH) ReorderViews(_ context.Context, _ uuid.UUID, _ []uuid.UUID) error {
+func (f *fakeViewSvcH) ReorderViews(_ context.Context, _, _ uuid.UUID, _ []uuid.UUID) error {
 	return nil
 }
 func (f *fakeViewSvcH) ReorderProjectViews(_ context.Context, _ uuid.UUID, _ sprintdom.ViewContext, _ []uuid.UUID) error {

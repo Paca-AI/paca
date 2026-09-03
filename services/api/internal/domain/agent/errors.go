@@ -20,6 +20,18 @@ var (
 	// agent_environment_variables at all) — so accepting these calls for
 	// an ACP agent would silently no-op rather than do anything.
 	ErrNotSupportedForACPAgent = errors.New("not supported for ACP-type agents — the local ACP client owns its own tool/MCP/skill/environment configuration")
+	// ErrDefaultEnvironmentInvalid is returned when default_environment_id
+	// doesn't resolve to a static environment (environmentdom.Environment)
+	// belonging to this agent's own project, or is set on a global-scope
+	// agent — see Agent.DefaultEnvironmentID's doc comment for why a global
+	// agent can never have one.
+	ErrDefaultEnvironmentInvalid = errors.New("default environment must be a static environment belonging to this agent's own project")
+	// ErrDefaultFolderInvalid is returned when default_folder_id doesn't
+	// resolve to a folder belonging to this agent's own
+	// default_environment_id, is set without a default_environment_id also
+	// set, or is set on a global-scope agent — see
+	// Agent.DefaultFolderID's doc comment.
+	ErrDefaultFolderInvalid = errors.New("default folder must belong to this agent's own default environment")
 )
 
 // Global agent errors

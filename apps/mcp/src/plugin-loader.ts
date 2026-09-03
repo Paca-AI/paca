@@ -342,9 +342,10 @@ async function loadPluginEntry(
 	url: string,
 	baseURL: string,
 ): Promise<PluginMCPEntry> {
-	// Dynamic import works for both file:// and https:// URLs in Node 18+.
-	// For http:// URLs (common in local dev), we fetch the source first and
-	// evaluate it via a data: URL import.
+	// resolveImportUrl returns something Node's default ESM loader can
+	// actually import(): a file:// URL as-is, or a data: URL carrying the
+	// fetched source for http(s):// entries — Node can't import() remote URLs
+	// (network imports were experimental and removed in Node 22).
 	const importUrl = await resolveImportUrl(url, baseURL);
 	const mod = await import(importUrl);
 
@@ -364,13 +365,18 @@ async function loadPluginEntry(
  *   URLs are accepted.  Any other scheme is rejected.
  * - For `https://` URLs the hostname is resolved via DNS and the function
  *   throws if any resolved address falls inside a private / internal IP range
- *   (SSRF protection, similar to the API marketplace URL validator).
+ *   (SSRF protection, similar to the API marketplace URL validator). The
+ *   source is then fetched and re-exposed as a `data:` URL, because Node's
+ *   default ESM loader cannot `import()` a remote URL of any scheme (network
+ *   imports were experimental and removed in Node 22).
  * - For `http://` URLs the hostname must be localhost, a loopback address, or
  *   the same hostname as `baseURL` (trusted operator-configured gateway).
- *   The source is fetched and re-exposed as a `data:` URL because Node.js
- *   cannot `import()` plain `http://` URLs.
+ *   The source is fetched and re-exposed as a `data:` URL for the same reason.
  */
-async function resolveImportUrl(url: string, baseURL: string): Promise<string> {
+export async function resolveImportUrl(
+	url: string,
+	baseURL: string,
+): Promise<string> {
 	// Always resolve against baseURL so the URL constructor handles absolute,
 	// relative, and protocol-relative URLs correctly without fragile heuristics:
 	//   "/plugins-mcp/id/mcp.js" → "<baseURL>/plugins-mcp/id/mcp.js"
@@ -392,7 +398,10 @@ async function resolveImportUrl(url: string, baseURL: string): Promise<string> {
 	if (scheme === "https:") {
 		// Guard against SSRF: reject hostnames that resolve to private IPs.
 		await assertNotPrivateHost(resolved.hostname);
-		return resolved.href;
+		// Node's default ESM loader can't import() an https:// URL either —
+		// network imports were experimental and removed in Node 22 — so fetch
+		// the source and evaluate it via a data: URL, same as http:// below.
+		return fetchAsDataUrl(resolved.href);
 	}
 
 	if (scheme === "http:") {
@@ -416,22 +425,38 @@ async function resolveImportUrl(url: string, baseURL: string): Promise<string> {
 
 		// Node.js cannot import() http:// URLs — fetch source and wrap in a
 		// data: URL so import() can evaluate it without network restrictions.
-		const response = await fetch(resolved.href);
-		if (!response.ok) {
-			throw new Error(
-				`Failed to fetch plugin module from ${resolved.href}: ${response.status} ${response.statusText}`,
-			);
-		}
-		const source = await response.text();
-		// Use base64 to avoid issues with special characters in the source
-		const b64 = Buffer.from(source, "utf8").toString("base64");
-		return `data:text/javascript;base64,${b64}`;
+		return fetchAsDataUrl(resolved.href);
 	}
 
 	throw new Error(
 		`Plugin entry URL scheme "${scheme.replace(":", "")}" is not allowed. ` +
 			`Only https://, http:// (localhost only), and file:// are permitted.`,
 	);
+}
+
+/**
+ * Fetches JavaScript source over http(s) and returns it as a base64 `data:`
+ * URL that Node's default ESM loader can import(). Neither http:// nor
+ * https:// URLs are importable directly — network imports were experimental
+ * and removed in Node 22 — so both schemes route through here.
+ */
+async function fetchAsDataUrl(url: string): Promise<string> {
+	// redirect: "error" is load-bearing for SSRF safety: assertNotPrivateHost
+	// only validated the *initial* URL's host, so following a redirect could
+	// land on an internal address (cloud metadata 169.254.169.254, RFC-1918,
+	// …) that the guard never re-checked. Plugin modules are served directly
+	// from the operator's gateway and shouldn't redirect, so reject any
+	// redirect outright rather than re-validating each hop.
+	const response = await fetch(url, { redirect: "error" });
+	if (!response.ok) {
+		throw new Error(
+			`Failed to fetch plugin module from ${url}: ${response.status} ${response.statusText}`,
+		);
+	}
+	const source = await response.text();
+	// base64 to avoid issues with special characters in the source
+	const b64 = Buffer.from(source, "utf8").toString("base64");
+	return `data:text/javascript;base64,${b64}`;
 }
 
 /** Returns true if the hostname is a loopback / localhost address. */

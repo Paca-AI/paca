@@ -320,6 +320,56 @@ const (
 	CodeAgentEnvVarKeyInvalid Code = "AGENT_ENV_VAR_KEY_INVALID"
 	// CodeAgentEnvVarKeyReserved indicates the environment variable key collides with an internal sandbox variable.
 	CodeAgentEnvVarKeyReserved Code = "AGENT_ENV_VAR_KEY_RESERVED"
+	// CodeAgentDefaultEnvironmentInvalid indicates default_environment_id does not
+	// resolve to a static environment in the agent's own project, or was set on a
+	// global-scope agent (which has no single project to default from).
+	CodeAgentDefaultEnvironmentInvalid Code = "AGENT_DEFAULT_ENVIRONMENT_INVALID"
+	// CodeAgentDefaultFolderInvalid indicates default_folder_id does not
+	// resolve to a folder belonging to the agent's own
+	// default_environment_id, was set without a default_environment_id
+	// also set, or was set on a global-scope agent.
+	CodeAgentDefaultFolderInvalid Code = "AGENT_DEFAULT_FOLDER_INVALID"
+
+	// --- Environment errors (static environments — see
+	// docs/ai-agent/environment-management.md) --------------------------------
+
+	// CodeEnvironmentNotFound indicates the requested environment does not exist.
+	CodeEnvironmentNotFound Code = "ENVIRONMENT_NOT_FOUND"
+	// CodeEnvironmentSlugTaken indicates the environment slug is already in use in this project.
+	CodeEnvironmentSlugTaken Code = "ENVIRONMENT_SLUG_TAKEN"
+	// CodeEnvironmentNameInvalid indicates the environment name is empty or invalid.
+	CodeEnvironmentNameInvalid Code = "ENVIRONMENT_NAME_INVALID"
+	// CodeEnvironmentNotRunning indicates an operation that requires a live
+	// container (exec, terminal, heartbeat) targeted an environment that isn't
+	// currently running.
+	CodeEnvironmentNotRunning Code = "ENVIRONMENT_NOT_RUNNING"
+	// CodeEnvironmentBusy indicates a start/stop/delete was requested while the
+	// environment is already mid-transition.
+	CodeEnvironmentBusy Code = "ENVIRONMENT_BUSY"
+	// CodeEnvironmentCPULimitInvalid indicates the requested cpu_limit override
+	// is unparseable or below the minimum (100m).
+	CodeEnvironmentCPULimitInvalid Code = "ENVIRONMENT_CPU_LIMIT_INVALID"
+	// CodeEnvironmentMemoryLimitInvalid indicates the requested memory_limit
+	// override is unparseable or below the minimum (256Mi).
+	CodeEnvironmentMemoryLimitInvalid Code = "ENVIRONMENT_MEMORY_LIMIT_INVALID"
+	// CodeEnvironmentFolderNotFound indicates the requested environment folder does not exist.
+	CodeEnvironmentFolderNotFound Code = "ENVIRONMENT_FOLDER_NOT_FOUND"
+	// CodeEnvironmentFolderPathTaken indicates a folder with this path already exists in this environment.
+	CodeEnvironmentFolderPathTaken Code = "ENVIRONMENT_FOLDER_PATH_TAKEN"
+	// CodeEnvironmentFolderPathInvalid indicates the folder path is not an absolute path.
+	CodeEnvironmentFolderPathInvalid Code = "ENVIRONMENT_FOLDER_PATH_INVALID"
+	// CodeEnvironmentSSHKeyNotFound indicates the requested SSH key does not exist.
+	CodeEnvironmentSSHKeyNotFound Code = "ENVIRONMENT_SSH_KEY_NOT_FOUND"
+	// CodeEnvironmentSSHKeyInvalid indicates the supplied public key is not a valid SSH public key.
+	CodeEnvironmentSSHKeyInvalid Code = "ENVIRONMENT_SSH_KEY_INVALID"
+	// CodeEnvironmentSSHKeyFingerprintTaken indicates this public key is already registered on this environment.
+	CodeEnvironmentSSHKeyFingerprintTaken Code = "ENVIRONMENT_SSH_KEY_FINGERPRINT_TAKEN"
+	// CodeEnvironmentPortForwardNotFound indicates the requested port forward does not exist.
+	CodeEnvironmentPortForwardNotFound Code = "ENVIRONMENT_PORT_FORWARD_NOT_FOUND"
+	// CodeEnvironmentPortForwardContainerPortInvalid indicates the container port is not between 1 and 65535.
+	CodeEnvironmentPortForwardContainerPortInvalid Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_INVALID"
+	// CodeEnvironmentPortForwardContainerPortTaken indicates a port forward for this container port already exists on this environment.
+	CodeEnvironmentPortForwardContainerPortTaken Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_TAKEN"
 
 	// --- Automation errors -----------------------------------------------------
 
@@ -339,6 +389,8 @@ const (
 	CodeAutomationNodeCrossProject Code = "AUTOMATION_NODE_CROSS_PROJECT"
 	// CodeAutomationEdgeNotFound indicates the requested edge does not exist.
 	CodeAutomationEdgeNotFound Code = "AUTOMATION_EDGE_NOT_FOUND"
+	// CodeAutomationRunNotFound indicates the requested run does not exist.
+	CodeAutomationRunNotFound Code = "AUTOMATION_RUN_NOT_FOUND"
 	// CodeAutomationEdgeSelfLoop indicates an attempt to link a node to itself.
 	CodeAutomationEdgeSelfLoop Code = "AUTOMATION_EDGE_SELF_LOOP"
 	// CodeAutomationEdgeCrossAutomation indicates source and target nodes belong to different automations.

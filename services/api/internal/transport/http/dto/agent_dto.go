@@ -28,28 +28,38 @@ type AgentResponse struct {
 	// AvatarURL/AvatarThumbURL are presigned GET URLs, populated by the
 	// handler (not this mapper) via attachmentdom.AvatarService — nil when
 	// no avatar has been uploaded.
-	AvatarURL         *string                  `json:"avatar_url,omitempty"`
-	AvatarThumbURL    *string                  `json:"avatar_thumb_url,omitempty"`
-	AgentType         string                   `json:"agent_type"`
-	LLMProvider       string                   `json:"llm_provider"`
-	LLMModel          string                   `json:"llm_model"`
-	LLMBaseURL        string                   `json:"llm_base_url"`
-	ACPProvider       *string                  `json:"acp_provider,omitempty"`
-	ACPCommand        []string                 `json:"acp_command,omitempty"`
-	HasACPBridgeToken bool                     `json:"has_acp_bridge_token"`
-	HasMCPAPIKey      bool                     `json:"has_mcp_api_key"`
-	SystemPrompt      string                   `json:"system_prompt"`
-	MaxIterations     int                      `json:"max_iterations"`
-	TimeoutMinutes    int                      `json:"timeout_minutes"`
-	GitCommitterName  string                   `json:"git_committer_name"`
-	GitCommitterEmail string                   `json:"git_committer_email"`
-	DockerEnabled     bool                     `json:"docker_enabled"`
-	CreatedBy         *uuid.UUID               `json:"created_by,omitempty"`
-	CreatedAt         time.Time                `json:"created_at"`
-	UpdatedAt         time.Time                `json:"updated_at"`
-	MCPServers        []AgentMCPServerResponse `json:"mcp_servers,omitempty"`
-	Skills            []AgentSkillResponse     `json:"skills,omitempty"`
-	EnvVars           []AgentEnvVarResponse    `json:"env_vars,omitempty"`
+	AvatarURL         *string  `json:"avatar_url,omitempty"`
+	AvatarThumbURL    *string  `json:"avatar_thumb_url,omitempty"`
+	AgentType         string   `json:"agent_type"`
+	LLMProvider       string   `json:"llm_provider"`
+	LLMModel          string   `json:"llm_model"`
+	LLMBaseURL        string   `json:"llm_base_url"`
+	ACPProvider       *string  `json:"acp_provider,omitempty"`
+	ACPCommand        []string `json:"acp_command,omitempty"`
+	HasACPBridgeToken bool     `json:"has_acp_bridge_token"`
+	HasMCPAPIKey      bool     `json:"has_mcp_api_key"`
+	SystemPrompt      string   `json:"system_prompt"`
+	MaxIterations     int      `json:"max_iterations"`
+	TimeoutMinutes    int      `json:"timeout_minutes"`
+	GitCommitterName  string   `json:"git_committer_name"`
+	GitCommitterEmail string   `json:"git_committer_email"`
+	DockerEnabled     bool     `json:"docker_enabled"`
+	// DefaultEnvironmentID is the static environment (environmentdom.Environment)
+	// this agent's conversations attach to by default — nil for a global-scope
+	// agent, or a project-scoped agent with no default set. See
+	// agentdom.Agent.DefaultEnvironmentID's doc comment.
+	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id,omitempty"`
+	// DefaultFolderID is which folder inside DefaultEnvironmentID this
+	// agent's conversations work in by default — nil unless
+	// DefaultEnvironmentID is also set. See
+	// agentdom.Agent.DefaultFolderID's doc comment.
+	DefaultFolderID *uuid.UUID               `json:"default_folder_id,omitempty"`
+	CreatedBy       *uuid.UUID               `json:"created_by,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+	MCPServers      []AgentMCPServerResponse `json:"mcp_servers,omitempty"`
+	Skills          []AgentSkillResponse     `json:"skills,omitempty"`
+	EnvVars         []AgentEnvVarResponse    `json:"env_vars,omitempty"`
 }
 
 // CreateAgentRequest is the body for POST /projects/:projectId/agents.
@@ -59,22 +69,31 @@ type AgentResponse struct {
 // SystemPrompt, GitCommitterName, and GitCommitterEmail are LLM-only too —
 // the service silently drops them for "acp" agents (see agent.CreateAgent).
 type CreateAgentRequest struct {
-	Name              string    `json:"name" binding:"required"`
-	Handle            string    `json:"handle" binding:"required"`
-	AgentType         string    `json:"agent_type"`
-	LLMProvider       string    `json:"llm_provider"`
-	LLMModel          string    `json:"llm_model"`
-	LLMAPIKey         string    `json:"llm_api_key"`
-	LLMBaseURL        string    `json:"llm_base_url"`
-	ACPProvider       string    `json:"acp_provider"`
-	ACPCommand        []string  `json:"acp_command"`
-	SystemPrompt      string    `json:"system_prompt"`
-	MaxIterations     int       `json:"max_iterations"`
-	TimeoutMinutes    int       `json:"timeout_minutes"`
-	GitCommitterName  string    `json:"git_committer_name"`
-	GitCommitterEmail string    `json:"git_committer_email"`
-	DockerEnabled     bool      `json:"docker_enabled"`
-	ProjectRoleID     uuid.UUID `json:"project_role_id" binding:"required"`
+	Name              string   `json:"name" binding:"required"`
+	Handle            string   `json:"handle" binding:"required"`
+	AgentType         string   `json:"agent_type"`
+	LLMProvider       string   `json:"llm_provider"`
+	LLMModel          string   `json:"llm_model"`
+	LLMAPIKey         string   `json:"llm_api_key"`
+	LLMBaseURL        string   `json:"llm_base_url"`
+	ACPProvider       string   `json:"acp_provider"`
+	ACPCommand        []string `json:"acp_command"`
+	SystemPrompt      string   `json:"system_prompt"`
+	MaxIterations     int      `json:"max_iterations"`
+	TimeoutMinutes    int      `json:"timeout_minutes"`
+	GitCommitterName  string   `json:"git_committer_name"`
+	GitCommitterEmail string   `json:"git_committer_email"`
+	DockerEnabled     bool     `json:"docker_enabled"`
+	// DefaultEnvironmentID optionally sets the static environment this
+	// agent's conversations attach to by default — must belong to this same
+	// project (validated in agent.CreateAgent).
+	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id"`
+	// DefaultFolderID optionally sets which folder inside
+	// DefaultEnvironmentID this agent's conversations work in by default —
+	// must belong to DefaultEnvironmentID, also set in this same request
+	// (validated in agent.CreateAgent).
+	DefaultFolderID *uuid.UUID `json:"default_folder_id"`
+	ProjectRoleID   uuid.UUID  `json:"project_role_id" binding:"required"`
 }
 
 // UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId
@@ -96,6 +115,15 @@ type UpdateAgentRequest struct {
 	GitCommitterEmail *string    `json:"git_committer_email"`
 	DockerEnabled     *bool      `json:"docker_enabled"`
 	GlobalRoleID      *uuid.UUID `json:"global_role_id"`
+	// DefaultEnvironmentID: omit to leave unchanged, pass a zero UUID
+	// ("00000000-0000-0000-0000-000000000000") to clear it, or a real
+	// environment ID to set it — see agentdom.UpdateAgentInput.
+	// DefaultEnvironmentID's doc comment. Ignored for global-scope agents.
+	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id"`
+	// DefaultFolderID: same omit/zero-UUID/real-ID contract as
+	// DefaultEnvironmentID above — see agentdom.UpdateAgentInput.
+	// DefaultFolderID's doc comment. Ignored for global-scope agents.
+	DefaultFolderID *uuid.UUID `json:"default_folder_id"`
 }
 
 // CreateGlobalAgentRequest is the body for POST /admin/agents. Mirrors
@@ -149,29 +177,31 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		scope = string(agentdom.AgentScopeProject)
 	}
 	resp := AgentResponse{
-		ID:                a.ID,
-		AgentScope:        scope,
-		GlobalRoleID:      a.GlobalRoleID,
-		MemberID:          a.MemberID,
-		Name:              a.Name,
-		Handle:            a.Handle,
-		AgentType:         a.AgentType,
-		LLMProvider:       a.LLMProvider,
-		LLMModel:          a.LLMModel,
-		LLMBaseURL:        a.LLMBaseURL,
-		ACPProvider:       a.ACPProvider,
-		ACPCommand:        a.ACPCommand,
-		HasACPBridgeToken: a.HasACPBridgeToken,
-		HasMCPAPIKey:      a.HasMCPAPIKey,
-		SystemPrompt:      a.SystemPrompt,
-		MaxIterations:     a.MaxIterations,
-		TimeoutMinutes:    a.TimeoutMinutes,
-		GitCommitterName:  a.GitCommitterName,
-		GitCommitterEmail: a.GitCommitterEmail,
-		DockerEnabled:     a.DockerEnabled,
-		CreatedBy:         a.CreatedBy,
-		CreatedAt:         a.CreatedAt,
-		UpdatedAt:         a.UpdatedAt,
+		ID:                   a.ID,
+		AgentScope:           scope,
+		GlobalRoleID:         a.GlobalRoleID,
+		MemberID:             a.MemberID,
+		Name:                 a.Name,
+		Handle:               a.Handle,
+		AgentType:            a.AgentType,
+		LLMProvider:          a.LLMProvider,
+		LLMModel:             a.LLMModel,
+		LLMBaseURL:           a.LLMBaseURL,
+		ACPProvider:          a.ACPProvider,
+		ACPCommand:           a.ACPCommand,
+		HasACPBridgeToken:    a.HasACPBridgeToken,
+		HasMCPAPIKey:         a.HasMCPAPIKey,
+		SystemPrompt:         a.SystemPrompt,
+		MaxIterations:        a.MaxIterations,
+		TimeoutMinutes:       a.TimeoutMinutes,
+		GitCommitterName:     a.GitCommitterName,
+		GitCommitterEmail:    a.GitCommitterEmail,
+		DockerEnabled:        a.DockerEnabled,
+		DefaultEnvironmentID: a.DefaultEnvironmentID,
+		DefaultFolderID:      a.DefaultFolderID,
+		CreatedBy:            a.CreatedBy,
+		CreatedAt:            a.CreatedAt,
+		UpdatedAt:            a.UpdatedAt,
 	}
 	if a.ProjectID != uuid.Nil {
 		id := a.ProjectID
@@ -400,13 +430,25 @@ type AgentConversationResponse struct {
 	TotalTokens         int64      `json:"total_tokens"`
 	CostUSD             *float64   `json:"cost_usd,omitempty"`
 	ErrorMessage        *string    `json:"error_message,omitempty"`
-	BranchName          *string    `json:"branch_name,omitempty"`
-	PRUrl               *string    `json:"pr_url,omitempty"`
-	StartedAt           *time.Time `json:"started_at,omitempty"`
-	FinishedAt          *time.Time `json:"finished_at,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	AgentName           string     `json:"agent_name,omitempty"`
-	AgentHandle         string     `json:"agent_handle,omitempty"`
+	// BranchName was dropped along with agent_conversations.branch_name
+	// (migration 000042_add_environments.sql) — that column
+	// encoded 1-conversation-owns-1-container, a shape static environments
+	// replace (see agentdom.AgentConversation.EnvironmentID's doc comment).
+	// No replacement field: branch_name no longer appears in conversation
+	// API responses at all.
+	PRUrl       *string    `json:"pr_url,omitempty"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	AgentName   string     `json:"agent_name,omitempty"`
+	AgentHandle string     `json:"agent_handle,omitempty"`
+	// EnvironmentID mirrors agentdom.AgentConversation.EnvironmentID: set only
+	// when this conversation is attached to a static environment rather than
+	// an ephemeral sandbox. The web app uses its presence to keep the
+	// composer open past a terminal status and to skip the idle-timer
+	// heartbeat, both of which only make sense for an ephemeral sandbox — see
+	// conversation-view.tsx's canReply and heartbeat effect.
+	EnvironmentID *uuid.UUID `json:"environment_id,omitempty"`
 }
 
 // AgentConversationEventResponse is the public view of a conversation event.
@@ -423,6 +465,10 @@ type AgentConversationEventResponse struct {
 // SendMessageRequest is the body for POST /conversations/:id/messages.
 type SendMessageRequest struct {
 	Message string `json:"message" binding:"required"`
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this message via the frontend composer's context-item
+	// picker — see agentdom.ContextItemRef.
+	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
 }
 
 // ConversationFromEntity maps an AgentConversation entity to its DTO.
@@ -442,13 +488,13 @@ func ConversationFromEntity(c *agentdom.AgentConversation) AgentConversationResp
 		TotalTokens:         c.TotalTokens,
 		CostUSD:             c.CostUSD,
 		ErrorMessage:        c.ErrorMessage,
-		BranchName:          c.BranchName,
 		PRUrl:               c.PRUrl,
 		StartedAt:           c.StartedAt,
 		FinishedAt:          c.FinishedAt,
 		CreatedAt:           c.CreatedAt,
 		AgentName:           c.AgentName,
 		AgentHandle:         c.AgentHandle,
+		EnvironmentID:       c.EnvironmentID,
 	}
 	if c.ProjectID != uuid.Nil {
 		id := c.ProjectID
@@ -526,13 +572,27 @@ type AgentChatSessionResponse struct {
 }
 
 // StartChatSessionRequest is the body for POST /agents/:agentId/chat.
+// EnvironmentID/FolderID are optional: omitting EnvironmentID falls back to
+// the agent's own default_environment_id; omitting FolderID auto-selects
+// the environment's sole folder, or fails if that's ambiguous — see
+// agentdom.ChatSessionService.StartChatSession's doc comment.
 type StartChatSessionRequest struct {
-	Message string `json:"message" binding:"required"`
+	Message       string     `json:"message" binding:"required"`
+	EnvironmentID *uuid.UUID `json:"environment_id"`
+	FolderID      *uuid.UUID `json:"folder_id"`
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this message via the frontend composer's context-item
+	// picker — see agentdom.ContextItemRef.
+	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
 }
 
 // SendChatMessageRequest is the body for POST /chat-sessions/:sessionId/messages.
 type SendChatMessageRequest struct {
 	Message string `json:"message" binding:"required"`
+	// ContextItems are Task/Doc/Conversation/Automation references the user
+	// attached to this message via the frontend composer's context-item
+	// picker — see agentdom.ContextItemRef.
+	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
 }
 
 // ChatSessionFromEntity maps an AgentChatSession entity to its DTO.

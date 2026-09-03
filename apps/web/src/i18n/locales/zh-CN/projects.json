@@ -42,6 +42,7 @@
 			"showApiKey": "显示 API 密钥",
 			"apiKeyHint": "加密存储 — 不会在 API 响应中暴露。",
 			"baseUrlLabel": "基础 URL",
+			"environmentSection": "环境",
 			"acpSection": "ACP 服务器",
 			"acpProviderLabel": "提供方",
 			"acpProviderClaudeCode": "Claude Code",
@@ -165,6 +166,13 @@
 				"committerEmailLabel": "提交者邮箱",
 				"dockerEnabledLabel": "Docker 访问权限",
 				"dockerEnabledHint": "为该代理在其沙盒内提供一个私有的 Docker 守护进程。默认关闭——仅为实际需要运行 Docker 命令的代理启用此选项,因为它会增加每次对话的启动时间。",
+				"environmentSection": "环境",
+				"defaultEnvironmentLabel": "默认环境",
+				"defaultEnvironmentHint": "将此智能体的对话连接到静态环境，而不是每次都创建一个一次性沙盒。",
+				"noDefaultEnvironment": "临时环境",
+				"defaultFolderLabel": "默认文件夹",
+				"defaultFolderHint": "该智能体的对话将在默认环境内的哪个文件夹中工作。",
+				"noDefaultFolder": "无默认文件夹",
 				"saveChanges": "保存更改",
 				"saved": "已保存",
 				"saveFailed": "保存失败，请重试。",
@@ -273,6 +281,7 @@
 			"chatSession": "聊天会话",
 			"taskSession": "任务会话",
 			"pr": "PR",
+			"connect": "连接",
 			"conversationEnded": "此对话已结束。",
 			"textOnlyMessage": "仅支持文本消息。",
 			"failed": "对话失败",
@@ -329,7 +338,231 @@
 			"imageAttachmentPreviewTitle": "图片附件预览",
 			"attachmentAriaLabel": "{{type}}附件",
 			"attachmentAriaLabelError": "{{type}}附件，上传失败",
-			"attachmentAriaLabelUploading": "{{type}}附件，正在上传"
+			"attachmentAriaLabelUploading": "{{type}}附件，正在上传",
+			"contextInjection": {
+				"attachContext": "附加上下文",
+				"contextSearchPlaceholder": "搜索任务、文档、对话、自动化…",
+				"removeContextItem": "移除{{title}}",
+				"addCurrent": "附加{{title}}",
+				"contextTypeTask": "任务",
+				"contextTypeDoc": "文档",
+				"contextTypeConversation": "对话",
+				"contextTypeAutomation": "自动化",
+				"noContextResults": "未找到结果",
+				"contextSearchMinChars": "请输入至少2个字符进行搜索"
+			}
+		}
+	},
+	"environments": {
+		"status": {
+			"creating": "创建中",
+			"starting": "启动中",
+			"running": "运行中",
+			"stopping": "停止中",
+			"stopped": "已停止",
+			"suspended": "已暂停",
+			"error": "错误",
+			"deleting": "删除中"
+		},
+		"page": {
+			"title": "环境",
+			"subtitle": "具名的长期运行沙盒，您的智能体可以在多次对话之间连接使用",
+			"newEnvironment": "新建环境",
+			"empty": {
+				"title": "暂无环境",
+				"description": "创建一个静态环境，让文件和后台进程在多次对话之间保持运行，而不是每次都使用一次性沙盒。",
+				"createFirstEnvironment": "创建您的第一个环境"
+			}
+		},
+		"createDialog": {
+			"title": "创建环境",
+			"description": "一个具名的长期运行沙盒，您的智能体可以连接使用。",
+			"nameLabel": "名称",
+			"namePlaceholder": "staging",
+			"dockerEnabledLabel": "Docker 访问权限",
+			"dockerEnabledHint": "为该环境提供专属的私有 Docker 守护进程，使智能体可以在其中构建和运行容器。默认关闭——环境创建后无法更改。",
+			"advanced": "高级选项",
+			"imageLabel": "镜像",
+			"imagePlaceholder": "使用默认值 (agent-server)",
+			"imageHint": "大多数用户无需更改此项 — 留空时默认使用平台固定的 agent-server 镜像。",
+			"resourcesHint": "留空以使用平台默认值(2 vCPU、内存 4Gi、磁盘 20GB)。",
+			"cpuLimitInvalid": "CPU 至少为 0.1(100m)。",
+			"memoryLimitInvalid": "内存至少为 256Mi。",
+			"diskLimitInvalid": "磁盘必须为正整数(GB)。",
+			"createFailed": "创建环境失败，请重试。",
+			"cancel": "取消",
+			"creating": "创建中…",
+			"create": "创建环境"
+		},
+		"picker": {
+			"placeholder": "选择环境…",
+			"temporary": "临时环境",
+			"createNew": "创建新环境…",
+			"folderPlaceholder": "选择文件夹…",
+			"folderCreateNew": "创建新文件夹…"
+		},
+		"detail": {
+			"tabs": {
+				"overview": "概览",
+				"folders": "文件夹",
+				"portForwards": "端口转发"
+			},
+			"overview": {
+				"connect": "连接",
+				"start": "启动",
+				"stop": "停止",
+				"delete": "删除",
+				"sleepsIn_one": "{{count}} 分钟后休眠",
+				"sleepsIn_other": "{{count}} 分钟后休眠",
+				"keptAliveBySSH": "因存在活跃的 SSH 会话而保持唤醒",
+				"vitals": {
+					"cpu": "CPU",
+					"cpuValue": "{{value}} vCPU",
+					"memory": "内存",
+					"disk": "磁盘",
+					"diskValue": "{{value}} GB",
+					"lastActive": "最近活动"
+				},
+				"configuration": "配置",
+				"nameLabel": "名称",
+				"backendLabel": "后端",
+				"imageLabel": "镜像",
+				"defaultImage": "默认 (agent-server)",
+				"dockerEnabledLabel": "Docker 访问权限",
+				"dockerEnabledOn": "已启用",
+				"dockerEnabledOff": "已禁用",
+				"idleTimeoutLabel": "空闲超时(分钟)",
+				"idleTimeoutHint": "环境在无操作达到此分钟数后会自动停止。",
+				"portsPendingRestart": "已添加或删除了端口转发。请重启环境以应用更改。",
+				"portsPendingRestartLink": "查看端口转发",
+				"saveChanges": "保存更改",
+				"saved": "已保存",
+				"saveFailed": "保存失败，请重试。",
+				"deleteDialog": {
+					"title": "删除 {{name}}?",
+					"description": "此操作将永久删除该环境及其容器和卷，且无法撤销。",
+					"deleteFailed": "删除环境失败，请重试。",
+					"cancel": "取消",
+					"delete": "删除"
+				}
+			},
+			"folders": {
+				"count_one": "已配置 {{count}} 个文件夹",
+				"count_other": "已配置 {{count}} 个文件夹",
+				"addFolder": "添加文件夹",
+				"deleteFailed": "删除文件夹失败，请重试。",
+				"empty": {
+					"title": "尚未添加文件夹",
+					"addFirstFolder": "添加您的第一个文件夹"
+				},
+				"addDialog": {
+					"title": "添加文件夹",
+					"description": "添加此环境中的智能体可以使用的工作目录。",
+					"pathLabel": "路径",
+					"pathPlaceholder": "/home/paca/workspaces/my-project",
+					"pathHint": "必须是绝对路径。",
+					"browse": "浏览…",
+					"browsing": {
+						"empty": "此文件夹为空",
+						"notRunning": "启动环境后即可浏览其文件。"
+					},
+					"addFailed": "添加文件夹失败,请重试。",
+					"cancel": "取消",
+					"addFolder": "添加文件夹"
+				}
+			},
+			"portForwards": {
+				"description": "公开此环境内的任意端口——通常是你自己的开发服务器——并分配一个专用地址。",
+				"count_one": "{{count}} 个端口转发",
+				"count_other": "{{count}} 个端口转发",
+				"add": "添加端口转发",
+				"deleteFailed": "删除端口转发失败，请重试。",
+				"containerPort": "容器端口 {{port}}",
+				"unassigned": "尚未分配",
+				"restart": "重启",
+				"pendingRestartRunning": "已添加或删除了端口转发。请重启环境以应用更改。",
+				"pendingRestartStopped": "已添加或删除了端口转发。更改将在该环境下次启动时应用。",
+				"empty": {
+					"title": "尚无端口转发",
+					"addFirst": "添加一个端口转发"
+				},
+				"addDialog": {
+					"title": "添加端口转发",
+					"description": "将一个容器端口公开到专用的外部端口。如果环境已在运行，应用此更改需要重启。",
+					"portLabel": "容器端口",
+					"portHint": "你的进程在环境内监听的端口(例如 3000)。",
+					"labelLabel": "标签",
+					"labelPlaceholder": "开发服务器",
+					"cancel": "取消",
+					"add": "添加",
+					"addFailed": "添加端口转发失败，请重试。"
+				},
+				"restartDialog": {
+					"title": "重启环境？",
+					"description": "这将重启环境的容器，以应用更新后的端口转发。容器内正在运行的进程将被中断；你的文件是安全的——它们存储在独立的卷中。",
+					"cancel": "取消",
+					"confirm": "重启"
+				}
+			},
+			"sshKeys": {
+				"connectHint": "将 <bastion-host> 替换为此部署配置的 SSH 堡垒机地址。",
+				"connectUnavailable": "此部署尚未配置 SSH 访问。",
+				"count_one": "已配置 {{count}} 个密钥",
+				"count_other": "已配置 {{count}} 个密钥",
+				"addKey": "添加密钥",
+				"deleteFailed": "删除 SSH 密钥失败，请重试。",
+				"empty": {
+					"title": "尚未添加 SSH 密钥",
+					"addFirst": "添加您的第一个密钥"
+				},
+				"addDialog": {
+					"title": "添加 SSH 密钥",
+					"description": "授权一个公钥，以便通过 SSH 进行结对编程访问。",
+					"generateHint": "还没有 SSH 密钥？生成一个：",
+					"generateFollowup": "然后将 ~/.ssh/id_ed25519.pub 的内容粘贴到下方。",
+					"labelLabel": "标签",
+					"labelPlaceholder": "我的笔记本电脑",
+					"publicKeyLabel": "公钥",
+					"cancel": "取消",
+					"addKey": "添加密钥",
+					"addFailed": "添加 SSH 密钥失败，请重试。"
+				}
+			},
+			"terminal": {
+				"notRunning": "启动环境以打开终端。",
+				"title": "paca@{{slug}} — bash",
+				"titleLoading": "bash",
+				"connecting": "连接中…",
+				"connected": "已连接",
+				"connectionFailed": "连接失败",
+				"disconnected": "已断开连接"
+			}
+		},
+		"connect": {
+			"title": "连接到 {{name}}",
+			"copy": "复制",
+			"copied": "已复制",
+			"tabs": {
+				"webApp": "在网页应用中连接",
+				"ssh": "通过 SSH 连接"
+			},
+			"webApp": {
+				"description": "使用浏览器内终端连接 — 无需本地 SSH 客户端或密钥。",
+				"connect": "连接",
+				"notRunning": "请先启动环境再连接。",
+				"readOnly": "您没有权限在此环境中打开终端。",
+				"hint": "将在新的全屏标签页中打开。",
+				"pageTitle": "{{name}} — 终端",
+				"pageTitleLoading": "终端",
+				"closeTab": "关闭"
+			},
+			"ssh": {
+				"step1Title": "添加公钥",
+				"step1Description": "注册你要用于连接的 SSH 密钥对的公钥。",
+				"step2Title": "从终端连接",
+				"step2Description": "在终端中运行以下命令：",
+				"notRunning": "请先启动环境再连接。"
+			}
 		}
 	},
 	"docs": {
@@ -450,6 +683,18 @@
 				"label": "管理智能体",
 				"description": "创建、配置和删除 AI 智能体"
 			},
+			"environmentsRead": {
+				"label": "查看环境",
+				"description": "浏览环境并查看其配置"
+			},
+			"environmentsWrite": {
+				"label": "管理环境",
+				"description": "创建、配置和删除环境、SSH 密钥和端口转发"
+			},
+			"environmentsConnect": {
+				"label": "连接到环境",
+				"description": "在运行中的环境内打开交互式终端会话"
+			},
 			"workflowsRead": {
 				"label": "查看自动化",
 				"description": "浏览自动化及其配置"
@@ -467,6 +712,7 @@
 			"sprints": "冲刺",
 			"documents": "文档",
 			"aiAgents": "AI 智能体",
+			"environments": "环境",
 			"workflows": "自动化",
 			"plugins": "插件"
 		}

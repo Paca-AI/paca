@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,16 +69,30 @@ func NewActivityConsumer(client *redis.Client, repo taskdom.ActivityRepository, 
 // Start creates the consumer group if needed, then begins reading from the
 // stream in a background goroutine.  Call Stop to drain and exit cleanly.
 func (c *ActivityConsumer) Start(ctx context.Context) {
-	// Create consumer group; MKSTREAM ensures the stream key is created if it
-	// doesn't exist yet.  "0" means start from the very beginning of the stream
-	// so we process any messages that arrived before the group was created.
-	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, activityConsumerGroup, "0").Err()
-	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
-		c.log.Warn("activity consumer: could not create consumer group", "err", err)
-		// Non-fatal — we still attempt to read below.
+	// "0" means start from the very beginning of the stream so this
+	// first-ever creation processes any messages that arrived before the
+	// group existed.
+	if err := c.ensureGroup(ctx, "0"); err != nil {
+		c.log.Warn("activity consumer: could not create consumer group, will retry on first read", "err", err)
 	}
 
 	go c.run()
+}
+
+// ensureGroup creates the consumer group at startID if it doesn't already
+// exist. MKSTREAM ensures the stream key is created if it doesn't exist
+// yet. startID is "0" only for Start's own first-ever creation (see doc
+// comment there) — the NOGROUP recovery path in run() below passes "$"
+// instead, since recreating at "0" there would redeliver the stream's
+// entire retained history (including entries already processed and acked
+// before the group vanished) through handlers with no event-level
+// deduplication.
+func (c *ActivityConsumer) ensureGroup(ctx context.Context, startID string) error {
+	err := c.client.XGroupCreateMkStream(ctx, events.StreamTaskActivities, activityConsumerGroup, startID).Err()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		return err
+	}
+	return nil
 }
 
 // Stop signals the consumer to stop and waits for the goroutine to exit.
@@ -119,6 +134,26 @@ func (c *ActivityConsumer) run() {
 				continue
 			}
 			c.log.Error("activity consumer: xreadgroup error", "err", err)
+			if strings.Contains(err.Error(), "NOGROUP") {
+				// The stream and/or consumer group vanished out from under
+				// an already-running consumer (e.g. a Valkey restart
+				// without persistence, or the group's initial creation at
+				// Start failing transiently) — without this, every
+				// subsequent XReadGroup call keeps failing the exact same
+				// way forever, since nothing else recreates the group.
+				// Recreate at "$" (from now), not "0": unlike Start's own
+				// first-ever creation, the stream itself may still hold
+				// this consumer's own already-processed history (e.g. a
+				// manual XGROUP DESTROY that left the stream intact), and
+				// this handler has no event-level dedup to make replaying
+				// that safe.
+				recoverCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				geErr := c.ensureGroup(recoverCtx, "$")
+				cancel()
+				if geErr != nil {
+					c.log.Warn("activity consumer: failed to recreate consumer group", "err", geErr)
+				}
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}

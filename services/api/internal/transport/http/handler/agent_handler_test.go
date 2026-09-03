@@ -33,6 +33,7 @@ type mockAgentSvc struct {
 	listConversations             func(ctx context.Context, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
 	listConversationEvents        func(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error)
 	getConversation               func(ctx context.Context, projectID, conversationID, memberID uuid.UUID) (*agentdom.AgentConversation, error)
+	getConversationForAgent       func(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error)
 	listAgentActivities           func(ctx context.Context, filter agentdom.ListAgentActivitiesFilter, limit int) ([]*agentdom.ActivityFeedItem, bool, error)
 	getGlobalConversation         func(ctx context.Context, conversationID, actorUserID uuid.UUID) (*agentdom.AgentConversation, error)
 	listGlobalConversations       func(ctx context.Context, actorUserID uuid.UUID, filter agentdom.ListConversationsFilter, limit int) ([]*agentdom.AgentConversation, bool, error)
@@ -125,6 +126,12 @@ func (m *mockAgentSvc) GetConversation(ctx context.Context, projectID, conversat
 	// gate passes by default; tests asserting rejection configure getConversation.
 	return &agentdom.AgentConversation{ID: conversationID, ProjectID: projectID}, nil
 }
+func (m *mockAgentSvc) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
+	if m.getConversationForAgent != nil {
+		return m.getConversationForAgent(ctx, conversationID, callerAgentID, currentConversationID)
+	}
+	return &agentdom.AgentConversation{ID: conversationID, AgentID: callerAgentID}, nil
+}
 func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window agentdom.ConversationEventWindow) ([]*agentdom.AgentConversationEvent, int64, error) {
 	if m.listConversationEvents != nil {
 		return m.listConversationEvents(ctx, conversationID, window)
@@ -134,19 +141,19 @@ func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationI
 func (m *mockAgentSvc) StopConversation(_ context.Context, _, _, _ uuid.UUID) error  { return nil }
 func (m *mockAgentSvc) PauseConversation(_ context.Context, _, _, _ uuid.UUID) error { return nil }
 func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error         { return nil }
-func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID) error {
+func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef) error {
 	return nil
 }
 func (m *mockAgentSvc) ListChatSessions(_ context.Context, _, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
 	return nil, nil
 }
-func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, _, _ *uuid.UUID, _ []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	if m.startChatSession != nil {
 		return m.startChatSession(ctx, projectID, agentID, memberID, message)
 	}
 	return &agentdom.AgentChatSession{ID: uuid.New()}, &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
-func (m *mockAgentSvc) SendChatMessage(_ context.Context, _, _, _ uuid.UUID, _ string) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) SendChatMessage(_ context.Context, _, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
 func (m *mockAgentSvc) ListChatMessages(_ context.Context, _, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
@@ -216,7 +223,7 @@ func (m *mockAgentSvc) GlobalHeartbeat(ctx context.Context, conversationID, acto
 	}
 	return nil
 }
-func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error {
+func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, _ []agentdom.ContextItemRef) error {
 	if m.sendGlobalConversationMessage != nil {
 		return m.sendGlobalConversationMessage(ctx, conversationID, message, actorUserID)
 	}
@@ -225,10 +232,10 @@ func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conver
 func (m *mockAgentSvc) ListGlobalChatSessions(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
 	return nil, nil
 }
-func (m *mockAgentSvc) StartGlobalChatSession(_ context.Context, _, _ uuid.UUID, _ string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) StartGlobalChatSession(_ context.Context, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	return &agentdom.AgentChatSession{ID: uuid.New()}, &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
-func (m *mockAgentSvc) SendGlobalChatMessage(_ context.Context, _, _ uuid.UUID, _ string) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) SendGlobalChatMessage(_ context.Context, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
 func (m *mockAgentSvc) InitiateAvatarUpload(_ context.Context, _, _ uuid.UUID, _, _ string, _ int64, _ uuid.UUID) (*attachmentdom.UploadSession, error) {
@@ -642,6 +649,36 @@ func TestSendChatMessage_EmptyMessage_Returns400(t *testing.T) {
 	}
 }
 
+// TestStartChatSession_TooManyContextItems_Returns400 pins that
+// context_items is validated (see agentdom.ValidateContextItems) before
+// StartChatSession is ever called — a malformed/abusive payload never
+// reaches the service, let alone gets persisted or forwarded into a prompt.
+func TestStartChatSession_TooManyContextItems_Returns400(t *testing.T) {
+	svcCalled := false
+	r := newAgentRouter(&mockAgentSvc{
+		startChatSession: func(_ context.Context, _, _, _ uuid.UUID, _ string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+			svcCalled = true
+			return &agentdom.AgentChatSession{}, &agentdom.AgentConversation{}, nil
+		},
+	})
+	projectID := uuid.New()
+	agentID := uuid.New()
+
+	items := make([]map[string]any, agentdom.MaxContextItems+1)
+	for i := range items {
+		items[i] = map[string]any{"type": "task", "id": "t", "title": "x"}
+	}
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/chat-sessions",
+		map[string]any{"message": "hi", "context_items": items})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for too many context_items, got %d: %s", w.Code, w.Body.String())
+	}
+	if svcCalled {
+		t.Error("the service must not be called when context_items fails validation")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // WriteTaskDescriptionWithAI validation test
 // ---------------------------------------------------------------------------
@@ -657,6 +694,57 @@ func TestWriteTaskDescriptionWithAI_MissingAgentID_Returns400(t *testing.T) {
 		map[string]any{})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing agent_id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// fakeAgentTaskChecker is a minimal attachmentdom.TaskOwnerChecker stand-in
+// for WriteTaskDescriptionWithAI's cross-project regression tests below.
+type fakeAgentTaskChecker struct {
+	err error
+}
+
+func (f fakeAgentTaskChecker) TaskBelongsToProject(context.Context, uuid.UUID, uuid.UUID) error {
+	return f.err
+}
+
+// TestWriteTaskDescriptionWithAI_NoTaskCheckerConfigured_Returns500 guards
+// the fail-closed design of the taskChecker fix (GHSA-xwmv-9c7h-g947
+// follow-up audit): if a deployment forgets to wire WithTaskChecker, the
+// handler must refuse the request rather than silently skip the
+// cross-project task-ownership check.
+func TestWriteTaskDescriptionWithAI_NoTaskCheckerConfigured_Returns500(t *testing.T) {
+	r := newAgentRouter(&mockAgentSvc{})
+	projectID := uuid.New()
+	taskID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/tasks/"+taskID.String()+"/write-with-ai",
+		map[string]any{"agent_id": uuid.New().String()})
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when no task checker is configured, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestWriteTaskDescriptionWithAI_WrongProject_Returns404 is the regression
+// test for the taskID half of the WriteTaskDescriptionWithAI cross-project
+// hijack: a taskID belonging to a different project must be rejected before
+// any agent is triggered against it.
+func TestWriteTaskDescriptionWithAI_WrongProject_Returns404(t *testing.T) {
+	svc := &mockAgentSvc{}
+	h := handler.NewAgentHandler(svc, "", "", "").
+		WithTaskChecker(fakeAgentTaskChecker{err: attachmentdom.ErrTaskNotInProject})
+	r := chi.NewRouter()
+	r.Route("/projects/{projectId}/tasks/{taskId}", func(r chi.Router) {
+		r.Post("/write-with-ai", h.WriteTaskDescriptionWithAI)
+	})
+	projectID := uuid.New()
+	taskID := uuid.New()
+
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/tasks/"+taskID.String()+"/write-with-ai",
+		map[string]any{"agent_id": uuid.New().String()})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-project taskID, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

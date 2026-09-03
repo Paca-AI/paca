@@ -50,6 +50,7 @@ var containerPort = network.MustParsePort(fmt.Sprintf("%d/tcp", sandbox.GooseSer
 var localhostAddr = netip.MustParseAddr("127.0.0.1")
 
 var _ sandbox.Backend = (*Manager)(nil)
+var _ sandbox.FullBackend = (*Manager)(nil)
 
 // handleState is Manager's own per-Handle bookkeeping — the host-port
 // mapping and dind-sidecar pairing a Handle's ContainerID needs again at
@@ -73,6 +74,22 @@ type Manager struct {
 	portPoolSize  int
 	portMu        sync.Mutex
 	portsInUse    map[int]bool
+
+	// AgentServerImage is the platform's pinned goose image reference
+	// (config.Settings.AgentServerImage) — read only by CreateEnvironment,
+	// as its fallback when EnvironmentConfig.Image is empty (see that
+	// field's own doc comment in internal/sandbox/environment.go). Start
+	// never reads this: an ephemeral conversation's cfg.Image is already
+	// always non-empty, resolved upstream by executor.Options.Image.
+	//
+	// Deliberately an exported field, not a NewManager constructor
+	// parameter or a setter method: every existing NewManager call site
+	// (cmd/agent-runner/main.go, test/e2e, this package's own tests) stays
+	// source-compatible, and the one caller that actually resolves
+	// environments — main.go's newSandboxBackend, already being widened to
+	// return sandbox.FullBackend for this feature — can set this directly
+	// on the *Manager it gets back in one line instead.
+	AgentServerImage string
 
 	// confirmedImages caches which image refs ensureImage has already
 	// confirmed present on this Docker host (via ImageList or a successful
@@ -107,6 +124,59 @@ func NewManager(portPoolStart, portPoolSize int) (*Manager, error) {
 func isInsideDocker() bool {
 	_, err := os.Stat("/.dockerenv")
 	return err == nil
+}
+
+const (
+	// defaultSandboxNanoCPUs/defaultSandboxMemoryBytes are the CPU/memory
+	// limits every sandbox container gets — 2 cores, 4 GiB. Hardcoded
+	// rather than sourced from a config knob: unlike the kubernetes
+	// backend's SandboxCPULimit/SandboxMemoryLimit (see
+	// internal/config.Settings' own doc comment, which explicitly calls
+	// these two values out as the defaults it matches), the docker backend
+	// has never taken a Settings value for this, and there's no
+	// deployment-observed need to change that now — pulled out as named
+	// constants here only because newHardenedHostConfig below gives them a
+	// second call site (CreateEnvironment) to share with Start.
+	defaultSandboxNanoCPUs    = 2_000_000_000 // 2 cores
+	defaultSandboxMemoryBytes = 4 << 30       // 4 GiB
+
+	// defaultPidsLimit bounds how many processes/threads a single sandbox's
+	// cgroup may fork — a cheap, fixed backstop against a runaway fork bomb
+	// (see docs/ai-agent/environment-management.md's Hardening section).
+	// Kept as a hardcoded constant, not a new env var, for the same reason
+	// the two limits above are: the docker backend has no existing
+	// per-limit config-knob pattern to extend (that pattern —
+	// SandboxCPULimit/SandboxMemoryLimit — belongs to the kubernetes
+	// backend only), and 512 is generous enough for any legitimate
+	// build/dev/test workload that there's no deployment-observed need to
+	// make it tunable yet.
+	defaultPidsLimit = 512
+)
+
+// newHardenedHostConfig returns the container.HostConfig fields shared by
+// every sandbox this Manager starts — ephemeral conversation (Start) or
+// static environment (CreateEnvironment) alike — before the caller fills
+// in whatever differs between the two (AutoRemove, PortBindings, Mounts,
+// Binds). Root stays the container's default user either way (needed for
+// mid-task `apt-get install` — see services/agent-server/Dockerfile's own
+// justification, and docs/ai-agent/environment-management.md's Hardening
+// section on why a blanket non-root flip isn't the fix here), but
+// CapDrop/CapAdd narrows what a root process can actually do to a short
+// allow-list (file-ownership and package-install operations), and
+// PidsLimit bounds fork-bomb-style resource exhaustion. Each call returns
+// a fresh *container.HostConfig — safe for the caller to mutate further
+// without aliasing another call's struct.
+func newHardenedHostConfig() *container.HostConfig {
+	pidsLimit := int64(defaultPidsLimit)
+	return &container.HostConfig{
+		CapDrop: []string{"ALL"},
+		CapAdd:  []string{"CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"},
+		Resources: container.Resources{
+			NanoCPUs:  defaultSandboxNanoCPUs,
+			Memory:    defaultSandboxMemoryBytes,
+			PidsLimit: &pidsLimit,
+		},
+	}
 }
 
 // Start spins up a goose-serve container for one conversation and waits for
@@ -206,13 +276,8 @@ func (m *Manager) Start(ctx context.Context, cfg sandbox.Config) (*sandbox.Handl
 			labelManaged: "true",
 		},
 	}
-	hostCfg := &container.HostConfig{
-		AutoRemove: true,
-		Resources: container.Resources{
-			NanoCPUs: 2_000_000_000, // 2 cores
-			Memory:   4 << 30,       // 4 GiB
-		},
-	}
+	hostCfg := newHardenedHostConfig()
+	hostCfg.AutoRemove = true
 	if cfg.MCPDevSourceDir != "" {
 		hostCfg.Binds = []string{cfg.MCPDevSourceDir + ":" + sandbox.MCPDevMountPath + ":ro"}
 	}

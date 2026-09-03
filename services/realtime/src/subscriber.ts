@@ -14,6 +14,7 @@
 //   workflow.* events  →  project:<projectId>:workflows (except
 //                          workflow.assigned, which is task-scoped)
 //   sprint.*   events  →  project:<projectId>:sprints
+//   environment.* events → project:<projectId>:environments
 //   agent.*    events  →  project:<projectId>:tasks, OR — when the event has
 //                          no project_id (a global agent's home-page / admin
 //                          chat, see services/ai-agent's

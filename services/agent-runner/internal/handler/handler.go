@@ -50,7 +50,12 @@ type Handler struct {
 	ChatSandboxes *chatsandbox.Registry
 	ACPDispatcher *acpbridge.Dispatcher
 	ACPRegistry   *acpbridge.Registry
-	Log           *slog.Logger
+	// EnvironmentRepo bumps last_active_at for a trigger.EnvironmentID
+	// conversation's turn (see tearDownSandbox) — nil in tests/tooling that
+	// never attach a conversation to an environment, which never reach the
+	// code paths that read it.
+	EnvironmentRepo *postgres.EnvironmentRepository
+	Log             *slog.Logger
 
 	// resumeLocks serializes, per conversation_id, Handle's "register
 	// in-flight then read the paused sandbox" sequence against
@@ -156,9 +161,11 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 
 	// isChat gates every piece of continuity behavior below — mirrors
 	// executor.py's is_chat, computed once at the top of run_conversation
-	// for the same reason. Only a chat_message conversation ever pauses
-	// between turns; every other trigger type is torn down after its one
-	// turn exactly as before this feature existed.
+	// for the same reason. Only an *ephemeral* chat_message conversation
+	// ever pauses between turns (see the isChat branch below); every other
+	// trigger type, and a chat_message conversation attached to a static
+	// environment, is torn down after its one turn exactly as before this
+	// feature existed.
 	isChat := trigger.TriggerType == agent.TriggerChatMessage
 
 	// Derived, cancellable independently of ctx (the consumer's own
@@ -298,9 +305,11 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 	// NOT recorded here, since no human actually said anything in that
 	// case.
 	if msg := strings.TrimSpace(trigger.Message); msg != "" {
-		userPayload, _ := json.Marshal(map[string]any{
-			"content": map[string]any{"type": "text", "text": msg},
-		})
+		fields := map[string]any{"content": map[string]any{"type": "text", "text": msg}}
+		if len(trigger.ContextItems) > 0 {
+			fields["context_items"] = trigger.ContextItems
+		}
+		userPayload, _ := json.Marshal(fields)
 		persistAndPublish("user_message", "user", userPayload)
 	}
 
@@ -429,11 +438,17 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 				reason = registry.ReasonStop
 			}
 
-			if isChat && reason == registry.ReasonPause {
+			if isChat && trigger.EnvironmentID == nil && reason == registry.ReasonPause {
 				// Interrupt-only pause — mirrors _keep_sandbox_alive's
 				// is_chat && !errored && !shutdown case (a pause is never
 				// "errored" or "shutdown"): keep the sandbox alive for the
 				// conversation's next reply instead of tearing it down.
+				//
+				// Scoped to EnvironmentID == nil like the natural-finish
+				// branch below: a chat conversation attached to a static
+				// environment must still end this turn in a terminal status
+				// (see that branch's own doc comment), so an interrupt for
+				// one of these falls through to the full stop below instead.
 				h.keepSandboxAlive(trigger, result)
 				if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", nil); err != nil {
 					h.Log.Warn("agent-runner: failed to record paused status",
@@ -482,7 +497,14 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		// canReply are chat-specific concepts (see the natural-finish
 		// branch below) — a task-triggered conversation has no retry path
 		// through the UI regardless of status.
-		if classified && isChat {
+		//
+		// Also scoped to EnvironmentID == nil, same as the natural-finish
+		// branch below: canReplyToConversation already treats every
+		// environment-attached conversation as always replyable regardless
+		// of status (see its own doc comment), so "paused" buys nothing
+		// there and would only break the "ends every turn in a terminal
+		// status" invariant those conversations otherwise hold.
+		if classified && isChat && trigger.EnvironmentID == nil {
 			if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", &errMsg); err != nil {
 				h.Log.Warn("agent-runner: failed to record paused-after-provider-error status",
 					"conversation_id", trigger.ConversationID, "error", err)
@@ -572,11 +594,23 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		}
 	}
 
-	if isChat {
-		// A natural finish for a chat conversation pauses rather than
-		// ends — mirrors _keep_sandbox_alive: is_chat && !errored &&
+	if isChat && trigger.EnvironmentID == nil {
+		// A natural finish for an ephemeral chat conversation pauses rather
+		// than ends — mirrors _keep_sandbox_alive: is_chat && !errored &&
 		// !shutdown is also true for an ordinary successful turn, not just
 		// an interrupt-only pause.
+		//
+		// A chat conversation attached to a static environment skips this
+		// and falls through to the finished/tearDownSandbox tail below
+		// instead, exactly like an ACP conversation — which never reaches
+		// "paused" at all (see SendChatMessage's own doc comment in
+		// services/api). keepSandboxAlive's own EnvironmentID guard already
+		// makes it a no-op for one of these regardless (there's no
+		// in-memory resume handle to keep: every reply just re-attaches
+		// fresh against the still-running container via
+		// executor.coldStartEnvironment), so "paused" bought nothing here
+		// but an extra, redundant non-terminal status hop before the user
+		// could reply again.
 		h.keepSandboxAlive(trigger, result)
 		if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "paused", noOutputMsg); err != nil {
 			return fmt.Errorf("mark conversation %s paused: %w", trigger.ConversationID, err)
@@ -647,6 +681,19 @@ func (h *Handler) dispatchACPControl(ctx context.Context, conversationID uuid.UU
 // starting — call only for a chat trigger reaching a natural finish or an
 // interrupt-only pause (never on error or a full stop).
 func (h *Handler) keepSandboxAlive(trigger agent.Trigger, result executor.Result) {
+	if trigger.EnvironmentID != nil {
+		// Static environments have no in-memory resume registry — every
+		// turn re-attaches fresh via executor.coldStartEnvironment against
+		// the still-running container instead (see that method's doc
+		// comment and docs/ai-agent/environment-management.md's "no new
+		// in-memory registry" design choice). Registering here would also
+		// be wrong on its own terms: result.Handle is nil for this path
+		// (coldStartEnvironment returns no sandbox.Handle), so a later
+		// TeardownPausedChatSandbox popping this entry would call
+		// Executor.StopSandbox(nil) against the shared container's
+		// identity, not a real per-conversation one.
+		return
+	}
 	h.ChatSandboxes.Set(trigger.ConversationID, &chatsandbox.State{
 		Handle:       result.Handle,
 		Client:       result.Client,
@@ -665,6 +712,34 @@ func (h *Handler) keepSandboxAlive(trigger agent.Trigger, result executor.Result
 func (h *Handler) tearDownSandbox(ctx context.Context, trigger agent.Trigger, result executor.Result) {
 	h.ChatSandboxes.Pop(trigger.ConversationID)
 	result.Client.Close()
+
+	if trigger.EnvironmentID != nil {
+		// Static environments are never torn down as a side effect of a
+		// conversation turn ending — see
+		// docs/ai-agent/environment-management.md's "Conversation attach
+		// path": stopping the shared container is exclusively the idle
+		// reaper's job (cmd/agent-runner/main.go's reapIdleEnvironments) or
+		// an explicit user Stop action via services/api's internal
+		// endpoint, never a per-turn or per-conversation-end side effect
+		// here. All this does is close the local client connection (above)
+		// and bump last_active_at so the idle reaper's clock reflects this
+		// turn having just happened.
+		//
+		// TeardownPausedChatSandbox has no equivalent branch to add: it
+		// only ever tears down a ChatSandboxes-registered entry, and
+		// keepSandboxAlive's own EnvironmentID guard means a static
+		// environment's conversation is never registered there in the
+		// first place — so that function already naturally never touches
+		// an environment's shared container, with nothing further needed.
+		if h.EnvironmentRepo != nil {
+			if err := h.EnvironmentRepo.TouchEnvironment(context.WithoutCancel(ctx), *trigger.EnvironmentID); err != nil {
+				h.Log.Warn("agent-runner: failed to touch environment after turn",
+					"conversation_id", trigger.ConversationID, "environment_id", *trigger.EnvironmentID, "error", err)
+			}
+		}
+		return
+	}
+
 	if result.Handle == nil {
 		return
 	}
