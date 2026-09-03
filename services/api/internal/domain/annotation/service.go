@@ -17,11 +17,22 @@ type Service interface {
 	// ListForPage returns every annotation (open and resolved alike) for
 	// the given page — callers filter resolved ones client-side, so a
 	// "show resolved" toggle never needs a second round trip.
-	ListForPage(ctx context.Context, projectID, environmentID uuid.UUID, pagePath string) ([]*PageAnnotation, error)
-	// ListForEnvironment returns every annotation across every page in the
-	// environment — backs the web app's Comments view.
-	ListForEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) ([]*PageAnnotation, error)
-	Create(ctx context.Context, projectID, environmentID uuid.UUID, in CreateAnnotationInput) (*PageAnnotation, error)
+	ListForPage(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, pagePath string) ([]*PageAnnotation, error)
+	// ListForPortForward returns every annotation across every page this
+	// port forward serves — backs the web app's Comments tab on the port
+	// forward detail page.
+	ListForPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) ([]*PageAnnotation, error)
+	Create(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in CreateAnnotationInput) (*PageAnnotation, error)
+	// Get returns a single annotation by ID, scoped only to projectID —
+	// backs the web app's comment detail page. Deliberately takes no
+	// environment/port-forward ID, mirroring how Resolve/Reopen/AddComment/
+	// CreateTaskFromAnnotation/CompleteScreenshotUpload/GetScreenshotURL
+	// below already scope by project+annotation alone.
+	Get(ctx context.Context, projectID, annotationID uuid.UUID) (*PageAnnotation, error)
+	// SearchInProject returns every annotation visible in projectID matching
+	// filter — see Repository.SearchInProject's own doc comment for why this
+	// exists alongside ListForPage/ListForPortForward.
+	SearchInProject(ctx context.Context, projectID uuid.UUID, filter SearchFilter) ([]*PageAnnotation, bool, error)
 	Resolve(ctx context.Context, projectID, annotationID, resolvedBy uuid.UUID) (*PageAnnotation, error)
 	Reopen(ctx context.Context, projectID, annotationID uuid.UUID) (*PageAnnotation, error)
 	AddComment(ctx context.Context, projectID, annotationID, createdBy uuid.UUID, body string) (*AnnotationComment, error)
@@ -35,7 +46,7 @@ type Service interface {
 	// InitiateScreenshotUpload returns a presigned PUT URL for an
 	// annotation's screenshot, called before Create (the file must exist
 	// before an annotation row can reference it).
-	InitiateScreenshotUpload(ctx context.Context, projectID, environmentID uuid.UUID, in InitiateScreenshotUploadInput) (*ScreenshotUploadSession, error)
+	InitiateScreenshotUpload(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in InitiateScreenshotUploadInput) (*ScreenshotUploadSession, error)
 	// CompleteScreenshotUpload marks the presigned upload as finished and
 	// links the resulting file to annotationID.
 	CompleteScreenshotUpload(ctx context.Context, projectID, annotationID, fileID uuid.UUID) (*PageAnnotation, error)
@@ -58,7 +69,6 @@ type Service interface {
 // OuterHTMLExcerpt already having happened before it ever reaches here
 // (see ElementSnapshot's doc comment).
 type CreateAnnotationInput struct {
-	PortForwardID     *uuid.UUID
 	PagePath          string
 	ElementSelector   string
 	SelectorFallbacks []string
@@ -69,6 +79,21 @@ type CreateAnnotationInput struct {
 	ScreenshotFileID  *uuid.UUID
 	Body              string
 	CreatedBy         uuid.UUID
+}
+
+// SearchFilter narrows a SearchInProject call — every field is optional
+// (nil/empty means "don't filter on this"), mirroring the pointer-optional
+// style task/doc list filters already use in this codebase. Limit being nil
+// means "return everything, no pagination" (used internally where a full
+// unpaginated project scan is fine); a non-nil Limit switches on
+// cursor-based pagination and hasMore reporting.
+type SearchFilter struct {
+	EnvironmentID *uuid.UUID
+	PortForwardID *uuid.UUID
+	Status        *string
+	Search        *string
+	Cursor        *string
+	Limit         *int
 }
 
 // CreateTaskFromAnnotationInput carries the fields a task-creation form

@@ -82,6 +82,13 @@ export const STYLES = /* css */ `
 .btn-ghost.active { background: var(--primary); color: var(--primary-foreground); }
 .btn-ghost.toggled { background: var(--muted); color: var(--foreground); }
 
+/* Icon-only variant of .btn — square instead of padded-for-text, used by
+   the thread header's action buttons (see ui.ts's renderThread): with five
+   actions to fit in one row, a text label on each would either wrap or
+   force the popover wider than Figma's own comment panel ever is. */
+.btn-icon { width: 28px; height: 28px; padding: 0; }
+.btn-icon svg { flex-shrink: 0; }
+
 /* --- Toolbar --- */
 .toolbar-wrap {
 	position: absolute;
@@ -255,7 +262,7 @@ export const STYLES = /* css */ `
 	flex-shrink: 0;
 }
 .panel-close:hover { background: var(--muted); color: var(--card-foreground); }
-.panel-body { padding: 0 10px 10px; max-height: 320px; overflow-y: auto; }
+.panel-body { padding: 0 10px 10px; }
 .panel textarea {
 	width: 100%;
 	min-height: 64px;
@@ -295,6 +302,64 @@ export const STYLES = /* css */ `
    touches the other. --- */
 .thread-divider { height: 1px; background: var(--border); margin: 12px 0; }
 .thread-header { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 8px; }
+
+/* The comment + reply list is the ONLY scrollable region in a thread — the
+   header above and the reply box below (see renderThread) stay outside it,
+   always visible, so scrolling through a long thread never pushes either
+   out of view. Thin, theme-colored scrollbar instead of the browser's
+   chunky default -- this extension only ever runs in Chromium, which
+   honors the ::-webkit-scrollbar pseudo-elements below; scrollbar-width/
+   -color are the zero-cost standard-track equivalent for any other engine
+   that might ever load this content script. */
+.thread-comments {
+	max-height: 240px;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--border) transparent;
+}
+.thread-comments::-webkit-scrollbar { width: 6px; }
+.thread-comments::-webkit-scrollbar-track { background: transparent; }
+.thread-comments::-webkit-scrollbar-thumb {
+	background: var(--border);
+	border-radius: 999px;
+}
+.thread-comments::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+
+/* --- Create dropdown (thread header) — a small anchored menu, same
+   radius/ring/shadow language as .panel itself since it's the same kind of
+   floating popover, just anchored to a button instead of a pin. --- */
+.dropdown { position: relative; }
+.dropdown-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	min-width: 168px;
+	background: var(--card);
+	color: var(--card-foreground);
+	border-radius: calc(var(--radius) - 2px);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent),
+		0 4px 16px rgba(0, 0, 0, 0.15);
+	padding: 4px;
+	z-index: 1;
+}
+.dropdown-item {
+	all: unset;
+	box-sizing: border-box;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	border-radius: calc(var(--radius) - 4px);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.dropdown-item:hover { background: var(--muted); }
+.dropdown-item svg { flex-shrink: 0; }
+.dropdown-item[disabled] { cursor: default; color: var(--muted-foreground); pointer-events: none; }
 
 /* The reply/new-comment box itself — a rounded pill with a send button,
    matching Figma's own comment-input control exactly (new comment and

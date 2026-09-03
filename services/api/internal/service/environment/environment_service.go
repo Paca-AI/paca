@@ -1141,6 +1141,25 @@ func (s *Service) ListPortForwards(ctx context.Context, projectID, environmentID
 	return s.repo.ListPortForwards(ctx, env.ID)
 }
 
+// GetPortForward returns a single port forward, verifying it belongs to
+// environmentID which belongs to projectID — the same ownership check
+// DeletePortForward already does, just returning the row instead of
+// removing it.
+func (s *Service) GetPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) (*environmentdom.EnvironmentPortForward, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	pf, err := s.repo.FindPortForwardByID(ctx, portForwardID)
+	if err != nil {
+		return nil, err
+	}
+	if pf.EnvironmentID != env.ID {
+		return nil, environmentdom.ErrPortForwardNotFound
+	}
+	return pf, nil
+}
+
 // AddPortForward creates the port-forward row and, if the environment is
 // currently running, asks agent-runner to assign it a host port
 // immediately rather than waiting for the environment's next Start —

@@ -348,6 +348,7 @@
 				"contextTypeDoc": "Tài liệu",
 				"contextTypeConversation": "Cuộc trò chuyện",
 				"contextTypeAutomation": "Tự động hóa",
+				"contextTypeAnnotation": "Bình luận",
 				"noContextResults": "Không tìm thấy kết quả",
 				"contextSearchMinChars": "Nhập ít nhất 2 ký tự để tìm kiếm"
 			}
@@ -405,8 +406,7 @@
 			"tabs": {
 				"overview": "Tổng quan",
 				"folders": "Thư mục",
-				"portForwards": "Chuyển tiếp cổng",
-				"comments": "Bình luận"
+				"portForwards": "Chuyển tiếp cổng"
 			},
 			"overview": {
 				"connect": "Kết nối",
@@ -505,19 +505,6 @@
 					"cancel": "Hủy",
 					"confirm": "Khởi động lại"
 				}
-			},
-			"comments": {
-				"empty": "Chưa có bình luận nào. Cài đặt tiện ích mở rộng trình duyệt Paca để bình luận trực tiếp trên các phần tử của bản xem trước môi trường này.",
-				"status": {
-					"open": "Đang mở",
-					"resolved": "Đã giải quyết"
-				},
-				"replyCount_one": "{{count}} phản hồi",
-				"replyCount_other": "{{count}} phản hồi",
-				"resolve": "Giải quyết",
-				"reopen": "Mở lại",
-				"createTask": "Tạo tác vụ",
-				"taskCreated": "Đã tạo tác vụ"
 			},
 			"sshKeys": {
 				"connectHint": "Thay <bastion-host> bằng địa chỉ bastion SSH đã cấu hình trên triển khai này.",
@@ -1241,6 +1228,77 @@
 			"watchSession": "Theo dõi phiên",
 			"madeChange": "đã thực hiện một thay đổi",
 			"descriptionChangeDiff": "Thay đổi mô tả"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Không tìm thấy chuyển tiếp cổng",
+			"description": "Chuyển tiếp cổng này có thể đã bị xóa hoặc liên kết không hợp lệ.",
+			"ariaLabel": "Chi tiết chuyển tiếp cổng",
+			"backToEnvironment": "Quay lại môi trường"
+		},
+		"tabs": {
+			"overview": "Tổng quan",
+			"comments": "Bình luận"
+		},
+		"overview": {
+			"containerPort": "Cổng container {{port}}",
+			"hostPort": "Cổng máy chủ",
+			"unassigned": "Chưa được gán",
+			"createdAt": "Đã tạo {{date}}",
+			"open": "Mở",
+			"delete": "Xóa",
+			"deleteDialog": {
+				"title": "Xóa chuyển tiếp cổng?",
+				"description_one": "Thao tác này cũng sẽ xóa {{count}} bình luận được thực hiện qua chuyển tiếp cổng này. Không thể hoàn tác hành động này.",
+				"description_other": "Thao tác này cũng sẽ xóa {{count}} bình luận được thực hiện qua chuyển tiếp cổng này. Không thể hoàn tác hành động này.",
+				"cancel": "Hủy",
+				"confirm": "Xóa"
+			}
+		},
+		"comments": {
+			"empty": "Chưa có bình luận nào. Cài đặt tiện ích mở rộng trình duyệt Paca để bình luận trực tiếp trên các phần tử của bản xem trước chuyển tiếp cổng này.",
+			"status": {
+				"open": "Đang mở",
+				"resolved": "Đã giải quyết"
+			},
+			"replyCount_one": "{{count}} phản hồi",
+			"replyCount_other": "{{count}} phản hồi",
+			"resolve": "Giải quyết",
+			"reopen": "Mở lại",
+			"createTask": "Tạo tác vụ",
+			"taskCreated": "Đã tạo tác vụ"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Không tìm thấy bình luận",
+			"description": "Bình luận này có thể đã bị xóa hoặc liên kết không hợp lệ.",
+			"ariaLabel": "Chi tiết bình luận",
+			"backToPortForward": "Quay lại chuyển tiếp cổng"
+		},
+		"header": {
+			"createdAt": "Đã bình luận {{date}}"
+		},
+		"context": {
+			"title": "Bối cảnh",
+			"pagePath": "Trang",
+			"elementSelector": "Bộ chọn phần tử",
+			"accessibleName": "Tên truy cập",
+			"consoleErrors": "Lỗi bảng điều khiển",
+			"noConsoleErrors": "Không ghi nhận lỗi bảng điều khiển nào",
+			"failedRequests": "Yêu cầu thất bại",
+			"noFailedRequests": "Không ghi nhận yêu cầu thất bại nào"
+		},
+		"thread": {
+			"replyPlaceholder": "Viết phản hồi…",
+			"reply": "Trả lời"
+		},
+		"actions": {
+			"create": "Tạo",
+			"createConversation": "Tạo cuộc trò chuyện",
+			"copyLink": "Sao chép liên kết",
+			"linkCopied": "Đã sao chép!"
 		}
 	},
 	"epicPicker": {

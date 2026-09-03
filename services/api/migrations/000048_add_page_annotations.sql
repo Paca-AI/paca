@@ -8,9 +8,15 @@
 -- extension talks to this API directly from a content script running on
 -- the forwarded page itself.
 --
+-- A comment belongs to the specific port forward it was made through, not
+-- the environment as a whole (an environment can have several port
+-- forwards, each its own running dev-server app) — environment_id is kept
+-- only as a server-derived, denormalized display field, always copied from
+-- the owning port forward at creation and never independently settable.
+--
 -- page_annotations.page_path deliberately excludes host/port: identity is
--- (environment_id, page_path), not (host, port, page_path), since the same
--- environment's dev server can move between host_port values across a
+-- (port_forward_id, page_path), not (host, port, page_path), since the same
+-- port forward's dev server can move between host_port values across a
 -- Docker "restart to apply port changes" cycle (see
 -- environments.ports_pending_restart) without the comment being about a
 -- different page.
@@ -24,11 +30,13 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS page_annotations (
     id                         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id                 UUID        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    -- environment_id is derived, denormalized display context — always the
+    -- owning port_forward_id's own environment, copied in at creation and
+    -- never independently settable. port_forward_id is the actual owner: a
+    -- comment belongs to one specific port forward's running app, not the
+    -- environment as a whole, since an environment can have several.
     environment_id             UUID        NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
-    -- port_forward_id is display-only context (which forward the comment
-    -- was made through) — ON DELETE SET NULL because a removed port
-    -- forward shouldn't take an otherwise-still-relevant comment with it.
-    port_forward_id            UUID        REFERENCES environment_port_forwards(id) ON DELETE SET NULL,
+    port_forward_id            UUID        NOT NULL REFERENCES environment_port_forwards(id) ON DELETE CASCADE,
     -- page_path is pathname+query only — no host, no port (see header
     -- comment above), no hash (hash is client-side routing state, not a
     -- stable identity for "which page is this").
@@ -66,15 +74,14 @@ ALTER TABLE page_annotations DROP CONSTRAINT IF EXISTS page_annotations_status_c
 ALTER TABLE page_annotations ADD CONSTRAINT page_annotations_status_check
     CHECK (status IN ('open', 'resolved'));
 
--- The extension's own hot path: "give me every annotation for this
--- environment+page" on every preview page load.
+-- The extension's own hot path: "give me every annotation for this port
+-- forward+page" on every preview page load.
 CREATE INDEX IF NOT EXISTS idx_page_annotations_lookup
-    ON page_annotations (environment_id, page_path) WHERE deleted_at IS NULL;
+    ON page_annotations (port_forward_id, page_path) WHERE deleted_at IS NULL;
 
--- The web app's Comments view: "every annotation for this environment,
--- across all pages."
-CREATE INDEX IF NOT EXISTS idx_page_annotations_environment
-    ON page_annotations (environment_id) WHERE deleted_at IS NULL;
+-- The web app's Comments view: "every annotation for this port forward."
+CREATE INDEX IF NOT EXISTS idx_page_annotations_port_forward
+    ON page_annotations (port_forward_id) WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_page_annotations_project
     ON page_annotations (project_id) WHERE deleted_at IS NULL;

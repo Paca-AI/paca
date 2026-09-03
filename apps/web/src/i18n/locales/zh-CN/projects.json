@@ -348,6 +348,7 @@
 				"contextTypeDoc": "文档",
 				"contextTypeConversation": "对话",
 				"contextTypeAutomation": "自动化",
+				"contextTypeAnnotation": "评论",
 				"noContextResults": "未找到结果",
 				"contextSearchMinChars": "请输入至少2个字符进行搜索"
 			}
@@ -405,8 +406,7 @@
 			"tabs": {
 				"overview": "概览",
 				"folders": "文件夹",
-				"portForwards": "端口转发",
-				"comments": "评论"
+				"portForwards": "端口转发"
 			},
 			"overview": {
 				"connect": "连接",
@@ -505,19 +505,6 @@
 					"cancel": "取消",
 					"confirm": "重启"
 				}
-			},
-			"comments": {
-				"empty": "还没有评论。安装 Paca 浏览器扩展程序即可直接在此环境预览的元素上添加评论。",
-				"status": {
-					"open": "待处理",
-					"resolved": "已解决"
-				},
-				"replyCount_one": "{{count}} 条回复",
-				"replyCount_other": "{{count}} 条回复",
-				"resolve": "标记为已解决",
-				"reopen": "重新打开",
-				"createTask": "创建任务",
-				"taskCreated": "任务已创建"
 			},
 			"sshKeys": {
 				"connectHint": "将 <bastion-host> 替换为此部署配置的 SSH 堡垒机地址。",
@@ -1241,6 +1228,77 @@
 			"watchSession": "查看会话",
 			"madeChange": "进行了更改",
 			"descriptionChangeDiff": "描述更改差异"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "未找到端口转发",
+			"description": "此端口转发可能已被删除，或链接无效。",
+			"ariaLabel": "端口转发详情",
+			"backToEnvironment": "返回环境"
+		},
+		"tabs": {
+			"overview": "概览",
+			"comments": "评论"
+		},
+		"overview": {
+			"containerPort": "容器端口 {{port}}",
+			"hostPort": "主机端口",
+			"unassigned": "尚未分配",
+			"createdAt": "创建于 {{date}}",
+			"open": "打开",
+			"delete": "删除",
+			"deleteDialog": {
+				"title": "删除端口转发？",
+				"description_one": "这也将删除通过此端口转发发表的 {{count}} 条评论。此操作无法撤销。",
+				"description_other": "这也将删除通过此端口转发发表的 {{count}} 条评论。此操作无法撤销。",
+				"cancel": "取消",
+				"confirm": "删除"
+			}
+		},
+		"comments": {
+			"empty": "还没有评论。安装 Paca 浏览器扩展程序即可直接在此端口转发预览的元素上添加评论。",
+			"status": {
+				"open": "待处理",
+				"resolved": "已解决"
+			},
+			"replyCount_one": "{{count}} 条回复",
+			"replyCount_other": "{{count}} 条回复",
+			"resolve": "标记为已解决",
+			"reopen": "重新打开",
+			"createTask": "创建任务",
+			"taskCreated": "任务已创建"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "未找到评论",
+			"description": "此评论可能已被删除，或链接无效。",
+			"ariaLabel": "评论详情",
+			"backToPortForward": "返回端口转发"
+		},
+		"header": {
+			"createdAt": "评论于 {{date}}"
+		},
+		"context": {
+			"title": "上下文",
+			"pagePath": "页面",
+			"elementSelector": "元素选择器",
+			"accessibleName": "无障碍名称",
+			"consoleErrors": "控制台错误",
+			"noConsoleErrors": "未捕获到控制台错误",
+			"failedRequests": "失败的请求",
+			"noFailedRequests": "未捕获到失败的请求"
+		},
+		"thread": {
+			"replyPlaceholder": "写下回复…",
+			"reply": "回复"
+		},
+		"actions": {
+			"create": "创建",
+			"createConversation": "创建对话",
+			"copyLink": "复制链接",
+			"linkCopied": "已复制！"
 		}
 	},
 	"epicPicker": {

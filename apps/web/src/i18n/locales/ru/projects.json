@@ -358,6 +358,7 @@
 				"contextTypeDoc": "Документ",
 				"contextTypeConversation": "Беседа",
 				"contextTypeAutomation": "Автоматизация",
+				"contextTypeAnnotation": "Комментарий",
 				"noContextResults": "Результаты не найдены",
 				"contextSearchMinChars": "Введите минимум 2 символа для поиска"
 			}
@@ -415,8 +416,7 @@
 			"tabs": {
 				"overview": "Обзор",
 				"folders": "Папки",
-				"portForwards": "Проброс портов",
-				"comments": "Комментарии"
+				"portForwards": "Проброс портов"
 			},
 			"overview": {
 				"connect": "Подключиться",
@@ -515,19 +515,6 @@
 					"cancel": "Отмена",
 					"confirm": "Перезапустить"
 				}
-			},
-			"comments": {
-				"empty": "Пока нет комментариев. Установите расширение браузера Paca, чтобы комментировать элементы предпросмотра этого окружения напрямую.",
-				"status": {
-					"open": "Открыт",
-					"resolved": "Решён"
-				},
-				"replyCount_one": "{{count}} ответ",
-				"replyCount_other": "{{count}} ответов",
-				"resolve": "Решить",
-				"reopen": "Переоткрыть",
-				"createTask": "Создать задачу",
-				"taskCreated": "Задача создана"
 			},
 			"sshKeys": {
 				"connectHint": "Замените <bastion-host> адресом SSH-бастиона, настроенным в этом развёртывании.",
@@ -1259,6 +1246,77 @@
 			"watchSession": "Смотреть сессию",
 			"madeChange": "внёс(ла) изменение",
 			"descriptionChangeDiff": "Diff изменения описания"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Переадресация порта не найдена",
+			"description": "Возможно, эта переадресация порта была удалена, или ссылка недействительна.",
+			"ariaLabel": "Сведения о переадресации порта",
+			"backToEnvironment": "Назад к среде"
+		},
+		"tabs": {
+			"overview": "Обзор",
+			"comments": "Комментарии"
+		},
+		"overview": {
+			"containerPort": "Порт контейнера {{port}}",
+			"hostPort": "Порт хоста",
+			"unassigned": "Ещё не назначен",
+			"createdAt": "Создано {{date}}",
+			"open": "Открыть",
+			"delete": "Удалить",
+			"deleteDialog": {
+				"title": "Удалить переадресацию порта?",
+				"description_one": "Это также удалит {{count}} комментарий, оставленный через эту переадресацию порта. Это действие нельзя отменить.",
+				"description_other": "Это также удалит {{count}} комментариев, оставленных через эту переадресацию порта. Это действие нельзя отменить.",
+				"cancel": "Отмена",
+				"confirm": "Удалить"
+			}
+		},
+		"comments": {
+			"empty": "Пока нет комментариев. Установите расширение браузера Paca, чтобы комментировать элементы предпросмотра этой переадресации порта напрямую.",
+			"status": {
+				"open": "Открыт",
+				"resolved": "Решён"
+			},
+			"replyCount_one": "{{count}} ответ",
+			"replyCount_other": "{{count}} ответов",
+			"resolve": "Решить",
+			"reopen": "Переоткрыть",
+			"createTask": "Создать задачу",
+			"taskCreated": "Задача создана"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Комментарий не найден",
+			"description": "Возможно, этот комментарий был удалён, или ссылка недействительна.",
+			"ariaLabel": "Сведения о комментарии",
+			"backToPortForward": "Назад к переадресации порта"
+		},
+		"header": {
+			"createdAt": "Прокомментировано {{date}}"
+		},
+		"context": {
+			"title": "Контекст",
+			"pagePath": "Страница",
+			"elementSelector": "Селектор элемента",
+			"accessibleName": "Доступное имя",
+			"consoleErrors": "Ошибки консоли",
+			"noConsoleErrors": "Ошибки консоли не зафиксированы",
+			"failedRequests": "Неудачные запросы",
+			"noFailedRequests": "Неудачные запросы не зафиксированы"
+		},
+		"thread": {
+			"replyPlaceholder": "Написать ответ…",
+			"reply": "Ответить"
+		},
+		"actions": {
+			"create": "Создать",
+			"createConversation": "Создать разговор",
+			"copyLink": "Скопировать ссылку",
+			"linkCopied": "Скопировано!"
 		}
 	},
 	"epicPicker": {

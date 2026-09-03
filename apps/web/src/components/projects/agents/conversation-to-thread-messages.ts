@@ -165,10 +165,43 @@ interface InProgressMessage {
 	// Keyed by tool_call_id so a later ObservationEvent can attach its result
 	// to the ActionEvent's tool-call part within the same turn.
 	openToolCalls: Map<string, MutableToolCallPart>;
+	// How many tool-call parts have already been started under each raw
+	// tool_call_id in this message — see nextToolCallId's own doc comment.
+	toolCallStarts: Map<string, number>;
 }
 
 function startAssistantMessage(id: string, createdAt: Date): InProgressMessage {
-	return { id, createdAt, parts: [], openToolCalls: new Map() };
+	return {
+		id,
+		createdAt,
+		parts: [],
+		openToolCalls: new Map(),
+		toolCallStarts: new Map(),
+	};
+}
+
+/**
+ * Returns the toolCallId to store on a NEW tool-call part starting under
+ * rawId — rawId itself the first time, a disambiguated `${rawId}#${n}` on
+ * every reuse after that. Some ACP agents (Goose, observed in the wild) hand
+ * out short, only-locally-unique ids like "call_1" per LLM completion step
+ * rather than per tool call, and reuse them across otherwise-unrelated tool
+ * calls within what we render as a single assistant message (one message
+ * spans a whole turn — every step between a user message and the model's
+ * final reply — not just one completion step). assistant-ui's `useResources`
+ * requires every part's key to be unique within one message's content array
+ * and throws ("Duplicate key ... in useResources") the moment it isn't, so a
+ * raw id already used earlier in this same message must never be reused
+ * verbatim. openToolCalls (which tool_call_update/observation events look
+ * calls up by) is deliberately keyed by the untouched rawId, not this
+ * disambiguated one — the most recently opened call for a given rawId is
+ * always the correct match for its next update, exactly the FIFO order
+ * these agents emit start/update pairs in.
+ */
+function nextToolCallId(current: InProgressMessage, rawId: string): string {
+	const startsBefore = current.toolCallStarts.get(rawId) ?? 0;
+	current.toolCallStarts.set(rawId, startsBefore + 1);
+	return startsBefore === 0 ? rawId : `${rawId}#${startsBefore}`;
 }
 
 function toThreadMessage(
@@ -395,7 +428,7 @@ export function eventsToThreadMessages(
 			const toolName = typeof p.title === "string" ? p.title : "tool";
 			const part: MutableToolCallPart = {
 				type: "tool-call",
-				toolCallId,
+				toolCallId: nextToolCallId(current, toolCallId),
 				toolName,
 				argsText: "",
 			};
@@ -428,9 +461,10 @@ export function eventsToThreadMessages(
 				// append a standalone, already-complete tool-call part.
 				if (!current)
 					current = startAssistantMessage(ev.id, new Date(ev.created_at));
+				const rawId = toolCallId ?? ev.id;
 				current.parts.push({
 					type: "tool-call",
-					toolCallId: toolCallId ?? ev.id,
+					toolCallId: nextToolCallId(current, rawId),
 					toolName: "tool",
 					argsText: "",
 					result: resultText,
@@ -517,7 +551,7 @@ export function eventsToThreadMessages(
 
 			const part: MutableToolCallPart = {
 				type: "tool-call",
-				toolCallId,
+				toolCallId: nextToolCallId(current, toolCallId),
 				toolName,
 				argsText,
 			};
@@ -575,9 +609,10 @@ export function eventsToThreadMessages(
 				if (!current)
 					current = startAssistantMessage(ev.id, new Date(ev.created_at));
 				const toolName = typeof p.tool_name === "string" ? p.tool_name : "tool";
+				const rawId = toolCallId ?? ev.id;
 				current.parts.push({
 					type: "tool-call",
-					toolCallId: toolCallId ?? ev.id,
+					toolCallId: nextToolCallId(current, rawId),
 					toolName,
 					argsText: "",
 					result: resultText,
@@ -621,7 +656,12 @@ export function eventsToThreadMessages(
 
 			let part = current.openToolCalls.get(toolCallId);
 			if (!part) {
-				part = { type: "tool-call", toolCallId, toolName, argsText };
+				part = {
+					type: "tool-call",
+					toolCallId: nextToolCallId(current, toolCallId),
+					toolName,
+					argsText,
+				};
 				if (diffs) part.artifact = { diffs };
 				current.parts.push(part);
 				current.openToolCalls.set(toolCallId, part);

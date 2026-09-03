@@ -9,7 +9,12 @@
 //     ContextItemRef JSON tags exactly)
 //   - services/api's Go ContextItemRef / services/agent-runner's copy of it
 
-export type ContextItemType = "task" | "doc" | "conversation" | "automation";
+export type ContextItemType =
+	| "task"
+	| "doc"
+	| "conversation"
+	| "automation"
+	| "annotation";
 
 export interface ContextItem {
 	type: ContextItemType;
@@ -23,6 +28,7 @@ const CONTEXT_ITEM_TYPES: readonly ContextItemType[] = [
 	"doc",
 	"conversation",
 	"automation",
+	"annotation",
 ];
 
 function isContextItemType(value: unknown): value is ContextItemType {

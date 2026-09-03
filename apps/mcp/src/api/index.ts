@@ -1,3 +1,4 @@
+export * from "./annotation-client.js";
 export * from "./automation-client.js";
 export * from "./client.js";
 export * from "./conversation-client.js";

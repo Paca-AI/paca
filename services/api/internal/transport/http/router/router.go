@@ -776,6 +776,21 @@ func New(deps Deps) http.Handler {
 					})
 				}
 
+				// Project-wide annotation search — unlike the annotation
+				// routes nested under one specific port forward (below,
+				// inside Environments), this searches across every port
+				// forward in the project. Backs BlockNote mention search,
+				// the agent conversation's attach-context picker, and the
+				// MCP list_annotations/get_annotation tools.
+				if deps.Annotation != nil {
+					r.Route("/annotations", func(r chi.Router) {
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+							Get("/", deps.Annotation.SearchInProject)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+							Get("/{annotationId}", deps.Annotation.GetInProject)
+					})
+				}
+
 				// Environments (static, long-lived sandboxes — see
 				// docs/ai-agent/environment-management.md). Gated on their
 				// own dedicated environments.read/write/connect permissions
@@ -836,6 +851,8 @@ func New(deps Deps) http.Handler {
 							Get("/{environmentId}/port-forwards", deps.Environment.ListPortForwards)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
 							Post("/{environmentId}/port-forwards", deps.Environment.AddPortForward)
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Get("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.GetPortForward)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite)).
 							Delete("/{environmentId}/port-forwards/{portForwardId}", deps.Environment.DeletePortForward)
 
@@ -853,19 +870,24 @@ func New(deps Deps) http.Handler {
 						// directly against this API from a content script
 						// running on the environment's own forwarded preview
 						// page (see corsMiddleware's same-hostname branch
-						// below for how that's authenticated). Resolve is a
-						// separate tier from Write, same reasoning as
-						// Connect above: triaging/dismissing a comment
-						// shouldn't require the ability to author or delete
-						// one.
+						// below for how that's authenticated). Nested under
+						// the specific port forward, not the environment
+						// directly: a comment belongs to one port forward's
+						// running app, and an environment can have several.
+						// Resolve is a separate tier from Write, same
+						// reasoning as Connect above: triaging/dismissing a
+						// comment shouldn't require the ability to author or
+						// delete one.
 						if deps.Annotation != nil {
-							r.Route("/{environmentId}/annotations", func(r chi.Router) {
+							r.Route("/{environmentId}/port-forwards/{portForwardId}/annotations", func(r chi.Router) {
 								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
 									Get("/", deps.Annotation.List)
 								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
 									Post("/", deps.Annotation.Create)
 								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
 									Post("/upload-url", deps.Annotation.InitiateScreenshotUpload)
+								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).
+									Get("/{annotationId}", deps.Annotation.Get)
 								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsWrite)).
 									Post("/{annotationId}/complete-upload", deps.Annotation.CompleteScreenshotUpload)
 								r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAnnotationsRead)).

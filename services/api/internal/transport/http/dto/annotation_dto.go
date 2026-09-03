@@ -19,7 +19,7 @@ type PageAnnotationResponse struct {
 	ID                uuid.UUID                     `json:"id"`
 	ProjectID         uuid.UUID                     `json:"project_id"`
 	EnvironmentID     uuid.UUID                     `json:"environment_id"`
-	PortForwardID     *uuid.UUID                    `json:"port_forward_id"`
+	PortForwardID     uuid.UUID                     `json:"port_forward_id"`
 	PagePath          string                        `json:"page_path"`
 	ElementSelector   string                        `json:"element_selector"`
 	SelectorFallbacks []string                      `json:"element_selector_fallbacks"`
@@ -62,9 +62,9 @@ type AnnotationCommentResponse struct {
 }
 
 // CreateAnnotationRequest is the body for POST
-// /projects/:projectId/environments/:environmentId/annotations.
+// .../port-forwards/:portForwardId/annotations. PortForwardID isn't a field
+// here — it's the owning resource in the URL, not client-supplied payload.
 type CreateAnnotationRequest struct {
-	PortForwardID     *uuid.UUID                    `json:"port_forward_id"`
 	PagePath          string                        `json:"page_path" binding:"required"`
 	ElementSelector   string                        `json:"element_selector" binding:"required"`
 	SelectorFallbacks []string                      `json:"element_selector_fallbacks"`

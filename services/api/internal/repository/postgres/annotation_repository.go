@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ type pageAnnotationRecord struct {
 	ID                       string     `db:"id"`
 	ProjectID                string     `db:"project_id"`
 	EnvironmentID            string     `db:"environment_id"`
-	PortForwardID            *string    `db:"port_forward_id"`
+	PortForwardID            string     `db:"port_forward_id"`
 	PagePath                 string     `db:"page_path"`
 	ElementSelector          string     `db:"element_selector"`
 	ElementSelectorFallbacks []byte     `db:"element_selector_fallbacks"`
@@ -86,28 +87,28 @@ func NewAnnotationRepository(db *sqlx.DB) *AnnotationRepository {
 	return &AnnotationRepository{db: db}
 }
 
-func (r *AnnotationRepository) ListForPage(ctx context.Context, environmentID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
+func (r *AnnotationRepository) ListForPage(ctx context.Context, portForwardID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
 	var recs []pageAnnotationRecord
 	err := r.db.SelectContext(ctx, &recs, `
 		SELECT `+pageAnnotationCols+` FROM page_annotations pa
 		LEFT JOIN users u ON u.id = pa.created_by
-		WHERE pa.environment_id = $1 AND pa.page_path = $2 AND pa.deleted_at IS NULL
-		ORDER BY pa.created_at ASC`, environmentID.String(), pagePath)
+		WHERE pa.port_forward_id = $1 AND pa.page_path = $2 AND pa.deleted_at IS NULL
+		ORDER BY pa.created_at ASC`, portForwardID.String(), pagePath)
 	if err != nil {
 		return nil, fmt.Errorf("annotation repo: list for page: %w", err)
 	}
 	return r.hydrateAll(ctx, recs)
 }
 
-func (r *AnnotationRepository) ListForEnvironment(ctx context.Context, environmentID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
+func (r *AnnotationRepository) ListForPortForward(ctx context.Context, portForwardID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
 	var recs []pageAnnotationRecord
 	err := r.db.SelectContext(ctx, &recs, `
 		SELECT `+pageAnnotationCols+` FROM page_annotations pa
 		LEFT JOIN users u ON u.id = pa.created_by
-		WHERE pa.environment_id = $1 AND pa.deleted_at IS NULL
-		ORDER BY pa.created_at DESC`, environmentID.String())
+		WHERE pa.port_forward_id = $1 AND pa.deleted_at IS NULL
+		ORDER BY pa.created_at DESC`, portForwardID.String())
 	if err != nil {
-		return nil, fmt.Errorf("annotation repo: list for environment: %w", err)
+		return nil, fmt.Errorf("annotation repo: list for port forward: %w", err)
 	}
 	return r.hydrateAll(ctx, recs)
 }
@@ -131,6 +132,69 @@ func (r *AnnotationRepository) FindVisibleInProject(ctx context.Context, project
 	}
 	a.Comments = comments
 	return a, nil
+}
+
+// SearchInProject returns every annotation visible in projectID matching
+// filter — see annotationdom.Repository.SearchInProject's own doc comment.
+// Mirrors DocumentRepository.ListDocuments's exact keyset-pagination shape,
+// but sorted newest first (created_at DESC, id DESC, matching
+// ListForPortForward's own convention) rather than title ASC, so the keyset
+// predicate uses < instead of >.
+func (r *AnnotationRepository) SearchInProject(ctx context.Context, projectID uuid.UUID, filter annotationdom.SearchFilter) ([]*annotationdom.PageAnnotation, bool, error) {
+	query := `SELECT ` + pageAnnotationCols + ` FROM page_annotations pa
+		LEFT JOIN users u ON u.id = pa.created_by
+		WHERE pa.project_id = $1 AND pa.deleted_at IS NULL`
+	args := []any{projectID.String()}
+
+	if filter.EnvironmentID != nil {
+		args = append(args, filter.EnvironmentID.String())
+		query += fmt.Sprintf(" AND pa.environment_id = $%d", len(args))
+	}
+	if filter.PortForwardID != nil {
+		args = append(args, filter.PortForwardID.String())
+		query += fmt.Sprintf(" AND pa.port_forward_id = $%d", len(args))
+	}
+	if filter.Status != nil {
+		if s := strings.TrimSpace(*filter.Status); s != "" {
+			args = append(args, s)
+			query += fmt.Sprintf(" AND pa.status = $%d", len(args))
+		}
+	}
+	if filter.Search != nil {
+		if q := strings.TrimSpace(*filter.Search); q != "" {
+			args = append(args, "%"+escapeLikePattern(q)+"%")
+			n := len(args)
+			query += fmt.Sprintf(" AND (pa.body ILIKE $%d OR pa.element_snapshot->>'text_excerpt' ILIKE $%d)", n, n)
+		}
+	}
+
+	paginating := filter.Limit != nil
+	if paginating {
+		if filter.Cursor != nil {
+			if cur, ok := annotationdom.DecodeAnnotationCursor(*filter.Cursor); ok {
+				args = append(args, cur.CreatedAt, cur.ID)
+				query += fmt.Sprintf(" AND (pa.created_at, pa.id) < ($%d, $%d)", len(args)-1, len(args))
+			}
+		}
+		query += " ORDER BY pa.created_at DESC, pa.id DESC"
+		args = append(args, *filter.Limit+1)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	} else {
+		query += " ORDER BY pa.created_at DESC, pa.id DESC"
+	}
+
+	var recs []pageAnnotationRecord
+	if err := r.db.SelectContext(ctx, &recs, query, args...); err != nil {
+		return nil, false, fmt.Errorf("annotation repo: search in project: %w", err)
+	}
+
+	hasMore := false
+	if paginating && len(recs) > *filter.Limit {
+		hasMore = true
+		recs = recs[:*filter.Limit]
+	}
+	result, err := r.hydrateAll(ctx, recs)
+	return result, hasMore, err
 }
 
 func (r *AnnotationRepository) Create(ctx context.Context, a *annotationdom.PageAnnotation) error {
@@ -161,7 +225,7 @@ func (r *AnnotationRepository) Create(ctx context.Context, a *annotationdom.Page
 			element_selector_fallbacks, bounding_box, element_snapshot, console_errors, failed_requests,
 			screenshot_file_id, body, status, created_by, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-		a.ID.String(), a.ProjectID.String(), a.EnvironmentID.String(), uuidPtrToStringPtr(a.PortForwardID),
+		a.ID.String(), a.ProjectID.String(), a.EnvironmentID.String(), a.PortForwardID.String(),
 		a.PagePath, a.ElementSelector, fallbacks, bbox, snapshot, consoleErrors, failedRequests,
 		uuidPtrToStringPtr(a.ScreenshotFileID), a.Body, a.Status, a.CreatedBy.String(), a.CreatedAt, a.UpdatedAt,
 	)
@@ -351,6 +415,10 @@ func annotationFromRecord(rec pageAnnotationRecord) (*annotationdom.PageAnnotati
 	if err != nil {
 		return nil, fmt.Errorf("annotation repo: parse environment id: %w", err)
 	}
+	portForwardID, err := uuid.Parse(rec.PortForwardID)
+	if err != nil {
+		return nil, fmt.Errorf("annotation repo: parse port forward id: %w", err)
+	}
 	createdBy, err := uuid.Parse(rec.CreatedBy)
 	if err != nil {
 		return nil, fmt.Errorf("annotation repo: parse created_by: %w", err)
@@ -377,7 +445,6 @@ func annotationFromRecord(rec pageAnnotationRecord) (*annotationdom.PageAnnotati
 		return nil, fmt.Errorf("annotation repo: unmarshal failed requests: %w", err)
 	}
 
-	portForwardID := stringPtrToUUIDPtr(rec.PortForwardID)
 	screenshotFileID := stringPtrToUUIDPtr(rec.ScreenshotFileID)
 	taskID := stringPtrToUUIDPtr(rec.TaskID)
 	resolvedBy := stringPtrToUUIDPtr(rec.ResolvedBy)

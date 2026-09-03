@@ -1006,6 +1006,53 @@ describe("eventsToThreadMessages", () => {
 			});
 		});
 
+		it("disambiguates a reused tool_call_id within one message instead of producing a duplicate key", () => {
+			// Reproduces a real crash: some ACP agents (Goose) hand out short
+			// ids like "call_1" per LLM completion step rather than per tool
+			// call, reusing them across unrelated tool calls within what we
+			// render as one assistant message — assistant-ui's useResources
+			// throws "Duplicate key toolCallId-call_1 in useResources" the
+			// moment two of a message's parts share a toolCallId.
+			const events = [
+				acpToolCall({ toolCallId: "call_1", title: "read doc" }),
+				acpToolCallUpdate({ toolCallId: "call_1", status: "failed" }),
+				acpToolCall({ toolCallId: "call_1", title: "clone repository" }),
+				acpToolCallUpdate({
+					toolCallId: "call_1",
+					status: "completed",
+					text: "cloned",
+				}),
+				acpToolCall({ toolCallId: "call_1", title: "read doc again" }),
+				acpToolCallUpdate({
+					toolCallId: "call_1",
+					status: "completed",
+					text: "read",
+				}),
+			];
+
+			const messages = eventsToThreadMessages(events, false);
+
+			expect(messages).toHaveLength(1);
+			const parts = messages[0].content as unknown as Array<
+				Record<string, unknown>
+			>;
+			const toolCallIds = parts.map((p) => p.toolCallId);
+			// Every part's key is unique...
+			expect(new Set(toolCallIds).size).toBe(toolCallIds.length);
+			// ...but each update still landed on the call it actually belongs
+			// to, in the order the three read-doc/clone/read-doc calls fired.
+			expect(parts[0]).toMatchObject({ toolName: "read doc", isError: true });
+			expect(parts[0]).not.toHaveProperty("result");
+			expect(parts[1]).toMatchObject({
+				toolName: "clone repository",
+				result: "cloned",
+			});
+			expect(parts[2]).toMatchObject({
+				toolName: "read doc again",
+				result: "read",
+			});
+		});
+
 		it("ignores turn_end — it carries no user-visible content", () => {
 			const events = [
 				userMessage("hi"),

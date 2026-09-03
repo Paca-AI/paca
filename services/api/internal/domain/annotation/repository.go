@@ -9,20 +9,28 @@ import (
 
 // Repository is the storage contract for the PageAnnotation aggregate.
 type Repository interface {
-	// ListForPage returns every non-deleted annotation for environmentID
+	// ListForPage returns every non-deleted annotation for portForwardID
 	// whose PagePath equals pagePath, oldest first, each with Comments
 	// populated — the extension's own hot path, called on every preview
 	// page load.
-	ListForPage(ctx context.Context, environmentID uuid.UUID, pagePath string) ([]*PageAnnotation, error)
-	// ListForEnvironment returns every non-deleted annotation for
-	// environmentID across all pages, newest first — backs the web app's
-	// Comments view.
-	ListForEnvironment(ctx context.Context, environmentID uuid.UUID) ([]*PageAnnotation, error)
+	ListForPage(ctx context.Context, portForwardID uuid.UUID, pagePath string) ([]*PageAnnotation, error)
+	// ListForPortForward returns every non-deleted annotation for
+	// portForwardID across all pages it serves, newest first — backs the
+	// web app's port-forward-scoped Comments tab.
+	ListForPortForward(ctx context.Context, portForwardID uuid.UUID) ([]*PageAnnotation, error)
 	// FindVisibleInProject returns a single annotation by ID, but only if
 	// it belongs to projectID — mirrors
 	// environmentdom.Repository.FindVisibleEnvironmentInProject. Returns
 	// ErrAnnotationNotFound otherwise.
 	FindVisibleInProject(ctx context.Context, projectID, annotationID uuid.UUID) (*PageAnnotation, error)
+	// SearchInProject returns every annotation visible in projectID matching
+	// filter, newest first, cursor-paginated when filter.Limit is set —
+	// backs the project-wide search used by BlockNote mentions, the agent
+	// conversation's attach-context picker, and the MCP list_annotations
+	// tool, none of which are scoped to one specific port forward the way
+	// ListForPage/ListForPortForward are. hasMore is only meaningful when
+	// filter.Limit is set.
+	SearchInProject(ctx context.Context, projectID uuid.UUID, filter SearchFilter) (results []*PageAnnotation, hasMore bool, err error)
 	Create(ctx context.Context, a *PageAnnotation) error
 	// SetScreenshotFileID attaches (or replaces) an already-uploaded
 	// screenshot on an existing annotation — used by

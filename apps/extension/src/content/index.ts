@@ -5,6 +5,7 @@ import {
 } from "../shared/messages";
 import type { ConsoleEntry, PageAnnotation } from "../shared/types";
 import * as api from "./api";
+import { copyToClipboard } from "./clipboard";
 import {
 	accessibleNameOf,
 	generateSelectors,
@@ -186,12 +187,7 @@ async function main(): Promise<void> {
 		match.project_id,
 	);
 	setActiveState(true);
-	// The environment detail page's tabs (apps/web's environment-detail.tsx)
-	// are selected by URL hash, not a path segment -- there is no
-	// .../environments/:id/comments *route* to link to, which is why this
-	// used to 404. #comments must match TABS' "comments" tab id exactly.
-	const openInPacaUrl = `${baseUrl}/projects/${match.project_id}/environments/${match.environment_id}#comments`;
-	const overlay = new PacaOverlay(openInPacaUrl);
+	const overlay = new PacaOverlay();
 
 	async function refreshAnnotations(): Promise<void> {
 		try {
@@ -199,6 +195,7 @@ async function main(): Promise<void> {
 				baseUrl,
 				match.project_id,
 				match.environment_id,
+				match.port_forward_id,
 				currentPagePath(),
 			);
 			overlay.setAnnotations(annotations);
@@ -212,7 +209,24 @@ async function main(): Promise<void> {
 	async function captureAndUploadScreenshot(
 		rect: DOMRect,
 	): Promise<string | null> {
-		const dataUrl = await captureScreenshot();
+		// chrome.tabs.captureVisibleTab shoots whatever is actually rendered
+		// in the tab, and Paca's own overlay (toolbar, pins, highlight) is
+		// very much part of that -- hide it for the capture so the
+		// screenshot shows only the page being commented on, then restore it
+		// regardless of how the capture goes. The double rAF wait is needed
+		// because hiding it here only schedules the repaint; without waiting
+		// for that repaint to actually land, the capture can still grab the
+		// previous (overlay-visible) frame.
+		overlay.hide();
+		let dataUrl: string | null;
+		try {
+			await new Promise<void>((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+			);
+			dataUrl = await captureScreenshot();
+		} finally {
+			overlay.show();
+		}
 		if (!dataUrl) return null;
 		const blob = await cropToElement(dataUrl, rect);
 		if (!blob) return null;
@@ -220,6 +234,7 @@ async function main(): Promise<void> {
 			baseUrl,
 			match.project_id,
 			match.environment_id,
+			match.port_forward_id,
 			blob,
 		);
 	}
@@ -238,8 +253,8 @@ async function main(): Promise<void> {
 			baseUrl,
 			match.project_id,
 			match.environment_id,
+			match.port_forward_id,
 			{
-				port_forward_id: match.port_forward_id,
 				page_path: currentPagePath(),
 				element_selector: selector,
 				element_selector_fallbacks: fallbacks,
@@ -274,6 +289,12 @@ async function main(): Promise<void> {
 		});
 	});
 
+	// Shared by onCopyLink/onOpen below -- both point at the exact same
+	// comment detail page, just via clipboard vs. a new tab.
+	function commentUrl(annotationId: string): string {
+		return `${baseUrl}/projects/${match.project_id}/environments/${match.environment_id}/port-forwards/${match.port_forward_id}/comments/${annotationId}`;
+	}
+
 	overlay.onPinClicked((placement) => {
 		const rect = placement.el?.isConnected
 			? placement.el.getBoundingClientRect()
@@ -285,6 +306,7 @@ async function main(): Promise<void> {
 						baseUrl,
 						match.project_id,
 						match.environment_id,
+						match.port_forward_id,
 						a.id,
 					)
 					.then(() => refreshAnnotations());
@@ -296,6 +318,7 @@ async function main(): Promise<void> {
 						baseUrl,
 						match.project_id,
 						match.environment_id,
+						match.port_forward_id,
 						a.id,
 					)
 					.then(() => refreshAnnotations());
@@ -307,11 +330,28 @@ async function main(): Promise<void> {
 						baseUrl,
 						match.project_id,
 						match.environment_id,
+						match.port_forward_id,
 						a.id,
 						body,
 					)
 					.then(() => refreshAnnotations());
 				overlay.closePanel();
+			},
+			onCopyLink: (a) => {
+				// Unlike the other actions, copying isn't terminal -- the user
+				// likely wants the popover to stay open (e.g. to also reply)
+				// after grabbing the link, so this doesn't close the panel.
+				// copyToClipboard (not navigator.clipboard directly) is required
+				// here: this page is the port-forwarded preview itself, almost
+				// always served over plain http, where the modern Clipboard API
+				// is unavailable (it needs a secure context).
+				return copyToClipboard(commentUrl(a.id));
+			},
+			onOpen: (a) => {
+				// Opens in a new tab rather than navigating this one away from
+				// the page being commented on -- doesn't close the panel,
+				// same reasoning as onCopyLink above.
+				window.open(commentUrl(a.id), "_blank", "noopener,noreferrer");
 			},
 			onCreateTask: (a) => {
 				void api
@@ -319,10 +359,36 @@ async function main(): Promise<void> {
 						baseUrl,
 						match.project_id,
 						match.environment_id,
+						match.port_forward_id,
 						a.id,
 					)
-					.then(() => refreshAnnotations());
-				overlay.closePanel();
+					.then((updated) => {
+						if (updated.task_id) {
+							window.open(
+								`${baseUrl}/projects/${match.project_id}/tasks/${updated.task_id}`,
+								"_blank",
+								"noopener,noreferrer",
+							);
+						}
+						return refreshAnnotations();
+					});
+				// Doesn't close the panel -- opens the new task in a new tab
+				// rather than concluding the interaction with this thread (see
+				// onCopyLink/onOpen above); refreshAnnotations above picks up
+				// the annotation's new task_id so a later reopen of this same
+				// popover shows "Task created" instead of offering to create a
+				// second one.
+			},
+			onCreateConversation: (a) => {
+				// No API call needed here (unlike onCreateTask) -- the new tab's
+				// own new-conversation route reads `annotationId` back out of
+				// the URL and does the actual staging itself (see
+				// apps/web's projects/$projectId/conversations/index.tsx).
+				window.open(
+					`${baseUrl}/projects/${match.project_id}/conversations?annotationId=${a.id}`,
+					"_blank",
+					"noopener,noreferrer",
+				);
 			},
 		});
 	});

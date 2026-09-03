@@ -67,13 +67,14 @@ const screenshotURLTTL = 15 * time.Minute
 
 // Service is the concrete PageAnnotation service.
 type Service struct {
-	repo   annotationdom.Repository
-	envSvc environmentdom.Service
-	tasks  TaskCreator
-	attach TaskAttachmentLinker
-	files  FileFinder
-	store  ObjectStore
-	bucket string
+	repo      annotationdom.Repository
+	envSvc    environmentdom.Service
+	tasks     TaskCreator
+	attach    TaskAttachmentLinker
+	files     FileFinder
+	store     ObjectStore
+	bucket    string
+	publicURL string
 }
 
 // New returns a configured annotation Service. envSvc is used only to
@@ -86,27 +87,58 @@ func New(repo annotationdom.Repository, envSvc environmentdom.Service, tasks Tas
 	return &Service{repo: repo, envSvc: envSvc, tasks: tasks, attach: attach, files: files, store: store, bucket: bucket}
 }
 
-func (s *Service) checkEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) error {
-	_, err := s.envSvc.GetEnvironment(ctx, projectID, environmentID)
+// WithPublicURL attaches the workspace's externally reachable base URL,
+// used to build the comment link CreateTaskFromAnnotation writes into the
+// new task's description (see annotationURL/buildTaskDescription). Mirrors
+// notificationsvc.Svc.WithEventPublishing's own publicURL wiring.
+func (s *Service) WithPublicURL(publicURL string) *Service {
+	s.publicURL = publicURL
+	return s
+}
+
+// annotationURL builds a's own canonical comment-detail-page link — the
+// exact URL apps/web's Copy button (comment-detail-view.tsx) and the
+// extension's pin popover already copy, and that apps/web's BlockNote load
+// path (lib/annotation-link.ts's matchAnnotationLink) already knows how to
+// recognize.
+func (s *Service) annotationURL(a *annotationdom.PageAnnotation) string {
+	return fmt.Sprintf("%s/projects/%s/environments/%s/port-forwards/%s/comments/%s",
+		strings.TrimRight(s.publicURL, "/"), a.ProjectID, a.EnvironmentID, a.PortForwardID, a.ID)
+}
+
+// checkPortForward verifies portForwardID belongs to environmentID which
+// belongs to projectID — the ownership gate for every annotation
+// list/create operation, since a comment now belongs to a specific port
+// forward, not the environment as a whole.
+func (s *Service) checkPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) error {
+	_, err := s.envSvc.GetPortForward(ctx, projectID, environmentID, portForwardID)
 	return err
 }
 
-func (s *Service) ListForPage(ctx context.Context, projectID, environmentID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
-	if err := s.checkEnvironment(ctx, projectID, environmentID); err != nil {
+func (s *Service) ListForPage(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, pagePath string) ([]*annotationdom.PageAnnotation, error) {
+	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
 	}
-	return s.repo.ListForPage(ctx, environmentID, pagePath)
+	return s.repo.ListForPage(ctx, portForwardID, pagePath)
 }
 
-func (s *Service) ListForEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
-	if err := s.checkEnvironment(ctx, projectID, environmentID); err != nil {
+func (s *Service) ListForPortForward(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID) ([]*annotationdom.PageAnnotation, error) {
+	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
 	}
-	return s.repo.ListForEnvironment(ctx, environmentID)
+	return s.repo.ListForPortForward(ctx, portForwardID)
 }
 
-func (s *Service) Create(ctx context.Context, projectID, environmentID uuid.UUID, in annotationdom.CreateAnnotationInput) (*annotationdom.PageAnnotation, error) {
-	if err := s.checkEnvironment(ctx, projectID, environmentID); err != nil {
+func (s *Service) Get(ctx context.Context, projectID, annotationID uuid.UUID) (*annotationdom.PageAnnotation, error) {
+	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+}
+
+func (s *Service) SearchInProject(ctx context.Context, projectID uuid.UUID, filter annotationdom.SearchFilter) ([]*annotationdom.PageAnnotation, bool, error) {
+	return s.repo.SearchInProject(ctx, projectID, filter)
+}
+
+func (s *Service) Create(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in annotationdom.CreateAnnotationInput) (*annotationdom.PageAnnotation, error) {
+	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(in.Body) == "" {
@@ -126,7 +158,7 @@ func (s *Service) Create(ctx context.Context, projectID, environmentID uuid.UUID
 		ID:                uuid.New(),
 		ProjectID:         projectID,
 		EnvironmentID:     environmentID,
-		PortForwardID:     in.PortForwardID,
+		PortForwardID:     portForwardID,
 		PagePath:          in.PagePath,
 		ElementSelector:   in.ElementSelector,
 		SelectorFallbacks: in.SelectorFallbacks,
@@ -214,7 +246,7 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 		TaskTypeID:   in.TaskTypeID,
 		StatusID:     in.StatusID,
 		Title:        taskTitleFromBody(a.Body),
-		Description:  buildTaskDescription(a),
+		Description:  buildTaskDescription(s.annotationURL(a)),
 		Importance:   0,
 		AssigneeIDs:  in.AssigneeIDs,
 		ReporterID:   &in.ReporterID,
@@ -247,8 +279,8 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
 }
 
-func (s *Service) InitiateScreenshotUpload(ctx context.Context, projectID, environmentID uuid.UUID, in annotationdom.InitiateScreenshotUploadInput) (*annotationdom.ScreenshotUploadSession, error) {
-	if err := s.checkEnvironment(ctx, projectID, environmentID); err != nil {
+func (s *Service) InitiateScreenshotUpload(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in annotationdom.InitiateScreenshotUploadInput) (*annotationdom.ScreenshotUploadSession, error) {
+	if err := s.checkPortForward(ctx, projectID, environmentID, portForwardID); err != nil {
 		return nil, err
 	}
 	fileID := uuid.New()

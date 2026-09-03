@@ -348,6 +348,7 @@
 				"contextTypeDoc": "Document",
 				"contextTypeConversation": "Conversation",
 				"contextTypeAutomation": "Automatisation",
+				"contextTypeAnnotation": "Commentaire",
 				"noContextResults": "Aucun résultat trouvé",
 				"contextSearchMinChars": "Saisissez au moins 2 caractères pour rechercher"
 			}
@@ -405,8 +406,7 @@
 			"tabs": {
 				"overview": "Aperçu",
 				"folders": "Dossiers",
-				"portForwards": "Transferts de ports",
-				"comments": "Commentaires"
+				"portForwards": "Transferts de ports"
 			},
 			"overview": {
 				"connect": "Se connecter",
@@ -505,19 +505,6 @@
 					"cancel": "Annuler",
 					"confirm": "Redémarrer"
 				}
-			},
-			"comments": {
-				"empty": "Pas encore de commentaires. Installez l'extension de navigateur Paca pour commenter directement les éléments de l'aperçu de cet environnement.",
-				"status": {
-					"open": "Ouvert",
-					"resolved": "Résolu"
-				},
-				"replyCount_one": "{{count}} réponse",
-				"replyCount_other": "{{count}} réponses",
-				"resolve": "Résoudre",
-				"reopen": "Rouvrir",
-				"createTask": "Créer une tâche",
-				"taskCreated": "Tâche créée"
 			},
 			"sshKeys": {
 				"connectHint": "Remplacez <bastion-host> par l'adresse du bastion SSH configuré sur ce déploiement.",
@@ -1241,6 +1228,77 @@
 			"watchSession": "Suivre la session",
 			"madeChange": "a effectué une modification",
 			"descriptionChangeDiff": "Différences des modifications de la description"
+		}
+	},
+	"portForwardDetail": {
+		"notFound": {
+			"title": "Redirection de port introuvable",
+			"description": "Cette redirection de port a peut-être été supprimée ou le lien n'est pas valide.",
+			"ariaLabel": "Détail de la redirection de port",
+			"backToEnvironment": "Retour à l'environnement"
+		},
+		"tabs": {
+			"overview": "Aperçu",
+			"comments": "Commentaires"
+		},
+		"overview": {
+			"containerPort": "Port du conteneur {{port}}",
+			"hostPort": "Port hôte",
+			"unassigned": "Pas encore assigné",
+			"createdAt": "Créé le {{date}}",
+			"open": "Ouvrir",
+			"delete": "Supprimer",
+			"deleteDialog": {
+				"title": "Supprimer la redirection de port ?",
+				"description_one": "Cela supprime également {{count}} commentaire fait via cette redirection de port. Cette action est irréversible.",
+				"description_other": "Cela supprime également {{count}} commentaires faits via cette redirection de port. Cette action est irréversible.",
+				"cancel": "Annuler",
+				"confirm": "Supprimer"
+			}
+		},
+		"comments": {
+			"empty": "Pas encore de commentaires. Installez l'extension de navigateur Paca pour commenter directement les éléments de l'aperçu de cette redirection de port.",
+			"status": {
+				"open": "Ouvert",
+				"resolved": "Résolu"
+			},
+			"replyCount_one": "{{count}} réponse",
+			"replyCount_other": "{{count}} réponses",
+			"resolve": "Résoudre",
+			"reopen": "Rouvrir",
+			"createTask": "Créer une tâche",
+			"taskCreated": "Tâche créée"
+		}
+	},
+	"commentDetail": {
+		"notFound": {
+			"title": "Commentaire introuvable",
+			"description": "Ce commentaire a peut-être été supprimé ou le lien n'est pas valide.",
+			"ariaLabel": "Détail du commentaire",
+			"backToPortForward": "Retour à la redirection de port"
+		},
+		"header": {
+			"createdAt": "Commenté le {{date}}"
+		},
+		"context": {
+			"title": "Contexte",
+			"pagePath": "Page",
+			"elementSelector": "Sélecteur d'élément",
+			"accessibleName": "Nom accessible",
+			"consoleErrors": "Erreurs de console",
+			"noConsoleErrors": "Aucune erreur de console capturée",
+			"failedRequests": "Requêtes échouées",
+			"noFailedRequests": "Aucune requête échouée capturée"
+		},
+		"thread": {
+			"replyPlaceholder": "Écrire une réponse…",
+			"reply": "Répondre"
+		},
+		"actions": {
+			"create": "Créer",
+			"createConversation": "Créer une conversation",
+			"copyLink": "Copier le lien",
+			"linkCopied": "Copié !"
 		}
 	},
 	"epicPicker": {

@@ -348,6 +348,19 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		permissionKey: "workflows.write",
 		requiresProject: true,
 	},
+
+	// Page annotation tools (comments pinned to elements of a running
+	// environment's forwarded port via the browser extension)
+	{
+		toolName: "list_annotations",
+		permissionKey: "annotations.read",
+		requiresProject: true,
+	},
+	{
+		toolName: "get_annotation",
+		permissionKey: "annotations.read",
+		requiresProject: true,
+	},
 ];
 
 /** Parses a permissions object/array response body into a flat boolean map. */

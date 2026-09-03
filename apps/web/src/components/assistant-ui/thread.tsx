@@ -61,7 +61,11 @@ import {
 } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
+import { getAnnotation } from "@/lib/annotation-api";
+import { matchAnnotationLink } from "@/lib/annotation-link";
+import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { parseContextItems } from "@/lib/context-items";
+import { excerptOf } from "@/lib/mention-api";
 import { cn } from "@/lib/utils";
 
 export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart;
@@ -303,6 +307,50 @@ const ThreadSuggestionItem: FC = () => {
 	);
 };
 
+/** Recognizes a comment-detail-page link (copied via the extension's pin
+ * popover or the comment detail page's own Copy button — see
+ * lib/annotation-link.ts) pasted into the message box and attaches it as
+ * context instead of letting the raw URL be typed in. A plain `onPaste` prop
+ * works here with no wrapping: ComposerPrimitive.Input composes a
+ * caller-supplied onPaste with its own default paste handling via
+ * @radix-ui/primitive's composeEventHandlers, running the caller's handler
+ * first and only falling through to the default behavior (e.g. file-paste
+ * attachments) if the event is still not defaultPrevented — so
+ * preventDefault() here doesn't affect any other paste behavior.
+ *
+ * Uses the projectId parsed out of the pasted link itself, not the
+ * currently open project — a pasted link may point to a different project,
+ * and the global chat surface has no project route param at all. If the
+ * background fetch fails (annotation deleted, network error), the paste is
+ * simply a no-op rather than falling back to inserting the raw text — this
+ * primitive's controlled value isn't something a plain event handler can
+ * splice text into after the fact. */
+function handleComposerPaste(
+	event: React.ClipboardEvent<HTMLTextAreaElement>,
+): void {
+	const text = event.clipboardData.getData("text/plain");
+	const match = matchAnnotationLink(text);
+	if (!match) return;
+	event.preventDefault();
+	getAnnotation(
+		match.projectId,
+		match.environmentId,
+		match.portForwardId,
+		match.annotationId,
+	)
+		.then((annotation) => {
+			useContextInjectionStore.getState().add({
+				type: "annotation",
+				id: annotation.id,
+				title: excerptOf(annotation.body),
+				projectId: match.projectId,
+			});
+		})
+		.catch(() => {
+			// Nothing to recover here -- see doc comment above.
+		});
+}
+
 const Composer: FC = () => {
 	const { t } = useTranslation("projects");
 	return (
@@ -324,6 +372,7 @@ const Composer: FC = () => {
 					autoFocus
 					enterKeyHint="send"
 					aria-label={t("agents.thread.messageInputAriaLabel")}
+					onPaste={handleComposerPaste}
 				/>
 				<ComposerAction />
 			</div>

@@ -334,6 +334,19 @@ export async function listPortForwards(
 	return data.data.port_forwards;
 }
 
+export async function getPortForward(
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+): Promise<EnvironmentPortForward> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<EnvironmentPortForward>
+	>(
+		`/projects/${projectId}/environments/${environmentId}/port-forwards/${portForwardId}`,
+	);
+	return data.data;
+}
+
 export async function addPortForward(
 	projectId: string,
 	environmentId: string,
@@ -520,6 +533,23 @@ export const environmentPortForwardsQueryOptions = (
 			"port-forwards",
 		],
 		queryFn: () => listPortForwards(projectId, environmentId),
+	});
+
+export const portForwardQueryOptions = (
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+) =>
+	queryOptions({
+		queryKey: [
+			"projects",
+			projectId,
+			"environments",
+			environmentId,
+			"port-forwards",
+			portForwardId,
+		],
+		queryFn: () => getPortForward(projectId, environmentId, portForwardId),
 	});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

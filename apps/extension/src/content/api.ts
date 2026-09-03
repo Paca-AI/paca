@@ -97,15 +97,27 @@ export function resolvePortForward(
 	return request(baseUrl, `/port-forwards/resolve?host_port=${hostPort}`);
 }
 
+// A comment belongs to one specific port forward's running app, not the
+// environment as a whole (an environment can have several port forwards) —
+// every annotation endpoint is nested under it accordingly.
+function annotationsBasePath(
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+): string {
+	return `/projects/${projectId}/environments/${environmentId}/port-forwards/${portForwardId}/annotations`;
+}
+
 export async function listAnnotationsForPage(
 	baseUrl: string,
 	projectId: string,
 	environmentId: string,
+	portForwardId: string,
 	pagePath: string,
 ): Promise<PageAnnotation[]> {
 	const resp = await request<{ annotations: PageAnnotation[] }>(
 		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations?page_path=${encodeURIComponent(pagePath)}`,
+		`${annotationsBasePath(projectId, environmentId, portForwardId)}?page_path=${encodeURIComponent(pagePath)}`,
 	);
 	return resp.annotations;
 }
@@ -114,11 +126,12 @@ export function createAnnotation(
 	baseUrl: string,
 	projectId: string,
 	environmentId: string,
+	portForwardId: string,
 	body: CreateAnnotationRequest,
 ): Promise<PageAnnotation> {
 	return request(
 		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations`,
+		annotationsBasePath(projectId, environmentId, portForwardId),
 		{
 			method: "POST",
 			body: JSON.stringify(body),
@@ -130,11 +143,12 @@ export function resolveAnnotation(
 	baseUrl: string,
 	projectId: string,
 	environmentId: string,
+	portForwardId: string,
 	annotationId: string,
 ): Promise<PageAnnotation> {
 	return request(
 		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations/${annotationId}/resolve`,
+		`${annotationsBasePath(projectId, environmentId, portForwardId)}/${annotationId}/resolve`,
 		{ method: "PATCH" },
 	);
 }
@@ -143,26 +157,13 @@ export function reopenAnnotation(
 	baseUrl: string,
 	projectId: string,
 	environmentId: string,
+	portForwardId: string,
 	annotationId: string,
 ): Promise<PageAnnotation> {
 	return request(
 		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations/${annotationId}/reopen`,
+		`${annotationsBasePath(projectId, environmentId, portForwardId)}/${annotationId}/reopen`,
 		{ method: "PATCH" },
-	);
-}
-
-export function addComment(
-	baseUrl: string,
-	projectId: string,
-	environmentId: string,
-	annotationId: string,
-	body: string,
-): Promise<PageAnnotation> {
-	return request(
-		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations/${annotationId}/comments`,
-		{ method: "POST", body: JSON.stringify({ body }) },
 	);
 }
 
@@ -170,12 +171,28 @@ export function createTaskFromAnnotation(
 	baseUrl: string,
 	projectId: string,
 	environmentId: string,
+	portForwardId: string,
 	annotationId: string,
 ): Promise<PageAnnotation> {
 	return request(
 		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations/${annotationId}/create-task`,
+		`${annotationsBasePath(projectId, environmentId, portForwardId)}/${annotationId}/create-task`,
 		{ method: "POST", body: JSON.stringify({}) },
+	);
+}
+
+export function addComment(
+	baseUrl: string,
+	projectId: string,
+	environmentId: string,
+	portForwardId: string,
+	annotationId: string,
+	body: string,
+): Promise<PageAnnotation> {
+	return request(
+		baseUrl,
+		`${annotationsBasePath(projectId, environmentId, portForwardId)}/${annotationId}/comments`,
+		{ method: "POST", body: JSON.stringify({ body }) },
 	);
 }
 
@@ -183,11 +200,12 @@ export async function uploadScreenshot(
 	baseUrl: string,
 	projectId: string,
 	environmentId: string,
+	portForwardId: string,
 	pngBlob: Blob,
 ): Promise<string> {
 	const session = await request<{ file_id: string; upload_url: string }>(
 		baseUrl,
-		`/projects/${projectId}/environments/${environmentId}/annotations/upload-url`,
+		`${annotationsBasePath(projectId, environmentId, portForwardId)}/upload-url`,
 		{
 			method: "POST",
 			body: JSON.stringify({

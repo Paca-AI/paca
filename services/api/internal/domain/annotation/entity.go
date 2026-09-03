@@ -87,17 +87,20 @@ type Author struct {
 
 // PageAnnotation is a single pinned comment on one element of one page.
 // Identity for "does this belong to the same page as a later visit" is
-// (EnvironmentID, PagePath) — deliberately not host/port, since a Docker
+// (PortForwardID, PagePath) — deliberately not host/port, since a Docker
 // environment's forwarded host_port can change across a "restart to apply
 // port changes" cycle without the page itself changing (see
 // environmentdom.Environment.PortsPendingRestart).
 type PageAnnotation struct {
-	ID            uuid.UUID
-	ProjectID     uuid.UUID
-	EnvironmentID uuid.UUID
-	// PortForwardID is display-only context (which forward the comment was
-	// made through) — nil if the forward was later deleted.
-	PortForwardID     *uuid.UUID
+	ID        uuid.UUID
+	ProjectID uuid.UUID
+	// EnvironmentID is derived, denormalized display context — always the
+	// owning PortForwardID's own environment, copied in at creation and
+	// never independently settable. PortForwardID is the actual owner: a
+	// comment belongs to one specific port forward's running app, not the
+	// environment as a whole, since an environment can have several.
+	EnvironmentID     uuid.UUID
+	PortForwardID     uuid.UUID
 	PagePath          string
 	ElementSelector   string
 	SelectorFallbacks []string

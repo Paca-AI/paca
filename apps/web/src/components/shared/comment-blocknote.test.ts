@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	convertAnnotationLinks,
 	convertMermaidCodeBlocks,
 	normalizeBlockContent,
 } from "./comment-blocknote";
@@ -105,5 +106,62 @@ describe("convertMermaidCodeBlocks", () => {
 	it("tolerates malformed / non-object entries", () => {
 		const input = [null, "x", 42, { type: "paragraph" }];
 		expect(convertMermaidCodeBlocks(input)).toBe(input);
+	});
+});
+
+describe("convertAnnotationLinks", () => {
+	const url =
+		"https://paca.example.com/projects/p1/environments/e1/port-forwards/pf1/comments/a1";
+
+	it("rewrites a paragraph containing a comment link into an annotationCard block", () => {
+		const input = [
+			{ type: "paragraph", content: [{ type: "text", text: url }] },
+		];
+		expect(convertAnnotationLinks(input)).toEqual([
+			{
+				type: "annotationCard",
+				props: {
+					id: "a1",
+					projectId: "p1",
+					environmentId: "e1",
+					portForwardId: "pf1",
+				},
+				content: [],
+			},
+		]);
+	});
+
+	it("joins multiple inline text runs before matching", () => {
+		const input = [
+			{
+				type: "paragraph",
+				content: [
+					{ type: "text", text: url.slice(0, 40) },
+					{ type: "text", text: url.slice(40) },
+				],
+			},
+		];
+		const out = convertAnnotationLinks(input) as Array<{ type: string }>;
+		expect(out[0].type).toBe("annotationCard");
+	});
+
+	it("leaves a paragraph with no comment link untouched", () => {
+		const input = [
+			{ type: "paragraph", content: [{ type: "text", text: "just text" }] },
+		];
+		// unchanged → returns the SAME array reference (no needless churn)
+		expect(convertAnnotationLinks(input)).toBe(input);
+	});
+
+	it("leaves non-paragraph blocks untouched", () => {
+		const input = [
+			{ type: "mermaid", props: { code: "graph TD\nA-->B" }, content: [] },
+		];
+		expect(convertAnnotationLinks(input)).toBe(input);
+	});
+
+	it("tolerates malformed / non-object entries", () => {
+		const input = [null, "x", 42, { type: "paragraph" }];
+		expect(convertAnnotationLinks(input)).toBe(input);
 	});
 });

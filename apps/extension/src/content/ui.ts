@@ -1,5 +1,16 @@
 import type { PageAnnotation } from "../shared/types";
-import { CLOSE_ICON_SVG, SEND_ICON_SVG } from "./icons";
+import {
+	CHECK_CIRCLE_ICON_SVG,
+	CHECK_ICON_SVG,
+	CLOSE_ICON_SVG,
+	COPY_ICON_SVG,
+	EXTERNAL_LINK_ICON_SVG,
+	MESSAGE_SQUARE_ICON_SVG,
+	PLUS_ICON_SVG,
+	ROTATE_CCW_ICON_SVG,
+	SEND_ICON_SVG,
+	SQUARE_CHECK_BIG_ICON_SVG,
+} from "./icons";
 import { PACA_LOGO_DARK_SVG, PACA_LOGO_LIGHT_SVG } from "./logo";
 import { resolveElement } from "./selector";
 import { STYLES } from "./styles";
@@ -20,7 +31,14 @@ export interface PanelHandlers {
 	onResolve: (annotation: PageAnnotation) => void;
 	onReopen: (annotation: PageAnnotation) => void;
 	onReply: (annotation: PageAnnotation, body: string) => void;
+	onCopyLink: (annotation: PageAnnotation) => Promise<boolean>;
+	/** Opens this annotation's own comment detail page in a new tab —
+	 * unlike the toolbar's old "Open in Paca" link (removed: it only ever
+	 * jumped to the port forward's whole Comments tab), this goes straight
+	 * to the one thread the popover is already showing. */
+	onOpen: (annotation: PageAnnotation) => void;
 	onCreateTask: (annotation: PageAnnotation) => void;
+	onCreateConversation: (annotation: PageAnnotation) => void;
 }
 
 export interface ComposerResult {
@@ -63,7 +81,7 @@ export class PacaOverlay {
 	private onPickCallback: ((el: Element) => void) | null = null;
 	private onPinClickCallback: ((placement: PinPlacement) => void) | null = null;
 
-	constructor(private readonly openInPacaUrl: string) {
+	constructor() {
 		this.host = document.createElement("div");
 		this.host.setAttribute("data-paca-overlay", "");
 		this.shadow = this.host.attachShadow({ mode: "open" });
@@ -125,19 +143,7 @@ export class PacaOverlay {
 			this.renderPins();
 		});
 
-		const openLink = button("Open in Paca ↗", "btn-ghost", () =>
-			window.open(this.openInPacaUrl, "_blank"),
-		);
-
-		toolbar.append(
-			brand,
-			commentBtn,
-			countEl,
-			sep,
-			visibilityBtn,
-			resolvedBtn,
-			openLink,
-		);
+		toolbar.append(brand, commentBtn, countEl, sep, visibilityBtn, resolvedBtn);
 		wrap.append(handle, toolbar);
 		return { wrap, commentBtn, countEl, resolvedBtn };
 	}
@@ -495,9 +501,9 @@ export class PacaOverlay {
 	}
 
 	/** One thread's worth of the pin popover: a header with the actions that
-	 * apply to THIS thread specifically (resolving or creating a task from
-	 * one thread on a shared pin must never touch the others anchored to
-	 * the same element), then its comment + replies, then a reply box. */
+	 * apply to THIS thread specifically (resolving or copying a link to one
+	 * thread on a shared pin must never touch the others anchored to the
+	 * same element), then its comment + replies, then a reply box. */
 	private renderThread(
 		annotation: PageAnnotation,
 		handlers: PanelHandlers,
@@ -505,26 +511,83 @@ export class PacaOverlay {
 		const thread = div("thread");
 
 		const resolved = annotation.status === "resolved";
+		// Icon-only throughout (title/aria-label carry the text instead) —
+		// five actions in one row leaves no room for text labels without
+		// wrapping or forcing the popover wider than Figma's own comment
+		// panel ever is.
 		const header = div("thread-header");
 		header.appendChild(
-			button(resolved ? "Reopen" : "Resolve", "btn-secondary", () =>
-				resolved
-					? handlers.onReopen(annotation)
-					: handlers.onResolve(annotation),
+			iconButton(
+				resolved ? ROTATE_CCW_ICON_SVG : CHECK_CIRCLE_ICON_SVG,
+				resolved ? "Reopen" : "Resolve",
+				"btn-secondary",
+				() =>
+					resolved
+						? handlers.onReopen(annotation)
+						: handlers.onResolve(annotation),
 			),
 		);
-		if (!annotation.task_id) {
-			header.appendChild(
-				button("Create Task", "btn-secondary", () =>
-					handlers.onCreateTask(annotation),
-				),
-			);
-		}
+		const copyBtn = iconButton(
+			COPY_ICON_SVG,
+			"Copy link",
+			"btn-secondary",
+			() => {
+				void handlers.onCopyLink(annotation).then((ok) => {
+					// Transient confirmation, plain DOM (no React here) — mirrors
+					// the web app's own "Copied!" 2-second label swap
+					// (task-header.tsx), just as an icon swap + tooltip text
+					// instead of a label swap. Only claims success once the copy
+					// actually landed -- see clipboard.ts for why it can fail.
+					copyBtn.innerHTML = ok ? CHECK_ICON_SVG : COPY_ICON_SVG;
+					copyBtn.title = ok ? "Copied!" : "Copy failed";
+					setTimeout(() => {
+						copyBtn.innerHTML = COPY_ICON_SVG;
+						copyBtn.title = "Copy link";
+					}, 2000);
+				});
+			},
+		);
+		header.appendChild(copyBtn);
+		header.appendChild(
+			iconButton(
+				EXTERNAL_LINK_ICON_SVG,
+				"Open comment page",
+				"btn-secondary",
+				() => handlers.onOpen(annotation),
+			),
+		);
+		const createItems: DropdownItem[] = annotation.task_id
+			? [
+					{
+						icon: SQUARE_CHECK_BIG_ICON_SVG,
+						label: "Task created",
+						onClick: () => {},
+						disabled: true,
+					},
+				]
+			: [
+					{
+						icon: SQUARE_CHECK_BIG_ICON_SVG,
+						label: "Create task",
+						onClick: () => handlers.onCreateTask(annotation),
+					},
+				];
+		createItems.push({
+			icon: MESSAGE_SQUARE_ICON_SVG,
+			label: "Create conversation",
+			onClick: () => handlers.onCreateConversation(annotation),
+		});
+		header.appendChild(buildDropdown(PLUS_ICON_SVG, "Create", createItems));
 		thread.appendChild(header);
 
-		thread.appendChild(renderCommentItem(annotation));
+		// Its own scroll area, separate from the header above and the reply
+		// row below — scrolling through a long thread should never push
+		// either out of view.
+		const commentsList = div("thread-comments");
+		commentsList.appendChild(renderCommentItem(annotation));
 		for (const c of annotation.comments)
-			thread.appendChild(renderCommentItem(c));
+			commentsList.appendChild(renderCommentItem(c));
+		thread.appendChild(commentsList);
 
 		const replyRow = div("reply-row");
 		const replyInput = document.createElement("textarea");
@@ -601,6 +664,20 @@ export class PacaOverlay {
 		panel.style.left = `${Math.max(8, left)}px`;
 	}
 
+	/** Hides every bit of Paca's own on-page UI (toolbar, pins, highlight,
+	 * any open panel) — used to keep chrome.tabs.captureVisibleTab's
+	 * screenshot showing only the page itself, not our own overlay, since
+	 * that capture sees whatever is actually rendered in the tab and this
+	 * host element is very much part of that. Pair with show() once the
+	 * capture is done. */
+	hide(): void {
+		this.host.style.display = "none";
+	}
+
+	show(): void {
+		this.host.style.display = "";
+	}
+
 	destroy(): void {
 		this.setCommentMode(false);
 		window.removeEventListener("scroll", this.reposition, true);
@@ -625,6 +702,100 @@ function button(
 	btn.className = `btn ${variantClassName}`;
 	btn.addEventListener("click", onClick);
 	return btn;
+}
+
+/** button()'s icon-only counterpart — ariaLabel doubles as the tooltip
+ * (title), since there's no visible text to explain what the icon means. */
+function iconButton(
+	iconSvg: string,
+	ariaLabel: string,
+	variantClassName: string,
+	onClick: () => void,
+): HTMLButtonElement {
+	const btn = document.createElement("button");
+	btn.type = "button";
+	btn.innerHTML = iconSvg;
+	btn.className = `btn btn-icon ${variantClassName}`;
+	btn.title = ariaLabel;
+	btn.setAttribute("aria-label", ariaLabel);
+	btn.addEventListener("click", onClick);
+	return btn;
+}
+
+interface DropdownItem {
+	icon: string;
+	label: string;
+	onClick: () => void;
+	disabled?: boolean;
+}
+
+/** A small anchored menu opened from an icon-only trigger button — used by
+ * the thread header's Create action (renderThread), the one action here
+ * that needs a choice (task vs. conversation) rather than a single click.
+ * Self-contained: each instance owns its own open/close state and its own
+ * outside-click listener, independent of the panel's own (see openPanel/
+ * handleOutsideClick) — a click anywhere inside the panel but outside this
+ * dropdown closes just the dropdown, never the whole panel. */
+function buildDropdown(
+	triggerIconSvg: string,
+	ariaLabel: string,
+	items: DropdownItem[],
+): HTMLElement {
+	const wrap = div("dropdown");
+	const trigger = document.createElement("button");
+	trigger.type = "button";
+	trigger.innerHTML = triggerIconSvg;
+	trigger.className = "btn btn-icon btn-secondary";
+	trigger.title = ariaLabel;
+	trigger.setAttribute("aria-label", ariaLabel);
+
+	const menu = div("dropdown-menu");
+	menu.style.display = "none";
+
+	const onOutsideClick = (e: MouseEvent) => {
+		if (e.composedPath().includes(wrap)) return;
+		close();
+	};
+	function open() {
+		menu.style.display = "block";
+		setTimeout(
+			() => document.addEventListener("click", onOutsideClick, true),
+			0,
+		);
+	}
+	function close() {
+		menu.style.display = "none";
+		document.removeEventListener("click", onOutsideClick, true);
+	}
+
+	trigger.addEventListener("click", (e) => {
+		e.stopPropagation();
+		if (menu.style.display === "none") open();
+		else close();
+	});
+
+	for (const item of items) {
+		const row = document.createElement("button");
+		row.type = "button";
+		row.className = "dropdown-item";
+		row.disabled = Boolean(item.disabled);
+		const iconSpan = document.createElement("span");
+		iconSpan.innerHTML = item.icon;
+		const labelSpan = document.createElement("span");
+		labelSpan.textContent = item.label;
+		row.append(iconSpan, labelSpan);
+		if (!item.disabled) {
+			row.addEventListener("click", (e) => {
+				e.stopPropagation();
+				close();
+				item.onClick();
+			});
+		}
+		menu.appendChild(row);
+	}
+
+	wrap.append(trigger, menu);
+	return wrap;
 }
 
 /** Shape shared by PageAnnotation and AnnotationComment — enough to render

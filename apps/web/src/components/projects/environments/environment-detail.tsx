@@ -7,7 +7,6 @@ import {
 	ExternalLink,
 	Folder as FolderIcon,
 	Loader2,
-	MessageSquare,
 	MoreHorizontal,
 	Network,
 	Play,
@@ -20,7 +19,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { EnvironmentCommentsTab } from "@/components/projects/environments/environment-comments-tab";
 import {
 	EnvironmentStatusLine,
 	EnvironmentStatusRing,
@@ -82,7 +80,7 @@ import { timeAgo } from "@/lib/time-ago";
 // its own tab — it's config about *this* environment's own row set
 // (mirrors Folders), not a "how do I reach it" walkthrough like Connect.
 
-type Tab = "overview" | "folders" | "portForwards" | "comments";
+type Tab = "overview" | "folders" | "portForwards";
 
 const TRANSITIONAL_STATUSES: EnvironmentStatus[] = [
 	"creating",
@@ -756,7 +754,17 @@ function PortForwardsTab({
 							<div className="flex items-center gap-3 min-w-0 flex-1">
 								<Network className="size-4 text-muted-foreground shrink-0" />
 								<div className="min-w-0 flex-1">
-									<p className="text-sm font-medium truncate">{pf.label}</p>
+									<Link
+										to="/projects/$projectId/environments/$environmentId/port-forwards/$portForwardId"
+										params={{
+											projectId,
+											environmentId: environment.id,
+											portForwardId: pf.id,
+										}}
+										className="text-sm font-medium truncate hover:underline block"
+									>
+										{pf.label}
+									</Link>
 									<p className="text-xs text-muted-foreground font-mono">
 										{t("environments.detail.portForwards.containerPort", {
 											port: pf.container_port,
@@ -850,11 +858,6 @@ const TABS = [
 		id: "portForwards",
 		labelKey: "environments.detail.tabs.portForwards",
 		icon: Network,
-	},
-	{
-		id: "comments",
-		labelKey: "environments.detail.tabs.comments",
-		icon: MessageSquare,
 	},
 ] as const satisfies {
 	id: Tab;
@@ -1098,12 +1101,6 @@ export function EnvironmentDetailView({
 						projectId={projectId}
 						environment={environment}
 						canWrite={canWrite}
-					/>
-				)}
-				{activeTab === "comments" && (
-					<EnvironmentCommentsTab
-						projectId={projectId}
-						environmentId={environmentId}
 					/>
 				)}
 			</div>

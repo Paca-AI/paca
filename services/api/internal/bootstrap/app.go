@@ -243,7 +243,8 @@ func New(cfg *config.Config) (*App, error) {
 	// directly (its own CreateTaskAttachment), and taskService/
 	// environmentService/storageClient are the same instances already
 	// wired above, not new ones.
-	annotationService := annotationsvc.New(annotationRepo, environmentService, taskService, attachmentRepo, attachmentRepo, storageClient, cfg.Storage.Bucket)
+	annotationService := annotationsvc.New(annotationRepo, environmentService, taskService, attachmentRepo, attachmentRepo, storageClient, cfg.Storage.Bucket).
+		WithPublicURL(cfg.Server.PublicURL)
 	userService = userService.WithAvatarService(attachmentService)
 	agentService = agentService.WithAvatarService(attachmentService)
 	// Unlike userService/agentService above, this return value isn't
@@ -401,7 +402,9 @@ func New(cfg *config.Config) (*App, error) {
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
-	annotationHandler := handler.NewAnnotationHandler(annotationService).WithAvatarService(attachmentService)
+	annotationHandler := handler.NewAnnotationHandler(annotationService).
+		WithAvatarService(attachmentService).
+		WithMemberRepo(projectRepo)
 	convHandler := handler.NewConversationHandler(agentService).WithMemberRepo(projectRepo)
 	automationHandler := handler.NewAutomationHandler(automationService).WithPluginRuntime(pluginRuntime)
 

@@ -60,7 +60,7 @@ export interface PageAnnotation {
 	id: string;
 	project_id: string;
 	environment_id: string;
-	port_forward_id: string | null;
+	port_forward_id: string;
 	page_path: string;
 	element_selector: string;
 	element_selector_fallbacks: string[];
@@ -84,8 +84,9 @@ export interface PageAnnotation {
 	comments: AnnotationComment[];
 }
 
+// port_forward_id isn't a field here — it's the owning resource in the URL
+// (see content/api.ts's createAnnotation), not part of the request body.
 export interface CreateAnnotationRequest {
-	port_forward_id: string | null;
 	page_path: string;
 	element_selector: string;
 	element_selector_fallbacks: string[];
