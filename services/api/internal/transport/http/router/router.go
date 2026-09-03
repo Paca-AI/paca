@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -1030,6 +1031,23 @@ func loggerMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// extensionCredentialedPathPattern matches the exact set of routes the Paca
+// browser extension's content script needs to call directly from a
+// forwarded environment port: refreshing its session, resolving which
+// project/environment/port-forward it's looking at, and the page-annotation
+// CRUD itself. See corsMiddleware's doc comment for why this set has to be
+// an explicit allow-list rather than "every route" — deliberately narrow so
+// that a same-hostname origin (i.e. arbitrary code running on *any*
+// forwarded port, not just the extension) can't use this exception to reach
+// unrelated, non-annotation endpoints with the caller's own credentials.
+var extensionCredentialedPathPattern = regexp.MustCompile(
+	`^/api/v1/(?:` +
+		`auth/refresh` +
+		`|port-forwards/resolve` +
+		`|projects/[^/]+/environments/[^/]+/port-forwards/[^/]+/annotations(?:/.*)?` +
+		`)$`,
+)
+
 // corsMiddleware sets CORS headers per the given allow-list. An empty list,
 // or a list containing "*", reflects Access-Control-Allow-Origin: * for
 // every request (the historical default — permissive, tighten in production
@@ -1039,19 +1057,28 @@ func loggerMiddleware(log *slog.Logger) func(http.Handler) http.Handler {
 //
 // One narrow exception, checked before either of those: a request whose
 // Origin has the same hostname as this server's own Host header (port
-// ignored) always gets its exact Origin echoed back with
-// Access-Control-Allow-Credentials: true, regardless of CORS_ORIGINS. This
-// is what lets the Paca browser extension's content script — running
-// directly on a forwarded environment port, e.g.
-// paca.example.com:31842 — call this API with `credentials: "include"`
-// and actually have access_token/refresh_token attached: cookies are
-// scoped by hostname, not by port, and SameSite is evaluated at the same
-// hostname-ignoring-port granularity, so the browser already sends those
-// cookies on such a request; without this branch, the *response* would
-// still be blocked from the extension's own JS by CORS. It's deliberately
-// narrow — it only ever fires for another port on the *same* host, never
-// a different domain — so it can't be used to grant a third-party origin
-// credentialed access no matter how CORS_ORIGINS is configured.
+// ignored) *and* whose path matches extensionCredentialedPathPattern gets
+// its exact Origin echoed back with Access-Control-Allow-Credentials: true,
+// regardless of CORS_ORIGINS. This is what lets the Paca browser
+// extension's content script — running directly on a forwarded environment
+// port, e.g. paca.example.com:31842 — call this API with `credentials:
+// "include"` and actually have access_token/refresh_token attached: cookies
+// are scoped by hostname, not by port, and SameSite is evaluated at the
+// same hostname-ignoring-port granularity, so the browser already sends
+// those cookies on such a request; without this branch, the *response*
+// would still be blocked from the extension's own JS by CORS.
+//
+// The path check matters as much as the hostname check: the forwarded port
+// serves the *user's own dev app*, not code Paca controls, so any script
+// running there — not just the extension's content script — can make this
+// exact same credentialed request. Scoping the exception to
+// extensionCredentialedPathPattern means that page can, at most, act on
+// page annotations (and read its own port-forward's identity) on the
+// caller's behalf; without this scoping it would get free, ambient,
+// full-API access to every account the caller happens to be signed in as
+// (projects, tasks, docs, admin routes, ...) just because they had that
+// page open. It also can't be widened by CORS_ORIGINS — the pattern is
+// fixed at compile time, not configuration.
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowAll := len(allowedOrigins) == 0
 	allowed := make(map[string]bool, len(allowedOrigins))
@@ -1067,7 +1094,8 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			switch {
-			case origin != "" && sameHostnameOrigin(origin, r.Host):
+			case origin != "" && sameHostnameOrigin(origin, r.Host) &&
+				extensionCredentialedPathPattern.MatchString(r.URL.Path):
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Vary", "Origin")

@@ -62,7 +62,7 @@ import {
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { getAnnotation } from "@/lib/annotation-api";
-import { matchAnnotationLink } from "@/lib/annotation-link";
+import { matchAnnotationLinkOnly } from "@/lib/annotation-link";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { parseContextItems } from "@/lib/context-items";
 import { excerptOf } from "@/lib/mention-api";
@@ -324,12 +324,19 @@ const ThreadSuggestionItem: FC = () => {
  * background fetch fails (annotation deleted, network error), the paste is
  * simply a no-op rather than falling back to inserting the raw text — this
  * primitive's controlled value isn't something a plain event handler can
- * splice text into after the fact. */
+ * splice text into after the fact.
+ *
+ * Uses matchAnnotationLinkOnly, not matchAnnotationLink's plain substring
+ * search: preventDefault() below discards the entire pasted text in favor
+ * of attaching context instead, so this must only fire when the paste is
+ * nothing but the link — otherwise a paste that also carries other text
+ * around the link (e.g. "see this: <link> — thanks") would silently drop
+ * that surrounding text instead of inserting it. */
 function handleComposerPaste(
 	event: React.ClipboardEvent<HTMLTextAreaElement>,
 ): void {
 	const text = event.clipboardData.getData("text/plain");
-	const match = matchAnnotationLink(text);
+	const match = matchAnnotationLinkOnly(text);
 	if (!match) return;
 	event.preventDefault();
 	getAnnotation(

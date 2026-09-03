@@ -458,6 +458,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAnnotationBodyEmpty
 	case errors.Is(err, annotationdom.ErrAnnotationAlreadyHasTask):
 		return http.StatusConflict, apierr.CodeAnnotationAlreadyHasTask
+	case errors.Is(err, annotationdom.ErrAnnotationTaskCreationInProgress):
+		return http.StatusConflict, apierr.CodeAnnotationTaskCreationInProgress
 	case errors.Is(err, annotationdom.ErrAnnotationScreenshotNotUploaded):
 		return http.StatusNotFound, apierr.CodeAnnotationScreenshotNotUploaded
 	case errors.Is(err, annotationdom.ErrAnnotationScreenshotMismatch):

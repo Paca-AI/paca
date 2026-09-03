@@ -6,7 +6,7 @@ import { SideMenuController, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useThemeMode } from "@/hooks/use-theme-mode";
-import { matchAnnotationLink } from "@/lib/annotation-link";
+import { matchAnnotationLinkOnly } from "@/lib/annotation-link";
 import { useMentionData } from "@/lib/mention-api";
 import { createAnnotationPasteHandler } from "./blocknote-annotation-paste-handler";
 import { CustomSideMenu } from "./blocknote-custom-side-menu";
@@ -225,6 +225,13 @@ export function convertMermaidCodeBlocks(blocks: unknown[]): unknown[] {
  * doc (or one the paste handler somehow missed) still upgrades once the
  * content reloads. Pure and shallow (top-level blocks only), matching
  * convertMermaidCodeBlocks's own scope.
+ *
+ * Uses matchAnnotationLinkOnly, not matchAnnotationLink's plain substring
+ * search: this replaces the *entire* paragraph block, so it must only fire
+ * when the paragraph is nothing but the link itself (the actual shape
+ * CreateTaskFromAnnotation's description generates) — matching on a link
+ * merely present somewhere inside a longer sentence would silently drop
+ * the rest of that sentence every time the content reloads.
  */
 export function convertAnnotationLinks(blocks: unknown[]): unknown[] {
 	let changed = false;
@@ -240,7 +247,7 @@ export function convertAnnotationLinks(blocks: unknown[]): unknown[] {
 		const text = block.content
 			.map((c) => (c?.type === "text" ? (c.text ?? "") : ""))
 			.join("");
-		const match = matchAnnotationLink(text);
+		const match = matchAnnotationLinkOnly(text);
 		if (!match) return b;
 		changed = true;
 		return {

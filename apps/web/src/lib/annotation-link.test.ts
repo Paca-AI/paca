@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { matchAnnotationLink, matchAnnotationLinkOnly } from "./annotation-link";
+import {
+	matchAnnotationLink,
+	matchAnnotationLinkOnly,
+} from "./annotation-link";
 
 const url =
 	"https://paca.example.com/projects/p1/environments/e1/port-forwards/pf1/comments/a1";
@@ -40,7 +43,9 @@ describe("matchAnnotationLinkOnly", () => {
 	});
 
 	it("does not match when other text shares the paragraph/paste", () => {
-		expect(matchAnnotationLinkOnly(`See this bug: ${url} — fix before Friday.`)).toBeNull();
+		expect(
+			matchAnnotationLinkOnly(`See this bug: ${url} — fix before Friday.`),
+		).toBeNull();
 	});
 
 	it("does not match when there is no link at all", () => {

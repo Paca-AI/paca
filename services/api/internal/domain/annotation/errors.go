@@ -10,6 +10,13 @@ var (
 	// when the annotation already has a linked task — creating one is a
 	// one-way action, not something a second click should silently repeat.
 	ErrAnnotationAlreadyHasTask = errors.New("this comment already has a linked task")
+	// ErrAnnotationTaskCreationInProgress is returned by
+	// CreateTaskFromAnnotation when another (or a very recent) call has
+	// already claimed this annotation for task creation — see
+	// Repository.ClaimTaskCreation's doc comment for why this exists: it
+	// closes the window where a retried request could otherwise create a
+	// second task for the same annotation.
+	ErrAnnotationTaskCreationInProgress = errors.New("a task is already being created for this comment")
 	// ErrAnnotationScreenshotNotUploaded is returned by
 	// CompleteScreenshotUpload when no matching InitiateScreenshotUpload
 	// call preceded it for this annotation.

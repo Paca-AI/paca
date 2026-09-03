@@ -3,6 +3,7 @@ import {
 	getFailedRequests,
 	setActiveState,
 } from "../shared/messages";
+import { PORT_COOKIE, readPacaPort } from "../shared/paca-port";
 import type { ConsoleEntry, PageAnnotation } from "../shared/types";
 import * as api from "./api";
 import { copyToClipboard } from "./clipboard";
@@ -23,29 +24,6 @@ import { PacaOverlay } from "./ui";
 // environment port the current user can see. Both checks matter: (1)
 // alone would fire on every page on the entire internet; (2) alone would
 // mean an unauthenticated request on every single page load, everywhere.
-
-// Set by services/api's login/refresh handler alongside access_token/
-// refresh_token (see auth_handler.go's portCookieName), but deliberately
-// NOT HttpOnly — a plain cookie recording which port the Paca app is
-// actually reachable on. Cookies are scoped by hostname only, never by
-// port, so the SAME cookie set while browsing the app itself is visible
-// here too, on a completely different forwarded port — which is exactly
-// what lets this content script find the real API even when Paca isn't
-// running on 443/80 (e.g. a local dev server on :3000), with no separate
-// setup step: this cookie alone is both the "is this a Paca host" signal
-// and the address to call, read fresh on every page load rather than
-// trusted from some earlier point in time.
-const PORT_COOKIE = "paca_port";
-
-function readPacaPort(): number | null {
-	const raw = document.cookie
-		.split("; ")
-		.find((c) => c.startsWith(`${PORT_COOKIE}=`))
-		?.slice(PORT_COOKIE.length + 1);
-	if (!raw) return null;
-	const port = Number(raw);
-	return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
-}
 
 const MAX_CONSOLE_ENTRIES = 20;
 const consoleBuffer: ConsoleEntry[] = [];
@@ -239,11 +217,14 @@ async function main(): Promise<void> {
 		);
 	}
 
-	async function submitComment(
-		el: Element,
-		rect: DOMRect,
-		body: string,
-	): Promise<void> {
+	async function submitComment(el: Element, body: string): Promise<void> {
+		// Re-measured here rather than reusing the rect captured back at
+		// onElementPicked time: the composer stays open while the user types
+		// (often several seconds), during which the page can scroll or
+		// reflow. Using a stale rect for the screenshot crop below would
+		// upload a screenshot of the wrong region — see approxRectFromBoundingBox
+		// for the analogous "el may have moved" handling on the read side.
+		const rect = el.getBoundingClientRect();
 		const { selector, fallbacks } = generateSelectors(el);
 		const [screenshotFileId, failedRequests] = await Promise.all([
 			captureAndUploadScreenshot(rect).catch(() => null),
@@ -283,9 +264,12 @@ async function main(): Promise<void> {
 	}
 
 	overlay.onElementPicked((el) => {
+		// Only for the composer's own initial placement -- submitComment
+		// re-measures its own fresh rect rather than reusing this one (see
+		// its own comment for why).
 		const rect = el.getBoundingClientRect();
 		overlay.showComposer(rect, ({ body }) => {
-			void submitComment(el, rect, body);
+			void submitComment(el, body);
 		});
 	});
 

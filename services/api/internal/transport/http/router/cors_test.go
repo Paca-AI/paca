@@ -32,27 +32,80 @@ func TestSameHostnameOrigin(t *testing.T) {
 
 // TestCORSMiddleware_SameHostnameGetsCredentialedAccess confirms the
 // extension's own use case works: a forwarded environment port on the same
-// hostname as the API, a different port, gets an exact Origin echo plus
-// Allow-Credentials — required for its content script's `credentials:
-// "include"` fetch to actually have access_token/refresh_token attached
-// and readable (see corsMiddleware's own doc comment).
+// hostname as the API, a different port, calling one of the extension's
+// actual routes gets an exact Origin echo plus Allow-Credentials —
+// required for its content script's `credentials: "include"` fetch to
+// actually have access_token/refresh_token attached and readable (see
+// corsMiddleware's own doc comment).
 func TestCORSMiddleware_SameHostnameGetsCredentialedAccess(t *testing.T) {
 	mw := corsMiddleware(nil) // default allow-all config, as most deployments run
-	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://paca.example.com/api/v1/projects", nil)
-	req.Host = "paca.example.com"
-	req.Header.Set("Origin", "http://paca.example.com:31842")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://paca.example.com:31842" {
-		t.Errorf("Allow-Origin = %q, want exact origin echo", got)
+	paths := []string{
+		"/api/v1/auth/refresh",
+		"/api/v1/port-forwards/resolve",
+		"/api/v1/projects/proj-1/environments/env-1/port-forwards/pf-1/annotations",
+		"/api/v1/projects/proj-1/environments/env-1/port-forwards/pf-1/annotations/",
+		"/api/v1/projects/proj-1/environments/env-1/port-forwards/pf-1/annotations/ann-1/resolve",
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
-		t.Errorf("Allow-Credentials = %q, want \"true\"", got)
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://paca.example.com"+path, nil)
+			req.Host = "paca.example.com"
+			req.Header.Set("Origin", "http://paca.example.com:31842")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://paca.example.com:31842" {
+				t.Errorf("Allow-Origin = %q, want exact origin echo", got)
+			}
+			if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+				t.Errorf("Allow-Credentials = %q, want \"true\"", got)
+			}
+		})
+	}
+}
+
+// TestCORSMiddleware_SameHostnameNonExtensionRouteGetsNoCredentials is the
+// regression test for the bug this scoping fixes: a same-hostname,
+// different-port origin (i.e. arbitrary code running on *any* forwarded
+// environment port, not just the extension) must NOT get credentialed
+// access to routes outside extensionCredentialedPathPattern — otherwise any
+// forwarded port on the platform would get ambient, full-API access on the
+// signed-in caller's behalf just by matching hostname.
+func TestCORSMiddleware_SameHostnameNonExtensionRouteGetsNoCredentials(t *testing.T) {
+	mw := corsMiddleware(nil)
+
+	paths := []string{
+		"/api/v1/projects",
+		"/api/v1/users/me",
+		"/api/v1/projects/proj-1/tasks",
+		"/api/v1/admin/settings",
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://paca.example.com"+path, nil)
+			req.Host = "paca.example.com"
+			req.Header.Set("Origin", "http://paca.example.com:31842")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+				t.Errorf("Allow-Credentials = %q, want empty (must never be set for a non-extension route)", got)
+			}
+			// Falls through to the default allow-all behavior instead — still
+			// no credentials, so still safe even though Allow-Origin is set.
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Errorf("Allow-Origin = %q, want \"*\" (default allow-all, no credentials)", got)
+			}
+		})
 	}
 }
 

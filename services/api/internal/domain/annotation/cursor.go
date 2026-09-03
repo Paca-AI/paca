@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // AnnotationCursor holds the stable ordering fields for keyset-based
@@ -28,13 +30,21 @@ func EncodeAnnotationCursor(a *PageAnnotation) string {
 // EncodeAnnotationCursor. A malformed token returns ok=false rather than an
 // error — the repository treats that as "no cursor" and restarts from the
 // first page instead of hard-failing the request, the same permissive-decode
-// convention docdom.DecodeDocumentCursor uses.
+// convention docdom.DecodeDocumentCursor uses. This includes an ID that
+// decodes fine as JSON but isn't a well-formed UUID: the repository splices
+// it straight into a query against a UUID column, so letting a non-UUID
+// string through here would otherwise surface as an unhandled Postgres
+// "invalid input syntax for type uuid" error (a 500) instead of the clean
+// "start over from page one" behavior every other malformed cursor gets.
 func DecodeAnnotationCursor(s string) (cur AnnotationCursor, ok bool) {
 	b, err := base64.URLEncoding.DecodeString(s)
 	if err != nil {
 		return AnnotationCursor{}, false
 	}
 	if err := json.Unmarshal(b, &cur); err != nil {
+		return AnnotationCursor{}, false
+	}
+	if _, err := uuid.Parse(cur.ID); err != nil {
 		return AnnotationCursor{}, false
 	}
 	return cur, true

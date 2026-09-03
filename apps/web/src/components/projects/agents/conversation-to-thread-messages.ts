@@ -162,9 +162,19 @@ interface InProgressMessage {
 	id: string;
 	createdAt: Date;
 	parts: MutablePart[];
-	// Keyed by tool_call_id so a later ObservationEvent can attach its result
-	// to the ActionEvent's tool-call part within the same turn.
-	openToolCalls: Map<string, MutableToolCallPart>;
+	// Keyed by tool_call_id so a later ObservationEvent/tool_call_update can
+	// attach its result to the matching tool-call part within the same
+	// turn. A plain array, not a single part, per id: the ActionEvent/
+	// ObservationEvent and ACPToolCallEvent vocabularies below only ever
+	// keep exactly one entry per id (by their own protocol's guarantee —
+	// ids aren't reused for genuinely different calls there), but the
+	// tool_call/tool_call_update vocabulary's own agents CAN reuse a raw id
+	// across unrelated, potentially still-overlapping calls — see
+	// nextToolCallId's doc comment — so its handler below treats this as a
+	// FIFO queue instead of a single slot, or a second still-open call
+	// under a reused id would silently steal/overwrite the first one's
+	// update.
+	openToolCalls: Map<string, MutableToolCallPart[]>;
 	// How many tool-call parts have already been started under each raw
 	// tool_call_id in this message — see nextToolCallId's own doc comment.
 	toolCallStarts: Map<string, number>;
@@ -433,7 +443,9 @@ export function eventsToThreadMessages(
 				argsText: "",
 			};
 			current.parts.push(part);
-			current.openToolCalls.set(toolCallId, part);
+			const queue = current.openToolCalls.get(toolCallId);
+			if (queue) queue.push(part);
+			else current.openToolCalls.set(toolCallId, [part]);
 			continue;
 		}
 
@@ -448,14 +460,29 @@ export function eventsToThreadMessages(
 			// ACP-over-HTTP mode has no fs-delegation callback to report them
 			// through natively the way Claude Code/Codex ACP sessions do.
 			const diffs = extractDiffBlocks(p.content);
-			const openPart =
+			const openQueue =
 				toolCallId && current
 					? current.openToolCalls.get(toolCallId)
 					: undefined;
+			// FIFO: the oldest still-open call under this raw id is always the
+			// correct match for the next update to arrive for it — the same
+			// order these agents emit their own start/update pairs in (see
+			// nextToolCallId's doc comment). Dequeued as soon as it looks
+			// terminal (a result or a failure arrived) so a later update
+			// reusing the same raw id — a different, still-open call under
+			// this agent's own id-reuse behavior — targets its own entry
+			// instead of repeatedly hitting this already-finished one. A
+			// non-terminal update (e.g. a diff with no result/failure yet)
+			// leaves it in place, so a call that gets more than one update
+			// before finishing still accumulates them all onto the same part.
+			const openPart = openQueue?.[0];
 			if (openPart) {
 				if (resultText) openPart.result = resultText;
 				if (status === "failed") openPart.isError = true;
 				if (diffs) openPart.artifact = { diffs };
+				if (openQueue && (status === "failed" || resultText)) {
+					openQueue.shift();
+				}
 			} else if (resultText) {
 				// No matching open tool-call in this turn (history gap) —
 				// append a standalone, already-complete tool-call part.
@@ -556,7 +583,7 @@ export function eventsToThreadMessages(
 				argsText,
 			};
 			current.parts.push(part);
-			current.openToolCalls.set(toolCallId, part);
+			current.openToolCalls.set(toolCallId, [part]);
 			continue;
 		}
 
@@ -593,7 +620,7 @@ export function eventsToThreadMessages(
 				typeof p.tool_call_id === "string" ? p.tool_call_id : undefined;
 			const openPart =
 				toolCallId && current
-					? current.openToolCalls.get(toolCallId)
+					? current.openToolCalls.get(toolCallId)?.[0]
 					: undefined;
 
 			const fileEditorDiff =
@@ -654,7 +681,7 @@ export function eventsToThreadMessages(
 			// never clear a diff already captured from an earlier update.
 			const diffs = extractDiffBlocks(p.content);
 
-			let part = current.openToolCalls.get(toolCallId);
+			let part = current.openToolCalls.get(toolCallId)?.[0];
 			if (!part) {
 				part = {
 					type: "tool-call",
@@ -664,7 +691,7 @@ export function eventsToThreadMessages(
 				};
 				if (diffs) part.artifact = { diffs };
 				current.parts.push(part);
-				current.openToolCalls.set(toolCallId, part);
+				current.openToolCalls.set(toolCallId, [part]);
 			} else {
 				part.toolName = toolName;
 				if (argsText) part.argsText = argsText;

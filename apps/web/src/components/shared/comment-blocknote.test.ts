@@ -153,6 +153,30 @@ describe("convertAnnotationLinks", () => {
 		expect(convertAnnotationLinks(input)).toBe(input);
 	});
 
+	it("leaves a paragraph untouched, without dropping the surrounding text, when the link shares it with other prose", () => {
+		// Regression test: converting used to be a plain substring match,
+		// which replaced the ENTIRE paragraph with just the card — silently
+		// discarding "See this bug:" and "— fix before Friday." on every
+		// load thereafter.
+		const input = [
+			{
+				type: "paragraph",
+				content: [
+					{ type: "text", text: `See this bug: ${url} — fix before Friday.` },
+				],
+			},
+		];
+		expect(convertAnnotationLinks(input)).toBe(input);
+	});
+
+	it("still converts when the link has only surrounding whitespace", () => {
+		const input = [
+			{ type: "paragraph", content: [{ type: "text", text: `  ${url}  ` }] },
+		];
+		const out = convertAnnotationLinks(input) as Array<{ type: string }>;
+		expect(out[0].type).toBe("annotationCard");
+	});
+
 	it("leaves non-paragraph blocks untouched", () => {
 		const input = [
 			{ type: "mermaid", props: { code: "graph TD\nA-->B" }, content: [] },

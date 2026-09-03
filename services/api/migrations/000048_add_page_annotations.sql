@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS page_annotations (
     body                         TEXT       NOT NULL,
     status                       TEXT       NOT NULL DEFAULT 'open',
     task_id                      UUID       REFERENCES tasks(id) ON DELETE SET NULL,
+    -- task_creation_claimed_at is a pure idempotency lock, never exposed via
+    -- the API: Service.CreateTaskFromAnnotation sets it right before calling
+    -- out to task creation, and Repository.ClaimTaskCreation only lets a
+    -- caller win the claim when task_id is still NULL and either no claim
+    -- exists yet or the existing one is older than annotationdom
+    -- .TaskCreationClaimTTL. Without it, a client retrying after a timeout
+    -- between task creation actually succeeding and task_id being recorded
+    -- would create a second task for the same annotation.
+    task_creation_claimed_at    TIMESTAMPTZ,
     created_by                   UUID       NOT NULL REFERENCES users(id),
     resolved_by                  UUID       REFERENCES users(id),
     resolved_at                  TIMESTAMPTZ,

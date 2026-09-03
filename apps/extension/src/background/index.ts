@@ -108,7 +108,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 		}
 		case "PACA_SET_ACTIVE_STATE": {
 			const tabId = sender.tab?.id;
-			if (tabId !== undefined) activeByTab.set(tabId, message.active === true);
+			if (tabId !== undefined) {
+				const active = message.active === true;
+				activeByTab.set(tabId, active);
+				// The content script calls this with false almost immediately on
+				// every non-Paca page (see content/index.ts's main()), right after
+				// the cheap synchronous paca_port cookie check fails — as soon as
+				// we know that, there's no reason to go on holding this tab's
+				// buffered request URLs/statuses (onBeforeRequest/onCompleted/
+				// onErrorOccurred below have to listen on <all_urls> to have any
+				// history ready *before* a comment can be made, so this is what
+				// bounds how long a non-preview tab's data sticks around instead
+				// of just relying on tab-close).
+				if (!active) failedRequestsByTab.delete(tabId);
+			}
 			return undefined;
 		}
 		case "PACA_GET_ACTIVE_STATE": {

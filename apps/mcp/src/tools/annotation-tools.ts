@@ -10,7 +10,12 @@ const ListAnnotationsSchema = z.object({
 	portForwardId: z.string().optional(),
 	status: z.enum(["open", "resolved"]).optional(),
 	cursor: z.string().optional(),
-	pageSize: z.number().optional(),
+	// Defaulted here (not left to the API) so omitting pageSize actually
+	// gets the "default 20" the tool description promises — the backend
+	// only applies a LIMIT when page_size is present on the query string at
+	// all, so leaving this unset would otherwise fetch every annotation in
+	// the project unbounded.
+	pageSize: z.number().min(1).max(200).optional().default(20),
 });
 
 const GetAnnotationSchema = z.object({

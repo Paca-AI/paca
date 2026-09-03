@@ -10,6 +10,7 @@ import (
 
 	annotationdom "github.com/Paca-AI/api/internal/domain/annotation"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,15 @@ func TestVerifyAnnotationScreenshotFile(t *testing.T) {
 
 type fakeAnnotationRepo struct {
 	annotations map[uuid.UUID]*annotationdom.PageAnnotation
+	// claimTaskCreationOverride, when set, replaces the default
+	// map-based ClaimTaskCreation behavior — used to simulate a claim
+	// already held by another (or a very recent) call.
+	claimTaskCreationOverride func() (bool, error)
+	// setTaskIDFailures counts down on each SetTaskID call, failing while
+	// > 0 — used to simulate transient failures that setTaskIDWithRetry
+	// should recover from.
+	setTaskIDFailures int
+	setTaskIDCalls    int
 }
 
 func (r *fakeAnnotationRepo) ListForPage(context.Context, uuid.UUID, string) ([]*annotationdom.PageAnnotation, error) {
@@ -108,7 +118,27 @@ func (r *fakeAnnotationRepo) SetScreenshotFileID(_ context.Context, id, fileID u
 func (r *fakeAnnotationRepo) SetStatus(context.Context, uuid.UUID, string, *uuid.UUID, *time.Time) error {
 	return nil
 }
-func (r *fakeAnnotationRepo) SetTaskID(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (r *fakeAnnotationRepo) SetTaskID(_ context.Context, id, taskID uuid.UUID) error {
+	r.setTaskIDCalls++
+	if r.setTaskIDFailures > 0 {
+		r.setTaskIDFailures--
+		return errors.New("transient failure")
+	}
+	if a, ok := r.annotations[id]; ok {
+		a.TaskID = &taskID
+	}
+	return nil
+}
+func (r *fakeAnnotationRepo) ClaimTaskCreation(_ context.Context, id uuid.UUID) (bool, error) {
+	if r.claimTaskCreationOverride != nil {
+		return r.claimTaskCreationOverride()
+	}
+	a, ok := r.annotations[id]
+	if !ok || a.TaskID != nil {
+		return false, nil
+	}
+	return true, nil
+}
 func (r *fakeAnnotationRepo) AddComment(context.Context, *annotationdom.AnnotationComment) error {
 	return nil
 }
@@ -280,5 +310,119 @@ func TestGetScreenshotURL_UploaderDifferentFromCreator_StillSucceeds(t *testing.
 
 	if _, err := svc.GetScreenshotURL(context.Background(), projectID, annotationID); err != nil {
 		t.Fatalf("expected a screenshot attached by a teammate (not the annotation's creator) to still be viewable, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateTaskFromAnnotation
+// ---------------------------------------------------------------------------
+
+type fakeTaskCreator struct {
+	calls int
+}
+
+func (c *fakeTaskCreator) CreateTask(_ context.Context, in taskdom.CreateTaskInput) (*taskdom.Task, error) {
+	c.calls++
+	return &taskdom.Task{ID: uuid.New(), ProjectID: in.ProjectID, Title: in.Title}, nil
+}
+
+var _ TaskCreator = (*fakeTaskCreator)(nil)
+
+func TestCreateTaskFromAnnotation_AlreadyHasTask_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	annotationID := uuid.New()
+	existingTaskID := uuid.New()
+	repo := &fakeAnnotationRepo{annotations: map[uuid.UUID]*annotationdom.PageAnnotation{
+		annotationID: {ID: annotationID, ProjectID: projectID, Body: "fix this", TaskID: &existingTaskID},
+	}}
+	tasks := &fakeTaskCreator{}
+	svc := New(repo, nil, tasks, nil, nil, nil, "test-bucket")
+
+	_, err := svc.CreateTaskFromAnnotation(context.Background(), projectID, annotationID, annotationdom.CreateTaskFromAnnotationInput{ReporterID: uuid.New()})
+	if !errors.Is(err, annotationdom.ErrAnnotationAlreadyHasTask) {
+		t.Fatalf("expected ErrAnnotationAlreadyHasTask, got %v", err)
+	}
+	if tasks.calls != 0 {
+		t.Errorf("expected no task to be created, got %d calls", tasks.calls)
+	}
+}
+
+// TestCreateTaskFromAnnotation_ClaimConflict_Rejected is the regression
+// test for the duplicate-task bug: if another call (e.g. a client retry
+// that's still in flight, or one that already succeeded but hasn't been
+// observed yet) holds the ClaimTaskCreation claim, this call must bail out
+// with ErrAnnotationTaskCreationInProgress instead of creating a second
+// task.
+func TestCreateTaskFromAnnotation_ClaimConflict_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	annotationID := uuid.New()
+	repo := &fakeAnnotationRepo{
+		annotations: map[uuid.UUID]*annotationdom.PageAnnotation{
+			annotationID: {ID: annotationID, ProjectID: projectID, Body: "fix this"},
+		},
+		claimTaskCreationOverride: func() (bool, error) { return false, nil },
+	}
+	tasks := &fakeTaskCreator{}
+	svc := New(repo, nil, tasks, nil, nil, nil, "test-bucket")
+
+	_, err := svc.CreateTaskFromAnnotation(context.Background(), projectID, annotationID, annotationdom.CreateTaskFromAnnotationInput{ReporterID: uuid.New()})
+	if !errors.Is(err, annotationdom.ErrAnnotationTaskCreationInProgress) {
+		t.Fatalf("expected ErrAnnotationTaskCreationInProgress, got %v", err)
+	}
+	if tasks.calls != 0 {
+		t.Errorf("expected no task to be created while another attempt holds the claim, got %d calls", tasks.calls)
+	}
+}
+
+func TestCreateTaskFromAnnotation_Succeeds(t *testing.T) {
+	projectID := uuid.New()
+	annotationID := uuid.New()
+	repo := &fakeAnnotationRepo{annotations: map[uuid.UUID]*annotationdom.PageAnnotation{
+		annotationID: {ID: annotationID, ProjectID: projectID, Body: "fix this"},
+	}}
+	tasks := &fakeTaskCreator{}
+	svc := New(repo, nil, tasks, nil, nil, nil, "test-bucket")
+
+	a, err := svc.CreateTaskFromAnnotation(context.Background(), projectID, annotationID, annotationdom.CreateTaskFromAnnotationInput{ReporterID: uuid.New()})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if tasks.calls != 1 {
+		t.Errorf("expected exactly one task to be created, got %d calls", tasks.calls)
+	}
+	if a.TaskID == nil {
+		t.Error("expected the returned annotation to have TaskID set")
+	}
+}
+
+// TestCreateTaskFromAnnotation_TransientSetTaskIDFailure_RecoversWithoutDuplicateTask
+// covers the failure window the claim was added to close: SetTaskID
+// failing transiently after the task was already created must not result
+// in a second task, and setTaskIDWithRetry's in-process retry should
+// recover without the caller needing to retry the whole request.
+func TestCreateTaskFromAnnotation_TransientSetTaskIDFailure_RecoversWithoutDuplicateTask(t *testing.T) {
+	projectID := uuid.New()
+	annotationID := uuid.New()
+	repo := &fakeAnnotationRepo{
+		annotations: map[uuid.UUID]*annotationdom.PageAnnotation{
+			annotationID: {ID: annotationID, ProjectID: projectID, Body: "fix this"},
+		},
+		setTaskIDFailures: setTaskIDCreationLinkRetries - 1, // fails until the last allowed attempt
+	}
+	tasks := &fakeTaskCreator{}
+	svc := New(repo, nil, tasks, nil, nil, nil, "test-bucket")
+
+	a, err := svc.CreateTaskFromAnnotation(context.Background(), projectID, annotationID, annotationdom.CreateTaskFromAnnotationInput{ReporterID: uuid.New()})
+	if err != nil {
+		t.Fatalf("expected the retry to recover, got %v", err)
+	}
+	if tasks.calls != 1 {
+		t.Errorf("expected exactly one task to be created despite the SetTaskID retries, got %d calls", tasks.calls)
+	}
+	if a.TaskID == nil {
+		t.Error("expected TaskID to end up set once the retry succeeds")
+	}
+	if repo.setTaskIDCalls != setTaskIDCreationLinkRetries {
+		t.Errorf("expected %d SetTaskID attempts, got %d", setTaskIDCreationLinkRetries, repo.setTaskIDCalls)
 	}
 }

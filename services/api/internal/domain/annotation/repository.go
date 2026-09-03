@@ -43,6 +43,19 @@ type Repository interface {
 	SetTaskID(ctx context.Context, id, taskID uuid.UUID) error
 	AddComment(ctx context.Context, c *AnnotationComment) error
 
+	// ClaimTaskCreation atomically marks annotation id as "task creation in
+	// progress" and reports whether the caller won the claim. It succeeds
+	// (claimed=true) only when the annotation has no task_id yet and either
+	// has never been claimed before or its previous claim is older than
+	// TaskCreationClaimTTL (treated as abandoned — e.g. the process handling
+	// that attempt crashed or was killed before it could finish). This is
+	// what makes Service.CreateTaskFromAnnotation's create-then-link
+	// sequence safe to retry: without it, a client retry after a timeout
+	// between the task actually being created and SetTaskID recording that
+	// fact would re-enter the "no task yet" branch and create a second task
+	// for the same annotation.
+	ClaimTaskCreation(ctx context.Context, id uuid.UUID) (claimed bool, err error)
+
 	// CreatePendingScreenshotFile inserts a pending row into the shared
 	// files table (the same table attachmentdom.File rows live in — see
 	// that type for the full column set) under a

@@ -421,6 +421,8 @@ const (
 	CodeAnnotationBodyEmpty Code = "ANNOTATION_BODY_EMPTY"
 	// CodeAnnotationAlreadyHasTask indicates CreateTaskFromAnnotation was called on an annotation that already has a linked task.
 	CodeAnnotationAlreadyHasTask Code = "ANNOTATION_ALREADY_HAS_TASK"
+	// CodeAnnotationTaskCreationInProgress indicates another (or a very recent) call has already claimed this annotation for task creation.
+	CodeAnnotationTaskCreationInProgress Code = "ANNOTATION_TASK_CREATION_IN_PROGRESS"
 	// CodeAnnotationScreenshotNotUploaded indicates GetScreenshotURL was called on an annotation with no screenshot attached.
 	CodeAnnotationScreenshotNotUploaded Code = "ANNOTATION_SCREENSHOT_NOT_UPLOADED"
 	// CodeAnnotationScreenshotMismatch indicates the referenced file isn't a screenshot the caller uploaded for this annotation.

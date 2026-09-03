@@ -313,6 +313,20 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 		return nil, annotationdom.ErrAnnotationAlreadyHasTask
 	}
 
+	// Claim before calling out to task creation — see
+	// annotationdom.Repository.ClaimTaskCreation's doc comment. This is
+	// what makes it safe for a client to retry this call after a timeout:
+	// without it, a retry landing after CreateTask below already succeeded
+	// but before SetTaskID recorded that fact would re-enter this method
+	// with a.TaskID still nil and create a second task.
+	claimed, err := s.repo.ClaimTaskCreation(ctx, annotationID)
+	if err != nil {
+		return nil, err
+	}
+	if !claimed {
+		return nil, annotationdom.ErrAnnotationTaskCreationInProgress
+	}
+
 	task, err := s.tasks.CreateTask(ctx, taskdom.CreateTaskInput{
 		ProjectID:    projectID,
 		TaskTypeID:   in.TaskTypeID,
@@ -345,10 +359,39 @@ func (s *Service) CreateTaskFromAnnotation(ctx context.Context, projectID, annot
 		}
 	}
 
-	if err := s.repo.SetTaskID(ctx, annotationID, task.ID); err != nil {
-		return nil, err
+	// The task now exists — a handful of in-process retries on the last,
+	// otherwise-transient step (a single UPDATE on a row we just read)
+	// meaningfully shrinks the window in which a client-side timeout here
+	// would leave task_id unset (the claim above, not this, is what
+	// actually prevents a duplicate task on such a retry).
+	if err := s.setTaskIDWithRetry(ctx, annotationID, task.ID); err != nil {
+		return nil, fmt.Errorf("annotation svc: link created task %s to annotation: %w", task.ID, err)
 	}
 	return s.repo.FindVisibleInProject(ctx, projectID, annotationID)
+}
+
+// setTaskIDCreationLinkRetries and setTaskIDRetryDelay bound the
+// in-process retry described in CreateTaskFromAnnotation above.
+const (
+	setTaskIDCreationLinkRetries = 3
+	setTaskIDRetryDelay          = 200 * time.Millisecond
+)
+
+func (s *Service) setTaskIDWithRetry(ctx context.Context, annotationID, taskID uuid.UUID) error {
+	var err error
+	for attempt := 0; attempt < setTaskIDCreationLinkRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(setTaskIDRetryDelay):
+			}
+		}
+		if err = s.repo.SetTaskID(ctx, annotationID, taskID); err == nil {
+			return nil
+		}
+	}
+	return err
 }
 
 // InitiateScreenshotUpload creates a pending file record and returns a

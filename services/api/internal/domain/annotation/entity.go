@@ -18,6 +18,13 @@ const (
 	StatusResolved = "resolved"
 )
 
+// TaskCreationClaimTTL bounds how long a Repository.ClaimTaskCreation claim
+// blocks a retry before being treated as abandoned — long enough to cover a
+// normal CreateTask + SetTaskID round trip with room to spare, short enough
+// that a genuinely stuck request doesn't lock a user out of retrying for
+// long.
+const TaskCreationClaimTTL = 2 * time.Minute
+
 // BoundingBox is the element's on-page position captured at comment time,
 // as both a percentage of the document (used to re-place a pin
 // approximately when every selector below fails to resolve on a later

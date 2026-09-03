@@ -84,7 +84,12 @@ export class PacaAPIAnnotationClient {
 			params.push(`port_forward_id=${encodeURIComponent(opts.portForwardId)}`);
 		if (opts.status) params.push(`status=${opts.status}`);
 		if (opts.cursor) params.push(`cursor=${encodeURIComponent(opts.cursor)}`);
-		if (opts.pageSize) params.push(`page_size=${opts.pageSize}`);
+		// Always sent, defaulted here too (not just in the tool's Zod
+		// schema): the backend only applies a LIMIT when page_size is
+		// present on the query string at all, so any other caller of this
+		// client that forgets to pass one would otherwise fetch every
+		// annotation in the project unbounded.
+		params.push(`page_size=${opts.pageSize ?? 20}`);
 		const query = params.length > 0 ? `?${params.join("&")}` : "";
 		return this.get(`/api/v1/projects/${projectId}/annotations${query}`);
 	}

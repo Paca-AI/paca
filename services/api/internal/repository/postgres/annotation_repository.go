@@ -293,6 +293,22 @@ func (r *AnnotationRepository) SetTaskID(ctx context.Context, id, taskID uuid.UU
 	return nil
 }
 
+// ClaimTaskCreation — see annotationdom.Repository.ClaimTaskCreation's doc
+// comment.
+func (r *AnnotationRepository) ClaimTaskCreation(ctx context.Context, id uuid.UUID) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE page_annotations SET task_creation_claimed_at = $1
+		WHERE id = $2 AND deleted_at IS NULL AND task_id IS NULL
+			AND (task_creation_claimed_at IS NULL OR task_creation_claimed_at < $3)`,
+		time.Now(), id.String(), time.Now().Add(-annotationdom.TaskCreationClaimTTL),
+	)
+	if err != nil {
+		return false, fmt.Errorf("annotation repo: claim task creation: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return n > 0, nil
+}
+
 // AddComment appends a reply to an annotation's thread.
 func (r *AnnotationRepository) AddComment(ctx context.Context, c *annotationdom.AnnotationComment) error {
 	_, err := r.db.ExecContext(ctx, `
@@ -381,42 +397,75 @@ func (r *AnnotationRepository) ResolvePortForward(ctx context.Context, userID uu
 // mapping helpers
 // -------------------------------------------------------------------------
 
+// hydrateAll attaches each annotation's comments in a single batched query
+// (one round trip for the whole page, not one per annotation) — ListForPage
+// in particular is the extension's own hot path, called on every preview
+// page load, so an N+1 here scales with how many pins a page has.
 func (r *AnnotationRepository) hydrateAll(ctx context.Context, recs []pageAnnotationRecord) ([]*annotationdom.PageAnnotation, error) {
 	result := make([]*annotationdom.PageAnnotation, 0, len(recs))
+	if len(recs) == 0 {
+		return result, nil
+	}
+
+	ids := make([]string, 0, len(recs))
+	for _, rec := range recs {
+		ids = append(ids, rec.ID)
+	}
+	commentsByAnnotation, err := r.listCommentsForAnnotations(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, rec := range recs {
 		a, err := annotationFromRecord(rec)
 		if err != nil {
 			return nil, err
 		}
-		comments, err := r.listComments(ctx, a.ID)
-		if err != nil {
-			return nil, err
-		}
-		a.Comments = comments
+		a.Comments = commentsByAnnotation[rec.ID]
 		result = append(result, a)
 	}
 	return result, nil
 }
 
 func (r *AnnotationRepository) listComments(ctx context.Context, annotationID uuid.UUID) ([]*annotationdom.AnnotationComment, error) {
-	var recs []annotationCommentRecord
-	err := r.db.SelectContext(ctx, &recs, `
+	byID, err := r.listCommentsForAnnotations(ctx, []string{annotationID.String()})
+	if err != nil {
+		return nil, err
+	}
+	return byID[annotationID.String()], nil
+}
+
+// listCommentsForAnnotations batch-fetches every comment across all given
+// annotation IDs in a single query, grouped by annotation ID and ordered
+// oldest-first within each group.
+func (r *AnnotationRepository) listCommentsForAnnotations(ctx context.Context, annotationIDs []string) (map[string][]*annotationdom.AnnotationComment, error) {
+	result := make(map[string][]*annotationdom.AnnotationComment, len(annotationIDs))
+	if len(annotationIDs) == 0 {
+		return result, nil
+	}
+
+	query, args, err := sqlx.In(`
 		SELECT `+annotationCommentCols+` FROM page_annotation_comments ac
 		LEFT JOIN users u ON u.id = ac.created_by
-		WHERE ac.annotation_id = $1 AND ac.deleted_at IS NULL
-		ORDER BY ac.created_at ASC`, annotationID.String())
+		WHERE ac.annotation_id IN (?) AND ac.deleted_at IS NULL
+		ORDER BY ac.annotation_id, ac.created_at ASC`, annotationIDs)
 	if err != nil {
+		return nil, fmt.Errorf("annotation repo: build list comments query: %w", err)
+	}
+	query = sqlx.Rebind(sqlx.DOLLAR, query)
+
+	var recs []annotationCommentRecord
+	if err := r.db.SelectContext(ctx, &recs, query, args...); err != nil {
 		return nil, fmt.Errorf("annotation repo: list comments: %w", err)
 	}
-	comments := make([]*annotationdom.AnnotationComment, 0, len(recs))
 	for _, rec := range recs {
 		c, err := commentFromRecord(rec)
 		if err != nil {
 			return nil, err
 		}
-		comments = append(comments, c)
+		result[rec.AnnotationID] = append(result[rec.AnnotationID], c)
 	}
-	return comments, nil
+	return result, nil
 }
 
 func annotationFromRecord(rec pageAnnotationRecord) (*annotationdom.PageAnnotation, error) {

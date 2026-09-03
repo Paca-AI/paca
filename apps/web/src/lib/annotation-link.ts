@@ -28,3 +28,25 @@ export function matchAnnotationLink(text: string): AnnotationLinkMatch | null {
 	const [, projectId, environmentId, portForwardId, annotationId] = m;
 	return { projectId, environmentId, portForwardId, annotationId };
 }
+
+// Anchored to the entire (trimmed) string rather than "found anywhere" —
+// for callers where a match triggers something destructive to the rest of
+// the text (replacing a whole paragraph/paste with just a rich card), so it
+// must not also fire when the link is merely part of a longer sentence or a
+// paste that carries other content around it, which would otherwise
+// silently drop that surrounding text.
+const ANNOTATION_LINK_ONLY_RE = new RegExp(
+	`^\\S*${ANNOTATION_LINK_RE.source}\\S*$`,
+);
+
+/** Like matchAnnotationLink, but only matches when the link (allowing
+ * surrounding whitespace and, on the same token, a URL scheme/host prefix)
+ * is the *entire* text — not merely present somewhere inside a longer
+ * paragraph or paste. */
+export function matchAnnotationLinkOnly(
+	text: string,
+): AnnotationLinkMatch | null {
+	const trimmed = text.trim();
+	if (!ANNOTATION_LINK_ONLY_RE.test(trimmed)) return null;
+	return matchAnnotationLink(trimmed);
+}
