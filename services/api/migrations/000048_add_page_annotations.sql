@@ -1,12 +1,11 @@
 -- 000048_add_page_annotations.sql
 -- Adds page annotations: comments a user pins to a specific element on a
 -- page running inside an environment's forwarded port, created via the
--- Paca browser extension (apps/extension) the same way Vercel's preview
--- toolbar lets you comment directly on a deployed preview. See
--- docs/ai-agent/environment-management.md's "Port Forwarding" section for
--- why there is no Paca proxy in the forwarded-port request path — the
--- extension talks to this API directly from a content script running on
--- the forwarded page itself.
+-- Paca browser extension (apps/extension) directly on the running preview
+-- page. See docs/ai-agent/environment-management.md's "Port Forwarding"
+-- section for why there is no Paca proxy in the forwarded-port request
+-- path — the extension talks to this API directly from a content script
+-- running on the forwarded page itself.
 --
 -- A comment belongs to the specific port forward it was made through, not
 -- the environment as a whole (an environment can have several port

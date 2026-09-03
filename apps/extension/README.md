@@ -1,8 +1,8 @@
 # Paca Browser Extension
 
 Comment directly on an element of a running [Paca environment](../../docs/ai-agent/environment-management.md)
-preview — the same way Vercel's preview toolbar works — and turn a comment
-into a real Paca task in one click.
+preview, right on the page itself, and turn a comment into a real Paca task
+in one click.
 
 ## How it works
 

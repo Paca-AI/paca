@@ -1,7 +1,7 @@
 {
   "name": "@paca-ai/paca-extension",
   "version": "0.1.0",
-  "description": "Paca browser extension — comment directly on elements of an environment preview and turn them into tasks, the same way Vercel's preview toolbar works.",
+  "description": "Paca browser extension — comment directly on elements of an environment preview and turn them into tasks.",
   "type": "module",
   "private": true,
   "scripts": {

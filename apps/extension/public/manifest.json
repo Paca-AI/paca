@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Paca",
   "version": "0.1.0",
-  "description": "Comment directly on elements of a Paca environment preview, the same way Vercel's preview toolbar works, and turn comments into Paca tasks.",
+  "description": "Comment directly on elements of a Paca environment preview and turn comments into Paca tasks.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
