@@ -9,6 +9,7 @@ import (
 
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
+	annotationdom "github.com/Paca-AI/api/internal/domain/annotation"
 	apikeydom "github.com/Paca-AI/api/internal/domain/apikey"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
@@ -450,6 +451,19 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAutomationActivateNoAction
 	case errors.Is(err, automationdom.ErrWebhookTokenInvalid):
 		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
+	case errors.Is(err, annotationdom.ErrAnnotationNotFound):
+		return http.StatusNotFound, apierr.CodeAnnotationNotFound
+	case errors.Is(err, annotationdom.ErrAnnotationBodyEmpty),
+		errors.Is(err, annotationdom.ErrCommentBodyEmpty):
+		return http.StatusBadRequest, apierr.CodeAnnotationBodyEmpty
+	case errors.Is(err, annotationdom.ErrAnnotationAlreadyHasTask):
+		return http.StatusConflict, apierr.CodeAnnotationAlreadyHasTask
+	case errors.Is(err, annotationdom.ErrAnnotationScreenshotNotUploaded):
+		return http.StatusNotFound, apierr.CodeAnnotationScreenshotNotUploaded
+	case errors.Is(err, annotationdom.ErrAnnotationScreenshotMismatch):
+		return http.StatusNotFound, apierr.CodeAnnotationScreenshotMismatch
+	case errors.Is(err, annotationdom.ErrPortForwardNotFound):
+		return http.StatusNotFound, apierr.CodePortForwardNotFound
 	default:
 		return http.StatusInternalServerError, apierr.CodeInternalError
 	}
@@ -669,6 +683,15 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAutomationActivateNoTrigger,
 		apierr.CodeAutomationActivateNoAction:
 		return http.StatusBadRequest
+	case apierr.CodeAnnotationNotFound,
+		apierr.CodeAnnotationScreenshotNotUploaded,
+		apierr.CodeAnnotationScreenshotMismatch,
+		apierr.CodePortForwardNotFound:
+		return http.StatusNotFound
+	case apierr.CodeAnnotationBodyEmpty:
+		return http.StatusBadRequest
+	case apierr.CodeAnnotationAlreadyHasTask:
+		return http.StatusConflict
 	case apierr.CodeBadRequest:
 		return http.StatusBadRequest
 	case apierr.CodePasswordChangeRequired:

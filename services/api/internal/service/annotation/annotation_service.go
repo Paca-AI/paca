@@ -65,6 +65,51 @@ type FileFinder interface {
 // a leaked URL (e.g. cached in a proxy log) is useless shortly after.
 const screenshotURLTTL = 15 * time.Minute
 
+// annotationScreenshotPrefix is the storage-key prefix every screenshot
+// uploaded via InitiateScreenshotUpload gets (see that method) — screenshots
+// live in the same shared files table as task attachments, docs, and
+// avatars, each under their own prefix.
+const annotationScreenshotPrefix = "annotations/"
+
+// isAnnotationScreenshotFile reports whether f's storage key marks it as one
+// of an annotation's own screenshots, as opposed to a task attachment, doc,
+// or avatar — each of which lives under its own prefix in the same shared
+// files table. Unlike uploader identity (see verifyAnnotationScreenshotFile
+// below), this is an invariant of the file itself: still true no matter
+// which project member with annotations.write ends up being the one to
+// attach a given upload to an annotation.
+func isAnnotationScreenshotFile(f *attachmentdom.File) bool {
+	return strings.HasPrefix(f.StorageKey, annotationScreenshotPrefix)
+}
+
+// verifyAnnotationScreenshotFile confirms f is actually a screenshot
+// uploadedBy themselves uploaded through InitiateScreenshotUpload — guards
+// Create and CompleteScreenshotUpload against a caller passing an arbitrary
+// files.id as screenshot_file_id (a task attachment, doc, avatar, or a
+// screenshot someone else uploaded that they merely know the ID of) and
+// having it silently accepted. The storage key alone can't disambiguate by
+// annotation (InitiateScreenshotUpload runs before the annotation exists,
+// so it can't be encoded in the key the way docs/{docId}/... is), so
+// uploader identity is the check instead — mirrors avatar_service.go's own
+// prefix+owner check at CompleteAvatarUpload time.
+//
+// Deliberately not reused as-is by GetScreenshotURL: annotations.write lets
+// any project member attach a screenshot to any annotation (not just their
+// own — see the "Resolve is a separate permission tier" reasoning in
+// router.go), so a legitimately-attached screenshot's uploader routinely
+// differs from the annotation's own CreatedBy. GetScreenshotURL instead
+// reuses just isAnnotationScreenshotFile, the one part of this check that's
+// still true regardless of who did the attaching.
+func verifyAnnotationScreenshotFile(f *attachmentdom.File, uploadedBy uuid.UUID) error {
+	if !isAnnotationScreenshotFile(f) {
+		return annotationdom.ErrAnnotationScreenshotMismatch
+	}
+	if f.UploadedBy == nil || *f.UploadedBy != uploadedBy {
+		return annotationdom.ErrAnnotationScreenshotMismatch
+	}
+	return nil
+}
+
 // Service is the concrete PageAnnotation service.
 type Service struct {
 	repo      annotationdom.Repository
@@ -154,8 +199,21 @@ func (s *Service) Create(ctx context.Context, projectID, environmentID, portForw
 	}
 
 	if in.ScreenshotFileID != nil {
-		// Best-effort — a screenshot that fails to mark "uploaded" (e.g.
-		// the client's PUT never actually landed) shouldn't block the
+		// Reject outright (not best-effort) if this isn't a screenshot
+		// in.CreatedBy themselves uploaded via InitiateScreenshotUpload — an
+		// arbitrary files.id here (a task attachment, doc, avatar, or
+		// another user's screenshot) would otherwise get silently attached
+		// and later handed back as a presigned URL by GetScreenshotURL. See
+		// verifyAnnotationScreenshotFile's own doc comment.
+		f, err := s.files.FindFileByID(ctx, *in.ScreenshotFileID)
+		if err != nil {
+			return nil, fmt.Errorf("annotation svc: find screenshot file: %w", err)
+		}
+		if err := verifyAnnotationScreenshotFile(f, in.CreatedBy); err != nil {
+			return nil, err
+		}
+		// Best-effort from here — a screenshot that fails to mark "uploaded"
+		// (e.g. the client's PUT never actually landed) shouldn't block the
 		// comment itself from being saved; the pin just ends up without a
 		// visible screenshot, same as if none had been attached.
 		_ = s.repo.MarkScreenshotFileUploaded(ctx, *in.ScreenshotFileID)
@@ -300,7 +358,7 @@ func (s *Service) InitiateScreenshotUpload(ctx context.Context, projectID, envir
 		return nil, err
 	}
 	fileID := uuid.New()
-	storageKey := fmt.Sprintf("annotations/%s/%s", fileID.String(), sanitizeFileName(in.FileName))
+	storageKey := annotationScreenshotPrefix + fileID.String() + "/" + sanitizeFileName(in.FileName)
 
 	if err := s.repo.CreatePendingScreenshotFile(ctx, fileID, in.UploadedBy, storageKey, s.bucket, in.FileName, in.ContentType, in.FileSize); err != nil {
 		return nil, err
@@ -317,8 +375,18 @@ func (s *Service) InitiateScreenshotUpload(ctx context.Context, projectID, envir
 // comment was already submitted" path. The common path (screenshot
 // captured and uploaded in the same flow as the comment itself) instead
 // passes ScreenshotFileID directly to Create, which finalizes it inline.
-func (s *Service) CompleteScreenshotUpload(ctx context.Context, projectID, annotationID, fileID uuid.UUID) (*annotationdom.PageAnnotation, error) {
+// completedBy must match the file's own uploader (see
+// verifyAnnotationScreenshotFile) — rejects a caller passing someone else's
+// (or an unrelated) files.id here.
+func (s *Service) CompleteScreenshotUpload(ctx context.Context, projectID, annotationID, fileID, completedBy uuid.UUID) (*annotationdom.PageAnnotation, error) {
 	if _, err := s.repo.FindVisibleInProject(ctx, projectID, annotationID); err != nil {
+		return nil, err
+	}
+	f, err := s.files.FindFileByID(ctx, fileID)
+	if err != nil {
+		return nil, fmt.Errorf("annotation svc: find screenshot file: %w", err)
+	}
+	if err := verifyAnnotationScreenshotFile(f, completedBy); err != nil {
 		return nil, err
 	}
 	if err := s.repo.MarkScreenshotFileUploaded(ctx, fileID); err != nil {
@@ -349,6 +417,17 @@ func (s *Service) GetScreenshotURL(ctx context.Context, projectID, annotationID 
 	f, err := s.files.FindFileByID(ctx, *a.ScreenshotFileID)
 	if err != nil {
 		return "", fmt.Errorf("annotation svc: find screenshot file: %w", err)
+	}
+	// Defense in depth: Create/CompleteScreenshotUpload already reject a
+	// mismatched file at attach time, but re-checking the prefix here means
+	// a future bug in either (or a screenshot_file_id set some other way)
+	// can never turn into presigning a URL for a task attachment, doc, or
+	// avatar instead of an actual screenshot. Not the uploader-identity half
+	// of that check (see verifyAnnotationScreenshotFile's own doc comment on
+	// why) — any project member with annotations.write may legitimately be
+	// the one who attached this screenshot, not just annotation's creator.
+	if !isAnnotationScreenshotFile(f) {
+		return "", annotationdom.ErrAnnotationScreenshotMismatch
 	}
 	bucket := f.Bucket
 	if bucket == "" {

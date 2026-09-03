@@ -48,8 +48,9 @@ type Service interface {
 	// before an annotation row can reference it).
 	InitiateScreenshotUpload(ctx context.Context, projectID, environmentID, portForwardID uuid.UUID, in InitiateScreenshotUploadInput) (*ScreenshotUploadSession, error)
 	// CompleteScreenshotUpload marks the presigned upload as finished and
-	// links the resulting file to annotationID.
-	CompleteScreenshotUpload(ctx context.Context, projectID, annotationID, fileID uuid.UUID) (*PageAnnotation, error)
+	// links the resulting file to annotationID. completedBy must match the
+	// file's own uploader (see ErrAnnotationScreenshotMismatch).
+	CompleteScreenshotUpload(ctx context.Context, projectID, annotationID, fileID, completedBy uuid.UUID) (*PageAnnotation, error)
 
 	// ResolvePortForward turns a raw host port into the project/
 	// environment/port-forward it currently belongs to, scoped to

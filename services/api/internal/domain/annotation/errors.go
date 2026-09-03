@@ -14,6 +14,12 @@ var (
 	// CompleteScreenshotUpload when no matching InitiateScreenshotUpload
 	// call preceded it for this annotation.
 	ErrAnnotationScreenshotNotUploaded = errors.New("no pending screenshot upload for this annotation")
+	// ErrAnnotationScreenshotMismatch is returned by Create,
+	// CompleteScreenshotUpload, and GetScreenshotURL when the referenced
+	// files.id isn't actually a screenshot the acting user uploaded via
+	// InitiateScreenshotUpload — see verifyAnnotationScreenshotFile's own
+	// doc comment for why this guard exists.
+	ErrAnnotationScreenshotMismatch = errors.New("file does not belong to this annotation's screenshot upload")
 )
 
 // Comment errors

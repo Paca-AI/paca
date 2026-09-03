@@ -448,7 +448,7 @@ func (h *AnnotationHandler) CompleteScreenshotUpload(w http.ResponseWriter, r *h
 		presenter.Error(w, r, err)
 		return
 	}
-	a, err := h.svc.CompleteScreenshotUpload(r.Context(), projectID, annotationID, req.FileID)
+	a, err := h.svc.CompleteScreenshotUpload(r.Context(), projectID, annotationID, req.FileID, callerID(r))
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

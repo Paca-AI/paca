@@ -414,6 +414,19 @@ const (
 	CodeAutomationActivateNoAction Code = "AUTOMATION_ACTIVATE_NO_ACTION"
 	// CodeAutomationWebhookTokenInvalid indicates a webhook trigger POST presented a missing, wrong, or revoked token.
 	CodeAutomationWebhookTokenInvalid Code = "AUTOMATION_WEBHOOK_TOKEN_INVALID"
+
+	// CodeAnnotationNotFound indicates the requested page annotation does not exist.
+	CodeAnnotationNotFound Code = "ANNOTATION_NOT_FOUND"
+	// CodeAnnotationBodyEmpty indicates a comment/reply body was empty.
+	CodeAnnotationBodyEmpty Code = "ANNOTATION_BODY_EMPTY"
+	// CodeAnnotationAlreadyHasTask indicates CreateTaskFromAnnotation was called on an annotation that already has a linked task.
+	CodeAnnotationAlreadyHasTask Code = "ANNOTATION_ALREADY_HAS_TASK"
+	// CodeAnnotationScreenshotNotUploaded indicates GetScreenshotURL was called on an annotation with no screenshot attached.
+	CodeAnnotationScreenshotNotUploaded Code = "ANNOTATION_SCREENSHOT_NOT_UPLOADED"
+	// CodeAnnotationScreenshotMismatch indicates the referenced file isn't a screenshot the caller uploaded for this annotation.
+	CodeAnnotationScreenshotMismatch Code = "ANNOTATION_SCREENSHOT_MISMATCH"
+	// CodePortForwardNotFound indicates no port forward matches the requested host port for a project the caller belongs to.
+	CodePortForwardNotFound Code = "PORT_FORWARD_NOT_FOUND"
 )
 
 // Error carries a machine-readable Code alongside a human-readable Message.
