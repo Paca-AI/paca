@@ -26,6 +26,18 @@ type UpdateViewRequest struct {
 	Position *float64            `json:"position"`
 }
 
+// UpdateUserViewConfigRequest is the body for PUT
+// /projects/:projectId/views/:viewId/config, which stores the current user's
+// personal view config (settings and filters) without touching the shared view.
+type UpdateUserViewConfigRequest struct {
+	Config *ViewConfigDTO `json:"config"`
+}
+
+// ToViewConfig maps the request to a domain ViewConfig (empty when omitted).
+func (r UpdateUserViewConfigRequest) ToViewConfig() sprintdom.ViewConfig {
+	return toViewConfig(r.Config)
+}
+
 // ViewFiltersDTO is the JSON representation of sprintdom.ViewFilters.
 // Each dimension is an optional FilterConfig selector that the client uses to
 // determine which entity IDs to include when querying tasks.

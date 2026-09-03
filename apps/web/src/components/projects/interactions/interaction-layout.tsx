@@ -68,6 +68,7 @@ import {
 	type Task,
 	type TaskListResult,
 	taskQueryOptions,
+	updateMyViewConfig,
 	updateSprint,
 	updateTask,
 	updateViewById,
@@ -473,7 +474,10 @@ export function InteractionLayout({
 			uninitializedViews.map((view) => {
 				const config = buildDefaultViewConfig(view.layout, view.config);
 				if (!config) return Promise.resolve(view);
-				return updateViewById(projectId, view.id, { config });
+				// Per-user: default filters are derived from the current user's
+				// preferences, so seed them into this user's override — never the
+				// shared row (which would leak one user's defaults to everyone).
+				return updateMyViewConfig(projectId, view.id, config);
 			}),
 		)
 			.then(() => qc.invalidateQueries({ queryKey: viewsQueryKey }))
@@ -1569,9 +1573,12 @@ export function InteractionLayout({
 		onSuccess: () => qc.invalidateQueries({ queryKey: viewsQueryKey }),
 	});
 
+	// View settings & filters are PER-USER: persist to the current user's
+	// personal override (updateMyViewConfig) instead of the shared view row, so
+	// one member's sort/filter/field choices never change what others see.
 	const updateViewConfigMutation = useMutation({
 		mutationFn: (payload: { viewId: string; config: ViewConfig }) =>
-			updateViewById(projectId, payload.viewId, { config: payload.config }),
+			updateMyViewConfig(projectId, payload.viewId, payload.config),
 		onSuccess: () => {
 			setPreviewConfig(undefined);
 			qc.invalidateQueries({ queryKey: viewsQueryKey });

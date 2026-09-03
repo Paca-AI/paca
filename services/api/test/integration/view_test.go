@@ -31,20 +31,26 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeViewRepoIT struct {
-	mu        sync.RWMutex
-	views     map[uuid.UUID]*sprintdom.SprintView
-	positions map[string]*sprintdom.ViewTaskPosition
+	mu          sync.RWMutex
+	views       map[uuid.UUID]*sprintdom.SprintView
+	positions   map[string]*sprintdom.ViewTaskPosition
+	userConfigs map[string]sprintdom.ViewConfig
 }
 
 func newFakeViewRepoIT() *fakeViewRepoIT {
 	return &fakeViewRepoIT{
-		views:     make(map[uuid.UUID]*sprintdom.SprintView),
-		positions: make(map[string]*sprintdom.ViewTaskPosition),
+		views:       make(map[uuid.UUID]*sprintdom.SprintView),
+		positions:   make(map[string]*sprintdom.ViewTaskPosition),
+		userConfigs: make(map[string]sprintdom.ViewConfig),
 	}
 }
 
 func viewPosKey(viewID, taskID uuid.UUID) string {
 	return viewID.String() + ":" + taskID.String()
+}
+
+func userViewCfgKey(viewID, userID uuid.UUID) string {
+	return viewID.String() + ":" + userID.String()
 }
 
 func (r *fakeViewRepoIT) ListViews(_ context.Context, sprintID uuid.UUID) ([]*sprintdom.SprintView, error) {
@@ -175,6 +181,25 @@ func (r *fakeViewRepoIT) ReorderViews(_ context.Context, items []sprintdom.ViewR
 			r.views[item.ID] = &cp
 		}
 	}
+	return nil
+}
+
+func (r *fakeViewRepoIT) GetUserViewConfigs(_ context.Context, userID uuid.UUID, viewIDs []uuid.UUID) (map[uuid.UUID]sprintdom.ViewConfig, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[uuid.UUID]sprintdom.ViewConfig)
+	for _, viewID := range viewIDs {
+		if cfg, ok := r.userConfigs[userViewCfgKey(viewID, userID)]; ok {
+			out[viewID] = cfg
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeViewRepoIT) UpsertUserViewConfig(_ context.Context, viewID, userID uuid.UUID, cfg sprintdom.ViewConfig) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.userConfigs[userViewCfgKey(viewID, userID)] = cfg
 	return nil
 }
 

@@ -334,6 +334,25 @@ export async function updateViewById(
 	return mapView(data.data);
 }
 
+/**
+ * Persist the current user's PERSONAL view config (settings & filters).
+ *
+ * Unlike {@link updateViewById}, which mutates the project-shared view row,
+ * this targets a per-user override so a member's sort/filter/field choices
+ * never leak to other members. Reads (list/get views) already return the
+ * caller's effective config, so the shape is identical to a shared view.
+ */
+export async function updateMyViewConfig(
+	projectId: string,
+	viewId: string,
+	config: ViewConfig,
+): Promise<InteractionView> {
+	const { data } = await apiClient.instance.put<
+		SuccessEnvelope<Omit<InteractionView, "layout">>
+	>(`/projects/${projectId}/views/${viewId}/config`, { config });
+	return mapView(data.data);
+}
+
 export async function deleteViewById(
 	projectId: string,
 	viewId: string,

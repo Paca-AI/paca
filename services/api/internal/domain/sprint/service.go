@@ -95,6 +95,18 @@ type ViewService interface {
 	// context.  viewIDs must contain every view ID for that project+context
 	// in the desired order.
 	ReorderProjectViews(ctx context.Context, projectID uuid.UUID, viewCtx ViewContext, viewIDs []uuid.UUID) error
+
+	// SetUserViewConfig stores the current user's personal config (settings and
+	// filters) for a view, verifying it belongs to projectID, and returns the
+	// view carrying that personal config.  The change is private to the user:
+	// it never touches the shared view row and emits no project-wide event.
+	SetUserViewConfig(ctx context.Context, projectID, viewID, userID uuid.UUID, cfg ViewConfig) (*SprintView, error)
+
+	// OverlayUserConfigs replaces each view's Config with the user's personal
+	// override where one exists, leaving the shared default otherwise.  It is
+	// safe to call with views obtained from a cache: only the returned copies
+	// are mutated.  A nil user (unauthenticated) is a no-op.
+	OverlayUserConfigs(ctx context.Context, userID uuid.UUID, views []*SprintView) error
 }
 
 // CreateViewInput carries fields required to create a sprint view.

@@ -53,6 +53,15 @@ type ViewRepository interface {
 	// ReorderViews bulk-updates the position of multiple views in a single
 	// transaction.  items must contain one entry per view being repositioned.
 	ReorderViews(ctx context.Context, items []ViewReorderItem) error
+
+	// GetUserViewConfigs returns a user's personal config overrides for the
+	// given views, keyed by view ID.  Views without an override are absent
+	// from the returned map.
+	GetUserViewConfigs(ctx context.Context, userID uuid.UUID, viewIDs []uuid.UUID) (map[uuid.UUID]ViewConfig, error)
+
+	// UpsertUserViewConfig stores (or replaces) a user's personal config for a
+	// single view.
+	UpsertUserViewConfig(ctx context.Context, viewID, userID uuid.UUID, cfg ViewConfig) error
 }
 
 // ViewReorderItem carries the new position for a single view.
