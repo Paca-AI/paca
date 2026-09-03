@@ -59,6 +59,7 @@ import {
 	environmentFoldersQueryOptions,
 	environmentPortForwardsQueryOptions,
 	environmentQueryOptions,
+	portForwardUrl,
 	restartEnvironment,
 	startEnvironment,
 	stopEnvironment,
@@ -786,13 +787,14 @@ function PortForwardsTab({
 												size="icon"
 												className="size-7 text-muted-foreground shrink-0"
 												title={t("environments.detail.portForwards.open")}
-												onClick={() =>
+												onClick={() => {
+													if (pf.host_port === null) return;
 													window.open(
-														`http://${host}:${pf.host_port}`,
+														portForwardUrl(host, pf.host_port),
 														"_blank",
 														"noopener,noreferrer",
-													)
-												}
+													);
+												}}
 											>
 												<ExternalLink className="size-3.5" />
 											</Button>

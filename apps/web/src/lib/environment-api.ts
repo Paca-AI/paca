@@ -440,6 +440,19 @@ export async function getEnvironmentConfig(): Promise<EnvironmentDeploymentConfi
 	return data.data;
 }
 
+/**
+ * Builds the URL to open a forwarded port at, using the current page's own
+ * protocol rather than hardcoding http: — a forwarded preview shares the
+ * Paca app's own hostname, differing only by port (see services/api's
+ * corsMiddleware doc comment and the extension's content script, which
+ * builds its own baseUrl the same way), so a deployment fronting previews
+ * over TLS via a proxy on PORT_FORWARD_HOST would otherwise get a URL that
+ * opens a failing plain-HTTP origin instead of the real one.
+ */
+export function portForwardUrl(host: string, port: number, path = ""): string {
+	return `${window.location.protocol}//${host}:${port}${path}`;
+}
+
 // Not project- or environment-scoped (the same deployment-wide values for
 // everyone), so one shared query key/cache entry — mirrors how
 // currentUserQueryOptions/branding-style global config is fetched

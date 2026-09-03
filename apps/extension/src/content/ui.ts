@@ -74,6 +74,7 @@ export class PacaOverlay {
 	private highlightEl: HTMLElement;
 	private pinsLayer: HTMLElement;
 	private panelEl: HTMLElement | null = null;
+	private activeToastEl: HTMLElement | null = null;
 
 	private commentMode = false;
 	private showResolved = false;
@@ -678,8 +679,40 @@ export class PacaOverlay {
 		this.host.style.display = "";
 	}
 
+	// How long a toast stays up before auto-dismissing if the user doesn't
+	// close it themselves.
+	private static readonly TOAST_DURATION_MS = 6000;
+
+	/** Surfaces a brief, dismissible error notice — used when a comment
+	 * action (resolve/reopen/reply/create-task/submit) fails, so a 403 (a
+	 * Viewer-only session) or an expired session doesn't just silently do
+	 * nothing (see content/index.ts's own callers). Replaces any
+	 * already-showing toast rather than stacking them. */
+	showToast(message: string): void {
+		this.activeToastEl?.remove();
+
+		const toast = div("toast");
+		const text = document.createElement("span");
+		text.textContent = message;
+		toast.appendChild(text);
+
+		const closeBtn = document.createElement("button");
+		closeBtn.className = "toast-close";
+		closeBtn.setAttribute("aria-label", "Dismiss");
+		closeBtn.innerHTML = CLOSE_ICON_SVG;
+		closeBtn.addEventListener("click", () => toast.remove());
+		toast.appendChild(closeBtn);
+
+		this.shadow.appendChild(toast);
+		this.activeToastEl = toast;
+		setTimeout(() => {
+			if (this.activeToastEl === toast) toast.remove();
+		}, PacaOverlay.TOAST_DURATION_MS);
+	}
+
 	destroy(): void {
 		this.setCommentMode(false);
+		this.activeToastEl?.remove();
 		window.removeEventListener("scroll", this.reposition, true);
 		window.removeEventListener("resize", this.reposition);
 		this.host.remove();

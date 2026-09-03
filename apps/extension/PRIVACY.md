@@ -9,10 +9,13 @@ what data the extension handles and how.
 
 ## What the extension does, in one sentence
 
-The extension stays completely inactive on every website except your own
-Paca instance's forwarded environment preview pages, where it lets you pin
-comments to page elements and sends them directly to your own Paca
-instance's API.
+The extension's scripts load on every page you visit — a technical
+requirement of how browser extensions work, not a choice to run everywhere
+— but on any page that isn't your own Paca instance's forwarded environment
+preview, all they do is check for a Paca-specific cookie and stop; nothing
+is captured or sent anywhere unless that check finds one. Only on a
+forwarded preview page does the extension let you pin comments to page
+elements and send them directly to your own Paca instance's API.
 
 ## Data the extension collects
 
@@ -20,13 +23,18 @@ instance's API.
   screenshot of the element you clicked, a snapshot of that element (its
   tag name, a short excerpt of its text, its accessible name, and a
   sanitized excerpt of its outer HTML), and the comment text you type.
-- **Network activity on the active tab, read-only.** The extension watches
-  for failed requests (HTTP 4xx/5xx responses or connection errors) on the
-  page you're currently viewing, so that a submitted comment can include
-  the failed requests observed since the page loaded. It never blocks,
-  modifies, or redirects any request — it only observes. This data is kept
-  in memory per tab and discarded when the tab closes; it's only sent
-  anywhere if you submit a comment while it's present.
+- **Failed network requests, read-only, across your open tabs.** To attach
+  useful debugging context to a comment, the extension needs a short
+  history of failed requests (HTTP 4xx/5xx responses or connection errors)
+  from *before* you started writing it — so this one part of the extension
+  necessarily runs in the background across all your open tabs, not just
+  Paca preview pages, buffering up to 50 recent failed requests per tab. It
+  never blocks, modifies, or redirects any request — it only observes.
+  This buffer is discarded per tab as soon as the extension determines
+  that tab isn't a Paca preview, discarded again on every new page
+  navigation, and discarded entirely when the tab closes; only the tab
+  you're actually commenting in ever has its buffer sent anywhere, and
+  only when you submit that comment.
 
 ## Data the extension does **not** collect
 

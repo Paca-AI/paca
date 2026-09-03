@@ -30,6 +30,7 @@ import {
 	environmentPortForwardsQueryOptions,
 	environmentQueryOptions,
 	portForwardQueryOptions,
+	portForwardUrl,
 } from "@/lib/environment-api";
 
 // Reached from environment-detail.tsx's PortForwardsTab (each row links
@@ -164,6 +165,7 @@ export function PortForwardDetailView({
 	}
 
 	const host = config?.port_forward_host || null;
+	const hostPort = portForward.host_port;
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0">
@@ -186,12 +188,12 @@ export function PortForwardDetailView({
 						</h1>
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
-						{portForward.host_port !== null && host && (
+						{hostPort !== null && host && (
 							<Button
 								variant="outline"
 								onClick={() =>
 									window.open(
-										`http://${host}:${portForward.host_port}`,
+										portForwardUrl(host, hostPort),
 										"_blank",
 										"noopener,noreferrer",
 									)

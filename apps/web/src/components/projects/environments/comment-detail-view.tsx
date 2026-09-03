@@ -38,6 +38,7 @@ import {
 import {
 	environmentConfigQueryOptions,
 	portForwardQueryOptions,
+	portForwardUrl,
 } from "@/lib/environment-api";
 
 // A full page for one comment — reached from PortForwardCommentsTab's list
@@ -208,6 +209,7 @@ export function CommentDetailView({
 	}
 
 	const resolved = annotation.status === "resolved";
+	const hostPort = portForward?.host_port ?? null;
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden bg-background">
@@ -223,13 +225,17 @@ export function CommentDetailView({
 					{t("commentDetail.notFound.backToPortForward")}
 				</Link>
 				<div className="flex items-center gap-2">
-					{portForward?.host_port != null && config?.port_forward_host && (
+					{hostPort !== null && config?.port_forward_host && (
 						<Button
 							size="sm"
 							variant="outline"
 							onClick={() =>
 								window.open(
-									`http://${config.port_forward_host}:${portForward.host_port}${annotation.page_path}`,
+									portForwardUrl(
+										config.port_forward_host,
+										hostPort,
+										annotation.page_path,
+									),
 									"_blank",
 									"noopener,noreferrer",
 								)

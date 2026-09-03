@@ -404,4 +404,44 @@ export const STYLES = /* css */ `
 .send-btn:hover { background: color-mix(in srgb, var(--primary) 85%, var(--card)); }
 
 .panel-close-wrap { display: flex; justify-content: flex-end; padding: 6px 6px 0; }
+
+/* --- Toast — a brief, dismissible notice for a comment action that failed
+   (e.g. a 403 from a Viewer-only session, or an expired one) instead of
+   silently doing nothing. Same radius/shadow language as .panel, fixed to
+   the viewport corner so it doesn't need to track scroll/resize the way an
+   anchored panel does. --- */
+.toast {
+	position: fixed;
+	right: 16px;
+	bottom: 16px;
+	max-width: 320px;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 10px 12px;
+	background: var(--card);
+	color: var(--card-foreground);
+	border-radius: var(--radius);
+	border-left: 3px solid var(--destructive);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--foreground) 10%, transparent),
+		0 4px 16px rgba(0, 0, 0, 0.15);
+	pointer-events: auto;
+	font-size: 13px;
+	line-height: 1.4;
+}
+.toast-close {
+	all: unset;
+	box-sizing: border-box;
+	cursor: pointer;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border-radius: calc(var(--radius) - 2px);
+	color: var(--muted-foreground);
+}
+.toast-close:hover { background: var(--muted); color: var(--card-foreground); }
 `;

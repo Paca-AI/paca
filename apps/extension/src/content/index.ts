@@ -58,6 +58,19 @@ window.addEventListener("message", (event) => {
 	});
 });
 
+// Every comment action below (submit/resolve/reopen/reply/create-task) was
+// previously fire-and-forget with no visible failure path -- a 403 (e.g. a
+// Viewer with only annotations.read) or an expired session did nothing the
+// user could see, only a `[Paca]` log entry in DevTools. Surfaced via
+// overlay.showToast instead so a real failure isn't silently swallowed.
+function describeActionError(err: unknown): string {
+	if (err instanceof api.ApiError) {
+		if (err.status === 401) return "Your session has expired — sign in again.";
+		if (err.status === 403) return "You don't have permission to do that.";
+	}
+	return "That didn't go through — see the console for details.";
+}
+
 function currentHostPort(): number {
 	if (location.port) return Number(location.port);
 	return location.protocol === "https:" ? 443 : 80;
@@ -269,7 +282,10 @@ async function main(): Promise<void> {
 		// its own comment for why).
 		const rect = el.getBoundingClientRect();
 		overlay.showComposer(rect, ({ body }) => {
-			void submitComment(el, body);
+			void submitComment(el, body).catch((err) => {
+				log("submitComment failed", err);
+				overlay.showToast(describeActionError(err));
+			});
 		});
 	});
 
@@ -293,7 +309,11 @@ async function main(): Promise<void> {
 						match.port_forward_id,
 						a.id,
 					)
-					.then(() => refreshAnnotations());
+					.then(() => refreshAnnotations())
+					.catch((err) => {
+						log("resolveAnnotation failed", err);
+						overlay.showToast(describeActionError(err));
+					});
 				overlay.closePanel();
 			},
 			onReopen: (a) => {
@@ -305,7 +325,11 @@ async function main(): Promise<void> {
 						match.port_forward_id,
 						a.id,
 					)
-					.then(() => refreshAnnotations());
+					.then(() => refreshAnnotations())
+					.catch((err) => {
+						log("reopenAnnotation failed", err);
+						overlay.showToast(describeActionError(err));
+					});
 				overlay.closePanel();
 			},
 			onReply: (a, body) => {
@@ -318,7 +342,11 @@ async function main(): Promise<void> {
 						a.id,
 						body,
 					)
-					.then(() => refreshAnnotations());
+					.then(() => refreshAnnotations())
+					.catch((err) => {
+						log("addComment failed", err);
+						overlay.showToast(describeActionError(err));
+					});
 				overlay.closePanel();
 			},
 			onCopyLink: (a) => {
@@ -355,6 +383,10 @@ async function main(): Promise<void> {
 							);
 						}
 						return refreshAnnotations();
+					})
+					.catch((err) => {
+						log("createTaskFromAnnotation failed", err);
+						overlay.showToast(describeActionError(err));
 					});
 				// Doesn't close the panel -- opens the new task in a new tab
 				// rather than concluding the interaction with this thread (see
