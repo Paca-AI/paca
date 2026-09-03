@@ -15,14 +15,14 @@ PACA_API_URL=http://localhost:8080 \
 
 If `PACA_API_URL` isn't set and you're running the script interactively (a real terminal attached), it prompts for it instead of failing outright. `PACA_API_KEY` is optional — both endpoints are publicly readable — but the prompt offers to collect it too, in case your deployment locks things down further. Both endpoint calls require `jq`.
 
-The installer copies every bundled skill to every supported platform found on this machine:
+The installer copies every bundled skill to every supported platform found on this machine, in each tool's own native Agent Skills folder format ([agentskills.io](https://agentskills.io/specification): a directory per skill containing `SKILL.md`, frontmatter intact) wherever that tool supports it — non-lossy, not flattened or re-shaped:
 
 | Platform | Location | Scope |
 |---|---|---|
-| Claude Code | `~/.claude/commands/<name>.md` | Global — every session |
-| Gemini CLI | `~/.gemini/commands/<name>.toml` | Global — every session |
-| Cursor | `<project>/.cursor/commands/<name>.md` | Per-project (Cursor has no global commands directory) |
-| Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, …) | `<project>/AGENTS.md` | Per-project, merged into a marker-delimited section — re-running the installer refreshes only that section and leaves the rest of the file alone |
+| Claude Code | `~/.claude/skills/<name>/SKILL.md` | Global — every session |
+| Gemini CLI / Google Antigravity | `~/.gemini/config/plugins/paca/skills/<name>/SKILL.md` (Antigravity's real plugin-based skill mechanism — verified working against a live Antigravity install), plus `~/.gemini/skills/<name>/SKILL.md` (per Gemini CLI's own docs, unverified against the classic terminal tool) and `~/.gemini/commands/<name>.toml` (pre-existing legacy fallback) | Global — every session |
+| Cursor | `<project>/.cursor/skills/<name>/SKILL.md` | Per-project by choice (Cursor also supports a global `~/.cursor/skills/`; the installer stays project-scoped) |
+| Any AGENTS.md-reading tool (Codex, Windsurf, OpenCode, …) | `<project>/AGENTS.md` | Per-project, merged into a marker-delimited section — re-running the installer refreshes only that section and leaves the rest of the file alone. This is the one target that still strips frontmatter: AGENTS.md is a single shared file, not a per-skill directory. |
 
 The per-project targets (Cursor, AGENTS.md) are only written when the installer is run from inside a git working tree — run it from your project root to get those too.
 
@@ -244,11 +244,13 @@ If Paca MCP tools are not available, say so and ask the user to run `/paca-setup
 
 ```bash
 # Claude Code
-rm ~/.claude/commands/paca*.md
-# Gemini CLI
-rm ~/.gemini/commands/paca*.toml
+rm -rf ~/.claude/skills/paca-*
+# Gemini CLI / Google Antigravity (plugin + native + legacy fallback)
+rm -rf ~/.gemini/config/plugins/paca
+rm -rf ~/.gemini/skills/paca-*
+rm -f ~/.gemini/commands/paca-*.toml
 # Cursor (run from the project root)
-rm .cursor/commands/paca*.md
+rm -rf .cursor/skills/paca-*
 ```
 
 For AGENTS.md, remove the block between `<!-- BEGIN PACA SKILLS ... -->` and `<!-- END PACA SKILLS -->` — everything else in the file is untouched by the installer and safe to keep.
