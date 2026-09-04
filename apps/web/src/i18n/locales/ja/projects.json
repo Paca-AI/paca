@@ -1569,6 +1569,7 @@
 			"goalPlaceholder": "このスプリントで達成したいことは？",
 			"startDateLabel": "開始日",
 			"endDateLabel": "終了日",
+			"error": "スプリントの開始に失敗しました。もう一度お試しください。",
 			"cancel": "キャンセル",
 			"starting": "開始中…",
 			"startSprint": "スプリントを開始"

@@ -1569,6 +1569,7 @@
 			"goalPlaceholder": "What should this sprint achieve?",
 			"startDateLabel": "Start date",
 			"endDateLabel": "End date",
+			"error": "Failed to start sprint. Please try again.",
 			"cancel": "Cancel",
 			"starting": "Starting…",
 			"startSprint": "Start sprint"

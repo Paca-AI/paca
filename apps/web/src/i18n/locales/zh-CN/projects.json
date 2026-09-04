@@ -1569,6 +1569,7 @@
 			"goalPlaceholder": "此次冲刺应达成什么目标？",
 			"startDateLabel": "开始日期",
 			"endDateLabel": "结束日期",
+			"error": "开始冲刺失败，请重试。",
 			"cancel": "取消",
 			"starting": "正在启动…",
 			"startSprint": "开始冲刺"

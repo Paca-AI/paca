@@ -80,6 +80,7 @@ function SprintPage() {
 	const [moveToSprintId, setMoveToSprintId] = useState<string | null>(null);
 
 	const [startSprintOpen, setStartSprintOpen] = useState(false);
+	const [startSprintError, setStartSprintError] = useState<string | null>(null);
 
 	const [editOpen, setEditOpen] = useState(false);
 	const [editError, setEditError] = useState<string | null>(null);
@@ -238,7 +239,10 @@ function SprintPage() {
 								{sprint.status === "planned" && (
 									<button
 										type="button"
-										onClick={() => setStartSprintOpen(true)}
+										onClick={() => {
+											setStartSprintError(null);
+											setStartSprintOpen(true);
+										}}
 										className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 transition-all duration-150"
 									>
 										<Play className="size-3.5 shrink-0 fill-white" />
@@ -265,9 +269,15 @@ function SprintPage() {
 				open={startSprintOpen}
 				onOpenChange={setStartSprintOpen}
 				onSubmit={async (_sid, payload) => {
-					await updateSprintMutation.mutateAsync(payload);
+					try {
+						await updateSprintMutation.mutateAsync(payload);
+					} catch (err) {
+						setStartSprintError(t("layout.startSprintModal.error"));
+						throw err;
+					}
 				}}
 				otherActiveSprint={otherActiveSprint}
+				errorMessage={startSprintError}
 			/>
 			<SprintFormModal
 				mode="edit"

@@ -1569,6 +1569,7 @@
 			"goalPlaceholder": "Que devrait accomplir ce sprint ?",
 			"startDateLabel": "Date de début",
 			"endDateLabel": "Date de fin",
+			"error": "Échec du démarrage du sprint. Veuillez réessayer.",
 			"cancel": "Annuler",
 			"starting": "Démarrage…",
 			"startSprint": "Démarrer le sprint"

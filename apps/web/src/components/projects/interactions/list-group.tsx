@@ -141,6 +141,7 @@ export function ListGroup({
 	const [isDropTarget, setIsDropTarget] = useState(false);
 	const [orderedTasks, setOrderedTasks] = useState<Task[]>(tasks);
 	const [startSprintOpen, setStartSprintOpen] = useState(false);
+	const [startSprintError, setStartSprintError] = useState<string | null>(null);
 
 	useEffect(() => {
 		setOrderedTasks(tasks);
@@ -548,6 +549,7 @@ export function ListGroup({
 						type="button"
 						onClick={(e) => {
 							e.stopPropagation();
+							setStartSprintError(null);
 							setStartSprintOpen(true);
 						}}
 						className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 active:scale-95 transition-all duration-150 shrink-0"
@@ -586,8 +588,16 @@ export function ListGroup({
 					sprint={sprint}
 					open={startSprintOpen}
 					onOpenChange={setStartSprintOpen}
-					onSubmit={onStartSprint}
+					onSubmit={async (sid, payload) => {
+						try {
+							await onStartSprint(sid, payload);
+						} catch (err) {
+							setStartSprintError(t("layout.startSprintModal.error"));
+							throw err;
+						}
+					}}
 					otherActiveSprint={otherActiveSprint}
+					errorMessage={startSprintError}
 				/>
 			)}
 

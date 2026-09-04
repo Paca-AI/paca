@@ -1569,6 +1569,7 @@
 			"goalPlaceholder": "Sprint này nên đạt được điều gì?",
 			"startDateLabel": "Ngày bắt đầu",
 			"endDateLabel": "Ngày kết thúc",
+			"error": "Không thể bắt đầu sprint. Vui lòng thử lại.",
 			"cancel": "Hủy",
 			"starting": "Đang bắt đầu…",
 			"startSprint": "Bắt đầu sprint"

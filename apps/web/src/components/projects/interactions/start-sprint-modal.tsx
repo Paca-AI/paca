@@ -10,6 +10,9 @@ interface StartSprintModalProps {
 	 * non-blocking warning; Scrum favors one active sprint at a time, but
 	 * starting a second one anyway is allowed. */
 	otherActiveSprint?: Sprint | null;
+	/** Externally-controlled error text (e.g. from the caller's mutation),
+	 * shown below the fields when starting the sprint fails. */
+	errorMessage?: string | null;
 }
 
 export function StartSprintModal({
@@ -18,6 +21,7 @@ export function StartSprintModal({
 	onOpenChange,
 	onSubmit,
 	otherActiveSprint,
+	errorMessage,
 }: StartSprintModalProps) {
 	return (
 		<SprintFormModal
@@ -27,6 +31,7 @@ export function StartSprintModal({
 			onOpenChange={onOpenChange}
 			onSubmit={onSubmit}
 			otherActiveSprint={otherActiveSprint}
+			errorMessage={errorMessage}
 		/>
 	);
 }

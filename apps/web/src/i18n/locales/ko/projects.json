@@ -1569,6 +1569,7 @@
 			"goalPlaceholder": "이 스프린트에서 달성하고자 하는 것은 무엇인가요?",
 			"startDateLabel": "시작일",
 			"endDateLabel": "종료일",
+			"error": "스프린트를 시작하지 못했습니다. 다시 시도해 주세요.",
 			"cancel": "취소",
 			"starting": "시작 중…",
 			"startSprint": "스프린트 시작"
