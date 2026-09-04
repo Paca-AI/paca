@@ -1095,6 +1095,7 @@
 			"reporter": "Reportado por",
 			"sprint": "Sprint",
 			"productBacklog": "Backlog del producto",
+			"sprintNotStarted": "(no iniciado)",
 			"epic": "Épica",
 			"viewEpic": "Ver épica",
 			"removeEpic": "Eliminar épica",
@@ -1561,6 +1562,7 @@
 		},
 		"startSprintModal": {
 			"title": "Iniciar sprint",
+			"alreadyActiveWarning": "\"{{name}}\" ya está activo en este proyecto. Iniciar este sprint no lo detendrá.",
 			"nameLabel": "Nombre",
 			"goalLabel": "Objetivo",
 			"optional": "(opcional)",
@@ -1578,7 +1580,7 @@
 		"sprintDetail": {
 			"notFound": "Sprint no encontrado o acceso denegado.",
 			"statusActive": "Activo",
-			"statusPlanned": "Planificado",
+			"statusPlanned": "Borrador",
 			"statusCompleted": "Completado",
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · iniciado el {{date}}",
@@ -1872,7 +1874,7 @@
 				"sprintGoalLabel": "Objetivo",
 				"sprintStatusLabel": "Estado",
 				"sprintStatusUnchanged": "Dejar sin cambios",
-				"sprintStatusPlanned": "Planificado",
+				"sprintStatusPlanned": "Borrador",
 				"sprintStatusActive": "Activo",
 				"sprintStatusCompleted": "Completado",
 				"completeSprintHint": "Marca el sprint como completado y mueve sus tareas sin terminar.",

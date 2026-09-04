@@ -1095,6 +1095,7 @@
 			"reporter": "보고자",
 			"sprint": "스프린트",
 			"productBacklog": "제품 백로그",
+			"sprintNotStarted": "(시작 전)",
 			"epic": "에픽",
 			"viewEpic": "에픽 보기",
 			"removeEpic": "에픽 제거",
@@ -1561,6 +1562,7 @@
 		},
 		"startSprintModal": {
 			"title": "스프린트 시작",
+			"alreadyActiveWarning": "\"{{name}}\"이(가) 이미 이 프로젝트에서 진행 중입니다. 이 스프린트를 시작해도 중지되지 않습니다.",
 			"nameLabel": "이름",
 			"goalLabel": "목표",
 			"optional": "(선택사항)",
@@ -1578,7 +1580,7 @@
 		"sprintDetail": {
 			"notFound": "스프린트를 찾을 수 없거나 접근 권한이 없습니다.",
 			"statusActive": "진행 중",
-			"statusPlanned": "예정됨",
+			"statusPlanned": "초안",
 			"statusCompleted": "완료됨",
 			"description": "{{status}} 스프린트",
 			"descriptionWithStartDate": "{{status}} 스프린트 · {{date}} 시작",
@@ -1872,7 +1874,7 @@
 				"sprintGoalLabel": "목표",
 				"sprintStatusLabel": "상태",
 				"sprintStatusUnchanged": "변경 안 함",
-				"sprintStatusPlanned": "계획됨",
+				"sprintStatusPlanned": "초안",
 				"sprintStatusActive": "진행 중",
 				"sprintStatusCompleted": "완료됨",
 				"completeSprintHint": "스프린트를 완료 처리하고 미완료 작업을 이동합니다.",

@@ -12,6 +12,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 import { AddTaskRow } from "./add-task-row";
+import { SprintStatusBadge } from "./sprint-status-badge";
 import { StartSprintModal } from "./start-sprint-modal";
 import { TaskContextMenu } from "./task-context-menu";
 import { getRowColConfig, TaskRow } from "./task-row";
@@ -58,6 +59,9 @@ export interface ListGroupProps {
 	taskIdPrefix?: string;
 	/** Sprint data when column_by === "sprint" */
 	sprint?: Sprint;
+	/** Another sprint already active in the project, if any — passed through
+	 * to the Start Sprint modal's non-blocking warning. */
+	otherActiveSprint?: Sprint | null;
 	onStartSprint?: (
 		sprintId: string,
 		payload: {
@@ -119,6 +123,7 @@ export function ListGroup({
 	visibleFields,
 	taskIdPrefix = "",
 	sprint,
+	otherActiveSprint,
 	onStartSprint,
 	onCreateSprint,
 	extraCreateFields,
@@ -538,6 +543,9 @@ export function ListGroup({
 				<span className="text-xs font-bold uppercase tracking-[0.08em] text-foreground/80 flex-1 text-left truncate">
 					{groupDef.label}
 				</span>
+				{sprint && (
+					<SprintStatusBadge status={sprint.status} className="shrink-0" />
+				)}
 
 				{/* Sprint: "Start sprint" button */}
 				{sprint && sprint.status === "planned" && onStartSprint && (
@@ -584,6 +592,7 @@ export function ListGroup({
 					open={startSprintOpen}
 					onOpenChange={setStartSprintOpen}
 					onSubmit={onStartSprint}
+					otherActiveSprint={otherActiveSprint}
 				/>
 			)}
 

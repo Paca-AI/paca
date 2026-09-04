@@ -1111,6 +1111,7 @@
 			"reporter": "Автор",
 			"sprint": "Спринт",
 			"productBacklog": "Бэклог продукта",
+			"sprintNotStarted": "(не начат)",
 			"epic": "Эпик",
 			"viewEpic": "Открыть эпик",
 			"removeEpic": "Убрать эпик",
@@ -1579,6 +1580,7 @@
 		},
 		"startSprintModal": {
 			"title": "Начать спринт",
+			"alreadyActiveWarning": "«{{name}}» уже активен в этом проекте. Запуск этого спринта не остановит его.",
 			"nameLabel": "Название",
 			"goalLabel": "Цель",
 			"optional": "(необязательно)",
@@ -1596,7 +1598,7 @@
 		"sprintDetail": {
 			"notFound": "Спринт не найден или доступ запрещён.",
 			"statusActive": "Активный",
-			"statusPlanned": "Запланирован",
+			"statusPlanned": "Черновик",
 			"statusCompleted": "Завершён",
 			"description": "{{status}} спринт",
 			"descriptionWithStartDate": "{{status}} спринт · начат {{date}}",
@@ -1892,7 +1894,7 @@
 				"sprintGoalLabel": "Цель",
 				"sprintStatusLabel": "Статус",
 				"sprintStatusUnchanged": "Не изменять",
-				"sprintStatusPlanned": "Запланирован",
+				"sprintStatusPlanned": "Черновик",
 				"sprintStatusActive": "Активный",
 				"sprintStatusCompleted": "Завершён",
 				"completeSprintHint": "Отмечает спринт как завершённый и переносит его незавершённые задачи.",

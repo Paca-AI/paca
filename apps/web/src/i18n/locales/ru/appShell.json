@@ -41,6 +41,7 @@
 		"title": "Взаимодействия",
 		"timeline": "Таймлайн",
 		"productBacklog": "Бэклог продукта",
+		"plannedSprints": "Спринты-черновики",
 		"completedSprints": "Завершённые спринты"
 	},
 	"docs": {

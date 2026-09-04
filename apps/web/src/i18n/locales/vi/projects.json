@@ -1095,6 +1095,7 @@
 			"reporter": "Người báo cáo",
 			"sprint": "Sprint",
 			"productBacklog": "Product Backlog",
+			"sprintNotStarted": "(chưa bắt đầu)",
 			"epic": "Epic",
 			"viewEpic": "Xem epic",
 			"removeEpic": "Gỡ epic",
@@ -1561,6 +1562,7 @@
 		},
 		"startSprintModal": {
 			"title": "Bắt đầu sprint",
+			"alreadyActiveWarning": "\"{{name}}\" đã đang hoạt động trong dự án này. Bắt đầu sprint này sẽ không dừng nó lại.",
 			"nameLabel": "Tên",
 			"goalLabel": "Mục tiêu",
 			"optional": "(tùy chọn)",
@@ -1578,7 +1580,7 @@
 		"sprintDetail": {
 			"notFound": "Không tìm thấy sprint hoặc bạn không có quyền truy cập.",
 			"statusActive": "Đang hoạt động",
-			"statusPlanned": "Đã lên kế hoạch",
+			"statusPlanned": "Bản nháp",
 			"statusCompleted": "Đã hoàn thành",
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · bắt đầu {{date}}",
@@ -1872,7 +1874,7 @@
 				"sprintGoalLabel": "Mục tiêu",
 				"sprintStatusLabel": "Trạng thái",
 				"sprintStatusUnchanged": "Giữ nguyên",
-				"sprintStatusPlanned": "Đã lên kế hoạch",
+				"sprintStatusPlanned": "Bản nháp",
 				"sprintStatusActive": "Đang hoạt động",
 				"sprintStatusCompleted": "Đã hoàn thành",
 				"completeSprintHint": "Đánh dấu sprint hoàn thành và di chuyển các tác vụ chưa xong.",

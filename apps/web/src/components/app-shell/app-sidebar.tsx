@@ -12,6 +12,7 @@ import {
 	CheckCircle2,
 	ChevronDown,
 	ChevronRight,
+	Clock,
 	File,
 	FileText,
 	Folder,
@@ -1147,6 +1148,18 @@ function ProjectInteractionsSection({
 			}
 		},
 	);
+	// Expanded by default (planned sprints are near-term actionable items,
+	// unlike completed ones); persisted per-project once the user collapses it.
+	const [plannedSprintsCollapsed, setPlannedSprintsCollapsed] = useState(() => {
+		try {
+			const stored = localStorage.getItem(
+				`paca:sidebar-planned-sprints-collapsed:${projectId}`,
+			);
+			return stored === null ? false : stored === "true";
+		} catch {
+			return false;
+		}
+	});
 
 	const toggleCompletedSprints = () => {
 		setCompletedSprintsCollapsed((prev) => {
@@ -1154,6 +1167,21 @@ function ProjectInteractionsSection({
 			try {
 				localStorage.setItem(
 					`paca:sidebar-completed-sprints-collapsed:${projectId}`,
+					String(next),
+				);
+			} catch {
+				/* ignore */
+			}
+			return next;
+		});
+	};
+
+	const togglePlannedSprints = () => {
+		setPlannedSprintsCollapsed((prev) => {
+			const next = !prev;
+			try {
+				localStorage.setItem(
+					`paca:sidebar-planned-sprints-collapsed:${projectId}`,
 					String(next),
 				);
 			} catch {
@@ -1236,6 +1264,10 @@ function ProjectInteractionsSection({
 
 	const openSprints = sprints
 		.filter((s) => s.status === "active")
+		.sort((a, b) => a.name.localeCompare(b.name));
+
+	const plannedSprints = sprints
+		.filter((s) => s.status === "planned")
 		.sort((a, b) => a.name.localeCompare(b.name));
 
 	const completedSprints = sprints
@@ -1351,6 +1383,63 @@ function ProjectInteractionsSection({
 								</SidebarMenuItem>
 							);
 						})}
+						{/* Planned sprints (collapsible) */}
+						{plannedSprints.length > 0 && (
+							<>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										tooltip={t("interactions.plannedSprints")}
+										onClick={togglePlannedSprints}
+										className={NAV_ITEM_INACTIVE_CLASS}
+									>
+										<ChevronRight
+											className={cn(
+												"size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40",
+												!plannedSprintsCollapsed && "rotate-90",
+											)}
+										/>
+										<span className="flex-1 truncate text-xs font-medium">
+											{t("interactions.plannedSprints")}
+										</span>
+										<span className="rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+											{plannedSprints.length}
+										</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								{!plannedSprintsCollapsed &&
+									plannedSprints.map((sprint) => {
+										const sprintHref = `/projects/${projectId}/interactions/sprints/${sprint.id}`;
+										const isActive = location.startsWith(sprintHref);
+										return (
+											<SidebarMenuItem
+												key={sprint.id}
+												onDragOver={(e) =>
+													handleInteractionDragOver(e, sprint.id)
+												}
+												onDragLeave={handleInteractionDragLeave}
+												onDrop={(e) => handleInteractionDrop(e, sprint.id)}
+											>
+												<SidebarMenuButton
+													isActive={isActive}
+													tooltip={sprint.name}
+													render={<Link to={sprintHref} />}
+													className={cn(
+														"relative transition-all duration-150",
+														isActive
+															? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:inset-y-2 before:w-0.75 before:rounded-full before:bg-primary"
+															: NAV_ITEM_INACTIVE_CLASS,
+														dragOverInteractionId === sprint.id &&
+															"ring-2 ring-primary/40 bg-primary/5 text-primary",
+													)}
+												>
+													<Clock className="size-4" />
+													<span className="flex-1 truncate">{sprint.name}</span>
+												</SidebarMenuButton>
+											</SidebarMenuItem>
+										);
+									})}
+							</>
+						)}
 						{/* Closed sprints (collapsible) */}
 						{completedSprints.length > 0 && (
 							<>

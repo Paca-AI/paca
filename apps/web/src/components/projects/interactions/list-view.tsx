@@ -259,6 +259,10 @@ export function ListView({
 						visibleFields={visibleFields}
 						taskIdPrefix={taskIdPrefix}
 						sprint={sprints?.find((s) => s.id === grp.key)}
+						otherActiveSprint={
+							sprints?.find((s) => s.status === "active" && s.id !== grp.key) ??
+							null
+						}
 						onStartSprint={onStartSprint}
 						onCreateSprint={onCreateSprint}
 						columnBy={columnBy}

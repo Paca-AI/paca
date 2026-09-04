@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { InteractionLayout } from "@/components/projects/interactions/interaction-layout";
+import { SprintStatusBadge } from "@/components/projects/interactions/sprint-status-badge";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { formatDate } from "@/lib/format-date";
 import {
@@ -215,39 +216,42 @@ function SprintPage() {
 				sprintId={sprintId}
 				context="sprint"
 				headerActions={
-					canManageSprints ? (
-						<>
-							<button
-								type="button"
-								onClick={() => {
-									setEditName(sprint.name);
-									setEditGoal(sprint.goal ?? "");
-									setEditStartDate(
-										sprint.start_date ? sprint.start_date.slice(0, 10) : "",
-									);
-									setEditEndDate(
-										sprint.end_date ? sprint.end_date.slice(0, 10) : "",
-									);
-									setEditError(null);
-									setEditOpen(true);
-								}}
-								className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/10 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-all duration-150"
-							>
-								<Pencil className="size-3.5 shrink-0" />
-								{t("layout.sprintDetail.editSprint")}
-							</button>
-							{sprint.status === "active" && (
+					<>
+						<SprintStatusBadge status={sprint.status} />
+						{canManageSprints && (
+							<>
 								<button
 									type="button"
-									onClick={() => setCompleteOpen(true)}
-									className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all duration-150"
+									onClick={() => {
+										setEditName(sprint.name);
+										setEditGoal(sprint.goal ?? "");
+										setEditStartDate(
+											sprint.start_date ? sprint.start_date.slice(0, 10) : "",
+										);
+										setEditEndDate(
+											sprint.end_date ? sprint.end_date.slice(0, 10) : "",
+										);
+										setEditError(null);
+										setEditOpen(true);
+									}}
+									className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/10 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-all duration-150"
 								>
-									<CheckCircle2 className="size-3.5 shrink-0" />
-									{t("layout.sprintDetail.completeSprint")}
+									<Pencil className="size-3.5 shrink-0" />
+									{t("layout.sprintDetail.editSprint")}
 								</button>
-							)}
-						</>
-					) : undefined
+								{sprint.status === "active" && (
+									<button
+										type="button"
+										onClick={() => setCompleteOpen(true)}
+										className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-all duration-150"
+									>
+										<CheckCircle2 className="size-3.5 shrink-0" />
+										{t("layout.sprintDetail.completeSprint")}
+									</button>
+								)}
+							</>
+						)}
+					</>
 				}
 			/>
 			{/* Edit Sprint Modal */}
@@ -490,11 +494,9 @@ function SprintPage() {
 											onChange={() => setMoveToSprintId(s.id)}
 											className="accent-primary"
 										/>
-										<div>
+										<div className="flex flex-col gap-1">
 											<p className="text-sm font-semibold">{s.name}</p>
-											<p className="text-xs text-muted-foreground capitalize">
-												{s.status}
-											</p>
+											<SprintStatusBadge status={s.status} />
 										</div>
 									</label>
 								))}

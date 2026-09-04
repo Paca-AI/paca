@@ -1095,6 +1095,7 @@
 			"reporter": "報告者",
 			"sprint": "スプリント",
 			"productBacklog": "プロダクトバックログ",
+			"sprintNotStarted": "(未開始)",
 			"epic": "エピック",
 			"viewEpic": "エピックを表示",
 			"removeEpic": "エピックを削除",
@@ -1561,6 +1562,7 @@
 		},
 		"startSprintModal": {
 			"title": "スプリントを開始",
+			"alreadyActiveWarning": "「{{name}}」はこのプロジェクトで既に進行中です。このスプリントを開始しても停止しません。",
 			"nameLabel": "名前",
 			"goalLabel": "目標",
 			"optional": "（任意）",
@@ -1578,7 +1580,7 @@
 		"sprintDetail": {
 			"notFound": "スプリントが見つからないか、アクセスが拒否されました。",
 			"statusActive": "進行中",
-			"statusPlanned": "計画中",
+			"statusPlanned": "下書き",
 			"statusCompleted": "完了",
 			"description": "{{status}}のスプリント",
 			"descriptionWithStartDate": "{{status}}のスプリント・{{date}}に開始",
@@ -1872,7 +1874,7 @@
 				"sprintGoalLabel": "目標",
 				"sprintStatusLabel": "ステータス",
 				"sprintStatusUnchanged": "変更しない",
-				"sprintStatusPlanned": "計画中",
+				"sprintStatusPlanned": "下書き",
 				"sprintStatusActive": "進行中",
 				"sprintStatusCompleted": "完了",
 				"completeSprintHint": "スプリントを完了とし、未完了のタスクを移動します。",

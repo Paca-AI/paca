@@ -154,6 +154,10 @@ export function PropertiesPanel({
 			icon: (
 				<KanbanSquare className="size-3 shrink-0 text-muted-foreground/70" />
 			),
+			hint:
+				s.status === "planned"
+					? t("taskDetail.properties.sprintNotStarted")
+					: undefined,
 		})),
 	];
 

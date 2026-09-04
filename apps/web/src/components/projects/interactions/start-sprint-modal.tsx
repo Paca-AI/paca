@@ -18,6 +18,10 @@ interface StartSprintModalProps {
 			status: "active";
 		},
 	) => Promise<void>;
+	/** Another sprint already active in the project, if any — shown as a
+	 * non-blocking warning; Scrum favors one active sprint at a time, but
+	 * starting a second one anyway is allowed. */
+	otherActiveSprint?: Sprint | null;
 }
 
 export function StartSprintModal({
@@ -25,6 +29,7 @@ export function StartSprintModal({
 	open,
 	onOpenChange,
 	onSubmit,
+	otherActiveSprint,
 }: StartSprintModalProps) {
 	const { t } = useTranslation("projects");
 	const [name, setName] = useState(sprint.name);
@@ -106,6 +111,13 @@ export function StartSprintModal({
 				<h2 className="font-[Syne] text-lg font-bold tracking-tight mb-4">
 					{t("layout.startSprintModal.title")}
 				</h2>
+				{otherActiveSprint && (
+					<p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+						{t("layout.startSprintModal.alreadyActiveWarning", {
+							name: otherActiveSprint.name,
+						})}
+					</p>
+				)}
 				<div className="flex flex-col gap-4">
 					<div className="flex flex-col gap-1.5">
 						<label htmlFor="ss-name" className="text-sm font-medium">

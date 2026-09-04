@@ -1646,6 +1646,23 @@ export function InteractionLayout({
 		},
 	});
 
+	const handleStartSprint = async (
+		sid: string,
+		payload: {
+			name: string;
+			goal: string | null;
+			start_date: string | null;
+			end_date: string | null;
+			status: "active";
+		},
+	) => {
+		await updateSprintMutation.mutateAsync({ sprintId: sid, payload });
+		navigate({
+			to: "/projects/$projectId/interactions/sprints/$sprintId",
+			params: { projectId, sprintId: sid },
+		});
+	};
+
 	// ── Keyboard shortcuts (page scope) ─────────────────────────────────────
 	const viewContentRef = useRef<HTMLDivElement>(null);
 
@@ -1998,18 +2015,7 @@ export function InteractionLayout({
 						onDeleteTask={canEdit ? handleRequestDeleteTask : undefined}
 						sprints={context === "backlog" ? sprints : undefined}
 						onStartSprint={
-							context === "backlog" && canCreate
-								? async (sid, payload) => {
-										await updateSprintMutation.mutateAsync({
-											sprintId: sid,
-											payload,
-										});
-										navigate({
-											to: "/projects/$projectId/interactions/sprints/$sprintId",
-											params: { projectId, sprintId: sid },
-										});
-									}
-								: undefined
+							context === "backlog" && canCreate ? handleStartSprint : undefined
 						}
 						onCreateSprint={
 							context === "backlog" && canCreate ? handleNewSprint : undefined
