@@ -8,7 +8,7 @@ var (
 	ErrAgentHandleTaken   = errors.New("agent handle already in use")
 	ErrAgentHandleInvalid = errors.New("agent handle is invalid")
 	ErrAgentNameInvalid   = errors.New("agent name is empty or invalid")
-	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp")
+	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp, provider_cli")
 	ErrACPProviderInvalid = errors.New("acp_provider must be one of: claude-code, codex, gemini-cli, goose, custom")
 	ErrACPCommandRequired = errors.New("acp_command is required when acp_provider is custom")
 	// ErrNotSupportedForACPAgent is returned when a caller tries to manage
@@ -32,6 +32,31 @@ var (
 	// set, or is set on a global-scope agent — see
 	// Agent.DefaultFolderID's doc comment.
 	ErrDefaultFolderInvalid = errors.New("default folder must belong to this agent's own default environment")
+)
+
+// Provider-CLI agent errors
+var (
+	ErrCLIProviderInvalid = errors.New("cli_provider must be one of: claude-code, codex, cursor-agent, gemini-cli")
+	ErrCLIAuthModeInvalid = errors.New("cli_auth_mode must be one of: api_key, login")
+	// ErrCLIProviderNoAPIKeyAuth is returned when cli_auth_mode=api_key is
+	// requested for a cli_provider with no known non-interactive API-key
+	// auth path — see agentdom.CLIProvidersWithAPIKeyAuth.
+	ErrCLIProviderNoAPIKeyAuth = errors.New("this CLI provider does not support api_key auth mode — use login mode and log in via the environment terminal instead")
+	// ErrDefaultEnvironmentRequiredForCLIProvider is returned when a
+	// provider_cli agent is created/updated, or a conversation started for
+	// one, without a default_environment_id resolving to a real
+	// environment — a provider_cli agent's CLI login state must persist
+	// across conversations, which only a static environment's persistent
+	// volume provides; it never falls back to an ephemeral sandbox.
+	ErrDefaultEnvironmentRequiredForCLIProvider = errors.New("provider_cli agents require a default_environment_id — CLI login state must persist across conversations")
+	// ErrCLIProviderNotSupportedForGlobalAgents is returned when
+	// agent_type=provider_cli is requested for a global-scope agent — see
+	// Agent.DefaultEnvironmentID's doc comment on why a global agent has no
+	// single project's environments to default to.
+	ErrCLIProviderNotSupportedForGlobalAgents = errors.New("provider_cli agents are not supported for global-scope agents")
+	// ErrAgentNotProviderCLI is returned by VerifyCLILogin for any other
+	// agent_type.
+	ErrAgentNotProviderCLI = errors.New("agent is not a provider_cli-type agent")
 )
 
 // Global agent errors

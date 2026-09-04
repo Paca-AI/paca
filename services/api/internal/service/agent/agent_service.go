@@ -198,7 +198,7 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 	if agentType == "" {
 		agentType = agentdom.AgentTypeLLM
 	}
-	if agentType != agentdom.AgentTypeLLM && agentType != agentdom.AgentTypeACP {
+	if agentType != agentdom.AgentTypeLLM && agentType != agentdom.AgentTypeACP && agentType != agentdom.AgentTypeProviderCLI {
 		return nil, agentdom.ErrAgentTypeInvalid
 	}
 
@@ -216,7 +216,8 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		UpdatedAt:      now,
 	}
 
-	if agentType == agentdom.AgentTypeACP {
+	switch agentType {
+	case agentdom.AgentTypeACP:
 		if !agentdom.ValidACPProviders[in.ACPProvider] {
 			return nil, agentdom.ErrACPProviderInvalid
 		}
@@ -226,7 +227,35 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		provider := in.ACPProvider
 		a.ACPProvider = &provider
 		a.ACPCommand = in.ACPCommand
-	} else {
+	case agentdom.AgentTypeProviderCLI:
+		if !agentdom.ValidCLIProviders[in.CLIProvider] {
+			return nil, agentdom.ErrCLIProviderInvalid
+		}
+		authMode := in.CLIAuthMode
+		if authMode == "" {
+			authMode = agentdom.CLIAuthModeLogin
+		}
+		if authMode != agentdom.CLIAuthModeAPIKey && authMode != agentdom.CLIAuthModeLogin {
+			return nil, agentdom.ErrCLIAuthModeInvalid
+		}
+		if authMode == agentdom.CLIAuthModeAPIKey && !agentdom.CLIProvidersWithAPIKeyAuth[in.CLIProvider] {
+			return nil, agentdom.ErrCLIProviderNoAPIKeyAuth
+		}
+		provider := in.CLIProvider
+		a.CLIProvider = &provider
+		a.CLIModel = in.CLIModel
+		a.CLIAuthMode = authMode
+		if in.CLIAPIKey != "" {
+			encryptedKey, err := s.encryptKey(in.CLIAPIKey)
+			if err != nil {
+				return nil, fmt.Errorf("encrypt CLI API key: %w", err)
+			}
+			a.CLIAPIKeySecret = encryptedKey
+		}
+		// System prompt and git committer identity are meaningless here too
+		// (same reasoning as the ACP case below) — the underlying CLI owns
+		// its own persona/system-prompt mechanism and its own git identity.
+	default:
 		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
 		if err != nil {
 			return nil, fmt.Errorf("encrypt LLM API key: %w", err)
@@ -279,6 +308,14 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		}
 		a.DefaultFolderID = folderID
 	}
+	// provider_cli agents never fall back to an ephemeral sandbox — their
+	// CLI's login state must persist across conversations, which only a
+	// static environment's volume provides (see Agent.DefaultEnvironmentID's
+	// doc comment). Checked after resolution above so an *invalid*
+	// environment ID still surfaces the more specific ErrDefaultEnvironmentInvalid.
+	if agentType == agentdom.AgentTypeProviderCLI && a.DefaultEnvironmentID == nil {
+		return nil, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
+	}
 
 	// Atomically create the agent and its project membership in one transaction.
 	memberID := uuid.New()
@@ -312,21 +349,22 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			a.Handle = h
 		}
 	}
-	// LLM/ACP fields are guarded by the agent's existing (immutable) type —
-	// agent_type can't be changed through this API, so applying the other
-	// shape's fields would only ever leave stale/wrong data on the agent
-	// (e.g. an encrypted LLM API key sitting unused on an ACP agent). A
-	// request that happens to include both sets of fields (e.g. a generic
-	// client payload) silently has the irrelevant half ignored rather than
-	// erroring, matching CreateAgent's per-type field selection. Anything
-	// other than the explicit ACP type is treated as LLM (its default, as
-	// in CreateAgent) so an agent loaded with an unset AgentType isn't
-	// silently locked out of updating its LLM fields. SystemPrompt and the
-	// git committer identity fields ride along in this same block — like
-	// the LLM fields, they're meaningless on an ACP agent (see the doc
-	// comment on Agent.SystemPrompt), so a request that sets them on one is
-	// silently ignored too.
-	if a.AgentType != agentdom.AgentTypeACP {
+	// LLM/ACP/provider_cli fields are guarded by the agent's existing
+	// (immutable) type — agent_type can't be changed through this API, so
+	// applying another shape's fields would only ever leave stale/wrong
+	// data on the agent (e.g. an encrypted LLM API key sitting unused on an
+	// ACP agent). A request that happens to include more than one type's
+	// fields (e.g. a generic client payload) silently has the irrelevant
+	// ones ignored rather than erroring, matching CreateAgent's per-type
+	// field selection. Anything other than the explicit ACP/provider_cli
+	// types is treated as LLM (its default, as in CreateAgent) so an agent
+	// loaded with an unset AgentType isn't silently locked out of updating
+	// its LLM fields. SystemPrompt and the git committer identity fields
+	// ride along in the LLM block — like the LLM fields, they're
+	// meaningless on an ACP or provider_cli agent (see the doc comment on
+	// Agent.SystemPrompt), so a request that sets them on one is silently
+	// ignored too.
+	if a.AgentType == agentdom.AgentTypeLLM || a.AgentType == "" {
 		if in.LLMProvider != nil {
 			a.LLMProvider = *in.LLMProvider
 		}
@@ -368,6 +406,33 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		}
 		if a.ACPProvider != nil && *a.ACPProvider == agentdom.ACPProviderCustom && len(a.ACPCommand) == 0 {
 			return nil, agentdom.ErrACPCommandRequired
+		}
+	}
+	if a.AgentType == agentdom.AgentTypeProviderCLI {
+		if in.CLIProvider != nil {
+			if !agentdom.ValidCLIProviders[*in.CLIProvider] {
+				return nil, agentdom.ErrCLIProviderInvalid
+			}
+			a.CLIProvider = in.CLIProvider
+		}
+		if in.CLIModel != nil {
+			a.CLIModel = *in.CLIModel
+		}
+		if in.CLIAuthMode != nil {
+			if *in.CLIAuthMode != agentdom.CLIAuthModeAPIKey && *in.CLIAuthMode != agentdom.CLIAuthModeLogin {
+				return nil, agentdom.ErrCLIAuthModeInvalid
+			}
+			a.CLIAuthMode = *in.CLIAuthMode
+		}
+		if a.CLIAuthMode == agentdom.CLIAuthModeAPIKey && a.CLIProvider != nil && !agentdom.CLIProvidersWithAPIKeyAuth[*a.CLIProvider] {
+			return nil, agentdom.ErrCLIProviderNoAPIKeyAuth
+		}
+		if in.CLIAPIKey != nil {
+			encryptedKey, err := s.encryptKey(*in.CLIAPIKey)
+			if err != nil {
+				return nil, fmt.Errorf("encrypt CLI API key: %w", err)
+			}
+			a.CLIAPIKeySecret = encryptedKey
 		}
 	}
 	const maxIterationsLimit = 500
@@ -416,6 +481,12 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 			return nil, err
 		}
 		a.DefaultFolderID = folderID
+	}
+	// Same "never falls back to ephemeral" guarantee as CreateAgent — also
+	// catches an update that tries to CLEAR default_environment_id (via
+	// DefaultEnvironmentID: &uuid.Nil) on an existing provider_cli agent.
+	if a.AgentType == agentdom.AgentTypeProviderCLI && a.DefaultEnvironmentID == nil {
+		return nil, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
 	}
 	a.UpdatedAt = time.Now()
 
@@ -489,6 +560,13 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 	agentType := in.AgentType
 	if agentType == "" {
 		agentType = agentdom.AgentTypeLLM
+	}
+	// provider_cli is rejected explicitly (a clearer error than falling
+	// through to the generic type-invalid one) — a global agent has no
+	// single project's environments to default to, and provider_cli
+	// requires one (see Agent.DefaultEnvironmentID's doc comment).
+	if agentType == agentdom.AgentTypeProviderCLI {
+		return nil, agentdom.ErrCLIProviderNotSupportedForGlobalAgents
 	}
 	if agentType != agentdom.AgentTypeLLM && agentType != agentdom.AgentTypeACP {
 		return nil, agentdom.ErrAgentTypeInvalid
@@ -791,6 +869,42 @@ func (s *Service) GenerateGlobalAgentMCPKey(ctx context.Context, agentID uuid.UU
 	return plaintext, nil
 }
 
+// VerifyCLILogin probes whether a provider_cli agent's underlying CLI is
+// currently authenticated inside its default environment (each CLI's own
+// real status subcommand where one is confirmed to exist, a file-existence
+// guess only as a last resort — see environmentdom.Service.VerifyCLIAuth's
+// doc comment), and, on success, persists the verification timestamp via
+// SetCLILoginVerifiedAt. Returns ErrAgentNotProviderCLI for any other
+// agent_type, and ErrDefaultEnvironmentRequiredForCLIProvider if somehow
+// called on a provider_cli agent with no default environment (shouldn't
+// happen — CreateAgent/UpdateAgent both enforce one — but checked
+// defensively rather than assumed).
+func (s *Service) VerifyCLILogin(ctx context.Context, projectID, agentID uuid.UUID) (bool, error) {
+	a, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
+		return false, err
+	}
+	if a.AgentType != agentdom.AgentTypeProviderCLI {
+		return false, agentdom.ErrAgentNotProviderCLI
+	}
+	if a.DefaultEnvironmentID == nil || a.CLIProvider == nil {
+		return false, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
+	}
+	if s.environmentSvc == nil {
+		return false, fmt.Errorf("environment service not configured")
+	}
+	authenticated, err := s.environmentSvc.VerifyCLIAuth(ctx, projectID, *a.DefaultEnvironmentID, *a.CLIProvider)
+	if err != nil {
+		return false, err
+	}
+	if authenticated {
+		if err := s.repo.SetCLILoginVerifiedAt(ctx, agentID, time.Now()); err != nil {
+			return false, err
+		}
+	}
+	return authenticated, nil
+}
+
 // ErrAvatarServiceRequired indicates a missing AvatarService dependency when
 // an avatar-upload path is invoked.
 var ErrAvatarServiceRequired = errors.New("agent svc: avatar service required")
@@ -914,14 +1028,26 @@ func (s *Service) removeAvatar(ctx context.Context, a *agentdom.Agent) (*agentdo
 	return a, nil
 }
 
-// requireNonACPAgent rejects MCP server / skill / environment variable
-// mutations targeting an ACP-type agent. ACP agents run entirely in the
-// user's own local CLI via paca-acp-bridge; services/ai-agent's
-// acp_dispatch.py never reads any of these tables when dispatching an ACP
-// turn, so accepting the write here would silently no-op rather than have
-// any effect — better to reject it outright. Read (List*) operations are
-// left permissive since returning an empty list is harmless.
-func (s *Service) requireNonACPAgent(ctx context.Context, agentID uuid.UUID) error {
+// requireGooseManagedAgent rejects MCP server / skill / environment
+// variable mutations targeting an ACP-type agent (renamed from
+// requireNonACPAgent — the name now reflects what it actually permits, not
+// just what it excludes). ACP agents run entirely in the user's own local
+// CLI via paca-acp-bridge; services/ai-agent's acp_dispatch.py never reads
+// any of these tables when dispatching an ACP turn, so accepting the write
+// here would silently no-op rather than have any effect — better to reject
+// it outright.
+//
+// llm and provider_cli agents both pass this check, deliberately: an llm
+// agent's skills/MCP servers are read by Goose's own native discovery;
+// a provider_cli agent's are instead synced into the underlying CLI's own
+// config files on every conversation attach (see
+// docs/ai-agent/overview.md's provider_cli section) — Paca-side storage and
+// the create/update/delete API are identical for both types, only the
+// *consumer* of that configuration differs at execution time.
+//
+// Read (List*) operations are left permissive for every type since
+// returning an empty list is harmless.
+func (s *Service) requireGooseManagedAgent(ctx context.Context, agentID uuid.UUID) error {
 	agent, err := s.repo.FindAgentByID(ctx, agentID)
 	if err != nil {
 		return err
@@ -946,7 +1072,7 @@ func (s *Service) AddMCPServer(ctx context.Context, agentID uuid.UUID, in agentd
 	if in.Transport == "stdio" && (in.Command == nil || *in.Command == "") {
 		return nil, agentdom.ErrMCPServerCommandRequired
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 
@@ -985,7 +1111,7 @@ func (s *Service) UpdateMCPServer(ctx context.Context, agentID, serverID uuid.UU
 	if srv.AgentID != agentID {
 		return nil, agentdom.ErrMCPServerNotFound
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	if in.Command != nil {
@@ -1019,7 +1145,7 @@ func (s *Service) DeleteMCPServer(ctx context.Context, agentID, serverID uuid.UU
 	if srv.AgentID != agentID {
 		return agentdom.ErrMCPServerNotFound
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return err
 	}
 	return s.repo.DeleteMCPServer(ctx, serverID)
@@ -1047,7 +1173,7 @@ func (s *Service) AddSkill(ctx context.Context, agentID uuid.UUID, in agentdom.A
 	if err := validateSkillName(name); err != nil {
 		return nil, err
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	now := time.Now()
@@ -1081,7 +1207,7 @@ func (s *Service) UpdateSkill(ctx context.Context, agentID, skillID uuid.UUID, i
 	if skill.AgentID != agentID {
 		return nil, agentdom.ErrSkillNotFound
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	if in.SkillContent != nil {
@@ -1109,7 +1235,7 @@ func (s *Service) DeleteSkill(ctx context.Context, agentID, skillID uuid.UUID) e
 	if skill.AgentID != agentID {
 		return agentdom.ErrSkillNotFound
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return err
 	}
 	return s.repo.DeleteSkill(ctx, skillID)
@@ -1163,7 +1289,7 @@ func (s *Service) AddEnvVar(ctx context.Context, agentID uuid.UUID, in agentdom.
 	if err := validateEnvVarKey(key); err != nil {
 		return nil, err
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	if existing, err := s.repo.FindEnvVarByKey(ctx, agentID, key); err == nil && existing != nil {
@@ -1197,7 +1323,7 @@ func (s *Service) UpdateEnvVar(ctx context.Context, agentID, envVarID uuid.UUID,
 	if v.AgentID != agentID {
 		return nil, agentdom.ErrEnvVarNotFound
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return nil, err
 	}
 	encryptedValue, err := s.encryptKey(in.Value)
@@ -1221,7 +1347,7 @@ func (s *Service) DeleteEnvVar(ctx context.Context, agentID, envVarID uuid.UUID)
 	if v.AgentID != agentID {
 		return agentdom.ErrEnvVarNotFound
 	}
-	if err := s.requireNonACPAgent(ctx, agentID); err != nil {
+	if err := s.requireGooseManagedAgent(ctx, agentID); err != nil {
 		return err
 	}
 	return s.repo.DeleteEnvVar(ctx, envVarID)
@@ -1765,16 +1891,35 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 // (an explicit per-conversation override) is StartChatSession; every other
 // caller (TriggerTaskAssigned et al.) passes nil for both, deferring
 // entirely to the agent's default. Returns (nil, nil, "", nil) when
-// neither the caller nor the agent names an environment, or when this
-// service was never wired with an environmentSvc (self-hosted deployments
-// that haven't enabled it) — the conversation then gets an ephemeral
+// neither the caller nor the agent names an environment and the agent is
+// NOT provider_cli — the conversation then gets an ephemeral
 // per-conversation sandbox as it always has, unchanged.
+//
+// For a provider_cli agent deferring to its own default (environmentID ==
+// nil on entry — the common case, per the doc above), a still-unresolved
+// environment returns ErrDefaultEnvironmentRequiredForCLIProvider instead
+// of the usual silent (nil, nil, "", nil): that type's CLI login state must
+// persist across conversations, which only a static environment's volume
+// provides, so it must never silently fall through to an ephemeral
+// sandbox. The agent is only fetched when environmentID == nil, same
+// condition as before this check existed — a provider_cli agent can never
+// exist at all when s.environmentSvc == nil (CreateAgent's
+// validateDefaultEnvironment already requires environmentSvc to resolve a
+// default_environment_id, and provider_cli agents require one), so no
+// fetch is needed on that branch either. The narrow gap this leaves — a
+// caller-supplied explicit environmentID/folderID (StartChatSession only)
+// that fails to resolve for a provider_cli agent — falls through to the
+// ordinary silent-ephemeral path rather than erroring; ResolveConversationWorkdir
+// already returns a real error for an explicit environmentID it can't
+// resolve (see its own doc comment: only environmentID == nil resolves to
+// (nil, nil, nil)), so this gap should be unreachable in practice.
 func (s *Service) resolveConversationEnvironment(ctx context.Context, projectID, agentID uuid.UUID, environmentID, folderID *uuid.UUID) (envID, resolvedFolderID *uuid.UUID, workdir string, err error) {
 	if s.environmentSvc == nil {
 		return nil, nil, "", nil
 	}
+	var agent *agentdom.Agent
 	if environmentID == nil {
-		agent, err := s.repo.FindAgentByID(ctx, agentID)
+		agent, err = s.repo.FindAgentByID(ctx, agentID)
 		if err != nil {
 			return nil, nil, "", err
 		}
@@ -1791,6 +1936,9 @@ func (s *Service) resolveConversationEnvironment(ctx context.Context, projectID,
 		}
 	}
 	if environmentID == nil {
+		if agent != nil && agent.AgentType == agentdom.AgentTypeProviderCLI {
+			return nil, nil, "", agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
+		}
 		return nil, nil, "", nil
 	}
 	env, folder, err := s.environmentSvc.ResolveConversationWorkdir(ctx, projectID, environmentID, folderID)
@@ -1798,6 +1946,10 @@ func (s *Service) resolveConversationEnvironment(ctx context.Context, projectID,
 		return nil, nil, "", err
 	}
 	if env == nil || folder == nil {
+		// e.g. the agent's default environment/folder was since deleted.
+		if agent != nil && agent.AgentType == agentdom.AgentTypeProviderCLI {
+			return nil, nil, "", agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
+		}
 		return nil, nil, "", nil
 	}
 	return &env.ID, &folder.ID, folder.Path, nil

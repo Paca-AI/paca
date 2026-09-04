@@ -44,6 +44,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"fmt"
+	"path"
+	"sort"
 	"strings"
 
 	"github.com/Paca-AI/agent-runner/internal/agent"
@@ -107,44 +109,105 @@ func prepareFileSkills(skills []agent.Skill) []agent.Skill {
 // the way Goose's discovery expects: skillsRelDir/<skill-name>/SKILL.md,
 // content written through verbatim (it's already a full SKILL.md — see
 // prepareFileSkills). Returns a nil buffer if there's nothing to write,
-// so the caller can skip the CopyToContainer call entirely.
+// so the caller can skip the CopyToContainer call entirely. A thin
+// convenience wrapper over the more general buildFileTar below.
 func buildSkillsTar(fileSkills []agent.Skill) (*bytes.Buffer, error) {
 	if len(fileSkills) == 0 {
 		return nil, nil
 	}
+	entries := make([]fileEntry, 0, len(fileSkills))
+	for _, s := range fileSkills {
+		entries = append(entries, fileEntry{RelPath: skillsRelDir + "/" + s.SkillName + "/SKILL.md", Content: s.SkillContent})
+	}
+	return buildFileTar(entries, nil)
+}
+
+// fileEntry is one file to write into a sandbox/environment container,
+// relative to the destPath a CopyToContainer/CopyToEnvironment call
+// targets. Structurally identical to providercli.FileEntry (that package
+// can't depend on this one, nor vice versa, without a cycle) — converted
+// at the one call site that needs both, syncProviderCLIConfig.
+type fileEntry struct {
+	RelPath string
+	Content string
+}
+
+// buildFileTar renders entries as an in-memory tar archive, with an
+// explicit directory entry written for every parent directory any entry's
+// RelPath implies (same explicit-directory-entry approach the original,
+// skills-only version of this function used — kept rather than relying on
+// the extraction side to auto-create missing parent directories, since
+// that isn't a documented guarantee of either backend's CopyToContainer/
+// CopyToEnvironment implementation). Directories are written shallowest
+// first so a nested path's parent always exists before the child entry
+// that needs it. Returns a nil buffer for an empty entries slice, so the
+// caller can skip the CopyToContainer/CopyToEnvironment call entirely.
+// Generalized out of buildSkillsTar's original body so both Goose's own
+// .agents/skills layout (above) and every providercli.Adapter's own
+// config-file layout (syncProviderCLIConfig) share one tar-writing
+// implementation instead of duplicating it.
+//
+// excludeDirs skips writing a directory header for any path present in it
+// — needed by syncProviderCLIConfig, whose entries can sit under a path
+// (a providercli.Adapter's HomeDirName(), e.g. ".claude") that's already a
+// symlink on disk by the time this tar is uploaded (see that function's
+// own comment on the bootstrap step). Docker's tar extraction refuses to
+// overwrite a non-directory (the symlink) with a literal directory entry
+// from the archive — confirmed directly: omitting this exclusion produced
+// a live "cannot overwrite non-directory ... with directory ..." error the
+// very first time a Claude Code agent's skill (nested under
+// .claude/skills/<name>/SKILL.md, implying a .claude directory header)
+// synced against an environment whose ~/.claude bootstrap symlink had
+// already been created. Excluding the symlinked path itself is safe and
+// sufficient: extraction still creates any DEEPER directory (e.g.
+// .claude/skills) correctly, since a regular mkdir one level under an
+// existing symlink transparently follows it to the real target — only a
+// tar entry whose name exactly matches the symlink's own path conflicts.
+// nil is equivalent to an empty set (every other caller, i.e.
+// buildSkillsTar, has nothing to exclude).
+func buildFileTar(entries []fileEntry, excludeDirs map[string]bool) (*bytes.Buffer, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	dirSet := map[string]struct{}{}
+	for _, e := range entries {
+		for dir := path.Dir(e.RelPath); dir != "." && dir != "/" && dir != ""; dir = path.Dir(dir) {
+			if excludeDirs[dir] {
+				continue
+			}
+			dirSet[dir] = struct{}{}
+		}
+	}
+	dirs := make([]string, 0, len(dirSet))
+	for d := range dirSet {
+		dirs = append(dirs, d)
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		return strings.Count(dirs[i], "/") < strings.Count(dirs[j], "/")
+	})
 
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
-
-	writeDir := func(name string) error {
-		return tw.WriteHeader(&tar.Header{Name: name + "/", Typeflag: tar.TypeDir, Mode: 0o755})
-	}
-	if err := writeDir(".agents"); err != nil {
-		return nil, fmt.Errorf("executor: write skills tar: %w", err)
-	}
-	if err := writeDir(skillsRelDir); err != nil {
-		return nil, fmt.Errorf("executor: write skills tar: %w", err)
-	}
-
-	for _, s := range fileSkills {
-		dir := skillsRelDir + "/" + s.SkillName
-		if err := writeDir(dir); err != nil {
-			return nil, fmt.Errorf("executor: write skills tar: skill %s: %w", s.SkillName, err)
+	for _, d := range dirs {
+		if err := tw.WriteHeader(&tar.Header{Name: d + "/", Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+			return nil, fmt.Errorf("executor: write file tar: dir %s: %w", d, err)
 		}
+	}
+	for _, e := range entries {
 		if err := tw.WriteHeader(&tar.Header{
-			Name: dir + "/SKILL.md",
+			Name: e.RelPath,
 			Mode: 0o644,
-			Size: int64(len(s.SkillContent)),
+			Size: int64(len(e.Content)),
 		}); err != nil {
-			return nil, fmt.Errorf("executor: write skills tar: skill %s: %w", s.SkillName, err)
+			return nil, fmt.Errorf("executor: write file tar: %s: %w", e.RelPath, err)
 		}
-		if _, err := tw.Write([]byte(s.SkillContent)); err != nil {
-			return nil, fmt.Errorf("executor: write skills tar: skill %s: %w", s.SkillName, err)
+		if _, err := tw.Write([]byte(e.Content)); err != nil {
+			return nil, fmt.Errorf("executor: write file tar: %s: %w", e.RelPath, err)
 		}
 	}
-
 	if err := tw.Close(); err != nil {
-		return nil, fmt.Errorf("executor: close skills tar: %w", err)
+		return nil, fmt.Errorf("executor: close file tar: %w", err)
 	}
 	return &buf, nil
 }

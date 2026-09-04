@@ -110,6 +110,16 @@ func run(log *slog.Logger) error {
 	}, log)
 
 	chatSandboxes := chatsandbox.New()
+	// providerCLIEnvClients is handler.Handler.ProviderCLIEnvClients — see
+	// that field's own doc comment for why provider_cli environment
+	// conversations need a persistent-client registry when ordinary llm/acp
+	// ones don't. A second chatsandbox.Registry instance, deliberately kept
+	// separate from chatSandboxes above: the two have different lifecycles
+	// (this one only ever holds environment-attached conversations, whose
+	// container the registry never owns/stops) and mixing them into one map
+	// would make TeardownPausedChatSandbox's chat-specific status/StopSandbox
+	// side effects fire for a provider_cli entry too.
+	providerCLIEnvClients := chatsandbox.New()
 	inFlight := registry.New()
 	publisher := messaging.NewPublisher(redisClient)
 	agentRepo := postgres.NewAgentRepository(db)
@@ -123,18 +133,19 @@ func run(log *slog.Logger) error {
 	}
 
 	h := &handler.Handler{
-		Gate:            config.NewGate(settings.AllowedAgentIDs),
-		AgentRepo:       agentRepo,
-		ConvRepo:        convRepo,
-		BundledSkills:   bundledskills.NewClient(settings.PacaAPIURL),
-		Publisher:       publisher,
-		Executor:        exec,
-		InFlight:        inFlight,
-		ChatSandboxes:   chatSandboxes,
-		ACPDispatcher:   acpDispatcher,
-		ACPRegistry:     acpRegistry,
-		EnvironmentRepo: envRepo,
-		Log:             log,
+		Gate:                  config.NewGate(settings.AllowedAgentIDs),
+		AgentRepo:             agentRepo,
+		ConvRepo:              convRepo,
+		BundledSkills:         bundledskills.NewClient(settings.PacaAPIURL),
+		Publisher:             publisher,
+		Executor:              exec,
+		InFlight:              inFlight,
+		ChatSandboxes:         chatSandboxes,
+		ProviderCLIEnvClients: providerCLIEnvClients,
+		ACPDispatcher:         acpDispatcher,
+		ACPRegistry:           acpRegistry,
+		EnvironmentRepo:       envRepo,
+		Log:                   log,
 	}
 
 	consumer := messaging.NewConsumer(redisClient, settings.WorkerConcurrency, h.Handle, h.HandleControl, log)
@@ -182,6 +193,7 @@ func run(log *slog.Logger) error {
 	// doc comment for why blocking here used to be a crash-loop risk.
 	go reconcileEnvironmentsOnStartup(ctx, envRepo, encryptor, acpServer, settings.MCPDevSourceDir, log)
 	go reapIdleChatSandboxes(ctx, h, chatSandboxes, inFlight, settings.ChatSandboxIdleTimeout, log)
+	go reapIdleProviderCLIClients(ctx, h, providerCLIEnvClients, inFlight, settings.ChatSandboxIdleTimeout, log)
 	go reapIdleEnvironments(ctx, envRepo, sandboxBackend, log)
 	go runHTTPServer(ctx, httpServer, log)
 	go envCommandConsumer.Run(ctx)
@@ -291,6 +303,39 @@ func reapIdleChatSandboxes(
 			for _, convID := range chatSandboxes.FindIdle(time.Now(), idleTimeout, inFlight.IsRegistered) {
 				log.Info("agent-runner: reaping idle chat sandbox", "conversation_id", convID)
 				h.TeardownPausedChatSandbox(ctx, convID)
+			}
+		}
+	}
+}
+
+// reapIdleProviderCLIClients periodically closes provider_cli environment
+// conversations' cached ACP clients idle longer than idleTimeout — the
+// handler.Handler.ProviderCLIEnvClients counterpart to reapIdleChatSandboxes
+// above. Unlike that one, there's no user-visible "disconnected tab" this is
+// detecting: it's purely bounding how long an unused connection (and the
+// claude subprocess goose keeps alive behind it) sits around for a
+// conversation nobody has replied to in a while. Reuses the same
+// ChatSandboxIdleTimeout setting as chat sandboxes rather than adding a
+// dedicated config knob — revisit with its own setting if that timeout ever
+// needs to diverge from chat sandboxes' for a real reason.
+func reapIdleProviderCLIClients(
+	ctx context.Context,
+	h *handler.Handler,
+	providerCLIEnvClients *chatsandbox.Registry,
+	inFlight *registry.Conversations,
+	idleTimeout time.Duration,
+	log *slog.Logger,
+) {
+	ticker := time.NewTicker(idleReaperInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, convID := range providerCLIEnvClients.FindIdle(time.Now(), idleTimeout, inFlight.IsRegistered) {
+				log.Info("agent-runner: reaping idle provider_cli client", "conversation_id", convID)
+				h.TeardownIdleProviderCLIClient(convID)
 			}
 		}
 	}

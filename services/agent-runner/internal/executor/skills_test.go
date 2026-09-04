@@ -165,6 +165,79 @@ func mapKeys(m map[string]string) []string {
 	return keys
 }
 
+func TestBuildFileTar_ExcludeDirsOmitsOnlyTheExactPath(t *testing.T) {
+	// Regression guard for a live bug: syncProviderCLIConfig bootstraps
+	// ~/.claude as a symlink onto the persistent volume before uploading a
+	// tar containing entries like ".claude/skills/<name>/SKILL.md" — every
+	// ancestor of that path includes ".claude" itself, and Docker's tar
+	// extraction refuses to overwrite a non-directory (the symlink) with a
+	// literal directory header at that exact path ("cannot overwrite
+	// non-directory ... with directory ..."). excludeDirs must omit the
+	// symlinked path's own directory header while still emitting deeper
+	// ancestors (extraction follows the symlink transparently for those).
+	entries := []fileEntry{
+		{RelPath: ".claude.json", Content: "{}"},
+		{RelPath: ".claude/skills/paca-do/SKILL.md", Content: "---\nname: paca-do\n---\nBody."},
+	}
+	buf, err := buildFileTar(entries, map[string]bool{".claude": true})
+	if err != nil {
+		t.Fatalf("buildFileTar: %v", err)
+	}
+
+	dirs := map[string]bool{}
+	files := map[string]bool{}
+	tr := tar.NewReader(buf)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar read: %v", err)
+		}
+		if hdr.Typeflag == tar.TypeDir {
+			dirs[strings.TrimSuffix(hdr.Name, "/")] = true
+		} else {
+			files[hdr.Name] = true
+		}
+	}
+
+	if dirs[".claude"] {
+		t.Error(`buildFileTar emitted a directory header for ".claude" — this is exactly what collides with the bootstrap symlink and reproduces the live bug`)
+	}
+	if !dirs[".claude/skills"] || !dirs[".claude/skills/paca-do"] {
+		t.Errorf("expected deeper ancestor directories to still be emitted, got dirs=%v", dirs)
+	}
+	if !files[".claude.json"] || !files[".claude/skills/paca-do/SKILL.md"] {
+		t.Errorf("expected both file entries to be written, got files=%v", files)
+	}
+}
+
+func TestBuildFileTar_NilExcludeDirsBehavesLikeEmpty(t *testing.T) {
+	entries := []fileEntry{{RelPath: "a/b/c.txt", Content: "x"}}
+	buf, err := buildFileTar(entries, nil)
+	if err != nil {
+		t.Fatalf("buildFileTar: %v", err)
+	}
+	dirs := map[string]bool{}
+	tr := tar.NewReader(buf)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar read: %v", err)
+		}
+		if hdr.Typeflag == tar.TypeDir {
+			dirs[strings.TrimSuffix(hdr.Name, "/")] = true
+		}
+	}
+	if !dirs["a"] || !dirs["a/b"] {
+		t.Errorf("expected all ancestor directories with nil excludeDirs, got %v", dirs)
+	}
+}
+
 func TestBuildSkillsTar_SkillNameNotSubstringMismatched(t *testing.T) {
 	// Regression guard: a naive path-join without the trailing "/SKILL.md"
 	// segmentation could let "paca-do" and "paca-doc" collide or shadow one

@@ -70,6 +70,9 @@ func (m *mockAgentSvc) GenerateACPBridgeToken(_ context.Context, _, _ uuid.UUID)
 func (m *mockAgentSvc) GenerateAgentMCPKey(_ context.Context, _, _ uuid.UUID) (string, error) {
 	return "", nil
 }
+func (m *mockAgentSvc) VerifyCLILogin(_ context.Context, _, _ uuid.UUID) (bool, error) {
+	return false, agentdom.ErrAgentNotFound
+}
 func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
 	return agentdom.ErrAgentNotFound
 }

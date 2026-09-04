@@ -231,7 +231,14 @@ export interface EnvironmentPickerState {
 	folders: EnvironmentFolder[];
 	folderId: string;
 	onFolderChange: (id: string) => void;
+	/** Applies to both the environment and folder pickers (e.g. a
+	 * conversation already in progress, whose attachment is fixed for its
+	 * lifetime). */
 	disabled?: boolean;
+	/** Environment-only lock, layered on top of disabled above — see
+	 * useEnvironmentPicker's own doc comment on why a provider_cli agent
+	 * locks environment but leaves folder pickable. */
+	environmentDisabled?: boolean;
 }
 
 export const EnvironmentPickerContext =
@@ -335,6 +342,20 @@ export function useEnvironmentPicker(
 	}, []);
 
 	const disabled = options?.disabled;
+	// A provider_cli agent's underlying CLI persists its login state on disk
+	// inside its own default environment (see internal/executor/providercli's
+	// symlink bootstrap, services/agent-runner) — switching to a different
+	// environment for one conversation would silently lose that login, so
+	// *environment* choice is locked to whatever default_environment_id the
+	// agent itself carries (already auto-selected above) rather than left
+	// open to a choice that only breaks things. Folder is deliberately NOT
+	// included in this lock — picking a different working directory inside
+	// the same, still-logged-in environment is harmless, and still something
+	// a user legitimately wants to do per conversation. Combined with the
+	// caller's own disabled (via the || below), not replacing it — a
+	// caller-locked picker (e.g. an already-started conversation) must stay
+	// locked regardless of agent type.
+	const environmentDisabled = disabled || agent?.agent_type === "provider_cli";
 	const pickerState = useMemo<EnvironmentPickerState>(
 		() => ({
 			projectId,
@@ -346,6 +367,7 @@ export function useEnvironmentPicker(
 			folderId,
 			onFolderChange: setFolderId,
 			disabled,
+			environmentDisabled,
 		}),
 		[
 			projectId,
@@ -356,6 +378,7 @@ export function useEnvironmentPicker(
 			folders,
 			folderId,
 			disabled,
+			environmentDisabled,
 		],
 	);
 
@@ -380,6 +403,7 @@ export function EnvironmentPickerInline() {
 		environmentId,
 		onEnvironmentChange,
 		disabled,
+		environmentDisabled,
 	} = picker;
 
 	// Nothing to pick from yet — this project hasn't created any static
@@ -408,7 +432,7 @@ export function EnvironmentPickerInline() {
 						label: t("environments.picker.createNew"),
 					},
 				]}
-				disabled={disabled}
+				disabled={disabled || environmentDisabled}
 			>
 				<SelectTrigger
 					size="sm"

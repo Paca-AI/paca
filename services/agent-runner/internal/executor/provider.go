@@ -1,6 +1,10 @@
 package executor
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Paca-AI/agent-runner/internal/agent"
+)
 
 // providerAPIKeyEnvVar maps an agent's llm_provider to the env var Goose
 // expects the API key under. Best-effort, covering the providers with an
@@ -74,4 +78,127 @@ func resolveProviderEnv(llmProvider string) (gooseProvider, apiKeyEnvVar string)
 		provider = alias
 	}
 	return provider, envVar
+}
+
+// cliProviderAPIKeyEnvVar maps a cli_provider value to the env var its own
+// CLI binary reads for non-interactive API-key auth — this is each CLI's
+// OWN native mechanism, completely independent of Goose's own
+// GOOSE_PROVIDER/provider-API-key plumbing above, which does not apply once
+// GOOSE_PROVIDER is set to a cli-provider value. Confirmed directly against
+// https://goose-docs.ai/docs/guides/cli-providers/: "Goose doesn't handle
+// authentication — it assumes the underlying CLI is already logged in and
+// functional." cursor-agent has no known non-interactive API-key auth
+// path as of this writing — login via the environment terminal only (see
+// providercli.cursorAgent.APIKeyEnvVar).
+var cliProviderAPIKeyEnvVar = map[string]string{
+	"claude-code": "ANTHROPIC_API_KEY",
+	"codex":       "OPENAI_API_KEY",
+	"gemini-cli":  "GEMINI_API_KEY",
+}
+
+// gooseCLIProviderID translates a Paca cli_provider value onto the
+// GOOSE_PROVIDER id Goose actually spawns for it, for the two cases where
+// they diverge — the CLI-providers counterpart to gooseProviderID above.
+//
+//   - "claude-code" -> "claude-acp", "codex" -> "codex-acp": Goose's raw
+//     CLI-providers feature (GOOSE_PROVIDER=claude-code|codex) only ever
+//     forwards the wrapped CLI's final text — confirmed directly in Goose
+//     1.46.0's own source: claude_code.rs's stream() only parses
+//     content_block_delta events with delta.type=="text_delta"; codex.rs's
+//     extract_text_from_item only extracts item.type=="agent_message".
+//     Every tool call the CLI itself makes (Claude's own tool_use content
+//     blocks, Codex's own function_call items) is silently dropped before
+//     it ever becomes Goose message content, so it can never surface as an
+//     ACP tool_call/tool_call_update notification — live incident
+//     (2026-09-04, conversation d90f372b-0abc-4d34-90b2-39919614fd8e): the
+//     agent's own reply described pagination it must have done via tool
+//     calls ("pageSize 5 works, let me continue paginating..."), yet zero
+//     tool_call events were ever recorded. Separately, neither raw provider
+//     has any real session-resume mechanism (no --resume/--session-id ever
+//     passed to the wrapped CLI at spawn), which is what caused the
+//     conversation-memory-loss incident this alias map was first built to
+//     fix (see this map's prior, reverted claude-code-only version's own
+//     history) — Goose's own provider metadata already marks claude-code
+//     "[Deprecated: use claude-acp instead]" for exactly this.
+//     claude-acp/codex-acp (npm packages @agentclientprotocol/
+//     claude-agent-acp / @agentclientprotocol/codex-acp — see
+//     services/agent-server/Dockerfile) are real ACP agent implementations
+//     that relay their own session/update stream — tool calls included —
+//     straight through Goose, and support real session/load, instead of
+//     Goose trying to re-derive either from a wrapped CLI's raw output.
+//     Verified live: claude-acp correctly recalled a planted value across a
+//     resumed session where claude-code lost it every time, against the
+//     exact same authenticated `claude` CLI/login state either way. codex
+//     wasn't authenticated in the environment used for that verification —
+//     this mapping ships on architectural parity with the verified
+//     claude-acp path (Goose's own AcpProvider/extension_configs_to_
+//     mcp_servers code is shared by both, not two independent
+//     implementations), not an equivalent live test of codex-acp itself.
+//   - cursor-agent, gemini-cli: no entry, unchanged — Goose has no ACP
+//     equivalent for either (confirmed against
+//     https://goose-docs.ai/docs/guides/acp-providers's own provider list:
+//     only amp-acp/claude-acp/codex-acp/pi-acp exist).
+//
+// Paca's own cli_provider values ("claude-code", "codex", ...) deliberately
+// do NOT change — still what's stored in the DB, shown in the UI, and used
+// by providercli's Name()/auth-status/config-sync for all four adapters
+// (all of which still target the same underlying CLI binary and its own
+// config directory, unaffected by which of Goose's two provider ids drives
+// it). Only the GOOSE_PROVIDER env value goes through this alias.
+var gooseCLIProviderID = map[string]string{
+	"claude-code": "claude-acp",
+	"codex":       "codex-acp",
+}
+
+// resolveCLIProviderEnv builds the GOOSE_PROVIDER/GOOSE_MODEL/GOOSE_MODE
+// env set for a provider_cli agent — the CLI-providers counterpart to
+// resolveProviderEnv above, used by buildProviderCLIContainerEnv instead of
+// buildAgentContainerEnv's ordinary LLM branch. cfg.CLIProvider is passed
+// through to GOOSE_PROVIDER mostly verbatim (confirmed against goose-docs.
+// ai's CLI-providers guide that these are literal, undisguised values —
+// "claude-code", "codex", "cursor-agent", "gemini-cli") except where
+// gooseCLIProviderID above aliases it onto its ACP sibling.
+func resolveCLIProviderEnv(cfg agent.Config) map[string]string {
+	gooseProvider := cfg.CLIProvider
+	if alias, ok := gooseCLIProviderID[gooseProvider]; ok {
+		gooseProvider = alias
+	}
+	env := map[string]string{"GOOSE_PROVIDER": gooseProvider}
+	if cfg.CLIModel != "" {
+		env["GOOSE_MODEL"] = cfg.CLIModel
+	}
+	// GOOSE_MODE=auto bypasses interactive permission prompts — confirmed
+	// supported for claude-code and codex by the docs; also read by
+	// claude-acp's own mode_mapping (GooseMode::Auto -> the ACP session
+	// mode "bypassPermissions", confirmed against claude_acp.rs), so this
+	// keeps meaning the same thing after the gooseCLIProviderID alias above
+	// swaps the underlying provider. Treated as best-effort for
+	// cursor-agent/gemini-cli too (an unsupported Goose env var is ignored,
+	// not a hard error, for every CLI provider observed so far — worth
+	// reconfirming at runtime, not independently verified for those two).
+	env["GOOSE_MODE"] = "auto"
+	// GOOSE_MODE=auto makes Goose's claude-code provider spawn `claude`
+	// with --dangerously-skip-permissions (see aaif-goose/goose's
+	// crates/goose/src/providers/claude_code.rs, apply_permission_flags) —
+	// and Claude Code CLI refuses that flag outright when running as root:
+	// "--dangerously-skip-permissions cannot be used with root/sudo
+	// privileges for security reasons", confirmed live (the exact live
+	// incident: goose's own read loop then sees immediate EOF on the
+	// child's stdout, surfaced to the user as "Claude CLI process
+	// terminated unexpectedly"). This whole sandbox image runs as root
+	// deliberately (see services/agent-server/Dockerfile's own doc
+	// comment — so a conversation can run apt-get/etc. without sudo), so
+	// dropping to non-root here isn't an option. IS_SANDBOX=1 is Claude
+	// Code's own confirmed escape hatch for exactly this "I know I'm root,
+	// I know I'm in an isolated sandbox" case — verified directly: the
+	// same invocation that failed without it exits 0 and responds
+	// normally with it set. Still needed identically once claude-code is
+	// aliased to claude-acp above: claude-agent-acp wraps and ultimately
+	// still spawns the same `claude` binary, which enforces the same
+	// root check regardless of which Goose provider is driving it. Not
+	// independently verified for codex/codex-acp's own root-check behavior
+	// (or lack thereof) — harmless either way, since an env var a given CLI
+	// doesn't look at is simply ignored.
+	env["IS_SANDBOX"] = "1"
+	return env
 }

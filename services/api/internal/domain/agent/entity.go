@@ -50,6 +50,43 @@ type Agent struct {
 	// via a small local override in apps/acp-bridge's runner.py (the SDK's
 	// registry doesn't know about goose).
 	ACPCommand []string
+	// CLIProvider is one of claude-code | codex | cursor-agent | gemini-cli;
+	// nil unless AgentType == provider_cli. Unlike ACPProvider (which names
+	// the ACP client the *user's own machine* runs via apps/acp-bridge),
+	// CLIProvider names which coding CLI Goose itself shells out to *inside*
+	// agent-runner's own sandbox/environment container, using Goose's "CLI
+	// providers" feature (GOOSE_PROVIDER=<CLIProvider>) — see
+	// docs/ai-agent/overview.md's provider_cli section. Turn control still
+	// goes through the exact same goose serve + ACP client path llm-type
+	// agents use; only the underlying model provider differs.
+	CLIProvider *string
+	// CLIModel is passed through as GOOSE_MODEL when CLIProvider is set —
+	// provider-specific free text (e.g. "sonnet"/"haiku" for claude-code),
+	// not validated against Paca's own LLM model catalog.
+	CLIModel string
+	// CLIAuthMode is "api_key" or "login" (default). Goose itself never
+	// brokers auth for a CLI provider — "Goose doesn't handle
+	// authentication, it assumes the underlying CLI is already logged in
+	// and functional" — so this is entirely about how *Paca* gets that CLI
+	// authenticated: "api_key" injects CLIAPIKeySecret under that CLI's own
+	// native non-interactive auth env var (see
+	// CLIProvidersWithAPIKeyAuth); "login" requires the user to run the
+	// CLI's own interactive login command in the agent's default
+	// environment's terminal. cursor-agent supports "login" only in this
+	// version.
+	CLIAuthMode string
+	// CLIAPIKeySecret is the encrypted value stored in
+	// agents.cli_api_key_secret — decrypt with secret.Encryptor before
+	// injecting into a container. Empty when CLIAuthMode is "login" or
+	// unset. Never log this field.
+	CLIAPIKeySecret string
+	// CLILoginVerifiedAt is set by the "Verify login" action — a file-
+	// existence probe run inside DefaultEnvironmentID, never an actual CLI
+	// invocation (see docs/ai-agent/overview.md). Advisory only: never
+	// re-validated automatically, so a login that later expires or is
+	// revoked won't clear this. nil until the user has verified at least
+	// once.
+	CLILoginVerifiedAt *time.Time
 	// HasACPBridgeToken reports whether a local-bridge auth token has been
 	// generated; the token itself (and its hash) are never exposed here.
 	HasACPBridgeToken bool
@@ -93,6 +130,14 @@ type Agent struct {
 	// AgentScopeGlobal agents (enforced by CreateAgent/UpdateAgent, not a
 	// DB constraint — see that validation for why). Overridable per
 	// conversation at chat-start.
+	//
+	// MANDATORY (not just optional) for AgentType == provider_cli: a
+	// provider_cli agent's underlying CLI persists its own login
+	// credentials on disk, which must survive across conversations/turns —
+	// only a static environment's persistent volume provides that, so this
+	// type never falls back to an ephemeral sandbox. Enforced by
+	// CreateAgent/UpdateAgent and re-checked at every conversation start
+	// (resolveConversationEnvironment), never just at creation time.
 	DefaultEnvironmentID *uuid.UUID
 	// DefaultFolderID, when set, is which folder
 	// (environmentdom.EnvironmentFolder) inside DefaultEnvironmentID this
@@ -116,8 +161,9 @@ type Agent struct {
 
 // AgentType values.
 const (
-	AgentTypeLLM = "llm"
-	AgentTypeACP = "acp"
+	AgentTypeLLM         = "llm"
+	AgentTypeACP         = "acp"
+	AgentTypeProviderCLI = "provider_cli"
 )
 
 // AgentScope discriminates a project-owned agent from an instance-wide
@@ -146,6 +192,46 @@ var ValidACPProviders = map[string]bool{
 	ACPProviderGeminiCLI:  true,
 	ACPProviderGoose:      true,
 	ACPProviderCustom:     true,
+}
+
+// CLIProvider values — see Agent.CLIProvider's doc comment. Deliberately a
+// separate set from ACPProvider's, even though claude-code/codex/gemini-cli
+// spell the same as three ACP provider values: the two enumerate unrelated
+// concepts (which CLI Goose shells out to inside agent-runner's own sandbox,
+// vs. which ACP client the user's own machine runs), and CLIProvider adds
+// cursor-agent, which has no ACP-provider equivalent.
+const (
+	CLIProviderClaudeCode = "claude-code"
+	CLIProviderCodex      = "codex"
+	CLIProviderCursor     = "cursor-agent"
+	CLIProviderGeminiCLI  = "gemini-cli"
+)
+
+// ValidCLIProviders is the set of allowed cli_provider values.
+var ValidCLIProviders = map[string]bool{
+	CLIProviderClaudeCode: true,
+	CLIProviderCodex:      true,
+	CLIProviderCursor:     true,
+	CLIProviderGeminiCLI:  true,
+}
+
+// CLIAuthMode values — see Agent.CLIAuthMode's doc comment.
+const (
+	CLIAuthModeAPIKey = "api_key"
+	CLIAuthModeLogin  = "login"
+)
+
+// CLIProvidersWithAPIKeyAuth is the set of cli_provider values that support
+// CLIAuthModeAPIKey — each CLI's own native non-interactive auth env var
+// (see executor's cliProviderAPIKeyEnvVar on the agent-runner side),
+// completely independent of Goose's own provider/API-key mechanism, which
+// does not apply once GOOSE_PROVIDER names a CLI provider. cursor-agent has
+// no known non-interactive API-key auth path as of this writing — login via
+// the environment terminal only.
+var CLIProvidersWithAPIKeyAuth = map[string]bool{
+	CLIProviderClaudeCode: true,
+	CLIProviderCodex:      true,
+	CLIProviderGeminiCLI:  true,
 }
 
 // AgentMCPServer is a custom MCP server configuration attached to an agent.

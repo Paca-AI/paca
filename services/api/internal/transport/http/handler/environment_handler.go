@@ -263,6 +263,36 @@ func (h *EnvironmentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	presenter.NoContent(w)
 }
 
+// VerifyCLILogin handles POST
+// /projects/:projectId/environments/:environmentId/verify-cli-login?cli_provider=<provider>.
+// The environment-scoped sibling of AgentHandler.VerifyCLILogin — that one
+// resolves cli_provider from an already-created provider_cli agent's own
+// DefaultEnvironmentID/CLIProvider fields, which doesn't exist yet for the
+// create-agent dialog's own "Verify login" button (the agent it's
+// configuring hasn't been created). Takes both directly as parameters
+// instead, so login can be verified against the environment/provider
+// combination the user has picked before submitting the form. Does not
+// persist a verification timestamp anywhere (there is no agent row yet to
+// persist it against) — purely a live probe.
+func (h *EnvironmentHandler) VerifyCLILogin(w http.ResponseWriter, r *http.Request) {
+	projectID, environmentID, err := h.parseEnvironment(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	cliProvider := r.URL.Query().Get("cli_provider")
+	if cliProvider == "" {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "cli_provider is required"))
+		return
+	}
+	authenticated, err := h.svc.VerifyCLIAuth(r.Context(), projectID, environmentID, cliProvider)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.VerifyCLILoginResponse{Authenticated: authenticated})
+}
+
 // --- Folders --------------------------------------------------------------
 
 // ListFolders handles GET /projects/:projectId/environments/:environmentId/folders.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -76,6 +77,7 @@ type mockAgentRepo struct {
 	setAgentMemberID                func(ctx context.Context, agentID, memberID uuid.UUID) error
 	setACPBridgeTokenHash           func(ctx context.Context, agentID uuid.UUID, hash string) error
 	setMCPAPIKeyHash                func(ctx context.Context, agentID uuid.UUID, hash string) error
+	setCLILoginVerifiedAt           func(ctx context.Context, agentID uuid.UUID, t time.Time) error
 	findAgentByMCPAPIKeyHash        func(ctx context.Context, hash string) (*agentdom.Agent, error)
 	listMCPServers                  func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentMCPServer, error)
 	findMCPServerByID               func(ctx context.Context, id uuid.UUID) (*agentdom.AgentMCPServer, error)
@@ -242,6 +244,13 @@ func (m *mockAgentRepo) SetACPBridgeTokenHash(ctx context.Context, agentID uuid.
 func (m *mockAgentRepo) SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUID, hash string) error {
 	if m.setMCPAPIKeyHash != nil {
 		return m.setMCPAPIKeyHash(ctx, agentID, hash)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) SetCLILoginVerifiedAt(ctx context.Context, agentID uuid.UUID, t time.Time) error {
+	if m.setCLILoginVerifiedAt != nil {
+		return m.setCLILoginVerifiedAt(ctx, agentID, t)
 	}
 	return nil
 }
