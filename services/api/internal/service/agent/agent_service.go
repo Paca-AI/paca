@@ -1155,9 +1155,19 @@ func (s *Service) DeleteMCPServer(ctx context.Context, agentID, serverID uuid.UU
 // Skills
 // -------------------------------------------------------------------------
 
+// validateSkillName rejects a skill name that would let the on-disk
+// SKILL.md path built from it — executor/skills.go's buildSkillsTar
+// (skillsRelDir + "/" + name + "/SKILL.md") on the agent-runner side, and
+// providercli's claude_code.go SyncFiles (.claude/skills/<name>/SKILL.md)
+// for a provider_cli agent — escape the skills directory it's meant to
+// land in. Neither writer sanitizes or validates name itself (see their
+// own doc comments), so this is the one place in the stack that does.
 func validateSkillName(name string) error {
 	if agentdom.IsReservedSkillName(name) {
 		return agentdom.ErrSkillNameReserved
+	}
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		return agentdom.ErrSkillNameInvalid
 	}
 	return nil
 }

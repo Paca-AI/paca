@@ -78,6 +78,14 @@ var (
 	ErrSkillNotFound     = errors.New("skill not found")
 	ErrSkillNameTaken    = errors.New("skill name already in use on this agent")
 	ErrSkillNameReserved = errors.New("skill name is reserved for internal agent scaffolding")
+	// ErrSkillNameInvalid is returned for a skill name that would let the
+	// on-disk SKILL.md path built from it (executor/skills.go's
+	// buildSkillsTar, and providercli's claude_code.go SyncFiles) escape
+	// the skills directory it's meant to land in — neither writer
+	// sanitizes the name itself, so this is enforced once, here, at the
+	// one place every skill name passes through before either ever sees
+	// it.
+	ErrSkillNameInvalid = errors.New("skill name must not be empty, \".\", \"..\", or contain \"/\" or \"\\\"")
 )
 
 // Environment variable errors

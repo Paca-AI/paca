@@ -11,6 +11,7 @@ import (
 
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 )
 
@@ -57,7 +58,7 @@ func (f *fakeAvatarService) DeleteAvatarObjects(_ context.Context, keys ...*stri
 // findAgentByIDReturning stubs mockAgentRepo.findAgentByID to return a
 // minimal agent of the given type, regardless of the requested id — used by
 // tests exercising MCP server / skill / env var writes, which now check the
-// owning agent's type via requireNonACPAgent before touching the repo.
+// owning agent's type via requireGooseManagedAgent before touching the repo.
 func findAgentByIDReturning(agentType string) func(context.Context, uuid.UUID) (*agentdom.Agent, error) {
 	return func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
 		return &agentdom.Agent{ID: id, AgentType: agentType}, nil
@@ -1264,6 +1265,72 @@ func TestAddSkill_ReservedName_ReturnsError(t *testing.T) {
 			assert.Nil(t, result)
 			assert.ErrorIs(t, err, agentdom.ErrSkillNameReserved)
 		})
+	}
+}
+
+// TestAddSkill_InvalidName_ReturnsError guards the on-disk path
+// buildSkillsTar (agent-runner's executor/skills.go) and providercli's
+// claude_code.go SyncFiles build from a skill name — neither sanitizes it,
+// so a name like "../../../etc/cron.d/x" would otherwise let a project
+// member with agents:write on their own project write a SKILL.md outside
+// the intended skills directory inside the agent's own sandbox/environment
+// (see validateSkillName's own doc comment).
+func TestAddSkill_InvalidName_ReturnsError(t *testing.T) {
+	invalidNames := []string{
+		"",
+		".",
+		"..",
+		"../../../etc/cron.d/x",
+		"foo/bar",
+		"foo\\bar",
+		"/etc/passwd",
+	}
+
+	for _, name := range invalidNames {
+		t.Run(name, func(t *testing.T) {
+			agentID := uuid.New()
+			repo := &mockAgentRepo{
+				createSkill: func(_ context.Context, _ *agentdom.AgentSkill) error {
+					t.Fatal("createSkill should not be called for an invalid name")
+					return nil
+				},
+			}
+			svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+			result, err := svc.AddSkill(context.Background(), agentID, agentdom.AddSkillInput{
+				SkillName:    name,
+				SkillSource:  "file",
+				SkillContent: "skill content",
+			})
+
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, agentdom.ErrSkillNameInvalid)
+		})
+	}
+}
+
+// TestAddSkill_ValidNamesWithDotsAllowed confirms the new validateSkillName
+// guard only rejects an exact "." / ".." segment or a path separator — an
+// ordinary name that merely contains a dot (e.g. a version suffix) must
+// keep working, since it names one harmless directory segment, not a
+// traversal.
+func TestAddSkill_ValidNamesWithDotsAllowed(t *testing.T) {
+	agentID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByID: findAgentByIDReturning(agentdom.AgentTypeLLM),
+		createSkill:   func(_ context.Context, _ *agentdom.AgentSkill) error { return nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.AddSkill(context.Background(), agentID, agentdom.AddSkillInput{
+		SkillName:    "my-skill.v1.2",
+		SkillSource:  "file",
+		SkillContent: "skill content",
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result) {
+		assert.Equal(t, "my-skill.v1.2", result.SkillName)
 	}
 }
 
@@ -3404,10 +3471,12 @@ func TestGenerateGlobalAgentMCPKey_NotGlobalScope(t *testing.T) {
 }
 
 // -------------------------------------------------------------------------
-// requireNonACPAgent — MCP servers / skills / env vars are meaningless for
-// ACP-type agents (services/ai-agent's acp_dispatch.py never reads any of
-// these tables), so every write path must reject them outright instead of
-// silently accepting a change that will never take effect.
+// requireGooseManagedAgent — MCP servers / skills / env vars are meaningless
+// for ACP-type agents (services/ai-agent's acp_dispatch.py never reads any
+// of these tables), so every write path must reject them outright instead
+// of silently accepting a change that will never take effect. llm and
+// provider_cli agents both pass this check — see that function's own doc
+// comment.
 // -------------------------------------------------------------------------
 
 func TestAddMCPServer_ACPAgent_ReturnsError(t *testing.T) {
@@ -3722,4 +3791,525 @@ func TestRemoveGlobalAvatar_ClearsKeysAndDeletesObjects(t *testing.T) {
 	avatarSvc.mu.Lock()
 	defer avatarSvc.mu.Unlock()
 	assert.ElementsMatch(t, []string{key, thumbKey}, avatarSvc.deletedKeys)
+}
+
+// ---------------------------------------------------------------------------
+// provider_cli — CreateAgent/UpdateAgent validation, CreateGlobalAgent's
+// rejection, and VerifyCLILogin. See agentdom.Agent.CLIProvider's doc
+// comment for the feature these all guard.
+// ---------------------------------------------------------------------------
+
+// fakeEnvironmentService is a minimal environmentdom.Service double. Only
+// GetEnvironment, ResolveConversationWorkdir, and VerifyCLIAuth are
+// configurable — the three methods agentsvc.Service actually calls (see
+// the Service.environmentSvc field's own doc comment) — every other method
+// of the interface is a stub that returns a zero value, since no test
+// below exercises them through this fake.
+type fakeEnvironmentService struct {
+	getEnvironment func(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error)
+	verifyCLIAuth  func(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (bool, error)
+}
+
+func (f *fakeEnvironmentService) ListEnvironments(context.Context, uuid.UUID) ([]*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) GetEnvironment(ctx context.Context, projectID, environmentID uuid.UUID) (*environmentdom.Environment, error) {
+	if f.getEnvironment != nil {
+		return f.getEnvironment(ctx, projectID, environmentID)
+	}
+	return nil, environmentdom.ErrEnvironmentNotFound
+}
+
+func (f *fakeEnvironmentService) CreateEnvironment(context.Context, uuid.UUID, environmentdom.CreateEnvironmentInput) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) UpdateEnvironment(context.Context, uuid.UUID, uuid.UUID, environmentdom.UpdateEnvironmentInput) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) StartEnvironment(context.Context, uuid.UUID, uuid.UUID) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) StopEnvironment(context.Context, uuid.UUID, uuid.UUID) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) RestartEnvironment(context.Context, uuid.UUID, uuid.UUID) (*environmentdom.Environment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeleteEnvironment(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) Heartbeat(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ResolveConversationWorkdir(context.Context, uuid.UUID, *uuid.UUID, *uuid.UUID) (*environmentdom.Environment, *environmentdom.EnvironmentFolder, error) {
+	return nil, nil, nil
+}
+
+func (f *fakeEnvironmentService) ListFolders(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentFolder, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddFolder(context.Context, uuid.UUID, uuid.UUID, environmentdom.AddFolderInput) (*environmentdom.EnvironmentFolder, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeleteFolder(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) Browse(context.Context, uuid.UUID, uuid.UUID, string) (string, []environmentdom.BrowseEntry, error) {
+	return "", nil, nil
+}
+
+func (f *fakeEnvironmentService) VerifyCLIAuth(ctx context.Context, projectID, environmentID uuid.UUID, cliProvider string) (bool, error) {
+	if f.verifyCLIAuth != nil {
+		return f.verifyCLIAuth(ctx, projectID, environmentID, cliProvider)
+	}
+	return false, nil
+}
+
+func (f *fakeEnvironmentService) ListSSHKeys(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentSSHKey, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddSSHKey(context.Context, uuid.UUID, uuid.UUID, environmentdom.AddSSHKeyInput) (*environmentdom.EnvironmentSSHKey, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeleteSSHKey(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ListPortForwards(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentPortForward, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) GetPortForward(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*environmentdom.EnvironmentPortForward, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddPortForward(context.Context, uuid.UUID, uuid.UUID, environmentdom.AddPortForwardInput) (*environmentdom.EnvironmentPortForward, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) DeletePortForward(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+var _ environmentdom.Service = (*fakeEnvironmentService)(nil)
+
+func TestCreateAgent_ProviderCLI_Success(t *testing.T) {
+	projectID := uuid.New()
+	envID := uuid.New()
+	projectRoleID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(_ context.Context, _ *agentdom.Agent, _ uuid.UUID, pid, roleID uuid.UUID) error {
+			if pid != projectID || roleID != projectRoleID {
+				t.Fatalf("unexpected projectID or roleID")
+			}
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		getEnvironment: func(_ context.Context, pid, eid uuid.UUID) (*environmentdom.Environment, error) {
+			if pid != projectID || eid != envID {
+				t.Fatalf("unexpected project/environment id")
+			}
+			return &environmentdom.Environment{ID: envID, ProjectID: projectID}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	result, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          agentdom.CLIProviderClaudeCode,
+		CLIModel:             "sonnet",
+		ProjectRoleID:        projectRoleID,
+		DefaultEnvironmentID: &envID,
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result.CLIProvider) {
+		assert.Equal(t, agentdom.CLIProviderClaudeCode, *result.CLIProvider)
+	}
+	assert.Equal(t, "sonnet", result.CLIModel)
+	// CLIAuthMode defaults to "login" when the request omits it.
+	assert.Equal(t, agentdom.CLIAuthModeLogin, result.CLIAuthMode)
+	if assert.NotNil(t, result.DefaultEnvironmentID) {
+		assert.Equal(t, envID, *result.DefaultEnvironmentID)
+	}
+}
+
+func TestCreateAgent_ProviderCLI_InvalidProvider(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "CLI Agent",
+		Handle:      "cli-agent",
+		AgentType:   agentdom.AgentTypeProviderCLI,
+		CLIProvider: "not-a-real-cli",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderInvalid)
+}
+
+func TestCreateAgent_ProviderCLI_RequiresDefaultEnvironment(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "CLI Agent",
+		Handle:      "cli-agent",
+		AgentType:   agentdom.AgentTypeProviderCLI,
+		CLIProvider: agentdom.CLIProviderClaudeCode,
+		// DefaultEnvironmentID intentionally omitted.
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider)
+}
+
+func TestCreateAgent_ProviderCLI_InvalidAuthMode(t *testing.T) {
+	projectID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:        "CLI Agent",
+		Handle:      "cli-agent",
+		AgentType:   agentdom.AgentTypeProviderCLI,
+		CLIProvider: agentdom.CLIProviderClaudeCode,
+		CLIAuthMode: "not-a-real-mode",
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIAuthModeInvalid)
+}
+
+func TestCreateAgent_ProviderCLI_APIKeyAuthUnsupportedForCursorAgent(t *testing.T) {
+	projectID := uuid.New()
+	envID := uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		getEnvironment: func(_ context.Context, _, _ uuid.UUID) (*environmentdom.Environment, error) {
+			return &environmentdom.Environment{ID: envID, ProjectID: projectID}, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	// cursor-agent has no confirmed non-interactive API-key auth path (see
+	// agentdom.CLIProvidersWithAPIKeyAuth) — requesting api_key auth for it
+	// must be rejected rather than silently falling back to login mode.
+	_, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          agentdom.CLIProviderCursor,
+		CLIAuthMode:          agentdom.CLIAuthModeAPIKey,
+		CLIAPIKey:            "secret-key",
+		DefaultEnvironmentID: &envID,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderNoAPIKeyAuth)
+}
+
+func TestUpdateAgent_ProviderCLIAgentIgnoresLLMAndACPFields(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		Name:                 "CLI Agent",
+		Handle:               "cli-agent",
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		CLIAuthMode:          agentdom.CLIAuthModeLogin,
+		DefaultEnvironmentID: &envID,
+	}
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		updateAgent: func(_ context.Context, _ *agentdom.Agent) error { return nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	newModel := "gpt-4"
+	newAPIKey := "sk-leaked-onto-provider-cli-agent"
+	newACPProvider := agentdom.ACPProviderCustom
+
+	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		LLMModel:    &newModel,
+		LLMAPIKey:   &newAPIKey,
+		ACPProvider: &newACPProvider,
+		ACPCommand:  []string{"my-server"},
+	})
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.LLMModel)
+	assert.Empty(t, result.LLMAPIKeySecret)
+	assert.Nil(t, result.ACPProvider)
+	assert.Empty(t, result.ACPCommand)
+}
+
+func TestUpdateAgent_ProviderCLI_UpdatesCLIFields(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		CLIAuthMode:          agentdom.CLIAuthModeLogin,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) { return agent, nil },
+		updateAgent:   func(_ context.Context, _ *agentdom.Agent) error { return nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	newModel := "opus"
+	newProvider := agentdom.CLIProviderCodex
+
+	result, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		CLIProvider: &newProvider,
+		CLIModel:    &newModel,
+	})
+
+	assert.NoError(t, err)
+	if assert.NotNil(t, result.CLIProvider) {
+		assert.Equal(t, agentdom.CLIProviderCodex, *result.CLIProvider)
+	}
+	assert.Equal(t, "opus", result.CLIModel)
+}
+
+func TestUpdateAgent_ProviderCLI_InvalidProvider(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) { return agent, nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	badProvider := "not-a-real-cli"
+	_, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		CLIProvider: &badProvider,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderInvalid)
+}
+
+func TestUpdateAgent_ProviderCLI_ClearingDefaultEnvironmentFails(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, _ uuid.UUID) (*agentdom.Agent, error) { return agent, nil },
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	// uuid.Nil is UpdateAgentInput.DefaultEnvironmentID's "clear it"
+	// sentinel (see that field's own doc comment) — a provider_cli agent
+	// must reject this, not silently drop its CLI's persisted login state.
+	clearedEnv := uuid.Nil
+	_, err := svc.UpdateAgent(context.Background(), projectID, agentID, agentdom.UpdateAgentInput{
+		DefaultEnvironmentID: &clearedEnv,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider)
+}
+
+func TestCreateGlobalAgent_RejectsProviderCLI(t *testing.T) {
+	repo := &mockAgentRepo{
+		findGlobalAgentByHandle: func(_ context.Context, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	// A global agent has no single project's environments to default to,
+	// so provider_cli (which requires one) is rejected outright — see
+	// agentdom.ErrCLIProviderNotSupportedForGlobalAgents's own doc comment.
+	_, err := svc.CreateGlobalAgent(context.Background(), agentdom.CreateGlobalAgentInput{
+		Name:      "Global CLI Bot",
+		Handle:    "global-cli-bot",
+		AgentType: agentdom.AgentTypeProviderCLI,
+	})
+
+	assert.ErrorIs(t, err, agentdom.ErrCLIProviderNotSupportedForGlobalAgents)
+}
+
+func TestVerifyCLILogin_NonProviderCLIAgent_ReturnsError(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	agent := &agentdom.Agent{ID: agentID, ProjectID: projectID, AgentType: agentdom.AgentTypeLLM}
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentNotProviderCLI)
+}
+
+func TestVerifyCLILogin_NoEnvironmentService_ReturnsError(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+	}
+	// No WithEnvironmentService call — a self-hosted deployment that never
+	// wired one up must fail loudly here, not panic on a nil interface.
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.Error(t, err)
+}
+
+func TestVerifyCLILogin_Authenticated_PersistsTimestamp(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	var setCalled bool
+	var setCalledFor uuid.UUID
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		setCLILoginVerifiedAt: func(_ context.Context, id uuid.UUID, _ time.Time) error {
+			setCalled = true
+			setCalledFor = id
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		verifyCLIAuth: func(_ context.Context, pid, eid uuid.UUID, cliProvider string) (bool, error) {
+			if pid != projectID || eid != envID || cliProvider != agentdom.CLIProviderClaudeCode {
+				t.Fatalf("unexpected VerifyCLIAuth args: %s %s %s", pid, eid, cliProvider)
+			}
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	authenticated, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.True(t, authenticated)
+	assert.True(t, setCalled)
+	assert.Equal(t, agentID, setCalledFor)
+}
+
+func TestVerifyCLILogin_NotAuthenticated_DoesNotPersistTimestamp(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	envID := uuid.New()
+	provider := agentdom.CLIProviderClaudeCode
+	agent := &agentdom.Agent{
+		ID:                   agentID,
+		ProjectID:            projectID,
+		AgentType:            agentdom.AgentTypeProviderCLI,
+		CLIProvider:          &provider,
+		DefaultEnvironmentID: &envID,
+	}
+	setCalled := false
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, _, _ uuid.UUID) (*agentdom.Agent, error) {
+			return agent, nil
+		},
+		setCLILoginVerifiedAt: func(_ context.Context, _ uuid.UUID, _ time.Time) error {
+			setCalled = true
+			return nil
+		},
+	}
+	envSvc := &fakeEnvironmentService{
+		verifyCLIAuth: func(context.Context, uuid.UUID, uuid.UUID, string) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithEnvironmentService(envSvc)
+
+	authenticated, err := svc.VerifyCLILogin(context.Background(), projectID, agentID)
+
+	assert.NoError(t, err)
+	assert.False(t, authenticated)
+	assert.False(t, setCalled, "cli_login_verified_at must not be touched when the CLI isn't authenticated")
 }
