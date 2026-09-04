@@ -80,6 +80,42 @@ function convertMentionsToText(content: any): any {
 			};
 		}
 
+		// mermaid/annotationCard are custom BLOCK types (see
+		// apps/web/src/components/shared/blocknote-schema.tsx) — unlike the
+		// three inline mention types above, the editor instance this file
+		// builds (getEditor(), a bare BlockNoteEditor.create() with no custom
+		// schema) has never heard of either. Left unconverted, BlockNoteEditor's
+		// own block-to-markdown export looks up the block's type in its schema
+		// and crashes with "Cannot read properties of undefined (reading
+		// 'propSchema')" the moment it hits one — confirmed live: this is what
+		// broke every `list_tasks` call for a project with a mermaid diagram or
+		// a comment-reference card in any task's description (conversation
+		// 269da86a-05c8-4e12-9619-49397a85949e). Degrading them to plain
+		// default-schema blocks here — mirroring the three inline mentions
+		// above — fixes that the same way; each block's own toExternalHTML
+		// (mermaid) already documents this exact "unknown client" fallback as
+		// the intended degradation, just not reachable from a schema that
+		// doesn't know the type exists in the first place.
+		if (result.type === "mermaid") {
+			const code = result.props?.code || "";
+			return {
+				type: "codeBlock",
+				props: { language: "mermaid" },
+				content: [{ type: "text", text: code, styles: {} }],
+			};
+		}
+
+		if (result.type === "annotationCard") {
+			const cardId = result.props?.id || "";
+			const text = cardId
+				? `[Comment reference (id: ${cardId})]`
+				: "[Comment reference]";
+			return {
+				type: "paragraph",
+				content: [{ type: "text", text, styles: {} }],
+			};
+		}
+
 		if (result.content) {
 			result.content = convertMentionsToText(result.content);
 		}
@@ -108,7 +144,9 @@ function hasMentions(blocks: any[] | null): boolean {
 		if (
 			block.type === "teamMention" ||
 			block.type === "taskReference" ||
-			block.type === "docReference"
+			block.type === "docReference" ||
+			block.type === "mermaid" ||
+			block.type === "annotationCard"
 		) {
 			return true;
 		}
