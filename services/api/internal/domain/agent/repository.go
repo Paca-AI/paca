@@ -53,6 +53,11 @@ type AgentRepository interface {
 	// key, replacing any previous one — only one key is ever live per agent,
 	// so the previous key stops authenticating the moment this is called.
 	SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUID, hash string) error
+	// SetCLILoginVerifiedAt records that a provider_cli agent's CLI login
+	// was just confirmed (a file-existence probe — see VerifyCLILogin), by
+	// itself, never as part of the general UpdateAgent path — an unrelated
+	// name/model edit must never reset or backdate this timestamp.
+	SetCLILoginVerifiedAt(ctx context.Context, agentID uuid.UUID, t time.Time) error
 	// FindAgentByMCPAPIKeyHash resolves the agent whose current MCP API key
 	// hashes to hash, for the authn middleware to identify the caller
 	// directly from the key it presented — no separate identity claim

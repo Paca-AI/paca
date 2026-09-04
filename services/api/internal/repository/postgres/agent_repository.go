@@ -38,12 +38,19 @@ type agentRecord struct {
 	ACPCommand         []byte  `db:"acp_command"`
 	ACPBridgeTokenHash *string `db:"acp_bridge_token_hash"`
 	MCPAPIKeyHash      *string `db:"mcp_api_key_hash"`
-	SystemPrompt       string  `db:"system_prompt"`
-	MaxIterations      int     `db:"max_iterations"`
-	TimeoutMinutes     int     `db:"timeout_minutes"`
-	GitCommitterName   string  `db:"git_committer_name"`
-	GitCommitterEmail  string  `db:"git_committer_email"`
-	DockerEnabled      bool    `db:"docker_enabled"`
+	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKeySecret/CLILoginVerifiedAt
+	// are provider_cli-only — see agentdom.Agent.CLIProvider's doc comment.
+	CLIProvider        *string    `db:"cli_provider"`
+	CLIModel           string     `db:"cli_model"`
+	CLIAuthMode        string     `db:"cli_auth_mode"`
+	CLIAPIKeySecret    string     `db:"cli_api_key_secret"`
+	CLILoginVerifiedAt *time.Time `db:"cli_login_verified_at"`
+	SystemPrompt       string     `db:"system_prompt"`
+	MaxIterations      int        `db:"max_iterations"`
+	TimeoutMinutes     int        `db:"timeout_minutes"`
+	GitCommitterName   string     `db:"git_committer_name"`
+	GitCommitterEmail  string     `db:"git_committer_email"`
+	DockerEnabled      bool       `db:"docker_enabled"`
 	// DefaultEnvironmentID references environments(id) — see
 	// agentdom.Agent.DefaultEnvironmentID's doc comment. NULL for global-scope
 	// agents (enforced by the service layer, not a DB constraint).
@@ -167,7 +174,8 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes,
-	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.created_by, a.created_at, a.updated_at, a.deleted_at`
+	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.created_by, a.created_at, a.updated_at, a.deleted_at,
+	a.cli_provider, a.cli_model, a.cli_auth_mode, a.cli_api_key_secret, a.cli_login_verified_at`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
 // aliased pm, populating member_id from that join.
@@ -383,14 +391,16 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 		INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
-		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at,
+		  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
 	)
 	return err
 }
@@ -411,20 +421,32 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  system_prompt=$10,
 			  max_iterations=$11, timeout_minutes=$12,
 			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
-			  default_environment_id=$17, default_folder_id=$18, updated_at=$19
-			WHERE id=$20`,
+			  default_environment_id=$17, default_folder_id=$18, updated_at=$19,
+			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22
+			WHERE id=$23`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
-			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(), a.ID.String(),
+			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(),
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ID.String(),
 		)
 		if err != nil {
 			return err
 		}
 		if a.LLMAPIKeySecret != "" {
 			_, err = tx.ExecContext(ctx, `UPDATE agents SET llm_api_key_secret=$1 WHERE id=$2`, a.LLMAPIKeySecret, a.ID.String())
+			if err != nil {
+				return err
+			}
+		}
+		// cli_login_verified_at is deliberately NOT touched by the general
+		// UpdateAgent path — only SetCLILoginVerifiedAt writes it, so an
+		// unrelated name/model edit never resets or backdates a previously
+		// verified login.
+		if a.CLIAPIKeySecret != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE agents SET cli_api_key_secret=$1 WHERE id=$2`, a.CLIAPIKeySecret, a.ID.String())
 		}
 		return err
 	})
@@ -452,6 +474,18 @@ func (r *AgentRepository) SetMCPAPIKeyHash(ctx context.Context, agentID uuid.UUI
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE agents SET mcp_api_key_hash=$1, updated_at=$2 WHERE id=$3`,
 		hash, time.Now(), agentID.String(),
+	)
+	return err
+}
+
+// SetCLILoginVerifiedAt records that a provider_cli agent's CLI login was
+// just confirmed. Deliberately its own single-column UPDATE, never folded
+// into the general UpdateAgent path — see that method's own comment on
+// cli_login_verified_at for why.
+func (r *AgentRepository) SetCLILoginVerifiedAt(ctx context.Context, agentID uuid.UUID, t time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE agents SET cli_login_verified_at=$1, updated_at=$2 WHERE id=$3`,
+		t, time.Now(), agentID.String(),
 	)
 	return err
 }
@@ -493,14 +527,16 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 			INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 			  max_iterations, timeout_minutes,
-			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at,
+			  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
 			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
 			rec.MaxIterations, rec.TimeoutMinutes,
 			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
 		)
 		if err != nil {
 			return err
@@ -561,14 +597,16 @@ func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Age
 		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
 		  max_iterations, timeout_minutes,
-		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at,
+		  cli_auth_mode)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
 		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
 		rec.MaxIterations, rec.TimeoutMinutes,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
+		rec.CLIAuthMode,
 	)
 	return err
 }
@@ -1275,30 +1313,35 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		scope = agentdom.AgentScopeProject
 	}
 	a := &agentdom.Agent{
-		ID:                mustParseUUID(row.ID),
-		ProjectID:         uuidFromNullable(row.ProjectID),
-		AgentScope:        scope,
-		Name:              row.Name,
-		Handle:            row.Handle,
-		AvatarKey:         row.AvatarKey,
-		AvatarThumbKey:    row.AvatarThumbKey,
-		AgentType:         row.AgentType,
-		LLMProvider:       row.LLMProvider,
-		LLMModel:          row.LLMModel,
-		LLMAPIKeySecret:   row.LLMAPIKeySecret,
-		LLMBaseURL:        row.LLMBaseURL,
-		ACPProvider:       row.ACPProvider,
-		HasACPBridgeToken: row.ACPBridgeTokenHash != nil && *row.ACPBridgeTokenHash != "",
-		HasMCPAPIKey:      row.MCPAPIKeyHash != nil && *row.MCPAPIKeyHash != "",
-		SystemPrompt:      row.SystemPrompt,
-		MaxIterations:     row.MaxIterations,
-		TimeoutMinutes:    row.TimeoutMinutes,
-		GitCommitterName:  row.GitCommitterName,
-		GitCommitterEmail: row.GitCommitterEmail,
-		DockerEnabled:     row.DockerEnabled,
-		CreatedAt:         row.CreatedAt,
-		UpdatedAt:         row.UpdatedAt,
-		DeletedAt:         row.DeletedAt,
+		ID:                 mustParseUUID(row.ID),
+		ProjectID:          uuidFromNullable(row.ProjectID),
+		AgentScope:         scope,
+		Name:               row.Name,
+		Handle:             row.Handle,
+		AvatarKey:          row.AvatarKey,
+		AvatarThumbKey:     row.AvatarThumbKey,
+		AgentType:          row.AgentType,
+		LLMProvider:        row.LLMProvider,
+		LLMModel:           row.LLMModel,
+		LLMAPIKeySecret:    row.LLMAPIKeySecret,
+		LLMBaseURL:         row.LLMBaseURL,
+		ACPProvider:        row.ACPProvider,
+		HasACPBridgeToken:  row.ACPBridgeTokenHash != nil && *row.ACPBridgeTokenHash != "",
+		HasMCPAPIKey:       row.MCPAPIKeyHash != nil && *row.MCPAPIKeyHash != "",
+		CLIProvider:        row.CLIProvider,
+		CLIModel:           row.CLIModel,
+		CLIAuthMode:        row.CLIAuthMode,
+		CLIAPIKeySecret:    row.CLIAPIKeySecret,
+		CLILoginVerifiedAt: row.CLILoginVerifiedAt,
+		SystemPrompt:       row.SystemPrompt,
+		MaxIterations:      row.MaxIterations,
+		TimeoutMinutes:     row.TimeoutMinutes,
+		GitCommitterName:   row.GitCommitterName,
+		GitCommitterEmail:  row.GitCommitterEmail,
+		DockerEnabled:      row.DockerEnabled,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
+		DeletedAt:          row.DeletedAt,
 	}
 	if row.ACPBridgeTokenHash != nil {
 		a.ACPBridgeTokenHash = *row.ACPBridgeTokenHash
@@ -1336,6 +1379,17 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 	return a, nil
 }
 
+// cliAuthModeOrDefault defaults an empty CLIAuthMode to "login" — mirrors
+// cli_auth_mode's own column-level DEFAULT 'login' (migration 000049), so a
+// non-provider_cli agent's record (which never sets CLIAuthMode at all)
+// still round-trips a value consistent with what a fresh row would carry.
+func cliAuthModeOrDefault(mode string) string {
+	if mode == "" {
+		return agentdom.CLIAuthModeLogin
+	}
+	return mode
+}
+
 func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 	agentType := a.AgentType
 	if agentType == "" {
@@ -1354,28 +1408,33 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		scope = string(agentdom.AgentScopeProject)
 	}
 	rec := agentRecord{
-		ID:                a.ID.String(),
-		ProjectID:         nullableUUIDString(a.ProjectID),
-		AgentScope:        scope,
-		Name:              a.Name,
-		Handle:            a.Handle,
-		AvatarKey:         a.AvatarKey,
-		AvatarThumbKey:    a.AvatarThumbKey,
-		AgentType:         agentType,
-		LLMProvider:       a.LLMProvider,
-		LLMModel:          a.LLMModel,
-		LLMAPIKeySecret:   a.LLMAPIKeySecret,
-		LLMBaseURL:        a.LLMBaseURL,
-		ACPProvider:       a.ACPProvider,
-		ACPCommand:        cmdJSON,
-		SystemPrompt:      a.SystemPrompt,
-		MaxIterations:     a.MaxIterations,
-		TimeoutMinutes:    a.TimeoutMinutes,
-		GitCommitterName:  a.GitCommitterName,
-		GitCommitterEmail: a.GitCommitterEmail,
-		DockerEnabled:     a.DockerEnabled,
-		CreatedAt:         a.CreatedAt,
-		UpdatedAt:         a.UpdatedAt,
+		ID:                 a.ID.String(),
+		ProjectID:          nullableUUIDString(a.ProjectID),
+		AgentScope:         scope,
+		Name:               a.Name,
+		Handle:             a.Handle,
+		AvatarKey:          a.AvatarKey,
+		AvatarThumbKey:     a.AvatarThumbKey,
+		AgentType:          agentType,
+		LLMProvider:        a.LLMProvider,
+		LLMModel:           a.LLMModel,
+		LLMAPIKeySecret:    a.LLMAPIKeySecret,
+		LLMBaseURL:         a.LLMBaseURL,
+		ACPProvider:        a.ACPProvider,
+		ACPCommand:         cmdJSON,
+		CLIProvider:        a.CLIProvider,
+		CLIModel:           a.CLIModel,
+		CLIAuthMode:        cliAuthModeOrDefault(a.CLIAuthMode),
+		CLIAPIKeySecret:    a.CLIAPIKeySecret,
+		CLILoginVerifiedAt: a.CLILoginVerifiedAt,
+		SystemPrompt:       a.SystemPrompt,
+		MaxIterations:      a.MaxIterations,
+		TimeoutMinutes:     a.TimeoutMinutes,
+		GitCommitterName:   a.GitCommitterName,
+		GitCommitterEmail:  a.GitCommitterEmail,
+		DockerEnabled:      a.DockerEnabled,
+		CreatedAt:          a.CreatedAt,
+		UpdatedAt:          a.UpdatedAt,
 	}
 	if a.CreatedBy != nil {
 		s := a.CreatedBy.String()

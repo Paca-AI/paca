@@ -347,6 +347,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusNotFound, apierr.CodeAgentSkillNotFound
 	case errors.Is(err, agentdom.ErrSkillNameReserved):
 		return http.StatusBadRequest, apierr.CodeAgentSkillNameReserved
+	case errors.Is(err, agentdom.ErrSkillNameInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentSkillNameInvalid
 	case errors.Is(err, agentdom.ErrNotSupportedForACPAgent):
 		return http.StatusBadRequest, apierr.CodeAgentNotSupportedForACPAgent
 	case errors.Is(err, agentdom.ErrConversationNotFound):
@@ -377,6 +379,18 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentDefaultEnvironmentInvalid
 	case errors.Is(err, agentdom.ErrDefaultFolderInvalid):
 		return http.StatusBadRequest, apierr.CodeAgentDefaultFolderInvalid
+	case errors.Is(err, agentdom.ErrCLIProviderInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentCLIProviderInvalid
+	case errors.Is(err, agentdom.ErrCLIAuthModeInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentCLIAuthModeInvalid
+	case errors.Is(err, agentdom.ErrCLIProviderNoAPIKeyAuth):
+		return http.StatusBadRequest, apierr.CodeAgentCLIProviderNoAPIKeyAuth
+	case errors.Is(err, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider):
+		return http.StatusBadRequest, apierr.CodeAgentDefaultEnvironmentRequiredForCLIProvider
+	case errors.Is(err, agentdom.ErrCLIProviderNotSupportedForGlobalAgents):
+		return http.StatusBadRequest, apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents
+	case errors.Is(err, agentdom.ErrAgentNotProviderCLI):
+		return http.StatusBadRequest, apierr.CodeAgentNotProviderCLI
 	// --- Environment errors -------------------------------------------------
 	case errors.Is(err, environmentdom.ErrEnvironmentNotFound):
 		return http.StatusNotFound, apierr.CodeEnvironmentNotFound
@@ -641,10 +655,17 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentEnvVarKeyInvalid,
 		apierr.CodeAgentEnvVarKeyReserved,
 		apierr.CodeAgentSkillNameReserved,
+		apierr.CodeAgentSkillNameInvalid,
 		apierr.CodeAgentNotSupportedForACPAgent,
 		apierr.CodeAgentConversationInvalidCursor,
 		apierr.CodeAgentDefaultEnvironmentInvalid,
-		apierr.CodeAgentDefaultFolderInvalid:
+		apierr.CodeAgentDefaultFolderInvalid,
+		apierr.CodeAgentCLIProviderInvalid,
+		apierr.CodeAgentCLIAuthModeInvalid,
+		apierr.CodeAgentCLIProviderNoAPIKeyAuth,
+		apierr.CodeAgentDefaultEnvironmentRequiredForCLIProvider,
+		apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents,
+		apierr.CodeAgentNotProviderCLI:
 		return http.StatusBadRequest
 	case apierr.CodeEnvironmentNotFound,
 		apierr.CodeEnvironmentFolderNotFound,

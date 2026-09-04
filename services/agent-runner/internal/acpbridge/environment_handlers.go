@@ -40,6 +40,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/agent-runner/internal/executor/providercli"
 	"github.com/Paca-AI/agent-runner/internal/messaging"
 	"github.com/Paca-AI/agent-runner/internal/sandbox"
 )
@@ -58,6 +59,7 @@ func (s *Server) registerEnvironmentRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /internal/environments/{id}", s.requireInternalToken(s.handleDeleteEnvironment))
 	mux.HandleFunc("POST /internal/environments/{id}/folders", s.requireInternalToken(s.handleCreateEnvironmentFolder))
 	mux.HandleFunc("GET /internal/environments/{id}/browse", s.requireInternalToken(s.handleBrowseEnvironment))
+	mux.HandleFunc("GET /internal/environments/{id}/cli-auth/verify", s.requireInternalToken(s.handleVerifyCLIAuth))
 	mux.HandleFunc("POST /internal/environments/{id}/ssh-keys/sync", s.requireInternalToken(s.handleSyncEnvironmentSSHKeys))
 	mux.HandleFunc("POST /internal/environments/{id}/port-forwards/assign", s.requireInternalToken(s.handlePortForwardsAssign))
 }
@@ -745,6 +747,43 @@ func (s *Server) handleBrowseEnvironment(w http.ResponseWriter, r *http.Request)
 		"path":    resolved,
 		"entries": entries,
 	})
+}
+
+// handleVerifyCLIAuth backs the "Verify login" action
+// (agentsvc.Service.VerifyCLILogin, via
+// environmentdom.Service.VerifyCLIAuth) — runs ?cli_provider='s own
+// providercli.Adapter.AuthStatusCommand (a real local status subcommand
+// where one's confirmed to exist, e.g. `claude auth status`; a plain
+// `test -f <credential-path>` guess otherwise) and interprets the result
+// via that same adapter's ParseAuthStatus. Deliberately never a real
+// prompt/print invocation of the CLI itself: that would burn API usage,
+// could hang on an interactive permission prompt, and depends on protocol
+// details that vary release to release — see providercli.Adapter's own
+// doc comment for the live incident (a file-existence guess that was
+// simply wrong) that this design replaced.
+func (s *Server) handleVerifyCLIAuth(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSandboxMgr(w) {
+		return
+	}
+	backendRef := r.URL.Query().Get("backend_ref")
+	cliProvider := r.URL.Query().Get("cli_provider")
+	if backendRef == "" || cliProvider == "" {
+		writeJSONError(w, http.StatusBadRequest, "backend_ref and cli_provider are required")
+		return
+	}
+	adapter, ok := providercli.Get(cliProvider)
+	if !ok {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown cli_provider %q", cliProvider))
+		return
+	}
+	out, exitCode, err := s.SandboxMgr.ExecEnvironment(r.Context(), backendRef, adapter.AuthStatusCommand())
+	// An exec failure (not "the command ran and reported not-authenticated"
+	// — that's exitCode/out below) means "not authenticated" too, same
+	// non-fatal treatment handleBrowseEnvironment gives a missing path
+	// above: "can't confirm login" and "not logged in" both resolve to the
+	// same false here, and neither is a server error.
+	authenticated := err == nil && adapter.ParseAuthStatus(exitCode, out)
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": authenticated})
 }
 
 // -----------------------------------------------------------------------

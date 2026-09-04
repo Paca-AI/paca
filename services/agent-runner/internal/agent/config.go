@@ -7,10 +7,31 @@ import "github.com/google/uuid"
 // comment).
 const AgentScopeGlobal = "global"
 
+// AgentType values this service actually executes — mirrors services/api's
+// agentdom.AgentType* constants (agent-runner is a separate Go module and
+// can't import that package directly, same reason ContextItemRef keeps its
+// own byte-identical copy — see that type's doc comment). agent_type=acp
+// has no constant here at all: those agents stay entirely on
+// apps/acp-bridge and never reach this service (see
+// postgres.AgentRepository.FindByID's ErrNotLLMAgent gate).
+const (
+	AgentTypeLLM         = "llm"
+	AgentTypeProviderCLI = "provider_cli"
+)
+
+// CLIAuthMode values — mirrors services/api's agentdom.CLIAuthMode*
+// constants. Only meaningful when Config.AgentType == AgentTypeProviderCLI.
+const (
+	CLIAuthModeAPIKey = "api_key"
+	CLIAuthModeLogin  = "login"
+)
+
 // Config is the subset of agentdom.Agent this service needs to run an
-// llm-type conversation — agent-runner never handles acp-type agents (those
-// stay on apps/acp-bridge), so ACPProvider/ACPCommand and friends are
-// intentionally omitted here.
+// llm-type or provider_cli-type conversation — both execute through the
+// exact same goose-serve-over-ACP path (buildAgentContainerEnv branches on
+// AgentType for the rest). agent-runner never handles acp-type agents
+// (those stay on apps/acp-bridge), so ACPProvider/ACPCommand and friends
+// are intentionally omitted here.
 type Config struct {
 	ID     uuid.UUID
 	Name   string
@@ -22,14 +43,37 @@ type Config struct {
 	// ("a project-scoped agent's actions are attributed via its
 	// project_members.id, never a raw actor_user_id").
 	AgentScope string
+	// AgentType is "llm" or "provider_cli" (see the AgentType* consts
+	// above) — branches buildAgentContainerEnv and coldStartEnvironment's
+	// skills/MCP-sync step between Goose's own native config (llm) and a
+	// provider_cli agent's underlying CLI's own config files (see
+	// internal/executor/providercli).
+	AgentType string
 
 	LLMProvider string
 	LLMModel    string
 	// LLMAPIKeySecret is the encrypted value stored in agents.llm_api_key_secret
 	// — decrypt with secret.Encryptor before injecting into a container. Never
-	// log this field.
+	// log this field. LLM-only.
 	LLMAPIKeySecret string
 	LLMBaseURL      string
+
+	// CLIProvider is one of claude-code | codex | cursor-agent | gemini-cli
+	// — set only when AgentType == AgentTypeProviderCLI. Passed through as
+	// GOOSE_PROVIDER (see executor/provider.go's resolveCLIProviderEnv).
+	CLIProvider string
+	// CLIModel is passed through as GOOSE_MODEL when set — provider-
+	// specific free text (e.g. "sonnet"/"haiku" for claude-code).
+	CLIModel string
+	// CLIAuthMode is "api_key" or "login" (see the CLIAuthMode* consts
+	// above). Goose itself never brokers auth for a CLI provider — this
+	// only controls whether buildProviderCLIContainerEnv injects
+	// CLIAPIKeySecret under the CLI's own native auth env var.
+	CLIAuthMode string
+	// CLIAPIKeySecret is the encrypted value stored in
+	// agents.cli_api_key_secret — decrypt like LLMAPIKeySecret. Empty when
+	// CLIAuthMode is "login". Never log this field.
+	CLIAPIKeySecret string
 
 	SystemPrompt      string
 	MaxIterations     int
@@ -43,6 +87,15 @@ type Config struct {
 	// latency and resource cost to pay unconditionally.
 	DockerEnabled bool
 
+	// MCPServers/Skills are read from the exact same agent_mcp_servers/
+	// agent_skills rows for both llm and provider_cli agents — only the
+	// *consumer* differs at execution time: an llm agent's are written into
+	// Goose's own .agents/skills discovery + ACP session/new MCP list
+	// (buildMCPServers/buildSkillsTar); a provider_cli agent's are instead
+	// synced into its underlying CLI's own config files on every
+	// conversation attach (see internal/executor/providercli), since Goose
+	// ignores its own extension/skill config entirely once a CLI provider
+	// is active.
 	MCPServers []MCPServer
 	Skills     []Skill
 	EnvVars    []EnvVar

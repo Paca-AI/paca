@@ -257,8 +257,17 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "acp_provider is required"))
 			return
 		}
+	case agentdom.AgentTypeProviderCLI:
+		switch {
+		case req.CLIProvider == "":
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "cli_provider is required"))
+			return
+		case req.DefaultEnvironmentID == nil || *req.DefaultEnvironmentID == uuid.Nil:
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "default_environment_id is required for provider_cli agents"))
+			return
+		}
 	default:
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp"))
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp, provider_cli"))
 		return
 	}
 	claims := middleware.ClaimsFrom(r)
@@ -274,6 +283,10 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		LLMBaseURL:           req.LLMBaseURL,
 		ACPProvider:          req.ACPProvider,
 		ACPCommand:           req.ACPCommand,
+		CLIProvider:          req.CLIProvider,
+		CLIModel:             req.CLIModel,
+		CLIAuthMode:          req.CLIAuthMode,
+		CLIAPIKey:            req.CLIAPIKey,
 		SystemPrompt:         req.SystemPrompt,
 		MaxIterations:        req.MaxIterations,
 		TimeoutMinutes:       req.TimeoutMinutes,
@@ -318,6 +331,10 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		LLMBaseURL:           req.LLMBaseURL,
 		ACPProvider:          req.ACPProvider,
 		ACPCommand:           req.ACPCommand,
+		CLIProvider:          req.CLIProvider,
+		CLIModel:             req.CLIModel,
+		CLIAuthMode:          req.CLIAuthMode,
+		CLIAPIKey:            req.CLIAPIKey,
 		SystemPrompt:         req.SystemPrompt,
 		MaxIterations:        req.MaxIterations,
 		TimeoutMinutes:       req.TimeoutMinutes,
@@ -1588,6 +1605,35 @@ func (h *AgentHandler) GenerateACPBridgeToken(w http.ResponseWriter, r *http.Req
 		Token:      token,
 		RunCommand: runCommand,
 	})
+}
+
+// --- Provider CLI ------------------------------------------------------------
+
+// VerifyCLILogin handles POST
+// /projects/:projectId/agents/:agentId/verify-cli-login. It probes (never
+// an interactive CLI invocation — see agentsvc.Service.VerifyCLILogin's own
+// doc comment) whether a provider_cli agent's underlying CLI is currently
+// authenticated inside its default environment, and, on success, persists
+// the verification timestamp. See EnvironmentHandler.VerifyCLILogin for the
+// environment-scoped sibling used before an agent exists yet (the
+// create-agent dialog's own "Verify login" button).
+func (h *AgentHandler) VerifyCLILogin(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	agentID, err := parseParamUUID(r, "agentId")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	authenticated, err := h.svc.VerifyCLILogin(r.Context(), projectID, agentID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.VerifyCLILoginResponse{Authenticated: authenticated})
 }
 
 // GenerateGlobalACPBridgeToken handles POST

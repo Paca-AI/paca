@@ -48,8 +48,27 @@ type Handler struct {
 	Executor      *executor.Executor
 	InFlight      *registry.Conversations
 	ChatSandboxes *chatsandbox.Registry
-	ACPDispatcher *acpbridge.Dispatcher
-	ACPRegistry   *acpbridge.Registry
+	// ProviderCLIEnvClients keeps a provider_cli environment conversation's
+	// *acp.Client alive across turns, the same way ChatSandboxes does for
+	// ephemeral chat conversations — see keepProviderCLIClientAlive's own
+	// doc comment for why this exists: docs/ai-agent/environment-management.
+	// md's "no new in-memory registry" design choice holds for ordinary
+	// llm/acp environment agents (goose replays its own stored history on
+	// session/load regardless of which connection attaches), but not for a
+	// CLI provider like claude-code, whose manages_own_context()=true opts
+	// out of that replay and whose own memory lives entirely in a spawned
+	// subprocess that goose's session/load handler unconditionally rebuilds
+	// from scratch on every fresh connection — confirmed directly
+	// (2026-09-04) against a real goose serve + claude-code instance: a
+	// planted value survived two session/prompt calls on the same
+	// connection, but was gone the instant a second connection resumed via
+	// session/load. Reusing chatsandbox.Registry's type rather than a
+	// bespoke one — its State shape (Client/SessionID/ProjectID/
+	// ActorUserID/LastActiveAt, Handle left nil) already fits exactly, and
+	// avoids a second idle-cache implementation to keep in sync.
+	ProviderCLIEnvClients *chatsandbox.Registry
+	ACPDispatcher         *acpbridge.Dispatcher
+	ACPRegistry           *acpbridge.Registry
 	// EnvironmentRepo bumps last_active_at for a trigger.EnvironmentID
 	// conversation's turn (see tearDownSandbox) — nil in tests/tooling that
 	// never attach a conversation to an environment, which never reach the
@@ -203,7 +222,24 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		defer unlock()
 
 		tok := h.InFlight.Register(trigger.ConversationID, cancelRun)
-		if isChat {
+		switch {
+		case cfg.AgentType == agent.AgentTypeProviderCLI:
+			// Checked before isChat below, not after: a provider_cli agent
+			// is always environment-attached (Run's own guard enforces
+			// this), but its trigger_type can still be chat_message —
+			// exactly the same trigger a chat-sandbox conversation uses —
+			// so isChat alone can't distinguish them. A provider_cli
+			// conversation is never registered in ChatSandboxes in the
+			// first place (keepSandboxAlive's own EnvironmentID guard), so
+			// falling into that case here would always find nothing and
+			// silently cold-start every single turn — exactly the bug this
+			// registry exists to fix. Same Get-not-Pop reasoning as isChat
+			// below, against the separate ProviderCLIEnvClients registry
+			// instead — see that field's own doc comment for why
+			// provider_cli environment conversations need this at all when
+			// ordinary environment conversations don't.
+			resume, _ = h.ProviderCLIEnvClients.Get(trigger.ConversationID)
+		case isChat:
 			// A plain Get, not Pop — the entry (if any) stays live in the
 			// registry for this turn's *entire* duration, not just until
 			// the run starts, so a heartbeat control message arriving
@@ -621,7 +657,19 @@ func (h *Handler) Handle(ctx context.Context, trigger agent.Trigger) error {
 		return nil
 	}
 
-	h.tearDownSandbox(ctx, trigger, result)
+	// provider_cli keeps its ACP client alive across turns instead of
+	// tearing it down here, same status outcome either way ("finished") —
+	// see ProviderCLIEnvClients' own doc comment on why this is the one
+	// agent type that needs it. Every other environment-attached agent type
+	// (llm, acp) still tears down and reattaches fresh next turn, exactly as
+	// before: their own provider replays history correctly on session/load
+	// regardless of connection reuse, so a persistent connection would only
+	// add complexity for no behavioral gain.
+	if cfg.AgentType == agent.AgentTypeProviderCLI {
+		h.keepProviderCLIClientAlive(ctx, trigger, result)
+	} else {
+		h.tearDownSandbox(ctx, trigger, result)
+	}
 	if err := h.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "finished", noOutputMsg); err != nil {
 		return fmt.Errorf("mark conversation %s finished: %w", trigger.ConversationID, err)
 	}
@@ -704,13 +752,48 @@ func (h *Handler) keepSandboxAlive(trigger agent.Trigger, result executor.Result
 	})
 }
 
+// keepProviderCLIClientAlive registers result's ACP client in
+// ProviderCLIEnvClients so this conversation's next turn can reattach to it
+// with a plain session/prompt instead of a fresh connection's session/load
+// — see that field's own doc comment for why a provider_cli environment
+// conversation needs this when an ordinary llm/acp one doesn't. Call only
+// on a turn's natural finish, mirroring keepSandboxAlive's own scoping
+// (never on error or an interrupt — see tearDownSandbox, still used for
+// those paths even for a provider_cli conversation, which also pops any
+// entry this function previously registered).
+//
+// Handle is deliberately left nil (same reasoning as keepSandboxAlive's own
+// EnvironmentID-guarded case): the shared environment container is never
+// this registry's to stop, only the local *acp.Client connection is.
+func (h *Handler) keepProviderCLIClientAlive(ctx context.Context, trigger agent.Trigger, result executor.Result) {
+	h.ProviderCLIEnvClients.Set(trigger.ConversationID, &chatsandbox.State{
+		Client:       result.Client,
+		SessionID:    result.SessionID,
+		ProjectID:    trigger.ProjectID,
+		ActorUserID:  trigger.ActorUserID,
+		LastActiveAt: time.Now(),
+	})
+	// tearDownSandbox's own environment branch normally does this bump —
+	// bypassed here since this path calls neither it nor that branch, but a
+	// kept-alive turn is exactly as much "activity" for the idle-environment
+	// reaper's purposes as a torn-down one.
+	if h.EnvironmentRepo != nil && trigger.EnvironmentID != nil {
+		if err := h.EnvironmentRepo.TouchEnvironment(context.WithoutCancel(ctx), *trigger.EnvironmentID); err != nil {
+			h.Log.Warn("agent-runner: failed to touch environment after turn",
+				"conversation_id", trigger.ConversationID, "environment_id", *trigger.EnvironmentID, "error", err)
+		}
+	}
+}
+
 // tearDownSandbox stops the sandbox in result (if any was actually reached)
-// and removes any ChatSandboxes entry for this conversation — Pop is a
-// harmless no-op for a non-chat trigger, or a chat trigger that was never
-// paused, so this is safe to call unconditionally on every non-keep-alive
-// path (error, full stop, or a non-chat trigger's ordinary finish).
+// and removes any ChatSandboxes/ProviderCLIEnvClients entry for this
+// conversation — both Pops are harmless no-ops for a trigger/agent type that
+// never registers in that particular registry, so this is safe to call
+// unconditionally on every non-keep-alive path (error, full stop, or an
+// ordinary finish for an agent type that doesn't keep its client alive).
 func (h *Handler) tearDownSandbox(ctx context.Context, trigger agent.Trigger, result executor.Result) {
 	h.ChatSandboxes.Pop(trigger.ConversationID)
+	h.ProviderCLIEnvClients.Pop(trigger.ConversationID)
 	result.Client.Close()
 
 	if trigger.EnvironmentID != nil {
@@ -771,6 +854,11 @@ func (h *Handler) HandleControl(ctx context.Context, c messaging.Control) error 
 		}
 		if h.TeardownPausedChatSandbox(ctx, c.ConversationID) {
 			h.Log.Info("agent-runner: stopped a paused chat sandbox via control message",
+				"conversation_id", c.ConversationID)
+			return nil
+		}
+		if h.TeardownIdleProviderCLIClient(c.ConversationID) {
+			h.Log.Info("agent-runner: closed an idle provider_cli client via control message",
 				"conversation_id", c.ConversationID)
 			return nil
 		}
@@ -856,6 +944,44 @@ func (h *Handler) TeardownPausedChatSandbox(ctx context.Context, conversationID 
 			"conversation_id", conversationID, "error", err)
 	}
 	h.publishTerminalStatus(ctx, state.ProjectID, conversationID, state.ActorUserID, "stopped", "agent.conversation.stopped")
+	return true
+}
+
+// TeardownIdleProviderCLIClient closes conversationID's idle-cached ACP
+// client, if one is registered — the ProviderCLIEnvClients counterpart to
+// TeardownPausedChatSandbox above, called by the idle reaper
+// (cmd/agent-runner/main.go's reapIdleProviderCLIClients).
+//
+// Deliberately much thinner than TeardownPausedChatSandbox: closing this
+// client is an internal connection-pooling cleanup, invisible to the
+// conversation itself — unlike a paused *chat* sandbox (whose container is
+// actually running and costing resources, and whose "paused" status is
+// user-visible), the underlying environment container here keeps running
+// regardless (docs/ai-agent/environment-management.md's "Conversation
+// attach path" — never this registry's to stop), and the conversation's own
+// status is already "finished" from its last real turn. So there is no
+// sandbox to stop and no status to change: the next turn just reattaches
+// fresh via a plain session/new the same way it always did before this
+// registry existed, exactly as if this conversation had never been kept
+// warm at all — the only thing lost is the connection-reuse optimization
+// this idle entry existed to provide, not any conversation-visible state.
+//
+// Same InFlight/resumeLock race-safety reasoning as
+// TeardownPausedChatSandbox — see its own doc comment.
+func (h *Handler) TeardownIdleProviderCLIClient(conversationID uuid.UUID) bool {
+	unlock := h.resumeLock().Lock(conversationID)
+	registered := h.InFlight.IsRegistered(conversationID)
+	var state *chatsandbox.State
+	var ok bool
+	if !registered {
+		state, ok = h.ProviderCLIEnvClients.Pop(conversationID)
+	}
+	unlock()
+
+	if registered || !ok {
+		return false
+	}
+	state.Client.Close()
 	return true
 }
 

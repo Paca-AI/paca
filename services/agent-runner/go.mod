@@ -3,6 +3,7 @@ module github.com/Paca-AI/agent-runner
 go 1.26.4
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/coder/websocket v1.8.15
 	github.com/containerd/errdefs v1.0.0
@@ -14,7 +15,6 @@ require (
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/testcontainers/testcontainers-go v0.44.0
-	golang.org/x/crypto v0.55.0
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
 	k8s.io/client-go v0.36.3
@@ -86,6 +86,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect

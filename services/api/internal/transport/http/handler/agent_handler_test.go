@@ -44,6 +44,7 @@ type mockAgentSvc struct {
 	getGlobalAgent                func(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
 	generateGlobalACPBridgeToken  func(ctx context.Context, agentID uuid.UUID) (string, error)
 	generateGlobalAgentMCPKey     func(ctx context.Context, agentID uuid.UUID) (string, error)
+	verifyCLILogin                func(ctx context.Context, projectID, agentID uuid.UUID) (bool, error)
 }
 
 func (m *mockAgentSvc) ListAgents(_ context.Context, _ uuid.UUID, _ agentdom.AgentScope) ([]*agentdom.Agent, error) {
@@ -69,6 +70,12 @@ func (m *mockAgentSvc) GenerateACPBridgeToken(_ context.Context, _, _ uuid.UUID)
 }
 func (m *mockAgentSvc) GenerateAgentMCPKey(_ context.Context, _, _ uuid.UUID) (string, error) {
 	return "", nil
+}
+func (m *mockAgentSvc) VerifyCLILogin(ctx context.Context, projectID, agentID uuid.UUID) (bool, error) {
+	if m.verifyCLILogin != nil {
+		return m.verifyCLILogin(ctx, projectID, agentID)
+	}
+	return false, agentdom.ErrAgentNotFound
 }
 func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
 	return agentdom.ErrAgentNotFound
@@ -263,6 +270,23 @@ var _ agentdom.Service = (*mockAgentSvc)(nil)
 // Router helpers
 // ---------------------------------------------------------------------------
 
+// newAgentRouterWithClaims mirrors newAgentRouter but also injects access
+// claims into every request (same as TestCreateAgent_EmptyLLMBaseURL_Allowed's
+// own ad-hoc router) — needed by any test whose request is expected to reach
+// past CreateAgent's own field validation into resolveMemberID/the actual
+// service call, since middleware.ClaimsFrom(r) is nil for a bare
+// newAgentRouter request and CreateAgent dereferences it unconditionally
+// once validation passes.
+func newAgentRouterWithClaims(svc agentdom.Service) chi.Router {
+	h := handler.NewAgentHandler(svc, "", "", "")
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(uuid.New().String()))
+	r.Route("/projects/{projectId}", func(r chi.Router) {
+		r.Post("/agents", h.CreateAgent)
+	})
+	return r
+}
+
 func newAgentRouter(svc agentdom.Service) chi.Router {
 	h := handler.NewAgentHandler(svc, "", "", "")
 	r := chi.NewRouter()
@@ -273,6 +297,7 @@ func newAgentRouter(svc agentdom.Service) chi.Router {
 			r.Post("/skills", h.AddSkill)
 			r.Post("/chat-sessions", h.StartChatSession)
 			r.Get("/acp-bridge-status", h.GetACPBridgeStatus)
+			r.Post("/verify-cli-login", h.VerifyCLILogin)
 		})
 		r.Route("/tasks/{taskId}", func(r chi.Router) {
 			r.Post("/write-with-ai", h.WriteTaskDescriptionWithAI)
@@ -1103,5 +1128,200 @@ func TestGetGlobalACPBridgeStatus_UnknownAgentNotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CreateAgent — provider_cli validation
+// ---------------------------------------------------------------------------
+
+// validCreateProviderCLIAgentBody returns a body with all fields required
+// for agent_type=provider_cli filled in.
+func validCreateProviderCLIAgentBody(overrides map[string]any) map[string]any {
+	base := map[string]any{
+		"name":                   "CLI Agent",
+		"handle":                 "cli-agent",
+		"agent_type":             "provider_cli",
+		"cli_provider":           "claude-code",
+		"default_environment_id": uuid.New(),
+		"project_role_id":        uuid.New(),
+	}
+	for k, v := range overrides {
+		base[k] = v
+	}
+	return base
+}
+
+func TestCreateAgent_ProviderCLI_MissingCLIProvider_Returns400(t *testing.T) {
+	r := newAgentRouter(&mockAgentSvc{})
+	projectID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents",
+		validCreateProviderCLIAgentBody(map[string]any{"cli_provider": ""}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing cli_provider, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgent_ProviderCLI_MissingDefaultEnvironmentID_Returns400(t *testing.T) {
+	r := newAgentRouter(&mockAgentSvc{})
+	projectID := uuid.New()
+	body := validCreateProviderCLIAgentBody(nil)
+	delete(body, "default_environment_id")
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents", body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing default_environment_id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgent_ProviderCLI_NilDefaultEnvironmentID_Returns400(t *testing.T) {
+	// uuid.Nil is UpdateAgentInput/CreateAgentInput's own "unset" sentinel
+	// for default_environment_id elsewhere in this API — this handler must
+	// reject it explicitly for provider_cli rather than passing it through
+	// to the service, which would only surface a less specific error.
+	r := newAgentRouter(&mockAgentSvc{})
+	projectID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents",
+		validCreateProviderCLIAgentBody(map[string]any{"default_environment_id": uuid.Nil}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for nil default_environment_id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateAgent_ProviderCLI_Valid_Returns201(t *testing.T) {
+	projectID := uuid.New()
+	envID := uuid.New()
+	var gotInput agentdom.CreateAgentInput
+	svc := &mockAgentSvc{
+		createAgent: func(_ context.Context, _ uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			gotInput = in
+			provider := in.CLIProvider
+			return &agentdom.Agent{
+				ID:                   uuid.New(),
+				ProjectID:            projectID,
+				Name:                 in.Name,
+				Handle:               in.Handle,
+				AgentType:            agentdom.AgentTypeProviderCLI,
+				CLIProvider:          &provider,
+				DefaultEnvironmentID: in.DefaultEnvironmentID,
+			}, nil
+		},
+	}
+	r := newAgentRouterWithClaims(svc)
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents",
+		validCreateProviderCLIAgentBody(map[string]any{"default_environment_id": envID}))
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotInput.AgentType != agentdom.AgentTypeProviderCLI {
+		t.Errorf("expected agent_type provider_cli to reach the service, got %q", gotInput.AgentType)
+	}
+	if gotInput.CLIProvider != "claude-code" {
+		t.Errorf("expected cli_provider claude-code to reach the service, got %q", gotInput.CLIProvider)
+	}
+	if gotInput.DefaultEnvironmentID == nil || *gotInput.DefaultEnvironmentID != envID {
+		t.Errorf("expected default_environment_id %s to reach the service, got %v", envID, gotInput.DefaultEnvironmentID)
+	}
+}
+
+// TestCreateAgent_ProviderCLI_ServiceValidationError_Returns400 exercises
+// the handler and presenter together end-to-end: a provider_cli-specific
+// service error (agentdom.ErrCLIProviderNoAPIKeyAuth here) must reach the
+// client as 400 Bad Request with its own error code, not the generic 500
+// "internal server error" the presenter falls back to for any domain error
+// it doesn't have a case for — see statusAndCodeFor's own agent-error block.
+func TestCreateAgent_ProviderCLI_ServiceValidationError_Returns400(t *testing.T) {
+	svc := &mockAgentSvc{
+		createAgent: func(context.Context, uuid.UUID, agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrCLIProviderNoAPIKeyAuth
+		},
+	}
+	r := newAgentRouterWithClaims(svc)
+	projectID := uuid.New()
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents",
+		validCreateProviderCLIAgentBody(nil))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.ErrorCode != "AGENT_CLI_PROVIDER_NO_API_KEY_AUTH" {
+		t.Errorf("expected AGENT_CLI_PROVIDER_NO_API_KEY_AUTH, got %q", resp.ErrorCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VerifyCLILogin (POST /projects/:projectId/agents/:agentId/verify-cli-login)
+// ---------------------------------------------------------------------------
+
+func TestVerifyCLILogin_Success_ReturnsAuthenticatedStatus(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	var gotProjectID, gotAgentID uuid.UUID
+	svc := &mockAgentSvc{
+		verifyCLILogin: func(_ context.Context, pid, aid uuid.UUID) (bool, error) {
+			gotProjectID, gotAgentID = pid, aid
+			return true, nil
+		},
+	}
+	r := newAgentRouter(svc)
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+projectID.String()+"/agents/"+agentID.String()+"/verify-cli-login", nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotProjectID != projectID || gotAgentID != agentID {
+		t.Errorf("expected projectID/agentID %s/%s to reach the service, got %s/%s", projectID, agentID, gotProjectID, gotAgentID)
+	}
+	var resp struct {
+		Data struct {
+			Authenticated bool `json:"authenticated"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Data.Authenticated {
+		t.Errorf("expected authenticated=true")
+	}
+}
+
+// TestVerifyCLILogin_WrongAgentType_Returns400 is the same end-to-end
+// presenter-mapping check as
+// TestCreateAgent_ProviderCLI_ServiceValidationError_Returns400, for
+// ErrAgentNotProviderCLI specifically — VerifyCLILogin's own documented
+// rejection for any non-provider_cli agent_type.
+func TestVerifyCLILogin_WrongAgentType_Returns400(t *testing.T) {
+	svc := &mockAgentSvc{
+		verifyCLILogin: func(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+			return false, agentdom.ErrAgentNotProviderCLI
+		},
+	}
+	r := newAgentRouter(svc)
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents/"+uuid.New().String()+"/verify-cli-login", nil)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.ErrorCode != "AGENT_NOT_PROVIDER_CLI" {
+		t.Errorf("expected AGENT_NOT_PROVIDER_CLI, got %q", resp.ErrorCode)
 	}
 }

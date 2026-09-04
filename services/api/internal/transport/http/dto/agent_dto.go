@@ -38,12 +38,21 @@ type AgentResponse struct {
 	ACPCommand        []string `json:"acp_command,omitempty"`
 	HasACPBridgeToken bool     `json:"has_acp_bridge_token"`
 	HasMCPAPIKey      bool     `json:"has_mcp_api_key"`
-	SystemPrompt      string   `json:"system_prompt"`
-	MaxIterations     int      `json:"max_iterations"`
-	TimeoutMinutes    int      `json:"timeout_minutes"`
-	GitCommitterName  string   `json:"git_committer_name"`
-	GitCommitterEmail string   `json:"git_committer_email"`
-	DockerEnabled     bool     `json:"docker_enabled"`
+	// CLIProvider/CLIModel/CLIAuthMode/HasCLIAPIKey/CLILoginVerifiedAt are
+	// provider_cli-only, empty/nil for other agent types — see
+	// agentdom.Agent.CLIProvider's doc comment. HasCLIAPIKey mirrors
+	// HasACPBridgeToken/HasMCPAPIKey: the raw key is never exposed.
+	CLIProvider        *string    `json:"cli_provider,omitempty"`
+	CLIModel           string     `json:"cli_model,omitempty"`
+	CLIAuthMode        string     `json:"cli_auth_mode,omitempty"`
+	HasCLIAPIKey       bool       `json:"has_cli_api_key"`
+	CLILoginVerifiedAt *time.Time `json:"cli_login_verified_at,omitempty"`
+	SystemPrompt       string     `json:"system_prompt"`
+	MaxIterations      int        `json:"max_iterations"`
+	TimeoutMinutes     int        `json:"timeout_minutes"`
+	GitCommitterName   string     `json:"git_committer_name"`
+	GitCommitterEmail  string     `json:"git_committer_email"`
+	DockerEnabled      bool       `json:"docker_enabled"`
 	// DefaultEnvironmentID is the static environment (environmentdom.Environment)
 	// this agent's conversations attach to by default — nil for a global-scope
 	// agent, or a project-scoped agent with no default set. See
@@ -69,24 +78,34 @@ type AgentResponse struct {
 // SystemPrompt, GitCommitterName, and GitCommitterEmail are LLM-only too —
 // the service silently drops them for "acp" agents (see agent.CreateAgent).
 type CreateAgentRequest struct {
-	Name              string   `json:"name" binding:"required"`
-	Handle            string   `json:"handle" binding:"required"`
-	AgentType         string   `json:"agent_type"`
-	LLMProvider       string   `json:"llm_provider"`
-	LLMModel          string   `json:"llm_model"`
-	LLMAPIKey         string   `json:"llm_api_key"`
-	LLMBaseURL        string   `json:"llm_base_url"`
-	ACPProvider       string   `json:"acp_provider"`
-	ACPCommand        []string `json:"acp_command"`
-	SystemPrompt      string   `json:"system_prompt"`
-	MaxIterations     int      `json:"max_iterations"`
-	TimeoutMinutes    int      `json:"timeout_minutes"`
-	GitCommitterName  string   `json:"git_committer_name"`
-	GitCommitterEmail string   `json:"git_committer_email"`
-	DockerEnabled     bool     `json:"docker_enabled"`
+	Name        string   `json:"name" binding:"required"`
+	Handle      string   `json:"handle" binding:"required"`
+	AgentType   string   `json:"agent_type"`
+	LLMProvider string   `json:"llm_provider"`
+	LLMModel    string   `json:"llm_model"`
+	LLMAPIKey   string   `json:"llm_api_key"`
+	LLMBaseURL  string   `json:"llm_base_url"`
+	ACPProvider string   `json:"acp_provider"`
+	ACPCommand  []string `json:"acp_command"`
+	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey are required (and the
+	// fields above meaningless) when agent_type is "provider_cli" — see
+	// agentdom.Agent.CLIProvider's doc comment. CLIAuthMode defaults to
+	// "login" when omitted.
+	CLIProvider       string `json:"cli_provider"`
+	CLIModel          string `json:"cli_model"`
+	CLIAuthMode       string `json:"cli_auth_mode"`
+	CLIAPIKey         string `json:"cli_api_key"`
+	SystemPrompt      string `json:"system_prompt"`
+	MaxIterations     int    `json:"max_iterations"`
+	TimeoutMinutes    int    `json:"timeout_minutes"`
+	GitCommitterName  string `json:"git_committer_name"`
+	GitCommitterEmail string `json:"git_committer_email"`
+	DockerEnabled     bool   `json:"docker_enabled"`
 	// DefaultEnvironmentID optionally sets the static environment this
 	// agent's conversations attach to by default — must belong to this same
-	// project (validated in agent.CreateAgent).
+	// project (validated in agent.CreateAgent). MANDATORY (not optional)
+	// when agent_type is "provider_cli" — see
+	// agentdom.ErrDefaultEnvironmentRequiredForCLIProvider.
 	DefaultEnvironmentID *uuid.UUID `json:"default_environment_id"`
 	// DefaultFolderID optionally sets which folder inside
 	// DefaultEnvironmentID this agent's conversations work in by default —
@@ -100,14 +119,21 @@ type CreateAgentRequest struct {
 // and PATCH /admin/agents/:agentId. GlobalRoleID is only meaningful for the
 // latter (global agents) — pass a zero UUID to clear an assigned role.
 type UpdateAgentRequest struct {
-	Name              *string    `json:"name"`
-	Handle            *string    `json:"handle"`
-	LLMProvider       *string    `json:"llm_provider"`
-	LLMModel          *string    `json:"llm_model"`
-	LLMAPIKey         *string    `json:"llm_api_key"`
-	LLMBaseURL        *string    `json:"llm_base_url"`
-	ACPProvider       *string    `json:"acp_provider"`
-	ACPCommand        []string   `json:"acp_command"`
+	Name        *string  `json:"name"`
+	Handle      *string  `json:"handle"`
+	LLMProvider *string  `json:"llm_provider"`
+	LLMModel    *string  `json:"llm_model"`
+	LLMAPIKey   *string  `json:"llm_api_key"`
+	LLMBaseURL  *string  `json:"llm_base_url"`
+	ACPProvider *string  `json:"acp_provider"`
+	ACPCommand  []string `json:"acp_command"`
+	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey: nil means "unchanged",
+	// same convention as every other pointer field here — only meaningful
+	// for an existing provider_cli agent.
+	CLIProvider       *string    `json:"cli_provider"`
+	CLIModel          *string    `json:"cli_model"`
+	CLIAuthMode       *string    `json:"cli_auth_mode"`
+	CLIAPIKey         *string    `json:"cli_api_key"`
 	SystemPrompt      *string    `json:"system_prompt"`
 	MaxIterations     *int       `json:"max_iterations"`
 	TimeoutMinutes    *int       `json:"timeout_minutes"`
@@ -170,6 +196,15 @@ type GenerateMCPAgentKeyResponse struct {
 	Token string `json:"token"`
 }
 
+// VerifyCLILoginResponse is the body returned for POST
+// /projects/:projectId/agents/:agentId/verify-cli-login and its
+// environment-scoped sibling, POST
+// /projects/:projectId/environments/:environmentId/verify-cli-login
+// (EnvironmentHandler.VerifyCLILogin).
+type VerifyCLILoginResponse struct {
+	Authenticated bool `json:"authenticated"`
+}
+
 // AgentFromEntity maps an Agent entity to AgentResponse.
 func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 	scope := string(a.AgentScope)
@@ -191,6 +226,11 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		ACPCommand:           a.ACPCommand,
 		HasACPBridgeToken:    a.HasACPBridgeToken,
 		HasMCPAPIKey:         a.HasMCPAPIKey,
+		CLIProvider:          a.CLIProvider,
+		CLIModel:             a.CLIModel,
+		CLIAuthMode:          a.CLIAuthMode,
+		HasCLIAPIKey:         a.CLIAPIKeySecret != "",
+		CLILoginVerifiedAt:   a.CLILoginVerifiedAt,
 		SystemPrompt:         a.SystemPrompt,
 		MaxIterations:        a.MaxIterations,
 		TimeoutMinutes:       a.TimeoutMinutes,

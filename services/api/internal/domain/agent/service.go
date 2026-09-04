@@ -41,6 +41,13 @@ type AgentService interface {
 	// connect command so tool calls are attributed to the agent itself
 	// instead of to whichever human generated the command.
 	GenerateAgentMCPKey(ctx context.Context, projectID, agentID uuid.UUID) (plaintext string, err error)
+	// VerifyCLILogin probes whether a provider_cli agent's CLI is currently
+	// authenticated inside its default environment (a file-existence check
+	// — see docs/ai-agent/overview.md's provider_cli section), and records
+	// the result's timestamp on success via the repository's
+	// SetCLILoginVerifiedAt. Returns ErrAgentNotProviderCLI for any other
+	// agent_type.
+	VerifyCLILogin(ctx context.Context, projectID, agentID uuid.UUID) (authenticated bool, err error)
 
 	// InitiateAvatarUpload starts an avatar upload for a project-scoped agent.
 	InitiateAvatarUpload(ctx context.Context, projectID, agentID uuid.UUID, fileName, contentType string, fileSize int64, uploadedBy uuid.UUID) (*attachmentdom.UploadSession, error)
@@ -229,13 +236,23 @@ type CreateAgentInput struct {
 	// AgentType is "llm" (default) or "acp". LLM fields below are required
 	// (and ACP fields ignored) for "llm"; ACP fields are required (and LLM
 	// fields ignored) for "acp".
-	AgentType         string
-	LLMProvider       string
-	LLMModel          string
-	LLMAPIKey         string // plain text key; stored encrypted by service
-	LLMBaseURL        string
-	ACPProvider       string
-	ACPCommand        []string
+	AgentType   string
+	LLMProvider string
+	LLMModel    string
+	LLMAPIKey   string // plain text key; stored encrypted by service
+	LLMBaseURL  string
+	ACPProvider string
+	ACPCommand  []string
+	// CLIProvider is one of claude-code | codex | cursor-agent | gemini-cli
+	// — required (and the fields below meaningful) only when AgentType is
+	// "provider_cli". See Agent.CLIProvider's doc comment.
+	CLIProvider string
+	CLIModel    string
+	// CLIAuthMode is "api_key" or "login"; defaults to "login" if empty.
+	CLIAuthMode string
+	// CLIAPIKey is a plaintext key; stored encrypted by the service. Only
+	// meaningful when CLIAuthMode is "api_key".
+	CLIAPIKey         string
 	SystemPrompt      string
 	MaxIterations     int
 	TimeoutMinutes    int
@@ -284,14 +301,22 @@ type CreateGlobalAgentInput struct {
 
 // UpdateAgentInput carries mutable agent fields.
 type UpdateAgentInput struct {
-	Name              *string
-	Handle            *string
-	LLMProvider       *string
-	LLMModel          *string
-	LLMAPIKey         *string
-	LLMBaseURL        *string
-	ACPProvider       *string
-	ACPCommand        []string
+	Name        *string
+	Handle      *string
+	LLMProvider *string
+	LLMModel    *string
+	LLMAPIKey   *string
+	LLMBaseURL  *string
+	ACPProvider *string
+	ACPCommand  []string
+	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey mirror CreateAgentInput's
+	// fields — nil means "unchanged" (same convention as every other
+	// pointer field here); only meaningful for an existing provider_cli
+	// agent (see UpdateAgent's per-type field guard).
+	CLIProvider       *string
+	CLIModel          *string
+	CLIAuthMode       *string
+	CLIAPIKey         *string
 	SystemPrompt      *string
 	MaxIterations     *int
 	TimeoutMinutes    *int

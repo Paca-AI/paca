@@ -294,6 +294,10 @@ const (
 	CodeAgentSkillNotFound Code = "AGENT_SKILL_NOT_FOUND"
 	// CodeAgentSkillNameReserved indicates the skill name collides with a name reserved for internal agent scaffolding.
 	CodeAgentSkillNameReserved Code = "AGENT_SKILL_NAME_RESERVED"
+	// CodeAgentSkillNameInvalid indicates the skill name is empty, ".", "..", or
+	// contains a path separator — any of which could escape the on-disk
+	// directory a skill's SKILL.md is written under.
+	CodeAgentSkillNameInvalid Code = "AGENT_SKILL_NAME_INVALID"
 	// CodeAgentNotSupportedForACPAgent indicates an MCP server/skill/env var operation was attempted on an ACP-type agent.
 	CodeAgentNotSupportedForACPAgent Code = "AGENT_NOT_SUPPORTED_FOR_ACP_AGENT"
 	// CodeAgentConversationNotFound indicates the requested conversation does not exist.
@@ -329,6 +333,23 @@ const (
 	// default_environment_id, was set without a default_environment_id
 	// also set, or was set on a global-scope agent.
 	CodeAgentDefaultFolderInvalid Code = "AGENT_DEFAULT_FOLDER_INVALID"
+	// CodeAgentCLIProviderInvalid indicates cli_provider is not one of the supported values.
+	CodeAgentCLIProviderInvalid Code = "AGENT_CLI_PROVIDER_INVALID"
+	// CodeAgentCLIAuthModeInvalid indicates cli_auth_mode is not one of the supported values.
+	CodeAgentCLIAuthModeInvalid Code = "AGENT_CLI_AUTH_MODE_INVALID"
+	// CodeAgentCLIProviderNoAPIKeyAuth indicates cli_auth_mode=api_key was requested for a
+	// cli_provider with no known non-interactive API-key auth path.
+	CodeAgentCLIProviderNoAPIKeyAuth Code = "AGENT_CLI_PROVIDER_NO_API_KEY_AUTH"
+	// CodeAgentDefaultEnvironmentRequiredForCLIProvider indicates a provider_cli agent was
+	// created/updated, or a conversation started for one, without a default_environment_id
+	// resolving to a real environment.
+	CodeAgentDefaultEnvironmentRequiredForCLIProvider Code = "AGENT_DEFAULT_ENVIRONMENT_REQUIRED_FOR_CLI_PROVIDER"
+	// CodeAgentCLIProviderNotSupportedForGlobalAgents indicates agent_type=provider_cli was
+	// requested for a global-scope agent.
+	CodeAgentCLIProviderNotSupportedForGlobalAgents Code = "AGENT_CLI_PROVIDER_NOT_SUPPORTED_FOR_GLOBAL_AGENTS"
+	// CodeAgentNotProviderCLI indicates VerifyCLILogin (or another provider_cli-only
+	// operation) was called on an agent whose agent_type isn't provider_cli.
+	CodeAgentNotProviderCLI Code = "AGENT_NOT_PROVIDER_CLI"
 
 	// --- Environment errors (static environments — see
 	// docs/ai-agent/environment-management.md) --------------------------------

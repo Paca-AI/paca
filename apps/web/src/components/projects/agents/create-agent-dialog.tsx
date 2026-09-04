@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	Bot,
 	BriefcaseBusiness,
@@ -7,6 +8,7 @@ import {
 	ChevronRight,
 	Code2,
 	Cpu,
+	ExternalLink,
 	Eye,
 	EyeOff,
 	FlaskConical,
@@ -19,7 +21,11 @@ import {
 } from "lucide-react";
 import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
+import {
+	DefaultEnvironmentSelect,
+	DefaultFolderSelect,
+} from "@/components/projects/environments/environment-folder-select";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -47,6 +53,7 @@ import {
 	AGENT_PRESETS,
 	type Agent,
 	type AgentType,
+	type CLIProvider,
 	createAgent,
 	createGlobalAgent,
 	generateAcpBridgeToken,
@@ -55,12 +62,13 @@ import {
 	generateGlobalAgentMCPKey,
 	globalAgentsQueryOptions,
 	llmModelsQueryOptions,
+	verifyEnvironmentCLILogin,
 } from "@/lib/agent-api";
 import { environmentsQueryOptions } from "@/lib/environment-api";
 import { projectRolesQueryOptions } from "@/lib/project-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
-import { AcpBridgeSetup } from "./acp-bridge-setup";
+import { AcpBridgeSetup, CommandBox } from "./acp-bridge-setup";
 
 // Create Agent Dialog — shared between the project-scoped Agents page
 // (routes/_authenticated/projects/$projectId/agents/index.tsx) and the
@@ -73,8 +81,6 @@ import { AcpBridgeSetup } from "./acp-bridge-setup";
 
 const CUSTOM = "__custom__";
 const NO_GLOBAL_ROLE = "__none__";
-const NO_ENVIRONMENT = "__none__";
-const NO_FOLDER = "__none__";
 
 const PRESET_ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
 	"software-engineer": Code2,
@@ -84,6 +90,32 @@ const PRESET_ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
 	"business-analyst": BriefcaseBusiness,
 	custom: Settings,
 };
+
+// cliLoginCommand is the exact command to run inside the agent's default
+// environment terminal to authenticate a provider_cli agent's underlying
+// CLI — api_key auth isn't offered for this agent type here (it's coming to
+// the "normal" llm agent type instead), so terminal login is the only path,
+// and showing the real command directly (rather than a vague "log in via
+// the terminal" hint) is what makes the "Verify login" button below usable
+// without leaving this dialog. Confirmed directly against a real container
+// for claude-code/codex/cursor-agent (see services/agent-runner's
+// internal/executor/providercli package, each adapter's own AuthStatusCommand
+// doc comment for the verification side of this); gemini-cli has no
+// confirmed dedicated login subcommand (`gemini --help` shows none), so this
+// falls back to the bare command, which triggers its interactive OAuth flow
+// on first run.
+function cliLoginCommand(provider: CLIProvider): string {
+	switch (provider) {
+		case "codex":
+			return "codex login";
+		case "cursor-agent":
+			return "cursor-agent login";
+		case "gemini-cli":
+			return "gemini";
+		default:
+			return "claude auth login";
+	}
+}
 
 export function CreateAgentDialog({
 	projectId,
@@ -150,6 +182,9 @@ export function CreateAgentDialog({
 	);
 	const [acpProvider, setAcpProvider] = useState<ACPProvider>("claude-code");
 	const [acpCommand, setAcpCommand] = useState("");
+	const [cliProvider, setCliProvider] = useState<CLIProvider>("claude-code");
+	const [cliModel, setCliModel] = useState("");
+	const [copiedCliLoginCommand, setCopiedCliLoginCommand] = useState(false);
 	const [systemPrompt, setSystemPrompt] = useState("");
 	const [showApiKey, setShowApiKey] = useState(false);
 	const [dockerEnabled, setDockerEnabled] = useState(false);
@@ -169,7 +204,6 @@ export function CreateAgentDialog({
 	const selectedEnvironment = environments.find(
 		(env) => env.id === defaultEnvironmentId,
 	);
-	const selectedEnvironmentFolders = selectedEnvironment?.folders ?? [];
 
 	// Derived final values sent to the API
 	const llmProvider =
@@ -191,6 +225,9 @@ export function CreateAgentDialog({
 		setLlmBaseUrl(llmModels.anthropic?.base_url ?? "");
 		setAcpProvider("claude-code");
 		setAcpCommand("");
+		setCliProvider("claude-code");
+		setCliModel("");
+		setCopiedCliLoginCommand(false);
 		setSystemPrompt("");
 		setShowApiKey(false);
 		setDockerEnabled(false);
@@ -256,12 +293,29 @@ export function CreateAgentDialog({
 								? { default_folder_id: defaultFolderId }
 								: {}),
 						}
-					: {
-							acp_provider: acpProvider,
-							...(acpProvider === "custom"
-								? { acp_command: acpCommandParts }
-								: {}),
-						};
+					: agentType === "provider_cli"
+						? {
+								cli_provider: cliProvider,
+								...(cliModel.trim() ? { cli_model: cliModel.trim() } : {}),
+								// api_key auth isn't offered here — see the auth
+								// section's own comment below — so this is always
+								// "login": the underlying CLI must already be
+								// authenticated via its own terminal login inside
+								// the selected environment.
+								cli_auth_mode: "login" as const,
+								// Required for this type — step2Valid blocks submission
+								// otherwise, so defaultEnvironmentId is always set here.
+								default_environment_id: defaultEnvironmentId,
+								...(defaultFolderId
+									? { default_folder_id: defaultFolderId }
+									: {}),
+							}
+						: {
+								acp_provider: acpProvider,
+								...(acpProvider === "custom"
+									? { acp_command: acpCommandParts }
+									: {}),
+							};
 			const agent = projectId
 				? await createAgent(projectId, {
 						name: name.trim(),
@@ -320,6 +374,24 @@ export function CreateAgentDialog({
 		},
 	});
 
+	// Lets the user confirm their terminal login actually worked before
+	// finishing agent creation — the environment-scoped sibling of
+	// agent-detail.tsx's VerifyCLILoginPanel, needed here specifically
+	// because this dialog's agent doesn't exist yet (verifyCLILogin's own
+	// endpoint is agent-scoped).
+	const verifyCliLoginMutation = useMutation({
+		mutationFn: () => {
+			if (!projectId || !defaultEnvironmentId) {
+				throw new Error("no environment selected");
+			}
+			return verifyEnvironmentCLILogin(
+				projectId,
+				defaultEnvironmentId,
+				cliProvider,
+			);
+		},
+	});
+
 	const onNameChange = (v: string) => {
 		setName(v);
 		setHandle(
@@ -334,10 +406,12 @@ export function CreateAgentDialog({
 	const step2Valid =
 		agentType === "llm"
 			? !!(llmProvider && llmModel && llmBaseUrl.trim() && llmApiKey.trim())
-			: !!(
-					acpProvider &&
-					(acpProvider !== "custom" || acpCommandParts.length > 0)
-				);
+			: agentType === "provider_cli"
+				? !!(cliProvider && defaultEnvironmentId)
+				: !!(
+						acpProvider &&
+						(acpProvider !== "custom" || acpCommandParts.length > 0)
+					);
 	const canSubmit = !!(step1Valid && step2Valid && !createMutation.isPending);
 
 	return (
@@ -395,12 +469,35 @@ export function CreateAgentDialog({
 				{/* ── Step 1: Identity ─────────────────────────────────────────── */}
 				{step === 1 && (
 					<div className="overflow-y-auto max-h-[62vh] px-6 py-5 space-y-5">
-						{/* Agent Type */}
+						{/* Agent Type — provider_cli is project-scoped only: it requires
+						    a static environment, and a global agent has none of its own
+						    to pick from (see agentdom.ErrCLIProviderNotSupportedForGlobalAgents
+						    server-side). */}
 						<div className="space-y-1.5">
 							<Label>{t("agents.createDialog.agentTypeLabel")}</Label>
-							<div className="grid grid-cols-2 gap-2">
-								{(["llm", "acp"] as const).map((type) => {
+							<div
+								className={cn(
+									"grid gap-2",
+									projectId ? "grid-cols-3" : "grid-cols-2",
+								)}
+							>
+								{(projectId
+									? (["llm", "provider_cli", "acp"] as const)
+									: (["llm", "acp"] as const)
+								).map((type) => {
 									const isSelected = agentType === type;
+									const labelKey =
+										type === "llm"
+											? "agents.createDialog.agentTypeLLM"
+											: type === "acp"
+												? "agents.createDialog.agentTypeACP"
+												: "agents.createDialog.agentTypeProviderCLI";
+									const hintKey =
+										type === "llm"
+											? "agents.createDialog.agentTypeLLMHint"
+											: type === "acp"
+												? "agents.createDialog.agentTypeACPHint"
+												: "agents.createDialog.agentTypeProviderCLIHint";
 									return (
 										<button
 											key={type}
@@ -414,18 +511,10 @@ export function CreateAgentDialog({
 											)}
 										>
 											<p className="text-xs font-semibold leading-tight">
-												{t(
-													type === "llm"
-														? "agents.createDialog.agentTypeLLM"
-														: "agents.createDialog.agentTypeACP",
-												)}
+												{t(labelKey)}
 											</p>
 											<p className="mt-0.5 text-xs leading-tight text-muted-foreground">
-												{t(
-													type === "llm"
-														? "agents.createDialog.agentTypeLLMHint"
-														: "agents.createDialog.agentTypeACPHint",
-												)}
+												{t(hintKey)}
 											</p>
 										</button>
 									);
@@ -433,7 +522,8 @@ export function CreateAgentDialog({
 							</div>
 						</div>
 
-						{/* Preset grid — LLM-only; an ACP agent has no model/prompt to preset */}
+						{/* Preset grid — LLM-only; ACP/provider_cli agents have no
+						    model/prompt to preset (their underlying CLI owns its own). */}
 						{agentType === "llm" && (
 							<div className="space-y-2">
 								<Label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -623,6 +713,228 @@ export function CreateAgentDialog({
 							</div>
 						)}
 
+						{agentType === "provider_cli" && projectId && (
+							<>
+								<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+									<div className="flex items-center gap-1.5">
+										<Cpu className="size-3.5 text-muted-foreground" />
+										<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+											{t("agents.createDialog.cliSection")}
+										</span>
+									</div>
+									<div className="space-y-1.5">
+										<Label>{t("agents.createDialog.cliProviderLabel")}</Label>
+										<Select
+											value={cliProvider}
+											onValueChange={(v) => {
+												if (!v) return;
+												setCliProvider(v as CLIProvider);
+												setCopiedCliLoginCommand(false);
+												verifyCliLoginMutation.reset();
+											}}
+											items={[
+												{
+													value: "claude-code",
+													label: t("agents.createDialog.cliProviderClaudeCode"),
+												},
+												{
+													value: "codex",
+													label: t("agents.createDialog.cliProviderCodex"),
+												},
+												{
+													value: "gemini-cli",
+													label: t("agents.createDialog.cliProviderGeminiCli"),
+												},
+												{
+													value: "cursor-agent",
+													label: t(
+														"agents.createDialog.cliProviderCursorAgent",
+													),
+												},
+											]}
+										>
+											<SelectTrigger>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="claude-code">
+													{t("agents.createDialog.cliProviderClaudeCode")}
+												</SelectItem>
+												<SelectItem value="codex">
+													{t("agents.createDialog.cliProviderCodex")}
+												</SelectItem>
+												<SelectItem value="gemini-cli">
+													{t("agents.createDialog.cliProviderGeminiCli")}
+												</SelectItem>
+												<SelectItem value="cursor-agent">
+													{t("agents.createDialog.cliProviderCursorAgent")}
+												</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
+									<div className="space-y-1.5">
+										<Label>
+											{t("agents.createDialog.cliModelLabel")}{" "}
+											<span className="text-muted-foreground font-normal text-xs">
+												{t("agents.createDialog.optional")}
+											</span>
+										</Label>
+										<Input
+											placeholder={t("agents.createDialog.cliModelPlaceholder")}
+											value={cliModel}
+											onChange={(e) => setCliModel(e.target.value)}
+										/>
+									</div>
+									<p className="text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
+										{t("agents.createDialog.cliGuidance")}
+									</p>
+								</div>
+
+								{/* Environment — REQUIRED for provider_cli (no "none" option):
+								    the CLI's own login state must persist across
+								    conversations, which only a static environment provides. */}
+								<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+									<div className="flex items-center gap-1.5">
+										<Server className="size-3.5 text-muted-foreground" />
+										<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+											{t("agents.createDialog.environmentSection")}
+										</span>
+									</div>
+									<div className="space-y-1.5">
+										<Label>
+											{t("agents.detail.overview.defaultEnvironmentLabel")}{" "}
+											<span className="text-destructive">*</span>
+										</Label>
+										<DefaultEnvironmentSelect
+											projectId={projectId}
+											environments={environments}
+											value={defaultEnvironmentId}
+											onChange={(id) => {
+												setDefaultEnvironmentId(id);
+												verifyCliLoginMutation.reset();
+											}}
+											required
+											className="w-full"
+										/>
+										<p className="text-xs text-muted-foreground">
+											{t("agents.createDialog.cliEnvironmentHint")}
+										</p>
+									</div>
+									{selectedEnvironment && (
+										<div className="space-y-1.5">
+											<Label>
+												{t("agents.detail.overview.defaultFolderLabel")}
+											</Label>
+											<DefaultFolderSelect
+												projectId={projectId}
+												environment={selectedEnvironment}
+												value={defaultFolderId}
+												onChange={setDefaultFolderId}
+												className="w-full"
+											/>
+										</div>
+									)}
+								</div>
+
+								{/* Auth — Goose never brokers auth for a CLI provider; this is
+								    entirely about how the underlying CLI itself gets
+								    authenticated. Only terminal login is offered here —
+								    api_key auth is coming to the "normal" (llm) agent type
+								    instead, not this one. */}
+								<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+									<Label>{t("agents.createDialog.cliAuthModeLabel")}</Label>
+									<p className="text-xs text-muted-foreground">
+										{t("agents.createDialog.cliLoginModeHint")}
+									</p>
+									<div className="space-y-1.5">
+										<Label className="text-xs text-muted-foreground font-normal">
+											{t("agents.createDialog.cliLoginCommandLabel")}
+										</Label>
+										<CommandBox
+											command={cliLoginCommand(cliProvider)}
+											copied={copiedCliLoginCommand}
+											onCopy={() => {
+												navigator.clipboard
+													.writeText(cliLoginCommand(cliProvider))
+													.then(() => {
+														setCopiedCliLoginCommand(true);
+														setTimeout(
+															() => setCopiedCliLoginCommand(false),
+															2000,
+														);
+													})
+													.catch(() => {
+														// Clipboard write can fail (permission denied,
+														// insecure context) — leave copiedCliLoginCommand
+														// untouched so the button doesn't falsely claim
+														// success for a command the user may need to copy
+														// manually.
+													});
+											}}
+										/>
+									</div>
+									{defaultEnvironmentId && (
+										<Link
+											to="/projects/$projectId/environments/$environmentId/terminal"
+											params={{
+												projectId,
+												environmentId: defaultEnvironmentId,
+											}}
+											target="_blank"
+											rel="noopener noreferrer"
+											className={buttonVariants({
+												variant: "outline",
+												size: "sm",
+											})}
+										>
+											<ExternalLink className="size-3.5 mr-1.5" />
+											{t("agents.createDialog.cliOpenTerminal")}
+										</Link>
+									)}
+									<div className="space-y-1.5 pt-1">
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={() => verifyCliLoginMutation.mutate()}
+											disabled={
+												!defaultEnvironmentId ||
+												verifyCliLoginMutation.isPending
+											}
+										>
+											{verifyCliLoginMutation.isPending ? (
+												<Loader2 className="size-3.5 mr-1.5 animate-spin" />
+											) : (
+												<Lock className="size-3.5 mr-1.5" />
+											)}
+											{t("agents.createDialog.cliVerifyLogin")}
+										</Button>
+										{verifyCliLoginMutation.isSuccess && (
+											<p
+												className={cn(
+													"text-xs",
+													verifyCliLoginMutation.data.authenticated
+														? "text-emerald-600"
+														: "text-muted-foreground",
+												)}
+											>
+												{verifyCliLoginMutation.data.authenticated
+													? t("agents.detail.overview.cliLoginVerifiedNow")
+													: t(
+															"agents.detail.overview.cliLoginNotAuthenticated",
+														)}
+											</p>
+										)}
+										{verifyCliLoginMutation.isError && (
+											<p className="text-xs text-destructive">
+												{t("agents.detail.overview.cliLoginVerifyFailed")}
+											</p>
+										)}
+									</div>
+								</div>
+							</>
+						)}
+
 						{/* Provider + Model card */}
 						{agentType === "llm" && (
 							<>
@@ -775,83 +1087,30 @@ export function CreateAgentDialog({
 											<Label>
 												{t("agents.detail.overview.defaultEnvironmentLabel")}
 											</Label>
-											<Select
-												value={defaultEnvironmentId || NO_ENVIRONMENT}
-												onValueChange={(v) =>
-													v &&
-													setDefaultEnvironmentId(v === NO_ENVIRONMENT ? "" : v)
-												}
-												items={[
-													{
-														value: NO_ENVIRONMENT,
-														label: t(
-															"agents.detail.overview.noDefaultEnvironment",
-														),
-													},
-													...environments.map((env) => ({
-														value: env.id,
-														label: env.name,
-													})),
-												]}
-											>
-												<SelectTrigger className="w-full">
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value={NO_ENVIRONMENT}>
-														{t("agents.detail.overview.noDefaultEnvironment")}
-													</SelectItem>
-													{environments.length > 0 && <SelectSeparator />}
-													{environments.map((env) => (
-														<SelectItem key={env.id} value={env.id}>
-															{env.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
+											<DefaultEnvironmentSelect
+												projectId={projectId}
+												environments={environments}
+												value={defaultEnvironmentId}
+												onChange={setDefaultEnvironmentId}
+												className="w-full"
+											/>
 											<p className="text-xs text-muted-foreground">
 												{t("agents.detail.overview.defaultEnvironmentHint")}
 											</p>
 										</div>
 									)}
-									{selectedEnvironment && (
+									{projectId && selectedEnvironment && (
 										<div className="space-y-1.5">
 											<Label>
 												{t("agents.detail.overview.defaultFolderLabel")}
 											</Label>
-											<Select
-												value={defaultFolderId || NO_FOLDER}
-												onValueChange={(v) =>
-													v && setDefaultFolderId(v === NO_FOLDER ? "" : v)
-												}
-												items={[
-													{
-														value: NO_FOLDER,
-														label: t("agents.detail.overview.noDefaultFolder"),
-													},
-													...selectedEnvironmentFolders.map((folder) => ({
-														value: folder.id,
-														label: folder.path,
-													})),
-												]}
-											>
-												<SelectTrigger className="w-full">
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value={NO_FOLDER}>
-														{t("agents.detail.overview.noDefaultFolder")}
-													</SelectItem>
-													{selectedEnvironmentFolders.length > 0 && (
-														<SelectSeparator />
-													)}
-													{selectedEnvironmentFolders.map((folder) => (
-														<SelectItem key={folder.id} value={folder.id}>
-															{folder.path}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
+											<DefaultFolderSelect
+												projectId={projectId}
+												environment={selectedEnvironment}
+												value={defaultFolderId}
+												onChange={setDefaultFolderId}
+												className="w-full"
+											/>
 											<p className="text-xs text-muted-foreground">
 												{t("agents.detail.overview.defaultFolderHint")}
 											</p>

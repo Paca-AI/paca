@@ -131,13 +131,31 @@ export interface AgentEnvVar {
 	created_at: string;
 }
 
-export type AgentType = "llm" | "acp";
+export type AgentType = "llm" | "acp" | "provider_cli";
 export type ACPProvider =
 	| "claude-code"
 	| "codex"
 	| "gemini-cli"
 	| "goose"
 	| "custom";
+
+// CLIProvider names which coding CLI Goose itself shells out to *inside*
+// agent-runner's own sandbox/environment container (Goose's "CLI providers"
+// feature, GOOSE_PROVIDER=<CLIProvider>) — a distinct concept from
+// ACPProvider, which names the ACP client the *user's own machine* runs via
+// apps/acp-bridge. Only meaningful for agent_type === "provider_cli".
+export type CLIProvider =
+	| "claude-code"
+	| "codex"
+	| "cursor-agent"
+	| "gemini-cli";
+
+// CLIAuthMode: "api_key" injects an encrypted key under the CLI's own
+// native non-interactive auth env var (only supported for some
+// CLIProviders — see CLI_PROVIDER_OPTIONS' supportsApiKey); "login"
+// requires the user to run the CLI's own login command in the agent's
+// default environment's terminal. Defaults to "login" server-side.
+export type CLIAuthMode = "api_key" | "login";
 
 // "project" agents belong to exactly one project (project_id set). "global"
 // agents belong to none (project_id null) — they chat on the home/admin
@@ -164,6 +182,18 @@ export interface Agent {
 	acp_command?: string[];
 	has_acp_bridge_token: boolean;
 	has_mcp_api_key: boolean;
+	// cli_provider/cli_model/cli_auth_mode/has_cli_api_key/
+	// cli_login_verified_at are provider_cli-only — see CLIProvider's doc
+	// comment. has_cli_api_key mirrors has_acp_bridge_token/has_mcp_api_key:
+	// the raw key is never returned. cli_login_verified_at is set only by
+	// the "Verify login" action (verifyCLILogin below) — a file-existence
+	// probe, never re-validated automatically, so it can go stale if a
+	// login later expires.
+	cli_provider?: CLIProvider | null;
+	cli_model?: string;
+	cli_auth_mode?: CLIAuthMode;
+	has_cli_api_key?: boolean;
+	cli_login_verified_at?: string | null;
 	system_prompt: string;
 	git_committer_name: string;
 	git_committer_email: string;
@@ -295,6 +325,10 @@ export async function createAgent(
 		llm_base_url?: string;
 		acp_provider?: ACPProvider;
 		acp_command?: string[];
+		cli_provider?: CLIProvider;
+		cli_model?: string;
+		cli_auth_mode?: CLIAuthMode;
+		cli_api_key?: string;
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
@@ -323,6 +357,10 @@ export async function updateAgent(
 		llm_base_url?: string | null;
 		acp_provider?: ACPProvider;
 		acp_command?: string[];
+		cli_provider?: CLIProvider;
+		cli_model?: string;
+		cli_auth_mode?: CLIAuthMode;
+		cli_api_key?: string;
 		system_prompt?: string;
 		git_committer_name?: string;
 		git_committer_email?: string;
@@ -692,6 +730,48 @@ export async function generateGlobalAgentMCPKey(
 ): Promise<AgentMCPKey> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<AgentMCPKey>>(
 		`/admin/agents/${agentId}/mcp-agent-key`,
+	);
+	return data.data;
+}
+
+// ── Provider CLI ─────────────────────────────────────────────────────────────
+
+export interface VerifyCLILoginResult {
+	authenticated: boolean;
+}
+
+// verifyCLILogin probes (each CLI's own real status subcommand where one is
+// confirmed to exist, never an interactive CLI invocation — see
+// services/api's environmentdom.Service.VerifyCLIAuth doc comment) whether
+// a provider_cli agent's underlying CLI is currently authenticated, and, on
+// success, persists the check's timestamp as agent.cli_login_verified_at.
+export async function verifyCLILogin(
+	projectId: string,
+	agentId: string,
+): Promise<VerifyCLILoginResult> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<VerifyCLILoginResult>
+	>(`/projects/${projectId}/agents/${agentId}/verify-cli-login`);
+	return data.data;
+}
+
+// verifyEnvironmentCLILogin is verifyCLILogin's environment-scoped sibling —
+// same probe, but keyed directly by environmentId/cliProvider instead of an
+// agentId, for the create-agent dialog's own "Verify login" button (the
+// agent it's configuring doesn't exist yet, so there's no agentId to check
+// against). Does not persist a verification timestamp anywhere — there is
+// no agent row yet to persist it against.
+export async function verifyEnvironmentCLILogin(
+	projectId: string,
+	environmentId: string,
+	cliProvider: CLIProvider,
+): Promise<VerifyCLILoginResult> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<VerifyCLILoginResult>
+	>(
+		`/projects/${projectId}/environments/${environmentId}/verify-cli-login`,
+		null,
+		{ params: { cli_provider: cliProvider } },
 	);
 	return data.data;
 }

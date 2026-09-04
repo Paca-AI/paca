@@ -725,6 +725,11 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Post("/{agentId}/mcp-agent-key", deps.Agent.GenerateAgentMCPKey)
 
+						// Provider CLI — Write, not Read: it runs a live probe inside the
+						// agent's environment and persists cli_login_verified_at.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+							Post("/{agentId}/verify-cli-login", deps.Agent.VerifyCLILogin)
+
 						// Avatar
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Post("/{agentId}/avatar/initiate-upload", deps.Agent.InitiateAvatarUpload)
@@ -821,6 +826,14 @@ func New(deps Deps) http.Handler {
 							Post("/{environmentId}/restart", deps.Environment.RestartEnvironment)
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
 							Post("/{environmentId}/heartbeat", deps.Environment.Heartbeat)
+						// Read-gated like Browse/ListFolders above — a live
+						// probe, not a mutating action, and the create-agent
+						// dialog's own "Verify login" button needs this before
+						// the agent (and its own agents.write-gated verify
+						// endpoint) exists yet — see EnvironmentHandler.
+						// VerifyCLILogin's own doc comment.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
+							Post("/{environmentId}/verify-cli-login", deps.Environment.VerifyCLILogin)
 						// Mints a ticket for agent-runner's live-usage
 						// WebSocket (internal/acpbridge/stats.go) — read-only
 						// in spirit (viewing usage numbers, not a mutating
