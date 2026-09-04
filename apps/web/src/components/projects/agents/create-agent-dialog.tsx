@@ -898,7 +898,8 @@ export function CreateAgentDialog({
 											size="sm"
 											onClick={() => verifyCliLoginMutation.mutate()}
 											disabled={
-												!defaultEnvironmentId || verifyCliLoginMutation.isPending
+												!defaultEnvironmentId ||
+												verifyCliLoginMutation.isPending
 											}
 										>
 											{verifyCliLoginMutation.isPending ? (
@@ -919,7 +920,9 @@ export function CreateAgentDialog({
 											>
 												{verifyCliLoginMutation.data.authenticated
 													? t("agents.detail.overview.cliLoginVerifiedNow")
-													: t("agents.detail.overview.cliLoginNotAuthenticated")}
+													: t(
+															"agents.detail.overview.cliLoginNotAuthenticated",
+														)}
 											</p>
 										)}
 										{verifyCliLoginMutation.isError && (
