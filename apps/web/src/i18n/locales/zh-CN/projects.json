@@ -1585,6 +1585,7 @@
 			"description": "{{status}}的冲刺",
 			"descriptionWithStartDate": "{{status}}的冲刺 · 开始于 {{date}}",
 			"editSprint": "编辑冲刺",
+			"startSprint": "开始冲刺",
 			"editSprintModal": {
 				"title": "编辑冲刺",
 				"nameLabel": "名称",

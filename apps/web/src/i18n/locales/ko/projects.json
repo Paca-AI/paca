@@ -1585,6 +1585,7 @@
 			"description": "{{status}} 스프린트",
 			"descriptionWithStartDate": "{{status}} 스프린트 · {{date}} 시작",
 			"editSprint": "스프린트 수정",
+			"startSprint": "스프린트 시작",
 			"editSprintModal": {
 				"title": "스프린트 수정",
 				"nameLabel": "이름",

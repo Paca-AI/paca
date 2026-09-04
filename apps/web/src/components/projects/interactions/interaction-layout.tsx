@@ -97,6 +97,7 @@ import { NewViewPopover } from "./new-view-popover";
 import { getImportanceBucketBounds } from "./priority";
 import { RenameViewDialog } from "./rename-view-dialog";
 import { RoadmapView } from "./roadmap-view";
+import type { SprintFormPayload } from "./sprint-form-modal";
 import { TaskDetailModal } from "./task-detail-modal";
 import { UNASSIGNED_FILTER_ID, ViewSettingsPanel } from "./view-settings-panel";
 import {
@@ -1646,16 +1647,7 @@ export function InteractionLayout({
 		},
 	});
 
-	const handleStartSprint = async (
-		sid: string,
-		payload: {
-			name: string;
-			goal: string | null;
-			start_date: string | null;
-			end_date: string | null;
-			status: "active";
-		},
-	) => {
+	const handleStartSprint = async (sid: string, payload: SprintFormPayload) => {
 		await updateSprintMutation.mutateAsync({ sprintId: sid, payload });
 		navigate({
 			to: "/projects/$projectId/interactions/sprints/$sprintId",

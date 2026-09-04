@@ -1,11 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, Pencil, Trash2, X } from "lucide-react";
+import {
+	AlertCircle,
+	CheckCircle2,
+	Pencil,
+	Play,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { InteractionLayout } from "@/components/projects/interactions/interaction-layout";
+import { SprintFormModal } from "@/components/projects/interactions/sprint-form-modal";
 import { SprintStatusBadge } from "@/components/projects/interactions/sprint-status-badge";
+import { StartSprintModal } from "@/components/projects/interactions/start-sprint-modal";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { formatDate } from "@/lib/format-date";
 import {
@@ -70,37 +79,27 @@ function SprintPage() {
 	const [completeOpen, setCompleteOpen] = useState(false);
 	const [moveToSprintId, setMoveToSprintId] = useState<string | null>(null);
 
+	const [startSprintOpen, setStartSprintOpen] = useState(false);
+
 	const [editOpen, setEditOpen] = useState(false);
-	const [editName, setEditName] = useState("");
-	const [editGoal, setEditGoal] = useState("");
-	const [editStartDate, setEditStartDate] = useState("");
-	const [editEndDate, setEditEndDate] = useState("");
 	const [editError, setEditError] = useState<string | null>(null);
 
 	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-	const dateRangeInvalid = Boolean(
-		editStartDate && editEndDate && editEndDate < editStartDate,
-	);
-
-	// Register a document-level keydown listener while the modal is open so
-	// Escape works regardless of which element currently has focus (mirrors
-	// StartSprintModal's fix for the same issue).
+	// Register a document-level keydown listener while the delete-confirmation
+	// modal is open so Escape works regardless of which element currently has
+	// focus (mirrors SprintFormModal's own such fallback for the edit dialog
+	// stacked underneath it — SprintFormModal suppresses its own Escape
+	// handling via `suppressEscape` while this one is open, so only the
+	// topmost dialog ever closes).
 	useEffect(() => {
-		if (!editOpen) return;
+		if (!deleteConfirmOpen) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			// Escape closes only the topmost dialog. After clicking "Delete
-			// sprint" focus stays in the edit-modal subtree, so the confirm
-			// overlay's own onKeyDown never fires — this handler must close the
-			// confirm dialog itself, and only fall through to the edit modal
-			// when the confirm dialog isn't open.
-			if (deleteConfirmOpen) setDeleteConfirmOpen(false);
-			else setEditOpen(false);
+			if (e.key === "Escape") setDeleteConfirmOpen(false);
 		};
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [editOpen, deleteConfirmOpen]);
+	}, [deleteConfirmOpen]);
 
 	const sprintTasks = tasksResult?.items ?? [];
 
@@ -114,6 +113,12 @@ function SprintPage() {
 	const otherSprints = allSprints.filter(
 		(s) => s.id !== sprintId && s.status !== "completed",
 	);
+
+	// Surfaced as a non-blocking warning in the Start Sprint dialog — Scrum
+	// favors one active sprint at a time, but this doesn't prevent starting
+	// a second one.
+	const otherActiveSprint =
+		allSprints.find((s) => s.status === "active" && s.id !== sprintId) ?? null;
 
 	const completeSprintMutation = useMutation({
 		mutationFn: () =>
@@ -145,7 +150,6 @@ function SprintPage() {
 				queryKey: ["projects", projectId, "sprints", sprintId],
 			});
 			setEditError(null);
-			setEditOpen(false);
 		},
 		onError: () => {
 			setEditError(t("layout.sprintDetail.editSprintModal.error"));
@@ -223,14 +227,6 @@ function SprintPage() {
 								<button
 									type="button"
 									onClick={() => {
-										setEditName(sprint.name);
-										setEditGoal(sprint.goal ?? "");
-										setEditStartDate(
-											sprint.start_date ? sprint.start_date.slice(0, 10) : "",
-										);
-										setEditEndDate(
-											sprint.end_date ? sprint.end_date.slice(0, 10) : "",
-										);
 										setEditError(null);
 										setEditOpen(true);
 									}}
@@ -239,6 +235,16 @@ function SprintPage() {
 									<Pencil className="size-3.5 shrink-0" />
 									{t("layout.sprintDetail.editSprint")}
 								</button>
+								{sprint.status === "planned" && (
+									<button
+										type="button"
+										onClick={() => setStartSprintOpen(true)}
+										className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 transition-all duration-150"
+									>
+										<Play className="size-3.5 shrink-0 fill-white" />
+										{t("layout.sprintDetail.startSprint")}
+									</button>
+								)}
 								{sprint.status === "active" && (
 									<button
 										type="button"
@@ -254,156 +260,27 @@ function SprintPage() {
 					</>
 				}
 			/>
-			{/* Edit Sprint Modal */}
-			{editOpen && (
-				// biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-					onClick={(e) => {
-						if (e.target === e.currentTarget) setEditOpen(false);
-					}}
-					onKeyDown={(e) => {
-						if (e.key === "Escape") setEditOpen(false);
-					}}
-				>
-					{/* biome-ignore lint/a11y/noStaticElementInteractions: modal panel */}
-					<div
-						className="relative w-full max-w-md rounded-xl border border-border/50 bg-background p-6 shadow-2xl mx-4"
-						onClick={(e) => e.stopPropagation()}
-						onKeyDown={(e) => e.stopPropagation()}
-					>
-						<button
-							type="button"
-							onClick={() => setEditOpen(false)}
-							className="absolute right-4 top-4 flex size-7 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 transition-all"
-						>
-							<X className="size-4" />
-						</button>
-						<h2 className="font-[Syne] text-lg font-bold tracking-tight mb-4">
-							{t("layout.sprintDetail.editSprintModal.title")}
-						</h2>
-						<div className="flex flex-col gap-4">
-							<div className="flex flex-col gap-1.5">
-								<label htmlFor="es-name" className="text-sm font-medium">
-									{t("layout.sprintDetail.editSprintModal.nameLabel")}
-								</label>
-								<input
-									id="es-name"
-									value={editName}
-									onChange={(e) => setEditName(e.target.value)}
-									className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
-								/>
-							</div>
-							<div className="flex flex-col gap-1.5">
-								<label
-									htmlFor="es-goal"
-									className="text-sm font-medium text-muted-foreground"
-								>
-									{t("layout.sprintDetail.editSprintModal.goalLabel")}{" "}
-									<span className="text-xs font-normal">
-										{t("layout.sprintDetail.editSprintModal.optional")}
-									</span>
-								</label>
-								<textarea
-									id="es-goal"
-									value={editGoal}
-									onChange={(e) => setEditGoal(e.target.value)}
-									rows={2}
-									placeholder={t(
-										"layout.sprintDetail.editSprintModal.goalPlaceholder",
-									)}
-									className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50 resize-none"
-								/>
-							</div>
-							<div className="grid grid-cols-2 gap-3">
-								<div className="flex flex-col gap-1.5">
-									<label
-										htmlFor="es-start"
-										className="text-sm font-medium text-muted-foreground"
-									>
-										{t("layout.sprintDetail.editSprintModal.startDateLabel")}
-									</label>
-									<input
-										id="es-start"
-										type="date"
-										value={editStartDate}
-										onChange={(e) => setEditStartDate(e.target.value)}
-										className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-									/>
-								</div>
-								<div className="flex flex-col gap-1.5">
-									<label
-										htmlFor="es-end"
-										className="text-sm font-medium text-muted-foreground"
-									>
-										{t("layout.sprintDetail.editSprintModal.dueDateLabel")}
-									</label>
-									<input
-										id="es-end"
-										type="date"
-										value={editEndDate}
-										min={editStartDate || undefined}
-										onChange={(e) => setEditEndDate(e.target.value)}
-										className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-									/>
-								</div>
-							</div>
-							{dateRangeInvalid && (
-								<p className="text-xs text-destructive">
-									{t("layout.sprintDetail.editSprintModal.dateRangeError")}
-								</p>
-							)}
-							{editError && (
-								<p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-									{editError}
-								</p>
-							)}
-						</div>
-						<div className="mt-6 flex items-center justify-between gap-2">
-							<button
-								type="button"
-								onClick={() => setDeleteConfirmOpen(true)}
-								className="flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/20 transition-all"
-							>
-								<Trash2 className="size-3.5 shrink-0" />
-								{t("layout.sprintDetail.editSprintModal.delete")}
-							</button>
-							<div className="flex gap-2">
-								<button
-									type="button"
-									onClick={() => setEditOpen(false)}
-									className="rounded-lg border border-border/50 bg-muted/20 px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-all"
-								>
-									{t("layout.sprintDetail.editSprintModal.cancel")}
-								</button>
-								<button
-									type="button"
-									onClick={() =>
-										updateSprintMutation.mutate({
-											name: editName.trim(),
-											goal: editGoal.trim() || null,
-											start_date: editStartDate
-												? `${editStartDate}T00:00:00Z`
-												: null,
-											end_date: editEndDate ? `${editEndDate}T00:00:00Z` : null,
-										})
-									}
-									disabled={
-										updateSprintMutation.isPending ||
-										!editName.trim() ||
-										dateRangeInvalid
-									}
-									className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
-								>
-									{updateSprintMutation.isPending
-										? t("layout.sprintDetail.editSprintModal.saving")
-										: t("layout.sprintDetail.editSprintModal.save")}
-								</button>
-							</div>
-						</div>
-					</div>
-				</div>
-			)}
+			<StartSprintModal
+				sprint={sprint}
+				open={startSprintOpen}
+				onOpenChange={setStartSprintOpen}
+				onSubmit={async (_sid, payload) => {
+					await updateSprintMutation.mutateAsync(payload);
+				}}
+				otherActiveSprint={otherActiveSprint}
+			/>
+			<SprintFormModal
+				mode="edit"
+				sprint={sprint}
+				open={editOpen}
+				onOpenChange={setEditOpen}
+				onSubmit={async (_sid, payload) => {
+					await updateSprintMutation.mutateAsync(payload);
+				}}
+				errorMessage={editError}
+				onDelete={() => setDeleteConfirmOpen(true)}
+				suppressEscape={deleteConfirmOpen}
+			/>
 			{/* Complete Sprint Modal */}
 			{completeOpen && (
 				// biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop

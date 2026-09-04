@@ -1603,6 +1603,7 @@
 			"description": "{{status}} спринт",
 			"descriptionWithStartDate": "{{status}} спринт · начат {{date}}",
 			"editSprint": "Изменить спринт",
+			"startSprint": "Начать спринт",
 			"editSprintModal": {
 				"title": "Изменить спринт",
 				"nameLabel": "Название",

@@ -1585,6 +1585,7 @@
 			"description": "{{status}} sprint",
 			"descriptionWithStartDate": "{{status}} sprint · started {{date}}",
 			"editSprint": "Edit sprint",
+			"startSprint": "Start sprint",
 			"editSprintModal": {
 				"title": "Edit sprint",
 				"nameLabel": "Name",

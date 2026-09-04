@@ -12,6 +12,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 import { AddTaskRow } from "./add-task-row";
+import type { SprintFormPayload } from "./sprint-form-modal";
 import { SprintStatusBadge } from "./sprint-status-badge";
 import { StartSprintModal } from "./start-sprint-modal";
 import { TaskContextMenu } from "./task-context-menu";
@@ -64,13 +65,7 @@ export interface ListGroupProps {
 	otherActiveSprint?: Sprint | null;
 	onStartSprint?: (
 		sprintId: string,
-		payload: {
-			name: string;
-			goal: string | null;
-			start_date: string | null;
-			end_date: string | null;
-			status: "active";
-		},
+		payload: SprintFormPayload,
 	) => Promise<void>;
 	onCreateSprint?: () => void;
 	/** Extra fields merged into the create-task payload (e.g. sprint_id) */

@@ -1585,6 +1585,7 @@
 			"description": "Sprint {{status}}",
 			"descriptionWithStartDate": "Sprint {{status}} · bắt đầu {{date}}",
 			"editSprint": "Chỉnh sửa sprint",
+			"startSprint": "Bắt đầu sprint",
 			"editSprintModal": {
 				"title": "Chỉnh sửa sprint",
 				"nameLabel": "Tên",

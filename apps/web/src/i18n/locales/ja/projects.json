@@ -1585,6 +1585,7 @@
 			"description": "{{status}}のスプリント",
 			"descriptionWithStartDate": "{{status}}のスプリント・{{date}}に開始",
 			"editSprint": "スプリントを編集",
+			"startSprint": "スプリントを開始",
 			"editSprintModal": {
 				"title": "スプリントを編集",
 				"nameLabel": "名前",

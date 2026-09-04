@@ -10,6 +10,7 @@ import type {
 } from "@/lib/project-api";
 
 import { ListGroup } from "./list-group";
+import type { SprintFormPayload } from "./sprint-form-modal";
 import {
 	applyStatusFilterToColumnDefs,
 	type ColumnGroupDef,
@@ -52,13 +53,7 @@ export interface ListViewProps {
 	sprints?: Sprint[];
 	onStartSprint?: (
 		sprintId: string,
-		payload: {
-			name: string;
-			goal: string | null;
-			start_date: string | null;
-			end_date: string | null;
-			status: "active";
-		},
+		payload: SprintFormPayload,
 	) => Promise<void>;
 	onCreateSprint?: () => void;
 	/** Opens the delete-confirmation dialog — Mod+Backspace shortcut. */
