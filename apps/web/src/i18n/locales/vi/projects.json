@@ -882,6 +882,8 @@
 			"optionsLabel": "Tùy chọn",
 			"addOptionPlaceholder": "Thêm tùy chọn…",
 			"addOption": "Thêm",
+			"optionColorLabel": "Màu tùy chọn",
+			"noColor": "Không màu",
 			"requiredLabel": "Bắt buộc",
 			"requiredHint": "Người dùng phải điền trường này khi tạo hoặc chỉnh sửa nhiệm vụ.",
 			"fieldTypes": {

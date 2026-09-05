@@ -652,7 +652,10 @@ export function InteractionLayout({
 				if (!f) continue;
 				if (cf.field_type === "select" || cf.field_type === "multi_select") {
 					if (!f.selector) continue;
-					const values = resolveFilterConfig(f.selector, cf.options);
+					const values = resolveFilterConfig(
+						f.selector,
+						cf.options.map((o) => o.value),
+					);
 					if (values.length > 0) resolved[cf.field_key] = { values };
 				} else if (cf.field_type === "boolean") {
 					if (!f.selector) continue;

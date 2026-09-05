@@ -117,12 +117,19 @@ const ListCustomFieldsSchema = z.object({
 	projectId: z.string(),
 });
 
+// A custom field option can be given as a plain string (no color) or as an
+// object carrying an optional color, e.g. { value: "High", color: "#ef4444" }.
+const CustomFieldOptionInputSchema = z.union([
+	z.string(),
+	z.object({ value: z.string(), color: z.string().optional() }),
+]);
+
 const CreateCustomFieldSchema = z.object({
 	projectId: z.string(),
 	fieldKey: z.string(),
 	displayName: z.string(),
 	fieldType: z.string(),
-	options: z.array(z.string()).optional(),
+	options: z.array(CustomFieldOptionInputSchema).optional(),
 	isRequired: z.boolean().optional(),
 });
 
@@ -136,9 +143,19 @@ const UpdateCustomFieldSchema = z.object({
 	fieldId: z.string(),
 	displayName: z.string().optional(),
 	fieldType: z.string().optional(),
-	options: z.array(z.string()).optional(),
+	options: z.array(CustomFieldOptionInputSchema).optional(),
 	isRequired: z.boolean().optional(),
 });
+
+// Normalizes a parsed options array (each element either a plain string or
+// an already-{value,color} object) into CustomFieldOption[] for the API.
+function normalizeCustomFieldOptions(
+	options: z.infer<typeof CustomFieldOptionInputSchema>[] | undefined,
+): { value: string; color?: string }[] | undefined {
+	return options?.map((opt) =>
+		typeof opt === "string" ? { value: opt } : opt,
+	);
+}
 
 const DeleteCustomFieldSchema = z.object({
 	projectId: z.string(),
@@ -460,8 +477,21 @@ export function getCustomFieldTools(): Tool[] {
 					},
 					options: {
 						type: "array",
-						items: { type: "string" },
-						description: "Options for select/multi_select types",
+						items: {
+							oneOf: [
+								{ type: "string" },
+								{
+									type: "object",
+									properties: {
+										value: { type: "string" },
+										color: { type: "string" },
+									},
+									required: ["value"],
+								},
+							],
+						},
+						description:
+							'Options for select/multi_select types. Each item is either a plain string, or an object { value, color? } to give that value a display color (e.g. "#ef4444").',
 					},
 					isRequired: {
 						type: "boolean",
@@ -513,8 +543,21 @@ export function getCustomFieldTools(): Tool[] {
 					},
 					options: {
 						type: "array",
-						items: { type: "string" },
-						description: "New options",
+						items: {
+							oneOf: [
+								{ type: "string" },
+								{
+									type: "object",
+									properties: {
+										value: { type: "string" },
+										color: { type: "string" },
+									},
+									required: ["value"],
+								},
+							],
+						},
+						description:
+							'New options. Each item is either a plain string, or an object { value, color? } to give that value a display color (e.g. "#ef4444").',
 					},
 					isRequired: {
 						type: "boolean",
@@ -587,7 +630,7 @@ function formatCustomField(field: any): string {
 ID: ${field.id}
 Key: ${field.field_key}
 Type: ${field.field_type}
-Options: ${field.options.length > 0 ? field.options.join(", ") : "None"}
+Options: ${field.options.length > 0 ? field.options.map((o: { value: string }) => o.value).join(", ") : "None"}
 Required: ${field.is_required}
 Created: ${field.created_at}`;
 }
@@ -816,7 +859,7 @@ export async function handleViewTool(
 				field_key: fieldKey,
 				display_name: displayName,
 				field_type: fieldType as any,
-				options,
+				options: normalizeCustomFieldOptions(options),
 				is_required: isRequired,
 			});
 			return {
@@ -857,7 +900,7 @@ export async function handleViewTool(
 				{
 					display_name: displayName,
 					field_type: fieldType as any,
-					options,
+					options: normalizeCustomFieldOptions(options),
 					is_required: isRequired,
 				},
 			);

@@ -882,6 +882,8 @@
 			"optionsLabel": "Options",
 			"addOptionPlaceholder": "Add option…",
 			"addOption": "Add",
+			"optionColorLabel": "Option color",
+			"noColor": "No color",
 			"requiredLabel": "Required",
 			"requiredHint": "Users must fill this field when creating or editing a task.",
 			"fieldTypes": {

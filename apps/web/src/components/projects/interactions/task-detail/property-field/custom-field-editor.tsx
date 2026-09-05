@@ -1,5 +1,6 @@
 import { CalendarDays } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { CustomFieldOption } from "@/lib/project-api";
 import { FieldValue } from "../primitives";
 import { CheckboxEditor } from "./checkbox-editor";
 import { SingleDateEditor } from "./date-editor";
@@ -28,7 +29,7 @@ export function CustomFieldEditor({
 		| "Url";
 	rawValue: unknown;
 	canEdit: boolean;
-	options?: string[];
+	options?: CustomFieldOption[];
 	onChange?: (value: unknown) => void;
 }) {
 	const { t } = useTranslation("projects");
@@ -79,8 +80,9 @@ export function CustomFieldEditor({
 			);
 		case "Select": {
 			const selectOptions: SelectOption[] = options.map((o) => ({
-				value: o,
-				label: o,
+				value: o.value,
+				label: o.value,
+				colorDot: o.color ?? undefined,
 			}));
 			const currentVal = rawValue != null ? String(rawValue) : null;
 			if (!canEdit) {
@@ -96,8 +98,9 @@ export function CustomFieldEditor({
 		}
 		case "MultiSelect": {
 			const selectOptions: SelectOption[] = options.map((o) => ({
-				value: o,
-				label: o,
+				value: o.value,
+				label: o.value,
+				colorDot: o.color ?? undefined,
 			}));
 			const currentVal = Array.isArray(rawValue)
 				? rawValue.filter((v): v is string => typeof v === "string")

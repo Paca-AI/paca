@@ -459,3 +459,54 @@ func TestApplyTaskFilter_Tags_ORsAnyMatch(t *testing.T) {
 		t.Fatalf("args = %+v, want %+v", b.args, wantArgs)
 	}
 }
+
+// TestUnmarshalCustomFieldOptions_LegacyStringElements is a regression test
+// for a rolling-deploy window flagged in PR review: an old-code replica can
+// still write the pre-000050 plain-string options shape
+// (`["Low","High"]`) to a row after a new-code replica has already
+// migrated the table to `{value,color}` objects. Reads must tolerate a mix
+// of both shapes rather than erroring.
+func TestUnmarshalCustomFieldOptions_LegacyStringElements(t *testing.T) {
+	opts, err := unmarshalCustomFieldOptions([]byte(`["Low","High"]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []taskdom.CustomFieldOption{{Value: "Low"}, {Value: "High"}}
+	if !reflect.DeepEqual(opts, want) {
+		t.Fatalf("opts = %+v, want %+v", opts, want)
+	}
+}
+
+func TestUnmarshalCustomFieldOptions_NewObjectElements(t *testing.T) {
+	opts, err := unmarshalCustomFieldOptions([]byte(`[{"value":"Low","color":"#22c55e"},{"value":"High","color":null}]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	green := "#22c55e"
+	want := []taskdom.CustomFieldOption{{Value: "Low", Color: &green}, {Value: "High"}}
+	if !reflect.DeepEqual(opts, want) {
+		t.Fatalf("opts = %+v, want %+v", opts, want)
+	}
+}
+
+func TestUnmarshalCustomFieldOptions_MixedLegacyAndNewElements(t *testing.T) {
+	opts, err := unmarshalCustomFieldOptions([]byte(`["Low",{"value":"High","color":"#ef4444"}]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	red := "#ef4444"
+	want := []taskdom.CustomFieldOption{{Value: "Low"}, {Value: "High", Color: &red}}
+	if !reflect.DeepEqual(opts, want) {
+		t.Fatalf("opts = %+v, want %+v", opts, want)
+	}
+}
+
+func TestUnmarshalCustomFieldOptions_Empty(t *testing.T) {
+	opts, err := unmarshalCustomFieldOptions(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(opts) != 0 {
+		t.Fatalf("opts = %+v, want empty", opts)
+	}
+}

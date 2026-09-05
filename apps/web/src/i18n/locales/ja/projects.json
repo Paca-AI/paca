@@ -882,6 +882,8 @@
 			"optionsLabel": "選択肢",
 			"addOptionPlaceholder": "選択肢を追加…",
 			"addOption": "追加",
+			"optionColorLabel": "オプションの色",
+			"noColor": "色なし",
 			"requiredLabel": "必須",
 			"requiredHint": "タスクの作成・編集時にユーザーはこのフィールドを入力する必要があります。",
 			"fieldTypes": {

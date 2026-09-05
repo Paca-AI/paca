@@ -882,6 +882,8 @@
 			"optionsLabel": "Opções",
 			"addOptionPlaceholder": "Adicionar opção…",
 			"addOption": "Adicionar",
+			"optionColorLabel": "Cor da opção",
+			"noColor": "Sem cor",
 			"requiredLabel": "Obrigatório",
 			"requiredHint": "Os usuários devem preencher este campo ao criar ou editar uma tarefa.",
 			"fieldTypes": {

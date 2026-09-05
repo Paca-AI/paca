@@ -882,6 +882,8 @@
 			"optionsLabel": "选项",
 			"addOptionPlaceholder": "添加选项…",
 			"addOption": "添加",
+			"optionColorLabel": "选项颜色",
+			"noColor": "无颜色",
 			"requiredLabel": "必填",
 			"requiredHint": "用户在创建或编辑任务时必须填写此字段。",
 			"fieldTypes": {

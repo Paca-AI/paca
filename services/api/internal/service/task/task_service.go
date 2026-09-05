@@ -545,7 +545,7 @@ func (s *Service) CreateCustomFieldDefinition(ctx context.Context, in taskdom.Cr
 
 	opts := in.Options
 	if opts == nil {
-		opts = []string{}
+		opts = []taskdom.CustomFieldOption{}
 	}
 
 	now := time.Now()

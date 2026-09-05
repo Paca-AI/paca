@@ -204,7 +204,7 @@ type CreateCustomFieldDefinitionInput struct {
 	FieldKey    string
 	DisplayName string
 	FieldType   FieldType
-	Options     []string
+	Options     []CustomFieldOption
 	IsRequired  bool
 }
 
@@ -213,6 +213,6 @@ type CreateCustomFieldDefinitionInput struct {
 type UpdateCustomFieldDefinitionInput struct {
 	DisplayName string
 	FieldType   *FieldType
-	Options     []string
+	Options     []CustomFieldOption
 	IsRequired  *bool
 }

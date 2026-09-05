@@ -28,7 +28,7 @@ const customField = {
 	field_key: "priority",
 	display_name: "Priority",
 	field_type: "select",
-	options: ["low", "high"],
+	options: [{ value: "low" }, { value: "high" }],
 	is_required: false,
 	created_at: "2024-01-01T00:00:00Z",
 	updated_at: "2024-01-01T00:00:00Z",
@@ -591,7 +591,7 @@ describe("handleViewTool – create_custom_field", () => {
 			field_key: "priority",
 			display_name: "Priority",
 			field_type: "select",
-			options: ["low", "high"],
+			options: [{ value: "low" }, { value: "high" }],
 			is_required: true,
 		});
 	});
@@ -603,6 +603,50 @@ describe("handleViewTool – create_custom_field", () => {
 			makeClient(),
 		);
 		expect(result.content[0].text).toContain("created successfully");
+	});
+
+	it("passes through object-shaped options with a color unchanged", async () => {
+		const client = makeClient();
+		await handleViewTool(
+			"create_custom_field",
+			{
+				projectId: "p1",
+				fieldKey: "priority",
+				displayName: "Priority",
+				fieldType: "select",
+				options: [{ value: "low" }, { value: "high", color: "#ef4444" }],
+				isRequired: true,
+			},
+			client,
+		);
+		expect(client.createCustomFieldDefinition).toHaveBeenCalledWith("p1", {
+			field_key: "priority",
+			display_name: "Priority",
+			field_type: "select",
+			options: [{ value: "low" }, { value: "high", color: "#ef4444" }],
+			is_required: true,
+		});
+	});
+
+	it("normalizes a mix of plain strings and color objects", async () => {
+		const client = makeClient();
+		await handleViewTool(
+			"create_custom_field",
+			{
+				projectId: "p1",
+				fieldKey: "priority",
+				displayName: "Priority",
+				fieldType: "select",
+				options: ["low", { value: "high", color: "#ef4444" }],
+			},
+			client,
+		);
+		expect(client.createCustomFieldDefinition).toHaveBeenCalledWith(
+			"p1",
+			expect.objectContaining({
+				options: [{ value: "low" }, { value: "high", color: "#ef4444" }],
+			}),
+		);
 	});
 });
 

@@ -426,44 +426,99 @@ func TaskFromEntity(t *taskdom.Task) TaskResponse {
 
 // --- Custom Field Definition DTOs ------------------------------------------
 
+// CustomFieldOptionDTO is one selectable value of a select / multi_select
+// custom field, with an optional display color. Mirrors
+// taskdom.CustomFieldOption.
+type CustomFieldOptionDTO struct {
+	Value string  `json:"value"`
+	Color *string `json:"color,omitempty"`
+}
+
+// UnmarshalJSON accepts either a plain string (the pre-000050 wire shape,
+// e.g. "Open") or an object carrying an optional color (e.g.
+// {"value":"Open","color":"#6366f1"}). Without this, a request body built
+// by a direct API caller still using the old plain-string options array
+// would hard-fail decoding instead of being accepted like it used to.
+// Mirrors the same two-shape tolerance already applied when reading legacy
+// rows in unmarshalCustomFieldOptions and when normalizing MCP tool input.
+func (o *CustomFieldOptionDTO) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err == nil {
+		o.Value = value
+		o.Color = nil
+		return nil
+	}
+	type alias CustomFieldOptionDTO
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*o = CustomFieldOptionDTO(a)
+	return nil
+}
+
 // CreateCustomFieldDefinitionRequest is the body for
 // POST /projects/:projectId/custom-fields.
 type CreateCustomFieldDefinitionRequest struct {
-	FieldKey    string            `json:"field_key" binding:"required"`
-	DisplayName string            `json:"display_name" binding:"required"`
-	FieldType   taskdom.FieldType `json:"field_type" binding:"required"`
-	Options     []string          `json:"options"`
-	IsRequired  bool              `json:"is_required"`
+	FieldKey    string                 `json:"field_key" binding:"required"`
+	DisplayName string                 `json:"display_name" binding:"required"`
+	FieldType   taskdom.FieldType      `json:"field_type" binding:"required"`
+	Options     []CustomFieldOptionDTO `json:"options"`
+	IsRequired  bool                   `json:"is_required"`
 }
 
 // UpdateCustomFieldDefinitionRequest is the body for
 // PATCH /projects/:projectId/custom-fields/:fieldId.
 type UpdateCustomFieldDefinitionRequest struct {
-	DisplayName string             `json:"display_name"`
-	FieldType   *taskdom.FieldType `json:"field_type"`
-	Options     []string           `json:"options"`
-	IsRequired  *bool              `json:"is_required"`
+	DisplayName string                 `json:"display_name"`
+	FieldType   *taskdom.FieldType     `json:"field_type"`
+	Options     []CustomFieldOptionDTO `json:"options"`
+	IsRequired  *bool                  `json:"is_required"`
 }
 
 // CustomFieldDefinitionResponse is the public representation of a custom
 // field definition.
 type CustomFieldDefinitionResponse struct {
-	ID          uuid.UUID         `json:"id"`
-	ProjectID   uuid.UUID         `json:"project_id"`
-	FieldKey    string            `json:"field_key"`
-	DisplayName string            `json:"display_name"`
-	FieldType   taskdom.FieldType `json:"field_type"`
-	Options     []string          `json:"options"`
-	IsRequired  bool              `json:"is_required"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID          uuid.UUID              `json:"id"`
+	ProjectID   uuid.UUID              `json:"project_id"`
+	FieldKey    string                 `json:"field_key"`
+	DisplayName string                 `json:"display_name"`
+	FieldType   taskdom.FieldType      `json:"field_type"`
+	Options     []CustomFieldOptionDTO `json:"options"`
+	IsRequired  bool                   `json:"is_required"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+// customFieldOptionsToDomain maps request DTOs to domain options.
+func customFieldOptionsToDomain(opts []CustomFieldOptionDTO) []taskdom.CustomFieldOption {
+	if opts == nil {
+		return nil
+	}
+	out := make([]taskdom.CustomFieldOption, len(opts))
+	for i, o := range opts {
+		out[i] = taskdom.CustomFieldOption{Value: o.Value, Color: o.Color}
+	}
+	return out
+}
+
+// CustomFieldOptionsToDomain maps the create request body's options to their
+// domain representation.
+func (r CreateCustomFieldDefinitionRequest) CustomFieldOptionsToDomain() []taskdom.CustomFieldOption {
+	return customFieldOptionsToDomain(r.Options)
+}
+
+// CustomFieldOptionsToDomain maps the update request body's options to their
+// domain representation.
+func (r UpdateCustomFieldDefinitionRequest) CustomFieldOptionsToDomain() []taskdom.CustomFieldOption {
+	return customFieldOptionsToDomain(r.Options)
 }
 
 // CustomFieldDefinitionFromEntity maps a domain CustomFieldDefinition to a DTO.
 func CustomFieldDefinitionFromEntity(f *taskdom.CustomFieldDefinition) CustomFieldDefinitionResponse {
-	opts := f.Options
-	if opts == nil {
-		opts = []string{}
+	opts := make([]CustomFieldOptionDTO, len(f.Options))
+	for i, o := range f.Options {
+		opts[i] = CustomFieldOptionDTO{Value: o.Value, Color: o.Color}
 	}
 	return CustomFieldDefinitionResponse{
 		ID:          f.ID,

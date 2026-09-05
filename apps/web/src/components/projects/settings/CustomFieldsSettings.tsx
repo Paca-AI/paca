@@ -4,6 +4,7 @@ import { Check, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { ColorSwatchPicker } from "@/components/ui/color-swatch-picker";
 import {
 	Dialog,
 	DialogClose,
@@ -27,6 +28,7 @@ import {
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import {
 	type CustomFieldDefinition,
+	type CustomFieldOption,
 	createCustomFieldDefinition,
 	customFieldsQueryOptions,
 	deleteCustomFieldDefinition,
@@ -113,7 +115,7 @@ function CreateCustomFieldDialog({
 	const [keyManuallyEdited, setKeyManuallyEdited] = useState(false);
 	const [fieldType, setFieldType] = useState<UIFieldType>("Text");
 	const [required, setRequired] = useState(false);
-	const [options, setOptions] = useState<string[]>([]);
+	const [options, setOptions] = useState<CustomFieldOption[]>([]);
 	const [newOption, setNewOption] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
@@ -251,14 +253,27 @@ function CreateCustomFieldDialog({
 							<div className="space-y-1">
 								{options.map((opt, i) => (
 									<div
-										key={opt + i.toString()}
+										key={opt.value + i.toString()}
 										className="flex items-center gap-2"
 									>
+										<ColorSwatchPicker
+											value={opt.color}
+											onChange={(color) => {
+												const updated = [...options];
+												updated[i] = { ...updated[i], color };
+												setOptions(updated);
+											}}
+											triggerLabel={t("settings.customFields.optionColorLabel")}
+											customColorTitle={t(
+												"taskStatuses.formDialog.customColorTitle",
+											)}
+											clearLabel={t("settings.customFields.noColor")}
+										/>
 										<Input
-											value={opt}
+											value={opt.value}
 											onChange={(e) => {
 												const updated = [...options];
-												updated[i] = e.target.value;
+												updated[i] = { ...updated[i], value: e.target.value };
 												setOptions(updated);
 											}}
 											className="text-xs h-8"
@@ -280,7 +295,7 @@ function CreateCustomFieldDialog({
 										onChange={(e) => setNewOption(e.target.value)}
 										onKeyDown={(e) => {
 											if (e.key === "Enter" && newOption.trim()) {
-												setOptions([...options, newOption.trim()]);
+												setOptions([...options, { value: newOption.trim() }]);
 												setNewOption("");
 											}
 										}}
@@ -293,7 +308,7 @@ function CreateCustomFieldDialog({
 										type="button"
 										disabled={!newOption.trim()}
 										onClick={() => {
-											setOptions([...options, newOption.trim()]);
+											setOptions([...options, { value: newOption.trim() }]);
 											setNewOption("");
 										}}
 										className="flex items-center gap-1 rounded-md bg-muted px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 disabled:opacity-40 transition-colors"
@@ -388,7 +403,9 @@ function EditCustomFieldDialog({
 	const { t } = useTranslation("projects");
 	const queryClient = useQueryClient();
 	const [displayName, setDisplayName] = useState(field?.display_name ?? "");
-	const [options, setOptions] = useState<string[]>(field?.options ?? []);
+	const [options, setOptions] = useState<CustomFieldOption[]>(
+		field?.options ?? [],
+	);
 	const [required, setRequired] = useState(field?.is_required ?? false);
 	const [newOption, setNewOption] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -500,14 +517,27 @@ function EditCustomFieldDialog({
 							<div className="space-y-1">
 								{options.map((opt, i) => (
 									<div
-										key={opt + i.toString()}
+										key={opt.value + i.toString()}
 										className="flex items-center gap-2"
 									>
+										<ColorSwatchPicker
+											value={opt.color}
+											onChange={(color) => {
+												const updated = [...options];
+												updated[i] = { ...updated[i], color };
+												setOptions(updated);
+											}}
+											triggerLabel={t("settings.customFields.optionColorLabel")}
+											customColorTitle={t(
+												"taskStatuses.formDialog.customColorTitle",
+											)}
+											clearLabel={t("settings.customFields.noColor")}
+										/>
 										<Input
-											value={opt}
+											value={opt.value}
 											onChange={(e) => {
 												const updated = [...options];
-												updated[i] = e.target.value;
+												updated[i] = { ...updated[i], value: e.target.value };
 												setOptions(updated);
 											}}
 											className="text-xs h-8"
@@ -529,7 +559,7 @@ function EditCustomFieldDialog({
 										onChange={(e) => setNewOption(e.target.value)}
 										onKeyDown={(e) => {
 											if (e.key === "Enter" && newOption.trim()) {
-												setOptions([...options, newOption.trim()]);
+												setOptions([...options, { value: newOption.trim() }]);
 												setNewOption("");
 											}
 										}}
@@ -542,7 +572,7 @@ function EditCustomFieldDialog({
 										type="button"
 										disabled={!newOption.trim()}
 										onClick={() => {
-											setOptions([...options, newOption.trim()]);
+											setOptions([...options, { value: newOption.trim() }]);
 											setNewOption("");
 										}}
 										className="flex items-center gap-1 rounded-md bg-muted px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 disabled:opacity-40"

@@ -50,7 +50,20 @@ export function MultiSelectEditor({
 
 	return (
 		<ChipField
-			chips={selected.map((opt) => ({ key: opt.value, label: opt.label }))}
+			chips={selected.map((opt) => ({
+				key: opt.value,
+				label: opt.colorDot ? (
+					<span className="inline-flex items-center gap-1.5">
+						<span
+							className="size-1.75 rounded-full shrink-0"
+							style={{ background: opt.colorDot }}
+						/>
+						{opt.label}
+					</span>
+				) : (
+					opt.label
+				),
+			}))}
 			onRemoveChip={toggle}
 			canEdit={canEdit}
 			addLabel={t("taskDetail.propertyField.multiSelectEditor.addOption")}

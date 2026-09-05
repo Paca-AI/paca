@@ -896,6 +896,8 @@
 			"optionsLabel": "Опции",
 			"addOptionPlaceholder": "Добавить опцию…",
 			"addOption": "Добавить",
+			"optionColorLabel": "Цвет варианта",
+			"noColor": "Без цвета",
 			"requiredLabel": "Обязательное",
 			"requiredHint": "Пользователи должны заполнять это поле при создании или редактировании задачи.",
 			"fieldTypes": {

@@ -882,6 +882,8 @@
 			"optionsLabel": "옵션",
 			"addOptionPlaceholder": "옵션 추가…",
 			"addOption": "추가",
+			"optionColorLabel": "옵션 색상",
+			"noColor": "색상 없음",
 			"requiredLabel": "필수",
 			"requiredHint": "사용자는 작업을 생성하거나 수정할 때 이 필드를 입력해야 합니다.",
 			"fieldTypes": {
