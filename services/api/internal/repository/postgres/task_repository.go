@@ -1687,14 +1687,9 @@ func toCustomFieldEntity(r *customFieldDefinitionRecord) (*taskdom.CustomFieldDe
 	id, _ := uuid.Parse(r.ID)
 	pid, _ := uuid.Parse(r.ProjectID)
 
-	var opts []taskdom.CustomFieldOption
-	if len(r.Options) > 0 {
-		if err := json.Unmarshal(r.Options, &opts); err != nil {
-			return nil, fmt.Errorf("custom field repo: unmarshal options: %w", err)
-		}
-	}
-	if opts == nil {
-		opts = []taskdom.CustomFieldOption{}
+	opts, err := unmarshalCustomFieldOptions(r.Options)
+	if err != nil {
+		return nil, fmt.Errorf("custom field repo: unmarshal options: %w", err)
 	}
 
 	return &taskdom.CustomFieldDefinition{
@@ -1708,6 +1703,39 @@ func toCustomFieldEntity(r *customFieldDefinitionRecord) (*taskdom.CustomFieldDe
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}, nil
+}
+
+// unmarshalCustomFieldOptions parses the options JSONB column into
+// CustomFieldOption structs, tolerating rows still holding the pre-000050
+// plain-string element shape (e.g. ["Web","iOS"]) rather than the current
+// {"value":...,"color":...} objects. 000050 backfills every row at boot,
+// but during a rolling deploy an old-code replica can still write the
+// legacy shape after a new-code replica has already migrated the table —
+// unmarshaling straight into []CustomFieldOption would then fail on that
+// row's plain string elements. Each element that isn't already a
+// {value,color} object is coerced to CustomFieldOption{Value: <string>}.
+func unmarshalCustomFieldOptions(raw []byte) ([]taskdom.CustomFieldOption, error) {
+	if len(raw) == 0 {
+		return []taskdom.CustomFieldOption{}, nil
+	}
+	var rawElems []json.RawMessage
+	if err := json.Unmarshal(raw, &rawElems); err != nil {
+		return nil, err
+	}
+	opts := make([]taskdom.CustomFieldOption, len(rawElems))
+	for i, elem := range rawElems {
+		var opt taskdom.CustomFieldOption
+		if err := json.Unmarshal(elem, &opt); err == nil {
+			opts[i] = opt
+			continue
+		}
+		var legacyValue string
+		if err := json.Unmarshal(elem, &legacyValue); err != nil {
+			return nil, err
+		}
+		opts[i] = taskdom.CustomFieldOption{Value: legacyValue}
+	}
+	return opts, nil
 }
 
 func marshalOptions(opts []taskdom.CustomFieldOption) ([]byte, error) {
