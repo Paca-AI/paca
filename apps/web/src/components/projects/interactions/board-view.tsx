@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -15,6 +16,10 @@ import type {
 	TaskStatus,
 	TaskType,
 } from "@/lib/project-api";
+import {
+	createLoadMoreScrollHandler,
+	type LoadMorePagination,
+} from "@/lib/scroll-pagination";
 import { cn } from "@/lib/utils";
 
 import { AddTaskRow } from "./add-task-row";
@@ -76,6 +81,46 @@ interface BoardViewProps {
 			fieldSum?: number;
 		}
 	>;
+}
+
+// ── Column scroll area ──────────────────────────────────────────────────────
+
+/**
+ * Wraps a column's scrollable card list. `onScroll` alone only covers the
+ * case where there's already enough content to scroll — if the initial page
+ * (e.g. a small configured page size) doesn't fill the visible column
+ * height, no `scroll` event will ever fire, so infinite scroll would never
+ * kick in even though more pages exist. This effect checks after every
+ * render whether the container is actually scrollable and, if not (and more
+ * pages are available), requests the next page directly — repeating until
+ * either the content fills the column or there's nothing left to load.
+ */
+function ColumnScrollArea({
+	pagination,
+	children,
+}: {
+	pagination: LoadMorePagination | undefined;
+	children: ReactNode;
+}) {
+	const scrollRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el || !pagination?.hasMore || pagination.isLoadingMore) return;
+		if (el.scrollHeight <= el.clientHeight) {
+			pagination.onLoadMore();
+		}
+	});
+
+	return (
+		<div
+			ref={scrollRef}
+			className="min-h-0 flex-1 overflow-y-auto pb-2"
+			onScroll={createLoadMoreScrollHandler(pagination)}
+		>
+			{children}
+		</div>
+	);
 }
 
 // ── Board view ────────────────────────────────────────────────────────────────
@@ -483,8 +528,78 @@ export function BoardView({
 
 	const hasSwimlanes = Boolean(swimlaneBy && swimlaneBy !== "none");
 
-	/** Renders the cards inside one [column × swimlane] cell. */
-	const renderCellCards = (colDef: ColumnGroupDef, swimDef: ColumnGroupDef) => {
+	/** Renders the "add task" row for one [column × swimlane] cell, or null if
+	 * task creation isn't available there. Factored out so the no-swimlane
+	 * layout can pin it as a non-scrolling footer (like the header) instead of
+	 * letting it scroll away with the cards. */
+	const renderAddTaskRow = (
+		colDef: ColumnGroupDef,
+		swimDef: ColumnGroupDef,
+	) => {
+		if (
+			!canCreate ||
+			!(isStatusGrouping || columnBy === "sprint") ||
+			colDef.key === "__none"
+		) {
+			return null;
+		}
+		return (
+			<AddTaskRow
+				variant="board"
+				taskTypes={taskTypes}
+				onAdd={(title, typeId) => {
+					const extra: TaskFieldUpdate = {};
+					if (!isStatusGrouping && columnBy === "sprint") {
+						extra.sprint_id =
+							colDef.key === "__backlog" ? null : (colDef.key as string);
+					}
+					if (
+						hasSwimlanes &&
+						swimDef.key !== "__all" &&
+						swimlaneBy &&
+						swimlaneBy !== "none"
+					) {
+						const swimUpdate = buildColumnDropUpdate(
+							swimlaneBy,
+							swimDef.fieldValue,
+							customFields,
+						);
+						Object.assign(extra, swimUpdate);
+					}
+					const statusId = isStatusGrouping
+						? colDef.key
+						: (statuses.find((s) => s.category !== "done")?.id ??
+							statuses[0]?.id ??
+							"");
+					onCreateTask(
+						statusId,
+						title,
+						typeId,
+						Object.keys(extra).length > 0 ? extra : undefined,
+					);
+				}}
+			/>
+		);
+	};
+
+	/** Renders the cards inside one [column × swimlane] cell.
+	 * `minHeightClassName` lets the no-swimlane layout stretch this to fill its
+	 * independently-scrolling column (`min-h-full`) while the swimlane layout
+	 * keeps a fixed floor (`min-h-28`) since its cells aren't height-bound.
+	 * `showAddTaskRow` is false for the no-swimlane layout, which renders its
+	 * own pinned footer instead (see `renderAddTaskRow` above).
+	 * `useScrollPagination` is true for the no-swimlane layout, whose column
+	 * has its own scroll container to drive infinite scroll from (see the
+	 * `onScroll` handler at its call site) — it then shows a loading
+	 * indicator instead of a click-to-load button. The swimlane layout has no
+	 * such per-cell scroll container, so it keeps the explicit button. */
+	const renderCellCards = (
+		colDef: ColumnGroupDef,
+		swimDef: ColumnGroupDef,
+		minHeightClassName: string = "min-h-28",
+		showAddTaskRow = true,
+		useScrollPagination = false,
+	) => {
 		const swimOverKey = `${colDef.key}|${swimDef.key}`;
 		const laneTasks = getSwimlaneColumnTasks(colDef.key, swimDef.key);
 		const isOver =
@@ -503,7 +618,8 @@ export function BoardView({
 			// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop drop zone
 			<div
 				className={cn(
-					"flex flex-col gap-2 rounded-xl p-2 min-h-28 transition-all duration-200",
+					"flex flex-col gap-2 rounded-xl p-2 transition-all duration-200",
+					minHeightClassName,
 					isOver
 						? "bg-primary/8 ring-2 ring-primary/20"
 						: "bg-muted/40 dark:bg-muted",
@@ -608,6 +724,18 @@ export function BoardView({
 				{(() => {
 					const pg = columnPagination?.[colDef.key];
 					if (!pg?.hasMore) return null;
+					if (useScrollPagination) {
+						// The scroll container itself (see the `onScroll` handler at
+						// this cell's call site) triggers the fetch — this is just
+						// the in-flight indicator, not a click target.
+						if (!pg.isLoadingMore) return null;
+						return (
+							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground/50">
+								<Loader2 className="size-3 animate-spin" />
+								{t("board.view.loading")}
+							</div>
+						);
+					}
 					return (
 						<button
 							type="button"
@@ -621,45 +749,7 @@ export function BoardView({
 						</button>
 					);
 				})()}
-				{canCreate &&
-					(isStatusGrouping || columnBy === "sprint") &&
-					colDef.key !== "__none" && (
-						<AddTaskRow
-							variant="board"
-							taskTypes={taskTypes}
-							onAdd={(title, typeId) => {
-								const extra: TaskFieldUpdate = {};
-								if (!isStatusGrouping && columnBy === "sprint") {
-									extra.sprint_id =
-										colDef.key === "__backlog" ? null : (colDef.key as string);
-								}
-								if (
-									hasSwimlanes &&
-									swimDef.key !== "__all" &&
-									swimlaneBy &&
-									swimlaneBy !== "none"
-								) {
-									const swimUpdate = buildColumnDropUpdate(
-										swimlaneBy,
-										swimDef.fieldValue,
-										customFields,
-									);
-									Object.assign(extra, swimUpdate);
-								}
-								const statusId = isStatusGrouping
-									? colDef.key
-									: (statuses.find((s) => s.category !== "done")?.id ??
-										statuses[0]?.id ??
-										"");
-								onCreateTask(
-									statusId,
-									title,
-									typeId,
-									Object.keys(extra).length > 0 ? extra : undefined,
-								);
-							}}
-						/>
-					)}
+				{showAddTaskRow && renderAddTaskRow(colDef, swimDef)}
 			</div>
 		);
 	};
@@ -826,7 +916,7 @@ export function BoardView({
 	};
 
 	return (
-		<div className="flex flex-1 min-h-0 items-start gap-4 overflow-auto px-6 py-5 pb-8">
+		<div className="flex flex-1 min-h-0 items-stretch gap-4 overflow-x-auto overflow-y-hidden px-6 pt-5 pb-8">
 			{effectiveColumnDefs.map((colDef) => {
 				const isCollapsed = collapsedColumns.has(colDef.key);
 				const displayCount = getDisplayCount(colDef.key);
@@ -873,14 +963,23 @@ export function BoardView({
 					);
 				}
 
+				const addTaskRow = renderAddTaskRow(colDef, noSwimAll);
 				return (
 					<div
 						key={colDef.key}
 						data-column-key={colDef.key}
-						className="flex w-72 shrink-0 flex-col gap-2.5"
+						className="flex w-72 shrink-0 flex-col gap-2"
 					>
-						{renderColHeader(colDef)}
-						{renderCellCards(colDef, noSwimAll)}
+						{/* Header stays outside the scroll area below, so it never
+						 * scrolls away — same effect as `sticky top-0` without the
+						 * z-index/stacking-context edge cases. */}
+						<div className="shrink-0">{renderColHeader(colDef)}</div>
+						<ColumnScrollArea pagination={columnPagination?.[colDef.key]}>
+							{renderCellCards(colDef, noSwimAll, "min-h-full", false, true)}
+						</ColumnScrollArea>
+						{/* Pinned footer, same reasoning as the header above — always
+						 * reachable without scrolling to the bottom of the column. */}
+						{addTaskRow && <div className="shrink-0">{addTaskRow}</div>}
 					</div>
 				);
 			})}

@@ -831,6 +831,29 @@ export function InteractionLayout({
 							enabled: false,
 						};
 					}
+					// pageSize is deliberately excluded from the queryKey: "load
+					// more" (handleLoadMoreColumn) grows colExpandedPageSizes purely
+					// so that a *future* refetch (a websocket-triggered invalidation,
+					// window refocus, etc.) asks for the same depth the user has
+					// already scrolled to — it fetches the next page itself directly
+					// via listAllTasks, bypassing this query entirely. If pageSize
+					// were part of the key, every such bump would register as a
+					// brand-new query and eagerly trigger its OWN full background
+					// refetch of the whole (growing) range in parallel — a second,
+					// redundant fetch on top of the one load-more already made.
+					// Chained across a fast scroll session (each one taking a full
+					// network round trip) that queued up faster than each one could
+					// resolve, which intermittently left `data` briefly undefined for
+					// this column — enough to trip the `tasksLoading` skeleton gate
+					// below and flash the whole board back to the loading state mid-
+					// scroll, plus doubling backend load for no reason. Keeping the
+					// key stable means growing colExpandedPageSizes never triggers an
+					// implicit fetch — the next time this query naturally refetches
+					// for any other reason, it picks up the current expanded
+					// pageSize (colOpts is rebuilt fresh every render), so the
+					// "same depth on refetch" behavior is preserved without the
+					// eager duplicate work.
+					const { pageSize: _keyPageSize, ...colOptsForKey } = colOpts;
 					return {
 						queryKey: [
 							"projects",
@@ -838,20 +861,10 @@ export function InteractionLayout({
 							"tasks",
 							"col",
 							col.key,
-							colOpts,
+							colOptsForKey,
 						] as const,
 						queryFn: () => listAllTasks(projectId, colOpts),
 						staleTime: 15_000,
-						// "Load more" grows this column's pageSize, which changes the
-						// queryKey above — without this, React Query would drop `data`
-						// back to undefined for the new key until it resolves, making
-						// already-visible tasks disappear from the list mid-fetch.
-						// Keeping the previous (smaller) page's data displayed avoids
-						// that gap. Scoped to pageSize-only key changes so a genuine
-						// filter/sort/search change still drops to `undefined` and
-						// shows the loading skeleton, instead of silently rendering
-						// the previous (non-matching) filter's results.
-						placeholderData: keepPreviousDataOnPageSizeChangeOnly(colOpts),
 					};
 				})
 			: [],
@@ -928,6 +941,16 @@ export function InteractionLayout({
 	const [colLoadingMore, setColLoadingMore] = useState<Record<string, boolean>>(
 		{},
 	);
+	// Mirrors colLoadingMore but reads/writes synchronously, unlike state. A
+	// scroll-triggered "load more" (see board-view.tsx's onScroll handler) can
+	// fire many times in the gap between calling setColLoadingMore(true) and
+	// that update actually reaching this column's isLoadingMore prop — every
+	// scroll tick in that window still sees the old colLoadingMore[colKey]
+	// captured in its own render's closure, so state alone doesn't stop the
+	// same page from being double-fetched. A ref is shared across every
+	// render's closure, so the first call's synchronous write is visible to
+	// the very next call regardless of whether a re-render has happened yet.
+	const colLoadingMoreRef = useRef<Record<string, boolean>>({});
 
 	// Sync next cursors from initial column query results; reset extras once
 	// each column's own base query has re-fetched at its expanded depth.
@@ -997,7 +1020,7 @@ export function InteractionLayout({
 
 	const handleLoadMoreColumn = useCallback(
 		async (colKey: string) => {
-			if (colLoadingMore[colKey]) return;
+			if (colLoadingMoreRef.current[colKey]) return;
 			const cursor = colNextCursors[colKey];
 			if (!cursor) return;
 			const colOpts = buildColumnFilter(colKey, columnBy, {
@@ -1006,6 +1029,7 @@ export function InteractionLayout({
 				cursor,
 			});
 			if (!colOpts) return;
+			colLoadingMoreRef.current[colKey] = true;
 			setColLoadingMore((prev) => ({ ...prev, [colKey]: true }));
 			try {
 				const result = await listAllTasks(projectId, colOpts);
@@ -1024,6 +1048,7 @@ export function InteractionLayout({
 					[colKey]: (prev[colKey] ?? initialColPageSize) + result.items.length,
 				}));
 			} finally {
+				colLoadingMoreRef.current[colKey] = false;
 				setColLoadingMore((prev) => ({ ...prev, [colKey]: false }));
 			}
 		},
@@ -1032,7 +1057,6 @@ export function InteractionLayout({
 			columnBy,
 			colBaseOpts,
 			projectId,
-			colLoadingMore,
 			initialColPageSize,
 			configuredPageSize,
 			activeView?.layout,
