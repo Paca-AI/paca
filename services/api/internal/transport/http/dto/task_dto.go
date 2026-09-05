@@ -434,6 +434,29 @@ type CustomFieldOptionDTO struct {
 	Color *string `json:"color,omitempty"`
 }
 
+// UnmarshalJSON accepts either a plain string (the pre-000050 wire shape,
+// e.g. "Open") or an object carrying an optional color (e.g.
+// {"value":"Open","color":"#6366f1"}). Without this, a request body built
+// by a direct API caller still using the old plain-string options array
+// would hard-fail decoding instead of being accepted like it used to.
+// Mirrors the same two-shape tolerance already applied when reading legacy
+// rows in unmarshalCustomFieldOptions and when normalizing MCP tool input.
+func (o *CustomFieldOptionDTO) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err == nil {
+		o.Value = value
+		o.Color = nil
+		return nil
+	}
+	type alias CustomFieldOptionDTO
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*o = CustomFieldOptionDTO(a)
+	return nil
+}
+
 // CreateCustomFieldDefinitionRequest is the body for
 // POST /projects/:projectId/custom-fields.
 type CreateCustomFieldDefinitionRequest struct {
