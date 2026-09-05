@@ -45,10 +45,13 @@ describe("customFieldBadgeStyle", () => {
 	// direct API call or MCP tool call) could reach this function. Appending
 	// the alpha suffix to anything other than a 6-digit hex string produces
 	// invalid CSS, silently dropping the tint — reject it up front instead.
-	it.each(["red", "#fff", "not-a-color", "#gggggg", "#ef444"])(
-		"returns undefined for a non-hex color %s",
-		(color) => {
-			expect(customFieldBadgeStyle(color)).toBeUndefined();
-		},
-	);
+	it.each([
+		"red",
+		"#fff",
+		"not-a-color",
+		"#gggggg",
+		"#ef444",
+	])("returns undefined for a non-hex color %s", (color) => {
+		expect(customFieldBadgeStyle(color)).toBeUndefined();
+	});
 });
