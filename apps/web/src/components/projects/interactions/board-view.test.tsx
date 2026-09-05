@@ -4,6 +4,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock @/lib/interaction-api before any imports that pull it in ─────────────
@@ -18,7 +19,7 @@ vi.mock("@/lib/interaction-api", () => ({
 
 import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
-import { BoardView } from "./board-view";
+import { BoardView, ColumnScrollArea } from "./board-view";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -325,6 +326,127 @@ describe("BoardView", () => {
 			renderBoard([task], { onTaskClick });
 			fireEvent.click(screen.getByText("Clickable Task"));
 			expect(onTaskClick).toHaveBeenCalledWith(task);
+		});
+	});
+
+	describe("column auto-fill pagination", () => {
+		// jsdom never lays out real dimensions, so a column's scrollHeight and
+		// clientHeight are both 0 — the same "not scrollable yet" state as a real
+		// under-filled column — which is what lets these tests exercise the
+		// auto-fill effect without needing to mock element sizes.
+
+		it("requests the next page on mount when a column has more but isn't scrollable", async () => {
+			const onLoadMore = vi.fn();
+			renderBoard([], {
+				columnPagination: {
+					"status-todo": { hasMore: true, isLoadingMore: false, onLoadMore },
+				},
+			});
+			await waitFor(() => expect(onLoadMore).toHaveBeenCalled());
+		});
+
+		it("does not request another page while one is already loading", async () => {
+			const onLoadMore = vi.fn();
+			renderBoard([], {
+				columnPagination: {
+					"status-todo": { hasMore: true, isLoadingMore: true, onLoadMore },
+				},
+			});
+			await new Promise((r) => setTimeout(r, 0));
+			expect(onLoadMore).not.toHaveBeenCalled();
+		});
+
+		it("does not request another page once there's nothing left to load", async () => {
+			const onLoadMore = vi.fn();
+			renderBoard([], {
+				columnPagination: {
+					"status-todo": { hasMore: false, isLoadingMore: false, onLoadMore },
+				},
+			});
+			await new Promise((r) => setTimeout(r, 0));
+			expect(onLoadMore).not.toHaveBeenCalled();
+		});
+
+		it("backs off before retrying an auto-fill after a failed load-more, instead of retrying every render", () => {
+			vi.useFakeTimers();
+			try {
+				const onLoadMore = vi.fn();
+				renderBoard([], {
+					columnPagination: {
+						"status-todo": {
+							hasMore: true,
+							isLoadingMore: false,
+							onLoadMore,
+							lastLoadMoreFailed: true,
+						},
+					},
+				});
+				// Mirrors AUTO_FILL_RETRY_BACKOFF_MS in board-view.tsx.
+				const backoffMs = 4000;
+				vi.advanceTimersByTime(backoffMs - 1);
+				expect(onLoadMore).not.toHaveBeenCalled();
+
+				vi.advanceTimersByTime(1);
+				expect(onLoadMore).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("cancels a pending auto-fill retry when the column unmounts before it fires", () => {
+			vi.useFakeTimers();
+			try {
+				const onLoadMore = vi.fn();
+				const { unmount } = renderBoard([], {
+					columnPagination: {
+						"status-todo": {
+							hasMore: true,
+							isLoadingMore: false,
+							onLoadMore,
+							lastLoadMoreFailed: true,
+						},
+					},
+				});
+
+				unmount();
+				vi.advanceTimersByTime(4000);
+				expect(onLoadMore).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("still schedules a backoff retry after StrictMode's dev-only mount→cleanup→remount", () => {
+			// Tested directly against ColumnScrollArea (rather than through the
+			// full BoardView + react-query tree) because unrelated re-renders
+			// elsewhere in that tree can mask this bug: as long as some other
+			// state change re-runs the deps-less auto-fill effect again after the
+			// double-invoke, it looks like the retry "worked" even when the ref
+			// guard was left stuck. Testing the component in isolation makes the
+			// double-invoke sequence deterministic.
+			vi.useFakeTimers();
+			try {
+				const onLoadMore = vi.fn();
+				render(
+					<StrictMode>
+						<ColumnScrollArea
+							pagination={{
+								hasMore: true,
+								isLoadingMore: false,
+								onLoadMore,
+								lastLoadMoreFailed: true,
+							}}
+						>
+							<div />
+						</ColumnScrollArea>
+					</StrictMode>,
+				);
+
+				vi.advanceTimersByTime(4000);
+				expect(onLoadMore).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });
