@@ -722,6 +722,14 @@
 				"label": "에이전트 관리",
 				"description": "AI 에이전트 생성, 구성, 삭제"
 			},
+			"conversationsRead": {
+				"label": "대화 보기",
+				"description": "에이전트 대화를 둘러보고 지켜볼 수 있지만 시작하거나 답장할 수는 없음"
+			},
+			"conversationsWrite": {
+				"label": "대화 관리",
+				"description": "에이전트와 대화를 시작하고, 답장하며, 중지하거나 일시 중지"
+			},
 			"environmentsRead": {
 				"label": "환경 보기",
 				"description": "환경 탐색 및 구성 보기"
@@ -751,6 +759,7 @@
 			"sprints": "스프린트",
 			"documents": "문서",
 			"aiAgents": "AI 에이전트",
+			"conversations": "대화",
 			"environments": "환경",
 			"workflows": "자동화",
 			"plugins": "플러그인"

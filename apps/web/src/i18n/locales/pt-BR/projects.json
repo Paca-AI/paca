@@ -722,6 +722,14 @@
 				"label": "Gerenciar agentes",
 				"description": "Criar, configurar e excluir agentes de IA"
 			},
+			"conversationsRead": {
+				"label": "Ver conversas",
+				"description": "Navegar pelas conversas dos agentes e acompanhá-las, sem poder iniciar ou responder"
+			},
+			"conversationsWrite": {
+				"label": "Gerenciar conversas",
+				"description": "Iniciar conversas com um agente, responder e interrompê-las ou pausá-las"
+			},
 			"environmentsRead": {
 				"label": "Ver ambientes",
 				"description": "Navegar pelos ambientes e ver suas configurações"
@@ -751,6 +759,7 @@
 			"sprints": "Sprints",
 			"documents": "Documentos",
 			"aiAgents": "Agentes de IA",
+			"conversations": "Conversas",
 			"environments": "Ambientes",
 			"workflows": "Automação",
 			"plugins": "Plugins"

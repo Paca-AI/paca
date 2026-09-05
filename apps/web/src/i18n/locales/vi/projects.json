@@ -722,6 +722,14 @@
 				"label": "Quản lý agent",
 				"description": "Tạo, cấu hình và xóa AI agent"
 			},
+			"conversationsRead": {
+				"label": "Xem cuộc trò chuyện",
+				"description": "Xem các cuộc trò chuyện của agent, chỉ xem mà không thể bắt đầu hoặc trả lời"
+			},
+			"conversationsWrite": {
+				"label": "Quản lý cuộc trò chuyện",
+				"description": "Bắt đầu cuộc trò chuyện với agent, trả lời, và dừng hoặc tạm dừng"
+			},
 			"environmentsRead": {
 				"label": "Xem môi trường",
 				"description": "Duyệt các môi trường và xem cấu hình của chúng"
@@ -751,6 +759,7 @@
 			"sprints": "Sprint",
 			"documents": "Tài liệu",
 			"aiAgents": "AI Agent",
+			"conversations": "Cuộc trò chuyện",
 			"environments": "Môi trường",
 			"workflows": "Tự động hóa",
 			"plugins": "Plugin"

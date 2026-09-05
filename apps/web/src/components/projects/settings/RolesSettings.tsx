@@ -15,12 +15,14 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { formatDate as formatDateLocale } from "@/lib/format-date";
+import { dedupeGrantedPermissions } from "@/lib/permissions";
 import { type ProjectRole, projectRolesQueryOptions } from "@/lib/project-api";
 
 function activePermissions(perms: Record<string, unknown>): string[] {
-	return Object.entries(perms)
+	const active = Object.entries(perms)
 		.filter(([, v]) => Boolean(v))
 		.map(([k]) => k);
+	return dedupeGrantedPermissions(active);
 }
 
 function formatDate(iso: string) {

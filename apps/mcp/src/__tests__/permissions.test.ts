@@ -165,9 +165,9 @@ describe("getToolPermission", () => {
 		expect(perm?.requiresProject).toBe(true);
 	});
 
-	it("returns the correct permission for read_conversation — gated on agents.read, not left unmapped, even though the backend also enforces its own agent_id match separately", () => {
+	it("returns the correct permission for read_conversation — gated on conversations.read, not left unmapped, even though the backend also enforces its own agent_id match separately", () => {
 		const perm = getToolPermission("read_conversation");
-		expect(perm?.permissionKey).toBe("agents.read");
+		expect(perm?.permissionKey).toBe("conversations.read");
 		expect(perm?.requiresProject).toBe(true);
 	});
 

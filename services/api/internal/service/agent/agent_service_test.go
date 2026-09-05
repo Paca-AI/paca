@@ -1739,19 +1739,19 @@ func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T)
 }
 
 // ---------------------------------------------------------------------------
-// GetConversationForAgent — agents.read enforcement
+// GetConversationForAgent — conversations.read enforcement
 // ---------------------------------------------------------------------------
 //
 // GetConversationForAgent additionally requires the calling agent to hold
-// agents.read (globally, or in the target conversation's own project) once
-// an authz.Authorizer is wired via WithAuthorizer — matching the MCP
+// conversations.read (globally, or in the target conversation's own project)
+// once an authz.Authorizer is wired via WithAuthorizer — matching the MCP
 // server's own tool-listing gate for read_conversation
 // (apps/mcp/src/permissions.ts). Every test above constructs a bare Service
 // with no authorizer, so this check never engages for them (see the
 // authorizer field's doc comment) — these tests cover the wired case
 // specifically, including the same-conversation shortcut, which must also
-// require agents.read since the tool is meant to be entirely inaccessible
-// without it.
+// require conversations.read since the tool is meant to be entirely
+// inaccessible without it.
 
 // fakeAgentPermissionStore is a minimal authz.AgentPermissionStore double —
 // only the two agent-permission lookups GetConversationForAgent's check
@@ -1791,7 +1791,7 @@ func (fakeAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, _, _ uui
 	return "member", nil
 }
 
-func TestGetConversationForAgent_RequiresAgentsRead_GlobalGrant_Allowed(t *testing.T) {
+func TestGetConversationForAgent_RequiresConversationsRead_GlobalGrant_Allowed(t *testing.T) {
 	agentID := uuid.New()
 	conversationID := uuid.New()
 	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceOwnerPrivate}
@@ -1801,7 +1801,7 @@ func TestGetConversationForAgent_RequiresAgentsRead_GlobalGrant_Allowed(t *testi
 		},
 	}
 	store := &fakeAgentPermissionStore{
-		agentGlobalPerms: map[uuid.UUID][]authz.Permission{agentID: {authz.PermissionAgentsRead}},
+		agentGlobalPerms: map[uuid.UUID][]authz.Permission{agentID: {authz.PermissionConversationsRead}},
 	}
 	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
@@ -1812,7 +1812,7 @@ func TestGetConversationForAgent_RequiresAgentsRead_GlobalGrant_Allowed(t *testi
 	assert.Equal(t, conversationID, result.ID)
 }
 
-func TestGetConversationForAgent_RequiresAgentsRead_ProjectGrant_Allowed(t *testing.T) {
+func TestGetConversationForAgent_RequiresConversationsRead_ProjectGrant_Allowed(t *testing.T) {
 	agentID := uuid.New()
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -1824,7 +1824,7 @@ func TestGetConversationForAgent_RequiresAgentsRead_ProjectGrant_Allowed(t *test
 	}
 	store := &fakeAgentPermissionStore{
 		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			projectID: {agentID: {authz.PermissionAgentsRead}},
+			projectID: {agentID: {authz.PermissionConversationsRead}},
 		},
 	}
 	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
@@ -1836,7 +1836,7 @@ func TestGetConversationForAgent_RequiresAgentsRead_ProjectGrant_Allowed(t *test
 	assert.Equal(t, conversationID, result.ID)
 }
 
-func TestGetConversationForAgent_RequiresAgentsRead_NoGrant_Rejected(t *testing.T) {
+func TestGetConversationForAgent_RequiresConversationsRead_NoGrant_Rejected(t *testing.T) {
 	agentID := uuid.New()
 	conversationID := uuid.New()
 	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceOwnerPrivate}
@@ -1849,16 +1849,16 @@ func TestGetConversationForAgent_RequiresAgentsRead_NoGrant_Rejected(t *testing.
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
 
 	// Even the same-conversation shortcut must be denied: without
-	// agents.read, the read_conversation tool isn't in this agent's list at
-	// all, so the backend must not honor a call to it regardless of which
-	// conversation is requested.
+	// conversations.read, the read_conversation tool isn't in this agent's
+	// list at all, so the backend must not honor a call to it regardless of
+	// which conversation is requested.
 	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
-func TestGetConversationForAgent_RequiresAgentsRead_WrongProjectGrant_Rejected(t *testing.T) {
+func TestGetConversationForAgent_RequiresConversationsRead_WrongProjectGrant_Rejected(t *testing.T) {
 	agentID := uuid.New()
 	conversationProjectID := uuid.New()
 	grantedProjectID := uuid.New()
@@ -1870,10 +1870,10 @@ func TestGetConversationForAgent_RequiresAgentsRead_WrongProjectGrant_Rejected(t
 		},
 	}
 	store := &fakeAgentPermissionStore{
-		// agents.read granted in a *different* project than the one the
+		// conversations.read granted in a *different* project than the one the
 		// conversation actually belongs to — must not transfer.
 		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
-			grantedProjectID: {agentID: {authz.PermissionAgentsRead}},
+			grantedProjectID: {agentID: {authz.PermissionConversationsRead}},
 		},
 	}
 	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})

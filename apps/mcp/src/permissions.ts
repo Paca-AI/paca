@@ -413,20 +413,21 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 	// authorizes the *specific* conversation by matching the caller's own
 	// agent_id — see agentdom.Service.GetConversationForAgent's doc comment;
 	// that check happens server-side regardless of what's listed here).
-	// Gated on agents.read rather than left unmapped: agents.* is the same
-	// domain the backend already uses for managing Agent entities
-	// (router.go's /agents routes, both global- and project-scoped), and a
-	// regular USER-role human has no agents.* by default (see router.go's
-	// comment on the deliberately-ungated chat-session routes) — reading
-	// another conversation's transcript is closer to that admin-ish
-	// capability than to just chatting in one's own conversation.
+	// Gated on conversations.read: a dedicated domain split from agents.*
+	// (which governs managing Agent entities themselves — router.go's
+	// /agents routes, both global- and project-scoped) so a role can grant
+	// "may read/drive conversations" independently of "may reconfigure
+	// agents". A regular USER-role human has no conversations.* by default
+	// (see router.go's comment on the deliberately-ungated chat-session
+	// routes) — reading another conversation's transcript still requires an
+	// explicit grant.
 	// requiresProject: true broadens the unpinned-mode check (see
-	// isToolVisible in server.ts) to accept agents.read granted in any
-	// project the caller belongs to, not just a global grant — matching the
-	// tool's own "any conversation, project or global" scope.
+	// isToolVisible in server.ts) to accept conversations.read granted in
+	// any project the caller belongs to, not just a global grant — matching
+	// the tool's own "any conversation, project or global" scope.
 	{
 		toolName: "read_conversation",
-		permissionKey: "agents.read",
+		permissionKey: "conversations.read",
 		requiresProject: true,
 	},
 ];

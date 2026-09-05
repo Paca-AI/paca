@@ -4,6 +4,7 @@ import {
 	Layers,
 	ListTodo,
 	type LucideIcon,
+	MessageSquare,
 	Puzzle,
 	Server,
 	Settings,
@@ -115,6 +116,19 @@ export const PROJECT_KNOWN_PERMISSIONS = [
 		descriptionKey: "roles.permissions.agentsWrite.description",
 		domain: "agents",
 	},
+	// conversations
+	{
+		key: "conversations.read",
+		labelKey: "roles.permissions.conversationsRead.label",
+		descriptionKey: "roles.permissions.conversationsRead.description",
+		domain: "conversations",
+	},
+	{
+		key: "conversations.write",
+		labelKey: "roles.permissions.conversationsWrite.label",
+		descriptionKey: "roles.permissions.conversationsWrite.description",
+		domain: "conversations",
+	},
 	// environments
 	{
 		key: "environments.read",
@@ -183,6 +197,11 @@ export const PROJECT_PERMISSION_GROUPS = [
 		Icon: BookOpen,
 	},
 	{ domain: "agents", labelKey: "roles.permissionGroups.aiAgents", Icon: Bot },
+	{
+		domain: "conversations",
+		labelKey: "roles.permissionGroups.conversations",
+		Icon: MessageSquare,
+	},
 	{
 		domain: "environments",
 		labelKey: "roles.permissionGroups.environments",

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGlobalAgentRealtime } from "@/hooks/use-global-agent-realtime";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import {
 	type Agent,
@@ -159,6 +160,15 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	useProjectRealtime(projectId);
 	useGlobalAgentRealtime(!projectId);
 
+	// Global chat (no projectId) is deliberately open to any authenticated
+	// user (see router.go's global chat-session routes), so only gate
+	// starting a new one when this is a project-scoped conversations list —
+	// a PROJECT_VIEWER (conversations.read only) may browse this list but
+	// must not be able to create a conversation.
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const canStartConversation =
+		!projectId || hasProjectPermission("conversations.write");
+
 	const [filters, setFilters] = useState<ConversationFiltersState>({});
 
 	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -211,15 +221,17 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 					<h2 className="text-sm font-semibold">
 						{t("conversationsPage.title")}
 					</h2>
-					<Button
-						size="sm"
-						className="gap-1.5"
-						nativeButton={false}
-						render={<Link to={newConversationHref} />}
-					>
-						<Plus className="size-3.5" />
-						{t("aiChat.newConversation")}
-					</Button>
+					{canStartConversation && (
+						<Button
+							size="sm"
+							className="gap-1.5"
+							nativeButton={false}
+							render={<Link to={newConversationHref} />}
+						>
+							<Plus className="size-3.5" />
+							{t("aiChat.newConversation")}
+						</Button>
+					)}
 				</div>
 				<ConversationFilters
 					agents={agents}

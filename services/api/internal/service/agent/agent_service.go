@@ -53,8 +53,9 @@ type Service struct {
 	// every call site guards against it and behaves as if environments
 	// don't exist yet, rather than panicking.
 	environmentSvc environmentdom.Service
-	// authorizer backs authorizeAgentsReadForConversation's agents.read
-	// check in GetConversationForAgent — see that method's doc comment.
+	// authorizer backs authorizeConversationsReadForConversation's
+	// conversations.read check in GetConversationForAgent — see that
+	// method's doc comment.
 	// Nil is a valid, supported configuration (same convention as
 	// environmentSvc/encryptor above): the check is skipped rather than
 	// failing closed, since every existing GetConversationForAgent test
@@ -1412,10 +1413,11 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 // GetConversationForAgent implements agentdom.Service.GetConversationForAgent
 // — see its doc comment for the full authorization rule and why bare agent-
 // identity matching isn't sufficient on its own. Also requires the calling
-// agent to hold agents.read (see authorizeAgentsReadForConversation) before
-// any of that self-scope logic runs, including the same-conversation
-// shortcut: the read_conversation MCP tool is hidden entirely from an agent
-// without agents.read (apps/mcp/src/permissions.ts), so backend enforcement
+// agent to hold conversations.read (see
+// authorizeConversationsReadForConversation) before any of that self-scope
+// logic runs, including the same-conversation shortcut: the
+// read_conversation MCP tool is hidden entirely from an agent without
+// conversations.read (apps/mcp/src/permissions.ts), so backend enforcement
 // here must match that gate rather than only restrict cross-conversation
 // reads.
 func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
@@ -1423,7 +1425,7 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	if err != nil {
 		return nil, err
 	}
-	if err := s.authorizeAgentsReadForConversation(ctx, callerAgentID, target); err != nil {
+	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
 		return nil, err
 	}
 	if target.AgentID != callerAgentID {
@@ -1453,28 +1455,28 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	return target, nil
 }
 
-// authorizeAgentsReadForConversation reports whether callerAgentID holds
-// agents.read for the scope conv belongs to: its own global role, or (for a
-// project-scoped conversation) its role in that specific project — an OR,
-// mirroring the MCP server's own isToolVisible check for read_conversation
-// (apps/mcp/src/permissions.ts's requiresProject: true) so tool-list
-// visibility and backend enforcement agree. Skipped (always allowed) when
-// s.authorizer is nil — see that field's doc comment.
-func (s *Service) authorizeAgentsReadForConversation(ctx context.Context, callerAgentID uuid.UUID, conv *agentdom.AgentConversation) error {
+// authorizeConversationsReadForConversation reports whether callerAgentID
+// holds conversations.read for the scope conv belongs to: its own global
+// role, or (for a project-scoped conversation) its role in that specific
+// project — an OR, mirroring the MCP server's own isToolVisible check for
+// read_conversation (apps/mcp/src/permissions.ts's requiresProject: true) so
+// tool-list visibility and backend enforcement agree. Skipped (always
+// allowed) when s.authorizer is nil — see that field's doc comment.
+func (s *Service) authorizeConversationsReadForConversation(ctx context.Context, callerAgentID uuid.UUID, conv *agentdom.AgentConversation) error {
 	if s.authorizer == nil {
 		return nil
 	}
-	globalOK, err := s.authorizer.HasGlobalPermissionsForAgent(ctx, callerAgentID, authz.PermissionAgentsRead)
+	globalOK, err := s.authorizer.HasGlobalPermissionsForAgent(ctx, callerAgentID, authz.PermissionConversationsRead)
 	if err != nil {
-		return fmt.Errorf("authz: check agent global agents.read: %w", err)
+		return fmt.Errorf("authz: check agent global conversations.read: %w", err)
 	}
 	if globalOK {
 		return nil
 	}
 	if conv.ProjectID != uuid.Nil {
-		projectOK, err := s.authorizer.HasPermissionsForAgent(ctx, callerAgentID, conv.ProjectID, authz.PermissionAgentsRead)
+		projectOK, err := s.authorizer.HasPermissionsForAgent(ctx, callerAgentID, conv.ProjectID, authz.PermissionConversationsRead)
 		if err != nil {
-			return fmt.Errorf("authz: check agent project agents.read: %w", err)
+			return fmt.Errorf("authz: check agent project conversations.read: %w", err)
 		}
 		if projectOK {
 			return nil

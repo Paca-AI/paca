@@ -28,6 +28,28 @@ export function hasAnyPermission(
 	);
 }
 
+/** Drops any granted key already implied by another granted wildcard in the
+ * same set — e.g. "environments.read" is redundant once "environments.*" is
+ * also granted, and everything but "*" itself is redundant once "*" is
+ * granted. A role's raw permission map can end up with both (see
+ * 000044_add_environment_permissions.sql's doc comment for how a wildcard
+ * merged onto an existing individual grant produces exactly this), which is
+ * harmless for `hasPermission` above but reads as a doubled-up, confusing
+ * list wherever a role's permissions are displayed verbatim (e.g.
+ * RolesSettings.tsx's badge list) — this is what that display should filter
+ * through instead of rendering `grantedPermissions` as-is. */
+export function dedupeGrantedPermissions(
+	grantedPermissions: string[],
+): string[] {
+	const granted = new Set(grantedPermissions);
+	if (granted.has("*")) return ["*"];
+
+	return grantedPermissions.filter((key) => {
+		if (key.endsWith(".*")) return true;
+		return !granted.has(`${keyPrefix(key)}.*`);
+	});
+}
+
 /** The part of a permission key before its last dot, e.g. "time_logging" for
  * "time_logging.view_all". This is the namespace a `.write`-style wildcard
  * grant actually covers — NOT `PermissionDefinition.domain`, which is only a
