@@ -79,11 +79,19 @@ interface BoardViewProps {
 			onLoadMore: () => void;
 			totalCount?: number;
 			fieldSum?: number;
+			/** True when the column's last load-more attempt failed. Stops
+			 * ColumnScrollArea's auto-fill effect from immediately retrying on
+			 * every render; a manual scroll or button click can still retry. */
+			lastLoadMoreFailed?: boolean;
 		}
 	>;
 }
 
 // ── Column scroll area ──────────────────────────────────────────────────────
+
+/** How long ColumnScrollArea waits before retrying its own auto-fill request
+ * after a failure, instead of retrying on the very next render. */
+const AUTO_FILL_RETRY_BACKOFF_MS = 4000;
 
 /**
  * Wraps a column's scrollable card list. `onScroll` alone only covers the
@@ -99,17 +107,52 @@ function ColumnScrollArea({
 	pagination,
 	children,
 }: {
-	pagination: LoadMorePagination | undefined;
+	pagination:
+		| (LoadMorePagination & {
+				/** True when the last load-more attempt failed — see the
+				 * dedicated comment on this effect below. */
+				lastLoadMoreFailed?: boolean;
+		  })
+		| undefined;
 	children: ReactNode;
 }) {
 	const scrollRef = useRef<HTMLDivElement>(null);
+	// Lets the backoff timer below retry with whatever is current by the time
+	// it fires, rather than the (possibly several-renders-stale) pagination
+	// object captured when the timer was scheduled.
+	const paginationRef = useRef(pagination);
+	paginationRef.current = pagination;
+	// Guards against queuing a new backoff timer on every render while one is
+	// already pending.
+	const retryScheduledRef = useRef(false);
 
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el || !pagination?.hasMore || pagination.isLoadingMore) return;
-		if (el.scrollHeight <= el.clientHeight) {
-			pagination.onLoadMore();
+		if (el.scrollHeight > el.clientHeight) return;
+
+		if (pagination.lastLoadMoreFailed) {
+			// A failed fetch (network blip, 5xx) leaves the column just as
+			// under-filled as before it tried — since this effect has no
+			// dependency array, it re-runs on every subsequent render, and
+			// retrying immediately would hammer the backend in a tight loop.
+			// Back off instead: wait, then retry once with fresh state. This
+			// column has no visible scrollbar to manually retry from (that's
+			// the whole reason auto-fill exists), so without this the column
+			// would otherwise be stuck at its under-filled size forever.
+			if (retryScheduledRef.current) return;
+			retryScheduledRef.current = true;
+			setTimeout(() => {
+				retryScheduledRef.current = false;
+				const current = paginationRef.current;
+				if (current?.hasMore && !current.isLoadingMore) {
+					current.onLoadMore();
+				}
+			}, AUTO_FILL_RETRY_BACKOFF_MS);
+			return;
 		}
+
+		pagination.onLoadMore();
 	});
 
 	return (

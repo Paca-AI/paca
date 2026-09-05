@@ -951,6 +951,18 @@ export function InteractionLayout({
 	// render's closure, so the first call's synchronous write is visible to
 	// the very next call regardless of whether a re-render has happened yet.
 	const colLoadingMoreRef = useRef<Record<string, boolean>>({});
+	// Tracks whether a column's last load-more attempt failed. board-view.tsx's
+	// ColumnScrollArea auto-requests more pages on its own (no user scroll)
+	// whenever a column's content doesn't yet fill its visible height — without
+	// this flag, a failed fetch (network blip, 5xx) would still leave the
+	// column under-filled, and that effect would immediately retry on every
+	// subsequent render with no backoff, hammering the backend. Set on failure,
+	// cleared on the next successful fetch; deliberately NOT checked by the
+	// scroll-triggered handler, so a manual scroll (or the swimlane layout's
+	// button) can still retry right away.
+	const [colLoadMoreFailed, setColLoadMoreFailed] = useState<
+		Record<string, boolean>
+	>({});
 
 	// Sync next cursors from initial column query results; reset extras once
 	// each column's own base query has re-fetched at its expanded depth.
@@ -1047,6 +1059,16 @@ export function InteractionLayout({
 					...prev,
 					[colKey]: (prev[colKey] ?? initialColPageSize) + result.items.length,
 				}));
+				setColLoadMoreFailed((prev) =>
+					prev[colKey] ? { ...prev, [colKey]: false } : prev,
+				);
+			} catch (error) {
+				// Caught here (rather than left to reject) so every caller —
+				// ColumnScrollArea's auto-fill effect, the scroll handler, and the
+				// swimlane layout's button — can fire-and-forget onLoadMore()
+				// without each needing its own unhandled-rejection handling.
+				console.error(error);
+				setColLoadMoreFailed((prev) => ({ ...prev, [colKey]: true }));
 			} finally {
 				colLoadingMoreRef.current[colKey] = false;
 				setColLoadingMore((prev) => ({ ...prev, [colKey]: false }));
@@ -1220,6 +1242,7 @@ export function InteractionLayout({
 					onLoadMore: () => void;
 					totalCount?: number;
 					fieldSum?: number;
+					lastLoadMoreFailed?: boolean;
 				}
 			>;
 		const result: Record<
@@ -1230,6 +1253,7 @@ export function InteractionLayout({
 				onLoadMore: () => void;
 				totalCount?: number;
 				fieldSum?: number;
+				lastLoadMoreFailed?: boolean;
 			}
 		> = {};
 		for (let i = 0; i < fetchColumnDefs.length; i++) {
@@ -1241,6 +1265,7 @@ export function InteractionLayout({
 				onLoadMore: () => handleLoadMoreColumn(col.key),
 				totalCount: columnQueries[i]?.data?.total_count,
 				fieldSum: apiFieldSum != null ? apiFieldSum : undefined,
+				lastLoadMoreFailed: Boolean(colLoadMoreFailed[col.key]),
 			};
 		}
 		return result;
@@ -1249,6 +1274,7 @@ export function InteractionLayout({
 		fetchColumnDefs,
 		colNextCursors,
 		colLoadingMore,
+		colLoadMoreFailed,
 		handleLoadMoreColumn,
 		columnQueries,
 	]);
