@@ -212,13 +212,17 @@ export function isToolVisible(
 	}
 
 	if (toolPerm.requiresProject) {
+		// Checked globally first, then any project — log wording deliberately
+		// doesn't say "project permission" here, since a grant via the
+		// global map alone (no project scan needed) would otherwise be
+		// misreported as project-scoped when reading server logs.
 		const hasPerm =
 			hasPermission(permissionMap, toolPerm.permissionKey) ||
 			Object.keys(permissionMap.projects).some((pid) =>
 				hasPermission(permissionMap, toolPerm.permissionKey, pid),
 			);
 		console.error(
-			`[server] Tool ${toolName} requires project permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+			`[server] Tool ${toolName} requires ${toolPerm.permissionKey} (global or any project), granted: ${hasPerm}`,
 		);
 		return hasPerm;
 	}

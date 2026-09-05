@@ -40,6 +40,24 @@ vi.mock("@/lib/agent-api", async () => {
 	};
 });
 
+// projectRolesQueryOptions is only enabled (and thus only fetched) for the
+// project-scoped test cases below, but mocking it unconditionally keeps
+// every case hermetic rather than letting those two hit a real fetch() that
+// jsdom can't resolve.
+vi.mock("@/lib/project-api", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/lib/project-api")>(
+			"@/lib/project-api",
+		);
+	return {
+		...actual,
+		projectRolesQueryOptions: (projectId: string) => ({
+			queryKey: ["projects", projectId, "roles"],
+			queryFn: async () => [],
+		}),
+	};
+});
+
 function makeQueryClient() {
 	return new QueryClient({
 		defaultOptions: {
