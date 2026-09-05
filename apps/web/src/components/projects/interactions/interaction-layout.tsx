@@ -1059,8 +1059,17 @@ export function InteractionLayout({
 					...prev,
 					[colKey]: (prev[colKey] ?? initialColPageSize) + result.items.length,
 				}));
+				// A response with no items yet a non-null next_cursor makes no
+				// progress — without treating that like a failure here, a column
+				// stuck in that state would retry every render with no backoff,
+				// since ColumnScrollArea's auto-fill effect only backs off when
+				// lastLoadMoreFailed is set.
+				const stalled =
+					result.items.length === 0 && Boolean(result.next_cursor);
 				setColLoadMoreFailed((prev) =>
-					prev[colKey] ? { ...prev, [colKey]: false } : prev,
+					Boolean(prev[colKey]) === stalled
+						? prev
+						: { ...prev, [colKey]: stalled },
 				);
 			} catch (error) {
 				// Caught here (rather than left to reject) so every caller —

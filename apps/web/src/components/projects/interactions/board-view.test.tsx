@@ -327,4 +327,92 @@ describe("BoardView", () => {
 			expect(onTaskClick).toHaveBeenCalledWith(task);
 		});
 	});
+
+	describe("column auto-fill pagination", () => {
+		// jsdom never lays out real dimensions, so a column's scrollHeight and
+		// clientHeight are both 0 — the same "not scrollable yet" state as a real
+		// under-filled column — which is what lets these tests exercise the
+		// auto-fill effect without needing to mock element sizes.
+
+		it("requests the next page on mount when a column has more but isn't scrollable", async () => {
+			const onLoadMore = vi.fn();
+			renderBoard([], {
+				columnPagination: {
+					"status-todo": { hasMore: true, isLoadingMore: false, onLoadMore },
+				},
+			});
+			await waitFor(() => expect(onLoadMore).toHaveBeenCalled());
+		});
+
+		it("does not request another page while one is already loading", async () => {
+			const onLoadMore = vi.fn();
+			renderBoard([], {
+				columnPagination: {
+					"status-todo": { hasMore: true, isLoadingMore: true, onLoadMore },
+				},
+			});
+			await new Promise((r) => setTimeout(r, 0));
+			expect(onLoadMore).not.toHaveBeenCalled();
+		});
+
+		it("does not request another page once there's nothing left to load", async () => {
+			const onLoadMore = vi.fn();
+			renderBoard([], {
+				columnPagination: {
+					"status-todo": { hasMore: false, isLoadingMore: false, onLoadMore },
+				},
+			});
+			await new Promise((r) => setTimeout(r, 0));
+			expect(onLoadMore).not.toHaveBeenCalled();
+		});
+
+		it("backs off before retrying an auto-fill after a failed load-more, instead of retrying every render", () => {
+			vi.useFakeTimers();
+			try {
+				const onLoadMore = vi.fn();
+				renderBoard([], {
+					columnPagination: {
+						"status-todo": {
+							hasMore: true,
+							isLoadingMore: false,
+							onLoadMore,
+							lastLoadMoreFailed: true,
+						},
+					},
+				});
+				// Mirrors AUTO_FILL_RETRY_BACKOFF_MS in board-view.tsx.
+				const backoffMs = 4000;
+				vi.advanceTimersByTime(backoffMs - 1);
+				expect(onLoadMore).not.toHaveBeenCalled();
+
+				vi.advanceTimersByTime(1);
+				expect(onLoadMore).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("cancels a pending auto-fill retry when the column unmounts before it fires", () => {
+			vi.useFakeTimers();
+			try {
+				const onLoadMore = vi.fn();
+				const { unmount } = renderBoard([], {
+					columnPagination: {
+						"status-todo": {
+							hasMore: true,
+							isLoadingMore: false,
+							onLoadMore,
+							lastLoadMoreFailed: true,
+						},
+					},
+				});
+
+				unmount();
+				vi.advanceTimersByTime(4000);
+				expect(onLoadMore).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });

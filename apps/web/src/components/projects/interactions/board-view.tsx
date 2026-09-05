@@ -125,6 +125,16 @@ function ColumnScrollArea({
 	// Guards against queuing a new backoff timer on every render while one is
 	// already pending.
 	const retryScheduledRef = useRef(false);
+	// Lets the mount/unmount effect below clear a pending backoff timer if the
+	// column unmounts before it fires — otherwise it would still call
+	// onLoadMore() for a column that's no longer visible.
+	const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+		};
+	}, []);
 
 	useEffect(() => {
 		const el = scrollRef.current;
@@ -142,8 +152,9 @@ function ColumnScrollArea({
 			// would otherwise be stuck at its under-filled size forever.
 			if (retryScheduledRef.current) return;
 			retryScheduledRef.current = true;
-			setTimeout(() => {
+			retryTimeoutRef.current = setTimeout(() => {
 				retryScheduledRef.current = false;
+				retryTimeoutRef.current = null;
 				const current = paginationRef.current;
 				if (current?.hasMore && !current.isLoadingMore) {
 					current.onLoadMore();
