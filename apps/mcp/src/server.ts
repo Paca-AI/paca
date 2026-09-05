@@ -83,42 +83,9 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 		const allPluginTools = pluginRegistry.getAllTools();
 
 		// Filter core tools based on permissions
-		const filteredCoreTools = allCoreTools.filter((tool) => {
-			const toolPerm = getToolPermission(tool.name);
-			if (!toolPerm) {
-				console.error(
-					`[server] Tool ${tool.name} has no permission mapping, allowing by default`,
-				);
-				return true;
-			}
-
-			if (config.projectId) {
-				const hasPerm = hasPermission(
-					permissionMap,
-					toolPerm.permissionKey,
-					config.projectId,
-				);
-				console.error(
-					`[server] Tool ${tool.name} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-				);
-				return hasPerm;
-			}
-
-			if (toolPerm.requiresProject) {
-				const hasPerm = Object.keys(permissionMap.projects).some((projectId) =>
-					hasPermission(permissionMap, toolPerm.permissionKey, projectId),
-				);
-				console.error(
-					`[server] Tool ${tool.name} requires project permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-				);
-				return hasPerm;
-			}
-			const hasPerm = hasPermission(permissionMap, toolPerm.permissionKey);
-			console.error(
-				`[server] Tool ${tool.name} requires global permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
-			);
-			return hasPerm;
-		});
+		const filteredCoreTools = allCoreTools.filter((tool) =>
+			isToolVisible(tool.name, permissionMap, config.projectId),
+		);
 
 		// Repo tools are hidden entirely when no repository plugin is
 		// configured for this conversation — mirrors executor.py's has_repos
@@ -201,6 +168,66 @@ export async function createServer(config: PacaConfig): Promise<Server> {
 	});
 
 	return server;
+}
+
+/**
+ * Determines whether a core tool should be listed for the current caller.
+ *
+ * `projectId` is `config.projectId` — set only in single-project (pinned)
+ * mode. When unset, a `requiresProject` tool used to be gated solely on a
+ * scan of `permissionMap.projects`, which is populated only for a pinned
+ * project or a global agent's discovered invited projects (see
+ * `fetchAgentPermissions` in permissions.ts). That left it empty for an
+ * unpinned *human* user, so a global role grant (e.g. `{"*": true}`) was
+ * never consulted and every project-scoped tool stayed hidden even for a
+ * super-admin. Consulting the global permission map first fixes that
+ * without granting anything extra: it's the same `hasPermission` check
+ * already used for non-project-scoped tools, just applied here too.
+ *
+ * Exported for testing.
+ */
+export function isToolVisible(
+	toolName: string,
+	permissionMap: PermissionMap,
+	projectId: string | undefined,
+): boolean {
+	const toolPerm = getToolPermission(toolName);
+	if (!toolPerm) {
+		console.error(
+			`[server] Tool ${toolName} has no permission mapping, allowing by default`,
+		);
+		return true;
+	}
+
+	if (projectId) {
+		const hasPerm = hasPermission(
+			permissionMap,
+			toolPerm.permissionKey,
+			projectId,
+		);
+		console.error(
+			`[server] Tool ${toolName} requires ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+		);
+		return hasPerm;
+	}
+
+	if (toolPerm.requiresProject) {
+		const hasPerm =
+			hasPermission(permissionMap, toolPerm.permissionKey) ||
+			Object.keys(permissionMap.projects).some((pid) =>
+				hasPermission(permissionMap, toolPerm.permissionKey, pid),
+			);
+		console.error(
+			`[server] Tool ${toolName} requires project permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+		);
+		return hasPerm;
+	}
+
+	const hasPerm = hasPermission(permissionMap, toolPerm.permissionKey);
+	console.error(
+		`[server] Tool ${toolName} requires global permission ${toolPerm.permissionKey}, granted: ${hasPerm}`,
+	);
+	return hasPerm;
 }
 
 /**

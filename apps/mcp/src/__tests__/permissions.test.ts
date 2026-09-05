@@ -165,9 +165,57 @@ describe("getToolPermission", () => {
 		expect(perm?.requiresProject).toBe(true);
 	});
 
-	it("has no permission mapping for read_conversation — it's always listed, since its real authorization is unconditional and self-scoped (see TOOL_PERMISSIONS' comment)", () => {
+	it("returns the correct permission for read_conversation — gated on agents.read, not left unmapped, even though the backend also enforces its own agent_id match separately", () => {
 		const perm = getToolPermission("read_conversation");
-		expect(perm).toBeNull();
+		expect(perm?.permissionKey).toBe("agents.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// Regression coverage: these seven tools were added (task-link and
+	// doc-activity/doc-comment features) without a matching TOOL_PERMISSIONS
+	// entry, which left them unconditionally listed for every caller even
+	// though the backend itself always enforced tasks.read/tasks.write and
+	// docs.read/docs.write for these endpoints.
+	it("returns the correct permission for list_task_links", () => {
+		const perm = getToolPermission("list_task_links");
+		expect(perm?.permissionKey).toBe("tasks.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for create_task_link", () => {
+		const perm = getToolPermission("create_task_link");
+		expect(perm?.permissionKey).toBe("tasks.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for delete_task_link", () => {
+		const perm = getToolPermission("delete_task_link");
+		expect(perm?.permissionKey).toBe("tasks.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for list_doc_activities", () => {
+		const perm = getToolPermission("list_doc_activities");
+		expect(perm?.permissionKey).toBe("docs.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for add_doc_comment", () => {
+		const perm = getToolPermission("add_doc_comment");
+		expect(perm?.permissionKey).toBe("docs.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for update_doc_comment", () => {
+		const perm = getToolPermission("update_doc_comment");
+		expect(perm?.permissionKey).toBe("docs.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for delete_doc_comment", () => {
+		const perm = getToolPermission("delete_doc_comment");
+		expect(perm?.permissionKey).toBe("docs.write");
+		expect(perm?.requiresProject).toBe(true);
 	});
 });
 
@@ -193,6 +241,8 @@ describe("TOOL_PERMISSIONS", () => {
 			"create_custom_field",
 			"list_task_attachments",
 			"add_task_comment",
+			"list_task_links",
+			"list_doc_activities",
 		];
 		for (const name of expected) {
 			expect(names, `missing tool: ${name}`).toContain(name);

@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "Делегирует работу CLI для кода, который вы запускаете сами, — Claude Code, Codex, Gemini CLI или пользовательский ACP-сервер.",
 			"agentTypeProviderCLI": "CLI провайдера",
 			"agentTypeProviderCLIHint": "Запускает Claude Code, Codex, Cursor или Gemini CLI в статичном окружении, размещённом Paca, управляемом так же, как LLM-агент.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Доступно только для агентов проекта. Создайте этого агента на странице «Агенты» проекта.",
 			"modelSection": "Модель",
 			"providerLabel": "Провайдер",
 			"modelLabel": "Модель",

@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "Ủy quyền cho một CLI lập trình mà bạn tự chạy — Claude Code, Codex, Gemini CLI hoặc máy chủ ACP tùy chỉnh.",
 			"agentTypeProviderCLI": "CLI nhà cung cấp",
 			"agentTypeProviderCLIHint": "Chạy Claude Code, Codex, Cursor hoặc Gemini CLI trong một môi trường tĩnh do Paca lưu trữ, được điều khiển theo cách giống như một agent LLM.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Chỉ khả dụng cho agent thuộc dự án. Hãy tạo agent này từ trang Agents của một dự án.",
 			"modelSection": "Mô hình",
 			"providerLabel": "Nhà cung cấp",
 			"modelLabel": "Mô hình",

@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "自分で実行するコーディングCLI（Claude Code、Codex、Gemini CLI、またはカスタムACPサーバー）に処理を委任します。",
 			"agentTypeProviderCLI": "プロバイダーCLI",
 			"agentTypeProviderCLIHint": "Pacaがホストする静的環境内でClaude Code、Codex、Cursor、またはGemini CLIを実行し、LLMエージェントと同じ方法で制御します。",
+			"agentTypeProviderCLIGlobalDisabledHint": "プロジェクトエージェントでのみ利用可能です。プロジェクトの「エージェント」ページから作成してください。",
 			"modelSection": "モデル",
 			"providerLabel": "プロバイダー",
 			"modelLabel": "モデル",
