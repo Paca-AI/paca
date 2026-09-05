@@ -41,6 +41,7 @@
 		"title": "인터랙션",
 		"timeline": "타임라인",
 		"productBacklog": "제품 백로그",
+		"plannedSprints": "초안 스프린트",
 		"completedSprints": "완료된 스프린트"
 	},
 	"docs": {

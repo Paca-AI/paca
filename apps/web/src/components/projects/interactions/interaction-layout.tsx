@@ -97,6 +97,7 @@ import { NewViewPopover } from "./new-view-popover";
 import { getImportanceBucketBounds } from "./priority";
 import { RenameViewDialog } from "./rename-view-dialog";
 import { RoadmapView } from "./roadmap-view";
+import type { SprintFormPayload } from "./sprint-form-modal";
 import { TaskDetailModal } from "./task-detail-modal";
 import { UNASSIGNED_FILTER_ID, ViewSettingsPanel } from "./view-settings-panel";
 import {
@@ -1646,6 +1647,14 @@ export function InteractionLayout({
 		},
 	});
 
+	const handleStartSprint = async (sid: string, payload: SprintFormPayload) => {
+		await updateSprintMutation.mutateAsync({ sprintId: sid, payload });
+		navigate({
+			to: "/projects/$projectId/interactions/sprints/$sprintId",
+			params: { projectId, sprintId: sid },
+		});
+	};
+
 	// ── Keyboard shortcuts (page scope) ─────────────────────────────────────
 	const viewContentRef = useRef<HTMLDivElement>(null);
 
@@ -1998,18 +2007,7 @@ export function InteractionLayout({
 						onDeleteTask={canEdit ? handleRequestDeleteTask : undefined}
 						sprints={context === "backlog" ? sprints : undefined}
 						onStartSprint={
-							context === "backlog" && canCreate
-								? async (sid, payload) => {
-										await updateSprintMutation.mutateAsync({
-											sprintId: sid,
-											payload,
-										});
-										navigate({
-											to: "/projects/$projectId/interactions/sprints/$sprintId",
-											params: { projectId, sprintId: sid },
-										});
-									}
-								: undefined
+							context === "backlog" && canCreate ? handleStartSprint : undefined
 						}
 						onCreateSprint={
 							context === "backlog" && canCreate ? handleNewSprint : undefined

@@ -41,6 +41,7 @@
 		"title": "インタラクション",
 		"timeline": "タイムライン",
 		"productBacklog": "プロダクトバックログ",
+		"plannedSprints": "下書きのスプリント",
 		"completedSprints": "完了したスプリント"
 	},
 	"docs": {

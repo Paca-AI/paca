@@ -20,6 +20,9 @@ export interface SelectOption {
 	label: string;
 	icon?: ReactNode;
 	colorDot?: string;
+	/** Small muted hint shown after the label in the dropdown list only (not
+	 * in the compact trigger pill once a value is selected). */
+	hint?: string;
 }
 
 export interface UserOption {

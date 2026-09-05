@@ -24,7 +24,14 @@ export function OptionListButton({
 			) : option.icon ? (
 				<span className="shrink-0">{option.icon}</span>
 			) : null}
-			<span className="flex-1 text-left">{option.label}</span>
+			<span className="flex-1 text-left">
+				{option.label}
+				{option.hint && (
+					<span className="ml-1.5 text-xs text-muted-foreground/60">
+						{option.hint}
+					</span>
+				)}
+			</span>
 			{isSelected && <Check className="size-3.5 text-primary" />}
 		</button>
 	);

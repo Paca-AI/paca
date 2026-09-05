@@ -12,6 +12,8 @@ import type {
 import { cn } from "@/lib/utils";
 
 import { AddTaskRow } from "./add-task-row";
+import type { SprintFormPayload } from "./sprint-form-modal";
+import { SprintStatusBadge } from "./sprint-status-badge";
 import { StartSprintModal } from "./start-sprint-modal";
 import { TaskContextMenu } from "./task-context-menu";
 import { getRowColConfig, TaskRow } from "./task-row";
@@ -58,15 +60,12 @@ export interface ListGroupProps {
 	taskIdPrefix?: string;
 	/** Sprint data when column_by === "sprint" */
 	sprint?: Sprint;
+	/** Another sprint already active in the project, if any — passed through
+	 * to the Start Sprint modal's non-blocking warning. */
+	otherActiveSprint?: Sprint | null;
 	onStartSprint?: (
 		sprintId: string,
-		payload: {
-			name: string;
-			goal: string | null;
-			start_date: string | null;
-			end_date: string | null;
-			status: "active";
-		},
+		payload: SprintFormPayload,
 	) => Promise<void>;
 	onCreateSprint?: () => void;
 	/** Extra fields merged into the create-task payload (e.g. sprint_id) */
@@ -119,6 +118,7 @@ export function ListGroup({
 	visibleFields,
 	taskIdPrefix = "",
 	sprint,
+	otherActiveSprint,
 	onStartSprint,
 	onCreateSprint,
 	extraCreateFields,
@@ -141,6 +141,7 @@ export function ListGroup({
 	const [isDropTarget, setIsDropTarget] = useState(false);
 	const [orderedTasks, setOrderedTasks] = useState<Task[]>(tasks);
 	const [startSprintOpen, setStartSprintOpen] = useState(false);
+	const [startSprintError, setStartSprintError] = useState<string | null>(null);
 
 	useEffect(() => {
 		setOrderedTasks(tasks);
@@ -538,6 +539,9 @@ export function ListGroup({
 				<span className="text-xs font-bold uppercase tracking-[0.08em] text-foreground/80 flex-1 text-left truncate">
 					{groupDef.label}
 				</span>
+				{sprint && (
+					<SprintStatusBadge status={sprint.status} className="shrink-0" />
+				)}
 
 				{/* Sprint: "Start sprint" button */}
 				{sprint && sprint.status === "planned" && onStartSprint && (
@@ -545,6 +549,7 @@ export function ListGroup({
 						type="button"
 						onClick={(e) => {
 							e.stopPropagation();
+							setStartSprintError(null);
 							setStartSprintOpen(true);
 						}}
 						className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 active:scale-95 transition-all duration-150 shrink-0"
@@ -583,7 +588,16 @@ export function ListGroup({
 					sprint={sprint}
 					open={startSprintOpen}
 					onOpenChange={setStartSprintOpen}
-					onSubmit={onStartSprint}
+					onSubmit={async (sid, payload) => {
+						try {
+							await onStartSprint(sid, payload);
+						} catch (err) {
+							setStartSprintError(t("layout.startSprintModal.error"));
+							throw err;
+						}
+					}}
+					otherActiveSprint={otherActiveSprint}
+					errorMessage={startSprintError}
 				/>
 			)}
 
