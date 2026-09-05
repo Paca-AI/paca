@@ -587,7 +587,7 @@ function formatCustomField(field: any): string {
 ID: ${field.id}
 Key: ${field.field_key}
 Type: ${field.field_type}
-Options: ${field.options.length > 0 ? field.options.join(", ") : "None"}
+Options: ${field.options.length > 0 ? field.options.map((o: { value: string }) => o.value).join(", ") : "None"}
 Required: ${field.is_required}
 Created: ${field.created_at}`;
 }
@@ -816,7 +816,7 @@ export async function handleViewTool(
 				field_key: fieldKey,
 				display_name: displayName,
 				field_type: fieldType as any,
-				options,
+				options: options?.map((value) => ({ value })),
 				is_required: isRequired,
 			});
 			return {
@@ -857,7 +857,7 @@ export async function handleViewTool(
 				{
 					display_name: displayName,
 					field_type: fieldType as any,
-					options,
+					options: options?.map((value) => ({ value })),
 					is_required: isRequired,
 				},
 			);

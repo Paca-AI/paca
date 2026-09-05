@@ -645,7 +645,7 @@ func TestTaskHandler_ListTasks_TaskTypeIDsDriveFiltering(t *testing.T) {
 func TestTaskHandler_ListTasks_CustomFieldFilters_SelectResolvesFieldType(t *testing.T) {
 	svc := newFakeTaskSvc()
 	svc.customFields = []*taskdom.CustomFieldDefinition{
-		{FieldKey: "priority", FieldType: taskdom.FieldTypeSelect, Options: []string{"Low", "High"}},
+		{FieldKey: "priority", FieldType: taskdom.FieldTypeSelect, Options: []taskdom.CustomFieldOption{{Value: "Low"}, {Value: "High"}}},
 	}
 	r := buildTaskHandlerRouter(svc)
 	projectID := uuid.New()
@@ -694,7 +694,7 @@ func TestTaskHandler_ListTasks_CustomFieldFilters_NumberRange(t *testing.T) {
 func TestTaskHandler_ListTasks_CustomFieldFilters_UnknownFieldKeyIgnored(t *testing.T) {
 	svc := newFakeTaskSvc()
 	svc.customFields = []*taskdom.CustomFieldDefinition{
-		{FieldKey: "priority", FieldType: taskdom.FieldTypeSelect, Options: []string{"Low", "High"}},
+		{FieldKey: "priority", FieldType: taskdom.FieldTypeSelect, Options: []taskdom.CustomFieldOption{{Value: "Low"}, {Value: "High"}}},
 	}
 	r := buildTaskHandlerRouter(svc)
 	projectID := uuid.New()

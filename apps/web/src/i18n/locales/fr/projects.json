@@ -882,6 +882,8 @@
 			"optionsLabel": "Options",
 			"addOptionPlaceholder": "Ajouter une option…",
 			"addOption": "Ajouter",
+			"optionColorLabel": "Couleur de l'option",
+			"noColor": "Aucune couleur",
 			"requiredLabel": "Requis",
 			"requiredHint": "Les utilisateurs doivent renseigner ce champ lors de la création ou de la modification d'une tâche.",
 			"fieldTypes": {

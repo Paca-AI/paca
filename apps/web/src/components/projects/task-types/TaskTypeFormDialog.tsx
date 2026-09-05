@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import { COLOR_PRESETS } from "@/lib/color-presets";
 import {
 	createTaskType,
 	type TaskType,
@@ -30,21 +31,6 @@ interface TaskTypeFormDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }
-
-const COLOR_PRESETS = [
-	"#6366f1",
-	"#8b5cf6",
-	"#ec4899",
-	"#ef4444",
-	"#f97316",
-	"#eab308",
-	"#22c55e",
-	"#14b8a6",
-	"#06b6d4",
-	"#3b82f6",
-	"#64748b",
-	"#78716c",
-];
 
 export function TaskTypeFormDialog({
 	projectId,

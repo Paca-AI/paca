@@ -1389,6 +1389,17 @@ func TestE2ETaskManagement_MultipleAssignees(t *testing.T) {
 // Custom field definition helpers
 // ---------------------------------------------------------------------------
 
+// customFieldOptions builds the wire shape for a select/multi_select custom
+// field's options list: an array of {"value": ...} objects (each may also
+// carry an optional "color", not needed by these tests).
+func customFieldOptions(values ...string) []map[string]any {
+	opts := make([]map[string]any, len(values))
+	for i, v := range values {
+		opts[i] = map[string]any{"value": v}
+	}
+	return opts
+}
+
 func createCustomFieldViaAPI(t *testing.T, env *e2eEnv, client *http.Client, token, projectID string, body map[string]any) string {
 	t.Helper()
 	req := mustRequest(env.ctx, t, http.MethodPost,
@@ -1495,7 +1506,7 @@ func TestE2ECustomFieldManagement_CRUD(t *testing.T) {
 			"field_key":    "status_tag",
 			"display_name": "Status Tag",
 			"field_type":   "select",
-			"options":      []string{"open", "in_progress", "done"},
+			"options":      customFieldOptions("open", "in_progress", "done"),
 			"is_required":  true,
 		})
 		req := mustRequest(env.ctx, t, http.MethodGet,

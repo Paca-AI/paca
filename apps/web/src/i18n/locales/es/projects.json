@@ -882,6 +882,8 @@
 			"optionsLabel": "Opciones",
 			"addOptionPlaceholder": "Añadir opción…",
 			"addOption": "Añadir",
+			"optionColorLabel": "Color de la opción",
+			"noColor": "Sin color",
 			"requiredLabel": "Obligatorio",
 			"requiredHint": "Los usuarios deben completar este campo al crear o editar una tarea.",
 			"fieldTypes": {

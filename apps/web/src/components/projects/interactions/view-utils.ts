@@ -158,9 +158,10 @@ export function getColumnGroupDefs(
 		if (cf.field_type === "select" || cf.field_type === "multi_select") {
 			return [
 				...cf.options.map((opt) => ({
-					key: opt,
-					label: opt,
-					fieldValue: opt,
+					key: opt.value,
+					label: opt.value,
+					color: opt.color ?? undefined,
+					fieldValue: opt.value,
 				})),
 				{ key: "__none", label: t("viewUtils.groups.none"), fieldValue: null },
 			];

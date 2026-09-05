@@ -1,5 +1,10 @@
 import type { Activity, Task } from "@/lib/interaction-api";
-import type { ProjectMember, TaskStatus, TaskType } from "@/lib/project-api";
+import type {
+	CustomFieldOption,
+	ProjectMember,
+	TaskStatus,
+	TaskType,
+} from "@/lib/project-api";
 
 // ── Extended types (UI-first, wired to API later) ─────────────────────────────
 
@@ -16,7 +21,7 @@ export interface CustomFieldDef {
 		| "MultiSelect"
 		| "Url";
 	required?: boolean;
-	options?: string[];
+	options?: CustomFieldOption[];
 }
 
 export interface Attachment {

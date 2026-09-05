@@ -560,13 +560,18 @@ export type FieldType =
 	| "boolean"
 	| "url";
 
+export interface CustomFieldOption {
+	value: string;
+	color?: string | null;
+}
+
 export interface CustomFieldDefinition {
 	id: string;
 	project_id: string;
 	field_key: string;
 	display_name: string;
 	field_type: FieldType;
-	options: string[];
+	options: CustomFieldOption[];
 	is_required: boolean;
 	created_at: string;
 	updated_at: string;
@@ -576,14 +581,14 @@ export interface CreateCustomFieldInput {
 	display_name: string;
 	field_key: string;
 	field_type: FieldType;
-	options?: string[];
+	options?: CustomFieldOption[];
 	is_required?: boolean;
 }
 
 export interface UpdateCustomFieldInput {
 	display_name?: string;
 	field_type?: FieldType;
-	options?: string[];
+	options?: CustomFieldOption[];
 	is_required?: boolean;
 }
 

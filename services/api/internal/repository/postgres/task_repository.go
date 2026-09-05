@@ -1687,14 +1687,14 @@ func toCustomFieldEntity(r *customFieldDefinitionRecord) (*taskdom.CustomFieldDe
 	id, _ := uuid.Parse(r.ID)
 	pid, _ := uuid.Parse(r.ProjectID)
 
-	var opts []string
+	var opts []taskdom.CustomFieldOption
 	if len(r.Options) > 0 {
 		if err := json.Unmarshal(r.Options, &opts); err != nil {
 			return nil, fmt.Errorf("custom field repo: unmarshal options: %w", err)
 		}
 	}
 	if opts == nil {
-		opts = []string{}
+		opts = []taskdom.CustomFieldOption{}
 	}
 
 	return &taskdom.CustomFieldDefinition{
@@ -1710,9 +1710,9 @@ func toCustomFieldEntity(r *customFieldDefinitionRecord) (*taskdom.CustomFieldDe
 	}, nil
 }
 
-func marshalOptions(opts []string) ([]byte, error) {
+func marshalOptions(opts []taskdom.CustomFieldOption) ([]byte, error) {
 	if opts == nil {
-		opts = []string{}
+		opts = []taskdom.CustomFieldOption{}
 	}
 	b, err := json.Marshal(opts)
 	if err != nil {

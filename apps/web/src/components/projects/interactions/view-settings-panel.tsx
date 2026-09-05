@@ -996,7 +996,10 @@ function CustomFieldFilterSection({
 		const selectedIds = filterConfigToIds(value?.selector);
 		return (
 			<CustomFieldSelectorFilter
-				options={cf.options.map((opt) => ({ key: opt, label: opt }))}
+				options={cf.options.map((opt) => ({
+					key: opt.value,
+					label: opt.value,
+				}))}
 				selectedIds={selectedIds}
 				noOptionsLabel={t("layout.viewSettings.customFieldFilter.noOptions")}
 				onChange={(ids) => {

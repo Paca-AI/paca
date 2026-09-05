@@ -28,7 +28,7 @@ const customField = {
 	field_key: "priority",
 	display_name: "Priority",
 	field_type: "select",
-	options: ["low", "high"],
+	options: [{ value: "low" }, { value: "high" }],
 	is_required: false,
 	created_at: "2024-01-01T00:00:00Z",
 	updated_at: "2024-01-01T00:00:00Z",
@@ -591,7 +591,7 @@ describe("handleViewTool – create_custom_field", () => {
 			field_key: "priority",
 			display_name: "Priority",
 			field_type: "select",
-			options: ["low", "high"],
+			options: [{ value: "low" }, { value: "high" }],
 			is_required: true,
 		});
 	});
