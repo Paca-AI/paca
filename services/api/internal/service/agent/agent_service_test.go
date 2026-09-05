@@ -13,6 +13,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
+	"github.com/Paca-AI/api/internal/platform/authz"
 )
 
 // ---------------------------------------------------------------------------
@@ -1732,6 +1733,153 @@ func TestGetConversationForAgent_Project_DifferentProject_Rejected(t *testing.T)
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
 
 	_, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+// ---------------------------------------------------------------------------
+// GetConversationForAgent — agents.read enforcement
+// ---------------------------------------------------------------------------
+//
+// GetConversationForAgent additionally requires the calling agent to hold
+// agents.read (globally, or in the target conversation's own project) once
+// an authz.Authorizer is wired via WithAuthorizer — matching the MCP
+// server's own tool-listing gate for read_conversation
+// (apps/mcp/src/permissions.ts). Every test above constructs a bare Service
+// with no authorizer, so this check never engages for them (see the
+// authorizer field's doc comment) — these tests cover the wired case
+// specifically, including the same-conversation shortcut, which must also
+// require agents.read since the tool is meant to be entirely inaccessible
+// without it.
+
+// fakeAgentPermissionStore is a minimal authz.AgentPermissionStore double —
+// only the two agent-permission lookups GetConversationForAgent's check
+// actually calls are wired; the plain user-facing methods are unused here.
+type fakeAgentPermissionStore struct {
+	agentGlobalPerms  map[uuid.UUID][]authz.Permission
+	agentProjectPerms map[uuid.UUID]map[uuid.UUID][]authz.Permission // project_id -> agent_id -> permissions
+}
+
+func (f *fakeAgentPermissionStore) ListGlobalPermissions(_ context.Context, _ uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+func (f *fakeAgentPermissionStore) ListProjectPermissions(_ context.Context, _, _ uuid.UUID) ([]authz.Permission, error) {
+	return nil, nil
+}
+
+func (f *fakeAgentPermissionStore) ListAgentGlobalPermissions(_ context.Context, agentID uuid.UUID) ([]authz.Permission, error) {
+	return f.agentGlobalPerms[agentID], nil
+}
+
+func (f *fakeAgentPermissionStore) ListAgentProjectPermissions(_ context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
+	if projMap, ok := f.agentProjectPerms[projectID]; ok {
+		return projMap[agentID], nil
+	}
+	return nil, nil
+}
+
+// fakeAgentRoleResolver reports every agent as a member (with an arbitrary
+// role name — HasPermissionsForAgent only uses the role name for the
+// legacy-role fallback, which these tests don't exercise) of every project
+// referenced in agentProjectPerms, so ListAgentProjectPermissions above is
+// actually reached instead of short-circuiting on ErrAgentNotInProject.
+type fakeAgentRoleResolver struct{}
+
+func (fakeAgentRoleResolver) GetAgentProjectRoleName(_ context.Context, _, _ uuid.UUID) (string, error) {
+	return "member", nil
+}
+
+func TestGetConversationForAgent_RequiresAgentsRead_GlobalGrant_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceOwnerPrivate}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		agentGlobalPerms: map[uuid.UUID][]authz.Permission{agentID: {authz.PermissionAgentsRead}},
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversationForAgent_RequiresAgentsRead_ProjectGrant_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceOwnerPrivate}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			projectID: {agentID: {authz.PermissionAgentsRead}},
+		},
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	result, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversationForAgent_RequiresAgentsRead_NoGrant_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, Audience: agentdom.AudienceOwnerPrivate}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	authorizer := authz.NewAuthorizer(&fakeAgentPermissionStore{}).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	// Even the same-conversation shortcut must be denied: without
+	// agents.read, the read_conversation tool isn't in this agent's list at
+	// all, so the backend must not honor a call to it regardless of which
+	// conversation is requested.
+	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
+func TestGetConversationForAgent_RequiresAgentsRead_WrongProjectGrant_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	conversationProjectID := uuid.New()
+	grantedProjectID := uuid.New()
+	conversationID := uuid.New()
+	conversation := &agentdom.AgentConversation{ID: conversationID, AgentID: agentID, ProjectID: conversationProjectID, Audience: agentdom.AudienceOwnerPrivate}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+	}
+	store := &fakeAgentPermissionStore{
+		// agents.read granted in a *different* project than the one the
+		// conversation actually belongs to — must not transfer.
+		agentProjectPerms: map[uuid.UUID]map[uuid.UUID][]authz.Permission{
+			grantedProjectID: {agentID: {authz.PermissionAgentsRead}},
+		},
+	}
+	authorizer := authz.NewAuthorizer(store).WithAgentRoleResolver(fakeAgentRoleResolver{})
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{}).WithAuthorizer(authorizer)
+
+	_, err := svc.GetConversationForAgent(context.Background(), conversationID, agentID, conversationID)
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
