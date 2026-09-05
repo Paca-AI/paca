@@ -103,7 +103,7 @@ const AUTO_FILL_RETRY_BACKOFF_MS = 4000;
  * pages are available), requests the next page directly — repeating until
  * either the content fills the column or there's nothing left to load.
  */
-function ColumnScrollArea({
+export function ColumnScrollArea({
 	pagination,
 	children,
 }: {
@@ -132,7 +132,15 @@ function ColumnScrollArea({
 
 	useEffect(() => {
 		return () => {
+			// Reset retryScheduledRef too, not just the timer — React StrictMode's
+			// dev-only mount→cleanup→remount double-invoke would otherwise clear
+			// the timer here but leave the guard at `true`, so the remount's
+			// effect run immediately bails on `if (retryScheduledRef.current)
+			// return` and never reschedules it, leaving the column permanently
+			// stuck under-filled in dev.
 			if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+			retryScheduledRef.current = false;
+			retryTimeoutRef.current = null;
 		};
 	}, []);
 

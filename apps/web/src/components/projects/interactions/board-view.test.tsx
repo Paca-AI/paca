@@ -4,6 +4,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock @/lib/interaction-api before any imports that pull it in ─────────────
@@ -18,7 +19,7 @@ vi.mock("@/lib/interaction-api", () => ({
 
 import type { Task } from "@/lib/interaction-api";
 import type { TaskStatus, TaskType } from "@/lib/project-api";
-import { BoardView } from "./board-view";
+import { BoardView, ColumnScrollArea } from "./board-view";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -410,6 +411,39 @@ describe("BoardView", () => {
 				unmount();
 				vi.advanceTimersByTime(4000);
 				expect(onLoadMore).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("still schedules a backoff retry after StrictMode's dev-only mount→cleanup→remount", () => {
+			// Tested directly against ColumnScrollArea (rather than through the
+			// full BoardView + react-query tree) because unrelated re-renders
+			// elsewhere in that tree can mask this bug: as long as some other
+			// state change re-runs the deps-less auto-fill effect again after the
+			// double-invoke, it looks like the retry "worked" even when the ref
+			// guard was left stuck. Testing the component in isolation makes the
+			// double-invoke sequence deterministic.
+			vi.useFakeTimers();
+			try {
+				const onLoadMore = vi.fn();
+				render(
+					<StrictMode>
+						<ColumnScrollArea
+							pagination={{
+								hasMore: true,
+								isLoadingMore: false,
+								onLoadMore,
+								lastLoadMoreFailed: true,
+							}}
+						>
+							<div />
+						</ColumnScrollArea>
+					</StrictMode>,
+				);
+
+				vi.advanceTimersByTime(4000);
+				expect(onLoadMore).toHaveBeenCalledTimes(1);
 			} finally {
 				vi.useRealTimers();
 			}
