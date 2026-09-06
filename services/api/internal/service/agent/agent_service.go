@@ -2954,6 +2954,20 @@ func (s *Service) checkParallelismCapacity(ctx context.Context, agentID uuid.UUI
 //     folder that isn't its configured default — one this exact check has
 //     never seen before and has no per-agent counter for.
 //
+// "Free" is not just an exact folderID match: the repository query behind
+// CountRunningConversationsInFolder also counts a conversation running in
+// any ANCESTOR or DESCENDANT of folderID within the same environment.
+// environment_folders.path is an absolute filesystem path inside the
+// environment's shared container — a parent folder and anything nested
+// inside it are the same directory tree on disk, so a conversation running
+// in the parent is already touching whatever a conversation about to start
+// in the child would touch, and vice versa; treating them as unrelated
+// slots would just let the exact-match version of this same problem back
+// in one level up (or down) the tree. A conversation with no specific
+// folder set (environment_folder_id NULL) is treated as spanning the whole
+// environment — see folderOverlapPredicate on the repository side for the
+// exact predicate.
+//
 // Both agent capacity and folder capacity must hold for a dispatch to
 // proceed — see checkDispatchCapacity, which combines them. onBusy mirrors
 // checkParallelismCapacity's contract exactly: OnBusyForce always returns
@@ -3283,16 +3297,6 @@ func (s *Service) AdvanceQueue(ctx context.Context, agentID uuid.UUID, maxDispat
 // meaningful regardless of how many terminal events arrive. Returns whether
 // it actually dispatched something.
 func (s *Service) AdvanceFolderQueue(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (dispatchedOne bool, err error) {
-	folderFree, err := s.checkFolderCapacity(ctx, environmentID, folderID, agentdom.OnBusyQueue)
-	if err != nil {
-		return false, err
-	}
-	if !folderFree {
-		// Someone else (another AdvanceFolderQueue call, or a fresh
-		// dispatch racing this exact moment) already claimed it first.
-		return false, nil
-	}
-
 	var skipped []*agentdom.PendingTrigger
 	// Wrapped in a closure, not `defer s.requeueSkipped(ctx, skipped, &err)`
 	// directly: a bare defer call evaluates its arguments immediately, which
@@ -3302,6 +3306,18 @@ func (s *Service) AdvanceFolderQueue(ctx context.Context, environmentID uuid.UUI
 	defer func() { s.requeueSkipped(ctx, skipped, &err) }()
 
 	for {
+		// DequeueOldestPendingTriggerForFolder matches by path overlap (see
+		// folderOverlapPredicate on the repository side), so a candidate it
+		// returns can legitimately name a *different* folder than
+		// folderID — a parent, a child, or the same one. That means its own
+		// occupancy can't be assumed free just because folderID itself is:
+		// two unrelated siblings both nested under folderID neither overlap
+		// each other nor need to wait on one another, so this re-checks
+		// each candidate's own folder fresh instead of gating the whole
+		// call on folderID's — a single upfront check here would wrongly
+		// skip a genuinely dispatchable sibling whenever folderID's parent
+		// scope also happens to overlap some unrelated still-running
+		// conversation.
 		pending, dequeueErr := s.repo.DequeueOldestPendingTriggerForFolder(ctx, environmentID, folderID)
 		if dequeueErr != nil {
 			return dispatchedOne, dequeueErr
@@ -3310,12 +3326,23 @@ func (s *Service) AdvanceFolderQueue(ctx context.Context, environmentID uuid.UUI
 			return dispatchedOne, nil
 		}
 
-		agentOK, capErr := s.checkParallelismCapacity(ctx, pending.AgentID, agentdom.OnBusyQueue)
+		folderFree, capErr := s.checkFolderCapacity(ctx, environmentID, pending.EnvironmentFolderID, agentdom.OnBusyQueue)
 		if capErr != nil {
 			return dispatchedOne, capErr
 		}
+		if !folderFree {
+			// Something else still overlaps THIS candidate's own folder
+			// (not necessarily folderID) — leave it queued.
+			skipped = append(skipped, pending)
+			continue
+		}
+
+		agentOK, agentErr := s.checkParallelismCapacity(ctx, pending.AgentID, agentdom.OnBusyQueue)
+		if agentErr != nil {
+			return dispatchedOne, agentErr
+		}
 		if !agentOK {
-			// This folder is free, but the item's own agent isn't right
+			// Its folder is free, but the item's own agent isn't right
 			// now — not this call's constraint to solve; that agent's own
 			// AdvanceQueue call will retry this exact item once ITS slot
 			// frees up.

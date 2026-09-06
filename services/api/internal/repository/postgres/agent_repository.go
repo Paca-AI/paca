@@ -1263,11 +1263,47 @@ func (r *AgentRepository) CountRunningConversations(ctx context.Context, agentID
 func (r *AgentRepository) CountRunningConversationsInFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error) {
 	var count int
 	err := r.db.GetContext(ctx, &count, `
-		SELECT count(*) FROM agent_conversations
-		WHERE status = 'running' AND environment_id = $1
-		  AND environment_folder_id IS NOT DISTINCT FROM $2`,
+		SELECT count(*)
+		FROM agent_conversations c
+		LEFT JOIN environment_folders running_folder ON running_folder.id = c.environment_folder_id
+		LEFT JOIN environment_folders target_folder ON target_folder.id = $2
+		WHERE c.status = 'running' AND c.environment_id = $1
+		  AND (`+folderOverlapPredicate("c.environment_folder_id", "running_folder", "target_folder")+`)`,
 		environmentID.String(), nullableUUIDString(uuidOrNil(folderID)))
 	return count, err
+}
+
+// folderOverlapPredicate is the shared "these two folders share a working
+// directory" condition behind CountRunningConversationsInFolder and
+// DequeueOldestPendingTriggerForFolder — see checkFolderCapacity's doc
+// comment on the server side for why this exists as its own constraint
+// independent of ParallelismLimit.
+//
+// environment_folders.path is an absolute filesystem path inside the
+// environment's container (see that struct's doc comment), unique per
+// environment — a folder and any folder path-nested inside it are the same
+// underlying directory tree on disk, so two conversations running one in
+// each still race the same files a plain exact-folder-match would have
+// caught. starts_with (not LIKE, which would treat any '%'/'_' that
+// happened to appear in a path as a wildcard) checks that nesting in both
+// directions, since either side of the comparison could be the ancestor.
+//
+// nullFolderIDCol is the raw (non-joined) environment_folder_id column for
+// "this side" of the comparison — checked directly rather than via
+// runningAlias.path IS NULL so a row whose folder was itself deleted out
+// from under it (environment_folders row gone, but the FK column an
+// orphaned non-NULL UUID — shouldn't happen, but see it coming) isn't
+// silently treated the same as "no folder set". A NULL folder on either
+// side is treated as "the whole environment" and conflicts with every
+// folder in it, including another NULL-folder conversation — the
+// conservative reading when a conversation's own scope isn't narrowed to
+// one specific directory.
+func folderOverlapPredicate(nullFolderIDCol, runningAlias, targetAlias string) string {
+	return nullFolderIDCol + ` IS NULL
+		OR ` + targetAlias + `.path IS NULL
+		OR ` + runningAlias + `.path = ` + targetAlias + `.path
+		OR starts_with(` + runningAlias + `.path, ` + targetAlias + `.path || '/')
+		OR starts_with(` + targetAlias + `.path, ` + runningAlias + `.path || '/')`
 }
 
 // CreatePendingTrigger persists a trigger held back from dispatch.
@@ -1286,6 +1322,14 @@ func (r *AgentRepository) CreatePendingTrigger(ctx context.Context, t *agentdom.
 }
 
 const pendingTriggerSelectCols = `id, agent_id, conversation_id, topic, payload, environment_id, environment_folder_id, created_at`
+
+// pendingTriggerSelectColsQualified is pendingTriggerSelectCols with every
+// column qualified by the "pt" alias — required once a query joins
+// agent_pending_triggers against environment_folders (see
+// DequeueOldestPendingTriggerForFolder below), since environment_folders
+// has its own id/created_at columns that would otherwise make an
+// unqualified SELECT ambiguous.
+const pendingTriggerSelectColsQualified = `pt.id, pt.agent_id, pt.conversation_id, pt.topic, pt.payload, pt.environment_id, pt.environment_folder_id, pt.created_at`
 
 // DequeueOldestPendingTrigger atomically returns and deletes agentID's
 // oldest PendingTrigger (FIFO), or (nil, nil) if it has none. FOR UPDATE
@@ -1309,12 +1353,15 @@ func (r *AgentRepository) DequeueOldestPendingTrigger(ctx context.Context, agent
 // CountRunningConversationsInFolder uses.
 func (r *AgentRepository) DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*agentdom.PendingTrigger, error) {
 	return r.dequeueOldestPendingTrigger(ctx, `
-		SELECT `+pendingTriggerSelectCols+`
-		FROM agent_pending_triggers
-		WHERE environment_id = $1 AND environment_folder_id IS NOT DISTINCT FROM $2
-		ORDER BY created_at ASC
+		SELECT `+pendingTriggerSelectColsQualified+`
+		FROM agent_pending_triggers pt
+		LEFT JOIN environment_folders pt_folder ON pt_folder.id = pt.environment_folder_id
+		LEFT JOIN environment_folders target_folder ON target_folder.id = $2
+		WHERE pt.environment_id = $1
+		  AND (`+folderOverlapPredicate("pt.environment_folder_id", "pt_folder", "target_folder")+`)
+		ORDER BY pt.created_at ASC
 		LIMIT 1
-		FOR UPDATE SKIP LOCKED`, environmentID.String(), nullableUUIDString(uuidOrNil(folderID)))
+		FOR UPDATE OF pt SKIP LOCKED`, environmentID.String(), nullableUUIDString(uuidOrNil(folderID)))
 }
 
 // dequeueOldestPendingTrigger is the shared SELECT-then-DELETE-then-return

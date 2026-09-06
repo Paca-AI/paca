@@ -144,11 +144,15 @@ type ConversationRepository interface {
 	// dispatchOrEnqueue and AdvanceQueue compare against ParallelismLimit.
 	CountRunningConversations(ctx context.Context, agentID uuid.UUID) (int, error)
 	// CountRunningConversationsInFolder returns how many conversations,
-	// across every agent, are currently status "running" and attached to
-	// environmentID/folderID — the count checkFolderCapacity compares
-	// against zero. folderID nil matches conversations attached to
-	// environmentID with no specific folder set, distinct from any real
-	// folder within that same environment.
+	// across every agent, are currently status "running" and occupying
+	// folderID (or any of its ancestor/descendant folders — see the
+	// postgres implementation's folderOverlapPredicate for why a folder and
+	// anything path-nested inside it share the same working directory on
+	// disk and so count as the same occupied slot) within environmentID —
+	// the count checkFolderCapacity compares against zero. folderID nil
+	// matches (and is matched by) every folder in environmentID, treating a
+	// conversation with no specific folder set as spanning the whole
+	// environment.
 	CountRunningConversationsInFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error)
 	// CreatePendingTrigger persists a trigger that couldn't be dispatched
 	// immediately — see PendingTrigger's doc comment.
@@ -162,9 +166,16 @@ type ConversationRepository interface {
 	DequeueOldestPendingTrigger(ctx context.Context, agentID uuid.UUID) (*PendingTrigger, error)
 	// DequeueOldestPendingTriggerForFolder is DequeueOldestPendingTrigger's
 	// folder-scoped sibling: finds and removes the oldest PendingTrigger
-	// targeting environmentID/folderID, regardless of which agent it
-	// belongs to, or (nil, nil) if none. Same FOR UPDATE SKIP LOCKED
-	// requirement and rationale.
+	// whose own target folder overlaps environmentID/folderID (same
+	// ancestor/descendant matching as CountRunningConversationsInFolder —
+	// the returned trigger's folder need not equal folderID exactly),
+	// regardless of which agent it belongs to, or (nil, nil) if none. Same
+	// FOR UPDATE SKIP LOCKED requirement and rationale. Because a match
+	// isn't necessarily an exact folderID match, a caller dequeuing "to see
+	// what was waiting on folderID" must still re-verify the returned
+	// trigger's OWN folder is actually free (see AdvanceFolderQueue) before
+	// dispatching it — freeing folderID doesn't guarantee every folder that
+	// merely overlaps it is also fully free of unrelated occupants.
 	DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*PendingTrigger, error)
 	// DeletePendingTriggerByConversationID removes conversationID's pending
 	// trigger row, if it has one, reporting whether a row actually existed

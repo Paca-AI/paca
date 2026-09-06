@@ -5089,3 +5089,74 @@ func TestAdvanceFolderQueue_RequeuesWhenItsAgentIsBusy(t *testing.T) {
 		assert.Equal(t, pending.ID, reinserted[0].ID)
 	}
 }
+
+// TestAdvanceFolderQueue_ChecksEachCandidatesOwnFolderNotJustTheOneThatFreed
+// guards against reintroducing a single upfront checkFolderCapacity(folderID)
+// gate (an earlier version of this function had exactly that): with
+// ancestor/descendant matching, DequeueOldestPendingTriggerForFolder can
+// return a candidate targeting a *different* folder than the one that just
+// freed (a parent, a child, or an unrelated sibling that merely shares an
+// ancestor with it) — so folderID no longer being occupied doesn't mean
+// every such candidate is actually free. Here, the oldest pending item's
+// own folder is still occupied by something unrelated to the conversation
+// that just finished; a newer item behind it, in a genuinely free sibling
+// folder, must still get dispatched instead of being blocked by the older
+// one's unrelated occupant.
+func TestAdvanceFolderQueue_ChecksEachCandidatesOwnFolderNotJustTheOneThatFreed(t *testing.T) {
+	envID := uuid.New()
+	freedFolderID := uuid.New()     // the folder whose conversation just finished
+	stillBusyFolderID := uuid.New() // a sibling, unrelated occupant still running here
+	freeFolderID := uuid.New()      // genuinely free
+	agentID := uuid.New()
+	convOld := uuid.New()
+	convNew := uuid.New()
+	itemOld := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: convOld, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &stillBusyFolderID, CreatedAt: time.Now().Add(-time.Minute)}
+	itemNew := &agentdom.PendingTrigger{ID: uuid.New(), AgentID: agentID, ConversationID: convNew, Topic: "agent.chat_message", EnvironmentID: &envID, EnvironmentFolderID: &freeFolderID, CreatedAt: time.Now()}
+
+	queue := []*agentdom.PendingTrigger{itemOld, itemNew}
+	var claimedID uuid.UUID
+	var reinserted []*agentdom.PendingTrigger
+	repo := &mockAgentRepo{
+		countRunningConversationsInFolder: func(_ context.Context, _ uuid.UUID, folderID *uuid.UUID) (int, error) {
+			if folderID != nil && *folderID == stillBusyFolderID {
+				return 1, nil
+			}
+			return 0, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, ParallelismLimit: 10}, nil
+		},
+		countRunningConversations: func(context.Context, uuid.UUID) (int, error) {
+			return 0, nil
+		},
+		dequeueOldestPendingTriggerForFolder: func(context.Context, uuid.UUID, *uuid.UUID) (*agentdom.PendingTrigger, error) {
+			if len(queue) == 0 {
+				return nil, nil
+			}
+			next := queue[0]
+			queue = queue[1:]
+			return next, nil
+		},
+		createPendingTrigger: func(_ context.Context, t *agentdom.PendingTrigger) error {
+			reinserted = append(reinserted, t)
+			return nil
+		},
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			return &agentdom.AgentConversation{ID: id, AgentID: agentID, Status: "queued", EnvironmentID: &envID}, nil
+		},
+		claimConversationStatus: func(_ context.Context, id uuid.UUID, _, _ string) (bool, error) {
+			claimedID = id
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	dispatchedOne, err := svc.AdvanceFolderQueue(context.Background(), envID, &freedFolderID)
+
+	assert.NoError(t, err)
+	assert.True(t, dispatchedOne, "the newer, genuinely free sibling must still be dispatched")
+	assert.Equal(t, convNew, claimedID)
+	if assert.Len(t, reinserted, 1, "the older, still-blocked item must be put back, not dropped") {
+		assert.Equal(t, itemOld.ID, reinserted[0].ID)
+	}
+}
