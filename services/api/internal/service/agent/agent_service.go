@@ -1414,28 +1414,32 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 // — see its doc comment for the full authorization rule and why bare agent-
 // identity matching isn't sufficient on its own. Also requires the calling
 // agent to hold conversations.read (see
-// authorizeConversationsReadForConversation) before any of that self-scope
-// logic runs, including the same-conversation shortcut: the
-// read_conversation MCP tool is hidden entirely from an agent without
-// conversations.read (apps/mcp/src/permissions.ts), so backend enforcement
-// here must match that gate rather than only restrict cross-conversation
-// reads.
+// authorizeConversationsReadForConversation) to read any conversation other
+// than the one it's currently running as part of — see the same-conversation
+// shortcut below for why that one case is exempt.
 func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
 	target, err := s.repo.FindConversationByID(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
-		return nil, err
-	}
 	if target.AgentID != callerAgentID {
 		return nil, agentdom.ErrConversationNotFound
 	}
-	// Always allowed: an agent may read the conversation it's currently
-	// running as part of. Also short-circuits the common case (no other
-	// conversation was attached) without a second lookup.
+	// Always allowed, regardless of conversations.read: an agent may read
+	// the conversation it's currently running as part of — it already has
+	// this data as that conversation's own active participant, so gating it
+	// on a permission grant adds no protection while breaking the common
+	// case of a global-scope agent with no global role (conversations.read
+	// is backfilled onto project_roles, not global_roles — see
+	// 000051_add_conversation_permissions.sql — and a global agent's own
+	// global role is optional, commonly left unset). Also short-circuits
+	// the common case (no other conversation was attached) without a
+	// second lookup.
 	if target.ID == currentConversationID {
 		return target, nil
+	}
+	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
+		return nil, err
 	}
 
 	// Anything else must be authorized against whichever human is driving

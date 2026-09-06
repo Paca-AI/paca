@@ -33,6 +33,19 @@
 
 BEGIN;
 
+-- A role granted the bare global wildcard "*" needs nothing else stored
+-- alongside it (authz.hasPermission short-circuits on "*" before looking at
+-- any other key) — collapse straight to {"*": true}, mirroring the
+-- frontend's dedupeGrantedPermissions (apps/web/src/lib/permissions.ts).
+-- Done as its own pass, before the domain-wildcard dedup below, so that
+-- dedup only ever has to reason about domain wildcards (e.g.
+-- "environments.*"), never the "*" superset case.
+UPDATE project_roles
+SET permissions = '{"*": true}'::jsonb,
+    updated_at = NOW()
+WHERE permissions @> '{"*": true}'::jsonb
+  AND permissions IS DISTINCT FROM '{"*": true}'::jsonb;
+
 UPDATE project_roles pr
 SET permissions = sub.new_permissions,
     updated_at = NOW()
@@ -49,9 +62,30 @@ FROM (
         -- before its last dot ("project.members" for
         -- "project.members.read"), matching the frontend's own keyPrefix()
         -- (apps/web/src/lib/permissions.ts) exactly.
+        --
+        -- COALESCE(..., 'false'::jsonb) matters: `jsonb -> missing_key`
+        -- returns SQL NULL, not jsonb false, when that domain has no
+        -- wildcard key at all in this row (the common case — most keys
+        -- have no wildcard sibling present). Without the COALESCE, that
+        -- NULL propagates through the surrounding AND/NOT into a NULL
+        -- WHERE-clause result, which Postgres treats the same as FALSE —
+        -- i.e. the row is silently dropped from jsonb_object_agg below,
+        -- permanently deleting a perfectly legitimate, non-redundant
+        -- permission any time the same role also happens to carry any
+        -- other domain-wildcard key at all (verified against
+        -- PROJECT_MANAGER's own shape: "projects.read"/"projects.write"/
+        -- "project.members.read"/"project.members.write" have no
+        -- "projects.*"/"project.members.*" sibling, but PROJECT_MANAGER
+        -- also carries "tasks.*" etc., which was enough to trigger this and
+        -- wipe out those four keys). COALESCE forces the missing-sibling
+        -- case to a real `false`, so the key is correctly recognised as
+        -- "not redundant" and kept.
         kv.key NOT LIKE '%.*'
         AND kv.value = 'true'::jsonb
-        AND pr2.permissions -> (substring(kv.key from '^(.*)\.[^.]+$') || '.*') = 'true'::jsonb
+        AND COALESCE(
+            pr2.permissions -> (substring(kv.key from '^(.*)\.[^.]+$') || '.*'),
+            'false'::jsonb
+        ) = 'true'::jsonb
     )
     GROUP BY pr2.id
 ) AS sub
