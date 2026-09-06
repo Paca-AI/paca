@@ -185,6 +185,9 @@
 				"committerEmailLabel": "커미터 이메일",
 				"dockerEnabledLabel": "Docker 액세스",
 				"dockerEnabledHint": "이 에이전트의 샌드박스 내에 전용 Docker 데몬을 제공합니다. 기본적으로 비활성화되어 있습니다 — 모든 대화의 시작 시간이 늘어나므로 실제로 Docker 명령을 실행하는 에이전트에만 활성화하세요.",
+				"parallelismLimitLabel": "동시 실행 제한",
+				"parallelismLimitHint": "이 에이전트가 동시에 실행할 수 있는 대화 수입니다. 초과된 작업은 자리가 날 때까지 대기열에서 기다립니다 — 기본값은 1이므로, 같은 작업 디렉터리에서 서로 충돌하지 않도록 티켓을 한 번에 하나씩 처리합니다.",
+				"parallelismLimitFixedHint": "이 에이전트는 1로 고정되어 있습니다 — 하나의 공유 디렉터리(ACP 에이전트의 로컬 체크아웃 또는 고정된 기본 환경)에서 작업하므로 한 번에 하나의 대화만 안전하게 실행할 수 있습니다.",
 				"environmentSection": "환경",
 				"defaultEnvironmentLabel": "기본 환경",
 				"defaultEnvironmentHint": "이 에이전트의 대화를 매번 새로 만드는 일회용 샌드박스 대신 정적 환경에 연결합니다.",
@@ -326,6 +329,15 @@
 			"loadingOlder": "불러오는 중…",
 			"newBelow_one": "새 메시지 {{count}}개",
 			"newBelow_other": "새 메시지 {{count}}개"
+		},
+		"busyDialog": {
+			"title": "에이전트가 사용 중입니다",
+			"description": "이 에이전트는 이미 {{running}}/{{limit}}개의 대화를 실행 중입니다. 이 메시지를 대기열에 추가하면 자리가 나는 대로 자동으로 시작되며, 아니면 지금 바로 보낼 수도 있습니다.",
+			"folderDescription": "다른 대화가 이미 이 환경 폴더에서 작업 중입니다. 이 메시지를 대기열에 추가하면 해당 대화가 끝나는 대로 자동으로 시작되며, 아니면 지금 바로 보낼 수도 있습니다.",
+			"cancel": "취소",
+			"queue": "대기열에 추가",
+			"force": "지금 보내기",
+			"cancelledError": "메시지를 보내지 않았습니다."
 		},
 		"thread": {
 			"composerPlaceholder": "에이전트에게 메시지…",

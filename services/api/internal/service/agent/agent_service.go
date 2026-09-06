@@ -10,11 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
@@ -35,6 +37,16 @@ type projectMemberWriter interface {
 type pluginFinder interface {
 	FindByCapability(ctx context.Context, capability string) ([]*plugindom.Plugin, error)
 }
+
+// defaultParallelismLimit/parallelismLimitCap clamp Agent.ParallelismLimit
+// the same way CreateAgent/UpdateAgent already clamp MaxIterations —
+// applied by CreateAgent/UpdateAgent/CreateGlobalAgent/UpdateGlobalAgent at
+// write time, and again defensively by checkParallelismCapacity in case a
+// row (or a directly-constructed Agent, e.g. in a test) predates this field.
+const (
+	defaultParallelismLimit = 1
+	parallelismLimitCap     = 10
+)
 
 // Service is the concrete AI Agent service.
 type Service struct {
@@ -221,16 +233,17 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 
 	now := time.Now()
 	a := &agentdom.Agent{
-		ID:             uuid.New(),
-		ProjectID:      projectID,
-		Name:           name,
-		Handle:         handle,
-		AgentType:      agentType,
-		MaxIterations:  in.MaxIterations,
-		TimeoutMinutes: in.TimeoutMinutes,
-		CreatedBy:      in.CreatedBy,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:               uuid.New(),
+		ProjectID:        projectID,
+		Name:             name,
+		Handle:           handle,
+		AgentType:        agentType,
+		MaxIterations:    in.MaxIterations,
+		TimeoutMinutes:   in.TimeoutMinutes,
+		ParallelismLimit: in.ParallelismLimit,
+		CreatedBy:        in.CreatedBy,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	switch agentType {
@@ -310,6 +323,11 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 	} else if a.TimeoutMinutes > timeoutMinutesLimit {
 		a.TimeoutMinutes = timeoutMinutesLimit
 	}
+	if a.ParallelismLimit <= 0 {
+		a.ParallelismLimit = defaultParallelismLimit
+	} else if a.ParallelismLimit > parallelismLimitCap {
+		a.ParallelismLimit = parallelismLimitCap
+	}
 
 	if in.DefaultEnvironmentID != nil {
 		envID, err := s.validateDefaultEnvironment(ctx, projectID, *in.DefaultEnvironmentID, agentdom.AgentScopeProject)
@@ -332,6 +350,9 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 	// environment ID still surfaces the more specific ErrDefaultEnvironmentInvalid.
 	if agentType == agentdom.AgentTypeProviderCLI && a.DefaultEnvironmentID == nil {
 		return nil, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
+	}
+	if err := validateParallelismLimit(a); err != nil {
+		return nil, err
 	}
 
 	// Atomically create the agent and its project membership in one transaction.
@@ -474,6 +495,19 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		}
 		a.TimeoutMinutes = v
 	}
+	oldParallelismLimit := a.ParallelismLimit
+	if oldParallelismLimit <= 0 {
+		oldParallelismLimit = defaultParallelismLimit
+	}
+	if in.ParallelismLimit != nil {
+		v := *in.ParallelismLimit
+		if v <= 0 {
+			v = defaultParallelismLimit
+		} else if v > parallelismLimitCap {
+			v = parallelismLimitCap
+		}
+		a.ParallelismLimit = v
+	}
 	if in.DefaultEnvironmentID != nil {
 		envID, err := s.validateDefaultEnvironment(ctx, projectID, *in.DefaultEnvironmentID, a.AgentScope)
 		if err != nil {
@@ -505,10 +539,21 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 	if a.AgentType == agentdom.AgentTypeProviderCLI && a.DefaultEnvironmentID == nil {
 		return nil, agentdom.ErrDefaultEnvironmentRequiredForCLIProvider
 	}
+	if err := validateParallelismLimit(a); err != nil {
+		return nil, err
+	}
 	a.UpdatedAt = time.Now()
 
 	if err := s.repo.UpdateAgent(ctx, a); err != nil {
 		return nil, err
+	}
+	// Raising the limit frees slots with no terminal-status event of their
+	// own to react to — see AdvanceQueue's doc comment. Best-effort: a
+	// missed catch-up here just leaves the newly-freed slot(s) idle until the
+	// next conversation of this agent's actually finishes (which advances
+	// the queue anyway), not a correctness problem.
+	if a.ParallelismLimit > oldParallelismLimit {
+		_, _ = s.AdvanceQueue(ctx, a.ID, a.ParallelismLimit-oldParallelismLimit)
 	}
 	return a, nil
 }
@@ -591,17 +636,18 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 
 	now := time.Now()
 	a := &agentdom.Agent{
-		ID:             uuid.New(),
-		AgentScope:     agentdom.AgentScopeGlobal,
-		GlobalRoleID:   in.GlobalRoleID,
-		Name:           name,
-		Handle:         handle,
-		AgentType:      agentType,
-		MaxIterations:  in.MaxIterations,
-		TimeoutMinutes: in.TimeoutMinutes,
-		CreatedBy:      in.CreatedBy,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:               uuid.New(),
+		AgentScope:       agentdom.AgentScopeGlobal,
+		GlobalRoleID:     in.GlobalRoleID,
+		Name:             name,
+		Handle:           handle,
+		AgentType:        agentType,
+		MaxIterations:    in.MaxIterations,
+		TimeoutMinutes:   in.TimeoutMinutes,
+		ParallelismLimit: in.ParallelismLimit,
+		CreatedBy:        in.CreatedBy,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	if agentType == agentdom.AgentTypeACP {
@@ -647,6 +693,14 @@ func (s *Service) CreateGlobalAgent(ctx context.Context, in agentdom.CreateGloba
 		a.TimeoutMinutes = 30
 	} else if a.TimeoutMinutes > timeoutMinutesLimit {
 		a.TimeoutMinutes = timeoutMinutesLimit
+	}
+	if a.ParallelismLimit <= 0 {
+		a.ParallelismLimit = defaultParallelismLimit
+	} else if a.ParallelismLimit > parallelismLimitCap {
+		a.ParallelismLimit = parallelismLimitCap
+	}
+	if err := validateParallelismLimit(a); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.CreateGlobalAgent(ctx, a); err != nil {
@@ -743,6 +797,19 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 		}
 		a.TimeoutMinutes = v
 	}
+	oldParallelismLimit := a.ParallelismLimit
+	if oldParallelismLimit <= 0 {
+		oldParallelismLimit = defaultParallelismLimit
+	}
+	if in.ParallelismLimit != nil {
+		v := *in.ParallelismLimit
+		if v <= 0 {
+			v = defaultParallelismLimit
+		} else if v > parallelismLimitCap {
+			v = parallelismLimitCap
+		}
+		a.ParallelismLimit = v
+	}
 	if in.GlobalRoleID != nil {
 		if *in.GlobalRoleID == uuid.Nil {
 			a.GlobalRoleID = nil
@@ -750,10 +817,17 @@ func (s *Service) UpdateGlobalAgent(ctx context.Context, agentID uuid.UUID, in a
 			a.GlobalRoleID = in.GlobalRoleID
 		}
 	}
+	if err := validateParallelismLimit(a); err != nil {
+		return nil, err
+	}
 	a.UpdatedAt = time.Now()
 
 	if err := s.repo.UpdateAgent(ctx, a); err != nil {
 		return nil, err
+	}
+	// See UpdateAgent's identical catch-up call for why.
+	if a.ParallelismLimit > oldParallelismLimit {
+		_, _ = s.AdvanceQueue(ctx, a.ID, a.ParallelismLimit-oldParallelismLimit)
 	}
 	return a, nil
 }
@@ -1579,6 +1653,14 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 	if err := s.repo.UpdateConversationStatus(ctx, conversationID, string(agentdom.ConversationStatusStopped)); err != nil {
 		return err
 	}
+	// If this conversation was still sitting in the parallelism backlog
+	// (agent_pending_triggers — see PendingTrigger's doc comment), remove
+	// its row so AdvanceQueue can never dequeue and dispatch it after it's
+	// already been marked stopped. wasQueued is false when it had already
+	// been dispatched (no pending-trigger row to begin with) — agent-runner
+	// was never told about a conversation this never reached, so there's
+	// nothing there to interrupt.
+	wasQueued, _ := s.repo.DeletePendingTriggerByConversationID(ctx, conversationID)
 	// Best-effort: a failure here shouldn't fail the stop itself (the
 	// conversation is already marked stopped and ai-agent is about to be
 	// told to tear it down) — same posture as sprintsvc.publishSprintActivity.
@@ -1589,6 +1671,9 @@ func (s *Service) StopConversation(ctx context.Context, projectID, conversationI
 		"conversation_id": conversationID.String(),
 		"status":          string(agentdom.ConversationStatusStopped),
 	})
+	if wasQueued {
+		return nil
+	}
 	return s.publishTrigger(ctx, events.TopicAgentStop, map[string]any{
 		"conversation_id": conversationID.String(),
 		"project_id":      projectID.String(),
@@ -1799,6 +1884,18 @@ func (s *Service) StopGlobalConversation(ctx context.Context, conversationID, ac
 	if err := s.repo.UpdateConversationStatus(ctx, conversationID, string(agentdom.ConversationStatusStopped)); err != nil {
 		return err
 	}
+	// See StopConversation's identical cleanup for why: a global-chat
+	// conversation can be queued behind a busy global agent too, and
+	// AdvanceQueue needs the StreamAgentConversationStatus publish below to
+	// ever learn this agent's slot just freed.
+	wasQueued, _ := s.repo.DeletePendingTriggerByConversationID(ctx, conversationID)
+	_ = s.publisher.AppendFlat(ctx, events.StreamAgentConversationStatus, map[string]any{
+		"conversation_id": conversationID.String(),
+		"status":          string(agentdom.ConversationStatusStopped),
+	})
+	if wasQueued {
+		return nil
+	}
 	return s.publishTrigger(ctx, events.TopicAgentStop, map[string]any{
 		"conversation_id": conversationID.String(),
 	})
@@ -1910,8 +2007,27 @@ func (s *Service) ListChatSessions(ctx context.Context, projectID, agentID, memb
 // resolveChatEnvironment); folderID nil auto-selects the environment's sole
 // folder, or fails with ErrFolderNotFound if that's ambiguous — the caller
 // must ask the user to pick.
-func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+		return nil, nil, err
+	}
+
+	// Resolved before the capacity check below (which needs it to also
+	// enforce checkFolderCapacity), not just before createConversation —
+	// resolveConversationEnvironment has no side effects, so reordering it
+	// earlier is free, and keeps "an ask rejection leaves nothing behind"
+	// true for the folder constraint too, not just the agent one.
+	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, environmentID, folderID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Starting a session always creates a brand new conversation (there is
+	// no existing one yet to be "busy"), so the capacity check applies
+	// unconditionally here — decided once, before anything is persisted, so
+	// an "ask" rejection leaves no chat session or conversation behind.
+	dispatchNow, err := s.checkDispatchCapacity(ctx, agentID, envID, resolvedFolderID, onBusy)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -1930,11 +2046,6 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 		return nil, nil, err
 	}
 
-	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, environmentID, folderID)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	conv, err := s.createConversation(ctx, projectID, agentID, &memberID, agentdom.AgentConversation{
 		TriggerType:         "chat_message",
 		ChatSessionID:       &session.ID,
@@ -1945,7 +2056,9 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 		return nil, nil, err
 	}
 
-	if err := s.publishChatTrigger(ctx, agentID, conv.ID, session.ID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir, contextItems); err != nil {
+	// needsClaim=true: this conversation was just created fresh above, still
+	// "queued", never claimed by anything else.
+	if err := s.publishChatTrigger(ctx, agentID, conv.ID, session.ID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, resolvedFolderID, workdir, contextItems, dispatchNow, true); err != nil {
 		return nil, nil, err
 	}
 
@@ -2075,7 +2188,7 @@ func (s *Service) resolveWorkdirForConversation(ctx context.Context, projectID u
 // is nothing left to attach to." Only an ordinary (non-environment) LLM
 // conversation going terminal still falls through to a brand-new
 // conversation_id below — its ephemeral sandbox really is gone for good.
-func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
+func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -2095,6 +2208,13 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 		return nil, err
 	}
 
+	// dispatchNow is decided by whichever branch below actually goes on to
+	// resume/create a conversation — see checkParallelismCapacity's doc
+	// comment. It stays false only if that never happens (the function
+	// returns early as busy first). freshConversation is true only for the
+	// conv==nil branch below (a brand-new "queued" row, never claimed by
+	// anything else yet) — see publishChatTrigger's needsClaim doc comment.
+	var dispatchNow, freshConversation bool
 	conv := latest
 	if latest != nil {
 		// Validate a resumed conversation's environment/folder still
@@ -2117,12 +2237,28 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 			// for the same chat session.
 			return nil, agentdom.ErrConversationBusy
 		case agentdom.ConversationStatusPaused:
+			// This session's own conversation is idle (not itself occupying
+			// a running slot), so the capacity check runs fresh here —
+			// before the claim below, so an "ask" rejection leaves the
+			// conversation untouched at "paused" rather than stuck
+			// mid-claim. latest.EnvironmentID/EnvironmentFolderID (already
+			// validated above) feed checkDispatchCapacity's folder check —
+			// resuming in place is still "starting a turn in this folder"
+			// as far as another conversation sharing it is concerned.
+			dispatchNow, err = s.checkDispatchCapacity(ctx, session.AgentID, latest.EnvironmentID, latest.EnvironmentFolderID, onBusy)
+			if err != nil {
+				return nil, err
+			}
+			targetStatus := string(agentdom.ConversationStatusRunning)
+			if !dispatchNow {
+				targetStatus = string(agentdom.ConversationStatusQueued)
+			}
 			// Resume — claim the conversation atomically so two concurrent
 			// replies can't both win and double-publish a resume trigger for
 			// the same conversation_id. The loser is told to retry as busy
 			// rather than silently racing ai-agent's sandbox reattachment.
 			claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
-				string(agentdom.ConversationStatusPaused), string(agentdom.ConversationStatusRunning))
+				string(agentdom.ConversationStatusPaused), targetStatus)
 			if err != nil {
 				return nil, err
 			}
@@ -2135,6 +2271,17 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 				return nil, err
 			}
 			if agent.AgentType == agentdom.AgentTypeACP || latest.EnvironmentID != nil {
+				// See the paused case's identical checkDispatchCapacity call
+				// above for why latest's own environment/folder feed in here
+				// too (nil/nil for the ACP branch, which never has one).
+				dispatchNow, err = s.checkDispatchCapacity(ctx, session.AgentID, latest.EnvironmentID, latest.EnvironmentFolderID, onBusy)
+				if err != nil {
+					return nil, err
+				}
+				targetStatus := string(agentdom.ConversationStatusRunning)
+				if !dispatchNow {
+					targetStatus = string(agentdom.ConversationStatusQueued)
+				}
 				// Resume — same atomic-claim treatment as the paused case
 				// above, just starting from a terminal status instead of
 				// "paused". Two different reasons land on the same
@@ -2146,7 +2293,7 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 				// container to reattach to, not an ephemeral sandbox
 				// that's already gone.
 				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
-					latest.Status, string(agentdom.ConversationStatusRunning))
+					latest.Status, targetStatus)
 				if err != nil {
 					return nil, err
 				}
@@ -2170,6 +2317,11 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 		// environment-backed LLM conversation resumes in place instead (same
 		// switch), so whenever this runs with latest non-nil,
 		// latest.EnvironmentID is already guaranteed nil.
+		dispatchNow, err = s.checkParallelismCapacity(ctx, session.AgentID, onBusy)
+		if err != nil {
+			return nil, err
+		}
+		freshConversation = true
 		conv, err = s.createConversation(ctx, projectID, session.AgentID, &memberID, agentdom.AgentConversation{
 			TriggerType:   "chat_message",
 			ChatSessionID: &sessionID,
@@ -2188,7 +2340,7 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 	if err != nil {
 		return nil, err
 	}
-	if err := s.publishChatTrigger(ctx, session.AgentID, conv.ID, sessionID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, workdir, contextItems); err != nil {
+	if err := s.publishChatTrigger(ctx, session.AgentID, conv.ID, sessionID, projectID, memberID, message, s.gatherRepoPluginIDs(ctx), envID, conv.EnvironmentFolderID, workdir, contextItems, dispatchNow, freshConversation); err != nil {
 		return nil, err
 	}
 
@@ -2213,7 +2365,14 @@ func (s *Service) ListGlobalChatSessions(ctx context.Context, agentID, actorUser
 
 // StartGlobalChatSession creates a new global chat session and publishes
 // the initial message trigger.
-func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+	// See StartChatSession's identical check for why this runs unconditionally
+	// and before anything is persisted.
+	dispatchNow, err := s.checkParallelismCapacity(ctx, agentID, onBusy)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	now := time.Now()
 
 	session := &agentdom.AgentChatSession{
@@ -2236,7 +2395,9 @@ func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUser
 		return nil, nil, err
 	}
 
-	if err := s.publishGlobalChatTrigger(ctx, agentID, conv.ID, session.ID, actorUserID, message, contextItems); err != nil {
+	// needsClaim=true: this conversation was just created fresh above, still
+	// "queued", never claimed by anything else.
+	if err := s.publishGlobalChatTrigger(ctx, agentID, conv.ID, session.ID, actorUserID, message, contextItems, dispatchNow, true); err != nil {
 		return nil, nil, err
 	}
 
@@ -2246,7 +2407,7 @@ func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUser
 // SendGlobalChatMessage sends a message to an existing global chat session
 // and publishes the trigger. Mirrors SendChatMessage's resume/terminal
 // handling — see its doc comment for the pause/resume rationale.
-func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
+func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentConversation, error) {
 	session, err := s.repo.FindChatSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -2260,14 +2421,24 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 		return nil, err
 	}
 
+	// freshConversation: see SendChatMessage's identical variable doc comment.
+	var dispatchNow, freshConversation bool
 	conv := latest
 	if latest != nil {
 		switch agentdom.ConversationStatus(latest.Status) {
 		case agentdom.ConversationStatusRunning, agentdom.ConversationStatusQueued:
 			return nil, agentdom.ErrConversationBusy
 		case agentdom.ConversationStatusPaused:
+			dispatchNow, err = s.checkParallelismCapacity(ctx, session.AgentID, onBusy)
+			if err != nil {
+				return nil, err
+			}
+			targetStatus := string(agentdom.ConversationStatusRunning)
+			if !dispatchNow {
+				targetStatus = string(agentdom.ConversationStatusQueued)
+			}
 			claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
-				string(agentdom.ConversationStatusPaused), string(agentdom.ConversationStatusRunning))
+				string(agentdom.ConversationStatusPaused), targetStatus)
 			if err != nil {
 				return nil, err
 			}
@@ -2280,8 +2451,16 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 				return nil, err
 			}
 			if agent.AgentType == agentdom.AgentTypeACP {
+				dispatchNow, err = s.checkParallelismCapacity(ctx, session.AgentID, onBusy)
+				if err != nil {
+					return nil, err
+				}
+				targetStatus := string(agentdom.ConversationStatusRunning)
+				if !dispatchNow {
+					targetStatus = string(agentdom.ConversationStatusQueued)
+				}
 				claimed, err := s.repo.ClaimConversationStatus(ctx, latest.ID,
-					latest.Status, string(agentdom.ConversationStatusRunning))
+					latest.Status, targetStatus)
 				if err != nil {
 					return nil, err
 				}
@@ -2295,6 +2474,11 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 	}
 
 	if conv == nil {
+		dispatchNow, err = s.checkParallelismCapacity(ctx, session.AgentID, onBusy)
+		if err != nil {
+			return nil, err
+		}
+		freshConversation = true
 		conv, err = s.createGlobalConversation(ctx, session.AgentID, actorUserID, agentdom.AgentConversation{
 			TriggerType:   "chat_message",
 			ChatSessionID: &sessionID,
@@ -2306,7 +2490,7 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 	// else: resume — reuse the same conversation_id so ai-agent reattaches
 	// to the sandbox it kept alive rather than cold-starting a new one.
 
-	if err := s.publishGlobalChatTrigger(ctx, session.AgentID, conv.ID, sessionID, actorUserID, message, contextItems); err != nil {
+	if err := s.publishGlobalChatTrigger(ctx, session.AgentID, conv.ID, sessionID, actorUserID, message, contextItems, dispatchNow, freshConversation); err != nil {
 		return nil, err
 	}
 
@@ -2478,7 +2662,7 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 		payload["environment_id"] = envID.String()
 		payload["workdir"] = workdir
 	}
-	_ = s.publishTrigger(ctx, events.TopicAgentTaskAssigned, payload)
+	_ = s.dispatchOrEnqueue(ctx, agentID, conv.ID, events.TopicAgentTaskAssigned, payload, envID, resolvedFolderID)
 	return conv, nil
 }
 
@@ -2531,7 +2715,7 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 		payload["environment_id"] = envID.String()
 		payload["workdir"] = workdir
 	}
-	_ = s.publishTrigger(ctx, events.TopicAgentAutomationMessage, payload)
+	_ = s.dispatchOrEnqueue(ctx, agentID, conv.ID, events.TopicAgentAutomationMessage, payload, envID, resolvedFolderID)
 	return conv, nil
 }
 
@@ -2582,7 +2766,7 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 		payload["environment_id"] = envID.String()
 		payload["workdir"] = workdir
 	}
-	_ = s.publishTrigger(ctx, events.TopicAgentCommentMention, payload)
+	_ = s.dispatchOrEnqueue(ctx, agentID, conv.ID, events.TopicAgentCommentMention, payload, envID, resolvedFolderID)
 	return conv, nil
 }
 
@@ -2636,7 +2820,7 @@ func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentI
 		payload["environment_id"] = envID.String()
 		payload["workdir"] = workdir
 	}
-	_ = s.publishTrigger(ctx, events.TopicAgentDescriptionWrite, payload)
+	_ = s.dispatchOrEnqueue(ctx, agentID, conv.ID, events.TopicAgentDescriptionWrite, payload, envID, resolvedFolderID)
 	return conv, nil
 }
 
@@ -2651,6 +2835,525 @@ func (s *Service) publishTrigger(ctx context.Context, topic string, payload map[
 	return s.publisher.AppendFlat(ctx, events.StreamAgentTriggers, payload)
 }
 
+// requiresSerialDispatch reports whether agent's conversations must never
+// run more than one at a time, regardless of its configured
+// ParallelismLimit, because a second one running concurrently would mean
+// two turns writing into the very same shared working directory:
+//
+//   - ACP-type agents always resolve to the user's own local checkout via
+//     apps/acp-bridge — and independently of that, apps/acp-bridge's own
+//     Runner session model (keyed by task_id or agent_id depending on its
+//     configured scope, never by conversation_id — see runner.go's
+//     sessionKeyFor) rejects a second concurrent turn sharing its session
+//     key rather than queueing it. Even an agent/task pairing that happens
+//     not to collide would just be relying on happenstance the bridge
+//     itself gives no guarantee about, so this applies to every ACP agent
+//     unconditionally.
+//   - Any agent (LLM or provider_cli) attached to a static
+//     DefaultEnvironmentID: unlike the default ephemeral sandbox (a fresh,
+//     isolated checkout per conversation), a static environment's
+//     filesystem is shared across every conversation attached to it, so two
+//     running at once would be exactly the same-directory race this whole
+//     feature exists to prevent (see https://github.com/Paca-AI/paca/issues/462).
+//     provider_cli agents always fall into this case, since they require a
+//     DefaultEnvironmentID unconditionally.
+//
+// Enforced both at write time (see validateParallelismLimit, called from
+// CreateAgent/UpdateAgent/CreateGlobalAgent/UpdateGlobalAgent) and
+// defensively here at dispatch time (effectiveParallelismLimit) — the
+// latter also covers an agent updated to attach a DefaultEnvironmentID
+// after its ParallelismLimit was already set above 1, and any row that
+// predates this validation.
+func requiresSerialDispatch(agent *agentdom.Agent) bool {
+	return agent.AgentType == agentdom.AgentTypeACP || agent.DefaultEnvironmentID != nil
+}
+
+// effectiveParallelismLimit resolves agent's real dispatch limit: its
+// configured ParallelismLimit, defaulted and capped the same way
+// CreateAgent/UpdateAgent already do at write time (defends against a
+// directly-constructed Agent, e.g. an older row predating this column, or a
+// test fixture, whose zero value would otherwise read as "never dispatch"),
+// then forced down to 1 if requiresSerialDispatch — see that function's doc
+// comment for why this override can never be configured away.
+func effectiveParallelismLimit(agent *agentdom.Agent) int {
+	limit := agent.ParallelismLimit
+	if limit <= 0 {
+		limit = defaultParallelismLimit
+	} else if limit > parallelismLimitCap {
+		limit = parallelismLimitCap
+	}
+	if requiresSerialDispatch(agent) && limit > 1 {
+		limit = 1
+	}
+	return limit
+}
+
+// validateParallelismLimit rejects a ParallelismLimit above 1 on an agent
+// that requiresSerialDispatch — called from CreateAgent/UpdateAgent/
+// CreateGlobalAgent/UpdateGlobalAgent after every other field (in
+// particular AgentType and DefaultEnvironmentID) has already been resolved
+// to its final value, so this sees exactly the combination that would be
+// persisted.
+func validateParallelismLimit(a *agentdom.Agent) error {
+	if a.ParallelismLimit > 1 && requiresSerialDispatch(a) {
+		return agentdom.ErrParallelismLimitRequiresIsolatedSandbox
+	}
+	return nil
+}
+
+// checkParallelismCapacity decides whether a new turn for agentID may
+// dispatch right now, given onBusy ("" | agentdom.OnBusyQueue |
+// agentdom.OnBusyForce — see those constants' doc comments).
+//
+//   - OnBusyForce always returns (true, nil): skip the check entirely.
+//   - Otherwise, dispatchNow is true when agentID currently has fewer than
+//     its effective ParallelismLimit (see effectiveParallelismLimit)
+//     conversations in status "running".
+//   - When there's no free slot: OnBusyQueue returns (false, nil) — the
+//     caller must hold the trigger in agent_pending_triggers instead of
+//     publishing it. "" (ask, the default) instead returns a non-nil
+//     *apierr.Error (CodeAgentParallelismLimitReached) carrying the
+//     running/limit counts, so an interactive caller can surface it to a
+//     human — with nothing created or mutated yet — instead of silently
+//     picking a side.
+func (s *Service) checkParallelismCapacity(ctx context.Context, agentID uuid.UUID, onBusy string) (dispatchNow bool, err error) {
+	if onBusy == agentdom.OnBusyForce {
+		return true, nil
+	}
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return false, err
+	}
+	limit := effectiveParallelismLimit(agent)
+	running, err := s.repo.CountRunningConversations(ctx, agentID)
+	if err != nil {
+		return false, err
+	}
+	if running < limit {
+		return true, nil
+	}
+	if onBusy == agentdom.OnBusyQueue {
+		return false, nil
+	}
+	return false, apierr.NewWithDetails(apierr.CodeAgentParallelismLimitReached,
+		fmt.Sprintf("agent is already running %d/%d task(s)", running, limit),
+		map[string]string{"running": strconv.Itoa(running), "limit": strconv.Itoa(limit)})
+}
+
+// checkFolderCapacity reports whether environmentID/folderID is free for a
+// new conversation to start working in, independently of which agent it
+// belongs to.
+//
+// This exists as its own constraint, separate from checkParallelismCapacity,
+// because the per-agent limit alone doesn't protect a shared folder from
+// every way it can actually be shared:
+//   - Two different agents can have the same DefaultEnvironmentID (nothing
+//     stops a project from pointing two agents at one persistent checkout).
+//   - StartChatSession accepts an explicit environment_id/folder_id
+//     override, so even one agent's own conversations can be aimed at a
+//     folder that isn't its configured default — one this exact check has
+//     never seen before and has no per-agent counter for.
+//
+// Both agent capacity and folder capacity must hold for a dispatch to
+// proceed — see checkDispatchCapacity, which combines them. onBusy mirrors
+// checkParallelismCapacity's contract exactly: OnBusyForce always returns
+// (true, nil); OnBusyQueue returns (false, nil) instead of erroring so the
+// caller holds the trigger in agent_pending_triggers rather than publishing
+// it; "" (ask, the default) returns a non-nil *apierr.Error
+// (CodeAgentEnvironmentFolderBusy) instead, with nothing created or
+// mutated yet.
+func (s *Service) checkFolderCapacity(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID, onBusy string) (dispatchNow bool, err error) {
+	if onBusy == agentdom.OnBusyForce {
+		return true, nil
+	}
+	occupied, err := s.repo.CountRunningConversationsInFolder(ctx, environmentID, folderID)
+	if err != nil {
+		return false, err
+	}
+	if occupied == 0 {
+		return true, nil
+	}
+	if onBusy == agentdom.OnBusyQueue {
+		return false, nil
+	}
+	return false, apierr.NewWithDetails(apierr.CodeAgentEnvironmentFolderBusy,
+		"another conversation is already running in this environment folder",
+		map[string]string{"environment_id": environmentID.String()})
+}
+
+// checkDispatchCapacity is checkParallelismCapacity extended with the
+// independent folder constraint checkFolderCapacity enforces — the single
+// entry point every dispatch decision in this file should call instead of
+// checkParallelismCapacity directly, so neither constraint can be
+// accidentally skipped. envID nil (the default ephemeral per-conversation
+// sandbox, or a global-chat conversation, which never has one at all) skips
+// the folder check entirely — there's no shared folder to protect.
+//
+// The agent check runs first and short-circuits: if it already fails (or
+// already produced the "ask" apierr.Error), that's returned as-is without
+// ever touching the folder — same posture as checkFolderCapacity itself,
+// just composed. This does mean a caller blocked by both constraints at
+// once sees only the agent-limit message, never both; that's an acceptable
+// simplification; either message correctly directs the human to the same
+// on_busy=queue|force retry.
+func (s *Service) checkDispatchCapacity(ctx context.Context, agentID uuid.UUID, envID, folderID *uuid.UUID, onBusy string) (dispatchNow bool, err error) {
+	dispatchNow, err = s.checkParallelismCapacity(ctx, agentID, onBusy)
+	if err != nil || !dispatchNow || envID == nil {
+		return dispatchNow, err
+	}
+	return s.checkFolderCapacity(ctx, *envID, folderID, onBusy)
+}
+
+// flattenPayload narrows a publishTrigger-shaped payload to the flat string
+// map agentdom.PendingTrigger.Payload stores — every value ever placed in
+// one of these payloads is already a string (see publishChatTrigger et al.),
+// so this never actually drops anything; the map[string]any typing exists
+// only because AppendFlat's signature predates PendingTrigger.
+func flattenPayload(payload map[string]any) map[string]string {
+	out := make(map[string]string, len(payload))
+	for k, v := range payload {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+// claimQueuedForDispatch atomically flips convID from "queued" to "running"
+// immediately before its trigger is actually published to
+// StreamAgentTriggers — the last step before a conversation's trigger is
+// handed to agent-runner, for every path that hasn't already claimed it via
+// some other CAS (SendChatMessage/SendGlobalChatMessage's own
+// ClaimConversationStatus calls in their paused/terminal resume branches
+// already do this, so they pass needsClaim=false to deliverTrigger instead
+// of calling this twice).
+//
+// This exists to close two races, both only possible because a "queued"
+// conversation's status doesn't become "running" until agent-runner itself
+// picks the trigger off the stream — an inherently asynchronous, unbounded
+// delay relative to the moment services/api decides to publish:
+//
+//  1. worker.AgentQueueConsumer reads StreamAgentConversationStatus with
+//     at-least-once delivery (a Valkey Streams consumer group). If it
+//     crashes after AdvanceQueue successfully dispatches a pending trigger
+//     but before acking that message, the same terminal-status event is
+//     redelivered and AdvanceQueue runs again. Without this claim,
+//     CountRunningConversations would still read the just-dispatched
+//     conversation as "queued" (agent-runner hasn't reached it yet) and
+//     the redelivery would dispatch a second one for the same single freed
+//     slot. With it, the first dispatch's claim has already flipped that
+//     conversation to "running" by the time any redelivery re-measures
+//     capacity, so the redelivered call correctly sees no room.
+//  2. StopConversation can run concurrently with AdvanceQueue dequeuing the
+//     very conversation being stopped (DeletePendingTriggerByConversationID
+//     blocks on the same row AdvanceQueue's SELECT ... FOR UPDATE SKIP
+//     LOCKED already holds). Without a conditional claim, AdvanceQueue would
+//     unconditionally publish the trigger regardless of what StopConversation
+//     just did to the row. With it, whichever of the two actually reaches
+//     the conversation's status column first wins: if StopConversation's
+//     write to "stopped" lands first, this claim fails (current status
+//     isn't "queued" anymore) and the trigger is correctly never published.
+//
+// A false return means exactly that — something else already moved convID
+// out of "queued" between the capacity decision and now — so the caller
+// must not publish.
+func (s *Service) claimQueuedForDispatch(ctx context.Context, convID uuid.UUID) (bool, error) {
+	return s.repo.ClaimConversationStatus(ctx, convID,
+		string(agentdom.ConversationStatusQueued), string(agentdom.ConversationStatusRunning))
+}
+
+// deliverTrigger publishes topic/payload immediately if dispatchNow (the
+// verdict a prior checkParallelismCapacity call already reached), otherwise
+// persists it as a PendingTrigger for AdvanceQueue to replay once a running
+// slot frees up — see PendingTrigger's doc comment.
+//
+// needsClaim must be true for a conversation still sitting at its
+// just-created "queued" status (every fresh-create path: StartChatSession,
+// StartGlobalChatSession, dispatchOrEnqueue's non-interactive triggers, and
+// SendChatMessage/SendGlobalChatMessage's own conv==nil branch) — see
+// claimQueuedForDispatch's doc comment for why. false for a conversation
+// that has already been atomically claimed by the caller's own
+// ClaimConversationStatus call (SendChatMessage/SendGlobalChatMessage's
+// paused/terminal resume branches, which claim straight to "running" or
+// "queued" depending on dispatchNow before ever reaching here) — claiming
+// again here would simply fail (current status is already "running", not
+// "queued") and wrongly suppress a publish that was already correctly
+// authorized.
+// envID/folderID are recorded on the PendingTrigger when dispatchNow is
+// false so DequeueOldestPendingTriggerForFolder can later find this trigger
+// by its target folder, not just by agent_id — see checkFolderCapacity's
+// doc comment for why a trigger can be blocked by folder occupancy even
+// when its own agent has room. nil for a trigger with no environment (the
+// default ephemeral sandbox, or global chat).
+func (s *Service) deliverTrigger(ctx context.Context, agentID, convID uuid.UUID, dispatchNow, needsClaim bool, topic string, payload map[string]any, envID, folderID *uuid.UUID) error {
+	if dispatchNow {
+		if needsClaim {
+			claimed, err := s.claimQueuedForDispatch(ctx, convID)
+			if err != nil {
+				return err
+			}
+			if !claimed {
+				// Something else (StopConversation, most likely) already
+				// moved this conversation out of "queued" — never publish a
+				// trigger for a conversation that's no longer waiting to
+				// start.
+				return nil
+			}
+		}
+		return s.publishTrigger(ctx, topic, payload)
+	}
+	return s.repo.CreatePendingTrigger(ctx, &agentdom.PendingTrigger{
+		ID:                  uuid.New(),
+		AgentID:             agentID,
+		ConversationID:      convID,
+		Topic:               topic,
+		Payload:             flattenPayload(payload),
+		EnvironmentID:       envID,
+		EnvironmentFolderID: folderID,
+		CreatedAt:           time.Now(),
+	})
+}
+
+// dispatchPendingTrigger resolves pending's conversation fresh, atomically
+// claims it, and publishes its trigger — the common tail of AdvanceQueue and
+// AdvanceFolderQueue, once each has separately confirmed pending is
+// actually dispatchable (both its agent's ParallelismLimit and its target
+// folder's occupancy, whichever axis that particular caller owns — see
+// checkDispatchCapacity's doc comment on why the two are independent).
+// Returns (true, nil) once genuinely dispatched, (false, nil) if the claim
+// lost a race (see claimQueuedForDispatch) — the caller should treat that
+// as "this item is gone for good, try something else," never as an error
+// and never by putting it back.
+func (s *Service) dispatchPendingTrigger(ctx context.Context, pending *agentdom.PendingTrigger) (bool, error) {
+	conv, err := s.repo.FindConversationByID(ctx, pending.ConversationID)
+	if err != nil {
+		return false, err
+	}
+	// Re-resolve the conversation's environment/folder fresh rather than
+	// trust the environment_id/workdir snapshot captured in pending.Payload
+	// back when it was first queued — mirrors resolveWorkdirForConversation's
+	// own doc comment ("needed on every trigger a conversation publishes,
+	// not just the first"): the environment or folder it named could have
+	// been deleted, or its workdir path changed, in however long this sat
+	// in the backlog. Done before claiming below, same reasoning
+	// SendChatMessage's own doc comment gives for validating workdir
+	// resolution before its own ClaimConversationStatus call — a claim that
+	// then failed resolution would otherwise be stuck at "running" with
+	// nothing ever published to move it along.
+	envID, workdir, err := s.resolveWorkdirForConversation(ctx, conv.ProjectID, conv)
+	if err != nil {
+		return false, err
+	}
+	claimed, err := s.claimQueuedForDispatch(ctx, pending.ConversationID)
+	if err != nil {
+		return false, err
+	}
+	if !claimed {
+		return false, nil
+	}
+	payload := make(map[string]any, len(pending.Payload))
+	for k, v := range pending.Payload {
+		payload[k] = v
+	}
+	if envID != nil {
+		payload["environment_id"] = envID.String()
+		payload["workdir"] = workdir
+	} else {
+		delete(payload, "environment_id")
+		delete(payload, "workdir")
+	}
+	return true, s.publishTrigger(ctx, pending.Topic, payload)
+}
+
+// requeueSkipped re-persists every PendingTrigger AdvanceQueue/
+// AdvanceFolderQueue dequeued but decided NOT to dispatch this call (the
+// other axis's constraint — folder occupancy for AdvanceQueue, agent
+// capacity for AdvanceFolderQueue — wasn't satisfied). Each is reinserted
+// with its original ID/CreatedAt/Payload unchanged, so it lands back at
+// exactly its original FIFO position rather than losing its place in line.
+//
+// Why dequeue-then-maybe-reinsert instead of a non-destructive peek: a
+// dequeued-but-not-yet-reinserted item is temporarily invisible to the next
+// DequeueOldestPendingTrigger[ForFolder] call within the SAME loop — which
+// is exactly what lets that next call reach a *different* item behind it
+// instead of re-dequeuing the same stuck one forever (an oldest-first
+// query would otherwise always return the same head-of-queue item again
+// immediately after a plain "skip and continue"). Called from a defer so
+// every return path — including an error return — still puts skipped items
+// back rather than losing them.
+func (s *Service) requeueSkipped(ctx context.Context, skipped []*agentdom.PendingTrigger, errp *error) {
+	for _, p := range skipped {
+		if err := s.repo.CreatePendingTrigger(ctx, p); err != nil && *errp == nil {
+			*errp = err
+		}
+	}
+}
+
+// AdvanceQueue dispatches up to maxDispatch of agentID's queued conversations
+// (agent_pending_triggers, oldest first), never exceeding its free
+// running-slot count, and reports how many it actually dispatched.
+//
+// maxDispatch is the caller's own bound on how many slots just became free,
+// since running (CountRunningConversations) never reflects a conversation
+// this call just dispatched — agent-runner flips it to "running"
+// asynchronously, only once it actually reads the trigger off the stream —
+// so re-deriving free capacity from a fresh count on every loop iteration
+// would understate how many are already spoken for and over-dispatch. Two
+// callers: worker.AgentQueueConsumer passes 1 for every conversation of
+// agentID's that reaches a terminal status (exactly one slot freed per
+// event); UpdateAgent/UpdateGlobalAgent pass the exact size of a
+// ParallelismLimit increase (freeing that many slots at once, with no
+// per-slot event to react to individually). Safe to call speculatively —
+// returns (0, nil) if nothing is queued or there's no free slot at all.
+//
+// This only advances agentID's OWN queue, gated by its own ParallelismLimit
+// — a dequeued item whose target folder is occupied by a conversation
+// belonging to some OTHER agent is set aside (see requeueSkipped) rather
+// than dispatched; AdvanceFolderQueue is what re-tries those once that
+// folder actually frees up, from whichever agent's queue they're sitting in.
+func (s *Service) AdvanceQueue(ctx context.Context, agentID uuid.UUID, maxDispatch int) (dispatched int, err error) {
+	if maxDispatch <= 0 {
+		return 0, nil
+	}
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return 0, err
+	}
+	limit := effectiveParallelismLimit(agent)
+	running, err := s.repo.CountRunningConversations(ctx, agentID)
+	if err != nil {
+		return 0, err
+	}
+
+	var skipped []*agentdom.PendingTrigger
+	// Wrapped in a closure, not `defer s.requeueSkipped(ctx, skipped, &err)`
+	// directly: a bare defer call evaluates its arguments immediately, which
+	// would capture skipped's value right here (still empty) rather than
+	// whatever the loop below eventually appends to it. The closure defers
+	// reading skipped until the function actually returns.
+	defer func() { s.requeueSkipped(ctx, skipped, &err) }()
+
+	for dispatched < maxDispatch && running+dispatched < limit {
+		pending, dequeueErr := s.repo.DequeueOldestPendingTrigger(ctx, agentID)
+		if dequeueErr != nil {
+			return dispatched, dequeueErr
+		}
+		if pending == nil {
+			return dispatched, nil
+		}
+
+		if pending.EnvironmentID != nil {
+			folderFree, capErr := s.checkFolderCapacity(ctx, *pending.EnvironmentID, pending.EnvironmentFolderID, agentdom.OnBusyQueue)
+			if capErr != nil {
+				return dispatched, capErr
+			}
+			if !folderFree {
+				// Occupied by some other agent's conversation right now —
+				// not this agent's queue to solve; AdvanceFolderQueue will
+				// retry this exact item once that folder frees up.
+				skipped = append(skipped, pending)
+				continue
+			}
+		}
+
+		ok, dispatchErr := s.dispatchPendingTrigger(ctx, pending)
+		if dispatchErr != nil {
+			return dispatched, dispatchErr
+		}
+		if !ok {
+			continue
+		}
+		dispatched++
+	}
+	return dispatched, nil
+}
+
+// AdvanceFolderQueue dispatches at most one conversation waiting on
+// environmentID/folderID once it becomes free — the folder-occupancy
+// counterpart to AdvanceQueue's per-agent counter, called whenever a
+// conversation attached to a static environment reaches a terminal status
+// (alongside that conversation's own AdvanceQueue call — see
+// worker.AgentQueueConsumer.handle), since whichever agent is queued
+// waiting on the now-free folder might not be the same agent whose
+// conversation just vacated it.
+//
+// Unlike AdvanceQueue there's no maxDispatch/limit parameter: a folder can
+// only ever host one running conversation at a time (checkFolderCapacity's
+// whole point), so at most one dispatch out of this call is ever
+// meaningful regardless of how many terminal events arrive. Returns whether
+// it actually dispatched something.
+func (s *Service) AdvanceFolderQueue(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (dispatchedOne bool, err error) {
+	folderFree, err := s.checkFolderCapacity(ctx, environmentID, folderID, agentdom.OnBusyQueue)
+	if err != nil {
+		return false, err
+	}
+	if !folderFree {
+		// Someone else (another AdvanceFolderQueue call, or a fresh
+		// dispatch racing this exact moment) already claimed it first.
+		return false, nil
+	}
+
+	var skipped []*agentdom.PendingTrigger
+	// Wrapped in a closure, not `defer s.requeueSkipped(ctx, skipped, &err)`
+	// directly: a bare defer call evaluates its arguments immediately, which
+	// would capture skipped's value right here (still empty) rather than
+	// whatever the loop below eventually appends to it. The closure defers
+	// reading skipped until the function actually returns.
+	defer func() { s.requeueSkipped(ctx, skipped, &err) }()
+
+	for {
+		pending, dequeueErr := s.repo.DequeueOldestPendingTriggerForFolder(ctx, environmentID, folderID)
+		if dequeueErr != nil {
+			return dispatchedOne, dequeueErr
+		}
+		if pending == nil {
+			return dispatchedOne, nil
+		}
+
+		agentOK, capErr := s.checkParallelismCapacity(ctx, pending.AgentID, agentdom.OnBusyQueue)
+		if capErr != nil {
+			return dispatchedOne, capErr
+		}
+		if !agentOK {
+			// This folder is free, but the item's own agent isn't right
+			// now — not this call's constraint to solve; that agent's own
+			// AdvanceQueue call will retry this exact item once ITS slot
+			// frees up.
+			skipped = append(skipped, pending)
+			continue
+		}
+
+		ok, dispatchErr := s.dispatchPendingTrigger(ctx, pending)
+		if dispatchErr != nil {
+			return dispatchedOne, dispatchErr
+		}
+		if !ok {
+			continue
+		}
+		return true, nil
+	}
+}
+
+// dispatchOrEnqueue combines checkParallelismCapacity and deliverTrigger for
+// every non-interactive trigger (task_assigned, comment_mention,
+// description_write, automation_message) — there's no human synchronously
+// waiting for a reply on any of these, so it's always fine to silently queue
+// (agentdom.OnBusyQueue) rather than ask.
+// envID/folderID are the conversation's already-resolved environment/folder
+// (nil for the default ephemeral sandbox) — passed through to
+// checkDispatchCapacity so a shared folder blocks dispatch the same way an
+// agent-at-capacity does, and recorded on the PendingTrigger if this ends
+// up queued (see deliverTrigger's doc comment).
+func (s *Service) dispatchOrEnqueue(ctx context.Context, agentID, convID uuid.UUID, topic string, payload map[string]any, envID, folderID *uuid.UUID) error {
+	dispatchNow, err := s.checkDispatchCapacity(ctx, agentID, envID, folderID, agentdom.OnBusyQueue)
+	if err != nil {
+		return err
+	}
+	// needsClaim=true: every caller of dispatchOrEnqueue just created convID
+	// fresh (still "queued"), never claimed by anything else yet.
+	return s.deliverTrigger(ctx, agentID, convID, dispatchNow, true, topic, payload, envID, folderID)
+}
+
 // environmentID/workdir, when non-nil/non-empty, tell agent-runner which
 // static environment (and folder within it) this conversation is attached
 // to — see resolveChatEnvironment/resolveWorkdirForConversation's doc
@@ -2658,7 +3361,17 @@ func (s *Service) publishTrigger(ctx context.Context, topic string, payload map[
 // docs/ai-agent/environment-management.md's "Conversation attach path"
 // section for how agent-runner's decode.go/coldStartEnvironment consume
 // them.
-func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessionID, projectID, memberID uuid.UUID, message string, repoPluginIDs []string, environmentID *uuid.UUID, workdir string, contextItems []agentdom.ContextItemRef) error {
+// needsClaim: see deliverTrigger's doc comment — true from StartChatSession
+// and SendChatMessage's own conv==nil branch (a freshly-created, never
+// claimed conversation), false from SendChatMessage's paused/terminal
+// resume branches (already atomically claimed by their own
+// ClaimConversationStatus call before reaching here).
+// folderID is environmentID's resolved folder — nil whenever environmentID
+// is, and otherwise threaded through to deliverTrigger purely so a queued
+// trigger records which folder it's waiting on (see that method's doc
+// comment); it plays no role in the payload itself, which only ever named
+// the resolved workdir path.
+func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessionID, projectID, memberID uuid.UUID, message string, repoPluginIDs []string, environmentID, folderID *uuid.UUID, workdir string, contextItems []agentdom.ContextItemRef, dispatchNow, needsClaim bool) error {
 	payload := map[string]any{
 		"conversation_id": convID.String(),
 		"project_id":      projectID.String(),
@@ -2677,14 +3390,15 @@ func (s *Service) publishChatTrigger(ctx context.Context, agentID, convID, sessi
 		b, _ := json.Marshal(contextItems)
 		payload["context_items"] = string(b)
 	}
-	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
+	return s.deliverTrigger(ctx, agentID, convID, dispatchNow, needsClaim, events.TopicAgentChatMessage, payload, environmentID, folderID)
 }
 
 // publishGlobalChatTrigger is publishChatTrigger's global-chat sibling — no
 // project_id, actor identified by actor_user_id, and repo_plugin_ids
 // omitted entirely (repo/PR tools are excluded from global-chat
 // conversations; see the Global Conversations section's doc comment).
-func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID, sessionID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef) error {
+// needsClaim: see publishChatTrigger's identical doc comment.
+func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID, sessionID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, dispatchNow, needsClaim bool) error {
 	payload := map[string]any{
 		"conversation_id": convID.String(),
 		"agent_id":        agentID.String(),
@@ -2697,5 +3411,9 @@ func (s *Service) publishGlobalChatTrigger(ctx context.Context, agentID, convID,
 		b, _ := json.Marshal(contextItems)
 		payload["context_items"] = string(b)
 	}
-	return s.publishTrigger(ctx, events.TopicAgentChatMessage, payload)
+	// envID/folderID both nil: global chat never attaches to a static
+	// environment (a global-scope agent can't have DefaultEnvironmentID —
+	// see Agent.DefaultEnvironmentID's doc comment — and StartGlobalChatSession
+	// has no per-conversation override for it either).
+	return s.deliverTrigger(ctx, agentID, convID, dispatchNow, needsClaim, events.TopicAgentChatMessage, payload, nil, nil)
 }

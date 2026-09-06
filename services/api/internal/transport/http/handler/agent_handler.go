@@ -290,6 +290,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:         req.SystemPrompt,
 		MaxIterations:        req.MaxIterations,
 		TimeoutMinutes:       req.TimeoutMinutes,
+		ParallelismLimit:     req.ParallelismLimit,
 		GitCommitterName:     req.GitCommitterName,
 		GitCommitterEmail:    req.GitCommitterEmail,
 		DockerEnabled:        req.DockerEnabled,
@@ -338,6 +339,7 @@ func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt:         req.SystemPrompt,
 		MaxIterations:        req.MaxIterations,
 		TimeoutMinutes:       req.TimeoutMinutes,
+		ParallelismLimit:     req.ParallelismLimit,
 		GitCommitterName:     req.GitCommitterName,
 		GitCommitterEmail:    req.GitCommitterEmail,
 		DockerEnabled:        req.DockerEnabled,
@@ -458,6 +460,7 @@ func (h *AgentHandler) CreateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		SystemPrompt:      req.SystemPrompt,
 		MaxIterations:     req.MaxIterations,
 		TimeoutMinutes:    req.TimeoutMinutes,
+		ParallelismLimit:  req.ParallelismLimit,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
 		DockerEnabled:     req.DockerEnabled,
@@ -495,6 +498,7 @@ func (h *AgentHandler) UpdateGlobalAgent(w http.ResponseWriter, r *http.Request)
 		SystemPrompt:      req.SystemPrompt,
 		MaxIterations:     req.MaxIterations,
 		TimeoutMinutes:    req.TimeoutMinutes,
+		ParallelismLimit:  req.ParallelismLimit,
 		GitCommitterName:  req.GitCommitterName,
 		GitCommitterEmail: req.GitCommitterEmail,
 		DockerEnabled:     req.DockerEnabled,
@@ -1293,7 +1297,7 @@ func (h *AgentHandler) StartChatSession(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message, req.EnvironmentID, req.FolderID, req.ContextItems)
+	session, conv, err := h.svc.StartChatSession(r.Context(), projectID, agentID, memberID, req.Message, req.EnvironmentID, req.FolderID, req.ContextItems, req.OnBusy)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1335,7 +1339,7 @@ func (h *AgentHandler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message, req.ContextItems)
+	conv, err := h.svc.SendChatMessage(r.Context(), projectID, sessionID, memberID, req.Message, req.ContextItems, req.OnBusy)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1399,7 +1403,7 @@ func (h *AgentHandler) StartGlobalChatSession(w http.ResponseWriter, r *http.Req
 		presenter.Error(w, r, err)
 		return
 	}
-	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message, req.ContextItems)
+	session, conv, err := h.svc.StartGlobalChatSession(r.Context(), agentID, userID, req.Message, req.ContextItems, req.OnBusy)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -1435,7 +1439,7 @@ func (h *AgentHandler) SendGlobalChatMessage(w http.ResponseWriter, r *http.Requ
 		presenter.Error(w, r, err)
 		return
 	}
-	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message, req.ContextItems)
+	conv, err := h.svc.SendGlobalChatMessage(r.Context(), sessionID, userID, req.Message, req.ContextItems, req.OnBusy)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

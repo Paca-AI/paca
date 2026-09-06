@@ -185,6 +185,9 @@
 				"committerEmailLabel": "Committer email",
 				"dockerEnabledLabel": "Docker access",
 				"dockerEnabledHint": "Give this agent a private Docker daemon inside its sandbox. Off by default — only enable it for agents that actually run Docker commands, since it adds startup time to every conversation.",
+				"parallelismLimitLabel": "Parallelism limit",
+				"parallelismLimitHint": "How many of this agent's conversations can run at the same time. Extra work waits in a queue until a slot frees up — default 1, so tickets are worked one at a time instead of racing each other in the same working directory.",
+				"parallelismLimitFixedHint": "Fixed at 1 for this agent — it works in a single shared directory (an ACP agent's local checkout, or a static default environment), so only one conversation can safely run at a time.",
 				"environmentSection": "Environment",
 				"defaultEnvironmentLabel": "Default Environment",
 				"defaultEnvironmentHint": "Attach this agent's conversations to a static environment instead of a fresh disposable sandbox each time.",
@@ -326,6 +329,15 @@
 			"loadingOlder": "Loading…",
 			"newBelow_one": "{{count}} new message",
 			"newBelow_other": "{{count}} new messages"
+		},
+		"busyDialog": {
+			"title": "Agent is busy",
+			"description": "This agent is already running {{running}}/{{limit}} conversation(s). Add this message to the queue and it'll start automatically once a slot frees up, or send it now anyway.",
+			"folderDescription": "Another conversation is already working in this environment folder. Add this message to the queue and it'll start automatically once that conversation finishes, or send it now anyway.",
+			"cancel": "Cancel",
+			"queue": "Add to Queue",
+			"force": "Send Now",
+			"cancelledError": "Message not sent."
 		},
 		"thread": {
 			"composerPlaceholder": "Message agent…",

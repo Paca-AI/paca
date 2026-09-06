@@ -209,8 +209,11 @@ type ChatSessionService interface {
 	// environmentID falls back to the agent's own DefaultEnvironmentID;
 	// folderID auto-selects if the resolved environment has exactly one
 	// folder). See environmentdom.EnvironmentService.ResolveConversationWorkdir.
-	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []ContextItemRef) (*AgentChatSession, *AgentConversation, error)
-	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []ContextItemRef) (*AgentConversation, error)
+	// onBusy is one of "" (ask, the default) | OnBusyQueue | OnBusyForce —
+	// see OnBusyQueue's doc comment for what each does when agentID is
+	// already at ParallelismLimit running conversations.
+	StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, environmentID, folderID *uuid.UUID, contextItems []ContextItemRef, onBusy string) (*AgentChatSession, *AgentConversation, error)
+	SendChatMessage(ctx context.Context, projectID, sessionID, memberID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentConversation, error)
 	ListChatMessages(ctx context.Context, sessionID, memberID uuid.UUID, offset, limit int) ([]*AgentConversationEvent, int64, error)
 
 	// -- Global chat sessions (chatting with a global agent from the home
@@ -218,8 +221,8 @@ type ChatSessionService interface {
 	// comment.
 
 	ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*AgentChatSession, error)
-	StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef) (*AgentChatSession, *AgentConversation, error)
-	SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef) (*AgentConversation, error)
+	StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentChatSession, *AgentConversation, error)
+	SendGlobalChatMessage(ctx context.Context, sessionID, actorUserID uuid.UUID, message string, contextItems []ContextItemRef, onBusy string) (*AgentConversation, error)
 }
 
 // ActivityFeedService defines the agent activity feed use case.
@@ -271,8 +274,12 @@ type CreateAgentInput struct {
 	// Like DefaultEnvironmentID, CreateGlobalAgentInput has no equivalent
 	// field.
 	DefaultFolderID *uuid.UUID
-	ProjectRoleID   uuid.UUID
-	CreatedBy       *uuid.UUID
+	// ParallelismLimit is clamped the same way MaxIterations is (<= 0 ->
+	// default of 1, above the cap -> the cap) — see Agent.ParallelismLimit's
+	// doc comment.
+	ParallelismLimit int
+	ProjectRoleID    uuid.UUID
+	CreatedBy        *uuid.UUID
 }
 
 // CreateGlobalAgentInput carries fields required to create a global agent.
@@ -295,6 +302,7 @@ type CreateGlobalAgentInput struct {
 	GitCommitterName  string
 	GitCommitterEmail string
 	DockerEnabled     bool
+	ParallelismLimit  int
 	GlobalRoleID      *uuid.UUID
 	CreatedBy         *uuid.UUID
 }
@@ -323,6 +331,9 @@ type UpdateAgentInput struct {
 	GitCommitterName  *string
 	GitCommitterEmail *string
 	DockerEnabled     *bool
+	// ParallelismLimit: nil means unchanged, same convention as every other
+	// pointer field here. See Agent.ParallelismLimit's doc comment.
+	ParallelismLimit *int
 	// GlobalRoleID is only meaningful for AgentScopeGlobal agents (see
 	// UpdateGlobalAgent); ignored by UpdateAgent for project-scoped agents.
 	GlobalRoleID *uuid.UUID

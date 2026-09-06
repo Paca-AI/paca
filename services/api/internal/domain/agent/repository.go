@@ -135,6 +135,45 @@ type ConversationRepository interface {
 	// total event count.
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	CreateConversationEvent(ctx context.Context, e *AgentConversationEvent) error
+
+	// -- Parallelism queue (agent_pending_triggers) — see
+	// Agent.ParallelismLimit and PendingTrigger's doc comments.
+
+	// CountRunningConversations returns how many of agentID's conversations
+	// are currently status "running", across every project — the count
+	// dispatchOrEnqueue and AdvanceQueue compare against ParallelismLimit.
+	CountRunningConversations(ctx context.Context, agentID uuid.UUID) (int, error)
+	// CountRunningConversationsInFolder returns how many conversations,
+	// across every agent, are currently status "running" and attached to
+	// environmentID/folderID — the count checkFolderCapacity compares
+	// against zero. folderID nil matches conversations attached to
+	// environmentID with no specific folder set, distinct from any real
+	// folder within that same environment.
+	CountRunningConversationsInFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error)
+	// CreatePendingTrigger persists a trigger that couldn't be dispatched
+	// immediately — see PendingTrigger's doc comment.
+	CreatePendingTrigger(ctx context.Context, t *PendingTrigger) error
+	// DequeueOldestPendingTrigger atomically returns and deletes agentID's
+	// oldest PendingTrigger (FIFO), or (nil, nil) if it has none. Must use
+	// SELECT ... FOR UPDATE SKIP LOCKED so that two concurrent callers (this
+	// codebase runs multiple consumer-group replicas — see
+	// worker.AutomationConsumer) never both dequeue the same row and
+	// double-dispatch it.
+	DequeueOldestPendingTrigger(ctx context.Context, agentID uuid.UUID) (*PendingTrigger, error)
+	// DequeueOldestPendingTriggerForFolder is DequeueOldestPendingTrigger's
+	// folder-scoped sibling: finds and removes the oldest PendingTrigger
+	// targeting environmentID/folderID, regardless of which agent it
+	// belongs to, or (nil, nil) if none. Same FOR UPDATE SKIP LOCKED
+	// requirement and rationale.
+	DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*PendingTrigger, error)
+	// DeletePendingTriggerByConversationID removes conversationID's pending
+	// trigger row, if it has one, reporting whether a row actually existed
+	// to delete — called when a still-queued conversation is stopped before
+	// ever being dispatched, so it can't be dequeued and published later
+	// after being marked stopped. StopConversation uses the returned bool to
+	// skip telling agent-runner to interrupt a conversation it never
+	// actually dispatched. (false, nil) if no such row exists.
+	DeletePendingTriggerByConversationID(ctx context.Context, conversationID uuid.UUID) (bool, error)
 }
 
 // ChatSessionRepository defines storage for agent chat sessions.

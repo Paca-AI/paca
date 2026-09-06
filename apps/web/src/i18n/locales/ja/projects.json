@@ -185,6 +185,9 @@
 				"committerEmailLabel": "コミッターのメールアドレス",
 				"dockerEnabledLabel": "Dockerアクセス",
 				"dockerEnabledHint": "このエージェントのサンドボックス内に専用のDockerデーモンを提供します。デフォルトでは無効です。すべての会話の起動時間が増えるため、実際にDockerコマンドを実行するエージェントにのみ有効にしてください。",
+				"parallelismLimitLabel": "並列実行数の上限",
+				"parallelismLimitHint": "このエージェントが同時に実行できる会話数です。上限を超えた分は空きが出るまでキューで待機します。デフォルトは1で、同じ作業ディレクトリで競合しないようチケットを1件ずつ処理します。",
+				"parallelismLimitFixedHint": "このエージェントでは1に固定されています。単一の共有ディレクトリ(ACPエージェントのローカルチェックアウト、または静的なデフォルト環境)で作業するため、安全に実行できる会話は一度に1つだけです。",
 				"environmentSection": "環境",
 				"defaultEnvironmentLabel": "デフォルト環境",
 				"defaultEnvironmentHint": "このエージェントの会話を、毎回使い捨てのサンドボックスを作成する代わりに静的環境に接続します。",
@@ -326,6 +329,15 @@
 			"loadingOlder": "読み込み中…",
 			"newBelow_one": "新着メッセージ{{count}}件",
 			"newBelow_other": "新着メッセージ{{count}}件"
+		},
+		"busyDialog": {
+			"title": "エージェントは対応中です",
+			"description": "このエージェントは現在 {{running}}/{{limit}} 件の会話を実行中です。このメッセージをキューに追加すると空きが出次第自動的に開始されます。今すぐ送信することもできます。",
+			"folderDescription": "別の会話がすでにこの環境フォルダーで作業中です。このメッセージをキューに追加すると、その会話が終わり次第自動的に開始されます。今すぐ送信することもできます。",
+			"cancel": "キャンセル",
+			"queue": "キューに追加",
+			"force": "今すぐ送信",
+			"cancelledError": "メッセージは送信されませんでした。"
 		},
 		"thread": {
 			"composerPlaceholder": "エージェントにメッセージ…",

@@ -51,6 +51,7 @@ type agentRecord struct {
 	GitCommitterName   string     `db:"git_committer_name"`
 	GitCommitterEmail  string     `db:"git_committer_email"`
 	DockerEnabled      bool       `db:"docker_enabled"`
+	ParallelismLimit   int        `db:"parallelism_limit"`
 	// DefaultEnvironmentID references environments(id) — see
 	// agentdom.Agent.DefaultEnvironmentID's doc comment. NULL for global-scope
 	// agents (enforced by the service layer, not a DB constraint).
@@ -173,7 +174,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
-	a.max_iterations, a.timeout_minutes,
+	a.max_iterations, a.timeout_minutes, a.parallelism_limit,
 	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.created_by, a.created_at, a.updated_at, a.deleted_at,
 	a.cli_provider, a.cli_model, a.cli_auth_mode, a.cli_api_key_secret, a.cli_login_verified_at`
 
@@ -205,6 +206,18 @@ func nullableUUIDString(id uuid.UUID) *string {
 	}
 	s := id.String()
 	return &s
+}
+
+// uuidOrNil dereferences an optional *uuid.UUID (the domain layer's own
+// "unset" convention for a field like PendingTrigger.EnvironmentFolderID),
+// returning uuid.Nil for a nil pointer — pairs with nullableUUIDString to
+// round-trip an optional UUID field through a nullable DB column in one
+// expression, e.g. nullableUUIDString(uuidOrNil(folderID)).
+func uuidOrNil(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.Nil
+	}
+	return *id
 }
 
 // -------------------------------------------------------------------------
@@ -390,15 +403,15 @@ func (r *AgentRepository) CreateAgent(ctx context.Context, a *agentdom.Agent) er
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
-		  max_iterations, timeout_minutes,
+		  max_iterations, timeout_minutes, parallelism_limit,
 		  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at,
 		  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
 		rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
-		rec.MaxIterations, rec.TimeoutMinutes,
+		rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 		rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
 	)
@@ -422,15 +435,15 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  max_iterations=$11, timeout_minutes=$12,
 			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
 			  default_environment_id=$17, default_folder_id=$18, updated_at=$19,
-			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22
-			WHERE id=$23`,
+			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22, parallelism_limit=$23
+			WHERE id=$24`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
 			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(),
-			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ID.String(),
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -526,15 +539,15 @@ func (r *AgentRepository) CreateAgentWithMembership(ctx context.Context, a *agen
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO agents (id, project_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 			  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
-			  max_iterations, timeout_minutes,
+			  max_iterations, timeout_minutes, parallelism_limit,
 			  git_committer_name, git_committer_email, docker_enabled, default_environment_id, default_folder_id, created_by, created_at, updated_at,
 			  cli_provider, cli_model, cli_auth_mode, cli_api_key_secret, cli_login_verified_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
 			rec.ID, rec.ProjectID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 			rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			rec.SystemPrompt,
-			rec.MaxIterations, rec.TimeoutMinutes,
+			rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 			rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.DefaultEnvironmentID, rec.DefaultFolderID, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, rec.CLIAPIKeySecret, rec.CLILoginVerifiedAt,
 		)
@@ -596,15 +609,15 @@ func (r *AgentRepository) CreateGlobalAgent(ctx context.Context, a *agentdom.Age
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO agents (id, project_id, agent_scope, global_role_id, name, handle, avatar_key, avatar_thumb_key, agent_type, llm_provider, llm_model,
 		  llm_api_key_secret, llm_base_url, acp_provider, acp_command, system_prompt,
-		  max_iterations, timeout_minutes,
+		  max_iterations, timeout_minutes, parallelism_limit,
 		  git_committer_name, git_committer_email, docker_enabled, created_by, created_at, updated_at,
 		  cli_auth_mode)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
 		rec.ID, rec.ProjectID, rec.AgentScope, rec.GlobalRoleID, rec.Name, rec.Handle, rec.AvatarKey, rec.AvatarThumbKey, rec.AgentType,
 		rec.LLMProvider, rec.LLMModel, rec.LLMAPIKeySecret, rec.LLMBaseURL,
 		rec.ACPProvider, rec.ACPCommand,
 		rec.SystemPrompt,
-		rec.MaxIterations, rec.TimeoutMinutes,
+		rec.MaxIterations, rec.TimeoutMinutes, rec.ParallelismLimit,
 		rec.GitCommitterName, rec.GitCommitterEmail, rec.DockerEnabled, rec.CreatedBy, rec.CreatedAt, rec.UpdatedAt,
 		rec.CLIAuthMode,
 	)
@@ -1217,6 +1230,164 @@ func (r *AgentRepository) CreateConversationEvent(ctx context.Context, e *agentd
 }
 
 // -------------------------------------------------------------------------
+// Parallelism queue (agent_pending_triggers) — see
+// agentdom.Agent.ParallelismLimit and agentdom.PendingTrigger's doc comments.
+// -------------------------------------------------------------------------
+
+type pendingTriggerRecord struct {
+	ID                  string    `db:"id"`
+	AgentID             string    `db:"agent_id"`
+	ConversationID      string    `db:"conversation_id"`
+	Topic               string    `db:"topic"`
+	Payload             []byte    `db:"payload"`
+	EnvironmentID       *string   `db:"environment_id"`
+	EnvironmentFolderID *string   `db:"environment_folder_id"`
+	CreatedAt           time.Time `db:"created_at"`
+}
+
+// CountRunningConversations returns how many of agentID's conversations are
+// currently status "running", across every project.
+func (r *AgentRepository) CountRunningConversations(ctx context.Context, agentID uuid.UUID) (int, error) {
+	var count int
+	err := r.db.GetContext(ctx, &count, `
+		SELECT count(*) FROM agent_conversations WHERE agent_id = $1 AND status = 'running'`,
+		agentID.String())
+	return count, err
+}
+
+// CountRunningConversationsInFolder returns how many conversations, across
+// every agent, are currently status "running" and attached to
+// environmentID/folderID. folderID nil is matched with "IS NULL", not "=
+// NULL" (see the CASE below), so it correctly counts conversations attached
+// to environmentID with no specific folder as their own bucket.
+func (r *AgentRepository) CountRunningConversationsInFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error) {
+	var count int
+	err := r.db.GetContext(ctx, &count, `
+		SELECT count(*) FROM agent_conversations
+		WHERE status = 'running' AND environment_id = $1
+		  AND environment_folder_id IS NOT DISTINCT FROM $2`,
+		environmentID.String(), nullableUUIDString(uuidOrNil(folderID)))
+	return count, err
+}
+
+// CreatePendingTrigger persists a trigger held back from dispatch.
+func (r *AgentRepository) CreatePendingTrigger(ctx context.Context, t *agentdom.PendingTrigger) error {
+	payload, err := json.Marshal(t.Payload)
+	if err != nil {
+		return fmt.Errorf("marshal pending trigger payload for conversation %s: %w", t.ConversationID, err)
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO agent_pending_triggers (id, agent_id, conversation_id, topic, payload, environment_id, environment_folder_id, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		t.ID.String(), t.AgentID.String(), t.ConversationID.String(), t.Topic, payload,
+		nullableUUIDString(uuidOrNil(t.EnvironmentID)), nullableUUIDString(uuidOrNil(t.EnvironmentFolderID)), t.CreatedAt,
+	)
+	return err
+}
+
+const pendingTriggerSelectCols = `id, agent_id, conversation_id, topic, payload, environment_id, environment_folder_id, created_at`
+
+// DequeueOldestPendingTrigger atomically returns and deletes agentID's
+// oldest PendingTrigger (FIFO), or (nil, nil) if it has none. FOR UPDATE
+// SKIP LOCKED so two concurrent callers (this codebase runs multiple
+// consumer-group replicas — see worker.AutomationConsumer's own doc
+// comments on concurrent replicas) never both dequeue the same row and
+// double-dispatch it.
+func (r *AgentRepository) DequeueOldestPendingTrigger(ctx context.Context, agentID uuid.UUID) (*agentdom.PendingTrigger, error) {
+	return r.dequeueOldestPendingTrigger(ctx, `
+		SELECT `+pendingTriggerSelectCols+`
+		FROM agent_pending_triggers
+		WHERE agent_id = $1
+		ORDER BY created_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED`, agentID.String())
+}
+
+// DequeueOldestPendingTriggerForFolder is DequeueOldestPendingTrigger's
+// folder-scoped sibling — see the domain interface's doc comment. folderID
+// nil is matched the same "IS NOT DISTINCT FROM" way
+// CountRunningConversationsInFolder uses.
+func (r *AgentRepository) DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*agentdom.PendingTrigger, error) {
+	return r.dequeueOldestPendingTrigger(ctx, `
+		SELECT `+pendingTriggerSelectCols+`
+		FROM agent_pending_triggers
+		WHERE environment_id = $1 AND environment_folder_id IS NOT DISTINCT FROM $2
+		ORDER BY created_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED`, environmentID.String(), nullableUUIDString(uuidOrNil(folderID)))
+}
+
+// dequeueOldestPendingTrigger is the shared SELECT-then-DELETE-then-return
+// core of DequeueOldestPendingTrigger and its folder-scoped sibling — only
+// the query (and its args) differ between the two.
+func (r *AgentRepository) dequeueOldestPendingTrigger(ctx context.Context, selectQuery string, args ...any) (*agentdom.PendingTrigger, error) {
+	var result *agentdom.PendingTrigger
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var rec pendingTriggerRecord
+		err := tx.GetContext(ctx, &rec, selectQuery, args...)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_pending_triggers WHERE id = $1`, rec.ID); err != nil {
+			return err
+		}
+		pt, err := pendingTriggerFromRecord(rec)
+		if err != nil {
+			return err
+		}
+		result = pt
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeletePendingTriggerByConversationID removes conversationID's pending
+// trigger row, if it has one, reporting whether a row actually existed.
+func (r *AgentRepository) DeletePendingTriggerByConversationID(ctx context.Context, conversationID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM agent_pending_triggers WHERE conversation_id = $1`, conversationID.String())
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func pendingTriggerFromRecord(rec pendingTriggerRecord) (*agentdom.PendingTrigger, error) {
+	var payload map[string]string
+	if len(rec.Payload) > 0 {
+		if err := json.Unmarshal(rec.Payload, &payload); err != nil {
+			return nil, fmt.Errorf("unmarshal pending trigger payload %s: %w", rec.ID, err)
+		}
+	}
+	pt := &agentdom.PendingTrigger{
+		ID:             mustParseUUID(rec.ID),
+		AgentID:        mustParseUUID(rec.AgentID),
+		ConversationID: mustParseUUID(rec.ConversationID),
+		Topic:          rec.Topic,
+		Payload:        payload,
+		CreatedAt:      rec.CreatedAt,
+	}
+	if rec.EnvironmentID != nil {
+		id := mustParseUUID(*rec.EnvironmentID)
+		pt.EnvironmentID = &id
+	}
+	if rec.EnvironmentFolderID != nil {
+		id := mustParseUUID(*rec.EnvironmentFolderID)
+		pt.EnvironmentFolderID = &id
+	}
+	return pt, nil
+}
+
+// -------------------------------------------------------------------------
 // Chat Sessions
 // -------------------------------------------------------------------------
 
@@ -1336,6 +1507,7 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		SystemPrompt:       row.SystemPrompt,
 		MaxIterations:      row.MaxIterations,
 		TimeoutMinutes:     row.TimeoutMinutes,
+		ParallelismLimit:   row.ParallelismLimit,
 		GitCommitterName:   row.GitCommitterName,
 		GitCommitterEmail:  row.GitCommitterEmail,
 		DockerEnabled:      row.DockerEnabled,
@@ -1430,6 +1602,7 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		SystemPrompt:       a.SystemPrompt,
 		MaxIterations:      a.MaxIterations,
 		TimeoutMinutes:     a.TimeoutMinutes,
+		ParallelismLimit:   a.ParallelismLimit,
 		GitCommitterName:   a.GitCommitterName,
 		GitCommitterEmail:  a.GitCommitterEmail,
 		DockerEnabled:      a.DockerEnabled,

@@ -148,10 +148,21 @@ type Agent struct {
 	// for why). Overridable per conversation at chat-start, same as
 	// DefaultEnvironmentID.
 	DefaultFolderID *uuid.UUID
-	CreatedBy       *uuid.UUID
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DeletedAt       *time.Time
+	// ParallelismLimit caps how many of this agent's conversations may be
+	// status "running" at once, across every project it belongs to (a global
+	// agent's conversations all still share the same default
+	// environment/working directory regardless of which project triggered
+	// them, so this is never scoped per-project). Defaults to 1: without an
+	// explicit opt-in, an agent works through its conversations one at a
+	// time rather than racing several turns against the same working
+	// directory — see https://github.com/Paca-AI/paca/issues/462. A trigger
+	// that would exceed it is held in agent_pending_triggers instead of
+	// being dispatched — see PendingTrigger.
+	ParallelismLimit int
+	CreatedBy        *uuid.UUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DeletedAt        *time.Time
 	// Member ID in project_members (populated on create / list)
 	MemberID   *uuid.UUID
 	MCPServers []*AgentMCPServer
@@ -466,6 +477,52 @@ type AgentConversationEvent struct {
 	Payload        map[string]any
 	CreatedAt      time.Time
 }
+
+// PendingTrigger is a trigger held back from dispatch, either because its
+// agent was already at ParallelismLimit running conversations (see
+// Agent.ParallelismLimit's doc comment) or because its target environment
+// folder already had another conversation running in it, from any agent
+// (see checkFolderCapacity's doc comment) — EnvironmentID/EnvironmentFolderID
+// are nil in the former case. Topic/Payload are exactly what would have
+// been passed to the service's publishTrigger at the moment the
+// conversation was created; AdvanceQueue/AdvanceFolderQueue replay them
+// unchanged once a slot frees up. Payload is a flat string map (not
+// arbitrary JSON) because that's what publishTrigger's own AppendFlat call
+// requires.
+type PendingTrigger struct {
+	ID             uuid.UUID
+	AgentID        uuid.UUID
+	ConversationID uuid.UUID
+	Topic          string
+	Payload        map[string]string
+	// EnvironmentID/EnvironmentFolderID mirror the same fields already
+	// embedded (as strings) in Payload — promoted to first-class fields so
+	// DequeueOldestPendingTriggerForFolder can find "whichever queued
+	// trigger, from any agent, was waiting on this folder" without parsing
+	// Payload. nil for a trigger that was only ever blocked by its agent's
+	// own ParallelismLimit (no shared folder to protect).
+	EnvironmentID       *uuid.UUID
+	EnvironmentFolderID *uuid.UUID
+	CreatedAt           time.Time
+}
+
+// OnBusy policy values a client may pass when sending an interactive chat
+// message to an agent that is already at ParallelismLimit running
+// conversations — see ChatSessionService.SendChatMessage's doc comment. The
+// zero value "" ("ask") is the default: the call fails with
+// apierr.CodeAgentParallelismLimitReached instead of creating anything,
+// leaving it to the caller to re-request with one of the two values below.
+const (
+	// OnBusyQueue creates the conversation and holds its trigger in
+	// PendingTrigger instead of dispatching it — the same behavior every
+	// non-interactive trigger (task_assigned, comment_mention, etc.) always
+	// gets, since there's no human to ask in those cases.
+	OnBusyQueue = "queue"
+	// OnBusyForce skips the parallelism check entirely and dispatches
+	// immediately, exceeding ParallelismLimit if necessary — today's
+	// unconditional pre-feature behavior.
+	OnBusyForce = "force"
+)
 
 // AgentChatSession is a persistent chat session between a user and an agent.
 // A project-scoped session (started from a project's own chat) has

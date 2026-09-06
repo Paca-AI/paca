@@ -185,6 +185,9 @@
 				"committerEmailLabel": "提交者邮箱",
 				"dockerEnabledLabel": "Docker 访问权限",
 				"dockerEnabledHint": "为该代理在其沙盒内提供一个私有的 Docker 守护进程。默认关闭——仅为实际需要运行 Docker 命令的代理启用此选项,因为它会增加每次对话的启动时间。",
+				"parallelismLimitLabel": "并行数量上限",
+				"parallelismLimitHint": "该代理最多可以同时运行多少个对话。超出的任务会在队列中等待,直到有空位释放——默认值为 1,这样各个工单会依次处理,而不会在同一个工作目录中相互冲突。",
+				"parallelismLimitFixedHint": "该代理固定为 1——它在单一共享目录中工作(ACP 代理的本地检出目录,或静态默认环境),因此一次只能安全运行一个对话。",
 				"environmentSection": "环境",
 				"defaultEnvironmentLabel": "默认环境",
 				"defaultEnvironmentHint": "将此智能体的对话连接到静态环境，而不是每次都创建一个一次性沙盒。",
@@ -326,6 +329,15 @@
 			"loadingOlder": "加载中…",
 			"newBelow_one": "{{count}} 条新消息",
 			"newBelow_other": "{{count}} 条新消息"
+		},
+		"busyDialog": {
+			"title": "代理正忙",
+			"description": "该代理当前已在运行 {{running}}/{{limit}} 个对话。将此消息加入队列,一旦有空位就会自动开始;也可以选择立即发送。",
+			"folderDescription": "另一个对话已经在这个环境文件夹中工作。将此消息加入队列,一旦该对话结束就会自动开始;也可以选择立即发送。",
+			"cancel": "取消",
+			"queue": "加入队列",
+			"force": "立即发送",
+			"cancelledError": "消息未发送。"
 		},
 		"thread": {
 			"composerPlaceholder": "给代理发消息…",

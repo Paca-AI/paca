@@ -17,6 +17,7 @@ import {
 	startGlobalChatSession,
 } from "@/lib/agent-api";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
+import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import {
 	AgentPickerContext,
 	AgentPickerInline,
@@ -82,6 +83,8 @@ export function NewConversationThread({
 	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
 	const canStartConversation =
 		!projectId || hasProjectPermission("conversations.write");
+	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
+		useAgentBusyPrompt();
 
 	const onNew = async (message: AppendMessage) => {
 		if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
@@ -98,12 +101,15 @@ export function NewConversationThread({
 		setIsSubmitting(true);
 		try {
 			if (projectId) {
-				const result = await startChatSession(projectId, agentId, {
-					message: text,
-					...(environmentId ? { environment_id: environmentId } : {}),
-					...(folderId ? { folder_id: folderId } : {}),
-					contextItems,
-				});
+				const result = await sendWithBusyPrompt((onBusy) =>
+					startChatSession(projectId, agentId, {
+						message: text,
+						...(environmentId ? { environment_id: environmentId } : {}),
+						...(folderId ? { folder_id: folderId } : {}),
+						contextItems,
+						on_busy: onBusy,
+					}),
+				);
 				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					conversationQueryOptions(projectId, result.conversation.id).queryKey,
@@ -117,10 +123,13 @@ export function NewConversationThread({
 					params: { projectId, conversationId: result.conversation.id },
 				});
 			} else {
-				const result = await startGlobalChatSession(agentId, {
-					message: text,
-					contextItems,
-				});
+				const result = await sendWithBusyPrompt((onBusy) =>
+					startGlobalChatSession(agentId, {
+						message: text,
+						contextItems,
+						on_busy: onBusy,
+					}),
+				);
 				useContextInjectionStore.getState().clear();
 				qc.setQueryData(
 					globalConversationQueryOptions(result.conversation.id).queryKey,
@@ -157,6 +166,7 @@ export function NewConversationThread({
 					<Thread components={{ ComposerStart: ComposerStartRow }} />
 				</AssistantRuntimeProvider>
 			</EnvironmentPickerContext.Provider>
+			{agentBusyDialog}
 		</AgentPickerContext.Provider>
 	);
 }

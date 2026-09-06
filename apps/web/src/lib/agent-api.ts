@@ -198,6 +198,12 @@ export interface Agent {
 	git_committer_name: string;
 	git_committer_email: string;
 	docker_enabled: boolean;
+	// Caps how many of this agent's conversations may be "running" at once,
+	// across every project it belongs to — default 1, so by default it works
+	// through assigned tickets one at a time instead of racing several turns
+	// against the same working directory. A trigger that would exceed it is
+	// queued instead (see AgentConversation.status "queued").
+	parallelism_limit: number;
 	// Static environment this agent attaches to by default when starting a
 	// new conversation, instead of the ephemeral per-conversation sandbox —
 	// see environment-api.ts / environment-detail.tsx. Null for a global
@@ -333,6 +339,7 @@ export async function createAgent(
 		git_committer_name?: string;
 		git_committer_email?: string;
 		docker_enabled?: boolean;
+		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
 		project_role_id: string;
@@ -365,6 +372,7 @@ export async function updateAgent(
 		git_committer_name?: string;
 		git_committer_email?: string;
 		docker_enabled?: boolean;
+		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
 	},
@@ -412,6 +420,7 @@ export interface CreateGlobalAgentPayload {
 	git_committer_name?: string;
 	git_committer_email?: string;
 	docker_enabled?: boolean;
+	parallelism_limit?: number;
 	// Always omitted in practice — a global agent has no project to default
 	// an environment from, and the UI never shows this field at global scope
 	// (see agent-detail.tsx's OverviewTab). Kept here only for type parity
@@ -446,6 +455,7 @@ export interface UpdateGlobalAgentPayload {
 	git_committer_name?: string;
 	git_committer_email?: string;
 	docker_enabled?: boolean;
+	parallelism_limit?: number;
 	// See CreateGlobalAgentPayload.default_environment_id above — unused at
 	// global scope, kept only for DTO type parity.
 	default_environment_id?: string | null;
@@ -497,7 +507,12 @@ export async function listGlobalChatSessions(
 
 export async function startGlobalChatSession(
 	agentId: string,
-	payload: { message: string; title?: string; contextItems?: ContextItem[] },
+	payload: {
+		message: string;
+		title?: string;
+		contextItems?: ContextItem[];
+		on_busy?: "queue" | "force";
+	},
 ): Promise<StartChatSessionResponse> {
 	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
@@ -508,7 +523,11 @@ export async function startGlobalChatSession(
 
 export async function sendGlobalChatMessage(
 	sessionId: string,
-	payload: { message: string; contextItems?: ContextItem[] },
+	payload: {
+		message: string;
+		contextItems?: ContextItem[];
+		on_busy?: "queue" | "force";
+	},
 ): Promise<AgentConversation> {
 	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<
@@ -1321,6 +1340,11 @@ export async function startChatSession(
 		environment_id?: string;
 		folder_id?: string;
 		contextItems?: ContextItem[];
+		// "" (ask, the default) | "queue" | "force" — see
+		// AgentBusyError/agent-busy-dialog.tsx's doc comments. Only meaningful
+		// when the agent is already at its parallelism_limit of running
+		// conversations; ignored otherwise.
+		on_busy?: "queue" | "force";
 	},
 ): Promise<StartChatSessionResponse> {
 	const { contextItems, ...rest } = payload;
@@ -1337,7 +1361,11 @@ export async function sendChatMessage(
 	projectId: string,
 	agentId: string,
 	sessionId: string,
-	payload: { message: string; contextItems?: ContextItem[] },
+	payload: {
+		message: string;
+		contextItems?: ContextItem[];
+		on_busy?: "queue" | "force";
+	},
 ): Promise<AgentConversation> {
 	const { contextItems, ...rest } = payload;
 	const { data } = await apiClient.instance.post<

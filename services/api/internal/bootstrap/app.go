@@ -70,6 +70,7 @@ type App struct {
 	pluginEventConsumer  *worker.PluginEventConsumer
 	environmentConsumer  *worker.EnvironmentCommandConsumer
 	automationConsumer   *worker.AutomationConsumer
+	agentQueueConsumer   *worker.AgentQueueConsumer
 	dueDateScheduler     *worker.DueDateScheduler
 	cronScheduler        *worker.CronScheduler
 	waitScheduler        *worker.WaitScheduler
@@ -386,6 +387,12 @@ func New(cfg *config.Config) (*App, error) {
 	// reaching down into its own sprint.
 	automationConsumer.WithSprintService(sprintRepo, sprintService)
 
+	// Reads the same StreamAgentConversationStatus stream automationConsumer
+	// does (its own independent consumer group), advancing an agent's
+	// parallelism queue whenever one of its conversations reaches a terminal
+	// status — see worker.AgentQueueConsumer's doc comment.
+	agentQueueConsumer := worker.NewAgentQueueConsumer(redisClient, agentRepo, agentService, log)
+
 	// Forward every recorded activity (task created/updated/deleted, comments,
 	// links, etc.) to subscribed plugins. ActivitySvc appends to the
 	// StreamPluginEvents Valkey stream; this consumer reads it back and
@@ -475,7 +482,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, docActivityConsumer: docActivityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, automationConsumer: automationConsumer, agentQueueConsumer: agentQueueConsumer, dueDateScheduler: dueDateScheduler, cronScheduler: cronScheduler, waitScheduler: waitScheduler, log: log}, nil
 }
 
 // Run starts the activity consumers and the HTTP server.
@@ -488,6 +495,7 @@ func (a *App) Run() error {
 	a.pluginEventConsumer.Start(context.Background())
 	a.environmentConsumer.Start(context.Background())
 	a.automationConsumer.Start(context.Background())
+	a.agentQueueConsumer.Start(context.Background())
 	a.dueDateScheduler.Start(context.Background())
 	a.cronScheduler.Start(context.Background())
 	a.waitScheduler.Start(context.Background())
@@ -503,6 +511,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.pluginEventConsumer.Stop()
 	a.environmentConsumer.Stop()
 	a.automationConsumer.Stop()
+	a.agentQueueConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.cronScheduler.Stop()
 	a.waitScheduler.Stop()
