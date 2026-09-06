@@ -78,7 +78,7 @@ func runMigrations(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("migrations: acquire connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationsAdvisoryLockKey); err != nil {
 		return fmt.Errorf("migrations: acquire advisory lock: %w", err)
@@ -134,7 +134,7 @@ func alreadyApplied(ctx context.Context, conn *sql.Conn) (map[string]bool, error
 	if err != nil {
 		return nil, fmt.Errorf("migrations: list applied: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	applied := map[string]bool{}
 	for rows.Next() {

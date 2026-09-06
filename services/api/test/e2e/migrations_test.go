@@ -85,7 +85,7 @@ func writeMigrationFile(t *testing.T, dir string, n int, name, sqlBody string) {
 func countRows(t *testing.T, db *sql.DB, table string) int {
 	t.Helper()
 	var n int
-	if err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&n); err != nil {
+	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&n); err != nil {
 		t.Fatalf("count rows in %q: %v", table, err)
 	}
 	return n
@@ -187,7 +187,7 @@ func TestRunMigrations_FailedFileNotRecorded(t *testing.T) {
 	}
 
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE filename = '0001_bad.sql'").Scan(&count); err != nil {
+	if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM schema_migrations WHERE filename = '0001_bad.sql'").Scan(&count); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
 	if count != 0 {
