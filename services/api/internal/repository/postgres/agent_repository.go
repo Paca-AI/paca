@@ -1119,6 +1119,85 @@ func (r *AgentRepository) ClaimConversationStatus(ctx context.Context, id uuid.U
 	return n == 1, nil
 }
 
+// ClaimQueuedForDispatch is ClaimConversationStatus's capacity-reverifying
+// sibling, used specifically for the "queued" -> "running" transition a
+// dispatch makes once checkParallelismCapacity has already decided there's
+// a free slot (see that method's own doc comment). That decision is a
+// plain read taken moments earlier, not inside this transaction — two
+// concurrent dispatches for the same busy agent (a burst of task_assigned
+// triggers landing at once, or two API replicas each independently
+// advancing the same agent's queue off two different terminal-status
+// events) could both read "running < limit" before either has actually
+// claimed a row, and both proceed, briefly exceeding limit. For an
+// ordinary LLM agent with its own ephemeral per-conversation sandbox that's
+// a soft, low-consequence overshoot; for an ACP or environment-backed
+// agent — forced to ParallelismLimit=1 by requiresSerialDispatch precisely
+// because every conversation shares one working directory — it's exactly
+// the same-directory race issue #462 exists to prevent, so the count is
+// re-verified here, atomically, immediately before the claim.
+//
+// "Atomically" specifically means: lock agentID's own row first (nothing
+// about the agents row itself is read or needed afterward — this is purely
+// a mutex substitute, so every concurrent claim attempt for the same agent,
+// regardless of which conversation it targets, serializes on the same
+// lock), and only THEN issue the running-count query as its own separate
+// statement. Under Postgres's Read Committed isolation (this connection's
+// default — see WithTx), a lock wait only guarantees a fresh, post-wait
+// snapshot for statements issued after it resolves — not for a query
+// folded into the same statement as the lock (e.g. a single UPDATE ...
+// FROM (SELECT ... FOR UPDATE) CTE): Postgres's EvalPlanQual re-check on a
+// lock wait only re-fetches the specific row the lock blocked on, never an
+// unrelated subquery over a different table evaluated in that same
+// statement. Splitting the lock and the count into two sequential
+// statements is what makes the second one actually observe whatever the
+// previous lock holder committed, rather than racing off a snapshot taken
+// before that commit.
+//
+// Returns claimed=false, no error, both when conversationID wasn't
+// "queued" and when the agent has no free slot by the time this runs —
+// callers already treat "false" as "someone/something else got there
+// first, try the next item" (see claimQueuedForDispatch's own doc comment)
+// and have no reason to tell the two apart.
+//
+// This covers dispatchOrEnqueue, StartChatSession/SendChatMessage's
+// fresh-conversation path, and AdvanceQueue/AdvanceFolderQueue — every
+// route that claims a brand-new "queued" row into "running". It does not
+// cover the paused/terminal resume-in-place branches (SendChatMessage,
+// resumeConversationMessage, and their global-chat siblings), which still
+// call the plain ClaimConversationStatus after their own capacity check —
+// resuming an existing conversation racing a brand-new dispatch for the
+// same agent at the exact same instant is a narrower, lower-frequency
+// window left as the same kind of accepted soft constraint the ask-path
+// race already is.
+func (r *AgentRepository) ClaimQueuedForDispatch(ctx context.Context, conversationID, agentID uuid.UUID, limit int) (bool, error) {
+	var claimed bool
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx, `SELECT id FROM agents WHERE id = $1 FOR UPDATE`, agentID.String()); err != nil {
+			return err
+		}
+		var running int
+		if err := tx.GetContext(ctx, &running, `SELECT count(*) FROM agent_conversations WHERE agent_id = $1 AND status = 'running'`, agentID.String()); err != nil {
+			return err
+		}
+		if running >= limit {
+			return nil
+		}
+		res, err := tx.ExecContext(ctx,
+			`UPDATE agent_conversations SET status='running', updated_at=$1 WHERE id=$2 AND status='queued'`,
+			time.Now(), conversationID.String())
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		claimed = n == 1
+		return nil
+	})
+	return claimed, err
+}
+
 // UpdateConversation saves the full conversation record.
 func (r *AgentRepository) UpdateConversation(ctx context.Context, c *agentdom.AgentConversation) error {
 	rec := conversationToRecord(c)
@@ -1348,9 +1427,10 @@ func (r *AgentRepository) DequeueOldestPendingTrigger(ctx context.Context, agent
 }
 
 // DequeueOldestPendingTriggerForFolder is DequeueOldestPendingTrigger's
-// folder-scoped sibling — see the domain interface's doc comment. folderID
-// nil is matched the same "IS NOT DISTINCT FROM" way
-// CountRunningConversationsInFolder uses.
+// folder-scoped sibling — see the domain interface's doc comment. Folder
+// overlap (including folderID nil, and ancestor/descendant matches) is
+// resolved the same folderOverlapPredicate way CountRunningConversationsInFolder
+// uses — see that helper's doc comment.
 func (r *AgentRepository) DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*agentdom.PendingTrigger, error) {
 	return r.dequeueOldestPendingTrigger(ctx, `
 		SELECT `+pendingTriggerSelectColsQualified+`

@@ -40,7 +40,7 @@ type mockAgentSvc struct {
 	stopGlobalConversation        func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	pauseGlobalConversation       func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	globalHeartbeat               func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
-	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error
+	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, onBusy string) error
 	getGlobalAgent                func(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
 	generateGlobalACPBridgeToken  func(ctx context.Context, agentID uuid.UUID) (string, error)
 	generateGlobalAgentMCPKey     func(ctx context.Context, agentID uuid.UUID) (string, error)
@@ -148,7 +148,7 @@ func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationI
 func (m *mockAgentSvc) StopConversation(_ context.Context, _, _, _ uuid.UUID) error  { return nil }
 func (m *mockAgentSvc) PauseConversation(_ context.Context, _, _, _ uuid.UUID) error { return nil }
 func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error         { return nil }
-func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef) error {
+func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef, _ string) error {
 	return nil
 }
 func (m *mockAgentSvc) ListChatSessions(_ context.Context, _, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
@@ -230,9 +230,9 @@ func (m *mockAgentSvc) GlobalHeartbeat(ctx context.Context, conversationID, acto
 	}
 	return nil
 }
-func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, _ []agentdom.ContextItemRef) error {
+func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, _ []agentdom.ContextItemRef, onBusy string) error {
 	if m.sendGlobalConversationMessage != nil {
-		return m.sendGlobalConversationMessage(ctx, conversationID, message, actorUserID)
+		return m.sendGlobalConversationMessage(ctx, conversationID, message, actorUserID, onBusy)
 	}
 	return nil
 }

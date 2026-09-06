@@ -553,7 +553,7 @@ func (h *ConversationHandler) SendConversationMessage(w http.ResponseWriter, r *
 		return
 	}
 
-	if err := h.svc.SendConversationMessage(r.Context(), projectID, convID, req.Message, memberID, req.ContextItems); err != nil {
+	if err := h.svc.SendConversationMessage(r.Context(), projectID, convID, req.Message, memberID, req.ContextItems, req.OnBusy); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
@@ -700,7 +700,7 @@ func (h *ConversationHandler) SendGlobalConversationMessage(w http.ResponseWrite
 		return
 	}
 
-	if err := h.svc.SendGlobalConversationMessage(r.Context(), convID, req.Message, userID, req.ContextItems); err != nil {
+	if err := h.svc.SendGlobalConversationMessage(r.Context(), convID, req.Message, userID, req.ContextItems, req.OnBusy); err != nil {
 		presenter.Error(w, r, err)
 		return
 	}

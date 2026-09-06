@@ -129,6 +129,14 @@ type ConversationRepository interface {
 	// fromStatus to toStatus and reports whether it won the race (false means
 	// another caller already moved the conversation out of fromStatus).
 	ClaimConversationStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
+	// ClaimQueuedForDispatch is ClaimConversationStatus's capacity-
+	// reverifying sibling for the specific "queued" -> "running" transition
+	// a dispatch makes: it re-verifies agentID still has fewer than limit
+	// conversations running atomically, in the same locked operation as the
+	// claim itself, rather than trusting a plain count read taken moments
+	// earlier by the caller — see the postgres implementation's doc comment
+	// for why that distinction matters under concurrent dispatch.
+	ClaimQueuedForDispatch(ctx context.Context, conversationID, agentID uuid.UUID, limit int) (bool, error)
 	UpdateConversation(ctx context.Context, c *AgentConversation) error
 	// ListConversationEvents returns one page of a conversation's events per
 	// window (see ConversationEventWindow), plus the conversation's current

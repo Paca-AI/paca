@@ -175,7 +175,13 @@ type ConversationService interface {
 	// Heartbeat refreshes a chat conversation's idle timer; called
 	// periodically by the frontend while a conversation is loaded in a tab.
 	Heartbeat(ctx context.Context, projectID, conversationID, memberID uuid.UUID) error
-	SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID, contextItems []ContextItemRef) error
+	// SendConversationMessage replies to conversationID. onBusy ("" |
+	// OnBusyQueue | OnBusyForce — see OnBusyQueue's doc comment) only
+	// matters when this resumes an ACP or environment-attached conversation
+	// in place (see the implementation's doc comment): every other
+	// conversation must already be "running" to accept a reply at all, so
+	// there's no capacity decision to make there.
+	SendConversationMessage(ctx context.Context, projectID, conversationID uuid.UUID, message string, memberID uuid.UUID, contextItems []ContextItemRef, onBusy string) error
 
 	// -- Global chat conversations (ProjectID == uuid.Nil). Thin siblings of
 	// the methods above with the ownership check inverted (ProjectID must be
@@ -198,7 +204,9 @@ type ConversationService interface {
 	StopGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	PauseGlobalConversation(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	GlobalHeartbeat(ctx context.Context, conversationID, actorUserID uuid.UUID) error
-	SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, contextItems []ContextItemRef) error
+	// SendGlobalConversationMessage is SendConversationMessage's global-chat
+	// sibling — see its doc comment for onBusy.
+	SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, contextItems []ContextItemRef, onBusy string) error
 }
 
 // ChatSessionService defines chat session use cases.

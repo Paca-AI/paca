@@ -520,6 +520,11 @@ type SendMessageRequest struct {
 	// attached to this message via the frontend composer's context-item
 	// picker — see agentdom.ContextItemRef.
 	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
+	// OnBusy is one of "" (ask, the default) | "queue" | "force" — see
+	// agentdom.OnBusyQueue's doc comment. Only takes effect when this
+	// reply resumes an ACP or environment-attached conversation in place;
+	// ignored otherwise.
+	OnBusy string `json:"on_busy,omitempty"`
 }
 
 // ConversationFromEntity maps an AgentConversation entity to its DTO.
