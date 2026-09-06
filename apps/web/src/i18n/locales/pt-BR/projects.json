@@ -185,6 +185,9 @@
 				"committerEmailLabel": "E-mail do committer",
 				"dockerEnabledLabel": "Acesso ao Docker",
 				"dockerEnabledHint": "Concede a este agente um daemon Docker privado dentro do seu sandbox. Desativado por padrão — ative apenas para agentes que realmente executam comandos Docker, pois isso adiciona tempo de inicialização a cada conversa.",
+				"parallelismLimitLabel": "Limite de paralelismo",
+				"parallelismLimitHint": "Quantas conversas deste agente podem rodar ao mesmo tempo. O trabalho extra espera em uma fila até que uma vaga se abra — o padrão é 1, para que os tickets sejam processados um de cada vez em vez de disputarem o mesmo diretório de trabalho.",
+				"parallelismLimitFixedHint": "Fixo em 1 para este agente — ele trabalha em um único diretório compartilhado (o checkout local de um agente ACP, ou um ambiente padrão estático), então apenas uma conversa pode rodar com segurança por vez.",
 				"environmentSection": "Ambiente",
 				"defaultEnvironmentLabel": "Ambiente padrão",
 				"defaultEnvironmentHint": "Conecta as conversas deste agente a um ambiente estático em vez de um sandbox descartável novo a cada vez.",
@@ -326,6 +329,15 @@
 			"loadingOlder": "Carregando…",
 			"newBelow_one": "{{count}} nova mensagem",
 			"newBelow_other": "{{count}} novas mensagens"
+		},
+		"busyDialog": {
+			"title": "O agente está ocupado",
+			"description": "Este agente já está executando {{running}}/{{limit}} conversa(s). Adicione esta mensagem à fila para que ela comece automaticamente assim que uma vaga se abrir, ou envie agora mesmo assim.",
+			"folderDescription": "Outra conversa já está trabalhando nesta pasta do ambiente. Adicione esta mensagem à fila para que ela comece automaticamente assim que essa conversa terminar, ou envie agora mesmo assim.",
+			"cancel": "Cancelar",
+			"queue": "Adicionar à fila",
+			"force": "Enviar agora",
+			"cancelledError": "Mensagem não enviada."
 		},
 		"thread": {
 			"composerPlaceholder": "Enviar mensagem ao agente…",

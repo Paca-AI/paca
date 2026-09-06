@@ -84,6 +84,29 @@ export const ApiErrorCode = {
 	PluginDowngradeNotAllowed: "PLUGIN_DOWNGRADE_NOT_ALLOWED",
 	PluginIncompatibleHostVersion: "PLUGIN_INCOMPATIBLE_HOST_VERSION",
 
+	// Agent domain errors.
+	// Sent instead of dispatching a new chat turn when the agent is already
+	// at parallelism_limit running conversations and the request didn't opt
+	// into on_busy: "queue" | "force" — error_details carries "running"/
+	// "limit" (see getApiErrorDetails). See agent-busy-dialog.tsx.
+	AgentParallelismLimitReached: "AGENT_PARALLELISM_LIMIT_REACHED",
+	// Sent instead of dispatching a new chat turn when another conversation
+	// — from any agent, not just this one — is already running in the same
+	// environment folder (an explicit environment/folder override, or two
+	// agents sharing one default environment, can both cross agent
+	// boundaries the parallelism_limit check above never sees). Carries
+	// error_details.environment_id. See agent-busy-dialog.tsx — same
+	// on_busy=queue|force retry as AgentParallelismLimitReached, just a
+	// different reason for being busy.
+	AgentEnvironmentFolderBusy: "AGENT_ENVIRONMENT_FOLDER_BUSY",
+	// Returned from create/update agent when parallelism_limit > 1 is
+	// requested for an agent that can't safely run more than one
+	// conversation at once (an ACP-type agent, or one attached to a shared
+	// default_environment_id) — see agent-detail.tsx's requiresSerialDispatch,
+	// which keeps the field disabled in that case so this should be
+	// unreachable from the UI in practice.
+	AgentParallelismLimitUnsupported: "AGENT_PARALLELISM_LIMIT_UNSUPPORTED",
+
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
 	InternalError: "INTERNAL_ERROR",

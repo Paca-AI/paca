@@ -185,6 +185,9 @@
 				"committerEmailLabel": "Email committer",
 				"dockerEnabledLabel": "Quyền truy cập Docker",
 				"dockerEnabledHint": "Cấp cho agent này một daemon Docker riêng bên trong sandbox của nó. Mặc định tắt — chỉ bật cho các agent thực sự chạy lệnh Docker, vì việc này làm tăng thời gian khởi động cho mỗi cuộc hội thoại.",
+				"parallelismLimitLabel": "Giới hạn chạy song song",
+				"parallelismLimitHint": "Số cuộc hội thoại của agent này có thể chạy cùng lúc. Công việc dư ra sẽ chờ trong hàng đợi cho đến khi có chỗ trống — mặc định là 1, để các ticket được xử lý lần lượt thay vì tranh chấp cùng một thư mục làm việc.",
+				"parallelismLimitFixedHint": "Cố định ở mức 1 cho agent này — nó làm việc trong một thư mục dùng chung duy nhất (bản checkout cục bộ của agent ACP, hoặc một môi trường mặc định tĩnh), nên chỉ một cuộc hội thoại có thể chạy an toàn tại một thời điểm.",
 				"environmentSection": "Môi trường",
 				"defaultEnvironmentLabel": "Môi trường mặc định",
 				"defaultEnvironmentHint": "Gắn các cuộc hội thoại của agent này vào một môi trường tĩnh thay vì tạo sandbox dùng một lần mỗi lần.",
@@ -326,6 +329,15 @@
 			"loadingOlder": "Đang tải…",
 			"newBelow_one": "{{count}} tin nhắn mới",
 			"newBelow_other": "{{count}} tin nhắn mới"
+		},
+		"busyDialog": {
+			"title": "Agent đang bận",
+			"description": "Agent này hiện đang chạy {{running}}/{{limit}} cuộc hội thoại. Thêm tin nhắn này vào hàng đợi để nó tự động bắt đầu khi có chỗ trống, hoặc gửi ngay bây giờ.",
+			"folderDescription": "Một cuộc hội thoại khác đang làm việc trong thư mục môi trường này. Thêm tin nhắn này vào hàng đợi để nó tự động bắt đầu khi cuộc hội thoại đó kết thúc, hoặc gửi ngay bây giờ.",
+			"cancel": "Hủy",
+			"queue": "Thêm vào hàng đợi",
+			"force": "Gửi ngay",
+			"cancelledError": "Tin nhắn chưa được gửi."
 		},
 		"thread": {
 			"composerPlaceholder": "Nhắn tin cho agent…",

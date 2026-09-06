@@ -947,7 +947,7 @@ func TestSendGlobalConversationMessage_ForwardsCallerIDNotBodySuppliedActor(t *t
 	attackerSuppliedActor := uuid.New()
 	var gotActorUserID uuid.UUID
 	svc := &mockAgentSvc{
-		sendGlobalConversationMessage: func(_ context.Context, _ uuid.UUID, _ string, actorUserID uuid.UUID) error {
+		sendGlobalConversationMessage: func(_ context.Context, _ uuid.UUID, _ string, actorUserID uuid.UUID, _ string) error {
 			gotActorUserID = actorUserID
 			return nil
 		},
@@ -976,7 +976,7 @@ func TestSendGlobalConversationMessage_RejectsInvalidContextItems(t *testing.T) 
 	callerID := uuid.New()
 	svcCalled := false
 	svc := &mockAgentSvc{
-		sendGlobalConversationMessage: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) error {
+		sendGlobalConversationMessage: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID, _ string) error {
 			svcCalled = true
 			return nil
 		},

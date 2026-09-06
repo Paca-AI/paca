@@ -163,6 +163,9 @@ function OverviewTab({
 		agent.git_committer_email,
 	);
 	const [dockerEnabled, setDockerEnabled] = useState(agent.docker_enabled);
+	const [parallelismLimit, setParallelismLimit] = useState(
+		agent.parallelism_limit,
+	);
 	const [defaultEnvironmentId, setDefaultEnvironmentIdState] = useState(
 		agent.default_environment_id ?? "",
 	);
@@ -174,9 +177,23 @@ function OverviewTab({
 	// picked under the old one is never valid under the new one (mirrors
 	// agent-picker.tsx's useEnvironmentPicker.onEnvironmentChange, which
 	// clears folderId the same way for the composer's own pickers).
+	//
+	// Also resets parallelismLimit back to 1 when a real environment is
+	// picked: the server rejects parallelism_limit > 1 for any agent
+	// attached to a static default_environment_id (its filesystem is shared
+	// across every conversation attached to it, unlike the default
+	// ephemeral per-conversation sandbox — see
+	// agentdom.ErrParallelismLimitRequiresIsolatedSandbox on the server),
+	// and the field itself becomes disabled once requiresSerialDispatch
+	// below is true, so this keeps the save payload consistent with what
+	// the disabled input already shows instead of silently carrying over a
+	// stale value the user can no longer see or edit.
 	const setDefaultEnvironmentId = (id: string) => {
 		if (id !== defaultEnvironmentId) {
 			setDefaultFolderId("");
+		}
+		if (id && parallelismLimit > 1) {
+			setParallelismLimit(1);
 		}
 		setDefaultEnvironmentIdState(id);
 	};
@@ -201,6 +218,13 @@ function OverviewTab({
 	const acpCommandParts = splitShellCommand(acpCommand);
 	const isAcp = agent.agent_type === "acp";
 	const isProviderCli = agent.agent_type === "provider_cli";
+	// Mirrors agentsvc.requiresSerialDispatch on the server exactly: an
+	// ACP-type agent (apps/acp-bridge's own session model rejects a second
+	// concurrent turn rather than queueing it) or any agent attached to a
+	// static environment (provider_cli always is) can never safely run more
+	// than one conversation at once, regardless of what parallelism_limit
+	// is configured to — see agentdom.ErrParallelismLimitRequiresIsolatedSandbox.
+	const requiresSerialDispatch = isAcp || !!defaultEnvironmentId;
 
 	const handleProviderChange = (v: string | null) => {
 		if (!v) return;
@@ -220,8 +244,17 @@ function OverviewTab({
 	const availableModels: string[] =
 		providerSelect !== CUSTOM ? (llmModels[providerSelect]?.models ?? []) : [];
 
+	// Defense in depth alongside setDefaultEnvironmentId's reset and the
+	// disabled input below: the value actually compared/saved is always
+	// forced to 1 when requiresSerialDispatch, regardless of whatever
+	// parallelismLimit itself currently holds.
+	const effectiveParallelismLimit = requiresSerialDispatch
+		? 1
+		: parallelismLimit;
+
 	const isDirty =
 		name !== agent.name ||
+		effectiveParallelismLimit !== agent.parallelism_limit ||
 		(isAcp
 			? acpProviderSelect !== (agent.acp_provider ?? "claude-code") ||
 				acpCommandParts.join(" ") !== (agent.acp_command ?? []).join(" ")
@@ -245,6 +278,7 @@ function OverviewTab({
 		mutationFn: () => {
 			const payload = {
 				name: name.trim(),
+				parallelism_limit: effectiveParallelismLimit,
 				...(isAcp
 					? {
 							acp_provider: acpProviderSelect,
@@ -315,6 +349,25 @@ function OverviewTab({
 					onChange={(e) => setName(e.target.value)}
 					disabled={!canWrite}
 				/>
+			</div>
+
+			<div className="space-y-1.5">
+				<Label>{t("agents.detail.overview.parallelismLimitLabel")}</Label>
+				<Input
+					type="number"
+					min={1}
+					className="w-24"
+					value={effectiveParallelismLimit}
+					onChange={(e) =>
+						setParallelismLimit(Math.max(1, Number(e.target.value) || 1))
+					}
+					disabled={!canWrite || requiresSerialDispatch}
+				/>
+				<p className="text-xs text-muted-foreground">
+					{requiresSerialDispatch
+						? t("agents.detail.overview.parallelismLimitFixedHint")
+						: t("agents.detail.overview.parallelismLimitHint")}
+				</p>
 			</div>
 
 			<Separator />

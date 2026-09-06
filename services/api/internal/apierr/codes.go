@@ -308,6 +308,20 @@ const (
 	CodeAgentConversationAlreadyStopped Code = "AGENT_CONVERSATION_ALREADY_STOPPED"
 	// CodeAgentConversationBusy indicates a chat reply was sent while the agent is still responding to the previous one.
 	CodeAgentConversationBusy Code = "AGENT_CONVERSATION_BUSY"
+	// CodeAgentParallelismLimitReached indicates a new chat message would
+	// exceed the agent's parallelism_limit of simultaneously running
+	// conversations. Carries Details["running"]/["limit"] (see
+	// apierr.NewWithDetails) so the client can show the current counts and
+	// offer to queue the message or send it anyway (on_busy=queue|force).
+	CodeAgentParallelismLimitReached Code = "AGENT_PARALLELISM_LIMIT_REACHED"
+	// CodeAgentEnvironmentFolderBusy indicates a new chat message would
+	// start a conversation in an environment folder another conversation
+	// (from any agent) is already running in. Carries
+	// Details["environment_id"] (see apierr.NewWithDetails) so the client
+	// can offer to queue the message or send it anyway
+	// (on_busy=queue|force) — same contract as CodeAgentParallelismLimitReached,
+	// just a different reason for being busy.
+	CodeAgentEnvironmentFolderBusy Code = "AGENT_ENVIRONMENT_FOLDER_BUSY"
 	// CodeAgentConversationInvalidCursor indicates a client-supplied pagination cursor failed to decode.
 	CodeAgentConversationInvalidCursor Code = "AGENT_CONVERSATION_INVALID_CURSOR"
 	// CodeAgentActivityInvalidCursor indicates a client-supplied activity feed pagination cursor failed to decode.
@@ -333,6 +347,11 @@ const (
 	// default_environment_id, was set without a default_environment_id
 	// also set, or was set on a global-scope agent.
 	CodeAgentDefaultFolderInvalid Code = "AGENT_DEFAULT_FOLDER_INVALID"
+	// CodeAgentParallelismLimitUnsupported indicates parallelism_limit > 1
+	// was requested for an agent that can't safely run more than one
+	// conversation at once (an ACP-type agent, or one attached to a shared
+	// default_environment_id) — see agentdom.ErrParallelismLimitRequiresIsolatedSandbox.
+	CodeAgentParallelismLimitUnsupported Code = "AGENT_PARALLELISM_LIMIT_UNSUPPORTED"
 	// CodeAgentCLIProviderInvalid indicates cli_provider is not one of the supported values.
 	CodeAgentCLIProviderInvalid Code = "AGENT_CLI_PROVIDER_INVALID"
 	// CodeAgentCLIAuthModeInvalid indicates cli_auth_mode is not one of the supported values.

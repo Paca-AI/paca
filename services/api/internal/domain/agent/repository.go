@@ -129,12 +129,70 @@ type ConversationRepository interface {
 	// fromStatus to toStatus and reports whether it won the race (false means
 	// another caller already moved the conversation out of fromStatus).
 	ClaimConversationStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus string) (bool, error)
+	// ClaimQueuedForDispatch is ClaimConversationStatus's capacity-
+	// reverifying sibling for the specific "queued" -> "running" transition
+	// a dispatch makes: it re-verifies agentID still has fewer than limit
+	// conversations running atomically, in the same locked operation as the
+	// claim itself, rather than trusting a plain count read taken moments
+	// earlier by the caller — see the postgres implementation's doc comment
+	// for why that distinction matters under concurrent dispatch.
+	ClaimQueuedForDispatch(ctx context.Context, conversationID, agentID uuid.UUID, limit int) (bool, error)
 	UpdateConversation(ctx context.Context, c *AgentConversation) error
 	// ListConversationEvents returns one page of a conversation's events per
 	// window (see ConversationEventWindow), plus the conversation's current
 	// total event count.
 	ListConversationEvents(ctx context.Context, conversationID uuid.UUID, window ConversationEventWindow) ([]*AgentConversationEvent, int64, error)
 	CreateConversationEvent(ctx context.Context, e *AgentConversationEvent) error
+
+	// -- Parallelism queue (agent_pending_triggers) — see
+	// Agent.ParallelismLimit and PendingTrigger's doc comments.
+
+	// CountRunningConversations returns how many of agentID's conversations
+	// are currently status "running", across every project — the count
+	// dispatchOrEnqueue and AdvanceQueue compare against ParallelismLimit.
+	CountRunningConversations(ctx context.Context, agentID uuid.UUID) (int, error)
+	// CountRunningConversationsInFolder returns how many conversations,
+	// across every agent, are currently status "running" and occupying
+	// folderID (or any of its ancestor/descendant folders — see the
+	// postgres implementation's folderOverlapPredicate for why a folder and
+	// anything path-nested inside it share the same working directory on
+	// disk and so count as the same occupied slot) within environmentID —
+	// the count checkFolderCapacity compares against zero. folderID nil
+	// matches (and is matched by) every folder in environmentID, treating a
+	// conversation with no specific folder set as spanning the whole
+	// environment.
+	CountRunningConversationsInFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (int, error)
+	// CreatePendingTrigger persists a trigger that couldn't be dispatched
+	// immediately — see PendingTrigger's doc comment.
+	CreatePendingTrigger(ctx context.Context, t *PendingTrigger) error
+	// DequeueOldestPendingTrigger atomically returns and deletes agentID's
+	// oldest PendingTrigger (FIFO), or (nil, nil) if it has none. Must use
+	// SELECT ... FOR UPDATE SKIP LOCKED so that two concurrent callers (this
+	// codebase runs multiple consumer-group replicas — see
+	// worker.AutomationConsumer) never both dequeue the same row and
+	// double-dispatch it.
+	DequeueOldestPendingTrigger(ctx context.Context, agentID uuid.UUID) (*PendingTrigger, error)
+	// DequeueOldestPendingTriggerForFolder is DequeueOldestPendingTrigger's
+	// folder-scoped sibling: finds and removes the oldest PendingTrigger
+	// whose own target folder overlaps environmentID/folderID (same
+	// ancestor/descendant matching as CountRunningConversationsInFolder —
+	// the returned trigger's folder need not equal folderID exactly),
+	// regardless of which agent it belongs to, or (nil, nil) if none. Same
+	// FOR UPDATE SKIP LOCKED requirement and rationale. Because a match
+	// isn't necessarily an exact folderID match, a caller dequeuing "to see
+	// what was waiting on folderID" must still re-verify the returned
+	// trigger's OWN folder is actually free (see AdvanceFolderQueue) before
+	// dispatching it — freeing folderID doesn't guarantee every folder that
+	// merely overlaps it is also fully free of unrelated occupants.
+	DequeueOldestPendingTriggerForFolder(ctx context.Context, environmentID uuid.UUID, folderID *uuid.UUID) (*PendingTrigger, error)
+	// DeletePendingTriggerByConversationID removes conversationID's pending
+	// trigger row, if it has one, reporting whether a row actually existed
+	// to delete — called when a still-queued conversation is stopped before
+	// ever being dispatched, so it can't be dequeued and published later
+	// after being marked stopped. StopConversation uses the returned bool to
+	// skip telling agent-runner to interrupt a conversation it never
+	// actually dispatched. (false, nil) if no such row exists.
+	DeletePendingTriggerByConversationID(ctx context.Context, conversationID uuid.UUID) (bool, error)
 }
 
 // ChatSessionRepository defines storage for agent chat sessions.

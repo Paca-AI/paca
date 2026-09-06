@@ -53,6 +53,9 @@ type AgentResponse struct {
 	GitCommitterName   string     `json:"git_committer_name"`
 	GitCommitterEmail  string     `json:"git_committer_email"`
 	DockerEnabled      bool       `json:"docker_enabled"`
+	// ParallelismLimit caps how many of this agent's conversations may be
+	// "running" at once — see agentdom.Agent.ParallelismLimit's doc comment.
+	ParallelismLimit int `json:"parallelism_limit"`
 	// DefaultEnvironmentID is the static environment (environmentdom.Environment)
 	// this agent's conversations attach to by default — nil for a global-scope
 	// agent, or a project-scoped agent with no default set. See
@@ -101,6 +104,9 @@ type CreateAgentRequest struct {
 	GitCommitterName  string `json:"git_committer_name"`
 	GitCommitterEmail string `json:"git_committer_email"`
 	DockerEnabled     bool   `json:"docker_enabled"`
+	// ParallelismLimit: omit or 0 defaults to 1 — see
+	// agentdom.Agent.ParallelismLimit's doc comment.
+	ParallelismLimit int `json:"parallelism_limit"`
 	// DefaultEnvironmentID optionally sets the static environment this
 	// agent's conversations attach to by default — must belong to this same
 	// project (validated in agent.CreateAgent). MANDATORY (not optional)
@@ -130,17 +136,20 @@ type UpdateAgentRequest struct {
 	// CLIProvider/CLIModel/CLIAuthMode/CLIAPIKey: nil means "unchanged",
 	// same convention as every other pointer field here — only meaningful
 	// for an existing provider_cli agent.
-	CLIProvider       *string    `json:"cli_provider"`
-	CLIModel          *string    `json:"cli_model"`
-	CLIAuthMode       *string    `json:"cli_auth_mode"`
-	CLIAPIKey         *string    `json:"cli_api_key"`
-	SystemPrompt      *string    `json:"system_prompt"`
-	MaxIterations     *int       `json:"max_iterations"`
-	TimeoutMinutes    *int       `json:"timeout_minutes"`
-	GitCommitterName  *string    `json:"git_committer_name"`
-	GitCommitterEmail *string    `json:"git_committer_email"`
-	DockerEnabled     *bool      `json:"docker_enabled"`
-	GlobalRoleID      *uuid.UUID `json:"global_role_id"`
+	CLIProvider       *string `json:"cli_provider"`
+	CLIModel          *string `json:"cli_model"`
+	CLIAuthMode       *string `json:"cli_auth_mode"`
+	CLIAPIKey         *string `json:"cli_api_key"`
+	SystemPrompt      *string `json:"system_prompt"`
+	MaxIterations     *int    `json:"max_iterations"`
+	TimeoutMinutes    *int    `json:"timeout_minutes"`
+	GitCommitterName  *string `json:"git_committer_name"`
+	GitCommitterEmail *string `json:"git_committer_email"`
+	DockerEnabled     *bool   `json:"docker_enabled"`
+	// ParallelismLimit: nil means unchanged, same convention as every other
+	// pointer field here.
+	ParallelismLimit *int       `json:"parallelism_limit"`
+	GlobalRoleID     *uuid.UUID `json:"global_role_id"`
 	// DefaultEnvironmentID: omit to leave unchanged, pass a zero UUID
 	// ("00000000-0000-0000-0000-000000000000") to clear it, or a real
 	// environment ID to set it — see agentdom.UpdateAgentInput.
@@ -172,6 +181,7 @@ type CreateGlobalAgentRequest struct {
 	GitCommitterName  string     `json:"git_committer_name"`
 	GitCommitterEmail string     `json:"git_committer_email"`
 	DockerEnabled     bool       `json:"docker_enabled"`
+	ParallelismLimit  int        `json:"parallelism_limit"`
 	GlobalRoleID      *uuid.UUID `json:"global_role_id"`
 }
 
@@ -237,6 +247,7 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		GitCommitterName:     a.GitCommitterName,
 		GitCommitterEmail:    a.GitCommitterEmail,
 		DockerEnabled:        a.DockerEnabled,
+		ParallelismLimit:     a.ParallelismLimit,
 		DefaultEnvironmentID: a.DefaultEnvironmentID,
 		DefaultFolderID:      a.DefaultFolderID,
 		CreatedBy:            a.CreatedBy,
@@ -509,6 +520,11 @@ type SendMessageRequest struct {
 	// attached to this message via the frontend composer's context-item
 	// picker — see agentdom.ContextItemRef.
 	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
+	// OnBusy is one of "" (ask, the default) | "queue" | "force" — see
+	// agentdom.OnBusyQueue's doc comment. Only takes effect when this
+	// reply resumes an ACP or environment-attached conversation in place;
+	// ignored otherwise.
+	OnBusy string `json:"on_busy,omitempty"`
 }
 
 // ConversationFromEntity maps an AgentConversation entity to its DTO.
@@ -624,6 +640,11 @@ type StartChatSessionRequest struct {
 	// attached to this message via the frontend composer's context-item
 	// picker — see agentdom.ContextItemRef.
 	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
+	// OnBusy is "" (ask, the default) | "queue" | "force" — see
+	// agentdom.OnBusyQueue/OnBusyForce's doc comments. Only meaningful when
+	// the agent is already at its parallelism_limit of running
+	// conversations; ignored otherwise.
+	OnBusy string `json:"on_busy,omitempty"`
 }
 
 // SendChatMessageRequest is the body for POST /chat-sessions/:sessionId/messages.
@@ -633,6 +654,8 @@ type SendChatMessageRequest struct {
 	// attached to this message via the frontend composer's context-item
 	// picker — see agentdom.ContextItemRef.
 	ContextItems []agentdom.ContextItemRef `json:"context_items,omitempty"`
+	// OnBusy: see StartChatSessionRequest.OnBusy's doc comment.
+	OnBusy string `json:"on_busy,omitempty"`
 }
 
 // ChatSessionFromEntity maps an AgentChatSession entity to its DTO.

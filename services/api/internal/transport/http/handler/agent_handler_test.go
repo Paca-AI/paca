@@ -40,7 +40,7 @@ type mockAgentSvc struct {
 	stopGlobalConversation        func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	pauseGlobalConversation       func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
 	globalHeartbeat               func(ctx context.Context, conversationID, actorUserID uuid.UUID) error
-	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID) error
+	sendGlobalConversationMessage func(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, onBusy string) error
 	getGlobalAgent                func(ctx context.Context, agentID uuid.UUID) (*agentdom.Agent, error)
 	generateGlobalACPBridgeToken  func(ctx context.Context, agentID uuid.UUID) (string, error)
 	generateGlobalAgentMCPKey     func(ctx context.Context, agentID uuid.UUID) (string, error)
@@ -148,19 +148,19 @@ func (m *mockAgentSvc) ListConversationEvents(ctx context.Context, conversationI
 func (m *mockAgentSvc) StopConversation(_ context.Context, _, _, _ uuid.UUID) error  { return nil }
 func (m *mockAgentSvc) PauseConversation(_ context.Context, _, _, _ uuid.UUID) error { return nil }
 func (m *mockAgentSvc) Heartbeat(_ context.Context, _, _, _ uuid.UUID) error         { return nil }
-func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef) error {
+func (m *mockAgentSvc) SendConversationMessage(_ context.Context, _, _ uuid.UUID, _ string, _ uuid.UUID, _ []agentdom.ContextItemRef, _ string) error {
 	return nil
 }
 func (m *mockAgentSvc) ListChatSessions(_ context.Context, _, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
 	return nil, nil
 }
-func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, _, _ *uuid.UUID, _ []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) StartChatSession(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string, _, _ *uuid.UUID, _ []agentdom.ContextItemRef, _ string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	if m.startChatSession != nil {
 		return m.startChatSession(ctx, projectID, agentID, memberID, message)
 	}
 	return &agentdom.AgentChatSession{ID: uuid.New()}, &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
-func (m *mockAgentSvc) SendChatMessage(_ context.Context, _, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) SendChatMessage(_ context.Context, _, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef, _ string) (*agentdom.AgentConversation, error) {
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
 func (m *mockAgentSvc) ListChatMessages(_ context.Context, _, _ uuid.UUID, _, _ int) ([]*agentdom.AgentConversationEvent, int64, error) {
@@ -230,19 +230,19 @@ func (m *mockAgentSvc) GlobalHeartbeat(ctx context.Context, conversationID, acto
 	}
 	return nil
 }
-func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, _ []agentdom.ContextItemRef) error {
+func (m *mockAgentSvc) SendGlobalConversationMessage(ctx context.Context, conversationID uuid.UUID, message string, actorUserID uuid.UUID, _ []agentdom.ContextItemRef, onBusy string) error {
 	if m.sendGlobalConversationMessage != nil {
-		return m.sendGlobalConversationMessage(ctx, conversationID, message, actorUserID)
+		return m.sendGlobalConversationMessage(ctx, conversationID, message, actorUserID, onBusy)
 	}
 	return nil
 }
 func (m *mockAgentSvc) ListGlobalChatSessions(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
 	return nil, nil
 }
-func (m *mockAgentSvc) StartGlobalChatSession(_ context.Context, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) StartGlobalChatSession(_ context.Context, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef, _ string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
 	return &agentdom.AgentChatSession{ID: uuid.New()}, &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
-func (m *mockAgentSvc) SendGlobalChatMessage(_ context.Context, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef) (*agentdom.AgentConversation, error) {
+func (m *mockAgentSvc) SendGlobalChatMessage(_ context.Context, _, _ uuid.UUID, _ string, _ []agentdom.ContextItemRef, _ string) (*agentdom.AgentConversation, error) {
 	return &agentdom.AgentConversation{ID: uuid.New()}, nil
 }
 func (m *mockAgentSvc) InitiateAvatarUpload(_ context.Context, _, _ uuid.UUID, _, _ string, _ int64, _ uuid.UUID) (*attachmentdom.UploadSession, error) {

@@ -45,6 +45,7 @@ import {
 } from "@/lib/agent-api";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
+import { useAgentBusyPrompt } from "./agent-busy-dialog";
 import { ConversationErrorBox } from "./conversation-error-box";
 import {
 	canReplyToConversation,
@@ -232,6 +233,8 @@ export function ConversationView({
 	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
 	const canControl = !projectId || hasProjectPermission("conversations.write");
 	const canReply = canControl && canReplyToConversation(conversation, isACP);
+	const { dialog: agentBusyDialog, send: sendWithBusyPrompt } =
+		useAgentBusyPrompt();
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -291,17 +294,20 @@ export function ConversationView({
 			return;
 		}
 
-		const result = projectId
-			? await sendChatMessage(
-					projectId,
-					conversation.agent_id,
-					conversation.chat_session_id,
-					{ message: text, contextItems },
-				)
-			: await sendGlobalChatMessage(conversation.chat_session_id, {
-					message: text,
-					contextItems,
-				});
+		const chatSessionId = conversation.chat_session_id;
+		const result = await sendWithBusyPrompt((onBusy) =>
+			projectId
+				? sendChatMessage(projectId, conversation.agent_id, chatSessionId, {
+						message: text,
+						contextItems,
+						on_busy: onBusy,
+					})
+				: sendGlobalChatMessage(chatSessionId, {
+						message: text,
+						contextItems,
+						on_busy: onBusy,
+					}),
+		);
 		useContextInjectionStore.getState().clear();
 		// The previous conversation may have already ended (explicitly
 		// stopped, or reaped after 3 minutes with no heartbeat) — replying
@@ -548,6 +554,7 @@ export function ConversationView({
 					/>
 				</AssistantRuntimeProvider>
 			</div>
+			{agentBusyDialog}
 		</div>
 	);
 }

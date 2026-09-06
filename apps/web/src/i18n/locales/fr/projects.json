@@ -185,6 +185,9 @@
 				"committerEmailLabel": "E-mail du committer",
 				"dockerEnabledLabel": "Accès à Docker",
 				"dockerEnabledHint": "Donne à cet agent un démon Docker privé au sein de son sandbox. Désactivé par défaut — à activer uniquement pour les agents qui exécutent réellement des commandes Docker, car cela ajoute un temps de démarrage à chaque conversation.",
+				"parallelismLimitLabel": "Limite de parallélisme",
+				"parallelismLimitHint": "Combien de conversations de cet agent peuvent s'exécuter en même temps. Le travail supplémentaire attend dans une file jusqu'à ce qu'une place se libère — 1 par défaut, afin que les tickets soient traités un par un plutôt que de se disputer le même répertoire de travail.",
+				"parallelismLimitFixedHint": "Fixé à 1 pour cet agent — il travaille dans un répertoire partagé unique (le checkout local d'un agent ACP, ou un environnement par défaut statique), donc une seule conversation peut s'exécuter en toute sécurité à la fois.",
 				"environmentSection": "Environnement",
 				"defaultEnvironmentLabel": "Environnement par défaut",
 				"defaultEnvironmentHint": "Rattache les conversations de cet agent à un environnement statique au lieu d'un sandbox jetable à chaque fois.",
@@ -326,6 +329,15 @@
 			"loadingOlder": "Chargement…",
 			"newBelow_one": "{{count}} nouveau message",
 			"newBelow_other": "{{count}} nouveaux messages"
+		},
+		"busyDialog": {
+			"title": "L'agent est occupé",
+			"description": "Cet agent exécute déjà {{running}}/{{limit}} conversation(s). Ajoutez ce message à la file d'attente pour qu'il démarre automatiquement dès qu'une place se libère, ou envoyez-le maintenant quand même.",
+			"folderDescription": "Une autre conversation travaille déjà dans ce dossier d'environnement. Ajoutez ce message à la file d'attente pour qu'il démarre automatiquement une fois cette conversation terminée, ou envoyez-le maintenant quand même.",
+			"cancel": "Annuler",
+			"queue": "Ajouter à la file",
+			"force": "Envoyer maintenant",
+			"cancelledError": "Message non envoyé."
 		},
 		"thread": {
 			"composerPlaceholder": "Message à l'agent…",

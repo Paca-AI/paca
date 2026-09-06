@@ -185,6 +185,9 @@
 				"committerEmailLabel": "Correo del autor",
 				"dockerEnabledLabel": "Acceso a Docker",
 				"dockerEnabledHint": "Otorga a este agente un daemon de Docker privado dentro de su sandbox. Desactivado de forma predeterminada: actívalo solo para agentes que realmente ejecutan comandos de Docker, ya que añade tiempo de inicio a cada conversación.",
+				"parallelismLimitLabel": "Límite de paralelismo",
+				"parallelismLimitHint": "Cuántas conversaciones de este agente pueden ejecutarse al mismo tiempo. El trabajo adicional espera en una cola hasta que se libera un espacio — el valor predeterminado es 1, para que los tickets se procesen de uno en uno en lugar de competir por el mismo directorio de trabajo.",
+				"parallelismLimitFixedHint": "Fijado en 1 para este agente — trabaja en un único directorio compartido (el checkout local de un agente ACP, o un entorno predeterminado estático), por lo que solo una conversación puede ejecutarse de forma segura a la vez.",
 				"environmentSection": "Entorno",
 				"defaultEnvironmentLabel": "Entorno predeterminado",
 				"defaultEnvironmentHint": "Vincula las conversaciones de este agente a un entorno estático en lugar de un sandbox desechable nuevo cada vez.",
@@ -326,6 +329,15 @@
 			"loadingOlder": "Cargando…",
 			"newBelow_one": "{{count}} mensaje nuevo",
 			"newBelow_other": "{{count}} mensajes nuevos"
+		},
+		"busyDialog": {
+			"title": "El agente está ocupado",
+			"description": "Este agente ya está ejecutando {{running}}/{{limit}} conversación(es). Añade este mensaje a la cola para que se inicie automáticamente en cuanto se libere un espacio, o envíalo ahora de todos modos.",
+			"folderDescription": "Otra conversación ya está trabajando en esta carpeta de entorno. Añade este mensaje a la cola para que se inicie automáticamente en cuanto esa conversación termine, o envíalo ahora de todos modos.",
+			"cancel": "Cancelar",
+			"queue": "Añadir a la cola",
+			"force": "Enviar ahora",
+			"cancelledError": "Mensaje no enviado."
 		},
 		"thread": {
 			"composerPlaceholder": "Enviar mensaje al agente…",
