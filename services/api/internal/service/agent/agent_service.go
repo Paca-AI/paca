@@ -20,6 +20,7 @@ import (
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
+	"github.com/Paca-AI/api/internal/platform/authz"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/secret"
 )
@@ -52,6 +53,15 @@ type Service struct {
 	// every call site guards against it and behaves as if environments
 	// don't exist yet, rather than panicking.
 	environmentSvc environmentdom.Service
+	// authorizer backs authorizeConversationsReadForConversation's
+	// conversations.read check in GetConversationForAgent — see that
+	// method's doc comment.
+	// Nil is a valid, supported configuration (same convention as
+	// environmentSvc/encryptor above): the check is skipped rather than
+	// failing closed, since every existing GetConversationForAgent test
+	// constructs a bare Service with no authorizer. Production wiring
+	// (bootstrap/app.go) always configures one via WithAuthorizer.
+	authorizer *authz.Authorizer
 }
 
 // New returns a configured agent service.
@@ -75,6 +85,13 @@ func (s *Service) WithAvatarService(svc attachmentdom.AvatarService) *Service {
 // environmentSvc field's doc comment for what it's used for.
 func (s *Service) WithEnvironmentService(svc environmentdom.Service) *Service {
 	s.environmentSvc = svc
+	return s
+}
+
+// WithAuthorizer wires in the permission authorizer — see the authorizer
+// field's doc comment for what it's used for.
+func (s *Service) WithAuthorizer(a *authz.Authorizer) *Service {
+	s.authorizer = a
 	return s
 }
 
@@ -1395,7 +1412,11 @@ func (s *Service) GetConversation(ctx context.Context, projectID, conversationID
 
 // GetConversationForAgent implements agentdom.Service.GetConversationForAgent
 // — see its doc comment for the full authorization rule and why bare agent-
-// identity matching isn't sufficient on its own.
+// identity matching isn't sufficient on its own. Also requires the calling
+// agent to hold conversations.read (see
+// authorizeConversationsReadForConversation) to read any conversation other
+// than the one it's currently running as part of — see the same-conversation
+// shortcut below for why that one case is exempt.
 func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, callerAgentID, currentConversationID uuid.UUID) (*agentdom.AgentConversation, error) {
 	target, err := s.repo.FindConversationByID(ctx, conversationID)
 	if err != nil {
@@ -1404,11 +1425,21 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 	if target.AgentID != callerAgentID {
 		return nil, agentdom.ErrConversationNotFound
 	}
-	// Always allowed: an agent may read the conversation it's currently
-	// running as part of. Also short-circuits the common case (no other
-	// conversation was attached) without a second lookup.
+	// Always allowed, regardless of conversations.read: an agent may read
+	// the conversation it's currently running as part of — it already has
+	// this data as that conversation's own active participant, so gating it
+	// on a permission grant adds no protection while breaking the common
+	// case of a global-scope agent with no global role (conversations.read
+	// is backfilled onto project_roles, not global_roles — see
+	// 000051_add_conversation_permissions.sql — and a global agent's own
+	// global role is optional, commonly left unset). Also short-circuits
+	// the common case (no other conversation was attached) without a
+	// second lookup.
 	if target.ID == currentConversationID {
 		return target, nil
+	}
+	if err := s.authorizeConversationsReadForConversation(ctx, callerAgentID, target); err != nil {
+		return nil, err
 	}
 
 	// Anything else must be authorized against whichever human is driving
@@ -1426,6 +1457,36 @@ func (s *Service) GetConversationForAgent(ctx context.Context, conversationID, c
 		return nil, err
 	}
 	return target, nil
+}
+
+// authorizeConversationsReadForConversation reports whether callerAgentID
+// holds conversations.read for the scope conv belongs to: its own global
+// role, or (for a project-scoped conversation) its role in that specific
+// project — an OR, mirroring the MCP server's own isToolVisible check for
+// read_conversation (apps/mcp/src/permissions.ts's requiresProject: true) so
+// tool-list visibility and backend enforcement agree. Skipped (always
+// allowed) when s.authorizer is nil — see that field's doc comment.
+func (s *Service) authorizeConversationsReadForConversation(ctx context.Context, callerAgentID uuid.UUID, conv *agentdom.AgentConversation) error {
+	if s.authorizer == nil {
+		return nil
+	}
+	globalOK, err := s.authorizer.HasGlobalPermissionsForAgent(ctx, callerAgentID, authz.PermissionConversationsRead)
+	if err != nil {
+		return fmt.Errorf("authz: check agent global conversations.read: %w", err)
+	}
+	if globalOK {
+		return nil
+	}
+	if conv.ProjectID != uuid.Nil {
+		projectOK, err := s.authorizer.HasPermissionsForAgent(ctx, callerAgentID, conv.ProjectID, authz.PermissionConversationsRead)
+		if err != nil {
+			return fmt.Errorf("authz: check agent project conversations.read: %w", err)
+		}
+		if projectOK {
+			return nil
+		}
+	}
+	return agentdom.ErrConversationNotFound
 }
 
 // authorizeAgentConversationRead lets an agent read `target` on behalf of

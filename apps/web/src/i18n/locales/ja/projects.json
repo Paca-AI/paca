@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "自分で実行するコーディングCLI（Claude Code、Codex、Gemini CLI、またはカスタムACPサーバー）に処理を委任します。",
 			"agentTypeProviderCLI": "プロバイダーCLI",
 			"agentTypeProviderCLIHint": "Pacaがホストする静的環境内でClaude Code、Codex、Cursor、またはGemini CLIを実行し、LLMエージェントと同じ方法で制御します。",
+			"agentTypeProviderCLIGlobalDisabledHint": "プロジェクトエージェントでのみ利用可能です。プロジェクトの「エージェント」ページから作成してください。",
 			"modelSection": "モデル",
 			"providerLabel": "プロバイダー",
 			"modelLabel": "モデル",
@@ -721,6 +722,14 @@
 				"label": "エージェントの管理",
 				"description": "AIエージェントの作成・設定・削除を行います"
 			},
+			"conversationsRead": {
+				"label": "会話を表示",
+				"description": "エージェントの会話を閲覧・確認できますが、開始や返信はできません"
+			},
+			"conversationsWrite": {
+				"label": "会話を管理",
+				"description": "エージェントとの会話を開始し、返信し、停止または一時停止できます"
+			},
 			"environmentsRead": {
 				"label": "環境の閲覧",
 				"description": "環境とその設定を閲覧します"
@@ -750,6 +759,7 @@
 			"sprints": "スプリント",
 			"documents": "ドキュメント",
 			"aiAgents": "AIエージェント",
+			"conversations": "会話",
 			"environments": "環境",
 			"workflows": "自動化",
 			"plugins": "プラグイン"

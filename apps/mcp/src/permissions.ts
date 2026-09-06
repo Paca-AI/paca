@@ -325,6 +325,52 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		requiresProject: true,
 	},
 
+	// Task link tools (backend: GET gated by tasks.read, POST/DELETE by
+	// tasks.write — same permissions.go keys as the task tools above; these
+	// three were added in the task-link feature commit without a matching
+	// entry here, which left them unconditionally listed for every caller
+	// even though the backend itself always enforced these permissions).
+	{
+		toolName: "list_task_links",
+		permissionKey: "tasks.read",
+		requiresProject: true,
+	},
+	{
+		toolName: "create_task_link",
+		permissionKey: "tasks.write",
+		requiresProject: true,
+	},
+	{
+		toolName: "delete_task_link",
+		permissionKey: "tasks.write",
+		requiresProject: true,
+	},
+
+	// Document activity and comment tools (backend: GET gated by docs.read,
+	// POST/PATCH/DELETE by docs.write, mirroring list_docs/read_doc/write_doc
+	// above — same history as the task-link tools: added without an entry
+	// here).
+	{
+		toolName: "list_doc_activities",
+		permissionKey: "docs.read",
+		requiresProject: true,
+	},
+	{
+		toolName: "add_doc_comment",
+		permissionKey: "docs.write",
+		requiresProject: true,
+	},
+	{
+		toolName: "update_doc_comment",
+		permissionKey: "docs.write",
+		requiresProject: true,
+	},
+	{
+		toolName: "delete_doc_comment",
+		permissionKey: "docs.write",
+		requiresProject: true,
+	},
+
 	// Automation tools (still gated by the workflows.* permission keys — see
 	// the backend's automation router registration for why those key names
 	// were kept rather than renamed to automations.*)
@@ -359,6 +405,29 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 	{
 		toolName: "get_annotation",
 		permissionKey: "annotations.read",
+		requiresProject: true,
+	},
+
+	// Conversation tools — read_conversation takes no projectId (it calls the
+	// agent-self-service GET /agents/me/conversations/:id path, which
+	// authorizes the *specific* conversation by matching the caller's own
+	// agent_id — see agentdom.Service.GetConversationForAgent's doc comment;
+	// that check happens server-side regardless of what's listed here).
+	// Gated on conversations.read: a dedicated domain split from agents.*
+	// (which governs managing Agent entities themselves — router.go's
+	// /agents routes, both global- and project-scoped) so a role can grant
+	// "may read/drive conversations" independently of "may reconfigure
+	// agents". A regular USER-role human has no conversations.* by default
+	// (see router.go's comment on the deliberately-ungated chat-session
+	// routes) — reading another conversation's transcript still requires an
+	// explicit grant.
+	// requiresProject: true broadens the unpinned-mode check (see
+	// isToolVisible in server.ts) to accept conversations.read granted in
+	// any project the caller belongs to, not just a global grant — matching
+	// the tool's own "any conversation, project or global" scope.
+	{
+		toolName: "read_conversation",
+		permissionKey: "conversations.read",
 		requiresProject: true,
 	},
 ];

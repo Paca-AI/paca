@@ -335,9 +335,10 @@ func New(deps Deps) http.Handler {
 					// page / admin pages, no project context. Any authenticated
 					// human may chat with any global agent, same as any project
 					// member may chat with a project agent — deliberately not
-					// gated behind PermissionAgentsRead (a regular USER-role
-					// human has no global agents.* permission by default, and
-					// this chat is meant to be available to every user).
+					// gated behind PermissionConversationsRead (a regular
+					// USER-role human has no global conversations.* permission
+					// by default, and this chat is meant to be available to
+					// every user).
 					r.Get("/{agentId}/chat-sessions", deps.Agent.ListGlobalChatSessions)
 					r.Post("/{agentId}/chat-sessions", deps.Agent.StartGlobalChatSession)
 					r.Post("/chat-sessions/{sessionId}/messages", deps.Agent.SendGlobalChatMessage)
@@ -772,12 +773,18 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
 							Delete("/{agentId}/env-vars/{envVarId}", deps.Agent.DeleteEnvVar)
 
-						// Chat sessions
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Chat sessions. A session's messages ARE a conversation, so
+						// these are gated on conversations.read/write, not agents.*
+						// (which governs the agent entity's own configuration —
+						// MCP servers, skills, env vars, etc). Starting a session
+						// and sending into one both create/drive a conversation (a
+						// real agent turn, possibly inside a live sandbox) — Write,
+						// the same tier as every conversation-mutating route below.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/{agentId}/chat-sessions", deps.Agent.ListChatSessions)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{agentId}/chat-sessions", deps.Agent.StartChatSession)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{agentId}/chat-sessions/{sessionId}/messages", deps.Agent.SendChatMessage)
 					})
 				}
@@ -919,22 +926,36 @@ func New(deps Deps) http.Handler {
 					})
 				}
 
-				// Conversations
+				// Conversations. Gated on their own conversations.read/write
+				// permissions (not agents.*, which governs the agent entity's
+				// configuration — see the chat-sessions block above for the
+				// same split).
 				if deps.Conversation != nil {
 					r.Route("/conversations", func(r chi.Router) {
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/", deps.Conversation.ListConversations)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/{conversationId}", deps.Conversation.GetConversation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Get("/{conversationId}/events", deps.Conversation.ListConversationEvents)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/stop", deps.Conversation.StopConversation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsWrite)).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/pause", deps.Conversation.PauseConversation)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Heartbeat deliberately stays Read: it's a passive
+						// "I'm still watching this" keep-alive (see
+						// Service.Heartbeat's doc comment) fired by any open tab,
+						// not a control action — a viewer legitimately watching a
+						// running conversation shouldn't cause it to idle-timeout
+						// out from under them.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsRead)).
 							Post("/{conversationId}/heartbeat", deps.Conversation.Heartbeat)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionAgentsRead)).
+						// Write, not Read: sending a message resumes/drives the
+						// conversation (dispatches a real agent turn), the same
+						// capability tier as stop/pause above — a viewer (read
+						// only) must not be able to steer a conversation just
+						// because they can see it.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionConversationsWrite)).
 							Post("/{conversationId}/messages", deps.Conversation.SendConversationMessage)
 					})
 				}

@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "직접 실행하는 코딩 CLI(Claude Code, Codex, Gemini CLI 또는 사용자 지정 ACP 서버)에 위임합니다.",
 			"agentTypeProviderCLI": "제공자 CLI",
 			"agentTypeProviderCLIHint": "Paca가 호스팅하는 정적 환경에서 Claude Code, Codex, Cursor 또는 Gemini CLI를 실행하며, LLM 에이전트와 동일한 방식으로 제어됩니다.",
+			"agentTypeProviderCLIGlobalDisabledHint": "프로젝트 에이전트에서만 사용할 수 있습니다. 프로젝트의 에이전트 페이지에서 생성해 주세요.",
 			"modelSection": "모델",
 			"providerLabel": "제공자",
 			"modelLabel": "모델",
@@ -721,6 +722,14 @@
 				"label": "에이전트 관리",
 				"description": "AI 에이전트 생성, 구성, 삭제"
 			},
+			"conversationsRead": {
+				"label": "대화 보기",
+				"description": "에이전트 대화를 둘러보고 지켜볼 수 있지만 시작하거나 답장할 수는 없음"
+			},
+			"conversationsWrite": {
+				"label": "대화 관리",
+				"description": "에이전트와 대화를 시작하고, 답장하며, 중지하거나 일시 중지"
+			},
 			"environmentsRead": {
 				"label": "환경 보기",
 				"description": "환경 탐색 및 구성 보기"
@@ -750,6 +759,7 @@
 			"sprints": "스프린트",
 			"documents": "문서",
 			"aiAgents": "AI 에이전트",
+			"conversations": "대화",
 			"environments": "환경",
 			"workflows": "자동화",
 			"plugins": "플러그인"

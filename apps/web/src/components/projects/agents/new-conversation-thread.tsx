@@ -9,6 +9,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	conversationQueryOptions,
 	globalConversationQueryOptions,
@@ -70,6 +71,17 @@ export function NewConversationThread({
 	});
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	// Global chat (no projectId) is deliberately open to any authenticated
+	// user (see router.go's global chat-session routes); only gate starting a
+	// project-scoped conversation, which the backend now requires
+	// conversations.write for — a PROJECT_VIEWER (conversations.read only)
+	// can land on this route directly (e.g. via the sidebar nav item) even
+	// with the "New conversation" button itself hidden elsewhere, so the
+	// composer needs its own guard too.
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const canStartConversation =
+		!projectId || hasProjectPermission("conversations.write");
 
 	const onNew = async (message: AppendMessage) => {
 		if (!agentId) throw new Error(t("aiChat.selectAgentFirst"));
@@ -134,7 +146,8 @@ export function NewConversationThread({
 		isRunning: false,
 		convertMessage: (m) => m,
 		onNew,
-		isSendDisabled: !agentId || isSubmitting,
+		isDisabled: !canStartConversation,
+		isSendDisabled: !canStartConversation || !agentId || isSubmitting,
 	});
 
 	return (

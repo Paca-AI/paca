@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "Délègue à une CLI de code que vous exécutez vous-même — Claude Code, Codex, Gemini CLI ou un serveur ACP personnalisé.",
 			"agentTypeProviderCLI": "CLI fournisseur",
 			"agentTypeProviderCLIHint": "Exécute Claude Code, Codex, Cursor ou Gemini CLI dans un environnement statique hébergé par Paca, contrôlé de la même façon qu'un agent LLM.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Disponible uniquement pour les agents de projet. Créez cet agent depuis la page Agents d'un projet.",
 			"modelSection": "Modèle",
 			"providerLabel": "Fournisseur",
 			"modelLabel": "Modèle",
@@ -721,6 +722,14 @@
 				"label": "Gérer les agents",
 				"description": "Créer, configurer et supprimer des agents IA"
 			},
+			"conversationsRead": {
+				"label": "Voir les conversations",
+				"description": "Parcourir les conversations des agents et les observer, sans pouvoir en démarrer ni y répondre"
+			},
+			"conversationsWrite": {
+				"label": "Gérer les conversations",
+				"description": "Démarrer des conversations avec un agent, y répondre, et les arrêter ou les mettre en pause"
+			},
 			"environmentsRead": {
 				"label": "Voir les environnements",
 				"description": "Parcourir les environnements et consulter leur configuration"
@@ -750,6 +759,7 @@
 			"sprints": "Sprints",
 			"documents": "Documents",
 			"aiAgents": "Agents IA",
+			"conversations": "Conversations",
 			"environments": "Environnements",
 			"workflows": "Automatisation",
 			"plugins": "Plugins"

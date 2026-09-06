@@ -20,6 +20,7 @@ import { Thread } from "@/components/assistant-ui/thread";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
 	type AgentConversation,
 	agentQueryOptions,
@@ -60,11 +61,14 @@ function ConversationControls({
 	projectId,
 	conversation,
 	isACP,
+	canControl,
 }: {
 	/** Absent for a global-chat conversation (home/admin pages, no project). */
 	projectId?: string;
 	conversation: AgentConversation;
 	isACP: boolean;
+	/** False for a project member who can view but not drive this conversation (conversations.read only). */
+	canControl: boolean;
 }) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
@@ -118,7 +122,8 @@ function ConversationControls({
 		conversation.status === "finished" ||
 		conversation.status === "failed" ||
 		conversation.status === "stopped";
-	if (isTerminal || isACP || conversation.environment_id) return null;
+	if (isTerminal || isACP || conversation.environment_id || !canControl)
+		return null;
 
 	return (
 		<div className="flex items-center gap-2">
@@ -218,7 +223,15 @@ export function ConversationView({
 		conversation?.status === "finished" ||
 		conversation?.status === "failed" ||
 		conversation?.status === "stopped";
-	const canReply = canReplyToConversation(conversation, isACP);
+	// Global chat (no projectId) stays open to any authenticated user by
+	// design (see router.go's global chat/conversation routes); a
+	// project-scoped conversation now requires conversations.write on the
+	// backend to reply/stop/pause, so a PROJECT_VIEWER (conversations.read
+	// only) gets a read-only view here instead of controls that would just
+	// 403.
+	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const canControl = !projectId || hasProjectPermission("conversations.write");
+	const canReply = canControl && canReplyToConversation(conversation, isACP);
 
 	const messages = useMemo(
 		() => eventsToThreadMessages(events, isRunning),
@@ -498,6 +511,7 @@ export function ConversationView({
 						projectId={projectId}
 						conversation={conversation}
 						isACP={isACP}
+						canControl={canControl}
 					/>
 				</div>
 			</div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	dedupeGrantedPermissions,
 	expandWildcardPermissions,
 	hasAnyPermission,
 	hasPermission,
@@ -107,5 +108,38 @@ describe("permissions", () => {
 		expect(
 			normalizePermissionsToWildcards({ "*": true }, knownPermissions),
 		).toEqual({ "*": true });
+	});
+
+	it("dedupeGrantedPermissions drops a key already implied by a granted domain wildcard", () => {
+		// Reproduces a role whose stored permissions carry both
+		// "environments.*" and the individual keys it already covers (data
+		// debt from a wildcard merged onto an existing grant — see
+		// 000044_add_environment_permissions.sql) — the display should show
+		// only the wildcard.
+		expect(
+			dedupeGrantedPermissions([
+				"environments.*",
+				"environments.read",
+				"environments.write",
+				"environments.connect",
+				"tasks.read",
+			]),
+		).toEqual(["environments.*", "tasks.read"]);
+	});
+
+	it("dedupeGrantedPermissions supports multi-segment domains and leaves ungoverned keys alone", () => {
+		expect(
+			dedupeGrantedPermissions(["project.members.*", "project.members.read"]),
+		).toEqual(["project.members.*"]);
+		expect(dedupeGrantedPermissions(["tasks.read", "docs.write"])).toEqual([
+			"tasks.read",
+			"docs.write",
+		]);
+	});
+
+	it("dedupeGrantedPermissions collapses everything to the global wildcard alone", () => {
+		expect(dedupeGrantedPermissions(["*", "users.read", "projects.*"])).toEqual(
+			["*"],
+		);
 	});
 });

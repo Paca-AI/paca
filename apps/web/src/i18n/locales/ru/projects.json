@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "Делегирует работу CLI для кода, который вы запускаете сами, — Claude Code, Codex, Gemini CLI или пользовательский ACP-сервер.",
 			"agentTypeProviderCLI": "CLI провайдера",
 			"agentTypeProviderCLIHint": "Запускает Claude Code, Codex, Cursor или Gemini CLI в статичном окружении, размещённом Paca, управляемом так же, как LLM-агент.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Доступно только для агентов проекта. Создайте этого агента на странице «Агенты» проекта.",
 			"modelSection": "Модель",
 			"providerLabel": "Провайдер",
 			"modelLabel": "Модель",
@@ -733,6 +734,14 @@
 				"label": "Управлять агентами",
 				"description": "Создавать, настраивать и удалять AI-агентов"
 			},
+			"conversationsRead": {
+				"label": "Просмотр бесед",
+				"description": "Просматривать беседы агентов, не имея возможности начинать их или отвечать"
+			},
+			"conversationsWrite": {
+				"label": "Управление беседами",
+				"description": "Начинать беседы с агентом, отвечать в них, а также останавливать или приостанавливать"
+			},
 			"environmentsRead": {
 				"label": "Просматривать окружения",
 				"description": "Просматривать окружения и их конфигурацию"
@@ -762,6 +771,7 @@
 			"sprints": "Спринты",
 			"documents": "Документы",
 			"aiAgents": "AI-агенты",
+			"conversations": "Беседы",
 			"environments": "Окружения",
 			"workflows": "Автоматизация",
 			"plugins": "Плагины"

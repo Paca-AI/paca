@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "Ủy quyền cho một CLI lập trình mà bạn tự chạy — Claude Code, Codex, Gemini CLI hoặc máy chủ ACP tùy chỉnh.",
 			"agentTypeProviderCLI": "CLI nhà cung cấp",
 			"agentTypeProviderCLIHint": "Chạy Claude Code, Codex, Cursor hoặc Gemini CLI trong một môi trường tĩnh do Paca lưu trữ, được điều khiển theo cách giống như một agent LLM.",
+			"agentTypeProviderCLIGlobalDisabledHint": "Chỉ khả dụng cho agent thuộc dự án. Hãy tạo agent này từ trang Agents của một dự án.",
 			"modelSection": "Mô hình",
 			"providerLabel": "Nhà cung cấp",
 			"modelLabel": "Mô hình",
@@ -721,6 +722,14 @@
 				"label": "Quản lý agent",
 				"description": "Tạo, cấu hình và xóa AI agent"
 			},
+			"conversationsRead": {
+				"label": "Xem cuộc trò chuyện",
+				"description": "Xem các cuộc trò chuyện của agent, chỉ xem mà không thể bắt đầu hoặc trả lời"
+			},
+			"conversationsWrite": {
+				"label": "Quản lý cuộc trò chuyện",
+				"description": "Bắt đầu cuộc trò chuyện với agent, trả lời, và dừng hoặc tạm dừng"
+			},
 			"environmentsRead": {
 				"label": "Xem môi trường",
 				"description": "Duyệt các môi trường và xem cấu hình của chúng"
@@ -750,6 +759,7 @@
 			"sprints": "Sprint",
 			"documents": "Tài liệu",
 			"aiAgents": "AI Agent",
+			"conversations": "Cuộc trò chuyện",
 			"environments": "Môi trường",
 			"workflows": "Tự động hóa",
 			"plugins": "Plugin"

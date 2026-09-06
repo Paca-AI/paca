@@ -175,6 +175,9 @@ func New(cfg *config.Config) (*App, error) {
 		WithPublisher(publisher).
 		WithRedisClient(redisClient)
 	agentService = agentService.WithEnvironmentService(environmentService)
+	// Backs GetConversationForAgent's agents.read check (read_conversation
+	// MCP tool) — see agentsvc.Service.authorizer's doc comment.
+	agentService = agentService.WithAuthorizer(authorizer)
 	settingsService := settingssvc.New(settingsRepo)
 	if cfg.Security.EncryptionKey != "" {
 		keyBytes, hexErr := secret.DecodeHexKey(cfg.Security.EncryptionKey)

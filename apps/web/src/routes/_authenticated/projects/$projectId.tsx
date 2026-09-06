@@ -9,6 +9,7 @@ import { AlertCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { AIChatFloat } from "@/components/projects/ai-chat-float";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import { projectQueryOptions } from "@/lib/project-api";
 
@@ -43,6 +44,13 @@ function ProjectLayout() {
 		m.routeId.startsWith("/_authenticated/projects/$projectId/conversations"),
 	);
 
+	// The float exists to start/reply to chats — a PROJECT_VIEWER
+	// (conversations.read only) can't do either (see router.go's
+	// conversation routes), so showing it would just offer a control that
+	// 403s on click.
+	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const canChat = hasProjectPermission("conversations.write");
+
 	if (isError || !project) {
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted-foreground">
@@ -55,7 +63,7 @@ function ProjectLayout() {
 	return (
 		<>
 			<Outlet />
-			{!onConversationsPage && <AIChatFloat projectId={projectId} />}
+			{!onConversationsPage && canChat && <AIChatFloat projectId={projectId} />}
 		</>
 	);
 }

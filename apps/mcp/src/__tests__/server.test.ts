@@ -1,6 +1,94 @@
 import { describe, expect, it } from "vitest";
+import type { PermissionMap } from "../permissions.js";
 import type { PluginContextSection } from "../plugin-loader.js";
-import { mergePluginContext } from "../server.js";
+import { isToolVisible, mergePluginContext } from "../server.js";
+
+// ---------------------------------------------------------------------------
+// isToolVisible
+// ---------------------------------------------------------------------------
+//
+// Regression coverage for https://github.com/Paca-AI/paca/issues/461: an
+// unpinned human user (no PACA_PROJECT_ID) whose global role grants
+// everything via "*" only saw 10 of 76 tools, because the requiresProject
+// branch scanned permissionMap.projects (empty for this mode) and never
+// consulted the global map that was already fetched successfully.
+
+describe("isToolVisible", () => {
+	it("allows a tool with no permission mapping by default", () => {
+		const empty: PermissionMap = { global: {}, projects: {} };
+		expect(isToolVisible("nonexistent_tool", empty, undefined)).toBe(true);
+	});
+
+	describe("unpinned mode (projectId undefined)", () => {
+		it("grants a requiresProject tool via a global wildcard *", () => {
+			const map: PermissionMap = { global: { "*": true }, projects: {} };
+			expect(isToolVisible("get_task", map, undefined)).toBe(true);
+			expect(isToolVisible("create_task", map, undefined)).toBe(true);
+		});
+
+		it("grants a requiresProject tool via a global domain wildcard", () => {
+			const map: PermissionMap = { global: { "tasks.*": true }, projects: {} };
+			expect(isToolVisible("get_task", map, undefined)).toBe(true);
+		});
+
+		it("grants a requiresProject tool via a global exact match", () => {
+			const map: PermissionMap = {
+				global: { "tasks.read": true },
+				projects: {},
+			};
+			expect(isToolVisible("get_task", map, undefined)).toBe(true);
+		});
+
+		it("still denies a requiresProject tool when the global grant doesn't cover it", () => {
+			const map: PermissionMap = {
+				global: { "projects.read": true },
+				projects: {},
+			};
+			expect(isToolVisible("get_task", map, undefined)).toBe(false);
+		});
+
+		it("still falls back to scanning per-project permissions when there's no global grant", () => {
+			const map: PermissionMap = {
+				global: {},
+				projects: { "proj-1": { "tasks.read": true } },
+			};
+			expect(isToolVisible("get_task", map, undefined)).toBe(true);
+		});
+
+		it("denies a requiresProject tool with no global grant and no matching project", () => {
+			const map: PermissionMap = {
+				global: {},
+				projects: { "proj-1": { "tasks.write": true } },
+			};
+			expect(isToolVisible("get_task", map, undefined)).toBe(false);
+		});
+
+		it("gates a non-project tool on the global permission alone", () => {
+			const map: PermissionMap = {
+				global: { "projects.read": true },
+				projects: {},
+			};
+			expect(isToolVisible("list_projects", map, undefined)).toBe(true);
+			expect(isToolVisible("create_project", map, undefined)).toBe(false);
+		});
+	});
+
+	describe("pinned mode (projectId set)", () => {
+		it("gates a requiresProject tool on that project's permissions only", () => {
+			const map: PermissionMap = {
+				global: {},
+				projects: { "proj-1": { "tasks.read": true } },
+			};
+			expect(isToolVisible("get_task", map, "proj-1")).toBe(true);
+			expect(isToolVisible("get_task", map, "proj-2")).toBe(false);
+		});
+
+		it("still grants via a global wildcard even when pinned", () => {
+			const map: PermissionMap = { global: { "*": true }, projects: {} };
+			expect(isToolVisible("get_task", map, "proj-1")).toBe(true);
+		});
+	});
+});
 
 // ---------------------------------------------------------------------------
 // mergePluginContext

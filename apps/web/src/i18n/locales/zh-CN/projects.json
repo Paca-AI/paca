@@ -35,6 +35,7 @@
 			"agentTypeACPHint": "委托给您自己运行的编码 CLI — Claude Code、Codex、Gemini CLI 或自定义 ACP 服务器。",
 			"agentTypeProviderCLI": "供应商 CLI",
 			"agentTypeProviderCLIHint": "在 Paca 托管的静态环境中运行 Claude Code、Codex、Cursor 或 Gemini CLI，控制方式与 LLM 智能体相同。",
+			"agentTypeProviderCLIGlobalDisabledHint": "仅适用于项目智能体。请从项目的智能体页面创建此智能体。",
 			"modelSection": "模型",
 			"providerLabel": "提供方",
 			"modelLabel": "模型",
@@ -721,6 +722,14 @@
 				"label": "管理智能体",
 				"description": "创建、配置和删除 AI 智能体"
 			},
+			"conversationsRead": {
+				"label": "查看对话",
+				"description": "浏览并查看智能体对话，但无法发起或回复"
+			},
+			"conversationsWrite": {
+				"label": "管理对话",
+				"description": "与智能体发起对话、回复消息，并停止或暂停对话"
+			},
 			"environmentsRead": {
 				"label": "查看环境",
 				"description": "浏览环境并查看其配置"
@@ -750,6 +759,7 @@
 			"sprints": "冲刺",
 			"documents": "文档",
 			"aiAgents": "AI 智能体",
+			"conversations": "对话",
 			"environments": "环境",
 			"workflows": "自动化",
 			"plugins": "插件"

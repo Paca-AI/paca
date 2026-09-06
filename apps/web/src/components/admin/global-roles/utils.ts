@@ -1,4 +1,5 @@
 import { formatDate as formatDateLocale } from "@/lib/format-date";
+import { dedupeGrantedPermissions } from "@/lib/permissions";
 
 export function formatDate(iso: string) {
 	return formatDateLocale(iso, {
@@ -20,7 +21,8 @@ export function permissionBadgeClass(key: string): string {
 }
 
 export function activePermissions(perms: Record<string, boolean>) {
-	return Object.entries(perms)
+	const active = Object.entries(perms)
 		.filter(([, value]) => value)
 		.map(([key]) => key);
+	return dedupeGrantedPermissions(active);
 }

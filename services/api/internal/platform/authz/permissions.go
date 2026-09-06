@@ -47,6 +47,20 @@ const (
 	PermissionAgentsWrite Permission = "agents.write"
 	PermissionAgentsAll   Permission = "agents.*"
 
+	// PermissionConversationsRead/Write gate a conversation itself (viewing
+	// its transcript, or creating/driving one — starting a chat session,
+	// sending a message, stopping/pausing a run) — split from Agents, which
+	// gates the agent *entity's configuration* (its MCP servers, skills, env
+	// vars, avatar, etc). A role can therefore let someone chat with an
+	// already-configured agent without also letting them reconfigure it, or
+	// the reverse. Covers both the human-facing routes
+	// (/conversations/*, /agents/{id}/chat-sessions*) and the agent-
+	// authenticated read_conversation MCP tool (see
+	// Service.authorizeConversationsReadForConversation).
+	PermissionConversationsRead  Permission = "conversations.read"
+	PermissionConversationsWrite Permission = "conversations.write"
+	PermissionConversationsAll   Permission = "conversations.*"
+
 	// PermissionEnvironmentsConnect gates gaining a live, interactive
 	// session inside an already-running environment — today that's
 	// minting a terminal ticket (EnvironmentHandler.TerminalTicket), which

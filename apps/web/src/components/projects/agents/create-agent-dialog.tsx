@@ -46,6 +46,11 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { globalRolesQueryOptions } from "@/lib/admin-api";
 import {
 	type ACPProvider,
@@ -472,20 +477,15 @@ export function CreateAgentDialog({
 						{/* Agent Type — provider_cli is project-scoped only: it requires
 						    a static environment, and a global agent has none of its own
 						    to pick from (see agentdom.ErrCLIProviderNotSupportedForGlobalAgents
-						    server-side). */}
+						    server-side). Still shown at global scope so the option is
+						    discoverable, but disabled with a tooltip pointing the user at
+						    a project's Agents page instead of being silently omitted. */}
 						<div className="space-y-1.5">
 							<Label>{t("agents.createDialog.agentTypeLabel")}</Label>
-							<div
-								className={cn(
-									"grid gap-2",
-									projectId ? "grid-cols-3" : "grid-cols-2",
-								)}
-							>
-								{(projectId
-									? (["llm", "provider_cli", "acp"] as const)
-									: (["llm", "acp"] as const)
-								).map((type) => {
+							<div className="grid grid-cols-3 gap-2">
+								{(["llm", "provider_cli", "acp"] as const).map((type) => {
 									const isSelected = agentType === type;
+									const isDisabled = type === "provider_cli" && !projectId;
 									const labelKey =
 										type === "llm"
 											? "agents.createDialog.agentTypeLLM"
@@ -498,25 +498,57 @@ export function CreateAgentDialog({
 											: type === "acp"
 												? "agents.createDialog.agentTypeACPHint"
 												: "agents.createDialog.agentTypeProviderCLIHint";
-									return (
-										<button
-											key={type}
-											type="button"
-											onClick={() => setAgentType(type)}
-											className={cn(
-												"rounded-lg border p-3 text-left transition-all",
-												isSelected
-													? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
-													: "border-border/60 hover:border-border hover:bg-muted/30",
-											)}
-										>
+									const buttonClassName = cn(
+										"rounded-lg border p-3 text-left transition-all",
+										isDisabled
+											? "cursor-not-allowed border-border/40 opacity-50"
+											: isSelected
+												? "border-primary/40 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
+												: "border-border/60 hover:border-border hover:bg-muted/30",
+									);
+									const content = (
+										<>
 											<p className="text-xs font-semibold leading-tight">
 												{t(labelKey)}
 											</p>
 											<p className="mt-0.5 text-xs leading-tight text-muted-foreground">
 												{t(hintKey)}
 											</p>
-										</button>
+										</>
+									);
+
+									if (!isDisabled) {
+										return (
+											<button
+												key={type}
+												type="button"
+												onClick={() => setAgentType(type)}
+												className={buttonClassName}
+											>
+												{content}
+											</button>
+										);
+									}
+
+									return (
+										<Tooltip key={type}>
+											<TooltipTrigger
+												render={
+													<button
+														type="button"
+														aria-disabled="true"
+														className={buttonClassName}
+													/>
+												}
+											>
+												{content}
+											</TooltipTrigger>
+											<TooltipContent side="top">
+												{t(
+													"agents.createDialog.agentTypeProviderCLIGlobalDisabledHint",
+												)}
+											</TooltipContent>
+										</Tooltip>
 									);
 								})}
 							</div>
