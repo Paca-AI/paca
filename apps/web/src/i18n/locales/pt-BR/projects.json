@@ -838,6 +838,7 @@
 			"description": "Defina os status de fluxo de trabalho pelos quais as tarefas passam neste projeto.",
 			"newStatus": "Novo status",
 			"reorderFailed": "Falha ao salvar a nova ordem. Tente novamente.",
+			"dragToReorder": "Arraste para reordenar",
 			"empty": {
 				"title": "Nenhum status definido",
 				"description": "Crie status para definir o fluxo de trabalho das tarefas neste projeto.",

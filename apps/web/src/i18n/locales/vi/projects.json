@@ -838,6 +838,7 @@
 			"description": "Định nghĩa các trạng thái quy trình mà nhiệm vụ sẽ đi qua trong dự án này.",
 			"newStatus": "Trạng thái mới",
 			"reorderFailed": "Lưu thứ tự mới thất bại. Vui lòng thử lại.",
+			"dragToReorder": "Kéo để sắp xếp lại",
 			"empty": {
 				"title": "Chưa có trạng thái nào được định nghĩa",
 				"description": "Tạo trạng thái để định nghĩa quy trình cho nhiệm vụ trong dự án này.",

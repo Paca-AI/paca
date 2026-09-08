@@ -838,6 +838,7 @@
 			"description": "定义此项目中任务流转的工作流状态。",
 			"newStatus": "新建状态",
 			"reorderFailed": "保存新顺序失败，请重试。",
+			"dragToReorder": "拖动以重新排序",
 			"empty": {
 				"title": "未定义状态",
 				"description": "创建状态以定义此项目中任务的工作流。",

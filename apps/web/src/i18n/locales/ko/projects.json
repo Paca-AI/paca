@@ -838,6 +838,7 @@
 			"description": "이 프로젝트에서 작업이 거치는 워크플로 상태를 정의하세요.",
 			"newStatus": "새 상태",
 			"reorderFailed": "새 순서를 저장하지 못했습니다. 다시 시도해 주세요.",
+			"dragToReorder": "드래그하여 순서 변경",
 			"empty": {
 				"title": "정의된 상태가 없습니다",
 				"description": "이 프로젝트의 작업 워크플로를 정의하려면 상태를 만드세요.",

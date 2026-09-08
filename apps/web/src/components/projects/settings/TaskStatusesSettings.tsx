@@ -205,7 +205,7 @@ export function TaskStatusesSettings({
 					<Table>
 						<TableHeader>
 							<TableRow className="bg-muted/40 hover:bg-muted/40">
-								<TableHead className="w-6 px-2" />
+								<TableHead className="w-8 px-2" />
 								<TableHead className="w-8 px-5 text-xs font-semibold uppercase tracking-wide">
 									#
 								</TableHead>
@@ -252,9 +252,19 @@ export function TaskStatusesSettings({
 										setDragOverId(null);
 									}}
 								>
-									<TableCell className="px-2">
+									<TableCell
+										className="px-2"
+										title={
+											canWrite
+												? t("settings.taskStatuses.dragToReorder")
+												: undefined
+										}
+									>
 										{canWrite ? (
-											<GripVertical className="size-3.5 shrink-0 text-muted-foreground/40" />
+											<GripVertical
+												aria-hidden="true"
+												className="size-4 shrink-0 cursor-grab text-muted-foreground/60 transition-colors group-hover:text-muted-foreground active:cursor-grabbing"
+											/>
 										) : null}
 									</TableCell>
 									<TableCell className="px-5 text-sm text-muted-foreground tabular-nums">

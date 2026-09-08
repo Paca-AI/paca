@@ -838,6 +838,7 @@
 			"description": "Define los estados de flujo de trabajo por los que pasan las tareas en este proyecto.",
 			"newStatus": "Nuevo estado",
 			"reorderFailed": "No se pudo guardar el nuevo orden. Inténtalo de nuevo.",
+			"dragToReorder": "Arrastra para reordenar",
 			"empty": {
 				"title": "No hay estados definidos",
 				"description": "Crea estados para definir el flujo de trabajo de las tareas en este proyecto.",

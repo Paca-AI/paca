@@ -838,6 +838,7 @@
 			"description": "Define the workflow statuses tasks move through in this project.",
 			"newStatus": "New status",
 			"reorderFailed": "Failed to save the new order. Please try again.",
+			"dragToReorder": "Drag to reorder",
 			"empty": {
 				"title": "No statuses defined",
 				"description": "Create statuses to define the workflow for tasks in this project.",

@@ -838,6 +838,7 @@
 			"description": "Définissez les statuts du workflow par lesquels passent les tâches de ce projet.",
 			"newStatus": "Nouveau statut",
 			"reorderFailed": "Échec de l'enregistrement du nouvel ordre. Veuillez réessayer.",
+			"dragToReorder": "Faire glisser pour réorganiser",
 			"empty": {
 				"title": "Aucun statut défini",
 				"description": "Créez des statuts pour définir le workflow des tâches de ce projet.",
