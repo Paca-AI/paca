@@ -188,20 +188,14 @@ func (s *Service) Create(ctx context.Context, in projectdom.CreateProjectInput) 
 			ID:        uuid.New(),
 			ProjectID: &p.ID,
 			RoleName:  "Admin",
+			// Bare wildcard rather than an enumerated list of *All wildcards:
+			// Admin is meant to always have every project permission,
+			// including ones added after this project was created (like the
+			// project.settings.* split in 000054) without needing a matching
+			// migration each time. See 000056_set_admin_role_wildcard_permission.sql
+			// for the backfill onto existing projects' Admin rows.
 			Permissions: map[string]any{
-				string(authz.PermissionProjectsAll):        true,
-				string(authz.PermissionProjectMembersAll):  true,
-				string(authz.PermissionProjectRolesAll):    true,
-				string(authz.PermissionTasksAll):           true,
-				string(authz.PermissionProjectSettingsAll): true,
-				string(authz.PermissionSprintsAll):         true,
-				string(authz.PermissionViewsAll):           true,
-				string(authz.PermissionDocsAll):            true,
-				string(authz.PermissionAgentsAll):          true,
-				string(authz.PermissionConversationsAll):   true,
-				string(authz.PermissionWorkflowsAll):       true,
-				string(authz.PermissionEnvironmentsAll):    true,
-				string(authz.PermissionAnnotationsAll):     true,
+				string(authz.PermissionAll): true,
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
