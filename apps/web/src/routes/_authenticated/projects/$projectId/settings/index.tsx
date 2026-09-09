@@ -20,27 +20,26 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { RemoteComponent } from "@/lib/plugins/loader";
 import { usePluginRegistry } from "@/lib/plugins/registry";
-import {
-	customFieldsQueryOptions,
-	projectMembersQueryOptions,
-	projectQueryOptions,
-	projectRolesQueryOptions,
-	taskStatusesQueryOptions,
-	taskTypesQueryOptions,
-} from "@/lib/project-api";
+import { projectQueryOptions } from "@/lib/project-api";
 
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/settings/",
 )({
+	// Only the project itself is prefetched here (for the header's name —
+	// and already warm from the parent $projectId route's own loader
+	// anyway). Roles/members/task-statuses/task-types/custom-fields each
+	// belong to exactly one lazily-rendered tab below and are fetched by
+	// that tab's own component via useQuery, not prefetched here: each of
+	// those needs its own project.*.read permission (project.roles.read,
+	// project.members.read, project.settings.task_statuses.read, etc.), and
+	// a role that's missing just one of them — a hand-edited custom role
+	// especially — would previously fail this Promise.all and crash the
+	// entire settings page, including the General/Danger Zone tabs that
+	// role could otherwise use. A component-level useQuery fails softly
+	// (that one tab shows an empty/loading state) instead of blocking the
+	// whole route.
 	loader: async ({ context: { queryClient }, params: { projectId } }) => {
-		await Promise.all([
-			queryClient.ensureQueryData(projectQueryOptions(projectId)),
-			queryClient.ensureQueryData(projectRolesQueryOptions(projectId)),
-			queryClient.ensureQueryData(projectMembersQueryOptions(projectId)),
-			queryClient.ensureQueryData(taskStatusesQueryOptions(projectId)),
-			queryClient.ensureQueryData(taskTypesQueryOptions(projectId)),
-			queryClient.ensureQueryData(customFieldsQueryOptions(projectId)),
-		]);
+		await queryClient.ensureQueryData(projectQueryOptions(projectId));
 	},
 	component: SettingsPage,
 });

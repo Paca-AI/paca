@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteProjectRoleDialog } from "@/components/projects/roles/DeleteProjectRoleDialog";
 import { ProjectRoleFormDialog } from "@/components/projects/roles/ProjectRoleFormDialog";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -14,6 +15,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import { formatDate as formatDateLocale } from "@/lib/format-date";
 import { dedupeGrantedPermissions } from "@/lib/permissions";
 import { type ProjectRole, projectRolesQueryOptions } from "@/lib/project-api";
@@ -173,9 +176,18 @@ export function RolesSettings({
 	canManageRoles: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { data: roles, isLoading } = useQuery(
-		projectRolesQueryOptions(projectId),
-	);
+	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const canReadRoles = hasProjectPermission("project.roles.read");
+	const {
+		data: roles,
+		isLoading,
+		isError,
+		error,
+	} = useQuery({
+		...projectRolesQueryOptions(projectId),
+		enabled: canReadRoles,
+	});
+	const noPermission = !canReadRoles || (isError && isForbiddenError(error));
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editRole, setEditRole] = useState<ProjectRole | null>(null);
@@ -239,7 +251,13 @@ export function RolesSettings({
 			) : null}
 
 			{/* Table */}
-			{isLoading ? (
+			{noPermission ? (
+				<NoPermissionState
+					icon={Shield}
+					title={t("settings.roles.noPermission.title")}
+					description={t("settings.roles.noPermission.description")}
+				/>
+			) : isLoading ? (
 				<RolesTableSkeleton />
 			) : !roles?.length ? (
 				<div className="flex flex-col items-center gap-4 rounded-xl border border-dashed bg-muted/20 py-16 text-center mt-4">

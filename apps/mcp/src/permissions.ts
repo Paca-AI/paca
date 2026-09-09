@@ -152,85 +152,99 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		requiresProject: true,
 	},
 
-	// Task type tools
+	// Task type tools — project *schema* (which task types exist), gated on
+	// project.settings.task_types.* rather than tasks.* now that the backend
+	// splits "edit a task's content" from "redefine the type list" (see
+	// router.go's task-types route comment / authz.
+	// PermissionProjectSettingsTaskTypesRead's doc comment). A member with
+	// only tasks.write (no project.settings.task_types.write) can still
+	// edit tasks via update_task, but no longer sees these.
 	{
 		toolName: "list_task_types",
-		permissionKey: "tasks.read",
+		permissionKey: "project.settings.task_types.read",
 		requiresProject: true,
 	},
 	{
 		toolName: "create_task_type",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_types.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "update_task_type",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_types.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "delete_task_type",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_types.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "set_default_task_type",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_types.write",
 		requiresProject: true,
 	},
 
-	// Task status tools
+	// Task status tools — project *schema* (which statuses exist, their
+	// order, which is the default), same split as task types above. Moving
+	// a task *between* existing statuses (update_task, move_task/
+	// bulk_move_tasks below) stays on tasks.write — that's editing a task,
+	// not the status list.
 	{
 		toolName: "list_task_statuses",
-		permissionKey: "tasks.read",
+		permissionKey: "project.settings.task_statuses.read",
 		requiresProject: true,
 	},
 	{
 		toolName: "create_task_status",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_statuses.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "update_task_status",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_statuses.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "delete_task_status",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_statuses.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "set_default_task_status",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.task_statuses.write",
 		requiresProject: true,
 	},
 
-	// View tools
+	// View tools — gated on their own views.read/write, not a borrowed
+	// tasks.read/write (there was no dedicated permission for the view
+	// resource itself before — see router.go's views route comment).
+	// Moving a *task* within a view (list_task_positions/bulk_move_tasks/
+	// move_task below) stays on tasks.* — that's still editing a task.
 	{
 		toolName: "list_views",
-		permissionKey: "tasks.read",
+		permissionKey: "views.read",
 		requiresProject: true,
 	},
 	{
 		toolName: "create_view",
-		permissionKey: "tasks.write",
+		permissionKey: "views.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "reorder_views",
-		permissionKey: "tasks.write",
+		permissionKey: "views.write",
 		requiresProject: true,
 	},
-	{ toolName: "get_view", permissionKey: "tasks.read", requiresProject: true },
+	{ toolName: "get_view", permissionKey: "views.read", requiresProject: true },
 	{
 		toolName: "update_view",
-		permissionKey: "tasks.write",
+		permissionKey: "views.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "delete_view",
-		permissionKey: "tasks.write",
+		permissionKey: "views.write",
 		requiresProject: true,
 	},
 	{
@@ -249,30 +263,31 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		requiresProject: true,
 	},
 
-	// Custom field tools
+	// Custom field tools — project schema, same split as task types/statuses
+	// above.
 	{
 		toolName: "list_custom_fields",
-		permissionKey: "tasks.read",
+		permissionKey: "project.settings.custom_fields.read",
 		requiresProject: true,
 	},
 	{
 		toolName: "create_custom_field",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.custom_fields.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "get_custom_field",
-		permissionKey: "tasks.read",
+		permissionKey: "project.settings.custom_fields.read",
 		requiresProject: true,
 	},
 	{
 		toolName: "update_custom_field",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.custom_fields.write",
 		requiresProject: true,
 	},
 	{
 		toolName: "delete_custom_field",
-		permissionKey: "tasks.write",
+		permissionKey: "project.settings.custom_fields.write",
 		requiresProject: true,
 	},
 
@@ -616,6 +631,51 @@ export async function fetchAgentPermissions(
 	return { global, projects };
 }
 
+/**
+ * Checks one flat permission map (either the global map or a single
+ * project's) for an exact match or a covering wildcard, mirroring the Go
+ * backend's own matcher (internal/platform/authz/authorizer.go's
+ * hasPermission): every granted key ending in ".*" is tried as a prefix
+ * against permissionKey, not just one wildcard derived from permissionKey's
+ * first segment. That distinction matters now that some domains nest a
+ * wildcard below the top level — project.settings.* (granted to e.g.
+ * PROJECT_OWNER/PROJECT_MANAGER by default) must cover
+ * project.settings.task_types.read, but there is no such permission as a
+ * bare "project.*"; a single derived `${parts[0]}.*` candidate would only
+ * ever check that non-existent key and never match. Scanning every granted
+ * wildcard also means this needs no updating if a future permission adds
+ * another nesting level.
+ */
+function matchesPermissionMap(
+	map: Record<string, boolean>,
+	permissionKey: string,
+	scopeLabel: string,
+): boolean {
+	if (map["*"] === true) {
+		console.error(
+			`[permissions] Granting ${permissionKey} via ${scopeLabel} *`,
+		);
+		return true;
+	}
+	if (map[permissionKey] === true) {
+		console.error(
+			`[permissions] Granting ${permissionKey} via ${scopeLabel} exact match`,
+		);
+		return true;
+	}
+	for (const [key, granted] of Object.entries(map)) {
+		if (!granted || !key.endsWith(".*")) continue;
+		const prefix = key.slice(0, -1); // strip the trailing "*", keep the dot
+		if (permissionKey.startsWith(prefix)) {
+			console.error(
+				`[permissions] Granting ${permissionKey} via ${scopeLabel} ${key}`,
+			);
+			return true;
+		}
+	}
+	return false;
+}
+
 export function hasPermission(
 	permissionMap: PermissionMap,
 	permissionKey: string,
@@ -625,51 +685,19 @@ export function hasPermission(
 
 	const { global, projects } = permissionMap;
 
-	if (global["*"] === true) {
-		console.error(`[permissions] Granting ${permissionKey} via global *`);
+	if (matchesPermissionMap(global, permissionKey, "global")) {
 		return true;
-	}
-
-	if (global[permissionKey] === true) {
-		console.error(
-			`[permissions] Granting ${permissionKey} via global exact match`,
-		);
-		return true;
-	}
-
-	const parts = permissionKey.split(".");
-	if (parts.length >= 2) {
-		const wildcardKey = `${parts[0]}.*`;
-		if (global[wildcardKey] === true) {
-			console.error(
-				`[permissions] Granting ${permissionKey} via global ${wildcardKey}`,
-			);
-			return true;
-		}
 	}
 
 	if (projectId && projects[projectId]) {
-		if (projects[projectId]["*"] === true) {
-			console.error(
-				`[permissions] Granting ${permissionKey} via project ${projectId} *`,
-			);
+		if (
+			matchesPermissionMap(
+				projects[projectId],
+				permissionKey,
+				`project ${projectId}`,
+			)
+		) {
 			return true;
-		}
-		if (projects[projectId][permissionKey] === true) {
-			console.error(
-				`[permissions] Granting ${permissionKey} via project ${projectId} exact match`,
-			);
-			return true;
-		}
-		const parts = permissionKey.split(".");
-		if (parts.length >= 2) {
-			const wildcardKey = `${parts[0]}.*`;
-			if (projects[projectId][wildcardKey] === true) {
-				console.error(
-					`[permissions] Granting ${permissionKey} via project ${projectId} ${wildcardKey}`,
-				);
-				return true;
-			}
 		}
 		console.error(
 			`[permissions] Denying ${permissionKey} for project ${projectId} - no matching permission`,

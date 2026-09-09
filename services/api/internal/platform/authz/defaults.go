@@ -22,6 +22,13 @@ func DefaultGlobalRoles() []RoleDefinition {
 				PermissionGlobalRolesAll,
 				PermissionProjectsAll,
 				PermissionSettingsWrite,
+				// Global agents and plugins were previously left off this
+				// list — an ADMIN got 403s managing either, masked in
+				// practice only for accounts whose legacy role-name claim
+				// happened to also read "ADMIN" (which bypasses this table
+				// entirely via LegacyPermissionsForRole's blanket wildcard).
+				PermissionAgentsAll,
+				PermissionPluginsAll,
 			},
 		},
 		{
@@ -43,7 +50,9 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionProjectMembersAll,
 				PermissionProjectRolesAll,
 				PermissionTasksAll,
+				PermissionProjectSettingsAll,
 				PermissionSprintsAll,
+				PermissionViewsAll,
 				PermissionDocsAll,
 				PermissionAgentsAll,
 				PermissionConversationsAll,
@@ -54,13 +63,21 @@ func DefaultProjectRoles() []RoleDefinition {
 		},
 		{
 			Name: "PROJECT_MANAGER",
+			// PermissionProjectsRead is deliberately omitted here and below —
+			// AuthzPermissionStore.ListProjectPermissions grants it to any
+			// active project member unconditionally, so listing it per-role
+			// would be redundant (see that method's doc comment). Global-
+			// scope projects.read (an admin browsing projects they aren't a
+			// member of) is unaffected — this only covers the project-scoped
+			// resolution.
 			Permissions: []Permission{
-				PermissionProjectsRead,
 				PermissionProjectsWrite,
 				PermissionProjectMembersRead,
 				PermissionProjectMembersWrite,
 				PermissionTasksAll,
+				PermissionProjectSettingsAll,
 				PermissionSprintsAll,
+				PermissionViewsAll,
 				PermissionDocsAll,
 				PermissionAgentsAll,
 				PermissionConversationsAll,
@@ -72,12 +89,18 @@ func DefaultProjectRoles() []RoleDefinition {
 		{
 			Name: "PROJECT_MEMBER",
 			Permissions: []Permission{
-				PermissionProjectsRead,
 				PermissionProjectMembersRead,
 				PermissionProjectRolesRead,
 				PermissionTasksRead,
 				PermissionTasksWrite,
+				// Preserves what PROJECT_MEMBER could already do via
+				// tasks.write before the split above — a project owner can
+				// now tighten this per-project via the role editor, which is
+				// the actual point of splitting these out.
+				PermissionProjectSettingsAll,
 				PermissionSprintsRead,
+				PermissionViewsRead,
+				PermissionViewsWrite,
 				PermissionDocsRead,
 				PermissionDocsWrite,
 				PermissionAgentsRead,
@@ -97,11 +120,14 @@ func DefaultProjectRoles() []RoleDefinition {
 		{
 			Name: "PROJECT_VIEWER",
 			Permissions: []Permission{
-				PermissionProjectsRead,
 				PermissionProjectMembersRead,
 				PermissionProjectRolesRead,
 				PermissionTasksRead,
+				PermissionProjectSettingsTaskTypesRead,
+				PermissionProjectSettingsTaskStatusesRead,
+				PermissionProjectSettingsCustomFieldsRead,
 				PermissionSprintsRead,
+				PermissionViewsRead,
 				PermissionDocsRead,
 				PermissionAgentsRead,
 				PermissionConversationsRead,

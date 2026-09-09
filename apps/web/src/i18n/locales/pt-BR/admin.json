@@ -289,6 +289,10 @@
 			"title": "Ainda não há agentes globais",
 			"description": "Crie um agente global para disponibilizá-lo para conversas e convites de projeto.",
 			"createAgent": "Criar agente"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view agents",
+			"description": "You can still create new agents using the button above."
 		}
 	},
 	"settings": {

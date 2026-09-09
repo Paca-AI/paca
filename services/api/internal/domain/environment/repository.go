@@ -12,6 +12,22 @@ type Repository interface {
 	FolderRepository
 	SSHKeyRepository
 	PortForwardRepository
+	AccessGrantRepository
+}
+
+// AccessGrantRepository defines storage for per-member access grants on a
+// restricted environment — see Environment.AccessMode's doc comment.
+type AccessGrantRepository interface {
+	ListEnvironmentAccessGrants(ctx context.Context, environmentID uuid.UUID) ([]*EnvironmentAccessGrant, error)
+	// AddEnvironmentAccessGrant returns ErrEnvironmentAccessGrantExists if
+	// memberID is already granted.
+	AddEnvironmentAccessGrant(ctx context.Context, g *EnvironmentAccessGrant) error
+	RemoveEnvironmentAccessGrant(ctx context.Context, environmentID, memberID uuid.UUID) error
+	HasEnvironmentAccessGrant(ctx context.Context, environmentID, memberID uuid.UUID) (bool, error)
+	// ListGrantedEnvironmentIDsForMember mirrors
+	// agentdom.AccessGrantRepository.ListGrantedAgentIDsForMember — decorates
+	// ListEnvironments in one query instead of an N+1 check per row.
+	ListGrantedEnvironmentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // EnvironmentRepository defines storage operations for environments.

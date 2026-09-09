@@ -289,6 +289,10 @@
 			"title": "아직 전역 에이전트가 없습니다",
 			"description": "전역 에이전트를 만들면 채팅과 프로젝트 초대에 사용할 수 있습니다.",
 			"createAgent": "에이전트 생성"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view agents",
+			"description": "You can still create new agents using the button above."
 		}
 	},
 	"settings": {

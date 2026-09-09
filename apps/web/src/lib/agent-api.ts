@@ -214,11 +214,28 @@ export interface Agent {
 	// work in by default — null unless default_environment_id is also set.
 	default_folder_id?: string | null;
 	member_id?: string | null;
+	// access_mode is "open" (default — any project member who can use agents
+	// at all may chat with this one) or "restricted" (only members with an
+	// explicit access grant may). access_granted is per-viewer: whether the
+	// current user could actually use this agent right now — always true
+	// when access_mode is "open". Together these drive the locked-agent UI.
+	access_mode: AgentAccessMode;
+	access_granted: boolean;
 	mcp_servers?: AgentMCPServer[];
 	skills?: AgentSkill[];
 	env_vars?: AgentEnvVar[];
 	created_at: string;
 	updated_at: string;
+}
+
+export type AgentAccessMode = "open" | "restricted";
+
+export interface AgentAccessGrant {
+	id: string;
+	agent_id: string;
+	member_id: string;
+	granted_by?: string | null;
+	created_at: string;
 }
 
 export type ConversationStatus =
@@ -375,6 +392,7 @@ export async function updateAgent(
 		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
+		access_mode?: AgentAccessMode;
 	},
 ): Promise<Agent> {
 	const { data } = await apiClient.instance.patch<SuccessEnvelope<Agent>>(
@@ -382,6 +400,45 @@ export async function updateAgent(
 		payload,
 	);
 	return data.data;
+}
+
+// ── Agent access grants ──────────────────────────────────────────────────────
+// Who may use a restricted agent — see Agent.access_mode's doc comment.
+// Managing the grant list itself requires agents.write, same tier as every
+// other agent-configuration action; the grants themselves gate the chat
+// actions, not this list.
+
+export async function listAgentAccessGrants(
+	projectId: string,
+	agentId: string,
+): Promise<AgentAccessGrant[]> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ items: AgentAccessGrant[] }>
+	>(`/projects/${projectId}/agents/${agentId}/access-grants`);
+	return data.data.items;
+}
+
+export async function addAgentAccessGrant(
+	projectId: string,
+	agentId: string,
+	memberId: string,
+): Promise<AgentAccessGrant> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<AgentAccessGrant>
+	>(`/projects/${projectId}/agents/${agentId}/access-grants`, {
+		member_id: memberId,
+	});
+	return data.data;
+}
+
+export async function removeAgentAccessGrant(
+	projectId: string,
+	agentId: string,
+	memberId: string,
+): Promise<void> {
+	await apiClient.instance.delete(
+		`/projects/${projectId}/agents/${agentId}/access-grants/${memberId}`,
+	);
 }
 
 // ── Global Agents (admin CRUD) ───────────────────────────────────────────────
@@ -1434,6 +1491,15 @@ export const agentEnvVarsQueryOptions = (projectId: string, agentId: string) =>
 	queryOptions({
 		queryKey: ["projects", projectId, "agents", agentId, "env-vars"],
 		queryFn: () => listEnvVars(projectId, agentId),
+	});
+
+export const agentAccessGrantsQueryOptions = (
+	projectId: string,
+	agentId: string,
+) =>
+	queryOptions({
+		queryKey: ["projects", projectId, "agents", agentId, "access-grants"],
+		queryFn: () => listAgentAccessGrants(projectId, agentId),
 	});
 
 export const globalAgentMCPServersQueryOptions = (agentId: string) =>

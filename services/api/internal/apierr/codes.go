@@ -372,6 +372,16 @@ const (
 	// CodeAgentNotProviderCLI indicates VerifyCLILogin (or another provider_cli-only
 	// operation) was called on an agent whose agent_type isn't provider_cli.
 	CodeAgentNotProviderCLI Code = "AGENT_NOT_PROVIDER_CLI"
+	// CodeAgentAccessModeInvalid indicates access_mode is not "open" or "restricted".
+	CodeAgentAccessModeInvalid Code = "AGENT_ACCESS_MODE_INVALID"
+	// CodeAgentAccessGrantExists indicates the target member already has an
+	// access grant for this agent.
+	CodeAgentAccessGrantExists Code = "AGENT_ACCESS_GRANT_EXISTS"
+	// CodeAgentAccessRestricted indicates the agent is access_mode=restricted
+	// and the caller holds no grant for it — a usage action (starting/
+	// driving a conversation) was attempted, not a configuration one, which
+	// stays gated purely on agents.write regardless of access_mode.
+	CodeAgentAccessRestricted Code = "AGENT_ACCESS_RESTRICTED"
 
 	// --- Environment errors (static environments — see
 	// docs/ai-agent/environment-management.md) --------------------------------
@@ -413,6 +423,17 @@ const (
 	CodeEnvironmentPortForwardContainerPortInvalid Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_INVALID"
 	// CodeEnvironmentPortForwardContainerPortTaken indicates a port forward for this container port already exists on this environment.
 	CodeEnvironmentPortForwardContainerPortTaken Code = "ENVIRONMENT_PORT_FORWARD_CONTAINER_PORT_TAKEN"
+	// CodeEnvironmentAccessModeInvalid indicates access_mode is not "open" or "restricted".
+	CodeEnvironmentAccessModeInvalid Code = "ENVIRONMENT_ACCESS_MODE_INVALID"
+	// CodeEnvironmentAccessGrantExists indicates the target member already
+	// has an access grant for this environment.
+	CodeEnvironmentAccessGrantExists Code = "ENVIRONMENT_ACCESS_GRANT_EXISTS"
+	// CodeEnvironmentAccessRestricted indicates the environment is
+	// access_mode=restricted and the caller holds no grant for it — a usage
+	// action (browse, SSH keys, port forwards, terminal) was attempted, not
+	// a configuration one, which stays gated purely on environments.write
+	// regardless of access_mode.
+	CodeEnvironmentAccessRestricted Code = "ENVIRONMENT_ACCESS_RESTRICTED"
 
 	// --- Automation errors -----------------------------------------------------
 

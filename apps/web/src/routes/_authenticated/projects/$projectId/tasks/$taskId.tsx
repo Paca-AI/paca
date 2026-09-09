@@ -4,8 +4,10 @@ import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { TaskDetailModal } from "@/components/projects/interactions/task-detail-modal";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import { taskQueryOptions } from "@/lib/interaction-api";
 import {
 	projectMembersQueryOptions,
@@ -110,15 +112,28 @@ function TaskDetailPage() {
 	const { data: members = [] } = useQuery(
 		projectMembersQueryOptions(projectId),
 	);
-	const { data: task = null, isLoading } = useQuery(
-		taskQueryOptions(projectId, taskId),
-	);
+	const {
+		data: task = null,
+		isLoading,
+		isError,
+		error,
+	} = useQuery(taskQueryOptions(projectId, taskId));
 
 	if (isLoading) {
 		return <TaskDetailSkeleton />;
 	}
 
 	if (!task) {
+		if (isError && isForbiddenError(error)) {
+			return (
+				<div className="flex h-full flex-col items-center justify-center p-6">
+					<NoPermissionState
+						title={t("taskDetail.noPermission.title")}
+						description={t("taskDetail.noPermission.description")}
+					/>
+				</div>
+			);
+		}
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/60">
 				<AlertCircle className="size-10" />

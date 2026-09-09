@@ -11,6 +11,7 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AutomationDependencyMap } from "@/components/projects/automation/automation-dependency-map";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	type Automation,
 	automationsQueryOptions,
@@ -37,9 +39,10 @@ import { timeAgo } from "@/lib/time-ago";
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/automation/",
 )({
-	loader: async ({ context: { queryClient }, params: { projectId } }) => {
-		await queryClient.ensureQueryData(automationsQueryOptions(projectId));
-	},
+	// Not prefetched here — workflows.write without workflows.read is a
+	// valid combination, and gating in the loader would crash this entire
+	// page instead of showing NoPermissionState in place of just the grid
+	// below.
 	component: AutomationListPage,
 });
 
@@ -56,11 +59,16 @@ function AutomationListPage() {
 	const navigate = useNavigate();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canManage = hasProjectPermission("workflows.write");
+	const canRead = hasProjectPermission("workflows.read");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
-	const { data: automations = [], isLoading } = useQuery(
-		automationsQueryOptions(projectId),
-	);
+	const {
+		data: automations = [],
+		isLoading,
+		isError,
+		error,
+	} = useQuery({ ...automationsQueryOptions(projectId), enabled: canRead });
+	const noPermission = !canRead || (isError && isForbiddenError(error));
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [name, setName] = useState("");
@@ -117,15 +125,17 @@ function AutomationListPage() {
 						</p>
 					</div>
 					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							className="gap-1.5"
-							onClick={() => setShowDependencyMap((v) => !v)}
-						>
-							<GitBranch className="size-3.5" />
-							{t("automation.dependencyMap.title")}
-						</Button>
+						{canRead && (
+							<Button
+								variant="outline"
+								size="sm"
+								className="gap-1.5"
+								onClick={() => setShowDependencyMap((v) => !v)}
+							>
+								<GitBranch className="size-3.5" />
+								{t("automation.dependencyMap.title")}
+							</Button>
+						)}
 						{canManage ? (
 							<Button
 								size="sm"
@@ -141,12 +151,18 @@ function AutomationListPage() {
 			</div>
 
 			<div className="p-6">
-				{showDependencyMap && (
+				{showDependencyMap && canRead && (
 					<div className="mb-6">
 						<AutomationDependencyMap projectId={projectId} />
 					</div>
 				)}
-				{isLoading ? (
+				{noPermission ? (
+					<NoPermissionState
+						icon={AutomationIcon}
+						title={t("automation.list.noPermission.title")}
+						description={t("automation.list.noPermission.description")}
+					/>
+				) : isLoading ? (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 						{Array.from({ length: 3 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: skeleton

@@ -12,6 +12,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PortForwardCommentsTab } from "@/components/projects/environments/port-forward-comments-tab";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -24,6 +25,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { portForwardAnnotationsQueryOptions } from "@/lib/annotation-api";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	deletePortForward,
 	environmentConfigQueryOptions,
@@ -77,9 +79,15 @@ export function PortForwardDetailView({
 		environmentQueryOptions(projectId, environmentId),
 	);
 	const { data: config } = useQuery(environmentConfigQueryOptions());
-	const { data: portForward, isLoading } = useQuery(
+	const {
+		data: portForward,
+		isLoading,
+		isError,
+		error,
+	} = useQuery(
 		portForwardQueryOptions(projectId, environmentId, portForwardId),
 	);
+	const noPermission = isError && isForbiddenError(error);
 	// Only needed to show "this also deletes N comments" in the delete
 	// dialog below — not rendered directly here (PortForwardCommentsTab
 	// fetches its own copy via the same query key once the Comments tab is
@@ -141,6 +149,21 @@ export function PortForwardDetailView({
 	}
 
 	if (!portForward) {
+		// A restricted environment's port forward 403s the same way a
+		// genuinely deleted one 404s (both leave `data` undefined) — checked
+		// first so a member who's simply not been granted access sees why,
+		// instead of a misleading "not found" for a port forward that does
+		// exist.
+		if (noPermission) {
+			return (
+				<div className="flex h-full flex-col items-center justify-center p-6">
+					<NoPermissionState
+						title={t("portForwardDetail.noPermission.title")}
+						description={t("portForwardDetail.noPermission.description")}
+					/>
+				</div>
+			);
+		}
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/60">
 				<AlertCircle className="size-10" />

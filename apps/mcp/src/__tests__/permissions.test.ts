@@ -62,6 +62,33 @@ describe("hasPermission", () => {
 			};
 			expect(hasPermission(map, "tasks.read", "proj-1")).toBe(false);
 		});
+
+		// Regression coverage: some permission keys now nest three or more
+		// segments deep (project.settings.task_types.read), with the granted
+		// wildcard sitting below the top level (project.settings.*, not a
+		// bare project.*) — mirrors the Go backend's authorizer, which checks
+		// every granted "<prefix>.*" key rather than deriving a single
+		// candidate from the required key's first segment.
+		it("grants via a nested domain wildcard (project.settings.*)", () => {
+			const map: PermissionMap = {
+				global: { "project.settings.*": true },
+				projects: {},
+			};
+			expect(hasPermission(map, "project.settings.task_types.read")).toBe(true);
+			expect(hasPermission(map, "project.settings.custom_fields.write")).toBe(
+				true,
+			);
+		});
+
+		it("does not grant a nested permission via a same-prefix but unrelated wildcard", () => {
+			const map: PermissionMap = {
+				global: { "project.roles.*": true },
+				projects: {},
+			};
+			expect(hasPermission(map, "project.settings.task_types.read")).toBe(
+				false,
+			);
+		});
 	});
 
 	describe("project-scoped permissions", () => {
@@ -103,6 +130,16 @@ describe("hasPermission", () => {
 				projects: { "proj-1": { "tasks.read": true } },
 			};
 			expect(hasPermission(map, "tasks.read")).toBe(false);
+		});
+
+		it("grants via a nested project domain wildcard (views.* covering views.write)", () => {
+			const map: PermissionMap = {
+				global: {},
+				projects: { "proj-1": { "project.settings.*": true } },
+			};
+			expect(
+				hasPermission(map, "project.settings.task_statuses.write", "proj-1"),
+			).toBe(true);
 		});
 	});
 
@@ -161,7 +198,41 @@ describe("getToolPermission", () => {
 
 	it("returns the correct permission for list_views", () => {
 		const perm = getToolPermission("list_views");
-		expect(perm?.permissionKey).toBe("tasks.read");
+		expect(perm?.permissionKey).toBe("views.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// Regression coverage: task-type/task-status/custom-field tools were
+	// split off tasks.read/tasks.write onto their own project.settings.*
+	// keys when the backend stopped requiring tasks.write to edit project
+	// schema (see router.go's task-types/task-statuses/custom-fields route
+	// comments) — these tools previously stayed mapped to tasks.*, which
+	// would show them as available to a member who can edit tasks but was
+	// never granted schema access, only for the backend to 403 the call.
+	it("returns the correct permission for create_task_type", () => {
+		const perm = getToolPermission("create_task_type");
+		expect(perm?.permissionKey).toBe("project.settings.task_types.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for list_task_statuses", () => {
+		const perm = getToolPermission("list_task_statuses");
+		expect(perm?.permissionKey).toBe("project.settings.task_statuses.read");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	it("returns the correct permission for update_custom_field", () => {
+		const perm = getToolPermission("update_custom_field");
+		expect(perm?.permissionKey).toBe("project.settings.custom_fields.write");
+		expect(perm?.requiresProject).toBe(true);
+	});
+
+	// list_task_positions/bulk_move_tasks/move_task stay on tasks.* even
+	// after the views.* split above — moving a task between statuses within
+	// a view is still editing a task, not the view or the status list.
+	it("returns the correct permission for bulk_move_tasks", () => {
+		const perm = getToolPermission("bulk_move_tasks");
+		expect(perm?.permissionKey).toBe("tasks.write");
 		expect(perm?.requiresProject).toBe(true);
 	});
 

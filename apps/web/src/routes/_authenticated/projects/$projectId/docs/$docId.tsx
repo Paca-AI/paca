@@ -9,9 +9,11 @@ import {
 	DocEditor,
 	type DocEditorHandle,
 } from "@/components/projects/docs/doc-editor";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	docFoldersQueryOptions,
 	docQueryKeys,
@@ -36,7 +38,11 @@ function DocEditorPage() {
 	const canWrite = hasProjectPermission("docs.write");
 	const qc = useQueryClient();
 
-	const { data: doc, isError } = useQuery(docQueryOptions(projectId, docId));
+	const {
+		data: doc,
+		isError,
+		error: docError,
+	} = useQuery(docQueryOptions(projectId, docId));
 	const { data: allFolders = [] } = useQuery(docFoldersQueryOptions(projectId));
 
 	// Register this doc as "currently on screen" for the chat composer's
@@ -114,6 +120,16 @@ function DocEditorPage() {
 	})();
 
 	if (isError) {
+		if (isForbiddenError(docError)) {
+			return (
+				<div className="flex flex-1 flex-col items-center justify-center p-6">
+					<NoPermissionState
+						title={t("docs.editorPage.noPermission.title")}
+						description={t("docs.editorPage.noPermission.description")}
+					/>
+				</div>
+			);
+		}
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
 				<div className="flex size-14 items-center justify-center rounded-xl bg-muted/50">

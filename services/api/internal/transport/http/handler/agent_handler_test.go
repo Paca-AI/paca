@@ -83,6 +83,19 @@ func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
 func (m *mockAgentSvc) TriggerDescriptionWrite(_ context.Context, _, _, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
 	return nil, agentdom.ErrAgentNotFound
 }
+func (m *mockAgentSvc) HasAgentUsageAccess(_ context.Context, _, _, _ uuid.UUID) (bool, error) {
+	return true, nil
+}
+func (m *mockAgentSvc) ListAgentAccessGrants(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
+	return nil, nil
+}
+func (m *mockAgentSvc) AddAgentAccessGrant(_ context.Context, _, _, _ uuid.UUID, _ *uuid.UUID) (*agentdom.AgentAccessGrant, error) {
+	return &agentdom.AgentAccessGrant{ID: uuid.New()}, nil
+}
+func (m *mockAgentSvc) RemoveAgentAccessGrant(_ context.Context, _, _, _ uuid.UUID) error { return nil }
+func (m *mockAgentSvc) ListGrantedAgentIDsForMember(_ context.Context, _ uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
 func (m *mockAgentSvc) ListMCPServers(_ context.Context, _ uuid.UUID) ([]*agentdom.AgentMCPServer, error) {
 	return nil, nil
 }

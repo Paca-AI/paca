@@ -35,9 +35,40 @@ const (
 	PermissionTasksWrite Permission = "tasks.write"
 	PermissionTasksAll   Permission = "tasks.*"
 
+	// PermissionProjectSettings{TaskTypes,TaskStatuses,CustomFields} gate
+	// redefining the project's task *schema* — the task-type list, the
+	// task-status list (including reorder/set-default), and custom field
+	// definitions — split out from PermissionTasksWrite, which now governs
+	// only task *content* (create/edit/delete a task, comments, links,
+	// attachments, moving a task between existing statuses). Someone who can
+	// drag a card to "Done" is no longer necessarily someone who can delete
+	// the "Done" status or add a project-wide custom field. Three separate
+	// keys, not one, so a role can grant just one area (e.g. custom fields
+	// only) without the others. Prefixed with "project." like
+	// project.members.*/project.roles.* — deliberately not bare
+	// "settings.*", which already exists as a *global* permission
+	// (workspace branding) and would otherwise be merged into the same
+	// granted-set for any project-scoped check.
+	PermissionProjectSettingsTaskTypesRead     Permission = "project.settings.task_types.read"
+	PermissionProjectSettingsTaskTypesWrite    Permission = "project.settings.task_types.write"
+	PermissionProjectSettingsTaskStatusesRead  Permission = "project.settings.task_statuses.read"
+	PermissionProjectSettingsTaskStatusesWrite Permission = "project.settings.task_statuses.write"
+	PermissionProjectSettingsCustomFieldsRead  Permission = "project.settings.custom_fields.read"
+	PermissionProjectSettingsCustomFieldsWrite Permission = "project.settings.custom_fields.write"
+	PermissionProjectSettingsAll               Permission = "project.settings.*"
+
 	PermissionSprintsRead  Permission = "sprints.read"
 	PermissionSprintsWrite Permission = "sprints.write"
 	PermissionSprintsAll   Permission = "sprints.*"
+
+	// PermissionViews{Read,Write} gate a saved view's own definition
+	// (create/update/delete/reorder a board or list layout) — split out from
+	// PermissionSprintsWrite, which it used to borrow with no dedicated key
+	// of its own. Moving a *task* within a view (drag-and-drop) stays on
+	// PermissionTasksWrite; that's editing a task, not the view.
+	PermissionViewsRead  Permission = "views.read"
+	PermissionViewsWrite Permission = "views.write"
+	PermissionViewsAll   Permission = "views.*"
 
 	PermissionDocsRead  Permission = "docs.read"
 	PermissionDocsWrite Permission = "docs.write"
@@ -93,4 +124,12 @@ const (
 	// settings.read: the branding itself is served by an unauthenticated
 	// public endpoint, so the only thing to gate is writing to it.
 	PermissionSettingsWrite Permission = "settings.write"
+
+	// PermissionPlugins{Read,Write} gate global plugin installation/
+	// marketplace management — previously reused PermissionUsersWrite as a
+	// rough "is this someone important" proxy, with no permission of its
+	// own.
+	PermissionPluginsRead  Permission = "plugins.read"
+	PermissionPluginsWrite Permission = "plugins.write"
+	PermissionPluginsAll   Permission = "plugins.*"
 )

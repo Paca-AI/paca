@@ -16,6 +16,23 @@ type Repository interface {
 	ConversationRepository
 	ChatSessionRepository
 	ActivityFeedRepository
+	AccessGrantRepository
+}
+
+// AccessGrantRepository defines storage for per-member access grants on a
+// restricted agent — see Agent.AccessMode's doc comment.
+type AccessGrantRepository interface {
+	ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*AgentAccessGrant, error)
+	// AddAgentAccessGrant returns ErrAgentAccessGrantExists if memberID is
+	// already granted.
+	AddAgentAccessGrant(ctx context.Context, g *AgentAccessGrant) error
+	RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error
+	HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error)
+	// ListGrantedAgentIDsForMember returns the IDs of every restricted agent
+	// memberID currently holds a grant for — used to decorate ListAgents
+	// with each row's AccessGranted state in one query instead of an N+1
+	// HasAgentAccessGrant check per agent.
+	ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // AgentRepository defines storage operations for agents.

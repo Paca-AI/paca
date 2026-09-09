@@ -9,6 +9,7 @@ import {
 	AcpSetupDialog,
 	CreateAgentDialog,
 } from "@/components/projects/agents/create-agent-dialog";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -19,6 +20,7 @@ import {
 	globalAgentsQueryOptions,
 	llmModelsQueryOptions,
 } from "@/lib/agent-api";
+import { isForbiddenError } from "@/lib/api-error";
 import { hasPermission } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/admin/agents/")({
@@ -38,11 +40,13 @@ export const Route = createFileRoute("/_authenticated/admin/agents/")({
 			throw redirect({ to: "/home" });
 		}
 	},
+	// globalAgentsQueryOptions isn't prefetched here — agents.write without
+	// agents.read is an unusual but valid combination (the beforeLoad check
+	// above only requires one of the two), and gating in the loader would
+	// crash this entire page instead of showing NoPermissionState in place
+	// of just the grid below.
 	loader: async ({ context: { queryClient } }) => {
-		await Promise.all([
-			queryClient.ensureQueryData(globalAgentsQueryOptions),
-			queryClient.ensureQueryData(llmModelsQueryOptions),
-		]);
+		await queryClient.ensureQueryData(llmModelsQueryOptions);
 	},
 	component: GlobalAgentsPage,
 });
@@ -60,8 +64,15 @@ function GlobalAgentsPage() {
 	const navigate = Route.useNavigate();
 	const { hasPermission } = usePermissions();
 	const canWrite = hasPermission("agents.write");
+	const canRead = hasPermission("agents.read");
 
-	const { data: agents = [], isLoading } = useQuery(globalAgentsQueryOptions);
+	const {
+		data: agents = [],
+		isLoading,
+		isError,
+		error,
+	} = useQuery({ ...globalAgentsQueryOptions, enabled: canRead });
+	const noPermission = !canRead || (isError && isForbiddenError(error));
 
 	const [createOpen, setCreateOpen] = useState(search.create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);
@@ -120,7 +131,13 @@ function GlobalAgentsPage() {
 
 			{/* Content */}
 			<div className="p-6">
-				{isLoading ? (
+				{noPermission ? (
+					<NoPermissionState
+						icon={Bot}
+						title={t("agents.noPermission.title")}
+						description={t("agents.noPermission.description")}
+					/>
+				) : isLoading ? (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 						{Array.from({ length: 3 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: skeleton

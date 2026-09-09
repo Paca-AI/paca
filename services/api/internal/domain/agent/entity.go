@@ -159,7 +159,24 @@ type Agent struct {
 	// that would exceed it is held in agent_pending_triggers instead of
 	// being dispatched — see PendingTrigger.
 	ParallelismLimit int
-	CreatedBy        *uuid.UUID
+	// AccessMode is "open" (default — any project member holding
+	// agents.read/conversations.* may use this agent) or "restricted" (only
+	// members with an AgentAccessGrant may chat with it — see
+	// Service.HasAgentUsageAccess). Deliberately independent of
+	// agents.write: reconfiguring a restricted agent's MCP servers/skills/
+	// env vars stays gated purely on the existing permission, project-wide,
+	// same as today — this only adds a per-instance gate on top of the
+	// *usage* actions (chat sessions, conversations).
+	//
+	// For a global-scope agent (AgentScope == AgentScopeGlobal), this is one
+	// shared switch, not per-project — the same as every other mutable
+	// field on a global agent (LLM settings, skills, etc.), editable from
+	// any project it's invited into. Restricting it takes effect everywhere
+	// it's invited at once; AgentAccessGrant.MemberID (a project_members.id)
+	// is what then lets each project's own admin independently decide which
+	// of *their* members regain access.
+	AccessMode string
+	CreatedBy  *uuid.UUID
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	DeletedAt        *time.Time
@@ -186,6 +203,26 @@ const (
 	AgentScopeProject AgentScope = "project"
 	AgentScopeGlobal  AgentScope = "global"
 )
+
+// AccessMode values — see Agent.AccessMode's doc comment.
+const (
+	AccessModeOpen       = "open"
+	AccessModeRestricted = "restricted"
+)
+
+// AgentAccessGrant is an explicit per-member exception to a restricted
+// agent's default deny. MemberID references project_members.id, not a raw
+// user/agent id — same convention AgentChatSession.MemberID already uses,
+// which is what naturally scopes a *global* agent's grants per project (the
+// same agent can be open in one project and restricted in another, since it
+// gets a separate project_members row per project it's invited into).
+type AgentAccessGrant struct {
+	ID        uuid.UUID
+	AgentID   uuid.UUID
+	MemberID  uuid.UUID
+	GrantedBy *uuid.UUID
+	CreatedAt time.Time
+}
 
 // ACPProvider values.
 const (

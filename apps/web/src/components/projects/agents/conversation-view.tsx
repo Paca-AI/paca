@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thread } from "@/components/assistant-ui/thread";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,6 +44,7 @@ import {
 	stopConversation,
 	stopGlobalConversation,
 } from "@/lib/agent-api";
+import { isForbiddenError } from "@/lib/api-error";
 import { useContextInjectionStore } from "@/lib/context-injection-store";
 import { cn } from "@/lib/utils";
 import { useAgentBusyPrompt } from "./agent-busy-dialog";
@@ -175,11 +177,19 @@ export function ConversationView({
 		data: conversation,
 		isLoading: convLoading,
 		isError,
+		error: conversationError,
 	} = useQuery(
 		projectId
 			? conversationQueryOptions(projectId, conversationId)
 			: globalConversationQueryOptions(conversationId),
 	);
+	// A conversation that's owner-private to a different member, or whose
+	// agent is now access-restricted, 403s the same way a genuinely invalid
+	// conversationId 404s (both leave `data` undefined, or stale data plus
+	// isError true on a later refetch) — checked so a member who's simply
+	// not allowed to see it gets told why, instead of a "not found"/"failed"
+	// message implying the conversation itself is broken or gone.
+	const noPermission = isError && isForbiddenError(conversationError);
 	const {
 		events,
 		isLoading: eventsLoading,
@@ -428,10 +438,36 @@ export function ConversationView({
 	}
 
 	if (!conversation) {
+		if (noPermission) {
+			return (
+				<div className="flex h-full flex-col items-center justify-center p-6">
+					<NoPermissionState
+						title={t("agents.conversationView.noPermission.title")}
+						description={t("agents.conversationView.noPermission.description")}
+					/>
+				</div>
+			);
+		}
 		return (
 			<div className="flex flex-col h-full items-center justify-center text-muted-foreground/50 gap-3">
 				<Bot className="size-10" />
 				<p className="text-sm">{t("agents.conversationView.notFound")}</p>
+			</div>
+		);
+	}
+
+	// A previously-loaded conversation whose access was revoked mid-session
+	// (or whose agent just became restricted) keeps its last-known data
+	// while a background refetch 403s — checked ahead of the generic failure
+	// fallback below so that case reads as a permission message, not as the
+	// agent run itself having failed.
+	if (noPermission) {
+		return (
+			<div className="flex h-full flex-col items-center justify-center p-6">
+				<NoPermissionState
+					title={t("agents.conversationView.noPermission.title")}
+					description={t("agents.conversationView.noPermission.description")}
+				/>
 			</div>
 		);
 	}

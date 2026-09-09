@@ -92,6 +92,8 @@
 		"card": {
 			"configure": "Configure",
 			"delete": "Delete",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "Online",
 			"acpStatusDisconnected": "Offline",
 			"deleteDialog": {
@@ -107,6 +109,10 @@
 			"title": "AI Agents",
 			"subtitle": "Autonomous agents that work on tasks and chat with your team",
 			"newAgent": "New Agent",
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
+			},
 			"empty": {
 				"title": "No agents yet",
 				"description": "Add an AI agent to automate tasks, review code, write documentation, and more.",
@@ -157,6 +163,7 @@
 				"mcpServers": "MCP Servers",
 				"skills": "Skills",
 				"envVars": "Environment",
+				"access": "Access",
 				"activity": "Activity"
 			},
 			"avatar": {
@@ -290,6 +297,13 @@
 					"addSkill": "Add skill"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "commented",
 				"sourceType": {
@@ -318,6 +332,10 @@
 		"conversationView": {
 			"stop": "Stop",
 			"notFound": "Conversation not found",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "Chat session",
 			"taskSession": "Task session",
 			"pr": "PR",
@@ -418,6 +436,12 @@
 			"title": "Environments",
 			"subtitle": "Named, long-lived sandboxes your agents can attach to across conversations",
 			"newEnvironment": "New Environment",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
+			},
 			"empty": {
 				"title": "No environments yet",
 				"description": "Create a static environment to keep files and background processes running across conversations, instead of a fresh disposable sandbox each time.",
@@ -455,7 +479,8 @@
 			"tabs": {
 				"overview": "Overview",
 				"folders": "Folders",
-				"portForwards": "Port forwards"
+				"portForwards": "Port forwards",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "Connect",
@@ -500,6 +525,10 @@
 				"count_one": "{{count}} folder configured",
 				"count_other": "{{count}} folders configured",
 				"addFolder": "Add folder",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "Failed to delete folder. Please try again.",
 				"empty": {
 					"title": "No folders added",
@@ -526,6 +555,10 @@
 				"count_one": "{{count}} port forward",
 				"count_other": "{{count}} port forwards",
 				"add": "Add port forward",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "Failed to delete port forward. Please try again.",
 				"containerPort": "Container port {{port}}",
 				"unassigned": "Not assigned yet",
@@ -554,6 +587,13 @@
 					"cancel": "Cancel",
 					"confirm": "Restart"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "Replace <bastion-host> with this deployment's configured SSH bastion address.",
@@ -602,6 +642,7 @@
 				"connect": "Connect",
 				"notRunning": "Start the environment before connecting.",
 				"readOnly": "You don't have permission to open a terminal on this environment.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "Opens in a new full-page tab.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -612,7 +653,8 @@
 				"step1Description": "Register the public key of the SSH key pair you want to connect with.",
 				"step2Title": "Connect from your terminal",
 				"step2Description": "Run this command from your terminal:",
-				"notRunning": "Start the environment before connecting."
+				"notRunning": "Start the environment before connecting.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -621,6 +663,10 @@
 			"notFound": {
 				"title": "Document not found",
 				"description": "This document may have been deleted or the link is invalid."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "Unsaved",
 			"saving": "Saving…",
@@ -674,10 +720,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "Read Project",
-				"description": "View project details and settings"
-			},
 			"projectsWrite": {
 				"label": "Edit Project",
 				"description": "Update project name, description, and settings"
@@ -702,6 +744,30 @@
 				"label": "Manage Roles",
 				"description": "Create, edit, and delete project roles"
 			},
+			"settingsTaskTypesRead": {
+				"label": "View Task Types",
+				"description": "View the project's task type definitions"
+			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesRead": {
+				"label": "View Task Statuses",
+				"description": "View the project's task status definitions and their order"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsRead": {
+				"label": "View Custom Fields",
+				"description": "View the project's custom field definitions"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "View Tasks",
 				"description": "Browse and read tasks in the project"
@@ -717,6 +783,14 @@
 			"sprintsWrite": {
 				"label": "Manage Sprints",
 				"description": "Create, update, and close sprints"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "View Documents",
@@ -754,6 +828,18 @@
 				"label": "Connect to Environments",
 				"description": "Open an interactive terminal session inside a running environment"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "View Automation",
 				"description": "Browse automations and their configuration"
@@ -766,13 +852,15 @@
 		"permissionGroups": {
 			"project": "Project",
 			"members": "Members",
-			"roles": "Roles",
+			"settings": "Settings",
 			"tasks": "Tasks",
 			"sprints": "Sprints",
+			"views": "Views",
 			"documents": "Documents",
 			"aiAgents": "AI Agents",
 			"conversations": "Conversations",
 			"environments": "Environments",
+			"annotations": "Annotations",
 			"workflows": "Automation",
 			"plugins": "Plugins"
 		}
@@ -816,6 +904,10 @@
 			"description": "Manage roles and permissions for members of this project.",
 			"newRole": "New role",
 			"noPermissionsAssigned": "No permissions assigned",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			},
 			"editRole": "Edit role",
 			"deleteRole": "Delete role",
 			"rolesDefined_one": "role defined",
@@ -838,6 +930,10 @@
 			"description": "Define the workflow statuses tasks move through in this project.",
 			"newStatus": "New status",
 			"reorderFailed": "Failed to save the new order. Please try again.",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			},
 			"empty": {
 				"title": "No statuses defined",
 				"description": "Create statuses to define the workflow for tasks in this project.",
@@ -857,6 +953,10 @@
 			"title": "Task Types",
 			"description": "Categorise tasks with custom types (e.g. Bug, Feature, Story).",
 			"newType": "New type",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			},
 			"empty": {
 				"title": "No task types defined",
 				"description": "Create types to categorise tasks by kind — e.g. Bug, Feature, Story.",
@@ -877,6 +977,10 @@
 			"title": "Custom Fields",
 			"description": "Define project-level custom task fields that extend tasks with additional data specific to your workflow.",
 			"newField": "New custom field",
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
+			},
 			"empty": {
 				"title": "No custom fields yet",
 				"description": "Custom fields let you capture data specific to your workflow — sprints, severity levels, release tags, and more.",
@@ -996,6 +1100,10 @@
 		"addMember": "Add Member",
 		"memberCount_one": "{{count}} member",
 		"memberCount_other": "{{count}} members",
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
+		},
 		"empty": {
 			"title": "No members yet",
 			"description": "Add teammates or AI agents to this project to get started.",
@@ -1091,6 +1199,10 @@
 			"ariaLabel": "Task detail",
 			"backToProject": "Back to project",
 			"projectFallback": "Project"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
 		},
 		"header": {
 			"created": "Created {{date}}",
@@ -1298,6 +1410,10 @@
 			"ariaLabel": "Port forward detail",
 			"backToEnvironment": "Back to environment"
 		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
 		"tabs": {
 			"overview": "Overview",
 			"comments": "Comments"
@@ -1337,6 +1453,10 @@
 			"description": "This comment may have been deleted or the link is invalid.",
 			"ariaLabel": "Comment detail",
 			"backToPortForward": "Back to port forward"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
 		},
 		"header": {
 			"createdAt": "Commented {{date}}"
@@ -1463,6 +1583,10 @@
 			"clearAll": "Clear filters"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "No conversations yet",
 				"description": "Conversations start when a task is assigned to an agent or someone messages one."
@@ -1714,6 +1838,10 @@
 			"title": "Automation",
 			"subtitle": "React to task events with triggers, conditions, and actions",
 			"newAutomation": "New Automation",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			},
 			"empty": {
 				"title": "No automations yet",
 				"description": "Create an automation to react to task events with conditions and actions.",

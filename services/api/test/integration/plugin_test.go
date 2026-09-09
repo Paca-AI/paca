@@ -208,7 +208,7 @@ func newPluginTestEnv(t *testing.T, adminPerms bool) *pluginTestEnv {
 	userID := uuid.New()
 	perms := []authz.Permission{authz.PermissionProjectsRead}
 	if adminPerms {
-		perms = append(perms, authz.PermissionUsersWrite)
+		perms = append(perms, authz.PermissionPluginsRead, authz.PermissionPluginsWrite)
 	}
 	permStore := &integrationPermissionStore{globalPerms: perms}
 

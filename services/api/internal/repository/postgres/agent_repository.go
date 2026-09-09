@@ -61,11 +61,20 @@ type agentRecord struct {
 	// DefaultEnvironmentID is also set (enforced by the service layer, not
 	// a DB constraint).
 	DefaultFolderID *string    `db:"default_folder_id"`
+	AccessMode      string     `db:"access_mode"`
 	CreatedBy       *string    `db:"created_by"`
 	CreatedAt       time.Time  `db:"created_at"`
 	UpdatedAt       time.Time  `db:"updated_at"`
 	DeletedAt       *time.Time `db:"deleted_at"`
 	MemberID        *string    `db:"member_id"` // populated when joining with project_members
+}
+
+type agentAccessGrantRecord struct {
+	ID        string    `db:"id"`
+	AgentID   string    `db:"agent_id"`
+	MemberID  string    `db:"member_id"`
+	GrantedBy *string   `db:"granted_by"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type agentMCPServerRecord struct {
@@ -175,7 +184,7 @@ func NewAgentRepository(db *sqlx.DB) *AgentRepository {
 const agentSelectColsBase = `a.id, a.project_id, a.agent_scope, a.global_role_id, a.name, a.handle, a.avatar_key, a.avatar_thumb_key, a.agent_type, a.llm_provider, a.llm_model,
 	a.llm_api_key_secret, a.llm_base_url, a.acp_provider, a.acp_command, a.acp_bridge_token_hash, a.mcp_api_key_hash, a.system_prompt,
 	a.max_iterations, a.timeout_minutes, a.parallelism_limit,
-	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.created_by, a.created_at, a.updated_at, a.deleted_at,
+	a.git_committer_name, a.git_committer_email, a.docker_enabled, a.default_environment_id, a.default_folder_id, a.access_mode, a.created_by, a.created_at, a.updated_at, a.deleted_at,
 	a.cli_provider, a.cli_model, a.cli_auth_mode, a.cli_api_key_secret, a.cli_login_verified_at`
 
 // agentSelectCols is used with a JOIN/LEFT JOIN against project_members
@@ -435,15 +444,15 @@ func (r *AgentRepository) UpdateAgent(ctx context.Context, a *agentdom.Agent) er
 			  max_iterations=$11, timeout_minutes=$12,
 			  git_committer_name=$13, git_committer_email=$14, docker_enabled=$15, global_role_id=$16,
 			  default_environment_id=$17, default_folder_id=$18, updated_at=$19,
-			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22, parallelism_limit=$23
-			WHERE id=$24`,
+			  cli_provider=$20, cli_model=$21, cli_auth_mode=$22, parallelism_limit=$23, access_mode=$24
+			WHERE id=$25`,
 			a.Name, a.Handle, a.AvatarKey, a.AvatarThumbKey, a.LLMProvider, a.LLMModel, a.LLMBaseURL,
 			rec.ACPProvider, rec.ACPCommand,
 			a.SystemPrompt,
 			a.MaxIterations, a.TimeoutMinutes,
 			a.GitCommitterName, a.GitCommitterEmail, a.DockerEnabled, rec.GlobalRoleID,
 			rec.DefaultEnvironmentID, rec.DefaultFolderID, time.Now(),
-			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, a.ID.String(),
+			rec.CLIProvider, rec.CLIModel, rec.CLIAuthMode, a.ParallelismLimit, rec.AccessMode, a.ID.String(),
 		)
 		if err != nil {
 			return err
@@ -745,6 +754,95 @@ func (r *AgentRepository) DeleteMCPServer(ctx context.Context, id uuid.UUID) err
 }
 
 // -------------------------------------------------------------------------
+// Access grants
+// -------------------------------------------------------------------------
+
+const agentAccessGrantCols = `id, agent_id, member_id, granted_by, created_at`
+
+// ListAgentAccessGrants returns every member explicitly granted access to
+// this agent, regardless of its current access_mode (so the grant list
+// survives toggling back and forth between open/restricted).
+func (r *AgentRepository) ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
+	var recs []agentAccessGrantRecord
+	if err := r.db.SelectContext(ctx, &recs, `SELECT `+agentAccessGrantCols+` FROM agent_access_grants WHERE agent_id = $1 ORDER BY created_at`, agentID.String()); err != nil {
+		return nil, err
+	}
+	result := make([]*agentdom.AgentAccessGrant, 0, len(recs))
+	for _, rec := range recs {
+		result = append(result, agentAccessGrantFromRecord(rec))
+	}
+	return result, nil
+}
+
+// AddAgentAccessGrant inserts a new grant. Returns
+// agentdom.ErrAgentAccessGrantExists if memberID already has one (backed by
+// uq_agent_access_grants_agent_member).
+func (r *AgentRepository) AddAgentAccessGrant(ctx context.Context, g *agentdom.AgentAccessGrant) error {
+	var grantedBy *string
+	if g.GrantedBy != nil {
+		s := g.GrantedBy.String()
+		grantedBy = &s
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO agent_access_grants (id, agent_id, member_id, granted_by, created_at)
+		VALUES ($1,$2,$3,$4,$5)`,
+		g.ID.String(), g.AgentID.String(), g.MemberID.String(), grantedBy, g.CreatedAt,
+	)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return agentdom.ErrAgentAccessGrantExists
+		}
+		return err
+	}
+	return nil
+}
+
+// RemoveAgentAccessGrant deletes a grant. A no-op (nil error) if none
+// existed — mirrors DeleteMCPServer's plain-DELETE idempotency.
+func (r *AgentRepository) RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM agent_access_grants WHERE agent_id = $1 AND member_id = $2`, agentID.String(), memberID.String())
+	return err
+}
+
+// HasAgentAccessGrant reports whether memberID currently has an explicit
+// grant for agentID — the check Service.HasAgentUsageAccess falls back to
+// once it's confirmed the agent is actually restricted.
+func (r *AgentRepository) HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM agent_access_grants WHERE agent_id = $1 AND member_id = $2)`, agentID.String(), memberID.String())
+	return exists, err
+}
+
+// ListGrantedAgentIDsForMember returns every agent ID memberID currently
+// holds a grant for — used to decorate ListAgents/ListGlobalAgents with each
+// row's AccessGranted state in one query instead of an N+1 check per agent.
+func (r *AgentRepository) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []string
+	if err := r.db.SelectContext(ctx, &ids, `SELECT agent_id FROM agent_access_grants WHERE member_id = $1`, memberID.String()); err != nil {
+		return nil, err
+	}
+	result := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, mustParseUUID(id))
+	}
+	return result, nil
+}
+
+func agentAccessGrantFromRecord(rec agentAccessGrantRecord) *agentdom.AgentAccessGrant {
+	g := &agentdom.AgentAccessGrant{
+		ID:        mustParseUUID(rec.ID),
+		AgentID:   mustParseUUID(rec.AgentID),
+		MemberID:  mustParseUUID(rec.MemberID),
+		CreatedAt: rec.CreatedAt,
+	}
+	if rec.GrantedBy != nil {
+		id := mustParseUUID(*rec.GrantedBy)
+		g.GrantedBy = &id
+	}
+	return g
+}
+
+// -------------------------------------------------------------------------
 // Skills
 // -------------------------------------------------------------------------
 
@@ -975,6 +1073,17 @@ func (r *AgentRepository) ListConversations(ctx context.Context, in agentdom.Lis
 		b.whereClauses = append(b.whereClauses, fmt.Sprintf(
 			"(audience = '%s' OR EXISTS (SELECT 1 FROM agent_chat_sessions cs WHERE cs.id = agent_conversations.chat_session_id AND cs.member_id = %s))",
 			agentdom.AudienceProjectShared, p))
+		// Restricted agents: this project-wide listing must not leak a
+		// restricted agent's conversations to a member who isn't granted
+		// access to it — otherwise Service.authorizeConversationAccess's
+		// per-conversation gate (enforced on GetConversation and everything
+		// that funnels through it) could be bypassed just by browsing the
+		// list instead of opening one conversation at a time. Reuses the
+		// same ViewerMemberID placeholder p bound just above.
+		b.whereClauses = append(b.whereClauses, fmt.Sprintf(
+			"NOT EXISTS (SELECT 1 FROM agents ag WHERE ag.id = agent_conversations.agent_id AND ag.access_mode = 'restricted' "+
+				"AND NOT EXISTS (SELECT 1 FROM agent_access_grants g WHERE g.agent_id = ag.id AND g.member_id = %s))",
+			p))
 	}
 	if in.TaskID != nil {
 		p := b.placeholder()
@@ -1649,6 +1758,7 @@ func agentFromReadRow(row agentRecord) (*agentdom.Agent, error) {
 		GitCommitterName:   row.GitCommitterName,
 		GitCommitterEmail:  row.GitCommitterEmail,
 		DockerEnabled:      row.DockerEnabled,
+		AccessMode:         row.AccessMode,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 		DeletedAt:          row.DeletedAt,
@@ -1744,6 +1854,7 @@ func agentToRecord(a *agentdom.Agent) (agentRecord, error) {
 		GitCommitterName:   a.GitCommitterName,
 		GitCommitterEmail:  a.GitCommitterEmail,
 		DockerEnabled:      a.DockerEnabled,
+		AccessMode:         a.AccessMode,
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 	}

@@ -130,6 +130,27 @@ export function isPasswordChangeRequired(err: unknown): boolean {
 	);
 }
 
+/** The HTTP status code of an Axios error's response, or undefined for a
+ *  non-HTTP failure (network error, timeout) or a non-Axios error. */
+export function getHttpStatus(error: unknown): number | undefined {
+	return (error as { response?: { status?: number } } | undefined)?.response
+		?.status;
+}
+
+/**
+ * True for a plain "you don't have permission" 403 — every 403 except the
+ * one that means something more specific and is already handled elsewhere
+ * (AUTH_PASSWORD_CHANGE_REQUIRED triggers its own redirect to
+ * /change-password in api-client.ts's response interceptor, so a component
+ * reacting to it as a normal permission error would show a confusing
+ * message for the instant before that redirect lands). Use this to decide
+ * whether to render a NoPermissionState instead of a generic error state —
+ * see that component's doc comment.
+ */
+export function isForbiddenError(error: unknown): boolean {
+	return getHttpStatus(error) === 403 && !isPasswordChangeRequired(error);
+}
+
 /**
  * Returns true when an Axios error is a 404 TASK_NOT_FOUND — i.e. the API has
  * authoritatively confirmed the task doesn't exist, as opposed to a network

@@ -14,12 +14,9 @@ export const Route = createFileRoute(
 		context: { queryClient },
 		params: { projectId, environmentId, portForwardId },
 	}) => {
-		await Promise.all([
+		const [environment] = await Promise.all([
 			queryClient.ensureQueryData(
 				environmentQueryOptions(projectId, environmentId),
-			),
-			queryClient.ensureQueryData(
-				portForwardQueryOptions(projectId, environmentId, portForwardId),
 			),
 			queryClient.ensureQueryData(
 				portForwardAnnotationsQueryOptions(
@@ -30,6 +27,21 @@ export const Route = createFileRoute(
 			),
 			queryClient.ensureQueryData(environmentConfigQueryOptions()),
 		]);
+		// The port forward itself is gated on RequireEnvironmentAccess when
+		// the environment is restricted (annotations above aren't — see
+		// annotation_service.go's own doc comment on that being a separate,
+		// deliberately out-of-scope gap) — prefetching it unconditionally
+		// would 403 the whole route loader for a member who isn't granted
+		// access. Sequenced after the environment fetch above, same fix as
+		// the environment detail and Connect routes' own loaders.
+		if (
+			environment.access_mode !== "restricted" ||
+			environment.access_granted
+		) {
+			await queryClient.ensureQueryData(
+				portForwardQueryOptions(projectId, environmentId, portForwardId),
+			);
+		}
 	},
 	component: PortForwardDetailPage,
 });

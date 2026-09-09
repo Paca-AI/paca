@@ -88,6 +88,11 @@ type mockAgentRepo struct {
 	createMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
 	updateMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
 	deleteMCPServer                      func(ctx context.Context, id uuid.UUID) error
+	listAgentAccessGrants                func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error)
+	addAgentAccessGrant                  func(ctx context.Context, g *agentdom.AgentAccessGrant) error
+	removeAgentAccessGrant               func(ctx context.Context, agentID, memberID uuid.UUID) error
+	hasAgentAccessGrant                  func(ctx context.Context, agentID, memberID uuid.UUID) (bool, error)
+	listGrantedAgentIDsForMember         func(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 	listSkills                           func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error)
 	findSkillByID                        func(ctx context.Context, id uuid.UUID) (*agentdom.AgentSkill, error)
 	createSkill                          func(ctx context.Context, skill *agentdom.AgentSkill) error
@@ -140,7 +145,13 @@ func (m *mockAgentRepo) FindAgentByID(ctx context.Context, id uuid.UUID) (*agent
 	if m.findAgentByID != nil {
 		return m.findAgentByID(ctx, id)
 	}
-	return nil, agentdom.ErrAgentNotFound
+	// Default to a plain open agent rather than erroring: most tests using
+	// this mock don't care about the backing agent at all (they're testing
+	// something else entirely, e.g. conversation access), and an
+	// unconfigured find shouldn't fail a test that never meant to exercise
+	// "agent not found" in the first place. Tests that do care configure
+	// findAgentByID explicitly (see the many that already do).
+	return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeOpen}, nil
 }
 
 func (m *mockAgentRepo) FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
@@ -306,6 +317,41 @@ func (m *mockAgentRepo) DeleteMCPServer(ctx context.Context, id uuid.UUID) error
 		return m.deleteMCPServer(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockAgentRepo) ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
+	if m.listAgentAccessGrants != nil {
+		return m.listAgentAccessGrants(ctx, agentID)
+	}
+	return nil, nil
+}
+
+func (m *mockAgentRepo) AddAgentAccessGrant(ctx context.Context, g *agentdom.AgentAccessGrant) error {
+	if m.addAgentAccessGrant != nil {
+		return m.addAgentAccessGrant(ctx, g)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error {
+	if m.removeAgentAccessGrant != nil {
+		return m.removeAgentAccessGrant(ctx, agentID, memberID)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error) {
+	if m.hasAgentAccessGrant != nil {
+		return m.hasAgentAccessGrant(ctx, agentID, memberID)
+	}
+	return false, nil
+}
+
+func (m *mockAgentRepo) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	if m.listGrantedAgentIDsForMember != nil {
+		return m.listGrantedAgentIDsForMember(ctx, memberID)
+	}
+	return nil, nil
 }
 
 func (m *mockAgentRepo) ListSkills(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error) {
@@ -1457,6 +1503,79 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+// TestGetConversation_RestrictedAgent_GrantedMember_Allowed and
+// TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected cover
+// authorizeConversationAccess's unconditional hasAgentUsageAccess check for
+// the ordinary human-caller path (GetConversation, StartChatSession,
+// ListChatSessions, SendChatMessage all share this same check) — a
+// project-shared conversation with a restricted agent must still stay
+// hidden from a member holding no explicit grant, even though the "no
+// bypass" policy is really aimed at *starting* new usage; reading an
+// existing project-shared conversation is usage too.
+func TestGetConversation_RestrictedAgent_GrantedMember_Allowed(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		Audience:  agentdom.AudienceProjectShared,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, mID uuid.UUID) (bool, error) {
+			return mID == memberID, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		Audience:  agentdom.AudienceProjectShared,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
+
+	assert.Error(t, err, "a project-shared conversation with a restricted agent must stay hidden from a non-granted member")
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
 func TestGetConversation_OwnerPrivate_OwnerAllowed(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -1703,6 +1822,52 @@ func TestGetConversationForAgent_Project_SharedAudience_Allowed(t *testing.T) {
 				return target, nil
 			}
 			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+// TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed
+// is the regression case for a bug in hasAgentUsageAccess found while
+// tracing the MCP server's read_conversation tool (backed by this method)
+// end to end: current has no ChatSessionID (a task-assigned or
+// automation-triggered run — TriggerTaskAssigned/TriggerDirectMessage never
+// check access grants, since there's no human actor to check one against),
+// so authorizeAgentConversationRead falls through to
+// authorizeConversationAccess(ctx, target, uuid.Nil) — a pre-existing
+// sentinel meaning "no specific member, shared audience only", unrelated to
+// access grants. Before the fix, hasAgentUsageAccess's new unconditional
+// check treated that same uuid.Nil as "member not found" and rejected the
+// read outright, so setting an agent restricted silently broke its own
+// task-assigned/automation runs from reading their own project-shared
+// history — even though nothing about "restrict which humans may use this
+// agent" was meant to affect the agent's own system-triggered runs.
+// hasAgentAccessGrant is stubbed to always deny, proving the read succeeds
+// via the nil-actor short-circuit rather than by coincidentally matching a
+// grant.
+func TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
 		},
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
@@ -4373,6 +4538,26 @@ func (f *fakeEnvironmentService) AddPortForward(context.Context, uuid.UUID, uuid
 
 func (f *fakeEnvironmentService) DeletePortForward(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
 	return nil
+}
+
+func (f *fakeEnvironmentService) HasEnvironmentUsageAccess(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeEnvironmentService) ListEnvironmentAccessGrants(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *uuid.UUID) (*environmentdom.EnvironmentAccessGrant, error) {
+	return &environmentdom.EnvironmentAccessGrant{ID: uuid.New()}, nil
+}
+
+func (f *fakeEnvironmentService) RemoveEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ListGrantedEnvironmentIDsForMember(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
 }
 
 var _ environmentdom.Service = (*fakeEnvironmentService)(nil)

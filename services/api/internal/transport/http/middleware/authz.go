@@ -298,3 +298,118 @@ func RequirePublicProjectOrPermissions(checker ProjectVisibilityChecker, authori
 		})
 	}
 }
+
+// AgentAccessChecker resolves whether a specific member has usage access to
+// a specific agent — see agentdom.AgentAccessGrantService.HasAgentUsageAccess.
+// Satisfied directly by *agentsvc.Service.
+type AgentAccessChecker interface {
+	HasAgentUsageAccess(ctx context.Context, projectID, agentID, memberID uuid.UUID) (bool, error)
+}
+
+// EnvironmentAccessChecker is AgentAccessChecker's environment sibling —
+// satisfied directly by *environmentsvc.Service.
+type EnvironmentAccessChecker interface {
+	HasEnvironmentUsageAccess(ctx context.Context, projectID, environmentID, memberID uuid.UUID) (bool, error)
+}
+
+// resolveActorMemberID resolves the caller of r (human or agent, same dual
+// path EnforcePermissions already uses) to their project_members.id in
+// projectID, via the canonical projectdom.MemberRepository.FindMemberByActor
+// lookup — reused as-is rather than a new one, per the same convention task
+// assignees and agent_chat_sessions.member_id already follow.
+func resolveActorMemberID(r *http.Request, memberRepo projectdom.MemberRepository, projectID uuid.UUID) (uuid.UUID, error) {
+	ctx := r.Context()
+	if agentID, ok := AgentIDFromRequest(r); ok {
+		m, err := memberRepo.FindMemberByActor(ctx, projectID, uuid.Nil, &agentID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		return m.ID, nil
+	}
+	claims := ClaimsFrom(r)
+	if claims == nil {
+		return uuid.Nil, apierr.New(apierr.CodeUnauthenticated, "unauthenticated")
+	}
+	userID, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, apierr.New(apierr.CodeBadRequest, "invalid subject claim")
+	}
+	m, err := memberRepo.FindMemberByActor(ctx, projectID, userID, nil)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return m.ID, nil
+}
+
+// RequireAgentAccess additionally gates a route on the caller holding an
+// access grant for a restricted agent (identified by the "agentId" URL
+// param) — see agentdom.AgentAccessGrantService's doc comment. Must run
+// AFTER RequirePermissions in the chain, not instead of it: the plain
+// permission check still governs whether the caller may use agents at all;
+// this only narrows that further to the specific agent in the URL when it's
+// restricted.
+func RequireAgentAccess(checker AgentAccessChecker, memberRepo projectdom.MemberRepository) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			projectID, err := ProjectScopeFromParam("projectId")(r)
+			if err != nil {
+				presenter.Error(w, r, err)
+				return
+			}
+			agentID, err := uuid.Parse(chi.URLParam(r, "agentId"))
+			if err != nil {
+				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid agent id"))
+				return
+			}
+			memberID, err := resolveActorMemberID(r, memberRepo, *projectID)
+			if err != nil {
+				presenter.Error(w, r, err)
+				return
+			}
+			ok, err := checker.HasAgentUsageAccess(r.Context(), *projectID, agentID, memberID)
+			if err != nil {
+				presenter.Error(w, r, err)
+				return
+			}
+			if !ok {
+				presenter.Error(w, r, apierr.New(apierr.CodeAgentAccessRestricted, "this agent is restricted — you don't have access to use it"))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireEnvironmentAccess is RequireAgentAccess's environment sibling,
+// keyed off the "environmentId" URL param.
+func RequireEnvironmentAccess(checker EnvironmentAccessChecker, memberRepo projectdom.MemberRepository) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			projectID, err := ProjectScopeFromParam("projectId")(r)
+			if err != nil {
+				presenter.Error(w, r, err)
+				return
+			}
+			environmentID, err := uuid.Parse(chi.URLParam(r, "environmentId"))
+			if err != nil {
+				presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid environment id"))
+				return
+			}
+			memberID, err := resolveActorMemberID(r, memberRepo, *projectID)
+			if err != nil {
+				presenter.Error(w, r, err)
+				return
+			}
+			ok, err := checker.HasEnvironmentUsageAccess(r.Context(), *projectID, environmentID, memberID)
+			if err != nil {
+				presenter.Error(w, r, err)
+				return
+			}
+			if !ok {
+				presenter.Error(w, r, apierr.New(apierr.CodeEnvironmentAccessRestricted, "this environment is restricted — you don't have access to use it"))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

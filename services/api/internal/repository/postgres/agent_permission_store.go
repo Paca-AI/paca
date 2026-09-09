@@ -32,7 +32,9 @@ func (s *AuthzPermissionStore) GetAgentProjectRoleName(ctx context.Context, agen
 }
 
 // ListAgentProjectPermissions returns permissions from project role memberships for
-// an agent in the given project.
+// an agent in the given project. Mirrors ListProjectPermissions: any active
+// membership implies projects.read regardless of the role's own stored
+// permissions — see that method's doc comment.
 func (s *AuthzPermissionStore) ListAgentProjectPermissions(ctx context.Context, agentID, projectID uuid.UUID) ([]authz.Permission, error) {
 	var rows []struct {
 		Permissions []byte `db:"permissions"`
@@ -47,7 +49,11 @@ func (s *AuthzPermissionStore) ListAgentProjectPermissions(ctx context.Context, 
 		return nil, fmt.Errorf("authz store: list agent project permissions: %w", err)
 	}
 
-	return collectPermissions(rows), nil
+	perms := collectPermissions(rows)
+	if len(rows) > 0 {
+		perms = append(perms, authz.PermissionProjectsRead)
+	}
+	return perms, nil
 }
 
 // ListAgentGlobalPermissions returns permissions granted by a global agent's

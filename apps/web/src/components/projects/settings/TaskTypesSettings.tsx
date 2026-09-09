@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { DeleteTaskTypeDialog } from "@/components/projects/task-types/DeleteTaskTypeDialog";
 import { TaskTypeFormDialog } from "@/components/projects/task-types/TaskTypeFormDialog";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,6 +16,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	setDefaultTaskType,
 	type TaskType,
@@ -29,7 +32,15 @@ export function TaskTypesSettings({
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { data: types, isLoading } = useQuery(taskTypesQueryOptions(projectId));
+	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const canRead = hasProjectPermission("project.settings.task_types.read");
+	const {
+		data: types,
+		isLoading,
+		isError,
+		error,
+	} = useQuery({ ...taskTypesQueryOptions(projectId), enabled: canRead });
+	const noPermission = !canRead || (isError && isForbiddenError(error));
 	const queryClient = useQueryClient();
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editType, setEditType] = useState<TaskType | null>(null);
@@ -68,7 +79,13 @@ export function TaskTypesSettings({
 				) : null}
 			</div>
 
-			{isLoading ? (
+			{noPermission ? (
+				<NoPermissionState
+					icon={Tag}
+					title={t("settings.taskTypes.noPermission.title")}
+					description={t("settings.taskTypes.noPermission.description")}
+				/>
+			) : isLoading ? (
 				<div className="rounded-xl border overflow-hidden mt-4">
 					{["t1", "t2", "t3"].map((k) => (
 						<div

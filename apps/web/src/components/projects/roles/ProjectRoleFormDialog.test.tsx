@@ -345,10 +345,12 @@ describe("ProjectRoleFormDialog", () => {
 			// Each group label should be visible
 			expect(screen.getByText("Project")).toBeInTheDocument();
 			expect(screen.getByText("Members")).toBeInTheDocument();
-			expect(screen.getByText("Roles")).toBeInTheDocument();
+			expect(screen.getByText("Settings")).toBeInTheDocument();
 			expect(screen.getByText("Tasks")).toBeInTheDocument();
 			expect(screen.getByText("Sprints")).toBeInTheDocument();
+			expect(screen.getByText("Views")).toBeInTheDocument();
 			expect(screen.getByText("Documents")).toBeInTheDocument();
+			expect(screen.getByText("Annotations")).toBeInTheDocument();
 		});
 
 		it("pre-selects permissions from the existing role and sends them in the update payload", async () => {

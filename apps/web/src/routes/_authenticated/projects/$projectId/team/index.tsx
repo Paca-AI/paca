@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +55,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
 import { type Agent, chattableAgentsQueryOptions } from "@/lib/agent-api";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	addProjectMember,
 	type ProjectMember,
@@ -73,12 +75,17 @@ import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/team/",
 )({
-	loader: async ({ context: { queryClient }, params: { projectId } }) => {
-		await Promise.all([
-			queryClient.ensureQueryData(projectMembersQueryOptions(projectId)),
-			queryClient.ensureQueryData(projectRolesQueryOptions(projectId)),
-		]);
-	},
+	// Neither roles nor the member list itself is prefetched here. Roles are
+	// only needed for the role-switcher dropdown and the add-member dialog
+	// (both gated behind project.members.write/project.roles.write already);
+	// TeamPage's own useQuery already defaults roles to [] while
+	// loading/erroring. The member list needs project.members.read, which
+	// this page's own canManageMembers check (project.members.write) doesn't
+	// imply — prefetching it unconditionally meant every visit without that
+	// read permission threw from both the loader *and* the component's own
+	// useQuery on mount, hitting the API twice per visit for a request that
+	// was always going to 403. Gated on canRead + NoPermissionState below
+	// instead, same as the agents/environments/automation list pages.
 	component: TeamPage,
 });
 
@@ -743,9 +750,19 @@ function TeamPage() {
 	const { hasPermission } = usePermissions();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const { data: project } = useQuery(projectQueryOptions(projectId));
-	const { data: members, isLoading } = useQuery(
-		projectMembersQueryOptions(projectId),
-	);
+	const canReadMembers =
+		hasPermission("project.members.read") ||
+		hasProjectPermission("project.members.read");
+	const {
+		data: members,
+		isLoading,
+		isError,
+		error,
+	} = useQuery({
+		...projectMembersQueryOptions(projectId),
+		enabled: canReadMembers,
+	});
+	const noPermission = !canReadMembers || (isError && isForbiddenError(error));
 	const { data: roles = [] } = useQuery(projectRolesQueryOptions(projectId));
 
 	const canManageMembers =
@@ -817,7 +834,13 @@ function TeamPage() {
 
 			{/* Content */}
 			<div className="p-6">
-				{isLoading ? (
+				{noPermission ? (
+					<NoPermissionState
+						icon={Users}
+						title={t("team.noPermission.title")}
+						description={t("team.noPermission.description")}
+					/>
+				) : isLoading ? (
 					<div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
 						{[...Array(4)].map((_, i) => (
 							<div

@@ -140,3 +140,19 @@ var (
 	// activity feed pagination cursor fails to decode.
 	ErrActivityFeedInvalidCursor = errors.New("invalid pagination cursor")
 )
+
+// Access grant errors
+var (
+	// ErrAgentAccessModeInvalid is returned when access_mode is set to
+	// anything other than AccessModeOpen/AccessModeRestricted.
+	ErrAgentAccessModeInvalid = errors.New(`access_mode must be "open" or "restricted"`)
+	// ErrAgentAccessGrantExists is returned when a member already has a
+	// grant for this agent.
+	ErrAgentAccessGrantExists = errors.New("this member already has access to this agent")
+	// ErrAgentAccessRestricted is returned by usage actions (starting/
+	// driving a conversation) on a restricted agent the caller has no grant
+	// for — distinct from ErrAgentNotFound: a restricted agent stays
+	// visible (listed, readable), just not usable, so callers must map this
+	// to 403, not 404.
+	ErrAgentAccessRestricted = errors.New("this agent is restricted — you don't have access to use it")
+)

@@ -92,6 +92,8 @@
 		"card": {
 			"configure": "Cấu hình",
 			"delete": "Xóa",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "Trực tuyến",
 			"acpStatusDisconnected": "Ngoại tuyến",
 			"deleteDialog": {
@@ -111,6 +113,10 @@
 				"title": "Chưa có agent nào",
 				"description": "Thêm một AI agent để tự động hóa nhiệm vụ, review code, viết tài liệu và nhiều hơn nữa.",
 				"createFirstAgent": "Tạo agent đầu tiên của bạn"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -157,6 +163,7 @@
 				"mcpServers": "Máy chủ MCP",
 				"skills": "Skill",
 				"envVars": "Môi trường",
+				"access": "Access",
 				"activity": "Hoạt động"
 			},
 			"avatar": {
@@ -290,6 +297,13 @@
 					"addSkill": "Thêm skill"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "đã bình luận",
 				"sourceType": {
@@ -318,6 +332,10 @@
 		"conversationView": {
 			"stop": "Dừng",
 			"notFound": "Không tìm thấy hội thoại",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "Phiên trò chuyện",
 			"taskSession": "Phiên nhiệm vụ",
 			"pr": "PR",
@@ -418,10 +436,16 @@
 			"title": "Môi trường",
 			"subtitle": "Sandbox có tên, hoạt động lâu dài mà agent của bạn có thể gắn vào giữa các cuộc hội thoại",
 			"newEnvironment": "Môi trường mới",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Chưa có môi trường nào",
 				"description": "Tạo một môi trường tĩnh để giữ tệp và tiến trình nền hoạt động xuyên suốt các cuộc hội thoại, thay vì tạo sandbox dùng một lần mỗi lần.",
 				"createFirstEnvironment": "Tạo môi trường đầu tiên của bạn"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -455,7 +479,8 @@
 			"tabs": {
 				"overview": "Tổng quan",
 				"folders": "Thư mục",
-				"portForwards": "Chuyển tiếp cổng"
+				"portForwards": "Chuyển tiếp cổng",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "Kết nối",
@@ -500,6 +525,10 @@
 				"count_one": "Đã cấu hình {{count}} thư mục",
 				"count_other": "Đã cấu hình {{count}} thư mục",
 				"addFolder": "Thêm thư mục",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "Không thể xóa thư mục. Vui lòng thử lại.",
 				"empty": {
 					"title": "Chưa có thư mục nào được thêm",
@@ -526,6 +555,10 @@
 				"count_one": "{{count}} cổng chuyển tiếp",
 				"count_other": "{{count}} cổng chuyển tiếp",
 				"add": "Thêm cổng chuyển tiếp",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "Không thể xóa cổng chuyển tiếp. Vui lòng thử lại.",
 				"containerPort": "Cổng container {{port}}",
 				"unassigned": "Chưa được gán",
@@ -554,6 +587,13 @@
 					"cancel": "Hủy",
 					"confirm": "Khởi động lại"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "Thay <bastion-host> bằng địa chỉ bastion SSH đã cấu hình trên triển khai này.",
@@ -602,6 +642,7 @@
 				"connect": "Kết nối",
 				"notRunning": "Khởi động môi trường trước khi kết nối.",
 				"readOnly": "Bạn không có quyền mở terminal trên môi trường này.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "Mở trong một tab toàn màn hình mới.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -612,7 +653,8 @@
 				"step1Description": "Đăng ký khóa công khai của cặp khóa SSH bạn muốn dùng để kết nối.",
 				"step2Title": "Kết nối từ terminal của bạn",
 				"step2Description": "Chạy lệnh này từ terminal của bạn:",
-				"notRunning": "Khởi động môi trường trước khi kết nối."
+				"notRunning": "Khởi động môi trường trước khi kết nối.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -621,6 +663,10 @@
 			"notFound": {
 				"title": "Không tìm thấy tài liệu",
 				"description": "Tài liệu này có thể đã bị xóa hoặc liên kết không hợp lệ."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "Chưa lưu",
 			"saving": "Đang lưu…",
@@ -674,10 +720,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "Xem dự án",
-				"description": "Xem chi tiết và cài đặt dự án"
-			},
 			"projectsWrite": {
 				"label": "Sửa dự án",
 				"description": "Cập nhật tên, mô tả và cài đặt dự án"
@@ -702,6 +744,30 @@
 				"label": "Quản lý vai trò",
 				"description": "Tạo, sửa và xóa vai trò dự án"
 			},
+			"settingsTaskTypesRead": {
+				"label": "View Task Types",
+				"description": "View the project's task type definitions"
+			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesRead": {
+				"label": "View Task Statuses",
+				"description": "View the project's task status definitions and their order"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsRead": {
+				"label": "View Custom Fields",
+				"description": "View the project's custom field definitions"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "Xem nhiệm vụ",
 				"description": "Duyệt và đọc nhiệm vụ trong dự án"
@@ -717,6 +783,14 @@
 			"sprintsWrite": {
 				"label": "Quản lý sprint",
 				"description": "Tạo, cập nhật và đóng sprint"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "Xem tài liệu",
@@ -754,6 +828,18 @@
 				"label": "Kết nối đến môi trường",
 				"description": "Mở phiên terminal tương tác bên trong một môi trường đang chạy"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "Xem tự động hóa",
 				"description": "Xem các tự động hóa và cấu hình của chúng"
@@ -766,13 +852,15 @@
 		"permissionGroups": {
 			"project": "Dự án",
 			"members": "Thành viên",
-			"roles": "Vai trò",
+			"settings": "Settings",
 			"tasks": "Nhiệm vụ",
 			"sprints": "Sprint",
+			"views": "Views",
 			"documents": "Tài liệu",
 			"aiAgents": "AI Agent",
 			"conversations": "Cuộc trò chuyện",
 			"environments": "Môi trường",
+			"annotations": "Annotations",
 			"workflows": "Tự động hóa",
 			"plugins": "Plugin"
 		}
@@ -831,7 +919,11 @@
 				"permissions": "Quyền hạn",
 				"created": "Ngày tạo"
 			},
-			"systemRolesNote": "Vai trò hệ thống là mẫu dùng chung và không thể chỉnh sửa hoặc xóa."
+			"systemRolesNote": "Vai trò hệ thống là mẫu dùng chung và không thể chỉnh sửa hoặc xóa.",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "Trạng thái nhiệm vụ",
@@ -851,7 +943,11 @@
 			"default": "Mặc định",
 			"setAsDefault": "Đặt làm trạng thái mặc định",
 			"editStatus": "Chỉnh sửa trạng thái",
-			"deleteStatus": "Xóa trạng thái"
+			"deleteStatus": "Xóa trạng thái",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "Loại nhiệm vụ",
@@ -871,7 +967,11 @@
 			"default": "Mặc định",
 			"setAsDefault": "Đặt làm loại mặc định",
 			"editType": "Chỉnh sửa loại",
-			"deleteType": "Xóa loại"
+			"deleteType": "Xóa loại",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "Trường tùy chỉnh",
@@ -942,6 +1042,10 @@
 				"confirmTextSuffix": "? Dữ liệu nhiệm vụ lưu trong trường này sẽ bị mất. Hành động này không thể hoàn tác.",
 				"deleteFailed": "Xóa trường thất bại. Vui lòng thử lại.",
 				"deleteField": "Xóa trường"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -1037,6 +1141,10 @@
 			"removeFailed": "Xóa thành viên thất bại. Vui lòng thử lại.",
 			"cancel": "Hủy",
 			"remove": "Xóa"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1091,6 +1199,10 @@
 			"ariaLabel": "Chi tiết nhiệm vụ",
 			"backToProject": "Quay lại dự án",
 			"projectFallback": "Dự án"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
 		},
 		"header": {
 			"created": "Đã tạo {{date}}",
@@ -1298,6 +1410,10 @@
 			"ariaLabel": "Chi tiết chuyển tiếp cổng",
 			"backToEnvironment": "Quay lại môi trường"
 		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
 		"tabs": {
 			"overview": "Tổng quan",
 			"comments": "Bình luận"
@@ -1337,6 +1453,10 @@
 			"description": "Bình luận này có thể đã bị xóa hoặc liên kết không hợp lệ.",
 			"ariaLabel": "Chi tiết bình luận",
 			"backToPortForward": "Quay lại chuyển tiếp cổng"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
 		},
 		"header": {
 			"createdAt": "Đã bình luận {{date}}"
@@ -1463,6 +1583,10 @@
 			"clearAll": "Xóa bộ lọc"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "Chưa có hội thoại nào",
 				"description": "Hội thoại bắt đầu khi một nhiệm vụ được giao cho agent hoặc khi có ai đó nhắn tin cho agent đó."
@@ -1720,7 +1844,11 @@
 				"createFirst": "Tạo tự động hóa đầu tiên của bạn"
 			},
 			"noDescription": "Không có mô tả",
-			"updated": "Đã cập nhật {{time}}"
+			"updated": "Đã cập nhật {{time}}",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "Đang hoạt động",

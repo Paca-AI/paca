@@ -36,10 +36,19 @@ type environmentRecord struct {
 	IdleTimeoutMinutes  int        `db:"idle_timeout_minutes"`
 	LastActiveAt        time.Time  `db:"last_active_at"`
 	ErrorMessage        *string    `db:"error_message"`
+	AccessMode          string     `db:"access_mode"`
 	CreatedBy           *string    `db:"created_by"`
 	CreatedAt           time.Time  `db:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at"`
 	DeletedAt           *time.Time `db:"deleted_at"`
+}
+
+type environmentAccessGrantRecord struct {
+	ID            string    `db:"id"`
+	EnvironmentID string    `db:"environment_id"`
+	MemberID      string    `db:"member_id"`
+	GrantedBy     *string   `db:"granted_by"`
+	CreatedAt     time.Time `db:"created_at"`
 }
 
 type environmentFolderRecord struct {
@@ -94,7 +103,7 @@ func NewEnvironmentRepository(db *sqlx.DB) *EnvironmentRepository {
 // SetPortsPendingRestart below.
 const environmentCols = `id, project_id, name, slug, ssh_port, ports_pending_restart, status, backend, backend_ref, image,
 	cpu_limit, memory_limit, disk_limit_gb, docker_enabled, volume_ref, secret_key_encrypted, idle_timeout_minutes,
-	last_active_at, error_message, created_by, created_at, updated_at, deleted_at`
+	last_active_at, error_message, access_mode, created_by, created_at, updated_at, deleted_at`
 
 // -------------------------------------------------------------------------
 // Environments
@@ -184,9 +193,9 @@ func (r *EnvironmentRepository) UpdateEnvironment(ctx context.Context, e *enviro
 	rec := environmentToRecord(e)
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE environments SET
-		  name=$1, idle_timeout_minutes=$2, updated_at=$3
-		WHERE id=$4`,
-		rec.Name, rec.IdleTimeoutMinutes, rec.UpdatedAt, rec.ID,
+		  name=$1, idle_timeout_minutes=$2, access_mode=$3, updated_at=$4
+		WHERE id=$5`,
+		rec.Name, rec.IdleTimeoutMinutes, rec.AccessMode, rec.UpdatedAt, rec.ID,
 	)
 	return err
 }
@@ -497,6 +506,97 @@ func (r *EnvironmentRepository) DeletePortForward(ctx context.Context, id uuid.U
 }
 
 // -------------------------------------------------------------------------
+// Access grants
+// -------------------------------------------------------------------------
+
+const environmentAccessGrantCols = `id, environment_id, member_id, granted_by, created_at`
+
+// ListEnvironmentAccessGrants returns every member explicitly granted access
+// to this environment, regardless of its current access_mode (so the grant
+// list survives toggling back and forth between open/restricted).
+func (r *EnvironmentRepository) ListEnvironmentAccessGrants(ctx context.Context, environmentID uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	var recs []environmentAccessGrantRecord
+	if err := r.db.SelectContext(ctx, &recs, `SELECT `+environmentAccessGrantCols+` FROM environment_access_grants WHERE environment_id = $1 ORDER BY created_at`, environmentID.String()); err != nil {
+		return nil, err
+	}
+	result := make([]*environmentdom.EnvironmentAccessGrant, 0, len(recs))
+	for _, rec := range recs {
+		result = append(result, environmentAccessGrantFromRecord(rec))
+	}
+	return result, nil
+}
+
+// AddEnvironmentAccessGrant inserts a new grant. Returns
+// environmentdom.ErrEnvironmentAccessGrantExists if memberID already has one
+// (backed by uq_environment_access_grants_environment_member).
+func (r *EnvironmentRepository) AddEnvironmentAccessGrant(ctx context.Context, g *environmentdom.EnvironmentAccessGrant) error {
+	var grantedBy *string
+	if g.GrantedBy != nil {
+		s := g.GrantedBy.String()
+		grantedBy = &s
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO environment_access_grants (id, environment_id, member_id, granted_by, created_at)
+		VALUES ($1,$2,$3,$4,$5)`,
+		g.ID.String(), g.EnvironmentID.String(), g.MemberID.String(), grantedBy, g.CreatedAt,
+	)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return environmentdom.ErrEnvironmentAccessGrantExists
+		}
+		return err
+	}
+	return nil
+}
+
+// RemoveEnvironmentAccessGrant deletes a grant. A no-op (nil error) if none
+// existed — mirrors DeletePortForward's plain-DELETE idempotency.
+func (r *EnvironmentRepository) RemoveEnvironmentAccessGrant(ctx context.Context, environmentID, memberID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM environment_access_grants WHERE environment_id = $1 AND member_id = $2`, environmentID.String(), memberID.String())
+	return err
+}
+
+// HasEnvironmentAccessGrant reports whether memberID currently has an
+// explicit grant for environmentID — the check
+// Service.HasEnvironmentUsageAccess falls back to once it's confirmed the
+// environment is actually restricted.
+func (r *EnvironmentRepository) HasEnvironmentAccessGrant(ctx context.Context, environmentID, memberID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM environment_access_grants WHERE environment_id = $1 AND member_id = $2)`, environmentID.String(), memberID.String())
+	return exists, err
+}
+
+// ListGrantedEnvironmentIDsForMember returns every environment ID memberID
+// currently holds a grant for — used to decorate ListEnvironments with each
+// row's AccessGranted state in one query instead of an N+1 check per
+// environment.
+func (r *EnvironmentRepository) ListGrantedEnvironmentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	var ids []string
+	if err := r.db.SelectContext(ctx, &ids, `SELECT environment_id FROM environment_access_grants WHERE member_id = $1`, memberID.String()); err != nil {
+		return nil, err
+	}
+	result := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, mustParseUUID(id))
+	}
+	return result, nil
+}
+
+func environmentAccessGrantFromRecord(rec environmentAccessGrantRecord) *environmentdom.EnvironmentAccessGrant {
+	g := &environmentdom.EnvironmentAccessGrant{
+		ID:            mustParseUUID(rec.ID),
+		EnvironmentID: mustParseUUID(rec.EnvironmentID),
+		MemberID:      mustParseUUID(rec.MemberID),
+		CreatedAt:     rec.CreatedAt,
+	}
+	if rec.GrantedBy != nil {
+		id := mustParseUUID(*rec.GrantedBy)
+		g.GrantedBy = &id
+	}
+	return g
+}
+
+// -------------------------------------------------------------------------
 // record <-> domain mapping
 // -------------------------------------------------------------------------
 
@@ -521,6 +621,7 @@ func environmentFromRecord(rec environmentRecord) *environmentdom.Environment {
 		IdleTimeoutMinutes:  rec.IdleTimeoutMinutes,
 		LastActiveAt:        rec.LastActiveAt,
 		ErrorMessage:        rec.ErrorMessage,
+		AccessMode:          rec.AccessMode,
 		CreatedAt:           rec.CreatedAt,
 		UpdatedAt:           rec.UpdatedAt,
 		DeletedAt:           rec.DeletedAt,
@@ -551,6 +652,7 @@ func environmentToRecord(e *environmentdom.Environment) environmentRecord {
 		IdleTimeoutMinutes: e.IdleTimeoutMinutes,
 		LastActiveAt:       e.LastActiveAt,
 		ErrorMessage:       e.ErrorMessage,
+		AccessMode:         e.AccessMode,
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,

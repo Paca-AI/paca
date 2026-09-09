@@ -830,7 +830,7 @@ func TestIntegrationTaskTypes_CRUD(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesRead, authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -883,7 +883,7 @@ func TestIntegrationTaskTypes_InvalidNameReturns400(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -904,7 +904,7 @@ func TestIntegrationTaskTypes_DeleteNotFoundReturns404(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -929,7 +929,7 @@ func TestIntegrationTaskTypes_SetDefault(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesRead, authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -998,7 +998,7 @@ func TestIntegrationTaskTypes_SetDefault_NotFound(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1016,7 +1016,7 @@ func TestIntegrationTaskTypes_SystemTypeCannotBeUpdated(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesRead, authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1051,7 +1051,7 @@ func TestIntegrationTaskTypes_SystemTypeCannotBeDeleted(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1082,7 +1082,7 @@ func TestIntegrationTaskTypes_ReservedNameRejected(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskTypesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1109,7 +1109,7 @@ func TestIntegrationTaskStatuses_CRUD(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskStatusesRead, authz.PermissionProjectSettingsTaskStatusesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1188,7 +1188,7 @@ func TestIntegrationTaskStatuses_Reorder(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskStatusesRead, authz.PermissionProjectSettingsTaskStatusesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1244,7 +1244,7 @@ func TestIntegrationTaskStatuses_ReorderInvalidSetReturns400(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskStatusesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -1276,7 +1276,7 @@ func TestIntegrationTaskStatuses_InvalidCategoryReturns400(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsTaskStatusesWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -2403,7 +2403,7 @@ func TestIntegrationCustomFields_CRUD(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsCustomFieldsRead, authz.PermissionProjectSettingsCustomFieldsWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -2464,7 +2464,7 @@ func TestIntegrationCustomFields_SelectTypeWithOptions(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead, authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsCustomFieldsRead, authz.PermissionProjectSettingsCustomFieldsWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -2503,7 +2503,7 @@ func TestIntegrationCustomFields_DuplicateKeyReturns409(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsCustomFieldsWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -2534,7 +2534,7 @@ func TestIntegrationCustomFields_InvalidTypeReturns400(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsCustomFieldsWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -2559,7 +2559,7 @@ func TestIntegrationCustomFields_GetNotFoundReturns404(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksRead},
+			projectID: {authz.PermissionProjectSettingsCustomFieldsRead},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)
@@ -2580,7 +2580,7 @@ func TestIntegrationCustomFields_EmptyKeyReturns400(t *testing.T) {
 	projectID := uuid.New()
 	store := &projectPermStore{
 		projectPerms: map[uuid.UUID][]authz.Permission{
-			projectID: {authz.PermissionTasksWrite},
+			projectID: {authz.PermissionProjectSettingsCustomFieldsWrite},
 		},
 	}
 	r := buildTaskTestRouter(taskRepo, store)

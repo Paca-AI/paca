@@ -65,7 +65,16 @@ type AgentResponse struct {
 	// agent's conversations work in by default — nil unless
 	// DefaultEnvironmentID is also set. See
 	// agentdom.Agent.DefaultFolderID's doc comment.
-	DefaultFolderID *uuid.UUID               `json:"default_folder_id,omitempty"`
+	DefaultFolderID *uuid.UUID `json:"default_folder_id,omitempty"`
+	// AccessMode is "open" or "restricted" — see agentdom.Agent.AccessMode's
+	// doc comment. AccessGranted is per-caller (not stored on the entity):
+	// true whenever the requesting member could actually use this agent
+	// right now — always true when AccessMode is "open", populated by the
+	// handler from AgentAccessGrantService otherwise. Together these drive
+	// the "visible but locked" UI for a restricted agent the caller isn't
+	// granted.
+	AccessMode      string                   `json:"access_mode"`
+	AccessGranted   bool                     `json:"access_granted"`
 	CreatedBy       *uuid.UUID               `json:"created_by,omitempty"`
 	CreatedAt       time.Time                `json:"created_at"`
 	UpdatedAt       time.Time                `json:"updated_at"`
@@ -159,6 +168,9 @@ type UpdateAgentRequest struct {
 	// DefaultEnvironmentID above — see agentdom.UpdateAgentInput.
 	// DefaultFolderID's doc comment. Ignored for global-scope agents.
 	DefaultFolderID *uuid.UUID `json:"default_folder_id"`
+	// AccessMode: nil means unchanged. Must be "open" or "restricted" when
+	// set — see agentdom.Agent.AccessMode's doc comment.
+	AccessMode *string `json:"access_mode"`
 }
 
 // CreateGlobalAgentRequest is the body for POST /admin/agents. Mirrors
@@ -250,9 +262,18 @@ func AgentFromEntity(a *agentdom.Agent) AgentResponse {
 		ParallelismLimit:     a.ParallelismLimit,
 		DefaultEnvironmentID: a.DefaultEnvironmentID,
 		DefaultFolderID:      a.DefaultFolderID,
-		CreatedBy:            a.CreatedBy,
-		CreatedAt:            a.CreatedAt,
-		UpdatedAt:            a.UpdatedAt,
+		AccessMode:           a.AccessMode,
+		// Correct as-is for an "open" agent (the common case, no caller
+		// context needed); the handler overrides this for a "restricted"
+		// one once it knows which member is asking — see
+		// AgentHandler.toAgentResponse.
+		AccessGranted: a.AccessMode != agentdom.AccessModeRestricted,
+		CreatedBy:     a.CreatedBy,
+		CreatedAt:     a.CreatedAt,
+		UpdatedAt:     a.UpdatedAt,
+	}
+	if resp.AccessMode == "" {
+		resp.AccessMode = agentdom.AccessModeOpen
 	}
 	if a.ProjectID != uuid.Nil {
 		id := a.ProjectID
@@ -705,4 +726,30 @@ func SkillTemplateFromEntity(t *agentdom.SkillTemplate) SkillTemplateResponse {
 		Content:     t.Content,
 		Triggers:    triggers,
 	}
+}
+
+// AgentAccessGrantResponse is one member's access grant on a restricted agent.
+type AgentAccessGrantResponse struct {
+	ID        uuid.UUID  `json:"id"`
+	AgentID   uuid.UUID  `json:"agent_id"`
+	MemberID  uuid.UUID  `json:"member_id"`
+	GrantedBy *uuid.UUID `json:"granted_by,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// AgentAccessGrantFromEntity maps an AgentAccessGrant entity to its DTO.
+func AgentAccessGrantFromEntity(g *agentdom.AgentAccessGrant) AgentAccessGrantResponse {
+	return AgentAccessGrantResponse{
+		ID:        g.ID,
+		AgentID:   g.AgentID,
+		MemberID:  g.MemberID,
+		GrantedBy: g.GrantedBy,
+		CreatedAt: g.CreatedAt,
+	}
+}
+
+// AddAgentAccessGrantRequest is the body for POST
+// /projects/:projectId/agents/:agentId/access-grants.
+type AddAgentAccessGrantRequest struct {
+	MemberID uuid.UUID `json:"member_id" binding:"required"`
 }

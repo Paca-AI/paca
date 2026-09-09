@@ -411,7 +411,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithAvatarService(attachmentService).
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
-		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
+		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
+		WithMemberRepo(projectRepo)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
 		WithAvatarService(attachmentService).
 		WithMemberRepo(projectRepo)
@@ -430,6 +431,9 @@ func New(cfg *config.Config) (*App, error) {
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
 		Authorizer:           authorizer,
+		AgentAccessSvc:       agentService,
+		EnvironmentAccessSvc: environmentService,
+		MemberRepo:           projectRepo,
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),

@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import { Clock, Coins, MessageSquare, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
 	conversationsQueryOptions,
 	globalConversationsQueryOptions,
 } from "@/lib/agent-api";
+import { isForbiddenError } from "@/lib/api-error";
 import { formatCompactTokens, formatUsageCost } from "@/lib/format-usage";
 import { resolveAgentAvatarUrl } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
@@ -162,21 +164,32 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 
 	// Global chat (no projectId) is deliberately open to any authenticated
 	// user (see router.go's global chat-session routes), so only gate
-	// starting a new one when this is a project-scoped conversations list —
-	// a PROJECT_VIEWER (conversations.read only) may browse this list but
-	// must not be able to create a conversation.
+	// starting a new one — and reading the list itself — when this is a
+	// project-scoped conversations list. A PROJECT_VIEWER (conversations.read
+	// only) may browse this list but must not be able to create a
+	// conversation.
 	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
 	const canStartConversation =
 		!projectId || hasProjectPermission("conversations.write");
+	const canRead = !projectId || hasProjectPermission("conversations.read");
 
 	const [filters, setFilters] = useState<ConversationFiltersState>({});
 
-	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
-		useInfiniteQuery(
-			projectId
-				? conversationsQueryOptions(projectId, filters)
-				: globalConversationsQueryOptions(filters),
-		);
+	const {
+		data,
+		isLoading,
+		isError,
+		error,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery({
+		...(projectId
+			? conversationsQueryOptions(projectId, filters)
+			: globalConversationsQueryOptions(filters)),
+		enabled: canRead,
+	});
+	const noPermission = !canRead || (isError && isForbiddenError(error));
 	const { data: agents = [] } = useQuery(
 		projectId ? agentsQueryOptions(projectId) : chattableAgentsQueryOptions,
 	);
@@ -242,7 +255,13 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 					ref={scrollContainerRef}
 					className="flex-1 overflow-y-auto p-2 space-y-1.5"
 				>
-					{isLoading ? (
+					{noPermission ? (
+						<NoPermissionState
+							icon={MessageSquare}
+							title={t("conversationsPage.list.noPermission.title")}
+							description={t("conversationsPage.list.noPermission.description")}
+						/>
+					) : isLoading ? (
 						Array.from({ length: 4 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: skeleton
 							<Skeleton key={i} className="h-16 rounded-lg" />
