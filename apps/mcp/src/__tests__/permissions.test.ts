@@ -202,22 +202,30 @@ describe("getToolPermission", () => {
 		expect(perm?.requiresProject).toBe(true);
 	});
 
-	// Regression coverage: task-type/task-status/custom-field tools were
-	// split off tasks.read/tasks.write onto their own project.settings.*
-	// keys when the backend stopped requiring tasks.write to edit project
-	// schema (see router.go's task-types/task-statuses/custom-fields route
-	// comments) — these tools previously stayed mapped to tasks.*, which
-	// would show them as available to a member who can edit tasks but was
-	// never granted schema access, only for the backend to 403 the call.
+	// Regression coverage: redefining a task-type/task-status/custom-field
+	// (create/update/delete/etc.) is split off tasks.write onto its own
+	// project.settings.*.write key, since the backend stopped requiring
+	// tasks.write to edit project schema (see router.go's task-types/task-
+	// statuses/custom-fields route comments) — these write tools previously
+	// stayed mapped to tasks.write, which would show them as available to a
+	// member who can edit tasks but was never granted schema access, only
+	// for the backend to 403 the call. Viewing the schema has no such split
+	// — it stays on tasks.read (see list_task_statuses below).
 	it("returns the correct permission for create_task_type", () => {
 		const perm = getToolPermission("create_task_type");
 		expect(perm?.permissionKey).toBe("project.settings.task_types.write");
 		expect(perm?.requiresProject).toBe(true);
 	});
 
+	// list_task_types/list_task_statuses/list_custom_fields/get_custom_field
+	// have no dedicated read permission — viewing project schema is implied
+	// by tasks.read, same as viewing the tasks that reference it. Only
+	// redefining it (create/update/delete/set-default/reorder) is its own,
+	// narrower project.settings.*.write capability — see create_task_type
+	// and update_custom_field below.
 	it("returns the correct permission for list_task_statuses", () => {
 		const perm = getToolPermission("list_task_statuses");
-		expect(perm?.permissionKey).toBe("project.settings.task_statuses.read");
+		expect(perm?.permissionKey).toBe("tasks.read");
 		expect(perm?.requiresProject).toBe(true);
 	});
 

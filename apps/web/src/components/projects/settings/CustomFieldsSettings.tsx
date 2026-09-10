@@ -772,7 +772,11 @@ export function CustomFieldsSettings({
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canRead = hasProjectPermission("project.settings.custom_fields.read");
+	// No dedicated project.settings.custom_fields.read permission — viewing
+	// the field definitions is implied by tasks.read, same as viewing the
+	// tasks whose values reference them (see authz.
+	// PermissionProjectSettingsTaskTypesWrite's doc comment on the Go side).
+	const canRead = hasProjectPermission("tasks.read");
 	const {
 		data: fields = [],
 		isLoading: isDataLoading,

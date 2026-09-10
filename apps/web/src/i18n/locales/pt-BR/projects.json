@@ -750,25 +750,13 @@
 				"label": "Gerenciar papéis",
 				"description": "Criar, editar e excluir papéis do projeto"
 			},
-			"settingsTaskTypesRead": {
-				"label": "View Task Types",
-				"description": "View the project's task type definitions"
-			},
 			"settingsTaskTypesWrite": {
 				"label": "Manage Task Types",
 				"description": "Create, edit, delete, and set the default task type"
 			},
-			"settingsTaskStatusesRead": {
-				"label": "View Task Statuses",
-				"description": "View the project's task status definitions and their order"
-			},
 			"settingsTaskStatusesWrite": {
 				"label": "Manage Task Statuses",
 				"description": "Create, edit, delete, reorder, and set the default task status"
-			},
-			"settingsCustomFieldsRead": {
-				"label": "View Custom Fields",
-				"description": "View the project's custom field definitions"
 			},
 			"settingsCustomFieldsWrite": {
 				"label": "Manage Custom Fields",

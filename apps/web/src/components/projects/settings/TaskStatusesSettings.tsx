@@ -68,7 +68,11 @@ export function TaskStatusesSettings({
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canRead = hasProjectPermission("project.settings.task_statuses.read");
+	// No dedicated project.settings.task_statuses.read permission — viewing
+	// the status list is implied by tasks.read, same as viewing the tasks
+	// that reference it (see authz.PermissionProjectSettingsTaskTypesWrite's
+	// doc comment on the Go side).
+	const canRead = hasProjectPermission("tasks.read");
 	const {
 		data: statuses,
 		isLoading: isDataLoading,

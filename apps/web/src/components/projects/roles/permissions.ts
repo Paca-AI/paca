@@ -72,13 +72,10 @@ export const PROJECT_KNOWN_PERMISSIONS = [
 	// project settings — task types, task statuses, and custom field
 	// definitions. Split out from tasks.write: redefining the project's
 	// task *schema* is a different capability from editing a task's own
-	// content, so each area is independently grantable.
-	{
-		key: "project.settings.task_types.read",
-		labelKey: "roles.permissions.settingsTaskTypesRead.label",
-		descriptionKey: "roles.permissions.settingsTaskTypesRead.description",
-		domain: "project.settings",
-	},
+	// content, so each area is independently grantable. No .read variants:
+	// viewing what exists is implied by tasks.read below, same as viewing
+	// the tasks that reference it — only redefining the schema is its own,
+	// narrower capability.
 	{
 		key: "project.settings.task_types.write",
 		labelKey: "roles.permissions.settingsTaskTypesWrite.label",
@@ -86,21 +83,9 @@ export const PROJECT_KNOWN_PERMISSIONS = [
 		domain: "project.settings",
 	},
 	{
-		key: "project.settings.task_statuses.read",
-		labelKey: "roles.permissions.settingsTaskStatusesRead.label",
-		descriptionKey: "roles.permissions.settingsTaskStatusesRead.description",
-		domain: "project.settings",
-	},
-	{
 		key: "project.settings.task_statuses.write",
 		labelKey: "roles.permissions.settingsTaskStatusesWrite.label",
 		descriptionKey: "roles.permissions.settingsTaskStatusesWrite.description",
-		domain: "project.settings",
-	},
-	{
-		key: "project.settings.custom_fields.read",
-		labelKey: "roles.permissions.settingsCustomFieldsRead.label",
-		descriptionKey: "roles.permissions.settingsCustomFieldsRead.description",
 		domain: "project.settings",
 	},
 	{

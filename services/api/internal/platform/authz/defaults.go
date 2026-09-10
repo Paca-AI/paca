@@ -93,11 +93,14 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionProjectRolesRead,
 				PermissionTasksRead,
 				PermissionTasksWrite,
-				// Preserves what PROJECT_MEMBER could already do via
-				// tasks.write before the split above — a project owner can
-				// now tighten this per-project via the role editor, which is
-				// the actual point of splitting these out.
-				PermissionProjectSettingsAll,
+				// No ProjectSettings*Write here: redefining task
+				// types/statuses/custom fields is an Admin-level (project
+				// schema) action, not a content-editing one — mirrors the
+				// real per-project "Editor" role's grants (see
+				// projectsvc.Service.Create). No dedicated read permission
+				// exists for the schema either; PermissionTasksRead above
+				// already covers viewing it. A project owner can grant write
+				// access per-project via the role editor.
 				PermissionSprintsRead,
 				PermissionViewsRead,
 				PermissionViewsWrite,
@@ -123,9 +126,6 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionProjectMembersRead,
 				PermissionProjectRolesRead,
 				PermissionTasksRead,
-				PermissionProjectSettingsTaskTypesRead,
-				PermissionProjectSettingsTaskStatusesRead,
-				PermissionProjectSettingsCustomFieldsRead,
 				PermissionSprintsRead,
 				PermissionViewsRead,
 				PermissionDocsRead,

@@ -417,15 +417,20 @@ func New(deps Deps) http.Handler {
 						Delete("/{roleId}", deps.Project.DeleteRole)
 				})
 
-				// Task types — project *schema* (which task types exist),
-				// gated on project.settings.task_types.*, not tasks.*:
-				// redefining the type list is a different capability from
-				// editing a task's own content (see authz.
-				// PermissionProjectSettingsTaskTypesRead's doc comment).
+				// Task types — project *schema* (which task types exist).
+				// Redefining the type list is gated on
+				// project.settings.task_types.write, a different capability
+				// from editing a task's own content (see authz.
+				// PermissionProjectSettingsTaskTypesWrite's doc comment);
+				// viewing it is gated on tasks.read like the type list's own
+				// consumer (a task's type badge) rather than a dedicated
+				// read permission — no meaningful boundary in seeing what
+				// types exist that isn't already crossed by seeing the tasks
+				// that use them.
 				r.Route("/task-types", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectSettingsTaskTypesRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/", deps.Task.ListTaskTypes)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskTypesWrite)).
 						Post("/", deps.Task.CreateTaskType)
@@ -439,14 +444,16 @@ func New(deps Deps) http.Handler {
 
 				// Task statuses — project *schema* (which statuses exist,
 				// their order, which is the default), same split as task
-				// types above. Moving a task *between* existing statuses
-				// (PATCH /tasks/{id}, or drag-and-drop via
-				// /views/{id}/task-positions below) stays on tasks.write —
-				// that's editing a task, not the status list.
+				// types above (view via tasks.read, redefine via
+				// project.settings.task_statuses.write). Moving a task
+				// *between* existing statuses (PATCH /tasks/{id}, or
+				// drag-and-drop via /views/{id}/task-positions below) stays
+				// on tasks.write — that's editing a task, not the status
+				// list.
 				r.Route("/task-statuses", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectSettingsTaskStatusesRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/", deps.Task.ListTaskStatuses)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsTaskStatusesWrite)).
 						Post("/", deps.Task.CreateTaskStatus)
@@ -635,17 +642,18 @@ func New(deps Deps) http.Handler {
 				})
 
 				// Custom field definitions — project schema, same split as
-				// task types/statuses above.
+				// task types/statuses above (view via tasks.read, redefine
+				// via project.settings.custom_fields.write).
 				r.Route("/custom-fields", func(r chi.Router) {
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectSettingsCustomFieldsRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/", deps.Task.ListCustomFieldDefinitions)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsCustomFieldsWrite)).
 						Post("/", deps.Task.CreateCustomFieldDefinition)
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
 						httpmw.PermissionGroup{Scope: httpmw.GlobalScope(), Permissions: []authz.Permission{authz.PermissionProjectsRead}},
-						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionProjectSettingsCustomFieldsRead}},
+						httpmw.PermissionGroup{Scope: httpmw.ProjectScopeFromParam("projectId"), Permissions: []authz.Permission{authz.PermissionTasksRead}},
 					)).Get("/{fieldId}", deps.Task.GetCustomFieldDefinition)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionProjectSettingsCustomFieldsWrite)).
 						Patch("/{fieldId}", deps.Task.UpdateCustomFieldDefinition)

@@ -49,11 +49,16 @@ const (
 	// "settings.*", which already exists as a *global* permission
 	// (workspace branding) and would otherwise be merged into the same
 	// granted-set for any project-scoped check.
-	PermissionProjectSettingsTaskTypesRead     Permission = "project.settings.task_types.read"
+	//
+	// No paired *Read variants: viewing what task types/statuses/custom
+	// fields exist is implied by PermissionTasksRead (anyone who can see the
+	// project's tasks needs to see what's used to render them — the status
+	// badge, the type icon, a task's custom field values), so a separate
+	// read gate on the schema itself was redundant friction, not a real
+	// security boundary. Only the ability to *redefine* the schema is its
+	// own, narrower, independently grantable capability.
 	PermissionProjectSettingsTaskTypesWrite    Permission = "project.settings.task_types.write"
-	PermissionProjectSettingsTaskStatusesRead  Permission = "project.settings.task_statuses.read"
 	PermissionProjectSettingsTaskStatusesWrite Permission = "project.settings.task_statuses.write"
-	PermissionProjectSettingsCustomFieldsRead  Permission = "project.settings.custom_fields.read"
 	PermissionProjectSettingsCustomFieldsWrite Permission = "project.settings.custom_fields.write"
 	PermissionProjectSettingsAll               Permission = "project.settings.*"
 

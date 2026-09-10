@@ -152,16 +152,18 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 		requiresProject: true,
 	},
 
-	// Task type tools — project *schema* (which task types exist), gated on
-	// project.settings.task_types.* rather than tasks.* now that the backend
-	// splits "edit a task's content" from "redefine the type list" (see
-	// router.go's task-types route comment / authz.
-	// PermissionProjectSettingsTaskTypesRead's doc comment). A member with
-	// only tasks.write (no project.settings.task_types.write) can still
-	// edit tasks via update_task, but no longer sees these.
+	// Task type tools — project *schema* (which task types exist). Redefining
+	// the type list is gated on project.settings.task_types.write, a
+	// different capability from "edit a task's content" (see router.go's
+	// task-types route comment / authz.
+	// PermissionProjectSettingsTaskTypesWrite's doc comment). Viewing the
+	// list has no dedicated read permission — it's gated on tasks.read like
+	// its own consumer (a task's type field), not a separate key. A member
+	// with only tasks.write (no project.settings.task_types.write) can still
+	// edit tasks via update_task, but not these.
 	{
 		toolName: "list_task_types",
-		permissionKey: "project.settings.task_types.read",
+		permissionKey: "tasks.read",
 		requiresProject: true,
 	},
 	{
@@ -186,13 +188,14 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 	},
 
 	// Task status tools — project *schema* (which statuses exist, their
-	// order, which is the default), same split as task types above. Moving
+	// order, which is the default), same split as task types above (view via
+	// tasks.read, redefine via project.settings.task_statuses.write). Moving
 	// a task *between* existing statuses (update_task, move_task/
 	// bulk_move_tasks below) stays on tasks.write — that's editing a task,
 	// not the status list.
 	{
 		toolName: "list_task_statuses",
-		permissionKey: "project.settings.task_statuses.read",
+		permissionKey: "tasks.read",
 		requiresProject: true,
 	},
 	{
@@ -264,10 +267,11 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 	},
 
 	// Custom field tools — project schema, same split as task types/statuses
-	// above.
+	// above (view via tasks.read, redefine via
+	// project.settings.custom_fields.write).
 	{
 		toolName: "list_custom_fields",
-		permissionKey: "project.settings.custom_fields.read",
+		permissionKey: "tasks.read",
 		requiresProject: true,
 	},
 	{
@@ -277,7 +281,7 @@ export const TOOL_PERMISSIONS: ToolPermission[] = [
 	},
 	{
 		toolName: "get_custom_field",
-		permissionKey: "project.settings.custom_fields.read",
+		permissionKey: "tasks.read",
 		requiresProject: true,
 	},
 	{

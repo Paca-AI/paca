@@ -24,8 +24,22 @@
 -- The JSONB `||` merge only adds/overwrites the listed keys, so any other
 -- permission a project admin already customised on these rows is preserved
 -- — nobody's existing effective access shrinks. A project owner can now
--- tighten PROJECT_MEMBER/Editor's new settings/views grants per-project via
--- the role editor, which is the actual point of splitting these out.
+-- tighten PROJECT_MEMBER/Editor's new views grant per-project via the role
+-- editor, which is the actual point of splitting these out.
+--
+-- PROJECT_MEMBER/Editor and PROJECT_VIEWER/Viewer get no project.settings.*
+-- grant at all, read or write: redefining task types/statuses/custom fields
+-- is an Admin-level (project schema) action (write), and there is no
+-- dedicated read permission for the schema — viewing it is implied by
+-- tasks.read, which every role here already holds (see authz.
+-- PermissionProjectSettingsTaskTypesWrite's doc comment). Both blocks below
+-- exist only for their views.* grant now. (This migration originally also
+-- granted project.settings.*.{read,write} here; corrected in place rather
+-- than via a follow-up migration since — being a purely additive `||` merge
+-- — the only databases where that history matters are ones that haven't
+-- applied this version yet. An already-migrated database's existing Editor/
+-- Viewer rows keep whatever this migration granted them at the time; narrow
+-- those separately if needed.)
 
 BEGIN;
 
@@ -35,26 +49,12 @@ SET permissions = permissions || '{"project.settings.*": true, "views.*": true}'
 WHERE role_name IN ('PROJECT_OWNER', 'PROJECT_MANAGER', 'Admin');
 
 UPDATE project_roles
-SET permissions = permissions || '{
-        "project.settings.task_types.read": true,
-        "project.settings.task_types.write": true,
-        "project.settings.task_statuses.read": true,
-        "project.settings.task_statuses.write": true,
-        "project.settings.custom_fields.read": true,
-        "project.settings.custom_fields.write": true,
-        "views.read": true,
-        "views.write": true
-    }'::jsonb,
+SET permissions = permissions || '{"views.read": true, "views.write": true}'::jsonb,
     updated_at = NOW()
 WHERE role_name IN ('PROJECT_MEMBER', 'Editor');
 
 UPDATE project_roles
-SET permissions = permissions || '{
-        "project.settings.task_types.read": true,
-        "project.settings.task_statuses.read": true,
-        "project.settings.custom_fields.read": true,
-        "views.read": true
-    }'::jsonb,
+SET permissions = permissions || '{"views.read": true}'::jsonb,
     updated_at = NOW()
 WHERE role_name IN ('PROJECT_VIEWER', 'Viewer');
 

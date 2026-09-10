@@ -34,7 +34,11 @@ export function TaskTypesSettings({
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission, isLoading: isPermissionsLoading } =
 		useProjectPermissions(projectId);
-	const canRead = hasProjectPermission("project.settings.task_types.read");
+	// No dedicated project.settings.task_types.read permission — viewing the
+	// type list is implied by tasks.read, same as viewing the tasks that
+	// reference it (see authz.PermissionProjectSettingsTaskTypesWrite's doc
+	// comment on the Go side).
+	const canRead = hasProjectPermission("tasks.read");
 	const {
 		data: types,
 		isLoading: isDataLoading,

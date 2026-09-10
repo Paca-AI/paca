@@ -72,7 +72,7 @@ func TestAuthorizer_ProjectSettingsWildcard(t *testing.T) {
 
 	for _, leaf := range []authz.Permission{
 		authz.PermissionProjectSettingsTaskTypesWrite,
-		authz.PermissionProjectSettingsTaskStatusesRead,
+		authz.PermissionProjectSettingsTaskStatusesWrite,
 		authz.PermissionProjectSettingsCustomFieldsWrite,
 	} {
 		ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "USER", leaf)
