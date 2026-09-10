@@ -73,14 +73,14 @@ type AgentResponse struct {
 	// handler from AgentAccessGrantService otherwise. Together these drive
 	// the "visible but locked" UI for a restricted agent the caller isn't
 	// granted.
-	AccessMode      string                   `json:"access_mode"`
-	AccessGranted   bool                     `json:"access_granted"`
-	CreatedBy       *uuid.UUID               `json:"created_by,omitempty"`
-	CreatedAt       time.Time                `json:"created_at"`
-	UpdatedAt       time.Time                `json:"updated_at"`
-	MCPServers      []AgentMCPServerResponse `json:"mcp_servers,omitempty"`
-	Skills          []AgentSkillResponse     `json:"skills,omitempty"`
-	EnvVars         []AgentEnvVarResponse    `json:"env_vars,omitempty"`
+	AccessMode    string                   `json:"access_mode"`
+	AccessGranted bool                     `json:"access_granted"`
+	CreatedBy     *uuid.UUID               `json:"created_by,omitempty"`
+	CreatedAt     time.Time                `json:"created_at"`
+	UpdatedAt     time.Time                `json:"updated_at"`
+	MCPServers    []AgentMCPServerResponse `json:"mcp_servers,omitempty"`
+	Skills        []AgentSkillResponse     `json:"skills,omitempty"`
+	EnvVars       []AgentEnvVarResponse    `json:"env_vars,omitempty"`
 }
 
 // CreateAgentRequest is the body for POST /projects/:projectId/agents.

@@ -44,7 +44,7 @@ type EnvironmentResponse struct {
 	// had its full port-mapping set applied — see
 	// environmentdom.Environment.PortsPendingRestart's doc comment. The
 	// frontend uses this to show a "restart required" prompt.
-	PortsPendingRestart bool      `json:"ports_pending_restart"`
+	PortsPendingRestart bool `json:"ports_pending_restart"`
 	// AccessMode is "open" or "restricted" — see
 	// environmentdom.Environment.AccessMode's doc comment. AccessGranted is
 	// per-caller (not stored on the entity): true whenever the requesting

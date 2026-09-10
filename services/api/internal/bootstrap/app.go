@@ -325,9 +325,9 @@ func New(cfg *config.Config) (*App, error) {
 	passwordSetTokenIssuer := pluginrt.PasswordSetTokenIssuerFunc(userService.IssuePasswordSetToken)
 
 	pluginRuntime := pluginrt.NewRuntime(pluginStore, pluginrt.HostServices{
-		DB:                     sqlDB,
-		Log:                    log,
-		Publisher:              publisher,
+		DB:        sqlDB,
+		Log:       log,
+		Publisher: publisher,
 		// netguard.NewSafeHTTPClient pins the dial to the exact IP validated
 		// by isAllowedFetchDomain (runtime.go), closing a DNS-rebinding gap:
 		// a plain client re-resolves DNS independently at dial time, so an

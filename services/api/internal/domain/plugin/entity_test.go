@@ -110,6 +110,72 @@ func TestCompareSemver(t *testing.T) {
 	}
 }
 
+// TestPluginRouteMiddlewares_SurvivesManifestRoundTrip is a regression test
+// for a bug where PluginRoute.Middlewares carried a `json:"middlewares,omitempty"`
+// tag: an explicitly-empty slice ("public route, no middleware") and a nil
+// slice ("not declared, apply the host's default policy") are meaningfully
+// different to PluginHandler.routeMiddlewares, but `omitempty` made a
+// marshal of the former indistinguishable from the latter — dropping the key
+// entirely, same as it would for nil. Every request replays this exact
+// marshal/unmarshal (ProxyRequest re-fetches the manifest via
+// PluginService.ListPlugins on each call), so a route declared with an
+// explicit empty middleware list silently reverted to the default policy
+// after its first round trip through JSONB storage.
+func TestPluginRouteMiddlewares_SurvivesManifestRoundTrip(t *testing.T) {
+	tests := []struct {
+		name        string
+		middlewares []PluginRouteMiddleware
+		wantNil     bool
+	}{
+		{
+			name:        "nil middlewares stays nil",
+			middlewares: nil,
+			wantNil:     true,
+		},
+		{
+			name:        "explicit empty middlewares stays a non-nil empty slice",
+			middlewares: []PluginRouteMiddleware{},
+			wantNil:     false,
+		},
+		{
+			name:        "populated middlewares round-trips",
+			middlewares: []PluginRouteMiddleware{{Name: "authn"}},
+			wantNil:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := PluginManifest{
+				ID: "com.paca.example",
+				Backend: &BackendManifest{
+					Routes: []PluginRoute{{Method: "GET", Path: "/hello", Middlewares: tt.middlewares}},
+				},
+			}
+
+			data, err := m.MarshalManifest()
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			got, err := UnmarshalManifest(data)
+			if err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+
+			route := got.Backend.Routes[0]
+			if tt.wantNil && route.Middlewares != nil {
+				t.Fatalf("expected nil middlewares after round trip, got %#v", route.Middlewares)
+			}
+			if !tt.wantNil && route.Middlewares == nil {
+				t.Fatalf("expected non-nil middlewares after round trip, got nil")
+			}
+			if !tt.wantNil && len(route.Middlewares) != len(tt.middlewares) {
+				t.Fatalf("expected %d middlewares after round trip, got %d", len(tt.middlewares), len(route.Middlewares))
+			}
+		})
+	}
+}
+
 func TestPluginManifestValidate_Skills(t *testing.T) {
 	base := func(skills *SkillsManifest) PluginManifest {
 		return PluginManifest{

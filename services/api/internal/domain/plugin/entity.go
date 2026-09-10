@@ -370,7 +370,13 @@ type PluginRoute struct {
 	// Middlewares defines host-enforced middleware to apply in order for this
 	// route. If omitted (null), the host applies its default policy. An explicit
 	// empty array disables all middleware for the route.
-	Middlewares []PluginRouteMiddleware `json:"middlewares,omitempty"`
+	//
+	// Deliberately no `omitempty`: this field's nil-vs-empty-slice distinction
+	// is load-bearing (see PluginHandler.routeMiddlewares), and `omitempty`
+	// would drop an explicit empty array during the JSON marshal this struct
+	// goes through for JSONB storage, turning it back into nil (default
+	// policy, now auth-required) on the next load.
+	Middlewares []PluginRouteMiddleware `json:"middlewares"`
 }
 
 // PluginRouteMiddleware describes one middleware stage to enforce before the
