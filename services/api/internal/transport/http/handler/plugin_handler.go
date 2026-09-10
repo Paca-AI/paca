@@ -880,18 +880,31 @@ func (h *PluginHandler) applyPluginRouteMiddlewares(w http.ResponseWriter, r *ht
 }
 
 func (h *PluginHandler) routeMiddlewares(route *plugindom.PluginRoute) []plugindom.PluginRouteMiddleware {
-	if route != nil {
-		// Distinguish omitted (nil) vs explicit empty list:
-		// nil -> apply default policy, [] -> no middlewares.
-		if route.Middlewares != nil {
-			return route.Middlewares
-		}
-		if route.Public {
-			return nil
-		}
+	if route == nil {
+		// No declared route matched this request's method+path at all — this
+		// isn't "a route that forgot to declare middlewares" (the case the
+		// fail-closed default below exists for), it's not a route. Apply no
+		// host middleware and let it reach the plugin's own WASM router
+		// unauthenticated, same as before this request's method+path was
+		// known to be unmatched — that router is what turns it into a 404
+		// (see matchPluginRoute's caller). Requiring auth just to learn that
+		// a path doesn't exist would be a behavior change with no security
+		// upside: nothing declared is reachable through a path with no
+		// matching route.
+		return nil
 	}
 
-	// Default policy for plugin routes: require authentication + a fresh
+	// Distinguish omitted (nil) vs explicit empty list:
+	// nil -> apply default policy, [] -> no middlewares.
+	if route.Middlewares != nil {
+		return route.Middlewares
+	}
+	if route.Public {
+		return nil
+	}
+
+	// Default policy for a route that exists in the manifest but didn't
+	// declare its own middlewares: require authentication + a fresh
 	// password. Every route in every audited first-party plugin declares
 	// its own middlewares explicitly, so this default is never actually
 	// exercised today — it exists purely to fail closed for the next
