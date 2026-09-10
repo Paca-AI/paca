@@ -90,8 +90,22 @@ function SettingsPage() {
 	const canManageRoles =
 		hasPermission("project.roles.write") ||
 		hasProjectPermission("project.roles.write");
-	const canManageTasks =
-		hasPermission("tasks.write") || hasProjectPermission("tasks.write");
+	// Each schema area has its own write permission, independent of
+	// tasks.write (which only governs editing a task's own content) — see
+	// authz.PermissionProjectSettingsTaskTypesWrite's doc comment on the Go
+	// side. Previously all three tabs were gated on tasks.write here, so
+	// anyone who could edit a task (nearly every role) saw New/Edit/Delete
+	// on all three even without the dedicated grant — the backend correctly
+	// rejected the request, but the button shouldn't have been shown at all.
+	const canManageTaskTypes =
+		hasPermission("project.settings.task_types.write") ||
+		hasProjectPermission("project.settings.task_types.write");
+	const canManageTaskStatuses =
+		hasPermission("project.settings.task_statuses.write") ||
+		hasProjectPermission("project.settings.task_statuses.write");
+	const canManageCustomFields =
+		hasPermission("project.settings.custom_fields.write") ||
+		hasProjectPermission("project.settings.custom_fields.write");
 
 	const { getRegistrations } = usePluginRegistry();
 	// A tab's own requiredPermission no longer hides it from this list —
@@ -239,19 +253,19 @@ function SettingsPage() {
 						{activeSection === "task-statuses" && (
 							<TaskStatusesSettings
 								projectId={projectId}
-								canWrite={canManageTasks}
+								canWrite={canManageTaskStatuses}
 							/>
 						)}
 						{activeSection === "task-types" && (
 							<TaskTypesSettings
 								projectId={projectId}
-								canWrite={canManageTasks}
+								canWrite={canManageTaskTypes}
 							/>
 						)}
 						{activeSection === "custom-fields" && (
 							<CustomFieldsSettings
 								projectId={projectId}
-								canWrite={canManageTasks}
+								canWrite={canManageCustomFields}
 							/>
 						)}
 						{activeSection === "danger" && canDelete && (

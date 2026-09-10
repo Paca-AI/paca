@@ -1575,7 +1575,11 @@ export function AppSidebar() {
 	const canAccessGlobalAgents =
 		hasPermission("agents.read") || hasPermission("agents.write");
 
-	const canAccessPlugins = hasPermission("users.write");
+	// plugins.write replaced users.write as a rough "is this someone
+	// important" proxy once it got its own dedicated permission — see authz.
+	// PermissionPluginsRead's doc comment on the Go side. This nav-link
+	// check was never updated when that happened.
+	const canAccessPlugins = hasPermission("plugins.write");
 
 	const canAccessSettings = hasPermission("settings.write");
 

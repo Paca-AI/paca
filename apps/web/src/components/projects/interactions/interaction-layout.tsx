@@ -231,6 +231,10 @@ interface InteractionLayoutProps {
 	canCreate: boolean;
 	canEdit: boolean;
 	canManageViews: boolean;
+	/** Gates New/Start Sprint (backlog context only) — sprints.write, a
+	 * separate permission from canCreate (tasks.write): being able to
+	 * create a task doesn't imply being able to create or start a sprint. */
+	canManageSprints: boolean;
 	onTaskClick?: (task: Task) => void;
 	sprintId?: string | null;
 	/** The view context — drives which API bucket is used for views */
@@ -316,6 +320,7 @@ export function InteractionLayout({
 	canCreate,
 	canEdit,
 	canManageViews,
+	canManageSprints,
 	onTaskClick,
 	sprintId,
 	context,
@@ -1763,7 +1768,7 @@ export function InteractionLayout({
 						{title}
 					</h1>
 					{headerActions}
-					{context === "backlog" && canCreate && (
+					{context === "backlog" && canManageSprints && (
 						<button
 							type="button"
 							onClick={handleNewSprint}
@@ -1849,7 +1854,7 @@ export function InteractionLayout({
 									{view.name}
 								</button>
 
-								{isActive && (
+								{isActive && canManageViews && (
 									<DropdownMenu>
 										<DropdownMenuTrigger
 											render={
@@ -2069,10 +2074,14 @@ export function InteractionLayout({
 						onDeleteTask={canEdit ? handleRequestDeleteTask : undefined}
 						sprints={context === "backlog" ? sprints : undefined}
 						onStartSprint={
-							context === "backlog" && canCreate ? handleStartSprint : undefined
+							context === "backlog" && canManageSprints
+								? handleStartSprint
+								: undefined
 						}
 						onCreateSprint={
-							context === "backlog" && canCreate ? handleNewSprint : undefined
+							context === "backlog" && canManageSprints
+								? handleNewSprint
+								: undefined
 						}
 						onCollapseChange={
 							isRealView && activeView
