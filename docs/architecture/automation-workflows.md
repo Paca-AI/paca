@@ -1,5 +1,20 @@
 # Automation Workflows
 
+> **Superseded.** This document describes the original "workflow" feature —
+> a dependency graph whose nodes wrap *existing* tasks, used only for
+> status-based reassignment. It has been replaced by a more general
+> Automation graph (node kinds Trigger/Condition/Action, not tied to a fixed
+> task, with additional trigger types, branching conditions, and action
+> types beyond reassignment) exposed today via the `mcp__paca__*_automation`
+> MCP tools and the project's "Automation" canvas. See
+> `services/api/internal/domain/automation/entity.go` for the current,
+> authoritative node/trigger/action vocabulary — its package doc explicitly
+> states: "Unlike the workflow feature it replaces, a node no longer wraps a
+> task." This page is kept for historical/design-rationale context (the
+> AND-join and done-status-resolution reasoning below still applies
+> conceptually to the `predecessor_done` trigger type), not as a guide to
+> the current API or MCP tool surface.
+
 This document explains the automation-workflow feature: a project-scoped
 dependency graph over *existing* tasks that automatically hands work off
 between members (human or AI agent) as tasks move through statuses.
