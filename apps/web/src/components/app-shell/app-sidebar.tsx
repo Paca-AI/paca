@@ -1030,12 +1030,15 @@ function ProjectNavItems({
 function PluginProjectPages({ projectId }: { projectId: string }) {
 	const { t } = useTranslation("appShell");
 	const { getNavItems } = usePluginRegistry();
-	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const location = useRouterState({ select: (s) => s.location.pathname });
-	const navItems = getNavItems("project").filter(
-		(item) =>
-			!item.requiredPermission || hasProjectPermission(item.requiredPermission),
-	);
+	// A nav item's own requiredPermission no longer hides it from the
+	// sidebar — matching how the built-in project nav (Team, Environments,
+	// etc. in PROJECT_NAV_ITEMS below) is always shown to any project
+	// member regardless of their specific permissions. The page it routes
+	// to renders a no-permission state instead (see ProjectPluginPage),
+	// consistent with how project settings tabs already behave (e.g.
+	// TaskTypesSettings).
+	const navItems = getNavItems("project");
 	if (navItems.length === 0) return null;
 
 	return (
@@ -1076,9 +1079,9 @@ function PluginProjectPages({ projectId }: { projectId: string }) {
  * cross-project time-tracking summary), routed to
  * /admin/plugins/:pluginId/:slug. Rendered inline in the existing
  * "Administration" SidebarMenu, so no extra group wrapper here. `navItems`
- * is pre-filtered by the caller (each item's own `requiredPermission`, if
- * any) so this stays in sync with the `showAdminSection` computation that
- * decides whether the enclosing group renders at all. */
+ * is unfiltered by permission (see AppSidebar's `adminPluginNavItems`) — a
+ * caller who lacks an item's `requiredPermission` still sees the link, and
+ * gets a no-permission state on the page itself. */
 function PluginAdminPages({ navItems }: { navItems: PluginNavRegistration[] }) {
 	return (
 		<>
@@ -1578,27 +1581,32 @@ export function AppSidebar() {
 
 	const canCreateProject = hasPermission("projects.create");
 
-	// Plugin admin nav items are gated by their own declared
-	// `requiredPermission` (falling back to open access if the plugin didn't
-	// declare one), never by `canAccessPlugins` — a user shouldn't need
-	// `users.write` just to reach a plugin page whose author scoped it to a
-	// narrower, plugin-specific permission.
-	const adminPluginNavItems = getNavItems("admin").filter(
-		(item) =>
-			!item.requiredPermission || hasPermission(item.requiredPermission),
-	);
+	// A plugin admin nav item's own declared `requiredPermission` no longer
+	// hides it from the sidebar — the page it routes to renders a
+	// no-permission state instead (see AdminPluginPage), matching how core
+	// admin pages (Users, Global Roles) already behave: reachable by anyone
+	// who can already see the Administration section, with the page itself
+	// enforcing the finer-grained check.
+	const adminPluginNavItems = getNavItems("admin");
 
+	// Deliberately does NOT include `adminPluginNavItems.length > 0`: unlike
+	// before, an item's permission can no longer be satisfied just by
+	// hiding it, so a plugin with an admin page must not be able to
+	// single-handedly reveal the "Administration" heading to a user with
+	// zero admin permissions of any kind — that would surface an entire
+	// nav section to people who have no reason to ever open it.
 	const showAdminSection =
 		canAccessGlobalRoles ||
 		canAccessUsers ||
 		canAccessGlobalAgents ||
 		canAccessPlugins ||
-		canAccessSettings ||
-		adminPluginNavItems.length > 0;
+		canAccessSettings;
 	// Plugin-contributed admin pages get their own sidebar section, separate
 	// from core workspace administration — the "Plugins" management link
-	// itself (canAccessPlugins) stays in Administration.
-	const showPluginsSection = adminPluginNavItems.length > 0;
+	// itself (canAccessPlugins) stays in Administration. Gated on
+	// showAdminSection for the same reason as above: only shown to someone
+	// who can already see Administration for another reason.
+	const showPluginsSection = showAdminSection && adminPluginNavItems.length > 0;
 	const isProjectContext = !!projectId;
 	const isAnonymous = !user;
 

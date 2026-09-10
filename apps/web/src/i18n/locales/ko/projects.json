@@ -12,6 +12,12 @@
 				"customFields": "커스텀 필드",
 				"dangerZone": "위험 구역",
 				"plugins": "플러그인"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "이 탭을 볼 권한이 없습니다",
+					"description": "{{pluginName}}에 대한 액세스 권한을 프로젝트 소유자 또는 관리자에게 요청하세요."
+				}
 			}
 		}
 	},

@@ -12,6 +12,12 @@
 				"customFields": "自定义字段",
 				"dangerZone": "危险区域",
 				"plugins": "插件"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "您没有权限查看此标签页",
+					"description": "请项目所有者或管理员为您授予访问 {{pluginName}} 的权限。"
+				}
 			}
 		}
 	},

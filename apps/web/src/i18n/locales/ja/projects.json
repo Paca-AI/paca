@@ -12,6 +12,12 @@
 				"customFields": "カスタムフィールド",
 				"dangerZone": "危険な操作",
 				"plugins": "プラグイン"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "このタブを表示する権限がありません",
+					"description": "{{pluginName}}へのアクセス権限をプロジェクトのオーナーまたは管理者に依頼してください。"
+				}
 			}
 		}
 	},

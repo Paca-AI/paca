@@ -1,4 +1,6 @@
 {
 	"pluginLoadFailedPrefix": "플러그인",
-	"pluginLoadFailedSuffix": "을(를) 불러오지 못했습니다"
+	"pluginLoadFailedSuffix": "을(를) 불러오지 못했습니다",
+	"pluginNoPermissionTitle": "이 페이지를 볼 권한이 없습니다",
+	"pluginNoPermissionDescription": "{{pluginName}}에 대한 액세스 권한을 프로젝트 소유자 또는 관리자에게 요청하세요."
 }

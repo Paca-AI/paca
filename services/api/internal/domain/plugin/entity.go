@@ -402,6 +402,16 @@ type ExtensionPointRegistration struct {
 	Label string `json:"label,omitempty"`
 	// Order is the default display order within the extension point.
 	Order int `json:"order,omitempty"`
+	// RequiredPermission is the permission key (built-in or a key from this
+	// plugin's own CustomPermissions) the caller must hold for this
+	// registration to render, mirroring NavItem.RequiredPermission. Checked
+	// against the caller's project permission map when the enclosing
+	// extension point is project-scoped (e.g. "project.settings.tab"). If
+	// omitted, the registration is reachable by anyone who can already reach
+	// the enclosing host page — this is the default for every extension
+	// point today, since the field is new and no host-side renderer enforced
+	// it before.
+	RequiredPermission string `json:"requiredPermission,omitempty"`
 }
 
 // MarshalManifest serialises the manifest to JSON bytes for JSONB storage.

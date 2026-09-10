@@ -12,6 +12,12 @@
 				"customFields": "Campos personalizados",
 				"dangerZone": "Zona de peligro",
 				"plugins": "Plugins"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "No tienes permiso para ver esta pestaña",
+					"description": "Pide a un propietario o administrador del proyecto que te conceda acceso a {{pluginName}}."
+				}
 			}
 		}
 	},

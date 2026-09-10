@@ -1,4 +1,6 @@
 {
 	"pluginLoadFailedPrefix": "Plugin",
-	"pluginLoadFailedSuffix": "tải không thành công"
+	"pluginLoadFailedSuffix": "tải không thành công",
+	"pluginNoPermissionTitle": "Bạn không có quyền xem trang này",
+	"pluginNoPermissionDescription": "Hãy yêu cầu chủ sở hữu hoặc quản trị viên dự án cấp cho bạn quyền truy cập vào {{pluginName}}."
 }

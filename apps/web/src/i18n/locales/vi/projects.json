@@ -12,6 +12,12 @@
 				"customFields": "Trường tùy chỉnh",
 				"dangerZone": "Khu vực nguy hiểm",
 				"plugins": "Plugin"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "Bạn không có quyền xem tab này",
+					"description": "Hãy yêu cầu chủ sở hữu hoặc quản trị viên dự án cấp cho bạn quyền truy cập vào {{pluginName}}."
+				}
 			}
 		}
 	},

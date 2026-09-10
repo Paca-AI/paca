@@ -1,4 +1,6 @@
 {
 	"pluginLoadFailedPrefix": "Плагин",
-	"pluginLoadFailedSuffix": "не удалось загрузить"
+	"pluginLoadFailedSuffix": "не удалось загрузить",
+	"pluginNoPermissionTitle": "У вас нет прав для просмотра этой страницы",
+	"pluginNoPermissionDescription": "Попросите владельца или администратора проекта предоставить вам доступ к {{pluginName}}."
 }

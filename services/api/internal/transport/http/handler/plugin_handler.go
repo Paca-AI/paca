@@ -891,11 +891,19 @@ func (h *PluginHandler) routeMiddlewares(route *plugindom.PluginRoute) []plugind
 		}
 	}
 
-	// Default policy for plugin routes: optional authn + fresh-password check.
-	// Project-scoped permission checks must be declared explicitly in the
-	// plugin route's middlewares list.
+	// Default policy for plugin routes: require authentication + a fresh
+	// password. Every route in every audited first-party plugin declares
+	// its own middlewares explicitly, so this default is never actually
+	// exercised today — it exists purely to fail closed for the next
+	// plugin/route that forgets to declare one, rather than silently
+	// allowing anonymous access (the previous default's optionalAuthn made
+	// that mistake invisible: a route with no middlewares at all was
+	// reachable by anyone, logged in or not). Permission checks still must
+	// be declared explicitly in the plugin route's middlewares list — there
+	// is no sensible universal default for which permission an arbitrary
+	// future route should require.
 	return []plugindom.PluginRouteMiddleware{
-		{Name: "optionalAuthn"},
+		{Name: "authn"},
 		{Name: "requireFreshPassword"},
 	}
 }

@@ -12,6 +12,12 @@
 				"customFields": "Custom Fields",
 				"dangerZone": "Danger Zone",
 				"plugins": "Plugins"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "You don't have permission to view this tab",
+					"description": "Ask a project owner or admin to grant you access to {{pluginName}}."
+				}
 			}
 		}
 	},

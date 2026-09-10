@@ -1,9 +1,11 @@
-import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { myPermissionsQueryOptions } from "@/lib/admin-api";
 import { hasPermission } from "@/lib/permissions";
-import { buildNavItems, pluginsQueryOptions } from "@/lib/plugin-api";
+import { pluginsQueryOptions } from "@/lib/plugin-api";
 import { RemoteComponent } from "@/lib/plugins/loader";
 import { usePluginBaseProps } from "@/lib/plugins/plugin-props";
 import { usePluginRegistry } from "@/lib/plugins/registry";
@@ -11,31 +13,13 @@ import { usePluginRegistry } from "@/lib/plugins/registry";
 export const Route = createFileRoute(
 	"/_authenticated/admin/plugins/$pluginId/$slug",
 )({
-	beforeLoad: async ({
-		context: { queryClient },
-		params: { pluginId, slug },
-	}) => {
-		const [permissions, plugins] = await Promise.all([
+	loader: async ({ context: { queryClient } }) => {
+		await Promise.all([
+			queryClient.ensureQueryData(pluginsQueryOptions),
 			queryClient
 				.fetchQuery(myPermissionsQueryOptions)
 				.catch(() => [] as string[]),
-			queryClient.ensureQueryData(pluginsQueryOptions).catch(() => []),
 		]);
-
-		const navItem = buildNavItems(plugins, "admin").find(
-			(item) => item.pluginId === pluginId && item.slug === slug,
-		);
-		// Nav items without a declared `requiredPermission` fall back to
-		// `users.write`, matching the blanket gate the built-in "Plugins"
-		// admin nav item (and this route, previously) already use.
-		const requiredPermission = navItem?.requiredPermission ?? "users.write";
-
-		if (!hasPermission(permissions, requiredPermission)) {
-			throw redirect({ to: "/home" });
-		}
-	},
-	loader: async ({ context: { queryClient } }) => {
-		await queryClient.ensureQueryData(pluginsQueryOptions);
 	},
 	component: AdminPluginPage,
 });
@@ -45,6 +29,12 @@ export const Route = createFileRoute(
  * component for the given plugin/nav-item slug — the admin/global-scope
  * counterpart to `ProjectPluginPage`. Used for cross-project plugin
  * dashboards (e.g. a "total logged time across all projects" summary).
+ *
+ * The nav item itself is always shown once the Administration section is
+ * reachable at all (see AppSidebar's `showAdminSection`/`adminPluginNavItems`
+ * — a plugin's own `requiredPermission` no longer hides the link). A caller
+ * who lacks the permission still reaches this route and gets a
+ * no-permission state instead of the plugin's actual page content.
  */
 function AdminPluginPage() {
 	const { t } = useTranslation("errors");
@@ -53,11 +43,30 @@ function AdminPluginPage() {
 	const navItem = getNavItems("admin").find(
 		(item) => item.pluginId === pluginId && item.slug === slug,
 	);
+	const { data: permissions = [] } = useQuery(myPermissionsQueryOptions);
 	const baseProps = usePluginBaseProps(navItem?.registration);
 
 	if (isLoading) return null;
 	if (!navItem) {
 		throw notFound();
+	}
+
+	// Nav items without a declared `requiredPermission` fall back to
+	// `users.write`, matching the blanket gate the built-in "Plugins" admin
+	// nav item (and this route, previously via redirect) already use.
+	const requiredPermission = navItem.requiredPermission ?? "users.write";
+
+	if (!hasPermission(permissions, requiredPermission)) {
+		return (
+			<div className="flex flex-1 items-center justify-center p-6">
+				<NoPermissionState
+					title={t("pluginNoPermissionTitle")}
+					description={t("pluginNoPermissionDescription", {
+						pluginName: navItem.pluginName,
+					})}
+				/>
+			</div>
+		);
 	}
 
 	return (

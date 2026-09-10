@@ -15,8 +15,8 @@ func TestRouteMiddlewares_NilVsEmpty(t *testing.T) {
 		if len(got) == 0 {
 			t.Fatalf("expected default middleware chain, got empty")
 		}
-		if got[0].Name != "optionalAuthn" {
-			t.Fatalf("expected default optionalAuthn first, got %q", got[0].Name)
+		if got[0].Name != "authn" {
+			t.Fatalf("expected default authn (fail closed for a route that forgot to declare middlewares) first, got %q", got[0].Name)
 		}
 	})
 

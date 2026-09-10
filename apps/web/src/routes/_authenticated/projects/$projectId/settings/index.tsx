@@ -16,6 +16,7 @@ import { GeneralSettings } from "@/components/projects/settings/GeneralSettings"
 import { RolesSettings } from "@/components/projects/settings/RolesSettings";
 import { TaskStatusesSettings } from "@/components/projects/settings/TaskStatusesSettings";
 import { TaskTypesSettings } from "@/components/projects/settings/TaskTypesSettings";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { RemoteComponent } from "@/lib/plugins/loader";
@@ -93,6 +94,11 @@ function SettingsPage() {
 		hasPermission("tasks.write") || hasProjectPermission("tasks.write");
 
 	const { getRegistrations } = usePluginRegistry();
+	// A tab's own requiredPermission no longer hides it from this list —
+	// matching how the built-in tabs above (task-types, custom-fields, etc.)
+	// are always shown and instead render NoPermissionState internally when
+	// the viewer lacks the relevant permission. See the plugin-tab render
+	// branch below for the equivalent check.
 	const pluginTabs = getRegistrations("project.settings.tab").filter(
 		(r) => !r.hidden,
 	);
@@ -252,15 +258,44 @@ function SettingsPage() {
 							<DangerZone projectId={projectId} />
 						)}
 						{/* Plugin settings tabs */}
-						{pluginTabs.map((reg) =>
-							activeSection === `plugin:${reg.pluginId}:${reg.component}` ? (
+						{pluginTabs.map((reg) => {
+							if (activeSection !== `plugin:${reg.pluginId}:${reg.component}`) {
+								return null;
+							}
+							const authorized =
+								!reg.requiredPermission ||
+								hasProjectPermission(reg.requiredPermission);
+							if (!authorized) {
+								return (
+									<NoPermissionState
+										key={`${reg.pluginId}:${reg.component}`}
+										title={t(
+											"project.settingsPage.pluginTab.noPermission.title",
+										)}
+										description={t(
+											"project.settingsPage.pluginTab.noPermission.description",
+											{ pluginName: reg.pluginName },
+										)}
+									/>
+								);
+							}
+							return (
 								<RemoteComponent
 									key={`${reg.pluginId}:${reg.component}`}
 									registration={reg}
-									componentProps={{ projectId, canEdit: canEditProject }}
+									componentProps={{
+										projectId,
+										// A tab with its own requiredPermission is single-tier —
+										// having just passed the `authorized` check above means
+										// canEdit is simply true. A tab with no requiredPermission
+										// (fully open to any project member, the pre-existing
+										// default) falls back to the original projects.write
+										// check so its behavior is unchanged.
+										canEdit: reg.requiredPermission ? true : canEditProject,
+									}}
 								/>
-							) : null,
-						)}
+							);
+						})}
 					</div>
 				</div>
 			</div>

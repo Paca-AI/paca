@@ -12,6 +12,12 @@
 				"customFields": "Champs personnalisés",
 				"dangerZone": "Zone de danger",
 				"plugins": "Plugins"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "Vous n'avez pas la permission de voir cet onglet",
+					"description": "Demandez à un propriétaire ou administrateur du projet de vous accorder l'accès à {{pluginName}}."
+				}
 			}
 		}
 	},
