@@ -5,8 +5,9 @@
 > status-based reassignment. It has been replaced by a more general
 > Automation graph (node kinds Trigger/Condition/Action, not tied to a fixed
 > task, with additional trigger types, branching conditions, and action
-> types beyond reassignment) exposed today via the `mcp__paca__*_automation`
-> MCP tools and the project's "Automation" canvas. See
+> types beyond reassignment) exposed today via the `get_automation` /
+> `create_automation` / `update_automation` / `delete_automation` MCP tools
+> and the project's "Automation" canvas. See
 > `services/api/internal/domain/automation/entity.go` for the current,
 > authoritative node/trigger/action vocabulary — its package doc explicitly
 > states: "Unlike the workflow feature it replaces, a node no longer wraps a
