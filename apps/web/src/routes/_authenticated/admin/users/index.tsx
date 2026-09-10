@@ -45,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/admin/users/")({
 
 function UsersManagementPage() {
 	const { t } = useTranslation("admin");
-	const { hasPermission } = usePermissions();
+	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canRead = hasPermission("users.read");
 	const canWrite = hasPermission("users.write");
 
@@ -54,9 +54,14 @@ function UsersManagementPage() {
 
 	const {
 		data: pagedUsers,
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 	} = useQuery({ ...usersQueryOptions(page, pageSize), enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — fold isPermissionsLoading into isLoading (and
+	// guard the noPermission check below) so the page shows the skeleton
+	// instead of flashing NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
 
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 
@@ -86,7 +91,7 @@ function UsersManagementPage() {
 				/>
 			)}
 
-			{!canRead ? (
+			{!isPermissionsLoading && !canRead ? (
 				<NoPermissionState
 					icon={Users}
 					title={t("users.noPermission.title")}

@@ -36,18 +36,25 @@ function EnvironmentsPage() {
 	const { projectId } = Route.useParams();
 	const { create } = Route.useSearch();
 	const navigate = Route.useNavigate();
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("environments.write");
 	const canRead = hasProjectPermission("environments.read");
 
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const {
 		data: environments = [],
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 	} = useQuery({ ...environmentsQueryOptions(projectId), enabled: canRead });
-	const noPermission = !canRead || (isError && isForbiddenError(error));
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the page shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const [createOpen, setCreateOpen] = useState(create);
 
 	function handleCreateOpenChange(nextOpen: boolean) {

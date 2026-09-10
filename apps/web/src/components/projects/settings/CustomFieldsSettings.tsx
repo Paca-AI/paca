@@ -770,15 +770,22 @@ export function CustomFieldsSettings({
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
 	const canRead = hasProjectPermission("project.settings.custom_fields.read");
 	const {
 		data: fields = [],
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 	} = useQuery({ ...customFieldsQueryOptions(projectId), enabled: canRead });
-	const noPermission = !canRead || (isError && isForbiddenError(error));
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the section shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editField, setEditField] = useState<CustomFieldDefinition | null>(
 		null,

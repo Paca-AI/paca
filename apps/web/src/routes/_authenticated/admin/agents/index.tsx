@@ -62,17 +62,22 @@ function GlobalAgentsPage() {
 	const { t } = useTranslation("admin");
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
-	const { hasPermission } = usePermissions();
+	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canWrite = hasPermission("agents.write");
 	const canRead = hasPermission("agents.read");
 
 	const {
 		data: agents = [],
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 	} = useQuery({ ...globalAgentsQueryOptions, enabled: canRead });
-	const noPermission = !canRead || (isError && isForbiddenError(error));
+	// While permissions are still loading, `canRead` defaults to false same
+	// as a confirmed denial — guard on isPermissionsLoading so the page
+	// shows the skeleton instead of flashing NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 
 	const [createOpen, setCreateOpen] = useState(search.create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);

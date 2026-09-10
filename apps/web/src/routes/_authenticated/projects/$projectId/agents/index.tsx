@@ -47,7 +47,8 @@ function AgentsPage() {
 	const { projectId } = Route.useParams();
 	const { create } = Route.useSearch();
 	const navigate = Route.useNavigate();
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("agents.write");
 	const canRead = hasProjectPermission("agents.read");
 
@@ -58,14 +59,20 @@ function AgentsPage() {
 	// global agents are configured from /admin/agents.
 	const {
 		data: agents = [],
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 	} = useQuery({
 		...projectScopedAgentsQueryOptions(projectId),
 		enabled: canRead,
 	});
-	const noPermission = !canRead || (isError && isForbiddenError(error));
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the page shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const [createOpen, setCreateOpen] = useState(create);
 	const [acpSetupAgent, setAcpSetupAgent] = useState<Agent | null>(null);
 	const [acpSetupToken, setAcpSetupToken] = useState<AcpBridgeToken | null>(

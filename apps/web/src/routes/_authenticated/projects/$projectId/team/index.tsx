@@ -747,22 +747,36 @@ function TeamPage() {
 		null,
 	);
 
-	const { hasPermission } = usePermissions();
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasPermission, isLoading: isGlobalPermissionsLoading } =
+		usePermissions();
+	const { hasProjectPermission, isLoading: isProjectPermissionsLoading } =
+		useProjectPermissions(projectId);
+	// Wait for both permission sources — canReadMembers can come from either
+	// one, so resolving just one of them isn't enough to know the real
+	// answer yet.
+	const isPermissionsLoading =
+		isGlobalPermissionsLoading || isProjectPermissionsLoading;
 	const { data: project } = useQuery(projectQueryOptions(projectId));
 	const canReadMembers =
 		hasPermission("project.members.read") ||
 		hasProjectPermission("project.members.read");
 	const {
 		data: members,
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 	} = useQuery({
 		...projectMembersQueryOptions(projectId),
 		enabled: canReadMembers,
 	});
-	const noPermission = !canReadMembers || (isError && isForbiddenError(error));
+	// While permissions are still loading, canReadMembers defaults to false
+	// same as a confirmed denial — guard on isPermissionsLoading (and fold
+	// it into isLoading) so the page shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading &&
+		(!canReadMembers || (isError && isForbiddenError(error)));
 	const { data: roles = [] } = useQuery(projectRolesQueryOptions(projectId));
 
 	const canManageMembers =

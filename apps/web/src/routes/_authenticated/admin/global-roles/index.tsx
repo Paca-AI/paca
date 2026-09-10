@@ -43,15 +43,20 @@ export const Route = createFileRoute("/_authenticated/admin/global-roles/")({
 
 function GlobalRolesPage() {
 	const { t } = useTranslation("admin");
-	const { hasPermission } = usePermissions();
+	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canRead = hasPermission("global_roles.read");
 	const canWrite = hasPermission("global_roles.write");
 
 	const {
 		data: roles = [],
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 	} = useQuery({ ...globalRolesQueryOptions, enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — fold isPermissionsLoading into isLoading (and
+	// guard the noPermission check below) so the page shows the skeleton
+	// instead of flashing NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editRole, setEditRole] = useState<GlobalRole | null>(null);
@@ -80,7 +85,7 @@ function GlobalRolesPage() {
 				/>
 			)}
 
-			{!canRead ? (
+			{!isPermissionsLoading && !canRead ? (
 				<NoPermissionState
 					icon={Shield}
 					title={t("globalRoles.noPermission.title")}

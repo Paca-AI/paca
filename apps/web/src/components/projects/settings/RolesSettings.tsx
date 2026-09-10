@@ -176,18 +176,26 @@ export function RolesSettings({
 	canManageRoles: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
 	const canReadRoles = hasProjectPermission("project.roles.read");
 	const {
 		data: roles,
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 	} = useQuery({
 		...projectRolesQueryOptions(projectId),
 		enabled: canReadRoles,
 	});
-	const noPermission = !canReadRoles || (isError && isForbiddenError(error));
+	// While permissions are still loading, canReadRoles defaults to false
+	// same as a confirmed denial — guard on isPermissionsLoading (and fold
+	// it into isLoading) so the section shows the skeleton instead of
+	// flashing NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading &&
+		(!canReadRoles || (isError && isForbiddenError(error)));
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editRole, setEditRole] = useState<ProjectRole | null>(null);

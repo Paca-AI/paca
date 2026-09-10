@@ -168,7 +168,10 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 	// project-scoped conversations list. A PROJECT_VIEWER (conversations.read
 	// only) may browse this list but must not be able to create a
 	// conversation.
-	const { hasProjectPermission } = useProjectPermissions(projectId ?? "");
+	const { hasProjectPermission, isLoading: isProjectPermissionsLoading } =
+		useProjectPermissions(projectId ?? "");
+	// Global chat has no project-scoped permissions to wait on.
+	const isPermissionsLoading = !!projectId && isProjectPermissionsLoading;
 	const canStartConversation =
 		!projectId || hasProjectPermission("conversations.write");
 	const canRead = !projectId || hasProjectPermission("conversations.read");
@@ -177,7 +180,7 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 
 	const {
 		data,
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 		error,
 		fetchNextPage,
@@ -189,7 +192,13 @@ export function ConversationsLayout({ projectId }: { projectId?: string }) {
 			: globalConversationsQueryOptions(filters)),
 		enabled: canRead,
 	});
-	const noPermission = !canRead || (isError && isForbiddenError(error));
+	// While project permissions are still loading, canRead defaults to false
+	// same as a confirmed denial — guard on isPermissionsLoading (and fold
+	// it into isLoading) so the list shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const { data: agents = [] } = useQuery(
 		projectId ? agentsQueryOptions(projectId) : chattableAgentsQueryOptions,
 	);
