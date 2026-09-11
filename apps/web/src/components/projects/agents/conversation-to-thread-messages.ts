@@ -36,15 +36,17 @@ type ChatSessionAccessDeniedKey =
 // and their sibling calls in new-conversation-thread.tsx,
 // conversation-view.tsx, ai-chat-float.tsx) into a projects.json translation
 // key. Each onNew wraps its dispatch call in try/catch and does
-// `const key = chatSessionAccessDeniedKey(err); if (key) throw new
-// Error(t(key)); throw err;` — assistant-ui's built-in per-message error
-// display (thread.tsx's MessageError) then shows the translated message
-// inline, the same mechanism already used for e.g. "select an agent first"
-// (see extractTextOnlyContent above). Returns null for anything that isn't a
-// 403, so the caller re-throws the original error unchanged rather than
-// misreporting a network failure or busy-dialog cancellation as a permission
-// problem. Stays i18n-free like the rest of this file — callers own
-// translating the returned key, this only classifies.
+// `const key = chatSessionAccessDeniedKey(err); if (key)
+// setSendError(t(key)); else throw err;`, rendering the translated message
+// via a local `sendError` state + `<ConversationErrorBox>` — NOT by
+// throwing and letting assistant-ui catch it: a thrown error from onNew
+// becomes an unhandled promise rejection rather than a rendered message, so
+// re-throwing is reserved for cases the caller still wants propagated.
+// Returns null for anything that isn't a 403, so the caller re-throws the
+// original error unchanged rather than misreporting a network failure or
+// busy-dialog cancellation as a permission problem. Stays i18n-free like
+// the rest of this file — callers own translating the returned key, this
+// only classifies.
 export function chatSessionAccessDeniedKey(
 	err: unknown,
 ): ChatSessionAccessDeniedKey | null {

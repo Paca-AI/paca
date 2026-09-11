@@ -724,6 +724,8 @@
 			"roleNameLabel": "Название роли",
 			"roleNamePlaceholder": "например, PROJECT_REVIEWER",
 			"permissionsLabel": "Разрешения",
+			"fullAccessBadge": "Полный доступ",
+			"fullAccessDescription": "Эта роль автоматически включает все разрешения, в том числе те, что будут добавлены в будущем. Изменение любого переключателя ниже преобразует её в фиксированный набор текущих разрешений.",
 			"enabledCount_one": "{{count}} включено",
 			"enabledCount_few": "{{count}} включено",
 			"enabledCount_many": "{{count}} включено",

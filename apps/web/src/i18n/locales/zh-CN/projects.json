@@ -714,6 +714,8 @@
 			"roleNameLabel": "角色名称",
 			"roleNamePlaceholder": "例如：PROJECT_REVIEWER",
 			"permissionsLabel": "权限",
+			"fullAccessBadge": "完全访问权限",
+			"fullAccessDescription": "此角色自动包含所有权限，包括将来添加的权限。切换下方任意权限都会将其转换为当前权限的固定集合。",
 			"enabledCount_one": "已启用 {{count}} 项",
 			"enabledCount_other": "已启用 {{count}} 项",
 			"cancel": "取消",

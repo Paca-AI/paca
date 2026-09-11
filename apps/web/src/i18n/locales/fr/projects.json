@@ -714,6 +714,8 @@
 			"roleNameLabel": "Nom du rôle",
 			"roleNamePlaceholder": "ex. PROJECT_REVIEWER",
 			"permissionsLabel": "Permissions",
+			"fullAccessBadge": "Accès complet",
+			"fullAccessDescription": "Ce rôle inclut automatiquement toutes les permissions, y compris celles ajoutées ultérieurement. Modifier un interrupteur ci-dessous le convertira en un ensemble fixe correspondant aux permissions actuelles.",
 			"enabledCount_one": "{{count}} activée",
 			"enabledCount_other": "{{count}} activées",
 			"cancel": "Annuler",

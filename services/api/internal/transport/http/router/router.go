@@ -893,27 +893,30 @@ func New(deps Deps) http.Handler {
 						// VerifyCLILogin's own doc comment.
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
 							Post("/{environmentId}/verify-cli-login", deps.Environment.VerifyCLILogin)
-						// Mints a ticket for agent-runner's live-usage
-						// WebSocket (internal/acpbridge/stats.go) — read-only
-						// in spirit (viewing usage numbers, not a mutating
-						// action or an interactive session), unlike
-						// terminal-ticket below.
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead)).
-							Post("/{environmentId}/stats-ticket", deps.Environment.StatsTicket)
-
-						// Folders, SSH keys, port forwards, and the terminal below
-						// are additionally gated on RequireEnvironmentAccess: a
-						// restricted environment (environmentdom.
-						// AccessModeRestricted) requires an explicit
-						// EnvironmentAccessGrant on top of the plain
+						// Folders, stats-ticket, SSH keys, port forwards, and the
+						// terminal below are additionally gated on
+						// RequireEnvironmentAccess: a restricted environment
+						// (environmentdom.AccessModeRestricted) requires an
+						// explicit EnvironmentAccessGrant on top of the plain
 						// environments.* permission — see environmentdom.
-						// AccessGrantService's doc comment. An SSH key or port
-						// forward is itself an alternate access path into the
-						// container (not mere configuration), so it gets the
-						// same gate as browsing/the terminal, not just
-						// lifecycle actions (create/start/stop/etc above,
-						// deliberately left ungated by this).
+						// AccessGrantService's doc comment. An SSH key, port
+						// forward, or live-usage stream is itself an alternate
+						// access path into the container (not mere
+						// configuration), so each gets the same gate as
+						// browsing/the terminal, not just lifecycle actions
+						// (create/start/stop/etc above, deliberately left
+						// ungated by this).
 						envAccess := httpmw.RequireEnvironmentAccess(deps.EnvironmentAccessSvc, deps.MemberRepo)
+
+						// Mints a ticket for agent-runner's live-usage
+						// WebSocket (internal/acpbridge/stats.go). Not a
+						// mutating action, but it does hand the caller a live
+						// feed of what's running inside the container — a
+						// member locked out of a restricted environment
+						// shouldn't get that just because viewing usage
+						// numbers isn't itself destructive.
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
+							Post("/{environmentId}/stats-ticket", deps.Environment.StatsTicket)
 
 						// Folders
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).

@@ -714,6 +714,8 @@
 			"roleNameLabel": "ロール名",
 			"roleNamePlaceholder": "例: PROJECT_REVIEWER",
 			"permissionsLabel": "権限",
+			"fullAccessBadge": "フルアクセス",
+			"fullAccessDescription": "このロールには、将来追加される権限を含め、すべての権限が自動的に含まれます。以下のいずれかを切り替えると、現在の権限の固定セットに変換されます。",
 			"enabledCount_one": "{{count}}件有効",
 			"enabledCount_other": "{{count}}件有効",
 			"cancel": "キャンセル",

@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 )
 
 // TestMintEnvironmentTicket_Format locks down the exact wire format
@@ -95,4 +97,65 @@ func TestMintEnvironmentTicket_DifferentPurposesProduceDifferentTickets(t *testi
 	stats := mintEnvironmentTicket(key, ticketPurposeStats, envID, ttl)
 
 	assert.NotEqual(t, terminal, stats)
+}
+
+// TestToEnvironmentResponseForCaller_RestrictedNonGrantedMember_HidesSSHPort
+// pins that a member locked out of a restricted environment can't learn its
+// ssh_port from GetEnvironment/ListEnvironments — combined with the
+// deployment-wide (non-secret) bastion host GetConfig reports, ssh_port
+// alone is enough to identify where to attempt a connection into this
+// specific container, the same "alternate access path" rubric that already
+// gates SSH keys/terminal/port-forwards behind RequireEnvironmentAccess.
+func TestToEnvironmentResponseForCaller_RestrictedNonGrantedMember_HidesSSHPort(t *testing.T) {
+	h := NewEnvironmentHandler(nil, "")
+	sshPort := 2222
+	envID := uuid.New()
+	env := &environmentdom.Environment{
+		ID:         envID,
+		AccessMode: environmentdom.AccessModeRestricted,
+		SSHPort:    &sshPort,
+	}
+
+	resp := h.toEnvironmentResponseForCaller(env, map[uuid.UUID]bool{})
+
+	assert.False(t, resp.AccessGranted)
+	assert.Nil(t, resp.SSHPort)
+}
+
+func TestToEnvironmentResponseForCaller_RestrictedGrantedMember_KeepsSSHPort(t *testing.T) {
+	h := NewEnvironmentHandler(nil, "")
+	sshPort := 2222
+	envID := uuid.New()
+	env := &environmentdom.Environment{
+		ID:         envID,
+		AccessMode: environmentdom.AccessModeRestricted,
+		SSHPort:    &sshPort,
+	}
+
+	resp := h.toEnvironmentResponseForCaller(env, map[uuid.UUID]bool{envID: true})
+
+	assert.True(t, resp.AccessGranted)
+	if assert.NotNil(t, resp.SSHPort) {
+		assert.Equal(t, sshPort, *resp.SSHPort)
+	}
+}
+
+// TestToEnvironmentResponseForCaller_OpenEnvironment_KeepsSSHPort confirms
+// the new stripping logic is scoped to restricted+non-granted only — the
+// common case (access_mode "open", zero behavior change) must be untouched.
+func TestToEnvironmentResponseForCaller_OpenEnvironment_KeepsSSHPort(t *testing.T) {
+	h := NewEnvironmentHandler(nil, "")
+	sshPort := 2222
+	env := &environmentdom.Environment{
+		ID:         uuid.New(),
+		AccessMode: environmentdom.AccessModeOpen,
+		SSHPort:    &sshPort,
+	}
+
+	resp := h.toEnvironmentResponseForCaller(env, map[uuid.UUID]bool{})
+
+	assert.True(t, resp.AccessGranted)
+	if assert.NotNil(t, resp.SSHPort) {
+		assert.Equal(t, sshPort, *resp.SSHPort)
+	}
 }

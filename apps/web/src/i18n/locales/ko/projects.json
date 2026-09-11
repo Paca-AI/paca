@@ -714,6 +714,8 @@
 			"roleNameLabel": "역할 이름",
 			"roleNamePlaceholder": "예: PROJECT_REVIEWER",
 			"permissionsLabel": "권한",
+			"fullAccessBadge": "전체 액세스",
+			"fullAccessDescription": "이 역할에는 향후 추가되는 권한을 포함하여 모든 권한이 자동으로 포함됩니다. 아래에서 하나라도 전환하면 현재 권한의 고정 세트로 변환됩니다.",
 			"enabledCount_one": "{{count}}개 활성화됨",
 			"enabledCount_other": "{{count}}개 활성화됨",
 			"cancel": "취소",

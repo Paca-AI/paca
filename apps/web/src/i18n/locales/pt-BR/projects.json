@@ -714,6 +714,8 @@
 			"roleNameLabel": "Nome do papel",
 			"roleNamePlaceholder": "ex.: PROJECT_REVIEWER",
 			"permissionsLabel": "Permissões",
+			"fullAccessBadge": "Acesso total",
+			"fullAccessDescription": "Esta função inclui automaticamente todas as permissões, incluindo as adicionadas no futuro. Alterar qualquer opção abaixo irá convertê-la em um conjunto fixo com as permissões atuais.",
 			"enabledCount_one": "{{count}} ativada",
 			"enabledCount_other": "{{count}} ativadas",
 			"cancel": "Cancelar",

@@ -389,5 +389,67 @@ describe("ProjectRoleFormDialog", () => {
 				expect(Object.keys(payload.permissions ?? {})).toHaveLength(0);
 			});
 		});
+
+		// A project's seeded "Admin" role is stored as the bare wildcard
+		// {"*": true} (see 000056_set_admin_role_wildcard_permission.sql).
+		// Without isFullAccess tracking this separately from the per-checkbox
+		// state expandWildcardPermissions derives for display, saving this
+		// role untouched would silently re-derive it as today's enumerated
+		// wildcards via normalizePermissionsToWildcards, undoing 000056's
+		// future-proofing.
+		const fullAccessRole: ProjectRole = {
+			...existingRole,
+			role_name: "Admin",
+			permissions: { "*": true },
+		};
+
+		it("shows a full-access badge and explanation for a role stored as the bare wildcard", () => {
+			renderEdit(fullAccessRole);
+
+			expect(screen.getByText("Full access")).toBeInTheDocument();
+			expect(
+				screen.getByText(/includes every permission/i),
+			).toBeInTheDocument();
+		});
+
+		it("saves an untouched full-access role as the bare wildcard, not enumerated permissions", async () => {
+			mockUpdateProjectRole.mockResolvedValue(fullAccessRole);
+			renderEdit(fullAccessRole);
+
+			await userEvent.click(
+				screen.getByRole("button", { name: /save changes/i }),
+			);
+
+			await waitFor(() => {
+				const payload = mockUpdateProjectRole.mock.calls[0][2] as {
+					permissions: Record<string, boolean>;
+				};
+				expect(payload.permissions).toEqual({ "*": true });
+			});
+		});
+
+		it("exits full-access mode and saves the narrowed enumerated set once any permission is toggled", async () => {
+			mockUpdateProjectRole.mockResolvedValue(fullAccessRole);
+			renderEdit(fullAccessRole);
+
+			// Every switch reads as checked under the wildcard; toggling any one
+			// of them off is the "an owner narrows a delegated Admin" scenario
+			// 000056's guard is meant to allow.
+			const switches = screen.getAllByRole("switch");
+			await userEvent.click(switches[0]);
+
+			expect(screen.queryByText("Full access")).not.toBeInTheDocument();
+
+			await userEvent.click(
+				screen.getByRole("button", { name: /save changes/i }),
+			);
+
+			await waitFor(() => {
+				const payload = mockUpdateProjectRole.mock.calls[0][2] as {
+					permissions: Record<string, boolean>;
+				};
+				expect(payload.permissions?.["*"]).toBeUndefined();
+			});
+		});
 	});
 });

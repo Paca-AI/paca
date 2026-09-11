@@ -714,6 +714,8 @@
 			"roleNameLabel": "Tên vai trò",
 			"roleNamePlaceholder": "vd: PROJECT_REVIEWER",
 			"permissionsLabel": "Quyền hạn",
+			"fullAccessBadge": "Toàn quyền truy cập",
+			"fullAccessDescription": "Vai trò này tự động bao gồm mọi quyền, kể cả những quyền được thêm trong tương lai. Thay đổi bất kỳ công tắc nào bên dưới sẽ chuyển nó thành một tập quyền cố định theo hiện tại.",
 			"enabledCount_one": "{{count}} đã bật",
 			"enabledCount_other": "{{count}} đã bật",
 			"cancel": "Hủy",

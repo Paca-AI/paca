@@ -137,6 +137,18 @@ func (h *EnvironmentHandler) toEnvironmentResponseForCaller(env *environmentdom.
 	resp := dto.EnvironmentFromEntity(env)
 	if resp.AccessMode == environmentdom.AccessModeRestricted {
 		resp.AccessGranted = grantedIDs[env.ID]
+		if !resp.AccessGranted {
+			// SSHPort is per-instance connection metadata — combined with the
+			// deployment-wide (non-secret) bastion host GetConfig reports,
+			// it's enough to know where to attempt an SSH connection into
+			// this specific container. A member the admin explicitly locked
+			// out of a restricted environment shouldn't learn this just from
+			// the environment still being visible in list/detail views —
+			// same "alternate access path" rubric that already gates SSH
+			// keys/terminal/port-forwards behind RequireEnvironmentAccess
+			// rather than leaving them on environments.read alone.
+			resp.SSHPort = nil
+		}
 	}
 	return resp
 }

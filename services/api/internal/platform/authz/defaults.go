@@ -102,6 +102,15 @@ func DefaultProjectRoles() []RoleDefinition {
 				// already covers viewing it. A project owner can grant write
 				// access per-project via the role editor.
 				PermissionSprintsRead,
+				// PermissionViewsWrite is a new capability here, not a
+				// preservation: view CRUD previously required
+				// PermissionSprintsWrite, which PROJECT_MEMBER never held
+				// (only SprintsRead). Confirmed intentional — see
+				// TestDefaultProjectRoles_ProjectMemberHasNoSettingsWritePermissions'
+				// sibling assertions and 000054's own comment on this same
+				// grant — and called out explicitly here since it's a real
+				// behavior change for every existing project's members on
+				// deploy, not implied by the settings-permission split above.
 				PermissionViewsRead,
 				PermissionViewsWrite,
 				PermissionDocsRead,

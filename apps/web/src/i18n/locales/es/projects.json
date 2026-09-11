@@ -714,6 +714,8 @@
 			"roleNameLabel": "Nombre del rol",
 			"roleNamePlaceholder": "p. ej. PROJECT_REVIEWER",
 			"permissionsLabel": "Permisos",
+			"fullAccessBadge": "Acceso total",
+			"fullAccessDescription": "Este rol incluye automáticamente todos los permisos, incluidos los que se añadan en el futuro. Cambiar cualquier permiso a continuación lo convertirá en un conjunto fijo con los permisos actuales.",
 			"enabledCount_one": "{{count}} habilitado",
 			"enabledCount_other": "{{count}} habilitados",
 			"cancel": "Cancelar",

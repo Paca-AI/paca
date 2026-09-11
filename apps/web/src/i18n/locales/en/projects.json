@@ -714,6 +714,8 @@
 			"roleNameLabel": "Role Name",
 			"roleNamePlaceholder": "e.g. PROJECT_REVIEWER",
 			"permissionsLabel": "Permissions",
+			"fullAccessBadge": "Full access",
+			"fullAccessDescription": "This role automatically includes every permission, including ones added in the future. Changing any toggle below converts it to today's fixed set.",
 			"enabledCount_one": "{{count}} enabled",
 			"enabledCount_other": "{{count}} enabled",
 			"cancel": "Cancel",

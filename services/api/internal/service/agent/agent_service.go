@@ -1730,8 +1730,13 @@ func (s *Service) authorizeAgentConversationRead(ctx context.Context, current, t
 // reveal anything StartChatSession's own ErrAgentAccessRestricted doesn't
 // already say more directly. A memberID of uuid.Nil (the no-chat-session
 // branch in authorizeAgentConversationRead, where there's no human context
-// to check a grant against) correctly fails this too — there is no
-// project_members row for the zero UUID to ever match.
+// to check a grant against) passes the hasAgentUsageAccess call above
+// unconditionally — nil is an intentional bypass there, by design, not a
+// failure (see that function's own doc comment). What actually protects an
+// owner-private conversation from a nil caller is the session-ownership
+// comparison below: session.MemberID is always a real project_members.id,
+// which uuid.Nil can never equal, so it still fails closed there if such a
+// caller ever reached one.
 func (s *Service) authorizeConversationAccess(ctx context.Context, c *agentdom.AgentConversation, memberID uuid.UUID) error {
 	agent, err := s.repo.FindAgentByID(ctx, c.AgentID)
 	if err != nil {
@@ -2592,16 +2597,48 @@ func (s *Service) SendChatMessage(ctx context.Context, projectID, sessionID, mem
 // keyed by actor_user_id instead of a project's memberID.
 // -------------------------------------------------------------------------
 
+// requireGlobalAgentOpen fails closed with ErrAgentAccessRestricted when
+// agentID is currently restricted. Global chat has no project context, so
+// there is no project_members.id to resolve and check an AgentAccessGrant
+// against the way the project-scoped hasAgentUsageAccess check can —
+// restricted therefore fails every global-chat caller closed, full stop,
+// rather than inventing new cross-project grant semantics. If a project
+// member granted access to a restricted global agent should still be able
+// to reach it via global (non-project) chat specifically, that needs a
+// real design decision and probably its own grant surface — not assumed
+// here.
+func (s *Service) requireGlobalAgentOpen(ctx context.Context, agentID uuid.UUID) error {
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	if agent.AccessMode == agentdom.AccessModeRestricted {
+		return agentdom.ErrAgentAccessRestricted
+	}
+	return nil
+}
+
 // ListGlobalChatSessions returns all global chat sessions for the given
 // agent and human actor.
 func (s *Service) ListGlobalChatSessions(ctx context.Context, agentID, actorUserID uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+	if err := s.requireGlobalAgentOpen(ctx, agentID); err != nil {
+		return nil, err
+	}
 	return s.repo.ListGlobalChatSessions(ctx, agentID, actorUserID)
 }
 
 // StartGlobalChatSession creates a new global chat session and publishes
 // the initial message trigger.
 func (s *Service) StartGlobalChatSession(ctx context.Context, agentID, actorUserID uuid.UUID, message string, contextItems []agentdom.ContextItemRef, onBusy string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error) {
+	// validateOnBusy runs before requireGlobalAgentOpen: a malformed onBusy
+	// value is a client-input error that shouldn't depend on (or reveal
+	// anything about) the target agent's access_mode — see
+	// TestStartGlobalChatSession_RejectsInvalidOnBusy, which asserts this
+	// rejects before the agent is ever looked up.
 	if err := validateOnBusy(onBusy); err != nil {
+		return nil, nil, err
+	}
+	if err := s.requireGlobalAgentOpen(ctx, agentID); err != nil {
 		return nil, nil, err
 	}
 	// See StartChatSession's identical check for why this runs unconditionally
@@ -2655,6 +2692,9 @@ func (s *Service) SendGlobalChatMessage(ctx context.Context, sessionID, actorUse
 	}
 	if session.ProjectID != uuid.Nil || session.ActorUserID == nil || *session.ActorUserID != actorUserID {
 		return nil, agentdom.ErrChatSessionNotFound
+	}
+	if err := s.requireGlobalAgentOpen(ctx, session.AgentID); err != nil {
+		return nil, err
 	}
 
 	latest, err := s.repo.FindLatestConversationByChatSession(ctx, sessionID)
