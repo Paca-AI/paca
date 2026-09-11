@@ -223,12 +223,12 @@ function AddSSHKeyDialog({
 function SSHKeysManager({
 	projectId,
 	environmentId,
-	canWrite,
+	canConnect,
 	hasAccess,
 }: {
 	projectId: string;
 	environmentId: string;
-	canWrite: boolean;
+	canConnect: boolean;
 	hasAccess: boolean;
 }) {
 	const { t } = useTranslation("projects");
@@ -260,7 +260,7 @@ function SSHKeysManager({
 				<p className="text-sm text-muted-foreground">
 					{t("environments.detail.sshKeys.count", { count: keys.length })}
 				</p>
-				{canWrite && (
+				{canConnect && (
 					<Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
 						<Plus className="size-4 mr-1.5" />
 						{t("environments.detail.sshKeys.addKey")}
@@ -274,7 +274,7 @@ function SSHKeysManager({
 					<p className="text-sm text-muted-foreground">
 						{t("environments.detail.sshKeys.empty.title")}
 					</p>
-					{canWrite && (
+					{canConnect && (
 						<Button
 							size="sm"
 							variant="outline"
@@ -301,7 +301,7 @@ function SSHKeysManager({
 									</p>
 								</div>
 							</div>
-							{canWrite && (
+							{canConnect && (
 								<Button
 									variant="ghost"
 									size="icon"
@@ -432,12 +432,12 @@ function WebAppConnectTab({
 function SSHConnectTab({
 	projectId,
 	environment,
-	canWrite,
+	canConnect,
 	hasAccess,
 }: {
 	projectId: string;
 	environment: Environment;
-	canWrite: boolean;
+	canConnect: boolean;
 	hasAccess: boolean;
 }) {
 	const { t } = useTranslation("projects");
@@ -478,7 +478,7 @@ function SSHConnectTab({
 					<SSHKeysManager
 						projectId={projectId}
 						environmentId={environment.id}
-						canWrite={canWrite}
+						canConnect={canConnect}
 						hasAccess={hasAccess}
 					/>
 				</div>
@@ -648,7 +648,7 @@ export function EnvironmentConnectView({
 					<SSHConnectTab
 						projectId={projectId}
 						environment={environment}
-						canWrite={canWrite}
+						canConnect={canConnect}
 						hasAccess={hasAccess}
 					/>
 				)}

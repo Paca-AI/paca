@@ -97,13 +97,15 @@ const (
 	PermissionConversationsWrite Permission = "conversations.write"
 	PermissionConversationsAll   Permission = "conversations.*"
 
-	// PermissionEnvironmentsConnect gates gaining a live, interactive
-	// session inside an already-running environment — today that's
-	// minting a terminal ticket (EnvironmentHandler.TerminalTicket), which
-	// hands the browser a real shell. Deliberately a separate tier from
-	// Write: managing an environment's configuration (folders, SSH keys,
-	// port forwards, lifecycle) doesn't imply the ability to open a shell
-	// inside it, and vice versa.
+	// PermissionEnvironmentsConnect gates gaining shell access inside an
+	// already-running environment — minting a terminal ticket
+	// (EnvironmentHandler.TerminalTicket) for the browser terminal, and
+	// registering/removing an SSH key (EnvironmentHandler.AddSSHKey/
+	// DeleteSSHKey), since a registered key is just another way to reach
+	// the same root shell. Deliberately a separate tier from Write:
+	// managing an environment's configuration (folders, port forwards,
+	// lifecycle) doesn't imply the ability to open a shell inside it, and
+	// vice versa.
 	PermissionEnvironmentsRead    Permission = "environments.read"
 	PermissionEnvironmentsWrite   Permission = "environments.write"
 	PermissionEnvironmentsConnect Permission = "environments.connect"

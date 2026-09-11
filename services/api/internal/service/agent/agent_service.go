@@ -1181,20 +1181,25 @@ func (s *Service) HasAgentUsageAccess(ctx context.Context, projectID, agentID, m
 // through this rather than the public HasAgentUsageAccess.
 //
 // memberID == uuid.Nil means there is no human actor to check a grant
-// against — mirrors TriggerTaskAssigned/TriggerDirectMessage's own
-// deferral ("there's no human actor behind an automation firing"), so it's
-// treated as access-not-applicable rather than access-denied. The only
-// caller that reaches here with a nil memberID is
+// against — treated as access-not-applicable rather than access-denied.
+// Two distinct kinds of caller reach here with a nil memberID:
 // authorizeAgentConversationRead's system-triggered branch
 // (current.ChatSessionID == nil, read via GetConversationForAgent — the
 // backend path behind the MCP server's read_conversation tool), passing it
 // through to authorizeConversationAccess as a sentinel for "no specific
 // member, shared audience only" — a rule that predates access grants and
-// still needs to hold. Every human-facing caller (GetConversation via
-// ConversationHandler.resolveMemberID, StartChatSession, ListChatSessions,
-// SendChatMessage) resolves memberID from a real project_members row first
-// and errors out before calling this far, so this can never be used to
-// bypass a grant on a human's behalf.
+// still needs to hold; and authorizeConversationTrigger, when called from
+// TriggerTaskAssigned's automation-workflow branch or TriggerDirectMessage
+// ("there's no human actor behind an automation firing" — see those
+// functions' own doc comments) — the automation's own author already
+// needed permission to configure a rule against this agent, so a
+// restricted agent shouldn't block every unattended run against it. Every
+// human-facing caller (GetConversation via ConversationHandler.
+// resolveMemberID, StartChatSession, ListChatSessions, SendChatMessage,
+// and the always-resolved-actor triggers TriggerCommentMention/
+// TriggerDescriptionWrite) resolves memberID from a real project_members
+// row first and errors out before calling this far, so this can never be
+// used to bypass a grant on a human's behalf.
 func (s *Service) hasAgentUsageAccess(ctx context.Context, agent *agentdom.Agent, memberID uuid.UUID) (bool, error) {
 	if agent.AccessMode != agentdom.AccessModeRestricted || memberID == uuid.Nil {
 		return true, nil
@@ -2224,15 +2229,14 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 	// shell-equivalent access inside it — an alternate access path into a
 	// restricted environment just as real as the browser terminal, SSH, or
 	// a port forward (see environmentdom.Environment.AccessMode's doc
-	// comment). Checked only here, not resolveConversationEnvironment's
-	// other four call sites (task-assigned/description-write/automation/
-	// comment-mention triggers): those always resolve nil/nil and fall
-	// back to the agent's own pre-configured DefaultEnvironmentID, with no
-	// human actively choosing an environment to check a grant against —
-	// same "no human actor" reasoning already applied to skip
-	// TriggerTaskAssigned. This is the one path where a member freshly
-	// picks (or overrides) which environment a brand-new conversation
-	// attaches to.
+	// comment). resolveConversationEnvironment's other four call sites
+	// (task-assigned/description-write/automation/comment-mention
+	// triggers) enforce the same pair of checks via the shared
+	// authorizeConversationTrigger helper instead of this inline copy —
+	// kept separate here rather than refactored onto that helper too, to
+	// avoid reordering this already-tested path's agent-access check
+	// (above, before resolution) relative to this environment-access
+	// check (after resolution).
 	if envID != nil && s.environmentSvc != nil {
 		if ok, err := s.environmentSvc.HasEnvironmentUsageAccess(ctx, projectID, *envID, memberID); err != nil {
 			return nil, nil, err
@@ -2825,6 +2829,38 @@ func (s *Service) createGlobalConversation(ctx context.Context, agentID, actorUs
 	return conv, nil
 }
 
+// authorizeConversationTrigger checks that memberID may use both agent and
+// (when resolved) the environment a new conversation is about to attach
+// to — the same pair of checks StartChatSession performs inline, extracted
+// here so every other trigger path (task assignment, direct automation
+// message, comment mention, description write) enforces both restricted-
+// access grants too, not just the human-initiated chat path.
+//
+// memberID == uuid.Nil means there is no human actor behind this trigger
+// (an unattended automation firing with no resolved actor) — both checks
+// already treat that as "not applicable, assume allowed" rather than
+// denied: hasAgentUsageAccess has always done this (see its own doc
+// comment), and the environment check mirrors it here for the same
+// reason — the automation's own author already needed permission to
+// configure a rule against this agent/environment in the first place, so
+// a restricted default environment shouldn't silently break every
+// unattended run against it.
+func (s *Service) authorizeConversationTrigger(ctx context.Context, projectID uuid.UUID, agent *agentdom.Agent, envID *uuid.UUID, memberID uuid.UUID) error {
+	if ok, err := s.hasAgentUsageAccess(ctx, agent, memberID); err != nil {
+		return err
+	} else if !ok {
+		return agentdom.ErrAgentAccessRestricted
+	}
+	if envID != nil && s.environmentSvc != nil && memberID != uuid.Nil {
+		if ok, err := s.environmentSvc.HasEnvironmentUsageAccess(ctx, projectID, *envID, memberID); err != nil {
+			return err
+		} else if !ok {
+			return environmentdom.ErrEnvironmentAccessRestricted
+		}
+	}
+	return nil
+}
+
 // gatherRepoPlugins returns all installed plugins with the "repository" capability.
 func (s *Service) gatherRepoPlugins(ctx context.Context) []*plugindom.Plugin {
 	if s.pluginRepo == nil {
@@ -2856,6 +2892,16 @@ func (s *Service) gatherRepoPluginIDs(ctx context.Context) []string {
 // is nil when the assignment came from the automation-workflow engine rather
 // than a human member.
 func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, taskID uuid.UUID, triggeredByMemberID *uuid.UUID, note string) (*agentdom.AgentConversation, error) {
+	// FindAgentByID, not GetAgent/FindVisibleAgentInProject: this trigger's
+	// callers (notification_consumer.go, automation_consumer.go) already
+	// resolved agentID from a project-scoped member row before calling
+	// here, same trust boundary resolveConversationEnvironment below
+	// already relies on for this same agentID.
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
 	repoPlugins := s.gatherRepoPlugins(ctx)
 	repoPluginIDs := make([]string, 0, len(repoPlugins))
 	for _, p := range repoPlugins {
@@ -2870,6 +2916,13 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 
 	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
 	if err != nil {
+		return nil, err
+	}
+	memberID := uuid.Nil
+	if triggeredByMemberID != nil {
+		memberID = *triggeredByMemberID
+	}
+	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, memberID); err != nil {
 		return nil, err
 	}
 
@@ -2911,6 +2964,13 @@ func (s *Service) TriggerTaskAssigned(ctx context.Context, projectID, agentID, t
 // TriggerTaskAssigned's automation-triggered case — there's no human actor
 // behind an automation firing.
 func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID uuid.UUID, triggeredByMemberID *uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	// FindAgentByID, not GetAgent/FindVisibleAgentInProject — see the same
+	// note on TriggerTaskAssigned above.
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
 	repoPlugins := s.gatherRepoPlugins(ctx)
 	repoPluginIDs := make([]string, 0, len(repoPlugins))
 	for _, p := range repoPlugins {
@@ -2925,6 +2985,13 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 
 	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
 	if err != nil {
+		return nil, err
+	}
+	memberID := uuid.Nil
+	if triggeredByMemberID != nil {
+		memberID = *triggeredByMemberID
+	}
+	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, memberID); err != nil {
 		return nil, err
 	}
 
@@ -2960,6 +3027,13 @@ func (s *Service) TriggerDirectMessage(ctx context.Context, projectID, agentID u
 // message is the plain-text content of the comment so the agent's initial prompt
 // is populated without requiring a separate MCP call.
 func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID, taskID, commentID, triggeredByMemberID uuid.UUID, message string) (*agentdom.AgentConversation, error) {
+	// FindAgentByID, not GetAgent/FindVisibleAgentInProject — see the same
+	// note on TriggerTaskAssigned above.
+	agent, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
 	repoPlugins := s.gatherRepoPlugins(ctx)
 	repoPluginIDs := make([]string, 0, len(repoPlugins))
 	for _, p := range repoPlugins {
@@ -2974,6 +3048,9 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 
 	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, triggeredByMemberID); err != nil {
 		return nil, err
 	}
 
@@ -3012,7 +3089,8 @@ func (s *Service) TriggerCommentMention(ctx context.Context, projectID, agentID,
 // belongs to projectID; the caller is responsible for verifying taskID
 // belongs to projectID (this service has no task-repository dependency).
 func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentID, taskID, triggeredByMemberID uuid.UUID) (*agentdom.AgentConversation, error) {
-	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+	agent, err := s.GetAgent(ctx, projectID, agentID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -3030,6 +3108,9 @@ func (s *Service) TriggerDescriptionWrite(ctx context.Context, projectID, agentI
 
 	envID, resolvedFolderID, workdir, err := s.resolveConversationEnvironment(ctx, projectID, agentID, nil, nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.authorizeConversationTrigger(ctx, projectID, agent, envID, triggeredByMemberID); err != nil {
 		return nil, err
 	}
 

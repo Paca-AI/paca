@@ -925,12 +925,21 @@ func New(deps Deps) http.Handler {
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Get("/{environmentId}/browse", deps.Environment.BrowseFolder)
 
-						// SSH keys
+						// SSH keys — registering/removing a key grants shell
+						// access the same way the terminal ticket below does
+						// (the ssh command connects as root), so this is
+						// gated on Connect, not Write, mirroring
+						// TerminalTicket: a Write-only member can configure
+						// the environment but shouldn't be able to mint
+						// themselves shell access this way, and a
+						// Connect-only member gains nothing new here since
+						// they can already open a root shell via the
+						// browser terminal.
 						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsRead), envAccess).
 							Get("/{environmentId}/ssh-keys", deps.Environment.ListSSHKeys)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite), envAccess).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect), envAccess).
 							Post("/{environmentId}/ssh-keys", deps.Environment.AddSSHKey)
-						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsWrite), envAccess).
+						r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionEnvironmentsConnect), envAccess).
 							Delete("/{environmentId}/ssh-keys/{keyId}", deps.Environment.DeleteSSHKey)
 
 						// Port forwards
