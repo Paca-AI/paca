@@ -93,6 +93,7 @@ func (d *Dispatcher) failOffline(ctx context.Context, trigger agent.Trigger) err
 	if err := d.ConvRepo.UpdateStatus(ctx, trigger.ConversationID, "failed", &errMsg); err != nil {
 		return err
 	}
+	d.publishQueueStatus(ctx, trigger.ConversationID, "failed")
 	if err := d.Publisher.PublishRealtime(ctx, trigger.ProjectID, trigger.ConversationID,
 		"agent.conversation.failed", nil, trigger.ActorUserID); err != nil {
 		d.Log.Warn("acpbridge: failed to publish realtime status",
@@ -128,11 +129,34 @@ func (d *Dispatcher) watchdog(conversationID, projectID uuid.UUID, timeout time.
 	}
 	d.Log.Warn("acpbridge: ACP turn timed out with no turn_status from the bridge",
 		"conversation_id", conversationID, "timeout", timeout)
+	d.publishQueueStatus(ctx, conversationID, "failed")
 	if err := d.Publisher.PublishRealtime(ctx, projectID, conversationID,
 		"agent.conversation.failed", nil, actorUserID); err != nil {
 		d.Log.Warn("acpbridge: failed to publish realtime status",
 			"conversation_id", conversationID, "error", err)
 	}
+}
+
+// publishQueueStatus tells services/api's AgentQueueConsumer that an ACP
+// conversation reached a terminal status, so AdvanceQueue can start whatever
+// is queued behind this agent. handler.publishTerminalStatus does the same for
+// sandboxed agents; without it here, an ACP agent's backlog is only ever
+// drained by a StopConversation. Best-effort, like every publish in this
+// file: the DB status the caller just wrote stays the source of truth.
+// AdvanceQueue tolerates a duplicate event (see claimQueuedForDispatch), so a
+// late turn_status racing the watchdog is harmless.
+func (d *Dispatcher) publishQueueStatus(ctx context.Context, conversationID uuid.UUID, status string) {
+	if err := d.Publisher.PublishConversationStatus(ctx, conversationID, status); err != nil {
+		d.Log.Warn("acpbridge: failed to publish conversation status",
+			"conversation_id", conversationID, "status", status, "error", err)
+	}
+}
+
+// isTerminalStatus mirrors services/api's agentdom.ConversationStatus.IsTerminal:
+// the statuses a conversation never leaves, and the only ones AdvanceQueue
+// should hear about ("paused" and "running" are not).
+func isTerminalStatus(status string) bool {
+	return status == "finished" || status == "failed" || status == "stopped"
 }
 
 func projectIDOrEmpty(id uuid.UUID) string {

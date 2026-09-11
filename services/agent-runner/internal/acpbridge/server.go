@@ -353,6 +353,18 @@ func (s *Server) handleTurnStatusMessage(ctx context.Context, agentID uuid.UUID,
 		s.Log.Warn("acpbridge: failed to record turn_status", "conversation_id", convID, "error", err)
 		return
 	}
+	// A terminal turn_status must also reach StreamAgentConversationStatus, the
+	// same as handler.publishTerminalStatus does for sandboxed agents: it is the
+	// only event services/api's AgentQueueConsumer runs AdvanceQueue on. Without
+	// it, a conversation queued behind this agent stays "queued" forever once the
+	// running turn ends — only a StopConversation (which publishes on its own)
+	// would ever free it. Published before the realtime lookup below so a failure
+	// there can't swallow it.
+	if isTerminalStatus(statusStr) {
+		if err := s.Publisher.PublishConversationStatus(ctx, convID, statusStr); err != nil {
+			s.Log.Warn("acpbridge: failed to publish conversation status", "conversation_id", convID, "status", statusStr, "error", err)
+		}
+	}
 
 	projectID, ownerUserID, err := s.ConvRepo.GetConversationRealtimeContext(ctx, convID)
 	if err != nil {
