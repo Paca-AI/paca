@@ -150,16 +150,23 @@ func DefaultProjectRoles() []RoleDefinition {
 
 // LegacyPermissionsForRole preserves compatibility with the existing
 // users.role claim until all callers are migrated to explicit role assignment.
+//
+// Delegates to DefaultGlobalRoles rather than hand-maintaining a second,
+// parallel permission list per role name — GHSA-hjcj-373w-vq8m was exactly
+// that drift: this function's own ADMIN case had been hardcoded to the bare
+// PermissionAll wildcard while DefaultGlobalRoles' ADMIN entry was correctly
+// scoped to global-only permissions, so any caller keyed off the legacy role
+// claim (the authz middleware included, via claims.Role) granted a global
+// ADMIN every permission — including project-scoped ones like
+// environments.connect — for any project UUID in the request, with no
+// project-membership check. A single source of truth makes that class of
+// drift impossible going forward.
 func LegacyPermissionsForRole(role string) []Permission {
 	normalized := strings.ToUpper(strings.TrimSpace(role))
-	switch normalized {
-	case "SUPER_ADMIN":
-		return []Permission{PermissionAll}
-	case "ADMIN":
-		return []Permission{PermissionAll}
-	case "USER":
-		return []Permission{PermissionUsersRead}
-	default:
-		return nil
+	for _, def := range DefaultGlobalRoles() {
+		if def.Name == normalized {
+			return def.Permissions
+		}
 	}
+	return nil
 }

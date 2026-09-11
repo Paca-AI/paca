@@ -33,6 +33,54 @@ func TestAuthorizer_LegacyAdminFallback(t *testing.T) {
 	}
 }
 
+// TestAuthorizer_LegacyAdminCannotSatisfyProjectScopedPermission is a
+// regression test for GHSA-hjcj-373w-vq8m. LegacyPermissionsForRole("ADMIN")
+// used to return PermissionAll, which short-circuits hasPermission for any
+// required permission — including project-scoped ones such as
+// environments.connect (the highest-impact reachable route: minting a
+// terminal ticket for shell access) — regardless of whether the caller is a
+// member of the requested project. The authorizer is given a nil store here
+// so the only thing granting permissions is the legacy role claim itself,
+// isolating the bug from any project-membership lookup: in production this
+// scope would also consult AuthzPermissionStore.ListProjectPermissions, which
+// correctly returns nothing for a non-member, but the wildcard grant used to
+// make that check unreachable (hasPermission returns true on granted["*"]
+// before ever looking at the required permission).
+func TestAuthorizer_LegacyAdminCannotSatisfyProjectScopedPermission(t *testing.T) {
+	a := authz.NewAuthorizer(nil)
+	projectID := uuid.New()
+	ok, err := a.HasPermissions(context.Background(), uuid.New(), &projectID, "ADMIN", authz.PermissionEnvironmentsConnect)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatal("global ADMIN role claim must not satisfy a project-scoped permission absent a project-membership grant")
+	}
+}
+
+// TestAuthorizer_LegacyAdminStillHasIntendedGlobalPermissions guards against
+// overcorrecting the GHSA-hjcj-373w-vq8m fix into denying ADMIN's real,
+// intended global-scope capabilities (defined in DefaultGlobalRoles).
+func TestAuthorizer_LegacyAdminStillHasIntendedGlobalPermissions(t *testing.T) {
+	a := authz.NewAuthorizer(nil)
+	for _, p := range []authz.Permission{
+		authz.PermissionUsersAll,
+		authz.PermissionGlobalRolesAll,
+		authz.PermissionProjectsAll,
+		authz.PermissionSettingsWrite,
+		authz.PermissionAgentsAll,
+		authz.PermissionPluginsAll,
+	} {
+		ok, err := a.HasPermissions(context.Background(), uuid.New(), nil, "ADMIN", p)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Errorf("expected ADMIN legacy role to still authorize global permission %q", p)
+		}
+	}
+}
+
 func TestAuthorizer_GlobalAndProjectPermissions(t *testing.T) {
 	projectID := uuid.New()
 	a := authz.NewAuthorizer(&stubPermissionStore{
