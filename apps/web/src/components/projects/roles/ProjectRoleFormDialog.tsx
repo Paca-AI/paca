@@ -118,10 +118,12 @@ export function ProjectRoleFormDialog({
 			| Record<string, boolean>
 			| undefined;
 		setPermissions(
-			expandWildcardPermissions(rolePermissions, allKnownPermissionsRef.current),
+			expandWildcardPermissions(
+				rolePermissions,
+				allKnownPermissionsRef.current,
+			),
 		);
 		setIsFullAccess(rolePermissions?.["*"] === true);
-		// biome-ignore lint/correctness/useExhaustiveDependencies: allKnownPermissions is read via allKnownPermissionsRef so this effect isn't re-triggered by every plugins-query settle — see the comment above
 	}, [open, role?.permissions]);
 
 	// Merges in any permission keys not yet tracked in `permissions` —
@@ -291,7 +293,9 @@ export function ProjectRoleFormDialog({
 							) : (
 								enabledCount > 0 && (
 									<span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-										{t("roles.formDialog.enabledCount", { count: enabledCount })}
+										{t("roles.formDialog.enabledCount", {
+											count: enabledCount,
+										})}
 									</span>
 								)
 							)}
