@@ -44,10 +44,19 @@ type EnvironmentResponse struct {
 	// had its full port-mapping set applied — see
 	// environmentdom.Environment.PortsPendingRestart's doc comment. The
 	// frontend uses this to show a "restart required" prompt.
-	PortsPendingRestart bool                        `json:"ports_pending_restart"`
-	CreatedAt           time.Time                   `json:"created_at"`
-	UpdatedAt           time.Time                   `json:"updated_at"`
-	Folders             []EnvironmentFolderResponse `json:"folders,omitempty"`
+	PortsPendingRestart bool `json:"ports_pending_restart"`
+	// AccessMode is "open" or "restricted" — see
+	// environmentdom.Environment.AccessMode's doc comment. AccessGranted is
+	// per-caller (not stored on the entity): true whenever the requesting
+	// member could actually use this environment right now — always true
+	// when AccessMode is "open", populated by the handler from
+	// AccessGrantService otherwise. Together these drive the "visible but
+	// locked" UI for a restricted environment the caller isn't granted.
+	AccessMode    string                      `json:"access_mode"`
+	AccessGranted bool                        `json:"access_granted"`
+	CreatedAt     time.Time                   `json:"created_at"`
+	UpdatedAt     time.Time                   `json:"updated_at"`
+	Folders       []EnvironmentFolderResponse `json:"folders,omitempty"`
 }
 
 // CreateEnvironmentRequest is the body for POST
@@ -72,6 +81,9 @@ type CreateEnvironmentRequest struct {
 type UpdateEnvironmentRequest struct {
 	Name               *string `json:"name"`
 	IdleTimeoutMinutes *int    `json:"idle_timeout_minutes"`
+	// AccessMode: nil means unchanged. Must be "open" or "restricted" when
+	// set — see environmentdom.Environment.AccessMode's doc comment.
+	AccessMode *string `json:"access_mode"`
 }
 
 // EnvironmentFromEntity maps an Environment entity to EnvironmentResponse.
@@ -93,8 +105,17 @@ func EnvironmentFromEntity(e *environmentdom.Environment) EnvironmentResponse {
 		LastActiveAt:        e.LastActiveAt,
 		ErrorMessage:        e.ErrorMessage,
 		PortsPendingRestart: e.PortsPendingRestart,
-		CreatedAt:           e.CreatedAt,
-		UpdatedAt:           e.UpdatedAt,
+		AccessMode:          e.AccessMode,
+		// Correct as-is for an "open" environment (the common case, no
+		// caller context needed); the handler overrides this for a
+		// "restricted" one once it knows which member is asking — see
+		// EnvironmentHandler.toEnvironmentResponseForCaller.
+		AccessGranted: e.AccessMode != environmentdom.AccessModeRestricted,
+		CreatedAt:     e.CreatedAt,
+		UpdatedAt:     e.UpdatedAt,
+	}
+	if resp.AccessMode == "" {
+		resp.AccessMode = environmentdom.AccessModeOpen
 	}
 	if len(e.Folders) > 0 {
 		resp.Folders = make([]EnvironmentFolderResponse, 0, len(e.Folders))
@@ -249,4 +270,35 @@ type EnvironmentDeploymentConfigResponse struct {
 	// client uses to reach any of an environment's user-added port
 	// forwards, e.g. "<port_forward_host>:<host_port>".
 	PortForwardHost string `json:"port_forward_host"`
+}
+
+// =========================================================================
+// Environment Access Grant DTOs
+// =========================================================================
+
+// EnvironmentAccessGrantResponse is one member's access grant on a
+// restricted environment.
+type EnvironmentAccessGrantResponse struct {
+	ID            uuid.UUID  `json:"id"`
+	EnvironmentID uuid.UUID  `json:"environment_id"`
+	MemberID      uuid.UUID  `json:"member_id"`
+	GrantedBy     *uuid.UUID `json:"granted_by,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// EnvironmentAccessGrantFromEntity maps an EnvironmentAccessGrant entity to its DTO.
+func EnvironmentAccessGrantFromEntity(g *environmentdom.EnvironmentAccessGrant) EnvironmentAccessGrantResponse {
+	return EnvironmentAccessGrantResponse{
+		ID:            g.ID,
+		EnvironmentID: g.EnvironmentID,
+		MemberID:      g.MemberID,
+		GrantedBy:     g.GrantedBy,
+		CreatedAt:     g.CreatedAt,
+	}
+}
+
+// AddEnvironmentAccessGrantRequest is the body for POST
+// /projects/:projectId/environments/:environmentId/access-grants.
+type AddEnvironmentAccessGrantRequest struct {
+	MemberID uuid.UUID `json:"member_id" binding:"required"`
 }

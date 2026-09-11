@@ -22,6 +22,13 @@ func DefaultGlobalRoles() []RoleDefinition {
 				PermissionGlobalRolesAll,
 				PermissionProjectsAll,
 				PermissionSettingsWrite,
+				// Global agents and plugins were previously left off this
+				// list — an ADMIN got 403s managing either, masked in
+				// practice only for accounts whose legacy role-name claim
+				// happened to also read "ADMIN" (which bypasses this table
+				// entirely via LegacyPermissionsForRole's blanket wildcard).
+				PermissionAgentsAll,
+				PermissionPluginsAll,
 			},
 		},
 		{
@@ -43,7 +50,9 @@ func DefaultProjectRoles() []RoleDefinition {
 				PermissionProjectMembersAll,
 				PermissionProjectRolesAll,
 				PermissionTasksAll,
+				PermissionProjectSettingsAll,
 				PermissionSprintsAll,
+				PermissionViewsAll,
 				PermissionDocsAll,
 				PermissionAgentsAll,
 				PermissionConversationsAll,
@@ -54,13 +63,21 @@ func DefaultProjectRoles() []RoleDefinition {
 		},
 		{
 			Name: "PROJECT_MANAGER",
+			// PermissionProjectsRead is deliberately omitted here and below —
+			// AuthzPermissionStore.ListProjectPermissions grants it to any
+			// active project member unconditionally, so listing it per-role
+			// would be redundant (see that method's doc comment). Global-
+			// scope projects.read (an admin browsing projects they aren't a
+			// member of) is unaffected — this only covers the project-scoped
+			// resolution.
 			Permissions: []Permission{
-				PermissionProjectsRead,
 				PermissionProjectsWrite,
 				PermissionProjectMembersRead,
 				PermissionProjectMembersWrite,
 				PermissionTasksAll,
+				PermissionProjectSettingsAll,
 				PermissionSprintsAll,
+				PermissionViewsAll,
 				PermissionDocsAll,
 				PermissionAgentsAll,
 				PermissionConversationsAll,
@@ -72,12 +89,30 @@ func DefaultProjectRoles() []RoleDefinition {
 		{
 			Name: "PROJECT_MEMBER",
 			Permissions: []Permission{
-				PermissionProjectsRead,
 				PermissionProjectMembersRead,
 				PermissionProjectRolesRead,
 				PermissionTasksRead,
 				PermissionTasksWrite,
+				// No ProjectSettings*Write here: redefining task
+				// types/statuses/custom fields is an Admin-level (project
+				// schema) action, not a content-editing one — mirrors the
+				// real per-project "Editor" role's grants (see
+				// projectsvc.Service.Create). No dedicated read permission
+				// exists for the schema either; PermissionTasksRead above
+				// already covers viewing it. A project owner can grant write
+				// access per-project via the role editor.
 				PermissionSprintsRead,
+				// PermissionViewsWrite is a new capability here, not a
+				// preservation: view CRUD previously required
+				// PermissionSprintsWrite, which PROJECT_MEMBER never held
+				// (only SprintsRead). Confirmed intentional — see
+				// TestDefaultProjectRoles_ProjectMemberHasNoSettingsWritePermissions'
+				// sibling assertions and 000054's own comment on this same
+				// grant — and called out explicitly here since it's a real
+				// behavior change for every existing project's members on
+				// deploy, not implied by the settings-permission split above.
+				PermissionViewsRead,
+				PermissionViewsWrite,
 				PermissionDocsRead,
 				PermissionDocsWrite,
 				PermissionAgentsRead,
@@ -97,11 +132,11 @@ func DefaultProjectRoles() []RoleDefinition {
 		{
 			Name: "PROJECT_VIEWER",
 			Permissions: []Permission{
-				PermissionProjectsRead,
 				PermissionProjectMembersRead,
 				PermissionProjectRolesRead,
 				PermissionTasksRead,
 				PermissionSprintsRead,
+				PermissionViewsRead,
 				PermissionDocsRead,
 				PermissionAgentsRead,
 				PermissionConversationsRead,

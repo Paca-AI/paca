@@ -25,6 +25,7 @@ import (
 	"github.com/Paca-AI/api/internal/platform/database"
 	"github.com/Paca-AI/api/internal/platform/logger"
 	"github.com/Paca-AI/api/internal/platform/messaging"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 	pluginrt "github.com/Paca-AI/api/internal/platform/plugin"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	"github.com/Paca-AI/api/internal/platform/storage"
@@ -324,10 +325,20 @@ func New(cfg *config.Config) (*App, error) {
 	passwordSetTokenIssuer := pluginrt.PasswordSetTokenIssuerFunc(userService.IssuePasswordSetToken)
 
 	pluginRuntime := pluginrt.NewRuntime(pluginStore, pluginrt.HostServices{
-		DB:                     sqlDB,
-		Log:                    log,
-		Publisher:              publisher,
-		HTTPClient:             &http.Client{Timeout: 30 * time.Second},
+		DB:        sqlDB,
+		Log:       log,
+		Publisher: publisher,
+		// netguard.NewSafeHTTPClient pins the dial to the exact IP validated
+		// by isAllowedFetchDomain (runtime.go), closing a DNS-rebinding gap:
+		// a plain client re-resolves DNS independently at dial time, so an
+		// answer that differs from (or changes after) the check bypasses it
+		// entirely — the same vulnerability class as GHSA-cj3q-c44j-q8p9,
+		// just a different call site. marketplace.go and installer.go
+		// already use netguard for their own clients; this one (paca.fetch,
+		// used by every installed plugin's outbound calls) was the one
+		// netguard's own package doc says it was built for but never got
+		// wired up.
+		HTTPClient:             netguard.NewSafeHTTPClient(30 * time.Second),
 		Authorizer:             authorizer,
 		Cache:                  cacheStore,
 		SettingsReader:         settingsReader,
@@ -411,7 +422,8 @@ func New(cfg *config.Config) (*App, error) {
 		WithAvatarService(attachmentService).
 		WithTaskChecker(attachmentsvc.NewTaskOwnerChecker(taskRepo))
 	environmentHandler := handler.NewEnvironmentHandler(environmentService, cfg.AIAgentInternalKey).
-		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost)
+		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
+		WithMemberRepo(projectRepo)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
 		WithAvatarService(attachmentService).
 		WithMemberRepo(projectRepo)
@@ -430,6 +442,9 @@ func New(cfg *config.Config) (*App, error) {
 		TokenManager:         tokenManager,
 		APIKeyAuth:           apiKeyService,
 		Authorizer:           authorizer,
+		AgentAccessSvc:       agentService,
+		EnvironmentAccessSvc: environmentService,
+		MemberRepo:           projectRepo,
 		Health:               handler.NewHealthHandler(),
 		Version:              handler.NewVersionHandler(cfg.Release, cacheStore, log),
 		Auth:                 handler.NewAuthHandler(authService, cookieCfg),

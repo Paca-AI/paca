@@ -12,6 +12,12 @@
 				"customFields": "自定义字段",
 				"dangerZone": "危险区域",
 				"plugins": "插件"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "您没有权限查看此标签页",
+					"description": "请项目所有者或管理员为您授予访问 {{pluginName}} 的权限。"
+				}
 			}
 		}
 	},
@@ -92,6 +98,8 @@
 		"card": {
 			"configure": "配置",
 			"delete": "删除",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "在线",
 			"acpStatusDisconnected": "离线",
 			"deleteDialog": {
@@ -111,6 +119,10 @@
 				"title": "暂无智能体",
 				"description": "添加一个 AI 智能体来自动处理任务、审查代码、编写文档等。",
 				"createFirstAgent": "创建您的第一个智能体"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -157,6 +169,7 @@
 				"mcpServers": "MCP 服务器",
 				"skills": "技能",
 				"envVars": "环境变量",
+				"access": "Access",
 				"activity": "动态"
 			},
 			"avatar": {
@@ -290,6 +303,13 @@
 					"addSkill": "添加技能"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "发表了评论",
 				"sourceType": {
@@ -318,12 +338,19 @@
 		"conversationView": {
 			"stop": "停止",
 			"notFound": "未找到对话",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "聊天会话",
 			"taskSession": "任务会话",
 			"pr": "PR",
 			"connect": "连接",
 			"conversationEnded": "此对话已结束。",
 			"textOnlyMessage": "仅支持文本消息。",
+			"agentAccessRestricted": "此代理已被限制访问。请让项目管理员授予你访问权限后再与其聊天。",
+			"environmentAccessRestricted": "此对话的环境已被限制访问。请让项目管理员授予你访问权限后再与该代理聊天。",
+			"chatNoPermission": "你没有权限在此对话中发送消息。",
 			"failed": "对话失败",
 			"noOutput": "代理未生成任何输出。",
 			"loadingOlder": "加载中…",
@@ -418,10 +445,16 @@
 			"title": "环境",
 			"subtitle": "具名的长期运行沙盒，您的智能体可以在多次对话之间连接使用",
 			"newEnvironment": "新建环境",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "暂无环境",
 				"description": "创建一个静态环境，让文件和后台进程在多次对话之间保持运行，而不是每次都使用一次性沙盒。",
 				"createFirstEnvironment": "创建您的第一个环境"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -455,7 +488,8 @@
 			"tabs": {
 				"overview": "概览",
 				"folders": "文件夹",
-				"portForwards": "端口转发"
+				"portForwards": "端口转发",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "连接",
@@ -500,6 +534,10 @@
 				"count_one": "已配置 {{count}} 个文件夹",
 				"count_other": "已配置 {{count}} 个文件夹",
 				"addFolder": "添加文件夹",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "删除文件夹失败，请重试。",
 				"empty": {
 					"title": "尚未添加文件夹",
@@ -526,6 +564,10 @@
 				"count_one": "{{count}} 个端口转发",
 				"count_other": "{{count}} 个端口转发",
 				"add": "添加端口转发",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "删除端口转发失败，请重试。",
 				"containerPort": "容器端口 {{port}}",
 				"unassigned": "尚未分配",
@@ -554,6 +596,13 @@
 					"cancel": "取消",
 					"confirm": "重启"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "将 <bastion-host> 替换为此部署配置的 SSH 堡垒机地址。",
@@ -602,6 +651,7 @@
 				"connect": "连接",
 				"notRunning": "请先启动环境再连接。",
 				"readOnly": "您没有权限在此环境中打开终端。",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "将在新的全屏标签页中打开。",
 				"pageTitle": "{{name}} — 终端",
 				"pageTitleLoading": "终端",
@@ -612,7 +662,8 @@
 				"step1Description": "注册你要用于连接的 SSH 密钥对的公钥。",
 				"step2Title": "从终端连接",
 				"step2Description": "在终端中运行以下命令：",
-				"notRunning": "请先启动环境再连接。"
+				"notRunning": "请先启动环境再连接。",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -621,6 +672,10 @@
 			"notFound": {
 				"title": "未找到文档",
 				"description": "该文档可能已被删除，或链接无效。"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "未保存",
 			"saving": "正在保存…",
@@ -659,6 +714,8 @@
 			"roleNameLabel": "角色名称",
 			"roleNamePlaceholder": "例如：PROJECT_REVIEWER",
 			"permissionsLabel": "权限",
+			"fullAccessBadge": "完全访问权限",
+			"fullAccessDescription": "此角色自动包含所有权限，包括将来添加的权限。切换下方任意权限都会将其转换为当前权限的固定集合。",
 			"enabledCount_one": "已启用 {{count}} 项",
 			"enabledCount_other": "已启用 {{count}} 项",
 			"cancel": "取消",
@@ -674,10 +731,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "查看项目",
-				"description": "查看项目详情和设置"
-			},
 			"projectsWrite": {
 				"label": "编辑项目",
 				"description": "更新项目名称、描述和设置"
@@ -702,6 +755,18 @@
 				"label": "管理角色",
 				"description": "创建、编辑和删除项目角色"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "查看任务",
 				"description": "浏览并读取项目中的任务"
@@ -717,6 +782,14 @@
 			"sprintsWrite": {
 				"label": "管理冲刺",
 				"description": "创建、更新和结束冲刺"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "查看文档",
@@ -754,6 +827,18 @@
 				"label": "连接到环境",
 				"description": "在运行中的环境内打开交互式终端会话"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "查看自动化",
 				"description": "浏览自动化及其配置"
@@ -766,13 +851,15 @@
 		"permissionGroups": {
 			"project": "项目",
 			"members": "成员",
-			"roles": "角色",
+			"settings": "Settings",
 			"tasks": "任务",
 			"sprints": "冲刺",
+			"views": "Views",
 			"documents": "文档",
 			"aiAgents": "AI 智能体",
 			"conversations": "对话",
 			"environments": "环境",
+			"annotations": "Annotations",
 			"workflows": "自动化",
 			"plugins": "插件"
 		}
@@ -831,7 +918,11 @@
 				"permissions": "权限",
 				"created": "创建时间"
 			},
-			"systemRolesNote": "系统角色是共享模板，无法编辑或删除。"
+			"systemRolesNote": "系统角色是共享模板，无法编辑或删除。",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "任务状态",
@@ -851,7 +942,11 @@
 			"default": "默认",
 			"setAsDefault": "设为默认状态",
 			"editStatus": "编辑状态",
-			"deleteStatus": "删除状态"
+			"deleteStatus": "删除状态",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "任务类型",
@@ -871,7 +966,11 @@
 			"default": "默认",
 			"setAsDefault": "设为默认类型",
 			"editType": "编辑类型",
-			"deleteType": "删除类型"
+			"deleteType": "删除类型",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "自定义字段",
@@ -942,6 +1041,10 @@
 				"confirmTextSuffix": "？此字段中存储的任务数据将丢失。此操作无法撤销。",
 				"deleteFailed": "删除字段失败，请重试。",
 				"deleteField": "删除字段"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -1037,6 +1140,10 @@
 			"removeFailed": "移除成员失败，请重试。",
 			"cancel": "取消",
 			"remove": "移除"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1091,6 +1198,10 @@
 			"ariaLabel": "任务详情",
 			"backToProject": "返回项目",
 			"projectFallback": "项目"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
 		},
 		"header": {
 			"created": "创建于 {{date}}",
@@ -1298,6 +1409,10 @@
 			"ariaLabel": "端口转发详情",
 			"backToEnvironment": "返回环境"
 		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
 		"tabs": {
 			"overview": "概览",
 			"comments": "评论"
@@ -1337,6 +1452,10 @@
 			"description": "此评论可能已被删除，或链接无效。",
 			"ariaLabel": "评论详情",
 			"backToPortForward": "返回端口转发"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
 		},
 		"header": {
 			"createdAt": "评论于 {{date}}"
@@ -1463,6 +1582,10 @@
 			"clearAll": "清除筛选"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "暂无对话",
 				"description": "当任务分配给某个智能体或有人向其发送消息时，对话将开始。"
@@ -1720,7 +1843,11 @@
 				"createFirst": "创建你的第一个自动化"
 			},
 			"noDescription": "暂无描述",
-			"updated": "更新于 {{time}}"
+			"updated": "更新于 {{time}}",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "已启用",

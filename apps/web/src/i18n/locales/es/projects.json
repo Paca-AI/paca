@@ -12,6 +12,12 @@
 				"customFields": "Campos personalizados",
 				"dangerZone": "Zona de peligro",
 				"plugins": "Plugins"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "No tienes permiso para ver esta pestaña",
+					"description": "Pide a un propietario o administrador del proyecto que te conceda acceso a {{pluginName}}."
+				}
 			}
 		}
 	},
@@ -92,6 +98,8 @@
 		"card": {
 			"configure": "Configurar",
 			"delete": "Eliminar",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "En línea",
 			"acpStatusDisconnected": "Desconectado",
 			"deleteDialog": {
@@ -111,6 +119,10 @@
 				"title": "Aún no hay agentes",
 				"description": "Añade un agente de IA para automatizar tareas, revisar código, escribir documentación y más.",
 				"createFirstAgent": "Crea tu primer agente"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -157,6 +169,7 @@
 				"mcpServers": "Servidores MCP",
 				"skills": "Skills",
 				"envVars": "Entorno",
+				"access": "Access",
 				"activity": "Actividad"
 			},
 			"avatar": {
@@ -290,6 +303,13 @@
 					"addSkill": "Añadir skill"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "comentó",
 				"sourceType": {
@@ -318,12 +338,19 @@
 		"conversationView": {
 			"stop": "Detener",
 			"notFound": "Conversación no encontrada",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "Sesión de chat",
 			"taskSession": "Sesión de tarea",
 			"pr": "PR",
 			"connect": "Conectar",
 			"conversationEnded": "Esta conversación ha finalizado.",
 			"textOnlyMessage": "Solo se admiten mensajes de texto.",
+			"agentAccessRestricted": "Este agente tiene acceso restringido. Pide a un administrador del proyecto que te conceda acceso antes de poder chatear con él.",
+			"environmentAccessRestricted": "El entorno de esta conversación tiene acceso restringido. Pide a un administrador del proyecto que te conceda acceso antes de poder chatear con este agente.",
+			"chatNoPermission": "No tienes permiso para enviar mensajes en esta conversación.",
 			"failed": "La conversación falló",
 			"noOutput": "El agente no produjo ninguna salida.",
 			"loadingOlder": "Cargando…",
@@ -418,10 +445,16 @@
 			"title": "Entornos",
 			"subtitle": "Sandboxes persistentes y con nombre a los que tus agentes pueden conectarse entre conversaciones",
 			"newEnvironment": "Nuevo entorno",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Aún no hay entornos",
 				"description": "Crea un entorno estático para mantener archivos y procesos en segundo plano activos entre conversaciones, en lugar de un sandbox desechable nuevo cada vez.",
 				"createFirstEnvironment": "Crea tu primer entorno"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -455,7 +488,8 @@
 			"tabs": {
 				"overview": "Resumen",
 				"folders": "Carpetas",
-				"portForwards": "Reenvíos de puertos"
+				"portForwards": "Reenvíos de puertos",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "Conectar",
@@ -500,6 +534,10 @@
 				"count_one": "{{count}} carpeta configurada",
 				"count_other": "{{count}} carpetas configuradas",
 				"addFolder": "Añadir carpeta",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "No se pudo eliminar la carpeta. Inténtalo de nuevo.",
 				"empty": {
 					"title": "No se han añadido carpetas",
@@ -526,6 +564,10 @@
 				"count_one": "{{count}} reenvío de puerto",
 				"count_other": "{{count}} reenvíos de puertos",
 				"add": "Añadir reenvío de puerto",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "No se pudo eliminar el reenvío de puerto. Inténtalo de nuevo.",
 				"containerPort": "Puerto del contenedor {{port}}",
 				"unassigned": "Aún no asignado",
@@ -554,6 +596,13 @@
 					"cancel": "Cancelar",
 					"confirm": "Reiniciar"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "Sustituye <bastion-host> por la dirección del bastión SSH configurado en este despliegue.",
@@ -602,6 +651,7 @@
 				"connect": "Conectar",
 				"notRunning": "Inicia el entorno antes de conectarte.",
 				"readOnly": "No tienes permiso para abrir una terminal en este entorno.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "Se abre en una nueva pestaña a pantalla completa.",
 				"pageTitle": "{{name}} — Terminal",
 				"pageTitleLoading": "Terminal",
@@ -612,7 +662,8 @@
 				"step1Description": "Registra la clave pública del par de claves SSH con el que quieras conectarte.",
 				"step2Title": "Conéctate desde tu terminal",
 				"step2Description": "Ejecuta este comando desde tu terminal:",
-				"notRunning": "Inicia el entorno antes de conectarte."
+				"notRunning": "Inicia el entorno antes de conectarte.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -621,6 +672,10 @@
 			"notFound": {
 				"title": "Documento no encontrado",
 				"description": "Este documento puede haber sido eliminado o el enlace no es válido."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "Sin guardar",
 			"saving": "Guardando…",
@@ -659,6 +714,8 @@
 			"roleNameLabel": "Nombre del rol",
 			"roleNamePlaceholder": "p. ej. PROJECT_REVIEWER",
 			"permissionsLabel": "Permisos",
+			"fullAccessBadge": "Acceso total",
+			"fullAccessDescription": "Este rol incluye automáticamente todos los permisos, incluidos los que se añadan en el futuro. Cambiar cualquier permiso a continuación lo convertirá en un conjunto fijo con los permisos actuales.",
 			"enabledCount_one": "{{count}} habilitado",
 			"enabledCount_other": "{{count}} habilitados",
 			"cancel": "Cancelar",
@@ -674,10 +731,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "Leer proyecto",
-				"description": "Ver los detalles y la configuración del proyecto"
-			},
 			"projectsWrite": {
 				"label": "Editar proyecto",
 				"description": "Actualizar el nombre, la descripción y la configuración del proyecto"
@@ -702,6 +755,18 @@
 				"label": "Gestionar roles",
 				"description": "Crear, editar y eliminar roles del proyecto"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "Ver tareas",
 				"description": "Explorar y leer las tareas del proyecto"
@@ -717,6 +782,14 @@
 			"sprintsWrite": {
 				"label": "Gestionar sprints",
 				"description": "Crear, actualizar y cerrar sprints"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "Ver documentos",
@@ -754,6 +827,18 @@
 				"label": "Conectar a entornos",
 				"description": "Abrir una sesión de terminal interactiva dentro de un entorno en ejecución"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "Ver automatización",
 				"description": "Explorar las automatizaciones y su configuración"
@@ -766,13 +851,15 @@
 		"permissionGroups": {
 			"project": "Proyecto",
 			"members": "Miembros",
-			"roles": "Roles",
+			"settings": "Settings",
 			"tasks": "Tareas",
 			"sprints": "Sprints",
+			"views": "Views",
 			"documents": "Documentos",
 			"aiAgents": "Agentes de IA",
 			"conversations": "Conversaciones",
 			"environments": "Entornos",
+			"annotations": "Annotations",
 			"workflows": "Automatización",
 			"plugins": "Plugins"
 		}
@@ -831,7 +918,11 @@
 				"permissions": "Permisos",
 				"created": "Creado"
 			},
-			"systemRolesNote": "Los roles del sistema son plantillas compartidas y no se pueden editar ni eliminar."
+			"systemRolesNote": "Los roles del sistema son plantillas compartidas y no se pueden editar ni eliminar.",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "Estados de tarea",
@@ -851,7 +942,11 @@
 			"default": "Predeterminado",
 			"setAsDefault": "Establecer como estado predeterminado",
 			"editStatus": "Editar estado",
-			"deleteStatus": "Eliminar estado"
+			"deleteStatus": "Eliminar estado",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "Tipos de tarea",
@@ -871,7 +966,11 @@
 			"default": "Predeterminado",
 			"setAsDefault": "Establecer como tipo predeterminado",
 			"editType": "Editar tipo",
-			"deleteType": "Eliminar tipo"
+			"deleteType": "Eliminar tipo",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "Campos personalizados",
@@ -942,6 +1041,10 @@
 				"confirmTextSuffix": "? Los datos de tareas almacenados en este campo se perderán. Esta acción no se puede deshacer.",
 				"deleteFailed": "No se pudo eliminar el campo. Inténtalo de nuevo.",
 				"deleteField": "Eliminar campo"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -1037,6 +1140,10 @@
 			"removeFailed": "No se pudo eliminar al miembro. Inténtalo de nuevo.",
 			"cancel": "Cancelar",
 			"remove": "Eliminar"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1091,6 +1198,10 @@
 			"ariaLabel": "Detalle de tarea",
 			"backToProject": "Volver al proyecto",
 			"projectFallback": "Proyecto"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
 		},
 		"header": {
 			"created": "Creada el {{date}}",
@@ -1298,6 +1409,10 @@
 			"ariaLabel": "Detalle del reenvío de puerto",
 			"backToEnvironment": "Volver al entorno"
 		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
 		"tabs": {
 			"overview": "Resumen",
 			"comments": "Comentarios"
@@ -1337,6 +1452,10 @@
 			"description": "Este comentario pudo haber sido eliminado o el enlace no es válido.",
 			"ariaLabel": "Detalle del comentario",
 			"backToPortForward": "Volver al reenvío de puerto"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
 		},
 		"header": {
 			"createdAt": "Comentado el {{date}}"
@@ -1463,6 +1582,10 @@
 			"clearAll": "Borrar filtros"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "Aún no hay conversaciones",
 				"description": "Las conversaciones comienzan cuando se asigna una tarea a un agente o alguien le envía un mensaje."
@@ -1720,7 +1843,11 @@
 				"createFirst": "Crea tu primera automatización"
 			},
 			"noDescription": "Sin descripción",
-			"updated": "Actualizado {{time}}"
+			"updated": "Actualizado {{time}}",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "Activo",

@@ -453,6 +453,12 @@ func (s *Service) UpdateEnvironment(ctx context.Context, projectID, environmentI
 		}
 		env.IdleTimeoutMinutes = v
 	}
+	if in.AccessMode != nil {
+		if *in.AccessMode != environmentdom.AccessModeOpen && *in.AccessMode != environmentdom.AccessModeRestricted {
+			return nil, environmentdom.ErrEnvironmentAccessModeInvalid
+		}
+		env.AccessMode = *in.AccessMode
+	}
 	env.UpdatedAt = time.Now()
 	if err := s.repo.UpdateEnvironment(ctx, env); err != nil {
 		return nil, err
@@ -1149,6 +1155,77 @@ func (s *Service) syncSSHKeys(ctx context.Context, env *environmentdom.Environme
 	}
 	_ = s.callInternal(ctx, s.httpClient, http.MethodPost, "/internal/environments/"+env.ID.String()+"/ssh-keys/sync",
 		internalBackendRefRequest{BackendRef: *env.BackendRef}, nil)
+}
+
+// -------------------------------------------------------------------------
+// Access grants — see environmentdom.AccessGrantService's doc comment.
+// -------------------------------------------------------------------------
+
+// HasEnvironmentUsageAccess reports whether memberID may use environmentID
+// — see environmentdom.AccessGrantService.HasEnvironmentUsageAccess.
+func (s *Service) HasEnvironmentUsageAccess(ctx context.Context, projectID, environmentID, memberID uuid.UUID) (bool, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return false, err
+	}
+	return s.hasEnvironmentUsageAccess(ctx, env, memberID)
+}
+
+// hasEnvironmentUsageAccess is the internal check reused wherever the
+// caller already has the *Environment in hand (avoids a redundant
+// FindVisibleEnvironmentInProject round-trip).
+func (s *Service) hasEnvironmentUsageAccess(ctx context.Context, env *environmentdom.Environment, memberID uuid.UUID) (bool, error) {
+	if env.AccessMode != environmentdom.AccessModeRestricted {
+		return true, nil
+	}
+	return s.repo.HasEnvironmentAccessGrant(ctx, env.ID, memberID)
+}
+
+// ListEnvironmentAccessGrants returns every member explicitly granted
+// access to a restricted environment (regardless of its current
+// access_mode — see the repository method's doc comment).
+func (s *Service) ListEnvironmentAccessGrants(ctx context.Context, projectID, environmentID uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ListEnvironmentAccessGrants(ctx, env.ID)
+}
+
+// AddEnvironmentAccessGrant grants memberID access to a restricted
+// environment.
+func (s *Service) AddEnvironmentAccessGrant(ctx context.Context, projectID, environmentID, memberID uuid.UUID, grantedBy *uuid.UUID) (*environmentdom.EnvironmentAccessGrant, error) {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	g := &environmentdom.EnvironmentAccessGrant{
+		ID:            uuid.New(),
+		EnvironmentID: env.ID,
+		MemberID:      memberID,
+		GrantedBy:     grantedBy,
+		CreatedAt:     time.Now(),
+	}
+	if err := s.repo.AddEnvironmentAccessGrant(ctx, g); err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+// RemoveEnvironmentAccessGrant revokes memberID's access to a restricted
+// environment. A no-op if memberID had no grant.
+func (s *Service) RemoveEnvironmentAccessGrant(ctx context.Context, projectID, environmentID, memberID uuid.UUID) error {
+	env, err := s.repo.FindVisibleEnvironmentInProject(ctx, projectID, environmentID)
+	if err != nil {
+		return err
+	}
+	return s.repo.RemoveEnvironmentAccessGrant(ctx, env.ID, memberID)
+}
+
+// ListGrantedEnvironmentIDsForMember returns every restricted environment
+// memberID currently holds a grant for.
+func (s *Service) ListGrantedEnvironmentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	return s.repo.ListGrantedEnvironmentIDsForMember(ctx, memberID)
 }
 
 // -------------------------------------------------------------------------

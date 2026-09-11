@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import { Check, Edit2, Loader2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { ColorSwatchPicker } from "@/components/ui/color-swatch-picker";
 import {
@@ -25,7 +26,12 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isForbiddenError,
+} from "@/lib/api-error";
 import {
 	type CustomFieldDefinition,
 	type CustomFieldOption,
@@ -764,9 +770,26 @@ export function CustomFieldsSettings({
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { data: fields = [], isLoading } = useQuery(
-		customFieldsQueryOptions(projectId),
-	);
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
+	// No dedicated project.settings.custom_fields.read permission — viewing
+	// the field definitions is implied by tasks.read, same as viewing the
+	// tasks whose values reference them (see authz.
+	// PermissionProjectSettingsTaskTypesWrite's doc comment on the Go side).
+	const canRead = hasProjectPermission("tasks.read");
+	const {
+		data: fields = [],
+		isLoading: isDataLoading,
+		isError,
+		error,
+	} = useQuery({ ...customFieldsQueryOptions(projectId), enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the section shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editField, setEditField] = useState<CustomFieldDefinition | null>(
 		null,
@@ -799,7 +822,12 @@ export function CustomFieldsSettings({
 				)}
 			</div>
 
-			{isLoading ? (
+			{noPermission ? (
+				<NoPermissionState
+					title={t("settings.customFields.noPermission.title")}
+					description={t("settings.customFields.noPermission.description")}
+				/>
+			) : isLoading ? (
 				<div className="rounded-xl border overflow-hidden mt-4">
 					{["cf1", "cf2", "cf3"].map((k) => (
 						<div

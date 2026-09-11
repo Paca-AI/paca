@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { Users } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { DeleteUserDialog } from "@/components/admin/users/DeleteUserDialog";
 import { ResetPasswordDialog } from "@/components/admin/users/ResetPasswordDialog";
@@ -9,11 +11,11 @@ import { UsersHeader } from "@/components/admin/users/UsersHeader";
 import {
 	EmptyUsersState,
 	UsersErrorState,
-	UsersNoPermissionState,
 } from "@/components/admin/users/UsersStates";
 import { UsersStats } from "@/components/admin/users/UsersStats";
 import { UsersTable } from "@/components/admin/users/UsersTable";
 import { UsersTableSkeleton } from "@/components/admin/users/UsersTableSkeleton";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	myPermissionsQueryOptions,
@@ -42,7 +44,8 @@ export const Route = createFileRoute("/_authenticated/admin/users/")({
 });
 
 function UsersManagementPage() {
-	const { hasPermission } = usePermissions();
+	const { t } = useTranslation("admin");
+	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canRead = hasPermission("users.read");
 	const canWrite = hasPermission("users.write");
 
@@ -51,9 +54,14 @@ function UsersManagementPage() {
 
 	const {
 		data: pagedUsers,
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 	} = useQuery({ ...usersQueryOptions(page, pageSize), enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — fold isPermissionsLoading into isLoading (and
+	// guard the noPermission check below) so the page shows the skeleton
+	// instead of flashing NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
 
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 
@@ -83,8 +91,12 @@ function UsersManagementPage() {
 				/>
 			)}
 
-			{!canRead ? (
-				<UsersNoPermissionState />
+			{!isPermissionsLoading && !canRead ? (
+				<NoPermissionState
+					icon={Users}
+					title={t("users.noPermission.title")}
+					description={t("users.noPermission.description")}
+				/>
 			) : isLoading ? (
 				<UsersTableSkeleton />
 			) : isError ? (

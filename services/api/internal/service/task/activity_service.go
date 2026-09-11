@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -188,7 +189,15 @@ func (s *ActivitySvc) AddComment(ctx context.Context, in taskdom.AddCommentInput
 						if agentMember.ID == member.ID {
 							continue
 						}
-						conv, _ := s.agentTrigger.TriggerCommentMention(ctx, in.ProjectID, *agentMember.AgentID, in.TaskID, a.ID, member.ID, commentText)
+						conv, err := s.agentTrigger.TriggerCommentMention(ctx, in.ProjectID, *agentMember.AgentID, in.TaskID, a.ID, member.ID, commentText)
+						if err != nil {
+							// Comment posting itself still succeeds either way — this is
+							// visibility only. Without it, a restricted-agent denial here
+							// (member.ID holds no grant for a restricted agentMember.AgentID)
+							// is silently indistinguishable from the mention just doing
+							// nothing.
+							slog.WarnContext(ctx, "comment mention trigger failed", "error", err, "project_id", in.ProjectID, "agent_id", *agentMember.AgentID, "task_id", in.TaskID)
+						}
 						if conv != nil {
 							content, _ := json.Marshal(map[string]any{
 								"conversation_id": conv.ID.String(),

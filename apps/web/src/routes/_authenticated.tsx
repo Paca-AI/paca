@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	CatchBoundary,
 	createFileRoute,
 	Outlet,
 	redirect,
@@ -9,6 +10,7 @@ import { lazy, Suspense, useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import { RouteErrorComponent } from "@/components/route-error-boundary";
 import {
 	SidebarInset,
 	SidebarProvider,
@@ -145,7 +147,21 @@ function AuthenticatedLayout() {
 							)}
 						</header>
 						<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-							<Outlet />
+							{/* Wraps only the routed content, not AppSidebar/header above —
+							    a plain `errorComponent` on this route (or root's own, which
+							    this falls back to today) would catch a descendant's failure
+							    by replacing this route's *entire* rendered output, sidebar
+							    included, since a route's errorComponent boundary wraps its
+							    own component, not just its own <Outlet/>. Reset on pathname
+							    change so navigating to a different page — including via the
+							    sidebar itself, still rendered outside this boundary — gets a
+							    fresh attempt instead of showing the previous page's error. */}
+							<CatchBoundary
+								getResetKey={() => pathname}
+								errorComponent={RouteErrorComponent}
+							>
+								<Outlet />
+							</CatchBoundary>
 						</div>
 					</SidebarInset>
 				</SidebarProvider>

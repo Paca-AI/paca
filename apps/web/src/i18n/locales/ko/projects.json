@@ -12,6 +12,12 @@
 				"customFields": "커스텀 필드",
 				"dangerZone": "위험 구역",
 				"plugins": "플러그인"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "이 탭을 볼 권한이 없습니다",
+					"description": "{{pluginName}}에 대한 액세스 권한을 프로젝트 소유자 또는 관리자에게 요청하세요."
+				}
 			}
 		}
 	},
@@ -92,6 +98,8 @@
 		"card": {
 			"configure": "구성",
 			"delete": "삭제",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "온라인",
 			"acpStatusDisconnected": "오프라인",
 			"deleteDialog": {
@@ -111,6 +119,10 @@
 				"title": "아직 에이전트가 없습니다",
 				"description": "작업 자동화, 코드 리뷰, 문서 작성 등을 위해 AI 에이전트를 추가하세요.",
 				"createFirstAgent": "첫 에이전트 만들기"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -157,6 +169,7 @@
 				"mcpServers": "MCP 서버",
 				"skills": "스킬",
 				"envVars": "환경 변수",
+				"access": "Access",
 				"activity": "활동"
 			},
 			"avatar": {
@@ -290,6 +303,13 @@
 					"addSkill": "스킬 추가"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "댓글을 남겼습니다",
 				"sourceType": {
@@ -318,12 +338,19 @@
 		"conversationView": {
 			"stop": "중지",
 			"notFound": "대화를 찾을 수 없습니다",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "채팅 세션",
 			"taskSession": "작업 세션",
 			"pr": "PR",
 			"connect": "연결",
 			"conversationEnded": "이 대화가 종료되었습니다.",
 			"textOnlyMessage": "텍스트 메시지만 지원됩니다.",
+			"agentAccessRestricted": "이 에이전트는 액세스가 제한되어 있습니다. 채팅하려면 프로젝트 관리자에게 액세스 권한을 요청하세요.",
+			"environmentAccessRestricted": "이 대화의 환경은 액세스가 제한되어 있습니다. 이 에이전트와 채팅하려면 프로젝트 관리자에게 액세스 권한을 요청하세요.",
+			"chatNoPermission": "이 대화에서 메시지를 보낼 권한이 없습니다.",
 			"failed": "대화가 실패했습니다",
 			"noOutput": "에이전트가 출력을 생성하지 않았습니다.",
 			"loadingOlder": "불러오는 중…",
@@ -418,10 +445,16 @@
 			"title": "환경",
 			"subtitle": "여러 대화에 걸쳐 에이전트가 연결할 수 있는 이름이 지정된 장기 실행 샌드박스",
 			"newEnvironment": "새 환경",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "아직 환경이 없습니다",
 				"description": "매번 새로 만드는 일회용 샌드박스 대신, 대화 간에 파일과 백그라운드 프로세스를 유지하는 정적 환경을 만드세요.",
 				"createFirstEnvironment": "첫 환경 만들기"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -455,7 +488,8 @@
 			"tabs": {
 				"overview": "개요",
 				"folders": "폴더",
-				"portForwards": "포트 포워드"
+				"portForwards": "포트 포워드",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "연결",
@@ -500,6 +534,10 @@
 				"count_one": "폴더 {{count}}개 구성됨",
 				"count_other": "폴더 {{count}}개 구성됨",
 				"addFolder": "폴더 추가",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "폴더를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"empty": {
 					"title": "추가된 폴더가 없습니다",
@@ -526,6 +564,10 @@
 				"count_one": "포트 포워드 {{count}}개",
 				"count_other": "포트 포워드 {{count}}개",
 				"add": "포트 포워드 추가",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "포트 포워드를 삭제하지 못했습니다. 다시 시도해 주세요.",
 				"containerPort": "컨테이너 포트 {{port}}",
 				"unassigned": "아직 할당되지 않음",
@@ -554,6 +596,13 @@
 					"cancel": "취소",
 					"confirm": "재시작"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "<bastion-host>를 이 배포에 구성된 SSH 배스천 주소로 바꾸세요.",
@@ -602,6 +651,7 @@
 				"connect": "연결",
 				"notRunning": "연결하기 전에 환경을 시작하세요.",
 				"readOnly": "이 환경에서 터미널을 열 권한이 없습니다.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "새 전체 화면 탭에서 열립니다.",
 				"pageTitle": "{{name}} — 터미널",
 				"pageTitleLoading": "터미널",
@@ -612,7 +662,8 @@
 				"step1Description": "연결할 SSH 키 쌍의 공개 키를 등록하세요.",
 				"step2Title": "터미널에서 연결",
 				"step2Description": "터미널에서 다음 명령을 실행하세요:",
-				"notRunning": "연결하기 전에 환경을 시작하세요."
+				"notRunning": "연결하기 전에 환경을 시작하세요.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -621,6 +672,10 @@
 			"notFound": {
 				"title": "문서를 찾을 수 없습니다",
 				"description": "이 문서는 삭제되었거나 링크가 잘못되었을 수 있습니다."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "저장되지 않음",
 			"saving": "저장 중…",
@@ -659,6 +714,8 @@
 			"roleNameLabel": "역할 이름",
 			"roleNamePlaceholder": "예: PROJECT_REVIEWER",
 			"permissionsLabel": "권한",
+			"fullAccessBadge": "전체 액세스",
+			"fullAccessDescription": "이 역할에는 향후 추가되는 권한을 포함하여 모든 권한이 자동으로 포함됩니다. 아래에서 하나라도 전환하면 현재 권한의 고정 세트로 변환됩니다.",
 			"enabledCount_one": "{{count}}개 활성화됨",
 			"enabledCount_other": "{{count}}개 활성화됨",
 			"cancel": "취소",
@@ -674,10 +731,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "프로젝트 조회",
-				"description": "프로젝트 세부정보 및 설정 보기"
-			},
 			"projectsWrite": {
 				"label": "프로젝트 수정",
 				"description": "프로젝트 이름, 설명, 설정 업데이트"
@@ -702,6 +755,18 @@
 				"label": "역할 관리",
 				"description": "프로젝트 역할 생성, 수정, 삭제"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "작업 보기",
 				"description": "프로젝트의 작업 탐색 및 읽기"
@@ -717,6 +782,14 @@
 			"sprintsWrite": {
 				"label": "스프린트 관리",
 				"description": "스프린트 생성, 업데이트, 종료"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "문서 보기",
@@ -754,6 +827,18 @@
 				"label": "환경에 연결",
 				"description": "실행 중인 환경 내에서 대화형 터미널 세션 열기"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "자동화 보기",
 				"description": "자동화 및 해당 설정 조회"
@@ -766,13 +851,15 @@
 		"permissionGroups": {
 			"project": "프로젝트",
 			"members": "멤버",
-			"roles": "역할",
+			"settings": "Settings",
 			"tasks": "작업",
 			"sprints": "스프린트",
+			"views": "Views",
 			"documents": "문서",
 			"aiAgents": "AI 에이전트",
 			"conversations": "대화",
 			"environments": "환경",
+			"annotations": "Annotations",
 			"workflows": "자동화",
 			"plugins": "플러그인"
 		}
@@ -831,7 +918,11 @@
 				"permissions": "권한",
 				"created": "생성일"
 			},
-			"systemRolesNote": "시스템 역할은 공유 템플릿이며 수정하거나 삭제할 수 없습니다."
+			"systemRolesNote": "시스템 역할은 공유 템플릿이며 수정하거나 삭제할 수 없습니다.",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "작업 상태",
@@ -851,7 +942,11 @@
 			"default": "기본값",
 			"setAsDefault": "기본 상태로 설정",
 			"editStatus": "상태 수정",
-			"deleteStatus": "상태 삭제"
+			"deleteStatus": "상태 삭제",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "작업 유형",
@@ -871,7 +966,11 @@
 			"default": "기본값",
 			"setAsDefault": "기본 유형으로 설정",
 			"editType": "유형 수정",
-			"deleteType": "유형 삭제"
+			"deleteType": "유형 삭제",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "커스텀 필드",
@@ -942,6 +1041,10 @@
 				"confirmTextSuffix": "? 이 필드에 저장된 작업 데이터가 사라집니다. 이 작업은 되돌릴 수 없습니다.",
 				"deleteFailed": "필드 삭제에 실패했습니다. 다시 시도해 주세요.",
 				"deleteField": "필드 삭제"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -1037,6 +1140,10 @@
 			"removeFailed": "멤버 제거에 실패했습니다. 다시 시도해 주세요.",
 			"cancel": "취소",
 			"remove": "제거"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1091,6 +1198,10 @@
 			"ariaLabel": "작업 상세",
 			"backToProject": "프로젝트로 돌아가기",
 			"projectFallback": "프로젝트"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
 		},
 		"header": {
 			"created": "{{date}}에 생성됨",
@@ -1298,6 +1409,10 @@
 			"ariaLabel": "포트 포워드 세부 정보",
 			"backToEnvironment": "환경으로 돌아가기"
 		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
 		"tabs": {
 			"overview": "개요",
 			"comments": "댓글"
@@ -1337,6 +1452,10 @@
 			"description": "이 댓글이 삭제되었거나 링크가 유효하지 않습니다.",
 			"ariaLabel": "댓글 세부 정보",
 			"backToPortForward": "포트 포워드로 돌아가기"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
 		},
 		"header": {
 			"createdAt": "{{date}}에 댓글 작성됨"
@@ -1463,6 +1582,10 @@
 			"clearAll": "필터 초기화"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "아직 대화가 없습니다",
 				"description": "에이전트에게 작업이 배정되거나 누군가 메시지를 보내면 대화가 시작됩니다."
@@ -1720,7 +1843,11 @@
 				"createFirst": "첫 자동화 만들기"
 			},
 			"noDescription": "설명 없음",
-			"updated": "{{time}}에 업데이트됨"
+			"updated": "{{time}}에 업데이트됨",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "활성",

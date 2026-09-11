@@ -137,3 +137,28 @@ func TestGlobalRoleRepository_ReplaceUserRoles_UserNotFound(t *testing.T) {
 		t.Fatalf("expected user ErrNotFound, got %v", err)
 	}
 }
+
+// TestIsUniqueViolation_NilErrorDoesNotPanic guards a real regression: a
+// caller that forgets the outer `if err != nil` guard (every existing call
+// site has one, but AgentRepository.AddAgentAccessGrant briefly didn't)
+// passes a nil err straight through on the success path. A nil `error`
+// interface's Error() method panics (invalid memory address / nil pointer
+// dereference) rather than returning "", so this must be checked explicitly
+// rather than relying on err.Error() to behave like a typed nil would.
+func TestIsUniqueViolation_NilErrorDoesNotPanic(t *testing.T) {
+	if isUniqueViolation(nil) {
+		t.Fatal("expected false for a nil error")
+	}
+}
+
+func TestIsUniqueViolation_MatchesUniqueConstraintMessage(t *testing.T) {
+	if !isUniqueViolation(errors.New(`pq: duplicate key value violates unique constraint "uq_agent_access_grants_agent_member"`)) {
+		t.Fatal("expected true for a unique-constraint error message")
+	}
+}
+
+func TestIsUniqueViolation_FalseForUnrelatedError(t *testing.T) {
+	if isUniqueViolation(errors.New("connection refused")) {
+		t.Fatal("expected false for an unrelated error")
+	}
+}

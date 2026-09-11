@@ -51,3 +51,19 @@ var (
 	ErrPortForwardContainerPortInvalid = errors.New("container port must be between 1 and 65535")
 	ErrPortForwardContainerPortTaken   = errors.New("a port forward for this container port already exists on this environment")
 )
+
+// Access grant errors
+var (
+	// ErrEnvironmentAccessModeInvalid is returned when access_mode is set to
+	// anything other than AccessModeOpen/AccessModeRestricted.
+	ErrEnvironmentAccessModeInvalid = errors.New(`access_mode must be "open" or "restricted"`)
+	// ErrEnvironmentAccessGrantExists is returned when a member already has
+	// a grant for this environment.
+	ErrEnvironmentAccessGrantExists = errors.New("this member already has access to this environment")
+	// ErrEnvironmentAccessRestricted is returned by usage actions (browse,
+	// SSH keys, port forwards, terminal) on a restricted environment the
+	// caller has no grant for — distinct from ErrEnvironmentNotFound: a
+	// restricted environment stays visible, just not usable, so callers
+	// must map this to 403, not 404.
+	ErrEnvironmentAccessRestricted = errors.New("this environment is restricted — you don't have access to use it")
+)

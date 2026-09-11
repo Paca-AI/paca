@@ -1,4 +1,6 @@
 {
 	"pluginLoadFailedPrefix": "プラグイン",
-	"pluginLoadFailedSuffix": "の読み込みに失敗しました"
+	"pluginLoadFailedSuffix": "の読み込みに失敗しました",
+	"pluginNoPermissionTitle": "このページを表示する権限がありません",
+	"pluginNoPermissionDescription": "{{pluginName}}へのアクセス権限をプロジェクトのオーナーまたは管理者に依頼してください。"
 }

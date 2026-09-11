@@ -22,7 +22,11 @@ export const Route = createFileRoute("/_authenticated/admin/plugins/")({
 			.fetchQuery(myPermissionsQueryOptions)
 			.catch(() => [] as string[]);
 
-		if (!hasPermission(permissions, "users.write")) {
+		// plugins.write replaced users.write as a rough "is this someone
+		// important" proxy once it got its own dedicated permission — see
+		// authz.PermissionPluginsRead's doc comment on the Go side. This
+		// gate was never updated when that happened.
+		if (!hasPermission(permissions, "plugins.write")) {
 			throw redirect({ to: "/home" });
 		}
 	},

@@ -259,7 +259,17 @@ func normalizeUUIDs(ids []uuid.UUID) []string {
 	return out
 }
 
+// isUniqueViolation reports whether err represents a unique-constraint
+// violation. Safe to call with a nil err (returns false) — every existing
+// call site already guards with `if err != nil` first, but a nil err.Error()
+// call panics (nil interface, not a nil *pgconn.PgError) rather than
+// returning a zero value the way a typed nil would, so this guard is
+// deliberately redundant defense-in-depth against a caller that forgets the
+// outer check, not just belt-and-suspenders for its own sake.
 func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique")
 }

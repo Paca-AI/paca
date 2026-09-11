@@ -88,6 +88,11 @@ type mockAgentRepo struct {
 	createMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
 	updateMCPServer                      func(ctx context.Context, server *agentdom.AgentMCPServer) error
 	deleteMCPServer                      func(ctx context.Context, id uuid.UUID) error
+	listAgentAccessGrants                func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error)
+	addAgentAccessGrant                  func(ctx context.Context, g *agentdom.AgentAccessGrant) error
+	removeAgentAccessGrant               func(ctx context.Context, agentID, memberID uuid.UUID) error
+	hasAgentAccessGrant                  func(ctx context.Context, agentID, memberID uuid.UUID) (bool, error)
+	listGrantedAgentIDsForMember         func(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 	listSkills                           func(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error)
 	findSkillByID                        func(ctx context.Context, id uuid.UUID) (*agentdom.AgentSkill, error)
 	createSkill                          func(ctx context.Context, skill *agentdom.AgentSkill) error
@@ -140,7 +145,13 @@ func (m *mockAgentRepo) FindAgentByID(ctx context.Context, id uuid.UUID) (*agent
 	if m.findAgentByID != nil {
 		return m.findAgentByID(ctx, id)
 	}
-	return nil, agentdom.ErrAgentNotFound
+	// Default to a plain open agent rather than erroring: most tests using
+	// this mock don't care about the backing agent at all (they're testing
+	// something else entirely, e.g. conversation access), and an
+	// unconfigured find shouldn't fail a test that never meant to exercise
+	// "agent not found" in the first place. Tests that do care configure
+	// findAgentByID explicitly (see the many that already do).
+	return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeOpen}, nil
 }
 
 func (m *mockAgentRepo) FindVisibleAgentInProject(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error) {
@@ -306,6 +317,41 @@ func (m *mockAgentRepo) DeleteMCPServer(ctx context.Context, id uuid.UUID) error
 		return m.deleteMCPServer(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockAgentRepo) ListAgentAccessGrants(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentAccessGrant, error) {
+	if m.listAgentAccessGrants != nil {
+		return m.listAgentAccessGrants(ctx, agentID)
+	}
+	return nil, nil
+}
+
+func (m *mockAgentRepo) AddAgentAccessGrant(ctx context.Context, g *agentdom.AgentAccessGrant) error {
+	if m.addAgentAccessGrant != nil {
+		return m.addAgentAccessGrant(ctx, g)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) RemoveAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) error {
+	if m.removeAgentAccessGrant != nil {
+		return m.removeAgentAccessGrant(ctx, agentID, memberID)
+	}
+	return nil
+}
+
+func (m *mockAgentRepo) HasAgentAccessGrant(ctx context.Context, agentID, memberID uuid.UUID) (bool, error) {
+	if m.hasAgentAccessGrant != nil {
+		return m.hasAgentAccessGrant(ctx, agentID, memberID)
+	}
+	return false, nil
+}
+
+func (m *mockAgentRepo) ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	if m.listGrantedAgentIDsForMember != nil {
+		return m.listGrantedAgentIDsForMember(ctx, memberID)
+	}
+	return nil, nil
 }
 
 func (m *mockAgentRepo) ListSkills(ctx context.Context, agentID uuid.UUID) ([]*agentdom.AgentSkill, error) {
@@ -1199,6 +1245,36 @@ func TestStartGlobalChatSession_Success(t *testing.T) {
 	}
 }
 
+// TestStartGlobalChatSession_RestrictedAgent_Rejected pins
+// requireGlobalAgentOpen's enforcement on the global chat surface: a global
+// agent set to AccessModeRestricted has no project context for a per-member
+// grant lookup, so it must fail closed for every caller rather than being
+// silently reachable — global chat has no project-scoped
+// hasAgentUsageAccess gate of its own to fall back on.
+func TestStartGlobalChatSession_RestrictedAgent_Rejected(t *testing.T) {
+	agentID := uuid.New()
+	actorUserID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createChatSession: func(_ context.Context, _ *agentdom.AgentChatSession) error {
+			t.Fatal("createChatSession must not be called for a restricted global agent")
+			return nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted global agent")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, _, err := svc.StartGlobalChatSession(context.Background(), agentID, actorUserID, "hello", nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
 func TestListMCPServers_Success(t *testing.T) {
 	agentID := uuid.New()
 	servers := []*agentdom.AgentMCPServer{
@@ -1457,6 +1533,79 @@ func TestGetConversation_WrongProject(t *testing.T) {
 	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
 }
 
+// TestGetConversation_RestrictedAgent_GrantedMember_Allowed and
+// TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected cover
+// authorizeConversationAccess's unconditional hasAgentUsageAccess check for
+// the ordinary human-caller path (GetConversation, StartChatSession,
+// ListChatSessions, SendChatMessage all share this same check) — a
+// project-shared conversation with a restricted agent must still stay
+// hidden from a member holding no explicit grant, even though the "no
+// bypass" policy is really aimed at *starting* new usage; reading an
+// existing project-shared conversation is usage too.
+func TestGetConversation_RestrictedAgent_GrantedMember_Allowed(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		Audience:  agentdom.AudienceProjectShared,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, mID uuid.UUID) (bool, error) {
+			return mID == memberID, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, conversationID, result.ID)
+}
+
+func TestGetConversation_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	conversationID := uuid.New()
+	memberID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:        conversationID,
+		AgentID:   agentID,
+		ProjectID: projectID,
+		Audience:  agentdom.AudienceProjectShared,
+		Status:    "running",
+	}
+
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.GetConversation(context.Background(), projectID, conversationID, memberID)
+
+	assert.Error(t, err, "a project-shared conversation with a restricted agent must stay hidden from a non-granted member")
+	assert.ErrorIs(t, err, agentdom.ErrConversationNotFound)
+}
+
 func TestGetConversation_OwnerPrivate_OwnerAllowed(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -1703,6 +1852,52 @@ func TestGetConversationForAgent_Project_SharedAudience_Allowed(t *testing.T) {
 				return target, nil
 			}
 			return current, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	result, err := svc.GetConversationForAgent(context.Background(), targetID, agentID, currentID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, targetID, result.ID)
+}
+
+// TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed
+// is the regression case for a bug in hasAgentUsageAccess found while
+// tracing the MCP server's read_conversation tool (backed by this method)
+// end to end: current has no ChatSessionID (a task-assigned or
+// automation-triggered run — TriggerTaskAssigned/TriggerDirectMessage never
+// check access grants, since there's no human actor to check one against),
+// so authorizeAgentConversationRead falls through to
+// authorizeConversationAccess(ctx, target, uuid.Nil) — a pre-existing
+// sentinel meaning "no specific member, shared audience only", unrelated to
+// access grants. Before the fix, hasAgentUsageAccess's new unconditional
+// check treated that same uuid.Nil as "member not found" and rejected the
+// read outright, so setting an agent restricted silently broke its own
+// task-assigned/automation runs from reading their own project-shared
+// history — even though nothing about "restrict which humans may use this
+// agent" was meant to affect the agent's own system-triggered runs.
+// hasAgentAccessGrant is stubbed to always deny, proving the read succeeds
+// via the nil-actor short-circuit rather than by coincidentally matching a
+// grant.
+func TestGetConversationForAgent_RestrictedAgent_SystemTriggeredCurrent_SharedAudience_Allowed(t *testing.T) {
+	agentID := uuid.New()
+	projectID := uuid.New()
+	targetID, currentID := uuid.New(), uuid.New()
+	target := &agentdom.AgentConversation{ID: targetID, AgentID: agentID, ProjectID: projectID, Audience: agentdom.AudienceProjectShared}
+	current := &agentdom.AgentConversation{ID: currentID, AgentID: agentID, ProjectID: projectID, ChatSessionID: nil}
+	repo := &mockAgentRepo{
+		findConversationByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentConversation, error) {
+			if id == targetID {
+				return target, nil
+			}
+			return current, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		hasAgentAccessGrant: func(_ context.Context, _, _ uuid.UUID) (bool, error) {
+			return false, nil
 		},
 	}
 	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
@@ -2605,6 +2800,43 @@ func TestSendGlobalConversationMessage_ACPResumeBlockedAtCapacity(t *testing.T) 
 	assert.False(t, claimCalled, "must not claim/dispatch before the capacity check runs")
 }
 
+// TestSendGlobalConversationMessage_RestrictedAgent_Rejected closes a gap
+// pullfrog found in requireGlobalAgentOpen's original placement: gating only
+// Start/List/SendGlobalChatMessage left an existing global conversation's
+// resume path (the ACP branch here) able to keep a since-restricted agent
+// executing indefinitely, contradicting requireGlobalAgentOpen's own
+// "fails every global-chat caller closed, full stop" contract.
+func TestSendGlobalConversationMessage_RestrictedAgent_Rejected(t *testing.T) {
+	conversationID := uuid.New()
+	actorUserID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &actorUserID,
+		TriggerType: "chat_message",
+		Status:      "finished",
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, AccessMode: agentdom.AccessModeRestricted, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "keep going", actorUserID, nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+	assert.False(t, claimCalled, "a restricted agent's existing global conversation must not be resumed")
+}
+
 func TestStopConversation_Success(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -2926,6 +3158,34 @@ func TestTriggerDescriptionWrite_WrongProject_ReturnsNotFound(t *testing.T) {
 	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
 
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected is
+// TriggerDescriptionWrite's mirror of the sibling
+// Test{TriggerTaskAssigned,TriggerDirectMessage,TriggerCommentMention}_RestrictedAgent_NonGrantedMember_Rejected
+// tests — pullfrog's follow-up review noted this fourth
+// authorizeConversationTrigger path was the only one still missing its deny
+// side.
+func TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, id, _ uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestSendChatMessage_Success(t *testing.T) {
@@ -3559,6 +3819,91 @@ func TestTriggerCommentMention_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, "comment_mention", result.TriggerType)
+}
+
+// TestTriggerTaskAssigned_RestrictedAgent_NonGrantedMember_Rejected,
+// TestTriggerDirectMessage_RestrictedAgent_NonGrantedMember_Rejected, and
+// TestTriggerCommentMention_RestrictedAgent_NonGrantedMember_Rejected pin
+// authorizeConversationTrigger's deny path for the three human-actor
+// trigger routes, mirroring TestGetConversation_RestrictedAgent_
+// NonGrantedMember_Rejected's pattern. Without these, the three _Success
+// tests above (all exercising the mock's default AccessModeOpen agent)
+// would pass identically even if authorizeConversationTrigger were deleted
+// outright — for a security boundary, the deny side is the part that
+// actually matters.
+func TestTriggerTaskAssigned_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.TriggerTaskAssigned(context.Background(), projectID, agentID, taskID, &memberID, "")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestTriggerDirectMessage_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.TriggerDirectMessage(context.Background(), projectID, agentID, &memberID, "do the thing")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestTriggerCommentMention_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	commentID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	projRepo := &mockProjectRepo{}
+	pluginRepo := &mockPluginRepo{}
+	svc := New(repo, projRepo, nil, pluginRepo)
+
+	_, err := svc.TriggerCommentMention(context.Background(), projectID, agentID, taskID, commentID, memberID, "test comment")
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestCreateAgent_ACPInvalidAgentType(t *testing.T) {
@@ -4375,6 +4720,26 @@ func (f *fakeEnvironmentService) DeletePortForward(context.Context, uuid.UUID, u
 	return nil
 }
 
+func (f *fakeEnvironmentService) HasEnvironmentUsageAccess(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeEnvironmentService) ListEnvironmentAccessGrants(context.Context, uuid.UUID, uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	return nil, nil
+}
+
+func (f *fakeEnvironmentService) AddEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, *uuid.UUID) (*environmentdom.EnvironmentAccessGrant, error) {
+	return &environmentdom.EnvironmentAccessGrant{ID: uuid.New()}, nil
+}
+
+func (f *fakeEnvironmentService) RemoveEnvironmentAccessGrant(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeEnvironmentService) ListGrantedEnvironmentIDsForMember(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 var _ environmentdom.Service = (*fakeEnvironmentService)(nil)
 
 func TestCreateAgent_ProviderCLI_Success(t *testing.T) {
@@ -4937,6 +5302,55 @@ func TestSendGlobalChatMessage_RejectsInvalidOnBusy(t *testing.T) {
 	_, err := svc.SendGlobalChatMessage(context.Background(), uuid.New(), uuid.New(), "hi", nil, "explode")
 
 	assert.ErrorIs(t, err, agentdom.ErrOnBusyInvalid)
+}
+
+// TestSendGlobalChatMessage_RestrictedAgent_Rejected and
+// TestListGlobalChatSessions_RestrictedAgent_Rejected are
+// requireGlobalAgentOpen's other two call sites — see
+// TestStartGlobalChatSession_RestrictedAgent_Rejected's doc comment for why
+// this needs covering on each entry point rather than just once.
+func TestSendGlobalChatMessage_RestrictedAgent_Rejected(t *testing.T) {
+	sessionID := uuid.New()
+	agentID := uuid.New()
+	actorUserID := uuid.New()
+	session := &agentdom.AgentChatSession{ID: sessionID, AgentID: agentID, ActorUserID: &actorUserID}
+
+	repo := &mockAgentRepo{
+		findChatSessionByID: func(_ context.Context, id uuid.UUID) (*agentdom.AgentChatSession, error) {
+			return session, nil
+		},
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		findLatestConversationBySession: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			t.Fatal("must reject before resolving the latest conversation")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.SendGlobalChatMessage(context.Background(), sessionID, actorUserID, "hi", nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+}
+
+func TestListGlobalChatSessions_RestrictedAgent_Rejected(t *testing.T) {
+	agentID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		listGlobalChatSessions: func(_ context.Context, _, _ uuid.UUID) ([]*agentdom.AgentChatSession, error) {
+			t.Fatal("must reject before listing sessions")
+			return nil, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.ListGlobalChatSessions(context.Background(), agentID, uuid.New())
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestSendConversationMessage_RejectsInvalidOnBusy(t *testing.T) {

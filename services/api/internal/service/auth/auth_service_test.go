@@ -289,6 +289,100 @@ func TestRefresh_ReissuesAnnotationPair(t *testing.T) {
 	}
 }
 
+// TestRefresh_ReflectsRoleChange guards against a regression where the
+// rotated tokens carried the presented refresh token's own (possibly stale)
+// Role claim instead of the freshly-reloaded user's current role — see
+// rotateRefreshToken's doc comment on why the user row is reloaded on every
+// refresh in the first place, and why that must apply to Role, not just
+// MustChangePassword: authz.LegacyPermissionsForRole grants a full wildcard
+// for a role named "ADMIN"/"SUPER_ADMIN", so a demotion that doesn't take
+// effect on refresh is a live privilege-revocation bug, not just staleness.
+func TestRefresh_ReflectsRoleChange(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleAdmin}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		// Simulates an admin demoting this user to USER in between the
+		// refresh token being issued and it being presented here.
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
+
+	// Issue the refresh token while the user is still ADMIN...
+	refresh, err := tm.IssueRefresh(userID.String(), "alice", userdom.RoleAdmin, "fam1")
+	if err != nil {
+		t.Fatalf("IssueRefresh: %v", err)
+	}
+	// ...then demote them before it's ever redeemed.
+	u.Role = userdom.RoleUser
+
+	pair, err := svc.Refresh(context.Background(), refresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	accessClaims, err := tm.Verify(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("verify access token: %v", err)
+	}
+	if accessClaims.Role != userdom.RoleUser {
+		t.Errorf("access token Role = %q, want %q (the demotion must take effect immediately, not just after re-login)", accessClaims.Role, userdom.RoleUser)
+	}
+
+	refreshClaims, err := tm.Verify(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("verify refresh token: %v", err)
+	}
+	if refreshClaims.Role != userdom.RoleUser {
+		t.Errorf("rotated refresh token Role = %q, want %q", refreshClaims.Role, userdom.RoleUser)
+	}
+
+	annotationAccessClaims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify annotation access token: %v", err)
+	}
+	if annotationAccessClaims.Role != userdom.RoleUser {
+		t.Errorf("annotation access token Role = %q, want %q", annotationAccessClaims.Role, userdom.RoleUser)
+	}
+}
+
+// TestRefreshAnnotation_ReflectsRoleChange is TestRefresh_ReflectsRoleChange's
+// sibling for the ScopeAnnotation rotation path, which had the identical bug.
+func TestRefreshAnnotation_ReflectsRoleChange(t *testing.T) {
+	userID := uuid.New()
+	u := &userdom.User{ID: userID, Username: "alice", Role: userdom.RoleAdmin}
+	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
+	repo := &stubUserRepo{
+		findByID: func(_ context.Context, _ uuid.UUID) (*userdom.User, error) { return u, nil },
+	}
+	svc := authsvc.New(repo, tm, &stubRefreshStore{
+		isFamilyRevoked: func(_ context.Context, _ string) (bool, error) { return false, nil },
+		recordFirstUse:  func(_ context.Context, _ string, _ time.Duration) (*time.Time, error) { return nil, nil },
+	}, 7*24*time.Hour, 24*time.Hour)
+
+	annotationRefresh, err := tm.IssueAnnotationRefreshWithTTL(userID.String(), "alice", userdom.RoleAdmin, "fam1", true, 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("IssueAnnotationRefreshWithTTL: %v", err)
+	}
+	u.Role = userdom.RoleUser
+
+	pair, err := svc.RefreshAnnotation(context.Background(), annotationRefresh)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	accessClaims, err := tm.Verify(pair.AnnotationAccessToken)
+	if err != nil {
+		t.Fatalf("verify annotation access token: %v", err)
+	}
+	if accessClaims.Role != userdom.RoleUser {
+		t.Errorf("annotation access token Role = %q, want %q", accessClaims.Role, userdom.RoleUser)
+	}
+}
+
 func TestRefresh_WrongKind(t *testing.T) {
 	tm := jwttoken.New("test-secret", 15*time.Minute, 7*24*time.Hour)
 	svc := authsvc.New(&stubUserRepo{}, tm, &stubRefreshStore{}, 7*24*time.Hour, 24*time.Hour)

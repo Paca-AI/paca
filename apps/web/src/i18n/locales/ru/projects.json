@@ -12,6 +12,12 @@
 				"customFields": "Пользовательские поля",
 				"dangerZone": "Опасная зона",
 				"plugins": "Плагины"
+			},
+			"pluginTab": {
+				"noPermission": {
+					"title": "У вас нет прав для просмотра этой вкладки",
+					"description": "Попросите владельца или администратора проекта предоставить вам доступ к {{pluginName}}."
+				}
 			}
 		}
 	},
@@ -92,6 +98,8 @@
 		"card": {
 			"configure": "Настроить",
 			"delete": "Удалить",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This agent is restricted — ask a project admin to grant you access before you can chat with it.",
 			"acpStatusConnected": "В сети",
 			"acpStatusDisconnected": "Не в сети",
 			"deleteDialog": {
@@ -111,6 +119,10 @@
 				"title": "Агентов пока нет",
 				"description": "Добавьте AI-агента, чтобы автоматизировать задачи, ревью кода, написание документации и другое.",
 				"createFirstAgent": "Создать первого агента"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view agents",
+				"description": "Ask a project admin to grant you the agents.read permission."
 			}
 		},
 		"acpSetup": {
@@ -157,6 +169,7 @@
 				"mcpServers": "MCP-серверы",
 				"skills": "Навыки",
 				"envVars": "Окружение",
+				"access": "Access",
 				"activity": "Активность"
 			},
 			"avatar": {
@@ -296,6 +309,13 @@
 					"addSkill": "Добавить навык"
 				}
 			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may chat with this agent. Everyone who can manage agents can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
+			},
 			"activity": {
 				"commented": "оставил комментарий",
 				"sourceType": {
@@ -324,12 +344,19 @@
 		"conversationView": {
 			"stop": "Остановить",
 			"notFound": "Диалог не найден",
+			"noPermission": {
+				"title": "You don't have permission to view this conversation",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"chatSession": "Чат-сессия",
 			"taskSession": "Сессия задачи",
 			"pr": "PR",
 			"connect": "Подключиться",
 			"conversationEnded": "Этот диалог завершён.",
 			"textOnlyMessage": "Поддерживаются только текстовые сообщения.",
+			"agentAccessRestricted": "Этот агент имеет ограниченный доступ. Попросите администратора проекта предоставить вам доступ, прежде чем вы сможете общаться с ним.",
+			"environmentAccessRestricted": "Окружение этого диалога имеет ограниченный доступ. Попросите администратора проекта предоставить вам доступ, прежде чем вы сможете общаться с этим агентом.",
+			"chatNoPermission": "У вас нет разрешения отправлять сообщения в этом диалоге.",
 			"failed": "Диалог завершился с ошибкой",
 			"noOutput": "Агент не выдал результат.",
 			"loadingOlder": "Загрузка…",
@@ -428,10 +455,16 @@
 			"title": "Окружения",
 			"subtitle": "Именованные, долгоживущие песочницы, к которым ваши агенты могут подключаться между разговорами",
 			"newEnvironment": "Новое окружение",
+			"restricted": "Restricted",
+			"restrictedTooltip": "This environment is restricted — ask a project admin to grant you access before you can use it.",
 			"empty": {
 				"title": "Пока нет окружений",
 				"description": "Создайте статическое окружение, чтобы файлы и фоновые процессы сохранялись между разговорами, вместо одноразовой песочницы каждый раз.",
 				"createFirstEnvironment": "Создать первое окружение"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view environments",
+				"description": "Ask a project admin to grant you the environments.read permission."
 			}
 		},
 		"createDialog": {
@@ -465,7 +498,8 @@
 			"tabs": {
 				"overview": "Обзор",
 				"folders": "Папки",
-				"portForwards": "Проброс портов"
+				"portForwards": "Проброс портов",
+				"access": "Access"
 			},
 			"overview": {
 				"connect": "Подключиться",
@@ -510,6 +544,10 @@
 				"count_one": "Настроена {{count}} папка",
 				"count_other": "Настроено {{count}} папок",
 				"addFolder": "Добавить папку",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its folders."
+				},
 				"deleteFailed": "Не удалось удалить папку. Попробуйте снова.",
 				"empty": {
 					"title": "Папки не добавлены",
@@ -536,6 +574,10 @@
 				"count_one": "{{count}} проброс порта",
 				"count_other": "{{count}} пробросов портов",
 				"add": "Добавить проброс порта",
+				"noPermission": {
+					"title": "You don't have access to this environment",
+					"description": "Ask a project admin to grant you access before you can view its port forwards."
+				},
 				"deleteFailed": "Не удалось удалить проброс порта. Попробуйте снова.",
 				"containerPort": "Порт контейнера {{port}}",
 				"unassigned": "Ещё не назначен",
@@ -564,6 +606,13 @@
 					"cancel": "Отмена",
 					"confirm": "Перезапустить"
 				}
+			},
+			"access": {
+				"restrictLabel": "Restrict access",
+				"restrictDescription": "When on, only members granted access below may browse, SSH into, forward ports on, or open a terminal in this environment. Everyone who can manage environments can still see and configure it.",
+				"pickMember": "Select a member…",
+				"grantAccess": "Grant access",
+				"empty": "No members have been granted access yet."
 			},
 			"sshKeys": {
 				"connectHint": "Замените <bastion-host> адресом SSH-бастиона, настроенным в этом развёртывании.",
@@ -612,6 +661,7 @@
 				"connect": "Подключиться",
 				"notRunning": "Запустите окружение перед подключением.",
 				"readOnly": "У вас нет прав на открытие терминала в этом окружении.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can open a terminal.",
 				"hint": "Откроется в новой полноэкранной вкладке.",
 				"pageTitle": "{{name}} — Терминал",
 				"pageTitleLoading": "Терминал",
@@ -622,7 +672,8 @@
 				"step1Description": "Зарегистрируйте открытый ключ пары SSH-ключей, с которой хотите подключаться.",
 				"step2Title": "Подключитесь из терминала",
 				"step2Description": "Выполните эту команду в терминале:",
-				"notRunning": "Запустите окружение перед подключением."
+				"notRunning": "Запустите окружение перед подключением.",
+				"restricted": "This environment is restricted — ask a project admin to grant you access before you can connect via SSH."
 			}
 		}
 	},
@@ -631,6 +682,10 @@
 			"notFound": {
 				"title": "Документ не найден",
 				"description": "Возможно, документ был удалён или ссылка недействительна."
+			},
+			"noPermission": {
+				"title": "You don't have permission to view this document",
+				"description": "Ask a project admin to grant you the docs.read permission."
 			},
 			"unsaved": "Не сохранено",
 			"saving": "Сохранение…",
@@ -669,6 +724,8 @@
 			"roleNameLabel": "Название роли",
 			"roleNamePlaceholder": "например, PROJECT_REVIEWER",
 			"permissionsLabel": "Разрешения",
+			"fullAccessBadge": "Полный доступ",
+			"fullAccessDescription": "Эта роль автоматически включает все разрешения, в том числе те, что будут добавлены в будущем. Изменение любого переключателя ниже преобразует её в фиксированный набор текущих разрешений.",
 			"enabledCount_one": "{{count}} включено",
 			"enabledCount_few": "{{count}} включено",
 			"enabledCount_many": "{{count}} включено",
@@ -686,10 +743,6 @@
 			}
 		},
 		"permissions": {
-			"projectsRead": {
-				"label": "Читать проект",
-				"description": "Просматривать данные и настройки проекта"
-			},
 			"projectsWrite": {
 				"label": "Редактировать проект",
 				"description": "Обновлять название, описание и настройки проекта"
@@ -714,6 +767,18 @@
 				"label": "Управлять ролями",
 				"description": "Создавать, редактировать и удалять роли проекта"
 			},
+			"settingsTaskTypesWrite": {
+				"label": "Manage Task Types",
+				"description": "Create, edit, delete, and set the default task type"
+			},
+			"settingsTaskStatusesWrite": {
+				"label": "Manage Task Statuses",
+				"description": "Create, edit, delete, reorder, and set the default task status"
+			},
+			"settingsCustomFieldsWrite": {
+				"label": "Manage Custom Fields",
+				"description": "Create, edit, and delete custom field definitions"
+			},
 			"tasksRead": {
 				"label": "Просматривать задачи",
 				"description": "Открывать и читать задачи в проекте"
@@ -729,6 +794,14 @@
 			"sprintsWrite": {
 				"label": "Управлять спринтами",
 				"description": "Создавать, обновлять и закрывать спринты"
+			},
+			"viewsRead": {
+				"label": "View Boards",
+				"description": "Browse saved board and list views"
+			},
+			"viewsWrite": {
+				"label": "Manage Boards",
+				"description": "Create, edit, delete, and reorder board and list views"
 			},
 			"docsRead": {
 				"label": "Просматривать документы",
@@ -766,6 +839,18 @@
 				"label": "Подключаться к окружениям",
 				"description": "Открывать интерактивный сеанс терминала внутри запущенного окружения"
 			},
+			"annotationsRead": {
+				"label": "View Annotations",
+				"description": "View page comments pinned via the browser extension"
+			},
+			"annotationsWrite": {
+				"label": "Manage Annotations",
+				"description": "Create, edit, and delete page annotations"
+			},
+			"annotationsResolve": {
+				"label": "Resolve Annotations",
+				"description": "Mark a page annotation resolved or reopen it, without authoring or deleting one"
+			},
 			"workflowsRead": {
 				"label": "Просмотр автоматизации",
 				"description": "Просмотр автоматизаций и их настроек"
@@ -778,13 +863,15 @@
 		"permissionGroups": {
 			"project": "Проект",
 			"members": "Участники",
-			"roles": "Роли",
+			"settings": "Settings",
 			"tasks": "Задачи",
 			"sprints": "Спринты",
+			"views": "Views",
 			"documents": "Документы",
 			"aiAgents": "AI-агенты",
 			"conversations": "Беседы",
 			"environments": "Окружения",
+			"annotations": "Annotations",
 			"workflows": "Автоматизация",
 			"plugins": "Плагины"
 		}
@@ -845,7 +932,11 @@
 				"permissions": "Разрешения",
 				"created": "Создана"
 			},
-			"systemRolesNote": "Системные роли являются общими шаблонами, их нельзя редактировать или удалять."
+			"systemRolesNote": "Системные роли являются общими шаблонами, их нельзя редактировать или удалять.",
+			"noPermission": {
+				"title": "You don't have permission to view roles",
+				"description": "Ask a project admin to grant you the project.roles.read permission."
+			}
 		},
 		"taskStatuses": {
 			"title": "Статусы задач",
@@ -865,7 +956,11 @@
 			"default": "По умолчанию",
 			"setAsDefault": "Сделать статусом по умолчанию",
 			"editStatus": "Редактировать статус",
-			"deleteStatus": "Удалить статус"
+			"deleteStatus": "Удалить статус",
+			"noPermission": {
+				"title": "You don't have permission to view task statuses",
+				"description": "Ask a project admin to grant you the project.settings.task_statuses.read permission."
+			}
 		},
 		"taskTypes": {
 			"title": "Типы задач",
@@ -885,7 +980,11 @@
 			"default": "По умолчанию",
 			"setAsDefault": "Сделать типом по умолчанию",
 			"editType": "Редактировать тип",
-			"deleteType": "Удалить тип"
+			"deleteType": "Удалить тип",
+			"noPermission": {
+				"title": "You don't have permission to view task types",
+				"description": "Ask a project admin to grant you the project.settings.task_types.read permission."
+			}
 		},
 		"customFields": {
 			"title": "Пользовательские поля",
@@ -956,6 +1055,10 @@
 				"confirmTextSuffix": "? Данные задач, сохранённые в этом поле, будут потеряны. Это действие нельзя отменить.",
 				"deleteFailed": "Не удалось удалить поле. Попробуйте ещё раз.",
 				"deleteField": "Удалить поле"
+			},
+			"noPermission": {
+				"title": "You don't have permission to view custom fields",
+				"description": "Ask a project admin to grant you the project.settings.custom_fields.read permission."
 			}
 		},
 		"dangerZone": {
@@ -1053,6 +1156,10 @@
 			"removeFailed": "Не удалось удалить участника. Попробуйте ещё раз.",
 			"cancel": "Отмена",
 			"remove": "Удалить"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view members",
+			"description": "Ask a project admin to grant you the project.members.read permission."
 		}
 	},
 	"aiChat": {
@@ -1107,6 +1214,10 @@
 			"ariaLabel": "Детали задачи",
 			"backToProject": "Назад к проекту",
 			"projectFallback": "Проект"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this task",
+			"description": "Ask a project admin to grant you the tasks.read permission."
 		},
 		"header": {
 			"created": "Создана {{date}}",
@@ -1316,6 +1427,10 @@
 			"ariaLabel": "Сведения о переадресации порта",
 			"backToEnvironment": "Назад к среде"
 		},
+		"noPermission": {
+			"title": "You don't have access to this environment",
+			"description": "Ask a project admin to grant you access before you can view this port forward."
+		},
 		"tabs": {
 			"overview": "Обзор",
 			"comments": "Комментарии"
@@ -1355,6 +1470,10 @@
 			"description": "Возможно, этот комментарий был удалён, или ссылка недействительна.",
 			"ariaLabel": "Сведения о комментарии",
 			"backToPortForward": "Назад к переадресации порта"
+		},
+		"noPermission": {
+			"title": "You don't have permission to view this comment",
+			"description": "Ask a project admin to grant you the annotations.read permission."
 		},
 		"header": {
 			"createdAt": "Прокомментировано {{date}}"
@@ -1481,6 +1600,10 @@
 			"clearAll": "Сбросить фильтры"
 		},
 		"list": {
+			"noPermission": {
+				"title": "You don't have permission to view conversations",
+				"description": "Ask a project admin to grant you the conversations.read permission."
+			},
 			"empty": {
 				"title": "Диалогов пока нет",
 				"description": "Диалоги начинаются, когда задача назначена агенту или кто-то пишет ему сообщение."
@@ -1740,7 +1863,11 @@
 				"createFirst": "Создать первую автоматизацию"
 			},
 			"noDescription": "Нет описания",
-			"updated": "Обновлено {{time}}"
+			"updated": "Обновлено {{time}}",
+			"noPermission": {
+				"title": "You don't have permission to view automations",
+				"description": "Ask a project admin to grant you the workflows.read permission."
+			}
 		},
 		"status": {
 			"active": "Активна",

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { DeleteTaskTypeDialog } from "@/components/projects/task-types/DeleteTaskTypeDialog";
 import { TaskTypeFormDialog } from "@/components/projects/task-types/TaskTypeFormDialog";
 import { getTaskTypeIconComponent } from "@/components/projects/task-types/task-type-icons";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,6 +16,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	setDefaultTaskType,
 	type TaskType,
@@ -29,7 +32,26 @@ export function TaskTypesSettings({
 	canWrite: boolean;
 }) {
 	const { t } = useTranslation("projects");
-	const { data: types, isLoading } = useQuery(taskTypesQueryOptions(projectId));
+	const { hasProjectPermission, isLoading: isPermissionsLoading } =
+		useProjectPermissions(projectId);
+	// No dedicated project.settings.task_types.read permission — viewing the
+	// type list is implied by tasks.read, same as viewing the tasks that
+	// reference it (see authz.PermissionProjectSettingsTaskTypesWrite's doc
+	// comment on the Go side).
+	const canRead = hasProjectPermission("tasks.read");
+	const {
+		data: types,
+		isLoading: isDataLoading,
+		isError,
+		error,
+	} = useQuery({ ...taskTypesQueryOptions(projectId), enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — guard on isPermissionsLoading (and fold it into
+	// isLoading) so the section shows the skeleton instead of flashing
+	// NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
+	const noPermission =
+		!isPermissionsLoading && (!canRead || (isError && isForbiddenError(error)));
 	const queryClient = useQueryClient();
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editType, setEditType] = useState<TaskType | null>(null);
@@ -68,7 +90,13 @@ export function TaskTypesSettings({
 				) : null}
 			</div>
 
-			{isLoading ? (
+			{noPermission ? (
+				<NoPermissionState
+					icon={Tag}
+					title={t("settings.taskTypes.noPermission.title")}
+					description={t("settings.taskTypes.noPermission.description")}
+				/>
+			) : isLoading ? (
 				<div className="rounded-xl border overflow-hidden mt-4">
 					{["t1", "t2", "t3"].map((k) => (
 						<div

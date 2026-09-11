@@ -69,10 +69,22 @@ export function useAgentPicker(
 	projectId: string,
 	options?: { disabled?: boolean; enabled?: boolean },
 ) {
-	const { data: agents = [], isLoading: agentsLoading } = useQuery({
+	const { data: allAgents = [], isLoading: agentsLoading } = useQuery({
 		...agentsQueryOptions(projectId),
 		enabled: options?.enabled ?? true,
 	});
+	// A restricted agent the caller has no grant for is visible on the
+	// Agents page (so people know it exists and who to ask) but not
+	// selectable here — starting a chat with it would just fail with
+	// AGENT_ACCESS_RESTRICTED, so it's left off the composer's own list
+	// instead of offering a choice guaranteed to error.
+	const agents = useMemo(
+		() =>
+			allAgents.filter(
+				(a) => a.access_mode !== "restricted" || a.access_granted,
+			),
+		[allAgents],
+	);
 	const [agentId, setAgentId] = useState("");
 
 	// Nothing to actually pick between — auto-select the project's only agent
@@ -253,10 +265,22 @@ export function useEnvironmentPicker(
 	options?: { disabled?: boolean; enabled?: boolean },
 ) {
 	const queryEnabled = (options?.enabled ?? true) && !!projectId;
-	const { data: environments = [], isLoading: environmentsLoading } = useQuery({
-		...environmentsQueryOptions(projectId),
-		enabled: queryEnabled,
-	});
+	const { data: allEnvironments = [], isLoading: environmentsLoading } =
+		useQuery({
+			...environmentsQueryOptions(projectId),
+			enabled: queryEnabled,
+		});
+	// Same reasoning as useAgentPicker's own filter: a restricted
+	// environment the caller has no grant for would just fail to attach
+	// with ENVIRONMENT_ACCESS_RESTRICTED, so it's left off this list
+	// rather than offered as a choice guaranteed to error.
+	const environments = useMemo(
+		() =>
+			allEnvironments.filter(
+				(e) => e.access_mode !== "restricted" || e.access_granted,
+			),
+		[allEnvironments],
+	);
 	// Fetched only to read default_environment_id — this agent is typically
 	// already warm in the agent picker's own cache once chosen, so this is
 	// usually an instant cache hit rather than a new request.

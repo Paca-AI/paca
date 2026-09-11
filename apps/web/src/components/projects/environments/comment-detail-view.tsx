@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -35,6 +36,7 @@ import {
 	reopenAnnotation,
 	resolveAnnotation,
 } from "@/lib/annotation-api";
+import { isForbiddenError } from "@/lib/api-error";
 import {
 	environmentConfigQueryOptions,
 	portForwardQueryOptions,
@@ -72,7 +74,12 @@ export function CommentDetailView({
 		portForwardId,
 		annotationId,
 	).queryKey;
-	const { data: annotation, isLoading } = useQuery(
+	const {
+		data: annotation,
+		isLoading,
+		isError,
+		error: annotationError,
+	} = useQuery(
 		annotationQueryOptions(
 			projectId,
 			environmentId,
@@ -184,6 +191,16 @@ export function CommentDetailView({
 	}
 
 	if (!annotation) {
+		if (isError && isForbiddenError(annotationError)) {
+			return (
+				<div className="flex h-full flex-col items-center justify-center p-6">
+					<NoPermissionState
+						title={t("commentDetail.noPermission.title")}
+						description={t("commentDetail.noPermission.description")}
+					/>
+				</div>
+			);
+		}
 		return (
 			<div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground/60">
 				<AlertCircle className="size-10" />

@@ -17,6 +17,32 @@ type Service interface {
 	ConversationService
 	ChatSessionService
 	ActivityFeedService
+	AgentAccessGrantService
+}
+
+// AgentAccessGrantService manages per-member access grants on a restricted
+// agent — see Agent.AccessMode's doc comment. Deliberately separate from
+// AgentService: these gate *usage* (chatting with the agent), never the
+// agent entity's own configuration, which stays governed purely by
+// agents.write regardless of access_mode.
+type AgentAccessGrantService interface {
+	// HasAgentUsageAccess reports whether memberID may use (chat with)
+	// agentID — always true when the agent is AccessModeOpen; when
+	// AccessModeRestricted, true only if memberID holds an explicit
+	// AgentAccessGrant. Verifies agentID is visible in projectID first (same
+	// as GetAgent), so a caller can't probe an agent outside their project.
+	HasAgentUsageAccess(ctx context.Context, projectID, agentID, memberID uuid.UUID) (bool, error)
+	ListAgentAccessGrants(ctx context.Context, projectID, agentID uuid.UUID) ([]*AgentAccessGrant, error)
+	// AddAgentAccessGrant returns ErrAgentAccessGrantExists if memberID
+	// already has a grant. grantedBy is the acting user, recorded for audit
+	// purposes only.
+	AddAgentAccessGrant(ctx context.Context, projectID, agentID, memberID uuid.UUID, grantedBy *uuid.UUID) (*AgentAccessGrant, error)
+	RemoveAgentAccessGrant(ctx context.Context, projectID, agentID, memberID uuid.UUID) error
+	// ListGrantedAgentIDsForMember returns every restricted agent memberID
+	// currently holds a grant for — used to decorate ListAgents/
+	// ListGlobalAgents with each row's "am I granted" state in one call
+	// instead of an N+1 HasAgentUsageAccess check per agent.
+	ListGrantedAgentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // AgentService defines agent CRUD use cases.
@@ -364,6 +390,10 @@ type UpdateAgentInput struct {
 	// see agentsvc.Service.UpdateAgent. Ignored by UpdateGlobalAgent, same
 	// as DefaultEnvironmentID.
 	DefaultFolderID *uuid.UUID
+	// AccessMode: nil means unchanged, same convention as every other
+	// pointer field here. Must be AccessModeOpen or AccessModeRestricted
+	// when set (ErrAgentAccessModeInvalid otherwise).
+	AccessMode *string
 }
 
 // AddMCPServerInput carries fields to add an MCP server.

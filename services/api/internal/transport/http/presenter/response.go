@@ -395,6 +395,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents
 	case errors.Is(err, agentdom.ErrAgentNotProviderCLI):
 		return http.StatusBadRequest, apierr.CodeAgentNotProviderCLI
+	case errors.Is(err, agentdom.ErrAgentAccessModeInvalid):
+		return http.StatusBadRequest, apierr.CodeAgentAccessModeInvalid
+	case errors.Is(err, agentdom.ErrAgentAccessGrantExists):
+		return http.StatusConflict, apierr.CodeAgentAccessGrantExists
+	case errors.Is(err, agentdom.ErrAgentAccessRestricted):
+		return http.StatusForbidden, apierr.CodeAgentAccessRestricted
 	// --- Environment errors -------------------------------------------------
 	case errors.Is(err, environmentdom.ErrEnvironmentNotFound):
 		return http.StatusNotFound, apierr.CodeEnvironmentNotFound
@@ -428,6 +434,12 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeEnvironmentPortForwardContainerPortInvalid
 	case errors.Is(err, environmentdom.ErrPortForwardContainerPortTaken):
 		return http.StatusConflict, apierr.CodeEnvironmentPortForwardContainerPortTaken
+	case errors.Is(err, environmentdom.ErrEnvironmentAccessModeInvalid):
+		return http.StatusBadRequest, apierr.CodeEnvironmentAccessModeInvalid
+	case errors.Is(err, environmentdom.ErrEnvironmentAccessGrantExists):
+		return http.StatusConflict, apierr.CodeEnvironmentAccessGrantExists
+	case errors.Is(err, environmentdom.ErrEnvironmentAccessRestricted):
+		return http.StatusForbidden, apierr.CodeEnvironmentAccessRestricted
 	// --- Automation errors -----------------------------------------------------
 	case errors.Is(err, automationdom.ErrNotFound):
 		return http.StatusNotFound, apierr.CodeAutomationNotFound
@@ -673,8 +685,13 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeAgentCLIProviderNoAPIKeyAuth,
 		apierr.CodeAgentDefaultEnvironmentRequiredForCLIProvider,
 		apierr.CodeAgentCLIProviderNotSupportedForGlobalAgents,
-		apierr.CodeAgentNotProviderCLI:
+		apierr.CodeAgentNotProviderCLI,
+		apierr.CodeAgentAccessModeInvalid:
 		return http.StatusBadRequest
+	case apierr.CodeAgentAccessGrantExists:
+		return http.StatusConflict
+	case apierr.CodeAgentAccessRestricted:
+		return http.StatusForbidden
 	case apierr.CodeEnvironmentNotFound,
 		apierr.CodeEnvironmentFolderNotFound,
 		apierr.CodeEnvironmentSSHKeyNotFound,
@@ -692,8 +709,13 @@ func httpStatusForCode(code apierr.Code) int {
 		apierr.CodeEnvironmentSSHKeyInvalid,
 		apierr.CodeEnvironmentPortForwardContainerPortInvalid,
 		apierr.CodeEnvironmentCPULimitInvalid,
-		apierr.CodeEnvironmentMemoryLimitInvalid:
+		apierr.CodeEnvironmentMemoryLimitInvalid,
+		apierr.CodeEnvironmentAccessModeInvalid:
 		return http.StatusBadRequest
+	case apierr.CodeEnvironmentAccessGrantExists:
+		return http.StatusConflict
+	case apierr.CodeEnvironmentAccessRestricted:
+		return http.StatusForbidden
 	case apierr.CodeAutomationNotFound,
 		apierr.CodeAutomationNodeNotFound,
 		apierr.CodeAutomationEdgeNotFound:

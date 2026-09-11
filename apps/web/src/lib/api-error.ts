@@ -111,6 +111,18 @@ export const ApiErrorCode = {
 	// agent-busy-dialog.tsx/useAgentBusyPrompt only ever sends one of those
 	// three values.
 	AgentOnBusyInvalid: "AGENT_ON_BUSY_INVALID",
+	// Sent instead of dispatching a chat turn when the agent itself is
+	// access_mode=restricted and the caller holds no grant for it. See
+	// conversation-to-thread-messages.ts's chatSessionAccessDeniedKey.
+	AgentAccessRestricted: "AGENT_ACCESS_RESTRICTED",
+	// Sent instead of dispatching a chat turn when the environment the
+	// conversation would attach to (explicit override, or the agent's own
+	// DefaultEnvironmentID) is access_mode=restricted and the caller holds
+	// no grant for it — a separate resource from the agent above, so a
+	// separate code/remedy ("ask for environment access", not agent
+	// access). See conversation-to-thread-messages.ts's
+	// chatSessionAccessDeniedKey.
+	EnvironmentAccessRestricted: "ENVIRONMENT_ACCESS_RESTRICTED",
 
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
@@ -128,6 +140,27 @@ export function isPasswordChangeRequired(err: unknown): boolean {
 		e?.response?.status === 403 &&
 		e?.response?.data?.error_code === ApiErrorCode.PasswordChangeRequired
 	);
+}
+
+/** The HTTP status code of an Axios error's response, or undefined for a
+ *  non-HTTP failure (network error, timeout) or a non-Axios error. */
+export function getHttpStatus(error: unknown): number | undefined {
+	return (error as { response?: { status?: number } } | undefined)?.response
+		?.status;
+}
+
+/**
+ * True for a plain "you don't have permission" 403 — every 403 except the
+ * one that means something more specific and is already handled elsewhere
+ * (AUTH_PASSWORD_CHANGE_REQUIRED triggers its own redirect to
+ * /change-password in api-client.ts's response interceptor, so a component
+ * reacting to it as a normal permission error would show a confusing
+ * message for the instant before that redirect lands). Use this to decide
+ * whether to render a NoPermissionState instead of a generic error state —
+ * see that component's doc comment.
+ */
+export function isForbiddenError(error: unknown): boolean {
+	return getHttpStatus(error) === 403 && !isPasswordChangeRequired(error);
 }
 
 /**

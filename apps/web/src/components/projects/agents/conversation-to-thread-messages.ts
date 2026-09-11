@@ -3,6 +3,11 @@ import type {
 	AgentConversation,
 	AgentConversationEvent,
 } from "@/lib/agent-api";
+import {
+	ApiErrorCode,
+	getApiErrorCode,
+	isForbiddenError,
+} from "@/lib/api-error";
 import { parseContextItems } from "@/lib/context-items";
 
 // Our chat runtimes (conversation-view.tsx / ai-chat-float.tsx / the
@@ -16,6 +21,46 @@ export function extractTextOnlyContent(message: AppendMessage): string | null {
 		return null;
 	}
 	return message.content[0].text;
+}
+
+// Literal union, not a plain string, so callers can pass this straight into
+// react-i18next's `t()` — its typed key argument rejects a widened `string`
+// (see the "Type 'string' is not assignable to type ..." error this
+// produces if loosened).
+type ChatSessionAccessDeniedKey =
+	| "agents.conversationView.agentAccessRestricted"
+	| "agents.conversationView.environmentAccessRestricted"
+	| "agents.conversationView.chatNoPermission";
+
+// Classifies a failed chat-session dispatch (startChatSession/sendChatMessage
+// and their sibling calls in new-conversation-thread.tsx,
+// conversation-view.tsx, ai-chat-float.tsx) into a projects.json translation
+// key. Each onNew wraps its dispatch call in try/catch and does
+// `const key = chatSessionAccessDeniedKey(err); if (key)
+// setSendError(t(key)); else throw err;`, rendering the translated message
+// via a local `sendError` state + `<ConversationErrorBox>` — NOT by
+// throwing and letting assistant-ui catch it: a thrown error from onNew
+// becomes an unhandled promise rejection rather than a rendered message, so
+// re-throwing is reserved for cases the caller still wants propagated.
+// Returns null for anything that isn't a 403, so the caller re-throws the
+// original error unchanged rather than misreporting a network failure or
+// busy-dialog cancellation as a permission problem. Stays i18n-free like
+// the rest of this file — callers own translating the returned key, this
+// only classifies.
+export function chatSessionAccessDeniedKey(
+	err: unknown,
+): ChatSessionAccessDeniedKey | null {
+	const code = getApiErrorCode(err);
+	if (code === ApiErrorCode.AgentAccessRestricted) {
+		return "agents.conversationView.agentAccessRestricted";
+	}
+	if (code === ApiErrorCode.EnvironmentAccessRestricted) {
+		return "agents.conversationView.environmentAccessRestricted";
+	}
+	if (isForbiddenError(err)) {
+		return "agents.conversationView.chatNoPermission";
+	}
+	return null;
 }
 
 // Extract plain text from a content block array [{type:"text", text:"..."}] or a bare string.

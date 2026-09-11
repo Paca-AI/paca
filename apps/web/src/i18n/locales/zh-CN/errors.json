@@ -1,4 +1,6 @@
 {
 	"pluginLoadFailedPrefix": "插件",
-	"pluginLoadFailedSuffix": "加载失败"
+	"pluginLoadFailedSuffix": "加载失败",
+	"pluginNoPermissionTitle": "您没有权限查看此页面",
+	"pluginNoPermissionDescription": "请项目所有者或管理员为您授予访问 {{pluginName}} 的权限。"
 }

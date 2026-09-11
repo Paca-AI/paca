@@ -120,6 +120,12 @@ type mockRepo struct {
 	createPortForward   func(ctx context.Context, pf *environmentdom.EnvironmentPortForward) error
 	deletePortForward   func(ctx context.Context, id uuid.UUID) error
 	findPortForwardByID func(ctx context.Context, id uuid.UUID) (*environmentdom.EnvironmentPortForward, error)
+
+	listEnvironmentAccessGrants        func(ctx context.Context, environmentID uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error)
+	addEnvironmentAccessGrant          func(ctx context.Context, g *environmentdom.EnvironmentAccessGrant) error
+	removeEnvironmentAccessGrant       func(ctx context.Context, environmentID, memberID uuid.UUID) error
+	hasEnvironmentAccessGrant          func(ctx context.Context, environmentID, memberID uuid.UUID) (bool, error)
+	listGrantedEnvironmentIDsForMember func(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error)
 }
 
 func (m *mockRepo) ListEnvironments(ctx context.Context, projectID uuid.UUID) ([]*environmentdom.Environment, error) {
@@ -265,6 +271,41 @@ func (m *mockRepo) FindPortForwardByID(ctx context.Context, id uuid.UUID) (*envi
 		return m.findPortForwardByID(ctx, id)
 	}
 	return nil, environmentdom.ErrPortForwardNotFound
+}
+
+func (m *mockRepo) ListEnvironmentAccessGrants(ctx context.Context, environmentID uuid.UUID) ([]*environmentdom.EnvironmentAccessGrant, error) {
+	if m.listEnvironmentAccessGrants != nil {
+		return m.listEnvironmentAccessGrants(ctx, environmentID)
+	}
+	return nil, nil
+}
+
+func (m *mockRepo) AddEnvironmentAccessGrant(ctx context.Context, g *environmentdom.EnvironmentAccessGrant) error {
+	if m.addEnvironmentAccessGrant != nil {
+		return m.addEnvironmentAccessGrant(ctx, g)
+	}
+	return nil
+}
+
+func (m *mockRepo) RemoveEnvironmentAccessGrant(ctx context.Context, environmentID, memberID uuid.UUID) error {
+	if m.removeEnvironmentAccessGrant != nil {
+		return m.removeEnvironmentAccessGrant(ctx, environmentID, memberID)
+	}
+	return nil
+}
+
+func (m *mockRepo) HasEnvironmentAccessGrant(ctx context.Context, environmentID, memberID uuid.UUID) (bool, error) {
+	if m.hasEnvironmentAccessGrant != nil {
+		return m.hasEnvironmentAccessGrant(ctx, environmentID, memberID)
+	}
+	return false, nil
+}
+
+func (m *mockRepo) ListGrantedEnvironmentIDsForMember(ctx context.Context, memberID uuid.UUID) ([]uuid.UUID, error) {
+	if m.listGrantedEnvironmentIDsForMember != nil {
+		return m.listGrantedEnvironmentIDsForMember(ctx, memberID)
+	}
+	return nil, nil
 }
 
 // mockPublisher is a function-field-based mock of environmentPublisher,

@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, MoreHorizontal, Settings, Trash2, Zap } from "lucide-react";
+import {
+	Loader2,
+	Lock,
+	MoreHorizontal,
+	Settings,
+	Trash2,
+	Zap,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -131,6 +138,16 @@ export function AgentCard({
 					</div>
 
 					<div className="flex items-center gap-1.5 shrink-0">
+						{agent.access_mode === "restricted" && !agent.access_granted && (
+							<Badge
+								variant="outline"
+								className="text-xs font-medium gap-1"
+								title={t("agents.card.restrictedTooltip")}
+							>
+								<Lock className="size-3" />
+								{t("agents.card.restricted")}
+							</Badge>
+						)}
 						<Badge variant="secondary" className="text-xs font-medium">
 							{isAcp
 								? (agent.acp_provider ?? "acp")

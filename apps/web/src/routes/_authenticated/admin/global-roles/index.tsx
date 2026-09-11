@@ -1,18 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { Shield } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DeleteRoleDialog } from "@/components/admin/global-roles/DeleteRoleDialog";
 import { GlobalRolesHeader } from "@/components/admin/global-roles/GlobalRolesHeader";
 import {
 	EmptyRolesState,
 	GlobalRolesErrorState,
-	GlobalRolesNoPermissionState,
 } from "@/components/admin/global-roles/GlobalRolesStates";
 import { GlobalRolesStats } from "@/components/admin/global-roles/GlobalRolesStats";
 import { GlobalRolesTable } from "@/components/admin/global-roles/GlobalRolesTable";
 import { RoleFormDialog } from "@/components/admin/global-roles/RoleFormDialog";
 import { RolesTableSkeleton } from "@/components/admin/global-roles/RolesTableSkeleton";
 import { activePermissions } from "@/components/admin/global-roles/utils";
+import { NoPermissionState } from "@/components/shared/no-permission-state";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
 	type GlobalRole,
@@ -40,15 +42,21 @@ export const Route = createFileRoute("/_authenticated/admin/global-roles/")({
 });
 
 function GlobalRolesPage() {
-	const { hasPermission } = usePermissions();
+	const { t } = useTranslation("admin");
+	const { hasPermission, isLoading: isPermissionsLoading } = usePermissions();
 	const canRead = hasPermission("global_roles.read");
 	const canWrite = hasPermission("global_roles.write");
 
 	const {
 		data: roles = [],
-		isLoading,
+		isLoading: isDataLoading,
 		isError,
 	} = useQuery({ ...globalRolesQueryOptions, enabled: canRead });
+	// While permissions are still loading, canRead defaults to false same as
+	// a confirmed denial — fold isPermissionsLoading into isLoading (and
+	// guard the noPermission check below) so the page shows the skeleton
+	// instead of flashing NoPermissionState first.
+	const isLoading = isPermissionsLoading || isDataLoading;
 
 	const [createOpen, setCreateOpen] = useState(false);
 	const [editRole, setEditRole] = useState<GlobalRole | null>(null);
@@ -77,8 +85,12 @@ function GlobalRolesPage() {
 				/>
 			)}
 
-			{!canRead ? (
-				<GlobalRolesNoPermissionState />
+			{!isPermissionsLoading && !canRead ? (
+				<NoPermissionState
+					icon={Shield}
+					title={t("globalRoles.noPermission.title")}
+					description={t("globalRoles.noPermission.description")}
+				/>
 			) : isLoading ? (
 				<RolesTableSkeleton />
 			) : isError ? (
