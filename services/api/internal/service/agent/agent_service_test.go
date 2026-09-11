@@ -2800,6 +2800,43 @@ func TestSendGlobalConversationMessage_ACPResumeBlockedAtCapacity(t *testing.T) 
 	assert.False(t, claimCalled, "must not claim/dispatch before the capacity check runs")
 }
 
+// TestSendGlobalConversationMessage_RestrictedAgent_Rejected closes a gap
+// pullfrog found in requireGlobalAgentOpen's original placement: gating only
+// Start/List/SendGlobalChatMessage left an existing global conversation's
+// resume path (the ACP branch here) able to keep a since-restricted agent
+// executing indefinitely, contradicting requireGlobalAgentOpen's own
+// "fails every global-chat caller closed, full stop" contract.
+func TestSendGlobalConversationMessage_RestrictedAgent_Rejected(t *testing.T) {
+	conversationID := uuid.New()
+	actorUserID := uuid.New()
+	conversation := &agentdom.AgentConversation{
+		ID:          conversationID,
+		ActorUserID: &actorUserID,
+		TriggerType: "chat_message",
+		Status:      "finished",
+	}
+
+	claimCalled := false
+	repo := &mockAgentRepo{
+		findAgentByID: func(_ context.Context, id uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AgentType: agentdom.AgentTypeACP, AccessMode: agentdom.AccessModeRestricted, ParallelismLimit: 1}, nil
+		},
+		findConversationByID: func(_ context.Context, _ uuid.UUID) (*agentdom.AgentConversation, error) {
+			return conversation, nil
+		},
+		claimConversationStatus: func(_ context.Context, _ uuid.UUID, _, _ string) (bool, error) {
+			claimCalled = true
+			return true, nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	err := svc.SendGlobalConversationMessage(context.Background(), conversationID, "keep going", actorUserID, nil, "")
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
+	assert.False(t, claimCalled, "a restricted agent's existing global conversation must not be resumed")
+}
+
 func TestStopConversation_Success(t *testing.T) {
 	projectID := uuid.New()
 	conversationID := uuid.New()
@@ -3121,6 +3158,34 @@ func TestTriggerDescriptionWrite_WrongProject_ReturnsNotFound(t *testing.T) {
 	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
 
 	assert.ErrorIs(t, err, agentdom.ErrAgentNotFound)
+}
+
+// TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected is
+// TriggerDescriptionWrite's mirror of the sibling
+// Test{TriggerTaskAssigned,TriggerDirectMessage,TriggerCommentMention}_RestrictedAgent_NonGrantedMember_Rejected
+// tests — pullfrog's follow-up review noted this fourth
+// authorizeConversationTrigger path was the only one still missing its deny
+// side.
+func TestTriggerDescriptionWrite_RestrictedAgent_NonGrantedMember_Rejected(t *testing.T) {
+	projectID := uuid.New()
+	agentID := uuid.New()
+	taskID := uuid.New()
+	memberID := uuid.New()
+
+	repo := &mockAgentRepo{
+		findVisibleAgentInProject: func(_ context.Context, id, _ uuid.UUID) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: id, AccessMode: agentdom.AccessModeRestricted}, nil
+		},
+		createConversation: func(_ context.Context, _ *agentdom.AgentConversation) error {
+			t.Fatal("createConversation must not be called for a restricted agent with no grant")
+			return nil
+		},
+	}
+	svc := New(repo, &mockProjectRepo{}, nil, &mockPluginRepo{})
+
+	_, err := svc.TriggerDescriptionWrite(context.Background(), projectID, agentID, taskID, memberID)
+
+	assert.ErrorIs(t, err, agentdom.ErrAgentAccessRestricted)
 }
 
 func TestSendChatMessage_Success(t *testing.T) {

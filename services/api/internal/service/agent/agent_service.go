@@ -2115,6 +2115,16 @@ func (s *Service) SendGlobalConversationMessage(ctx context.Context, conversatio
 	if err != nil {
 		return err
 	}
+	// Closes a gap requireGlobalAgentOpen's placement on
+	// Start/List/SendGlobalChatMessage alone left open: without this, a
+	// conversation created before the agent was restricted could keep being
+	// sent into indefinitely, contradicting requireGlobalAgentOpen's own
+	// "fails every global-chat caller closed, full stop" contract above.
+	// Covers both dispatch branches below with one check since agent is
+	// already fetched for the AgentType decision either way.
+	if err := requireAgentOpen(agent); err != nil {
+		return err
+	}
 	if agent.AgentType == agentdom.AgentTypeACP {
 		return s.sendACPGlobalConversationMessage(ctx, c, message, actorUserID, contextItems, onBusy)
 	}
@@ -2612,6 +2622,14 @@ func (s *Service) requireGlobalAgentOpen(ctx context.Context, agentID uuid.UUID)
 	if err != nil {
 		return err
 	}
+	return requireAgentOpen(agent)
+}
+
+// requireAgentOpen is requireGlobalAgentOpen's agent-in-hand sibling, for
+// callers that already fetched the Agent for another reason (e.g.
+// SendGlobalConversationMessage, which needs it for the AgentType dispatch
+// decision regardless) and shouldn't pay for a second FindAgentByID call.
+func requireAgentOpen(agent *agentdom.Agent) error {
 	if agent.AccessMode == agentdom.AccessModeRestricted {
 		return agentdom.ErrAgentAccessRestricted
 	}
