@@ -111,6 +111,18 @@ export const ApiErrorCode = {
 	// agent-busy-dialog.tsx/useAgentBusyPrompt only ever sends one of those
 	// three values.
 	AgentOnBusyInvalid: "AGENT_ON_BUSY_INVALID",
+	// Sent instead of dispatching a chat turn when the agent itself is
+	// access_mode=restricted and the caller holds no grant for it. See
+	// conversation-to-thread-messages.ts's chatSessionAccessDeniedKey.
+	AgentAccessRestricted: "AGENT_ACCESS_RESTRICTED",
+	// Sent instead of dispatching a chat turn when the environment the
+	// conversation would attach to (explicit override, or the agent's own
+	// DefaultEnvironmentID) is access_mode=restricted and the caller holds
+	// no grant for it — a separate resource from the agent above, so a
+	// separate code/remedy ("ask for environment access", not agent
+	// access). See conversation-to-thread-messages.ts's
+	// chatSessionAccessDeniedKey.
+	EnvironmentAccessRestricted: "ENVIRONMENT_ACCESS_RESTRICTED",
 
 	// Generic / request errors.
 	BadRequest: "BAD_REQUEST",
