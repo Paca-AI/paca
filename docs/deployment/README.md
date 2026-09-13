@@ -106,6 +106,24 @@ Verified end-to-end (a real object round-tripped byte-for-byte through this exac
 
 If you'd rather not migrate right now, that's fine — the check runs before `upgrade.sh` touches anything, so your existing `docker-compose.yml` (still defining the working `minio` service) is left completely untouched. Keep running it until you're ready.
 
-### Helm has no equivalent guard
+### Prefer to keep running your existing MinIO container for now?
 
-The hard-stop above only protects Docker Compose installs. `helm upgrade` on a release still running the bundled MinIO StatefulSet has no equivalent check: the old StatefulSet is deleted, a new empty RustFS one is created, and the old release's `minio` PVC is orphaned — silently, if you never explicitly set `storage.provider` (its default just changed out from under you). Follow the same `mc mirror` approach above before upgrading — `kubectl port-forward` to each Pod (or a temporary `mc` Pod on the cluster network) in place of the `docker run --network` step, since there's no Docker network to attach to on Kubernetes.
+You don't have to migrate to upgrade. Run:
+
+```bash
+PACA_KEEP_MINIO=1 bash upgrade.sh
+```
+
+(or, run interactively without `PACA_YES=1`, just answer "yes" when asked.) This gets you every other improvement in the release — nothing about your storage setup changes: `STORAGE_PROVIDER`/`STORAGE_ENDPOINT` in `.env` stay pointed at your existing `minio` container exactly as they are, and this run skips `--remove-orphans` so that container is left running completely undisturbed alongside the rest of the upgraded stack (it's no longer defined in the new `docker-compose.yml`, so it becomes an "orphan" Compose no longer manages — but an orphan that's still running stays reachable by its container/service name on the same Docker network exactly as before, which is all the API needs).
+
+This is a stopgap, not a long-term choice: MinIO's own open-source repository is archived, so it receives no more security patches going forward. Migrate whenever you get the chance, using the steps above — nothing about choosing this option now makes that migration any harder later.
+
+### Helm users
+
+Helm has no equivalent of `upgrade.sh`'s hard-stop or its `PACA_KEEP_MINIO` option — a `helm upgrade` onto this chart version, applied to a release still running the bundled MinIO StatefulSet, deletes that StatefulSet (its template is simply gone from the new chart) and creates a new, empty RustFS one, with no warning if you never explicitly set `storage.provider` yourself (its default just changed out from under you). The PVC behind the deleted StatefulSet is orphaned, not deleted — your data isn't gone, but nothing points the app at it anymore.
+
+**Recommended: migrate first, then upgrade.** Follow the same `mc mirror` approach as the Compose steps above, adapted for Kubernetes — `kubectl port-forward svc/<release>-minio 9000:9000` (or a temporary `mc` Pod on the cluster network) in place of the `docker run --network` step, since there's no Docker network to attach to here. Then `helm upgrade` normally.
+
+**Not ready to migrate?** Stay on your current chart version until you are — `helm upgrade` only ever changes what you tell it to. You can still pick up other fixes independently in the meantime by bumping just the application image tags (`--reuse-values --set api.image.tag=<newer>` etc.) without bumping the chart itself, as long as the newer images don't depend on other chart-level changes you'd also be skipping — check each release's notes.
+
+We haven't verified a way to keep the bundled MinIO StatefulSet itself running *through* a `helm upgrade` to this chart version (Helm's `helm.sh/resource-policy: keep` annotation is the usual mechanism for protecting a resource from deletion when its template is removed, but we haven't tested it against this specific scenario, and getting it wrong risks the PVC itself, not just a config value — pinning the chart version is the option we can actually stand behind).

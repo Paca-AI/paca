@@ -95,7 +95,7 @@ Generate strong values yourself, e.g. `openssl rand -hex 32`.
 | `storage.publicUrl` | Empty defaults to `<publicUrl>/storage` | `""` |
 | `storage.region` / `.bucket` / `.useSSL` | | `us-east-1` / `paca` / `false` |
 
-**Upgrading a release still running the bundled MinIO?** Unlike the Docker Compose install path, `helm upgrade` has no automatic guard against this — see [docs/deployment/README.md](https://github.com/Paca-AI/paca/blob/master/docs/deployment/README.md#migrating-from-minio-to-rustfs)'s "Helm has no equivalent guard" note before upgrading, or your attachment data will be orphaned on the old release's PVC with no warning.
+**Upgrading a release still running the bundled MinIO?** Unlike the Docker Compose install path, `helm upgrade` has no automatic guard against this — see [docs/deployment/README.md](https://github.com/Paca-AI/paca/blob/master/docs/deployment/README.md#helm-users)'s "Helm users" section before upgrading, or your attachment data will be orphaned on the old release's PVC with no warning.
 
 ### API (Go backend)
 

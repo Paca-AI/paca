@@ -115,10 +115,13 @@ jobs:
   #    and on the exact `docker compose up` invocation upgrade.sh would have
   #    run (did the scaling inference converge correctly?).
   #
-  #    Also covers the storage backend migration (MinIO -> RustFS) hard-stop:
-  #    a second synthetic install, with a real "minio" container reported by
-  #    the fake docker compose ps this time, must be refused (no files
-  #    touched) unless PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 is set.
+  #    Also covers the storage backend migration (MinIO -> RustFS): with a
+  #    real "minio" container reported by the fake docker compose ps, the
+  #    upgrade must be refused (no files touched) unless told which way to
+  #    go — PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 (proceeds, removes the old
+  #    container, and repoints .env at rustfs) or PACA_KEEP_MINIO=1
+  #    (proceeds, leaves the old container running untouched, .env
+  #    unchanged).
   # ---------------------------------------------------------------------------
   upgrade-smoke:
     name: upgrade.sh smoke test
@@ -324,8 +327,77 @@ jobs:
           set -euo pipefail
           : > "$FAKE_DOCKER_LOG"
           PACA_YES=1 PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 PACA_DIR="$WORK2" bash scripts/upgrade.sh
-          grep -q "^compose .* up " "$FAKE_DOCKER_LOG"
+          up_line="$(grep '^compose .* up ' "$FAKE_DOCKER_LOG")"
+          if [[ "$up_line" != *"--remove-orphans"* ]]; then
+            echo "expected --remove-orphans (the now-migrated-away-from minio container should be cleaned up), got: $up_line" >&2
+            exit 1
+          fi
+          # The whole point of acknowledging: .env must actually point at the
+          # new backend once the old one is gone, or the api service is left
+          # trying to reach a hostname --remove-orphans just deleted.
+          grep -qx 'STORAGE_PROVIDER=rustfs' "$WORK2/.env"
+          grep -qx 'STORAGE_ENDPOINT=rustfs:9000' "$WORK2/.env"
           echo "Acknowledged migration proceeded as expected."
+
+      - name: Seed a third synthetic install with a live MinIO container (for the keep-it test)
+        run: |
+          set -euo pipefail
+          WORK3="$RUNNER_TEMP/upgrade-seed-minio-keep"
+          echo "WORK3=$WORK3" >> "$GITHUB_ENV"
+          mkdir -p "$WORK3"
+          echo '# placeholder' > "$WORK3/docker-compose.yml"
+          cat <<'ENV' > "$WORK3/.env"
+          PACA_API_IMAGE=pacaai/paca-api:0.9.0
+          PACA_WEB_IMAGE=pacaai/paca-web:0.9.0
+          PACA_REALTIME_IMAGE=pacaai/paca-realtime:0.9.0
+          PACA_AI_AGENT_IMAGE=ghcr.io/openhands/agent-server:0.9.0
+          PACA_AI_AGENT=yes
+          PUBLIC_URL=https://old.example.com
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=oldpassword123
+          JWT_SECRET=deadbeef
+          POSTGRES_DB=paca
+          POSTGRES_USER=paca
+          POSTGRES_PASSWORD=oldpgpass
+          DATABASE_URL=
+          STORAGE_PROVIDER=minio
+          STORAGE_ENDPOINT=minio:9000
+          STORAGE_REGION=us-east-1
+          STORAGE_BUCKET=paca
+          STORAGE_ACCESS_KEY_ID=oldaccesskey
+          STORAGE_SECRET_ACCESS_KEY=oldsecretkey
+          STORAGE_USE_SSL=false
+          ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000
+          AGENT_API_KEY=oldagentkey
+          INTERNAL_API_KEY=oldinternalkey
+          AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:latest
+          ENV
+
+      - name: Run upgrade.sh with PACA_KEEP_MINIO=1 — expect it to proceed without touching MinIO
+        env:
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+            minio
+        run: |
+          set -euo pipefail
+          : > "$FAKE_DOCKER_LOG"
+          PACA_YES=1 PACA_KEEP_MINIO=1 PACA_DIR="$WORK3" bash scripts/upgrade.sh
+          up_line="$(grep '^compose .* up ' "$FAKE_DOCKER_LOG")"
+          if [[ "$up_line" == *"--remove-orphans"* ]]; then
+            echo "expected no --remove-orphans (it would tear down the MinIO container being kept), got: $up_line" >&2
+            exit 1
+          fi
+          if [[ "$up_line" != *"--scale rustfs=0"* ]]; then
+            echo "expected --scale rustfs=0 (no need to also start rustfs alongside the kept minio), got: $up_line" >&2
+            exit 1
+          fi
+          # Left exactly as they were — still pointed at the container that's
+          # being kept, not silently switched to rustfs the way the
+          # acknowledge path above does.
+          grep -qx 'STORAGE_PROVIDER=minio' "$WORK3/.env"
+          grep -qx 'STORAGE_ENDPOINT=minio:9000' "$WORK3/.env"
+          echo "PACA_KEEP_MINIO=1 proceeded as expected, without touching the existing MinIO container."
 
   # ---------------------------------------------------------------------------
   # 4. install-paca-skills.sh smoke test — runs the real script fully

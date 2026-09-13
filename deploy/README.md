@@ -325,8 +325,10 @@ bash upgrade.sh --scale web=0 --scale rustfs=0
 ```
 
 > **Still running the bundled MinIO container from before this release?** `upgrade.sh`
-> detects it and refuses to proceed until you migrate its data — see
-> [Migrating from MinIO to RustFS](../docs/deployment/README.md#migrating-from-minio-to-rustfs).
+> detects it and refuses to proceed until you say which way you want it — migrate its
+> data (see [Migrating from MinIO to RustFS](../docs/deployment/README.md#migrating-from-minio-to-rustfs))
+> or keep MinIO running for now with `PACA_KEEP_MINIO=1` (see
+> [that section's follow-up](../docs/deployment/README.md#prefer-to-keep-running-your-existing-minio-container-for-now)).
 
 **Non-interactive (CI, scripts, AI coding agents):** set `PACA_YES=1` — required for
 unattended use, for the same reason as `install.sh`: without it, the script can block
