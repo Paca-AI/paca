@@ -167,7 +167,7 @@ export async function uploadAttachment(
 				);
 			}
 
-			// S3 / MinIO returns the ETag in the response headers.
+			// The S3-compatible store returns the ETag in the response headers.
 			const etag = resp.headers.get("ETag") ?? resp.headers.get("etag");
 			if (!etag) {
 				throw new Error(

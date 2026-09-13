@@ -75,9 +75,9 @@
 # to suppress the bundled container:
 #   docker compose --env-file .env up -d --scale postgres=0
 #
-# ── AWS S3 instead of MinIO ───────────────────────────────────────────────────
-# Set STORAGE_PROVIDER=s3 with real AWS credentials and add --scale minio=0:
-#   docker compose --env-file .env up -d --scale minio=0
+# ── AWS S3 instead of RustFS ───────────────────────────────────────────────────
+# Set STORAGE_PROVIDER=s3 with real AWS credentials and add --scale rustfs=0:
+#   docker compose --env-file .env up -d --scale rustfs=0
 #
 # ── Skip AI agent ─────────────────────────────────────────────────────────────
 #   docker compose --env-file .env up -d --scale agent-runner=0
@@ -191,20 +191,38 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── MinIO (S3-compatible object store) ──────────────────────────────────────
-  # Suppress with --scale minio=0 when using AWS S3.
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-minioadmin}
-      # WARNING: override this with a strong secret in your .env file.
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-minioadmin}
+  # A fresh Docker named volume is created root-owned, but the rustfs image
+  # runs its main process as the unprivileged `rustfs` user (uid/gid 10001) —
+  # writing to /data/rustfs0 then fails with "Permission denied (os error
+  # 13)" (confirmed live). This one-shot init container fixes ownership
+  # before rustfs starts; it reuses the same image so nothing extra is
+  # pulled. Still runs even under --scale rustfs=0 (AWS S3 deployments) — a
+  # harmless no-op chown on a volume nothing else ends up using.
+  rustfs-init:
+    image: rustfs/rustfs:1.0.0-rc.6
+    user: root
+    entrypoint: ["/bin/sh", "-c", "chown -R 10001:10001 /data/rustfs0"]
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data/rustfs0
+
+  # ── RustFS (S3-compatible object store) ─────────────────────────────────────
+  # Suppress with --scale rustfs=0 when using AWS S3.
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.6
+    restart: unless-stopped
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_ACCESS_KEY: ${STORAGE_ACCESS_KEY_ID:-rustfsadmin}
+      # WARNING: override this with a strong secret in your .env file.
+      RUSTFS_SECRET_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_VOLUMES: /data/rustfs0
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+    volumes:
+      - rustfs_data:/data/rustfs0
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -228,14 +246,14 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required — set it in your .env file}
-      # Object storage. Defaults to MinIO. Set STORAGE_PROVIDER=s3 for AWS S3.
-      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-minio}
-      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-minio:9000}
+      # Object storage. Defaults to RustFS. Set STORAGE_PROVIDER=s3 for AWS S3.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-rustfs}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-rustfs:9000}
       STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-http://localhost/storage}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-paca}
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-minioadmin}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-minioadmin}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rustfsadmin}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rustfsadmin}
       STORAGE_USE_SSL: ${STORAGE_USE_SSL:-false}
       # 64-char hex string for encrypting plugin secrets at rest.
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
@@ -273,7 +291,7 @@ services:
         required: false
       valkey:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
         required: false
     healthcheck:
@@ -442,7 +460,7 @@ services:
 volumes:
   postgres_data:
   valkey_data:
-  minio_data:
+  rustfs_data:
   backend_plugins:
   frontend_plugins:
   mcp_plugins:

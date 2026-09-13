@@ -68,6 +68,20 @@
 #                                SSH access as above.
 #   PACA_SSH_BASTION_HOST       Only used when enabling SSH access      (default: derived from
 #                                as above.                                the existing PUBLIC_URL)
+#   PACA_ACKNOWLEDGE_STORAGE_MIGRATION   Proceed even though a real     (default: unset)
+#                                bundled MinIO container still exists (see
+#                                "Storage backend migration" below) — set to
+#                                1 only after migrating its data to RustFS
+#                                by hand (docs/deployment/README.md).
+#
+# Upgrading an install still running the bundled MinIO container? MinIO
+# removed its own images from Docker Hub, so this release replaces it with
+# RustFS — see "Storage backend migration" further down in this script and
+# docs/deployment/README.md's "Migrating from MinIO to RustFS" section. This
+# script refuses to proceed until that data is migrated (or you've confirmed
+# there's nothing worth keeping) via PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1
+# above — it will never silently swap your storage backend out from under
+# real attachment data.
 #
 # Extra arguments are passed through to the final `docker compose up -d`,
 # for any --scale (or other compose flag) beyond what's already inferred
@@ -293,6 +307,26 @@ if [[ "$PROCEED" != "yes" ]]; then
     exit 0
 fi
 
+# ── Storage backend migration ──────────────────────────────────────────────────
+# MinIO pulled its own images from Docker Hub and archived its open-source
+# repo (see docs/deployment/README.md) — this release's docker-compose.yml
+# replaces the bundled "minio" service with "rustfs". An install that still
+# has a real minio container from before this release has attachment data
+# sitting in its minio_data volume that this script does not migrate
+# automatically: downloading the new docker-compose.yml and restarting below
+# would leave the api container pointed at a brand-new, empty rustfs
+# container while that data sits inert in the now-orphaned minio_data volume.
+# Gated on a real container existing (not just STORAGE_PROVIDER's value) so an
+# install that already moved to AWS S3 — and just never removed the old,
+# unused minio container — isn't blocked for no reason.
+if [[ "$(get_env_var .env STORAGE_PROVIDER)" != "s3" ]] && service_has_container minio \
+    && [[ "${PACA_ACKNOWLEDGE_STORAGE_MIGRATION:-}" != "1" ]]; then
+    error "This install still has a bundled MinIO container with real attachment data."
+    error "This release switches the bundled object store to RustFS (MinIO removed its own images from Docker Hub — see docs/deployment/README.md). Nothing has been changed yet."
+    error "See docs/deployment/README.md's \"Migrating from MinIO to RustFS\" section for the manual steps to copy your data across first, then re-run with PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 to proceed."
+    exit 1
+fi
+
 mkdir -p caddy
 
 # ── Backup and refresh infrastructure files ───────────────────────────────────
@@ -446,11 +480,11 @@ if [[ -n "$(get_env_var .env DATABASE_URL)" ]]; then
     info "Using an external database (DATABASE_URL is set) — skipping the postgres service."
 fi
 
-# Storage: S3 means the bundled MinIO container must never run — same
+# Storage: S3 means the bundled RustFS container must never run — same
 # reasoning as postgres above, derived from STORAGE_PROVIDER.
 if [[ "$(get_env_var .env STORAGE_PROVIDER)" == "s3" ]]; then
-    SCALE_OPTS+=(--scale minio=0)
-    info "Using AWS S3 (STORAGE_PROVIDER=s3 in .env) — skipping the minio service."
+    SCALE_OPTS+=(--scale rustfs=0)
+    info "Using AWS S3 (STORAGE_PROVIDER=s3 in .env) — skipping the rustfs service."
 fi
 
 # Backfill variables for the db-backup service introduced after this install

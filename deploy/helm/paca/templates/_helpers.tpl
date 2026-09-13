@@ -89,10 +89,10 @@ hand-rolling its own copy that could drift.
 {{- define "paca.storageEndpoint" -}}
 {{- if .Values.storage.endpoint -}}
 {{- .Values.storage.endpoint -}}
-{{- else if .Values.minio.enabled -}}
-{{- printf "%s-minio:9000" (include "paca.fullname" .) -}}
+{{- else if .Values.rustfs.enabled -}}
+{{- printf "%s-rustfs:9000" (include "paca.fullname" .) -}}
 {{- else -}}
-{{- required "storage.endpoint is required when minio.enabled is false (e.g. s3.amazonaws.com, or a region-specific S3 endpoint)" .Values.storage.endpoint -}}
+{{- required "storage.endpoint is required when rustfs.enabled is false (e.g. s3.amazonaws.com, or a region-specific S3 endpoint)" .Values.storage.endpoint -}}
 {{- end -}}
 {{- end -}}
 
@@ -116,7 +116,7 @@ matters).
 Empty (the default) resolves to "<release-name>-sandbox", a namespace
 templates/agent-runner/sandbox-namespace.yaml creates — dedicated to
 sandboxes/environments only, never the release's own namespace alongside
-postgres/valkey/minio/api/web/gateway. This matters more than it would for
+postgres/valkey/rustfs/api/web/gateway. This matters more than it would for
 a typical scoped Role: the RBAC this chart grants here includes
 patch/delete on Deployments and Services (needed for environment
 start/stop/port-forward management), which Kubernetes RBAC cannot scope to

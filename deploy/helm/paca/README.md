@@ -3,7 +3,7 @@
 Paca — self-hosted AI-powered project management, deployed on Kubernetes.
 
 This chart mirrors [`deploy/docker-compose.prod.yml`](https://github.com/Paca-AI/paca/blob/master/deploy/docker-compose.prod.yml)
-component-for-component: PostgreSQL, Valkey (Redis-compatible), MinIO
+component-for-component: PostgreSQL, Valkey (Redis-compatible), RustFS
 (S3-compatible), the Go API, the React web app served via Caddy, a
 Socket.IO realtime hub, an AI agent runner, and a Caddy gateway in front
 of all of it.
@@ -86,12 +86,12 @@ Generate strong values yourself, e.g. `openssl rand -hex 32`.
 
 | Key | Description | Default |
 |---|---|---|
-| `minio.enabled` | Deploy bundled MinIO. Set `false`, `storage.provider: s3`, and real AWS credentials to use S3 instead. | `true` |
-| `minio.image.repository` / `.tag` | | `minio/minio` / `latest` |
-| `minio.persistence.enabled` / `.size` / `.storageClassName` | | `true` / `20Gi` / `""` |
-| `minio.resources` | Requests/limits for the MinIO Pod | see `values.yaml` |
-| `storage.provider` | `minio` or `s3` | `minio` |
-| `storage.endpoint` | Empty defaults to the bundled MinIO's in-cluster Service address | `""` |
+| `rustfs.enabled` | Deploy bundled RustFS. Set `false`, `storage.provider: s3`, and real AWS credentials to use S3 instead. | `true` |
+| `rustfs.image.repository` / `.tag` | | `rustfs/rustfs` / `1.0.0-rc.6` |
+| `rustfs.persistence.enabled` / `.size` / `.storageClassName` | | `true` / `20Gi` / `""` |
+| `rustfs.resources` | Requests/limits for the RustFS Pod | see `values.yaml` |
+| `storage.provider` | `rustfs` or `s3` | `rustfs` |
+| `storage.endpoint` | Empty defaults to the bundled RustFS's in-cluster Service address | `""` |
 | `storage.publicUrl` | Empty defaults to `<publicUrl>/storage` | `""` |
 | `storage.region` / `.bucket` / `.useSSL` | | `us-east-1` / `paca` / `false` |
 

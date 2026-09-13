@@ -33,10 +33,10 @@ docker compose -f deploy/docker-compose.dev.yml down -v
 | `services/agent-runner` | Go, driving Goose over ACP | 8080 (internal) | [air](https://github.com/air-verse/air) |
 | PostgreSQL | postgres:16-alpine | 5432 | — |
 | Valkey | valkey/valkey:8-alpine | 6379 | — |
-| MinIO S3 API | minio/minio | 9000 | — |
-| MinIO Console | minio/minio | 9001 | http://localhost:9001 (user: `minioadmin`, pass: `minioadmin`) |
+| RustFS S3 API | rustfs/rustfs | 9000 | — |
+| RustFS Console | rustfs/rustfs | 9001 | http://localhost:9001 (user: `rustfsadmin`, pass: `rustfsadmin`) |
 
-The Caddy gateway (port 3000) routes `/api/v1/…` to the API, socket traffic to realtime, and `/storage/…` to MinIO. `apps/web` is served at the root.
+The Caddy gateway (port 3000) routes `/api/v1/…` to the API, socket traffic to realtime, and `/storage/…` to RustFS. `apps/web` is served at the root.
 
 ---
 
@@ -131,7 +131,7 @@ make migrate-up   # requires DATABASE_URL to be set
 |---|---|
 | App login | `admin` / `adminpassword` |
 | PostgreSQL | `paca:paca@localhost:5432/paca` |
-| MinIO console | `minioadmin` / `minioadmin` at http://localhost:9001 |
+| RustFS console | `rustfsadmin` / `rustfsadmin` at http://localhost:9001 |
 | Agent API key | `dev-agent-api-key-change-in-production` |
 
 These are intentionally weak defaults — never use them in production.

@@ -1,15 +1,15 @@
-{{- if .Values.minio.enabled }}
+{{- if .Values.rustfs.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "paca.fullname" . }}-minio
+  name: {{ include "paca.fullname" . }}-rustfs
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "paca.componentLabels" (dict "root" . "component" "minio") | nindent 4 }}
+    {{- include "paca.componentLabels" (dict "root" . "component" "rustfs") | nindent 4 }}
 spec:
   clusterIP: None
   selector:
-    {{- include "paca.selectorLabels" (dict "root" . "component" "minio") | nindent 4 }}
+    {{- include "paca.selectorLabels" (dict "root" . "component" "rustfs") | nindent 4 }}
   ports:
     - port: 9000
       targetPort: api

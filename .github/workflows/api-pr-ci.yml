@@ -147,7 +147,7 @@ jobs:
       - name: Apply every migration to a fresh database
         # TestRealMigrations_ApplyCleanlyFromScratch (test/e2e/migrations_test.go)
         # lives in the same package as the full E2E suite, so its shared
-        # TestMain still spins up Postgres/Redis/MinIO regardless of the
+        # TestMain still spins up Postgres/Redis/RustFS regardless of the
         # -run filter below — the win here isn't a lighter container set,
         # it's a dedicated, fast-failing, unambiguously-named check that
         # doesn't depend on which other e2e test happens to apply

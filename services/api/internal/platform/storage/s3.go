@@ -17,15 +17,15 @@ import (
 )
 
 // S3Config holds the configuration for an S3-compatible object store.
-// Both AWS S3 and MinIO are supported.
+// Both AWS S3 and self-hosted S3-compatible stores (e.g. RustFS) are supported.
 type S3Config struct {
-	Endpoint        string // leave empty for AWS S3; set to MinIO URL for self-hosted
+	Endpoint        string // leave empty for AWS S3; set to the self-hosted store's URL otherwise
 	Region          string
 	Bucket          string
 	AccessKeyID     string
 	SecretAccessKey string
-	UseSSL          bool // only relevant when Endpoint is set (MinIO)
-	ForcePathStyle  bool // set true for MinIO
+	UseSSL          bool // only relevant when Endpoint is set (self-hosted)
+	ForcePathStyle  bool // set true for self-hosted stores
 	// PublicURL is the public-facing base URL that clients (browsers) use to
 	// reach the object store through the gateway proxy, e.g.
 	// "http://localhost/storage".  When set, all presigned URLs are rewritten
@@ -43,8 +43,8 @@ type S3Client struct {
 }
 
 // NewS3Client constructs an S3Client.  When cfg.Endpoint is empty the client
-// connects to AWS S3; otherwise it targets the given MinIO (or other
-// S3-compatible) endpoint.
+// connects to AWS S3; otherwise it targets the given self-hosted
+// S3-compatible endpoint (e.g. RustFS).
 func NewS3Client(ctx context.Context, cfg S3Config) (*S3Client, error) {
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(cfg.Region),
@@ -88,7 +88,7 @@ func NewS3Client(ctx context.Context, cfg S3Config) (*S3Client, error) {
 }
 
 // internalEndpoint returns the full scheme+host of the internal endpoint as
-// it appears in presigned URLs (e.g. "http://minio:9000").
+// it appears in presigned URLs (e.g. "http://rustfs:9000").
 func (c *S3Client) internalEndpoint() string {
 	if c.cfg.Endpoint == "" {
 		return ""

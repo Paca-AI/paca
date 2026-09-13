@@ -114,6 +114,11 @@ jobs:
   #    Asserts on the resulting .env (did every migration actually apply?)
   #    and on the exact `docker compose up` invocation upgrade.sh would have
   #    run (did the scaling inference converge correctly?).
+  #
+  #    Also covers the storage backend migration (MinIO -> RustFS) hard-stop:
+  #    a second synthetic install, with a real "minio" container reported by
+  #    the fake docker compose ps this time, must be refused (no files
+  #    touched) unless PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 is set.
   # ---------------------------------------------------------------------------
   upgrade-smoke:
     name: upgrade.sh smoke test
@@ -243,6 +248,84 @@ jobs:
             exit 1
           fi
           echo "All upgrade.sh migration assertions passed."
+
+      - name: Seed a synthetic install with a live MinIO container
+        run: |
+          set -euo pipefail
+          WORK2="$RUNNER_TEMP/upgrade-seed-minio"
+          echo "WORK2=$WORK2" >> "$GITHUB_ENV"
+          mkdir -p "$WORK2"
+          echo '# placeholder — must stay untouched by the hard-stop below' > "$WORK2/docker-compose.yml"
+          # Same shape as the old-style installation seeded above — a bare-bones
+          # .env would fail for unrelated reasons once the hard-stop is
+          # acknowledged and the rest of upgrade.sh's migration logic runs.
+          cat <<'ENV' > "$WORK2/.env"
+          PACA_API_IMAGE=pacaai/paca-api:0.9.0
+          PACA_WEB_IMAGE=pacaai/paca-web:0.9.0
+          PACA_REALTIME_IMAGE=pacaai/paca-realtime:0.9.0
+          PACA_AI_AGENT_IMAGE=ghcr.io/openhands/agent-server:0.9.0
+          PACA_AI_AGENT=yes
+          PUBLIC_URL=https://old.example.com
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=oldpassword123
+          JWT_SECRET=deadbeef
+          POSTGRES_DB=paca
+          POSTGRES_USER=paca
+          POSTGRES_PASSWORD=oldpgpass
+          DATABASE_URL=
+          STORAGE_PROVIDER=minio
+          STORAGE_ENDPOINT=minio:9000
+          STORAGE_REGION=us-east-1
+          STORAGE_BUCKET=paca
+          STORAGE_ACCESS_KEY_ID=oldaccesskey
+          STORAGE_SECRET_ACCESS_KEY=oldsecretkey
+          STORAGE_USE_SSL=false
+          ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000
+          AGENT_API_KEY=oldagentkey
+          INTERNAL_API_KEY=oldinternalkey
+          AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:latest
+          ENV
+
+      - name: Run upgrade.sh against it — expect the storage-migration hard-stop
+        env:
+          # Unlike the seed above (no "minio" in the list), this run's fake
+          # `docker compose ps -a --services` reports a real, currently-running
+          # minio container — the exact condition the hard-stop in upgrade.sh's
+          # "Storage backend migration" section exists to catch.
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+            minio
+        run: |
+          set -euo pipefail
+          : > "$FAKE_DOCKER_LOG"
+          if PACA_YES=1 PACA_DIR="$WORK2" bash scripts/upgrade.sh > "$RUNNER_TEMP/hard-stop-output.log" 2>&1; then
+            echo "expected upgrade.sh to exit non-zero (a live MinIO container should block the upgrade), but it succeeded" >&2
+            cat "$RUNNER_TEMP/hard-stop-output.log" >&2
+            exit 1
+          fi
+          grep -q "bundled MinIO container with real attachment data" "$RUNNER_TEMP/hard-stop-output.log"
+          grep -q "PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1" "$RUNNER_TEMP/hard-stop-output.log"
+          # Nothing should have been touched — the check runs before any backup/download.
+          grep -qx '# placeholder — must stay untouched by the hard-stop below' "$WORK2/docker-compose.yml"
+          if ls "$WORK2"/.env.bak.* >/dev/null 2>&1; then
+            echo "expected no .env backup — the hard-stop should fire before any file is touched" >&2
+            exit 1
+          fi
+          echo "Storage-migration hard-stop fired as expected, with no side effects."
+
+      - name: Re-run with PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 — expect it to proceed
+        env:
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+            minio
+        run: |
+          set -euo pipefail
+          : > "$FAKE_DOCKER_LOG"
+          PACA_YES=1 PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 PACA_DIR="$WORK2" bash scripts/upgrade.sh
+          grep -q "^compose .* up " "$FAKE_DOCKER_LOG"
+          echo "Acknowledged migration proceeded as expected."
 
   # ---------------------------------------------------------------------------
   # 4. install-paca-skills.sh smoke test — runs the real script fully
