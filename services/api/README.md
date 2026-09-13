@@ -54,7 +54,7 @@ services/api/
                 jwt_manager.go     # sign/verify JWT, key rotation strategy
             authz/
                 policy.go          # authorization policy abstraction
-            storage/               # S3-compatible file storage (MinIO / AWS S3)
+            storage/               # S3-compatible file storage (RustFS / AWS S3)
             secret/                # encryption helpers (AES-GCM)
             plugin/                # WASM plugin runtime (wazero)
         domain/

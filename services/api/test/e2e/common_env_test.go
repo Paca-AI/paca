@@ -69,12 +69,12 @@ const (
 	e2eRefreshSessionTTL = 24 * time.Hour
 )
 
-// sharedPGDSN, sharedRedisURL, and sharedMinIOEndpoint are populated once by
+// sharedPGDSN, sharedRedisURL, and sharedStorageEndpoint are populated once by
 // TestMain so that every newE2EEnv call reuses the same containers.
 var (
-	sharedPGDSN         string
-	sharedRedisURL      string
-	sharedMinIOEndpoint string // host:port reachable from the test process
+	sharedPGDSN           string
+	sharedRedisURL        string
+	sharedStorageEndpoint string // host:port reachable from the test process
 
 	// testDBSeq is incremented for each newE2EEnv call to generate a unique
 	// per-test Postgres database name. This ensures seed data (e.g. users)
@@ -232,13 +232,13 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
 	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{}, publisher, pluginRepoForAgent)
 	var attachmentService *attachmentsvc.Service
-	if sharedMinIOEndpoint != "" {
-		minIOEndpoint := sharedMinIOEndpoint
+	if sharedStorageEndpoint != "" {
+		storageEndpoint := sharedStorageEndpoint
 		storageClient, storageErr := storage.NewS3Client(ctx, storage.S3Config{
-			Endpoint:        "http://" + minIOEndpoint,
+			Endpoint:        "http://" + storageEndpoint,
 			Region:          "us-east-1",
-			AccessKeyID:     "minioadmin",
-			SecretAccessKey: "minioadmin",
+			AccessKeyID:     "rustfsadmin",
+			SecretAccessKey: "rustfsadmin",
 			ForcePathStyle:  true,
 		})
 		if storageErr != nil {
@@ -381,38 +381,45 @@ func TestMain(m *testing.M) {
 	}
 	sharedRedisURL = fmt.Sprintf("redis://%s:%s/0", redisHost, redisPort.Port())
 
-	minioC, err := testcontainers.GenericContainer(bgCtx, testcontainers.GenericContainerRequest{
+	// A failure here must never reach for pgC/redisC.Terminate: m.Run() below
+	// runs the ENTIRE suite regardless of this container's fate, not just the
+	// attachment tests the comment below refers to — terminating the shared
+	// Postgres/Valkey containers here previously took down every other test
+	// in the package with a "connection refused" once this container's pull
+	// started failing (MinIO's images were pulled from Docker Hub; see
+	// docs/deployment/README.md), instead of just skipping attachment tests
+	// as intended.
+	rustfsC, err := testcontainers.GenericContainer(bgCtx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image: "minio/minio:latest",
+			Image: "rustfs/rustfs:1.0.0-rc.6",
 			Env: map[string]string{
-				"MINIO_ROOT_USER":     "minioadmin",
-				"MINIO_ROOT_PASSWORD": "minioadmin",
+				"RUSTFS_ACCESS_KEY": "rustfsadmin",
+				"RUSTFS_SECRET_KEY": "rustfsadmin",
+				"RUSTFS_VOLUMES":    "/data/rustfs0",
+				"RUSTFS_ADDRESS":    "0.0.0.0:9000",
 			},
-			Cmd:          []string{"server", "/data"},
 			ExposedPorts: []string{"9000/tcp"},
-			WaitingFor:   wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(60 * time.Second),
+			WaitingFor:   wait.ForHTTP("/health").WithPort("9000/tcp").WithStartupTimeout(60 * time.Second),
 		},
 		Started: true,
 	})
 	if err != nil {
-		_ = pgC.Terminate(bgCtx)
-		_ = redisC.Terminate(bgCtx)
-		fmt.Fprintf(os.Stderr, "WARN: start minio container: %v – attachment tests will be skipped\n", err)
+		fmt.Fprintf(os.Stderr, "WARN: start rustfs container: %v – attachment tests will be skipped\n", err)
 	} else {
-		minioHost, _ := minioC.Host(bgCtx)
-		minioPort, _ := minioC.MappedPort(bgCtx, "9000/tcp")
-		if minioHost == "localhost" {
-			minioHost = "127.0.0.1"
+		rustfsHost, _ := rustfsC.Host(bgCtx)
+		rustfsPort, _ := rustfsC.MappedPort(bgCtx, "9000/tcp")
+		if rustfsHost == "localhost" {
+			rustfsHost = "127.0.0.1"
 		}
-		sharedMinIOEndpoint = fmt.Sprintf("%s:%s", minioHost, minioPort.Port())
+		sharedStorageEndpoint = fmt.Sprintf("%s:%s", rustfsHost, rustfsPort.Port())
 	}
 
 	code := m.Run()
 
 	_ = pgC.Terminate(bgCtx)
 	_ = redisC.Terminate(bgCtx)
-	if minioC != nil {
-		_ = minioC.Terminate(bgCtx)
+	if rustfsC != nil {
+		_ = rustfsC.Terminate(bgCtx)
 	}
 
 	os.Exit(code)
@@ -464,7 +471,7 @@ func setupDockerEnvForMain() bool {
 // the environment. TestMain's setupDockerEnvForMain already exported
 // DOCKER_HOST/TESTCONTAINERS_RYUK_DISABLED process-wide (via os.Setenv,
 // before any test starts) if Docker was found at all, and no test creates
-// its own containers — Postgres/Valkey/MinIO are shared, started once in
+// its own containers — Postgres/Valkey/RustFS are shared, started once in
 // TestMain — so there is nothing left for an individual test to configure.
 // This also matters for parallel tests specifically: t.Setenv panics if
 // called after t.Parallel(), since env vars are process-global and unsafe

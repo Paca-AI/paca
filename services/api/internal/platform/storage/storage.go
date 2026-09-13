@@ -1,5 +1,5 @@
 // Package storage provides an object-storage abstraction that is compatible
-// with both AWS S3 and MinIO (which implements the S3 API).
+// with AWS S3 and any self-hosted, S3-API-compatible store (e.g. RustFS).
 package storage
 
 import (
@@ -45,8 +45,8 @@ type Client interface {
 	// totalSize is used to calculate the number of parts.
 	InitiateMultipartUpload(ctx context.Context, bucket, key, contentType string, totalSize int64, partSize int64, ttl time.Duration) (*MultipartUpload, error)
 
-	// CompleteMultipartUpload signals S3/MinIO that all parts have been
-	// received and assembles the final object.
+	// CompleteMultipartUpload signals the object store that all parts have
+	// been received and assembles the final object.
 	CompleteMultipartUpload(ctx context.Context, bucket, key, uploadID string, parts []CompletedPart) error
 
 	// AbortMultipartUpload cancels an in-progress multipart session and

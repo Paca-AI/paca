@@ -48,7 +48,7 @@ Concerns:
 - business workflows (tasks, sprints, boards, members, documents, custom fields);
 - authentication and authorization (JWT, API keys, role-based permissions);
 - persistence coordination with PostgreSQL and Valkey;
-- S3-compatible file attachment handling (MinIO or AWS S3);
+- S3-compatible file attachment handling (RustFS or AWS S3);
 - WASM plugin runtime (wazero) — loads backend plugins, registers routes, mediates host function calls;
 - publication of domain events to Valkey Streams for downstream consumers;
 - agent trigger event publication and conversation summary ingestion.

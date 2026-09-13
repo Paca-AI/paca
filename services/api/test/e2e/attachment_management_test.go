@@ -82,7 +82,7 @@ func TestE2EAttachmentManagement_CRUD(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	if env.attachmentSvc == nil {
-		t.Skip("attachment service not available (MinIO container did not start)")
+		t.Skip("attachment service not available (RustFS container did not start)")
 	}
 
 	seedAttachmentUser(t, env, "attach-crud-user", "attachpass1!")
@@ -302,7 +302,7 @@ func TestE2EAttachmentManagement_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	if env.attachmentSvc == nil {
-		t.Skip("attachment service not available (MinIO container did not start)")
+		t.Skip("attachment service not available (RustFS container did not start)")
 	}
 
 	projID := uuid.NewString()

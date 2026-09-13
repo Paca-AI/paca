@@ -84,7 +84,7 @@
       }
     },
     "externalRedisUrl": { "type": "string" },
-    "minio": {
+    "rustfs": {
       "type": "object",
       "additionalProperties": true,
       "properties": {
@@ -113,7 +113,7 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "provider": { "type": "string", "enum": ["minio", "s3"] },
+        "provider": { "type": "string", "enum": ["rustfs", "s3"] },
         "endpoint": { "type": "string" },
         "publicUrl": { "type": "string" },
         "region": { "type": "string" },
