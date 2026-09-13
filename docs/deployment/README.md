@@ -67,22 +67,45 @@ Presigned URLs are used for both uploads and downloads, so the object store is n
 
 MinIO removed its own images from Docker Hub and archived its open-source repository, so this project switched its bundled object store to RustFS. New installs are unaffected. **Existing self-hosted installs still running the bundled MinIO container have real attachment data in their `minio_data` volume**, which `scripts/upgrade.sh` does not migrate automatically — it detects this case and refuses to proceed rather than silently pointing the API at a brand-new, empty RustFS container while your old data sits inert in the orphaned `minio_data` volume.
 
-To migrate by hand, using [MinIO Client](https://min.io/docs/minio/linux/reference/minio-mc.html) (`mc`, which speaks plain S3 and works against any S3-compatible endpoint, RustFS included) while your existing stack is still running:
+To migrate by hand, using [MinIO Client](https://min.io/docs/minio/linux/reference/minio-mc.html) (`mc`, which speaks plain S3 and works against any S3-compatible endpoint, RustFS included) while your existing stack is still running. Run it as a container on the **same Docker network your compose stack uses** rather than on the host — the compose file never publishes the object store's port to the host (only the gateway's 80/443 are published), so `http://localhost:9000` is not reachable from outside the stack. The network is usually `<project-name>_default` (`paca_default` for a default install; run `docker network ls` if you're not sure).
 
-1. **Back up every object out of the running MinIO container** to a local directory:
+From the directory holding your `docker-compose.yml` and `.env`:
+
+1. **Export your storage credentials into the shell** — `.env` is read by Compose, not by your shell, so `$STORAGE_ACCESS_KEY_ID`/`$STORAGE_SECRET_ACCESS_KEY` are otherwise empty here:
    ```bash
-   mc alias set old-minio http://localhost:9000 "$STORAGE_ACCESS_KEY_ID" "$STORAGE_SECRET_ACCESS_KEY"
-   mc mirror old-minio/paca ./paca-attachments-backup
+   set -a; source .env; set +a
    ```
-2. **Run the upgrade**, explicitly acknowledging that you've handled the migration yourself:
+2. **Back up every object out of the running MinIO container** to a local directory (`quay.io/minio/mc` — MinIO's own Docker Hub images are gone, but this one is still published):
+   ```bash
+   docker run --rm --network paca_default -v "$PWD/paca-attachments-backup:/backup" \
+     --entrypoint /bin/sh quay.io/minio/mc -c "
+       mc alias set old-minio http://minio:9000 '$STORAGE_ACCESS_KEY_ID' '$STORAGE_SECRET_ACCESS_KEY' &&
+       mc mirror old-minio/paca /backup
+     "
+   ```
+3. **Run the upgrade**, explicitly acknowledging that you've handled the migration yourself:
    ```bash
    PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 bash upgrade.sh
    ```
-3. **Copy the objects back up** into the new RustFS container once it's running:
+4. **Copy the objects back up** into the new RustFS container once it's running — note the destination bucket needs creating first, unlike the source bucket above which the app already created:
    ```bash
-   mc alias set new-rustfs http://localhost:9000 "$STORAGE_ACCESS_KEY_ID" "$STORAGE_SECRET_ACCESS_KEY"
-   mc mirror ./paca-attachments-backup new-rustfs/paca
+   docker run --rm --network paca_default -v "$PWD/paca-attachments-backup:/backup" \
+     --entrypoint /bin/sh quay.io/minio/mc -c "
+       mc alias set new-rustfs http://rustfs:9000 '$STORAGE_ACCESS_KEY_ID' '$STORAGE_SECRET_ACCESS_KEY' &&
+       mc mb new-rustfs/paca &&
+       mc mirror /backup new-rustfs/paca
+     "
    ```
-4. Spot-check a few existing attachments load correctly in the app, then remove the old `minio_data` volume and the now-unused `mc` aliases.
+5. Spot-check a few existing attachments load correctly in the app, then remove the backup directory. The old `minio_data` volume is already freed for you to remove — `upgrade.sh`'s final `docker compose up` passes `--remove-orphans`, which stops and removes the now-undefined `minio` container as part of the upgrade itself:
+   ```bash
+   docker volume rm paca_minio_data
+   rm -rf ./paca-attachments-backup
+   ```
+
+Verified end-to-end (a real object round-tripped byte-for-byte through this exact sequence, against a MinIO container with no published port) before writing it up here.
 
 If you'd rather not migrate right now, that's fine — the check runs before `upgrade.sh` touches anything, so your existing `docker-compose.yml` (still defining the working `minio` service) is left completely untouched. Keep running it until you're ready.
+
+### Helm has no equivalent guard
+
+The hard-stop above only protects Docker Compose installs. `helm upgrade` on a release still running the bundled MinIO StatefulSet has no equivalent check: the old StatefulSet is deleted, a new empty RustFS one is created, and the old release's `minio` PVC is orphaned — silently, if you never explicitly set `storage.provider` (its default just changed out from under you). Follow the same `mc mirror` approach above before upgrading — `kubectl port-forward` to each Pod (or a temporary `mc` Pod on the cluster network) in place of the `docker run --network` step, since there's no Docker network to attach to on Kubernetes.

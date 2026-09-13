@@ -380,7 +380,16 @@ docker run --rm \
   alpine sh -c "cp -av /from/. /to/"
 docker volume rm paca-prod_postgres_data
 
-# Repeat for minio_data, valkey_data, and plugin volumes as needed.
+# Repeat for valkey_data and plugin volumes as needed the same way — a raw
+# volume copy works for them since their on-disk format didn't change.
+#
+# The object-storage volume is a special case if you're also still on the
+# bundled MinIO: it's named minio_data here, not rustfs_data — this release
+# renamed the service, but MinIO's and RustFS's on-disk formats aren't
+# compatible, so a raw copy like the postgres one above would just produce a
+# rustfs_data volume full of files RustFS can't read. Use the dedicated
+# mc-based migration in docs/deployment/README.md's "Migrating from MinIO to
+# RustFS" section instead, before starting the new stack below.
 
 # 3. Start the new stack.
 docker compose --env-file .env up -d
