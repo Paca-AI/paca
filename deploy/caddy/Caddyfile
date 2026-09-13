@@ -13,7 +13,7 @@
 #   /ws/*           →  Realtime service        (Socket.IO, /ws stripped)
 #   /agent-bridge/ws → agent-runner's local ACP bridge WebSocket (forwarded as-is)
 #   /environments/*/terminal/ws → agent-runner's static-environment browser terminal WebSocket
-#   /storage/*      →  MinIO                   (/storage stripped)
+#   /storage/*      →  RustFS                  (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
 #   /plugins-skills/* → Plugin Agent Skills bundles (static files)
@@ -42,7 +42,7 @@
 #   install.sh enables HTTPS by default and prompts for this address.
 #
 # Upstream hostnames (*_UPSTREAM) default to Docker Compose's own service
-# names ("api", "web", "realtime", "agent-runner", "minio") but can be
+# names ("api", "web", "realtime", "agent-runner", "rustfs") but can be
 # overridden by env var — deploy/helm/paca sets these to the real
 # Kubernetes Service names (which carry a release-name prefix Compose's
 # bare names don't need), so this one file routes correctly under either
@@ -115,19 +115,19 @@
 		max_size 10MB
 	}
 
-	# -- Object storage (MinIO) ------------------------------------------------
+	# -- Object storage (RustFS) ------------------------------------------------
 	#
-	# The Host header is rewritten to the internal MinIO address so that AWS
-	# Signature V4 validation succeeds: MinIO re-derives the HMAC using the
-	# Host it receives, which must match the host that was used when the
-	# presigned URL was generated (minio:9000).
+	# The Host header is rewritten to the internal storage address so that AWS
+	# Signature V4 validation succeeds: the object store re-derives the HMAC
+	# using the Host it receives, which must match the host that was used when
+	# the presigned URL was generated (rustfs:9000).
 	#
-	# The API rewrites presigned URL hosts from "minio:9000" to
+	# The API rewrites presigned URL hosts from "rustfs:9000" to
 	# STORAGE_PUBLIC_URL (e.g. "http://localhost/storage") before returning
 	# them to clients, so browsers always receive routable URLs.
 	handle_path /storage/* {
-		reverse_proxy {$MINIO_UPSTREAM:minio:9000} {
-			header_up Host {$MINIO_UPSTREAM:minio:9000}
+		reverse_proxy {$STORAGE_UPSTREAM:rustfs:9000} {
+			header_up Host {$STORAGE_UPSTREAM:rustfs:9000}
 		}
 	}
 

@@ -222,7 +222,7 @@ func New(cfg *config.Config) (*App, error) {
 	cronScheduler := worker.NewCronScheduler(redisClient, automationConsumer, log)
 	waitScheduler := worker.NewWaitScheduler(redisClient, automationConsumer, log)
 
-	// Object storage — defaults to MinIO; switches to AWS S3 when STORAGE_PROVIDER=s3.
+	// Object storage — defaults to RustFS; switches to AWS S3 when STORAGE_PROVIDER=s3.
 	storageClient, err := storage.NewS3Client(context.Background(), storage.S3Config{
 		Endpoint:        cfg.Storage.Endpoint,
 		PublicURL:       cfg.Storage.PublicURL,
@@ -231,7 +231,7 @@ func New(cfg *config.Config) (*App, error) {
 		AccessKeyID:     cfg.Storage.AccessKeyID,
 		SecretAccessKey: cfg.Storage.SecretAccessKey,
 		UseSSL:          cfg.Storage.UseSSL,
-		ForcePathStyle:  cfg.Storage.Provider != "s3", // MinIO requires path-style
+		ForcePathStyle:  cfg.Storage.Provider != "s3", // self-hosted S3-compatible stores require path-style
 	})
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: storage client: %w", err)

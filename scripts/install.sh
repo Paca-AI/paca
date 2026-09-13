@@ -71,11 +71,11 @@
 #     BACKUP_RETENTION_DAYS        (default: 7)
 #
 #   Object storage
-#     STORAGE_PROVIDER             minio/s3                            (default: minio)
+#     STORAGE_PROVIDER             rustfs/s3                           (default: rustfs)
 #     STORAGE_REGION                                                   (default: us-east-1)
-#     STORAGE_BUCKET                Required if STORAGE_PROVIDER=s3     (default: paca for minio)
-#     STORAGE_ACCESS_KEY_ID         Required if STORAGE_PROVIDER=s3     (default: auto-generated for minio)
-#     STORAGE_SECRET_ACCESS_KEY     Required if STORAGE_PROVIDER=s3     (default: auto-generated for minio)
+#     STORAGE_BUCKET                Required if STORAGE_PROVIDER=s3     (default: paca for rustfs)
+#     STORAGE_ACCESS_KEY_ID         Required if STORAGE_PROVIDER=s3     (default: auto-generated for rustfs)
+#     STORAGE_SECRET_ACCESS_KEY     Required if STORAGE_PROVIDER=s3     (default: auto-generated for rustfs)
 #
 #   Network
 #     PACA_ADDRESS                 Domain or IP Paca is reachable at    (default: localhost)
@@ -573,21 +573,21 @@ fi
 heading "Object storage"
 
 # STORAGE_PROVIDER doubles as both the .env output key and the input
-# selector here — set it to "s3" or "minio" beforehand to skip this prompt.
+# selector here — set it to "s3" or "rustfs" beforehand to skip this prompt.
 STORAGE_DEFAULT_IDX=1
 [[ "${STORAGE_PROVIDER:-}" == "s3" ]] && STORAGE_DEFAULT_IDX=2
 
 STORAGE_CHOICE=""
 ask_choice STORAGE_CHOICE "Where should file attachments be stored?" "$STORAGE_DEFAULT_IDX" \
-    "Self-hosted MinIO (recommended, no cloud account needed)" \
+    "Self-hosted RustFS (recommended, no cloud account needed)" \
     "AWS S3"
 
-SCALE_MINIO=""
-STORAGE_ENDPOINT="minio:9000"
+SCALE_RUSTFS=""
+STORAGE_ENDPOINT="rustfs:9000"
 STORAGE_USE_SSL="false"
 
 if [[ "$STORAGE_CHOICE" == *"AWS"* ]]; then
-    SCALE_MINIO="--scale minio=0"
+    SCALE_RUSTFS="--scale rustfs=0"
     STORAGE_PROVIDER="s3"
     STORAGE_ENDPOINT=""
     STORAGE_USE_SSL="true"
@@ -609,12 +609,12 @@ if [[ "$STORAGE_CHOICE" == *"AWS"* ]]; then
     fi
     info "AWS S3 will be used (bucket: ${STORAGE_BUCKET}, region: ${STORAGE_REGION})."
 else
-    STORAGE_PROVIDER="minio"
+    STORAGE_PROVIDER="rustfs"
     STORAGE_REGION="${STORAGE_REGION:-us-east-1}"
     STORAGE_BUCKET="${STORAGE_BUCKET:-paca}"
     STORAGE_ACCESS_KEY_ID="${STORAGE_ACCESS_KEY_ID:-$(rand_alnum 16)}"
     STORAGE_SECRET_ACCESS_KEY="${STORAGE_SECRET_ACCESS_KEY:-$(rand_alnum 32)}"
-    info "Self-hosted MinIO will be started."
+    info "Self-hosted RustFS will be started."
 fi
 
 # ── Network ───────────────────────────────────────────────────────────────────
@@ -671,8 +671,8 @@ else
     COOKIE_SECURE="false"
 fi
 
-# Compute storage public URL only for MinIO (S3 presigned URLs are self-contained).
-if [[ "$STORAGE_PROVIDER" == "minio" ]]; then
+# Compute storage public URL only for RustFS (S3 presigned URLs are self-contained).
+if [[ "$STORAGE_PROVIDER" == "rustfs" ]]; then
     STORAGE_PUBLIC_URL="${PUBLIC_URL}/storage"
 else
     STORAGE_PUBLIC_URL=""
@@ -909,7 +909,7 @@ echo -e "  ${BOLD}Public URL  ${RESET}${PUBLIC_URL}"
 echo -e "  ${BOLD}HTTPS       ${RESET}$( [[ "$USE_HTTPS" == "yes" ]] && echo "Enabled (${SITE_ADDRESS})" || echo "Disabled (plain HTTP)" )"
 echo -e "  ${BOLD}Database    ${RESET}$( [[ -n "$SCALE_POSTGRES" ]] && echo "External PostgreSQL" || echo "Bundled PostgreSQL container" )"
 echo -e "  ${BOLD}Backups     ${RESET}$( [[ -n "$SCALE_DB_BACKUP" ]] && echo "Disabled" || echo "'${BACKUP_CRON}' UTC → ${BACKUP_DIR} (kept ${BACKUP_RETENTION_DAYS}d)" )"
-echo -e "  ${BOLD}Storage     ${RESET}$( [[ "$STORAGE_PROVIDER" == "s3" ]] && echo "AWS S3 (${STORAGE_BUCKET})" || echo "Self-hosted MinIO" )"
+echo -e "  ${BOLD}Storage     ${RESET}$( [[ "$STORAGE_PROVIDER" == "s3" ]] && echo "AWS S3 (${STORAGE_BUCKET})" || echo "Self-hosted RustFS" )"
 echo -e "  ${BOLD}Web app     ${RESET}$( [[ -n "$SCALE_WEB" ]] && echo "External / CDN (container skipped)" || echo "Bundled container" )"
 echo -e "  ${BOLD}Agent Runner${RESET}$( [[ -n "$SCALE_AGENT_RUNNER" ]] && echo "Disabled" || echo "Enabled" )"
 echo -e "  ${BOLD}Admin user  ${RESET}${ADMIN_USERNAME}"
@@ -923,7 +923,7 @@ if [[ "$START" != "yes" ]]; then
     warn "Installation files are ready. Start Paca manually with:"
     echo ""
     bold "  cd $(pwd)"
-    bold "  ${COMPOSE_CMD} --env-file .env up -d ${SCALE_POSTGRES} ${SCALE_DB_BACKUP} ${SCALE_MINIO} ${SCALE_WEB} ${SCALE_AGENT_RUNNER} --pull always"
+    bold "  ${COMPOSE_CMD} --env-file .env up -d ${SCALE_POSTGRES} ${SCALE_DB_BACKUP} ${SCALE_RUSTFS} ${SCALE_WEB} ${SCALE_AGENT_RUNNER} --pull always"
     echo ""
     exit 0
 fi
@@ -966,7 +966,7 @@ SCALE_OPTS=()
 # shellcheck disable=SC2206
 [[ -n "$SCALE_DB_BACKUP" ]] && SCALE_OPTS+=($SCALE_DB_BACKUP)
 # shellcheck disable=SC2206
-[[ -n "$SCALE_MINIO"     ]] && SCALE_OPTS+=($SCALE_MINIO)
+[[ -n "$SCALE_RUSTFS"    ]] && SCALE_OPTS+=($SCALE_RUSTFS)
 # shellcheck disable=SC2206
 [[ -n "$SCALE_WEB"       ]] && SCALE_OPTS+=($SCALE_WEB)
 # shellcheck disable=SC2206

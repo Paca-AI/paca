@@ -53,13 +53,13 @@ services:
       COOKIE_SECURE: "false"
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: e2e-admin-password
-      STORAGE_PROVIDER: minio
-      STORAGE_ENDPOINT: minio:9000
+      STORAGE_PROVIDER: rustfs
+      STORAGE_ENDPOINT: rustfs:9000
       STORAGE_PUBLIC_URL: http://localhost/storage
       STORAGE_REGION: us-east-1
       STORAGE_BUCKET: paca
-      STORAGE_ACCESS_KEY_ID: e2e-minio-access-key
-      STORAGE_SECRET_ACCESS_KEY: e2e-minio-secret-key
+      STORAGE_ACCESS_KEY_ID: e2e-rustfs-access-key
+      STORAGE_SECRET_ACCESS_KEY: e2e-rustfs-secret-key
       STORAGE_USE_SSL: "false"
       # Encryption key for sensitive values (plugin tokens/secrets).
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
@@ -86,7 +86,7 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
     volumes:
       # Backend plugin store — WASM binaries and SQL migrations only.
@@ -175,18 +175,35 @@ services:
       timeout: 5s
       retries: 20
 
-  # MinIO — S3-compatible object store for E2E tests.
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: e2e-minio-access-key
-      MINIO_ROOT_PASSWORD: e2e-minio-secret-key
+  # A fresh Docker named volume is created root-owned, but the rustfs image
+  # runs its main process as the unprivileged `rustfs` user (uid/gid 10001) —
+  # writing to /data/rustfs0 then fails with "Permission denied (os error
+  # 13)" (confirmed live). This one-shot init container fixes ownership
+  # before rustfs starts; it reuses the same image so nothing extra is
+  # pulled.
+  rustfs-init:
+    image: rustfs/rustfs:1.0.0-rc.6
+    user: root
+    entrypoint: ["/bin/sh", "-c", "chown -R 10001:10001 /data/rustfs0"]
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data/rustfs0
+
+  # RustFS — S3-compatible object store for E2E tests.
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.6
+    restart: unless-stopped
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_ACCESS_KEY: e2e-rustfs-access-key
+      RUSTFS_SECRET_KEY: e2e-rustfs-secret-key
+      RUSTFS_VOLUMES: /data/rustfs0
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+    volumes:
+      - rustfs_data:/data/rustfs0
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -236,4 +253,4 @@ services:
 volumes:
   postgres_data:
   valkey_data:
-  minio_data:
+  rustfs_data:

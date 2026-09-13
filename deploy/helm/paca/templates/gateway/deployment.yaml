@@ -48,9 +48,9 @@ spec:
             - name: AGENT_RUNNER_UPSTREAM
               value: "{{ include "paca.fullname" . }}-agent-runner:8080"
             {{- end }}
-            {{- if .Values.minio.enabled }}
-            - name: MINIO_UPSTREAM
-              value: "{{ include "paca.fullname" . }}-minio:9000"
+            {{- if .Values.rustfs.enabled }}
+            - name: STORAGE_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-rustfs:9000"
             {{- end }}
           volumeMounts:
             - name: caddyfile

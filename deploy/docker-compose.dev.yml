@@ -127,16 +127,16 @@ services:
       COOKIE_SECURE: "false"
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: adminpassword
-      # Storage — MinIO by default; switch to "s3" and set real credentials for AWS S3.
-      STORAGE_PROVIDER: minio
-      STORAGE_ENDPOINT: minio:9000
-      # Public URL used to rewrite presigned URLs so browsers can reach MinIO
+      # Storage — RustFS by default; switch to "s3" and set real credentials for AWS S3.
+      STORAGE_PROVIDER: rustfs
+      STORAGE_ENDPOINT: rustfs:9000
+      # Public URL used to rewrite presigned URLs so browsers can reach RustFS
       # through the Caddy gateway instead of the internal Docker hostname.
       STORAGE_PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}/storage
       STORAGE_REGION: us-east-1
       STORAGE_BUCKET: paca
-      STORAGE_ACCESS_KEY_ID: minioadmin
-      STORAGE_SECRET_ACCESS_KEY: minioadmin
+      STORAGE_ACCESS_KEY_ID: rustfsadmin
+      STORAGE_SECRET_ACCESS_KEY: rustfsadmin
       STORAGE_USE_SSL: "false"
       # Encryption key for sensitive values (plugin tokens/secrets).
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
@@ -207,7 +207,7 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
 
   web:
@@ -269,21 +269,41 @@ services:
       - web
       - realtime
 
-  # MinIO — S3-compatible object store for development.
+  # A fresh Docker named volume is created root-owned, but the rustfs image
+  # runs its main process as the unprivileged `rustfs` user (uid/gid 10001) —
+  # writing to /data/rustfs0 then fails with "Permission denied (os error
+  # 13)" (confirmed live). This one-shot init container fixes ownership
+  # before rustfs starts; it reuses the same image so nothing extra is
+  # pulled, and only ever needs to run once per volume (a no-op chown on
+  # every later `up` after that).
+  rustfs-init:
+    image: rustfs/rustfs:1.0.0-rc.6
+    user: root
+    entrypoint: ["/bin/sh", "-c", "chown -R 10001:10001 /data/rustfs0"]
+    volumes:
+      - rustfs_data:/data/rustfs0
+
+  # RustFS — S3-compatible object store for development.
   # Swap for AWS S3 in production by updating STORAGE_* env vars in the API service.
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.6
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_VOLUMES: /data/rustfs0
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
     ports:
       - "9000:9000"   # S3 API
-      - "9001:9001"   # MinIO web console
+      - "9001:9001"   # RustFS web console
     volumes:
-      - minio_data:/data
+      - rustfs_data:/data/rustfs0
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -453,5 +473,5 @@ volumes:
   go_build_cache:
   web_node_modules:
   bun_cache:
-  minio_data:
+  rustfs_data:
   realtime_node_modules:

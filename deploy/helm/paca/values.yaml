@@ -96,13 +96,13 @@ valkey:
 externalRedisUrl: ""
 
 # ---------------------------------------------------------------------------
-# MinIO (S3-compatible object storage, bundled)
+# RustFS (S3-compatible object storage, bundled)
 # ---------------------------------------------------------------------------
-minio:
+rustfs:
   enabled: true
   image:
-    repository: minio/minio
-    tag: "latest"
+    repository: rustfs/rustfs
+    tag: "1.0.0-rc.6"
   persistence:
     enabled: true
     size: 20Gi
@@ -115,11 +115,11 @@ minio:
       memory: 1Gi
 
 storage:
-  # minio | s3 — set s3 with real AWS credentials (storageAccessKeyId/
-  # storageSecretAccessKey above) and minio.enabled: false to use S3
-  # instead of the bundled MinIO, mirroring compose's `--scale minio=0`.
-  provider: minio
-  # Empty defaults to the bundled MinIO's in-cluster Service address.
+  # rustfs | s3 — set s3 with real AWS credentials (storageAccessKeyId/
+  # storageSecretAccessKey above) and rustfs.enabled: false to use S3
+  # instead of the bundled RustFS, mirroring compose's `--scale rustfs=0`.
+  provider: rustfs
+  # Empty defaults to the bundled RustFS's in-cluster Service address.
   endpoint: ""
   # Empty defaults to "<publicUrl>/storage".
   publicUrl: ""
@@ -267,7 +267,7 @@ agentRunner:
     # Empty (the default) resolves to "<release-name>-sandbox", a
     # dedicated namespace this chart creates for you (see
     # templates/agent-runner/sandbox-namespace.yaml) — never the release's
-    # own namespace alongside postgres/valkey/minio/api/web/gateway. The
+    # own namespace alongside postgres/valkey/rustfs/api/web/gateway. The
     # RBAC this chart grants (see templates/agent-runner/role.yaml) is
     # only ever scoped to whichever namespace this resolves to, so setting
     # it explicitly to a namespace you manage yourself works too, as long

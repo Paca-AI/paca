@@ -34,7 +34,7 @@
 #                       terminal WebSocket (forwarded as-is)
 #   /environments/*/stats/ws → agent-runner's static-environment live
 #                       usage-stats WebSocket (forwarded as-is)
-#   /storage/*      →  MinIO                   (/storage stripped)
+#   /storage/*      →  RustFS                  (/storage stripped)
 #   /plugins/*      →  Plugin frontend assets  (static files)
 #   /plugins-mcp/*  →  Plugin MCP bundles      (static files)
 #   /plugins-skills/* → Plugin Agent Skills bundles (static files)
@@ -77,8 +77,8 @@
 	}
 
 	handle_path /storage/* {
-		reverse_proxy minio:9000 {
-			header_up Host minio:9000
+		reverse_proxy rustfs:9000 {
+			header_up Host rustfs:9000
 		}
 	}
 

@@ -1,0 +1,102 @@
+{{- if .Values.rustfs.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "paca.fullname" . }}-rustfs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "rustfs") | nindent 4 }}
+spec:
+  serviceName: {{ include "paca.fullname" . }}-rustfs
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "rustfs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "rustfs") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # A fresh PVC is provisioned root-owned, but the rustfs image runs its
+        # main process as the unprivileged `rustfs` user (uid/gid 10001) —
+        # writing to /data/rustfs0 then fails with "Permission denied (os
+        # error 13)" (confirmed live against the equivalent Docker Compose
+        # setup). Fixes ownership once before the main container starts;
+        # reuses the same image so nothing extra is pulled.
+        - name: fix-data-permissions
+          image: "{{ .Values.rustfs.image.repository }}:{{ .Values.rustfs.image.tag }}"
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          command: ["/bin/sh", "-c", "chown -R 10001:10001 /data/rustfs0"]
+          volumeMounts:
+            - name: data
+              mountPath: /data/rustfs0
+      containers:
+        - name: rustfs
+          image: "{{ .Values.rustfs.image.repository }}:{{ .Values.rustfs.image.tag }}"
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          env:
+            - name: RUSTFS_VOLUMES
+              value: "/data/rustfs0"
+            - name: RUSTFS_ADDRESS
+              value: "0.0.0.0:9000"
+            - name: RUSTFS_CONSOLE_ADDRESS
+              value: "0.0.0.0:9001"
+            - name: RUSTFS_CONSOLE_ENABLE
+              value: "true"
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: STORAGE_ACCESS_KEY_ID
+            - name: RUSTFS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: STORAGE_SECRET_ACCESS_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data/rustfs0
+          resources:
+            {{- toYaml .Values.rustfs.resources | nindent 12 }}
+      {{- if not .Values.rustfs.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.rustfs.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.rustfs.persistence.storageClassName }}
+        storageClassName: {{ .Values.rustfs.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.rustfs.persistence.size }}
+  {{- end }}
+{{- end }}

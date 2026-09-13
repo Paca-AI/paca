@@ -10,7 +10,7 @@ This directory contains deployment assets for three distinct use cases:
 
 | File | Description |
 |---|---|
-| `docker-compose.dev.yml` | Local development stack: PostgreSQL, Valkey, MinIO, and optional app containers |
+| `docker-compose.dev.yml` | Local development stack: PostgreSQL, Valkey, RustFS, and optional app containers |
 | `docker-compose.prod.yml` | Production stack: pulls pre-built images from DockerHub, no source checkout required |
 | `docker-compose.e2e.yml` | End-to-end test stack mirroring production topology with fixed test credentials |
 | `.env.dev.example` | Optional environment file for `docker-compose.dev.yml` (tunnel / custom domain) |
@@ -42,8 +42,8 @@ The installer supports:
 |---|---|
 | Bundled PostgreSQL | Starts a postgres container (default) |
 | External PostgreSQL | Supply a `DATABASE_URL`; postgres container is suppressed |
-| Self-hosted MinIO | Starts a MinIO container for S3-compatible file storage (default) |
-| AWS S3 | Supply AWS credentials; MinIO container is suppressed |
+| Self-hosted RustFS | Starts a RustFS container for S3-compatible file storage (default) |
+| AWS S3 | Supply AWS credentials; RustFS container is suppressed |
 | HTTPS | Enabled by default — Let's Encrypt for a real domain, Caddy's local CA otherwise; can be disabled for plain HTTP |
 | Agent Runner | Enabled by default; can be skipped to reduce resource usage. See [docs/ai-agent/api-design.md](../docs/ai-agent/api-design.md) for the agent REST API once it's running. |
 
@@ -87,11 +87,11 @@ prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
 | `BACKUP_DIR` | Host directory for backup dumps | `./backups` |
 | `BACKUP_CRON` | 5-field cron, UTC | `0 2 * * *` |
 | `BACKUP_RETENTION_DAYS` | Days of backups to keep | `7` |
-| `STORAGE_PROVIDER` | `minio`/`s3` | `minio` |
+| `STORAGE_PROVIDER` | `rustfs`/`s3` | `rustfs` |
 | `STORAGE_REGION` | | `us-east-1` |
-| `STORAGE_BUCKET` | Required if `STORAGE_PROVIDER=s3` | `paca` (minio only) |
-| `STORAGE_ACCESS_KEY_ID` | Required if `STORAGE_PROVIDER=s3` | auto-generated (minio only) |
-| `STORAGE_SECRET_ACCESS_KEY` | Required if `STORAGE_PROVIDER=s3` | auto-generated (minio only) |
+| `STORAGE_BUCKET` | Required if `STORAGE_PROVIDER=s3` | `paca` (rustfs only) |
+| `STORAGE_ACCESS_KEY_ID` | Required if `STORAGE_PROVIDER=s3` | auto-generated (rustfs only) |
+| `STORAGE_SECRET_ACCESS_KEY` | Required if `STORAGE_PROVIDER=s3` | auto-generated (rustfs only) |
 | `PACA_ADDRESS` | Domain or IP Paca is reachable at | `localhost` |
 | `PACA_HTTPS` | `yes`/`no`; ignored when `PACA_ADDRESS=localhost` | `yes` |
 | `GATEWAY_PORT` | Only used when serving plain HTTP | `80` |
@@ -165,7 +165,7 @@ ENCRYPTION_KEY=<64-char-hex>
 PUBLIC_URL=http://your-domain-or-ip
 ```
 
-Start the full stack (bundled PostgreSQL + MinIO):
+Start the full stack (bundled PostgreSQL + RustFS):
 
 ```bash
 docker compose --env-file .env up -d
@@ -267,11 +267,11 @@ docker compose --env-file .env up -d --scale postgres=0
 > **💡 Looking for a managed PostgreSQL?** [Neon](https://neon.com) is a serverless Postgres platform with a generous free tier, instant branching, and autoscaling — a great fit for Paca. Create a database, copy the connection string, and set it as `DATABASE_URL` in `.env`.
 
 
-**With AWS S3** (suppress MinIO):
+**With AWS S3** (suppress RustFS):
 
 ```bash
 # Set STORAGE_PROVIDER=s3 and real AWS credentials in .env.
-docker compose --env-file .env up -d --scale minio=0
+docker compose --env-file .env up -d --scale rustfs=0
 ```
 
 **Without Agent Runner**:
@@ -288,7 +288,7 @@ left unset in this case.
 Flags can be combined:
 
 ```bash
-docker compose --env-file .env up -d --scale postgres=0 --scale minio=0
+docker compose --env-file .env up -d --scale postgres=0 --scale rustfs=0
 ```
 
 ### Upgrading to a new version
@@ -321,8 +321,14 @@ Only pass `--scale` yourself for scaling that isn't one of these, e.g. a custom
 replica count:
 
 ```bash
-bash upgrade.sh --scale web=0 --scale minio=0
+bash upgrade.sh --scale web=0 --scale rustfs=0
 ```
+
+> **Still running the bundled MinIO container from before this release?** `upgrade.sh`
+> detects it and refuses to proceed until you say which way you want it — migrate its
+> data (see [Migrating from MinIO to RustFS](../docs/deployment/README.md#migrating-from-minio-to-rustfs))
+> or keep MinIO running for now with `PACA_KEEP_MINIO=1` (see
+> [that section's follow-up](../docs/deployment/README.md#prefer-to-keep-running-your-existing-minio-container-for-now)).
 
 **Non-interactive (CI, scripts, AI coding agents):** set `PACA_YES=1` — required for
 unattended use, for the same reason as `install.sh`: without it, the script can block
@@ -376,7 +382,16 @@ docker run --rm \
   alpine sh -c "cp -av /from/. /to/"
 docker volume rm paca-prod_postgres_data
 
-# Repeat for minio_data, valkey_data, and plugin volumes as needed.
+# Repeat for valkey_data and plugin volumes as needed the same way — a raw
+# volume copy works for them since their on-disk format didn't change.
+#
+# The object-storage volume is a special case if you're also still on the
+# bundled MinIO: it's named minio_data here, not rustfs_data — this release
+# renamed the service, but MinIO's and RustFS's on-disk formats aren't
+# compatible, so a raw copy like the postgres one above would just produce a
+# rustfs_data volume full of files RustFS can't read. Use the dedicated
+# mc-based migration in docs/deployment/README.md's "Migrating from MinIO to
+# RustFS" section instead, before starting the new stack below.
 
 # 3. Start the new stack.
 docker compose --env-file .env up -d
@@ -496,8 +511,8 @@ and use Docker Compose only for PostgreSQL and Valkey.
 | Valkey | 6379 | Local cache / event streams |
 | API | 8080 (internal) | Routed via gateway at `/api/` |
 | Web | 3000 (internal) | Routed via gateway at `/` |
-| MinIO S3 API | 9000 | Local object store (S3-compatible) |
-| MinIO Console | 9001 | MinIO web UI (credentials: `minioadmin` / `minioadmin`) |
+| RustFS S3 API | 9000 | Local object store (S3-compatible) |
+| RustFS Console | 9001 | RustFS web UI (credentials: `rustfsadmin` / `rustfsadmin`) |
 | Static environment SSH | 2200-2299 | One port per running environment, on by default in dev — see the warning below |
 | Static environment port forwards | 2300-2399 | One port per user-added forward, on by default in dev — see the warning below |
 

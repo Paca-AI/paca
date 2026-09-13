@@ -2,7 +2,7 @@
 
 This chart (`deploy/helm/paca`) deploys the same stack as
 [`deploy/docker-compose.prod.yml`](../docker-compose.prod.yml) — postgres,
-valkey, minio, api, web, realtime, a Caddy gateway, and agent-runner — as
+valkey, rustfs, api, web, realtime, a Caddy gateway, and agent-runner — as
 Kubernetes resources. See that file first if you want the non-Kubernetes
 picture of how these pieces fit together; this chart mirrors it
 component-for-component rather than introducing a different architecture.
@@ -41,7 +41,7 @@ own. This is exactly why the namespace is dedicated by default instead of
 falling back to the release's own: granting this Role there would let
 agent-runner's ServiceAccount patch or delete this chart's own
 api/gateway/web Deployments/Services, and exec into/read logs from
-postgres/valkey/minio, not just sandbox objects. If you set
+postgres/valkey/rustfs, not just sandbox objects. If you set
 `agentRunner.sandbox.namespace` explicitly to a namespace you manage
 yourself, make sure nothing else you don't want agent-runner touching runs
 there — this chart won't create a namespace you've explicitly named (see
@@ -108,8 +108,8 @@ secrets:
   internalApiKey: "<openssl rand -hex 32>"
   agentApiKey: "<openssl rand -hex 32>"
   postgresPassword: "<a strong password>"
-  storageAccessKeyId: "<minio access key, or leave minioadmin for a first try>"
-  storageSecretAccessKey: "<minio secret key>"
+  storageAccessKeyId: "<rustfs access key, or leave rustfsadmin for a first try>"
+  storageSecretAccessKey: "<rustfs secret key>"
 ```
 
 Then either point DNS at your ingress controller and set
@@ -132,7 +132,7 @@ pattern — disable the bundled version and point at a managed one instead:
 |---|---|---|
 | PostgreSQL | `postgres.enabled: false` | `externalDatabaseUrl` |
 | Valkey/Redis | `valkey.enabled: false` | `externalRedisUrl` |
-| MinIO/S3 | `minio.enabled: false` + `storage.provider: s3` | `storage.endpoint` (+ storage creds) |
+| RustFS/S3 | `rustfs.enabled: false` + `storage.provider: s3` | `storage.endpoint` (+ storage creds) |
 
 `web.enabled: false` drops the bundled frontend entirely if you're serving
 the SPA from a CDN instead — the gateway keeps routing `/api`, `/ws`, and

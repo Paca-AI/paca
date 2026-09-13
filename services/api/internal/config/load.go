@@ -181,8 +181,8 @@ func Load() (*Config, error) {
 			Password: adminPass,
 		},
 		Storage: StorageConfig{
-			Provider:        env("STORAGE_PROVIDER", "minio"),
-			Endpoint:        env("STORAGE_ENDPOINT", "minio:9000"),
+			Provider:        env("STORAGE_PROVIDER", "rustfs"),
+			Endpoint:        env("STORAGE_ENDPOINT", "rustfs:9000"),
 			PublicURL:       env("STORAGE_PUBLIC_URL", ""),
 			Region:          env("STORAGE_REGION", "us-east-1"),
 			Bucket:          env("STORAGE_BUCKET", "paca"),

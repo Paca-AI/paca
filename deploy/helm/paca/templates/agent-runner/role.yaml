@@ -26,7 +26,7 @@ get/list/watch/pods/exec/pods/log on pods) grants those verbs against
 *every* matching object in the namespace, not only ones this
 ServiceAccount created. This is exactly why paca.sandboxNamespace defaults
 to a dedicated namespace rather than this release's own — granting this
-Role in the namespace api/gateway/web/postgres/valkey/minio also run in
+Role in the namespace api/gateway/web/postgres/valkey/rustfs also run in
 would let this ServiceAccount patch or delete those Deployments/Services
 too. See templates/agent-runner/sandbox-namespace.yaml and
 deploy/helm/README.md's RBAC section.

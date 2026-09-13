@@ -407,7 +407,7 @@ jobs:
           # happens to point at (promote-release above only retags
           # :latest once this job has already succeeded, so it can be
           # ahead or behind the release being installed). Postgres/
-          # valkey/minio/caddy tags are real pinned upstream versions and
+          # valkey/rustfs/caddy tags are real pinned upstream versions and
           # are deliberately left untouched.
           for repo in paca-api paca-web paca-realtime paca-agent-runner paca-agent-server-goose; do
             sed -i "/repository: ghcr.io\/paca-ai\/${repo}\$/{n;s/tag: \"latest\"/tag: \"${VERSION}\"/}" \
