@@ -62,6 +62,10 @@ type ViewRepository interface {
 	// UpsertUserViewConfig stores (or replaces) a user's personal config for a
 	// single view.
 	UpsertUserViewConfig(ctx context.Context, viewID, userID uuid.UUID, cfg ViewConfig) error
+
+	// DeleteUserViewConfig removes a user's personal override for a view, if
+	// one exists. Deleting a nonexistent override is not an error.
+	DeleteUserViewConfig(ctx context.Context, viewID, userID uuid.UUID) error
 }
 
 // ViewReorderItem carries the new position for a single view.

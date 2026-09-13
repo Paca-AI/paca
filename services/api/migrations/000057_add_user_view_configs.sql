@@ -1,4 +1,4 @@
--- 000042_add_user_view_configs.sql
+-- 000057_add_user_view_configs.sql
 -- Per-user overrides for interaction view settings and filters.
 --
 -- A sprint_views row holds the project-shared view definition (name, type,

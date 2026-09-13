@@ -205,6 +205,12 @@ func (c *CachedViewService) SetUserViewConfig(ctx context.Context, projectID, vi
 	return c.svc.SetUserViewConfig(ctx, projectID, viewID, userID, cfg)
 }
 
+// ClearUserViewConfig delegates directly to the underlying service. Personal
+// configs are never cached, so no invalidation is needed.
+func (c *CachedViewService) ClearUserViewConfig(ctx context.Context, projectID, viewID, userID uuid.UUID) (*sprintdom.SprintView, error) {
+	return c.svc.ClearUserViewConfig(ctx, projectID, viewID, userID)
+}
+
 // OverlayUserConfigs delegates directly to the underlying service. It must run
 // after the cache is read so the shared cached entries are never polluted with
 // one user's personal config.

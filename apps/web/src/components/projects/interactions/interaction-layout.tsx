@@ -50,6 +50,7 @@ import {
 	allTasksQueryOptions,
 	bulkMoveViewTaskPositions,
 	type CustomFieldFilterQuery,
+	clearMyViewConfig,
 	createSprint,
 	createTask,
 	createViewByContext,
@@ -1653,6 +1654,24 @@ export function InteractionLayout({
 		},
 	});
 
+	// Publishes the settings-panel draft as the shared view everyone sees.
+	// Two steps, not one: PATCHing the shared config alone would leave the
+	// publisher's own override in place — now redundant with (but no longer
+	// tracking future changes to) what they just made the team default — so
+	// it's cleared right after.
+	const saveForEveryoneMutation = useMutation({
+		mutationFn: async (payload: { viewId: string; config: ViewConfig }) => {
+			await updateViewById(projectId, payload.viewId, {
+				config: payload.config,
+			});
+			await clearMyViewConfig(projectId, payload.viewId);
+		},
+		onSuccess: () => {
+			setPreviewConfig(undefined);
+			qc.invalidateQueries({ queryKey: viewsQueryKey });
+		},
+	});
+
 	const deleteViewMutation = useMutation({
 		mutationFn: (viewId: string) => deleteViewById(projectId, viewId),
 		onSuccess: (_, deletedId) => {
@@ -1966,7 +1985,15 @@ export function InteractionLayout({
 								updateViewConfigMutation.mutateAsync({ viewId, config })
 							}
 							onPreview={setPreviewConfig}
-							isPending={updateViewConfigMutation.isPending}
+							isPending={
+								updateViewConfigMutation.isPending ||
+								saveForEveryoneMutation.isPending
+							}
+							isPersonalized={activeView.is_personalized}
+							canSaveForEveryone={canManageViews}
+							onSaveForEveryone={(viewId, config) =>
+								saveForEveryoneMutation.mutateAsync({ viewId, config })
+							}
 						/>
 					)}
 				</div>

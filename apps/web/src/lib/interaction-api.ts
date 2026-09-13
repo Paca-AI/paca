@@ -253,6 +253,10 @@ export interface InteractionView {
 	layout: ViewLayout;
 	config?: ViewConfig;
 	position: number;
+	/** True when `config` is this user's personal override, not what other project members see. */
+	is_personalized: boolean;
+	/** The project-shared default (equal to `config` when `is_personalized` is false). */
+	shared_config: ViewConfig;
 }
 
 // ── View shape helpers ─────────────────────────────────────────────────────────
@@ -350,6 +354,21 @@ export async function updateMyViewConfig(
 	const { data } = await apiClient.instance.put<
 		SuccessEnvelope<Omit<InteractionView, "layout">>
 	>(`/projects/${projectId}/views/${viewId}/config`, { config });
+	return mapView(data.data);
+}
+
+/**
+ * Clear the current user's PERSONAL view config, reverting them to the
+ * shared default (see {@link updateMyViewConfig}). Never touches the shared
+ * view or other members.
+ */
+export async function clearMyViewConfig(
+	projectId: string,
+	viewId: string,
+): Promise<InteractionView> {
+	const { data } = await apiClient.instance.delete<
+		SuccessEnvelope<Omit<InteractionView, "layout">>
+	>(`/projects/${projectId}/views/${viewId}/config`);
 	return mapView(data.data);
 }
 

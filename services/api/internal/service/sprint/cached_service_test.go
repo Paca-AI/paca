@@ -430,6 +430,10 @@ func (s *stubViewSvc) SetUserViewConfig(_ context.Context, _, _, _ uuid.UUID, _ 
 	return nil, nil
 }
 
+func (s *stubViewSvc) ClearUserViewConfig(_ context.Context, _, _, _ uuid.UUID) (*sprintdom.SprintView, error) {
+	return nil, nil
+}
+
 func (s *stubViewSvc) OverlayUserConfigs(_ context.Context, _ uuid.UUID, _ []*sprintdom.SprintView) error {
 	return nil
 }

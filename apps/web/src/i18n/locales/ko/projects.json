@@ -1613,6 +1613,7 @@
 		"viewSettings": {
 			"viewSettingsAriaLabel": "뷰 설정",
 			"title": "뷰 설정",
+			"onlyVisibleToYou": "나에게만 표시됨",
 			"chooseFields": "필드 선택",
 			"back": "← 뒤로",
 			"clearFilters": "필터 지우기",
@@ -1639,6 +1640,8 @@
 			"reset": "초기화",
 			"saving": "저장 중…",
 			"save": "저장",
+			"saveOnlyForMe": "나만을 위해 저장",
+			"saveForEveryone": "모두를 위해 저장",
 			"sprintFilter": {
 				"noSprints": "스프린트 없음",
 				"allSprints": "모든 스프린트"

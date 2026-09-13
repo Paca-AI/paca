@@ -308,6 +308,18 @@ func (r *ViewRepository) UpsertUserViewConfig(ctx context.Context, viewID, userI
 	return nil
 }
 
+// DeleteUserViewConfig removes a user's personal config for a view, if one exists.
+func (r *ViewRepository) DeleteUserViewConfig(ctx context.Context, viewID, userID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM user_view_configs WHERE view_id = $1 AND user_id = $2`,
+		viewID.String(), userID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("view repo: delete user view config: %w", err)
+	}
+	return nil
+}
+
 // --- Entity converters ------------------------------------------------------
 
 func toViewEntity(r *sprintViewRecord) (*sprintdom.SprintView, error) {

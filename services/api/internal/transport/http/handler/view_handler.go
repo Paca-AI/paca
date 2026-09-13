@@ -230,6 +230,34 @@ func (h *ViewHandler) UpdateMyViewConfig(w http.ResponseWriter, r *http.Request)
 	presenter.OK(w, r, dto.ViewFromEntity(v))
 }
 
+// ClearMyViewConfig handles DELETE /projects/:projectId/views/:viewId/config.
+// It removes the authenticated user's personal view config, reverting them
+// to the shared default. Never touches the shared view or other users.
+func (h *ViewHandler) ClearMyViewConfig(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	viewID, err := parseViewID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	actorID, ok := middleware.ActorIDFromContext(r.Context())
+	if !ok || actorID == uuid.Nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "authentication required"))
+		return
+	}
+
+	v, err := h.svc.ClearUserViewConfig(r.Context(), projectID, viewID, actorID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.ViewFromEntity(v))
+}
+
 // DeleteView handles DELETE /sprints/:sprintId/views/:viewId.
 func (h *ViewHandler) DeleteView(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)

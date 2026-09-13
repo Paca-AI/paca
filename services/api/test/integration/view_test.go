@@ -203,6 +203,13 @@ func (r *fakeViewRepoIT) UpsertUserViewConfig(_ context.Context, viewID, userID 
 	return nil
 }
 
+func (r *fakeViewRepoIT) DeleteUserViewConfig(_ context.Context, viewID, userID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.userConfigs, userViewCfgKey(viewID, userID))
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Router builder
 // ---------------------------------------------------------------------------

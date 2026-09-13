@@ -116,6 +116,13 @@ func (r *fakeViewRepo) UpsertUserViewConfig(_ context.Context, viewID, userID uu
 	return nil
 }
 
+func (r *fakeViewRepo) DeleteUserViewConfig(_ context.Context, viewID, userID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.userConfigs, userCfgKey(viewID, userID))
+	return nil
+}
+
 func posKey(viewID, taskID uuid.UUID) string {
 	return viewID.String() + ":" + taskID.String()
 }
@@ -1273,6 +1280,185 @@ func TestViewService_OverlayUserConfigs_NilUserIsNoop(t *testing.T) {
 	}
 	if views[0].Config.SortBy != "created" {
 		t.Errorf("nil user should be a no-op, got %q", views[0].Config.SortBy)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Field-level merge: personalizing one field must not freeze every other
+// field away from later shared-default changes (the bug this redesign fixes).
+// ---------------------------------------------------------------------------
+
+func TestViewService_OverlayUserConfigs_UnsetFieldsTrackLaterSharedChanges(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo, permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+
+	projectID := uuid.New()
+	view := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{SortBy: "created", PageSize: 25})
+	userA := uuid.New()
+
+	// User personalizes only SortBy; PageSize in their save matches shared,
+	// so it must not be captured in the stored override.
+	if _, err := svc.SetUserViewConfig(ctx, projectID, view.ID, userA, sprintdom.ViewConfig{SortBy: "importance", PageSize: 25}); err != nil {
+		t.Fatalf("SetUserViewConfig: %v", err)
+	}
+
+	// The shared default's PageSize changes later (e.g. an admin edit, or
+	// "set as team default" from another member).
+	shared, err := repo.FindViewByID(ctx, view.ID)
+	if err != nil {
+		t.Fatalf("FindViewByID: %v", err)
+	}
+	shared.Config.PageSize = 50
+	if err := repo.UpdateView(ctx, shared); err != nil {
+		t.Fatalf("UpdateView: %v", err)
+	}
+
+	// Simulate the shared view coming back from a fresh list/cache read.
+	views := []*sprintdom.SprintView{{ID: view.ID, ProjectID: projectID, Config: shared.Config}}
+	if err := svc.OverlayUserConfigs(ctx, userA, views); err != nil {
+		t.Fatalf("OverlayUserConfigs: %v", err)
+	}
+	if views[0].Config.SortBy != "importance" {
+		t.Errorf("personalized field lost: got %q, want %q", views[0].Config.SortBy, "importance")
+	}
+	if views[0].Config.PageSize != 50 {
+		t.Errorf("un-personalized field frozen: got %d, want 50 (should track the new shared default)", views[0].Config.PageSize)
+	}
+}
+
+func TestViewService_SetUserViewConfig_RevertingToSharedValuesClearsOverride(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo, permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+
+	projectID := uuid.New()
+	view := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{SortBy: "created"})
+	userA := uuid.New()
+
+	if _, err := svc.SetUserViewConfig(ctx, projectID, view.ID, userA, sprintdom.ViewConfig{SortBy: "importance"}); err != nil {
+		t.Fatalf("SetUserViewConfig (personalize): %v", err)
+	}
+	got, err := svc.SetUserViewConfig(ctx, projectID, view.ID, userA, sprintdom.ViewConfig{SortBy: "created"})
+	if err != nil {
+		t.Fatalf("SetUserViewConfig (revert): %v", err)
+	}
+	if got.HasPersonalConfig {
+		t.Errorf("expected HasPersonalConfig=false after reverting to shared values")
+	}
+
+	overrides, err := repo.GetUserViewConfigs(ctx, userA, []uuid.UUID{view.ID})
+	if err != nil {
+		t.Fatalf("GetUserViewConfigs: %v", err)
+	}
+	if _, ok := overrides[view.ID]; ok {
+		t.Errorf("expected override row to be removed once every field matches shared")
+	}
+}
+
+func TestViewService_ClearUserViewConfig_RemovesOverride(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo, permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+
+	projectID := uuid.New()
+	view := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{SortBy: "created"})
+	userA := uuid.New()
+
+	if _, err := svc.SetUserViewConfig(ctx, projectID, view.ID, userA, sprintdom.ViewConfig{SortBy: "importance"}); err != nil {
+		t.Fatalf("SetUserViewConfig: %v", err)
+	}
+	got, err := svc.ClearUserViewConfig(ctx, projectID, view.ID, userA)
+	if err != nil {
+		t.Fatalf("ClearUserViewConfig: %v", err)
+	}
+	if got.Config.SortBy != "created" {
+		t.Errorf("expected shared default after clearing, got %q", got.Config.SortBy)
+	}
+
+	overrides, err := repo.GetUserViewConfigs(ctx, userA, []uuid.UUID{view.ID})
+	if err != nil {
+		t.Fatalf("GetUserViewConfigs: %v", err)
+	}
+	if _, ok := overrides[view.ID]; ok {
+		t.Errorf("expected override row to be gone after ClearUserViewConfig")
+	}
+}
+
+func TestViewService_ClearUserViewConfig_WrongProjectReturnsNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+
+	view := seedProjectView(t, svc, uuid.New(), sprintdom.ViewConfig{})
+	_, err := svc.ClearUserViewConfig(ctx, uuid.New() /* wrong project */, view.ID, uuid.New())
+	if err != sprintdom.ErrViewNotFound {
+		t.Errorf("expected ErrViewNotFound, got %v", err)
+	}
+}
+
+func TestViewService_OverlayUserConfigs_SetsHasPersonalConfigFlag(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo, permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+
+	projectID := uuid.New()
+	v1 := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{SortBy: "created"})
+	v2 := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{SortBy: "created"})
+	userA := uuid.New()
+
+	if _, err := svc.SetUserViewConfig(ctx, projectID, v1.ID, userA, sprintdom.ViewConfig{SortBy: "importance"}); err != nil {
+		t.Fatalf("SetUserViewConfig: %v", err)
+	}
+
+	views := []*sprintdom.SprintView{
+		{ID: v1.ID, ProjectID: projectID, Config: sprintdom.ViewConfig{SortBy: "created"}},
+		{ID: v2.ID, ProjectID: projectID, Config: sprintdom.ViewConfig{SortBy: "created"}},
+	}
+	if err := svc.OverlayUserConfigs(ctx, userA, views); err != nil {
+		t.Fatalf("OverlayUserConfigs: %v", err)
+	}
+	if !views[0].HasPersonalConfig {
+		t.Errorf("v1: expected HasPersonalConfig=true")
+	}
+	if views[1].HasPersonalConfig {
+		t.Errorf("v2: expected HasPersonalConfig=false")
+	}
+}
+
+// TestViewService_SharedConfig_SurvivesPersonalization verifies that a
+// personalized view still exposes the original shared value (not the merged
+// effective one) via SharedConfig, both right after SetUserViewConfig and on
+// a later OverlayUserConfigs read — this is what the frontend's "reset to
+// team default" reads.
+func TestViewService_SharedConfig_SurvivesPersonalization(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo, permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+
+	projectID := uuid.New()
+	view := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{SortBy: "created", PageSize: 25})
+	userA := uuid.New()
+
+	got, err := svc.SetUserViewConfig(ctx, projectID, view.ID, userA, sprintdom.ViewConfig{SortBy: "importance", PageSize: 25})
+	if err != nil {
+		t.Fatalf("SetUserViewConfig: %v", err)
+	}
+	if got.Config.SortBy != "importance" {
+		t.Errorf("effective SortBy = %q, want %q", got.Config.SortBy, "importance")
+	}
+	if got.SharedConfig.SortBy != "created" || got.SharedConfig.PageSize != 25 {
+		t.Errorf("SharedConfig after SetUserViewConfig = %+v, want shared row {created 25}", got.SharedConfig)
+	}
+
+	views := []*sprintdom.SprintView{{ID: view.ID, ProjectID: projectID, Config: sprintdom.ViewConfig{SortBy: "created", PageSize: 25}}}
+	if err := svc.OverlayUserConfigs(ctx, userA, views); err != nil {
+		t.Fatalf("OverlayUserConfigs: %v", err)
+	}
+	if views[0].Config.SortBy != "importance" {
+		t.Errorf("effective SortBy after overlay = %q, want %q", views[0].Config.SortBy, "importance")
+	}
+	if views[0].SharedConfig.SortBy != "created" {
+		t.Errorf("SharedConfig after overlay = %+v, want SortBy=created", views[0].SharedConfig)
 	}
 }
 

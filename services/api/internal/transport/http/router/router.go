@@ -559,6 +559,10 @@ func New(deps Deps) http.Handler {
 					// permission to mutate the shared view.
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsRead)).
 						Put("/{viewId}/config", deps.View.UpdateMyViewConfig)
+					// Clearing a personal override needs no more privilege
+					// than setting one.
+					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsRead)).
+						Delete("/{viewId}/config", deps.View.ClearMyViewConfig)
 					r.With(httpmw.RequirePermissions(deps.Authorizer, httpmw.ProjectScopeFromParam("projectId"), authz.PermissionViewsWrite)).
 						Delete("/{viewId}", deps.View.DeleteView)
 					r.With(httpmw.RequirePublicProjectOrPermissions(deps.ProjectVisibilitySvc, deps.Authorizer,
