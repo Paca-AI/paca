@@ -84,16 +84,24 @@ func TestLegacyPermissionsForRole_AdminNoLongerGrantsWildcard(t *testing.T) {
 	}
 }
 
+// samePermissionSet compares a and b as sets (order- and duplicate-
+// insensitive) — builds both sides into sets first so a duplicate on one
+// side can't paper over a genuinely missing element on the other, the way
+// comparing len(a) == len(b) against one-directional membership could.
 func samePermissionSet(a, b []authz.Permission) bool {
-	if len(a) != len(b) {
+	setA := make(map[authz.Permission]struct{}, len(a))
+	for _, p := range a {
+		setA[p] = struct{}{}
+	}
+	setB := make(map[authz.Permission]struct{}, len(b))
+	for _, p := range b {
+		setB[p] = struct{}{}
+	}
+	if len(setA) != len(setB) {
 		return false
 	}
-	set := make(map[authz.Permission]struct{}, len(a))
-	for _, p := range a {
-		set[p] = struct{}{}
-	}
-	for _, p := range b {
-		if _, ok := set[p]; !ok {
+	for p := range setA {
+		if _, ok := setB[p]; !ok {
 			return false
 		}
 	}

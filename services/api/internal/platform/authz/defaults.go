@@ -1,6 +1,9 @@
 package authz
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // RoleDefinition binds a role name to the permissions it grants.
 type RoleDefinition struct {
@@ -8,8 +11,12 @@ type RoleDefinition struct {
 	Permissions []Permission
 }
 
-// DefaultGlobalRoles returns the built-in global role set.
-func DefaultGlobalRoles() []RoleDefinition {
+// DefaultGlobalRoles returns the built-in global role set. Computed once and
+// cached: LegacyPermissionsForRole calls this on every permission check
+// (hasPermissionsForActor runs per request), and the data itself is static
+// for the process lifetime. Callers only ever range over the result, so a
+// shared cached slice is safe to hand out.
+var DefaultGlobalRoles = sync.OnceValue(func() []RoleDefinition {
 	return []RoleDefinition{
 		{
 			Name:        "SUPER_ADMIN",
@@ -38,7 +45,7 @@ func DefaultGlobalRoles() []RoleDefinition {
 			},
 		},
 	}
-}
+})
 
 // DefaultProjectRoles returns built-in project role templates.
 func DefaultProjectRoles() []RoleDefinition {

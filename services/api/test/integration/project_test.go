@@ -575,6 +575,7 @@ func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 			authz.PermissionProjectsCreate,
 			authz.PermissionProjectsDelete,
 		},
+		projectPerms: map[uuid.UUID][]authz.Permission{},
 	}
 	r := buildProjectTestRouter(repo, store)
 	tok := issueProjectToken(t, uuid.NewString())
@@ -588,6 +589,17 @@ func TestIntegrationProjectManagement_AdminCRUD(t *testing.T) {
 		t.Fatalf("create: expected 201, got %d (%s)", createW.Code, createW.Body.String())
 	}
 	projectID := projectIDFromCreate(t, createW)
+
+	// projectsvc.Service.Create (exercised above via the real router) already
+	// added this user as the new project's "Admin" member in fakeProjectRepo
+	// — production authorizes the PATCH/DELETE below off that project-scoped
+	// grant. projectPermStore is a hand-fed stub with no wiring back to
+	// fakeProjectRepo's membership table, so it has to be told the same thing
+	// explicitly. Before the GHSA-hjcj-373w-vq8m fix to hasPermissionsForActor,
+	// this test passed those calls via the *global* projects.write/delete set
+	// above leaking into the project-scoped check instead — i.e. it was
+	// inadvertently asserting the vulnerability, not real project membership.
+	store.projectPerms[uuid.MustParse(projectID)] = []authz.Permission{authz.PermissionAll}
 
 	listW := serve(r, authedJSONReq(t.Context(), http.MethodGet, "/api/v1/projects", tok, nil))
 	if listW.Code != http.StatusOK {
