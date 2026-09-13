@@ -3,6 +3,7 @@ package sprintsvc
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"time"
 
@@ -351,6 +352,208 @@ func (s *ViewService) ReorderProjectViews(ctx context.Context, projectID uuid.UU
 		})
 	}
 	return nil
+}
+
+// SetUserViewConfig stores the current user's personal config for a view,
+// verifying it belongs to projectID, and returns the view carrying the
+// effective (merged) config the caller just set. The write is private to the
+// user: the shared sprint_views row is untouched and no project-wide
+// real-time event is published, so other members are unaffected.
+//
+// cfg is diffed against the *current* shared row and only the fields that
+// actually differ are persisted as the override (see diffViewConfig) — a
+// field the user leaves matching the shared value keeps tracking that shared
+// value if it changes later, instead of freezing at today's snapshot. When
+// every field matches shared (the diff is empty), any existing override row
+// is removed rather than upserting a no-op, so HasPersonalConfig stays
+// accurate and user_view_configs doesn't accumulate empty rows.
+//
+// Known race (accepted, not fixed): cfg reflects whatever the caller's UI
+// last fetched the shared config as, which can be stale if an admin changes
+// the shared default while the caller's settings panel is still open. A
+// field the user never touched could then be re-diffed against a shared
+// value that has since moved, and get spuriously captured in the override.
+// This is narrow (requires a concurrent shared-config edit mid-edit) and
+// self-healing (ClearUserViewConfig/"use team default" recovers it in one
+// click, which didn't exist before this override model).
+func (s *ViewService) SetUserViewConfig(ctx context.Context, projectID, viewID, userID uuid.UUID, cfg sprintdom.ViewConfig) (*sprintdom.SprintView, error) {
+	v, err := s.repo.FindViewByID(ctx, viewID)
+	if err != nil {
+		return nil, err
+	}
+	if v.ProjectID != projectID {
+		return nil, sprintdom.ErrViewNotFound
+	}
+	// A plugin view still needs its plugin binding in the effective config.
+	if !hasPluginConfig(v.ViewType, &cfg) {
+		return nil, sprintdom.ErrViewPluginConfigRequired
+	}
+	sparse := diffViewConfig(v.Config, cfg)
+	sharedConfig := v.Config
+	if isZeroViewConfig(sparse) {
+		if err := s.repo.DeleteUserViewConfig(ctx, viewID, userID); err != nil {
+			return nil, err
+		}
+		v.HasPersonalConfig = false
+	} else {
+		if err := s.repo.UpsertUserViewConfig(ctx, viewID, userID, sparse); err != nil {
+			return nil, err
+		}
+		v.HasPersonalConfig = true
+		v.SharedConfig = sharedConfig
+	}
+	v.Config = cfg
+	return v, nil
+}
+
+// ClearUserViewConfig removes the current user's personal override for a
+// view, verifying it belongs to projectID, and returns the view now carrying
+// the shared default (HasPersonalConfig is false). Deleting a nonexistent
+// override is a harmless no-op, matching UpsertUserViewConfig's idempotence.
+func (s *ViewService) ClearUserViewConfig(ctx context.Context, projectID, viewID, userID uuid.UUID) (*sprintdom.SprintView, error) {
+	v, err := s.repo.FindViewByID(ctx, viewID)
+	if err != nil {
+		return nil, err
+	}
+	if v.ProjectID != projectID {
+		return nil, sprintdom.ErrViewNotFound
+	}
+	if err := s.repo.DeleteUserViewConfig(ctx, viewID, userID); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// OverlayUserConfigs merges each view's Config with the user's personal
+// override where one exists (see mergeViewConfig) and sets HasPersonalConfig
+// accordingly, leaving views without an override untouched. A nil user or
+// empty view list is a no-op. The passed views are mutated in place; callers
+// pass per-request copies (cache hits deserialize fresh objects), so the shared
+// cache is never affected.
+func (s *ViewService) OverlayUserConfigs(ctx context.Context, userID uuid.UUID, views []*sprintdom.SprintView) error {
+	if userID == uuid.Nil || len(views) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(views))
+	for _, v := range views {
+		if v != nil {
+			ids = append(ids, v.ID)
+		}
+	}
+	overrides, err := s.repo.GetUserViewConfigs(ctx, userID, ids)
+	if err != nil {
+		return err
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+	for _, v := range views {
+		if v == nil {
+			continue
+		}
+		cfg, ok := overrides[v.ID]
+		v.HasPersonalConfig = ok
+		if ok {
+			v.SharedConfig = v.Config
+			v.Config = mergeViewConfig(v.SharedConfig, cfg)
+		}
+	}
+	return nil
+}
+
+// mergeViewConfig returns the effective config for a view: each field of
+// override wins when the user has personally set it; shared's value is used
+// otherwise. PluginID/PluginComponent always come from shared — plugin
+// binding is structural, never a personal preference (see hasPluginConfig).
+//
+// Known limitation: Fields and CollapsedColumns, like the plain string/int
+// fields below, cannot distinguish "the user explicitly chose zero items"
+// from "never touched" — both collapse to Go's zero value. This predates
+// this merge logic (the single-layer "empty means default" convention
+// already had the same ambiguity for a single config) and isn't made worse
+// by it; fully closing it would require changing every field to a
+// pointer/presence-tracked type, a much larger wire-format change not
+// justified for the win it buys.
+func mergeViewConfig(shared, override sprintdom.ViewConfig) sprintdom.ViewConfig {
+	out := shared
+	if len(override.Fields) > 0 {
+		out.Fields = override.Fields
+	}
+	if override.ColumnBy != "" {
+		out.ColumnBy = override.ColumnBy
+	}
+	if override.Swimlanes != "" {
+		out.Swimlanes = override.Swimlanes
+	}
+	if override.SortBy != "" {
+		out.SortBy = override.SortBy
+	}
+	if override.FieldSum != "" {
+		out.FieldSum = override.FieldSum
+	}
+	if override.SliceBy != "" {
+		out.SliceBy = override.SliceBy
+	}
+	if override.Filters != nil {
+		out.Filters = override.Filters
+	}
+	if len(override.CollapsedColumns) > 0 {
+		out.CollapsedColumns = override.CollapsedColumns
+	}
+	if override.PageSize != 0 {
+		out.PageSize = override.PageSize
+	}
+	if override.InitialPageSize != 0 {
+		out.InitialPageSize = override.InitialPageSize
+	}
+	// out.PluginID / out.PluginComponent intentionally left at shared's value.
+	return out
+}
+
+// diffViewConfig returns the sparse subset of desired that differs from
+// shared, suitable for persisting as a personal override: fields identical
+// to shared are left at Go zero value so a later mergeViewConfig falls back
+// to whatever shared holds at read time — even if shared changes afterward.
+// PluginID/PluginComponent are never included (see mergeViewConfig).
+func diffViewConfig(shared, desired sprintdom.ViewConfig) sprintdom.ViewConfig {
+	var out sprintdom.ViewConfig
+	if !reflect.DeepEqual(desired.Fields, shared.Fields) {
+		out.Fields = desired.Fields
+	}
+	if desired.ColumnBy != shared.ColumnBy {
+		out.ColumnBy = desired.ColumnBy
+	}
+	if desired.Swimlanes != shared.Swimlanes {
+		out.Swimlanes = desired.Swimlanes
+	}
+	if desired.SortBy != shared.SortBy {
+		out.SortBy = desired.SortBy
+	}
+	if desired.FieldSum != shared.FieldSum {
+		out.FieldSum = desired.FieldSum
+	}
+	if desired.SliceBy != shared.SliceBy {
+		out.SliceBy = desired.SliceBy
+	}
+	if !reflect.DeepEqual(desired.Filters, shared.Filters) {
+		out.Filters = desired.Filters
+	}
+	if !reflect.DeepEqual(desired.CollapsedColumns, shared.CollapsedColumns) {
+		out.CollapsedColumns = desired.CollapsedColumns
+	}
+	if desired.PageSize != shared.PageSize {
+		out.PageSize = desired.PageSize
+	}
+	if desired.InitialPageSize != shared.InitialPageSize {
+		out.InitialPageSize = desired.InitialPageSize
+	}
+	return out
+}
+
+// isZeroViewConfig reports whether cfg has no fields set — i.e. an override
+// that would make no difference once merged with any shared config.
+func isZeroViewConfig(cfg sprintdom.ViewConfig) bool {
+	return reflect.DeepEqual(cfg, sprintdom.ViewConfig{})
 }
 
 // validateAndReorder checks that viewIDs exactly matches the IDs of existing

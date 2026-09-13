@@ -220,6 +220,22 @@ type SprintView struct {
 	ViewContext ViewContext
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// HasPersonalConfig is set in-memory by ViewService.OverlayUserConfigs to
+	// indicate whether Config reflects the caller's personal override rather
+	// than the shared default. It has no database column — repository code
+	// must never populate it — and is false on any SprintView obtained
+	// without going through OverlayUserConfigs.
+	HasPersonalConfig bool
+
+	// SharedConfig is the project-shared default, set alongside
+	// HasPersonalConfig whenever it is true (i.e. whenever Config has been
+	// overwritten with a merged/override value) so callers can still see
+	// what a personalized view falls back to — e.g. a "reset to team
+	// default" UI action. When HasPersonalConfig is false, Config already
+	// IS the shared value, so SharedConfig is left unset; read it via
+	// Config in that case instead.
+	SharedConfig ViewConfig
 }
 
 // ViewTaskPosition records the manual ordering of a task within a specific

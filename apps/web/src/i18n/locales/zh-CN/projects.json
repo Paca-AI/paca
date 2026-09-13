@@ -1613,6 +1613,7 @@
 		"viewSettings": {
 			"viewSettingsAriaLabel": "视图设置",
 			"title": "视图设置",
+			"onlyVisibleToYou": "仅自己可见",
 			"chooseFields": "选择字段",
 			"back": "← 返回",
 			"clearFilters": "清除筛选",
@@ -1639,6 +1640,8 @@
 			"reset": "重置",
 			"saving": "正在保存…",
 			"save": "保存",
+			"saveOnlyForMe": "仅为自己保存",
+			"saveForEveryone": "保存给所有人",
 			"sprintFilter": {
 				"noSprints": "暂无冲刺",
 				"allSprints": "所有冲刺"

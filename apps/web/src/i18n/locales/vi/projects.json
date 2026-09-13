@@ -1613,6 +1613,7 @@
 		"viewSettings": {
 			"viewSettingsAriaLabel": "Cài đặt chế độ xem",
 			"title": "Cài đặt chế độ xem",
+			"onlyVisibleToYou": "Chỉ bạn nhìn thấy",
 			"chooseFields": "Chọn trường",
 			"back": "← Quay lại",
 			"clearFilters": "Xóa bộ lọc",
@@ -1639,6 +1640,8 @@
 			"reset": "Đặt lại",
 			"saving": "Đang lưu…",
 			"save": "Lưu",
+			"saveOnlyForMe": "Chỉ lưu cho tôi",
+			"saveForEveryone": "Lưu cho mọi người",
 			"sprintFilter": {
 				"noSprints": "Không có sprint",
 				"allSprints": "Tất cả sprint"

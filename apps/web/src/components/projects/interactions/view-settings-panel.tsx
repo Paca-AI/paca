@@ -1118,6 +1118,12 @@ interface ViewSettingsPanelProps {
 	onSave: (viewId: string, config: ViewConfig) => Promise<unknown>;
 	onPreview: (config: ViewConfig) => void;
 	isPending?: boolean;
+	/** True when `view.config` is this user's personal override. */
+	isPersonalized?: boolean;
+	/** True when the caller may publish these settings to every project member (views.write). */
+	canSaveForEveryone?: boolean;
+	/** Saves the current draft as the shared view everyone sees, clearing the caller's own override. */
+	onSaveForEveryone: (viewId: string, config: ViewConfig) => Promise<unknown>;
 }
 
 export function ViewSettingsPanel({
@@ -1128,6 +1134,9 @@ export function ViewSettingsPanel({
 	onSave,
 	onPreview,
 	isPending,
+	isPersonalized,
+	canSaveForEveryone,
+	onSaveForEveryone,
 }: ViewSettingsPanelProps) {
 	const { t } = useTranslation("projects");
 	const { data: customFields = [] } = useQuery(
@@ -1142,6 +1151,18 @@ export function ViewSettingsPanel({
 
 	const [draft, setDraft] = useState<ViewConfig>(() => view?.config ?? {});
 	const [fieldsOpen, setFieldsOpen] = useState(false);
+	// Only offer Reset when there's actually something to reset — the draft
+	// (including unsaved edits) differs from the shared/team config. Also
+	// gates "Save for everyone": publishing an unchanged shared config would
+	// be a no-op.
+	const differsFromShared =
+		JSON.stringify(draft) !== JSON.stringify(view?.shared_config ?? {});
+	// Gates the personal-only save actions ("Save" / "Save only for me"):
+	// nothing to persist if the draft matches what's already effectively
+	// active for this user (their own override, or the shared value if they
+	// have none).
+	const differsFromEffective =
+		JSON.stringify(draft) !== JSON.stringify(view?.config ?? {});
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally keyed on view?.id
 	useEffect(() => {
@@ -1218,11 +1239,23 @@ export function ViewSettingsPanel({
 		onOpenChange(false);
 	};
 
+	// Resets the draft to the team default, not to whatever was last saved —
+	// a personalized view's own saved override is not "default" from the
+	// user's perspective. Purely local: still requires Save (or Save for
+	// everyone) to persist, matching how a form's "reset" conventionally
+	// repopulates fields without submitting them.
 	const handleReset = () => {
-		const saved = view?.config ?? {};
-		setDraft(saved);
-		onPreview(saved);
+		const shared = view?.shared_config ?? {};
+		setDraft(shared);
+		onPreview(shared);
 		setFieldsOpen(false);
+	};
+
+	const handleSaveForEveryone = async () => {
+		if (!view) return;
+		await onSaveForEveryone(view.id, draft);
+		setFieldsOpen(false);
+		onOpenChange(false);
 	};
 
 	const visibleFields: string[] =
@@ -1324,9 +1357,16 @@ export function ViewSettingsPanel({
 						</>
 					) : (
 						<>
-							<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
-								{t("layout.viewSettings.title")}
-							</p>
+							<div className="flex items-center gap-1.5">
+								<p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+									{t("layout.viewSettings.title")}
+								</p>
+								{isPersonalized && (
+									<span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-primary">
+										{t("layout.viewSettings.onlyVisibleToYou")}
+									</span>
+								)}
+							</div>
 							{hasSavedFilters && (
 								<button
 									type="button"
@@ -1623,23 +1663,65 @@ export function ViewSettingsPanel({
 
 				{/* ── Footer ───────────────────────────────────────────────── */}
 				<div className="flex items-center justify-end gap-2 px-3 py-2.5 border-t border-border/30 bg-muted/10">
-					<button
-						type="button"
-						onClick={handleReset}
-						className="rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground/80 transition-all duration-150 hover:bg-muted hover:text-foreground"
-					>
-						{t("layout.viewSettings.reset")}
-					</button>
-					<button
-						type="button"
-						onClick={handleSave}
-						disabled={isPending}
-						className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
-					>
-						{isPending
-							? t("layout.viewSettings.saving")
-							: t("layout.viewSettings.save")}
-					</button>
+					{differsFromShared && (
+						<button
+							type="button"
+							onClick={handleReset}
+							className="mr-auto rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground/80 transition-all duration-150 hover:bg-muted hover:text-foreground"
+						>
+							{t("layout.viewSettings.reset")}
+						</button>
+					)}
+					{canSaveForEveryone ? (
+						<div className="flex items-stretch">
+							{/* "Save for everyone" is primary here: for anyone who can
+							    publish shared settings, that's the common case — a
+							    personal-only save is the exception, tucked in the menu. */}
+							<button
+								type="button"
+								onClick={handleSaveForEveryone}
+								disabled={isPending || !differsFromShared}
+								className="rounded-l-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
+							>
+								{isPending
+									? t("layout.viewSettings.saving")
+									: t("layout.viewSettings.saveForEveryone")}
+							</button>
+							<Popover>
+								<PopoverTrigger
+									type="button"
+									disabled={isPending}
+									className="rounded-r-lg border-l border-primary-foreground/20 bg-primary px-1.5 py-1.5 text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
+								>
+									<ChevronDown className="size-3" />
+								</PopoverTrigger>
+								<PopoverContent
+									align="end"
+									className="w-52 p-1 rounded-lg border border-border/40 shadow-lg"
+								>
+									<button
+										type="button"
+										onClick={handleSave}
+										disabled={isPending || !differsFromEffective}
+										className="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors duration-100 hover:bg-muted/60 disabled:opacity-40"
+									>
+										{t("layout.viewSettings.saveOnlyForMe")}
+									</button>
+								</PopoverContent>
+							</Popover>
+						</div>
+					) : (
+						<button
+							type="button"
+							onClick={handleSave}
+							disabled={isPending || !differsFromEffective}
+							className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90 disabled:opacity-40"
+						>
+							{isPending
+								? t("layout.viewSettings.saving")
+								: t("layout.viewSettings.save")}
+						</button>
+					)}
 				</div>
 			</PopoverContent>
 		</Popover>

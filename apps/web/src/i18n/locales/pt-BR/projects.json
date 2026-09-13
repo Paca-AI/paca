@@ -1613,6 +1613,7 @@
 		"viewSettings": {
 			"viewSettingsAriaLabel": "Configurações da visão",
 			"title": "Configurações da visão",
+			"onlyVisibleToYou": "Visível somente para você",
 			"chooseFields": "Escolher campos",
 			"back": "← Voltar",
 			"clearFilters": "Limpar filtros",
@@ -1639,6 +1640,8 @@
 			"reset": "Redefinir",
 			"saving": "Salvando…",
 			"save": "Salvar",
+			"saveOnlyForMe": "Salvar somente para mim",
+			"saveForEveryone": "Salvar para todos",
 			"sprintFilter": {
 				"noSprints": "Nenhum sprint",
 				"allSprints": "Todos os sprints"

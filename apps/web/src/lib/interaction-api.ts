@@ -253,6 +253,10 @@ export interface InteractionView {
 	layout: ViewLayout;
 	config?: ViewConfig;
 	position: number;
+	/** True when `config` is this user's personal override, not what other project members see. */
+	is_personalized: boolean;
+	/** The project-shared default (equal to `config` when `is_personalized` is false). */
+	shared_config: ViewConfig;
 }
 
 // ── View shape helpers ─────────────────────────────────────────────────────────
@@ -331,6 +335,40 @@ export async function updateViewById(
 	const { data } = await apiClient.instance.patch<
 		SuccessEnvelope<Omit<InteractionView, "layout">>
 	>(`/projects/${projectId}/views/${viewId}`, payload);
+	return mapView(data.data);
+}
+
+/**
+ * Persist the current user's PERSONAL view config (settings & filters).
+ *
+ * Unlike {@link updateViewById}, which mutates the project-shared view row,
+ * this targets a per-user override so a member's sort/filter/field choices
+ * never leak to other members. Reads (list/get views) already return the
+ * caller's effective config, so the shape is identical to a shared view.
+ */
+export async function updateMyViewConfig(
+	projectId: string,
+	viewId: string,
+	config: ViewConfig,
+): Promise<InteractionView> {
+	const { data } = await apiClient.instance.put<
+		SuccessEnvelope<Omit<InteractionView, "layout">>
+	>(`/projects/${projectId}/views/${viewId}/config`, { config });
+	return mapView(data.data);
+}
+
+/**
+ * Clear the current user's PERSONAL view config, reverting them to the
+ * shared default (see {@link updateMyViewConfig}). Never touches the shared
+ * view or other members.
+ */
+export async function clearMyViewConfig(
+	projectId: string,
+	viewId: string,
+): Promise<InteractionView> {
+	const { data } = await apiClient.instance.delete<
+		SuccessEnvelope<Omit<InteractionView, "layout">>
+	>(`/projects/${projectId}/views/${viewId}/config`);
 	return mapView(data.data);
 }
 

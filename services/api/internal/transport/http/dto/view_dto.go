@@ -26,6 +26,18 @@ type UpdateViewRequest struct {
 	Position *float64            `json:"position"`
 }
 
+// UpdateUserViewConfigRequest is the body for PUT
+// /projects/:projectId/views/:viewId/config, which stores the current user's
+// personal view config (settings and filters) without touching the shared view.
+type UpdateUserViewConfigRequest struct {
+	Config *ViewConfigDTO `json:"config"`
+}
+
+// ToViewConfig maps the request to a domain ViewConfig (empty when omitted).
+func (r UpdateUserViewConfigRequest) ToViewConfig() sprintdom.ViewConfig {
+	return toViewConfig(r.Config)
+}
+
 // ViewFiltersDTO is the JSON representation of sprintdom.ViewFilters.
 // Each dimension is an optional FilterConfig selector that the client uses to
 // determine which entity IDs to include when querying tasks.
@@ -64,33 +76,55 @@ type ViewResponse struct {
 	Position  float64            `json:"position"`
 	CreatedAt time.Time          `json:"created_at"`
 	UpdatedAt time.Time          `json:"updated_at"`
+	// IsPersonalized is true when Config reflects the caller's own personal
+	// override rather than the shared default everyone else sees. No
+	// omitempty: the frontend needs an explicit false, not an absent key.
+	IsPersonalized bool `json:"is_personalized"`
+	// SharedConfig is the project-shared default, always present (equal to
+	// Config when IsPersonalized is false) so the client can offer "reset to
+	// team default" without a round trip.
+	SharedConfig ViewConfigDTO `json:"shared_config"`
+}
+
+// viewConfigToDTO maps a domain ViewConfig to its wire representation.
+func viewConfigToDTO(cfg sprintdom.ViewConfig) ViewConfigDTO {
+	return ViewConfigDTO{
+		Fields:           cfg.Fields,
+		ColumnBy:         cfg.ColumnBy,
+		Swimlanes:        cfg.Swimlanes,
+		SortBy:           cfg.SortBy,
+		FieldSum:         cfg.FieldSum,
+		SliceBy:          cfg.SliceBy,
+		Filters:          cfg.Filters,
+		CollapsedColumns: cfg.CollapsedColumns,
+		PageSize:         cfg.PageSize,
+		InitialPageSize:  cfg.InitialPageSize,
+		PluginManifestID: cfg.PluginID,
+		PluginComponent:  cfg.PluginComponent,
+	}
 }
 
 // ViewFromEntity maps a domain SprintView to a ViewResponse DTO.
 func ViewFromEntity(v *sprintdom.SprintView) ViewResponse {
+	// SharedConfig only carries a meaningful value when HasPersonalConfig is
+	// true (see its doc comment on sprintdom.SprintView) — otherwise Config
+	// already IS the shared value.
+	sharedConfig := v.Config
+	if v.HasPersonalConfig {
+		sharedConfig = v.SharedConfig
+	}
 	return ViewResponse{
-		ID:        v.ID,
-		SprintID:  v.SprintID,
-		ProjectID: v.ProjectID,
-		Name:      v.Name,
-		ViewType:  v.ViewType,
-		Config: ViewConfigDTO{
-			Fields:           v.Config.Fields,
-			ColumnBy:         v.Config.ColumnBy,
-			Swimlanes:        v.Config.Swimlanes,
-			SortBy:           v.Config.SortBy,
-			FieldSum:         v.Config.FieldSum,
-			SliceBy:          v.Config.SliceBy,
-			Filters:          v.Config.Filters,
-			CollapsedColumns: v.Config.CollapsedColumns,
-			PageSize:         v.Config.PageSize,
-			InitialPageSize:  v.Config.InitialPageSize,
-			PluginManifestID: v.Config.PluginID,
-			PluginComponent:  v.Config.PluginComponent,
-		},
-		Position:  v.Position,
-		CreatedAt: v.CreatedAt,
-		UpdatedAt: v.UpdatedAt,
+		ID:             v.ID,
+		SprintID:       v.SprintID,
+		ProjectID:      v.ProjectID,
+		Name:           v.Name,
+		ViewType:       v.ViewType,
+		IsPersonalized: v.HasPersonalConfig,
+		Config:         viewConfigToDTO(v.Config),
+		SharedConfig:   viewConfigToDTO(sharedConfig),
+		Position:       v.Position,
+		CreatedAt:      v.CreatedAt,
+		UpdatedAt:      v.UpdatedAt,
 	}
 }
 

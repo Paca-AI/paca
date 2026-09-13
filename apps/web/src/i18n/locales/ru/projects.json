@@ -1631,6 +1631,7 @@
 		"viewSettings": {
 			"viewSettingsAriaLabel": "Настройки представления",
 			"title": "Настройки представления",
+			"onlyVisibleToYou": "Видно только вам",
 			"chooseFields": "Выбрать поля",
 			"back": "← Назад",
 			"clearFilters": "Очистить фильтры",
@@ -1657,6 +1658,8 @@
 			"reset": "Сбросить",
 			"saving": "Сохранение…",
 			"save": "Сохранить",
+			"saveOnlyForMe": "Сохранить только для меня",
+			"saveForEveryone": "Сохранить для всех",
 			"sprintFilter": {
 				"noSprints": "Нет спринтов",
 				"allSprints": "Все спринты"

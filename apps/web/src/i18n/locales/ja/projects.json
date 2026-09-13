@@ -1613,6 +1613,7 @@
 		"viewSettings": {
 			"viewSettingsAriaLabel": "ビュー設定",
 			"title": "ビュー設定",
+			"onlyVisibleToYou": "自分にのみ表示",
 			"chooseFields": "フィールドを選択",
 			"back": "← 戻る",
 			"clearFilters": "フィルターをクリア",
@@ -1639,6 +1640,8 @@
 			"reset": "リセット",
 			"saving": "保存中…",
 			"save": "保存",
+			"saveOnlyForMe": "自分だけに保存",
+			"saveForEveryone": "全員に保存",
 			"sprintFilter": {
 				"noSprints": "スプリントはありません",
 				"allSprints": "すべてのスプリント"
