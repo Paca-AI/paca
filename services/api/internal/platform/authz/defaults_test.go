@@ -54,3 +54,56 @@ func TestDefaultProjectRoles_ProjectMemberHasNoSettingsWritePermissions(t *testi
 		t.Error("PROJECT_MEMBER should still grant tasks.read")
 	}
 }
+
+// TestLegacyPermissionsForRole_MatchesDefaultGlobalRoles is a regression test
+// for GHSA-hjcj-373w-vq8m: LegacyPermissionsForRole used to hand-maintain its
+// own permission list per role name, and its ADMIN case had drifted to the
+// bare PermissionAll wildcard while DefaultGlobalRoles' ADMIN entry was
+// correctly scoped to global-only permissions — letting any caller keyed off
+// the legacy role claim (the authz middleware included) bypass
+// project-membership checks entirely. Asserting exact set-equality against
+// DefaultGlobalRoles for every defined role, rather than re-asserting ADMIN's
+// list by hand, also catches the same class of drift for any future role.
+func TestLegacyPermissionsForRole_MatchesDefaultGlobalRoles(t *testing.T) {
+	for _, def := range authz.DefaultGlobalRoles() {
+		got := authz.LegacyPermissionsForRole(def.Name)
+		if !samePermissionSet(got, def.Permissions) {
+			t.Errorf("LegacyPermissionsForRole(%q) = %v, want %v (DefaultGlobalRoles)", def.Name, got, def.Permissions)
+		}
+	}
+}
+
+// TestLegacyPermissionsForRole_AdminNoLongerGrantsWildcard directly pins the
+// GHSA-hjcj-373w-vq8m fix: the global ADMIN legacy role must never resolve to
+// PermissionAll, no matter how DefaultGlobalRoles evolves.
+func TestLegacyPermissionsForRole_AdminNoLongerGrantsWildcard(t *testing.T) {
+	for _, p := range authz.LegacyPermissionsForRole("ADMIN") {
+		if p == authz.PermissionAll {
+			t.Fatal(`LegacyPermissionsForRole("ADMIN") must not include the PermissionAll wildcard — see GHSA-hjcj-373w-vq8m`)
+		}
+	}
+}
+
+// samePermissionSet compares a and b as sets (order- and duplicate-
+// insensitive) — builds both sides into sets first so a duplicate on one
+// side can't paper over a genuinely missing element on the other, the way
+// comparing len(a) == len(b) against one-directional membership could.
+func samePermissionSet(a, b []authz.Permission) bool {
+	setA := make(map[authz.Permission]struct{}, len(a))
+	for _, p := range a {
+		setA[p] = struct{}{}
+	}
+	setB := make(map[authz.Permission]struct{}, len(b))
+	for _, p := range b {
+		setB[p] = struct{}{}
+	}
+	if len(setA) != len(setB) {
+		return false
+	}
+	for p := range setA {
+		if _, ok := setB[p]; !ok {
+			return false
+		}
+	}
+	return true
+}

@@ -1,6 +1,9 @@
 package authz
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // RoleDefinition binds a role name to the permissions it grants.
 type RoleDefinition struct {
@@ -8,8 +11,12 @@ type RoleDefinition struct {
 	Permissions []Permission
 }
 
-// DefaultGlobalRoles returns the built-in global role set.
-func DefaultGlobalRoles() []RoleDefinition {
+// DefaultGlobalRoles returns the built-in global role set. Computed once and
+// cached: LegacyPermissionsForRole calls this on every permission check
+// (hasPermissionsForActor runs per request), and the data itself is static
+// for the process lifetime. Callers only ever range over the result, so a
+// shared cached slice is safe to hand out.
+var DefaultGlobalRoles = sync.OnceValue(func() []RoleDefinition {
 	return []RoleDefinition{
 		{
 			Name:        "SUPER_ADMIN",
@@ -38,7 +45,7 @@ func DefaultGlobalRoles() []RoleDefinition {
 			},
 		},
 	}
-}
+})
 
 // DefaultProjectRoles returns built-in project role templates.
 func DefaultProjectRoles() []RoleDefinition {
@@ -150,16 +157,23 @@ func DefaultProjectRoles() []RoleDefinition {
 
 // LegacyPermissionsForRole preserves compatibility with the existing
 // users.role claim until all callers are migrated to explicit role assignment.
+//
+// Delegates to DefaultGlobalRoles rather than hand-maintaining a second,
+// parallel permission list per role name — GHSA-hjcj-373w-vq8m was exactly
+// that drift: this function's own ADMIN case had been hardcoded to the bare
+// PermissionAll wildcard while DefaultGlobalRoles' ADMIN entry was correctly
+// scoped to global-only permissions, so any caller keyed off the legacy role
+// claim (the authz middleware included, via claims.Role) granted a global
+// ADMIN every permission — including project-scoped ones like
+// environments.connect — for any project UUID in the request, with no
+// project-membership check. A single source of truth makes that class of
+// drift impossible going forward.
 func LegacyPermissionsForRole(role string) []Permission {
 	normalized := strings.ToUpper(strings.TrimSpace(role))
-	switch normalized {
-	case "SUPER_ADMIN":
-		return []Permission{PermissionAll}
-	case "ADMIN":
-		return []Permission{PermissionAll}
-	case "USER":
-		return []Permission{PermissionUsersRead}
-	default:
-		return nil
+	for _, def := range DefaultGlobalRoles() {
+		if def.Name == normalized {
+			return def.Permissions
+		}
 	}
+	return nil
 }

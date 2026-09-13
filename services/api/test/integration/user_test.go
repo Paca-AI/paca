@@ -186,7 +186,18 @@ func TestGetMyGlobalPermissions_Unauthorized(t *testing.T) {
 	}
 }
 
-func TestGetMyGlobalPermissions_AdminRoleIncludesWildcard(t *testing.T) {
+// TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard is a regression
+// test for GHSA-hjcj-373w-vq8m. The legacy ADMIN role claim used to resolve
+// (via authz.LegacyPermissionsForRole) to the bare PermissionAll wildcard,
+// which authz.hasPermission's granted["*"] short-circuit then let satisfy
+// every permission check anywhere it was consulted — project-scoped ones
+// (environments.connect, tasks.*, docs.*, conversations.*) included, with no
+// project-membership check. It must now resolve to ADMIN's real, narrower
+// global-scope permission set (see authz.DefaultGlobalRoles) instead. This
+// test (like the one it replaces) exercises only the legacy-role fallback —
+// buildUserTestRouter's fakeUserRepo satisfies no GlobalPermissionReader
+// interface, so nothing here is merged in from a DB-backed global role.
+func TestGetMyGlobalPermissions_AdminRoleDoesNotIncludeWildcard(t *testing.T) {
 	repo := newFakeUserRepo()
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.MinCost)
 	if err != nil {
@@ -243,14 +254,25 @@ func TestGetMyGlobalPermissions_AdminRoleIncludesWildcard(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	foundWildcard := false
+	got := map[string]bool{}
 	for _, p := range env.Data.Permissions {
-		if p == string(authz.PermissionAll) {
-			foundWildcard = true
-		}
+		got[p] = true
 	}
-	if !foundWildcard {
-		t.Fatalf("expected %q in permissions, got %v", authz.PermissionAll, env.Data.Permissions)
+	if got[string(authz.PermissionAll)] {
+		t.Fatalf("expected admin permissions to NOT include the %q wildcard (GHSA-hjcj-373w-vq8m), got %v", authz.PermissionAll, env.Data.Permissions)
+	}
+
+	for _, want := range []authz.Permission{
+		authz.PermissionUsersAll,
+		authz.PermissionGlobalRolesAll,
+		authz.PermissionProjectsAll,
+		authz.PermissionSettingsWrite,
+		authz.PermissionAgentsAll,
+		authz.PermissionPluginsAll,
+	} {
+		if !got[string(want)] {
+			t.Errorf("expected admin permissions to include %q, got %v", want, env.Data.Permissions)
+		}
 	}
 }
 
