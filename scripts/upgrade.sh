@@ -346,8 +346,17 @@ fi
 # Gated on a real container existing (not just STORAGE_PROVIDER's value) so an
 # install that already moved to AWS S3 — and just never removed the old,
 # unused minio container — isn't blocked for no reason.
+#
+# Both checks are read once here and reused everywhere below (through
+# "Storage backend migration, continued" further down) instead of
+# re-querying .env / `docker compose ps` in every branch — container state
+# doesn't change out from under this script between here and there.
+STORAGE_PROVIDER_AT_START="$(get_env_var .env STORAGE_PROVIDER)"
+HAD_MINIO_CONTAINER="no"
+service_has_container minio && HAD_MINIO_CONTAINER="yes"
+
 KEEP_MINIO="no"
-if [[ "$(get_env_var .env STORAGE_PROVIDER)" != "s3" ]] && service_has_container minio \
+if [[ "$STORAGE_PROVIDER_AT_START" != "s3" ]] && [[ "$HAD_MINIO_CONTAINER" == "yes" ]] \
     && [[ "${PACA_ACKNOWLEDGE_STORAGE_MIGRATION:-}" != "1" ]]; then
     if [[ "${PACA_KEEP_MINIO:-}" == "1" ]]; then
         KEEP_MINIO="yes"
@@ -396,6 +405,16 @@ backup_env_once() {
     fi
 }
 
+# repoint_storage_to_rustfs
+# Shared by both storage-migration cases below (acknowledged migration, and
+# recovering an already-orphaned config) — same action either way, only the
+# reason and how it's logged differ, which stays at each call site.
+repoint_storage_to_rustfs() {
+    backup_env_once
+    set_env_var .env STORAGE_PROVIDER "rustfs"
+    set_env_var .env STORAGE_ENDPOINT "rustfs:9000"
+}
+
 # ── Storage backend migration, continued ──────────────────────────────────────
 # Acknowledging the migration (path 1 in the "Storage backend migration"
 # section above) means the data has already been copied over by hand and
@@ -406,12 +425,39 @@ backup_env_once() {
 # non-S3) rather than on the ack flag alone, so setting
 # PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 on an install that was never blocked
 # in the first place (no existing minio container) is a harmless no-op.
-if [[ "$(get_env_var .env STORAGE_PROVIDER)" != "s3" ]] && service_has_container minio \
+if [[ "$STORAGE_PROVIDER_AT_START" != "s3" ]] && [[ "$HAD_MINIO_CONTAINER" == "yes" ]] \
     && [[ "${PACA_ACKNOWLEDGE_STORAGE_MIGRATION:-}" == "1" ]]; then
-    backup_env_once
-    set_env_var .env STORAGE_PROVIDER "rustfs"
-    set_env_var .env STORAGE_ENDPOINT "rustfs:9000"
+    repoint_storage_to_rustfs
     info "Migration acknowledged — STORAGE_PROVIDER/STORAGE_ENDPOINT in .env now point at rustfs:9000."
+fi
+
+# Recovery: an install can end up with STORAGE_PROVIDER=minio /
+# STORAGE_ENDPOINT=minio:9000 in .env while no minio container exists at all
+# — confirmed live: the guard above only ever fires when it can see a real
+# minio container to protect, so if one was already removed by some earlier,
+# unprotected upgrade (a manual `docker compose up --remove-orphans`, a
+# script version older than the guard itself, or any other path outside this
+# script's control), .env is left silently stale and every future run of
+# this script has nothing left to catch. The symptom looks nothing like a
+# storage problem at first: the api container crash-loops on "dial tcp:
+# lookup minio ... server misbehaving" during its ensure-bucket bootstrap
+# step, and because gateway/web/realtime/agent-runner all wait for api to
+# become healthy first, the entire stack stays down, not just uploads.
+#
+# Scoped narrowly on purpose — both the provider AND the exact bundled
+# endpoint, not just "provider isn't s3" the way the guard above checks —
+# so this never touches an install that deliberately points STORAGE_PROVIDER
+# at a self-managed MinIO instance living outside this compose project.
+if [[ "$STORAGE_PROVIDER_AT_START" == "minio" ]] \
+    && [[ "$(get_env_var .env STORAGE_ENDPOINT)" == "minio:9000" ]] \
+    && [[ "$HAD_MINIO_CONTAINER" == "no" ]]; then
+    if service_has_container rustfs; then
+        repoint_storage_to_rustfs
+        warn "Found STORAGE_PROVIDER=minio in .env with no minio container left to serve it — repointed at the existing rustfs container instead so the api service can start."
+        warn "If that old minio container's data was never migrated before it disappeared, it may still be sitting unattached in its old volume rather than actually lost — check for it (e.g. \`docker volume ls | grep minio\`) and, if found, mirror it into rustfs by hand: docs/deployment/README.md's \"Migrating from MinIO to RustFS\" section has the mc commands, run against a temporary container pointed at that old volume instead of the (now gone) live one."
+    else
+        warn "Found STORAGE_PROVIDER=minio in .env with no minio container left to serve it, and no rustfs container either — the api service will keep failing to start until STORAGE_ENDPOINT in .env points at a real, reachable object store. Set STORAGE_PROVIDER/STORAGE_ENDPOINT by hand (or drop any --scale rustfs=0 you're passing, if AWS S3 isn't actually configured), then re-run."
+    fi
 fi
 
 # ── Agent Runner migration ────────────────────────────────────────────────────

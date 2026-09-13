@@ -121,7 +121,11 @@ jobs:
   #    go — PACA_ACKNOWLEDGE_STORAGE_MIGRATION=1 (proceeds, removes the old
   #    container, and repoints .env at rustfs) or PACA_KEEP_MINIO=1
   #    (proceeds, leaves the old container running untouched, .env
-  #    unchanged).
+  #    unchanged) — and the recovery path for an install already stuck with
+  #    a stale minio config from before this guard existed (no "minio" in
+  #    the fake ps output at all, rustfs already running): must self-heal
+  #    .env rather than silently leaving the api service unable to start,
+  #    the way a live incident on this exact scenario once did.
   # ---------------------------------------------------------------------------
   upgrade-smoke:
     name: upgrade.sh smoke test
@@ -398,6 +402,61 @@ jobs:
           grep -qx 'STORAGE_PROVIDER=minio' "$WORK3/.env"
           grep -qx 'STORAGE_ENDPOINT=minio:9000' "$WORK3/.env"
           echo "PACA_KEEP_MINIO=1 proceeded as expected, without touching the existing MinIO container."
+
+      - name: Seed a fourth synthetic install already stuck with an orphaned storage config
+        run: |
+          set -euo pipefail
+          WORK4="$RUNNER_TEMP/upgrade-seed-minio-orphaned"
+          echo "WORK4=$WORK4" >> "$GITHUB_ENV"
+          mkdir -p "$WORK4"
+          echo '# placeholder' > "$WORK4/docker-compose.yml"
+          cat <<'ENV' > "$WORK4/.env"
+          PACA_API_IMAGE=pacaai/paca-api:0.9.0
+          PACA_WEB_IMAGE=pacaai/paca-web:0.9.0
+          PACA_REALTIME_IMAGE=pacaai/paca-realtime:0.9.0
+          PACA_AI_AGENT_IMAGE=ghcr.io/openhands/agent-server:0.9.0
+          PACA_AI_AGENT=yes
+          PUBLIC_URL=https://old.example.com
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=oldpassword123
+          JWT_SECRET=deadbeef
+          POSTGRES_DB=paca
+          POSTGRES_USER=paca
+          POSTGRES_PASSWORD=oldpgpass
+          DATABASE_URL=
+          STORAGE_PROVIDER=minio
+          STORAGE_ENDPOINT=minio:9000
+          STORAGE_REGION=us-east-1
+          STORAGE_BUCKET=paca
+          STORAGE_ACCESS_KEY_ID=oldaccesskey
+          STORAGE_SECRET_ACCESS_KEY=oldsecretkey
+          STORAGE_USE_SSL=false
+          ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000
+          AGENT_API_KEY=oldagentkey
+          INTERNAL_API_KEY=oldinternalkey
+          AGENT_SERVER_IMAGE=ghcr.io/openhands/agent-server:latest
+          ENV
+
+      - name: Run upgrade.sh against it — expect it to self-heal, not silently do nothing
+        env:
+          # No "minio" in this list — reproduces a live incident where an
+          # earlier, unprotected removal had already deleted the minio
+          # container before this run, leaving .env stale with nothing left
+          # for the guard above to catch. rustfs is present and healthy, as
+          # it would be after any real upgrade reached this point.
+          FAKE_DOCKER_PS_SERVICES: |
+            web
+            postgres
+            rustfs
+            rustfs-init
+        run: |
+          set -euo pipefail
+          : > "$FAKE_DOCKER_LOG"
+          PACA_YES=1 PACA_DIR="$WORK4" bash scripts/upgrade.sh > "$RUNNER_TEMP/recovery-output.log" 2>&1
+          grep -q "Found STORAGE_PROVIDER=minio in .env with no minio container left to serve it" "$RUNNER_TEMP/recovery-output.log"
+          grep -qx 'STORAGE_PROVIDER=rustfs' "$WORK4/.env"
+          grep -qx 'STORAGE_ENDPOINT=rustfs:9000' "$WORK4/.env"
+          echo "Orphaned storage config self-healed as expected."
 
   # ---------------------------------------------------------------------------
   # 4. install-paca-skills.sh smoke test — runs the real script fully
